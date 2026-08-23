@@ -3188,13 +3188,13 @@ def _build_gui():
             self._goldbach_decompose_last_result = None
 
             # Constellation-records-table scan worker (Constellations -> Tabela rekordow
-            # sub-tab, Faza 4): own queue pair for the same reason as every other worker
-            # above (unrelated result shape -- a whole records table, not a single value).
+            # sub-tab, Faza 4): own PersistentWorker for the same reason as every other
+            # worker above (unrelated result shape -- a whole records table, not a
+            # single value). Last of the six original hand-rolled worker-thread patterns
+            # to move onto background.PersistentWorker (Faza 1 of the refactor branch).
             self._const_records_busy = False
-            self._const_records_work_queue = queue.Queue()
-            self._const_records_result_queue = queue.Queue()
-            threading.Thread(target=self._const_records_worker_loop, daemon=True).start()
-            self.after(150, self._poll_const_records_results)
+            self._const_records_worker = background.PersistentWorker(
+                self, self._const_records_job, on_result=self._on_const_records_worker_result)
 
             # "Generate missing fragment, then re-search" state -- set by
             # _offer_generate_missing_prime_window()/_offer_generate_missing_constellation()
@@ -5040,12 +5040,13 @@ def _build_gui():
             looking at right now), not because the scan itself is too slow to run
             unbounded.
 
-            Scans AND exports run on the SAME worker thread (queue pair here matches
-            every other worker in this file -- see e.g. _primesieve_calc_worker_loop's
-            own docstring for the shared rationale), distinguished by a job["mode"]
-            field ("scan" / "export_pdf" / "export_csv") -- reading every hit file in
-            full for an export is more expensive than the summary scan's "just the
-            first value" read, so keeping it off the GUI thread matters even more here."""
+            Scans AND exports run on the SAME background.PersistentWorker (same shared-
+            worker-thread pattern every job dispatcher in this file uses since Faza 1's
+            background-job consolidation -- see _const_records_job's own docstring),
+            distinguished by a job["mode"] field ("scan" / "export_pdf" / "export_csv")
+            -- reading every hit file in full for an export is more expensive than the
+            summary scan's "just the first value" read, so keeping it off the GUI
+            thread matters even more here."""
             container = ttk.Frame(self.constellations_records_tab)
             container.pack(fill="both", expand=True, padx=12, pady=12)
 
@@ -5285,37 +5286,42 @@ def _build_gui():
             self.totals_progress.configure(mode="indeterminate")
             self.totals_progress.start(80)
             self.status.set(status_text)
-            self._const_records_work_queue.put(job)
+            self._const_records_worker.submit(job)
 
-        def _const_records_worker_loop(self):
-            while True:
-                job = self._const_records_work_queue.get()
-                mode = job.get("mode", "scan")
-                k = job["k"]
-                floor_min = job.get("floor_min")
-                floor_max = job.get("floor_max")
-                try:
-                    if mode == "scan":
-                        variant_ids, variant_meta, rows = build_constellation_records_table(
-                            PORTAL_FOLDER, k, floor_min=floor_min, floor_max=floor_max)
-                        self._const_records_result_queue.put(
-                            (mode, k, True, (variant_ids, variant_meta, rows, floor_min, floor_max)))
-                    else:  # export_pdf / export_csv
-                        _variant_ids, _variant_meta, detail_rows = (
-                            build_constellation_records_detail_rows(
-                                PORTAL_FOLDER, k, floor_min=floor_min, floor_max=floor_max))
-                        path = job["path"]
-                        if mode == "export_pdf":
-                            self._render_const_records_detail_pdf(path, k, detail_rows)
-                        else:
-                            self._write_const_records_detail_csv(path, detail_rows)
-                        self._const_records_result_queue.put((mode, k, True, path))
-                except Exception as e:  # noqa: BLE001 -- must never kill this thread
-                    self._const_records_result_queue.put((mode, k, False, str(e)))
+        def _const_records_job(self, job, report_progress):
+            """Runs on PersistentWorker's own daemon thread. Three job shapes
+            distinguished by "mode": "scan" (build_constellation_records_table -> the
+            main tree), "export_pdf"/"export_csv" (build_constellation_records_detail_rows
+            -> a flat per-hit row list, then handed to the matching renderer below).
+            Catches its own exceptions (per PersistentWorker's fn contract -- see
+            background.py's docstring) so a failure surfaces with the right mode/k
+            context, instead of falling through to PersistentWorker's own last-resort
+            net which has no way to know which request failed."""
+            mode = job.get("mode", "scan")
+            k = job["k"]
+            floor_min = job.get("floor_min")
+            floor_max = job.get("floor_max")
+            try:
+                if mode == "scan":
+                    variant_ids, variant_meta, rows = build_constellation_records_table(
+                        PORTAL_FOLDER, k, floor_min=floor_min, floor_max=floor_max)
+                    return mode, k, True, (variant_ids, variant_meta, rows, floor_min, floor_max)
+                else:  # export_pdf / export_csv
+                    _variant_ids, _variant_meta, detail_rows = (
+                        build_constellation_records_detail_rows(
+                            PORTAL_FOLDER, k, floor_min=floor_min, floor_max=floor_max))
+                    path = job["path"]
+                    if mode == "export_pdf":
+                        self._render_const_records_detail_pdf(path, k, detail_rows)
+                    else:
+                        self._write_const_records_detail_csv(path, detail_rows)
+                    return mode, k, True, path
+            except Exception as e:  # noqa: BLE001 -- must never kill this thread
+                return mode, k, False, str(e)
 
         def _render_const_records_detail_pdf(self, path, k, detail_rows):
-            """Runs on the worker thread (called from _const_records_worker_loop) --
-            builds the PDF fieldnames/rows from build_constellation_records_detail_rows()'
+            """Runs on the worker thread (called from _const_records_job) -- builds
+            the PDF fieldnames/rows from build_constellation_records_detail_rows()'
             flat per-hit dicts and hands them to render_constellation_records_pdf(),
             same low-level writer the old summary export used. One row per individual
             hit (see that function's own docstring for why), so a floor with 2019 hits
@@ -5332,8 +5338,8 @@ def _build_gui():
             render_constellation_records_pdf(path, k, fieldnames, pdf_rows, translator=TRANSLATOR)
 
         def _write_const_records_detail_csv(self, path, detail_rows):
-            """Runs on the worker thread (called from _const_records_worker_loop) --
-            plain csv.DictWriter, one row per individual hit (see
+            """Runs on the worker thread (called from _const_records_job) -- plain
+            csv.DictWriter, one row per individual hit (see
             build_constellation_records_detail_rows()'s own docstring)."""
             fieldnames = ["exp", "variant_id", "offset", "number",
                           "position_in_file", "count_in_file", "is_record_floor"]
@@ -5351,51 +5357,60 @@ def _build_gui():
                         "is_record_floor": r["is_record_floor"],
                     })
 
-        def _poll_const_records_results(self):
-            try:
-                while True:
-                    mode, k, ok, payload = self._const_records_result_queue.get_nowait()
-                    self._const_records_busy = False
-                    self.const_records_scan_button.configure(state="normal")
-                    self.totals_progress.stop()
-                    self.totals_progress.configure(mode="determinate", maximum=1, value=0)
-                    if mode == "scan":
-                        if not ok:
-                            # Scan failed -- self._const_records_last (if any) still
-                            # holds the last SUCCESSFUL scan's data untouched, so restore
-                            # the export buttons to match it instead of leaving them
-                            # disabled from _const_records_start_job() (which disables
-                            # all three buttons up front, since a scan and an export
-                            # can't usefully run at the same time).
-                            has_rows = bool(self._const_records_last and self._const_records_last[3])
-                            self.const_records_export_pdf_button.configure(
-                                state="normal" if has_rows else "disabled")
-                            self.const_records_export_csv_button.configure(
-                                state="normal" if has_rows else "disabled")
-                            self.status.set(T("const_records.status_error"))
-                            messagebox.showerror(T("const_records.error_dialog_title"), payload)
-                            continue
-                        variant_ids, variant_meta, rows, floor_min, floor_max = payload
-                        self._show_const_records_results(
-                            k, variant_ids, variant_meta, rows, floor_min, floor_max)
-                    else:  # export_pdf / export_csv
-                        has_rows = bool(self._const_records_last and self._const_records_last[3])
-                        self.const_records_export_pdf_button.configure(
-                            state="normal" if has_rows else "disabled")
-                        self.const_records_export_csv_button.configure(
-                            state="normal" if has_rows else "disabled")
-                        button_label = T("const_records.export_pdf_button" if mode == "export_pdf"
-                                          else "const_records.export_csv_button")
-                        if not ok:
-                            self.status.set(T("const_records.status_error"))
-                            messagebox.showerror(T("const_records.error_dialog_title"), payload)
-                            continue
-                        path = payload
-                        self.status.set(T("bench.status_saved", path=path))
-                        messagebox.showinfo(button_label, T("bench.saved_dialog", path=path))
-            except queue.Empty:
-                pass
-            self.after(150, self._poll_const_records_results)
+        def _on_const_records_worker_result(self, payload, error):
+            """Main-thread callback for _const_records_job -- same shape as the old
+            _poll_const_records_results, just delivered via PersistentWorker instead
+            of a bespoke queue.Queue + self.after() pair. `error` is only non-None for
+            a genuine PersistentWorker-framework bug (_const_records_job already
+            catches its own exceptions -- see its docstring)."""
+            self._const_records_busy = False
+            self.const_records_scan_button.configure(state="normal")
+            self.totals_progress.stop()
+            self.totals_progress.configure(mode="determinate", maximum=1, value=0)
+            if error is not None:
+                has_rows = bool(self._const_records_last and self._const_records_last[3])
+                self.const_records_export_pdf_button.configure(
+                    state="normal" if has_rows else "disabled")
+                self.const_records_export_csv_button.configure(
+                    state="normal" if has_rows else "disabled")
+                self.status.set(T("const_records.status_error"))
+                messagebox.showerror(T("const_records.error_dialog_title"), str(error))
+                return
+            mode, k, ok, result_payload = payload
+            if mode == "scan":
+                if not ok:
+                    # Scan failed -- self._const_records_last (if any) still
+                    # holds the last SUCCESSFUL scan's data untouched, so restore
+                    # the export buttons to match it instead of leaving them
+                    # disabled from _const_records_start_job() (which disables
+                    # all three buttons up front, since a scan and an export
+                    # can't usefully run at the same time).
+                    has_rows = bool(self._const_records_last and self._const_records_last[3])
+                    self.const_records_export_pdf_button.configure(
+                        state="normal" if has_rows else "disabled")
+                    self.const_records_export_csv_button.configure(
+                        state="normal" if has_rows else "disabled")
+                    self.status.set(T("const_records.status_error"))
+                    messagebox.showerror(T("const_records.error_dialog_title"), result_payload)
+                    return
+                variant_ids, variant_meta, rows, floor_min, floor_max = result_payload
+                self._show_const_records_results(
+                    k, variant_ids, variant_meta, rows, floor_min, floor_max)
+            else:  # export_pdf / export_csv
+                has_rows = bool(self._const_records_last and self._const_records_last[3])
+                self.const_records_export_pdf_button.configure(
+                    state="normal" if has_rows else "disabled")
+                self.const_records_export_csv_button.configure(
+                    state="normal" if has_rows else "disabled")
+                button_label = T("const_records.export_pdf_button" if mode == "export_pdf"
+                                  else "const_records.export_csv_button")
+                if not ok:
+                    self.status.set(T("const_records.status_error"))
+                    messagebox.showerror(T("const_records.error_dialog_title"), result_payload)
+                    return
+                path = result_payload
+                self.status.set(T("bench.status_saved", path=path))
+                messagebox.showinfo(button_label, T("bench.saved_dialog", path=path))
 
         def _show_const_records_results(self, k, variant_ids, variant_meta, rows, floor_min, floor_max):
             self._const_records_last = (k, variant_ids, variant_meta, rows)
@@ -6179,8 +6194,10 @@ def _build_gui():
             comparison since it inherits the parity problem). "Wizualizacja" draws the
             SAME [4, 2*Pmax] window (never a separate cascade step -- see
             goldbach_window.window_rows' own docstring), sourced from the on-disk
-            magazyn. Both run on the shared worker thread (own queue.Queue pair + 150ms
-            poller, same pattern as _const_records_worker_loop/_poll_const_records_results)."""
+            magazyn. Both run on the shared _goldbach_worker (background.PersistentWorker
+            -- see _goldbach_job's own docstring), the same shared-worker-thread pattern
+            every job dispatcher in this file uses since Faza 1's background-job
+            consolidation."""
             top = ttk.Frame(self.research_goldbach_tab)
             top.pack(fill="x", padx=6, pady=(10, 4))
             ttk.Label(top, text=T("research_goldbach.field_n")).pack(side="left")
@@ -6908,7 +6925,7 @@ def _build_gui():
 
         def _goldbach_job(self, job, report_progress):
             """Runs on PersistentWorker's own daemon thread -- single-owner reasoning
-            identical to _const_records_worker_loop's own docstring (self._goldbach_busy
+            identical to _const_records_job's own docstring (self._goldbach_busy
             blocks new requests from the GUI side, so only one job is ever in flight).
             Three job shapes distinguished by "op":
 
