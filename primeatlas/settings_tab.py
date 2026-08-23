@@ -95,6 +95,9 @@ class SettingsTab(ttk.Frame):
         self._backups = []              # [(name, path)], newest first
         self._selected_backup_name = None
         self._diff_cache = None         # last "check differences" result for the selection
+        # True only while _on_check_diff()'s background scan is running -- see that
+        # method's own docstring (Faza 1 background-job migration, 2026-08-23).
+        self._diff_check_running = False
 
         self._active_job = None         # RestoreJob currently driving, or None
         self._active_job_runner_kind = None  # "loop" / "constellation" / None (in flight)
@@ -281,6 +284,17 @@ class SettingsTab(ttk.Frame):
     # ---- restore: diff + start ----------------------------------------------------------
 
     def _on_check_diff(self):
+        """Validates selection/state synchronously (cheap), loads the small manifest JSON
+        synchronously (backup_store.py's load() is one file read, not a tree scan), then
+        runs the actual manifest.diff_against_disk() comparison -- a full scan of every
+        floor's CURRENT on-disk state, see that method's own docstring -- on a background
+        thread via primeatlas/background.py's run_in_background(), instead of blocking
+        the GUI thread for however long that scan takes.
+
+        Faza 1 background-job migration (2026-08-23, second step -- see
+        _on_preview_storage_integrate for the first): this used to call
+        diff_against_disk() directly, inline, on the GUI thread, freezing the window for
+        the full scan on every click of the "Sprawdz roznice" button."""
         if not self._selected_backup_name:
             messagebox.showinfo(self.T("settings.restore_title"),
                                  self.T("settings.restore_select_backup_first"))
@@ -289,10 +303,31 @@ class SettingsTab(ttk.Frame):
             messagebox.showinfo(self.T("settings.restore_title"),
                                  self.T("settings.restore_already_running"))
             return
+        if self._diff_check_running:
+            return
         store = self._current_backup_store()
         manifest = store.load(self._selected_backup_name)
         portal_folder = self.wsl["get_portal_folder"]()
-        diff = manifest.diff_against_disk(portal_folder)
+        self._diff_check_running = True
+        self.restore_diff_btn.configure(state="disabled")
+        background.run_in_background(
+            self, lambda report_progress: manifest.diff_against_disk(portal_folder),
+            on_done=self._on_check_diff_done)
+
+    def _on_check_diff_done(self, diff, error):
+        """Main-thread callback for _on_check_diff()'s background scan -- everything that
+        used to run right after the (formerly synchronous) diff_against_disk() call now
+        runs here instead, unchanged apart from the error branch, which is new: a raised
+        exception used to propagate out of a Tk button callback and only ever show up as
+        console noise; now it's surfaced to the user via messagebox, and the Start-restore
+        button is left disabled since there's no valid diff to act on."""
+        self._diff_check_running = False
+        self.restore_diff_btn.configure(state="normal")
+        if error is not None:
+            messagebox.showerror(self.T("settings.restore_title"), str(error))
+            self._diff_cache = None
+            self.restore_start_btn.configure(state="disabled")
+            return
         self._diff_cache = diff
         if not diff:
             self._restore_log(
