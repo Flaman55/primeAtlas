@@ -1,8 +1,12 @@
 """
 test_goldbach_worker.py -- functional regression test for the Goldbach
-structural-window worker (Badania -> Goldbach sub-tab) in prime_atlas_v1.py,
-migrated onto primeatlas/background.py's PersistentWorker during the refactor
-branch's Faza 1 (background-job consolidation, 2026-08-23).
+structural-window worker (Badania -> Goldbach sub-tab), migrated onto
+primeatlas/background.py's PersistentWorker during the refactor branch's Faza 1
+(background-job consolidation, 2026-08-23), then extracted wholesale into
+primeatlas/research_goldbach_tab.py's ResearchGoldbachTab during Faza 3 (tab-by-tab
+backend/UI split, 2026-08-23) -- all app.goldbach_*/app._goldbach_* references below
+now go through app.research_goldbach_tab_widget instead (see that module's own
+docstring for why the tab is fully self-contained, own worker included).
 
 Drives the REAL UI entrypoints (_on_goldbach_run, _on_goldbach_visualize,
 _on_goldbach_viz_decompose) -- exactly what clicking the tab's buttons does --
@@ -105,57 +109,63 @@ def main():
         settings_tab.wsl["set_portal_folder"](tmp_portal)
         app.update()
 
+        goldbach = app.research_goldbach_tab_widget
+
         # --- "window" op: fresh in-process sieve, no storage read at all ------------
-        _set_entry(app.goldbach_n_entry, "10")
-        app._on_goldbach_run()
-        check(app._goldbach_busy, "'window' job marked busy immediately after dispatch")
+        _set_entry(goldbach.goldbach_n_entry, "10")
+        goldbach._on_goldbach_run()
+        check(goldbach._goldbach_busy, "'window' job marked busy immediately after dispatch")
         _pump(app, 3.0)
-        check(not app._goldbach_busy, "'window' job settles after a PersistentWorker result")
-        check(app._goldbach_last_result is not None,
+        check(not goldbach._goldbach_busy, "'window' job settles after a PersistentWorker result")
+        check(goldbach._goldbach_last_result is not None,
               "'window' job populated _goldbach_last_result")
-        check(app._goldbach_last_result["n"] == 10,
-              f"'window' result carries the requested n (got {app._goldbach_last_result!r})")
+        check(goldbach._goldbach_last_result["n"] == 10,
+              f"'window' result carries the requested n (got {goldbach._goldbach_last_result!r})")
 
         # --- "viz" op: reads storage (floor 0), exercises report_progress ----------
-        _set_entry(app.goldbach_n_entry, "6")
-        app._on_goldbach_visualize()
-        check(app._goldbach_busy, "'viz' job marked busy immediately after dispatch")
+        _set_entry(goldbach.goldbach_n_entry, "6")
+        goldbach._on_goldbach_visualize()
+        check(goldbach._goldbach_busy, "'viz' job marked busy immediately after dispatch")
         _pump(app, 3.0)
-        check(not app._goldbach_busy, "'viz' job settles without hanging or crashing")
-        check(app._goldbach_viz_last_result is not None,
+        check(not goldbach._goldbach_busy, "'viz' job settles without hanging or crashing")
+        check(goldbach._goldbach_viz_last_result is not None,
               "'viz' job populated _goldbach_viz_last_result")
-        check(app._goldbach_viz_win is not None and app._goldbach_viz_win.winfo_exists(),
+        check(goldbach._goldbach_viz_win is not None and goldbach._goldbach_viz_win.winfo_exists(),
               "Wizualizacja Toplevel was created and is still open")
 
         # --- "decompose" op: depends on the "viz" result just above for its pmax ---
-        _set_entry(app.goldbach_viz_decompose_entry, "6")
-        app._on_goldbach_viz_decompose()
-        check(app._goldbach_busy, "'decompose' job marked busy immediately after dispatch")
+        _set_entry(goldbach.goldbach_viz_decompose_entry, "6")
+        goldbach._on_goldbach_viz_decompose()
+        check(goldbach._goldbach_busy, "'decompose' job marked busy immediately after dispatch")
         _pump(app, 3.0)
-        check(not app._goldbach_busy, "'decompose' job settles without hanging or crashing")
-        check(app._goldbach_decompose_last_result is not None,
+        check(not goldbach._goldbach_busy, "'decompose' job settles without hanging or crashing")
+        check(goldbach._goldbach_decompose_last_result is not None,
               "'decompose' job populated _goldbach_decompose_last_result")
-        check(app._goldbach_decompose_last_result["n"] == 6,
+        check(goldbach._goldbach_decompose_last_result["n"] == 6,
               f"'decompose' result carries the requested n "
-              f"(got {app._goldbach_decompose_last_result!r})")
+              f"(got {goldbach._goldbach_decompose_last_result!r})")
 
         # --- error path: force _goldbach_job's own try/except to fire --------------
         # Mirrors test_primality_worker.py's forced-exception case: monkeypatching a
         # module-level function so it raises exercises the exact path _goldbach_job's
         # docstring documents (catches its own exception, returns (op, False, str(e))
-        # instead of relying on PersistentWorker's last-resort net).
-        original_sieve_is_prime = prime_atlas_v1.goldbach_sieve_is_prime
+        # instead of relying on PersistentWorker's last-resort net). Patched on
+        # primeatlas.research_goldbach_tab (where _goldbach_job now lives and imports
+        # goldbach_sieve_is_prime from), not prime_atlas_v1 -- see this file's own
+        # module docstring for the Faza 3 extraction that moved it there.
+        import primeatlas.research_goldbach_tab as research_goldbach_tab_module
+        original_sieve_is_prime = research_goldbach_tab_module.goldbach_sieve_is_prime
 
         def fake_raise(n):
             raise RuntimeError("fake failure for this test")
 
-        prime_atlas_v1.goldbach_sieve_is_prime = fake_raise
+        research_goldbach_tab_module.goldbach_sieve_is_prime = fake_raise
         shown.clear()
-        _set_entry(app.goldbach_n_entry, "10")
-        app._on_goldbach_run()
+        _set_entry(goldbach.goldbach_n_entry, "10")
+        goldbach._on_goldbach_run()
         _pump(app, 3.0)
-        prime_atlas_v1.goldbach_sieve_is_prime = original_sieve_is_prime
-        check(not app._goldbach_busy, "'window' job settles even after an internal exception")
+        research_goldbach_tab_module.goldbach_sieve_is_prime = original_sieve_is_prime
+        check(not goldbach._goldbach_busy, "'window' job settles even after an internal exception")
         check(any("fake failure for this test" in str(call) for call in shown),
               f"the fake exception was surfaced via messagebox.showerror (got: {shown})")
 
