@@ -3033,6 +3033,7 @@ def _build_gui():
 
             notebook = ttk.Notebook(self)
             notebook.pack(fill="both", expand=True)
+
             # Saved so other tabs can programmatically switch to "Prime numbers" (see
             # _on_const_calc_search_selected(), Faza 3's constellation calculator) --
             # every prior use of this notebook was purely declarative (add tabs, never
@@ -7639,6 +7640,32 @@ def _build_gui():
             # back to the top on every resync.
             def _sync_scrollregion():
                 canvas.configure(scrollregion=(0, 0, inner.winfo_reqwidth(), inner.winfo_reqheight()))
+                # STRETCH FIX (2026-08-23): a canvas window item's height is never
+                # auto-stretched to fill leftover viewport space -- by default it's
+                # always exactly inner's natural winfo_reqheight(), even though
+                # inner.pack(fill="both", expand=True) suggests otherwise. That was
+                # invisible on tabs whose content is a flat stack of widgets, but on
+                # the Generation tab, `inner` (generation_body) holds a
+                # ttk.Panedwindow packed with fill="both", expand=True -- the paned
+                # window can only hand its panes MORE than their minimum size if it
+                # is itself GIVEN more than its minimum size, which never happened,
+                # so a bigger-than-content main window just left blank canvas below
+                # the last pane instead of growing the three sections proportionally
+                # (per their existing weight=1 shares -- see Artur's report). When
+                # content fits the viewport, explicitly stretch the window item to
+                # the full viewport height so expand=True children actually receive
+                # that extra space; otherwise set it back to the natural height
+                # explicitly (needed for scrolling -- see _content_fits()). NOTE:
+                # height="" (Tk's documented way to say "go back to the window's
+                # own requested size") throws TclError: bad screen distance "" on
+                # this Tk/Python combination -- passing the natural height itself
+                # is equivalent and doesn't hit that.
+                canvas_h = canvas.winfo_height()
+                natural_h = inner.winfo_reqheight()
+                if canvas_h > 1 and natural_h <= canvas_h:
+                    canvas.itemconfigure(inner_window, height=canvas_h)
+                elif natural_h > 0:
+                    canvas.itemconfigure(inner_window, height=natural_h)
                 if not scroll_state["user_scrolled"] or _content_fits():
                     canvas.yview_moveto(0.0)
 
@@ -7818,8 +7845,9 @@ def _build_gui():
             # to the SAME shared StringVars as the embedded one, so both always show the
             # same values and a run started from either place behaves identically.
             self.loop_console = GenerationConsole(
-                loop_outer, TRANSLATOR, height=10,
-                extra_controls_builder=self._build_detached_quick_panel)
+                loop_outer, TRANSLATOR, height=20,
+                extra_controls_builder=self._build_detached_quick_panel,
+                on_change=self._refresh_generation_pane_minsize)
             self.loop_output = self.loop_console.text
 
             self._loop_runner = None
@@ -7857,7 +7885,9 @@ def _build_gui():
             # see GenerationConsole's docstring for the full rationale. No extra_controls_
             # builder here -- the constellation-finder section has no Quick-gen-style panel
             # to duplicate, only its own raw Run/Stop pair above.
-            self.const_console = GenerationConsole(const_outer, TRANSLATOR, height=10)
+            self.const_console = GenerationConsole(
+                const_outer, TRANSLATOR, height=20,
+                on_change=self._refresh_generation_pane_minsize)
             self.const_output = self.const_console.text
 
             self._const_runner = None
@@ -8030,11 +8060,69 @@ def _build_gui():
                 ktuple_outer, text=T("gen.ktuple_check_reset_checkpoint"),
                 variable=self._ktuple_reset_checkpoint_var).pack(anchor="w", padx=8, pady=(0, 4))
 
-            self.ktuple_console = GenerationConsole(ktuple_outer, TRANSLATOR, height=10)
+            self.ktuple_console = GenerationConsole(
+                ktuple_outer, TRANSLATOR, height=20,
+                on_change=self._refresh_generation_pane_minsize)
             self.ktuple_output = self.ktuple_console.text
 
             self._ktuple_runner = None
             self._ktuple_output_queue = queue.Queue()
+
+            # ROOT CAUSE (found 2026-08-23, after a first attempt to give each
+            # section its OWN scrollbar was correctly rejected by Artur -- one
+            # scrollable page for the whole tab is the right mental model, not
+            # nested independent ones): a ttk.Panedwindow does NOT report its own
+            # required height as the sum of what its panes actually need. Left
+            # alone, it reports something close to just the sash furniture, and
+            # happily compresses a pane below what its packed children require --
+            # which is exactly how Section C's fields below the pattern/Auto row
+            # were getting silently clipped with nothing to scroll to: the tab's
+            # OUTER scrollable container (_build_scrollable_container) sizes its
+            # scrollregion from `inner.winfo_reqheight()`, and since `paned` sits
+            # inside `inner`, an under-reporting Panedwindow meant Tk genuinely
+            # believed the whole tab already fit, no matter how tall the three
+            # sections' real content was.
+            #
+            # ttk.Panedwindow's `add`/`pane` only expose `-weight` (used to share
+            # out any SURPLUS space) -- unlike the plain tk.PanedWindow used
+            # elsewhere in this file, there is no per-pane `-minsize` option at
+            # all (confirmed the hard way: TclError: unknown option "-minsize").
+            # So instead of a per-pane floor, `paned` itself is given an explicit
+            # -height equal to the sum of its three panes' real natural heights --
+            # that becomes its reqheight, which is what the outer container needs
+            # to build a tall-enough scrollregion, so the ONE main scrollbar can
+            # scroll past Quick-gen + Section A + Section B all the way down to
+            # the full, uncropped bottom of Section C. `paned.pack(fill="both",
+            # expand=True)` still lets it grow taller than this whenever the
+            # window actually has the extra room (that's the separate canvas-
+            # stretch fix in _build_scrollable_container) -- this height is only
+            # ever a floor, never a cap.
+            # Saved so later, post-construction content growth (expanding a section's
+            # Advanced block, showing its console -- see _refresh_generation_pane_
+            # minsize() below) can re-measure and re-apply this the same way,
+            # instead of only ever getting it right at initial build time.
+            self._generation_paned = paned
+            self._loop_section_outer = loop_outer
+            self._const_section_outer = const_outer
+            self._ktuple_section_outer = ktuple_outer
+
+            # FIFTH PASS (2026-08-23) -- root cause finally found: calling this
+            # synchronously here, still inside __init__/_build_generation_tab(),
+            # runs BEFORE the Atlas window has ever been mapped/shown on screen.
+            # At that point ttk.Panedwindow's ACTUAL on-screen size is still
+            # whatever tiny placeholder Tk assigns an unmapped widget -- nowhere
+            # near the real height _refresh_generation_pane_minsize() just
+            # configured. sashpos() silently CLAMPS the position it's given to
+            # what's valid for the widget's CURRENT actual size, so sash1 (and
+            # therefore Section C's real height) was being clamped down to that
+            # placeholder every single time, no matter how much padding got
+            # added to the target -- explaining exactly why bigger padding
+            # never changed anything visible. Deferring the first call via
+            # after() until the window has actually been mapped (with a second,
+            # later call as a safety net for a slow first paint) lets sashpos()
+            # clamp against the REAL final size instead.
+            self.after(300, self._refresh_generation_pane_minsize)
+            self.after(1200, self._refresh_generation_pane_minsize)
 
             if self._ktuple_k_values:
                 _saved_k = ktuple_settings.get("k", "")
@@ -8051,6 +8139,94 @@ def _build_gui():
             self.after(150, self._poll_constellation_output)
             self.after(150, self._poll_ktuple_output)
 
+        def _refresh_generation_pane_minsize(self):
+            """Re-measures all three Generation-tab sections' natural required
+            heights, re-applies their sum as the Panedwindow's own explicit
+            -height (see _build_generation_tab()'s comment on the initial call to
+            this, right after building all three sections, for the full root-
+            cause: ttk.Panedwindow has no per-pane -minsize option at all, so the
+            widget's OWN -height is the only lever that makes it report a tall
+            enough reqheight for the tab's one main scrollbar to reach), and THEN
+            explicitly places both sashes at each section's own cumulative
+            natural height. That last step matters even once -height is exactly
+            right: with no explicit sash positions, ttk.Panedwindow's own initial
+            placement doesn't necessarily match each pane's individual natural
+            need (weight=1 on all three only governs how any SURPLUS beyond the
+            sum is shared, not how the total itself is split) -- so Section B
+            (fewer fields) could end up with slightly more than it needs while
+            Section C (more fields + the console) still came up short and
+            clipped, even though the grand total was already correct. Pinning
+            both sashes removes that guesswork entirely.
+            Called once right after building all three sections, and again after
+            anything that can grow one afterwards (expanding its Advanced block,
+            showing its console -- see call sites below) -- recomputing across
+            all three every time, not just the one that grew, since both -height
+            and the sash positions are properties of the whole Panedwindow.
+
+            PER-PANE PADDING (found 2026-08-23, third pass): sash thickness and
+            the Panedwindow's own border/relief both eat a few pixels that never
+            show up in any pane's winfo_reqheight() -- and not symmetrically
+            (edge panes only border ONE sash and the widget's own outer edge;
+            the middle pane borders sashes on both sides; the bottom pane also
+            meets the widget's bottom border). Rather than chase the exact
+            pixel accounting for each of those separately (fixing one edge at a
+            time only moved the shortfall to a different pane -- first Section B
+            came up short, then, after padding the sashes, Section C did), every
+            pane now simply gets its OWN flat safety margin added directly to
+            its measured height, regardless of position. A few pixels of extra
+            blank space at the bottom of a section is a much smaller problem
+            than clipped content -- see Artur's explicit ask to prioritize
+            "wszystkie się mieszczą w pełni" (all of them fit in full).
+
+            FOURTH PASS (2026-08-23): +15px per pane still left Section C (the
+            LAST one) clipped by roughly one button row, even though the exact
+            same padding was already enough for A and B. Section C is the only
+            one that also touches the Panedwindow's own OUTER bottom edge/
+            border, on top of bordering a sash on its top side -- that outer
+            border isn't included in any pane's winfo_reqheight() and isn't
+            fixed by moving sashes at all, so it was never going to be covered
+            by a flat, position-independent pad. Rather than keep chasing the
+            exact pixel cost of that border, `_LAST_PANE_EXTRA_PAD` gives the
+            last pane a generously larger buffer than the other two -- cheap
+            insurance against clipping, at the cost of a bit more blank space
+            specifically under Section C.
+
+            SIXTH PASS (2026-08-23): opening a section's console (each is ~500px
+            tall once shown -- previously invisible in every screenshot because
+            an unmapped/unpacked Text widget contributes nothing to its parent's
+            winfo_reqheight() at all) showed the SAME stale-clamp bug the fifth
+            pass fixed for the very first, startup-time call, except now it can
+            happen on every later call too: `paned.configure(height=...)` only
+            changes the widget's OWN reqsize immediately -- the ACTUAL on-screen
+            size of `paned` only catches up once that change has propagated all
+            the way up through `inner`'s pack manager and back down through the
+            outer scrollable canvas's own <Configure> handling
+            (_build_scrollable_container), which is a multi-widget chain that a
+            single update_idletasks() call does not reliably flush in one pass.
+            sashpos() clamps to whatever `paned`'s actual size still is AT THE
+            MOMENT it's called -- so a sash set right after just one
+            update_idletasks() can still get clamped back to the pre-resize
+            size, discarding a newly-opened, much taller console into whatever
+            sliver of space happened to be left over. Pumping update_idletasks()
+            several times in a row (each call lets Tk process one more layer of
+            newly-queued geometry work before the next) reliably drains that
+            whole chain before sashpos() ever runs."""
+            def _settle():
+                for _ in range(4):
+                    self.update_idletasks()
+            _settle()
+            _PANE_PAD = 25
+            _LAST_PANE_EXTRA_PAD = 25
+            h0 = self._loop_section_outer.winfo_reqheight() + _PANE_PAD
+            h1 = self._const_section_outer.winfo_reqheight() + _PANE_PAD
+            h2 = (self._ktuple_section_outer.winfo_reqheight()
+                  + _PANE_PAD + _LAST_PANE_EXTRA_PAD)
+            self._generation_paned.configure(height=h0 + h1 + h2)
+            _settle()
+            self._generation_paned.sashpos(0, h0)
+            self._generation_paned.sashpos(1, h0 + h1)
+            _settle()
+
         def _on_toggle_loop_advanced(self):
             """Shows/hides loop_advanced_content -- the fields AND the raw Run/
             Stop/status row together (see _build_generation_tab()'s comment on
@@ -8066,15 +8242,18 @@ def _build_gui():
                     fill="x", padx=8, pady=(0, 4), before=self.loop_console.toggle_row)
                 self._loop_advanced_visible = True
                 self.loop_advanced_toggle_btn.configure(text=T("gen.advanced_hide"))
+                self._refresh_generation_pane_minsize()
 
         def _show_loop_terminal(self):
             """Force-expands the pipeline console if it's currently collapsed -- called
             from _on_run_loop() the moment a run actually starts. No-op if already visible
             (e.g. the user had opened it manually)."""
             self.loop_console.show()
+            self._refresh_generation_pane_minsize()
 
         def _show_const_terminal(self):
             self.const_console.show()
+            self._refresh_generation_pane_minsize()
 
         def _new_run_separator(self):
             """Appended (not clear()'d -- see _on_run_loop/_on_run_constellation) at the
@@ -9625,9 +9804,11 @@ def _build_gui():
                     fill="x", padx=8, pady=(0, 4), before=self.ktuple_console.toggle_row)
                 self._ktuple_advanced_visible = True
                 self.ktuple_advanced_toggle_btn.configure(text=T("gen.advanced_hide"))
+                self._refresh_generation_pane_minsize()
 
         def _show_ktuple_terminal(self):
             self.ktuple_console.show()
+            self._refresh_generation_pane_minsize()
 
         def _launch_ktuple(self, auto):
             """Shared by both the Run button (auto=False -- one batch, checkpointed,

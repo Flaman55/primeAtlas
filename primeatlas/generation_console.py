@@ -21,7 +21,7 @@ from tkinter.scrolledtext import ScrolledText
 
 class GenerationConsole:
     def __init__(self, parent, translator, *, height=10, extra_controls_builder=None,
-                 window_title=None):
+                 window_title=None, on_change=None):
         self.T = translator
         self._parent = parent
         self._extra_controls_builder = extra_controls_builder
@@ -29,6 +29,16 @@ class GenerationConsole:
         self._visible = False
         self._detached_win = None
         self._mirrors = []
+        # Called (no args) after every show()/hide(), including the ones
+        # triggered directly by the user clicking toggle_btn -- NOT just the
+        # programmatic show() calls from prime_atlas_v1.py's _show_*_terminal
+        # helpers. Packing/unpacking self.text changes this section's natural
+        # height by ~500px either way, and the Generation tab's Panedwindow
+        # needs to be told to re-measure and re-pin its sashes every time that
+        # happens, regardless of which path triggered it (found 2026-08-23:
+        # manual toggle-button clicks were bypassing the resize fix entirely
+        # since only the programmatic call sites were wired to it).
+        self._on_change = on_change
 
         self.toggle_row = ttk.Frame(parent)
         self.toggle_row.pack(fill="x", padx=8, pady=(4, 0))
@@ -55,12 +65,16 @@ class GenerationConsole:
             self.text.pack(fill="both", expand=True, padx=8, pady=(0, 8))
             self._visible = True
             self.toggle_btn.configure(text=self.T("gen.terminal_hide"))
+            if self._on_change is not None:
+                self._on_change()
 
     def hide(self):
         if self._visible:
             self.text.pack_forget()
             self._visible = False
             self.toggle_btn.configure(text=self.T("gen.terminal_show"))
+            if self._on_change is not None:
+                self._on_change()
 
     def toggle(self):
         self.hide() if self._visible else self.show()
