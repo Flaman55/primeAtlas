@@ -3003,22 +3003,32 @@ def _build_gui():
             self.title(T("app.title"))
             self.geometry("1050x680")
 
-            # status_frame is created and packed BEFORE the notebook, not after. tkinter's
-            # pack() geometry manager carves up the toplevel's cavity in the ORDER widgets
-            # are packed, not by `side` -- a widget packed with fill=both, expand=True (the
-            # notebook) claims however much of the cavity is available AT THE TIME it's
-            # packed, so if it goes first, anything packed afterward (status_frame -- the
-            # bottom status bar showing the grand total prime count/generation time plus
-            # the totals-scan progress bar) only gets whatever sliver is left once total
-            # tab content exceeds the window's height. This is a classic Tk pitfall:
-            # dock-to-edge widgets like a status bar must be packed before the
-            # fill=both,expand=True central widget, not after -- it only becomes visible
-            # once a tab's content grows tall enough to exceed the default 1050x680 window
-            # size. Packing status_frame FIRST guarantees its own natural height is always
-            # reserved; the notebook (still fill=both, expand=True) then fills whatever
-            # remains, exactly as intended.
+            # status_frame/notebook are BUILT here but deliberately left UNPACKED until
+            # _finish_loading_screen() reveals them -- see the loading_frame block just
+            # below for why (Faza 2 of the refactor branch, 2026-08-23: previously the
+            # notebook was packed immediately and the six _build_*_section/_build_*_tab
+            # calls plus the three post-build reload_*_tree()/reload_benchmark_log() calls
+            # all ran synchronously against an already-visible (but empty/half-built)
+            # window, which is what made every one of those steps look like a freeze
+            # rather than a load). ttk widgets can be constructed and have children added
+            # while unpacked -- only the geometry manager step (.pack itself) is deferred.
+            #
+            # status_frame is packed BEFORE the notebook, not after, once both are
+            # revealed. tkinter's pack() geometry manager carves up the toplevel's cavity
+            # in the ORDER widgets are packed, not by `side` -- a widget packed with
+            # fill=both, expand=True (the notebook) claims however much of the cavity is
+            # available AT THE TIME it's packed, so if it goes first, anything packed
+            # afterward (status_frame -- the bottom status bar showing the grand total
+            # prime count/generation time plus the totals-scan progress bar) only gets
+            # whatever sliver is left once tab content exceeds the window's height. This
+            # is a classic Tk pitfall: dock-to-edge widgets like a status bar must be
+            # packed before the fill=both,expand=True central widget, not after -- it
+            # only becomes visible once a tab's content grows tall enough to exceed the
+            # default 1050x680 window size. Packing status_frame FIRST guarantees its own
+            # natural height is always reserved; the notebook (still fill=both,
+            # expand=True) then fills whatever remains, exactly as intended.
             status_frame = ttk.Frame(self)
-            status_frame.pack(fill="x", side="bottom")
+            self._status_frame = status_frame  # stashed so _finish_loading_screen can pack it
             self.status = tk.StringVar(value=T("app.status_portal_initial", folder=PORTAL_FOLDER))
             ttk.Label(status_frame, textvariable=self.status, anchor="w").pack(fill="x", side="top")
             # Visible progress bar for the floor-totals background scan -- the status TEXT
@@ -3034,7 +3044,27 @@ def _build_gui():
             self.totals_progress.pack(fill="x", side="top")
 
             notebook = ttk.Notebook(self)
-            notebook.pack(fill="both", expand=True)
+
+            # Loading screen (Faza 2, 2026-08-23) -- ported from the cudasieve branch's own
+            # startup loading bar (commit a4df0fd) and extended to also cover the async
+            # tree scans below, not just the six tab-build calls. Packed and painted
+            # (self.update()) BEFORE any tab is built, so the window shows something
+            # immediately instead of sitting blank while ttk.Notebook/Treeview widgets for
+            # six tabs are constructed.
+            loading_frame = ttk.Frame(self)
+            loading_frame.pack(fill="both", expand=True)
+            loading_center = ttk.Frame(loading_frame)
+            loading_center.place(relx=0.5, rely=0.5, anchor="center")
+            ttk.Label(loading_center, text=T("app.title"),
+                      font=("TkDefaultFont", 16, "bold")).pack(pady=(0, 12))
+            self._loading_caption = tk.StringVar(value=T("app.loading_starting"))
+            ttk.Label(loading_center, textvariable=self._loading_caption).pack(pady=(0, 8))
+            self._loading_bar = ttk.Progressbar(loading_center, orient="horizontal",
+                                                 mode="indeterminate", length=280)
+            self._loading_bar.pack()
+            self._loading_bar.start(12)
+            self._loading_frame = loading_frame
+            self.update()
 
             # Saved so other tabs can programmatically switch to "Prime numbers" (see
             # _on_const_calc_search_selected(), Faza 3's constellation calculator) --
@@ -3055,12 +3085,18 @@ def _build_gui():
             notebook.add(self.benchmark_tab, text=T("tabs.benchmark"))
             notebook.add(self.settings_tab_container, text=T("tabs.settings"))
 
-            self._build_primes_section()
-            self._build_constellations_section()
-            self._build_research_section()
-            self._build_generation_tab()
-            self._build_benchmark_tab()
-            self._build_settings_tab(SettingsTab)
+            loading_steps = (
+                (T("tabs.primes"), self._build_primes_section),
+                (T("tabs.constellations"), self._build_constellations_section),
+                (T("tabs.research"), self._build_research_section),
+                (T("tabs.generation"), self._build_generation_tab),
+                (T("tabs.benchmark"), self._build_benchmark_tab),
+                (T("tabs.settings"), lambda: self._build_settings_tab(SettingsTab)),
+            )
+            for step_name, step_fn in loading_steps:
+                self._loading_caption.set(T("app.status_loading_step", step=step_name))
+                self.update()
+                step_fn()
 
             # Floor-total background worker: reading every source window's
             # header to sum a whole floor's prime count is NOT cheap on this project's real
@@ -3239,10 +3275,39 @@ def _build_gui():
             self._gen_loop_run_count = None
             self._gen_loop_iteration = None
 
+            # reload_benchmark_log() stays synchronous here -- it's one small CSV read,
+            # not a per-floor disk scan (see reload_primes_tree()'s own docstring for the
+            # cost distinction) -- so it's cheap enough to keep on the GUI thread even
+            # during the loading screen.
+            self.reload_benchmark_log()
+            # reload_primes_tree()/reload_constellations_tree() are BOTH asynchronous as
+            # of Faza 2 (see their own docstrings) -- each dispatches its disk scan onto
+            # background.run_in_background() and returns immediately. _loading_startup_
+            # pending tracks which of the two startup scans are still outstanding;
+            # _on_primes_tree_scan_done/_on_hits_tree_scan_done each discard their own
+            # name from this set and call _finish_loading_screen() once it's empty, which
+            # is what actually reveals status_frame/notebook. Every LATER call to either
+            # reload function (Refresh button, storage-path change, etc.) finds this
+            # attribute already None (see _finish_loading_screen) and skips the check.
+            self._loading_startup_pending = {"primes", "constellations"}
+            self._loading_caption.set(T("app.status_loading_data"))
+            self.update()
             self.reload_primes_tree()  # this ALSO kicks off the floor-totals scan for every
                                         # floor -- see reload_primes_tree()'s docstring
             self.reload_constellations_tree()
-            self.reload_benchmark_log()
+
+        def _finish_loading_screen(self):
+            """Reveals the real UI (status_frame + notebook) and tears down the loading
+            overlay -- called once from _on_primes_tree_scan_done/_on_hits_tree_scan_done,
+            whichever of the two startup scans finishes LAST (see _loading_startup_pending's
+            own comment in __init__). Safe to call at most once per app lifetime: both
+            callers null out _loading_startup_pending before calling this, and every other
+            reload_*_tree() call site checks that attribute is still a non-empty set before
+            ever touching this method."""
+            self._loading_bar.stop()
+            self._loading_frame.destroy()
+            self._status_frame.pack(fill="x", side="bottom")
+            self.main_notebook.pack(fill="both", expand=True)
 
         # --- Floor-total background worker ------------------------------------------
 
@@ -4111,6 +4176,40 @@ def _build_gui():
             self._preview_page = 0
             self._preview_total_pages = 1
 
+        def _primes_tree_scan(self, portal_folder, _report_progress):
+            """Runs OFF the GUI thread (see reload_primes_tree()/background.
+            run_in_background()) -- every line here is pure disk I/O with no widget
+            access, split out of what used to be the first half of reload_primes_tree()
+            itself (Faza 2 of the refactor branch, 2026-08-23). Returns a plain dict;
+            _on_primes_tree_scan_done does all the actual tree/widget mutation back on
+            the main thread. portal_folder is passed in explicitly (captured by the
+            caller at dispatch time) rather than read from the PORTAL_FOLDER global in
+            here, so a storage-path change that happens WHILE this scan is running can
+            never make it silently scan the wrong (newly-current) location.
+
+            See reload_primes_tree()'s OLD docstring (still true, just relocated) for why
+            prune_empty_pietro_dirs() runs unconditionally on every reload, why floors
+            with no PRIME_WINDOW_*.bin files are filtered out, and why the totals caches
+            are reloaded fresh from disk every time rather than only once at startup."""
+            prune_empty_pietro_dirs(portal_folder)
+            pietro_total_known = {}
+            for _key, _entry in load_totals_cache(portal_folder).items():
+                if _key.startswith("10p") and _key[3:].isdigit():
+                    pietro_total_known[int(_key[3:])] = (
+                        _entry.get("total", 0), _entry.get("file_count", 0),
+                        _entry.get("total_bytes", 0))
+            totals_cache = load_totals_cache(portal_folder)  # worker-owned copy
+            pietro_gen_seconds = aggregate_write_seconds_by_pietro(
+                read_benchmark_log(portal_folder)[1])
+            pietra = [be for be in list_pietra(portal_folder)
+                      if list_source_filenames(portal_folder, be)]
+            return {
+                "pietro_total_known": pietro_total_known,
+                "totals_cache": totals_cache,
+                "pietro_gen_seconds": pietro_gen_seconds,
+                "pietra": pietra,
+            }
+
         def reload_primes_tree(self):
             """Rebuilds the floor list from disk (picks up newly created/removed 10pN
             folders) AND re-runs the totals scan for every floor -- so
@@ -4121,46 +4220,50 @@ def _build_gui():
             in-memory set diff, and a floor WITH new files only pays for reading THOSE
             files' headers, not the whole floor again.
 
-            Also reloads _pietro_total_known/_totals_cache fresh from the CURRENT
-            PORTAL_FOLDER every time -- without this, both would be loaded once at app
-            startup and never touched again, so Refresh after a storage-path change in
-            Settings could show totals left over from the PREVIOUS location for any
-            floor whose number happened to exist in both (see _reload_totals_caches()'s
-            docstring for the full root-cause writeup).
+            Faza 2 (2026-08-23): the actual disk scan (_primes_tree_scan) now runs on
+            background.run_in_background() instead of the GUI thread -- this method just
+            dispatches it and returns immediately; _on_primes_tree_scan_done does the
+            real tree-population work once the scan comes back. A busy/pending pair of
+            flags coalesces re-entrant calls (e.g. the user mashing Refresh, or a
+            generation-finished callback firing while a Refresh is still in flight) into
+            at most one extra rerun after the in-flight scan settles, rather than
+            spawning a second overlapping scan thread. PORTAL_FOLDER is captured HERE,
+            at dispatch time, and compared again in _on_primes_tree_scan_done -- if a
+            storage-path change rebound the global while this scan was still running, the
+            result is discarded and a fresh scan against the NEW folder is queued instead
+            (see that method's own docstring)."""
+            if getattr(self, "_primes_tree_reload_busy", False):
+                self._primes_tree_reload_pending = True
+                return
+            self._primes_tree_reload_busy = True
+            portal_folder = PORTAL_FOLDER
+            background.run_in_background(
+                self, lambda report_progress: self._primes_tree_scan(portal_folder, report_progress),
+                on_done=lambda result, error: self._on_primes_tree_scan_done(
+                    portal_folder, result, error))
 
-            Runs prune_empty_pietro_dirs() first, every time -- this used to be a one-off
-            call restore made at the end of its own job, but an empty leftover 10p{N}
-            folder (or a now-empty source_primes/ or constellations/ subdir inside an
-            otherwise-still-populated one) can just as easily result from a manual delete
-            or even a generation run that only ever removed files (never actually true in
-            practice, but the guarantee is cheaper to make unconditional than to reason
-            about per-caller). Reload is the one place EVERY mutating action (restore,
-            generation-finished, constellation-finished, delete) already funnels through
-            before the user sees the tree again, so pruning here covers all of them from
-            a single spot instead of each caller remembering to do it itself.
-
-            Floors that exist on disk but have NO actual PRIME_WINDOW_*.bin files are
-            filtered OUT of the list entirely -- most commonly a 10p{N} folder that
-            prune_empty_pietro_dirs() just above chose to KEEP rather than remove because
-            it still holds a sieving_primes_count_cache.json (see
-            prime_sieve_v4.py's count_sieving_primes_cached()): that cache is worth
-            keeping on disk for whenever the user next generates on that floor, but with
-            no prime data behind it, it has nothing to show under Liczby pierwsze."""
-            prune_empty_pietro_dirs(PORTAL_FOLDER)
-            self._reload_totals_caches()
+        def _on_primes_tree_scan_done(self, portal_folder, result, error):
+            """Main-thread callback for _primes_tree_scan -- see reload_primes_tree()'s
+            own docstring for the busy/pending/staleness handling this implements."""
+            self._primes_tree_reload_busy = False
+            stale = portal_folder != PORTAL_FOLDER
+            if getattr(self, "_primes_tree_reload_pending", False) or stale:
+                self._primes_tree_reload_pending = False
+                self.reload_primes_tree()
+                return
+            if error is not None:
+                self.status.set(T("primes.status_reload_error", error=str(error)))
+                return
+            self._pietro_total_known = result["pietro_total_known"]
+            self._totals_cache = result["totals_cache"]
+            self._pietro_gen_seconds = result["pietro_gen_seconds"]
             self.tree.delete(*self.tree.get_children())
             self._pietro_state = {}
             self._active_floor_node = None
             self._path_by_item = {}
             self._pietro_node_by_exp = {}
             self._refresh_floor_nav_controls()
-            # Cheap (one small CSV, not a per-floor disk scan) -- re-read fresh on every
-            # Refresh so a just-finished write_files=True run shows up in the Timer column
-            # immediately, same responsiveness as the totals worker below.
-            self._pietro_gen_seconds = aggregate_write_seconds_by_pietro(
-                read_benchmark_log(PORTAL_FOLDER)[1])
-            pietra = [be for be in list_pietra(PORTAL_FOLDER)
-                      if list_source_filenames(PORTAL_FOLDER, be)]
+            pietra = result["pietra"]
             for base_exponent in pietra:
                 # If a previous scan (this session or a past one, via the on-disk cache)
                 # already knows this floor's total, show it immediately -- otherwise leave
@@ -4177,8 +4280,14 @@ def _build_gui():
                                          values=values, open=False, tags=("pietro",))
                 self.tree.insert(node, "end", text=T("common.loading"))
                 self._pietro_node_by_exp[base_exponent] = node
-            self.status.set(T("app.status_portal_with_count", folder=PORTAL_FOLDER, count=len(pietra)))
+            self.status.set(T("app.status_portal_with_count", folder=portal_folder, count=len(pietra)))
             self._compute_all_pietro_totals()
+
+            pending = getattr(self, "_loading_startup_pending", None)
+            if pending:
+                pending.discard("primes")
+                if not pending:
+                    self._finish_loading_screen()
 
         def _on_tree_open(self, _event):
             node = self.tree.focus()
@@ -5721,29 +5830,77 @@ def _build_gui():
             self._hit_set_cache = {}  # (base_exponent, k, id) -> set(starting values),
                                        # reused across searches within this session
 
+        def _constellations_tree_scan(self, portal_folder, _report_progress):
+            """Runs OFF the GUI thread -- see _primes_tree_scan's own docstring for the
+            general shape/rationale (Faza 2 of the refactor branch, 2026-08-23). Same
+            idempotent prune_empty_pietro_dirs() double-call as before (see
+            reload_constellations_tree()'s OLD docstring, relocated below) -- now two
+            INDEPENDENT background threads may call it back-to-back rather than the same
+            GUI-thread call twice in a row, but the function's own try/except around each
+            individual os.rmdir() (see its docstring) already makes that race harmless:
+            worst case, one of the two calls finds a given empty subdir already gone and
+            silently skips it.
+
+            Only floors that actually HAVE at least one detected constellation hit --
+            list_pietra() alone would include every floor with prime data, regardless of
+            whether the constellation finder has ever been run against it (or ran and
+            found nothing), cluttering this tree with entries that only ever expand into
+            an empty "no hits" placeholder. See floor_has_constellation_hits()'s own
+            docstring."""
+            prune_empty_pietro_dirs(portal_folder)
+            pietra = [be for be in list_pietra(portal_folder)
+                      if floor_has_constellation_hits(portal_folder, be)]
+            return {"pietra": pietra}
+
         def reload_constellations_tree(self):
-            # Same reasoning as reload_primes_tree()'s own call to this -- this tab's own
-            # Refresh button can be clicked without reload_primes_tree() ever running in
-            # the same gesture (e.g. right after constellation-finding finishes -- see
-            # _on_constellation_finished()), so the sweep is repeated here too rather than
-            # relying on the OTHER tree's refresh to have already covered it. Cheap and
-            # idempotent (see prune_empty_pietro_dirs()'s own docstring) -- calling it
-            # twice when both trees do refresh together costs one extra os.listdir() pass.
-            prune_empty_pietro_dirs(PORTAL_FOLDER)
+            """Rebuilds the constellation-hits floor list from disk. This tab's own
+            Refresh button can be clicked without reload_primes_tree() ever running in
+            the same gesture (e.g. right after constellation-finding finishes -- see
+            _on_constellation_finished()), so its own prune/scan is dispatched
+            independently rather than relying on the OTHER tree's refresh to have
+            already covered it.
+
+            Faza 2 (2026-08-23): same async split as reload_primes_tree() -- the actual
+            disk scan (_constellations_tree_scan) runs on background.run_in_background(),
+            this method only dispatches it, and _on_hits_tree_scan_done does the real
+            tree-population work once it comes back. Its own busy/pending flags and
+            PORTAL_FOLDER capture-and-compare mirror reload_primes_tree()'s exactly --
+            see that method's docstring for the full reasoning."""
+            if getattr(self, "_hits_tree_reload_busy", False):
+                self._hits_tree_reload_pending = True
+                return
+            self._hits_tree_reload_busy = True
+            portal_folder = PORTAL_FOLDER
+            background.run_in_background(
+                self, lambda report_progress: self._constellations_tree_scan(portal_folder, report_progress),
+                on_done=lambda result, error: self._on_hits_tree_scan_done(
+                    portal_folder, result, error))
+
+        def _on_hits_tree_scan_done(self, portal_folder, result, error):
+            """Main-thread callback for _constellations_tree_scan -- see
+            reload_constellations_tree()'s own docstring for the busy/pending/staleness
+            handling this implements (identical shape to _on_primes_tree_scan_done)."""
+            self._hits_tree_reload_busy = False
+            stale = portal_folder != PORTAL_FOLDER
+            if getattr(self, "_hits_tree_reload_pending", False) or stale:
+                self._hits_tree_reload_pending = False
+                self.reload_constellations_tree()
+                return
+            if error is not None:
+                self.status.set(T("const.status_reload_error", error=str(error)))
+                return
             self.hits_tree.delete(*self.hits_tree.get_children())
-            # Only floors that actually HAVE at least one detected constellation hit --
-            # list_pietra() alone would include every floor with prime data, regardless of
-            # whether the constellation finder has ever been run against it (or ran and
-            # found nothing), cluttering this tree with entries that only ever expand into
-            # an empty "no hits" placeholder. See floor_has_constellation_hits()'s own
-            # docstring.
-            pietra = [be for be in list_pietra(PORTAL_FOLDER)
-                      if floor_has_constellation_hits(PORTAL_FOLDER, be)]
-            for base_exponent in pietra:
+            for base_exponent in result["pietra"]:
                 node = self.hits_tree.insert("", "end", text=f"10p{base_exponent}",
                                               values=("", ""), open=False, tags=("pietro",))
                 self.hits_tree.insert(node, "end", text=T("common.loading"))
             self._hit_set_cache = {}  # data on disk may have changed since last refresh
+
+            pending = getattr(self, "_loading_startup_pending", None)
+            if pending:
+                pending.discard("constellations")
+                if not pending:
+                    self._finish_loading_screen()
 
         def _on_hits_tree_open(self, _event):
             node = self.hits_tree.focus()
