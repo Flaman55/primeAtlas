@@ -7573,7 +7573,43 @@ def _build_gui():
             outer.pack(fill="both", expand=True)
 
             canvas = tk.Canvas(outer, highlightthickness=0)
-            vsb = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
+            # ROOT CAUSE (found 2026-08-23 via live debug logging on the cudasieve
+            # branch's forked copy of this exact idiom, prime_atlas_v2.py): Tk's
+            # Canvas defaults to yscrollincrement=0, which makes any "scroll N units"
+            # call (mousewheel, scrollbar arrows) jump by ~10% of the canvas's
+            # CURRENT VIEWPORT height -- not a small fixed pixel step. When the real
+            # content is SHORTER than the viewport (nothing to scroll to at all), Tk
+            # does not clamp that oversized jump back to 0; the view is left
+            # negative, which visually shows as blank canvas ABOVE the content that
+            # grows with every further wheel tick (confirmed live: canvas.yview()
+            # kept reporting (0.0, 1.0) -- Tk itself thought nothing had scrolled --
+            # while the content's on-screen position kept sliding down). A small
+            # fixed increment alone doesn't fully fix this, so scrolling is also
+            # hard-disabled below whenever content already fits the viewport (see
+            # _content_fits()).
+            canvas.configure(yscrollincrement=20)
+
+            # `scroll_state["user_scrolled"]` starts False and flips to True the first
+            # time the person actually drags the scrollbar or spins the wheel (see the
+            # three handlers below). Until that happens, `_sync_scrollregion()` keeps
+            # re-pinning the view to the top -- see that function's own comment for why
+            # this is needed, not just the scrollregion-size fix below it.
+            scroll_state = {"user_scrolled": False}
+
+            def _content_fits():
+                # Nothing to scroll to -- content already fits inside the visible
+                # canvas. winfo_height() is 0/1 before the widget is first mapped,
+                # so treat that as "doesn't fit yet" rather than "fits".
+                canvas_h = canvas.winfo_height()
+                return canvas_h > 1 and inner.winfo_reqheight() <= canvas_h
+
+            def _on_scrollbar(*args):
+                if _content_fits():
+                    return
+                scroll_state["user_scrolled"] = True
+                canvas.yview(*args)
+
+            vsb = ttk.Scrollbar(outer, orient="vertical", command=_on_scrollbar)
             canvas.configure(yscrollcommand=vsb.set)
             canvas.pack(side="left", fill="both", expand=True)
             vsb.pack(side="right", fill="y")
@@ -7581,21 +7617,66 @@ def _build_gui():
             inner = ttk.Frame(canvas)
             inner_window = canvas.create_window((0, 0), window=inner, anchor="nw")
 
+            # NOTE (2026-08-23 fix): scrollregion is set from inner.winfo_reqwidth()/
+            # reqheight() -- NOT canvas.bbox("all"). bbox("all") is the bounding box of
+            # everything ever drawn on the canvas and can end up taller than the frame's
+            # actual current content (e.g. right after a mode switch collapses a section
+            # via grid_remove(), or during the width-driven reflow below, before layout
+            # has fully settled) -- Tk then happily lets yview scroll into that stale
+            # leftover space, which is exactly the "top isn't pinned, you can scroll to
+            # blank space" bug Artur reported. Querying the frame's own requested size
+            # directly is always in sync with what's actually packed inside it right now,
+            # so the scrollregion can never exceed real content.
+            #
+            # That alone wasn't enough: this tab's content keeps changing height AFTER
+            # it first draws (Quick-gen mode switches via grid()/grid_remove(), Advanced
+            # sections collapsing) and Tk does not guarantee the view stays pinned to
+            # the top pixel across a scrollregion resize -- it can drift, leaving a
+            # blank gap above the real content with the scrollbar thumb sitting
+            # somewhere in the middle even though nothing was ever manually scrolled.
+            # So: as long as the person hasn't manually scrolled yet -- OR content
+            # fits and there's nothing to scroll to regardless -- force the view
+            # back to the top on every resync.
+            def _sync_scrollregion():
+                canvas.configure(scrollregion=(0, 0, inner.winfo_reqwidth(), inner.winfo_reqheight()))
+                if not scroll_state["user_scrolled"] or _content_fits():
+                    canvas.yview_moveto(0.0)
+
             def _on_inner_configure(_event):
-                canvas.configure(scrollregion=canvas.bbox("all"))
+                _sync_scrollregion()
             inner.bind("<Configure>", _on_inner_configure)
 
             def _on_canvas_configure(event):
                 canvas.itemconfigure(inner_window, width=event.width)
+                # Changing the inner frame's width can immediately change its required
+                # height (wraplength'd Labels reflow) -- resync right away instead of
+                # waiting on inner's own <Configure> so a window resize can't leave a
+                # stale, too-tall scrollregion behind for even one frame.
+                canvas.after_idle(_sync_scrollregion)
             canvas.bind("<Configure>", _on_canvas_configure)
 
             def _on_mousewheel(event):
-                canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+                if _content_fits():
+                    return
+                scroll_state["user_scrolled"] = True
+                canvas.yview_scroll(int(-3 * (event.delta / 120)), "units")
+
+            def _on_button4(_event):
+                if _content_fits():
+                    return
+                scroll_state["user_scrolled"] = True
+                canvas.yview_scroll(-3, "units")
+
+            def _on_button5(_event):
+                if _content_fits():
+                    return
+                scroll_state["user_scrolled"] = True
+                canvas.yview_scroll(3, "units")
 
             def _bind_mousewheel(_event):
                 canvas.bind_all("<MouseWheel>", _on_mousewheel)
-                canvas.bind_all("<Button-4>", lambda e: canvas.yview_scroll(-1, "units"))
-                canvas.bind_all("<Button-5>", lambda e: canvas.yview_scroll(1, "units"))
+                canvas.bind_all("<Button-4>", _on_button4)
+                canvas.bind_all("<Button-5>", _on_button5)
 
             def _unbind_mousewheel(_event):
                 canvas.unbind_all("<MouseWheel>")
