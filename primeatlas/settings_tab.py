@@ -249,8 +249,24 @@ class SettingsTab(ttk.Frame):
         self._refresh_backup_list()
 
     def _refresh_backup_list(self):
+        """Faza 1 background-job migration (2026-08-23, third step -- see
+        _on_check_diff/_on_preview_storage_integrate for the first two): list_backups()
+        is a cheap top-level os.listdir() of _backups/ per backup_store.py's own
+        docstring, but this is backgrounded anyway for architectural consistency with
+        the 'nothing clicked should freeze the window' goal -- this is called from many
+        places, including tab construction itself, so its cost is paid on every app
+        startup regardless of how fast it usually is, and a slow/remote-mounted
+        storage path (e.g. network drive) can make even a top-level listdir slow."""
         store = self._current_backup_store()
-        self._backups = store.list_backups()
+        background.run_in_background(
+            self, lambda report_progress: store.list_backups(),
+            on_done=self._on_refresh_backup_list_done)
+
+    def _on_refresh_backup_list_done(self, backups, error):
+        if error is not None:
+            messagebox.showerror(self.T("settings.dialog_title"), str(error))
+            return
+        self._backups = backups
         self.backup_listbox.delete(0, "end")
         for name, _path in self._backups:
             self.backup_listbox.insert("end", name)
@@ -937,8 +953,20 @@ class SettingsTab(ttk.Frame):
         """Repopulates the floor-picker combobox shared by both per-floor delete
         buttons below -- called at tab-construction time and after every delete (a
         just-emptied floor should disappear from the list, and one added by a
-        Generation run in the meantime should appear)."""
-        floors = self._current_floor_wiper().list_floors()
+        Generation run in the meantime should appear).
+
+        Faza 1 background-job migration (2026-08-23, third step): list_floors() is a
+        cheap top-level os.listdir(), backgrounded for the same consistency reasons as
+        _refresh_backup_list right above."""
+        wiper = self._current_floor_wiper()
+        background.run_in_background(
+            self, lambda report_progress: wiper.list_floors(),
+            on_done=self._on_refresh_floor_delete_list_done)
+
+    def _on_refresh_floor_delete_list_done(self, floors, error):
+        if error is not None:
+            messagebox.showerror(self.T("settings.dialog_title"), str(error))
+            return
         values = [f"10p{f}" for f in floors]
         self.floor_delete_combo.configure(values=values)
         current = self.floor_delete_var.get()
@@ -1080,18 +1108,37 @@ class SettingsTab(ttk.Frame):
         floors (suggest_full_backup_floors(), measured generation time over the 1h
         default threshold) are marked with a leading marker and pre-selected, so the
         person sees which floors are actually expensive to regenerate rather than
-        guessing from the bare floor number (see full_backup.py's own docstring)."""
+        guessing from the bare floor number (see full_backup.py's own docstring).
+
+        Faza 1 background-job migration (2026-08-23, third step): list_floors() is
+        cheap, but suggest_full_backup_floors() parses the WHOLE benchmark_log.csv
+        (can grow to many thousands of rows over a long project lifetime) -- both are
+        fetched together on one background thread since the listbox render needs both
+        at once anyway."""
         portal_folder = self.wsl["get_portal_folder"]()
-        floors = self._current_floor_wiper().list_floors()
-        self._full_backup_suggested = set(fb.suggest_full_backup_floors(portal_folder))
+        wiper = self._current_floor_wiper()
+
+        def job(report_progress):
+            floors = wiper.list_floors()
+            suggested = set(fb.suggest_full_backup_floors(portal_folder))
+            return floors, suggested
+
+        background.run_in_background(self, job, on_done=self._on_refresh_full_backup_floor_picker_done)
+
+    def _on_refresh_full_backup_floor_picker_done(self, result, error):
+        if error is not None:
+            messagebox.showerror(self.T("settings.dialog_title"), str(error))
+            return
+        floors, suggested = result
+        self._full_backup_suggested = suggested
         self.full_backup_floor_listbox.delete(0, "end")
         for base_exponent in floors:
             label = f"10p{base_exponent}"
-            if base_exponent in self._full_backup_suggested:
+            if base_exponent in suggested:
                 label += "  " + self.T("settings.full_backup_suggested_marker")
             self.full_backup_floor_listbox.insert("end", label)
         for i, base_exponent in enumerate(floors):
-            if base_exponent in self._full_backup_suggested:
+            if base_exponent in suggested:
                 self.full_backup_floor_listbox.selection_set(i)
 
     def _selected_live_floors(self):
@@ -1104,13 +1151,31 @@ class SettingsTab(ttk.Frame):
         counts so it's clear this is a snapshot of the DESTINATION, not the live
         storage. Silently shows nothing if the destination isn't valid/reachable yet
         (e.g. freshly typed, not saved) -- this is a passive refresh, not an action, so
-        it shouldn't pop up an error dialog on every keystroke."""
-        self.full_backup_entries_listbox.delete(0, "end")
+        it shouldn't pop up an error dialog on every keystroke.
+
+        Faza 1 background-job migration (2026-08-23, third step): list_full_backup_floors()
+        reads one JSON meta file per already-backed-up floor from `destination`,
+        which is often an external/removable/network drive by design (see
+        full_backup.py's own docstring) -- exactly the kind of slow-storage scan this
+        migration targets. The listbox is cleared/repopulated entirely inside the
+        done-callback (not here) so two rapid calls can't interleave and leave stale
+        rows mixed with fresh ones."""
         destination = self._full_backup_destination()
         if not destination or not os.path.isdir(destination):
+            self._full_backup_entries = []
+            self.full_backup_entries_listbox.delete(0, "end")
             return
-        self._full_backup_entries = fb.list_full_backup_floors(destination)
-        for base_exponent, meta in self._full_backup_entries:
+        background.run_in_background(
+            self, lambda report_progress: fb.list_full_backup_floors(destination),
+            on_done=self._on_refresh_full_backup_entries_done)
+
+    def _on_refresh_full_backup_entries_done(self, entries, error):
+        if error is not None:
+            messagebox.showerror(self.T("settings.dialog_title"), str(error))
+            return
+        self._full_backup_entries = entries
+        self.full_backup_entries_listbox.delete(0, "end")
+        for base_exponent, meta in entries:
             self.full_backup_entries_listbox.insert("end", self.T(
                 "settings.full_backup_entry_row", base_exponent=base_exponent,
                 updated_at=meta.get("updated_at", "?"),
