@@ -79,6 +79,7 @@ from .restore_job import (
 from .delete_manager import PortalWiper, FloorWiper
 from . import full_backup as fb
 from . import storage_integrate as si
+from . import background
 from .i18n import Translator, SUPPORTED_LANGUAGES
 
 
@@ -148,6 +149,12 @@ class SettingsTab(ttk.Frame):
         self._storage_integrate_job_running = False
         self._storage_integrate_stop_event = None
         self._storage_integrate_queue = None
+        # True only while the PREVIEW/plan scan itself is running in the background --
+        # separate from _storage_integrate_job_running above, which tracks the actual
+        # copy job. See _on_preview_storage_integrate()'s own docstring (Faza 1
+        # background-job migration, 2026-08-23): plan_integration() does a full
+        # dual-tree scan and used to run synchronously on the GUI thread.
+        self._storage_integrate_preview_running = False
 
         self._build_widgets()
         self._refresh_backup_list()
@@ -1270,6 +1277,21 @@ class SettingsTab(ttk.Frame):
             self.storage_integrate_totals_var.set("")
 
     def _on_preview_storage_integrate(self):
+        """Validates inputs synchronously (cheap -- just os.path.isdir/realpath, no tree
+        scan), then runs the actual si.plan_integration() dry-run scan (a full walk of
+        BOTH the destination and external trees -- see that function's own docstring)
+        on a background thread via primeatlas/background.py's run_in_background(),
+        instead of blocking the GUI thread for however long that scan takes.
+
+        Faza 1 background-job migration (2026-08-23): this used to call
+        si.plan_integration() directly, inline, on the GUI thread -- the exact kind of
+        freeze the properly-threaded copy job right next to it (_on_start_storage_
+        integrate below) never had. It was also called a SECOND time, still
+        synchronously, from _on_storage_integrate_job_finished() to refresh the plan
+        after a copy run completes -- so even after successfully backgrounding the
+        copy itself, the moment it finished the window froze again, silently, for
+        another full dual-tree scan. Backgrounding it here fixes both call sites at
+        once since _on_storage_integrate_job_finished() just calls this same method."""
         external_path = self.storage_integrate_source_var.get().strip()
         if not external_path or not os.path.isdir(external_path):
             messagebox.showerror(self.T("settings.dialog_title"),
@@ -1282,7 +1304,27 @@ class SettingsTab(ttk.Frame):
             messagebox.showerror(self.T("settings.dialog_title"),
                                   self.T("settings.storage_integrate_source_same_as_storage"))
             return
-        self._storage_integrate_plan = si.plan_integration(destination, external_path)
+        if self._storage_integrate_preview_running or self._storage_integrate_job_running:
+            return
+        self._storage_integrate_preview_running = True
+        self._update_storage_integrate_buttons()
+        background.run_in_background(
+            self, lambda report_progress: si.plan_integration(destination, external_path),
+            on_done=self._on_storage_integrate_preview_done)
+
+    def _on_storage_integrate_preview_done(self, plan, error):
+        """Main-thread callback for _on_preview_storage_integrate()'s background scan --
+        everything that used to run right after the (formerly synchronous)
+        si.plan_integration() call now runs here instead, unchanged apart from the
+        error branch, which is new: a raised exception used to propagate out of a Tk
+        button callback and only ever show up as console noise nobody was watching;
+        now it's surfaced to the user like any other failure in this tab."""
+        self._storage_integrate_preview_running = False
+        if error is not None:
+            messagebox.showerror(self.T("settings.dialog_title"), str(error))
+            self._update_storage_integrate_buttons()
+            return
+        self._storage_integrate_plan = plan
         self.storage_integrate_results_listbox.delete(0, "end")
         if not self._storage_integrate_plan:
             self.storage_integrate_totals_var.set(self.T("settings.storage_integrate_nothing_to_do"))
@@ -1307,10 +1349,11 @@ class SettingsTab(ttk.Frame):
 
     def _update_storage_integrate_buttons(self):
         running = self._storage_integrate_job_running
+        busy = running or self._storage_integrate_preview_running
         has_plan = bool(self._storage_integrate_plan)
-        self.storage_integrate_preview_btn.configure(state=("disabled" if running else "normal"))
+        self.storage_integrate_preview_btn.configure(state=("disabled" if busy else "normal"))
         self.storage_integrate_start_btn.configure(
-            state=("normal" if (has_plan and not running) else "disabled"))
+            state=("normal" if (has_plan and not busy) else "disabled"))
         self.storage_integrate_cancel_btn.configure(state=("normal" if running else "disabled"))
 
     def _on_start_storage_integrate(self):
