@@ -1883,9 +1883,10 @@ def find_constellation_participation(portal_folder, base_exponent, number, hit_s
     of full hit files synchronously (nothing cached yet), which is the actual slow part of
     this feature (find_prime_in_floor's own binary search is fast in comparison -- see
     that function's docstring). The GUI thread never
-    calls this directly anymore; prime_atlas_v1's _search_worker_loop does, off the main
-    thread, and turns each progress_callback invocation into a queued message that drives
-    the shared status/progress bar (see _poll_search_results).
+    calls this directly anymore; prime_atlas_v1's _search_job does, off the main
+    thread (via a PersistentWorker, see primeatlas/background.py), and turns each
+    progress_callback invocation into a report_progress() call that drives the shared
+    status/progress bar (see _on_search_worker_progress).
 
     Returns a list of dicts: {pattern, offset, position, base} (position is 0-indexed --
     0 means "this IS the base of the tuple").
@@ -3113,23 +3114,22 @@ def _build_gui():
             # binary search is normally fast (O(log N) file opens -- see its own
             # docstring), but find_constellation_participation() can decode dozens of
             # full hit files on a floor's first-ever search (nothing cached yet), which
-            # is exactly the kind of disk-bound work _totals_worker_loop already exists
-            # to keep off the GUI thread -- same one-daemon-thread-owns-the-slow-stuff
-            # shape, reusing the SAME status/progress bar the totals worker uses (one
-            # shared status bar for both features, not a second one). See
-            # _search_worker_loop/_poll_search_results/_start_search_job below.
+            # is exactly the kind of disk-bound work the totals worker above already
+            # exists to keep off the GUI thread -- same PersistentWorker shape, reusing
+            # the SAME status/progress bar the totals worker uses (one shared status bar
+            # for both features, not a second one). See
+            # _search_job/_on_search_worker_result/_start_search_job below.
             self._search_busy = False
-            self._search_work_queue = queue.Queue()
-            self._search_result_queue = queue.Queue()
-            threading.Thread(target=self._search_worker_loop, daemon=True).start()
-            self.after(150, self._poll_search_results)
+            self._search_worker = background.PersistentWorker(
+                self, self._search_job, on_result=self._on_search_worker_result,
+                on_progress=self._on_search_worker_progress)
 
             # primesieve calculator worker (Liczby pierwsze -> primesieve sub-tab): same
             # one-daemon-thread-owns-the-blocking-call shape as the search worker just
             # above (run_primesieve_query_wsl() is a synchronous wsl.exe subprocess call --
             # see that function's own docstring -- so it must not run on the GUI thread),
-            # kept as its OWN queue pair rather than reusing _search_work_queue/
-            # _search_result_queue since the two jobs have unrelated result shapes (a
+            # kept as its OWN PersistentWorker instance rather than reusing
+            # self._search_worker since the two jobs have unrelated result shapes (a
             # found-or-not prime/participation result vs. a single computed integer) --
             # sharing one queue would mean every consumer had to branch on job type just
             # to ignore the other kind.
@@ -4425,8 +4425,8 @@ def _build_gui():
         def _on_prime_search_result(self, base_exponent, number, result):
             """Main-thread completion handler for a "prime" search job -- same UI update
             _search_prime() used to do synchronously right after calling
-            find_prime_in_floor(), now driven by _poll_search_results() once the worker
-            thread hands the (plain-data, no tkinter involved) result back."""
+            find_prime_in_floor(), now driven by _on_search_worker_result() once the
+            worker thread hands the (plain-data, no tkinter involved) result back."""
             if result is None:
                 outcome = self._offer_generate_missing_prime_window("prime", base_exponent, number)
                 if outcome == "launched":
@@ -4449,12 +4449,12 @@ def _build_gui():
                   base_exponent=base_exponent, position=f"{result['index'] + 1:,}", total=f"{total:,}"))
 
         # --- Search worker -- shared by both "Prime numbers" and
-        # "Constellations" search boxes, see the __init__ comment above _search_worker_loop's
-        # startup for the full rationale. ------------------------------------------------
+        # "Constellations" search boxes, see the __init__ comment above self._search_worker's
+        # construction for the full rationale. ------------------------------------------------
 
         def _start_search_job(self, kind, base_exponent, number):
             """Hands the actual (potentially slow) file-scanning work off to
-            _search_worker_loop's daemon thread. Only fast/instant validation (isdigit,
+            self._search_worker's daemon thread (a PersistentWorker). Only fast/instant validation (isdigit,
             digit_count_floor, list_pietra's no-I/O floor-existence check) happens on the
             GUI thread, in the caller, before this is ever reached. Disables BOTH search
             buttons while a job is in flight -- the two features share one worker thread
@@ -4471,72 +4471,71 @@ def _build_gui():
                 self.status.set(T("primes.status_searching", number=number, base_exponent=base_exponent))
             else:
                 self.status.set(T("const.status_searching", number=number, base_exponent=base_exponent))
-            self._search_work_queue.put(
+            self._search_worker.submit(
                 {"kind": kind, "base_exponent": base_exponent, "number": number})
 
-        def _search_worker_loop(self):
-            """Own daemon thread -- same single-owner-per-thread reasoning as
-            _totals_worker_loop (see that method's docstring). While a "const" job is in
+        def _search_job(self, job, report_progress):
+            """Runs on PersistentWorker's own daemon thread. While a "const" job is in
             flight, this thread is ALSO the sole owner of self._hit_set_cache (the GUI
             thread never mutates it directly anymore, only reads the finished
-            participation list handed back via the result queue) -- _search_busy blocking
-            new searches from the GUI side means only one job is ever in flight, so this
-            never races against itself."""
-            while True:
-                job = self._search_work_queue.get()
-                kind = job["kind"]
-                base_exponent = job["base_exponent"]
-                number = job["number"]
-                try:
-                    if kind == "prime":
-                        result = find_prime_in_floor(PORTAL_FOLDER, base_exponent, number)
-                        self._search_result_queue.put(("prime_done", base_exponent, number, result))
-                    else:
-                        prime_result = find_prime_in_floor(PORTAL_FOLDER, base_exponent, number)
-                        if prime_result is None:
-                            self._search_result_queue.put(
-                                ("const_done", base_exponent, number, None, []))
-                            continue
-
-                        def _progress(done, total, _q=self._search_result_queue):
-                            _q.put(("const_progress", done, total))
-
-                        participation = find_constellation_participation(
-                            PORTAL_FOLDER, base_exponent, number, self._hit_set_cache,
-                            progress_callback=_progress)
-                        self._search_result_queue.put(
-                            ("const_done", base_exponent, number, prime_result, participation))
-                except Exception as e:  # noqa: BLE001 -- must never kill this thread
-                    self._search_result_queue.put((f"{kind}_error", base_exponent, number, str(e)))
-
-        def _poll_search_results(self):
-            """Main-thread side of the search worker -- same 150ms self.after() polling
-            cadence as _poll_totals_results, runs for the whole lifetime of the window."""
+            participation list handed back via the result) -- _search_busy blocking new
+            searches from the GUI side means only one job is ever in flight, so this
+            never races against itself. Catches its own exceptions (see PersistentWorker's
+            docstring for why) so the error can still be tagged with the right kind."""
+            kind = job["kind"]
+            base_exponent = job["base_exponent"]
+            number = job["number"]
             try:
-                while True:
-                    msg = self._search_result_queue.get_nowait()
-                    kind = msg[0]
-                    if kind == "const_progress":
-                        _kind, done, total = msg
-                        self.totals_progress.stop()
-                        self.totals_progress.configure(
-                            mode="determinate", maximum=max(1, total), value=done)
-                        self.status.set(T("const.status_search_progress", done=done, total=total))
-                    elif kind == "prime_done":
-                        _kind, base_exponent, number, result = msg
-                        self._finish_search_job()
-                        self._on_prime_search_result(base_exponent, number, result)
-                    elif kind == "const_done":
-                        _kind, base_exponent, number, prime_result, participation = msg
-                        self._finish_search_job()
-                        self._on_const_search_result(base_exponent, number, prime_result, participation)
-                    else:  # "prime_error" / "const_error"
-                        _kind, _base_exponent, _number, error = msg
-                        self._finish_search_job()
-                        messagebox.showerror(T("common.dialog_search_title"), error)
-            except queue.Empty:
-                pass
-            self.after(150, self._poll_search_results)
+                if kind == "prime":
+                    result = find_prime_in_floor(PORTAL_FOLDER, base_exponent, number)
+                    return ("prime_done", base_exponent, number, result)
+                else:
+                    prime_result = find_prime_in_floor(PORTAL_FOLDER, base_exponent, number)
+                    if prime_result is None:
+                        return ("const_done", base_exponent, number, None, [])
+
+                    def _progress(done, total):
+                        report_progress(("const_progress", done, total))
+
+                    participation = find_constellation_participation(
+                        PORTAL_FOLDER, base_exponent, number, self._hit_set_cache,
+                        progress_callback=_progress)
+                    return ("const_done", base_exponent, number, prime_result, participation)
+            except Exception as e:  # noqa: BLE001 -- must never kill the worker thread
+                return (f"{kind}_error", base_exponent, number, str(e))
+
+        def _on_search_worker_progress(self, payload):
+            """Main-thread callback for _search_job's mid-job progress reports (the only
+            kind it ever sends is "const_progress", during find_constellation_participation)."""
+            kind = payload[0]
+            if kind == "const_progress":
+                _kind, done, total = payload
+                self.totals_progress.stop()
+                self.totals_progress.configure(
+                    mode="determinate", maximum=max(1, total), value=done)
+                self.status.set(T("const.status_search_progress", done=done, total=total))
+
+        def _on_search_worker_result(self, payload, error):
+            """Main-thread callback for _search_job's return value -- error is only ever
+            non-None for a genuine PersistentWorker/framework-level failure, since
+            _search_job catches everything else internally (see that method's docstring)."""
+            if error is not None:
+                self._finish_search_job()
+                messagebox.showerror(T("common.dialog_search_title"), str(error))
+                return
+            kind = payload[0]
+            if kind == "prime_done":
+                _kind, base_exponent, number, result = payload
+                self._finish_search_job()
+                self._on_prime_search_result(base_exponent, number, result)
+            elif kind == "const_done":
+                _kind, base_exponent, number, prime_result, participation = payload
+                self._finish_search_job()
+                self._on_const_search_result(base_exponent, number, prime_result, participation)
+            else:  # "prime_error" / "const_error"
+                _kind, _base_exponent, _number, job_error = payload
+                self._finish_search_job()
+                messagebox.showerror(T("common.dialog_search_title"), job_error)
 
         def _finish_search_job(self):
             self._search_busy = False
@@ -6001,8 +6000,8 @@ def _build_gui():
             """Main-thread completion handler for a "const" search job -- same UI update
             _search_constellation() used to do synchronously right after calling
             find_prime_in_floor()/find_constellation_participation(), now driven by
-            _poll_search_results() once the worker thread hands the (plain-data) results
-            back.
+            _on_search_worker_result() once the worker thread hands the (plain-data)
+            results back.
 
             calc_pending/calc_match: when this completion is for a search the
             constellation calculator itself kicked off (self._const_calc_pending set by
