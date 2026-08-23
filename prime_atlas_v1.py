@@ -109,6 +109,7 @@ from primeatlas import (  # noqa: E402
     goldbach_largest_prime_le, goldbach_sieve_is_prime,
 )
 from primeatlas import floor_meta  # noqa: E402
+from primeatlas import background  # noqa: E402
 
 # AppSettings persists the chosen storage path OUTSIDE the portal folder itself (see
 # app_settings.py's docstring for the chicken-and-egg reason). Loaded once here, at module
@@ -3068,18 +3069,16 @@ def _build_gui():
             # to avoid (see _populate_pietro_node's docstring). ONE daemon worker thread owns
             # self._totals_cache exclusively (loads it once here, then only the worker thread
             # ever reads/writes/saves it -- see update_pietro_totals_cache()); the main thread
-            # never touches that dict directly, only sends floor numbers in via
-            # _totals_work_queue and receives (base_exponent, total, file_count, new_read,
-            # error) tuples back via _totals_result_queue, polled every 150ms (see
-            # _poll_totals_results). self._pietro_total_known is a SEPARATE, main-thread-only
-            # dict (seeded from the same on-disk cache at startup, updated only from received
-            # results) -- two independent copies instead of sharing one dict across threads,
-            # so neither thread ever needs a lock.
+            # never touches that dict directly, only submits floor numbers via
+            # self._totals_worker.submit() and receives results back via _on_totals_worker_result,
+            # a primeatlas/background.py PersistentWorker instance (see _totals_job's own
+            # docstring for the request/result shape). self._pietro_total_known is a SEPARATE,
+            # main-thread-only dict (seeded from the same on-disk cache at startup, updated
+            # only from received results) -- two independent copies instead of sharing one
+            # dict across threads, so neither thread ever needs a lock.
             self._pietro_total_known = {}
             self._totals_cache = {}
             self._reload_totals_caches()
-            self._totals_work_queue = queue.Queue()
-            self._totals_result_queue = queue.Queue()
             self._computing_all_totals = False
             self._totals_batch_size = 0   # fixed at the START of a "compute all" batch --
                                            # NOT re-read from _pietro_node_by_exp on every
@@ -3099,8 +3098,15 @@ def _build_gui():
             # prime-count total.
             self._pietro_gen_seconds = {}
             self._grand_total_seconds = 0.0
-            threading.Thread(target=self._totals_worker_loop, daemon=True).start()
-            self.after(150, self._poll_totals_results)
+            # Faza 1 background-job migration (2026-08-23, second half -- see
+            # primeatlas/background.py's PersistentWorker docstring for the full audit):
+            # this used to be its own hand-rolled threading.Thread + two queue.Queue()s +
+            # self.after(150, self._poll_totals_results) block, identical in shape to five
+            # other workers in this file. _totals_job is the one part that's genuinely
+            # specific to this feature; PersistentWorker owns the thread/queues/polling.
+            self._totals_worker = background.PersistentWorker(
+                self, self._totals_job, on_result=self._on_totals_worker_result,
+                on_progress=self._on_pietro_total_start)
 
             # Search worker: number/constellation search needs to run off the GUI thread,
             # or it freezes the whole application while searching. find_prime_in_floor()'s
@@ -3273,62 +3279,54 @@ def _build_gui():
                         _entry.get("total_bytes", 0))
             self._totals_cache = load_totals_cache(PORTAL_FOLDER)  # worker-owned copy
 
-        def _totals_worker_loop(self):
-            """Runs forever on its own daemon thread, pulling base_exponent requests off
-            _totals_work_queue and pushing results back via _totals_result_queue -- see the
-            big comment in __init__ for the single-owner-per-thread rationale. Emits a
-            ("start", base_exponent) message the INSTANT a request is picked up, before the
-            (possibly ~1 minute, for a heavily-populated floor) scan itself runs -- without
-            this, the status/progress bar would sit unchanged for that whole stretch,
-            making an in-progress scan look like it's not working. A
-            daemon thread needs no explicit shutdown -- it dies with the process."""
-            while True:
-                base_exponent = self._totals_work_queue.get()
-                self._totals_result_queue.put(("start", base_exponent))
-                try:
-                    total, file_count, new_read, total_bytes = update_pietro_totals_cache(
-                        PORTAL_FOLDER, base_exponent, self._totals_cache)
-                    if new_read:
-                        save_totals_cache(PORTAL_FOLDER, self._totals_cache)
-                    # A floor physically copied in from another storage (magazyn) brings
-                    # its own floor_meta.json along -- see floor_meta.py's module
-                    # docstring. This imports any rows from it that aren't already in the
-                    # LOCAL benchmark_log.csv, so the Benchmark tab shows that floor's
-                    # real generation history instead of nothing, exactly as if it had
-                    # been generated here. No-ops (cheap) on the ordinary case where
-                    # there's nothing new to import, so it's safe to call on every floor
-                    # visit rather than trying to detect "is this floor newly-copied-in"
-                    # some other way.
-                    floor_meta.merge_floor_meta_into_benchmark_log(PORTAL_FOLDER, base_exponent)
-                    self._totals_result_queue.put(
-                        ("done", base_exponent, total, file_count, new_read, None, total_bytes))
-                except Exception as e:  # noqa: BLE001 -- must never kill this thread
-                    self._totals_result_queue.put(
-                        ("done", base_exponent, None, None, None, str(e), None))
-
-        def _poll_totals_results(self):
-            """Main-thread side of the worker: drains whatever "start"/"done" messages have
-            arrived since the last poll and updates the tree/status/progress bar, then
-            reschedules itself -- runs for the whole lifetime of the window (see __init__)."""
+        def _totals_job(self, base_exponent, report_progress):
+            """Runs on PersistentWorker's own daemon thread, one base_exponent at a time --
+            see that class's docstring for why this shape replaced a hand-rolled
+            threading.Thread + two queue.Queue()s. report_progress(base_exponent) fires the
+            INSTANT this request is picked up, before the (possibly ~1 minute, for a
+            heavily-populated floor) scan itself runs -- without this, the status/progress
+            bar would sit unchanged for that whole stretch, making an in-progress scan look
+            like it's not working. Catches its own exceptions (rather than letting
+            PersistentWorker's generic error path handle it) so the failure can still be
+            attributed to the RIGHT base_exponent -- see PersistentWorker's own docstring
+            for why that matters."""
+            report_progress(base_exponent)
             try:
-                while True:
-                    msg = self._totals_result_queue.get_nowait()
-                    if msg[0] == "start":
-                        self._on_pietro_total_start(msg[1])
-                    else:
-                        _kind, base_exponent, total, file_count, new_read, error, total_bytes = msg
-                        if error is not None:
-                            self.status.set(T("primes.status_error_sum", base_exponent=base_exponent, error=error))
-                        else:
-                            self._pietro_total_known[base_exponent] = (total, file_count, total_bytes)
-                            self._on_pietro_total_ready(
-                                base_exponent, total, file_count, new_read, total_bytes)
-            except queue.Empty:
-                pass
-            self.after(150, self._poll_totals_results)
+                total, file_count, new_read, total_bytes = update_pietro_totals_cache(
+                    PORTAL_FOLDER, base_exponent, self._totals_cache)
+                if new_read:
+                    save_totals_cache(PORTAL_FOLDER, self._totals_cache)
+                # A floor physically copied in from another storage (magazyn) brings
+                # its own floor_meta.json along -- see floor_meta.py's module
+                # docstring. This imports any rows from it that aren't already in the
+                # LOCAL benchmark_log.csv, so the Benchmark tab shows that floor's
+                # real generation history instead of nothing, exactly as if it had
+                # been generated here. No-ops (cheap) on the ordinary case where
+                # there's nothing new to import, so it's safe to call on every floor
+                # visit rather than trying to detect "is this floor newly-copied-in"
+                # some other way.
+                floor_meta.merge_floor_meta_into_benchmark_log(PORTAL_FOLDER, base_exponent)
+                return base_exponent, total, file_count, new_read, None, total_bytes
+            except Exception as e:  # noqa: BLE001 -- must never kill the worker thread
+                return base_exponent, None, None, None, str(e), None
+
+        def _on_totals_worker_result(self, payload, error):
+            """Main-thread callback for _totals_job -- error is only ever non-None for a
+            genuine PersistentWorker/framework-level failure (report_progress itself
+            raising, say), since _totals_job catches everything else internally and folds
+            it into payload's own error slot instead (see that method's docstring)."""
+            if error is not None:
+                self.status.set(str(error))
+                return
+            base_exponent, total, file_count, new_read, job_error, total_bytes = payload
+            if job_error is not None:
+                self.status.set(T("primes.status_error_sum", base_exponent=base_exponent, error=job_error))
+            else:
+                self._pietro_total_known[base_exponent] = (total, file_count, total_bytes)
+                self._on_pietro_total_ready(base_exponent, total, file_count, new_read, total_bytes)
 
         def _on_pietro_total_start(self, base_exponent):
-            """Fires the moment the worker PICKS UP a request -- see _totals_worker_loop's
+            """Fires the moment the worker PICKS UP a request -- see _totals_job's
             docstring for why this exists separately from the completion handler below."""
             if self._computing_all_totals:
                 done = len(self._grand_total_seen)
@@ -3396,7 +3394,7 @@ def _build_gui():
             self.totals_progress.configure(maximum=len(pietra), value=0)
             self.status.set(T("primes.status_batch_start", count=len(pietra)))
             for base_exponent in pietra:
-                self._totals_work_queue.put(base_exponent)
+                self._totals_worker.submit(base_exponent)
 
         def _apply_theme(self, theme_name):
             """Applies primeatlas.theme's color palette to every widget class this app
@@ -4187,7 +4185,7 @@ def _build_gui():
             self._populate_pietro_node(node)
             self._set_active_floor_node(node)
             base_exponent = int(self.tree.item(node, "text")[3:])  # "10p{N}"
-            self._totals_work_queue.put(base_exponent)  # always re-check -- cheap no-op if
+            self._totals_worker.submit(base_exponent)  # always re-check -- cheap no-op if
                                                           # nothing changed since last time
                                                           # (see update_pietro_totals_cache)
 
