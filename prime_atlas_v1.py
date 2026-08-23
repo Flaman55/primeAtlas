@@ -3146,14 +3146,18 @@ def _build_gui():
             self._primality_worker = background.PersistentWorker(
                 self, self._primality_job, on_result=self._on_primality_worker_result)
 
-            # Goldbach structural-window worker (Badania -> Goldbach sub-tab): own queue
-            # pair for the same reason as every other worker block here -- unrelated
-            # result shape (a full per-n row list + counterexample list), pure Python
-            # like the primality worker, no WSL round trip (see goldbach_window.py's own
-            # header comment).
+            # Goldbach structural-window worker (Badania -> Goldbach sub-tab): own
+            # PersistentWorker for the same reason as every other worker block here --
+            # unrelated result shape (a full per-n row list + counterexample list),
+            # pure Python like the primality worker, no WSL round trip (see
+            # goldbach_window.py's own header comment). Progress ticks from the "viz"
+            # op's both_base_window_rows() call are relayed through report_progress --
+            # see _goldbach_job's own docstring -- the same mechanism _totals_job/
+            # _search_job's "const" branch already use.
             self._goldbach_busy = False
-            self._goldbach_work_queue = queue.Queue()
-            self._goldbach_result_queue = queue.Queue()
+            self._goldbach_worker = background.PersistentWorker(
+                self, self._goldbach_job, on_result=self._on_goldbach_worker_result,
+                on_progress=self._on_goldbach_worker_progress)
             # Wizualizacja Toplevel is created lazily (see _goldbach_ensure_viz_window)
             # and reused across clicks -- None here means "not open yet".
             self._goldbach_viz_win = None
@@ -3182,8 +3186,6 @@ def _build_gui():
             self._goldbach_decompose_current_n = None
             self._goldbach_decompose_current_pmax = None
             self._goldbach_decompose_last_result = None
-            threading.Thread(target=self._goldbach_worker_loop, daemon=True).start()
-            self.after(150, self._poll_goldbach_results)
 
             # Constellation-records-table scan worker (Constellations -> Tabela rekordow
             # sub-tab, Faza 4): own queue pair for the same reason as every other worker
@@ -6281,7 +6283,7 @@ def _build_gui():
                 return
             mode = "touch_once" if self.goldbach_touch_once_var.get() else "all_combinations"
             self._goldbach_set_busy(True)
-            self._goldbach_work_queue.put({"op": "window", "n": n, "mode": mode})
+            self._goldbach_worker.submit({"op": "window", "n": n, "mode": mode})
 
         def _on_goldbach_visualize(self):
             """"Wizualizacja" button -- derives Pmax = largest prime <= n (starting from
@@ -6369,7 +6371,7 @@ def _build_gui():
                 self._goldbach_viz_chip_page = 0
             self._goldbach_viz_current_n = n
             self._goldbach_set_busy(True)
-            self._goldbach_work_queue.put({
+            self._goldbach_worker.submit({
                 "op": "viz", "n": n, "row_page": self._goldbach_viz_row_page,
                 "n_min": n_min, "n_max": n,
             })
@@ -6487,7 +6489,7 @@ def _build_gui():
             the detail window's own Prev/Next/goto handlers, so they all re-request the
             SAME target n/pmax and only the page differs."""
             self._goldbach_set_busy(True)
-            self._goldbach_work_queue.put({
+            self._goldbach_worker.submit({
                 "op": "decompose", "n": self._goldbach_decompose_current_n,
                 "pmax": self._goldbach_decompose_current_pmax,
                 "page": self._goldbach_decompose_page,
@@ -6715,8 +6717,8 @@ def _build_gui():
             # Toplevel is maximized/fullscreen over it. Mirrored in lockstep with
             # totals_progress by _goldbach_viz_progress_set (see its own
             # docstring), called from every place that already updates
-            # totals_progress (_goldbach_set_busy, the "progress" queue tick in
-            # _poll_goldbach_results) so the two never drift out of sync.
+            # totals_progress (_goldbach_set_busy, _on_goldbach_worker_progress) so
+            # the two never drift out of sync.
             self.goldbach_viz_progress = ttk.Progressbar(
                 win, mode="determinate", maximum=1, value=0)
             self.goldbach_viz_progress.pack(fill="x", padx=10, pady=(0, 6))
@@ -6904,11 +6906,11 @@ def _build_gui():
                 except (tk.TclError, AttributeError):
                     pass
 
-        def _goldbach_worker_loop(self):
-            """Own daemon thread -- single-owner reasoning identical to
-            _const_records_worker_loop's own docstring (self._goldbach_busy blocks new
-            requests from the GUI side, so only one job is ever in flight). Three job
-            shapes distinguished by "op":
+        def _goldbach_job(self, job, report_progress):
+            """Runs on PersistentWorker's own daemon thread -- single-owner reasoning
+            identical to _const_records_worker_loop's own docstring (self._goldbach_busy
+            blocks new requests from the GUI side, so only one job is ever in flight).
+            Three job shapes distinguished by "op":
 
             "window" -- resolves Pmax = largest prime <= n from a FRESH in-process
             sieve up to n, then runs goldbach_window.check_window(Pmax, mode) (which
@@ -6926,7 +6928,11 @@ def _build_gui():
             row_offset param it's paired with) -- re-reads storage and re-derives Pmax
             every page turn rather than caching, same cost profile as re-running the
             whole check, which is acceptable since it's already async off the GUI
-            thread.
+            thread. Mid-job progress ticks from both_base_window_rows' own
+            progress_cb are relayed via report_progress -- PersistentWorker's own
+            channel, kept separate from the (op, ok, payload) result tuple so
+            _on_goldbach_worker_progress never has to be told apart from a finished
+            job the way the old single-queue "progress" tag required.
 
             "decompose" -- job carries an explicit "pmax" (the ALREADY-displayed
             window's Pmax, not re-derived from n, since the target n here is a
@@ -6937,155 +6943,143 @@ def _build_gui():
             truly needs a prime beyond pmax's old base or whether the smallest-witness
             search (used by "viz") just happened to land on one.
 
-            None of the three ops needs a WSL subprocess."""
-            while True:
-                job = self._goldbach_work_queue.get()
-                op = job["op"]
-                n = job["n"]
-                try:
-                    if op == "window":
-                        is_prime_n = goldbach_sieve_is_prime(n)
-                        pmax = goldbach_largest_prime_le(is_prime_n, n)
-                        if pmax is None:
-                            self._goldbach_result_queue.put((
-                                op, False, T("research_goldbach.error_no_prime_le_n", n=n)))
-                            continue
-                        result = goldbach_check_window(pmax, job["mode"])
-                        result["n"] = n
-                        self._goldbach_result_queue.put((op, True, result))
-                    elif op == "decompose":
-                        try:
-                            is_prime = read_is_prime_from_storage(PORTAL_FOLDER, n)
-                        except MissingStorageRangeError as e:
-                            self._goldbach_result_queue.put((
-                                op, False,
-                                {"kind": "storage_missing", "floor": e.floor,
-                                 "needed_upto": e.needed_upto,
-                                 "message": T("research_goldbach.error_storage_missing",
-                                              floor=e.floor, upto=f"{e.needed_upto:,}")}))
-                            continue
-                        page = job.get("page", 0)
-                        result = goldbach_all_decompositions(
-                            is_prime, n, job["pmax"], cap=GOLDBACH_DECOMPOSE_ROW_CAP,
-                            offset=page * GOLDBACH_DECOMPOSE_ROW_CAP)
-                        result["page"] = page
-                        self._goldbach_result_queue.put((op, True, result))
-                    else:
-                        # Wizualizacja's only window: [4, Pmax+GOLDBACH_BOTH_BASE_PMIN],
-                        # both p and q required <= Pmax -- exactly what Lean's
-                        # additiveSelfContained_of_hasGoldbachRep proves unconditionally
-                        # (see goldbach_window.BOTH_BASE_PMIN's own docstring). Only
-                        # ever needs storage read up to n+Pmin, not 2*n. Checked BEFORE
-                        # the storage read (not after, unlike a plain ValueError from
-                        # both_base_window_rows itself) so an oversized n gets a
-                        # translated, dedicated error instead of a raw exception string.
-                        limit = n + GOLDBACH_BOTH_BASE_PMIN
-                        try:
-                            is_prime = read_is_prime_from_storage(PORTAL_FOLDER, limit)
-                        except MissingStorageRangeError as e:
-                            self._goldbach_result_queue.put((
-                                op, False,
-                                {"kind": "storage_missing", "floor": e.floor,
-                                 "needed_upto": e.needed_upto,
-                                 "message": T("research_goldbach.error_storage_missing",
-                                              floor=e.floor, upto=f"{e.needed_upto:,}")}))
-                            continue
-                        pmax = goldbach_largest_prime_le(is_prime, n)
-                        if pmax is None:
-                            self._goldbach_result_queue.put((
-                                op, False, T("research_goldbach.error_no_prime_le_n", n=n)))
-                            continue
-                        if pmax > GOLDBACH_BOTH_BASE_PMAX_CEILING:
-                            self._goldbach_result_queue.put((
-                                op, False,
-                                T("research_goldbach.error_both_base_pmax_too_large",
-                                  pmax=f"{pmax:,}",
-                                  ceiling=f"{GOLDBACH_BOTH_BASE_PMAX_CEILING:,}")))
-                            continue
-                        row_page = job.get("row_page", 0)
-                        # Progress ticks go through the SAME result queue, tagged
-                        # "progress" so _poll_goldbach_results can special-case them
-                        # (update the bar, then re-loop for the next queue message)
-                        # instead of treating them as a finished job -- see that
-                        # method's own handling of op=="progress".
-                        result = goldbach_both_base_window_rows(
-                            is_prime, pmax, row_cap=GOLDBACH_CASCADE_ROW_CAP,
-                            row_offset=row_page * GOLDBACH_CASCADE_ROW_CAP,
-                            n_min=job.get("n_min"), n_max=job.get("n_max"),
-                            progress_cb=lambda f: self._goldbach_result_queue.put(
-                                ("progress", True, f)))
-                        result["n"] = n
-                        result["row_page"] = row_page
-                        self._goldbach_result_queue.put((op, True, result))
-                except Exception as e:  # noqa: BLE001 -- surface any unexpected failure
-                                         # to the GUI as an error dialog instead of
-                                         # silently killing this worker thread
-                    self._goldbach_result_queue.put((op, False, str(e)))
-
-        def _poll_goldbach_results(self):
-            """Main-thread side -- same 150ms polling cadence as
-            _poll_const_records_results, runs for the whole lifetime of the window. The
-            per-message body is wrapped in its own try/except (Exception, not just
-            queue.Empty) so that ONE bad message -- e.g. a result arriving for a
-            Toplevel (Wizualizacja or decompose) the user already closed -- can never
-            skip the self.after(...) reschedule at the bottom and silently kill
-            polling for the rest of the session (see _goldbach_widget_configure's own
-            docstring for the specific bug this was covering for)."""
+            None of the three ops needs a WSL subprocess. Catches its own exceptions
+            (per PersistentWorker's fn contract -- see background.py's docstring) so a
+            failure surfaces with the right op context, instead of falling through to
+            PersistentWorker's own last-resort net which has no way to know which
+            request failed."""
+            op = job["op"]
+            n = job["n"]
             try:
-                while True:
-                    op, ok, payload = self._goldbach_result_queue.get_nowait()
-                    if op == "progress":
-                        # Not a finished job -- one tick of both_base_window_rows'
-                        # own progress_cb (see the worker loop's viz branch). Switch
-                        # the SHARED bottom bar (self.totals_progress -- same one the
-                        # floor-totals scan/Generation tab use) out of the
-                        # indeterminate spin _goldbach_set_busy(True) started it in
-                        # and into a real fraction; stop() first since an
-                        # indeterminate animation still running underneath a
-                        # determinate value looks broken (bar visibly jumps once the
-                        # animation's next tick fires). Busy state/nav buttons are
-                        # untouched -- the job is still running.
-                        self.totals_progress.stop()
-                        self.totals_progress.configure(
-                            mode="determinate", maximum=1, value=payload)
-                        self._goldbach_viz_progress_set(value=payload)
-                        continue
+                if op == "window":
+                    is_prime_n = goldbach_sieve_is_prime(n)
+                    pmax = goldbach_largest_prime_le(is_prime_n, n)
+                    if pmax is None:
+                        return op, False, T("research_goldbach.error_no_prime_le_n", n=n)
+                    result = goldbach_check_window(pmax, job["mode"])
+                    result["n"] = n
+                    return op, True, result
+                elif op == "decompose":
                     try:
-                        self._goldbach_set_busy(False)
-                        self._goldbach_refresh_nav_buttons()
-                        if not ok:
-                            self.status.set(T("research_goldbach.status_error"))
-                            if isinstance(payload, dict) and payload.get("kind") == "storage_missing":
-                                # Not a generic failure -- read_is_prime_from_storage
-                                # found a specific gap (floor/needed_upto). Offer to
-                                # fill it instead of just naming it, same "offer to
-                                # generate the missing piece" UX search already uses
-                                # for prime/constellation lookups (see
-                                # _offer_generate_missing_prime_window's docstring).
-                                self._goldbach_offer_generate_missing_range(op, payload)
-                            else:
-                                messagebox.showerror(
-                                    T("research_goldbach.error_dialog_title"), payload)
-                            continue
-                        self.status.set(T("research_goldbach.status_done"))
-                        if op == "window":
-                            self._goldbach_show_result(payload)
-                        elif op == "decompose":
-                            self._goldbach_show_decomposition_detail(payload)
-                        else:
-                            self._goldbach_show_window_visualization(payload)
-                    except Exception:  # noqa: BLE001 -- see docstring: never let one
-                                        # bad message skip the reschedule below
-                        pass
-            except queue.Empty:
+                        is_prime = read_is_prime_from_storage(PORTAL_FOLDER, n)
+                    except MissingStorageRangeError as e:
+                        return op, False, {
+                            "kind": "storage_missing", "floor": e.floor,
+                            "needed_upto": e.needed_upto,
+                            "message": T("research_goldbach.error_storage_missing",
+                                         floor=e.floor, upto=f"{e.needed_upto:,}")}
+                    page = job.get("page", 0)
+                    result = goldbach_all_decompositions(
+                        is_prime, n, job["pmax"], cap=GOLDBACH_DECOMPOSE_ROW_CAP,
+                        offset=page * GOLDBACH_DECOMPOSE_ROW_CAP)
+                    result["page"] = page
+                    return op, True, result
+                else:
+                    # Wizualizacja's only window: [4, Pmax+GOLDBACH_BOTH_BASE_PMIN],
+                    # both p and q required <= Pmax -- exactly what Lean's
+                    # additiveSelfContained_of_hasGoldbachRep proves unconditionally
+                    # (see goldbach_window.BOTH_BASE_PMIN's own docstring). Only
+                    # ever needs storage read up to n+Pmin, not 2*n. Checked BEFORE
+                    # the storage read (not after, unlike a plain ValueError from
+                    # both_base_window_rows itself) so an oversized n gets a
+                    # translated, dedicated error instead of a raw exception string.
+                    limit = n + GOLDBACH_BOTH_BASE_PMIN
+                    try:
+                        is_prime = read_is_prime_from_storage(PORTAL_FOLDER, limit)
+                    except MissingStorageRangeError as e:
+                        return op, False, {
+                            "kind": "storage_missing", "floor": e.floor,
+                            "needed_upto": e.needed_upto,
+                            "message": T("research_goldbach.error_storage_missing",
+                                         floor=e.floor, upto=f"{e.needed_upto:,}")}
+                    pmax = goldbach_largest_prime_le(is_prime, n)
+                    if pmax is None:
+                        return op, False, T("research_goldbach.error_no_prime_le_n", n=n)
+                    if pmax > GOLDBACH_BOTH_BASE_PMAX_CEILING:
+                        return op, False, T(
+                            "research_goldbach.error_both_base_pmax_too_large",
+                            pmax=f"{pmax:,}",
+                            ceiling=f"{GOLDBACH_BOTH_BASE_PMAX_CEILING:,}")
+                    row_page = job.get("row_page", 0)
+                    result = goldbach_both_base_window_rows(
+                        is_prime, pmax, row_cap=GOLDBACH_CASCADE_ROW_CAP,
+                        row_offset=row_page * GOLDBACH_CASCADE_ROW_CAP,
+                        n_min=job.get("n_min"), n_max=job.get("n_max"),
+                        progress_cb=lambda f: report_progress(f))
+                    result["n"] = n
+                    result["row_page"] = row_page
+                    return op, True, result
+            except Exception as e:  # noqa: BLE001 -- surface any unexpected failure
+                                     # to the GUI as an error dialog instead of
+                                     # silently killing this worker thread
+                return op, False, str(e)
+
+        def _on_goldbach_worker_progress(self, payload):
+            """PersistentWorker's report_progress channel for the "viz" op's
+            both_base_window_rows() call (see _goldbach_job's own docstring). Switches
+            the SHARED bottom bar (self.totals_progress -- same one the floor-totals
+            scan/Generation tab use) out of the indeterminate spin
+            _goldbach_set_busy(True) started it in and into a real fraction; stop()
+            first since an indeterminate animation still running underneath a
+            determinate value looks broken (bar visibly jumps once the animation's
+            next tick fires). Busy state/nav buttons are untouched -- the job is still
+            running."""
+            self.totals_progress.stop()
+            self.totals_progress.configure(mode="determinate", maximum=1, value=payload)
+            self._goldbach_viz_progress_set(value=payload)
+
+        def _on_goldbach_worker_result(self, payload, error):
+            """Main-thread callback for _goldbach_job -- same shape as the old
+            _poll_goldbach_results, just delivered via PersistentWorker instead of a
+            bespoke queue.Queue + self.after() pair. Wrapped in its own try/except
+            (Exception, not just letting it propagate) so that ONE bad message -- e.g.
+            a result arriving for a Toplevel (Wizualizacja or decompose) the user
+            already closed -- can never raise up through PersistentWorker's own
+            _poll() and skip ITS self.widget.after() reschedule, which would silently
+            kill polling for the rest of the session (background.PersistentWorker._poll
+            does not wrap on_result itself -- see _goldbach_widget_configure's own
+            docstring for the specific bug this same reasoning was originally
+            covering for). `error` is only non-None for a genuine PersistentWorker-
+            framework bug (_goldbach_job already catches its own exceptions -- see its
+            docstring)."""
+            try:
+                self._goldbach_set_busy(False)
+                self._goldbach_refresh_nav_buttons()
+                if error is not None:
+                    self.status.set(T("research_goldbach.status_error"))
+                    messagebox.showerror(T("research_goldbach.error_dialog_title"), str(error))
+                    return
+                op, ok, result_payload = payload
+                if not ok:
+                    self.status.set(T("research_goldbach.status_error"))
+                    if isinstance(result_payload, dict) and result_payload.get("kind") == "storage_missing":
+                        # Not a generic failure -- read_is_prime_from_storage
+                        # found a specific gap (floor/needed_upto). Offer to
+                        # fill it instead of just naming it, same "offer to
+                        # generate the missing piece" UX search already uses
+                        # for prime/constellation lookups (see
+                        # _offer_generate_missing_prime_window's docstring).
+                        self._goldbach_offer_generate_missing_range(op, result_payload)
+                    else:
+                        messagebox.showerror(
+                            T("research_goldbach.error_dialog_title"), result_payload)
+                    return
+                self.status.set(T("research_goldbach.status_done"))
+                if op == "window":
+                    self._goldbach_show_result(result_payload)
+                elif op == "decompose":
+                    self._goldbach_show_decomposition_detail(result_payload)
+                else:
+                    self._goldbach_show_window_visualization(result_payload)
+            except Exception:  # noqa: BLE001 -- see docstring: never let one bad
+                                # message raise up through PersistentWorker's _poll
                 pass
-            self.after(150, self._poll_goldbach_results)
 
         def _goldbach_offer_generate_missing_range(self, op, payload):
             """Offers to generate the primes storage a Wizualizacja/decompose job
             just found missing (MissingStorageRangeError, translated into this dict
             by the worker loop's own except MissingStorageRangeError blocks --
-            see _goldbach_worker_loop's docstring). Mirrors
+            see _goldbach_job's docstring). Mirrors
             _offer_generate_missing_prime_window()'s askyesno pattern, but launches
             through _quick_gen_plan_literal_range()/_launch_direct_window_range() --
             the SAME path Quick-gen's own Range mode button uses -- instead of always
