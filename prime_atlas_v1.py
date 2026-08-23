@@ -111,14 +111,23 @@ from primeatlas import (  # noqa: E402
 from primeatlas import floor_meta  # noqa: E402
 from primeatlas import background  # noqa: E402
 # pdf_writer/benchmark: extracted during the refactor branch's Faza 3 (tab-by-tab
-# backend/UI split, 2026-08-23) -- see those modules' own docstrings. Only the names
-# render_constellation_records_pdf/_primes_tree_scan still use directly are imported
-# here; everything else the (now separate) Benchmark tab needs lives in
-# primeatlas/benchmark_tab.py, imported lazily from inside _build_benchmark_tab()
-# alongside SettingsTab/GenerationConsole (see _build_gui()'s own lazy-tkinter-import
-# convention).
-from primeatlas.pdf_writer import _pdf_ascii_fold, _pdf_rect_op, _pdf_text_op, _write_pdf  # noqa: E402
+# backend/UI split, 2026-08-23) -- see those modules' own docstrings. Now that
+# render_constellation_records_pdf has ALSO moved out (to primeatlas/constellations.py,
+# alongside the rest of the Constellations tab's backend), nothing in this file calls
+# the pdf_writer helpers directly anymore -- everything the (now separate) Benchmark and
+# Constellations tabs need lives in primeatlas/benchmark_tab.py and
+# primeatlas/constellations_records_tab.py respectively, imported lazily/locally from
+# inside their own build methods (see _build_gui()'s own lazy-tkinter-import convention).
 from primeatlas.benchmark import read_benchmark_log  # noqa: E402
+# constellations: extracted during the refactor branch's Faza 3 (2026-08-23), alongside
+# the Constellations tab's own UI split (primeatlas/constellations_hits_tab.py,
+# constellations_calc_tab.py, constellations_records_tab.py) -- see that module's own
+# docstring. Only the three names the shared search worker/_constellations_tree_scan/
+# _on_const_search_result still call directly are imported here; everything else those
+# sub-tabs need is imported locally inside _build_constellations_section().
+from primeatlas.constellations import (  # noqa: E402
+    find_constellation_participation, floor_has_constellation_hits, list_constellation_hits,
+)
 # storage/widgets: extracted during the refactor branch's Faza 3 (2026-08-23), alongside
 # the "Prime numbers" tab's UI split (primeatlas/primes_tab.py) -- see those modules' own
 # docstrings. list_pietra/list_source_files/list_source_filenames/read_source_file_headers/
@@ -486,342 +495,24 @@ def find_highest_populated_floor(portal_folder):
 # (except the private _totals_cache_path) are imported back at this file's top.
 
 
-def hit_file_path(portal_folder, base_exponent, k, variant_id):
-    """Same layout as constellation_finder_v1.hit_file_path() -- not imported from there
-    directly (a browsing tool depending on the heavy analysis script felt backwards); this
-    is deliberately kept in sync with that function instead."""
-    return os.path.join(
-        portal_folder, f"10p{base_exponent}", "constellations", f"k{k}", f"variant{variant_id}",
-        f"HITS_10p{base_exponent}_k{k}_v{variant_id}.bin")
+# hit_file_path/floor_has_constellation_hits/list_constellation_hits/
+# group_constellation_hits_by_k/build_constellation_records_table/
+# build_constellation_records_detail_rows/render_constellation_records_pdf/
+# find_constellation_participation moved to primeatlas/constellations.py during the
+# refactor branch's Faza 3 (2026-08-23), alongside the Constellations tab's own UI split
+# (primeatlas/constellations_hits_tab.py, primeatlas/constellations_calc_tab.py,
+# primeatlas/constellations_records_tab.py) -- see each module's own docstring.
+# find_constellation_participation/floor_has_constellation_hits/list_constellation_hits
+# are imported back at this file's top (still used by the shared search worker's
+# _search_job, by _constellations_tree_scan, and by _on_const_search_result, all still
+# here); the rest are only used by the (now separate) Constellations sub-tabs.
 
-
-def floor_has_constellation_hits(portal_folder, base_exponent):
-    """Cheap existence check -- does floor `base_exponent` have AT LEAST ONE constellation
-    hit file on disk, without reading the pattern catalog or any file header (unlike
-    list_constellation_hits() below, which is only called once a floor's tree node is
-    actually expanded). Used by reload_constellations_tree() to decide which floors to
-    list AT ALL -- a floor can have plenty of prime data but zero constellation hits (the
-    finder hasn't been run against it yet, or ran and found nothing), and listing it
-    anyway with an empty "no hits" placeholder just clutters the tree with entries there is
-    nothing to actually browse. Short-circuits on the first hit file found rather than
-    counting every one, same reasoning find_highest_populated_floor() above short-circuits
-    on the first (highest) populated floor."""
-    const_dir = os.path.join(portal_folder, f"10p{base_exponent}", "constellations")
-    if not os.path.isdir(const_dir):
-        return False
-    for k_name in os.listdir(const_dir):
-        k_path = os.path.join(const_dir, k_name)
-        if not os.path.isdir(k_path):
-            continue
-        for variant_name in os.listdir(k_path):
-            variant_path = os.path.join(k_path, variant_name)
-            if not os.path.isdir(variant_path):
-                continue
-            for fname in os.listdir(variant_path):
-                if fname.startswith("HITS_") and fname.endswith(".bin"):
-                    return True
-    return False
-
-
-def list_constellation_hits(portal_folder, base_exponent):
-    """Returns [(pattern_dict, path, header_or_None), ...] for every catalog pattern that
-    has an existing hit file for this floor (i.e. constellation_finder_v1 has found at
-    least one match), sorted by (k, id)."""
-    entries = []
-    for pattern in sorted(pattern_catalog_v1.PATTERN_CATALOG, key=lambda w: (w["k"], w["id"])):
-        path = hit_file_path(portal_folder, base_exponent, pattern["k"], pattern["id"])
-        if not os.path.exists(path):
-            continue
-        try:
-            header = prime_sieve_v1.read_prime_window_header(path)
-        except Exception:
-            header = None
-        entries.append((pattern, path, header))
-    return entries
-
-
-def group_constellation_hits_by_k(entries):
-    """Groups list_constellation_hits()'s flat (pattern, path, header) list into
-    [(k, k_total, [(pattern, path, header), ...]), ...] sorted ascending by k -- fills in
-    the "how many k-tuples do I have in total for this k" figure that the tree's per-variant
-    hit counts alone don't show (e.g. k=7 v=1: 136, k=7 v=2: 131, but never their sum).
-    Cheap by construction -- the pattern catalog itself is
-    small (currently 48 entries across all k), so list_constellation_hits() already reads
-    every existing hit file's header for a floor in one shot; this just re-groups that
-    already-fetched data, no extra I/O. Rows with header=None (corrupt/unreadable hit file)
-    count as 0 toward k_total rather than breaking the sum."""
-    groups = {}
-    for pattern, path, header in entries:
-        k = pattern["k"]
-        groups.setdefault(k, []).append((pattern, path, header))
-    result = []
-    for k in sorted(groups):
-        variants = groups[k]
-        k_total = sum(header["count"] for _pattern, _path, header in variants if header is not None)
-        result.append((k, k_total, variants))
-    return result
-
-
-def build_constellation_records_table(portal_folder, k, floor_min=None, floor_max=None):
-    """Scans the user's OWN storage (constellations/k{k}/variant{id}/HITS_....bin -- NOT
-    pzktupel.de) for every floor that has at least one hit file for pattern `k`, building
-    a pzktupel.de-style exp x variant table: for each floor and each of k's catalog
-    variants, the SMALLEST offset above that floor's own 10**base_exponent found among
-    this project's own hits so far (hit files store sorted ascending starting values --
-    see constellation_finder_v1.py's own module header -- so the smallest is simply the
-    first stored value, no need to read/compare the whole file by hand).
-
-    `floor_min`/`floor_max` (both optional, inclusive): scope the scan to a specific
-    piętro/floor range instead of every floor in storage. Added because a project with
-    many populated floors makes the unscoped table both slow to build and noisy to read
-    (mostly "-" cells for floors the user isn't currently interested in) -- passing
-    bounds lets the caller match the curated exp range pzktupel.de's own reference
-    tables show (e.g. only exp 10..19) instead of dumping the whole storage. None means
-    unbounded on that side, matching the pre-existing (pre-filter) behaviour when both
-    are omitted.
-
-    `is_record_floor` flags a cell whose floor happens to equal the pzktupel.de catalog's
-    own record_digits - 1 (a D-digit record lives in floor D-1, since floor N holds
-    [10**N, 10**(N+1))) -- this is a same-floor COINCIDENCE flag, not a verified match:
-    the catalog only stores the record holder's digit count, not its exact offset, so
-    there's no way to confirm this project's own find is the SAME number as the cited
-    record without that offset. Still useful context (a hit on that exact floor is
-    exactly where pzktupel.de's own record-holder would live), so it's surfaced as
-    `pattern_meta[vid]` (discoverer/date/record_digits) for the caller to display
-    alongside the flag rather than making a claim this function can't back up.
-
-    Returns (variant_ids, variant_meta, rows):
-      variant_ids: this k's catalog ids in order (column order for a table/tree/export)
-      variant_meta: {id: pattern_dict} (offsets/record_digits/discoverer/date)
-      rows: [{"base_exponent": int, "cells": {id: cell_or_None}}, ...] sorted ascending
-            by base_exponent, one row per floor (within [floor_min, floor_max] when
-            given) that has AT LEAST ONE hit for this k (floors with zero hits for k,
-            even if they have hits for some OTHER k, are skipped -- nothing to show).
-            cell_or_None is None when this floor has no hit file for that particular
-            variant, else {"offset": int, "count": int, "is_record_floor": bool}.
-
-    Pure function (no tkinter), reusing list_pietra()/floor_has_constellation_hits()/
-    hit_file_path() exactly as reload_constellations_tree() already does, so this is
-    consistent with (and no more expensive than) the existing storage browser -- the one
-    added cost is prime_sieve_v1.read_prime_window() per (floor, variant) that actually
-    has a hit file, to get that file's first (smallest) stored value."""
-    variants = pattern_catalog_v1.patterns_for_k(k)
-    variant_ids = [w["id"] for w in variants]
-    variant_meta = {w["id"]: w for w in variants}
-    rows = []
-    for base_exponent in list_pietra(portal_folder):
-        if floor_min is not None and base_exponent < floor_min:
-            continue
-        if floor_max is not None and base_exponent > floor_max:
-            continue
-        if not floor_has_constellation_hits(portal_folder, base_exponent):
-            continue
-        cells = {}
-        any_hit = False
-        for vid in variant_ids:
-            path = hit_file_path(portal_folder, base_exponent, k, vid)
-            cell = None
-            if os.path.exists(path):
-                try:
-                    values = prime_sieve_v1.read_prime_window(path)
-                except Exception:
-                    values = []
-                if values:
-                    smallest = values[0]
-                    offset = smallest - 10 ** base_exponent
-                    record_digits = variant_meta[vid]["record_digits"]
-                    is_record_floor = (record_digits is not None
-                                        and base_exponent == record_digits - 1)
-                    cell = {"offset": offset, "count": len(values),
-                            "is_record_floor": is_record_floor}
-                    any_hit = True
-            cells[vid] = cell
-        if any_hit:
-            rows.append({"base_exponent": base_exponent, "cells": cells})
-    return variant_ids, variant_meta, rows
-
-
-def build_constellation_records_detail_rows(portal_folder, k, floor_min=None, floor_max=None):
-    """Full-detail companion to build_constellation_records_table(): instead of just the
-    smallest offset per (floor, variant) cell, returns ONE row per individual hit --
-    every tuple-start value found in every hit file for `k` within the given floor
-    range, not only the record-setting smallest one. Same floor_min/floor_max
-    semantics (inclusive, None = unbounded) as build_constellation_records_table().
-
-    Added for the PDF/CSV export buttons specifically (user request: the exported
-    file should contain every hit this project has found for the currently displayed
-    floor range, not just the compact one-cell-per-floor summary) -- the on-screen
-    tree keeps showing the compact view (see build_constellation_records_table()'s own
-    docstring for why that's the right shape for browsing), and
-    _on_const_records_cell_activate() gives the same full list on-demand for a single
-    cell inside the GUI itself without needing an export.
-
-    Returns (variant_ids, variant_meta, rows):
-      rows: [{"base_exponent": int, "variant_id": int, "offset": int, "number": int,
-              "position_in_file": int, "count_in_file": int, "is_record_floor": bool},
-             ...] sorted by (base_exponent, variant_id, offset) ascending -- offset
-      ascending is automatic since hit files store values sorted ascending (see
-      constellation_finder_v1.py's own module header) and offset = number - floor's
-      10**base_exponent preserves that ordering.
-
-    Can read a LOT of data for a long-running project (every hit, not just one per
-    cell) -- callers should keep this off the GUI thread, same as
-    build_constellation_records_table()."""
-    variants = pattern_catalog_v1.patterns_for_k(k)
-    variant_ids = [w["id"] for w in variants]
-    variant_meta = {w["id"]: w for w in variants}
-    rows = []
-    for base_exponent in list_pietra(portal_folder):
-        if floor_min is not None and base_exponent < floor_min:
-            continue
-        if floor_max is not None and base_exponent > floor_max:
-            continue
-        if not floor_has_constellation_hits(portal_folder, base_exponent):
-            continue
-        base = 10 ** base_exponent
-        for vid in variant_ids:
-            path = hit_file_path(portal_folder, base_exponent, k, vid)
-            if not os.path.exists(path):
-                continue
-            try:
-                values = prime_sieve_v1.read_prime_window(path)
-            except Exception:
-                values = []
-            record_digits = variant_meta[vid]["record_digits"]
-            is_record_floor = (record_digits is not None
-                                and base_exponent == record_digits - 1)
-            for position, value in enumerate(values):
-                rows.append({
-                    "base_exponent": base_exponent, "variant_id": vid,
-                    "offset": value - base, "number": value,
-                    "position_in_file": position, "count_in_file": len(values),
-                    "is_record_floor": is_record_floor,
-                })
-    return variant_ids, variant_meta, rows
-
-
-def render_constellation_records_pdf(path, k, fieldnames, rows, translator=None):
-    """Writes a standalone PDF report of one k's records table (see
-    build_constellation_records_table()) to `path` -- same low-level PDF-writing
-    machinery (_write_pdf/_pdf_text_op/_pdf_rect_op, cell-truncation table layout) as
-    render_benchmark_pdf(), just without a chart (this table has no time-series data to
-    plot) and with a dynamic column count (1 + however many catalog variants k has,
-    instead of a fixed benchmark_log.csv column set). `fieldnames`/`rows` are plain
-    dicts, same shape render_benchmark_pdf() takes, built by the GUI layer
-    (_export_const_records_pdf) from the last computed records table -- pure function
-    (no tkinter), exercisable directly without a display.
-
-    translator (optional): a primeatlas.i18n.Translator instance, for the title/subtitle/
-    continuation-page chrome -- defaults to DEFAULT_LANGUAGE if not given, same as
-    render_benchmark_pdf()."""
-    t = (translator or Translator(DEFAULT_LANGUAGE)).t
-    page_w, page_h = 841.89, 595.28  # A4 landscape, points -- same as render_benchmark_pdf
-    margin = 30
-    content_left = margin
-    content_width = page_w - 2 * margin
-    content_top = page_h - margin
-    content_bottom = margin
-
-    font_size = 8
-    row_h = 14
-    header_h = 16
-    n_cols = max(1, len(fieldnames))
-    col_w = content_width / n_cols
-    max_chars = max(3, int(col_w / (0.6 * font_size)))
-
-    def cell_text(value):
-        s = "" if value is None else str(value)
-        if len(s) > max_chars:
-            s = s[:max(0, max_chars - 3)] + "..."
-        return s
-
-    def draw_table_header(ops, y_top):
-        ops.append(_pdf_rect_op(content_left, y_top - header_h, content_width, header_h,
-                                 fill_rgb=(0.90, 0.90, 0.90)))
-        for i, name in enumerate(fieldnames):
-            ops.append(_pdf_text_op(content_left + i * col_w + 2, y_top - header_h + 4,
-                                     font_size, "Helvetica-Bold", cell_text(name)))
-        return y_top - header_h
-
-    def draw_table_rows(ops, y_top, row_slice):
-        y = y_top
-        for row in row_slice:
-            for i, name in enumerate(fieldnames):
-                ops.append(_pdf_text_op(content_left + i * col_w + 2, y - row_h + 4,
-                                         font_size, "Courier", cell_text(row.get(name, ""))))
-            y -= row_h
-        return y
-
-    pages = []
-    ops = []
-    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    ops.append(_pdf_text_op(content_left, content_top - 14, 14, "Helvetica-Bold",
-                             _pdf_ascii_fold(t("const_records.pdf_title", k=k))))
-    ops.append(_pdf_text_op(content_left, content_top - 30, 9, "Helvetica",
-                             _pdf_ascii_fold(t("const_records.pdf_subtitle", now=now_str,
-                                               rows=len(rows)))))
-    table_top = content_top - 46
-    y_after_header = draw_table_header(ops, table_top)
-    available = y_after_header - content_bottom
-    rows_fit = max(0, int(available // row_h))
-    draw_table_rows(ops, y_after_header, rows[:rows_fit])
-    pages.append(ops)
-
-    remaining = rows[rows_fit:]
-    page_num = 2
-    while remaining:
-        ops = []
-        ops.append(_pdf_text_op(content_left, content_top - 12, 10, "Helvetica-Bold",
-                                 _pdf_ascii_fold(t("const_records.pdf_continued", page=page_num))))
-        table_top = content_top - 22
-        y_after_header = draw_table_header(ops, table_top)
-        available = y_after_header - content_bottom
-        rows_fit = max(1, int(available // row_h))
-        chunk = remaining[:rows_fit]
-        draw_table_rows(ops, y_after_header, chunk)
-        pages.append(ops)
-        remaining = remaining[len(chunk):]
-        page_num += 1
-
-    _write_pdf(path, pages, page_size=(page_w, page_h))
-
-
-# format_big_int moved to primeatlas/storage.py during the refactor branch's Faza 3
-# (2026-08-23), alongside the "Prime numbers" tab's own UI split -- see that module's own
-# docstring. Imported back at this file's top.
-
-# _DECIMAL_COMMA_RE/_normalize_decimal_commas/read_benchmark_log/aggregate_benchmark_growth/
-# aggregate_benchmark_fair_spw/aggregate_benchmark_sieve_nps/aggregate_benchmark_write_mbps
-# moved to primeatlas/benchmark.py during the refactor branch's Faza 3 (2026-08-23) -- see
-# that module's own docstring. read_benchmark_log is imported back at this file's top (used
-# by reload_primes_tree()'s own _primes_tree_scan below); the rest are only used by the
-# (now separate) Benchmark tab, see primeatlas/benchmark_tab.py.
-
-
-# format_duration/format_bytes/aggregate_write_seconds_by_pietro moved to
-# primeatlas/storage.py during the refactor branch's Faza 3 (2026-08-23), alongside the
-# "Prime numbers" tab's own UI split -- see that module's own docstring. Imported back at
-# this file's top.
-
-# group_benchmark_rows_by_pietro/benchmark_row_stats moved to primeatlas/benchmark.py during
-# the refactor branch's Faza 3 (2026-08-23) -- see that module's own docstring. Only used by
-# the (now separate) Benchmark tab, see primeatlas/benchmark_tab.py.
-
-
-# The hand-rolled PDF writer (_pdf_escape/_PDF_ASCII_FOLD_MAP/_pdf_ascii_fold/_pdf_text_op/
-# _pdf_line_op/_pdf_rect_op/_pdf_dot_op/_write_pdf) moved to primeatlas/pdf_writer.py during
-# the refactor branch's Faza 3 (2026-08-23) -- it was already shared by TWO renderers
-# (render_constellation_records_pdf below, and render_benchmark_pdf, moved alongside
-# _pdf_chart_ops to primeatlas/benchmark.py) before the split, so it gets its own module
-# instead of living inside either one -- see that module's own docstring. The three names
-# render_constellation_records_pdf below still needs (_pdf_ascii_fold/_pdf_rect_op/
-# _pdf_text_op/_write_pdf) are imported back at this file's top.
-
-
-# digit_count_floor moved to primeatlas/storage.py during the refactor branch's Faza 3
-# (2026-08-23), alongside the "Prime numbers" tab's own UI split -- see that module's own
-# docstring. Imported back at this file's top.
-
+# _eval_quick_number/_round_range_to_window/_floor_window_count are general-
+# purpose helpers (used by the Quick generation panel, primesieve calculator, Testy
+# pierwszosci, and the Kalkulator konstelacji tab) that happened to sit textually
+# between render_constellation_records_pdf and find_constellation_participation
+# before the move above -- restored here unchanged, they were never Constellations-
+# specific.
 
 def _eval_quick_number(raw):
     """Best-effort parse of a Python-expression-style number (e.g. "10**5") -- shared by
@@ -892,64 +583,6 @@ def _floor_window_count(base_power, window=QUICK_GEN_MAX_WINDOW_WIDTH):
     return (9 * 10 ** base_power) // window
 
 
-# _read_base_prime/find_prime_in_floor moved to primeatlas/storage.py during the refactor
-# branch's Faza 3 (2026-08-23), alongside the "Prime numbers" tab's own UI split -- see
-# that module's own docstring. find_prime_in_floor is imported back at this file's top
-# (used by the shared search worker's _search_job, still here, for both "prime" and
-# "const" search kinds).
-
-
-def find_constellation_participation(portal_folder, base_exponent, number, hit_set_cache=None,
-                                      progress_callback=None):
-    """For every catalog pattern with an existing hit file at this floor, checks whether
-    `number` participates in any recorded hit -- either as the BASE (offset +0) or as any
-    other fixed-offset member (base = number - offset). A number can legitimately show up
-    in more than one pattern at once (e.g. any k=4 hit's base is also, by construction, a
-    k=3 and k=2 hit's base -- sub-tuples of a longer pattern), so this returns every match,
-    not just the first.
-
-    `hit_set_cache`, if given, is a dict keyed by (base_exponent, k, id) -> set of decoded
-    starting values; reused across repeated searches in the same session so each hit file
-    is only decoded once rather than on every search.
-
-    `progress_callback(done, total)`, if given, is called once per pattern AFTER it's been
-    processed (whether that meant a fresh, potentially slow prime_sieve_v1.read_prime_window()
-    decode or a cache hit) -- a floor's FIRST-ever constellation search can decode dozens
-    of full hit files synchronously (nothing cached yet), which is the actual slow part of
-    this feature (find_prime_in_floor's own binary search is fast in comparison -- see
-    that function's docstring). The GUI thread never
-    calls this directly anymore; prime_atlas_v1's _search_job does, off the main
-    thread (via a PersistentWorker, see primeatlas/background.py), and turns each
-    progress_callback invocation into a report_progress() call that drives the shared
-    status/progress bar (see _on_search_worker_progress).
-
-    Returns a list of dicts: {pattern, offset, position, base} (position is 0-indexed --
-    0 means "this IS the base of the tuple").
-    """
-    if hit_set_cache is None:
-        hit_set_cache = {}
-    entries = list_constellation_hits(portal_folder, base_exponent)
-    total = len(entries)
-    results = []
-    for done, (pattern, path, header) in enumerate(entries, start=1):
-        if header is None or header.get("count", 0) == 0:
-            if progress_callback is not None:
-                progress_callback(done, total)
-            continue
-        key = (base_exponent, pattern["k"], pattern["id"])
-        if key not in hit_set_cache:
-            try:
-                hit_set_cache[key] = set(prime_sieve_v1.read_prime_window(path))
-            except Exception:
-                hit_set_cache[key] = set()
-        starts = hit_set_cache[key]
-        for position, offset in enumerate(pattern["offsets"]):
-            base = number - offset
-            if base in starts:
-                results.append({"pattern": pattern, "offset": offset, "position": position, "base": base})
-        if progress_callback is not None:
-            progress_callback(done, total)
-    return results
 
 
 # ------------------------------------------------------------------------------------------
@@ -2069,13 +1702,11 @@ def _build_gui():
             self._goldbach_decompose_last_result = None
 
             # Constellation-records-table scan worker (Constellations -> Tabela rekordow
-            # sub-tab, Faza 4): own PersistentWorker for the same reason as every other
-            # worker above (unrelated result shape -- a whole records table, not a
-            # single value). Last of the six original hand-rolled worker-thread patterns
-            # to move onto background.PersistentWorker (Faza 1 of the refactor branch).
-            self._const_records_busy = False
-            self._const_records_worker = background.PersistentWorker(
-                self, self._const_records_job, on_result=self._on_const_records_worker_result)
+            # sub-tab) used to live here as its own PersistentWorker -- moved FULLY into
+            # ConstellationsRecordsTab itself during the refactor branch's Faza 3
+            # (2026-08-23), since it's confirmed exclusive to that one sub-tab (unlike the
+            # shared search/totals workers below, which stay here) -- see
+            # primeatlas/constellations_records_tab.py's own docstring.
 
             # "Generate missing fragment, then re-search" state -- set by
             # _offer_generate_missing_prime_window()/_offer_generate_missing_constellation()
@@ -2990,7 +2621,7 @@ def _build_gui():
             self._loop_runner."""
             self._search_busy = True
             self.primes_tab_widget.search_button.configure(state="disabled")
-            self.hits_search_button.configure(state="disabled")
+            self.constellations_hits_tab_widget.hits_search_button.configure(state="disabled")
             self.totals_progress.stop()
             self.totals_progress.configure(mode="indeterminate")
             self.totals_progress.start(80)
@@ -3003,12 +2634,13 @@ def _build_gui():
 
         def _search_job(self, job, report_progress):
             """Runs on PersistentWorker's own daemon thread. While a "const" job is in
-            flight, this thread is ALSO the sole owner of self._hit_set_cache (the GUI
-            thread never mutates it directly anymore, only reads the finished
-            participation list handed back via the result) -- _search_busy blocking new
-            searches from the GUI side means only one job is ever in flight, so this
-            never races against itself. Catches its own exceptions (see PersistentWorker's
-            docstring for why) so the error can still be tagged with the right kind."""
+            flight, this thread is ALSO the sole owner of
+            self.constellations_hits_tab_widget.hit_set_cache (the GUI thread never
+            mutates it directly anymore, only reads the finished participation list
+            handed back via the result) -- _search_busy blocking new searches from the
+            GUI side means only one job is ever in flight, so this never races against
+            itself. Catches its own exceptions (see PersistentWorker's docstring for
+            why) so the error can still be tagged with the right kind."""
             kind = job["kind"]
             base_exponent = job["base_exponent"]
             number = job["number"]
@@ -3025,7 +2657,8 @@ def _build_gui():
                         report_progress(("const_progress", done, total))
 
                     participation = find_constellation_participation(
-                        PORTAL_FOLDER, base_exponent, number, self._hit_set_cache,
+                        PORTAL_FOLDER, base_exponent, number,
+                        self.constellations_hits_tab_widget.hit_set_cache,
                         progress_callback=_progress)
                     return ("const_done", base_exponent, number, prime_result, participation)
             except Exception as e:  # noqa: BLE001 -- must never kill the worker thread
@@ -3067,7 +2700,7 @@ def _build_gui():
         def _finish_search_job(self):
             self._search_busy = False
             self.primes_tab_widget.search_button.configure(state="normal")
-            self.hits_search_button.configure(state="normal")
+            self.constellations_hits_tab_widget.hits_search_button.configure(state="normal")
             self.totals_progress.stop()
             # Same "reset back to the empty 0/1 state" reasoning as
             # _on_pietro_total_ready's grand-total completion branch -- a bar left sitting
@@ -3169,8 +2802,8 @@ def _build_gui():
             in the catalog) first, to distinguish the second case from genuine
             non-participation, before calling this.
 
-            The second caller, _on_const_calc_search_selected() (Kalkulator konstelacji),
-            checks something more specific instead: whether the ONE pattern it's asking
+            The second caller, ConstellationsCalcTab.search_selected() (Kalkulator
+            konstelacji), checks something more specific instead: whether the ONE pattern it's asking
             about has a hit file yet, regardless of whether other patterns already do --
             list_constellation_hits()'s "nothing at all" check would stay silent in
             that case even though this exact pattern was never confirmed either way
@@ -3210,16 +2843,28 @@ def _build_gui():
         # --- Tab 2: Constellations (constellation hits) ---------------------------------
 
         def _build_constellations_section(self):
-            """Same nested-notebook pattern as _build_primes_section() (see that method's
-            own docstring for the full rationale) -- 'Magazyn' (Storage) holds exactly
-            what this whole tab used to be (the hit-file browser + search, built by
-            _build_constellations_tab() below, unchanged apart from its parent frame now
-            being self.constellations_storage_tab), alongside two new sibling tabs later
-            phases fill in: self.constellations_calculator_tab ('Kalkulator konstelacji'
-            -- pick a k-tuple pattern from pattern_catalog_v1.py + an exp/Offset pair,
-            Atlas computes the full k numbers and offers to search for them) and
-            self.constellations_records_tab (a pzktupel.de-style exp x variant table
-            built from the user's OWN storage, exportable to PDF+CSV)."""
+            """Thin wrapper -- all three of the Constellations tab's actual widgets/logic
+            live in primeatlas/constellations_hits_tab.py (ConstellationsHitsTab, the
+            "Magazyn" sub-tab), primeatlas/constellations_calc_tab.py
+            (ConstellationsCalcTab, "Kalkulator konstelacji"), and
+            primeatlas/constellations_records_tab.py (ConstellationsRecordsTab, "Tabela
+            rekordow") -- Faza 3 of the refactor branch, tab-by-tab backend/UI split,
+            2026-08-23; see each module's own docstring. Local imports, not module-level,
+            for the same lazy-tkinter-import reason SettingsTab/BenchmarkTab/PrimesTab are
+            imported inside their own _build_*_tab() methods rather than at this file's
+            top.
+
+            Construction order below doesn't matter for any of the deferred-lambda
+            callables passed in -- none of them are resolved until actually CALLED, so
+            it's safe for the calculator/records tabs to reference
+            self.constellations_hits_tab_widget even though it's constructed first, and
+            safe for anything to reference either sibling regardless of build order (see
+            primeatlas/primes_tab.py's own docstring for the general construction-order
+            hazard this avoids)."""
+            from primeatlas.constellations_hits_tab import ConstellationsHitsTab
+            from primeatlas.constellations_calc_tab import ConstellationsCalcTab
+            from primeatlas.constellations_records_tab import ConstellationsRecordsTab
+
             sub = ttk.Notebook(self.constellations_tab)
             sub.pack(fill="both", expand=True)
             # Saved for the same reason as self.primes_sub_notebook -- the constellation
@@ -3232,949 +2877,59 @@ def _build_gui():
             sub.add(self.constellations_storage_tab, text=T("tabs.constellations_storage"))
             sub.add(self.constellations_calculator_tab, text=T("tabs.constellations_calculator"))
             sub.add(self.constellations_records_tab, text=T("tabs.constellations_records"))
-            self._build_constellations_tab()
-            self._build_constellations_calculator_tab()
-            self._build_constellations_records_tab()
 
-        def _build_constellations_calculator_tab(self):
-            """Kalkulator konstelacji -- pick a k-tuple pattern from pattern_catalog_v1.py
-            (k dropdown -> variant dropdown, showing that variant's offsets plus its
-            pzktupel.de record info when tracked), enter exp/Offset, and Atlas computes
-            N = 10**exp + Offset plus every N + offset_i for the pattern -- shown in a
-            results table (not yet checked for primality; this is pure arithmetic, no
-            file I/O, so it's instant even for a large exp).
+            self.constellations_hits_tab_widget = ConstellationsHitsTab(
+                self.constellations_storage_tab,
+                get_portal_folder=lambda: PORTAL_FOLDER, status_var=self.status,
+                translator=TRANSLATOR, update_nav_controls=_update_nav_controls,
+                render_page=_render_page, page_size=PAGE_SIZE,
+                reload_constellations_tree=self.reload_constellations_tree,
+                start_search_job=self._start_search_job,
+                is_search_busy=lambda: self._search_busy,
+                offer_generate_missing_prime_window=lambda be, num:
+                    self._offer_generate_missing_prime_window("const", be, num))
+            self.constellations_hits_tab_widget.pack(fill="both", expand=True)
 
-            The Search button does NOT re-implement search itself -- it reuses the
-            EXISTING "Constellations -> Magazyn" search box (self.hits_search_entry /
-            self._search_constellation(), see _on_const_calc_search_selected()) against
-            whichever row is currently selected, since that search already covers BOTH
-            things the calculator needs to verify: is this number prime at all (offering
-            to generate the missing prime window if not -- see
-            _offer_generate_missing_prime_window()) AND does it actually participate in
-            a tracked constellation pattern (offering to run constellation_finder_v1.py
-            if the floor has genuinely never been scanned -- see
-            _offer_generate_missing_constellation()). Searching all k numbers
-            automatically in one click was considered (matching the literal "one button
-            searches every number" framing this feature was requested with) but
-            rejected: that search path already has its own async worker-thread +
-            generate-offer-dialog state machine, and chaining K of those end-to-end
-            would mean either blocking synchronously (defeating the point of the worker
-            thread) or bolting a second layer of completion-callback state onto an
-            already-intricate flow. One-row-at-a-time keeps every existing code path
-            untouched and lets the user see each result (or generate-offer dialog)
-            before deciding whether to search the next number.
+            self.constellations_calc_tab_widget = ConstellationsCalcTab(
+                self.constellations_calculator_tab, translator=TRANSLATOR,
+                eval_quick_number=_eval_quick_number, get_portal_folder=lambda: PORTAL_FOLDER,
+                select_hits_view=self._select_constellations_hits_view,
+                set_hits_search_query=lambda number:
+                    self.constellations_hits_tab_widget.set_search_query(number),
+                trigger_hits_search=lambda:
+                    self.constellations_hits_tab_widget.search_constellation(),
+                offer_generate_missing_constellation=self._offer_generate_missing_constellation)
+            self.constellations_calc_tab_widget.pack(fill="both", expand=True)
 
-            _on_const_calc_search_selected() ALSO does one thing beyond a plain
-            self._search_constellation() call: since the calculator already knows
-            EXACTLY which catalog pattern (k, variant id) this number was computed for
-            (unlike the generic search box, which has no target pattern in mind), it (1)
-            proactively checks whether THAT SPECIFIC pattern already has a hit file for
-            this floor -- list_constellation_hits() empty-floor check the generic search
-            box relies on (see _on_const_search_result()) stays silent whenever the
-            floor already has hits for some OTHER pattern, which is exactly the gap a
-            calculator search into an already-partially-scanned floor would otherwise
-            fall into -- and offers to generate if not; and (2), once the search
-            actually completes, auto-navigates the Magazyn tree straight to that
-            specific (k, variant) node and jumps the preview to this exact number (see
-            _select_hits_pattern_in_tree()/_jump_hits_preview_to_row(), the same helpers
-            double-clicking a search result row already uses) instead of leaving the
-            user to find it themselves among however many patterns the participation
-            list turned up."""
-            container = ttk.Frame(self.constellations_calculator_tab)
-            container.pack(fill="both", expand=True, padx=12, pady=12)
+            self.constellations_records_tab_widget = ConstellationsRecordsTab(
+                self.constellations_records_tab, get_portal_folder=lambda: PORTAL_FOLDER,
+                status_var=self.status, translator=TRANSLATOR,
+                update_nav_controls=_update_nav_controls, render_page=_render_page,
+                page_size=PAGE_SIZE, eval_quick_number=_eval_quick_number,
+                totals_progress=self.totals_progress)
+            self.constellations_records_tab_widget.bind_jump_to_hits(
+                self._jump_records_detail_to_hits)
+            self.constellations_records_tab_widget.pack(fill="both", expand=True)
 
-            pattern_row = ttk.Frame(container)
-            pattern_row.pack(fill="x", pady=(0, 8))
-            ttk.Label(pattern_row, text=T("const_calc.field_k")).pack(side="left")
-            self._const_calc_k_values = pattern_catalog_v1.all_k()
-            self.const_calc_k_combo = ttk.Combobox(
-                pattern_row, state="readonly", width=6,
-                values=[str(k) for k in self._const_calc_k_values])
-            self.const_calc_k_combo.pack(side="left", padx=(6, 16))
-            self.const_calc_k_combo.bind("<<ComboboxSelected>>", self._on_const_calc_k_changed)
-
-            ttk.Label(pattern_row, text=T("const_calc.field_variant")).pack(side="left")
-            self._const_calc_variants = []
-            self.const_calc_variant_combo = ttk.Combobox(pattern_row, state="readonly", width=10)
-            self.const_calc_variant_combo.pack(side="left", padx=(6, 0))
-            self.const_calc_variant_combo.bind(
-                "<<ComboboxSelected>>", self._on_const_calc_variant_changed)
-
-            self.const_calc_pattern_info_var = tk.StringVar(value="")
-            ttk.Label(container, textvariable=self.const_calc_pattern_info_var,
-                      wraplength=760, justify="left", foreground="#555").pack(
-                anchor="w", pady=(0, 8))
-
-            input_row = ttk.Frame(container)
-            input_row.pack(fill="x", pady=(0, 8))
-            ttk.Label(input_row, text=T("const_calc.field_exp")).pack(side="left")
-            self.const_calc_exp_entry = ttk.Entry(input_row, width=10)
-            self.const_calc_exp_entry.pack(side="left", padx=(6, 16))
-            ttk.Label(input_row, text=T("const_calc.field_offset")).pack(side="left")
-            self.const_calc_offset_entry = ttk.Entry(input_row, width=24)
-            self.const_calc_offset_entry.pack(side="left", padx=(6, 16))
-            self.const_calc_compute_button = ttk.Button(
-                input_row, text=T("const_calc.compute_button"),
-                command=self._on_const_calc_compute)
-            self.const_calc_compute_button.pack(side="left")
-
-            tree_frame = ttk.Frame(container)
-            tree_frame.pack(fill="both", expand=True, pady=(0, 8))
-            self.const_calc_results_tree = ttk.Treeview(
-                tree_frame, columns=("offset", "number"), show="headings",
-                height=10, selectmode="browse")
-            self.const_calc_results_tree.heading("offset", text=T("const_calc.col_offset"))
-            self.const_calc_results_tree.heading("number", text=T("const_calc.col_number"))
-            self.const_calc_results_tree.column("offset", width=90, anchor="e")
-            self.const_calc_results_tree.column("number", width=440, anchor="w")
-            self.const_calc_results_tree.pack(side="left", fill="both", expand=True)
-            cvsb = ttk.Scrollbar(
-                tree_frame, orient="vertical", command=self.const_calc_results_tree.yview)
-            self.const_calc_results_tree.configure(yscrollcommand=cvsb.set)
-            cvsb.pack(side="left", fill="y")
-
-            self.const_calc_search_button = ttk.Button(
-                container, text=T("const_calc.search_button"),
-                command=self._on_const_calc_search_selected, state="disabled")
-            self.const_calc_search_button.pack(anchor="w")
-
-            self._const_calc_numbers = []  # [(offset, number), ...], same order as the tree
-            self._const_calc_active_pattern = None  # the exact pattern dict last used by
-                                                      # _on_const_calc_compute() -- read by
-                                                      # _on_const_calc_search_selected() so a
-                                                      # variant-combo change AFTER computing
-                                                      # doesn't retroactively change what a
-                                                      # search believes it's looking for
-            self._const_calc_pending = None  # {"base_exponent", "number", "pattern"} while
-                                              # a calculator-initiated search is in flight --
-                                              # consumed by _on_const_search_result() to
-                                              # auto-navigate to the right variant once done
-            if self._const_calc_k_values:
-                self.const_calc_k_combo.current(0)
-                self._on_const_calc_k_changed()
-
-        def _on_const_calc_k_changed(self, _event=None):
-            k_str = self.const_calc_k_combo.get()
-            if not k_str:
-                return
-            self._const_calc_variants = pattern_catalog_v1.patterns_for_k(int(k_str))
-            self.const_calc_variant_combo.configure(
-                values=[T("const_calc.variant_label", id=w["id"])
-                        for w in self._const_calc_variants])
-            if self._const_calc_variants:
-                self.const_calc_variant_combo.current(0)
-            else:
-                self.const_calc_variant_combo.set("")
-            self._on_const_calc_variant_changed()
-
-        def _on_const_calc_variant_changed(self, _event=None):
-            idx = self.const_calc_variant_combo.current()
-            if idx < 0 or idx >= len(self._const_calc_variants):
-                self.const_calc_pattern_info_var.set("")
-                return
-            w = self._const_calc_variants[idx]
-            offsets_str = ", ".join(str(o) for o in w["offsets"])
-            if w["record_digits"] is not None:
-                self.const_calc_pattern_info_var.set(T(
-                    "const_calc.pattern_info", offsets=offsets_str,
-                    record_digits=w["record_digits"], discoverer=w["discoverer"],
-                    date=w["date"]))
-            else:
-                self.const_calc_pattern_info_var.set(
-                    T("const_calc.pattern_info_untracked", offsets=offsets_str))
-
-        def _on_const_calc_compute(self):
-            idx = self.const_calc_variant_combo.current()
-            if idx < 0 or idx >= len(self._const_calc_variants):
-                messagebox.showerror(
-                    T("const_calc.error_dialog_title"), T("const_calc.error_no_pattern"))
-                return
-            pattern = self._const_calc_variants[idx]
-            offsets = pattern["offsets"]
-            exp = _eval_quick_number(self.const_calc_exp_entry.get())
-            if exp is None or exp < 0:
-                messagebox.showerror(
-                    T("const_calc.error_dialog_title"), T("const_calc.error_exp_invalid"))
-                return
-            offset_raw = self.const_calc_offset_entry.get().strip()
-            base_offset = _eval_quick_number(offset_raw) if offset_raw else 0
-            if base_offset is None or base_offset < 0:
-                messagebox.showerror(
-                    T("const_calc.error_dialog_title"), T("const_calc.error_offset_invalid"))
-                return
-            n0 = 10 ** exp + base_offset
-            self._const_calc_active_pattern = pattern
-            self._const_calc_numbers = [(d, n0 + d) for d in offsets]
-            self.const_calc_results_tree.delete(*self.const_calc_results_tree.get_children())
-            for d, n in self._const_calc_numbers:
-                self.const_calc_results_tree.insert("", "end", values=(f"+{d}", f"{n:,}"))
-            self.const_calc_search_button.configure(
-                state="normal" if self._const_calc_numbers else "disabled")
-
-        def _on_const_calc_search_selected(self):
-            sel = self.const_calc_results_tree.selection()
-            if not sel:
-                messagebox.showinfo(
-                    T("const_calc.error_dialog_title"), T("const_calc.error_select_row_first"))
-                return
-            idx = self.const_calc_results_tree.index(sel[0])
-            if (idx < 0 or idx >= len(self._const_calc_numbers)
-                    or self._const_calc_active_pattern is None):
-                return
-            _offset, number = self._const_calc_numbers[idx]
-            pattern = self._const_calc_active_pattern
-            base_exponent = digit_count_floor(number)
-
-            # Switch to Constellations -> Magazyn up front, before any dialog fires, so
-            # generate-offer confirmations and the eventual result both land where the
-            # user is already looking rather than behind the still-visible calculator tab.
+        def _select_constellations_hits_view(self):
+            """Switches the main notebook to the Constellations tab AND its own
+            sub-notebook to the Magazyn tab -- injected into ConstellationsCalcTab as
+            select_hits_view (see that class's own docstring) and used directly by
+            _jump_records_detail_to_hits below; app-level because it touches
+            self.main_notebook/self.constellations_sub_notebook, neither of which any one
+            sub-tab has (or should have) direct knowledge of."""
             self.main_notebook.select(self.constellations_tab)
             self.constellations_sub_notebook.select(self.constellations_storage_tab)
-            self.hits_search_entry.delete(0, "end")
-            self.hits_search_entry.insert(0, str(number))
 
-            self._const_calc_pending = {
-                "base_exponent": base_exponent, "number": number, "pattern": pattern}
-
-            if base_exponent in list_pietra(PORTAL_FOLDER):
-                # Floor exists -- but has constellation_finder_v1.py ever recorded hits
-                # for THIS SPECIFIC pattern here? _on_const_search_result()'s own
-                # "offer to generate" check only fires when list_constellation_hits()
-                # is empty -- i.e. NOTHING has ever been scanned for this floor -- which
-                # silently stays quiet whenever the floor already has hits for some
-                # OTHER pattern (e.g. the user already ran the finder here for twin
-                # primes). That's the right level of caution for the generic search box
-                # (it has no specific pattern in mind, so "maybe check everything" isn't
-                # a well-defined offer), but the calculator DOES know exactly which
-                # pattern it's asking about, so it can check precisely instead of
-                # guessing -- closing the gap reported after searching a calculator
-                # number into a floor that had unrelated constellation hits already.
-                has_this_pattern = any(
-                    p["id"] == pattern["id"]
-                    for p, _path, _hdr in list_constellation_hits(PORTAL_FOLDER, base_exponent)
-                    if p["k"] == pattern["k"])
-                if not has_this_pattern and self._offer_generate_missing_constellation(
-                        base_exponent, number):
-                    return  # generation launched -- _on_constellation_finished() re-runs
-                            # the const search once it's done, landing back in
-                            # _on_const_search_result() with self._const_calc_pending
-                            # still set, same as every other path below
-            self._search_constellation()
-
-        def _build_constellations_records_tab(self):
-            """pzktupel.de-style exp x variant records table, but scanning THIS PROJECT'S
-            OWN storage (constellations/k{k}/variant{id}/HITS_....bin) instead of that
-            website -- pick k, click Skanuj, see the smallest offset found so far for
-            each floor x variant combination (build_constellation_records_table() does
-            the actual scan -- see that function's own docstring for the exact
-            semantics, including what the record-floor asterisk does and doesn't claim).
-
-            Double-clicking a cell drills down into the FULL list of hits behind it (all
-            2019 numbers for a "+23,080,007,797 (2019x)" cell, not just the smallest) in
-            the paginated detail panel below the tree -- see
-            _on_const_records_cell_activate(). Same idea as the Constellations tab's own
-            expand-to-preview flow, just inline in this tab instead of a separate
-            navigation step, per user request.
-
-            Export to PDF (render_constellation_records_pdf(), same low-level PDF writer
-            as the Benchmark tab's export) or CSV (plain csv.DictWriter) now pulls the
-            SAME full-detail data as the cell drill-down (one row per individual hit,
-            via build_constellation_records_detail_rows()) rather than the compact
-            on-screen summary -- also per user request ("pełna tabela z wszystkimi
-            elementami"): the summary's smallest-offset-per-cell shape is right for
-            browsing, but not for an exported reference file meant to hold everything
-            found so far. Export always covers the SAME floor range as the currently
-            displayed table (self._const_records_last_floor_bounds, captured at scan
-            time) -- not the live contents of the od/do fields, in case they've been
-            edited since the last Skanuj click.
-
-            Optional "Piętro od/do" fields scope the on-screen scan to a floor range
-            (see build_constellation_records_table()'s own docstring) -- added because
-            an unbounded scan over a storage with many populated floors produces a
-            table that's mostly noise (a wall of "-" cells for floors the user isn't
-            looking at right now), not because the scan itself is too slow to run
-            unbounded.
-
-            Scans AND exports run on the SAME background.PersistentWorker (same shared-
-            worker-thread pattern every job dispatcher in this file uses since Faza 1's
-            background-job consolidation -- see _const_records_job's own docstring),
-            distinguished by a job["mode"] field ("scan" / "export_pdf" / "export_csv")
-            -- reading every hit file in full for an export is more expensive than the
-            summary scan's "just the first value" read, so keeping it off the GUI
-            thread matters even more here."""
-            container = ttk.Frame(self.constellations_records_tab)
-            container.pack(fill="both", expand=True, padx=12, pady=12)
-
-            top_row = ttk.Frame(container)
-            top_row.pack(fill="x", pady=(0, 8))
-            ttk.Label(top_row, text=T("const_records.field_k")).pack(side="left")
-            self.const_records_k_combo = ttk.Combobox(
-                top_row, state="readonly", width=6,
-                values=[str(k) for k in pattern_catalog_v1.all_k()])
-            self.const_records_k_combo.pack(side="left", padx=(6, 16))
-            ttk.Label(top_row, text=T("const_records.field_floor_from")).pack(side="left")
-            self.const_records_floor_from_entry = ttk.Entry(top_row, width=8)
-            self.const_records_floor_from_entry.pack(side="left", padx=(6, 12))
-            ttk.Label(top_row, text=T("const_records.field_floor_to")).pack(side="left")
-            self.const_records_floor_to_entry = ttk.Entry(top_row, width=8)
-            self.const_records_floor_to_entry.pack(side="left", padx=(6, 16))
-            self.const_records_scan_button = ttk.Button(
-                top_row, text=T("const_records.scan_button"),
-                command=self._on_const_records_scan_clicked)
-            self.const_records_scan_button.pack(side="left")
-            self.const_records_export_pdf_button = ttk.Button(
-                top_row, text=T("const_records.export_pdf_button"),
-                command=self._export_const_records_pdf, state="disabled")
-            self.const_records_export_pdf_button.pack(side="left", padx=(16, 0))
-            self.const_records_export_csv_button = ttk.Button(
-                top_row, text=T("const_records.export_csv_button"),
-                command=self._export_const_records_csv, state="disabled")
-            self.const_records_export_csv_button.pack(side="left", padx=(6, 0))
-
-            ttk.Label(container, text=T("const_records.hint"), wraplength=760,
-                      justify="left", foreground="#555").pack(anchor="w", pady=(0, 8))
-
-            # Vertical split: table on top, full-hit-list drill-down for whatever cell
-            # was last double-clicked on the bottom -- same "tree above, detail panel
-            # below" shape as the Constellations tab's own paned view, just stacked
-            # instead of side-by-side since this table's rows are wide but few, while
-            # its drill-down list is narrow but potentially long.
-            #
-            # Plain tk.PanedWindow here, not ttk.Panedwindow (used everywhere else in
-            # this file) -- ttk's sash is a near-invisible 1-2px line on most themes,
-            # which read as "no divider at all, can't resize" (user report). tk's
-            # PanedWindow exposes sashwidth/sashrelief directly, giving an actually
-            # visible grab bar. stretch="never" on the tree pane + a dynamic tree
-            # height (see _rebuild_const_records_tree's row_count param) means the top
-            # pane's natural size already tracks how many floors are in the table
-            # instead of always claiming a fixed block of mostly-empty space; the
-            # detail pane (stretch="always") absorbs any extra space on window resize.
-            # The sash stays fully manually draggable either way.
-            paned = tk.PanedWindow(container, orient="vertical", sashwidth=6,
-                                    sashrelief="raised", sashpad=1, bg="#c8c8c8")
-            paned.pack(fill="both", expand=True)
-
-            self.const_records_tree_frame = ttk.Frame(paned)
-            paned.add(self.const_records_tree_frame, minsize=60, stretch="never")
-            self.const_records_tree = None  # built fresh per scan -- see
-                                             # _rebuild_const_records_tree(), column
-                                             # count depends on how many variants k has
-            self.const_records_tree_vsb = None  # its scrollbars, tracked separately so
-            self.const_records_tree_hsb = None  # they can be destroyed alongside the
-                                                 # tree on rebuild (see that method's
-                                                 # own note)
-            self._const_records_last = None  # (k, variant_ids, variant_meta, rows) from
-                                              # the most recently finished scan -- read by
-                                              # the cell drill-down and both export
-                                              # buttons (for k; rows/variant_ids are the
-                                              # compact summary, NOT what gets exported)
-            self._const_records_last_floor_bounds = (None, None)  # (floor_min, floor_max)
-                                              # used by that same scan -- exports reuse
-                                              # this exact scope rather than re-reading
-                                              # the od/do fields, which may have changed
-                                              # since Skanuj was last clicked
-            self._rebuild_const_records_tree([])
-
-            detail_frame = ttk.Frame(paned)
-            paned.add(detail_frame, minsize=100, stretch="always")
-            self.const_records_detail_label_var = tk.StringVar(
-                value=T("const_records.detail_hint"))
-            ttk.Label(detail_frame, textvariable=self.const_records_detail_label_var,
-                      anchor="w").pack(fill="x", padx=4, pady=(2, 4))
-
-            # _FlowRow, same reasoning as every other preview-nav row in this file --
-            # see that class's own docstring.
-            detail_nav = _FlowRow(detail_frame)
-            detail_nav.frame.pack(anchor="w", padx=4, fill="x")
-            self.const_records_detail_prev_btn = ttk.Button(
-                detail_nav.frame, text=T("common.prev_page"),
-                command=self._prev_const_records_detail_page, state="disabled")
-            detail_nav.add(self.const_records_detail_prev_btn)
-            self.const_records_detail_page_label = tk.StringVar(value="")
-            detail_nav.add(ttk.Label(detail_nav.frame,
-                                      textvariable=self.const_records_detail_page_label,
-                                      width=16, anchor="center"))
-            self.const_records_detail_next_btn = ttk.Button(
-                detail_nav.frame, text=T("common.next_page"),
-                command=self._next_const_records_detail_page, state="disabled")
-            detail_nav.add(self.const_records_detail_next_btn)
-            detail_nav.add(ttk.Label(detail_nav.frame, text=T("common.page_prefix")),
-                            padx_left=10)
-            self.const_records_detail_goto_entry = ttk.Entry(detail_nav.frame, width=6)
-            detail_nav.add(self.const_records_detail_goto_entry, padx_left=4)
-            self.const_records_detail_goto_entry.bind(
-                "<Return>", lambda _e: self._goto_const_records_detail_page())
-            detail_nav.add(ttk.Button(detail_nav.frame, text=T("common.goto"),
-                                       command=self._goto_const_records_detail_page),
-                            padx_left=4)
-
-            detail_list_frame = ttk.Frame(detail_frame)
-            detail_list_frame.pack(fill="both", expand=True, padx=4, pady=(0, 4))
-            self.const_records_detail_list = tk.Listbox(detail_list_frame, font=("Consolas", 9))
-            detail_vsb = ttk.Scrollbar(detail_list_frame, orient="vertical",
-                                        command=self.const_records_detail_list.yview)
-            self.const_records_detail_list.configure(yscrollcommand=detail_vsb.set)
-            self.const_records_detail_list.pack(side="left", fill="both", expand=True)
-            detail_vsb.pack(side="right", fill="y")
-
-            # Same Ctrl+C / right-click "Copy" convenience as the Constellations tab's
-            # own hits preview list. Double-click jumps to that exact hit in the
-            # Constellations tab's own Magazyn view -- see
-            # _on_const_records_detail_activate()'s own docstring.
-            self.const_records_detail_list.bind(
-                "<Control-c>", lambda _e: self._copy_selected_const_records_detail_value())
-            self.const_records_detail_list.bind(
-                "<Button-3>", self._show_const_records_detail_context_menu)
-            self.const_records_detail_list.bind(
-                "<Double-Button-1>", self._on_const_records_detail_activate)
-            self._const_records_detail_context_menu = tk.Menu(self, tearoff=0)
-            self._const_records_detail_context_menu.add_command(
-                label=T("common.copy"), command=self._copy_selected_const_records_detail_value)
-
-            self._const_records_detail_rows = []  # [(number, offset), ...] for whichever
-                                                    # cell was last double-clicked
-            self._const_records_detail_context = None  # {"base_exponent":, "pattern":}
-                                                         # for that same cell -- needed
-                                                         # by the jump-to-Magazyn handler
-            self._const_records_detail_page = 0
-            self._const_records_detail_total_pages = 1
-
-            if pattern_catalog_v1.all_k():
-                self.const_records_k_combo.current(0)
-
-        def _rebuild_const_records_tree(self, variant_ids, row_count=0):
-            """(Re)builds self.const_records_tree with one column per variant id, plus
-            the fixed leading 'exp' column -- a plain ttk.Treeview can't have its column
-            SET changed after construction, and different k values have different
-            variant counts (k=8 has 3, k=13 has 6), so the tree is destroyed and
-            recreated on every scan rather than trying to reuse one fixed-shape widget.
-
-            Both scrollbars are destroyed and recreated right alongside it (tracked in
-            self.const_records_tree_vsb/_hsb, not just throwaway locals) -- previously
-            the vertical one was a local variable never torn down, so every Skanuj click
-            left the old one behind, orphaned in the frame, stacking up one more
-            scrollbar per scan.
-
-            Every column is stretch=False (fixed width) with an added horizontal
-            scrollbar -- same fix as the Benchmark tab's tree (see its own comment for
-            the rationale): without this, Tk auto-stretches columns to fill the frame,
-            which for a single-variant k pushes that one column's header far from its
-            data (the empty gap the user reported), and for a many-variant k instead
-            squeezes everything down with no way to see the columns pushed off the
-            right edge -- neither is fixable by resizing the window, since Tk was
-            filling/squeezing to the CURRENT width either way. Fixed width + horizontal
-            scroll makes the table's real width consistent regardless of variant count,
-            and lets the user actually scroll to whatever doesn't fit.
-
-            `row_count` (the number of floor-rows about to be inserted, known upfront by
-            the caller even though insertion happens after this returns) sizes the
-            Treeview's own `height` to match -- capped at 14 so a huge scan doesn't
-            balloon the visible area, floored at 3 so an empty/fresh table isn't
-            reduced to a sliver. Combined with the tree pane's stretch="never" in the
-            paned window (see _build_constellations_records_tab's own note), this makes
-            the top pane's size track the actual amount of data instead of always
-            claiming a fixed block of space regardless of how few rows there are --
-            user report: 2 rows of data sitting in a mostly-empty ~460px pane.
-
-            The <Double-Button-1> binding for cell drill-down is (re)attached here too,
-            not just once at tab-build time -- since this whole widget gets destroyed
-            and recreated on every scan, a binding made only in
-            _build_constellations_records_tab() would silently stop firing after the
-            very first Skanuj click, once the original bound widget is gone."""
-            if self.const_records_tree is not None:
-                self.const_records_tree.destroy()
-            if self.const_records_tree_vsb is not None:
-                self.const_records_tree_vsb.destroy()
-            if self.const_records_tree_hsb is not None:
-                self.const_records_tree_hsb.destroy()
-            columns = ("exp",) + tuple(f"v{vid}" for vid in variant_ids)
-            height = max(3, min(row_count, 14)) if row_count else 3
-            tree = ttk.Treeview(
-                self.const_records_tree_frame, columns=columns, show="headings", height=height)
-            tree.heading("exp", text=T("const_records.col_exp"))
-            tree.column("exp", width=70, anchor="e", stretch=False)
-            for vid in variant_ids:
-                tree.heading(f"v{vid}", text=T("const_calc.variant_label", id=vid))
-                tree.column(f"v{vid}", width=190, anchor="w", stretch=False)
-            vsb = ttk.Scrollbar(self.const_records_tree_frame, orient="vertical",
-                                 command=tree.yview)
-            hsb = ttk.Scrollbar(self.const_records_tree_frame, orient="horizontal",
-                                 command=tree.xview)
-            tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
-            vsb.pack(side="right", fill="y")
-            hsb.pack(side="bottom", fill="x")
-            tree.pack(side="left", fill="both", expand=True)
-            tree.bind("<Double-Button-1>", self._on_const_records_cell_activate)
-            self.const_records_tree = tree
-            self.const_records_tree_vsb = vsb
-            self.const_records_tree_hsb = hsb
-
-        def _on_const_records_scan_clicked(self):
-            if self._const_records_busy:
-                return
-            k_str = self.const_records_k_combo.get()
-            if not k_str:
-                messagebox.showerror(
-                    T("const_records.error_dialog_title"), T("const_calc.error_no_pattern"))
-                return
-            k = int(k_str)
-            floor_min = _eval_quick_number(self.const_records_floor_from_entry.get())
-            floor_max = _eval_quick_number(self.const_records_floor_to_entry.get())
-            if floor_min is not None and floor_max is not None and floor_min > floor_max:
-                messagebox.showerror(
-                    T("const_records.error_dialog_title"), T("const_records.error_invalid_range"))
-                return
-            self._const_records_start_job(
-                {"mode": "scan", "k": k, "floor_min": floor_min, "floor_max": floor_max},
-                T("const_records.status_scanning", k=k))
-
-        def _const_records_start_job(self, job, status_text):
-            """Shared dispatch for every job this tab's worker can run (scan/export_pdf/
-            export_csv) -- all three are mutually exclusive (one at a time, same busy
-            flag/progress bar/button-disabling), so this is the one place that logic
-            lives instead of being copy-pasted into each of the three click handlers."""
-            self._const_records_busy = True
-            self.const_records_scan_button.configure(state="disabled")
-            self.const_records_export_pdf_button.configure(state="disabled")
-            self.const_records_export_csv_button.configure(state="disabled")
-            self.totals_progress.stop()
-            self.totals_progress.configure(mode="indeterminate")
-            self.totals_progress.start(80)
-            self.status.set(status_text)
-            self._const_records_worker.submit(job)
-
-        def _const_records_job(self, job, report_progress):
-            """Runs on PersistentWorker's own daemon thread. Three job shapes
-            distinguished by "mode": "scan" (build_constellation_records_table -> the
-            main tree), "export_pdf"/"export_csv" (build_constellation_records_detail_rows
-            -> a flat per-hit row list, then handed to the matching renderer below).
-            Catches its own exceptions (per PersistentWorker's fn contract -- see
-            background.py's docstring) so a failure surfaces with the right mode/k
-            context, instead of falling through to PersistentWorker's own last-resort
-            net which has no way to know which request failed."""
-            mode = job.get("mode", "scan")
-            k = job["k"]
-            floor_min = job.get("floor_min")
-            floor_max = job.get("floor_max")
-            try:
-                if mode == "scan":
-                    variant_ids, variant_meta, rows = build_constellation_records_table(
-                        PORTAL_FOLDER, k, floor_min=floor_min, floor_max=floor_max)
-                    return mode, k, True, (variant_ids, variant_meta, rows, floor_min, floor_max)
-                else:  # export_pdf / export_csv
-                    _variant_ids, _variant_meta, detail_rows = (
-                        build_constellation_records_detail_rows(
-                            PORTAL_FOLDER, k, floor_min=floor_min, floor_max=floor_max))
-                    path = job["path"]
-                    if mode == "export_pdf":
-                        self._render_const_records_detail_pdf(path, k, detail_rows)
-                    else:
-                        self._write_const_records_detail_csv(path, detail_rows)
-                    return mode, k, True, path
-            except Exception as e:  # noqa: BLE001 -- must never kill this thread
-                return mode, k, False, str(e)
-
-        def _render_const_records_detail_pdf(self, path, k, detail_rows):
-            """Runs on the worker thread (called from _const_records_job) -- builds
-            the PDF fieldnames/rows from build_constellation_records_detail_rows()'
-            flat per-hit dicts and hands them to render_constellation_records_pdf(),
-            same low-level writer the old summary export used. One row per individual
-            hit (see that function's own docstring for why), so a floor with 2019 hits
-            produces 2019 PDF rows/however many continuation pages that takes -- exactly
-            what was asked for ("pełna tabela z wszystkimi elementami"), not a
-            regression from the old compact one-row-per-floor shape."""
-            fieldnames = ["exp", "id", "offset", "number"]
-            pdf_rows = [{
-                "exp": f"10p{r['base_exponent']}",
-                "id": r["variant_id"],
-                "offset": f"+{r['offset']:,}" + (" *" if r["is_record_floor"] else ""),
-                "number": r["number"],
-            } for r in detail_rows]
-            render_constellation_records_pdf(path, k, fieldnames, pdf_rows, translator=TRANSLATOR)
-
-        def _write_const_records_detail_csv(self, path, detail_rows):
-            """Runs on the worker thread (called from _const_records_job) -- plain
-            csv.DictWriter, one row per individual hit (see
-            build_constellation_records_detail_rows()'s own docstring)."""
-            fieldnames = ["exp", "variant_id", "offset", "number",
-                          "position_in_file", "count_in_file", "is_record_floor"]
-            with open(path, "w", newline="", encoding="utf-8") as f:
-                writer = csv.DictWriter(f, fieldnames=fieldnames)
-                writer.writeheader()
-                for r in detail_rows:
-                    writer.writerow({
-                        "exp": f"10p{r['base_exponent']}",
-                        "variant_id": r["variant_id"],
-                        "offset": r["offset"],
-                        "number": r["number"],
-                        "position_in_file": r["position_in_file"],
-                        "count_in_file": r["count_in_file"],
-                        "is_record_floor": r["is_record_floor"],
-                    })
-
-        def _on_const_records_worker_result(self, payload, error):
-            """Main-thread callback for _const_records_job -- same shape as the old
-            _poll_const_records_results, just delivered via PersistentWorker instead
-            of a bespoke queue.Queue + self.after() pair. `error` is only non-None for
-            a genuine PersistentWorker-framework bug (_const_records_job already
-            catches its own exceptions -- see its docstring)."""
-            self._const_records_busy = False
-            self.const_records_scan_button.configure(state="normal")
-            self.totals_progress.stop()
-            self.totals_progress.configure(mode="determinate", maximum=1, value=0)
-            if error is not None:
-                has_rows = bool(self._const_records_last and self._const_records_last[3])
-                self.const_records_export_pdf_button.configure(
-                    state="normal" if has_rows else "disabled")
-                self.const_records_export_csv_button.configure(
-                    state="normal" if has_rows else "disabled")
-                self.status.set(T("const_records.status_error"))
-                messagebox.showerror(T("const_records.error_dialog_title"), str(error))
-                return
-            mode, k, ok, result_payload = payload
-            if mode == "scan":
-                if not ok:
-                    # Scan failed -- self._const_records_last (if any) still
-                    # holds the last SUCCESSFUL scan's data untouched, so restore
-                    # the export buttons to match it instead of leaving them
-                    # disabled from _const_records_start_job() (which disables
-                    # all three buttons up front, since a scan and an export
-                    # can't usefully run at the same time).
-                    has_rows = bool(self._const_records_last and self._const_records_last[3])
-                    self.const_records_export_pdf_button.configure(
-                        state="normal" if has_rows else "disabled")
-                    self.const_records_export_csv_button.configure(
-                        state="normal" if has_rows else "disabled")
-                    self.status.set(T("const_records.status_error"))
-                    messagebox.showerror(T("const_records.error_dialog_title"), result_payload)
-                    return
-                variant_ids, variant_meta, rows, floor_min, floor_max = result_payload
-                self._show_const_records_results(
-                    k, variant_ids, variant_meta, rows, floor_min, floor_max)
-            else:  # export_pdf / export_csv
-                has_rows = bool(self._const_records_last and self._const_records_last[3])
-                self.const_records_export_pdf_button.configure(
-                    state="normal" if has_rows else "disabled")
-                self.const_records_export_csv_button.configure(
-                    state="normal" if has_rows else "disabled")
-                button_label = T("const_records.export_pdf_button" if mode == "export_pdf"
-                                  else "const_records.export_csv_button")
-                if not ok:
-                    self.status.set(T("const_records.status_error"))
-                    messagebox.showerror(T("const_records.error_dialog_title"), result_payload)
-                    return
-                path = result_payload
-                self.status.set(T("bench.status_saved", path=path))
-                messagebox.showinfo(button_label, T("bench.saved_dialog", path=path))
-
-        def _show_const_records_results(self, k, variant_ids, variant_meta, rows, floor_min, floor_max):
-            self._const_records_last = (k, variant_ids, variant_meta, rows)
-            self._const_records_last_floor_bounds = (floor_min, floor_max)
-            self._rebuild_const_records_tree(variant_ids, row_count=len(rows))
-            for row in rows:
-                values = [f"10p{row['base_exponent']}"]
-                for vid in variant_ids:
-                    cell = row["cells"].get(vid)
-                    if cell is None:
-                        values.append("-")
-                    else:
-                        text = f"+{cell['offset']:,} ({cell['count']}x)"
-                        if cell["is_record_floor"]:
-                            text += " *"
-                        values.append(text)
-                # iid = the floor number itself (unique -- one row per floor), so a cell
-                # double-click can recover which floor was clicked directly from
-                # identify_row() without a separate item->floor lookup table.
-                self.const_records_tree.insert(
-                    "", "end", iid=str(row["base_exponent"]), values=tuple(values))
-            has_rows = bool(rows)
-            self.const_records_export_pdf_button.configure(state="normal" if has_rows else "disabled")
-            self.const_records_export_csv_button.configure(state="normal" if has_rows else "disabled")
-            self.status.set(T(
-                "const_records.status_done" if has_rows else "const_records.status_no_hits",
-                k=k, count=len(rows)))
-            # The tree was just torn down and rebuilt -- any iid the detail panel was
-            # showing no longer exists, so reset it rather than leaving a stale list on
-            # screen that no longer corresponds to anything selectable.
-            self._const_records_detail_rows = []
-            self._const_records_detail_context = None
-            self.const_records_detail_label_var.set(T("const_records.detail_hint"))
-            self._show_const_records_detail_page(0)
-
-        def _on_const_records_cell_activate(self, event):
-            """Double-click drill-down: identifies which (floor, variant) cell was
-            clicked and loads the FULL list of hits behind it (not just the smallest
-            offset the tree cell shows) into the paginated detail panel below --
-            addresses the user's "nie mogę rozwinąć by je zobaczyć tak jak w zakładce
-            konstelacje" report (this table's cells only ever showed a one-line
-            summary, with no way to see the rest without leaving the tab).
-
-            Stashes (base_exponent, pattern) in self._const_records_detail_context --
-            not just the raw values -- so a later double-click on one of the resulting
-            rows (_on_const_records_detail_activate) knows which floor/pattern that
-            row belongs to without having to re-derive it from the label text."""
-            tree = self.const_records_tree
-            if tree.identify_region(event.x, event.y) != "cell":
-                return
-            row_id = tree.identify_row(event.y)
-            col_id = tree.identify_column(event.x)  # "#1" = exp, "#2".. = variants
-            if not row_id or not col_id or self._const_records_last is None:
-                return
-            try:
-                base_exponent = int(row_id)
-                col_index = int(col_id[1:]) - 1  # 0-based into the columns tuple
-            except (ValueError, IndexError):
-                return
-            k, variant_ids, variant_meta, _rows = self._const_records_last
-            vi = col_index - 1  # columns[0] is "exp" -- skip it, no cell data there
-            if vi < 0 or vi >= len(variant_ids):
-                return
-            vid = variant_ids[vi]
-            pattern = variant_meta[vid]
-            path = hit_file_path(PORTAL_FOLDER, base_exponent, k, vid)
-            if not os.path.exists(path):
-                self._const_records_detail_rows = []
-                self._const_records_detail_context = None
-                self.const_records_detail_label_var.set(
-                    T("const_records.detail_empty", exp=base_exponent, id=vid))
-                self._show_const_records_detail_page(0)
-                return
-            try:
-                values = prime_sieve_v1.read_prime_window(path)
-            except Exception as exc:
-                messagebox.showerror(T("const_records.error_dialog_title"), str(exc))
-                return
-            base = 10 ** base_exponent
-            self._const_records_detail_rows = [(v, v - base) for v in values]
-            self._const_records_detail_context = {"base_exponent": base_exponent, "pattern": pattern}
-            self.const_records_detail_label_var.set(
-                T("const_records.detail_title", exp=base_exponent, id=vid, count=len(values)))
-            self._show_const_records_detail_page(0)
-
-        def _on_const_records_detail_activate(self, event):
-            """Double-click a hit in the drill-down list: jumps to the Constellations
-            tab's Magazyn sub-tab, expands/selects the exact floor+variant node there,
-            and scrolls its own hits preview straight to this number -- the same
-            navigation the Kalkulator konstelacji's 'Szukaj zaznaczoną liczbę' button
-            already does (_select_hits_pattern_in_tree / _load_hits_preview /
-            _jump_hits_preview_to_row), just triggered from here instead. Per user
-            request: 'dwukrotne kliknięcie na daną wartość z okna dolnego przenosi do
-            [...] magazyn [...] tak jak w szukajce'.
-
-            Each row here is a hit file's raw stored value, i.e. a tuple's BASE element
-            (position 0 in _hit_row_formatter's own numbering -- see
-            _on_const_records_cell_activate's read of prime_sieve_v1.read_prime_window,
-            which returns exactly those base values), so the jump always targets
-            position 0, never needing to look up which tuple position this row is."""
-            sel = self.const_records_detail_list.curselection()
-            if not sel or not self._const_records_detail_rows or self._const_records_detail_context is None:
-                return
-            global_index = self._const_records_detail_page * PAGE_SIZE + sel[0]
-            if global_index >= len(self._const_records_detail_rows):
-                return
-            hit_base, _offset = self._const_records_detail_rows[global_index]
-            ctx = self._const_records_detail_context
-            base_exponent = ctx["base_exponent"]
-            pattern = ctx["pattern"]
-
-            self.main_notebook.select(self.constellations_tab)
-            self.constellations_sub_notebook.select(self.constellations_storage_tab)
-            self._select_hits_pattern_in_tree(base_exponent, pattern)
-            self._load_hits_preview()
-            self._jump_hits_preview_to_row(hit_base, 0)
-
-        def _const_records_detail_row_formatter(self, row):
-            number, offset = row
-            return T("const_records.detail_row", number=f"{number:,}", offset=f"{offset:,}")
-
-        def _show_const_records_detail_page(self, page):
-            if not self._const_records_detail_rows:
-                self.const_records_detail_list.delete(0, "end")
-                self.const_records_detail_page_label.set("")
-                self.const_records_detail_prev_btn.configure(state="disabled")
-                self.const_records_detail_next_btn.configure(state="disabled")
-                return
-            self._const_records_detail_page, self._const_records_detail_total_pages = _render_page(
-                self.const_records_detail_list, self._const_records_detail_rows, page, PAGE_SIZE,
-                self._const_records_detail_row_formatter)
-            _update_nav_controls(
-                self.const_records_detail_page_label, self._const_records_detail_page,
-                self._const_records_detail_total_pages,
-                self.const_records_detail_prev_btn, self.const_records_detail_next_btn)
-
-        def _prev_const_records_detail_page(self):
-            self._show_const_records_detail_page(self._const_records_detail_page - 1)
-
-        def _next_const_records_detail_page(self):
-            self._show_const_records_detail_page(self._const_records_detail_page + 1)
-
-        def _goto_const_records_detail_page(self):
-            raw = self.const_records_detail_goto_entry.get().strip()
-            if not raw.isdigit():
-                return
-            self._show_const_records_detail_page(int(raw) - 1)
-
-        def _show_const_records_detail_context_menu(self, event):
-            index = self.const_records_detail_list.nearest(event.y)
-            if index >= 0:
-                self.const_records_detail_list.selection_clear(0, "end")
-                self.const_records_detail_list.selection_set(index)
-            self._const_records_detail_context_menu.tk_popup(event.x_root, event.y_root)
-
-        def _copy_selected_const_records_detail_value(self):
-            sel = self.const_records_detail_list.curselection()
-            if not sel or not self._const_records_detail_rows:
-                return
-            global_index = self._const_records_detail_page * PAGE_SIZE + sel[0]
-            if global_index >= len(self._const_records_detail_rows):
-                return
-            self.clipboard_clear()
-            self.clipboard_append(str(self._const_records_detail_rows[global_index][0]))
-
-        def _export_const_records_pdf(self):
-            if not self._const_records_last or self._const_records_busy:
-                return
-            k = self._const_records_last[0]
-            default_name = (f"constellation_records_k{k}_"
-                             f"{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf")
-            path = filedialog.asksaveasfilename(
-                title=T("const_records.export_pdf_button"),
-                initialdir=PORTAL_FOLDER,
-                initialfile=default_name,
-                defaultextension=".pdf",
-                filetypes=[("PDF", "*.pdf"), (T("common.all_files"), "*.*")])
-            if not path:
-                return
-            floor_min, floor_max = self._const_records_last_floor_bounds
-            self._const_records_start_job(
-                {"mode": "export_pdf", "k": k, "floor_min": floor_min, "floor_max": floor_max,
-                 "path": path},
-                T("const_records.status_exporting", k=k))
-
-        def _export_const_records_csv(self):
-            if not self._const_records_last or self._const_records_busy:
-                return
-            k = self._const_records_last[0]
-            default_name = (f"constellation_records_k{k}_"
-                             f"{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
-            path = filedialog.asksaveasfilename(
-                title=T("const_records.export_csv_button"),
-                initialdir=PORTAL_FOLDER,
-                initialfile=default_name,
-                defaultextension=".csv",
-                filetypes=[("CSV", "*.csv"), (T("common.all_files"), "*.*")])
-            if not path:
-                return
-            floor_min, floor_max = self._const_records_last_floor_bounds
-            self._const_records_start_job(
-                {"mode": "export_csv", "k": k, "floor_min": floor_min, "floor_max": floor_max,
-                 "path": path},
-                T("const_records.status_exporting", k=k))
-
-        def _build_constellations_tab(self):
-            top = ttk.Frame(self.constellations_storage_tab)
-            top.pack(fill="x", padx=6, pady=4)
-            ttk.Button(top, text=T("common.refresh"), command=self.reload_constellations_tree).pack(side="left")
-
-            ttk.Label(top, text=T("common.search_label")).pack(side="left")
-            self.hits_search_entry = ttk.Entry(top, width=26)
-            self.hits_search_entry.pack(side="left", padx=(4, 4))
-            self.hits_search_entry.bind("<Return>", lambda _e: self._search_constellation())
-            self.hits_search_button = ttk.Button(
-                top, text=T("common.search_button"), command=self._search_constellation)
-            self.hits_search_button.pack(side="left")
-
-            paned = ttk.Panedwindow(self.constellations_storage_tab, orient="horizontal")
-            paned.pack(fill="both", expand=True, padx=6, pady=4)
-
-            tree_frame = ttk.Frame(paned)
-            paned.add(tree_frame, weight=1)
-
-            self.hits_tree = ttk.Treeview(tree_frame, columns=("count", "generated"), show="tree headings")
-            self.hits_tree.heading("#0", text=T("const.col_pietro"))
-            self.hits_tree.heading("count", text=T("const.col_count"))
-            self.hits_tree.heading("generated", text=T("const.col_generated"))
-            self.hits_tree.column("#0", width=280)
-            self.hits_tree.column("count", width=90, anchor="e")
-            self.hits_tree.column("generated", width=170)
-            hvsb = ttk.Scrollbar(tree_frame, orient="vertical", command=self.hits_tree.yview)
-            self.hits_tree.configure(yscrollcommand=hvsb.set)
-            self.hits_tree.pack(side="left", fill="both", expand=True)
-            hvsb.pack(side="right", fill="y")
-
-            self.hits_tree.bind("<<TreeviewOpen>>", self._on_hits_tree_open)
-            self.hits_tree.bind("<<TreeviewSelect>>", self._on_hits_tree_select)
-
-            detail_frame = ttk.Frame(paned)
-            paned.add(detail_frame, weight=2)
-
-            self.hits_detail_text = tk.StringVar(value=T("const.detail_hint"))
-            ttk.Label(detail_frame, textvariable=self.hits_detail_text, justify="left",
-                      anchor="nw", wraplength=560).pack(fill="x", padx=6, pady=6)
-
-            # Populated only after a search (empty during normal tree browsing): one row
-            # per pattern the searched number participates in. Double-click (or Enter)
-            # jumps straight to that exact hit's row in the preview below, mirroring how
-            # the Prime numbers tab's search lands directly on the found number.
-            self.search_results_list = tk.Listbox(detail_frame, height=5, font=("Consolas", 9))
-            self.search_results_list.pack(fill="x", padx=6, pady=(0, 6))
-            self.search_results_list.bind("<Double-Button-1>", self._on_search_result_activate)
-            self.search_results_list.bind("<Return>", self._on_search_result_activate)
-            self._search_results_data = []  # parallel to search_results_list rows
-
-            # _FlowRow, same reasoning as the Prime numbers tab's own preview-nav row --
-            # see that class's docstring.
-            btn_row = _FlowRow(detail_frame)
-            btn_row.frame.pack(anchor="w", padx=6, fill="x")
-            self.hits_load_preview_btn = ttk.Button(
-                btn_row.frame, text=T("common.load_preview"), command=self._load_hits_preview,
-                state="disabled")
-            btn_row.add(self.hits_load_preview_btn)
-            self.hits_prev_page_btn = ttk.Button(
-                btn_row.frame, text=T("common.prev_page"), command=self._prev_hits_page, state="disabled")
-            btn_row.add(self.hits_prev_page_btn, padx_left=10)
-            self.hits_page_label = tk.StringVar(value="")
-            btn_row.add(ttk.Label(btn_row.frame, textvariable=self.hits_page_label,
-                                   width=16, anchor="center"))
-            self.hits_next_page_btn = ttk.Button(
-                btn_row.frame, text=T("common.next_page"), command=self._next_hits_page, state="disabled")
-            btn_row.add(self.hits_next_page_btn)
-            btn_row.add(ttk.Label(btn_row.frame, text=T("common.page_prefix")), padx_left=10)
-            self.hits_goto_entry = ttk.Entry(btn_row.frame, width=6)
-            btn_row.add(self.hits_goto_entry, padx_left=4)
-            self.hits_goto_entry.bind("<Return>", lambda _e: self._goto_hits_page())
-            btn_row.add(ttk.Button(btn_row.frame, text=T("common.goto"),
-                                    command=self._goto_hits_page), padx_left=4)
-
-            hits_preview_frame = ttk.Frame(detail_frame)
-            hits_preview_frame.pack(fill="both", expand=True, padx=6, pady=6)
-            self.hits_preview_list = tk.Listbox(hits_preview_frame, font=("Consolas", 9))
-            hits_preview_vsb = ttk.Scrollbar(hits_preview_frame, orient="vertical",
-                                              command=self.hits_preview_list.yview)
-            self.hits_preview_list.configure(yscrollcommand=hits_preview_vsb.set)
-            self.hits_preview_list.pack(side="left", fill="both", expand=True)
-            hits_preview_vsb.pack(side="right", fill="y")
-
-            # Each row here is ONE number (the pattern's position/offset context is shown
-            # alongside it, not merged into a single copy-unfriendly comma-joined tuple
-            # string) -- same Ctrl+C / right-click "Copy" convenience as the primes tab.
-            self.hits_preview_list.bind("<Control-c>", lambda _e: self._copy_selected_hits_value())
-            self.hits_preview_list.bind("<Button-3>", self._show_hits_context_menu)
-            self._hits_context_menu = tk.Menu(self, tearoff=0)
-            self._hits_context_menu.add_command(label=T("common.copy"), command=self._copy_selected_hits_value)
-
-            self._selected_hit_path = None
-            self._selected_hit_pattern = None  # dict from pattern_catalog_v1, needed to
-                                                # know each position's offset within a tuple
-            self._hit_values = None    # raw decoded starting values for the selected
-                                        # pattern's hit file, sorted ascending
-            self._hit_rows = None      # flattened (value, hit_base, position, offset) --
-                                        # one entry PER TUPLE POSITION, not per hit, so each
-                                        # preview row is a single number like the primes tab
-            self._hit_page = 0
-            self._hit_total_pages = 1
-            self._hit_set_cache = {}  # (base_exponent, k, id) -> set(starting values),
-                                       # reused across searches within this session
+        def _jump_records_detail_to_hits(self, base_exponent, pattern, hit_base, position):
+            """Registered with ConstellationsRecordsTab.bind_jump_to_hits() -- double-
+            clicking a hit in the Tabela rekordow drill-down list jumps to the Magazyn
+            tab's own tree/preview, landing on this exact number. Thin app-level glue
+            between two sibling tabs, same shape as _on_const_search_result below."""
+            self._select_constellations_hits_view()
+            self.constellations_hits_tab_widget.select_pattern_in_tree(base_exponent, pattern)
+            self.constellations_hits_tab_widget.load_preview()
+            self.constellations_hits_tab_widget.jump_preview_to_row(hit_base, position)
 
         def _constellations_tree_scan(self, portal_folder, _report_progress):
             """Runs OFF the GUI thread -- see _primes_tree_scan's own docstring for the
@@ -4235,12 +2990,7 @@ def _build_gui():
             if error is not None:
                 self.status.set(T("const.status_reload_error", error=str(error)))
                 return
-            self.hits_tree.delete(*self.hits_tree.get_children())
-            for base_exponent in result["pietra"]:
-                node = self.hits_tree.insert("", "end", text=f"10p{base_exponent}",
-                                              values=("", ""), open=False, tags=("pietro",))
-                self.hits_tree.insert(node, "end", text=T("common.loading"))
-            self._hit_set_cache = {}  # data on disk may have changed since last refresh
+            self.constellations_hits_tab_widget.populate_floors(result["pietra"])
 
             pending = getattr(self, "_loading_startup_pending", None)
             if pending:
@@ -4248,292 +2998,30 @@ def _build_gui():
                 if not pending:
                     self._finish_loading_screen()
 
-        def _on_hits_tree_open(self, _event):
-            node = self.hits_tree.focus()
-            self._populate_hits_pietro_node(node)
-
-        def _populate_hits_pietro_node(self, node):
-            children = self.hits_tree.get_children(node)
-            if len(children) != 1:
-                return
-            if self.hits_tree.item(children[0], "text") != T("common.loading"):
-                return
-            self.hits_tree.delete(children[0])
-
-            base_exponent = int(self.hits_tree.item(node, "text")[3:])  # "10p{N}"
-            entries = list_constellation_hits(PORTAL_FOLDER, base_exponent)
-            if not entries:
-                self.hits_tree.insert(node, "end", text=T("const.no_hits"))
-                return
-
-            # Nested by k, each with its own subtotal -- otherwise every
-            # variant is a flat sibling row ("k=7 v=1", "k=7 v=2", ...) with no way to see
-            # how many k-tuples exist IN TOTAL for a given k without adding the variant
-            # counts up by hand. group_constellation_hits_by_k() re-groups what
-            # list_constellation_hits() already fetched -- no extra I/O, the pattern catalog
-            # is small enough that every existing hit file's header is already read above.
-            # The floor row itself is also updated here to the grand total across every k
-            # (sum of every k-group's own subtotal) -- for the SAME reason: previously blank.
-            grand_total = 0
-            self._hit_path_by_item = getattr(self, "_hit_path_by_item", {})
-            for k, k_total, variants in group_constellation_hits_by_k(entries):
-                grand_total += k_total
-                k_node = self.hits_tree.insert(
-                    node, "end", text=T("const.k_total", k=k, total=f"{k_total:,}"),
-                    values=("", ""), tags=("k_group",), open=True)
-                for pattern, path, header in variants:
-                    label_text = f"v={pattern['id']}"
-                    if header is None:
-                        count_str, gen_str = "?", T("primes.unreadable_header")
-                    else:
-                        count_str = f"{header['count']:,}"
-                        gen_str = header["generated_at_iso"]
-                    child = self.hits_tree.insert(
-                        k_node, "end", text=label_text,
-                        values=(count_str, gen_str), tags=("pattern",))
-                    self._hit_path_by_item[child] = (pattern, path, header)
-            self.hits_tree.item(node, values=(f"{grand_total:,}", ""))
-
-        def _on_hits_tree_select(self, _event):
-            selection = self.hits_tree.selection()
-            if not selection:
-                return
-            item = selection[0]
-            path_map = getattr(self, "_hit_path_by_item", {})
-            self._reset_hits_preview_state()
-            if item not in path_map:
-                self.hits_load_preview_btn.configure(state="disabled")
-                return
-            pattern, path, header = path_map[item]
-            self._selected_hit_path = path
-            self._selected_hit_pattern = pattern
-            if header is None:
-                self.hits_detail_text.set(T("primes.header_error", path=path))
-                self.hits_load_preview_btn.configure(state="disabled")
-                return
-            offsets_str = ", ".join(f"+{d}" for d in pattern["offsets"])
-            if pattern["record_digits"] is not None:
-                record_line = T("const.record_known", digits=pattern['record_digits'],
-                                 discoverer=pattern['discoverer'], date=pattern['date'])
-            else:
-                record_line = T("const.record_untracked")
-            self.hits_detail_text.set(
-                f"{path}\n\n" +
-                T("const.header_detail", k=pattern['k'], variant=pattern['id'],
-                  offsets=offsets_str, count=f"{header['count']:,}",
-                  generated=header['generated_at_iso']) +
-                f"\n{record_line}"
-            )
-            self.hits_load_preview_btn.configure(state="normal" if header["count"] > 0 else "disabled")
-
-        def _reset_hits_preview_state(self):
-            self.hits_preview_list.delete(0, "end")
-            self._hit_values = None
-            self._hit_rows = None
-            self._hit_page = 0
-            self._hit_total_pages = 1
-            self.hits_page_label.set("")
-            self.hits_prev_page_btn.configure(state="disabled")
-            self.hits_next_page_btn.configure(state="disabled")
-            self.hits_load_preview_btn.configure(state="normal" if self._selected_hit_path else "disabled")
-
-        def _hit_row_formatter(self, row):
-            """Each row is (value, hit_base, position, offset) -- ONE tuple element, not
-            the whole tuple (that used to be a single comma-joined string per row, which
-            meant selecting/copying a row always grabbed every number in the tuple at
-            once). `value` is what a copy action grabs; the rest is just context."""
-            value, hit_base, position, offset = row
-            total = len(self._selected_hit_pattern["offsets"])
-            if offset == 0:
-                return T("const.hit_row_base", value=value, position=position + 1, total=total)
-            return T("const.hit_row_offset", value=value, position=position + 1, total=total,
-                     offset=offset, hit_base=hit_base)
-
-        def _load_hits_preview(self):
-            if not self._selected_hit_path:
-                return
-            if self._hit_values is None:
-                try:
-                    self._hit_values = prime_sieve_v1.read_prime_window(self._selected_hit_path)
-                except Exception as exc:
-                    messagebox.showerror(T("primes.load_preview_failed_title"), str(exc))
-                    self._hit_values = None
-                    return
-                offsets = self._selected_hit_pattern["offsets"]
-                self._hit_rows = [(hit_base + offset, hit_base, position, offset)
-                                   for hit_base in self._hit_values
-                                   for position, offset in enumerate(offsets)]
-            self._show_hits_page(0)
-            self.hits_load_preview_btn.configure(state="disabled")
-
-        def _show_hits_page(self, page):
-            if not self._hit_rows:
-                return
-            self._hit_page, self._hit_total_pages = _render_page(
-                self.hits_preview_list, self._hit_rows, page, PAGE_SIZE, self._hit_row_formatter)
-            _update_nav_controls(self.hits_page_label, self._hit_page,
-                                  self._hit_total_pages, self.hits_prev_page_btn, self.hits_next_page_btn)
-
-        def _prev_hits_page(self):
-            self._show_hits_page(self._hit_page - 1)
-
-        def _next_hits_page(self):
-            self._show_hits_page(self._hit_page + 1)
-
-        def _goto_hits_page(self):
-            raw = self.hits_goto_entry.get().strip()
-            if not raw.isdigit():
-                return
-            self._show_hits_page(int(raw) - 1)
-
-        def _show_hits_context_menu(self, event):
-            index = self.hits_preview_list.nearest(event.y)
-            if index >= 0:
-                self.hits_preview_list.selection_clear(0, "end")
-                self.hits_preview_list.selection_set(index)
-            self._hits_context_menu.tk_popup(event.x_root, event.y_root)
-
-        def _copy_selected_hits_value(self):
-            sel = self.hits_preview_list.curselection()
-            if not sel or not self._hit_rows:
-                return
-            global_index = self._hit_page * PAGE_SIZE + sel[0]
-            if global_index >= len(self._hit_rows):
-                return
-            self.clipboard_clear()
-            self.clipboard_append(str(self._hit_rows[global_index][0]))
-
-        def _select_hits_pattern_in_tree(self, base_exponent, pattern):
-            """Same approach as primes tab's _select_primes_file_in_tree(): expand the
-            pietro node, select the matching k/variant node, and flush the queued
-            <<TreeviewSelect>> event with update() so _on_hits_tree_select runs to
-            completion (resetting/populating self._selected_hit_* etc.) before the caller
-            proceeds to load+jump the preview."""
-            pietro_item = None
-            for item in self.hits_tree.get_children(""):
-                if self.hits_tree.item(item, "text") == f"10p{base_exponent}":
-                    pietro_item = item
-                    break
-            if pietro_item is None:
-                return
-            self.hits_tree.item(pietro_item, open=True)
-            self._populate_hits_pietro_node(pietro_item)
-            # Patterns are nested one level deeper, under a "k={k} (razem: N)" group node
-            # (per-k subtotals -- see _populate_hits_pietro_node) --
-            # find that k-group first, then the v=id leaf underneath it.
-            k_prefix = f"k={pattern['k']}  "
-            k_node = None
-            for child in self.hits_tree.get_children(pietro_item):
-                if self.hits_tree.item(child, "text").startswith(k_prefix):
-                    k_node = child
-                    break
-            if k_node is None:
-                return
-            self.hits_tree.item(k_node, open=True)
-            target_item = None
-            label = f"v={pattern['id']}"
-            for child in self.hits_tree.get_children(k_node):
-                if self.hits_tree.item(child, "text") == label:
-                    target_item = child
-                    break
-            if target_item is None:
-                return
-            self.hits_tree.see(target_item)
-            self.hits_tree.selection_set(target_item)
-            self.hits_tree.focus(target_item)
-            self.update()
-
-        def _jump_hits_preview_to_row(self, hit_base, position):
-            """Locates the flattened row for (hit_base, position) via bisect over the
-            sorted starting values (same technique as find_prime_in_floor), then jumps
-            the preview to the page/row containing it and selects just that one row --
-            i.e. just that one number, not the whole tuple it belongs to."""
-            if not self._hit_values or not self._hit_rows or self._selected_hit_pattern is None:
-                return
-            hit_index = bisect.bisect_left(self._hit_values, hit_base)
-            if hit_index >= len(self._hit_values) or self._hit_values[hit_index] != hit_base:
-                return
-            total_positions = len(self._selected_hit_pattern["offsets"])
-            target_index = hit_index * total_positions + position
-            if target_index >= len(self._hit_rows):
-                return
-            page = target_index // PAGE_SIZE
-            self._show_hits_page(page)
-            self.hits_load_preview_btn.configure(state="disabled")
-            local = target_index - self._hit_page * PAGE_SIZE
-            self.hits_preview_list.selection_clear(0, "end")
-            self.hits_preview_list.selection_set(local)
-            self.hits_preview_list.see(local)
-
-        def _on_search_result_activate(self, _event):
-            sel = self.search_results_list.curselection()
-            if not sel or sel[0] >= len(self._search_results_data):
-                return
-            data = self._search_results_data[sel[0]]
-            self._select_hits_pattern_in_tree(data["base_exponent"], data["pattern"])
-            self._load_hits_preview()
-            self._jump_hits_preview_to_row(data["hit_base"], data["position"])
-
-        def _search_constellation(self):
-            raw = self.hits_search_entry.get().strip()
-            if not raw.isdigit():
-                messagebox.showerror(T("common.dialog_search_title"), T("common.error_invalid_number"))
-                return
-            number = int(raw)
-            base_exponent = digit_count_floor(number)
-            if self._search_busy:
-                messagebox.showinfo(T("common.dialog_search_title"), T("common.search_already_running"))
-                return
-            if base_exponent not in list_pietra(PORTAL_FOLDER):
-                # No floor 10p{base_exponent} at all yet -- see _search_prime()'s identical
-                # branch for the full reasoning; offering "const" here (not "prime") means
-                # the prime window gets generated first, and the re-search that follows
-                # (_on_loop_finished()) runs the FULL const search, which can itself go on
-                # to offer generating constellation hits too if THAT'S also still missing.
-                outcome = self._offer_generate_missing_prime_window("const", base_exponent, number)
-                if outcome != "launched":
-                    self._show_const_prime_missing_result(base_exponent, number, outcome)
-                return
-
-            self.search_results_list.delete(0, "end")
-            self._search_results_data = []
-            self._start_search_job("const", base_exponent, number)
-
-        def _show_const_prime_missing_result(self, base_exponent, number, outcome):
-            """Shared by _search_constellation()'s no-floor branch and
-            _on_const_search_result()'s prime_result-is-None branch -- both reach here only
-            when _offer_generate_missing_prime_window() did NOT launch a generation run
-            ("composite" or "skipped", see that method's own docstring), so there's a
-            Constellations-tab result to show right now rather than waiting on a re-search."""
-            if outcome == "composite":
-                self.hits_detail_text.set(
-                    T("const.confirmed_composite_detail", number=number, base_exponent=base_exponent))
-            else:
-                self.hits_detail_text.set(
-                    T("const.not_found_detail", number=number, base_exponent=base_exponent))
-            self._reset_hits_preview_state()
-            self.hits_load_preview_btn.configure(state="disabled")
-
         def _on_const_search_result(self, base_exponent, number, prime_result, participation):
-            """Main-thread completion handler for a "const" search job -- same UI update
-            _search_constellation() used to do synchronously right after calling
-            find_prime_in_floor()/find_constellation_participation(), now driven by
-            _on_search_worker_result() once the worker thread hands the (plain-data)
-            results back.
+            """Thin app-level orchestrator for a "const" search job's completion --
+            unlike Primes tab's fully self-contained on_prime_search_result, this stays
+            at the app level because it coordinates a genuine three-way handoff: the
+            search worker's raw result, the Magazyn (hits) tab's display (see
+            ConstellationsHitsTab.show_missing_result/show_search_participation/
+            jump_to_search_match), and the Kalkulator konstelacji tab's pending-search
+            state (calc.get_pending()/clear_pending()) -- neither sibling tab should own
+            that coupling alone.
 
             calc_pending/calc_match: when this completion is for a search the
-            constellation calculator itself kicked off (self._const_calc_pending set by
-            _on_const_calc_search_selected()), and this call is the one that actually
-            reaches a final answer (not a "launched a generation run, wait for the
-            re-search" detour), the matching pattern's node gets auto-selected in the
-            Magazyn tree and the preview jumped straight to this number -- see the tail
-            of this method. calc_pending is only ever CLEARED on a genuinely final
+            constellation calculator itself kicked off, and this call is the one that
+            actually reaches a final answer (not a "launched a generation run, wait for
+            the re-search" detour), the matching pattern's node gets auto-selected in
+            the Magazyn tree and the preview jumped straight to this number -- see the
+            tail of this method. calc_pending is only ever CLEARED on a genuinely final
             outcome (declined/composite/no-participation/found) so it survives across
             however many generate-then-re-search hops a single calculator search needs;
-            comparing against `calc_pending` (the LOCAL copy captured at entry) rather
-            than re-reading self._const_calc_pending after clearing it keeps the
-            match/pattern lookup valid even after the instance attribute is gone."""
-            calc_pending = self._const_calc_pending
+            comparing against the LOCAL `calc_pending` copy captured at entry (rather
+            than re-reading calc.get_pending() after clearing it) keeps the
+            match/pattern lookup valid even after the pending state is gone."""
+            hits = self.constellations_hits_tab_widget
+            calc = self.constellations_calc_tab_widget
+            calc_pending = calc.get_pending()
             calc_match = (calc_pending is not None
                           and calc_pending["base_exponent"] == base_exponent
                           and calc_pending["number"] == number)
@@ -4542,12 +3030,10 @@ def _build_gui():
                 outcome = self._offer_generate_missing_prime_window("const", base_exponent, number)
                 if outcome != "launched":
                     if calc_match:
-                        self._const_calc_pending = None
-                    self._show_const_prime_missing_result(base_exponent, number, outcome)
+                        calc.clear_pending()
+                    hits.show_missing_result(base_exponent, number, outcome)
                 return
 
-            lines = [T("const.number_line", number=number),
-                     T("const.found_in", name=prime_result['name'], base_exponent=base_exponent), ""]
             if not participation:
                 # Empty result is genuinely ambiguous -- see
                 # _offer_generate_missing_constellation()'s own docstring: no hit FILES at
@@ -4557,57 +3043,27 @@ def _build_gui():
                         and self._offer_generate_missing_constellation(base_exponent, number)):
                     return
                 if calc_match:
-                    self._const_calc_pending = None
-                lines.append(T("const.no_participation"))
+                    calc.clear_pending()
             else:
                 if calc_match:
-                    self._const_calc_pending = None
-                lines.append(T("const.participation_intro", count=len(participation)))
-                for rec in sorted(participation, key=lambda r: (r["pattern"]["k"], r["pattern"]["id"])):
-                    pattern = rec["pattern"]
-                    pos_1based = rec["position"] + 1
-                    total_positions = len(pattern["offsets"])
-                    if rec["offset"] == 0:
-                        lines.append(T("const.participation_base_detail",
-                                        k=pattern['k'], variant=pattern['id'],
-                                        pos=pos_1based, total=total_positions))
-                        row_text = T("const.row_base", k=pattern['k'], variant=pattern['id'],
-                                     pos=pos_1based, total=total_positions)
-                    else:
-                        lines.append(T("const.participation_offset_detail",
-                                        k=pattern['k'], variant=pattern['id'],
-                                        pos=pos_1based, total=total_positions,
-                                        offset=rec['offset'], base=rec['base']))
-                        row_text = T("const.row_offset", k=pattern['k'], variant=pattern['id'],
-                                     pos=pos_1based, total=total_positions,
-                                     offset=rec['offset'], base=rec['base'])
-                    self.search_results_list.insert("end", row_text)
-                    self._search_results_data.append({
-                        "base_exponent": base_exponent, "pattern": pattern, "position": rec["position"],
-                        "hit_base": rec["base"],
-                    })
-            self.hits_detail_text.set("\n".join(lines))
-            self._reset_hits_preview_state()
-            self._selected_hit_path = None
-            self._selected_hit_pattern = None
-            self.hits_load_preview_btn.configure(state="disabled")
-            self.status.set(T("const.status_search", number=number, count=len(participation)))
+                    calc.clear_pending()
+
+            hits.show_search_participation(base_exponent, number, prime_result, participation)
 
             if calc_match and participation:
                 # Jump straight to the SPECIFIC (k, variant) node the calculator computed
-                # this number for -- same helpers _on_search_result_activate() uses for a
-                # double-clicked result row, just triggered automatically instead of
-                # requiring that extra click. If the number happens to ALSO participate in
-                # some other pattern (shown in the results list either way), this still
-                # lands on the one the user actually asked about.
+                # this number for -- same helper ConstellationsHitsTab's own
+                # _on_search_result_activate() uses for a double-clicked result row, just
+                # triggered automatically instead of requiring that extra click. If the
+                # number happens to ALSO participate in some other pattern (shown in the
+                # results list either way), this still lands on the one the user actually
+                # asked about.
                 match = next(
                     (rec for rec in participation
                      if rec["pattern"]["k"] == calc_pending["pattern"]["k"]
                      and rec["pattern"]["id"] == calc_pending["pattern"]["id"]), None)
                 if match is not None:
-                    self._select_hits_pattern_in_tree(base_exponent, calc_pending["pattern"])
-                    self._load_hits_preview()
-                    self._jump_hits_preview_to_row(match["base"], match["position"])
+                    hits.jump_to_search_match(base_exponent, calc_pending["pattern"], match)
 
         # --- Research tab: skeleton only (Faza 0) --------------------------------------
 
@@ -5428,7 +3884,7 @@ def _build_gui():
 
         def _goldbach_job(self, job, report_progress):
             """Runs on PersistentWorker's own daemon thread -- single-owner reasoning
-            identical to _const_records_job's own docstring (self._goldbach_busy
+            identical to ConstellationsRecordsTab._job's own docstring (self._goldbach_busy
             blocks new requests from the GUI side, so only one job is ever in flight).
             Three job shapes distinguished by "op":
 

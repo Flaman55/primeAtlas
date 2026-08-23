@@ -11,8 +11,8 @@ Uses a throwaway EMPTY portal folder for the "scan" case -- build_constellation_
 records_table()'s own docstring says it returns an empty rows list (not an error)
 when a floor has no hit files for the requested k, so this exercises the worker
 plumbing end to end without needing to fabricate real HITS_*.bin constellation
-files. The export cases are driven by calling _const_records_start_job(...) directly
-with a fixed path instead of clicking the real "Eksportuj" buttons -- those buttons
+files. The export cases are driven by calling ConstellationsRecordsTab._start_job(...)
+directly with a fixed path instead of clicking the real "Eksportuj" buttons -- those buttons
 open a native filedialog.asksaveasfilename() dialog, which (like tkinter.messagebox)
 enters its own nested event loop under Xvfb with no human to dismiss it.
 
@@ -88,52 +88,53 @@ def main():
         app.update()
 
         k = pattern_catalog_v1.all_k()[0]
+        records_tab = app.constellations_records_tab_widget
 
         # --- "scan" op: empty portal folder -> empty rows, not an error --------------
-        app.const_records_k_combo.set(str(k))
-        app._on_const_records_scan_clicked()
-        check(app._const_records_busy, "'scan' job marked busy immediately after dispatch")
+        records_tab.k_combo.set(str(k))
+        records_tab._on_scan_clicked()
+        check(records_tab._busy, "'scan' job marked busy immediately after dispatch")
         _pump(app, 3.0)
-        check(not app._const_records_busy, "'scan' job settles after a PersistentWorker result")
-        check(app._const_records_last is not None,
-              "'scan' job populated _const_records_last (even with zero rows)")
-        check(app._const_records_last[0] == k,
-              f"'scan' result carries the requested k (got {app._const_records_last[0]!r})")
+        check(not records_tab._busy, "'scan' job settles after a PersistentWorker result")
+        check(records_tab._last is not None,
+              "'scan' job populated _last (even with zero rows)")
+        check(records_tab._last[0] == k,
+              f"'scan' result carries the requested k (got {records_tab._last[0]!r})")
 
         # --- "export_csv" op: bypass the file-dialog button, call the dispatcher ----
         # directly with a fixed path (see module docstring for why).
         csv_path = os.path.join(tmp_portal, "export_test.csv")
-        app._const_records_start_job(
+        records_tab._start_job(
             {"mode": "export_csv", "k": k, "floor_min": None, "floor_max": None,
              "path": csv_path},
             "exporting (test)")
-        check(app._const_records_busy, "'export_csv' job marked busy immediately after dispatch")
+        check(records_tab._busy, "'export_csv' job marked busy immediately after dispatch")
         _pump(app, 3.0)
-        check(not app._const_records_busy, "'export_csv' job settles without hanging or crashing")
+        check(not records_tab._busy, "'export_csv' job settles without hanging or crashing")
         check(os.path.exists(csv_path), "'export_csv' job actually wrote the CSV file")
         check(any("info" == kind for kind, _a, _k in shown),
               f"a 'saved' confirmation was recorded via messagebox.showinfo (got: {shown})")
 
-        # --- error path: force _const_records_job's own try/except to fire ---------
+        # --- error path: force ConstellationsRecordsTab._job's own try/except to fire ---
         # Mirrors test_primality_worker.py / test_goldbach_worker.py's forced-
-        # exception case: monkeypatching a module-level function so it raises
-        # exercises the exact path _const_records_job's docstring documents (catches
-        # its own exception, returns (mode, k, False, str(e)) instead of relying on
+        # exception case: monkeypatching the module-level function _job imports so it
+        # raises exercises the exact path _job's docstring documents (catches its own
+        # exception, returns (mode, k, False, str(e)) instead of relying on
         # PersistentWorker's last-resort net).
-        original_build_table = prime_atlas_v1.build_constellation_records_table
+        import primeatlas.constellations_records_tab as const_records_tab_module
+        original_build_table = const_records_tab_module.build_constellation_records_table
 
         def fake_raise(portal_folder, k, floor_min=None, floor_max=None):
             raise RuntimeError("fake failure for this test")
 
-        prime_atlas_v1.build_constellation_records_table = fake_raise
+        const_records_tab_module.build_constellation_records_table = fake_raise
         shown.clear()
-        app._const_records_worker.submit({"mode": "scan", "k": k})
-        app._const_records_busy = True  # mirror what _const_records_start_job sets;
-                                         # submit() alone (bypassing the dispatcher)
-                                         # doesn't touch this flag
+        records_tab._worker.submit({"mode": "scan", "k": k})
+        records_tab._busy = True  # mirror what _start_job sets; submit() alone
+                                   # (bypassing the dispatcher) doesn't touch this flag
         _pump(app, 3.0)
-        prime_atlas_v1.build_constellation_records_table = original_build_table
-        check(not app._const_records_busy, "'scan' job settles even after an internal exception")
+        const_records_tab_module.build_constellation_records_table = original_build_table
+        check(not records_tab._busy, "'scan' job settles even after an internal exception")
         check(any("fake failure for this test" in str(call) for call in shown),
               f"the fake exception was surfaced via messagebox.showerror (got: {shown})")
 
