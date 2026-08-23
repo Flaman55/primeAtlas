@@ -139,11 +139,18 @@ from primeatlas.constellations import (  # noqa: E402
 # that used to call the local def now calls the imported name unchanged. FlowRow (renamed
 # from the local _FlowRow) is still used directly by the Constellations tab's own preview
 # panes below, hence the `as _FlowRow` alias -- see primeatlas/widgets.py's own docstring.
+# _offset_from_filename was ALSO left behind here by that same move (used directly by
+# find_continuation_target_idx/find_first_gap_target_idx/_trim_existing_from_target_idx_
+# range/read_is_prime_from_storage, all still below) but never actually re-imported --
+# a genuine NameError bug present since that Faza 3 step, caught here 2026-08-23 while
+# investigating test_goldbach_worker.py's two "pre-existing" viz/decompose failures
+# (both ops call read_is_prime_from_storage, which calls this).
 from primeatlas.storage import (  # noqa: E402
     LOW_FLOOR_CUTOFF, list_pietra, list_source_files, list_source_filenames,
     read_source_file_headers, load_totals_cache, save_totals_cache,
     update_pietro_totals_cache, format_big_int, format_duration, format_bytes,
     aggregate_write_seconds_by_pietro, digit_count_floor, find_prime_in_floor,
+    _offset_from_filename,
 )
 from primeatlas.widgets import FlowRow as _FlowRow  # noqa: E402
 
