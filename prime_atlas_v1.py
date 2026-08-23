@@ -2228,7 +2228,7 @@ def run_primesieve_query_wsl(argv, timeout=120):
     under a second for any reasonable input and doesn't need a live progress console, so
     the simpler synchronous-capture-output shape already used by
     estimate_wsl_available_ram_bytes() above fits better here. Callers (the primesieve
-    calculator tab's own worker thread, see _primesieve_calc_worker_loop) are still
+    calculator tab's own worker thread, see _primesieve_calc_job) are still
     responsible for not calling this on the GUI thread directly, since even a "well under
     a second" WSL round-trip is enough to freeze Tk's event loop noticeably.
 
@@ -3134,10 +3134,8 @@ def _build_gui():
             # sharing one queue would mean every consumer had to branch on job type just
             # to ignore the other kind.
             self._primesieve_calc_busy = False
-            self._primesieve_calc_work_queue = queue.Queue()
-            self._primesieve_calc_result_queue = queue.Queue()
-            threading.Thread(target=self._primesieve_calc_worker_loop, daemon=True).start()
-            self.after(150, self._poll_primesieve_calc_results)
+            self._primesieve_calc_worker = background.PersistentWorker(
+                self, self._primesieve_calc_job, on_result=self._on_primesieve_calc_result)
 
             # Primality-testing worker (Liczby pierwsze -> Testy pierwszosci sub-tab):
             # own queue pair for the same reason as the primesieve-calculator block just
@@ -3697,55 +3695,55 @@ def _build_gui():
             self.totals_progress.configure(mode="indeterminate")
             self.totals_progress.start(80)
             self.status.set(T("primesieve_calc.status_computing"))
-            self._primesieve_calc_work_queue.put({"code": code, "args": args})
+            self._primesieve_calc_worker.submit({"code": code, "args": args})
 
-        def _primesieve_calc_worker_loop(self):
-            """Own daemon thread -- same single-owner reasoning as _search_worker_loop
-            (see that method's own docstring); _primesieve_calc_busy blocking new
-            requests from the GUI side means only one query is ever in flight."""
-            while True:
-                job = self._primesieve_calc_work_queue.get()
-                code, args = job["code"], job["args"]
-                argv = build_primesieve_query_argv(code, *args)
-                ok, payload = run_primesieve_query_wsl(argv)
-                self._primesieve_calc_result_queue.put((code, args, ok, payload))
+        def _primesieve_calc_job(self, job, report_progress):
+            """Runs on PersistentWorker's own daemon thread; _primesieve_calc_busy
+            blocking new requests from the GUI side means only one query is ever in
+            flight. Unlike the original hand-rolled worker loop, an exception raised
+            here (e.g. run_primesieve_query_wsl() itself failing unexpectedly) is now
+            actually caught -- by PersistentWorker's own last-resort net -- instead of
+            silently killing this thread and leaving every future click do nothing."""
+            code, args = job["code"], job["args"]
+            argv = build_primesieve_query_argv(code, *args)
+            ok, payload = run_primesieve_query_wsl(argv)
+            return code, args, ok, payload
 
-        def _poll_primesieve_calc_results(self):
-            """Main-thread side of the calculator worker -- same 150ms polling cadence as
-            _poll_search_results/_poll_totals_results, runs for the whole lifetime of the
-            window."""
-            try:
-                while True:
-                    code, args, ok, payload = self._primesieve_calc_result_queue.get_nowait()
-                    self._primesieve_calc_busy = False
-                    self.primesieve_calc_button.configure(state="normal")
-                    self.totals_progress.stop()
-                    self.totals_progress.configure(mode="determinate", maximum=1, value=0)
-                    if not ok:
-                        self.status.set(T("primesieve_calc.status_error"))
-                        messagebox.showerror(T("primesieve_calc.error_dialog_title"), payload)
-                        continue
-                    self.status.set(T("primesieve_calc.status_done"))
-                    self._primesieve_calc_last_result = payload
-                    self.primesieve_calc_copy_button.configure(state="normal")
-                    if code == "count":
-                        lo, hi = args
-                        text = T("primesieve_calc.result_count", lo=f"{lo:,}", hi=f"{hi:,}",
-                                  count=f"{payload:,}")
-                    elif code == "nth":
-                        n, start = args
-                        text = T("primesieve_calc.result_nth", n=f"{n:,}", start=f"{start:,}",
-                                  value=f"{payload:,}")
-                    elif code == "next":
-                        (x,) = args
-                        text = T("primesieve_calc.result_next", x=f"{x:,}", value=f"{payload:,}")
-                    else:
-                        (x,) = args
-                        text = T("primesieve_calc.result_prev", x=f"{x:,}", value=f"{payload:,}")
-                    self.primesieve_calc_result_var.set(text)
-            except queue.Empty:
-                pass
-            self.after(150, self._poll_primesieve_calc_results)
+        def _on_primesieve_calc_result(self, payload, error):
+            """Main-thread callback for _primesieve_calc_job -- same 150ms-poll-driven
+            timing as before, just delivered via PersistentWorker instead of a bespoke
+            queue.Queue + self.after() pair."""
+            self._primesieve_calc_busy = False
+            self.primesieve_calc_button.configure(state="normal")
+            self.totals_progress.stop()
+            self.totals_progress.configure(mode="determinate", maximum=1, value=0)
+            if error is not None:
+                self.status.set(T("primesieve_calc.status_error"))
+                messagebox.showerror(T("primesieve_calc.error_dialog_title"), str(error))
+                return
+            code, args, ok, result_payload = payload
+            if not ok:
+                self.status.set(T("primesieve_calc.status_error"))
+                messagebox.showerror(T("primesieve_calc.error_dialog_title"), result_payload)
+                return
+            self.status.set(T("primesieve_calc.status_done"))
+            self._primesieve_calc_last_result = result_payload
+            self.primesieve_calc_copy_button.configure(state="normal")
+            if code == "count":
+                lo, hi = args
+                text = T("primesieve_calc.result_count", lo=f"{lo:,}", hi=f"{hi:,}",
+                          count=f"{result_payload:,}")
+            elif code == "nth":
+                n, start = args
+                text = T("primesieve_calc.result_nth", n=f"{n:,}", start=f"{start:,}",
+                          value=f"{result_payload:,}")
+            elif code == "next":
+                (x,) = args
+                text = T("primesieve_calc.result_next", x=f"{x:,}", value=f"{result_payload:,}")
+            else:
+                (x,) = args
+                text = T("primesieve_calc.result_prev", x=f"{x:,}", value=f"{result_payload:,}")
+            self.primesieve_calc_result_var.set(text)
 
         def _on_primesieve_calc_copy_result(self):
             if self._primesieve_calc_last_result is None:
