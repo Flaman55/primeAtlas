@@ -3138,15 +3138,13 @@ def _build_gui():
                 self, self._primesieve_calc_job, on_result=self._on_primesieve_calc_result)
 
             # Primality-testing worker (Liczby pierwsze -> Testy pierwszosci sub-tab):
-            # own queue pair for the same reason as the primesieve-calculator block just
-            # above (unrelated result shapes: a list of per-method test rows vs. a
-            # factorization dict) -- but note this worker never touches WSL at all, see
-            # _primality_worker_loop's own docstring.
+            # own PersistentWorker for the same reason as the primesieve-calculator
+            # block just above (unrelated result shapes: a list of per-method test rows
+            # vs. a factorization dict) -- but note this worker never touches WSL at
+            # all, see _primality_job's own docstring.
             self._primality_busy = False
-            self._primality_work_queue = queue.Queue()
-            self._primality_result_queue = queue.Queue()
-            threading.Thread(target=self._primality_worker_loop, daemon=True).start()
-            self.after(150, self._poll_primality_results)
+            self._primality_worker = background.PersistentWorker(
+                self, self._primality_job, on_result=self._on_primality_worker_result)
 
             # Goldbach structural-window worker (Badania -> Goldbach sub-tab): own queue
             # pair for the same reason as every other worker block here -- unrelated
@@ -3849,7 +3847,7 @@ def _build_gui():
                 messagebox.showerror(T("primality.error_dialog_title"), str(e))
                 return
             self._primality_set_busy(True)
-            self._primality_work_queue.put({"op": "check", "n": n})
+            self._primality_worker.submit({"op": "check", "n": n})
 
         def _on_primality_factorize_compute(self):
             if self._primality_busy:
@@ -3860,7 +3858,7 @@ def _build_gui():
                 messagebox.showerror(T("primality.error_dialog_title"), str(e))
                 return
             self._primality_set_busy(True)
-            self._primality_work_queue.put(
+            self._primality_worker.submit(
                 {"op": "factorize", "n": n, "use_sympy": self.primality_use_sympy_var.get()})
 
         def _primality_set_busy(self, busy):
@@ -3877,47 +3875,49 @@ def _build_gui():
                 self.totals_progress.stop()
                 self.totals_progress.configure(mode="determinate", maximum=1, value=0)
 
-        def _primality_worker_loop(self):
-            """Own daemon thread -- single-owner reasoning identical to
-            _primesieve_calc_worker_loop's own docstring (self._primality_busy blocks
-            new requests from the GUI side, so only one job is ever in flight). No WSL
-            subprocess here at all -- primeatlas.primality is ordinary in-process pure
-            Python, run directly on this thread."""
-            while True:
-                job = self._primality_work_queue.get()
-                op = job["op"]
-                try:
-                    if op == "check":
-                        rows = primality_run_all_tests(job["n"])
-                        self._primality_result_queue.put((op, job["n"], True, rows))
-                    else:
-                        result = primality_factorize(job["n"], use_sympy=job["use_sympy"])
-                        self._primality_result_queue.put((op, job["n"], True, result))
-                except Exception as e:  # noqa: BLE001 -- surface any unexpected failure
-                                         # to the GUI as an error dialog instead of
-                                         # silently killing this worker thread
-                    self._primality_result_queue.put((op, job["n"], False, str(e)))
-
-        def _poll_primality_results(self):
-            """Main-thread side -- same 150ms polling cadence as
-            _poll_primesieve_calc_results/_poll_search_results, runs for the whole
-            lifetime of the window."""
+        def _primality_job(self, job, report_progress):
+            """Runs on PersistentWorker's own daemon thread -- single-owner reasoning
+            identical to _primesieve_calc_job's own docstring (self._primality_busy
+            blocks new requests from the GUI side, so only one job is ever in flight).
+            No WSL subprocess here at all -- primeatlas.primality is ordinary
+            in-process pure Python, run directly on this thread. Catches its own
+            exceptions (per PersistentWorker's fn contract -- see background.py's
+            docstring) so a failure surfaces with the right op/n context via a normal
+            error-dialog result, instead of falling through to PersistentWorker's own
+            last-resort net which has no way to know which request failed."""
+            op = job["op"]
             try:
-                while True:
-                    op, n, ok, payload = self._primality_result_queue.get_nowait()
-                    self._primality_set_busy(False)
-                    if not ok:
-                        self.status.set(T("primality.status_error"))
-                        messagebox.showerror(T("primality.error_dialog_title"), payload)
-                        continue
-                    self.status.set(T("primality.status_done"))
-                    if op == "check":
-                        self._primality_show_check_results(payload)
-                    else:
-                        self._primality_show_factorize_result(n, payload)
-            except queue.Empty:
-                pass
-            self.after(150, self._poll_primality_results)
+                if op == "check":
+                    rows = primality_run_all_tests(job["n"])
+                    return op, job["n"], True, rows
+                result = primality_factorize(job["n"], use_sympy=job["use_sympy"])
+                return op, job["n"], True, result
+            except Exception as e:  # noqa: BLE001 -- surface any unexpected failure
+                                     # to the GUI as an error dialog instead of
+                                     # silently killing this worker thread
+                return op, job["n"], False, str(e)
+
+        def _on_primality_worker_result(self, payload, error):
+            """Main-thread callback for _primality_job -- same shape as the old
+            _poll_primality_results, just delivered via PersistentWorker instead of a
+            bespoke queue.Queue + self.after() pair. `error` is only non-None for a
+            genuine PersistentWorker-framework bug (_primality_job already catches its
+            own exceptions -- see its docstring)."""
+            self._primality_set_busy(False)
+            if error is not None:
+                self.status.set(T("primality.status_error"))
+                messagebox.showerror(T("primality.error_dialog_title"), str(error))
+                return
+            op, n, ok, result_payload = payload
+            if not ok:
+                self.status.set(T("primality.status_error"))
+                messagebox.showerror(T("primality.error_dialog_title"), result_payload)
+                return
+            self.status.set(T("primality.status_done"))
+            if op == "check":
+                self._primality_show_check_results(result_payload)
+            else:
+                self._primality_show_factorize_result(n, result_payload)
 
         def _primality_show_check_results(self, rows):
             self.primality_results_tree.delete(*self.primality_results_tree.get_children())
@@ -6178,7 +6178,7 @@ def _build_gui():
             SAME [4, 2*Pmax] window (never a separate cascade step -- see
             goldbach_window.window_rows' own docstring), sourced from the on-disk
             magazyn. Both run on the shared worker thread (own queue.Queue pair + 150ms
-            poller, same pattern as _primality_worker_loop/_poll_primality_results)."""
+            poller, same pattern as _const_records_worker_loop/_poll_const_records_results)."""
             top = ttk.Frame(self.research_goldbach_tab)
             top.pack(fill="x", padx=6, pady=(10, 4))
             ttk.Label(top, text=T("research_goldbach.field_n")).pack(side="left")
@@ -6906,7 +6906,7 @@ def _build_gui():
 
         def _goldbach_worker_loop(self):
             """Own daemon thread -- single-owner reasoning identical to
-            _primality_worker_loop's own docstring (self._goldbach_busy blocks new
+            _const_records_worker_loop's own docstring (self._goldbach_busy blocks new
             requests from the GUI side, so only one job is ever in flight). Three job
             shapes distinguished by "op":
 
@@ -7024,7 +7024,7 @@ def _build_gui():
 
         def _poll_goldbach_results(self):
             """Main-thread side -- same 150ms polling cadence as
-            _poll_primality_results, runs for the whole lifetime of the window. The
+            _poll_const_records_results, runs for the whole lifetime of the window. The
             per-message body is wrapped in its own try/except (Exception, not just
             queue.Empty) so that ONE bad message -- e.g. a result arriving for a
             Toplevel (Wizualizacja or decompose) the user already closed -- can never
