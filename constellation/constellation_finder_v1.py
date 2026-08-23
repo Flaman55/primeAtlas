@@ -90,22 +90,83 @@ from pattern_catalog_v1 import PATTERN_CATALOG  # noqa: E402
 PORTAL_FOLDER = os.environ.get("CONSTELLATION_PORTAL_DIR") or os.path.abspath(
     os.path.join(_SCRIPT_DIR, "..", "CONSTELLATION_PORTAL"))
 CHECKPOINT_FILENAME = "CHECKPOINT.txt"
+WINDOW_INDEX_FILENAME = "WINDOW_INDEX.tsv"
+
+
+def _window_index_path(base_exponent):
+    folder = os.path.join(PORTAL_FOLDER, f"10p{base_exponent}", "constellations")
+    return os.path.join(folder, WINDOW_INDEX_FILENAME)
+
+
+def _read_window_index(base_exponent):
+    """Returns {filename: base_prime_or_None} from the cached per-floor window index (see
+    list_source_windows()'s docstring), or {} if no index exists yet."""
+    path = _window_index_path(base_exponent)
+    if not os.path.exists(path):
+        return {}
+    index = {}
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            line = line.rstrip("\n")
+            if not line:
+                continue
+            name, _, base_prime_str = line.partition("\t")
+            index[name] = int(base_prime_str) if base_prime_str else None
+    return index
+
+
+def _write_window_index(base_exponent, index):
+    path = _window_index_path(base_exponent)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp_path = path + ".tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        for name, base_prime in index.items():
+            f.write(f"{name}\t{'' if base_prime is None else base_prime}\n")
+    os.replace(tmp_path, path)
 
 
 def list_source_windows(base_exponent):
     """Returns [(filename, path, base_prime), ...] for every PRIME_WINDOW_*.bin under
     10p{base_exponent}/source_primes/, ordered ascending by base_prime (from each file's
-    header -- robust regardless of filename shorthand)."""
+    header -- robust regardless of filename shorthand).
+
+    WINDOW_INDEX.tsv cache (added 2026-08-23, at Artur's request -- floor 25's 542k-file
+    source_primes/ was making every run of this function, and therefore every run of
+    process_floor()/list_pietra_with_data(), open and read the header of ALL 542k files
+    just to learn their base_prime for sorting -- paid IN FULL on every single invocation
+    regardless of how much of the floor CHECKPOINT.txt already covers, and paid TWICE per
+    script run (once here, once more from list_pietra_with_data()'s old call into this
+    same function just to test for non-emptiness). That's several hundred thousand
+    individual file opens before a single window even gets matched against a pattern --
+    easily long enough to look like a hang on a floor this size, even though the actual
+    per-window streaming loop in process_floor() was always incremental and checkpointed.
+    Source windows are written once by the generator and never rewritten in place (unlike
+    hit files, which grow via append_prime_window()), so a filename's base_prime is safe
+    to cache indefinitely once read: a repeat run only needs to read the header of
+    filenames that are NEW since the last time this floor's index was written, dropping
+    entries whose file no longer exists. This turns the per-run header-read cost from
+    O(all files on the floor) into O(files added since last run) -- for a floor that's
+    already fully scanned, that's typically zero."""
     source_dir = os.path.join(PORTAL_FOLDER, f"10p{base_exponent}", "source_primes")
     if not os.path.isdir(source_dir):
         return []
-    entries = []
-    for name in sorted(os.listdir(source_dir)):
-        if not (name.startswith("PRIME_WINDOW_") and name.endswith(".bin")):
-            continue
-        path = os.path.join(source_dir, name)
-        header = prime_sieve_v1.read_prime_window_header(path)
-        entries.append((name, path, header["base_prime"]))
+    names_on_disk = sorted(
+        name for name in os.listdir(source_dir)
+        if name.startswith("PRIME_WINDOW_") and name.endswith(".bin"))
+    if not names_on_disk:
+        return []
+
+    names_on_disk_set = set(names_on_disk)
+    index = {name: base_prime for name, base_prime in _read_window_index(base_exponent).items()
+              if name in names_on_disk_set}
+    new_names = [name for name in names_on_disk if name not in index]
+    if new_names:
+        for name in new_names:
+            header = prime_sieve_v1.read_prime_window_header(os.path.join(source_dir, name))
+            index[name] = header["base_prime"]
+        _write_window_index(base_exponent, index)
+
+    entries = [(name, os.path.join(source_dir, name), index[name]) for name in names_on_disk]
     entries.sort(key=lambda e: (e[2] is None, e[2] if e[2] is not None else 0, e[0]))
     return entries
 
@@ -114,14 +175,28 @@ def list_pietra_with_data():
     """Returns sorted base_exponent ints for every 10p{N} folder under PORTAL_FOLDER that
     actually has at least one PGS2 source window. Floor folders can exist as empty
     source_primes/constellations placeholders ahead of the scanner actually reaching
-    them, so folder presence alone doesn't mean there's anything to process."""
+    them, so folder presence alone doesn't mean there's anything to process.
+
+    Deliberately a cheap directory-listing existence check, NOT a call into
+    list_source_windows() -- see that function's docstring on WINDOW_INDEX.tsv: this used
+    to call list_source_windows() just to test non-emptiness, which for an
+    already-fully-indexed floor is free, but for a floor never indexed yet (e.g. the very
+    first run after a large floor like 10p25 first gets data) meant paying the full
+    header-read-every-file cost a SECOND time on top of the one process_floor() itself
+    needs -- effectively doubling floor 25's worst-case startup cost for no benefit."""
     if not os.path.isdir(PORTAL_FOLDER):
         return []
     result = []
     for name in os.listdir(PORTAL_FOLDER):
         if name.startswith("10p") and name[3:].isdigit():
             base_exponent = int(name[3:])
-            if list_source_windows(base_exponent):
+            source_dir = os.path.join(PORTAL_FOLDER, name, "source_primes")
+            if not os.path.isdir(source_dir):
+                continue
+            has_window = any(
+                fn.startswith("PRIME_WINDOW_") and fn.endswith(".bin")
+                for fn in os.listdir(source_dir))
+            if has_window:
                 result.append(base_exponent)
     return sorted(result)
 
