@@ -106,14 +106,14 @@ def main():
         # --- "prime" search: found -------------------------------------------------
         app._start_search_job("prime", 3, 101)
         check(app._search_busy, "search job marked busy immediately after dispatch")
-        check(str(app.search_button["state"]) == "disabled",
+        check(str(app.primes_tab_widget.search_button["state"]) == "disabled",
               f"search button disabled while a 'prime' search is in flight "
-              f"(got state={app.search_button['state']!r})")
+              f"(got state={app.primes_tab_widget.search_button['state']!r})")
         _pump(app, 3.0)
         check(not app._search_busy, "search job no longer busy after PersistentWorker result")
-        check(str(app.search_button["state"]) == "normal",
+        check(str(app.primes_tab_widget.search_button["state"]) == "normal",
               f"search button re-enabled after 'prime' search completes "
-              f"(got state={app.search_button['state']!r})")
+              f"(got state={app.primes_tab_widget.search_button['state']!r})")
         check("101" in app.status.get(), f"status mentions the found prime (got: {app.status.get()!r})")
 
         # --- "prime" search: not found but window covers it (confirmed composite) --

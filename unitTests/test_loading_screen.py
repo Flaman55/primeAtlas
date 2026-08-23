@@ -127,9 +127,9 @@ def main():
               f"_loading_startup_pending emptied out (got {app._loading_startup_pending!r})")
 
         # --- the seeded floor actually made it into BOTH trees ----------------------
-        check(0 in app._pietro_node_by_exp,
+        check(0 in app.primes_tab_widget._pietro_node_by_exp,
               f"seeded floor 10p0 shows up in the Prime numbers tree "
-              f"(got exponents: {list(app._pietro_node_by_exp.keys())})")
+              f"(got exponents: {list(app.primes_tab_widget._pietro_node_by_exp.keys())})")
         # Not asserting on app.status.get()'s CONTENT here -- by the time the 5s pump
         # above finishes, the totals worker kicked off at the end of
         # _on_primes_tree_scan_done has typically already overwritten the "N floors
@@ -162,7 +162,7 @@ def main():
               "re-entrant reload sequence settles (busy cleared) without hanging")
         check(not app._primes_tree_reload_pending,
               "re-entrant reload sequence clears 'pending' once the coalesced rerun finishes")
-        check(0 in app._pietro_node_by_exp,
+        check(0 in app.primes_tab_widget._pietro_node_by_exp,
               "tree is still correctly populated after the re-entrant reload sequence")
 
         app.destroy()

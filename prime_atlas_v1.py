@@ -119,6 +119,24 @@ from primeatlas import background  # noqa: E402
 # convention).
 from primeatlas.pdf_writer import _pdf_ascii_fold, _pdf_rect_op, _pdf_text_op, _write_pdf  # noqa: E402
 from primeatlas.benchmark import read_benchmark_log  # noqa: E402
+# storage/widgets: extracted during the refactor branch's Faza 3 (2026-08-23), alongside
+# the "Prime numbers" tab's UI split (primeatlas/primes_tab.py) -- see those modules' own
+# docstrings. list_pietra/list_source_files/list_source_filenames/read_source_file_headers/
+# load_totals_cache/save_totals_cache/update_pietro_totals_cache/format_big_int/
+# format_duration/format_bytes/aggregate_write_seconds_by_pietro/digit_count_floor/
+# find_prime_in_floor/LOW_FLOOR_CUTOFF were never specific to that one tab in the first
+# place (see primeatlas/storage.py's own docstring for why the whole layer moved together
+# rather than only the pieces primes_tab.py itself needs) -- every OTHER tab in this file
+# that used to call the local def now calls the imported name unchanged. FlowRow (renamed
+# from the local _FlowRow) is still used directly by the Constellations tab's own preview
+# panes below, hence the `as _FlowRow` alias -- see primeatlas/widgets.py's own docstring.
+from primeatlas.storage import (  # noqa: E402
+    LOW_FLOOR_CUTOFF, list_pietra, list_source_files, list_source_filenames,
+    read_source_file_headers, load_totals_cache, save_totals_cache,
+    update_pietro_totals_cache, format_big_int, format_duration, format_bytes,
+    aggregate_write_seconds_by_pietro, digit_count_floor, find_prime_in_floor,
+)
+from primeatlas.widgets import FlowRow as _FlowRow  # noqa: E402
 
 # AppSettings persists the chosen storage path OUTSIDE the portal folder itself (see
 # app_settings.py's docstring for the chicken-and-egg reason). Loaded once here, at module
@@ -206,16 +224,12 @@ QUICK_GEN_MAX_WINDOW_WIDTH = 10_000_000  # window width the (future) range ->
                           # per-iteration memory footprint scales with what the machine
                           # actually has rather than being pinned to one fixed size.
 
-LOW_FLOOR_CUTOFF = 7  # duplicated from prime_sieve_v3.py/v4.py's own LOW_FLOOR_CUTOFF (see
-                      # that constant's docstring for the full rationale: floors 0..6 are
-                      # each narrower than window_m's minimum, 10,000,000, so they always
-                      # get exactly ONE window file rather than window_m-sized chunks). This
-                      # Windows-native module deliberately never imports prime_sieve_v3/v4
-                      # (they ctypes-load a Linux .so -- see find_continuation_target_idx's
-                      # docstring for why), so the value is kept in sync by hand here. Used
-                      # by update_pietro_totals_cache() to decide when its own mtime-based
-                      # staleness check can't be trusted (see that function's LOW-FLOOR
-                      # EXCEPTION docstring paragraph).
+# LOW_FLOOR_CUTOFF/list_pietra/list_source_files/_OFFSET_FROM_NAME_RE/_offset_from_filename/
+# list_source_filenames moved to primeatlas/storage.py during the refactor branch's Faza 3
+# (tab-by-tab backend/UI split, 2026-08-23), alongside the "Prime numbers" tab's own UI split
+# (primeatlas/primes_tab.py) -- see that module's own docstring for why this whole layer
+# moved together rather than only the pieces the Primes tab itself needs. All five names are
+# imported back at this file's top, unchanged, for every other tab that also calls them.
 
 # BENCHMARK_TREE_HIDDEN_COLUMNS/BENCHMARK_PAGE_SIZE/_order_benchmark_tree_columns moved to
 # primeatlas/benchmark.py during the refactor branch's Faza 3 (tab-by-tab backend/UI split,
@@ -228,95 +242,6 @@ LOW_FLOOR_CUTOFF = 7  # duplicated from prime_sieve_v3.py/v4.py's own LOW_FLOOR_
 # Pure logic (no tkinter dependency) -- kept separate from the GUI classes below so it can
 # be unit-tested on its own, without a display.
 # ------------------------------------------------------------------------------------------
-
-def list_pietra(portal_folder):
-    """Returns sorted base_exponent ints for every 10p{N} folder found directly under
-    portal_folder (regardless of whether it has source_primes/ or constellations/
-    populated yet)."""
-    if not os.path.isdir(portal_folder):
-        return []
-    result = []
-    for name in os.listdir(portal_folder):
-        if name.startswith("10p") and name[3:].isdigit():
-            if os.path.isdir(os.path.join(portal_folder, name)):
-                result.append(int(name[3:]))
-    return sorted(result)
-
-
-def list_source_files(portal_folder, base_exponent):
-    """Returns a list of (filename, full_path, header_dict) for every PRIME_WINDOW_*.bin
-    under 10p{base_exponent}/source_primes/, sorted into ascending window order (by the
-    base prime in each file's header -- robust to filename shorthand like "10M" vs "0",
-    unlike trying to re-parse format_offset()'s abbreviation back into a number). Files
-    that fail to parse (corrupt/truncated) are still listed, with header=None, rather than
-    silently dropped -- a browsing tool should surface problems, not hide them."""
-    source_dir = os.path.join(portal_folder, f"10p{base_exponent}", "source_primes")
-    if not os.path.isdir(source_dir):
-        return []
-    entries = []
-    for name in sorted(os.listdir(source_dir)):
-        if not (name.startswith("PRIME_WINDOW_") and name.endswith(".bin")):
-            continue
-        path = os.path.join(source_dir, name)
-        try:
-            header = prime_sieve_v1.read_prime_window_header(path)
-        except Exception:
-            header = None
-        entries.append((name, path, header))
-
-    def sort_key(entry):
-        _, _, header = entry
-        if header is None or header.get("base_prime") is None:
-            return (1, 0, entry[0])
-        return (0, header["base_prime"], entry[0])
-
-    entries.sort(key=sort_key)
-    return entries
-
-
-_OFFSET_FROM_NAME_RE = re.compile(r"_off_(\d+)(M|k)?\.bin$")
-
-
-def _offset_from_filename(name):
-    """Cheap, I/O-free sort key: reconstructs the numeric offset directly from the
-    filename's "_off_{N}[M|k]" suffix instead of opening the file to read its header.
-    Safe for THIS project specifically because window_m (orchestrator_v1.WINDOW_M) is
-    always a multiple of 1_000_000 -- format_offset() therefore always emits either the
-    literal "0" or an exact "{N}M" form for every file this scanner actually writes, never
-    the fractional/rounded "k" fallback it has for arbitrary (non-window-aligned) inputs.
-    Returns None if a filename doesn't match (corrupt/foreign file) -- callers should sort
-    those to the end rather than guessing at a position."""
-    m = _OFFSET_FROM_NAME_RE.search(name)
-    if not m:
-        return None
-    n = int(m.group(1))
-    suffix = m.group(2)
-    if suffix == "M":
-        n *= 1_000_000
-    elif suffix == "k":
-        n *= 1_000
-    return n
-
-
-def list_source_filenames(portal_folder, base_exponent):
-    """Cheap listing of every PRIME_WINDOW_*.bin under 10p{base_exponent}/source_primes/:
-    just os.listdir() + a regex per name, NO file opens. Sorted ascending by the offset
-    parsed from the filename (see _offset_from_filename) -- a floor can hold thousands of
-    windows (10p15 alone is past 2,600+ and still growing), and list_source_files()'s
-    per-file header read is exactly what made expanding a heavily-populated floor node
-    freeze the GUI. Returns [(name, path), ...]; headers are read separately, only for
-    whichever page is actually being displayed (see read_source_file_headers())."""
-    source_dir = os.path.join(portal_folder, f"10p{base_exponent}", "source_primes")
-    if not os.path.isdir(source_dir):
-        return []
-    entries = []
-    for name in os.listdir(source_dir):
-        if not (name.startswith("PRIME_WINDOW_") and name.endswith(".bin")):
-            continue
-        entries.append((_offset_from_filename(name), name))
-    entries.sort(key=lambda e: (e[0] is None, e[0], e[1]))
-    return [(name, os.path.join(source_dir, name)) for _offset, name in entries]
-
 
 def _safe_prime_gap_margin(x):
     """Generous upper bound on the largest prime gap below x, used only to decide
@@ -555,156 +480,10 @@ def find_highest_populated_floor(portal_folder):
     return None
 
 
-def read_source_file_headers(entries):
-    """Reads headers for a (small, page-sized) list of (name, path) tuples -- the actual
-    disk I/O, deliberately kept separate from list_source_filenames() so it only ever runs
-    on however many files are visible on ONE page, never the whole floor. Returns
-    [(name, path, header_or_None), ...] in the same order given."""
-    result = []
-    for name, path in entries:
-        try:
-            header = prime_sieve_v1.read_prime_window_header(path)
-        except Exception:
-            header = None
-        result.append((name, path, header))
-    return result
-
-
-TOTALS_CACHE_FILENAME = ".portal_totals_cache.json"
-
-
-def _totals_cache_path(portal_folder):
-    return os.path.join(portal_folder, TOTALS_CACHE_FILENAME)
-
-
-def load_totals_cache(portal_folder):
-    """Returns the persisted {"10p{N}": {"files": {filename: count, ...}, "total": T,
-    "file_count": C}, ...} cache, or {} if it doesn't exist yet or is corrupt (never raises --
-    a missing/bad cache just means the next update rebuilds it, same as no cache at all)."""
-    path = _totals_cache_path(portal_folder)
-    if not os.path.exists(path):
-        return {}
-    try:
-        with open(path, encoding="utf-8") as f:
-            data = json.load(f)
-        return data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
-        return {}
-
-
-def save_totals_cache(portal_folder, cache):
-    """Atomic write (temp file + os.replace()), same pattern as orchestrator_v1.py's
-    _ensure_benchmark_log_schema() -- this file can get large (one entry per source window,
-    e.g. 15000+ for a heavily-populated floor), so a half-written file from an interrupted
-    save must never be what a later load sees."""
-    path = _totals_cache_path(portal_folder)
-    tmp_path = f"{path}.tmp{os.getpid()}"
-    try:
-        os.makedirs(portal_folder, exist_ok=True)
-        with open(tmp_path, "w", encoding="utf-8") as f:
-            json.dump(cache, f)
-        os.replace(tmp_path, path)
-    except OSError:
-        pass  # best-effort -- a failed cache save just means the next visit re-scans
-
-
-def update_pietro_totals_cache(portal_folder, base_exponent, cache):
-    """Computes (and caches) the TOTAL prime count across every source window file for one
-    floor -- the file list on its own only shows each file's OWN count, never a sum, so
-    this fills in the floor row's total. Reading every file's header for a
-    heavily-populated floor is NOT cheap on this project's actual storage (~78s for one
-    floor's 15,101 files, ~5ms/file -- per-file open() latency on the underlying mount,
-    not the tiny header read itself) -- exactly why list_source_filenames()/
-    read_source_file_headers() were already split apart for the paginated file list (see
-    those functions' docstrings). This
-    function makes repeat visits cheap: `cache` maps floor -> {filename: count} from the
-    LAST computation, and only filenames not already in that map get their header re-read --
-    files removed from disk since the last run are dropped from the map (no stale counts
-    lingering forever). A floor visited for the first time still pays the full one-time
-    scan cost -- callers should run this off the GUI thread (see PortalApp's background
-    totals worker) so that cost is never a frozen window.
-
-    Returns (total, file_count, newly_read_count, total_bytes) -- newly_read_count lets a
-    caller report "read 42 new files" instead of re-summarizing the whole floor every
-    time, useful for a status message on the (usual, fast) incremental case. total_bytes
-    is the floor's on-disk footprint (sum of every source window file's size) -- tracked
-    alongside count/mtime per file so it's free to report without any extra I/O beyond
-    what this function was already doing (the same os.stat() call used for the mtime
-    staleness check below also returns st_size).
-
-    STALENESS NOTE: each cached entry also stores the file's mtime at the time its header
-    was read, and a file gets RE-read (not just skipped because its name is already cached)
-    if the current on-disk mtime no longer matches. This matters because filenames here are
-    fully deterministic from floor+offset (see prime_sieve_*.py's write_prime_window path),
-    NOT content-addressed -- a low floor (see LOW_FLOOR_CUTOFF in prime_sieve_v3.py/v4.py)
-    always writes to the exact same single filename every time it's regenerated, so an
-    in-place rewrite (e.g. redoing a floor after a bugfix, or after storage was reset and
-    regenerated) previously kept serving the FIRST-ever cached count forever -- the cache
-    only ever checked "have I seen this name before", never "has this name's content
-    changed". Entries from before this check existed are plain ints (old schema) rather than
-    {"count", "mtime"} dicts; any non-dict entry is treated as unconditionally stale so it
-    gets re-read (and migrated to the new shape) the first time this runs against an old
-    cache file, rather than silently trusting a count with no known mtime.
-
-    LOW-FLOOR EXCEPTION: mtime alone turned out to be unreliable in practice for floors
-    below LOW_FLOOR_CUTOFF -- this project's storage drive is FUSE/WSL-mounted (see the
-    known git-on-that-drive unlink/rename quirk elsewhere in this codebase's history), and
-    the Windows-side os.path.getmtime() this function relies on can keep reporting a stale
-    cached stat for a file just rewritten from the WSL side, for longer than this app's
-    Refresh-then-recompute cycle. A low floor never has more than ONE file (its whole width
-    is always < window_m -- see LOW_FLOOR_CUTOFF's own rationale), so the caching this
-    mtime check exists for barely matters there anyway: unconditionally re-reading a low
-    floor's single file every call costs one extra ~5ms open, not the "78s across 15,101
-    files" cost this whole cache exists to avoid for a heavily-populated NORMAL floor."""
-    key = f"10p{base_exponent}"
-    entry = cache.setdefault(key, {"files": {}})
-    cached_files = entry.setdefault("files", {})
-
-    filenames = list_source_filenames(portal_folder, base_exponent)
-    current_names = {name for name, _path in filenames}
-
-    for stale_name in list(cached_files.keys()):
-        if stale_name not in current_names:
-            del cached_files[stale_name]
-
-    always_refresh = base_exponent < LOW_FLOOR_CUTOFF
-    to_read = []
-    stats = {}
-    for name, path in filenames:
-        try:
-            st = os.stat(path)
-            stats[name] = (st.st_mtime, st.st_size)
-        except OSError:
-            stats[name] = (None, 0)
-        cached = cached_files.get(name)
-        mtime, _size = stats[name]
-        if always_refresh or not isinstance(cached, dict) or cached.get("mtime") != mtime:
-            to_read.append((name, path))
-
-    if to_read:
-        for name, path, header in read_source_file_headers(to_read):
-            mtime, size = stats[name]
-            cached_files[name] = {
-                "count": header["count"] if header is not None else 0,
-                "mtime": mtime,
-                "size": size,
-            }
-
-    # Backfill "size" for entries that were already up to date (mtime matched, so skipped
-    # above) but predate this field being tracked -- keeps total_bytes accurate without
-    # forcing a full header re-read just to learn a file's size, since the size was
-    # already sitting in `stats` from the os.stat() call above regardless.
-    for name, _path in filenames:
-        entry_file = cached_files.get(name)
-        if isinstance(entry_file, dict) and "size" not in entry_file:
-            entry_file["size"] = stats[name][1]
-
-    total = sum(v["count"] for v in cached_files.values())
-    total_bytes = sum(v.get("size", 0) for v in cached_files.values())
-    entry["total"] = total
-    entry["file_count"] = len(cached_files)
-    entry["total_bytes"] = total_bytes
-    return total, len(cached_files), len(to_read), total_bytes
+# read_source_file_headers/TOTALS_CACHE_FILENAME/_totals_cache_path/load_totals_cache/
+# save_totals_cache/update_pietro_totals_cache moved to primeatlas/storage.py during the
+# refactor branch's Faza 3 (2026-08-23) -- see that module's own docstring. All six names
+# (except the private _totals_cache_path) are imported back at this file's top.
 
 
 def hit_file_path(portal_folder, base_exponent, k, variant_id):
@@ -1007,17 +786,9 @@ def render_constellation_records_pdf(path, k, fieldnames, rows, translator=None)
     _write_pdf(path, pages, page_size=(page_w, page_h))
 
 
-def format_big_int(n, head=12, tail=6):
-    """Shortens a huge integer for display: keeps the first `head` and last `tail` digits,
-    elides the middle with "...". This is just for compact display in a tree/list widget;
-    full-precision values are always used for any actual computation."""
-    if n is None:
-        return "-"
-    s = str(n)
-    if len(s) <= head + tail + 3:
-        return s
-    return f"{s[:head]}...{s[-tail:]} ({len(s)} digits)"
-
+# format_big_int moved to primeatlas/storage.py during the refactor branch's Faza 3
+# (2026-08-23), alongside the "Prime numbers" tab's own UI split -- see that module's own
+# docstring. Imported back at this file's top.
 
 # _DECIMAL_COMMA_RE/_normalize_decimal_commas/read_benchmark_log/aggregate_benchmark_growth/
 # aggregate_benchmark_fair_spw/aggregate_benchmark_sieve_nps/aggregate_benchmark_write_mbps
@@ -1027,66 +798,10 @@ def format_big_int(n, head=12, tail=6):
 # (now separate) Benchmark tab, see primeatlas/benchmark_tab.py.
 
 
-def format_duration(seconds):
-    """H h M m S s, dropping leading zero units. Duplicated (not imported) from
-    orchestrator_v3.py's own format_duration() -- this GUI module deliberately doesn't
-    import the WSL-only orchestrator scripts directly (see the Generation tab's own note
-    on why orchestrator_loop_v2 is launched as a subprocess instead), so small pure-Python
-    helpers like this one get a local copy rather than a cross-module dependency."""
-    if seconds is None:
-        return "?"
-    seconds = int(round(seconds))
-    hours, rest = divmod(seconds, 3600)
-    minutes, secs = divmod(rest, 60)
-    if hours:
-        return f"{hours}h {minutes}m {secs}s"
-    if minutes:
-        return f"{minutes}m {secs}s"
-    return f"{secs}s"
-
-
-def format_bytes(n):
-    """Plain binary-unit (B/KiB/MiB/GiB/TiB) byte count formatter, one decimal place
-    (none for bytes), unit picked by magnitude -- same spirit as format_duration above
-    (small, local, no need to pull in a dependency for something this short). None/
-    negative input -> "?", matching format_duration's own None handling."""
-    if n is None or n < 0:
-        return "?"
-    n = float(n)
-    if n < 1024:
-        return f"{n:.0f} B"
-    for unit in ("KiB", "MiB", "GiB"):
-        n /= 1024
-        if n < 1024:
-            return f"{n:.1f} {unit}"
-    return f"{n / 1024:.1f} TiB"
-
-
-def aggregate_write_seconds_by_pietro(rows):
-    """Sums total_seconds per floor across every benchmark_log.csv row that ACTUALLY wrote
-    files (write_files=="1"), skipping write_files=False count-only benchmark rows entirely
-    -- otherwise a floor that was also re-benchmarked in count-only mode (same
-    base_exponent/range, much faster since it skips disk I/O) would have its "how long did
-    this floor really take to generate" figure polluted by runs that produced no files at
-    all -- counting numbers without writing files needs to stay distinct from counting with
-    writes. Rows predating the write_files
-    column (blank -- see orchestrator_v3.py's BENCHMARK_FIELDNAMES comment) are skipped too,
-    same as an unparseable row -- no way to know after the fact which mode they ran in.
-    Returns {base_exponent: total_seconds}."""
-    totals = {}
-    for row in rows:
-        if row.get("write_files") != "1":
-            continue
-        try:
-            base_exponent = int(row.get("base_exponent", ""))
-            seconds = float(row.get("total_seconds", ""))
-        except (TypeError, ValueError):
-            continue
-        if math.isnan(seconds):
-            continue
-        totals[base_exponent] = totals.get(base_exponent, 0.0) + seconds
-    return totals
-
+# format_duration/format_bytes/aggregate_write_seconds_by_pietro moved to
+# primeatlas/storage.py during the refactor branch's Faza 3 (2026-08-23), alongside the
+# "Prime numbers" tab's own UI split -- see that module's own docstring. Imported back at
+# this file's top.
 
 # group_benchmark_rows_by_pietro/benchmark_row_stats moved to primeatlas/benchmark.py during
 # the refactor branch's Faza 3 (2026-08-23) -- see that module's own docstring. Only used by
@@ -1103,12 +818,9 @@ def aggregate_write_seconds_by_pietro(rows):
 # _pdf_text_op/_write_pdf) are imported back at this file's top.
 
 
-def digit_count_floor(number):
-    """A window at floor N holds numbers in [10^N, ...), which all have N+1 digits (in
-    the overwhelming common case -- windows practically never straddle a power-of-10
-    boundary). So the digit count of `number` directly tells us which floor to look in
-    first, without having to scan every floor folder."""
-    return len(str(number)) - 1
+# digit_count_floor moved to primeatlas/storage.py during the refactor branch's Faza 3
+# (2026-08-23), alongside the "Prime numbers" tab's own UI split -- see that module's own
+# docstring. Imported back at this file's top.
 
 
 def _eval_quick_number(raw):
@@ -1180,89 +892,11 @@ def _floor_window_count(base_power, window=QUICK_GEN_MAX_WINDOW_WIDTH):
     return (9 * 10 ** base_power) // window
 
 
-def _read_base_prime(path):
-    """Just the one field find_prime_in_floor's binary search actually needs -- still a
-    full header read (there's no cheaper way to get a real base_prime without opening the
-    file), but callers control exactly how many of these happen, unlike the old
-    list_source_files()-based approach which read every window's header unconditionally."""
-    try:
-        header = prime_sieve_v1.read_prime_window_header(path)
-    except Exception:
-        return None
-    return header.get("base_prime") if header else None
-
-
-def find_prime_in_floor(portal_folder, base_exponent, number):
-    """Searches PGS2 source windows under 10p{base_exponent} for `number`.
-
-    Windows are non-overlapping and written in strictly increasing target_idx order, so
-    their base_primes are guaranteed ascending too -- each window's base_prime falls
-    somewhere inside that window's own [start, start+window_m) range, and those ranges
-    never overlap between windows. That means a binary search for the rightmost window
-    with base_prime <= number identifies the ONE window whose numeric range could contain
-    `number` (plus its immediate neighbor, as a constant-cost safety net against an
-    off-by-one boundary edge case) -- and, critically, the search only needs to read a
-    header for the O(log N) windows it actually PROBES, not every window in the floor.
-
-    This replaced an earlier version that called list_source_files() (reads every
-    window's header up front) before bisecting in memory -- fine at hundreds of windows,
-    but 10p15 alone has passed 14,000: reading every header on every search made the
-    feature unusably slow/freeze-prone at that scale (~14,000 file opens vs. ~14 for a
-    14,000-window binary search). Listing filenames is still cheap (list_source_filenames,
-    no I/O) -- only actual header reads are now bounded.
-
-    A handful of unreadable headers along the search path (corrupt/truncated files --
-    should be rare) are tolerated by trying the next index once rather than aborting the
-    whole search; if that neighbor is ALSO unreadable, the search conservatively narrows
-    away from that pivot instead of guessing.
-
-    Returns a dict {name, path, primes, index} on success (index = position of `number`
-    within that file's decoded, sorted prime list), or None if not found.
-    """
-    windows = list_source_filenames(portal_folder, base_exponent)  # cheap: no file I/O
-    if not windows:
-        return None
-    n = len(windows)
-
-    def _check(idx):
-        name, path = windows[idx]
-        try:
-            primes = prime_sieve_v1.read_prime_window(path)
-        except Exception:
-            return None
-        pos = bisect.bisect_left(primes, number)
-        if pos < len(primes) and primes[pos] == number:
-            return {"name": name, "path": path, "primes": primes, "index": pos}
-        return None
-
-    lo, hi = 0, n - 1
-    best = -1  # rightmost index seen so far with base_prime <= number
-    while lo <= hi:
-        mid = (lo + hi) // 2
-        bp = _read_base_prime(windows[mid][1])
-        if bp is None and mid + 1 <= hi:
-            mid += 1
-            bp = _read_base_prime(windows[mid][1])
-        if bp is None:
-            hi = mid - 1
-            continue
-        if bp <= number:
-            best = mid
-            lo = mid + 1
-        else:
-            hi = mid - 1
-
-    candidate_indices = []
-    if best >= 0:
-        candidate_indices.append(best)
-    if best + 1 < n:
-        candidate_indices.append(best + 1)
-
-    for idx in candidate_indices:
-        result = _check(idx)
-        if result is not None:
-            return result
-    return None
+# _read_base_prime/find_prime_in_floor moved to primeatlas/storage.py during the refactor
+# branch's Faza 3 (2026-08-23), alongside the "Prime numbers" tab's own UI split -- see
+# that module's own docstring. find_prime_in_floor is imported back at this file's top
+# (used by the shared search worker's _search_job, still here, for both "prime" and
+# "const" search kinds).
 
 
 def find_constellation_participation(portal_folder, base_exponent, number, hit_set_cache=None,
@@ -2181,63 +1815,11 @@ def _update_nav_controls(page_label_var, page, total_pages, prev_btn, next_btn):
     next_btn.configure(state="normal" if page < total_pages - 1 else "disabled")
 
 
-class _FlowRow:
-    """A button-row container that wraps its children onto additional lines instead of
-    running them off the edge of the window. The Prime numbers and Constellations tabs'
-    preview-navigation rows (Load preview / Prev / page label / Next / page-goto entry)
-    used a plain ttk.Frame with every child .pack(side="left")'d onto ONE line -- on a
-    narrow window (or a narrow detail pane after the split-view divider is dragged), the
-    rightmost controls simply ran past the frame's right edge and became invisible/
-    unreachable, with no way to get to them short of resizing the whole window. Reported
-    via screenshot: page-nav buttons in the Constellations tab cut off outside the app
-    window's right edge.
-
-    Children are added via .add(widget, padx_left=...) instead of widget.pack(...); this
-    class lays them out itself using place() (which, unlike pack/grid, doesn't force a
-    single line or a fixed grid) and re-flows on every <Configure> of its own frame --
-    same 'safe to call again on resize' pattern already used by _draw_growth_chart's
-    canvas binding. .frame is what the caller packs/grids into its own parent, exactly
-    like a plain ttk.Frame would be."""
-
-    ROW_GAP = 4
-
-    def __init__(self, parent):
-        # Local import, not a module-level `from tkinter import ttk` -- this file
-        # deliberately defers importing tkinter until _build_gui() actually runs (see the
-        # module's own lazy-import convention, also documented in settings_tab.py's
-        # header), so `ttk` is never a module-global name here. Every OTHER module-level
-        # helper in this file that touches tkinter widgets (_update_nav_controls,
-        # _draw_growth_chart, ...) sidesteps this by only ever calling methods on
-        # already-constructed widgets passed in as arguments; this class is the first one
-        # that needs to construct a widget itself, hence the local import.
-        from tkinter import ttk
-        self.frame = ttk.Frame(parent)
-        self._items = []  # [(widget, padx_left)], in add() order
-        self.frame.bind("<Configure>", self._reflow)
-
-    def add(self, widget, padx_left=0):
-        self._items.append((widget, padx_left))
-        return widget
-
-    def _reflow(self, event):
-        width = event.width
-        if width <= 1 or not self._items:
-            return
-        x = 0
-        y = 0
-        row_height = 0
-        for widget, padx_left in self._items:
-            widget.update_idletasks()
-            w = widget.winfo_reqwidth()
-            h = widget.winfo_reqheight()
-            if x > 0 and x + padx_left + w > width:
-                x = 0
-                y += row_height + self.ROW_GAP
-                row_height = 0
-            widget.place(x=x + padx_left, y=y, width=w, height=h)
-            x += padx_left + w
-            row_height = max(row_height, h)
-        self.frame.configure(height=y + row_height)
+# _FlowRow moved to primeatlas/widgets.py (renamed FlowRow) during the refactor branch's
+# Faza 3 (2026-08-23), alongside the "Prime numbers" tab's own UI split -- see that
+# module's own docstring. Imported back at this file's top as `FlowRow as _FlowRow`, so
+# every existing call site below (still used directly by the Constellations tab's own
+# preview panes) is unchanged.
 
 
 # _draw_growth_chart moved to primeatlas/benchmark_tab.py during the refactor branch's
@@ -2366,38 +1948,38 @@ def _build_gui():
             # storage (measured ~78s for one 15,101-file floor, ~5ms/file -- per-file open()
             # latency on the underlying mount, not the tiny header itself) -- doing that on
             # the GUI thread is exactly the kind of freeze the paginated file list was built
-            # to avoid (see _populate_pietro_node's docstring). ONE daemon worker thread owns
-            # self._totals_cache exclusively (loads it once here, then only the worker thread
-            # ever reads/writes/saves it -- see update_pietro_totals_cache()); the main thread
-            # never touches that dict directly, only submits floor numbers via
-            # self._totals_worker.submit() and receives results back via _on_totals_worker_result,
-            # a primeatlas/background.py PersistentWorker instance (see _totals_job's own
-            # docstring for the request/result shape). self._pietro_total_known is a SEPARATE,
-            # main-thread-only dict (seeded from the same on-disk cache at startup, updated
-            # only from received results) -- two independent copies instead of sharing one
-            # dict across threads, so neither thread ever needs a lock.
-            self._pietro_total_known = {}
+            # to avoid (see PrimesTab._populate_pietro_node's docstring). ONE daemon worker
+            # thread owns self._totals_cache exclusively (loads it once here, then only the
+            # worker thread ever reads/writes/saves it -- see update_pietro_totals_cache());
+            # the main thread never touches that dict directly, only submits floor numbers
+            # via self._totals_worker.submit() and receives results back via
+            # _on_totals_worker_result, a primeatlas/background.py PersistentWorker instance
+            # (see _totals_job's own docstring for the request/result shape). The DISPLAY-
+            # side counterpart of this cache (self._pietro_total_known) now lives entirely
+            # inside primeatlas/primes_tab.py's PrimesTab -- see that class's own
+            # populate_floors()/update_floor_row() docstrings.
             self._totals_cache = {}
             self._reload_totals_caches()
             self._computing_all_totals = False
             self._totals_batch_size = 0   # fixed at the START of a "compute all" batch --
-                                           # NOT re-read from _pietro_node_by_exp on every
-                                           # result, so the progress bar's denominator can't
-                                           # shift mid-batch (e.g. after a Refresh)
+                                           # NOT re-read from PrimesTab's own floor-node map
+                                           # on every result, so the progress bar's
+                                           # denominator can't shift mid-batch (e.g. after a
+                                           # Refresh)
             self._grand_total_sum = 0
             self._grand_total_bytes = 0  # on-disk footprint total, mirrors _grand_total_sum
                                           # but for bytes instead of prime count -- see
                                           # update_pietro_totals_cache()'s total_bytes and
                                           # format_bytes()
             self._grand_total_seen = set()
-            # base_exponent -> total real generation seconds (write_files=True runs only),
-            # from benchmark_log.csv -- read fresh on every reload_primes_tree() (cheap, one
-            # small CSV shared by all floors, not a per-floor disk scan like the totals
-            # worker above). self._grand_total_seconds mirrors _grand_total_sum's role for
-            # the "GRAND TOTAL" status line, giving it a time total alongside the
-            # prime-count total.
-            self._pietro_gen_seconds = {}
-            self._grand_total_seconds = 0.0
+            self._grand_total_seconds = 0.0  # mirrors _grand_total_sum's role for the
+                                              # "GRAND TOTAL" status line, giving it a time
+                                              # total alongside the prime-count total --
+                                              # the underlying per-floor generation-seconds
+                                              # dict this sums (base_exponent -> seconds)
+                                              # now lives inside PrimesTab, seeded fresh on
+                                              # every reload_primes_tree() scan (see that
+                                              # class's own populate_floors()).
             # Faza 1 background-job migration (2026-08-23, second half -- see
             # primeatlas/background.py's PersistentWorker docstring for the full audit):
             # this used to be its own hand-rolled threading.Thread + two queue.Queue()s +
@@ -2575,34 +2157,32 @@ def _build_gui():
         # --- Floor-total background worker ------------------------------------------
 
         def _reload_totals_caches(self):
-            """(Re-)loads _pietro_total_known and _totals_cache from PORTAL_FOLDER's own
+            """(Re-)loads _totals_cache (the totals worker's OWN incremental-cache copy,
+            see update_pietro_totals_cache()) from PORTAL_FOLDER's own
             .portal_totals_cache.json -- factored out of __init__ so reload_primes_tree()
             can call this too, on every refresh, not just once at app startup. Otherwise,
-            after changing storage path in Settings and clicking Refresh, totals would
-            still reflect the PREVIOUS location.
+            after changing storage path in Settings and clicking Refresh, this worker-
+            owned cache would still reflect the PREVIOUS location.
 
-            Root cause of that: both dicts used to be built ONCE in __init__ against
-            whatever PORTAL_FOLDER was active when the app launched, then never reloaded --
-            a later storage-path change rebinds the PORTAL_FOLDER global (see
-            _set_portal_folder) but left these two dicts holding the OLD location's data
-            in memory. update_pietro_totals_cache()'s incremental-cache logic keys
-            _totals_cache PURELY BY FILENAME within each "10p{N}" entry, with no
-            portal_folder scoping at all -- so if a NEWLY selected location happens to
-            have its own floor with the same number (and prime_sieve_v1.py assigns
-            filenames deterministically from floor+offset, so a same-number floor in
-            two different locations very plausibly has same-NAMED files), the stale
-            entry made it treat that location's real file as "already read" and served
-            the OLD location's cached count without ever opening the new file. A
-            genuinely EMPTY new location was already unaffected by this specific bug
-            (list_pietra() itself is a stateless disk scan, so no rows get inserted for
-            floors that don't exist there) -- but ANY overlap in floor numbers between
-            two locations could silently show wrong totals without this reload."""
-            self._pietro_total_known = {}
-            for _key, _entry in load_totals_cache(PORTAL_FOLDER).items():
-                if _key.startswith("10p") and _key[3:].isdigit():
-                    self._pietro_total_known[int(_key[3:])] = (
-                        _entry.get("total", 0), _entry.get("file_count", 0),
-                        _entry.get("total_bytes", 0))
+            Root cause of the bug this originally fixed: this dict used to be built ONCE
+            in __init__ against whatever PORTAL_FOLDER was active when the app launched,
+            then never reloaded -- a later storage-path change rebinds the PORTAL_FOLDER
+            global (see _set_portal_folder) but left it holding the OLD location's data
+            in memory. update_pietro_totals_cache()'s incremental-cache logic keys this
+            cache PURELY BY FILENAME within each "10p{N}" entry, with no portal_folder
+            scoping at all -- so if a NEWLY selected location happens to have its own
+            floor with the same number (and prime_sieve_v1.py assigns filenames
+            deterministically from floor+offset, so a same-number floor in two different
+            locations very plausibly has same-NAMED files), the stale entry made it treat
+            that location's real file as "already read" and served the OLD location's
+            cached count without ever opening the new file.
+
+            The DISPLAY-side counterpart of this same on-disk cache (what the "Prime
+            numbers" tree actually shows) now lives entirely in primeatlas/primes_tab.py's
+            PrimesTab -- reload_primes_tree()'s own async scan re-reads it fresh from disk
+            every time (see _primes_tree_scan()) and hands the result to
+            PrimesTab.populate_floors(), so there's no equivalent stale-copy risk there to
+            fix by hand."""
             self._totals_cache = load_totals_cache(PORTAL_FOLDER)  # worker-owned copy
 
         def _totals_job(self, base_exponent, report_progress):
@@ -2648,7 +2228,6 @@ def _build_gui():
             if job_error is not None:
                 self.status.set(T("primes.status_error_sum", base_exponent=base_exponent, error=job_error))
             else:
-                self._pietro_total_known[base_exponent] = (total, file_count, total_bytes)
                 self._on_pietro_total_ready(base_exponent, total, file_count, new_read, total_bytes)
 
         def _on_pietro_total_start(self, base_exponent):
@@ -2664,14 +2243,15 @@ def _build_gui():
                 self.status.set(T("primes.status_computing", base_exponent=base_exponent))
 
         def _on_pietro_total_ready(self, base_exponent, total, file_count, new_read, total_bytes):
-            node = self._pietro_node_by_exp.get(base_exponent)
-            gen_seconds = self._pietro_gen_seconds.get(base_exponent)
-            timer_str = format_duration(gen_seconds) if gen_seconds is not None else ""
-            if node is not None and self.tree.exists(node):
-                self.tree.item(node, values=(
-                    f"{total:,}", f"{file_count:,}", format_bytes(total_bytes), "", timer_str))
-            if self._active_floor_node == node:
-                self._refresh_floor_nav_controls()
+            """Main-thread completion handler for the totals worker's result -- the
+            actual tree-row update, plus the floor-nav page-total label refresh if this
+            floor happens to be the active one, is delegated to PrimesTab.update_floor_row
+            (see that method's own docstring); this app-level method keeps only the
+            grand-total batch bookkeeping and status/progress-bar text, which don't
+            belong to any one tab (the status bar and totals_progress widget are shared
+            with the search worker too, see __init__'s own comment on that)."""
+            self.primes_tab_widget.update_floor_row(base_exponent, total, file_count, total_bytes)
+            gen_seconds = self.primes_tab_widget.get_gen_seconds(base_exponent)
 
             if self._computing_all_totals:
                 if base_exponent not in self._grand_total_seen:
@@ -2707,7 +2287,7 @@ def _build_gui():
                       size=format_bytes(total_bytes), extra=extra))
 
         def _compute_all_pietro_totals(self):
-            pietra = list(self._pietro_node_by_exp.keys())
+            pietra = self.primes_tab_widget.get_pietro_node_keys()
             if not pietra:
                 self.status.set(T("primes.status_none_to_compute"))
                 return
@@ -3280,164 +2860,25 @@ def _build_gui():
             self.clipboard_append(text)
 
         def _build_primes_tab(self):
-            top = ttk.Frame(self.primes_storage_tab)
-            top.pack(fill="x", padx=6, pady=4)
-            ttk.Button(top, text=T("common.refresh"), command=self.reload_primes_tree).pack(side="left")
-
-            ttk.Label(top, text=T("common.search_label")).pack(side="left")
-            self.search_entry = ttk.Entry(top, width=26)
-            self.search_entry.pack(side="left", padx=(4, 4))
-            self.search_entry.bind("<Return>", lambda _e: self._search_prime())
-            self.search_button = ttk.Button(
-                top, text=T("common.search_button"), command=self._search_prime)
-            self.search_button.pack(side="left")
-
-            # No separate "compute all totals" button --
-            # Refresh already re-runs the totals scan for every floor (see
-            # reload_primes_tree()), so a second button doing the same thing was redundant.
-            # Re-running costs almost nothing when nothing changed: update_pietro_totals_
-            # cache() only re-reads files NOT already in its cache (a cheap os.listdir() +
-            # in-memory set diff per floor either way -- see that function's docstring), so
-            # hitting Refresh after generating new windows only pays for the new files, not
-            # a full floor-by-floor rescan.
-            paned = ttk.Panedwindow(self.primes_storage_tab, orient="horizontal")
-            paned.pack(fill="both", expand=True, padx=6, pady=4)
-
-            tree_frame = ttk.Frame(paned)
-            paned.add(tree_frame, weight=1)
-
-            # Floor pagination -- ABOVE the tree, same Prev/label/Next/goto layout
-            # as the file-preview pane on the right (see btn_row below). A floor can hold
-            # thousands of source windows -- listing+rendering them all on one expand is
-            # what used to freeze the GUI. Expanding a floor now only lists filenames
-            # (cheap) and loads ONE page's worth of headers; these controls act on whichever
-            # floor was most recently opened/clicked (self._active_floor_node) -- multiple
-            # floors can stay expanded at once, each remembering its own page independently.
-            floor_nav = ttk.Frame(tree_frame)
-            floor_nav.pack(fill="x", pady=(0, 4))
-            self.floor_prev_btn = ttk.Button(
-                floor_nav, text=T("common.prev_page"), command=self._prev_floor_page, state="disabled")
-            self.floor_prev_btn.pack(side="left")
-            self.floor_page_label = tk.StringVar(value="")
-            ttk.Label(floor_nav, textvariable=self.floor_page_label, width=16, anchor="center").pack(side="left")
-            self.floor_next_btn = ttk.Button(
-                floor_nav, text=T("common.next_page"), command=self._next_floor_page, state="disabled")
-            self.floor_next_btn.pack(side="left")
-            ttk.Label(floor_nav, text=T("common.page_prefix")).pack(side="left", padx=(10, 0))
-            self.floor_goto_entry = ttk.Entry(floor_nav, width=6)
-            self.floor_goto_entry.pack(side="left", padx=(4, 0))
-            self.floor_goto_entry.bind("<Return>", lambda _e: self._goto_floor_page())
-            ttk.Button(floor_nav, text=T("common.goto"), command=self._goto_floor_page).pack(side="left", padx=(4, 0))
-
-            # Page subtotal (instant -- sums the headers this page already had to read to
-            # display the file list, no extra I/O) alongside the floor's OVERALL total,
-            # which is NOT instant for a heavily-populated floor and gets filled in
-            # asynchronously once the background totals worker finishes (see
-            # _on_pietro_total_ready) -- shows "computing..." until then.
-            self.floor_subtotal_label = tk.StringVar(value="")
-            ttk.Label(floor_nav, textvariable=self.floor_subtotal_label, anchor="w").pack(
-                side="left", padx=(14, 0))
-
-            # 4 value columns: count/files/generated/timer, split apart
-            # because "generated" used to double as BOTH a per-file UTC timestamp (file rows)
-            # AND a file count (floor summary rows) -- confusing on a collapsed floor, which
-            # only ever shows the summary row. "files" now always means file count, "generated"
-            # always means a UTC timestamp (blank on floor rows -- no single date is
-            # meaningful for a whole floor), "timer" is new: total REAL generation time for
-            # that floor (write_files=True runs only, see aggregate_write_seconds_by_pietro()).
-            self.tree = ttk.Treeview(
-                tree_frame, columns=("count", "files", "size", "generated", "timer"),
-                show="tree headings")
-            self.tree.heading("#0", text=T("primes.col_pietro"))
-            self.tree.heading("count", text=T("primes.col_count"))
-            self.tree.heading("files", text=T("primes.col_files"))
-            self.tree.heading("size", text=T("primes.col_size"))
-            self.tree.heading("generated", text=T("primes.col_generated"))
-            self.tree.heading("timer", text=T("primes.col_timer"))
-            self.tree.column("#0", width=260)
-            self.tree.column("count", width=90, anchor="e")
-            self.tree.column("files", width=90, anchor="e")
-            self.tree.column("size", width=90, anchor="e")
-            self.tree.column("generated", width=170)
-            self.tree.column("timer", width=110, anchor="e")
-            vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
-            self.tree.configure(yscrollcommand=vsb.set)
-            self.tree.pack(side="left", fill="both", expand=True)
-            vsb.pack(side="right", fill="y")
-
-            self.tree.bind("<<TreeviewOpen>>", self._on_tree_open)
-            self.tree.bind("<<TreeviewClose>>", self._on_tree_close)
-            self.tree.bind("<<TreeviewSelect>>", self._on_tree_select)
-
-            self._pietro_state = {}         # tree item id -> {base_exponent, filenames,
-                                             # page, total_pages}, or None if checked and
-                                             # found empty. Populated lazily on
-                                             # <<TreeviewOpen>>, dropped entirely (freeing
-                                             # the filename list + tree rows) on
-                                             # <<TreeviewClose>> -- see _on_tree_close.
-            self._active_floor_node = None  # which floor's page the floor nav buttons
-                                             # above currently operate on
-            self._pietro_node_by_exp = {}   # base_exponent -> tree item id, so a totals
-                                             # result arriving from the background worker
-                                             # (keyed by base_exponent, not tree item id --
-                                             # see _totals_worker_loop) knows which row to
-                                             # update, even after a Refresh rebuilt the tree
-
-            detail_frame = ttk.Frame(paned)
-            paned.add(detail_frame, weight=2)
-
-            self.detail_text = tk.StringVar(value=T("primes.detail_hint"))
-            ttk.Label(detail_frame, textvariable=self.detail_text, justify="left",
-                      anchor="nw", wraplength=560).pack(fill="x", padx=6, pady=6)
-
-            # _FlowRow (not a plain pack(side="left") row) so these controls wrap onto a
-            # second line instead of running off the window's right edge on a narrow
-            # width/pane -- see that class's own docstring.
-            btn_row = _FlowRow(detail_frame)
-            btn_row.frame.pack(anchor="w", padx=6, fill="x")
-            self.load_preview_btn = ttk.Button(
-                btn_row.frame, text=T("common.load_preview"), command=self._load_preview, state="disabled")
-            btn_row.add(self.load_preview_btn)
-            self.prev_page_btn = ttk.Button(
-                btn_row.frame, text=T("common.prev_page"), command=self._prev_preview_page, state="disabled")
-            btn_row.add(self.prev_page_btn, padx_left=10)
-            self.preview_page_label = tk.StringVar(value="")
-            btn_row.add(ttk.Label(btn_row.frame, textvariable=self.preview_page_label,
-                                   width=16, anchor="center"))
-            self.next_page_btn = ttk.Button(
-                btn_row.frame, text=T("common.next_page"), command=self._next_preview_page, state="disabled")
-            btn_row.add(self.next_page_btn)
-            btn_row.add(ttk.Label(btn_row.frame, text=T("common.page_prefix")), padx_left=10)
-            self.preview_goto_entry = ttk.Entry(btn_row.frame, width=6)
-            btn_row.add(self.preview_goto_entry, padx_left=4)
-            self.preview_goto_entry.bind("<Return>", lambda _e: self._goto_preview_page())
-            btn_row.add(ttk.Button(btn_row.frame, text=T("common.goto"),
-                                    command=self._goto_preview_page), padx_left=4)
-
-            preview_frame = ttk.Frame(detail_frame)
-            preview_frame.pack(fill="both", expand=True, padx=6, pady=6)
-            self.preview_list = tk.Listbox(preview_frame, font=("Consolas", 9))
-            preview_vsb = ttk.Scrollbar(preview_frame, orient="vertical", command=self.preview_list.yview)
-            self.preview_list.configure(yscrollcommand=preview_vsb.set)
-            self.preview_list.pack(side="left", fill="both", expand=True)
-            preview_vsb.pack(side="right", fill="y")
-
-            # Each row here IS a single prime (unlike the Constellations tab's rows, which
-            # show a whole reconstructed tuple) -- Ctrl+C and right-click "Copy" both
-            # copy the selected row's actual value to the clipboard. A plain tk.Listbox
-            # has no built-in copy behaviour at all, so without this there was no way to
-            # get a value out of the list except retyping it by hand.
-            self.preview_list.bind("<Control-c>", lambda _e: self._copy_selected_preview_value())
-            self.preview_list.bind("<Button-3>", self._show_preview_context_menu)
-            self._preview_context_menu = tk.Menu(self, tearoff=0)
-            self._preview_context_menu.add_command(label=T("common.copy"), command=self._copy_selected_preview_value)
-
-            self._selected_path = None
-            self._preview_primes = None    # full decoded list for the selected file, cached
-                                            # after "Load preview" so page navigation doesn't
-                                            # re-decode the file from scratch each click
-            self._preview_page = 0
-            self._preview_total_pages = 1
+            """Thin wrapper -- all of the Primes tab's actual widgets/logic live in
+            primeatlas/primes_tab.py's PrimesTab class (Faza 3 of the refactor branch,
+            tab-by-tab backend/UI split, 2026-08-23; see that module's own docstring).
+            Local import, not module-level, for the same lazy-tkinter-import reason
+            SettingsTab/BenchmarkTab are imported inside _build_gui() rather than at this
+            file's top."""
+            from primeatlas.primes_tab import PrimesTab
+            self.primes_tab_widget = PrimesTab(
+                self.primes_storage_tab, get_portal_folder=lambda: PORTAL_FOLDER,
+                status_var=self.status, translator=TRANSLATOR,
+                update_nav_controls=_update_nav_controls, render_page=_render_page,
+                page_size=PAGE_SIZE, floor_page_size=FLOOR_PAGE_SIZE,
+                reload_primes_tree=self.reload_primes_tree,
+                start_search_job=self._start_search_job,
+                is_search_busy=lambda: self._search_busy,
+                offer_generate_missing_prime_window=lambda be, num:
+                    self._offer_generate_missing_prime_window("prime", be, num),
+                submit_totals_job=lambda be: self._totals_worker.submit(be))
+            self.primes_tab_widget.pack(fill="both", expand=True)
 
         def _primes_tree_scan(self, portal_folder, _report_progress):
             """Runs OFF the GUI thread (see reload_primes_tree()/background.
@@ -3517,32 +2958,15 @@ def _build_gui():
             if error is not None:
                 self.status.set(T("primes.status_reload_error", error=str(error)))
                 return
-            self._pietro_total_known = result["pietro_total_known"]
             self._totals_cache = result["totals_cache"]
-            self._pietro_gen_seconds = result["pietro_gen_seconds"]
-            self.tree.delete(*self.tree.get_children())
-            self._pietro_state = {}
-            self._active_floor_node = None
-            self._path_by_item = {}
-            self._pietro_node_by_exp = {}
-            self._refresh_floor_nav_controls()
             pietra = result["pietra"]
-            for base_exponent in pietra:
-                # If a previous scan (this session or a past one, via the on-disk cache)
-                # already knows this floor's total, show it immediately -- otherwise leave
-                # the count column blank until the background worker fills it in (see
-                # _compute_all_pietro_totals() below / _on_pietro_total_ready). Either way
-                # the row is shown right away; only the count itself may lag, and even then
-                # only until the (re-)scan below reaches it.
-                known = self._pietro_total_known.get(base_exponent)
-                gen_seconds = self._pietro_gen_seconds.get(base_exponent)
-                timer_str = format_duration(gen_seconds) if gen_seconds is not None else ""
-                values = ((f"{known[0]:,}", f"{known[1]:,}", format_bytes(known[2]), "", timer_str)
-                          if known else ("", "", "", "", timer_str))
-                node = self.tree.insert("", "end", text=f"10p{base_exponent}",
-                                         values=values, open=False, tags=("pietro",))
-                self.tree.insert(node, "end", text=T("common.loading"))
-                self._pietro_node_by_exp[base_exponent] = node
+            # The actual tree rebuild (rows, per-floor known totals/gen-seconds display
+            # state) is owned by PrimesTab now -- see populate_floors()'s own docstring.
+            # This app-level method keeps only the totals_cache (worker-owned copy,
+            # unrelated to what any one tab renders), the status text, kicking off the
+            # background totals scan, and the loading-screen bookkeeping.
+            self.primes_tab_widget.populate_floors(
+                pietra, result["pietro_total_known"], result["pietro_gen_seconds"])
             self.status.set(T("app.status_portal_with_count", folder=portal_folder, count=len(pietra)))
             self._compute_all_pietro_totals()
 
@@ -3551,275 +2975,6 @@ def _build_gui():
                 pending.discard("primes")
                 if not pending:
                     self._finish_loading_screen()
-
-        def _on_tree_open(self, _event):
-            node = self.tree.focus()
-            self._populate_pietro_node(node)
-            self._set_active_floor_node(node)
-            base_exponent = int(self.tree.item(node, "text")[3:])  # "10p{N}"
-            self._totals_worker.submit(base_exponent)  # always re-check -- cheap no-op if
-                                                          # nothing changed since last time
-                                                          # (see update_pietro_totals_cache)
-
-        def _on_tree_close(self, _event):
-            """Collapsing a floor drops its whole page/filename-list state and clears its
-            rows back to a single "(loading...)" placeholder -- re-expanding later re-lists
-            from disk instead of holding onto a floor's data indefinitely just because it
-            was opened once. Other, still-open floors are untouched."""
-            node = self.tree.focus()
-            if node not in self._pietro_state:
-                return
-            del self._pietro_state[node]
-            self._clear_floor_children(node)
-            self.tree.insert(node, "end", text=T("common.loading"))
-            if self._active_floor_node == node:
-                self._active_floor_node = None
-                self._refresh_floor_nav_controls()
-
-        def _clear_floor_children(self, node):
-            """Removes every current child row of `node` from the tree AND from
-            self._path_by_item -- without this second part, repeated page turns/collapses
-            would leak orphaned item-id -> (path, header) entries for rows that no longer
-            exist in the tree."""
-            path_map = getattr(self, "_path_by_item", {})
-            for child in self.tree.get_children(node):
-                path_map.pop(child, None)
-            self.tree.delete(*self.tree.get_children(node))
-
-        def _populate_pietro_node(self, node):
-            if node in self._pietro_state:
-                return  # already listed in this session -- nothing to redo
-            children = self.tree.get_children(node)
-            if len(children) == 1 and self.tree.item(children[0], "text") == T("common.loading"):
-                self.tree.delete(children[0])
-
-            base_exponent = int(self.tree.item(node, "text")[3:])  # "10p{N}"
-            filenames = list_source_filenames(PORTAL_FOLDER, base_exponent)  # cheap: no
-                                                                              # header I/O
-            if not filenames:
-                self.tree.insert(node, "end", text=T("primes.no_source_files"))
-                self._pietro_state[node] = None
-                return
-
-            total_pages = max(1, (len(filenames) + FLOOR_PAGE_SIZE - 1) // FLOOR_PAGE_SIZE)
-            self._pietro_state[node] = {
-                "base_exponent": base_exponent,
-                "filenames": filenames,
-                "page": 0,
-                "total_pages": total_pages,
-            }
-            self._show_floor_page(node, 0)
-
-        def _show_floor_page(self, node, page):
-            """Renders page `page` (0-indexed) of a floor's file list: reads headers for
-            ONLY that page's files (bounded I/O, unlike the old read-every-header-on-expand
-            approach) and rebuilds the node's tree rows from scratch."""
-            state = self._pietro_state.get(node)
-            if not state:
-                return
-            total_pages = state["total_pages"]
-            page = max(0, min(page, total_pages - 1))
-            state["page"] = page
-            start = page * FLOOR_PAGE_SIZE
-            end = min(start + FLOOR_PAGE_SIZE, len(state["filenames"]))
-            page_entries = read_source_file_headers(state["filenames"][start:end])
-
-            self._clear_floor_children(node)
-            self._path_by_item = getattr(self, "_path_by_item", {})
-            page_total = 0
-            for name, path, header in page_entries:
-                try:
-                    size_str = format_bytes(os.path.getsize(path))
-                except OSError:
-                    size_str = "?"
-                if header is None:
-                    count_str, gen_str = "?", T("primes.unreadable_header")
-                else:
-                    count_str = f"{header['count']:,}"
-                    gen_str = header["generated_at_iso"]
-                    page_total += header["count"]
-                child = self.tree.insert(node, "end", text=name,
-                                          values=(count_str, "", size_str, gen_str, ""),
-                                          tags=("file",))
-                self._path_by_item[child] = (path, header)
-            state["page_total"] = page_total
-
-            if self._active_floor_node == node:
-                self._refresh_floor_nav_controls()
-
-        def _set_active_floor_node(self, node):
-            self._active_floor_node = node
-            self._refresh_floor_nav_controls()
-
-        def _refresh_floor_nav_controls(self):
-            node = self._active_floor_node
-            state = self._pietro_state.get(node) if node is not None else None
-            if not state:
-                self.floor_page_label.set("")
-                self.floor_subtotal_label.set("")
-                self.floor_prev_btn.configure(state="disabled")
-                self.floor_next_btn.configure(state="disabled")
-                return
-            _update_nav_controls(self.floor_page_label, state["page"], state["total_pages"],
-                                  self.floor_prev_btn, self.floor_next_btn)
-            page_total = state.get("page_total", 0)
-            known = self._pietro_total_known.get(state["base_exponent"])
-            overall = f"{known[0]:,}" if known else T("common.computing")
-            self.floor_subtotal_label.set(
-                T("primes.page_total", page_total=f"{page_total:,}", overall=overall))
-
-        def _prev_floor_page(self):
-            node = self._active_floor_node
-            if node is not None and self._pietro_state.get(node):
-                self._show_floor_page(node, self._pietro_state[node]["page"] - 1)
-
-        def _next_floor_page(self):
-            node = self._active_floor_node
-            if node is not None and self._pietro_state.get(node):
-                self._show_floor_page(node, self._pietro_state[node]["page"] + 1)
-
-        def _goto_floor_page(self):
-            raw = self.floor_goto_entry.get().strip()
-            if not raw.isdigit():
-                return
-            node = self._active_floor_node
-            if node is not None and self._pietro_state.get(node):
-                self._show_floor_page(node, int(raw) - 1)
-
-        def _on_tree_select(self, _event):
-            selection = self.tree.selection()
-            if not selection:
-                return
-            item = selection[0]
-            if "pietro" in self.tree.item(item, "tags"):
-                # Clicking a floor header (whether just opened or already expanded) makes
-                # it the target of the floor-pagination controls above the tree, without
-                # touching the file-preview state on the right.
-                self._set_active_floor_node(item)
-                return
-            path_map = getattr(self, "_path_by_item", {})
-            self._reset_preview_state()
-            if item not in path_map:
-                self.load_preview_btn.configure(state="disabled")
-                return
-            path, header = path_map[item]
-            self._selected_path = path
-            if header is None:
-                self.detail_text.set(T("primes.header_error", path=path))
-                self.load_preview_btn.configure(state="disabled")
-                return
-            self.detail_text.set(
-                f"{path}\n\n" +
-                T("primes.header_detail",
-                  base_prime=format_big_int(header['base_prime']),
-                  count=f"{header['count']:,}",
-                  generated=header['generated_at_iso'])
-            )
-            self.load_preview_btn.configure(state="normal" if header["count"] > 0 else "disabled")
-
-        def _reset_preview_state(self):
-            self.preview_list.delete(0, "end")
-            self._preview_primes = None
-            self._preview_page = 0
-            self._preview_total_pages = 1
-            self.preview_page_label.set("")
-            self.prev_page_btn.configure(state="disabled")
-            self.next_page_btn.configure(state="disabled")
-            self.load_preview_btn.configure(state="normal" if self._selected_path else "disabled")
-
-        def _load_preview(self):
-            """Decodes the selected file ONCE (cached in self._preview_primes) and shows
-            page 1."""
-            if not self._selected_path:
-                return
-            if self._preview_primes is None:
-                try:
-                    self._preview_primes = prime_sieve_v1.read_prime_window(self._selected_path)
-                except Exception as exc:
-                    messagebox.showerror(T("primes.load_preview_failed_title"), str(exc))
-                    self._preview_primes = None
-                    return
-            self._show_preview_page(0)
-            self.load_preview_btn.configure(state="disabled")
-
-        def _show_preview_page(self, page):
-            if not self._preview_primes:
-                return
-            self._preview_page, self._preview_total_pages = _render_page(
-                self.preview_list, self._preview_primes, page, PAGE_SIZE, str)
-            _update_nav_controls(self.preview_page_label, self._preview_page,
-                                  self._preview_total_pages, self.prev_page_btn, self.next_page_btn)
-
-        def _prev_preview_page(self):
-            self._show_preview_page(self._preview_page - 1)
-
-        def _next_preview_page(self):
-            self._show_preview_page(self._preview_page + 1)
-
-        def _goto_preview_page(self):
-            raw = self.preview_goto_entry.get().strip()
-            if not raw.isdigit():
-                return
-            self._show_preview_page(int(raw) - 1)
-
-        def _search_prime(self):
-            raw = self.search_entry.get().strip()
-            if not raw.isdigit():
-                messagebox.showerror(T("common.dialog_search_title"), T("common.error_invalid_number"))
-                return
-            number = int(raw)
-            base_exponent = digit_count_floor(number)
-            if self._search_busy:
-                messagebox.showinfo(T("common.dialog_search_title"), T("common.search_already_running"))
-                return
-            if base_exponent not in list_pietra(PORTAL_FOLDER):
-                # No floor 10p{base_exponent} at all yet -- the SAME "this number's storage
-                # fragment doesn't exist" situation _on_prime_search_result() handles for an
-                # existing-but-incomplete floor, just at the whole-floor scale (existing_count
-                # is naturally 0 for a floor with zero windows -- see
-                # find_continuation_target_idx()'s own docstring). Route it through the exact
-                # same offer instead of a dead-end "no floor" message: there's nothing this
-                # dialog told the user that generating the fragment doesn't already cover.
-                outcome = self._offer_generate_missing_prime_window("prime", base_exponent, number)
-                if outcome == "launched":
-                    return
-                if outcome == "composite":
-                    messagebox.showinfo(
-                        T("common.dialog_search_title"),
-                        T("primes.confirmed_composite", number=number, base_exponent=base_exponent))
-                    return
-                messagebox.showinfo(
-                    T("common.dialog_search_title"),
-                    T("primes.not_found", number=number, base_exponent=base_exponent))
-                return
-            self._start_search_job("prime", base_exponent, number)
-
-        def _on_prime_search_result(self, base_exponent, number, result):
-            """Main-thread completion handler for a "prime" search job -- same UI update
-            _search_prime() used to do synchronously right after calling
-            find_prime_in_floor(), now driven by _on_search_worker_result() once the
-            worker thread hands the (plain-data, no tkinter involved) result back."""
-            if result is None:
-                outcome = self._offer_generate_missing_prime_window("prime", base_exponent, number)
-                if outcome == "launched":
-                    return
-                if outcome == "composite":
-                    messagebox.showinfo(
-                        T("common.dialog_search_title"),
-                        T("primes.confirmed_composite", number=number, base_exponent=base_exponent))
-                    return
-                messagebox.showinfo(
-                    T("common.dialog_search_title"),
-                    T("primes.not_found", number=number, base_exponent=base_exponent))
-                return
-            self._select_primes_file_in_tree(base_exponent, result["name"])
-            self._preview_primes = result["primes"]
-            self._jump_preview_to_index(result["index"])
-            total = len(result["primes"])
-            self.status.set(
-                T("common.found_in_file", number=number, name=result['name'],
-                  base_exponent=base_exponent, position=f"{result['index'] + 1:,}", total=f"{total:,}"))
-
         # --- Search worker -- shared by both "Prime numbers" and
         # "Constellations" search boxes, see the __init__ comment above self._search_worker's
         # construction for the full rationale. ------------------------------------------------
@@ -3834,7 +2989,7 @@ def _build_gui():
             same reasoning _on_quick_generate_clicked already applies to
             self._loop_runner."""
             self._search_busy = True
-            self.search_button.configure(state="disabled")
+            self.primes_tab_widget.search_button.configure(state="disabled")
             self.hits_search_button.configure(state="disabled")
             self.totals_progress.stop()
             self.totals_progress.configure(mode="indeterminate")
@@ -3899,7 +3054,7 @@ def _build_gui():
             if kind == "prime_done":
                 _kind, base_exponent, number, result = payload
                 self._finish_search_job()
-                self._on_prime_search_result(base_exponent, number, result)
+                self.primes_tab_widget.on_prime_search_result(base_exponent, number, result)
             elif kind == "const_done":
                 _kind, base_exponent, number, prime_result, participation = payload
                 self._finish_search_job()
@@ -3911,7 +3066,7 @@ def _build_gui():
 
         def _finish_search_job(self):
             self._search_busy = False
-            self.search_button.configure(state="normal")
+            self.primes_tab_widget.search_button.configure(state="normal")
             self.hits_search_button.configure(state="normal")
             self.totals_progress.stop()
             # Same "reset back to the empty 0/1 state" reasoning as
@@ -4051,78 +3206,6 @@ def _build_gui():
             self._const_base_exponent_var.set(str(base_exponent))
             self._on_run_constellation()
             return True
-
-        def _select_primes_file_in_tree(self, base_exponent, filename):
-            pietro_item = None
-            for item in self.tree.get_children(""):
-                if self.tree.item(item, "text") == f"10p{base_exponent}":
-                    pietro_item = item
-                    break
-            if pietro_item is None:
-                return
-            self.tree.item(pietro_item, open=True)
-            self._populate_pietro_node(pietro_item)
-            self._set_active_floor_node(pietro_item)
-            state = self._pietro_state.get(pietro_item)
-            if state:
-                # Jump to whichever page actually contains this filename -- search can
-                # land anywhere across a floor with thousands of paginated files, not
-                # just whatever page happened to be showing (usually page 1).
-                for idx, (name, _path) in enumerate(state["filenames"]):
-                    if name == filename:
-                        self._show_floor_page(pietro_item, idx // FLOOR_PAGE_SIZE)
-                        break
-            target_item = None
-            for child in self.tree.get_children(pietro_item):
-                if self.tree.item(child, "text") == filename:
-                    target_item = child
-                    break
-            if target_item is None:
-                return
-            # selection_set() queues an async <<TreeviewSelect>> virtual event rather than
-            # dispatching it immediately -- Tk resolves the bound handler at DISPATCH time,
-            # not at generation time, so even unbind()-ing around this call doesn't help
-            # (the event still fires, against whatever's bound once event processing
-            # resumes). If the caller sets up search-specific preview state (jump to a
-            # specific index) right after this returns, that queued event would fire
-            # later and silently wipe it out via _on_tree_select's _reset_preview_state().
-            # Flushing the event queue with update() here forces it to fire and run its
-            # course NOW, before this function returns -- so any later state changes are
-            # safe.
-            self.tree.see(target_item)
-            self.tree.selection_set(target_item)
-            self.tree.focus(target_item)
-            self.update()
-
-        def _jump_preview_to_index(self, index):
-            if not self._preview_primes:
-                return
-            page = index // PAGE_SIZE
-            self._show_preview_page(page)
-            self.load_preview_btn.configure(state="disabled")
-            local = index - self._preview_page * PAGE_SIZE
-            self.preview_list.selection_clear(0, "end")
-            self.preview_list.selection_set(local)
-            self.preview_list.see(local)
-
-        def _show_preview_context_menu(self, event):
-            # Right-clicking an unselected row should select IT (not whatever was
-            # selected before), matching how most list/tree widgets behave elsewhere.
-            index = self.preview_list.nearest(event.y)
-            if index >= 0:
-                self.preview_list.selection_clear(0, "end")
-                self.preview_list.selection_set(index)
-            self._preview_context_menu.tk_popup(event.x_root, event.y_root)
-
-        def _copy_selected_preview_value(self):
-            sel = self.preview_list.curselection()
-            if not sel or not self._preview_primes:
-                return
-            global_index = self._preview_page * PAGE_SIZE + sel[0]
-            if global_index >= len(self._preview_primes):
-                return
-            self.clipboard_clear()
-            self.clipboard_append(str(self._preview_primes[global_index]))
 
         # --- Tab 2: Constellations (constellation hits) ---------------------------------
 
