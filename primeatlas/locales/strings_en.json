@@ -310,6 +310,7 @@
   "gen.ktuple_error_numeric_fields": "Numeric fields (number of locations, window width, fragment start/width, trial-division depth, Miller-Rabin rounds) must be integers.",
   "gen.ktuple_error_manual_offsets": "The 'Manual' strategy needs at least one offset (space- or comma-separated integers).",
   "gen.error_field_int": "Field '{field}' must be a positive integer.",
+  "gen.error_launch_failed": "Failed to launch generation: {error}",
   "gen.error_base_exponent_int": "Floor (base_exponent) must be blank or an integer.",
   "gen.dialog_title": "Generation",
   "gen.status_progress_prep": "[*] Generating: base sieve prep (pi(L_final)) done, starting sieve...",

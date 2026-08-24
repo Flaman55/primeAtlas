@@ -1429,20 +1429,28 @@ class GenerationTab(ttk.Frame):
         duplicating that machinery for one more script would only add a second place
         every future change to it has to be made twice."""
         if self._loop_runner is not None and self._loop_runner.is_running():
+            messagebox.showerror(self.T("quick.dialog_title"), self.T("quick.error_already_running"))
             return
         write_files = self._loop_write_files_var.get()
-        argv = build_primesieve_argv(
-            base_exponent, target_idx_start, window_count_per_run,
-            QUICK_GEN_MAX_WINDOW_WIDTH, write_files)
-        log_path, exit_path, _run_id = generation_log_paths(self._get_portal_folder(), "primesieve")
-        cmd = build_wsl_logged_command(argv, log_path, exit_path)
+        try:
+            argv = build_primesieve_argv(
+                base_exponent, target_idx_start, window_count_per_run,
+                QUICK_GEN_MAX_WINDOW_WIDTH, write_files)
+            log_path, exit_path, _run_id = generation_log_paths(self._get_portal_folder(), "primesieve")
+            cmd = build_wsl_logged_command(argv, log_path, exit_path)
 
-        self.loop_console.append(self._new_run_separator())
-        self._loop_output_queue = queue.Queue()
-        self._loop_runner = WslLoggedRunner(
-            cmd, log_path, exit_path, self._loop_output_queue,
-            kill_pattern="prime_sieve_primesieve.py")
-        self._loop_runner.start()
+            self.loop_console.append(self._new_run_separator())
+            self._loop_output_queue = queue.Queue()
+            self._loop_runner = WslLoggedRunner(
+                cmd, log_path, exit_path, self._loop_output_queue,
+                kill_pattern="prime_sieve_primesieve.py")
+            self._loop_runner.start()
+        except Exception as e:  # noqa: BLE001 -- see _on_run_loop's own comment on
+            # why this is caught and surfaced instead of silently swallowed.
+            self._loop_runner = None
+            messagebox.showerror(self.T("gen.dialog_title"), self.T(
+                "gen.error_launch_failed", error=str(e)))
+            return
         self.loop_run_btn.configure(state="disabled")
         self.loop_stop_btn.configure(state="normal")
         self.loop_status_label.set(self.T("common.running"))
@@ -1473,6 +1481,7 @@ class GenerationTab(ttk.Frame):
         _on_run_loop()/_on_run_primesieve() both already use, for the same
         one-runner-at-a-time reasoning _on_run_primesieve()'s own docstring gives."""
         if self._loop_runner is not None and self._loop_runner.is_running():
+            messagebox.showerror(self.T("quick.dialog_title"), self.T("quick.error_already_running"))
             return
         write_files = self._loop_write_files_var.get()
         compute_sieving = self._loop_count_sieving_var.get()
@@ -1483,19 +1492,26 @@ class GenerationTab(ttk.Frame):
 
         workers = _positive_int_or("workers", 1)
         batches_per_worker = _positive_int_or("batches_per_worker", 1)
-        argv = build_orchestrator_direct_argv(
-            base_exponent, target_idx_start, window_count_per_run,
-            QUICK_GEN_MAX_WINDOW_WIDTH, write_files, compute_sieving,
-            workers, batches_per_worker)
-        log_path, exit_path, _run_id = generation_log_paths(self._get_portal_folder(), "orchdirect")
-        cmd = build_wsl_logged_command(argv, log_path, exit_path)
+        try:
+            argv = build_orchestrator_direct_argv(
+                base_exponent, target_idx_start, window_count_per_run,
+                QUICK_GEN_MAX_WINDOW_WIDTH, write_files, compute_sieving,
+                workers, batches_per_worker)
+            log_path, exit_path, _run_id = generation_log_paths(self._get_portal_folder(), "orchdirect")
+            cmd = build_wsl_logged_command(argv, log_path, exit_path)
 
-        self.loop_console.append(self._new_run_separator())
-        self._loop_output_queue = queue.Queue()
-        self._loop_runner = WslLoggedRunner(
-            cmd, log_path, exit_path, self._loop_output_queue,
-            kill_pattern="orchestrator_v3.py")
-        self._loop_runner.start()
+            self.loop_console.append(self._new_run_separator())
+            self._loop_output_queue = queue.Queue()
+            self._loop_runner = WslLoggedRunner(
+                cmd, log_path, exit_path, self._loop_output_queue,
+                kill_pattern="orchestrator_v3.py")
+            self._loop_runner.start()
+        except Exception as e:  # noqa: BLE001 -- see _on_run_loop's own comment on
+            # why this is caught and surfaced instead of silently swallowed.
+            self._loop_runner = None
+            messagebox.showerror(self.T("gen.dialog_title"), self.T(
+                "gen.error_launch_failed", error=str(e)))
+            return
         self.loop_run_btn.configure(state="disabled")
         self.loop_stop_btn.configure(state="normal")
         self.loop_status_label.set(self.T("common.running"))
@@ -2140,38 +2156,49 @@ class GenerationTab(ttk.Frame):
 
     def _on_run_loop(self):
         if self._loop_runner is not None and self._loop_runner.is_running():
+            messagebox.showerror(self.T("quick.dialog_title"), self.T("quick.error_already_running"))
             return
         parsed = self._collect_loop_settings_from_form()
         if parsed is None:
             return
 
-        self._generation_settings["loop"] = {
-            "base_exponent": str(parsed["base_exponent"]),
-            "run_count": str(parsed["run_count"]),
-            "n_instances": str(parsed["n_instances"]),
-            "write_files": parsed["write_files"],
-            "compute_sieving_primes_count": parsed["compute_sieving_primes_count"],
-            "window_count_per_run": str(parsed["window_count_per_run"]),
-            "workers": str(parsed["workers"]),
-            "batches_per_worker": str(parsed["batches_per_worker"]),
-            "window_m": str(parsed["window_m"]),
-        }
-        save_generation_settings(self._get_portal_folder(), self._generation_settings)
+        try:
+            self._generation_settings["loop"] = {
+                "base_exponent": str(parsed["base_exponent"]),
+                "run_count": str(parsed["run_count"]),
+                "n_instances": str(parsed["n_instances"]),
+                "write_files": parsed["write_files"],
+                "compute_sieving_primes_count": parsed["compute_sieving_primes_count"],
+                "window_count_per_run": str(parsed["window_count_per_run"]),
+                "workers": str(parsed["workers"]),
+                "batches_per_worker": str(parsed["batches_per_worker"]),
+                "window_m": str(parsed["window_m"]),
+            }
+            save_generation_settings(self._get_portal_folder(), self._generation_settings)
 
-        argv = build_loop_argv(
-            parsed["base_exponent"], parsed["run_count"], parsed["n_instances"],
-            parsed["write_files"], parsed["compute_sieving_primes_count"],
-            parsed["window_count_per_run"], parsed["workers"], parsed["batches_per_worker"],
-            parsed["window_m"])
-        log_path, exit_path, _run_id = generation_log_paths(self._get_portal_folder(), "loop")
-        cmd = build_wsl_logged_command(argv, log_path, exit_path)
+            argv = build_loop_argv(
+                parsed["base_exponent"], parsed["run_count"], parsed["n_instances"],
+                parsed["write_files"], parsed["compute_sieving_primes_count"],
+                parsed["window_count_per_run"], parsed["workers"], parsed["batches_per_worker"],
+                parsed["window_m"])
+            log_path, exit_path, _run_id = generation_log_paths(self._get_portal_folder(), "loop")
+            cmd = build_wsl_logged_command(argv, log_path, exit_path)
 
-        self.loop_console.append(self._new_run_separator())
-        self._loop_output_queue = queue.Queue()
-        self._loop_runner = WslLoggedRunner(
-            cmd, log_path, exit_path, self._loop_output_queue,
-            kill_pattern="orchestrator_loop_v2.py")
-        self._loop_runner.start()
+            self.loop_console.append(self._new_run_separator())
+            self._loop_output_queue = queue.Queue()
+            self._loop_runner = WslLoggedRunner(
+                cmd, log_path, exit_path, self._loop_output_queue,
+                kill_pattern="orchestrator_loop_v2.py")
+            self._loop_runner.start()
+        except Exception as e:  # noqa: BLE001 -- a launch failure here used to be
+            # silently swallowed by Tk's default callback exception handling (printed
+            # to a console window the user usually can't see, GUI otherwise looked
+            # unchanged -- "plan computed, nothing launches, no error" -- reported by
+            # Artur 2026-08-24). Surface it instead of guessing at the cause blind.
+            self._loop_runner = None
+            messagebox.showerror(self.T("gen.dialog_title"), self.T(
+                "gen.error_launch_failed", error=str(e)))
+            return
         self.loop_run_btn.configure(state="disabled")
         self.loop_stop_btn.configure(state="normal")
         self.loop_status_label.set(self.T("common.running"))
