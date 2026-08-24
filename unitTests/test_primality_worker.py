@@ -1,8 +1,14 @@
 """
 test_primality_worker.py -- functional regression test for the primality-testing
-worker (Liczby pierwsze -> Testy pierwszosci sub-tab) in prime_atlas_v1.py, migrated
-onto primeatlas/background.py's PersistentWorker during the refactor branch's Faza 1
+worker (Liczby pierwsze -> Testy pierwszosci sub-tab), migrated onto
+primeatlas/background.py's PersistentWorker during the refactor branch's Faza 1
 (background-job consolidation, 2026-08-23).
+
+Updated during this sub-tab's own extraction (Faza 4, 2026-08-24): the worker and its
+state moved from prime_atlas_v1.py into primeatlas/primality_tab.py's PrimalityTab --
+this suite now drives it via app.primality_tab_widget.X and monkeypatches
+primeatlas.primality_tab.primality_run_all_tests instead (see that module's own
+docstring for the full extraction design).
 
 Unlike the primesieve_calc worker, this one never shells out to WSL -- it calls
 primeatlas.primality.run_all_tests/factorize directly, in-process, on the
@@ -65,22 +71,24 @@ def main():
 
     sys.argv = ["prime_atlas_v1.py"]
     import prime_atlas_v1
+    import primeatlas.primality_tab as pt
     app_cls = prime_atlas_v1._build_gui()
     app = app_cls()
     app.update()
+    tab = app.primality_tab_widget
 
     # --- "check" job: real primality test on a real small prime -------------------
-    app._primality_worker.submit({"op": "check", "n": 97})
-    check(app._primality_busy is False or True, "dispatch does not raise")
+    tab._primality_worker.submit({"op": "check", "n": 97})
+    check(tab._primality_busy is False or True, "dispatch does not raise")
     _pump(app, 3.0)
-    check(not app._primality_busy, "primality job settles after a 'check' result")
-    rows = app.primality_results_tree.get_children()
+    check(not tab._primality_busy, "primality job settles after a 'check' result")
+    rows = tab.primality_results_tree.get_children()
     check(len(rows) > 0, f"'check' job populated the results tree (got {len(rows)} rows)")
 
     # --- "factorize" job: real factorization of a real small composite ------------
-    app._primality_worker.submit({"op": "factorize", "n": 60, "use_sympy": False})
+    tab._primality_worker.submit({"op": "factorize", "n": 60, "use_sympy": False})
     _pump(app, 3.0)
-    check(not app._primality_busy, "primality job settles after a 'factorize' result")
+    check(not tab._primality_busy, "primality job settles after a 'factorize' result")
     check("60" in app.status.get() or True,
           f"status updated after factorize (got: {app.status.get()!r})")
 
@@ -89,17 +97,17 @@ def main():
     # exercise the exact path _primality_job's docstring documents (catches its own
     # exception, returns (op, n, False, str(e)) instead of relying on
     # PersistentWorker's last-resort net which would lose the op/n context).
-    original_run_all_tests = prime_atlas_v1.primality_run_all_tests
+    original_run_all_tests = pt.primality_run_all_tests
 
     def fake_raise(n):
         raise RuntimeError("fake failure for this test")
 
-    prime_atlas_v1.primality_run_all_tests = fake_raise
+    pt.primality_run_all_tests = fake_raise
     shown.clear()
-    app._primality_worker.submit({"op": "check", "n": 7})
+    tab._primality_worker.submit({"op": "check", "n": 7})
     _pump(app, 3.0)
-    prime_atlas_v1.primality_run_all_tests = original_run_all_tests
-    check(not app._primality_busy, "primality job settles even after an internal exception")
+    pt.primality_run_all_tests = original_run_all_tests
+    check(not tab._primality_busy, "primality job settles even after an internal exception")
     check(any("fake failure for this test" in str(call) for call in shown),
           f"the fake exception was surfaced via messagebox.showerror (got: {shown})")
 

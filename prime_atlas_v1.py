@@ -1,8 +1,5 @@
 import sys
 import os
-import json
-import subprocess
-import shlex
 
 # ==========================================================================================
 # PrimeAtlas -- a tkinter desktop application for browsing, generating, and managing the
@@ -95,9 +92,14 @@ sys.path.insert(0, os.path.join(_SCRIPT_DIR, "prime_sieve"))
 sys.path.insert(0, os.path.join(_SCRIPT_DIR, "constellation"))
 from primeatlas import (  # noqa: E402
     AppSettings, Translator, prune_empty_pietro_dirs,
-    run_all_tests as primality_run_all_tests, factorize as primality_factorize,
     try_import_sympy as primality_try_import_sympy,
 )
+# run_all_tests/factorize (as primality_run_all_tests/primality_factorize) used to be
+# imported here for the primality-testing sub-tab's own worker job -- moved to
+# primeatlas/primality_tab.py during the refactor branch's Faza 4 (2026-08-24), which
+# imports them directly from primeatlas.primality itself. primality_try_import_sympy
+# stays -- it's still called directly by _build_settings_tab's wsl_helpers dict
+# (dependency installer), unrelated to the primality-testing sub-tab itself.
 # goldbach_check_window/goldbach_cascade_step/goldbach_window_rows/
 # goldbach_all_decompositions/goldbach_both_base_window_rows/
 # GOLDBACH_BOTH_BASE_PMAX_CEILING/GOLDBACH_BOTH_BASE_PMIN/goldbach_largest_prime_le/
@@ -159,12 +161,12 @@ from primeatlas.generation import (  # noqa: E402
     build_primesieve_argv, generation_log_paths, WslLoggedRunner, LocalLoggedRunner,
     build_pip_install_argv, estimate_wsl_available_ram_bytes, recommended_max_windows,
     find_continuation_target_idx,
-    # PRIMESIEVE_QUERY_SCRIPT/windows_path_to_wsl: needed by build_primesieve_query_argv()
-    # below, which stays in THIS file (unrelated "primesieve" calculator sub-tab, see that
-    # function's own docstring) even though the constant/helper it needs both live in
-    # generation.py now.
-    PRIMESIEVE_QUERY_SCRIPT, windows_path_to_wsl,
 )
+# PRIMESIEVE_QUERY_SCRIPT/windows_path_to_wsl/build_primesieve_query_argv/
+# run_primesieve_query_wsl used to be imported/defined here for the "primesieve"
+# calculator sub-tab -- moved FULLY into primeatlas/primesieve_calc_tab.py during the
+# refactor branch's Faza 4 (2026-08-24), alongside that sub-tab's own UI split, since
+# nothing else in this file calls any of the four.
 
 # AppSettings persists the chosen storage path OUTSIDE the portal folder itself (see
 # app_settings.py's docstring for the chicken-and-egg reason). Loaded once here, at module
@@ -199,64 +201,6 @@ FLOOR_PAGE_SIZE = 200  # PRIME_WINDOW_*.bin files shown per page when a floor no
 # backend/UI split, 2026-08-23), alongside the rest of the Goldbach sub-tab's own UI
 # split -- see that module's own docstring.
 
-def build_primesieve_query_argv(op, *args, script_path=None):
-    """Returns the LINUX-side argv for primesieve_query.py -- the one-shot calculator CLI
-    behind the 'primesieve' sub-tab (Liczby pierwsze -> primesieve). `op` is one of
-    "count"/"nth"/"next"/"prev" and `args` are that operation's positional arguments, all
-    passed through as plain strings (see that script's own module header for each
-    operation's exact argument count) -- this function does no validation of its own,
-    the query script itself rejects a malformed call and reports it as
-    {"ok": false, "error": ...} rather than crashing (see run_primesieve_query_wsl())."""
-    script = script_path if script_path is not None else PRIMESIEVE_QUERY_SCRIPT
-    script_wsl = windows_path_to_wsl(script)
-    return ["python3", "-u", script_wsl, op] + [str(a) for a in args]
-
-
-def run_primesieve_query_wsl(argv, timeout=120):
-    """Runs a primesieve_query.py invocation (see build_primesieve_query_argv()) as a
-    BLOCKING wsl.exe subprocess call -- deliberately NOT the WslLoggedRunner/file-tailing
-    machinery every other WSL launch in this app uses (see that class's own docstring for
-    why long-running jobs need it): a single count/nth/next/prev query answers in well
-    under a second for any reasonable input and doesn't need a live progress console, so
-    the simpler synchronous-capture-output shape already used by
-    estimate_wsl_available_ram_bytes() above fits better here. Callers (the primesieve
-    calculator tab's own worker thread, see _primesieve_calc_job) are still
-    responsible for not calling this on the GUI thread directly, since even a "well under
-    a second" WSL round-trip is enough to freeze Tk's event loop noticeably.
-
-    `timeout` bounds the whole wsl.exe call, not just the query itself -- count_primes and
-    nth_prime are genuine sieve operations (see prime_sieve_primesieve.py's own docstrings
-    on those two), so an extreme range/n CAN legitimately take a while; 120s is generous
-    for anything a person would plausibly type into this calculator by hand, not a hard
-    guarantee.
-
-    Returns (True, result) on success (result is the int primesieve_query.py reported), or
-    (False, error_message) on ANY failure -- a non-zero/JSON-shaped {"ok": false, ...}
-    response from the script itself, a WSL/process-launch failure, a timeout, or
-    unparseable stdout (e.g. WSL not installed at all, so 'wsl.exe' itself never ran) --
-    every failure path funnels through this same two-tuple shape so the GUI side has
-    exactly one place that decides how to display an error, not one per failure kind."""
-    inner = " ".join(shlex.quote(str(t)) for t in argv)
-    cmd = ["wsl.exe", "-e", "bash", "-c", inner]
-    kwargs = {}
-    if os.name == "nt":
-        kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, **kwargs)
-    except subprocess.TimeoutExpired:
-        return False, T("primesieve_calc.error_timeout", timeout=timeout)
-    except OSError as e:
-        return False, T("primesieve_calc.error_wsl_launch", error=e)
-    stdout = (result.stdout or "").strip()
-    last_line = stdout.splitlines()[-1] if stdout else ""
-    try:
-        payload = json.loads(last_line)
-    except (ValueError, IndexError):
-        detail = stdout or (result.stderr or "").strip() or T("primesieve_calc.error_no_output")
-        return False, T("primesieve_calc.error_bad_output", detail=detail[:500])
-    if payload.get("ok"):
-        return True, payload.get("result")
-    return False, payload.get("error", T("primesieve_calc.error_unknown"))
 
 
 # ------------------------------------------------------------------------------------------
@@ -479,27 +423,16 @@ def _build_gui():
                 self, self._search_job, on_result=self._on_search_worker_result,
                 on_progress=self._on_search_worker_progress)
 
-            # primesieve calculator worker (Liczby pierwsze -> primesieve sub-tab): same
-            # one-daemon-thread-owns-the-blocking-call shape as the search worker just
-            # above (run_primesieve_query_wsl() is a synchronous wsl.exe subprocess call --
-            # see that function's own docstring -- so it must not run on the GUI thread),
-            # kept as its OWN PersistentWorker instance rather than reusing
-            # self._search_worker since the two jobs have unrelated result shapes (a
-            # found-or-not prime/participation result vs. a single computed integer) --
-            # sharing one queue would mean every consumer had to branch on job type just
-            # to ignore the other kind.
-            self._primesieve_calc_busy = False
-            self._primesieve_calc_worker = background.PersistentWorker(
-                self, self._primesieve_calc_job, on_result=self._on_primesieve_calc_result)
-
-            # Primality-testing worker (Liczby pierwsze -> Testy pierwszosci sub-tab):
-            # own PersistentWorker for the same reason as the primesieve-calculator
-            # block just above (unrelated result shapes: a list of per-method test rows
-            # vs. a factorization dict) -- but note this worker never touches WSL at
-            # all, see _primality_job's own docstring.
-            self._primality_busy = False
-            self._primality_worker = background.PersistentWorker(
-                self, self._primality_job, on_result=self._on_primality_worker_result)
+            # primesieve calculator worker (Liczby pierwsze -> primesieve sub-tab) and
+            # primality-testing worker (Liczby pierwsze -> Testy pierwszosci sub-tab)
+            # used to live here as two more hand-attached PersistentWorker instances --
+            # moved FULLY into their own PrimesieveCalcTab/PrimalityTab classes during
+            # the refactor branch's Faza 4 (2026-08-24, the phase that shrinks the app
+            # shell further after every tab was already split out during Faza 3), since
+            # each worker is confirmed exclusive to its own one sub-tab (unlike the
+            # shared search/totals workers above, which stay here) -- see
+            # primeatlas/primesieve_calc_tab.py and primeatlas/primality_tab.py's own
+            # docstrings.
 
             # Goldbach structural-window worker (Badania -> Goldbach sub-tab), its
             # Wizualizacja/decompose Toplevel state, and all their pagination fields used
@@ -818,19 +751,25 @@ def _build_gui():
         # --- Tab 1: Prime numbers (source primes) ---------------------------------
 
         def _build_primes_section(self):
-            """The top-level 'Prime numbers' notebook tab is itself a small ttk.Notebook
-            now, not a single flat frame -- 'Magazyn' (Storage) holds exactly what this
-            whole tab used to be (the floor/file browser + search, built by
-            _build_primes_tab() below, completely unchanged apart from its parent frame
-            now being self.primes_storage_tab instead of self.primes_tab directly),
-            alongside two new sibling tabs that later phases fill in:
-            self.primes_primesieve_tab (a standalone libprimesieve calculator -- count/
-            nth/next/prev prime, no on-disk storage involved) and
+            """The top-level 'Prime numbers' notebook tab is itself a small ttk.Notebook,
+            not a single flat frame -- 'Magazyn' (Storage) holds exactly what this whole
+            tab used to be (the floor/file browser + search, built by _build_primes_tab()
+            below, unchanged apart from its parent frame now being
+            self.primes_storage_tab instead of self.primes_tab directly), alongside two
+            sibling tabs: self.primes_primesieve_tab (a standalone libprimesieve
+            calculator -- count/nth/next/prev prime, no on-disk storage involved) and
             self.primes_primality_tab (probabilistic primality testing + factorization
             for a single entered number). See _build_constellations_section() for the
             SAME nested-notebook pattern applied to the Constellations tab -- deliberately
             identical structure between the two so the app has one consistent way of
-            giving a top-level section its own sub-tabs, not two diverging ones."""
+            giving a top-level section its own sub-tabs, not two diverging ones.
+
+            All three sub-tabs are now thin wrappers around their own primeatlas/*.py
+            classes (PrimesTab / PrimesieveCalcTab / PrimalityTab) -- the last two were
+            extracted during the refactor branch's Faza 4 (2026-08-24), the phase after
+            Faza 3 that shrinks the app shell further; see those two modules' own
+            docstrings for why status_var/translator/totals_progress are the only three
+            things injected into each."""
             sub = ttk.Notebook(self.primes_tab)
             sub.pack(fill="both", expand=True)
             # Saved for the same reason as self.main_notebook above -- the constellation
@@ -844,426 +783,18 @@ def _build_gui():
             sub.add(self.primes_primesieve_tab, text=T("tabs.primes_primesieve"))
             sub.add(self.primes_primality_tab, text=T("tabs.primes_primality"))
             self._build_primes_tab()
-            self._build_primesieve_tab()
-            self._build_primality_tab()
 
-        def _build_primesieve_tab(self):
-            """Standalone libprimesieve calculator -- count primes in a range, nth prime,
-            next/prev prime -- entirely independent of anything already in storage (no
-            floor, no PORTAL_FOLDER, nothing written to disk). See
-            build_primesieve_query_argv()/run_primesieve_query_wsl() for the WSL round
-            trip this launches, and primesieve_query.py (prime_sieve/ folder) for the
-            one-shot CLI script actually doing the libprimesieve call.
+            from primeatlas.primesieve_calc_tab import PrimesieveCalcTab
+            self.primesieve_calc_tab_widget = PrimesieveCalcTab(
+                self.primes_primesieve_tab, status_var=self.status, translator=TRANSLATOR,
+                totals_progress=self.totals_progress)
+            self.primesieve_calc_tab_widget.pack(fill="both", expand=True)
 
-            Operation-dependent input fields use the SAME grid()/grid_remove() swap
-            technique the Quick-gen panel's mode switch already established (NOT tkraise
-            -- that approach had a frame-overlap bug fixed earlier in this project's
-            history), so only one field layout is ever visible/interactive at a time."""
-            container = ttk.Frame(self.primes_primesieve_tab)
-            container.pack(fill="x", padx=12, pady=12)
-
-            op_row = ttk.Frame(container)
-            op_row.pack(fill="x", pady=(0, 10))
-            ttk.Label(op_row, text=T("primesieve_calc.field_operation")).pack(side="left")
-            # (internal op code, translated display label) pairs -- the combobox itself
-            # only ever shows/stores the translated label (ttk.Combobox has no separate
-            # value/label concept like a listbox with associated data), so
-            # _on_primesieve_calc_operation_changed() maps back to the code via this same
-            # list's index (combobox.current()) rather than reverse-parsing display text.
-            self._primesieve_calc_ops = [
-                ("count", T("primesieve_calc.op_count")),
-                ("nth", T("primesieve_calc.op_nth")),
-                ("next", T("primesieve_calc.op_next")),
-                ("prev", T("primesieve_calc.op_prev")),
-            ]
-            self.primesieve_calc_op_combo = ttk.Combobox(
-                op_row, state="readonly", width=32,
-                values=[label for _code, label in self._primesieve_calc_ops])
-            self.primesieve_calc_op_combo.current(0)
-            self.primesieve_calc_op_combo.pack(side="left", padx=(6, 0))
-            self.primesieve_calc_op_combo.bind(
-                "<<ComboboxSelected>>", self._on_primesieve_calc_operation_changed)
-
-            fields_area = ttk.Frame(container)
-            fields_area.pack(fill="x", pady=(0, 10))
-
-            self._primesieve_calc_count_frame = ttk.Frame(fields_area)
-            ttk.Label(self._primesieve_calc_count_frame,
-                      text=T("primesieve_calc.field_lo")).grid(row=0, column=0, sticky="e")
-            self.primesieve_calc_lo_entry = ttk.Entry(self._primesieve_calc_count_frame, width=22)
-            self.primesieve_calc_lo_entry.grid(row=0, column=1, padx=(6, 16))
-            ttk.Label(self._primesieve_calc_count_frame,
-                      text=T("primesieve_calc.field_hi")).grid(row=0, column=2, sticky="e")
-            self.primesieve_calc_hi_entry = ttk.Entry(self._primesieve_calc_count_frame, width=22)
-            self.primesieve_calc_hi_entry.grid(row=0, column=3, padx=(6, 0))
-
-            self._primesieve_calc_nth_frame = ttk.Frame(fields_area)
-            ttk.Label(self._primesieve_calc_nth_frame,
-                      text=T("primesieve_calc.field_n")).grid(row=0, column=0, sticky="e")
-            self.primesieve_calc_n_entry = ttk.Entry(self._primesieve_calc_nth_frame, width=22)
-            self.primesieve_calc_n_entry.grid(row=0, column=1, padx=(6, 16))
-            ttk.Label(self._primesieve_calc_nth_frame,
-                      text=T("primesieve_calc.field_start")).grid(row=0, column=2, sticky="e")
-            self.primesieve_calc_start_entry = ttk.Entry(self._primesieve_calc_nth_frame, width=22)
-            self.primesieve_calc_start_entry.grid(row=0, column=3, padx=(6, 0))
-
-            self._primesieve_calc_x_frame = ttk.Frame(fields_area)
-            ttk.Label(self._primesieve_calc_x_frame,
-                      text=T("primesieve_calc.field_x")).grid(row=0, column=0, sticky="e")
-            self.primesieve_calc_x_entry = ttk.Entry(self._primesieve_calc_x_frame, width=22)
-            self.primesieve_calc_x_entry.grid(row=0, column=1, padx=(6, 0))
-
-            # All three placed in the SAME grid cell -- grid_remove() on the two not
-            # currently active, grid() on the one that is (see
-            # _on_primesieve_calc_operation_changed()). count starts visible, matching
-            # the combobox's own default selection (index 0) above.
-            self._primesieve_calc_count_frame.grid(row=0, column=0, sticky="w")
-            self._primesieve_calc_nth_frame.grid(row=0, column=0, sticky="w")
-            self._primesieve_calc_x_frame.grid(row=0, column=0, sticky="w")
-            self._primesieve_calc_nth_frame.grid_remove()
-            self._primesieve_calc_x_frame.grid_remove()
-
-            button_row = ttk.Frame(container)
-            button_row.pack(fill="x", pady=(0, 10))
-            self.primesieve_calc_button = ttk.Button(
-                button_row, text=T("primesieve_calc.compute_button"),
-                command=self._on_primesieve_calc_compute)
-            self.primesieve_calc_button.pack(side="left")
-
-            result_row = ttk.Frame(container)
-            result_row.pack(fill="x")
-            self.primesieve_calc_result_var = tk.StringVar(value="")
-            ttk.Label(result_row, textvariable=self.primesieve_calc_result_var,
-                      font=("Consolas", 11, "bold"), wraplength=700, justify="left").pack(
-                side="left", anchor="w")
-            self.primesieve_calc_copy_button = ttk.Button(
-                result_row, text=T("primesieve_calc.copy_button"),
-                command=self._on_primesieve_calc_copy_result, state="disabled")
-            self.primesieve_calc_copy_button.pack(side="left", padx=(10, 0))
-            self._primesieve_calc_last_result = None  # raw int, for the Copy button --
-                                                        # None whenever the result label
-                                                        # isn't currently showing a
-                                                        # successful numeric result
-
-        def _on_primesieve_calc_operation_changed(self, _event=None):
-            code = self._primesieve_calc_ops[self.primesieve_calc_op_combo.current()][0]
-            self._primesieve_calc_count_frame.grid_remove()
-            self._primesieve_calc_nth_frame.grid_remove()
-            self._primesieve_calc_x_frame.grid_remove()
-            if code == "count":
-                self._primesieve_calc_count_frame.grid()
-            elif code == "nth":
-                self._primesieve_calc_nth_frame.grid()
-            else:  # next / prev share the same single-field layout
-                self._primesieve_calc_x_frame.grid()
-
-        def _on_primesieve_calc_compute(self):
-            """Validates the active operation's fields CLIENT-SIDE first (same rules
-            primesieve_query.py itself enforces -- n>0, x>2 for prev, hi>lo for count --
-            see that script's own docstring) so an obviously-bad input gets an immediate
-            messagebox instead of paying for a WSL round trip just to have it rejected
-            there anyway. A value primesieve_query.py could STILL reject for some other
-            reason (e.g. asking libprimesieve for something past its own uint64 ceiling)
-            is left to come back as a normal error result -- this is a fast local sanity
-            check, not a full re-implementation of the backend's own validation."""
-            if self._primesieve_calc_busy:
-                return
-            code = self._primesieve_calc_ops[self.primesieve_calc_op_combo.current()][0]
-            try:
-                if code == "count":
-                    lo = _eval_quick_number(self.primesieve_calc_lo_entry.get())
-                    hi = _eval_quick_number(self.primesieve_calc_hi_entry.get())
-                    if lo is None or hi is None:
-                        raise ValueError(T("primesieve_calc.error_count_fields_int"))
-                    if hi <= lo:
-                        raise ValueError(T("primesieve_calc.error_hi_le_lo"))
-                    args = (lo, hi)
-                elif code == "nth":
-                    n = _eval_quick_number(self.primesieve_calc_n_entry.get())
-                    if n is None or n <= 0:
-                        raise ValueError(T("primesieve_calc.error_n_positive"))
-                    start_raw = self.primesieve_calc_start_entry.get().strip()
-                    if start_raw:
-                        start = _eval_quick_number(start_raw)
-                        if start is None or start < 0:
-                            raise ValueError(T("primesieve_calc.error_start_nonneg"))
-                    else:
-                        start = 0
-                    args = (n, start)
-                else:  # next / prev
-                    x = _eval_quick_number(self.primesieve_calc_x_entry.get())
-                    if x is None:
-                        raise ValueError(T("primesieve_calc.error_field_int", field=T("primesieve_calc.field_x")))
-                    if code == "prev" and x <= 2:
-                        raise ValueError(T("primesieve_calc.error_prev_too_small"))
-                    args = (x,)
-            except ValueError as e:
-                messagebox.showerror(T("primesieve_calc.error_dialog_title"), str(e))
-                return
-
-            self._primesieve_calc_busy = True
-            self.primesieve_calc_button.configure(state="disabled")
-            self.primesieve_calc_copy_button.configure(state="disabled")
-            self._primesieve_calc_last_result = None
-            self.totals_progress.stop()
-            self.totals_progress.configure(mode="indeterminate")
-            self.totals_progress.start(80)
-            self.status.set(T("primesieve_calc.status_computing"))
-            self._primesieve_calc_worker.submit({"code": code, "args": args})
-
-        def _primesieve_calc_job(self, job, report_progress):
-            """Runs on PersistentWorker's own daemon thread; _primesieve_calc_busy
-            blocking new requests from the GUI side means only one query is ever in
-            flight. Unlike the original hand-rolled worker loop, an exception raised
-            here (e.g. run_primesieve_query_wsl() itself failing unexpectedly) is now
-            actually caught -- by PersistentWorker's own last-resort net -- instead of
-            silently killing this thread and leaving every future click do nothing."""
-            code, args = job["code"], job["args"]
-            argv = build_primesieve_query_argv(code, *args)
-            ok, payload = run_primesieve_query_wsl(argv)
-            return code, args, ok, payload
-
-        def _on_primesieve_calc_result(self, payload, error):
-            """Main-thread callback for _primesieve_calc_job -- same 150ms-poll-driven
-            timing as before, just delivered via PersistentWorker instead of a bespoke
-            queue.Queue + self.after() pair."""
-            self._primesieve_calc_busy = False
-            self.primesieve_calc_button.configure(state="normal")
-            self.totals_progress.stop()
-            self.totals_progress.configure(mode="determinate", maximum=1, value=0)
-            if error is not None:
-                self.status.set(T("primesieve_calc.status_error"))
-                messagebox.showerror(T("primesieve_calc.error_dialog_title"), str(error))
-                return
-            code, args, ok, result_payload = payload
-            if not ok:
-                self.status.set(T("primesieve_calc.status_error"))
-                messagebox.showerror(T("primesieve_calc.error_dialog_title"), result_payload)
-                return
-            self.status.set(T("primesieve_calc.status_done"))
-            self._primesieve_calc_last_result = result_payload
-            self.primesieve_calc_copy_button.configure(state="normal")
-            if code == "count":
-                lo, hi = args
-                text = T("primesieve_calc.result_count", lo=f"{lo:,}", hi=f"{hi:,}",
-                          count=f"{result_payload:,}")
-            elif code == "nth":
-                n, start = args
-                text = T("primesieve_calc.result_nth", n=f"{n:,}", start=f"{start:,}",
-                          value=f"{result_payload:,}")
-            elif code == "next":
-                (x,) = args
-                text = T("primesieve_calc.result_next", x=f"{x:,}", value=f"{result_payload:,}")
-            else:
-                (x,) = args
-                text = T("primesieve_calc.result_prev", x=f"{x:,}", value=f"{result_payload:,}")
-            self.primesieve_calc_result_var.set(text)
-
-        def _on_primesieve_calc_copy_result(self):
-            if self._primesieve_calc_last_result is None:
-                return
-            self.clipboard_clear()
-            self.clipboard_append(str(self._primesieve_calc_last_result))
-
-        def _build_primality_tab(self):
-            """Testy pierwszosci sub-tab -- enter a number, run Miller-Rabin/Fermat/
-            Solovay-Strassen against it (primeatlas/primality.py, pure Python, no WSL
-            round trip needed -- see that module's own header comment on why), or
-            factorize it (trial division + Pollard's rho by default, sympy.factorint()
-            instead when installed). Both operations run on their own worker thread
-            (own queue.Queue pair + 150ms poller, same pattern as
-            _primesieve_calc_worker_loop/_poll_primesieve_calc_results) purely to keep a
-            slow big-number computation off the GUI thread -- unlike the primesieve
-            calculator this never leaves the process, there's no WSL subprocess
-            involved."""
-            top = ttk.Frame(self.primes_primality_tab)
-            top.pack(fill="x", padx=6, pady=(10, 4))
-            ttk.Label(top, text=T("primality.field_number")).pack(side="left")
-            self.primality_number_entry = ttk.Entry(top, width=32)
-            self.primality_number_entry.pack(side="left", padx=(6, 16))
-
-            self.primality_use_sympy_var = tk.BooleanVar(value=True)
-            ttk.Checkbutton(
-                top, text=T("primality.use_sympy_checkbox"),
-                variable=self.primality_use_sympy_var).pack(side="left")
-
-            button_row = ttk.Frame(self.primes_primality_tab)
-            button_row.pack(fill="x", padx=6, pady=(0, 8))
-            self.primality_check_button = ttk.Button(
-                button_row, text=T("primality.check_button"),
-                command=self._on_primality_check_compute)
-            self.primality_check_button.pack(side="left")
-            self.primality_factorize_button = ttk.Button(
-                button_row, text=T("primality.factorize_button"),
-                command=self._on_primality_factorize_compute)
-            self.primality_factorize_button.pack(side="left", padx=(8, 0))
-
-            ttk.Label(self.primes_primality_tab, text=T("primality.hint"),
-                      wraplength=640, justify="left", foreground="#555").pack(
-                anchor="w", padx=6, pady=(0, 8))
-
-            tree_frame = ttk.Frame(self.primes_primality_tab)
-            tree_frame.pack(fill="both", expand=False, padx=6, pady=(0, 8))
-            columns = ("method", "verdict", "certainty", "seconds")
-            self.primality_results_tree = ttk.Treeview(
-                tree_frame, columns=columns, show="headings", height=3)
-            self.primality_results_tree.heading("method", text=T("primality.col_method"))
-            self.primality_results_tree.heading("verdict", text=T("primality.col_verdict"))
-            self.primality_results_tree.heading("certainty", text=T("primality.col_certainty"))
-            self.primality_results_tree.heading("seconds", text=T("primality.col_seconds"))
-            self.primality_results_tree.column("method", width=140, anchor="w")
-            self.primality_results_tree.column("verdict", width=110, anchor="center")
-            self.primality_results_tree.column("certainty", width=220, anchor="w")
-            self.primality_results_tree.column("seconds", width=100, anchor="e")
-            self.primality_results_tree.pack(fill="x")
-
-            factor_frame = ttk.Frame(self.primes_primality_tab)
-            factor_frame.pack(fill="x", padx=6, pady=(0, 4))
-            self.primality_factor_result_var = tk.StringVar(value="")
-            ttk.Label(factor_frame, textvariable=self.primality_factor_result_var,
-                      wraplength=760, justify="left").pack(anchor="w")
-
-            # Separate readonly Entry holding JUST the factor list (no "n = " prefix, no
-            # "(metoda: ..., czas: ...)" suffix) -- a plain Label's text can't be selected
-            # or copied at all in tkinter, so the summary line above was previously
-            # impossible to copy from. An Entry supports normal mouse selection (drag for
-            # a range, double-click for one factor) and Ctrl+C even in readonly state --
-            # readonly only blocks typing/editing, not selection -- plus a one-click Copy
-            # button for grabbing the whole list at once.
-            factors_row = ttk.Frame(self.primes_primality_tab)
-            factors_row.pack(fill="x", padx=6, pady=(0, 8))
-            ttk.Label(factors_row, text=T("primality.factors_field_label")).pack(side="left")
-            self.primality_factors_only_var = tk.StringVar(value="")
-            self.primality_factors_entry = ttk.Entry(
-                factors_row, textvariable=self.primality_factors_only_var, state="readonly")
-            self.primality_factors_entry.pack(side="left", fill="x", expand=True, padx=(6, 6))
-            self.primality_factors_copy_button = ttk.Button(
-                factors_row, text=T("primality.copy_factors_button"),
-                command=self._on_primality_copy_factors, state="disabled")
-            self.primality_factors_copy_button.pack(side="left")
-
-        def _primality_parse_number(self):
-            """Shared client-side validation for both buttons -- parses the number field
-            (via _eval_quick_number, so expressions like 10**5+3 work here too, same as
-            the primesieve calculator's fields), requiring an integer >= 2 (both
-            primality.run_all_tests and primality.factorize document this same floor --
-            see that module's own docstrings). Raises ValueError with a translated
-            message on failure; returns the parsed int on success."""
-            n = _eval_quick_number(self.primality_number_entry.get())
-            if n is None or n < 2:
-                raise ValueError(T("primality.error_number_invalid"))
-            return n
-
-        def _on_primality_check_compute(self):
-            if self._primality_busy:
-                return
-            try:
-                n = self._primality_parse_number()
-            except ValueError as e:
-                messagebox.showerror(T("primality.error_dialog_title"), str(e))
-                return
-            self._primality_set_busy(True)
-            self._primality_worker.submit({"op": "check", "n": n})
-
-        def _on_primality_factorize_compute(self):
-            if self._primality_busy:
-                return
-            try:
-                n = self._primality_parse_number()
-            except ValueError as e:
-                messagebox.showerror(T("primality.error_dialog_title"), str(e))
-                return
-            self._primality_set_busy(True)
-            self._primality_worker.submit(
-                {"op": "factorize", "n": n, "use_sympy": self.primality_use_sympy_var.get()})
-
-        def _primality_set_busy(self, busy):
-            self._primality_busy = busy
-            state = "disabled" if busy else "normal"
-            self.primality_check_button.configure(state=state)
-            self.primality_factorize_button.configure(state=state)
-            if busy:
-                self.totals_progress.stop()
-                self.totals_progress.configure(mode="indeterminate")
-                self.totals_progress.start(80)
-                self.status.set(T("primality.status_computing"))
-            else:
-                self.totals_progress.stop()
-                self.totals_progress.configure(mode="determinate", maximum=1, value=0)
-
-        def _primality_job(self, job, report_progress):
-            """Runs on PersistentWorker's own daemon thread -- single-owner reasoning
-            identical to _primesieve_calc_job's own docstring (self._primality_busy
-            blocks new requests from the GUI side, so only one job is ever in flight).
-            No WSL subprocess here at all -- primeatlas.primality is ordinary
-            in-process pure Python, run directly on this thread. Catches its own
-            exceptions (per PersistentWorker's fn contract -- see background.py's
-            docstring) so a failure surfaces with the right op/n context via a normal
-            error-dialog result, instead of falling through to PersistentWorker's own
-            last-resort net which has no way to know which request failed."""
-            op = job["op"]
-            try:
-                if op == "check":
-                    rows = primality_run_all_tests(job["n"])
-                    return op, job["n"], True, rows
-                result = primality_factorize(job["n"], use_sympy=job["use_sympy"])
-                return op, job["n"], True, result
-            except Exception as e:  # noqa: BLE001 -- surface any unexpected failure
-                                     # to the GUI as an error dialog instead of
-                                     # silently killing this worker thread
-                return op, job["n"], False, str(e)
-
-        def _on_primality_worker_result(self, payload, error):
-            """Main-thread callback for _primality_job -- same shape as the old
-            _poll_primality_results, just delivered via PersistentWorker instead of a
-            bespoke queue.Queue + self.after() pair. `error` is only non-None for a
-            genuine PersistentWorker-framework bug (_primality_job already catches its
-            own exceptions -- see its docstring)."""
-            self._primality_set_busy(False)
-            if error is not None:
-                self.status.set(T("primality.status_error"))
-                messagebox.showerror(T("primality.error_dialog_title"), str(error))
-                return
-            op, n, ok, result_payload = payload
-            if not ok:
-                self.status.set(T("primality.status_error"))
-                messagebox.showerror(T("primality.error_dialog_title"), result_payload)
-                return
-            self.status.set(T("primality.status_done"))
-            if op == "check":
-                self._primality_show_check_results(result_payload)
-            else:
-                self._primality_show_factorize_result(n, result_payload)
-
-        def _primality_show_check_results(self, rows):
-            self.primality_results_tree.delete(*self.primality_results_tree.get_children())
-            for row in rows:
-                verdict = (T("primality.verdict_prime") if row["is_prime"]
-                            else T("primality.verdict_composite"))
-                self.primality_results_tree.insert(
-                    "", "end",
-                    values=(row["method"], verdict, row["certainty"], f"{row['seconds']:.4f}"))
-
-        def _primality_show_factorize_result(self, n, result):
-            pairs = result["pairs"]
-            factor_str = " x ".join(
-                f"{p}^{e}" if e > 1 else str(p) for p, e in pairs) or str(n)
-            method = (T("primality.method_sympy") if result["method"] == "sympy"
-                      else T("primality.method_pure_python"))
-            text = T("primality.factor_result", n=f"{n:,}", factors=factor_str,
-                      method=method, seconds=f"{result['seconds']:.4f}")
-            if not result["complete"]:
-                text += " " + T("primality.factor_result_incomplete_note")
-            self.primality_factor_result_var.set(text)
-            self.primality_factors_only_var.set(factor_str)
-            self.primality_factors_copy_button.configure(state="normal")
-
-        def _on_primality_copy_factors(self):
-            text = self.primality_factors_only_var.get()
-            if not text:
-                return
-            self.clipboard_clear()
-            self.clipboard_append(text)
+            from primeatlas.primality_tab import PrimalityTab
+            self.primality_tab_widget = PrimalityTab(
+                self.primes_primality_tab, status_var=self.status, translator=TRANSLATOR,
+                totals_progress=self.totals_progress)
+            self.primality_tab_widget.pack(fill="both", expand=True)
 
         def _build_primes_tab(self):
             """Thin wrapper -- all of the Primes tab's actual widgets/logic live in
