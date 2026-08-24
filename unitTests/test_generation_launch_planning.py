@@ -23,6 +23,12 @@ Every check() states the specific expected vs. actual value, per Artur's explici
 that this suite "wyłapały i wyświetliły co faktycznie powoduje błąd" -- catch failures AND
 show their actual cause, not just red/green.
 
+Updated during the Generation-tab extraction itself (Faza 3, 2026-08-23): all three
+methods under test, plus the Quick-gen panel's own StringVar/BooleanVar state, moved from
+PortalBrowserApp into GenerationTab (primeatlas/generation_tab.py) -- this suite now
+drives them via app.generation_tab_widget.X instead of app.X directly (see that module's
+own docstring for the full extraction design).
+
 Usage (Windows, real display):
     python unitTests\\test_generation_launch_planning.py
 
@@ -83,6 +89,7 @@ class _LaunchRecorder:
 
 def main():
     import prime_atlas_v1
+    from primeatlas.generation import _floor_window_count
 
     W = 10_000_000
     portal = tempfile.mkdtemp(prefix="primeatlas_gen_launch_test_")
@@ -91,6 +98,7 @@ def main():
         app_cls = prime_atlas_v1._build_gui()
         app = app_cls()
         app.update()
+        gen = app.generation_tab_widget
 
         settings_tab = app.settings_tab
         _patch_app_settings(settings_tab.app_settings)
@@ -99,8 +107,8 @@ def main():
         app.update()
 
         recorder = _LaunchRecorder()
-        app._apply_primesieve_params_and_run = recorder.primesieve
-        app._apply_orchestrator_direct_params_and_run = recorder.orchestrator_direct
+        gen._apply_primesieve_params_and_run = recorder.primesieve
+        gen._apply_orchestrator_direct_params_and_run = recorder.orchestrator_direct
 
         # =====================================================================
         # BUG #1 -- MemoryError on floor 25: a starting point picked deep into an
@@ -113,7 +121,7 @@ def main():
         # silently land the request in floor 9's numbers anyway via digit_count_floor;
         # anchoring explicitly on floor 9's own base keeps this test's arithmetic honest.)
         # =====================================================================
-        plan = app._quick_gen_plan_literal_range(
+        plan = gen._quick_gen_plan_literal_range(
             10 ** 9 + 500 * W, 10 ** 9 + 501 * W, max_window_count=1)
         check("floor" in plan,
               f"floor-9 window-500 request (on an EMPTY floor) plans a launch, not "
@@ -133,7 +141,7 @@ def main():
         # its last window is target_idx 8 (90,000,000-100,000,000); ask for a range
         # that reaches deep into floor 8's numbers instead.
         # =====================================================================
-        plan2 = app._quick_gen_plan_literal_range(
+        plan2 = gen._quick_gen_plan_literal_range(
             10 ** 7 + 8 * W, 10 ** 8 + 5 * W)  # requested end reaches into floor 8
         check(plan2.get("truncated") is True,
               f"a request crossing floor 7's own boundary (10**8) must be reported as "
@@ -156,7 +164,7 @@ def main():
         budget = 5
         naive_end = misaligned_start + budget * W
         # Without the max_window_count cap: reproduces the historical off-by-one.
-        plan3_uncapped = app._quick_gen_plan_literal_range(misaligned_start, naive_end)
+        plan3_uncapped = gen._quick_gen_plan_literal_range(misaligned_start, naive_end)
         check(plan3_uncapped.get("window_count_per_run") == budget + 1,
               f"DOCUMENTING the historical bug: omitting max_window_count on a "
               f"non-aligned starting point rounds both ends outward and silently adds "
@@ -164,7 +172,7 @@ def main():
               f"(got window_count_per_run={plan3_uncapped.get('window_count_per_run')!r}, "
               f"historically this was {budget + 1} where {budget} was asked for)")
         # With the cap (what Floor-mode's real caller actually passes): must NOT overshoot.
-        plan3_capped = app._quick_gen_plan_literal_range(
+        plan3_capped = gen._quick_gen_plan_literal_range(
             misaligned_start, naive_end, max_window_count=budget)
         check(plan3_capped.get("window_count_per_run") == budget,
               f"passing max_window_count={budget} (as the real Floor-mode Starting-point "
@@ -185,7 +193,7 @@ def main():
         # =====================================================================
         for idx in range(3):
             _touch_window(portal, 9, idx)
-        plan4 = app._quick_gen_plan_literal_range(10 ** 9, 10 ** 9 + 2 * W)
+        plan4 = gen._quick_gen_plan_literal_range(10 ** 9, 10 ** 9 + 2 * W)
         check(plan4.get("already") is True,
               f"a range fully covered by existing floor-9 windows reports already=True "
               f"(got {plan4!r})")
@@ -196,7 +204,7 @@ def main():
         # CUTOFF) must be rejected with an explicit error, never silently mis-plan a
         # launch on a floor this function's own alignment arithmetic doesn't fit.
         # =====================================================================
-        plan5 = app._quick_gen_plan_literal_range(500, 5000)
+        plan5 = gen._quick_gen_plan_literal_range(500, 5000)
         check("error" in plan5,
               f"a low-floor (floor 3) literal-range request is rejected with an explicit "
               f"error rather than silently mis-planning a launch (got {plan5!r})")
@@ -206,7 +214,7 @@ def main():
         # orchestrator-direct) by PRIMESIEVE_MAX_STOP, and edge-trimming against disk.
         # =====================================================================
         recorder.calls.clear()
-        app._launch_direct_window_range(10, 0, 2)  # small floor, well under uint64 ceiling
+        gen._launch_direct_window_range(10, 0, 2)  # small floor, well under uint64 ceiling
         check(len(recorder.calls) == 1 and recorder.calls[0][0] == "primesieve",
               f"a small-floor request (well under PRIMESIEVE_MAX_STOP) launches via the "
               f"primesieve engine (got calls={recorder.calls!r})")
@@ -216,7 +224,7 @@ def main():
               f"(got {recorder.calls[0][1:]!r}, expected (10, 0, 2))")
 
         recorder.calls.clear()
-        app._launch_direct_window_range(25, 0, 2)  # floor 25 end is far past 2**64-1
+        gen._launch_direct_window_range(25, 0, 2)  # floor 25 end is far past 2**64-1
         check(len(recorder.calls) == 1 and recorder.calls[0][0] == "orchestrator_direct",
               f"a floor whose requested range exceeds libprimesieve's own uint64 ceiling "
               f"(PRIMESIEVE_MAX_STOP={prime_atlas_v1.PRIMESIEVE_MAX_STOP}) must fall back "
@@ -231,7 +239,7 @@ def main():
         _touch_window(portal, 10, 0)
         _touch_window(portal, 10, 1)
         recorder.calls.clear()
-        app._launch_direct_window_range(10, 0, 3)
+        gen._launch_direct_window_range(10, 0, 3)
         check(len(recorder.calls) == 1 and recorder.calls[0][2:] == (2, 1),
               f"requesting [0,3) on floor 10 (which already has windows 0,1 on disk) "
               f"must trim to launching only the missing window 2 (target_idx_start=2, "
@@ -243,11 +251,11 @@ def main():
         # genuinely fully covered.
         _touch_window(portal, 10, 2)
         recorder.calls.clear()
-        app._launch_direct_window_range(10, 0, 3)
+        gen._launch_direct_window_range(10, 0, 3)
         check(len(recorder.calls) == 0,
               f"a request fully covered by existing windows must launch NOTHING "
               f"(got calls={recorder.calls!r})")
-        check(app.quick_status_var.get() == prime_atlas_v1.T("quick.status_range_fully_covered"),
+        check(gen.quick_status_var.get() == prime_atlas_v1.T("quick.status_range_fully_covered"),
               "a fully-covered request sets the 'fully covered' status message")
 
         # =====================================================================
@@ -257,25 +265,25 @@ def main():
         _touch_window(portal, 12, 1)
         _touch_window(portal, 12, 4)  # gap at target_idx 2,3; existing_count(continuation)=5
 
-        app.quick_floor_fill_gaps_var.set(False)
+        gen.quick_floor_fill_gaps_var.set(False)
         recorder.calls.clear()
-        result_off = app._try_fill_quick_gen_gap(12, 5, width_mult=10)
+        result_off = gen._try_fill_quick_gen_gap(12, 5, width_mult=10)
         check(result_off is False,
               "with the 'fill gaps first' toggle OFF, _try_fill_quick_gen_gap is a no-op "
               f"(got return value {result_off!r})")
         check(len(recorder.calls) == 0,
               f"toggle OFF must launch nothing at all (got calls={recorder.calls!r})")
 
-        app.quick_floor_fill_gaps_var.set(True)
+        gen.quick_floor_fill_gaps_var.set(True)
         recorder.calls.clear()
-        result_on = app._try_fill_quick_gen_gap(12, 5, width_mult=10)
+        result_on = gen._try_fill_quick_gen_gap(12, 5, width_mult=10)
         check(result_on is True,
               f"with the toggle ON and a real gap present (window 2 missing), "
               f"_try_fill_quick_gen_gap returns True (got {result_on!r})")
         check(len(recorder.calls) == 1 and recorder.calls[0][2:] == (2, 10),
               f"the gap fill must start exactly at the first missing window (target_idx="
               f"2) and launch capped_width=min(width_mult=10, floor_window_count(12)-2="
-              f"{prime_atlas_v1._floor_window_count(12) - 2}) = 10 (width_mult is what "
+              f"{_floor_window_count(12) - 2}) = 10 (width_mult is what "
               f"actually binds here, floor 12's own structural cap is nowhere close) -- "
               f"one iteration's worth only, never more, per _try_fill_quick_gen_gap's own "
               f"docstring (got {recorder.calls[0] if recorder.calls else None!r})")

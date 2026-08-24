@@ -16,10 +16,10 @@ incidents (see each test's own docstring for the specific bug it targets):
      non-window-aligned starting point outward (instead of only the far end) silently
      added one extra window beyond what a width BUDGET asked for.
 
-These are GUI-side (prime_atlas_v1.py), not inside the compiled C sieve engine itself --
-see this file's own module docstring reasoning for why: the engine (prime_sieve_engine_v*
-.so, ctypes-loaded, linked against libprimesieve.so.12) cannot run in a plain Linux
-sandbox without that exact shared library, which is not installable here without root.
+These target primeatlas/generation.py, not the compiled C sieve engine itself -- see this
+file's own module docstring reasoning for why: the engine (prime_sieve_engine_v*.so,
+ctypes-loaded, linked against libprimesieve.so.12) cannot run in a plain Linux sandbox
+without that exact shared library, which is not installable here without root.
 This suite instead targets the layer that decides what to hand the engine -- which is
 exactly where all three bugs above actually lived -- using real temporary directories
 seeded with EMPTY, correctly-named PRIME_WINDOW_*.bin files (list_source_filenames() only
@@ -33,14 +33,17 @@ pass/fail, so a future regression points straight at what went wrong instead of 
 suite: tests must "wyłapały i wyświetliły co faktycznie powoduje błąd" -- catch it AND
 show what actually caused it).
 
-Usage (Windows, real Python -- no Tk/display dependency at all, these are plain functions):
+Updated during the Generation-tab extraction itself (Faza 3, 2026-08-23): these functions
+moved from prime_atlas_v1.py into primeatlas/generation.py (see that module's own
+docstring) -- this suite now imports from there directly instead of through
+prime_atlas_v1, and no longer needs tkinter/Xvfb at all (generation.py has no GUI
+dependency of its own).
+
+Usage (Windows, real Python -- no Tk/display dependency, these are plain functions):
     python unitTests\\test_generation_window_arithmetic.py
 
-Usage (this sandbox, headless -- tkinter needed only because prime_atlas_v1.py imports it
-at module level; none of the functions tested here touch a single widget):
-    PYTHONPATH="/tmp/tkextract/extracted/usr/lib/python3.10:/tmp/tkextract/extracted/usr/lib/python3.10/lib-dynload:$PYTHONPATH" \\
-    LD_LIBRARY_PATH="/tmp/tkextract/extracted/usr/lib/x86_64-linux-gnu:/tmp/tkextract/extracted/usr/lib:$LD_LIBRARY_PATH" \\
-    xvfb-run -a python3 unitTests/test_generation_window_arithmetic.py
+Usage (this sandbox, headless -- plain python3, no Xvfb needed anymore):
+    python3 unitTests/test_generation_window_arithmetic.py
 """
 import os
 import shutil
@@ -51,6 +54,7 @@ _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(_SCRIPT_DIR)
 sys.path.insert(0, _REPO_ROOT)
 sys.path.insert(0, os.path.join(_REPO_ROOT, "prime_sieve"))
+sys.path.insert(0, os.path.join(_REPO_ROOT, "constellation"))
 
 failures = []
 
@@ -77,7 +81,8 @@ def _touch_window(portal, floor, target_idx, window_m=10_000_000):
 
 
 def main():
-    import prime_atlas_v1 as m
+    import primeatlas.generation as m
+    from primeatlas.storage import digit_count_floor
 
     portal = tempfile.mkdtemp(prefix="primeatlas_gen_arith_test_")
     try:
@@ -151,11 +156,12 @@ def main():
               f"an empty floor trims nothing (got start={trimmed_start3}, "
               f"count={trimmed_count3}, expected start=5, count=3 unchanged)")
 
-        # === digit_count_floor: power-of-10 boundaries ==================================
-        check(m.digit_count_floor(1) == 0, "digit_count_floor(1) == floor 0")
-        check(m.digit_count_floor(9) == 0, "digit_count_floor(9) == floor 0 (still 1 digit)")
-        check(m.digit_count_floor(10) == 1, "digit_count_floor(10) == floor 1 (rolls over)")
-        check(m.digit_count_floor(100_000_000) == 8,
+        # === digit_count_floor: power-of-10 boundaries (primeatlas.storage, unchanged by
+        # the Generation-tab extraction -- imported separately here) ====================
+        check(digit_count_floor(1) == 0, "digit_count_floor(1) == floor 0")
+        check(digit_count_floor(9) == 0, "digit_count_floor(9) == floor 0 (still 1 digit)")
+        check(digit_count_floor(10) == 1, "digit_count_floor(10) == floor 1 (rolls over)")
+        check(digit_count_floor(100_000_000) == 8,
               "digit_count_floor(10**8) == floor 8 (the floor-7/floor-8 boundary itself)")
 
         if failures:
