@@ -639,17 +639,21 @@ a properly encapsulated unit instead of a slice of one giant class:
   that tab's OWN `__init__` now (e.g. `PrimalityTab._primality_worker`) -- only the two
   genuinely shared ones above stay on `PortalBrowserApp` itself.
 
-**Known gaps** (candidates for the `refactor-phase2` branch): the 9 tab classes share a
-common constructor/attribute CONVENTION (`self.T`, `self.status`, ...) but no common
-BASE class -- each independently subclasses `ttk.Frame`, so the convention is
-documentation-enforced, not compiler-enforced. `PortalBrowserApp` is still a single
-class doing composition + shared-worker ownership + the reverse-coupling glue above;
-it's far smaller than before but still one "God object" for orchestration. The
-pure-logic backend modules (`generation.py`, `storage.py`, `benchmark.py`,
-`constellations.py`, `primality.py`, ...) are collections of free functions rather than
-classes -- a deliberate choice (easier to unit-test as pure functions than as stateful
-objects) but worth naming explicitly if "more object-oriented" is the goal for the next
-phase.
+**Known gaps** (remaining candidates for further `refactor-phase2` work): as of this
+branch, all 9 tab classes now subclass `primeatlas/base_tab.py`'s `BaseTab(ttk.Frame)`,
+which standardizes `__init__(self, parent, translator)` (`self.T = translator`) plus
+two helpers that were byte-for-byte duplicated across several tabs --
+`_copy_to_clipboard(text)` and `_start_busy_progress()`/`_stop_busy_progress()` (the
+shared `totals_progress` bar's indeterminate-spin/reset cycle). Each tab's own
+constructor signature is still exactly as varied as it needs to be -- BaseTab only
+factors out the ONE thing every class shared, not a rigid shape every tab must fit.
+`PortalBrowserApp` is still a single class doing composition + shared-worker ownership
++ the reverse-coupling glue above; it's far smaller than before but still one "God
+object" for orchestration. The pure-logic backend modules (`generation.py`,
+`storage.py`, `benchmark.py`, `constellations.py`, `primality.py`, ...) are collections
+of free functions rather than classes -- a deliberate choice (easier to unit-test as
+pure functions than as stateful objects) but worth naming explicitly if "more
+object-oriented" is the goal for further phases.
 
 Generated data is stored under a folder named `CONSTELLATION_PORTAL` (the name predates
 and is independent of the application's own name). By default this folder is created
