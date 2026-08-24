@@ -32,6 +32,7 @@ import datetime
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
+from .base_tab import BaseTab
 from .benchmark import (
     BENCHMARK_PAGE_SIZE, BENCHMARK_TREE_HIDDEN_COLUMNS,
     _order_benchmark_tree_columns, aggregate_benchmark_fair_spw,
@@ -196,12 +197,11 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
                                 fill="#c0504d")
 
 
-class BenchmarkTab(ttk.Frame):
+class BenchmarkTab(BaseTab):
     def __init__(self, parent, get_portal_folder, status_var, translator, update_nav_controls):
-        super().__init__(parent)
+        super().__init__(parent, translator)
         self._get_portal_folder = get_portal_folder
         self.status = status_var
-        self.T = translator
         self._update_nav_controls = update_nav_controls
 
         self._build_widgets()

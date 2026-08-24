@@ -39,6 +39,7 @@ from tkinter import ttk, messagebox
 
 import prime_sieve_v1
 
+from .base_tab import BaseTab
 from .storage import (
     digit_count_floor, format_big_int, format_bytes, format_duration,
     list_pietra, list_source_filenames, read_source_file_headers,
@@ -46,7 +47,7 @@ from .storage import (
 from .widgets import FlowRow
 
 
-class PrimesTab(ttk.Frame):
+class PrimesTab(BaseTab):
     def __init__(self, parent, get_portal_folder, status_var, translator,
                  update_nav_controls, render_page, page_size, floor_page_size,
                  reload_primes_tree, start_search_job, is_search_busy,
@@ -95,10 +96,9 @@ class PrimesTab(ttk.Frame):
         (cheap no-op if nothing changed, see update_pietro_totals_cache()'s own
         docstring), the same worker the Refresh button's "compute all" batch uses.
         """
-        super().__init__(parent)
+        super().__init__(parent, translator)
         self._get_portal_folder = get_portal_folder
         self.status = status_var
-        self.T = translator
         self._update_nav_controls = update_nav_controls
         self._render_page = render_page
         self._page_size = page_size
@@ -694,5 +694,4 @@ class PrimesTab(ttk.Frame):
         global_index = self._preview_page * self._page_size + sel[0]
         if global_index >= len(self._preview_primes):
             return
-        self.clipboard_clear()
-        self.clipboard_append(str(self._preview_primes[global_index]))
+        self._copy_to_clipboard(str(self._preview_primes[global_index]))

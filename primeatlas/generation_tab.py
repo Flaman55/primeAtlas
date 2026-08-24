@@ -48,6 +48,7 @@ from tkinter import ttk, messagebox
 
 import pattern_catalog_v1
 
+from .base_tab import BaseTab
 from .generation_console import GenerationConsole
 from .storage import digit_count_floor, LOW_FLOOR_CUTOFF
 from .generation import (
@@ -67,7 +68,7 @@ from .generation import (
 )
 
 
-class GenerationTab(ttk.Frame):
+class GenerationTab(BaseTab):
     def __init__(self, parent, get_portal_folder, status_var, translator,
                  totals_progress, reload_primes_tree, reload_constellations_tree,
                  research_goldbach_tab_widget):
@@ -83,10 +84,9 @@ class GenerationTab(ttk.Frame):
         these three are called from several different places inside this tab's own
         completion handlers.
         """
-        super().__init__(parent)
+        super().__init__(parent, translator)
         self._get_portal_folder = get_portal_folder
         self.status = status_var
-        self.T = translator
         self.totals_progress = totals_progress
         self.reload_primes_tree = reload_primes_tree
         self.reload_constellations_tree = reload_constellations_tree

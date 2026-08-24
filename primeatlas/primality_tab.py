@@ -21,15 +21,15 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 
 from .background import PersistentWorker
+from .base_tab import BaseTab
 from .generation import _eval_quick_number
 from .primality import run_all_tests as primality_run_all_tests, factorize as primality_factorize
 
 
-class PrimalityTab(ttk.Frame):
+class PrimalityTab(BaseTab):
     def __init__(self, parent, status_var, translator, totals_progress):
-        super().__init__(parent)
+        super().__init__(parent, translator)
         self.status = status_var
-        self.T = translator
         self.totals_progress = totals_progress
         self._primality_busy = False
         self._primality_worker = PersistentWorker(
@@ -144,13 +144,10 @@ class PrimalityTab(ttk.Frame):
         self.primality_check_button.configure(state=state)
         self.primality_factorize_button.configure(state=state)
         if busy:
-            self.totals_progress.stop()
-            self.totals_progress.configure(mode="indeterminate")
-            self.totals_progress.start(80)
+            self._start_busy_progress()
             self.status.set(self.T("primality.status_computing"))
         else:
-            self.totals_progress.stop()
-            self.totals_progress.configure(mode="determinate", maximum=1, value=0)
+            self._stop_busy_progress()
 
     def _primality_job(self, job, report_progress):
         """Runs on PersistentWorker's own daemon thread -- single-owner reasoning
@@ -221,5 +218,4 @@ class PrimalityTab(ttk.Frame):
         text = self.primality_factors_only_var.get()
         if not text:
             return
-        self.clipboard_clear()
-        self.clipboard_append(text)
+        self._copy_to_clipboard(text)

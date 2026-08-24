@@ -31,6 +31,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
 from . import background
+from .base_tab import BaseTab
 from .goldbach_window import (
     check_window as goldbach_check_window,
     all_decompositions as goldbach_all_decompositions,
@@ -78,7 +79,7 @@ GOLDBACH_LEAN_REPO_URL = (
     # over and pushed, see project memory/commit history for that sync).
 
 
-class ResearchGoldbachTab(ttk.Frame):
+class ResearchGoldbachTab(BaseTab):
     def __init__(self, parent, get_portal_folder, status_var, translator,
                  update_nav_controls, eval_quick_number, page_size,
                  totals_progress, offer_generate_missing_range):
@@ -93,10 +94,9 @@ class ResearchGoldbachTab(ttk.Frame):
         _goldbach_offer_generate_missing_range(op, payload) -- see this module's own
         docstring for why launching that specific generation run stays app-level.
         """
-        super().__init__(parent)
+        super().__init__(parent, translator)
         self._get_portal_folder = get_portal_folder
         self.status = status_var
-        self.T = translator
         self._update_nav_controls = update_nav_controls
         self._eval_quick_number = eval_quick_number
         self._page_size = page_size
@@ -862,14 +862,11 @@ class ResearchGoldbachTab(ttk.Frame):
             self._goldbach_widget_configure("goldbach_decompose_prev_btn", state="disabled")
             self._goldbach_widget_configure("goldbach_decompose_next_btn", state="disabled")
         if busy:
-            self.totals_progress.stop()
-            self.totals_progress.configure(mode="indeterminate")
-            self.totals_progress.start(80)
+            self._start_busy_progress()
             self._goldbach_viz_progress_set(indeterminate=True)
             self.status.set(self.T("research_goldbach.status_computing"))
         else:
-            self.totals_progress.stop()
-            self.totals_progress.configure(mode="determinate", maximum=1, value=0)
+            self._stop_busy_progress()
             self._goldbach_viz_progress_set(value=0)
 
     def _goldbach_refresh_nav_buttons(self):

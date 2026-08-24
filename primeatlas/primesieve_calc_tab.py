@@ -36,6 +36,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 
 from .background import PersistentWorker
+from .base_tab import BaseTab
 from .generation import PRIMESIEVE_QUERY_SCRIPT, windows_path_to_wsl, _eval_quick_number
 
 
@@ -102,11 +103,10 @@ def run_primesieve_query_wsl(argv, translator, timeout=120):
     return False, payload.get("error", translator("primesieve_calc.error_unknown"))
 
 
-class PrimesieveCalcTab(ttk.Frame):
+class PrimesieveCalcTab(BaseTab):
     def __init__(self, parent, status_var, translator, totals_progress):
-        super().__init__(parent)
+        super().__init__(parent, translator)
         self.status = status_var
-        self.T = translator
         self.totals_progress = totals_progress
         self._primesieve_calc_busy = False
         self._primesieve_calc_worker = PersistentWorker(
@@ -261,9 +261,7 @@ class PrimesieveCalcTab(ttk.Frame):
         self.primesieve_calc_button.configure(state="disabled")
         self.primesieve_calc_copy_button.configure(state="disabled")
         self._primesieve_calc_last_result = None
-        self.totals_progress.stop()
-        self.totals_progress.configure(mode="indeterminate")
-        self.totals_progress.start(80)
+        self._start_busy_progress()
         self.status.set(self.T("primesieve_calc.status_computing"))
         self._primesieve_calc_worker.submit({"code": code, "args": args})
 
@@ -283,8 +281,7 @@ class PrimesieveCalcTab(ttk.Frame):
         queue.Queue + self.after() pair."""
         self._primesieve_calc_busy = False
         self.primesieve_calc_button.configure(state="normal")
-        self.totals_progress.stop()
-        self.totals_progress.configure(mode="determinate", maximum=1, value=0)
+        self._stop_busy_progress()
         if error is not None:
             self.status.set(self.T("primesieve_calc.status_error"))
             messagebox.showerror(self.T("primesieve_calc.error_dialog_title"), str(error))
@@ -316,5 +313,4 @@ class PrimesieveCalcTab(ttk.Frame):
     def _on_primesieve_calc_copy_result(self):
         if self._primesieve_calc_last_result is None:
             return
-        self.clipboard_clear()
-        self.clipboard_append(str(self._primesieve_calc_last_result))
+        self._copy_to_clipboard(str(self._primesieve_calc_last_result))

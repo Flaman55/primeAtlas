@@ -70,6 +70,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 from tkinter.scrolledtext import ScrolledText
 
+from .base_tab import BaseTab
 from .manifest import PietroSnapshot, ConstellationSnapshot
 from .backup_store import BackupStore
 from .restore_job import (
@@ -83,14 +84,13 @@ from . import background
 from .i18n import Translator, SUPPORTED_LANGUAGES
 
 
-class SettingsTab(ttk.Frame):
+class SettingsTab(BaseTab):
     MAX_STAGE_RETRIES = 2
 
     def __init__(self, parent, app_settings, wsl_helpers, translator):
-        super().__init__(parent)
+        super().__init__(parent, translator)
         self.app_settings = app_settings
         self.wsl = wsl_helpers
-        self.T = translator
 
         self._backups = []              # [(name, path)], newest first
         self._selected_backup_name = None

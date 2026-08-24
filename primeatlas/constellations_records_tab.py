@@ -41,6 +41,7 @@ import pattern_catalog_v1
 import prime_sieve_v1
 
 from . import background
+from .base_tab import BaseTab
 from .constellations import (
     build_constellation_records_table, build_constellation_records_detail_rows,
     hit_file_path, render_constellation_records_pdf,
@@ -48,7 +49,7 @@ from .constellations import (
 from .widgets import FlowRow
 
 
-class ConstellationsRecordsTab(ttk.Frame):
+class ConstellationsRecordsTab(BaseTab):
     def __init__(self, parent, get_portal_folder, status_var, translator,
                  update_nav_controls, render_page, page_size, eval_quick_number,
                  totals_progress):
@@ -66,10 +67,9 @@ class ConstellationsRecordsTab(ttk.Frame):
         rather than via a deferred lambda) -- see this module's own docstring for why
         it's the one thing here that ISN'T fully self-contained.
         """
-        super().__init__(parent)
+        super().__init__(parent, translator)
         self._get_portal_folder = get_portal_folder
         self.status = status_var
-        self.T = translator
         self._update_nav_controls = update_nav_controls
         self._render_page = render_page
         self._page_size = page_size
@@ -257,9 +257,7 @@ class ConstellationsRecordsTab(ttk.Frame):
         self.scan_button.configure(state="disabled")
         self.export_pdf_button.configure(state="disabled")
         self.export_csv_button.configure(state="disabled")
-        self.totals_progress.stop()
-        self.totals_progress.configure(mode="indeterminate")
-        self.totals_progress.start(80)
+        self._start_busy_progress()
         self.status.set(status_text)
         self._worker.submit(job)
 
@@ -333,8 +331,7 @@ class ConstellationsRecordsTab(ttk.Frame):
         T = self.T
         self._busy = False
         self.scan_button.configure(state="normal")
-        self.totals_progress.stop()
-        self.totals_progress.configure(mode="determinate", maximum=1, value=0)
+        self._stop_busy_progress()
         if error is not None:
             has_rows = bool(self._last and self._last[3])
             self.export_pdf_button.configure(state="normal" if has_rows else "disabled")
@@ -531,8 +528,7 @@ class ConstellationsRecordsTab(ttk.Frame):
         global_index = self._detail_page * self._page_size + sel[0]
         if global_index >= len(self._detail_rows):
             return
-        self.clipboard_clear()
-        self.clipboard_append(str(self._detail_rows[global_index][0]))
+        self._copy_to_clipboard(str(self._detail_rows[global_index][0]))
 
     def _export_pdf(self):
         if not self._last or self._busy:

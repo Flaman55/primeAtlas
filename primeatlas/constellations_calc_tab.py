@@ -46,11 +46,12 @@ from tkinter import ttk, messagebox
 
 import pattern_catalog_v1
 
+from .base_tab import BaseTab
 from .storage import digit_count_floor, list_pietra
 from .constellations import list_constellation_hits
 
 
-class ConstellationsCalcTab(ttk.Frame):
+class ConstellationsCalcTab(BaseTab):
     def __init__(self, parent, translator, eval_quick_number, get_portal_folder,
                  select_hits_view, set_hits_search_query, trigger_hits_search,
                  offer_generate_missing_constellation):
@@ -82,8 +83,7 @@ class ConstellationsCalcTab(ttk.Frame):
         can launch a generation run via the Generation tab's own methods, same reasoning
         as every other "offer_generate_missing_*" parameter in this refactor.
         """
-        super().__init__(parent)
-        self.T = translator
+        super().__init__(parent, translator)
         self._eval_quick_number = eval_quick_number
         self._get_portal_folder = get_portal_folder
         self._select_hits_view = select_hits_view
