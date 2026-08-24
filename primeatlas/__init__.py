@@ -1,13 +1,21 @@
 """
-primeatlas -- pure-logic (no tkinter) backend package for prime_atlas_v1.py's Settings
-tab: configurable storage path, backup/restore (as lightweight manifests, not raw data
-copies), full-database delete, PL/EN language switching, and light/dark theme color
-palettes (theme.py -- pure data only; the actual ttk.Style()/option_add() application
-lives in prime_atlas_v1.py's PortalBrowserApp._apply_theme(), which needs a live Tk
-root this package deliberately never touches). See each module's own docstring for
-details. Every class here is independently unit-testable without a display --
-settings_tab.py is the only place in this package that imports tkinter, wiring these
-into actual widgets.
+primeatlas -- the backend + GUI-tab package behind prime_atlas_v1.py, which is now a
+thin composition root (see README.md's "Architecture" section for the full module map
+and the tab-class/dependency-injection conventions used throughout this package).
+
+This top-level __init__.py itself only re-exports the pure-logic pieces originally
+built for the Settings tab (storage path config, backup/restore as lightweight
+manifests rather than raw data copies, full-database delete, PL/EN language switching,
+light/dark theme palettes -- theme.py is pure data only, the actual
+ttk.Style()/option_add() application lives in prime_atlas_v1.py's
+PortalBrowserApp._apply_theme(), which needs a live Tk root this module deliberately
+never touches) plus primality testing and the Goldbach structural-window backend.
+Every name re-exported here is independently unit-testable without a display. The
+package as a whole is much larger now -- one GUI tab class plus, for the bigger tabs,
+one pure-logic module per feature (generation.py/generation_tab.py,
+benchmark.py/benchmark_tab.py, constellations.py/constellations_*_tab.py,
+research_goldbach.py/research_goldbach_tab.py) -- see each module's own docstring for
+details, and README.md for the overall picture.
 """
 from .app_settings import AppSettings
 from .theme import THEMES, DEFAULT_THEME, palette_for

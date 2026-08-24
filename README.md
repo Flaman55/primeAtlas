@@ -460,43 +460,90 @@ rather than a fixed default.
 ## Architecture
 
 ```
-prime_atlas_v1.py           GUI entry point (tkinter); six top-level tabs, three of
-                              which (Prime numbers, Constellations, Research) are
-                              themselves inner notebooks of sub-tabs -- see
-                              "Features" above
-primeatlas/                 backend package used by the GUI, no tkinter dependency
-  app_settings.py           storage path configuration
-  manifest.py                backup manifest / snapshot model, incl. per-floor
-                              totals/sieving caches -- see "Backup manifest contents"
-  backup_store.py            backup creation, restore write-back (CSV + floor metadata)
-  restore_job.py             restore from backup
-  floor_meta.py               per-floor floor_meta.json (benchmark-row history that
-                              travels with a 10p{N} directory) -- see "Moving floor
-                              data between storages"
-  full_backup.py              second, data-carrying backup mode (real gzip-compressed
-                              file copies, one persistent entry per floor) -- see
-                              "Full-data backup"
-  storage_integrate.py        folds a whole external PrimeAtlas storage's floors into
-                              the current one, deliberately never touching
-                              benchmark_log.csv or the root caches -- see "Integrating
-                              an external storage"
-  delete_manager.py          whole-database delete (PortalWiper) and per-floor /
-                              per-floor-constellations-only delete (FloorWiper)
-  settings_tab.py            Settings tab controller (Ogolne/Backup/Aktualizacje
-                              sub-tabs, each independently scrollable), incl. the
-                              optional-library (sympy) installer
-  goldbach_window.py         Goldbach strong-window check/visualization backend
-                              (see "Features" above), no tkinter dependency -- reads
-                              primes from the on-disk magazyn via the same
-                              source_primes format the Prime numbers tab browses
-  generation_console.py      stacked/detachable live-output console used by both
-                              Generation sections
-  primality.py                Miller-Rabin/Fermat/Solovay-Strassen primality tests
+prime_atlas_v1.py           thin composition root (tkinter); builds the main window and
+                              its six top-level tabs (three of which -- Prime numbers,
+                              Constellations, Research -- are themselves inner
+                              notebooks of sub-tabs, see "Features" above), owns the
+                              handful of genuinely CROSS-tab pieces (module globals
+                              PORTAL_FOLDER/TRANSLATOR/T/APP_SETTINGS; the totals-cache
+                              and search PersistentWorkers, shared by more than one
+                              tab; the Prime-numbers/Constellations background tree
+                              scans; the three "generate missing data, then retry"
+                              methods), and otherwise just instantiates and wires each
+                              tab class below -- see "GUI module conventions" below for
+                              the full design
+primeatlas/                 backend + GUI-tab package, one file (or pure-logic/UI pair
+                              of files) per feature -- see "GUI module conventions"
+                              below for the split convention and dependency-injection
+                              pattern shared by every *_tab.py class
+  GUI tab classes (ttk.Frame subclasses, one file each unless noted):
+  primes_tab.py               PrimesTab -- Prime numbers -> Storage sub-tab
+  primesieve_calc_tab.py      PrimesieveCalcTab -- Prime numbers -> primesieve
+                              calculator sub-tab (also holds
+                              build_primesieve_query_argv/run_primesieve_query_wsl,
+                              its only callers)
+  primality_tab.py            PrimalityTab -- Prime numbers -> Primality tests sub-tab
+                              (UI only; primality.py below is the pure-logic backend)
+  constellations_hits_tab.py  ConstellationsHitsTab -- Constellations -> Storage
+  constellations_calc_tab.py  ConstellationsCalcTab -- Constellations -> Constellation
+                              calculator
+  constellations_records_tab.py ConstellationsRecordsTab -- Constellations -> Records
+                              table
+  research_goldbach_tab.py    ResearchGoldbachTab -- Research -> Goldbach sub-tab (UI;
+                              research_goldbach.py below is the pure-logic backend)
+  generation_tab.py           GenerationTab -- the Generation tab (largest one: Quick-
+                              gen panel plus the loop/orchestrator-direct/primesieve/
+                              k-tuple-sieve launch forms; generation.py below is the
+                              pure-logic backend)
+  benchmark_tab.py            BenchmarkTab -- the Benchmark tab (charts + PDF export;
+                              benchmark.py below is the pure-logic backend)
+  settings_tab.py             SettingsTab -- the Settings tab (Ogolne/Backup/
+                              Aktualizacje sub-tabs, each independently scrollable),
+                              incl. the optional-library (sympy) installer
+
+  pure-logic backends (no tkinter) for the larger tabs above:
+  generation.py                window/floor arithmetic, generation-settings
+                              persistence, argv builders for every launch engine,
+                              WslLoggedRunner/LocalLoggedRunner, WSL RAM/CPU probing
+  benchmark.py                 reading/normalizing benchmark_log.csv rows
+  constellations.py            constellation (k-tuple) hit storage: listing, search,
+                              PDF/CSV export
+  research_goldbach.py         storage-bridging layer between goldbach_window.py's
+                              pure arithmetic and ResearchGoldbachTab's UI
+  goldbach_window.py           Goldbach strong-window check/visualization core
+                              arithmetic (see "Features" above) -- reads primes from
+                              the on-disk magazyn via the same source_primes format
+                              the Prime numbers tab browses
+  primality.py                 Miller-Rabin/Fermat/Solovay-Strassen primality tests
                               plus factorization (trial division + Pollard's rho, or
-                              sympy.factorint() if installed) behind the Primality
-                              tests sub-tab -- pure Python, no tkinter or WSL
-  i18n.py                    translation loading
-  locales/                   strings_en.json, strings_pl.json, app_settings.json
+                              sympy.factorint() if installed) -- pure Python, no WSL
+  storage.py                    the core prime-window storage layer (listing floors/
+                              files, totals caches, format_duration/format_bytes)
+                              shared by several tabs above, not specific to any one
+
+  Settings-tab-only backend pieces (originally the whole point of this package, before
+  it grew into every other tab too -- see this package's own __init__.py docstring):
+  app_settings.py, manifest.py, backup_store.py, restore_job.py, floor_meta.py,
+  full_backup.py, storage_integrate.py, delete_manager.py -- see "Backup manifest
+  contents" / "Moving floor data between storages" / "Full-data backup" /
+  "Integrating an external storage" below for what each backs
+
+  shared infrastructure (used across many tabs, not feature-specific):
+  background.py                run_in_background()/PersistentWorker -- see "GUI module
+                              conventions" below
+  pdf_writer.py                 a minimal, dependency-free PDF writer (text, lines,
+                              filled rects, basic pagination) shared by the Benchmark
+                              tab's export and the Constellations Records table's export
+  generation_console.py        stacked/detachable live-output console used by the
+                              Generation tab's loop/constellation/k-tuple sections
+  widgets.py                    small generic tkinter helpers (e.g. FlowRow) with no
+                              application-specific state
+  theme.py                      light/dark palette DATA only -- the actual
+                              ttk.Style()/option_add() application lives in
+                              PortalBrowserApp._apply_theme(), which needs a live Tk
+                              root this module deliberately never touches
+  i18n.py                       Translator: loads one of two static locale files
+  locales/                      strings_en.json, strings_pl.json, app_settings.json
 prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
   prime_sieve_v1.py          PGS1 output format, process-pool orchestration
   prime_sieve_v3.py          PGS2 output format, shared-memory mmap orchestration;
@@ -534,6 +581,75 @@ constellation/
 Run_PrimeAtlas.bat           launches the GUI, visible console (errors surfaced directly)
 Run_PrimeAtlas_Hidden.vbs    launches the GUI with no console window
 ```
+
+### GUI module conventions
+
+`prime_atlas_v1.py` was a single ~10,500-line monolith through most of this project's
+history (one `PortalBrowserApp(tk.Tk)` class holding every tab's widgets, state, and
+event handlers together). The `refactor` branch (2026-08-23/24) split it tab by tab into
+the `primeatlas/*_tab.py` classes listed above, in order from smallest to largest, and
+shrank `prime_atlas_v1.py` itself down to ~1,700 lines. The result is not yet a fully
+"clean" object-oriented architecture (see "Known gaps" below), but every GUI tab is now
+a properly encapsulated unit instead of a slice of one giant class:
+
+- **One `ttk.Frame` subclass per tab**, in its own file, constructed with explicit
+  dependency injection -- e.g. `GenerationTab(parent, get_portal_folder, status_var,
+  translator, totals_progress, reload_primes_tree, reload_constellations_tree,
+  research_goldbach_tab_widget)`. A tab class reads its own injected callables/values
+  (`self._get_portal_folder()`, `self.status`, `self.T`, ...) instead of reaching into
+  a shared app object -- the constructor signature IS the tab's declared dependency
+  list, readable without hunting through the method bodies. No tab class imports
+  `prime_atlas_v1` itself; the import direction is always `prime_atlas_v1.py -> tab
+  module`, never the reverse (this is what keeps every tab module independently
+  unit-testable and Xvfb-runnable in isolation -- see `unitTests/`).
+- **Pure-logic vs. UI split, by size.** A small, self-contained tab (Storage sub-tab,
+  primesieve calculator, primality tests, constellation calculator) keeps its handful
+  of non-UI functions in the SAME file as its widget class -- splitting a 300-line file
+  in two would just add an import for no real benefit. A larger tab (Generation,
+  Benchmark, Constellations, Research/Goldbach) splits into a `feature.py` with zero
+  tkinter imports (pure functions + a couple of small classes, e.g. `WslLoggedRunner`)
+  and a `feature_tab.py` that imports it and builds the widgets. The pure-logic half is
+  what `unitTests/test_generation_window_arithmetic.py` and friends exercise directly,
+  with no display needed at all.
+- **`prime_atlas_v1.py` is a composition root, not a dead file.** It still owns
+  everything that's genuinely CROSS-tab rather than owned by exactly one tab: the
+  module-level globals every tab needs (`PORTAL_FOLDER`, `TRANSLATOR`/`T`,
+  `APP_SETTINGS`, `PAGE_SIZE`/`FLOOR_PAGE_SIZE`), the two `PersistentWorker`s more than
+  one tab shares (`_totals_worker` for the per-floor totals cache, `_search_worker` for
+  prime/constellation search), the Prime-numbers/Constellations background tree-scan
+  jobs, the notebook/sub-notebook construction and build order (`_build_primes_section`
+  etc.), and three small "generate the missing data, then retry" methods
+  (`_offer_generate_missing_prime_window`, `_offer_generate_missing_constellation`,
+  `_goldbach_offer_generate_missing_range`) that legitimately need to reach across tabs
+  (search lives in one tab, generation in another). Its own `__init__` builds tabs in a
+  fixed order specifically because `GenerationTab` needs `ResearchGoldbachTab` to
+  already exist (it's passed in directly, `research_goldbach_tab_widget=...`) -- see
+  the `loading_steps` tuple in `__init__` for the exact order if you're adding a tab
+  with its own cross-tab dependency.
+- **Reverse-direction coupling is explicit, not implicit.** The three "offer to
+  generate missing data" methods above reach INTO a tab widget's internals via a local
+  alias, e.g. `gen = self.generation_tab_widget; gen._quick_gen_plan_literal_range(...)`
+  -- these are the only points in the whole app where app-level code touches a tab's
+  otherwise-private (`_`-prefixed) methods, and each such touch point is called out in
+  both the caller's and the tab class's own docstring.
+- **Background jobs** go through `primeatlas/background.py`: `run_in_background()` for
+  a one-shot call (fire a thread, poll for the result, done), `PersistentWorker` for a
+  tab that submits many jobs of the same kind over its lifetime (one daemon thread, one
+  queue, strictly in submission order). Every tab-specific worker is constructed inside
+  that tab's OWN `__init__` now (e.g. `PrimalityTab._primality_worker`) -- only the two
+  genuinely shared ones above stay on `PortalBrowserApp` itself.
+
+**Known gaps** (candidates for the `refactor-phase2` branch): the 9 tab classes share a
+common constructor/attribute CONVENTION (`self.T`, `self.status`, ...) but no common
+BASE class -- each independently subclasses `ttk.Frame`, so the convention is
+documentation-enforced, not compiler-enforced. `PortalBrowserApp` is still a single
+class doing composition + shared-worker ownership + the reverse-coupling glue above;
+it's far smaller than before but still one "God object" for orchestration. The
+pure-logic backend modules (`generation.py`, `storage.py`, `benchmark.py`,
+`constellations.py`, `primality.py`, ...) are collections of free functions rather than
+classes -- a deliberate choice (easier to unit-test as pure functions than as stateful
+objects) but worth naming explicitly if "more object-oriented" is the goal for the next
+phase.
 
 Generated data is stored under a folder named `CONSTELLATION_PORTAL` (the name predates
 and is independent of the application's own name). By default this folder is created
