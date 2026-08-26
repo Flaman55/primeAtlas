@@ -31,6 +31,7 @@ import datetime
 
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
+from tkinter import font as tkfont
 
 from .benchmark import (
     BENCHMARK_PAGE_SIZE, BENCHMARK_TREE_HIDDEN_COLUMNS,
@@ -42,9 +43,68 @@ from .benchmark import (
 from .i18n import Translator, DEFAULT_LANGUAGE
 
 
+def _bind_chart_hover(canvas, hover_points, t, fg_color, bg_color):
+    """Wires a single-tooltip hover interaction onto `canvas` instead of drawing every
+    point's value permanently next to its dot -- with a couple dozen closely-spaced
+    floors, the always-on labels used to stack on top of each other into an unreadable
+    smear (real bug report, 2026-08-26 screenshot). Only the point nearest the cursor
+    (within a small pixel radius) gets a label, drawn fresh on every mouse move and
+    cleared on <Leave>, so exactly one value is legible at a time no matter how dense
+    the series is.
+
+    hover_points: a flat list of (px, py, x_val, y_val, fmt, color, unused_label_key)
+    tuples in CANVAS pixel space, built by the caller from whichever series (primary
+    and/or secondary) it already computed pixel coordinates for -- this function itself
+    has no notion of axes/scales, just "here are some labeled dots".
+
+    Rebinding on every redraw (this is called once per _draw_growth_chart invocation,
+    i.e. every resize/data refresh) is intentional and cheap: tkinter's bind() replaces
+    the previous callback for the same event sequence on the same widget rather than
+    stacking a new one alongside it, so this never leaks handlers, and each new callback
+    closes over the CURRENT hover_points/scale rather than a stale one."""
+
+    def _clear_tip():
+        canvas.delete("hover_tip")
+
+    def _on_leave(_event):
+        _clear_tip()
+
+    def _on_motion(event):
+        _clear_tip()
+        if not hover_points:
+            return
+        best = None
+        best_d2 = 14.0 ** 2  # only trigger within ~14px of a point's own dot
+        for px, py, x_val, y_val, fmt, color, _label_key in hover_points:
+            d2 = (event.x - px) ** 2 + (event.y - py) ** 2
+            if d2 <= best_d2:
+                best_d2 = d2
+                best = (px, py, x_val, y_val, fmt, color)
+        if best is None:
+            return
+        px, py, x_val, y_val, fmt, color = best
+        text = f"{t('bench.axis_pietro')} {x_val}: {fmt.format(y_val)}"
+        canvas.create_oval(px - 6, py - 6, px + 6, py + 6, outline=color, width=2,
+                            tags="hover_tip")
+        tx, ty = px + 12, py - 12
+        text_id = canvas.create_text(tx, ty, text=text, anchor="w", fill=color,
+                                      font=("Consolas", 9, "bold"), tags="hover_tip")
+        bbox = canvas.bbox(text_id)
+        if bbox:
+            pad = 4
+            box_id = canvas.create_rectangle(
+                bbox[0] - pad, bbox[1] - pad, bbox[2] + pad, bbox[3] + pad,
+                fill=bg_color, outline=color, tags="hover_tip")
+            canvas.tag_lower(box_id, text_id)
+
+    canvas.bind("<Motion>", _on_motion)
+    canvas.bind("<Leave>", _on_leave)
+
+
 def _draw_growth_chart(canvas, points, width, height, points2=None, translator=None,
                         label_key1="bench.axis_nps", label_key2="bench.axis_spw",
-                        fmt1="{:,.0f}", fmt2="{:,.3f}"):
+                        fmt1="{:,.0f}", fmt2="{:,.3f}",
+                        bg_color="#ffffff", fg_color="#000000", grid_color="#666666"):
     """Draws (base_exponent, primary-series) points onto `canvas` as a simple axes +
     connected-scatter chart -- x = floor depth, y = the primary series (by default numbers
     swept per second, real session-level wall-clock throughput, higher is better). Plain
@@ -70,8 +130,17 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
     version of this function (prime_atlas_v1.py, pre-Faza-3), which read the module-level
     global T() directly, this module has no such global to read (see this file's own
     docstring on why cross-module globals would be circular here) -- defaults to
-    DEFAULT_LANGUAGE if not given, same fallback _pdf_chart_ops() already uses."""
+    DEFAULT_LANGUAGE if not given, same fallback _pdf_chart_ops() already uses.
+
+    bg_color/fg_color/grid_color (added 2026-08-26, real bug report): lets the caller
+    theme this canvas instead of it staying hardcoded to a light-mode palette regardless
+    of the app's actual theme setting -- BenchmarkTab passes its constructor's
+    theme_palette through here (console_bg/console_fg/border, the same keys already used
+    for the app's other canvas-like widgets) so the chart's background and text actually
+    go dark under the dark theme. Defaults match the ORIGINAL hardcoded colors, so any
+    other caller (tests, etc.) that doesn't pass them sees identical output to before."""
     t = (translator or Translator(DEFAULT_LANGUAGE)).t
+    canvas.configure(background=bg_color)
     canvas.delete("all")
     if width <= 1 or height <= 1:
         return  # not yet realized/sized
@@ -83,15 +152,11 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
         return
 
     has_secondary = bool(points2)
-    pad_left = 70
-    pad_right = 70 if has_secondary else 24
     pad_top, pad_bottom = 40, 40
     # pad_top has room ABOVE the topmost y-tick (which sits right at pad_top) for the axis
     # title below -- it used to sit almost on top of that tick's label (both landed within
     # a few px of each other near the top-left corner) and visually merged into one
     # unreadable blob.
-    plot_w = max(1, width - pad_left - pad_right)
-    plot_h = max(1, height - pad_top - pad_bottom)
 
     all_xs = sorted({p[0] for p in points} | {p[0] for p in points2})
     x_min, x_max = min(all_xs), max(all_xs)
@@ -113,6 +178,28 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
     if has_secondary:
         y2_min, y2_max = y_bounds(points2)
 
+    # pad_left/pad_right used to be fixed guesses (70px) -- fine for short numbers, but
+    # real benchmark throughput easily reaches 9-11 digit n/s figures ("71,556,448"),
+    # which at that width no longer fit and got clipped against the canvas edge (real
+    # bug report, 2026-08-26 screenshot). Measuring the actual tick label strings with
+    # the real font instead of guessing a fixed width fixes that for any data range,
+    # not just the one in the screenshot.
+    tick_font = tkfont.Font(family="Consolas", size=8)
+
+    def _max_tick_label_width(y_lo, y_hi, fmt):
+        labels = [fmt.format(y_lo + (y_hi - y_lo) * i / 5) for i in range(6)]
+        return max((tick_font.measure(s) for s in labels), default=0)
+
+    pad_left = 24
+    if points:
+        pad_left = max(50, _max_tick_label_width(y_min, y_max, fmt1) + 24)
+    pad_right = 24
+    if has_secondary:
+        pad_right = max(50, _max_tick_label_width(y2_min, y2_max, fmt2) + 28)
+
+    plot_w = max(1, width - pad_left - pad_right)
+    plot_h = max(1, height - pad_top - pad_bottom)
+
     # Same horizontal inset as _pdf_chart_ops() -- see that function's comment for why.
     inset_x = max(15.0, plot_w * 0.05)
 
@@ -125,9 +212,9 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
     def sy2(y):
         return pad_top + plot_h - (y - y2_min) / (y2_max - y2_min) * plot_h
 
-    canvas.create_line(pad_left, pad_top, pad_left, pad_top + plot_h, fill="#666666")
+    canvas.create_line(pad_left, pad_top, pad_left, pad_top + plot_h, fill=grid_color)
     canvas.create_line(pad_left, pad_top + plot_h, pad_left + plot_w, pad_top + plot_h,
-                        fill="#666666")
+                        fill=grid_color)
     if has_secondary:
         canvas.create_line(pad_left + plot_w, pad_top, pad_left + plot_w, pad_top + plot_h,
                             fill="#c0504d")
@@ -136,9 +223,9 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
         for i in range(6):
             y_val = y_min + (y_max - y_min) * i / 5
             y_px = sy(y_val)
-            canvas.create_line(pad_left - 4, y_px, pad_left, y_px, fill="#666666")
+            canvas.create_line(pad_left - 4, y_px, pad_left, y_px, fill=grid_color)
             canvas.create_text(pad_left - 8, y_px, text=fmt1.format(y_val), anchor="e",
-                                font=("Consolas", 8))
+                                font=("Consolas", 8), fill=fg_color)
 
     if has_secondary:
         for i in range(6):
@@ -151,22 +238,29 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
 
     for x_val in all_xs:
         x_px = sx(x_val)
-        canvas.create_line(x_px, pad_top + plot_h, x_px, pad_top + plot_h + 4, fill="#666666")
+        canvas.create_line(x_px, pad_top + plot_h, x_px, pad_top + plot_h + 4, fill=grid_color)
         canvas.create_text(x_px, pad_top + plot_h + 8, text=str(x_val), anchor="n",
-                            font=("Consolas", 8))
+                            font=("Consolas", 8), fill=fg_color)
 
     canvas.create_text(pad_left + plot_w / 2, height - 8, text=t("bench.axis_pietro"),
-                        font=("Consolas", 8, "bold"))
+                        font=("Consolas", 8, "bold"), fill=fg_color)
     # Sits in the padding strip ABOVE the plot area (not overlapping any tick label, which
     # all live at y >= pad_top) -- anchored "sw" so its BOTTOM edge, not its top, is what's
     # positioned, keeping a consistent small gap above the topmost tick regardless of font
     # metrics.
     if points:
         canvas.create_text(4, pad_top - 10, text=t(label_key1), anchor="sw",
-                            font=("Consolas", 8, "bold"))
+                            font=("Consolas", 8, "bold"), fill=fg_color)
     if has_secondary:
         canvas.create_text(width - 4, pad_top - 10, text=t(label_key2), anchor="se",
                             font=("Consolas", 8, "bold"), fill="#c0504d")
+
+    # Per-point value labels used to be drawn permanently next to every dot -- with
+    # dense series (a couple dozen floors close together) they overlapped into an
+    # unreadable smear (real bug report, 2026-08-26 screenshot). Now only the dots/line
+    # are drawn unconditionally; the actual value is shown on hover via a single
+    # tooltip (see _bind_chart_hover below), so exactly one label is ever visible.
+    hover_points = []
 
     if points:
         if len(points) > 1:
@@ -179,7 +273,7 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
         for x_val, y_val in points:
             cx, cy = sx(x_val), sy(y_val)
             canvas.create_oval(cx - r, cy - r, cx + r, cy + r, fill="#1c5fa8", outline="")
-            canvas.create_text(cx, cy - r - 8, text=fmt1.format(y_val), font=("Consolas", 8))
+            hover_points.append((cx, cy, x_val, y_val, fmt1, "#1c5fa8", label_key1))
 
     if has_secondary:
         if len(points2) > 1:
@@ -192,17 +286,30 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
         for x_val, y_val in points2:
             cx, cy = sx(x_val), sy2(y_val)
             canvas.create_oval(cx - r, cy - r, cx + r, cy + r, fill="#c0504d", outline="")
-            canvas.create_text(cx, cy + r + 8, text=fmt2.format(y_val), font=("Consolas", 8),
-                                fill="#c0504d")
+            hover_points.append((cx, cy, x_val, y_val, fmt2, "#c0504d", label_key2))
+
+    _bind_chart_hover(canvas, hover_points, t, fg_color, bg_color)
 
 
 class BenchmarkTab(ttk.Frame):
-    def __init__(self, parent, get_portal_folder, status_var, translator, update_nav_controls):
+    def __init__(self, parent, get_portal_folder, status_var, translator, update_nav_controls,
+                 theme_palette):
+        """
+        theme_palette: the CURRENT theme's color dict (primeatlas.theme.palette_for()'s
+        return value, e.g. {"fg": ..., "tree_group_bg": ..., "tree_stat_bg": ..., ...}),
+        passed in explicitly rather than read from a bare global -- same dependency-
+        injection reasoning as every other constructor parameter here. Needed because
+        this tab's own tree "pietro"/"stat" row-highlight tags (see _build_widgets'
+        own tag_configure calls) are a per-item ttk.Treeview override that
+        PortalBrowserApp._apply_theme()'s ttk.Style() calls can never reach -- see
+        primeatlas/theme.py's own docstring on tree_group_bg/tree_stat_bg for the bug
+        this fixes (light-hardcoded row highlights were unreadable in dark mode)."""
         super().__init__(parent)
         self._get_portal_folder = get_portal_folder
         self.status = status_var
         self.T = translator
         self._update_nav_controls = update_nav_controls
+        self._theme_palette = theme_palette
 
         self._build_widgets()
 
@@ -218,8 +325,16 @@ class BenchmarkTab(ttk.Frame):
 
         chart_frame = ttk.Frame(self)
         chart_frame.pack(fill="x", padx=6, pady=(0, 4))
-        self.benchmark_chart = tk.Canvas(chart_frame, height=220, background="white",
-                                          highlightthickness=1, highlightbackground="#cccccc")
+        # Canvas colors come from the CURRENT theme (console_bg/border -- same keys the
+        # app's other canvas-like widgets already use for their own dark/light styling)
+        # instead of being hardcoded to white/light-grey -- real bug report, 2026-08-26:
+        # the "dark" theme left this chart looking unchanged (light chart on an otherwise
+        # dark window). _draw_growth_chart's own bg_color/fg_color/grid_color params
+        # (see _redraw_benchmark_chart/_redraw_benchmark_chart2 below) keep the drawn
+        # content -- ticks, axis titles -- readable against whichever background this is.
+        p = self._theme_palette
+        self.benchmark_chart = tk.Canvas(chart_frame, height=220, background=p["console_bg"],
+                                          highlightthickness=1, highlightbackground=p["border"])
         self.benchmark_chart.pack(fill="x")
         self.benchmark_chart.bind("<Configure>", lambda _e: self._redraw_benchmark_chart())
 
@@ -233,8 +348,8 @@ class BenchmarkTab(ttk.Frame):
         chart_frame2 = ttk.Frame(self)
         chart_frame2.pack(fill="x", padx=6, pady=(0, 4))
         ttk.Label(chart_frame2, text=T("bench.chart2_hint")).pack(anchor="w")
-        self.benchmark_chart2 = tk.Canvas(chart_frame2, height=180, background="white",
-                                           highlightthickness=1, highlightbackground="#cccccc")
+        self.benchmark_chart2 = tk.Canvas(chart_frame2, height=180, background=p["console_bg"],
+                                           highlightthickness=1, highlightbackground=p["border"])
         self.benchmark_chart2.pack(fill="x")
         self.benchmark_chart2.bind("<Configure>", lambda _e: self._redraw_benchmark_chart2())
 
@@ -285,8 +400,14 @@ class BenchmarkTab(ttk.Frame):
         hsb.pack(side="bottom", fill="x")
         self.benchmark_tree.pack(side="left", fill="both", expand=True)
 
-        self.benchmark_tree.tag_configure("pietro", background="#eef3fb")
-        self.benchmark_tree.tag_configure("stat", background="#fff6d8")
+        # Explicit foreground alongside each background -- a tag's own colors
+        # override the base "Treeview" ttk.Style() colors per-row (see this
+        # constructor's own docstring), so without pairing them here, dark mode
+        # would keep the (light) style-level foreground on top of these
+        # theme-appropriate backgrounds and still be unreadable.
+        p = self._theme_palette
+        self.benchmark_tree.tag_configure("pietro", background=p["tree_group_bg"], foreground=p["fg"])
+        self.benchmark_tree.tag_configure("stat", background=p["tree_stat_bg"], foreground=p["fg"])
 
         self.benchmark_tree.bind("<<TreeviewOpen>>", self._on_benchmark_tree_open)
         self.benchmark_tree.bind("<<TreeviewClose>>", self._on_benchmark_tree_close)
@@ -330,8 +451,11 @@ class BenchmarkTab(ttk.Frame):
             width = 900
         if height <= 1:
             height = 220
+        p = self._theme_palette
         _draw_growth_chart(self.benchmark_chart, self._benchmark_growth_points, width, height,
-                            points2=self._benchmark_fair_spw_points, translator=self.T)
+                            points2=self._benchmark_fair_spw_points, translator=self.T,
+                            bg_color=p["console_bg"], fg_color=p["console_fg"],
+                            grid_color=p["border"])
 
     def _redraw_benchmark_chart2(self):
         """Same fallback-size handling as _redraw_benchmark_chart() (see that method's own
@@ -343,11 +467,14 @@ class BenchmarkTab(ttk.Frame):
             width = 900
         if height <= 1:
             height = 180
+        p = self._theme_palette
         _draw_growth_chart(self.benchmark_chart2, self._benchmark_sieve_nps_points, width,
                             height, points2=self._benchmark_write_mbps_points,
                             label_key1="bench.axis_sieve_nps",
                             label_key2="bench.axis_write_mbps",
-                            fmt1="{:,.0f}", fmt2="{:,.1f}", translator=self.T)
+                            fmt1="{:,.0f}", fmt2="{:,.1f}", translator=self.T,
+                            bg_color=p["console_bg"], fg_color=p["console_fg"],
+                            grid_color=p["border"])
 
     def reload_benchmark_log(self):
         T = self.T
