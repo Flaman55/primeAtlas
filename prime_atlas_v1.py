@@ -107,7 +107,10 @@ from primeatlas import (  # noqa: E402
 # research_goldbach_tab.py during the refactor branch's Faza 3 (tab-by-tab backend/UI
 # split, 2026-08-23), which now imports them directly from primeatlas.goldbach_window
 # itself (see that module's own docstring) -- nothing in this file calls them anymore.
-from primeatlas import floor_meta  # noqa: E402
+# floor_meta (merge_floor_meta_into_benchmark_log) used to be imported here for the
+# totals worker's own job -- moved to primeatlas/totals_search_coordinator.py during
+# the refactor-phase2 branch's "God object" reduction (2026-08-26, see that module's
+# own docstring), alongside the rest of the totals/search PersistentWorker mechanism.
 from primeatlas import background  # noqa: E402
 # pdf_writer/benchmark: extracted during the refactor branch's Faza 3 (tab-by-tab
 # backend/UI split, 2026-08-23) -- see those modules' own docstrings. Now that
@@ -121,31 +124,32 @@ from primeatlas.benchmark import read_benchmark_log  # noqa: E402
 # constellations: extracted during the refactor branch's Faza 3 (2026-08-23), alongside
 # the Constellations tab's own UI split (primeatlas/constellations_hits_tab.py,
 # constellations_calc_tab.py, constellations_records_tab.py) -- see that module's own
-# docstring. Only the three names the shared search worker/_constellations_tree_scan/
-# _on_const_search_result still call directly are imported here; everything else those
-# sub-tabs need is imported locally inside _build_constellations_section().
+# docstring. find_constellation_participation moved out with the search worker itself
+# (primeatlas/totals_search_coordinator.py, refactor-phase2's "God object" reduction,
+# 2026-08-26) -- the two remaining names are still called directly by
+# _constellations_tree_scan/_on_const_search_result below.
 from primeatlas.constellations import (  # noqa: E402
-    find_constellation_participation, floor_has_constellation_hits, list_constellation_hits,
+    floor_has_constellation_hits, list_constellation_hits,
 )
 # storage: extracted during the refactor branch's Faza 3 (2026-08-23), alongside the
 # "Prime numbers" tab's UI split (primeatlas/primes_tab.py) -- see that module's own
-# docstring. list_pietra/list_source_filenames/load_totals_cache/save_totals_cache/
-# update_pietro_totals_cache/format_duration/format_bytes/
-# aggregate_write_seconds_by_pietro/find_prime_in_floor/LOW_FLOOR_CUTOFF were never
-# specific to that one tab in the first place (see primeatlas/storage.py's own docstring
-# for why the whole layer moved together rather than only the pieces primes_tab.py
-# itself needs) -- app-level code below (totals worker, search worker, settings
-# wsl_helpers) still calls these directly. list_source_files/read_source_file_headers/
-# format_big_int/digit_count_floor/_offset_from_filename/FlowRow are no longer called
-# directly here -- their last remaining call sites moved out with the Generation tab
+# docstring. update_pietro_totals_cache/save_totals_cache/format_duration/format_bytes/
+# find_prime_in_floor moved out with the totals/search worker mechanism
+# (primeatlas/totals_search_coordinator.py, refactor-phase2's "God object" reduction,
+# 2026-08-26). list_pietra/list_source_filenames/load_totals_cache/
+# aggregate_write_seconds_by_pietro/LOW_FLOOR_CUTOFF stay -- _primes_tree_scan/
+# _constellations_tree_scan below still call these directly (that background scan
+# itself was never part of the totals/search WORKER mechanism the coordinator now
+# owns -- it's the separate floor-LIST rebuild, see reload_primes_tree()'s own
+# docstring). list_source_files/read_source_file_headers/format_big_int/
+# digit_count_floor/_offset_from_filename/FlowRow are no longer called directly
+# here -- their last remaining call sites moved out with the Generation tab
 # (primeatlas/generation.py/generation_tab.py, Faza 3, 2026-08-23) -- every extracted
 # tab module that needs them imports its own copy directly from primeatlas.storage/
 # primeatlas.widgets now.
 from primeatlas.storage import (  # noqa: E402
     LOW_FLOOR_CUTOFF, list_pietra, list_source_filenames,
-    load_totals_cache, save_totals_cache,
-    update_pietro_totals_cache, format_duration, format_bytes,
-    aggregate_write_seconds_by_pietro, find_prime_in_floor,
+    load_totals_cache, aggregate_write_seconds_by_pietro,
 )
 # generation: extracted during the refactor branch's Faza 3 (tab-by-tab backend/UI
 # split, 2026-08-23), alongside the Generation tab's own UI split
@@ -258,6 +262,7 @@ def _build_gui():
     # is no longer imported here -- its only user (the Generation tab) now imports it
     # directly inside primeatlas/generation_tab.py.
     from primeatlas.settings_tab import SettingsTab
+    from primeatlas.totals_search_coordinator import TotalsSearchCoordinator
 
     class PortalBrowserApp(tk.Tk):
         def __init__(self):
@@ -301,7 +306,8 @@ def _build_gui():
             # (not just when it finishes), makes the in-progress state visibly obvious.
             # Always packed (not shown/hidden dynamically)
             # so its position never jumps around -- sits at 0/0 (empty) until the first batch
-            # starts, see _compute_all_pietro_totals()/_on_pietro_total_start().
+            # starts, see TotalsSearchCoordinator.compute_all_pietro_totals()/
+            # _on_pietro_total_start() (primeatlas/totals_search_coordinator.py).
             self.totals_progress = ttk.Progressbar(status_frame, orient="horizontal",
                                                      mode="determinate", maximum=1, value=0)
             self.totals_progress.pack(fill="x", side="top")
@@ -361,67 +367,26 @@ def _build_gui():
                 self.update()
                 step_fn()
 
-            # Floor-total background worker: reading every source window's
-            # header to sum a whole floor's prime count is NOT cheap on this project's real
-            # storage (measured ~78s for one 15,101-file floor, ~5ms/file -- per-file open()
-            # latency on the underlying mount, not the tiny header itself) -- doing that on
-            # the GUI thread is exactly the kind of freeze the paginated file list was built
-            # to avoid (see PrimesTab._populate_pietro_node's docstring). ONE daemon worker
-            # thread owns self._totals_cache exclusively (loads it once here, then only the
-            # worker thread ever reads/writes/saves it -- see update_pietro_totals_cache());
-            # the main thread never touches that dict directly, only submits floor numbers
-            # via self._totals_worker.submit() and receives results back via
-            # _on_totals_worker_result, a primeatlas/background.py PersistentWorker instance
-            # (see _totals_job's own docstring for the request/result shape). The DISPLAY-
-            # side counterpart of this cache (self._pietro_total_known) now lives entirely
-            # inside primeatlas/primes_tab.py's PrimesTab -- see that class's own
-            # populate_floors()/update_floor_row() docstrings.
-            self._totals_cache = {}
-            self._reload_totals_caches()
-            self._computing_all_totals = False
-            self._totals_batch_size = 0   # fixed at the START of a "compute all" batch --
-                                           # NOT re-read from PrimesTab's own floor-node map
-                                           # on every result, so the progress bar's
-                                           # denominator can't shift mid-batch (e.g. after a
-                                           # Refresh)
-            self._grand_total_sum = 0
-            self._grand_total_bytes = 0  # on-disk footprint total, mirrors _grand_total_sum
-                                          # but for bytes instead of prime count -- see
-                                          # update_pietro_totals_cache()'s total_bytes and
-                                          # format_bytes()
-            self._grand_total_seen = set()
-            self._grand_total_seconds = 0.0  # mirrors _grand_total_sum's role for the
-                                              # "GRAND TOTAL" status line, giving it a time
-                                              # total alongside the prime-count total --
-                                              # the underlying per-floor generation-seconds
-                                              # dict this sums (base_exponent -> seconds)
-                                              # now lives inside PrimesTab, seeded fresh on
-                                              # every reload_primes_tree() scan (see that
-                                              # class's own populate_floors()).
-            # Faza 1 background-job migration (2026-08-23, second half -- see
-            # primeatlas/background.py's PersistentWorker docstring for the full audit):
-            # this used to be its own hand-rolled threading.Thread + two queue.Queue()s +
-            # self.after(150, self._poll_totals_results) block, identical in shape to five
-            # other workers in this file. _totals_job is the one part that's genuinely
-            # specific to this feature; PersistentWorker owns the thread/queues/polling.
-            self._totals_worker = background.PersistentWorker(
-                self, self._totals_job, on_result=self._on_totals_worker_result,
-                on_progress=self._on_pietro_total_start)
-
-            # Search worker: number/constellation search needs to run off the GUI thread,
-            # or it freezes the whole application while searching. find_prime_in_floor()'s
-            # binary search is normally fast (O(log N) file opens -- see its own
-            # docstring), but find_constellation_participation() can decode dozens of
-            # full hit files on a floor's first-ever search (nothing cached yet), which
-            # is exactly the kind of disk-bound work the totals worker above already
-            # exists to keep off the GUI thread -- same PersistentWorker shape, reusing
-            # the SAME status/progress bar the totals worker uses (one shared status bar
-            # for both features, not a second one). See
-            # _search_job/_on_search_worker_result/_start_search_job below.
-            self._search_busy = False
-            self._search_worker = background.PersistentWorker(
-                self, self._search_job, on_result=self._on_search_worker_result,
-                on_progress=self._on_search_worker_progress)
+            # Floor-totals + prime/constellation search: TWO PersistentWorkers that
+            # used to live directly on this class (hand-rolled thread/queue pairs
+            # before Faza 1, then inline PersistentWorker instances) -- moved into
+            # their own primeatlas/totals_search_coordinator.py during the
+            # refactor-phase2 branch's "God object" reduction (2026-08-26, see that
+            # module's own docstring for the full rationale and README.md's "Known
+            # gaps" for why this was the chosen next step). Constructed here, AFTER
+            # every tab widget above already exists, because it reaches directly into
+            # primes_tab_widget/constellations_hits_tab_widget (same construction-
+            # order requirement the original inline code already had). on_const_
+            # search_result stays a method on THIS class (self._on_const_search_result
+            # below) rather than moving into the coordinator -- it's genuine three-tab
+            # coordination (Constellations-hits AND Constellations-calc), not part of
+            # the two-worker mechanism itself.
+            self._totals_search = TotalsSearchCoordinator(
+                self, get_portal_folder=lambda: PORTAL_FOLDER, status_var=self.status,
+                totals_progress=self.totals_progress, translator=TRANSLATOR,
+                primes_tab_widget=self.primes_tab_widget,
+                constellations_hits_tab_widget=self.constellations_hits_tab_widget,
+                on_const_search_result=self._on_const_search_result)
 
             # primesieve calculator worker (Liczby pierwsze -> primesieve sub-tab) and
             # primality-testing worker (Liczby pierwsze -> Testy pierwszosci sub-tab)
@@ -493,153 +458,11 @@ def _build_gui():
             self._status_frame.pack(fill="x", side="bottom")
             self.main_notebook.pack(fill="both", expand=True)
 
-        # --- Floor-total background worker ------------------------------------------
-
-        def _reload_totals_caches(self):
-            """(Re-)loads _totals_cache (the totals worker's OWN incremental-cache copy,
-            see update_pietro_totals_cache()) from PORTAL_FOLDER's own
-            .portal_totals_cache.json -- factored out of __init__ so reload_primes_tree()
-            can call this too, on every refresh, not just once at app startup. Otherwise,
-            after changing storage path in Settings and clicking Refresh, this worker-
-            owned cache would still reflect the PREVIOUS location.
-
-            Root cause of the bug this originally fixed: this dict used to be built ONCE
-            in __init__ against whatever PORTAL_FOLDER was active when the app launched,
-            then never reloaded -- a later storage-path change rebinds the PORTAL_FOLDER
-            global (see _set_portal_folder) but left it holding the OLD location's data
-            in memory. update_pietro_totals_cache()'s incremental-cache logic keys this
-            cache PURELY BY FILENAME within each "10p{N}" entry, with no portal_folder
-            scoping at all -- so if a NEWLY selected location happens to have its own
-            floor with the same number (and prime_sieve_v1.py assigns filenames
-            deterministically from floor+offset, so a same-number floor in two different
-            locations very plausibly has same-NAMED files), the stale entry made it treat
-            that location's real file as "already read" and served the OLD location's
-            cached count without ever opening the new file.
-
-            The DISPLAY-side counterpart of this same on-disk cache (what the "Prime
-            numbers" tree actually shows) now lives entirely in primeatlas/primes_tab.py's
-            PrimesTab -- reload_primes_tree()'s own async scan re-reads it fresh from disk
-            every time (see _primes_tree_scan()) and hands the result to
-            PrimesTab.populate_floors(), so there's no equivalent stale-copy risk there to
-            fix by hand."""
-            self._totals_cache = load_totals_cache(PORTAL_FOLDER)  # worker-owned copy
-
-        def _totals_job(self, base_exponent, report_progress):
-            """Runs on PersistentWorker's own daemon thread, one base_exponent at a time --
-            see that class's docstring for why this shape replaced a hand-rolled
-            threading.Thread + two queue.Queue()s. report_progress(base_exponent) fires the
-            INSTANT this request is picked up, before the (possibly ~1 minute, for a
-            heavily-populated floor) scan itself runs -- without this, the status/progress
-            bar would sit unchanged for that whole stretch, making an in-progress scan look
-            like it's not working. Catches its own exceptions (rather than letting
-            PersistentWorker's generic error path handle it) so the failure can still be
-            attributed to the RIGHT base_exponent -- see PersistentWorker's own docstring
-            for why that matters."""
-            report_progress(base_exponent)
-            try:
-                total, file_count, new_read, total_bytes = update_pietro_totals_cache(
-                    PORTAL_FOLDER, base_exponent, self._totals_cache)
-                if new_read:
-                    save_totals_cache(PORTAL_FOLDER, self._totals_cache)
-                # A floor physically copied in from another storage (magazyn) brings
-                # its own floor_meta.json along -- see floor_meta.py's module
-                # docstring. This imports any rows from it that aren't already in the
-                # LOCAL benchmark_log.csv, so the Benchmark tab shows that floor's
-                # real generation history instead of nothing, exactly as if it had
-                # been generated here. No-ops (cheap) on the ordinary case where
-                # there's nothing new to import, so it's safe to call on every floor
-                # visit rather than trying to detect "is this floor newly-copied-in"
-                # some other way.
-                floor_meta.merge_floor_meta_into_benchmark_log(PORTAL_FOLDER, base_exponent)
-                return base_exponent, total, file_count, new_read, None, total_bytes
-            except Exception as e:  # noqa: BLE001 -- must never kill the worker thread
-                return base_exponent, None, None, None, str(e), None
-
-        def _on_totals_worker_result(self, payload, error):
-            """Main-thread callback for _totals_job -- error is only ever non-None for a
-            genuine PersistentWorker/framework-level failure (report_progress itself
-            raising, say), since _totals_job catches everything else internally and folds
-            it into payload's own error slot instead (see that method's docstring)."""
-            if error is not None:
-                self.status.set(str(error))
-                return
-            base_exponent, total, file_count, new_read, job_error, total_bytes = payload
-            if job_error is not None:
-                self.status.set(T("primes.status_error_sum", base_exponent=base_exponent, error=job_error))
-            else:
-                self._on_pietro_total_ready(base_exponent, total, file_count, new_read, total_bytes)
-
-        def _on_pietro_total_start(self, base_exponent):
-            """Fires the moment the worker PICKS UP a request -- see _totals_job's
-            docstring for why this exists separately from the completion handler below."""
-            if self._computing_all_totals:
-                done = len(self._grand_total_seen)
-                self.status.set(
-                    T("primes.status_computing_progress", base_exponent=base_exponent,
-                      done=done, total=self._totals_batch_size,
-                      sum=f"{self._grand_total_sum:,}"))
-            else:
-                self.status.set(T("primes.status_computing", base_exponent=base_exponent))
-
-        def _on_pietro_total_ready(self, base_exponent, total, file_count, new_read, total_bytes):
-            """Main-thread completion handler for the totals worker's result -- the
-            actual tree-row update, plus the floor-nav page-total label refresh if this
-            floor happens to be the active one, is delegated to PrimesTab.update_floor_row
-            (see that method's own docstring); this app-level method keeps only the
-            grand-total batch bookkeeping and status/progress-bar text, which don't
-            belong to any one tab (the status bar and totals_progress widget are shared
-            with the search worker too, see __init__'s own comment on that)."""
-            self.primes_tab_widget.update_floor_row(base_exponent, total, file_count, total_bytes)
-            gen_seconds = self.primes_tab_widget.get_gen_seconds(base_exponent)
-
-            if self._computing_all_totals:
-                if base_exponent not in self._grand_total_seen:
-                    self._grand_total_seen.add(base_exponent)
-                    self._grand_total_sum += total
-                    self._grand_total_seconds += gen_seconds or 0.0
-                    self._grand_total_bytes += total_bytes or 0
-                done = len(self._grand_total_seen)
-                expected = self._totals_batch_size
-                self.totals_progress.configure(value=done)
-                if done >= expected:
-                    self._computing_all_totals = False
-                    # Reset back to the same empty (0/1) state _totals_progress starts in
-                    # (see __init__) -- left at full/expected otherwise, a completed scan
-                    # would leave the bar sitting permanently full, which reads as "still
-                    # busy" even though nothing is running.
-                    self.totals_progress.configure(maximum=1, value=0)
-                    self.status.set(
-                        T("primes.status_grand_total", count=expected,
-                          sum=f"{self._grand_total_sum:,}",
-                          duration=format_duration(self._grand_total_seconds),
-                          size=format_bytes(self._grand_total_bytes)))
-                else:
-                    self.status.set(
-                        T("primes.status_partial_totals", done=done, total=expected,
-                          sum=f"{self._grand_total_sum:,}",
-                          size=format_bytes(self._grand_total_bytes)))
-            else:
-                extra = T("primes.status_extra_new_files", count=new_read) if new_read else ""
-                self.status.set(
-                    T("primes.status_pietro_total", base_exponent=base_exponent,
-                      total=f"{total:,}", files=f"{file_count:,}",
-                      size=format_bytes(total_bytes), extra=extra))
-
-        def _compute_all_pietro_totals(self):
-            pietra = self.primes_tab_widget.get_pietro_node_keys()
-            if not pietra:
-                self.status.set(T("primes.status_none_to_compute"))
-                return
-            self._computing_all_totals = True
-            self._totals_batch_size = len(pietra)
-            self._grand_total_sum = 0
-            self._grand_total_seconds = 0.0
-            self._grand_total_bytes = 0
-            self._grand_total_seen = set()
-            self.totals_progress.configure(maximum=len(pietra), value=0)
-            self.status.set(T("primes.status_batch_start", count=len(pietra)))
-            for base_exponent in pietra:
-                self._totals_worker.submit(base_exponent)
+        # Floor-total background worker, prime/constellation search worker: moved to
+        # primeatlas/totals_search_coordinator.py's TotalsSearchCoordinator during the
+        # refactor-phase2 branch's "God object" reduction (2026-08-26) -- see that
+        # module's own docstring and this file's __init__ (self._totals_search) for
+        # where the two PersistentWorkers this used to own directly now live.
 
         def _apply_theme(self, theme_name):
             """Applies primeatlas.theme's color palette to every widget class this app
@@ -810,11 +633,11 @@ def _build_gui():
                 update_nav_controls=_update_nav_controls, render_page=_render_page,
                 page_size=PAGE_SIZE, floor_page_size=FLOOR_PAGE_SIZE,
                 reload_primes_tree=self.reload_primes_tree,
-                start_search_job=self._start_search_job,
-                is_search_busy=lambda: self._search_busy,
+                start_search_job=lambda *a: self._totals_search.start_search_job(*a),
+                is_search_busy=lambda: self._totals_search.search_busy,
                 offer_generate_missing_prime_window=lambda be, num:
                     self._offer_generate_missing_prime_window("prime", be, num),
-                submit_totals_job=lambda be: self._totals_worker.submit(be))
+                submit_totals_job=lambda be: self._totals_search.submit_totals_job(be))
             self.primes_tab_widget.pack(fill="both", expand=True)
 
         def _primes_tree_scan(self, portal_folder, _report_progress):
@@ -895,123 +718,31 @@ def _build_gui():
             if error is not None:
                 self.status.set(T("primes.status_reload_error", error=str(error)))
                 return
-            self._totals_cache = result["totals_cache"]
+            self._totals_search.replace_totals_cache(result["totals_cache"])
             pietra = result["pietra"]
             # The actual tree rebuild (rows, per-floor known totals/gen-seconds display
             # state) is owned by PrimesTab now -- see populate_floors()'s own docstring.
-            # This app-level method keeps only the totals_cache (worker-owned copy,
-            # unrelated to what any one tab renders), the status text, kicking off the
-            # background totals scan, and the loading-screen bookkeeping.
+            # This app-level method keeps only the totals_cache resync (now owned by
+            # TotalsSearchCoordinator, unrelated to what any one tab renders), the
+            # status text, kicking off the background totals scan, and the loading-
+            # screen bookkeeping.
             self.primes_tab_widget.populate_floors(
                 pietra, result["pietro_total_known"], result["pietro_gen_seconds"])
             self.status.set(T("app.status_portal_with_count", folder=portal_folder, count=len(pietra)))
-            self._compute_all_pietro_totals()
+            self._totals_search.compute_all_pietro_totals()
 
             pending = getattr(self, "_loading_startup_pending", None)
             if pending:
                 pending.discard("primes")
                 if not pending:
                     self._finish_loading_screen()
-        # --- Search worker -- shared by both "Prime numbers" and
-        # "Constellations" search boxes, see the __init__ comment above self._search_worker's
-        # construction for the full rationale. ------------------------------------------------
-
-        def _start_search_job(self, kind, base_exponent, number):
-            """Hands the actual (potentially slow) file-scanning work off to
-            self._search_worker's daemon thread (a PersistentWorker). Only fast/instant validation (isdigit,
-            digit_count_floor, list_pietra's no-I/O floor-existence check) happens on the
-            GUI thread, in the caller, before this is ever reached. Disables BOTH search
-            buttons while a job is in flight -- the two features share one worker thread
-            and one status/progress bar, so only one search runs at a time system-wide,
-            same reasoning _on_quick_generate_clicked already applies to
-            self._loop_runner."""
-            self._search_busy = True
-            self.primes_tab_widget.search_button.configure(state="disabled")
-            self.constellations_hits_tab_widget.hits_search_button.configure(state="disabled")
-            self.totals_progress.stop()
-            self.totals_progress.configure(mode="indeterminate")
-            self.totals_progress.start(80)
-            if kind == "prime":
-                self.status.set(T("primes.status_searching", number=number, base_exponent=base_exponent))
-            else:
-                self.status.set(T("const.status_searching", number=number, base_exponent=base_exponent))
-            self._search_worker.submit(
-                {"kind": kind, "base_exponent": base_exponent, "number": number})
-
-        def _search_job(self, job, report_progress):
-            """Runs on PersistentWorker's own daemon thread. While a "const" job is in
-            flight, this thread is ALSO the sole owner of
-            self.constellations_hits_tab_widget.hit_set_cache (the GUI thread never
-            mutates it directly anymore, only reads the finished participation list
-            handed back via the result) -- _search_busy blocking new searches from the
-            GUI side means only one job is ever in flight, so this never races against
-            itself. Catches its own exceptions (see PersistentWorker's docstring for
-            why) so the error can still be tagged with the right kind."""
-            kind = job["kind"]
-            base_exponent = job["base_exponent"]
-            number = job["number"]
-            try:
-                if kind == "prime":
-                    result = find_prime_in_floor(PORTAL_FOLDER, base_exponent, number)
-                    return ("prime_done", base_exponent, number, result)
-                else:
-                    prime_result = find_prime_in_floor(PORTAL_FOLDER, base_exponent, number)
-                    if prime_result is None:
-                        return ("const_done", base_exponent, number, None, [])
-
-                    def _progress(done, total):
-                        report_progress(("const_progress", done, total))
-
-                    participation = find_constellation_participation(
-                        PORTAL_FOLDER, base_exponent, number,
-                        self.constellations_hits_tab_widget.hit_set_cache,
-                        progress_callback=_progress)
-                    return ("const_done", base_exponent, number, prime_result, participation)
-            except Exception as e:  # noqa: BLE001 -- must never kill the worker thread
-                return (f"{kind}_error", base_exponent, number, str(e))
-
-        def _on_search_worker_progress(self, payload):
-            """Main-thread callback for _search_job's mid-job progress reports (the only
-            kind it ever sends is "const_progress", during find_constellation_participation)."""
-            kind = payload[0]
-            if kind == "const_progress":
-                _kind, done, total = payload
-                self.totals_progress.stop()
-                self.totals_progress.configure(
-                    mode="determinate", maximum=max(1, total), value=done)
-                self.status.set(T("const.status_search_progress", done=done, total=total))
-
-        def _on_search_worker_result(self, payload, error):
-            """Main-thread callback for _search_job's return value -- error is only ever
-            non-None for a genuine PersistentWorker/framework-level failure, since
-            _search_job catches everything else internally (see that method's docstring)."""
-            if error is not None:
-                self._finish_search_job()
-                messagebox.showerror(T("common.dialog_search_title"), str(error))
-                return
-            kind = payload[0]
-            if kind == "prime_done":
-                _kind, base_exponent, number, result = payload
-                self._finish_search_job()
-                self.primes_tab_widget.on_prime_search_result(base_exponent, number, result)
-            elif kind == "const_done":
-                _kind, base_exponent, number, prime_result, participation = payload
-                self._finish_search_job()
-                self._on_const_search_result(base_exponent, number, prime_result, participation)
-            else:  # "prime_error" / "const_error"
-                _kind, _base_exponent, _number, job_error = payload
-                self._finish_search_job()
-                messagebox.showerror(T("common.dialog_search_title"), job_error)
-
-        def _finish_search_job(self):
-            self._search_busy = False
-            self.primes_tab_widget.search_button.configure(state="normal")
-            self.constellations_hits_tab_widget.hits_search_button.configure(state="normal")
-            self.totals_progress.stop()
-            # Same "reset back to the empty 0/1 state" reasoning as
-            # _on_pietro_total_ready's grand-total completion branch -- a bar left sitting
-            # full/mid-way reads as "still busy" even though nothing is running.
-            self.totals_progress.configure(mode="determinate", maximum=1, value=0)
+        # --- Search worker -- moved to primeatlas/totals_search_coordinator.py's
+        # TotalsSearchCoordinator alongside the totals worker (see this file's own
+        # __init__ / that module's docstring for the refactor-phase2 "God object"
+        # reduction, 2026-08-26). self._on_const_search_result below is the one
+        # deliberate seam left here -- see TotalsSearchCoordinator's own docstring on
+        # its on_const_search_result constructor parameter for why that specific
+        # completion handler stays app-level. ------------------------------------
 
         def _offer_generate_missing_prime_window(self, kind, base_exponent, number):
             """Called from _on_prime_search_result()/_on_const_search_result() the moment
@@ -1192,8 +923,8 @@ def _build_gui():
                 translator=TRANSLATOR, update_nav_controls=_update_nav_controls,
                 render_page=_render_page, page_size=PAGE_SIZE,
                 reload_constellations_tree=self.reload_constellations_tree,
-                start_search_job=self._start_search_job,
-                is_search_busy=lambda: self._search_busy,
+                start_search_job=lambda *a: self._totals_search.start_search_job(*a),
+                is_search_busy=lambda: self._totals_search.search_busy,
                 offer_generate_missing_prime_window=lambda be, num:
                     self._offer_generate_missing_prime_window("const", be, num))
             self.constellations_hits_tab_widget.pack(fill="both", expand=True)

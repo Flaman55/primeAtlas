@@ -1,14 +1,27 @@
 """
 test_search_worker.py -- functional regression test for the "prime"/"const" search
-worker in prime_atlas_v1.py, migrated onto primeatlas/background.py's PersistentWorker
-during the refactor branch's Faza 1 (background-job consolidation, 2026-08-23).
+worker, migrated onto primeatlas/background.py's PersistentWorker during the refactor
+branch's Faza 1 (background-job consolidation, 2026-08-23), then moved off
+PortalBrowserApp entirely into primeatlas/totals_search_coordinator.py's
+TotalsSearchCoordinator during the refactor-phase2 branch's "God object" reduction
+(2026-08-26) -- app._start_search_job/_search_busy are now
+app._totals_search.start_search_job/.search_busy.
 
 Builds the REAL PortalBrowserApp (same as tests/smoke_test.py) against a throwaway
-portal folder seeded with a real PGS1 prime window, then drives self._start_search_job()
-directly -- exactly what clicking the "Szukaj" button in the Liczby pierwsze / Konstelacje
-tabs does -- and asserts the result lands back on the UI (search buttons re-enabled,
-status text set, preview populated) via the new PersistentWorker-based path instead of
-the old hand-rolled thread+queue.
+portal folder seeded with a real PGS1 prime window, then drives
+app._totals_search.start_search_job() directly -- exactly what clicking the "Szukaj"
+button in the Liczby pierwsze / Konstelacje tabs does -- and asserts the result lands
+back on the UI (search buttons re-enabled, status text set, preview populated) via the
+PersistentWorker-based path.
+
+Also includes a DETERMINISTIC regression test for the status-bar race (task #404,
+fixed 2026-08-26 in TotalsSearchCoordinator): a floor-totals batch scan and a search
+share one status bar, and a stale/slow totals completion used to be able to overwrite
+a just-shown search result. That race's real-world timing is unreliable to exercise
+directly (it depends on how fast a real background disk scan happens to settle
+relative to a search -- see that test block's own comment), so it monkeypatches
+update_pietro_totals_cache to force one totals job to take ~1.5 real seconds,
+guaranteeing the exact interleaving the fix targets on every run.
 
 IMPORTANT -- do not call app_settings.set_storage_path() directly on a live app's
 AppSettings instance: AppSettings.save() persists unconditionally to the REAL
@@ -104,13 +117,13 @@ def main():
         _pump(app, 3.0)
 
         # --- "prime" search: found -------------------------------------------------
-        app._start_search_job("prime", 3, 101)
-        check(app._search_busy, "search job marked busy immediately after dispatch")
+        app._totals_search.start_search_job("prime", 3, 101)
+        check(app._totals_search.search_busy, "search job marked busy immediately after dispatch")
         check(str(app.primes_tab_widget.search_button["state"]) == "disabled",
               f"search button disabled while a 'prime' search is in flight "
               f"(got state={app.primes_tab_widget.search_button['state']!r})")
         _pump(app, 3.0)
-        check(not app._search_busy, "search job no longer busy after PersistentWorker result")
+        check(not app._totals_search.search_busy, "search job no longer busy after PersistentWorker result")
         check(str(app.primes_tab_widget.search_button["state"]) == "normal",
               f"search button re-enabled after 'prime' search completes "
               f"(got state={app.primes_tab_widget.search_button['state']!r})")
@@ -121,9 +134,9 @@ def main():
         # resolve to "confirmed composite" -- a showinfo popup (recorded, not shown --
         # see _patch_messageboxes) -- WITHOUT ever hanging waiting for a dialog.
         shown.clear()
-        app._start_search_job("prime", 3, 150)
+        app._totals_search.start_search_job("prime", 3, 150)
         _pump(app, 3.0)
-        check(not app._search_busy, "search job settles after a 'not found' prime result too")
+        check(not app._totals_search.search_busy, "search job settles after a 'not found' prime result too")
         check(any("150" in str(call) for call in shown),
               f"a composite/not-found popup mentioning 150 was recorded (got: {shown})")
 
@@ -133,10 +146,58 @@ def main():
         # No real hit files were seeded, so an empty participation list is the
         # correct, non-crashing outcome -- this is checking the PLUMBING survives a
         # "const" job end to end, not asserting any specific constellation content.
-        app._start_search_job("const", 3, 101)
-        check(app._search_busy, "const search job marked busy immediately after dispatch")
+        app._totals_search.start_search_job("const", 3, 101)
+        check(app._totals_search.search_busy, "const search job marked busy immediately after dispatch")
         _pump(app, 3.0)
-        check(not app._search_busy, "const search job settles without hanging or crashing")
+        check(not app._totals_search.search_busy, "const search job settles without hanging or crashing")
+
+        # --- Deterministic regression test for the status-bar race (task #404) -----
+        # The scenarios above pass reliably once the coordinator's fix is in place,
+        # but their actual timing depends on how fast the real background totals
+        # scan happens to settle relative to the search -- on a fast/lightly-loaded
+        # machine the totals job can finish BEFORE the search even starts, and on a
+        # slow one (real disk I/O + antivirus scanning of a fresh temp folder) it can
+        # finish well AFTER, neither of which reliably exercises the actual race
+        # window every run (confirmed in practice, 2026-08-26: this exact scenario
+        # intermittently failed/passed across otherwise-identical runs). This block
+        # forces the totals scan to take ~1.5 REAL seconds (monkeypatching
+        # update_pietro_totals_cache, the slow part of TotalsSearchCoordinator.
+        # _totals_job) so it is GUARANTEED to still be in flight when the search
+        # below starts and finishes -- deterministically reproducing the exact
+        # interleaving the fix targets, independent of real disk/OS timing.
+        import primeatlas.totals_search_coordinator as tsc_module
+        _real_update_totals = tsc_module.update_pietro_totals_cache
+
+        def _slow_update_totals(*a, **k):
+            time.sleep(1.5)
+            return _real_update_totals(*a, **k)
+
+        tsc_module.update_pietro_totals_cache = _slow_update_totals
+        try:
+            app.reload_primes_tree()  # triggers compute_all_pietro_totals() -> a
+                                       # (now artificially slow) totals job
+            _pump(app, 0.6)  # let the (fast) scan itself settle and the slow totals
+                              # job actually get submitted/picked up -- NOT a bare
+                              # time.sleep(): the scan's own completion callback is
+                              # delivered via app.after(), which only runs while the
+                              # Tk event loop is being pumped
+            app._totals_search.start_search_job("prime", 3, 103)
+            _pump(app, 1.5)  # the search itself is fast (tiny fixture); this is
+                              # ample, and the slow totals job is still running
+            check(not app._totals_search.search_busy,
+                  "race-test: search settles quickly despite a slow totals batch "
+                  "still in flight")
+            check("103" in app.status.get(),
+                  f"race-test: search result is shown while the slow totals batch "
+                  f"is still running (got: {app.status.get()!r})")
+            _pump(app, 2.0)  # let the slow totals job (and its own "grand total"
+                              # status message) finally land
+            check("103" in app.status.get(),
+                  f"race-test: status STAYS on the search result even after the "
+                  f"slow totals batch finally completes afterward "
+                  f"(got: {app.status.get()!r})")
+        finally:
+            tsc_module.update_pietro_totals_cache = _real_update_totals
 
         app.destroy()
     finally:

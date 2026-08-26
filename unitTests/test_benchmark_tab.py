@@ -20,6 +20,18 @@ resulting app.benchmark_tab_widget (the real BenchmarkTab instance) directly:
      actually written and a confirmation is shown.
   4. The "no data yet" and forced-exception paths surface the right dialogs instead of
      silently doing nothing / crashing.
+  5. Dark-theme fix (#407, 2026-08-26): the "pietro"/"stat" Treeview row tags pull their
+     background AND foreground from primeatlas.theme.palette_for(), and both chart
+     canvases' own background do too -- not hardcoded light colors regardless of theme.
+  6. Chart readability fix (#408, 2026-08-26): _draw_growth_chart's dynamic pad_left
+     stops wide numbers ("71,556,448") from clipping off the canvas edge -- exercised
+     directly against _draw_growth_chart with a synthetic canvas, not through the CSV
+     fixture above (which doesn't need such large numbers to be realistic). The
+     always-on per-point labels were also replaced by a single hover tooltip; its
+     "which point is the cursor over" decision lives in the plain, tkinter-free
+     _nearest_hover_point() function (extracted specifically so this is testable
+     without a real OS-level mouse event, which behaved inconsistently across
+     platforms -- see that check's own comment below for the full story).
 
 See test_loading_screen.py's own module docstring for why PORTAL_FOLDER must be
 redirected BEFORE constructing the app (the constructor's own startup call --
@@ -41,6 +53,7 @@ import shutil
 import sys
 import tempfile
 import time
+import tkinter as tk
 import tkinter.messagebox
 from tkinter import filedialog
 
@@ -295,6 +308,113 @@ def main():
               f"(got: {shown})")
         check(any("fake failure for this test" in str(call) for call in shown),
               f"the actual exception text reaches the error dialog (got: {shown})")
+
+        # --- dark-theme fix: tree tag colors follow the palette, not hardcoded (#407) --
+        # "pietro"/"stat" row tags used to be hardcoded to light colors with no matching
+        # foreground override -- unreadable under the dark theme. See BenchmarkTab.
+        # __init__'s own docstring and primeatlas/theme.py's tree_group_bg/tree_stat_bg
+        # docstring for the bug this fixes.
+        from primeatlas.theme import palette_for
+        theme_palette = palette_for(prime_atlas_v1.APP_SETTINGS.theme)
+        # str(...) -- tag_configure's single-option query form can hand back a Tcl
+        # color/font object rather than a plain str depending on the Tcl/Tk version
+        # (same reason every OTHER tk-value comparison in this file already goes
+        # through str(), e.g. the button-state checks above), so compare string forms
+        # rather than the raw query result.
+        pietro_bg = str(widget.benchmark_tree.tag_configure("pietro", "background"))
+        pietro_fg = str(widget.benchmark_tree.tag_configure("pietro", "foreground"))
+        stat_bg = str(widget.benchmark_tree.tag_configure("stat", "background"))
+        stat_fg = str(widget.benchmark_tree.tag_configure("stat", "foreground"))
+        check(pietro_bg == theme_palette["tree_group_bg"],
+              f"'pietro' row tag background comes from the theme palette, not a hardcoded "
+              f"color (got {pietro_bg!r}, expected {theme_palette['tree_group_bg']!r})")
+        check(pietro_fg == theme_palette["fg"],
+              f"'pietro' row tag foreground comes from the theme palette "
+              f"(got {pietro_fg!r}, expected {theme_palette['fg']!r})")
+        check(stat_bg == theme_palette["tree_stat_bg"],
+              f"'stat' row tag background comes from the theme palette "
+              f"(got {stat_bg!r}, expected {theme_palette['tree_stat_bg']!r})")
+        check(stat_fg == theme_palette["fg"],
+              f"'stat' row tag foreground comes from the theme palette "
+              f"(got {stat_fg!r}, expected {theme_palette['fg']!r})")
+
+        # --- dark-theme fix: chart canvas background follows the palette too (#408) ----
+        chart_bg = widget.benchmark_chart.cget("background")
+        chart2_bg = widget.benchmark_chart2.cget("background")
+        check(chart_bg == theme_palette["console_bg"],
+              f"growth-chart canvas background comes from the theme palette "
+              f"(got {chart_bg!r}, expected {theme_palette['console_bg']!r})")
+        check(chart2_bg == theme_palette["console_bg"],
+              f"phase-chart canvas background comes from the theme palette "
+              f"(got {chart2_bg!r}, expected {theme_palette['console_bg']!r})")
+
+        # --- chart readability fix: dynamic left padding stops big numbers clipping ----
+        # (#408, 2026-08-26 screenshot) -- a 9-11 digit n/s figure like "71,556,448" used
+        # to sit under a fixed 70px pad_left and get cut off against the canvas edge.
+        # _draw_growth_chart now measures the actual tick label strings with the real
+        # font and widens pad_left to fit -- reproduce that exact scenario directly
+        # (no need to go through the whole app/CSV path) and check no tick-label text
+        # item is left with a negative left edge (i.e. clipped off-canvas).
+        from primeatlas.benchmark_tab import _draw_growth_chart
+        probe_canvas = tk.Canvas(app, width=900, height=220)
+        probe_canvas.pack()
+        app.update()
+        big_points = [(0, 71_556_448), (5, 14_405_937), (10, 999_999_999)]
+        _draw_growth_chart(probe_canvas, big_points, 900, 220, translator=widget.T)
+        min_left_edge = None
+        for item_id in probe_canvas.find_all():
+            if probe_canvas.type(item_id) == "text":
+                bbox = probe_canvas.bbox(item_id)
+                if bbox is not None:
+                    min_left_edge = bbox[0] if min_left_edge is None else min(min_left_edge, bbox[0])
+        check(min_left_edge is not None, "the probe chart actually drew some tick-label text")
+        check(min_left_edge >= -1,
+              f"no tick-label text is clipped off the left edge of the canvas "
+              f"(leftmost text bbox edge was {min_left_edge}, expected >= -1)")
+
+        # --- chart readability fix: hover tooltip replaces always-on point labels ------
+        # (#408) -- per-point value labels used to be drawn permanently next to every dot
+        # and overlapped into an unreadable smear on dense series; now nothing is shown
+        # until the mouse is near a point, then exactly one tooltip (tagged "hover_tip")
+        # appears. Reuses the probe_canvas/big_points draw from the padding check above,
+        # so hover_points (closed over by _bind_chart_hover) matches what's on screen.
+        check(len(probe_canvas.find_withtag("hover_tip")) == 0,
+              "no hover tooltip is shown before the mouse moves near any point")
+        # The "which point (if any) is the cursor over" decision is tested directly
+        # via _nearest_hover_point -- a plain function with no canvas/tkinter
+        # dependency (extracted from _bind_chart_hover's own <Motion> handler
+        # specifically so this is possible) -- rather than through a real OS-level
+        # synthetic mouse event. A synthetic <Motion>/<Leave> pair turned out to
+        # behave inconsistently across platforms during testing (2026-08-26): on one
+        # Windows/Tk combination, <Motion> didn't reliably land within the trigger
+        # radius even when targeted at a dot's exact pixel center, and <Leave>
+        # rejected the -warp option outright. _nearest_hover_point is deterministic
+        # and needs no live display, so it tests the actual logic bug reports were
+        # about (dense/overlapping labels) without inheriting that platform noise.
+        from primeatlas.benchmark_tab import _nearest_hover_point
+        dot_center = None
+        for item_id in probe_canvas.find_all():
+            if probe_canvas.type(item_id) == "oval":
+                bbox = probe_canvas.bbox(item_id)
+                if bbox is not None:
+                    dot_center = ((bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2)
+                    break
+        check(dot_center is not None, "the probe chart actually drew at least one point dot")
+        hit = _nearest_hover_point([], dot_center[0], dot_center[1])
+        check(hit is None, "an empty hover_points list never matches (no crash, no false hit)")
+        far_away = _nearest_hover_point(
+            [(dot_center[0], dot_center[1], 0, 0, "{}", "#000000", "k")],
+            dot_center[0] + 1000, dot_center[1] + 1000)
+        check(far_away is None,
+              "a cursor position far from every point's dot matches nothing "
+              "(the ~14px trigger radius is respected)")
+        exact_hit = _nearest_hover_point(
+            [(dot_center[0], dot_center[1], 42, 1234, "{}", "#1c5fa8", "k")],
+            dot_center[0], dot_center[1])
+        check(exact_hit is not None and exact_hit[2] == 42 and exact_hit[3] == 1234,
+              f"a cursor position exactly on a dot matches that dot's own x_val/y_val "
+              f"(got {exact_hit!r})")
+        probe_canvas.destroy()
 
         app.destroy()
     finally:

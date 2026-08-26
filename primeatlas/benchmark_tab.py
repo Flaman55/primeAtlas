@@ -44,6 +44,30 @@ from .benchmark import (
 from .i18n import Translator, DEFAULT_LANGUAGE
 
 
+def _nearest_hover_point(hover_points, x, y, max_distance=14.0):
+    """Picks which (if any) of hover_points the cursor at (x, y) is "over" -- the one
+    decision _bind_chart_hover's <Motion> handler needs to make, pulled out as a
+    plain function with no canvas/tkinter dependency so it's directly unit-testable.
+    (Added 2026-08-26: driving this through a real OS-level synthetic mouse event in
+    a test turned out to behave inconsistently across platforms/Tk versions -- e.g.
+    Windows Python 3.13 delivered <Motion> coordinates that didn't reliably land
+    within max_distance of a dot even when targeted at its exact pixel center --
+    whereas this pure function is deterministic and needs no live display at all.)
+
+    hover_points: see _bind_chart_hover's own docstring for the tuple shape.
+    Returns (px, py, x_val, y_val, fmt, color) for the closest point within
+    max_distance pixels, or None if every point is farther than that (or the list
+    is empty)."""
+    best = None
+    best_d2 = max_distance ** 2
+    for px, py, x_val, y_val, fmt, color, _label_key in hover_points:
+        d2 = (x - px) ** 2 + (y - py) ** 2
+        if d2 <= best_d2:
+            best_d2 = d2
+            best = (px, py, x_val, y_val, fmt, color)
+    return best
+
+
 def _bind_chart_hover(canvas, hover_points, t, fg_color, bg_color):
     """Wires a single-tooltip hover interaction onto `canvas` instead of drawing every
     point's value permanently next to its dot -- with a couple dozen closely-spaced
@@ -72,15 +96,7 @@ def _bind_chart_hover(canvas, hover_points, t, fg_color, bg_color):
 
     def _on_motion(event):
         _clear_tip()
-        if not hover_points:
-            return
-        best = None
-        best_d2 = 14.0 ** 2  # only trigger within ~14px of a point's own dot
-        for px, py, x_val, y_val, fmt, color, _label_key in hover_points:
-            d2 = (event.x - px) ** 2 + (event.y - py) ** 2
-            if d2 <= best_d2:
-                best_d2 = d2
-                best = (px, py, x_val, y_val, fmt, color)
+        best = _nearest_hover_point(hover_points, event.x, event.y)
         if best is None:
             return
         px, py, x_val, y_val, fmt, color = best

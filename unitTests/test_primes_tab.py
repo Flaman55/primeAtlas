@@ -193,9 +193,9 @@ def main():
         widget.search_entry.delete(0, "end")
         widget.search_entry.insert(0, str(floor0_primes[3]))
         widget.search_button.invoke()
-        check(app._search_busy, "clicking Search dispatches a job (search_busy set)")
+        check(app._totals_search.search_busy, "clicking Search dispatches a job (search_busy set)")
         _pump(app, 3.0)
-        check(not app._search_busy, "search job settles after the worker result")
+        check(not app._totals_search.search_busy, "search job settles after the worker result")
         check(str(floor0_primes[3]) in app.status.get(),
               f"status mentions the found prime (got: {app.status.get()!r})")
         check(widget._preview_primes == floor0_primes,
@@ -206,7 +206,7 @@ def main():
         widget.search_entry.delete(0, "end")
         widget.search_entry.insert(0, "not-a-number")
         widget.search_button.invoke()
-        check(not app._search_busy, "an invalid search query never reaches the worker")
+        check(not app._totals_search.search_busy, "an invalid search query never reaches the worker")
         check(any(kind == "error" for kind, _a, _k in shown),
               f"an invalid search query shows an error dialog instead (got: {shown})")
 

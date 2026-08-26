@@ -166,9 +166,9 @@ def main():
         hits.hits_search_entry.delete(0, "end")
         hits.hits_search_entry.insert(0, str(P))
         hits.search_constellation()
-        check(app._search_busy, "clicking Search dispatches a 'const' job (search_busy set)")
+        check(app._totals_search.search_busy, "clicking Search dispatches a 'const' job (search_busy set)")
         _pump(app, 3.0)
-        check(not app._search_busy, "'const' search job settles after the worker result")
+        check(not app._totals_search.search_busy, "'const' search job settles after the worker result")
         check(str(P) in app.status.get(), f"status mentions the searched number (got: {app.status.get()!r})")
         check(len(hits._search_results_data) == 1,
               f"search found exactly 1 participation record (got {len(hits._search_results_data)})")
