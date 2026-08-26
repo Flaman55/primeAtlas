@@ -1437,7 +1437,7 @@ class GenerationTab(ttk.Frame):
                 base_exponent, target_idx_start, window_count_per_run,
                 QUICK_GEN_MAX_WINDOW_WIDTH, write_files)
             log_path, exit_path, _run_id = generation_log_paths(self._get_portal_folder(), "primesieve")
-            cmd = build_wsl_logged_command(argv, log_path, exit_path)
+            cmd = build_wsl_logged_command(argv, log_path, exit_path, self._get_portal_folder())
 
             self.loop_console.append(self._new_run_separator())
             self._loop_output_queue = queue.Queue()
@@ -1498,7 +1498,7 @@ class GenerationTab(ttk.Frame):
                 QUICK_GEN_MAX_WINDOW_WIDTH, write_files, compute_sieving,
                 workers, batches_per_worker)
             log_path, exit_path, _run_id = generation_log_paths(self._get_portal_folder(), "orchdirect")
-            cmd = build_wsl_logged_command(argv, log_path, exit_path)
+            cmd = build_wsl_logged_command(argv, log_path, exit_path, self._get_portal_folder())
 
             self.loop_console.append(self._new_run_separator())
             self._loop_output_queue = queue.Queue()
@@ -2182,7 +2182,7 @@ class GenerationTab(ttk.Frame):
                 parsed["window_count_per_run"], parsed["workers"], parsed["batches_per_worker"],
                 parsed["window_m"])
             log_path, exit_path, _run_id = generation_log_paths(self._get_portal_folder(), "loop")
-            cmd = build_wsl_logged_command(argv, log_path, exit_path)
+            cmd = build_wsl_logged_command(argv, log_path, exit_path, self._get_portal_folder())
 
             self.loop_console.append(self._new_run_separator())
             self._loop_output_queue = queue.Queue()
@@ -2286,7 +2286,7 @@ class GenerationTab(ttk.Frame):
 
         argv = build_constellation_finder_argv(base_exponent if base_exponent else None)
         log_path, exit_path, _run_id = generation_log_paths(self._get_portal_folder(), "constellation")
-        cmd = build_wsl_logged_command(argv, log_path, exit_path)
+        cmd = build_wsl_logged_command(argv, log_path, exit_path, self._get_portal_folder())
 
         self.const_console.append(self._new_run_separator())
         self._const_output_queue = queue.Queue()
@@ -2496,7 +2496,7 @@ class GenerationTab(ttk.Frame):
             mr_rounds=int(mr_rounds), auto=auto, reset_checkpoint=reset_checkpoint,
             pass_counter=int(pass_counter) if strategy == "digit_sweep" else None)
         log_path, exit_path, _run_id = generation_log_paths(self._get_portal_folder(), "ktuple")
-        cmd = build_wsl_logged_command(argv, log_path, exit_path)
+        cmd = build_wsl_logged_command(argv, log_path, exit_path, self._get_portal_folder())
 
         self.ktuple_console.append(self._new_run_separator())
         self._ktuple_output_queue = queue.Queue()
