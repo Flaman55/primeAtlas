@@ -71,13 +71,20 @@ def _touch_window(portal, floor, target_idx, window_m=10_000_000):
     """Creates an EMPTY PRIME_WINDOW_*.bin at the given floor/target_idx -- every function
     under test here reads only the FILENAME (via _offset_from_filename's regex), never the
     file's contents, so this is a safe, fast, real-filesystem stand-in for a genuinely
-    generated window (see this module's own docstring)."""
+    generated window (see this module's own docstring).
+
+    source_primes/ is sharded into shard_NNNNN subfolders (see window_sharding.py, task
+    #405) -- placed via window_sharding.shard_dir() with the real target_idx as
+    window_index (target_idx IS the window's 0-based generation-order index, matching
+    every real writer's own offset // window_m math)."""
+    import window_sharding
     offset = target_idx * window_m
     source_dir = os.path.join(portal, f"10p{floor}", "source_primes")
-    os.makedirs(source_dir, exist_ok=True)
+    shard_dir = window_sharding.shard_dir(source_dir, target_idx)
+    os.makedirs(shard_dir, exist_ok=True)
     suffix = f"{offset // 1_000_000}M" if offset and offset % 1_000_000 == 0 else str(offset)
     name = f"PRIME_WINDOW_10p{floor}_off_{suffix}.bin"
-    open(os.path.join(source_dir, name), "wb").close()
+    open(os.path.join(shard_dir, name), "wb").close()
 
 
 def main():

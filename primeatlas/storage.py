@@ -30,6 +30,7 @@ import os
 import re
 
 import prime_sieve_v1
+import window_sharding
 
 LOW_FLOOR_CUTOFF = 7  # duplicated from prime_sieve_v3.py/v4.py's own LOW_FLOOR_CUTOFF (see
                       # that constant's docstring for the full rationale: floors 0..6 are
@@ -59,21 +60,22 @@ def list_pietra(portal_folder):
     return sorted(result)
 
 
+def _is_prime_window_name(name):
+    return name.startswith("PRIME_WINDOW_") and name.endswith(".bin")
+
+
 def list_source_files(portal_folder, base_exponent):
     """Returns a list of (filename, full_path, header_dict) for every PRIME_WINDOW_*.bin
-    under 10p{base_exponent}/source_primes/, sorted into ascending window order (by the
-    base prime in each file's header -- robust to filename shorthand like "10M" vs "0",
-    unlike trying to re-parse format_offset()'s abbreviation back into a number). Files
-    that fail to parse (corrupt/truncated) are still listed, with header=None, rather than
-    silently dropped -- a browsing tool should surface problems, not hide them."""
+    under 10p{base_exponent}/source_primes/ (sharded into shard_NNNNN subfolders -- see
+    window_sharding.py, task #405 -- so this walks those via list_sharded_files() rather
+    than a flat os.listdir()), sorted into ascending window order (by the base prime in
+    each file's header -- robust to filename shorthand like "10M" vs "0", unlike trying
+    to re-parse format_offset()'s abbreviation back into a number). Files that fail to
+    parse (corrupt/truncated) are still listed, with header=None, rather than silently
+    dropped -- a browsing tool should surface problems, not hide them."""
     source_dir = os.path.join(portal_folder, f"10p{base_exponent}", "source_primes")
-    if not os.path.isdir(source_dir):
-        return []
     entries = []
-    for name in sorted(os.listdir(source_dir)):
-        if not (name.startswith("PRIME_WINDOW_") and name.endswith(".bin")):
-            continue
-        path = os.path.join(source_dir, name)
+    for name, path in window_sharding.list_sharded_files(source_dir, predicate=_is_prime_window_name):
         try:
             header = prime_sieve_v1.read_prime_window_header(path)
         except Exception:
@@ -115,23 +117,21 @@ def _offset_from_filename(name):
 
 
 def list_source_filenames(portal_folder, base_exponent):
-    """Cheap listing of every PRIME_WINDOW_*.bin under 10p{base_exponent}/source_primes/:
-    just os.listdir() + a regex per name, NO file opens. Sorted ascending by the offset
-    parsed from the filename (see _offset_from_filename) -- a floor can hold thousands of
-    windows (10p15 alone is past 2,600+ and still growing), and list_source_files()'s
-    per-file header read is exactly what made expanding a heavily-populated floor node
-    freeze the GUI. Returns [(name, path), ...]; headers are read separately, only for
-    whichever page is actually being displayed (see read_source_file_headers())."""
+    """Cheap listing of every PRIME_WINDOW_*.bin under 10p{base_exponent}/source_primes/
+    (sharded into shard_NNNNN subfolders -- see window_sharding.py, task #405): a cheap
+    listdir per shard subfolder + a regex per name, NO file opens. Sorted ascending by
+    the offset parsed from the filename (see _offset_from_filename) -- a floor can hold
+    thousands of windows (10p15 alone is past 2,600+ and still growing, 10p25 past
+    500,000 -- see window_sharding.py's own docstring on why this can no longer be a
+    single flat directory at all), and list_source_files()'s per-file header read is
+    exactly what made expanding a heavily-populated floor node freeze the GUI. Returns
+    [(name, path), ...]; headers are read separately, only for whichever page is
+    actually being displayed (see read_source_file_headers())."""
     source_dir = os.path.join(portal_folder, f"10p{base_exponent}", "source_primes")
-    if not os.path.isdir(source_dir):
-        return []
-    entries = []
-    for name in os.listdir(source_dir):
-        if not (name.startswith("PRIME_WINDOW_") and name.endswith(".bin")):
-            continue
-        entries.append((_offset_from_filename(name), name))
+    entries = [(_offset_from_filename(name), name, path)
+               for name, path in window_sharding.list_sharded_files(source_dir, predicate=_is_prime_window_name)]
     entries.sort(key=lambda e: (e[0] is None, e[0], e[1]))
-    return [(name, os.path.join(source_dir, name)) for _offset, name in entries]
+    return [(name, path) for _offset, name, path in entries]
 
 
 def read_source_file_headers(entries):

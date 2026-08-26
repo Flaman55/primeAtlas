@@ -80,6 +80,7 @@ _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 # folder ../prime_sieve/.
 sys.path.insert(0, os.path.join(_SCRIPT_DIR, "..", "prime_sieve"))
 import prime_sieve_v1  # noqa: E402
+import window_sharding  # noqa: E402
 
 from pattern_catalog_v1 import PATTERN_CATALOG  # noqa: E402
 
@@ -130,6 +131,15 @@ def list_source_windows(base_exponent):
     10p{base_exponent}/source_primes/, ordered ascending by base_prime (from each file's
     header -- robust regardless of filename shorthand).
 
+    SHARDING (added 2026-08-27, task #405): source_primes/ is sharded into shard_NNNNN
+    subfolders (see window_sharding.py) -- this is the exact function whose flat
+    os.listdir() previously implicated a real crash: floor 25's 542,001-file flat
+    directory made WSL's own process die silently mid-scan (no Python traceback) at
+    200000/542001 windows in, root-caused to WSL/Windows filesystem interop degrading at
+    100k+ entries in one directory. window_sharding.list_sharded_files() walks each
+    shard subfolder (never more than SHARD_SIZE entries each) instead of listing
+    source_dir directly.
+
     WINDOW_INDEX.tsv cache (added 2026-08-23, at Artur's request -- floor 25's 542k-file
     source_primes/ was making every run of this function, and therefore every run of
     process_floor()/list_pietra_with_data(), open and read the header of ALL 542k files
@@ -148,13 +158,13 @@ def list_source_windows(base_exponent):
     O(all files on the floor) into O(files added since last run) -- for a floor that's
     already fully scanned, that's typically zero."""
     source_dir = os.path.join(PORTAL_FOLDER, f"10p{base_exponent}", "source_primes")
-    if not os.path.isdir(source_dir):
+    sharded_files = window_sharding.list_sharded_files(
+        source_dir,
+        predicate=lambda name: name.startswith("PRIME_WINDOW_") and name.endswith(".bin"))
+    if not sharded_files:
         return []
-    names_on_disk = sorted(
-        name for name in os.listdir(source_dir)
-        if name.startswith("PRIME_WINDOW_") and name.endswith(".bin"))
-    if not names_on_disk:
-        return []
+    paths_by_name = dict(sharded_files)
+    names_on_disk = sorted(paths_by_name.keys())
 
     names_on_disk_set = set(names_on_disk)
     index = {name: base_prime for name, base_prime in _read_window_index(base_exponent).items()
@@ -162,11 +172,11 @@ def list_source_windows(base_exponent):
     new_names = [name for name in names_on_disk if name not in index]
     if new_names:
         for name in new_names:
-            header = prime_sieve_v1.read_prime_window_header(os.path.join(source_dir, name))
+            header = prime_sieve_v1.read_prime_window_header(paths_by_name[name])
             index[name] = header["base_prime"]
         _write_window_index(base_exponent, index)
 
-    entries = [(name, os.path.join(source_dir, name), index[name]) for name in names_on_disk]
+    entries = [(name, paths_by_name[name], index[name]) for name in names_on_disk]
     entries.sort(key=lambda e: (e[2] is None, e[2] if e[2] is not None else 0, e[0]))
     return entries
 
@@ -183,7 +193,14 @@ def list_pietra_with_data():
     already-fully-indexed floor is free, but for a floor never indexed yet (e.g. the very
     first run after a large floor like 10p25 first gets data) meant paying the full
     header-read-every-file cost a SECOND time on top of the one process_floor() itself
-    needs -- effectively doubling floor 25's worst-case startup cost for no benefit."""
+    needs -- effectively doubling floor 25's worst-case startup cost for no benefit.
+
+    SHARDING (task #405): source_primes/ now only ever directly contains shard_NNNNN
+    subfolders (see window_sharding.py) -- a bare os.listdir(source_dir) would only ever
+    see those subfolder names, never an actual PRIME_WINDOW_*.bin file, so "has_window"
+    is checked one level down, inside the FIRST existing shard subfolder only (any floor
+    with data has a non-empty shard_00000) -- still a cheap, bounded listdir, not a full
+    window_sharding.list_sharded_files() walk across every shard."""
     if not os.path.isdir(PORTAL_FOLDER):
         return []
     result = []
@@ -193,9 +210,12 @@ def list_pietra_with_data():
             source_dir = os.path.join(PORTAL_FOLDER, name, "source_primes")
             if not os.path.isdir(source_dir):
                 continue
-            has_window = any(
-                fn.startswith("PRIME_WINDOW_") and fn.endswith(".bin")
-                for fn in os.listdir(source_dir))
+            has_window = False
+            for _shard_name, shard_path in window_sharding.iter_shard_dirs(source_dir):
+                if any(fn.startswith("PRIME_WINDOW_") and fn.endswith(".bin")
+                       for fn in os.listdir(shard_path)):
+                    has_window = True
+                    break
             if has_window:
                 result.append(base_exponent)
     return sorted(result)

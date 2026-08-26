@@ -7,6 +7,8 @@ import math
 import concurrent.futures
 from concurrent.futures import ProcessPoolExecutor
 
+import window_sharding
+
 
 MAX_WORKERS = 24
 ZONE_A_SEGMENTS = 200     # geometric chunks for sieving primes <= combined_size (expensive marking loops)
@@ -552,9 +554,10 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True):
     # only the aggregate count is kept (total_primes_found below), handed back to the caller
     # via write_scan_metrics_handoff() since there are no files left for it to read counts
     # back from otherwise.
+    # Sharded (see window_sharding.py, task #405): no single directory ever holds more
+    # than SHARD_SIZE window files, regardless of floor size -- floor_folder itself is
+    # therefore never created/listed directly, only its shard_NNNNN subfolders are.
     floor_folder = os.path.join(BASE_STORAGE_10PN, f"10p{base_power}", "source_primes")
-    if write_files:
-        os.makedirs(floor_folder, exist_ok=True)
 
     total_primes_found = 0
     for wi, (distance, w) in enumerate(windows):
@@ -564,7 +567,9 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True):
 
         offset = distance - BASE
         target_tag = f"10p{base_power}_off_{format_offset(offset)}"
-        window_path = os.path.join(floor_folder, f"PRIME_WINDOW_{target_tag}.bin")
+        window_index = window_sharding.shard_index_for_offset(offset, window_m)
+        shard_folder = window_sharding.shard_dir(floor_folder, window_index)
+        window_path = os.path.join(shard_folder, f"PRIME_WINDOW_{target_tag}.bin")
         generated_at = int(time.time())
 
         if write_files:
@@ -573,6 +578,7 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True):
             free_locally = np.nonzero(~segment)[0]
             candidates = [distance + int(k) for k in free_locally if (distance + int(k)) > 1]
             total_primes_found += len(candidates)
+            os.makedirs(shard_folder, exist_ok=True)
             write_prime_window(window_path, candidates, generated_at=generated_at)
             # No per-window print here -- it would be redundant once run via
             # orchestrator_loop_v2.py, which already reports the true written range from disk

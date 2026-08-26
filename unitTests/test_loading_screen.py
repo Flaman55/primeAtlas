@@ -76,13 +76,17 @@ def _pump(app, seconds):
 
 def main():
     import prime_sieve_v1
+    import window_sharding
 
     tmp_portal = tempfile.mkdtemp(prefix="primeatlas_loading_screen_test_")
     try:
+        # source_primes/ is sharded into shard_NNNNN subfolders (see window_sharding.py,
+        # task #405) -- offset 0 always lands in shard_00000.
         source_dir = os.path.join(tmp_portal, "10p0", "source_primes")
-        os.makedirs(source_dir, exist_ok=True)
+        shard_dir = window_sharding.shard_dir(source_dir, 0)
+        os.makedirs(shard_dir, exist_ok=True)
         prime_sieve_v1.write_prime_window(
-            os.path.join(source_dir, "PRIME_WINDOW_10p0_off_0.bin"), [2, 3, 5, 7])
+            os.path.join(shard_dir, "PRIME_WINDOW_10p0_off_0.bin"), [2, 3, 5, 7])
 
         _patch_messageboxes()
 
@@ -137,9 +141,14 @@ def main():
         # sequential status states, not a bug). The grand total itself is a better,
         # non-timing-dependent proxy that the seeded floor was genuinely read: 4
         # primes (2,3,5,7) were written into it above.
-        check(app._grand_total_sum == 4,
+        #
+        # _grand_total_sum lives on app._totals_search (TotalsSearchCoordinator),
+        # not on app itself -- moved there by task #410's coordinator extraction
+        # (2026-08-26); this assertion was left pointing at the pre-extraction
+        # location and only surfaced once actually run under real Tk (task #416).
+        check(app._totals_search._grand_total_sum == 4,
               f"totals worker actually summed the seeded floor's real prime count "
-              f"(got _grand_total_sum={app._grand_total_sum!r})")
+              f"(got _grand_total_sum={app._totals_search._grand_total_sum!r})")
 
         # --- re-entrancy: a reload triggered while one is still in flight coalesces -
         # into a single pending rerun, not a second overlapping scan thread.

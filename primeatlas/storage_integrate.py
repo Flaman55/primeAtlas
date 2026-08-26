@@ -33,7 +33,10 @@ settings_tab.py.
 import os
 import shutil
 
+import window_sharding
+
 from .manifest import PietroSnapshot, ConstellationSnapshot
+from .storage import _offset_from_filename
 from .delete_manager import FloorWiper
 from . import floor_meta
 
@@ -94,10 +97,15 @@ def plan_integration(destination_path, external_path):
         if not missing_windows and not missing_hits:
             continue
 
+        # source_primes/ is sharded into shard_NNNNN subfolders (see window_sharding.py,
+        # task #405) -- resolve real external-side paths via one list_sharded_files()
+        # walk rather than assuming a flat os.path.join(ext_source_dir, name).
         ext_source_dir = _floor_source_dir(external_path, base_exponent)
         ext_const_dir = _floor_const_dir(external_path, base_exponent)
+        ext_window_paths = dict(window_sharding.list_sharded_files(ext_source_dir))
         missing_bytes = sum(
-            _file_size_or_zero(os.path.join(ext_source_dir, name)) for name in missing_windows
+            _file_size_or_zero(ext_window_paths.get(name, os.path.join(ext_source_dir, name)))
+            for name in missing_windows
         ) + sum(
             _file_size_or_zero(os.path.join(ext_const_dir, rel)) for rel in missing_hits
         )
@@ -187,6 +195,12 @@ def integrate_floor(destination_path, external_path, base_exponent,
     ext_source_dir = _floor_source_dir(external_path, base_exponent)
     dest_const_dir = _floor_const_dir(destination_path, base_exponent)
     ext_const_dir = _floor_const_dir(external_path, base_exponent)
+    # source_primes/ is sharded on both sides (see window_sharding.py, task #405): the
+    # external (read) side is resolved via one list_sharded_files() walk; the
+    # destination (write) side picks a shard via shard_dir_for_restored_offset() since
+    # the file's original window_m isn't recorded anywhere this merge can see -- see
+    # that helper's own docstring for why bucketing by its default is still safe.
+    ext_window_paths = dict(window_sharding.list_sharded_files(ext_source_dir))
 
     try:
         for i, name in enumerate(missing_windows):
@@ -195,8 +209,10 @@ def integrate_floor(destination_path, external_path, base_exponent,
                 raise IntegrationCancelled()
             if progress_cb is not None:
                 progress_cb("window", name, i, total)
-            _stream_copy_plain(os.path.join(ext_source_dir, name),
-                                os.path.join(dest_source_dir, name))
+            src_path = ext_window_paths.get(name, os.path.join(ext_source_dir, name))
+            dst_shard_dir = window_sharding.shard_dir_for_restored_offset(
+                dest_source_dir, _offset_from_filename(name))
+            _stream_copy_plain(src_path, os.path.join(dst_shard_dir, name))
             copied_windows += 1
 
         for j, rel_path in enumerate(missing_hits):

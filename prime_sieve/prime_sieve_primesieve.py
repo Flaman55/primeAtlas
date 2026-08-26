@@ -8,6 +8,8 @@ import os
 import sys
 import time
 
+import window_sharding
+
 VERSION = "v1.0"
 
 # ==========================================================================================
@@ -573,9 +575,13 @@ def generate_floor_windows(base_power, target_idx_start, target_idx_count, windo
             segment = primes[lo_i:hi_i]
             count = len(segment)
             if write_files:
+                # Sharded (see window_sharding.py, task #405) -- a low floor always
+                # writes its one window at offset 0, so it always lands in
+                # shard_00000.
                 folder = os.path.join(portal_folder, f"10p{floor}", "source_primes")
-                os.makedirs(folder, exist_ok=True)
-                path = os.path.join(folder, f"PRIME_WINDOW_10p{floor}_off_0.bin")
+                shard_folder = window_sharding.shard_dir(folder, 0)
+                os.makedirs(shard_folder, exist_ok=True)
+                path = os.path.join(shard_folder, f"PRIME_WINDOW_10p{floor}_off_0.bin")
                 write_prime_window(path, segment, generated_at=generated_at)
             total_primes_found += count
             windows_processed += 1
@@ -585,9 +591,11 @@ def generate_floor_windows(base_power, target_idx_start, target_idx_count, windo
               f"{low_floor_segments[-1][0]} written complete -- floor {skipped_floor} would "
               f"be cut off by this batch's range, so it was skipped (not written partially).")
     else:
+        # Sharded (see window_sharding.py, task #405): no single directory ever holds
+        # more than SHARD_SIZE window files, regardless of floor size -- floor_folder
+        # itself is therefore never created/listed directly, only its shard_NNNNN
+        # subfolders are.
         floor_folder = os.path.join(portal_folder, f"10p{base_power}", "source_primes")
-        if write_files:
-            os.makedirs(floor_folder, exist_ok=True)
         window_lo = combined_lo
         while window_lo < combined_hi:
             window_hi = min(window_lo + window_m, combined_hi)
@@ -597,7 +605,10 @@ def generate_floor_windows(base_power, target_idx_start, target_idx_count, windo
             if write_files:
                 offset = window_lo - BASE
                 target_tag = f"10p{base_power}_off_{format_offset(offset)}"
-                path = os.path.join(floor_folder, f"PRIME_WINDOW_{target_tag}.bin")
+                window_index = window_sharding.shard_index_for_offset(offset, window_m)
+                shard_folder = window_sharding.shard_dir(floor_folder, window_index)
+                os.makedirs(shard_folder, exist_ok=True)
+                path = os.path.join(shard_folder, f"PRIME_WINDOW_{target_tag}.bin")
                 write_prime_window(path, segment, generated_at=generated_at)
             total_primes_found += len(segment)
             windows_processed += 1

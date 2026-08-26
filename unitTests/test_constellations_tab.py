@@ -103,10 +103,15 @@ def main():
         primes_1000_1100 = _primes_in(1000, 1100)
         check(P in primes_1000_1100, f"fixture sanity: {P} is prime (got primes: {primes_1000_1100[:5]}...)")
 
+        # source_primes/ is sharded into shard_NNNNN subfolders (see window_sharding.py,
+        # task #405) -- placed under shard_00000, matching how a real low-index window
+        # would land.
+        import window_sharding
         floor3_dir = os.path.join(tmp_portal, "10p3", "source_primes")
-        os.makedirs(floor3_dir, exist_ok=True)
+        floor3_shard_dir = window_sharding.shard_dir(floor3_dir, 0)
+        os.makedirs(floor3_shard_dir, exist_ok=True)
         prime_sieve_v1.write_prime_window(
-            os.path.join(floor3_dir, "PRIME_WINDOW_0000001000.bin"), primes_1000_1100)
+            os.path.join(floor3_shard_dir, "PRIME_WINDOW_0000001000.bin"), primes_1000_1100)
 
         k = 2
         variant = pattern_catalog_v1.patterns_for_k(k)[0]

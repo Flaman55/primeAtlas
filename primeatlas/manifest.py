@@ -25,6 +25,8 @@ import re
 import json
 import datetime
 
+import window_sharding
+
 from . import floor_meta
 
 _PIETRO_DIR_RE = re.compile(r"^10p(\d+)$")
@@ -127,10 +129,12 @@ class PietroSnapshot:
         re-reading the same root file per floor) -- optional so this can still be called
         standalone (e.g. from tests) with totals_cache=None, in which case
         totals_cache_entry is simply left None."""
+        # source_primes/ is sharded into shard_NNNNN subfolders (see window_sharding.py,
+        # task #405) -- a bare os.listdir(source_dir) would only ever see those
+        # subfolder names, never match _SOURCE_WINDOW_RE against an actual filename.
         source_dir = os.path.join(storage_path, f"10p{base_exponent}", "source_primes")
-        names = []
-        if os.path.isdir(source_dir):
-            names = [n for n in os.listdir(source_dir) if _SOURCE_WINDOW_RE.match(n)]
+        names = [name for name, _path in window_sharding.list_sharded_files(
+            source_dir, predicate=_SOURCE_WINDOW_RE.match)]
 
         meta = floor_meta.load_floor_meta(storage_path, base_exponent)
         meta_rows = meta["benchmark_rows"] if meta else []

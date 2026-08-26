@@ -90,10 +90,14 @@ def main():
         # name (see prime_sieve_v1.main_batch_scanner's own PRIME_WINDOW_10p{N}_off_{...}
         # naming), unlike the simple "PRIME_WINDOW_{start}.bin" name the search-worker
         # test uses (that feature reads window headers directly instead).
+        # source_primes/ is sharded into shard_NNNNN subfolders (see window_sharding.py,
+        # task #405) -- offset 0 always lands in shard_00000.
+        import window_sharding
         source_dir = os.path.join(tmp_portal, "10p0", "source_primes")
-        os.makedirs(source_dir, exist_ok=True)
+        shard_dir = window_sharding.shard_dir(source_dir, 0)
+        os.makedirs(shard_dir, exist_ok=True)
         prime_sieve_v1.write_prime_window(
-            os.path.join(source_dir, "PRIME_WINDOW_10p0_off_0.bin"), [2, 3, 5, 7])
+            os.path.join(shard_dir, "PRIME_WINDOW_10p0_off_0.bin"), [2, 3, 5, 7])
 
         shown = _patch_messageboxes()
 

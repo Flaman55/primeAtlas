@@ -14,6 +14,8 @@ import os
 import re
 import csv
 
+import window_sharding
+
 
 def _parse_bool_arg(value):
     """Parses a CLI flag as a boolean. Primary form: 0/1 -- quicker to type on the WSL
@@ -32,21 +34,27 @@ def find_auto_start(base_exponent, portal_folder, window_m):
     """Looks for already-written PRIME_WINDOW_*.bin files for this base_exponent under
     portal_folder/10p{N}/source_primes/. Returns the target_idx right AFTER the highest
     window already done -- a safe continuation point with no manual offset arithmetic.
-    Returns None if nothing was found (caller should then use the fallback)."""
+    Returns None if nothing was found (caller should then use the fallback).
+
+    source_primes/ is sharded into shard_NNNNN subfolders (see window_sharding.py, task
+    #405) -- a bare os.listdir(source_dir) would only ever see those subfolder names,
+    never match this function's own filename pattern, silently breaking auto-continue
+    (every run would look like "nothing written yet" and restart from the fallback
+    instead of actually resuming). window_sharding.list_sharded_files() walks each
+    shard subfolder instead."""
     pattern = re.compile(rf"^PRIME_WINDOW_10p{base_exponent}_off_(\d+)(M)?\.bin$")
     highest_target_idx = None
 
     source_dir = os.path.join(portal_folder, f"10p{base_exponent}", "source_primes")
-    if os.path.isdir(source_dir):
-        for name in os.listdir(source_dir):
-            m = pattern.match(name)
-            if not m:
-                continue
-            number = int(m.group(1))
-            offset = number * 1_000_000 if m.group(2) else number
-            target_idx = offset // window_m
-            if highest_target_idx is None or target_idx > highest_target_idx:
-                highest_target_idx = target_idx
+    for name, _path in window_sharding.list_sharded_files(source_dir):
+        m = pattern.match(name)
+        if not m:
+            continue
+        number = int(m.group(1))
+        offset = number * 1_000_000 if m.group(2) else number
+        target_idx = offset // window_m
+        if highest_target_idx is None or target_idx > highest_target_idx:
+            highest_target_idx = target_idx
 
     if highest_target_idx is None:
         return None

@@ -83,28 +83,35 @@ def _primes_upto(n):
 
 def main():
     import prime_sieve_v1
+    import window_sharding
 
     tmp_portal = tempfile.mkdtemp(prefix="primeatlas_primes_tab_test_")
     try:
+        # source_primes/ is sharded into shard_NNNNN subfolders (see window_sharding.py,
+        # task #405) -- every fixture window below is placed under shard_00000, which is
+        # valid regardless of how many windows share it (SHARD_SIZE=5000 is just a cap).
+        #
         # Floor 10p0: a single small window, seeded specifically so PAGE_SIZE=5 (see
         # below) splits its 10 primes into exactly 2 preview pages.
         floor0_dir = os.path.join(tmp_portal, "10p0", "source_primes")
-        os.makedirs(floor0_dir, exist_ok=True)
+        floor0_shard_dir = window_sharding.shard_dir(floor0_dir, 0)
+        os.makedirs(floor0_shard_dir, exist_ok=True)
         floor0_primes = _primes_upto(30)  # 2,3,5,7,...,29 -> 10 primes
         check(len(floor0_primes) == 10, f"fixture sanity: 10 primes below 30 (got {len(floor0_primes)})")
         prime_sieve_v1.write_prime_window(
-            os.path.join(floor0_dir, "PRIME_WINDOW_0000000000.bin"), floor0_primes)
+            os.path.join(floor0_shard_dir, "PRIME_WINDOW_0000000000.bin"), floor0_primes)
 
         # Floor 10p3: 7 separate window files -- with FLOOR_PAGE_SIZE monkeypatched to 3
         # below, this spans exactly 3 floor-nav pages (3+3+1).
         floor3_dir = os.path.join(tmp_portal, "10p3", "source_primes")
-        os.makedirs(floor3_dir, exist_ok=True)
+        floor3_shard_dir = window_sharding.shard_dir(floor3_dir, 0)
+        os.makedirs(floor3_shard_dir, exist_ok=True)
         for i in range(7):
             start = 1000 + i * 100
             primes = [p for p in range(start, start + 100)
                       if p > 1 and all(p % d for d in range(2, int(p ** 0.5) + 1))]
             prime_sieve_v1.write_prime_window(
-                os.path.join(floor3_dir, f"PRIME_WINDOW_{start:010d}.bin"), primes)
+                os.path.join(floor3_shard_dir, f"PRIME_WINDOW_{start:010d}.bin"), primes)
 
         shown = _patch_messageboxes()
 

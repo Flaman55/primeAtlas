@@ -50,8 +50,20 @@ import gzip
 import shutil
 import datetime
 
+import window_sharding
+
 from .manifest import PietroSnapshot, ConstellationSnapshot, _save_json_atomic, _load_json_best_effort
+from .storage import _offset_from_filename
 from . import floor_meta
+
+# Used ONLY to pick a shard for a window being restored onto the live side (see
+# restore_floor_from_full_backup() below) -- every engine's own actual window_m is at
+# LEAST this value (see storage.py's own LOW_FLOOR_CUTOFF docstring: "window_m's
+# smallest value is 10,000,000"), so bucketing by this constant instead of the floor's
+# real (unknown at restore time -- not itself part of any manifest) window_m still
+# guarantees at most SHARD_SIZE files per shard, never more, regardless of what the
+# floor's actual window_m originally was.
+_RESTORE_SHARD_WINDOW_M = 10_000_000
 
 FULL_BACKUP_META_FILENAME = "full_backup_meta.json"
 GZ_SUFFIX = ".gz"
@@ -279,6 +291,12 @@ def copy_floor_increment(storage_path, destination_root, base_exponent,
     const_dir = os.path.join(storage_path, f"10p{base_exponent}", "constellations")
     dest_const_dir = _dest_const_dir(destination_root, base_exponent)
 
+    # source_primes/ is sharded into shard_NNNNN subfolders (see window_sharding.py,
+    # task #405) -- a filename alone (as stored in PietroSnapshot.filenames /
+    # missing_windows) no longer maps to os.path.join(source_dir, name) directly, so
+    # resolve real paths via one list_sharded_files() walk up front rather than per file.
+    live_paths_by_name = dict(window_sharding.list_sharded_files(source_dir))
+
     try:
         for i, name in enumerate(missing_windows):
             if should_stop is not None and should_stop():
@@ -286,7 +304,8 @@ def copy_floor_increment(storage_path, destination_root, base_exponent,
                 raise BackupCancelled()
             if progress_cb is not None:
                 progress_cb("window", name, i, total)
-            _stream_copy(os.path.join(source_dir, name),
+            live_path = live_paths_by_name.get(name, os.path.join(source_dir, name))
+            _stream_copy(live_path,
                          os.path.join(dest_source_dir, name + GZ_SUFFIX), compress=True)
             copied_windows += 1
 
@@ -399,8 +418,18 @@ def restore_floor_from_full_backup(storage_path, destination_root, base_exponent
                 raise BackupCancelled()
             if progress_cb is not None:
                 progress_cb("window", name, i, total)
+            # Restoring INTO source_primes/ must still land in a shard_NNNNN subfolder
+            # (see window_sharding.py, task #405), not directly under source_dir. The
+            # floor's actual original window_m isn't recorded anywhere restorable here,
+            # but _RESTORE_SHARD_WINDOW_M (see this module's own comment on it) still
+            # guarantees a bounded shard size regardless.
+            offset = _offset_from_filename(name)
+            window_index = (window_sharding.shard_index_for_offset(offset, _RESTORE_SHARD_WINDOW_M)
+                             if offset is not None else 0)
+            shard_folder = window_sharding.shard_dir(source_dir, window_index)
+            os.makedirs(shard_folder, exist_ok=True)
             _stream_copy(os.path.join(dest_source_dir, name + GZ_SUFFIX),
-                         os.path.join(source_dir, name), compress=False)
+                         os.path.join(shard_folder, name), compress=False)
             restored_windows += 1
 
         for j, rel_path in enumerate(missing_hits):

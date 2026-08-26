@@ -27,6 +27,8 @@ import shutil
 import re
 import csv
 
+import window_sharding
+
 _PIETRO_DIR_RE = re.compile(r"^10p(\d+)$")
 _SOURCE_WINDOW_RE = re.compile(r"^PRIME_WINDOW_10p\d+_off_(\d+)(M)?\.bin$")
 _CONSTELLATION_K_RE = re.compile(r"^k(\d+)$")
@@ -147,13 +149,17 @@ class FloorWiper:
 
     def plan_floor(self, base_exponent):
         """Dry-run for delete_floor(): (window_count, hit_count) currently under
-        10p{base_exponent}, without touching anything on disk."""
+        10p{base_exponent}, without touching anything on disk.
+
+        source_primes/ is sharded into shard_NNNNN subfolders (see window_sharding.py,
+        task #405) -- window_count is counted via window_sharding.count_sharded_files()
+        rather than a bare os.listdir(source_dir), which would only ever see those
+        shard subfolder names, never match _SOURCE_WINDOW_RE against an actual
+        filename."""
         floor_dir = os.path.join(self.storage_path, f"10p{base_exponent}")
         source_dir = os.path.join(floor_dir, "source_primes")
-        window_count = 0
-        if os.path.isdir(source_dir):
-            window_count = sum(
-                1 for n in os.listdir(source_dir) if _SOURCE_WINDOW_RE.match(n))
+        window_count = window_sharding.count_sharded_files(
+            source_dir, predicate=_SOURCE_WINDOW_RE.match)
         hit_count = self._count_hits(floor_dir)
         return window_count, hit_count
 

@@ -13,6 +13,8 @@ next pending floor instead of starting over.
 import os
 import json
 
+import window_sharding
+
 STATUS_PENDING = "pending"
 STATUS_RUNNING = "running"
 STATUS_PAUSED = "paused"
@@ -223,11 +225,23 @@ def delete_extra_files(storage_path, base_exponent, extra_windows, extra_hits):
     errors = []
     pietro_dir = os.path.join(storage_path, f"10p{base_exponent}")
     source_dir = os.path.join(pietro_dir, "source_primes")
+    # source_primes/ is sharded into shard_NNNNN subfolders (see window_sharding.py,
+    # task #405) -- a plain filename from extra_windows no longer maps to
+    # os.path.join(source_dir, fname) directly, so resolve real paths via one
+    # list_sharded_files() walk up front. Any name not found on disk at all (already
+    # gone somehow) is skipped rather than raising -- matches the pre-existing
+    # best-effort, "one bad file doesn't abort the rest" philosophy below.
+    window_paths_by_name = dict(window_sharding.list_sharded_files(source_dir))
+    touched_shard_dirs = set()
     for fname in extra_windows:
-        path = os.path.join(source_dir, fname)
+        path = window_paths_by_name.get(fname)
+        if path is None:
+            errors.append(f"{fname}: not found on disk")
+            continue
         try:
             os.remove(path)
             deleted += 1
+            touched_shard_dirs.add(os.path.dirname(path))
         except OSError as e:
             errors.append(f"{fname}: {e}")
     const_dir = os.path.join(pietro_dir, "constellations")
@@ -242,6 +256,9 @@ def delete_extra_files(storage_path, base_exponent, extra_windows, extra_hits):
             errors.append(f"{rel_path}: {e}")
 
     pruned = 0
+    for shard_dir in touched_shard_dirs:
+        if _prune_if_empty(shard_dir):
+            pruned += 1
     for variant_dir in touched_variant_dirs:
         if _prune_if_empty(variant_dir):
             pruned += 1

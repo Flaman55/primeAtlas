@@ -65,6 +65,7 @@ def check(condition, message):
 
 def main():
     import prime_sieve_v1
+    import window_sharding
     import constellation_finder_v1 as cf
 
     tmp_portal = tempfile.mkdtemp(prefix="primeatlas_constellation_engine_test_")
@@ -73,9 +74,16 @@ def main():
                                         # as the Tk-based tests monkeypatching PORTAL_FOLDER
 
         def _write_window(floor, name, primes):
+            # source_primes/ is sharded into shard_NNNNN subfolders (see
+            # window_sharding.py, task #405) -- constellation_finder_v1.list_source_
+            # windows() now walks those via list_sharded_files() rather than a flat
+            # os.listdir(), so fixtures must be placed the same way real writers do.
+            # Any valid shard placement works for a test this small; shard_00000
+            # (window_index=0) is simplest and matches how a real low floor writes.
             source_dir = os.path.join(tmp_portal, f"10p{floor}", "source_primes")
-            os.makedirs(source_dir, exist_ok=True)
-            path = os.path.join(source_dir, name)
+            shard_dir = window_sharding.shard_dir(source_dir, 0)
+            os.makedirs(shard_dir, exist_ok=True)
+            path = os.path.join(shard_dir, name)
             prime_sieve_v1.write_prime_window(path, sorted(primes))
             return path
 

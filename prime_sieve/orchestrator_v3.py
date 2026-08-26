@@ -14,6 +14,8 @@ except ImportError:
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import window_sharding
+
 # ------------------------------------------------------------------------------------------
 # ENGINE SWITCH -- change ONLY this one flag to flip which scanner generation (v3, v4, or
 # v4.1) this orchestrator drives. Previously this meant editing SCRIPT_NAME (below) AND the
@@ -94,21 +96,25 @@ def format_duration(seconds):
 def find_auto_start(base_exponent, portal_folder, window_m):
     """Unchanged from orchestrator_v2.py -- see that file's docstring. The on-disk PGS2
     window format/filename convention is unchanged by v3 (only how the sieve gets there
-    internally changed)."""
+    internally changed).
+
+    source_primes/ is sharded into shard_NNNNN subfolders (see window_sharding.py, task
+    #405) -- a bare os.listdir(source_dir) would only ever see those subfolder names,
+    never match this function's own filename pattern, silently breaking auto-continue.
+    window_sharding.list_sharded_files() walks each shard subfolder instead."""
     pattern = re.compile(rf"^PRIME_WINDOW_10p{base_exponent}_off_(\d+)(M)?\.bin$")
     highest_target_idx = None
 
     source_dir = os.path.join(portal_folder, f"10p{base_exponent}", "source_primes")
-    if os.path.isdir(source_dir):
-        for name in os.listdir(source_dir):
-            m = pattern.match(name)
-            if not m:
-                continue
-            number = int(m.group(1))
-            offset = number * 1_000_000 if m.group(2) else number
-            target_idx = offset // window_m
-            if highest_target_idx is None or target_idx > highest_target_idx:
-                highest_target_idx = target_idx
+    for name, _path in window_sharding.list_sharded_files(source_dir):
+        m = pattern.match(name)
+        if not m:
+            continue
+        number = int(m.group(1))
+        offset = number * 1_000_000 if m.group(2) else number
+        target_idx = offset // window_m
+        if highest_target_idx is None or target_idx > highest_target_idx:
+            highest_target_idx = target_idx
 
     if highest_target_idx is None:
         return None

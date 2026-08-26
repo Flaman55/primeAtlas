@@ -91,15 +91,19 @@ def _pump(app, seconds):
 
 def main():
     import prime_sieve_v1
+    import window_sharding
 
     tmp_portal = tempfile.mkdtemp(prefix="primeatlas_search_worker_test_")
     try:
+        # source_primes/ is sharded into shard_NNNNN subfolders (see window_sharding.py,
+        # task #405) -- offset 0 always lands in shard_00000.
         source_dir = os.path.join(tmp_portal, "10p3", "source_primes")
-        os.makedirs(source_dir, exist_ok=True)
+        shard_dir = window_sharding.shard_dir(source_dir, 0)
+        os.makedirs(shard_dir, exist_ok=True)
         primes = [p for p in range(100, 200)
                   if p > 1 and all(p % d for d in range(2, int(p ** 0.5) + 1))]
         prime_sieve_v1.write_prime_window(
-            os.path.join(source_dir, "PRIME_WINDOW_0000000100.bin"), primes)
+            os.path.join(shard_dir, "PRIME_WINDOW_0000000100.bin"), primes)
 
         shown = _patch_messageboxes()
 

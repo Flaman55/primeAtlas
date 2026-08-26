@@ -59,12 +59,19 @@ def check(condition, message):
 
 
 def _touch_window(portal, floor, target_idx, window_m=10_000_000):
+    """source_primes/ is sharded into shard_NNNNN subfolders (see window_sharding.py,
+    task #405) -- placed via window_sharding.shard_dir() with the real target_idx as
+    window_index (target_idx IS the window's 0-based generation-order index, matching
+    every real writer's own offset // window_m math), so the sharded layout this test
+    produces matches what a real engine run would have produced."""
+    import window_sharding
     offset = target_idx * window_m
     source_dir = os.path.join(portal, f"10p{floor}", "source_primes")
-    os.makedirs(source_dir, exist_ok=True)
+    shard_dir = window_sharding.shard_dir(source_dir, target_idx)
+    os.makedirs(shard_dir, exist_ok=True)
     suffix = f"{offset // 1_000_000}M" if offset and offset % 1_000_000 == 0 else str(offset)
     name = f"PRIME_WINDOW_10p{floor}_off_{suffix}.bin"
-    open(os.path.join(source_dir, name), "wb").close()
+    open(os.path.join(shard_dir, name), "wb").close()
 
 
 def _patch_app_settings(app_settings):

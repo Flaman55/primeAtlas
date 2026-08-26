@@ -9,6 +9,8 @@ import math
 import concurrent.futures
 from concurrent.futures import ProcessPoolExecutor
 
+import window_sharding
+
 
 VERSION = "v4.1"   # bump this whenever this file changes, so console output alone identifies
                     # exactly which iteration of the code produced it.
@@ -711,12 +713,15 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
             lo_rel = floor_lo - combined_lo
             segment = full_unpacked[lo_rel:lo_rel + w]
 
+            # Sharded (see window_sharding.py, task #405) -- a low floor always writes
+            # its one window at offset 0, so it always lands in shard_00000.
             this_floor_folder = os.path.join(BASE_STORAGE_10PN, f"10p{floor}", "source_primes")
-            window_path = os.path.join(this_floor_folder, f"PRIME_WINDOW_10p{floor}_off_0.bin")
+            this_shard_folder = window_sharding.shard_dir(this_floor_folder, 0)
+            window_path = os.path.join(this_shard_folder, f"PRIME_WINDOW_10p{floor}_off_0.bin")
             generated_at = int(time.time())
 
             if write_files:
-                os.makedirs(this_floor_folder, exist_ok=True)
+                os.makedirs(this_shard_folder, exist_ok=True)
                 free_locally = np.nonzero(~segment)[0]
                 candidates = [floor_lo + int(k) for k in free_locally if (floor_lo + int(k)) > 1]
                 count = len(candidates)
@@ -750,9 +755,10 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
         print("=" * 70)
         return
 
+    # Sharded (see window_sharding.py, task #405): no single directory ever holds more
+    # than SHARD_SIZE window files, regardless of floor size -- floor_folder itself is
+    # therefore never created/listed directly, only its shard_NNNNN subfolders are.
     floor_folder = os.path.join(BASE_STORAGE_10PN, f"10p{base_power}", "source_primes")
-    if write_files:
-        os.makedirs(floor_folder, exist_ok=True)
 
     # Per-window unpacking -- unchanged from prime_sieve_v3.py (see that file's header for the
     # full rationale: cuts peak memory for this step from O(combined_size) to O(window_m)).
@@ -776,13 +782,16 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
 
         offset = distance - BASE
         target_tag = f"10p{base_power}_off_{format_offset(offset)}"
-        window_path = os.path.join(floor_folder, f"PRIME_WINDOW_{target_tag}.bin")
+        window_index = window_sharding.shard_index_for_offset(offset, window_m)
+        shard_folder = window_sharding.shard_dir(floor_folder, window_index)
+        window_path = os.path.join(shard_folder, f"PRIME_WINDOW_{target_tag}.bin")
         generated_at = int(time.time())
 
         if write_files:
             free_locally = np.nonzero(~segment)[0]
             candidates = [distance + int(k) for k in free_locally if (distance + int(k)) > 1]
             total_primes_found += len(candidates)
+            os.makedirs(shard_folder, exist_ok=True)
             write_prime_window(window_path, candidates, generated_at=generated_at)
             bytes_written += os.path.getsize(window_path)   # v4.1
         else:
