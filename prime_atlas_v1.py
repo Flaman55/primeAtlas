@@ -1679,10 +1679,12 @@ def _build_gui():
             own docstring for why this ONE shared helper stays here instead of moving
             into primeatlas/ alongside everything else this tab needed."""
             from primeatlas.benchmark_tab import BenchmarkTab
+            from primeatlas.theme import palette_for
             self.benchmark_tab_widget = BenchmarkTab(
                 self.benchmark_tab, get_portal_folder=lambda: PORTAL_FOLDER,
                 status_var=self.status, translator=TRANSLATOR,
-                update_nav_controls=_update_nav_controls)
+                update_nav_controls=_update_nav_controls,
+                theme_palette=palette_for(APP_SETTINGS.theme))
             self.benchmark_tab_widget.pack(fill="both", expand=True)
 
     return PortalBrowserApp

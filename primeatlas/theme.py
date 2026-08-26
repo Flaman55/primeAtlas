@@ -14,6 +14,21 @@ settings_tab.py's _build_general_tab) -- same restart-required UX as the languag
 switch (i18n.py), for the same reason: re-styling every already-built widget live
 would be a much larger, riskier change than re-applying colors once at the next
 startup.
+
+tree_group_bg/tree_stat_bg: per-row highlight colors for a Treeview's own
+tag_configure() calls (NOT covered by ttk.Style() -- a tag's background overrides the
+base "Treeview" style per-row, see _apply_theme()'s own docstring for the ttk-vs-tk
+split, this is a THIRD case: a ttk widget's per-item override that also bypasses
+Style()). Added 2026-08-26 after a real bug report: the Benchmark tab's own floor-
+grouping/stats-row highlights (primeatlas/benchmark_tab.py's "pietro"/"stat" tags)
+used to be hardcoded to these same two light colors regardless of theme, with no
+matching foreground override -- in dark mode that meant light Treeview text on a
+light hardcoded background, unreadable except when a row was actually selected (the
+selection highlight uses select_bg/select_fg instead, unaffected). Light theme's
+values here are exactly the previous hardcoded ones (zero visual change there); dark
+theme's are dark-tinted equivalents (blue-ish/amber-ish) paired with this theme's own
+`fg` for the tag's foreground, so the same grouping/highlight effect stays visible in
+both themes.
 """
 
 DEFAULT_THEME = "light"
@@ -32,6 +47,8 @@ THEMES = {
         "console_fg": "#000000",
         "tree_bg": "#ffffff",
         "tree_alt_bg": "#f5f5f5",
+        "tree_group_bg": "#eef3fb",
+        "tree_stat_bg": "#fff6d8",
         "tab_bg": "#e1e1e1",
         "tab_selected_bg": "#ffffff",
     },
@@ -48,6 +65,8 @@ THEMES = {
         "console_fg": "#d4d4d4",
         "tree_bg": "#313335",
         "tree_alt_bg": "#3a3d3f",
+        "tree_group_bg": "#2f3b4a",
+        "tree_stat_bg": "#4a4020",
         "tab_bg": "#3c3f41",
         "tab_selected_bg": "#2b2b2b",
     },

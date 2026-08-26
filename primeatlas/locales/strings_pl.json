@@ -310,6 +310,7 @@
   "gen.ktuple_error_numeric_fields": "Pola liczbowe (liczba lokalizacji, szerokość okna, start/szerokość fragmentu, głębokość dzielenia próbnego, rundy Millera-Rabina) muszą być liczbami całkowitymi.",
   "gen.ktuple_error_manual_offsets": "Strategia 'Ręczna' wymaga co najmniej jednego offsetu (liczby całkowite oddzielone spacją lub przecinkiem).",
   "gen.error_field_int": "Pole '{field}' musi być dodatnią liczbą całkowitą.",
+  "gen.error_launch_failed": "Nie udalo sie uruchomic generowania: {error}",
   "gen.error_base_exponent_int": "Piętro (base_exponent) musi być puste albo liczbą całkowitą.",
   "gen.dialog_title": "Generowanie",
   "gen.status_progress_prep": "[*] Generowanie: przygotowanie sita bazowego (pi(L_final)) gotowe, start sitowania...",
