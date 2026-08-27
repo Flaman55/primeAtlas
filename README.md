@@ -588,9 +588,15 @@ Run_PrimeAtlas_Hidden.vbs    launches the GUI with no console window
 history (one `PortalBrowserApp(tk.Tk)` class holding every tab's widgets, state, and
 event handlers together). The `refactor` branch (2026-08-23/24) split it tab by tab into
 the `primeatlas/*_tab.py` classes listed above, in order from smallest to largest, and
-shrank `prime_atlas_v1.py` itself down to ~1,700 lines. The result is not yet a fully
-"clean" object-oriented architecture (see "Known gaps" below), but every GUI tab is now
-a properly encapsulated unit instead of a slice of one giant class:
+shrank `prime_atlas_v1.py` itself down to ~1,700 lines. `refactor-phase2` (task #410,
+2026-08-26) and `refactor-phase3` (2026-08-27) continued past the tab split, pulling the
+remaining genuinely cross-tab ORCHESTRATION logic (not owned by any one tab) into its own
+small coordinator classes -- `TotalsSearchCoordinator`, `PrimesTreeCoordinator`,
+`ConstellationsTreeCoordinator`, `GenerationOfferCoordinator` (all four in
+`primeatlas/`, one file each) -- bringing `prime_atlas_v1.py` down to ~1,200 lines. The
+result is not yet a fully "clean" object-oriented architecture (see "Known gaps" below),
+but every GUI tab -- and now every cross-tab coordination concern -- is a properly
+encapsulated unit instead of a slice of one giant class:
 
 - **One `ttk.Frame` subclass per tab**, in its own file, constructed with explicit
   dependency injection -- e.g. `GenerationTab(parent, get_portal_folder, status_var,
@@ -611,27 +617,32 @@ a properly encapsulated unit instead of a slice of one giant class:
   and a `feature_tab.py` that imports it and builds the widgets. The pure-logic half is
   what `unitTests/test_generation_window_arithmetic.py` and friends exercise directly,
   with no display needed at all.
-- **`prime_atlas_v1.py` is a composition root, not a dead file.** It still owns
-  everything that's genuinely CROSS-tab rather than owned by exactly one tab: the
+- **`prime_atlas_v1.py` is a composition root, not a dead file.** It still owns the
   module-level globals every tab needs (`PORTAL_FOLDER`, `TRANSLATOR`/`T`,
-  `APP_SETTINGS`, `PAGE_SIZE`/`FLOOR_PAGE_SIZE`), the two `PersistentWorker`s more than
-  one tab shares (`_totals_worker` for the per-floor totals cache, `_search_worker` for
-  prime/constellation search), the Prime-numbers/Constellations background tree-scan
-  jobs, the notebook/sub-notebook construction and build order (`_build_primes_section`
-  etc.), and three small "generate the missing data, then retry" methods
-  (`_offer_generate_missing_prime_window`, `_offer_generate_missing_constellation`,
-  `_goldbach_offer_generate_missing_range`) that legitimately need to reach across tabs
-  (search lives in one tab, generation in another). Its own `__init__` builds tabs in a
-  fixed order specifically because `GenerationTab` needs `ResearchGoldbachTab` to
+  `APP_SETTINGS`, `PAGE_SIZE`/`FLOOR_PAGE_SIZE`), the notebook/sub-notebook construction
+  and build order (`_build_primes_section` etc.), and a handful of genuine multi-tab
+  glue methods that reach into more than one sibling tab's widgets directly
+  (`_select_constellations_hits_view`, `_jump_records_detail_to_hits`,
+  `_on_const_search_result`, `_set_portal_folder`). Everything that used to be
+  cross-tab STATE + WORKER ownership -- the two shared `PersistentWorker`s (totals
+  cache, prime/constellation search), the Prime-numbers/Constellations background
+  tree-scan jobs, and the three "generate the missing data, then retry" methods -- now
+  lives in the four coordinator classes named above instead, constructed once in
+  `__init__` right after the tabs that need them exist, and reached via a handful of
+  one-line delegating methods (`reload_primes_tree()`,
+  `_offer_generate_missing_prime_window()`, ...) kept on `PortalBrowserApp` purely so
+  every existing caller keeps working unchanged. Its own `__init__` still builds tabs
+  in a fixed order specifically because `GenerationTab` needs `ResearchGoldbachTab` to
   already exist (it's passed in directly, `research_goldbach_tab_widget=...`) -- see
   the `loading_steps` tuple in `__init__` for the exact order if you're adding a tab
   with its own cross-tab dependency.
-- **Reverse-direction coupling is explicit, not implicit.** The three "offer to
-  generate missing data" methods above reach INTO a tab widget's internals via a local
-  alias, e.g. `gen = self.generation_tab_widget; gen._quick_gen_plan_literal_range(...)`
-  -- these are the only points in the whole app where app-level code touches a tab's
-  otherwise-private (`_`-prefixed) methods, and each such touch point is called out in
-  both the caller's and the tab class's own docstring.
+- **Reverse-direction coupling is explicit, not implicit.** `GenerationOfferCoordinator`
+  (`primeatlas/generation_offer_coordinator.py`) reaches INTO the Generation tab
+  widget's internals via a local alias, e.g. `gen = self._get_generation_tab_widget();
+  gen._quick_gen_plan_literal_range(...)` -- these are the only points in the whole app
+  where coordinator-level code touches a tab's otherwise-private (`_`-prefixed)
+  methods, and each such touch point is called out in both the caller's and the tab
+  class's own docstring.
 - **Background jobs** go through `primeatlas/background.py`: `run_in_background()` for
   a one-shot call (fire a thread, poll for the result, done), `PersistentWorker` for a
   tab that submits many jobs of the same kind over its lifetime (one daemon thread, one
@@ -639,21 +650,25 @@ a properly encapsulated unit instead of a slice of one giant class:
   that tab's OWN `__init__` now (e.g. `PrimalityTab._primality_worker`) -- only the two
   genuinely shared ones above stay on `PortalBrowserApp` itself.
 
-**Known gaps** (remaining candidates for further `refactor-phase2` work): as of this
-branch, all 9 tab classes now subclass `primeatlas/base_tab.py`'s `BaseTab(ttk.Frame)`,
-which standardizes `__init__(self, parent, translator)` (`self.T = translator`) plus
-two helpers that were byte-for-byte duplicated across several tabs --
-`_copy_to_clipboard(text)` and `_start_busy_progress()`/`_stop_busy_progress()` (the
-shared `totals_progress` bar's indeterminate-spin/reset cycle). Each tab's own
-constructor signature is still exactly as varied as it needs to be -- BaseTab only
-factors out the ONE thing every class shared, not a rigid shape every tab must fit.
-`PortalBrowserApp` is still a single class doing composition + shared-worker ownership
-+ the reverse-coupling glue above; it's far smaller than before but still one "God
-object" for orchestration. The pure-logic backend modules (`generation.py`,
-`storage.py`, `benchmark.py`, `constellations.py`, `primality.py`, ...) are collections
-of free functions rather than classes -- a deliberate choice (easier to unit-test as
-pure functions than as stateful objects) but worth naming explicitly if "more
-object-oriented" is the goal for further phases.
+**Known gaps** (remaining candidates for further `refactor-phase3`+ work): all 9 tab
+classes subclass `primeatlas/base_tab.py`'s `BaseTab(ttk.Frame)`, which standardizes
+`__init__(self, parent, translator)` (`self.T = translator`) plus two helpers that were
+byte-for-byte duplicated across several tabs -- `_copy_to_clipboard(text)` and
+`_start_busy_progress()`/`_stop_busy_progress()` (the shared `totals_progress` bar's
+indeterminate-spin/reset cycle). Each tab's own constructor signature is still exactly
+as varied as it needs to be -- BaseTab only factors out the ONE thing every class
+shared, not a rigid shape every tab must fit. `PortalBrowserApp` is down to ~1,200 lines
+(from ~1,700 after the Faza 3 tab split, ~10,500 originally) after `refactor-phase2`/
+`refactor-phase3` pulled every shared-worker/background-scan/generation-offer concern
+into the four coordinator classes above -- it's no longer the single "God object" doing
+composition AND state/worker ownership AND reverse-coupling glue all at once, but it's
+still one class for composition (tab construction/build order) plus the handful of
+genuine multi-tab glue methods named above; whether splitting THOSE apart further is
+worth it depends on whether more such methods accumulate. The pure-logic backend
+modules (`generation.py`, `storage.py`, `benchmark.py`, `constellations.py`,
+`primality.py`, ...) are collections of free functions rather than classes -- a
+deliberate choice (easier to unit-test as pure functions than as stateful objects) but
+worth naming explicitly if "more object-oriented" is the goal for further phases.
 
 Generated data is stored under a folder named `CONSTELLATION_PORTAL` (the name predates
 and is independent of the application's own name). By default this folder is created
