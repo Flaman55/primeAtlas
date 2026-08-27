@@ -24,9 +24,10 @@ every source window's header for a floor -- can take ~78s on a heavily-populated
 also stays in prime_atlas_v1.py, for the same "shares the search worker's status/
 progress bar" reason. This tab owns only the DISPLAY side of that worker's results (the
 tree rows, the floor nav's page-total label) via populate_floors()/update_floor_row(),
-called by prime_atlas_v1.py's own worker-result handlers (_on_primes_tree_scan_done/
-_on_pietro_total_ready) instead of those handlers reaching into this tab's tree/state
-attributes directly.
+called by PrimesTreeCoordinator._on_scan_done (primeatlas/primes_tree_coordinator.py,
+moved out of prime_atlas_v1.py itself during the refactor-phase3 branch, 2026-08-27) and
+TotalsSearchCoordinator._on_pietro_total_ready instead of those handlers reaching into
+this tab's tree/state attributes directly.
 
 This is one of only a few files in primeatlas/ that import tkinter -- see
 settings_tab.py's own docstring for the general "pure logic elsewhere" convention this
@@ -285,13 +286,14 @@ class PrimesTab(BaseTab):
     # which stays at the app level (see this class's own docstring) -----------------------
 
     def populate_floors(self, pietra, pietro_total_known, pietro_gen_seconds):
-        """Rebuilds the floor tree from scratch -- called by prime_atlas_v1.py's own
-        _on_primes_tree_scan_done() once reload_primes_tree()'s background disk scan
-        (_primes_tree_scan) returns. pietro_total_known/pietro_gen_seconds are fresh
-        dicts straight from that scan (see _primes_tree_scan()'s own docstring) --
-        stored here (replacing whatever this tab held before), not merged, since the
-        scan itself already re-read both sources of truth (the on-disk totals cache and
-        benchmark_log.csv) from scratch."""
+        """Rebuilds the floor tree from scratch -- called by
+        PrimesTreeCoordinator._on_scan_done (primeatlas/primes_tree_coordinator.py)
+        once reload_primes_tree()'s background disk scan (PrimesTreeCoordinator._scan)
+        returns. pietro_total_known/pietro_gen_seconds are fresh dicts straight from
+        that scan (see _scan()'s own docstring) -- stored here (replacing whatever this
+        tab held before), not merged, since the scan itself already re-read both
+        sources of truth (the on-disk totals cache and benchmark_log.csv) from
+        scratch."""
         T = self.T
         self._pietro_total_known = pietro_total_known
         self._pietro_gen_seconds = pietro_gen_seconds

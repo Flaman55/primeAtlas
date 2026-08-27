@@ -204,11 +204,14 @@ class ConstellationsHitsTab(BaseTab):
     # which stays at the app level (see this class's own docstring) -----------------------
 
     def populate_floors(self, pietra):
-        """Rebuilds the floor tree from scratch -- called by prime_atlas_v1.py's own
-        _on_hits_tree_scan_done() once reload_constellations_tree()'s background disk
-        scan (_constellations_tree_scan) returns. Also drops the hit-set cache -- data
-        on disk may have changed since the last refresh, same reasoning as the
-        original _on_hits_tree_scan_done."""
+        """Rebuilds the floor tree from scratch -- called by
+        ConstellationsTreeCoordinator._on_scan_done
+        (primeatlas/constellations_tree_coordinator.py, moved out of prime_atlas_v1.py
+        itself during the refactor-phase3 branch, 2026-08-27) once
+        reload_constellations_tree()'s background disk scan
+        (ConstellationsTreeCoordinator._scan) returns. Also drops the hit-set cache --
+        data on disk may have changed since the last refresh, same reasoning as the
+        original inline version."""
         T = self.T
         self.hits_tree.delete(*self.hits_tree.get_children())
         for base_exponent in pietra:

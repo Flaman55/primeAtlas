@@ -111,7 +111,12 @@ from primeatlas import (  # noqa: E402
 # totals worker's own job -- moved to primeatlas/totals_search_coordinator.py during
 # the refactor-phase2 branch's "God object" reduction (2026-08-26, see that module's
 # own docstring), alongside the rest of the totals/search PersistentWorker mechanism.
-from primeatlas import background  # noqa: E402
+# background.run_in_background()/read_benchmark_log used to be imported here for
+# _primes_tree_scan/_constellations_tree_scan -- moved out with those two methods
+# themselves to primeatlas/primes_tree_coordinator.py/constellations_tree_coordinator.py
+# during the refactor-phase3 branch's continuation of the same "God object" reduction
+# (2026-08-27, see either module's own docstring); nothing in this file needs either
+# import directly anymore.
 # pdf_writer/benchmark: extracted during the refactor branch's Faza 3 (tab-by-tab
 # backend/UI split, 2026-08-23) -- see those modules' own docstrings. Now that
 # render_constellation_records_pdf has ALSO moved out (to primeatlas/constellations.py,
@@ -120,37 +125,33 @@ from primeatlas import background  # noqa: E402
 # Constellations tabs need lives in primeatlas/benchmark_tab.py and
 # primeatlas/constellations_records_tab.py respectively, imported lazily/locally from
 # inside their own build methods (see _build_gui()'s own lazy-tkinter-import convention).
-from primeatlas.benchmark import read_benchmark_log  # noqa: E402
 # constellations: extracted during the refactor branch's Faza 3 (2026-08-23), alongside
 # the Constellations tab's own UI split (primeatlas/constellations_hits_tab.py,
 # constellations_calc_tab.py, constellations_records_tab.py) -- see that module's own
 # docstring. find_constellation_participation moved out with the search worker itself
 # (primeatlas/totals_search_coordinator.py, refactor-phase2's "God object" reduction,
-# 2026-08-26) -- the two remaining names are still called directly by
-# _constellations_tree_scan/_on_const_search_result below.
-from primeatlas.constellations import (  # noqa: E402
-    floor_has_constellation_hits, list_constellation_hits,
-)
+# 2026-08-26); floor_has_constellation_hits moved out with _constellations_tree_scan
+# itself (refactor-phase3, 2026-08-27, see constellations_tree_coordinator.py's own
+# docstring). list_constellation_hits is the one name still called directly here, by
+# _on_const_search_result below.
+from primeatlas.constellations import list_constellation_hits  # noqa: E402
 # storage: extracted during the refactor branch's Faza 3 (2026-08-23), alongside the
 # "Prime numbers" tab's UI split (primeatlas/primes_tab.py) -- see that module's own
 # docstring. update_pietro_totals_cache/save_totals_cache/format_duration/format_bytes/
 # find_prime_in_floor moved out with the totals/search worker mechanism
 # (primeatlas/totals_search_coordinator.py, refactor-phase2's "God object" reduction,
 # 2026-08-26). list_pietra/list_source_filenames/load_totals_cache/
-# aggregate_write_seconds_by_pietro/LOW_FLOOR_CUTOFF stay -- _primes_tree_scan/
-# _constellations_tree_scan below still call these directly (that background scan
-# itself was never part of the totals/search WORKER mechanism the coordinator now
-# owns -- it's the separate floor-LIST rebuild, see reload_primes_tree()'s own
-# docstring). list_source_files/read_source_file_headers/format_big_int/
+# aggregate_write_seconds_by_pietro moved out with _primes_tree_scan/
+# _constellations_tree_scan themselves (refactor-phase3, 2026-08-27, see
+# primes_tree_coordinator.py/constellations_tree_coordinator.py's own docstrings).
+# LOW_FLOOR_CUTOFF stays -- _build_settings_tab's wsl_helpers dict below still needs
+# it directly. list_source_files/read_source_file_headers/format_big_int/
 # digit_count_floor/_offset_from_filename/FlowRow are no longer called directly
 # here -- their last remaining call sites moved out with the Generation tab
 # (primeatlas/generation.py/generation_tab.py, Faza 3, 2026-08-23) -- every extracted
 # tab module that needs them imports its own copy directly from primeatlas.storage/
 # primeatlas.widgets now.
-from primeatlas.storage import (  # noqa: E402
-    LOW_FLOOR_CUTOFF, list_pietra, list_source_filenames,
-    load_totals_cache, aggregate_write_seconds_by_pietro,
-)
+from primeatlas.storage import LOW_FLOOR_CUTOFF  # noqa: E402
 # generation: extracted during the refactor branch's Faza 3 (tab-by-tab backend/UI
 # split, 2026-08-23), alongside the Generation tab's own UI split
 # (primeatlas/generation_tab.py) -- see that module's own docstring. Only the names
@@ -263,6 +264,8 @@ def _build_gui():
     # directly inside primeatlas/generation_tab.py.
     from primeatlas.settings_tab import SettingsTab
     from primeatlas.totals_search_coordinator import TotalsSearchCoordinator
+    from primeatlas.primes_tree_coordinator import PrimesTreeCoordinator
+    from primeatlas.constellations_tree_coordinator import ConstellationsTreeCoordinator
 
     class PortalBrowserApp(tk.Tk):
         def __init__(self):
@@ -388,6 +391,36 @@ def _build_gui():
                 constellations_hits_tab_widget=self.constellations_hits_tab_widget,
                 on_const_search_result=self._on_const_search_result)
 
+            # Primes-tree/Constellations-tree background scan+reload: two more
+            # methods that used to live directly on this class (_primes_tree_scan/
+            # reload_primes_tree/_on_primes_tree_scan_done and their constellations
+            # counterparts) -- moved into their own primeatlas/primes_tree_coordinator.py
+            # and primeatlas/constellations_tree_coordinator.py during the
+            # refactor-phase3 branch's continuation of the same "God object" reduction
+            # TotalsSearchCoordinator started above (see either module's own docstring).
+            # Constructed here for the same construction-order reason as
+            # TotalsSearchCoordinator: _on_scan_done reaches directly into
+            # primes_tab_widget/constellations_hits_tab_widget, both of which already
+            # exist by this point. reload_primes_tree()/reload_constellations_tree()
+            # below stay as one-line delegating METHODS on this class (not instance
+            # attributes reassigned here) so every existing caller that already holds
+            # a self.reload_primes_tree/self.reload_constellations_tree reference
+            # (PrimesTab, ConstellationsHitsTab, GenerationTab, _set_portal_folder,
+            # the startup kickoff further down) keeps working unchanged, late-bound at
+            # call time exactly like the original inline versions were.
+            self._primes_tree_coord = PrimesTreeCoordinator(
+                self, get_portal_folder=lambda: PORTAL_FOLDER, status_var=self.status,
+                translator=TRANSLATOR, primes_tab_widget=self.primes_tab_widget,
+                totals_search=self._totals_search,
+                prune_empty_pietro_dirs=prune_empty_pietro_dirs,
+                on_startup_scan_done=self._on_tree_startup_scan_done)
+            self._constellations_tree_coord = ConstellationsTreeCoordinator(
+                self, get_portal_folder=lambda: PORTAL_FOLDER, status_var=self.status,
+                translator=TRANSLATOR,
+                constellations_hits_tab_widget=self.constellations_hits_tab_widget,
+                prune_empty_pietro_dirs=prune_empty_pietro_dirs,
+                on_startup_scan_done=self._on_tree_startup_scan_done)
+
             # primesieve calculator worker (Liczby pierwsze -> primesieve sub-tab) and
             # primality-testing worker (Liczby pierwsze -> Testy pierwszosci sub-tab)
             # used to live here as two more hand-attached PersistentWorker instances --
@@ -447,16 +480,29 @@ def _build_gui():
 
         def _finish_loading_screen(self):
             """Reveals the real UI (status_frame + notebook) and tears down the loading
-            overlay -- called once from _on_primes_tree_scan_done/_on_hits_tree_scan_done,
-            whichever of the two startup scans finishes LAST (see _loading_startup_pending's
-            own comment in __init__). Safe to call at most once per app lifetime: both
-            callers null out _loading_startup_pending before calling this, and every other
+            overlay -- called once from _on_tree_startup_scan_done, once whichever of the
+            two startup scans finishes LAST (see _loading_startup_pending's own comment in
+            __init__). Safe to call at most once per app lifetime: _on_tree_startup_scan_done
+            nulls out _loading_startup_pending before calling this, and every other
             reload_*_tree() call site checks that attribute is still a non-empty set before
             ever touching this method."""
             self._loading_bar.stop()
             self._loading_frame.destroy()
             self._status_frame.pack(fill="x", side="bottom")
             self.main_notebook.pack(fill="both", expand=True)
+
+        def _on_tree_startup_scan_done(self, name):
+            """Shared completion seam for BOTH PrimesTreeCoordinator and
+            ConstellationsTreeCoordinator's own on_startup_scan_done callback (see either
+            module's own docstring) -- genuinely shared state (one _loading_startup_pending
+            set, one _finish_loading_screen call) that neither coordinator should own or
+            reach into on the other's behalf, so it stays here rather than moving into
+            either extracted class. `name` is "primes" or "constellations"."""
+            pending = getattr(self, "_loading_startup_pending", None)
+            if pending:
+                pending.discard(name)
+                if not pending:
+                    self._finish_loading_screen()
 
         # Floor-total background worker, prime/constellation search worker: moved to
         # primeatlas/totals_search_coordinator.py's TotalsSearchCoordinator during the
@@ -640,102 +686,24 @@ def _build_gui():
                 submit_totals_job=lambda be: self._totals_search.submit_totals_job(be))
             self.primes_tab_widget.pack(fill="both", expand=True)
 
-        def _primes_tree_scan(self, portal_folder, _report_progress):
-            """Runs OFF the GUI thread (see reload_primes_tree()/background.
-            run_in_background()) -- every line here is pure disk I/O with no widget
-            access, split out of what used to be the first half of reload_primes_tree()
-            itself (Faza 2 of the refactor branch, 2026-08-23). Returns a plain dict;
-            _on_primes_tree_scan_done does all the actual tree/widget mutation back on
-            the main thread. portal_folder is passed in explicitly (captured by the
-            caller at dispatch time) rather than read from the PORTAL_FOLDER global in
-            here, so a storage-path change that happens WHILE this scan is running can
-            never make it silently scan the wrong (newly-current) location.
-
-            See reload_primes_tree()'s OLD docstring (still true, just relocated) for why
-            prune_empty_pietro_dirs() runs unconditionally on every reload, why floors
-            with no PRIME_WINDOW_*.bin files are filtered out, and why the totals caches
-            are reloaded fresh from disk every time rather than only once at startup."""
-            prune_empty_pietro_dirs(portal_folder)
-            pietro_total_known = {}
-            for _key, _entry in load_totals_cache(portal_folder).items():
-                if _key.startswith("10p") and _key[3:].isdigit():
-                    pietro_total_known[int(_key[3:])] = (
-                        _entry.get("total", 0), _entry.get("file_count", 0),
-                        _entry.get("total_bytes", 0))
-            totals_cache = load_totals_cache(portal_folder)  # worker-owned copy
-            pietro_gen_seconds = aggregate_write_seconds_by_pietro(
-                read_benchmark_log(portal_folder)[1])
-            pietra = [be for be in list_pietra(portal_folder)
-                      if list_source_filenames(portal_folder, be)]
-            return {
-                "pietro_total_known": pietro_total_known,
-                "totals_cache": totals_cache,
-                "pietro_gen_seconds": pietro_gen_seconds,
-                "pietra": pietra,
-            }
-
         def reload_primes_tree(self):
             """Rebuilds the floor list from disk (picks up newly created/removed 10pN
-            folders) AND re-runs the totals scan for every floor -- so
-            pressing Refresh after generating new windows is enough to see updated totals,
-            no separate button needed. This is NOT a full re-read of everything: each
-            floor's total is cached (see update_pietro_totals_cache()'s docstring) keyed by
-            filename, so a floor with no new files costs one cheap os.listdir() + an
-            in-memory set diff, and a floor WITH new files only pays for reading THOSE
-            files' headers, not the whole floor again.
+            folders) AND re-runs the totals scan for every floor -- so pressing Refresh
+            after generating new windows is enough to see updated totals, no separate
+            button needed.
 
-            Faza 2 (2026-08-23): the actual disk scan (_primes_tree_scan) now runs on
-            background.run_in_background() instead of the GUI thread -- this method just
-            dispatches it and returns immediately; _on_primes_tree_scan_done does the
-            real tree-population work once the scan comes back. A busy/pending pair of
-            flags coalesces re-entrant calls (e.g. the user mashing Refresh, or a
-            generation-finished callback firing while a Refresh is still in flight) into
-            at most one extra rerun after the in-flight scan settles, rather than
-            spawning a second overlapping scan thread. PORTAL_FOLDER is captured HERE,
-            at dispatch time, and compared again in _on_primes_tree_scan_done -- if a
-            storage-path change rebound the global while this scan was still running, the
-            result is discarded and a fresh scan against the NEW folder is queued instead
-            (see that method's own docstring)."""
-            if getattr(self, "_primes_tree_reload_busy", False):
-                self._primes_tree_reload_pending = True
-                return
-            self._primes_tree_reload_busy = True
-            portal_folder = PORTAL_FOLDER
-            background.run_in_background(
-                self, lambda report_progress: self._primes_tree_scan(portal_folder, report_progress),
-                on_done=lambda result, error: self._on_primes_tree_scan_done(
-                    portal_folder, result, error))
-
-        def _on_primes_tree_scan_done(self, portal_folder, result, error):
-            """Main-thread callback for _primes_tree_scan -- see reload_primes_tree()'s
-            own docstring for the busy/pending/staleness handling this implements."""
-            self._primes_tree_reload_busy = False
-            stale = portal_folder != PORTAL_FOLDER
-            if getattr(self, "_primes_tree_reload_pending", False) or stale:
-                self._primes_tree_reload_pending = False
-                self.reload_primes_tree()
-                return
-            if error is not None:
-                self.status.set(T("primes.status_reload_error", error=str(error)))
-                return
-            self._totals_search.replace_totals_cache(result["totals_cache"])
-            pietra = result["pietra"]
-            # The actual tree rebuild (rows, per-floor known totals/gen-seconds display
-            # state) is owned by PrimesTab now -- see populate_floors()'s own docstring.
-            # This app-level method keeps only the totals_cache resync (now owned by
-            # TotalsSearchCoordinator, unrelated to what any one tab renders), the
-            # status text, kicking off the background totals scan, and the loading-
-            # screen bookkeeping.
-            self.primes_tab_widget.populate_floors(
-                pietra, result["pietro_total_known"], result["pietro_gen_seconds"])
-            self.status.set(T("app.status_portal_with_count", folder=portal_folder, count=len(pietra)))
-            self._totals_search.compute_all_pietro_totals()
-
-            pending = getattr(self, "_loading_startup_pending", None)
-            if pending:
-                pending.discard("primes")
-                if not pending:
-                    self._finish_loading_screen()
+            One-line delegate to primeatlas/primes_tree_coordinator.py's
+            PrimesTreeCoordinator (moved out during the refactor-phase3 branch's
+            continuation of TotalsSearchCoordinator's own "God object" reduction,
+            2026-08-27 -- see that module's own docstring for the full scan/reload/
+            caching/coalescing/staleness design). Kept as a plain class METHOD (not an
+            instance attribute reassigned in __init__) so every existing caller that
+            already holds a self.reload_primes_tree reference (PrimesTab, GenerationTab,
+            _set_portal_folder, the startup kickoff in __init__) keeps working unchanged,
+            late-bound at call time -- self._primes_tree_coord only needs to exist by the
+            time this is actually CALLED, not by the time some other constructor captures
+            this method as a callable."""
+            self._primes_tree_coord.reload()
         # --- Search worker -- moved to primeatlas/totals_search_coordinator.py's
         # TotalsSearchCoordinator alongside the totals worker (see this file's own
         # __init__ / that module's docstring for the refactor-phase2 "God object"
@@ -970,72 +938,20 @@ def _build_gui():
             self.constellations_hits_tab_widget.load_preview()
             self.constellations_hits_tab_widget.jump_preview_to_row(hit_base, position)
 
-        def _constellations_tree_scan(self, portal_folder, _report_progress):
-            """Runs OFF the GUI thread -- see _primes_tree_scan's own docstring for the
-            general shape/rationale (Faza 2 of the refactor branch, 2026-08-23). Same
-            idempotent prune_empty_pietro_dirs() double-call as before (see
-            reload_constellations_tree()'s OLD docstring, relocated below) -- now two
-            INDEPENDENT background threads may call it back-to-back rather than the same
-            GUI-thread call twice in a row, but the function's own try/except around each
-            individual os.rmdir() (see its docstring) already makes that race harmless:
-            worst case, one of the two calls finds a given empty subdir already gone and
-            silently skips it.
-
-            Only floors that actually HAVE at least one detected constellation hit --
-            list_pietra() alone would include every floor with prime data, regardless of
-            whether the constellation finder has ever been run against it (or ran and
-            found nothing), cluttering this tree with entries that only ever expand into
-            an empty "no hits" placeholder. See floor_has_constellation_hits()'s own
-            docstring."""
-            prune_empty_pietro_dirs(portal_folder)
-            pietra = [be for be in list_pietra(portal_folder)
-                      if floor_has_constellation_hits(portal_folder, be)]
-            return {"pietra": pietra}
-
         def reload_constellations_tree(self):
             """Rebuilds the constellation-hits floor list from disk. This tab's own
             Refresh button can be clicked without reload_primes_tree() ever running in
-            the same gesture (e.g. right after constellation-finding finishes -- see
-            _on_constellation_finished()), so its own prune/scan is dispatched
-            independently rather than relying on the OTHER tree's refresh to have
-            already covered it.
+            the same gesture (e.g. right after constellation-finding finishes), so its
+            own prune/scan is dispatched independently rather than relying on the OTHER
+            tree's refresh to have already covered it.
 
-            Faza 2 (2026-08-23): same async split as reload_primes_tree() -- the actual
-            disk scan (_constellations_tree_scan) runs on background.run_in_background(),
-            this method only dispatches it, and _on_hits_tree_scan_done does the real
-            tree-population work once it comes back. Its own busy/pending flags and
-            PORTAL_FOLDER capture-and-compare mirror reload_primes_tree()'s exactly --
-            see that method's docstring for the full reasoning."""
-            if getattr(self, "_hits_tree_reload_busy", False):
-                self._hits_tree_reload_pending = True
-                return
-            self._hits_tree_reload_busy = True
-            portal_folder = PORTAL_FOLDER
-            background.run_in_background(
-                self, lambda report_progress: self._constellations_tree_scan(portal_folder, report_progress),
-                on_done=lambda result, error: self._on_hits_tree_scan_done(
-                    portal_folder, result, error))
-
-        def _on_hits_tree_scan_done(self, portal_folder, result, error):
-            """Main-thread callback for _constellations_tree_scan -- see
-            reload_constellations_tree()'s own docstring for the busy/pending/staleness
-            handling this implements (identical shape to _on_primes_tree_scan_done)."""
-            self._hits_tree_reload_busy = False
-            stale = portal_folder != PORTAL_FOLDER
-            if getattr(self, "_hits_tree_reload_pending", False) or stale:
-                self._hits_tree_reload_pending = False
-                self.reload_constellations_tree()
-                return
-            if error is not None:
-                self.status.set(T("const.status_reload_error", error=str(error)))
-                return
-            self.constellations_hits_tab_widget.populate_floors(result["pietra"])
-
-            pending = getattr(self, "_loading_startup_pending", None)
-            if pending:
-                pending.discard("constellations")
-                if not pending:
-                    self._finish_loading_screen()
+            One-line delegate to primeatlas/constellations_tree_coordinator.py's
+            ConstellationsTreeCoordinator (moved out during the refactor-phase3 branch's
+            continuation of TotalsSearchCoordinator's own "God object" reduction,
+            2026-08-27 -- see that module's own docstring, and
+            primeatlas/primes_tree_coordinator.py's own docstring for why this stays a
+            plain class METHOD rather than an instance attribute)."""
+            self._constellations_tree_coord.reload()
 
         def _on_const_search_result(self, base_exponent, number, prime_result, participation):
             """Thin app-level orchestrator for a "const" search job's completion --

@@ -16,10 +16,13 @@ against a real on-disk portal folder with one seeded floor, and checks:
   2. The seeded floor actually shows up in both trees (i.e. the async scans really did
      run and their on_done callbacks really did populate the widgets, not just leave
      the loading screen up forever or silently do nothing).
-  3. reload_primes_tree() called again while a scan is still in flight sets the
-     "pending" flag instead of spawning a second overlapping scan, and settles cleanly
-     once the in-flight one finishes (the busy/pending re-entrancy guard actually
-     works, not just compiles).
+  3. reload_primes_tree()/reload_constellations_tree() called again while a scan is
+     still in flight sets the "pending" flag instead of spawning a second overlapping
+     scan, and settles cleanly once the in-flight one finishes (the busy/pending
+     re-entrancy guard actually works, not just compiles) -- exercised for BOTH trees'
+     own coordinator (PrimesTreeCoordinator/ConstellationsTreeCoordinator, moved out of
+     PortalBrowserApp itself during the refactor-phase3 branch, 2026-08-27 -- see
+     either module's own docstring), since each owns an independent busy/pending pair.
 
 See test_goldbach_worker.py's own module docstring for the PGS1 filename convention
 this test's seeded window file must follow, and test_search_worker.py's for why
@@ -136,9 +139,9 @@ def main():
               f"(got exponents: {list(app.primes_tab_widget._pietro_node_by_exp.keys())})")
         # Not asserting on app.status.get()'s CONTENT here -- by the time the 5s pump
         # above finishes, the totals worker kicked off at the end of
-        # _on_primes_tree_scan_done has typically already overwritten the "N floors
-        # found" message with its own "GRAND TOTAL" summary (both are legitimate,
-        # sequential status states, not a bug). The grand total itself is a better,
+        # PrimesTreeCoordinator._on_scan_done has typically already overwritten the
+        # "N floors found" message with its own "GRAND TOTAL" summary (both are
+        # legitimate, sequential status states, not a bug). The grand total itself is a better,
         # non-timing-dependent proxy that the seeded floor was genuinely read: 4
         # primes (2,3,5,7) were written into it above.
         #
@@ -152,27 +155,61 @@ def main():
 
         # --- re-entrancy: a reload triggered while one is still in flight coalesces -
         # into a single pending rerun, not a second overlapping scan thread.
-        original_scan = app._primes_tree_scan
+        #
+        # _scan/_busy/_pending now live on app._primes_tree_coord (a
+        # PrimesTreeCoordinator instance), not on app itself -- moved there by task
+        # #421's coordinator extraction (2026-08-27, refactor-phase3, the same
+        # "God object" reduction task #410 started for the totals/search worker
+        # mechanism); app.reload_primes_tree() itself is still the right thing to call
+        # (a one-line delegate, see prime_atlas_v1.py's own docstring for that method).
+        coord = app._primes_tree_coord
+        original_scan = coord._scan
 
         def slow_scan(portal_folder, report_progress):
             time.sleep(0.4)
             return original_scan(portal_folder, report_progress)
 
-        app._primes_tree_scan = slow_scan
+        coord._scan = slow_scan
         app.reload_primes_tree()
-        check(app._primes_tree_reload_busy, "first reload_primes_tree() call marks busy")
+        check(coord._busy, "first reload_primes_tree() call marks busy")
         app.reload_primes_tree()  # fired WHILE the slow scan above is still running
-        check(app._primes_tree_reload_pending,
+        check(coord._pending,
               "second reload_primes_tree() call while busy sets 'pending' instead of "
               "starting a second scan")
         _pump(app, 3.0)
-        app._primes_tree_scan = original_scan
-        check(not app._primes_tree_reload_busy,
+        coord._scan = original_scan
+        check(not coord._busy,
               "re-entrant reload sequence settles (busy cleared) without hanging")
-        check(not app._primes_tree_reload_pending,
+        check(not coord._pending,
               "re-entrant reload sequence clears 'pending' once the coalesced rerun finishes")
         check(0 in app.primes_tab_widget._pietro_node_by_exp,
               "tree is still correctly populated after the re-entrant reload sequence")
+
+        # --- same re-entrancy check for the OTHER tree's coordinator
+        # (ConstellationsTreeCoordinator, primeatlas/constellations_tree_coordinator.py)
+        # -- its own busy/pending pair is entirely independent of PrimesTreeCoordinator's,
+        # so this is its own regression coverage, not just a duplicate of the block above.
+        const_coord = app._constellations_tree_coord
+        original_const_scan = const_coord._scan
+
+        def slow_const_scan(portal_folder, report_progress):
+            time.sleep(0.4)
+            return original_const_scan(portal_folder, report_progress)
+
+        const_coord._scan = slow_const_scan
+        app.reload_constellations_tree()
+        check(const_coord._busy, "first reload_constellations_tree() call marks busy")
+        app.reload_constellations_tree()  # fired WHILE the slow scan above is still running
+        check(const_coord._pending,
+              "second reload_constellations_tree() call while busy sets 'pending' instead "
+              "of starting a second scan")
+        _pump(app, 3.0)
+        const_coord._scan = original_const_scan
+        check(not const_coord._busy,
+              "re-entrant constellations reload sequence settles (busy cleared) without hanging")
+        check(not const_coord._pending,
+              "re-entrant constellations reload sequence clears 'pending' once the "
+              "coalesced rerun finishes")
 
         app.destroy()
     finally:

@@ -109,15 +109,34 @@ def main():
 
         sys.argv = ["prime_atlas_v1.py"]
         import prime_atlas_v1
+
+        # Redirect PORTAL_FOLDER/APP_SETTINGS to tmp_portal BEFORE constructing the
+        # app -- same pattern test_loading_screen.py already uses, and for the same
+        # reason (see that test's own comment): the constructor's own startup
+        # reload_primes_tree()/reload_constellations_tree() calls read the module
+        # global at dispatch time, so redirecting only AFTER construction leaves that
+        # very first scan pointed at whatever real storage path Artur's own
+        # app_settings.json currently has. That real folder has grown to 600k+ files
+        # across dozens of floors since task #417's sharding migration, so that
+        # startup scan can now take long enough to still be in flight when this
+        # test's own app.reload_primes_tree() call (further below) fires -- the
+        # busy/pending coalescing (PrimesTreeCoordinator.reload(), see that module's
+        # own docstring) handles this correctly by re-scanning tmp_portal once the
+        # stale real-folder scan finally settles, but that correction can land its own
+        # "grand total" status message AFTER a search result written in the meantime,
+        # intermittently stomping the "Znaleziono ..." text this test checks for below
+        # (observed 2026-08-27, unrelated to the refactor-phase3 coordinator
+        # extraction itself -- same race existed before it, just needed a large enough
+        # real folder to actually manifest). Redirecting before construction means the
+        # very first scan already targets tmp_portal, so this race can't occur here at
+        # all, independent of how large Artur's real storage happens to be.
+        _patch_app_settings(prime_atlas_v1.APP_SETTINGS)
+        prime_atlas_v1.APP_SETTINGS.set_storage_path(tmp_portal)
+        prime_atlas_v1.PORTAL_FOLDER = tmp_portal
+
         app_cls = prime_atlas_v1._build_gui()
         app = app_cls()
         app.update()
-
-        settings_tab = app.settings_tab
-        _patch_app_settings(settings_tab.app_settings)
-        settings_tab.app_settings.set_storage_path(tmp_portal)
-        settings_tab.wsl["set_portal_folder"](tmp_portal)
-        app.reload_primes_tree()
         _pump(app, 3.0)
 
         # --- "prime" search: found -------------------------------------------------
