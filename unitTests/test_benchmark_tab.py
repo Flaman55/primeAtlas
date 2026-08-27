@@ -414,6 +414,54 @@ def main():
         check(exact_hit is not None and exact_hit[2] == 42 and exact_hit[3] == 1234,
               f"a cursor position exactly on a dot matches that dot's own x_val/y_val "
               f"(got {exact_hit!r})")
+
+        # --- hover tooltip label placement stays within canvas bounds (screenshot bug,
+        # 2026-08-27) -- the tooltip text used to be drawn at a fixed px+12 offset with
+        # no boundary check, so hovering the RIGHTMOST point (the highest floor
+        # plotted, exactly where a user is most likely to hover) pushed its own value
+        # text off the visible canvas and got clipped. That anchor/position decision
+        # was pulled out into _hover_label_position(), a plain function with no
+        # canvas/tkinter dependency (mirroring _nearest_hover_point's own extraction
+        # above, and for the identical reason -- see that function's own comment):
+        # driving this through a real event_generate("<Motion>") on this same
+        # probe_canvas was tried first and found unreliable, because a canvas packed
+        # directly onto an already-fully-laid-out real app window (as done above for
+        # the padding/hover-radius checks) never actually becomes mapped/viewable, and
+        # Tk does not deliver pointer events to an unmapped widget -- exactly the
+        # platform-dependent flakiness _nearest_hover_point's docstring already
+        # describes for real OS-level mouse events.
+        from primeatlas.benchmark_tab import _hover_label_position
+
+        # A point near the RIGHT edge: default placement (px+12) would overflow, so
+        # this must flip to anchor="e" (label grows LEFTWARD from tx) and stay on-screen.
+        tx, ty, anchor = _hover_label_position(
+            px=880, py=110, text_w=120, text_h=14, canvas_width=900, canvas_height=220)
+        check(anchor == "e", f"a point near the right edge flips the label to anchor='e' (got {anchor!r})")
+        check(tx - 120 - 4 >= 0, f"the flipped label's left edge stays on-screen (tx={tx})")
+
+        # A point near the LEFT edge: plenty of room on the right, so the ORIGINAL
+        # anchor="w"/px+12 placement should be kept unchanged (no unnecessary flip).
+        tx, ty, anchor = _hover_label_position(
+            px=20, py=110, text_w=120, text_h=14, canvas_width=900, canvas_height=220)
+        check(anchor == "w" and tx == 32,
+              f"a point near the left edge keeps the default right-hand placement "
+              f"(got anchor={anchor!r}, tx={tx})")
+
+        # A point near the TOP edge: default placement (py-12, i.e. ABOVE the point)
+        # would overflow upward, so this must flip to BELOW the point (ty=py+12)
+        # instead.
+        tx, ty, anchor = _hover_label_position(
+            px=450, py=5, text_w=120, text_h=14, canvas_width=900, canvas_height=220)
+        check(ty == 5 + 12, f"a point near the top edge flips the label below the point (got ty={ty})")
+
+        # A point comfortably in the middle of the canvas keeps the original
+        # upper-right (px+12, py-12) placement -- no flip needed either direction.
+        tx, ty, anchor = _hover_label_position(
+            px=450, py=110, text_w=120, text_h=14, canvas_width=900, canvas_height=220)
+        check((tx, ty, anchor) == (462, 98, "w"),
+              f"a point away from every edge keeps the original px+12/py-12/anchor='w' "
+              f"placement (got {(tx, ty, anchor)!r})")
+
         probe_canvas.destroy()
 
         app.destroy()

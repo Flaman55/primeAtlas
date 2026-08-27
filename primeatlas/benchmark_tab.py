@@ -68,7 +68,51 @@ def _nearest_hover_point(hover_points, x, y, max_distance=14.0):
     return best
 
 
-def _bind_chart_hover(canvas, hover_points, t, fg_color, bg_color):
+def _hover_label_position(px, py, text_w, text_h, canvas_width, canvas_height, pad=4):
+    """Decides where _on_motion (below) should anchor its tooltip TEXT item so it stays
+    inside [0, canvas_width] x [0, canvas_height], given the point being labeled
+    (px, py), the label's own already-measured pixel size (text_w, text_h -- see
+    tkfont.Font.measure()/metrics("linespace") at the call site), and the canvas's
+    LOGICAL size (the same width/height _draw_growth_chart's caller already computed,
+    not a live canvas.winfo_width()/height() query -- see _bind_chart_hover's own
+    docstring for why that distinction matters).
+
+    Returns (tx, ty, anchor) ready for canvas.create_text(). Default placement is to
+    the upper-right of the point (anchor="w", text growing rightward); flips to the
+    LEFT (anchor="e") if the label wouldn't fit on the right, and flips from above to
+    below the point if it wouldn't fit above -- fixing a real bug report (screenshot,
+    2026-08-27) where the tooltip for a point near the chart's right edge (the highest
+    floor plotted, exactly where a user is most likely to hover) got pushed off the
+    visible canvas and clipped.
+
+    Pulled out as a plain function (mirroring _nearest_hover_point above) specifically
+    so this decision is directly unit-testable without a real Tk canvas or event loop:
+    driving it through a synthetic <Motion> event on a probe canvas turned out to be
+    exactly as unreliable as _nearest_hover_point's own docstring already describes for
+    real OS-level mouse events, and for the same underlying reason here too -- a probe
+    canvas packed onto an already-fully-laid-out test window may never actually become
+    mapped/viewable, and Tk does not reliably deliver pointer events to an unmapped
+    widget regardless of how the event is generated."""
+    if px + 12 + text_w + pad <= canvas_width:
+        tx, anchor = px + 12, "w"
+    elif px - 12 - text_w - pad >= 0:
+        tx, anchor = px - 12, "e"
+    else:
+        # Neither side fully fits (a very narrow canvas) -- pick the right side; the
+        # bbox-clamp safety net in _on_motion pulls it back on-screen either way.
+        tx, anchor = px + 12, "w"
+
+    if py - 12 - text_h - pad >= 0:
+        ty = py - 12
+    elif py + 12 + text_h + pad <= canvas_height:
+        ty = py + 12
+    else:
+        ty = py - 12
+
+    return tx, ty, anchor
+
+
+def _bind_chart_hover(canvas, hover_points, t, fg_color, bg_color, width, height):
     """Wires a single-tooltip hover interaction onto `canvas` instead of drawing every
     point's value permanently next to its dot -- with a couple dozen closely-spaced
     floors, the always-on labels used to stack on top of each other into an unreadable
@@ -82,6 +126,15 @@ def _bind_chart_hover(canvas, hover_points, t, fg_color, bg_color):
     and/or secondary) it already computed pixel coordinates for -- this function itself
     has no notion of axes/scales, just "here are some labeled dots".
 
+    width/height: the SAME logical canvas size _draw_growth_chart's caller already
+    computed and used for every other pad_left/plot_w/etc. calculation (added
+    2026-08-27, screenshot bug report) -- used here to keep the tooltip text on-screen
+    instead of querying canvas.winfo_width()/winfo_height(). Those reflect the widget's
+    actual REALIZED on-screen geometry, which can be stale or 1x1 whenever the canvas
+    hasn't been mapped/redrawn yet at the moment a test (or a very fast resize) fires a
+    motion event -- the caller's own width/height are always trustworthy since they're
+    exactly what was just used to place every point on the canvas in the first place.
+
     Rebinding on every redraw (this is called once per _draw_growth_chart invocation,
     i.e. every resize/data refresh) is intentional and cheap: tkinter's bind() replaces
     the previous callback for the same event sequence on the same widget rather than
@@ -94,6 +147,9 @@ def _bind_chart_hover(canvas, hover_points, t, fg_color, bg_color):
     def _on_leave(_event):
         _clear_tip()
 
+    hover_font = ("Consolas", 9, "bold")
+    _hover_font_metrics = tkfont.Font(family="Consolas", size=9, weight="bold")
+
     def _on_motion(event):
         _clear_tip()
         best = _nearest_hover_point(hover_points, event.x, event.y)
@@ -103,12 +159,40 @@ def _bind_chart_hover(canvas, hover_points, t, fg_color, bg_color):
         text = f"{t('bench.axis_pietro')} {x_val}: {fmt.format(y_val)}"
         canvas.create_oval(px - 6, py - 6, px + 6, py + 6, outline=color, width=2,
                             tags="hover_tip")
-        tx, ty = px + 12, py - 12
-        text_id = canvas.create_text(tx, ty, text=text, anchor="w", fill=color,
-                                      font=("Consolas", 9, "bold"), tags="hover_tip")
+
+        # Measuring the text's pixel width up front with the SAME font used to draw it
+        # (via tkfont, already imported for the axis-tick font above) lets
+        # _hover_label_position decide the anchor/position analytically instead of
+        # draw-measure-redraw. Passes width/height straight through from
+        # _bind_chart_hover's own parameters (see that function's docstring), NOT
+        # canvas.winfo_width()/height() -- those can read back stale/1x1 values if the
+        # canvas hasn't been mapped/idle-processed since its last resize, while
+        # width/height are exactly what was just used to place every point here.
+        pad = 4
+        text_w = _hover_font_metrics.measure(text)
+        text_h = _hover_font_metrics.metrics("linespace")
+        tx, ty, anchor_x = _hover_label_position(px, py, text_w, text_h, width, height, pad)
+
+        text_id = canvas.create_text(tx, ty, text=text, anchor=anchor_x, fill=color,
+                                      font=hover_font, tags="hover_tip")
         bbox = canvas.bbox(text_id)
         if bbox:
-            pad = 4
+            # Clamp the drawn bbox back onto the canvas as a final safety net --
+            # covers any residual overflow the estimate above didn't quite catch
+            # (font metrics vs. actual glyph rendering can differ by a pixel or two).
+            dx = 0
+            if bbox[0] - pad < 0:
+                dx = -(bbox[0] - pad)
+            elif bbox[2] + pad > width:
+                dx = width - (bbox[2] + pad)
+            dy = 0
+            if bbox[1] - pad < 0:
+                dy = -(bbox[1] - pad)
+            elif bbox[3] + pad > height:
+                dy = height - (bbox[3] + pad)
+            if dx or dy:
+                canvas.move(text_id, dx, dy)
+                bbox = canvas.bbox(text_id)
             box_id = canvas.create_rectangle(
                 bbox[0] - pad, bbox[1] - pad, bbox[2] + pad, bbox[3] + pad,
                 fill=bg_color, outline=color, tags="hover_tip")
@@ -305,7 +389,7 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
             canvas.create_oval(cx - r, cy - r, cx + r, cy + r, fill="#c0504d", outline="")
             hover_points.append((cx, cy, x_val, y_val, fmt2, "#c0504d", label_key2))
 
-    _bind_chart_hover(canvas, hover_points, t, fg_color, bg_color)
+    _bind_chart_hover(canvas, hover_points, t, fg_color, bg_color, width, height)
 
 
 class BenchmarkTab(BaseTab):
