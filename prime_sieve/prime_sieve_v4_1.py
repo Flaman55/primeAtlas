@@ -166,8 +166,82 @@ def count_sieving_primes_range(start, stop):
 
 SIEVING_PRIMES_COUNT_CACHE_FILENAME = "sieving_primes_count_cache.json"
 
+# KNOWN_PI_10N -- exact pi(10^n) values for n=1..29, transcribed 2026-08-27 from the "x,
+# pi(x)" table on Wikipedia's Prime-counting function page (see KNOWN_PI_SOURCE_URL). That
+# page in turn cites the primary sources for each value (Meissel/Lehmer-method computations
+# by Buethe/Franke/Jost/Kleinjung and Platt up to 10^24-25, Staple for 10^26, and Baugh/
+# Walisch for 10^27-29 -- see the Wikipedia article's own footnotes for full citations).
+#
+# Motivation (Artur, 2026-08-27): count_sieving_primes_cached() below already avoids
+# recounting a floor's ENTIRE [0, L_final] range on every call once a cache exists for that
+# floor (see that function's own docstring) -- but the very FIRST call on a floor still pays
+# the full count_sieving_primes(0, L_final) cost from scratch, which is exactly the
+# "bardzo drogi" case Artur flagged: at floor-scale L_final (order 10^13+) that alone can take
+# minutes. Since L_final = isqrt(combined_hi) is itself only ~half as many digits as the
+# floor it belongs to, a floor most people would ever reach (order 10^58 or below) has an
+# L_final at or below 10^29 -- squarely inside this table's range. Seeding the cold-start
+# count from the largest known pi(10^n) <= L_final and counting only the remaining sliver
+# via count_sieving_primes_range() turns that first-ever call into the same cheap
+# "incremental" shape every SUBSEQUENT call on that floor already gets, instead of a full
+# from-zero recount.
+#
+# This table is used ONLY when use_known_pi_seed=True is explicitly passed through (default
+# False everywhere -- see COMPUTE_SIEVING_PRIMES_COUNT's own comment for the sibling "off by
+# default" reasoning). Even if a transcription error ever crept into a single entry here, the
+# worst case is a wrong number in one benchmark_log.csv diagnostic column -- sieving_primes_
+# count is never read by the sieve/marking logic itself (see this file's very first comment
+# block above), so this table carries zero correctness risk for the actual generated primes.
+KNOWN_PI_SOURCE_URL = "https://en.wikipedia.org/wiki/Prime-counting_function"
 
-def count_sieving_primes_cached(portal_folder, base_power, limit):
+KNOWN_PI_10N = {
+    1: 4,
+    2: 25,
+    3: 168,
+    4: 1229,
+    5: 9592,
+    6: 78498,
+    7: 664579,
+    8: 5761455,
+    9: 50847534,
+    10: 455052511,
+    11: 4118054813,
+    12: 37607912018,
+    13: 346065536839,
+    14: 3204941750802,
+    15: 29844570422669,
+    16: 279238341033925,
+    17: 2623557157654233,
+    18: 24739954287740860,
+    19: 234057667276344607,
+    20: 2220819602560918840,
+    21: 21127269486018731928,
+    22: 201467286689315906290,
+    23: 1925320391606803968923,
+    24: 18435599767349200867866,
+    25: 176846309399143769411680,
+    26: 1699246750872437141327603,
+    27: 16352460426841680446427399,
+    28: 157589269275973410412739598,
+    29: 1520698109714272166094258063,
+}
+
+
+def _seed_from_known_pi(limit):
+    """Returns (seed_l, seed_count, source_url) for the LARGEST 10**n <= limit that
+    KNOWN_PI_10N has an entry for, or None if limit < 10 (no known power of ten fits) or
+    limit is small enough that seeding wouldn't save anything anyway. Pure function, no
+    ctypes/primesieve dependency -- deliberately kept that way so it's unit-testable without
+    the compiled engine .so being present (see this repo's unitTests/ for that test)."""
+    best_n = None
+    for n in KNOWN_PI_10N:
+        if 10 ** n <= limit and (best_n is None or n > best_n):
+            best_n = n
+    if best_n is None:
+        return None
+    return 10 ** best_n, KNOWN_PI_10N[best_n], KNOWN_PI_SOURCE_URL
+
+
+def count_sieving_primes_cached(portal_folder, base_power, limit, use_known_pi_seed=False):
     """pi(limit), reusing a per-floor cache instead of recomputing from 0 every call.
 
     Motivation: repeat calls to this diagnostic on the SAME floor almost always ask for a
@@ -190,9 +264,21 @@ def count_sieving_primes_cached(portal_folder, base_power, limit):
                                                        cache only ever stores a running total up
                                                        to its largest L, not a queryable prefix
                                                        count at arbitrary smaller points.
+
+    use_known_pi_seed (default False, Artur's idea, 2026-08-27): when the "no cache yet"/
+    "smaller limit" cases above would otherwise fall back to a full count_sieving_primes(0,
+    limit) recount, try _seed_from_known_pi(limit) first -- if it finds a known pi(10^n) at or
+    below limit (see KNOWN_PI_10N above), seed from THAT instead of 0 and only actually count
+    the sliver from there up to limit via count_sieving_primes_range(). Turns what would
+    otherwise be the single most expensive call this function ever makes into the same cheap
+    shape as every later "incremental" call. When a seed is used, the cache also records which
+    one (seeded_from: {power_of_ten, value, source}) so the number's provenance stays visible
+    to anyone inspecting the cache file directly -- Artur's own transparency requirement for
+    this feature.
+
     Returns (count, mode) where mode is one of "cold" / "cache_hit" / "incremental" / "shrink"
-    -- purely informational, used by main_batch_scanner()'s timing print so a benchmark run can
-    show which path was actually taken.
+    / "seeded" -- purely informational, used by main_batch_scanner()'s timing print so a
+    benchmark run can show which path was actually taken.
     """
     import json
     cache_dir = os.path.join(portal_folder, f"10p{base_power}")
@@ -205,22 +291,42 @@ def count_sieving_primes_cached(portal_folder, base_power, limit):
     except (OSError, ValueError):
         cached = None
 
+    seeded_from = None
     if cached is None or "l_final" not in cached or "count" not in cached:
-        count = count_sieving_primes(limit)
-        mode = "cold"
+        seed = _seed_from_known_pi(limit) if use_known_pi_seed else None
+        if seed is not None:
+            seed_l, seed_count, source = seed
+            count = seed_count + count_sieving_primes_range(seed_l, limit)
+            mode = "seeded"
+            seeded_from = {"power_of_ten": len(str(seed_l)) - 1, "value": seed_count,
+                            "source": source}
+        else:
+            count = count_sieving_primes(limit)
+            mode = "cold"
     elif limit == cached["l_final"]:
         return cached["count"], "cache_hit"
     elif limit > cached["l_final"]:
         count = cached["count"] + count_sieving_primes_range(cached["l_final"], limit)
         mode = "incremental"
     else:
-        count = count_sieving_primes(limit)
-        mode = "shrink"
+        seed = _seed_from_known_pi(limit) if use_known_pi_seed else None
+        if seed is not None:
+            seed_l, seed_count, source = seed
+            count = seed_count + count_sieving_primes_range(seed_l, limit)
+            mode = "seeded"
+            seeded_from = {"power_of_ten": len(str(seed_l)) - 1, "value": seed_count,
+                            "source": source}
+        else:
+            count = count_sieving_primes(limit)
+            mode = "shrink"
 
     try:
         os.makedirs(cache_dir, exist_ok=True)
+        cache_entry = {"l_final": limit, "count": count}
+        if seeded_from is not None:
+            cache_entry["seeded_from"] = seeded_from
         with open(cache_path, "w", encoding="utf-8") as f:
-            json.dump({"l_final": limit, "count": count}, f)
+            json.dump(cache_entry, f)
     except OSError as e:
         print(f"[!] WARNING: could not write sieving-primes-count cache ({e})")
 
@@ -565,7 +671,7 @@ def _low_floor_segments(base_power, combined_lo, combined_hi):
 
 
 def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
-                        compute_sieving_primes_count=True):
+                        compute_sieving_primes_count=True, use_known_pi_seed=False):
     target_idx_list = sorted(target_idx_list)
     BASE = 10 ** base_power
     windows = [(BASE + idx * window_m, window_m) for idx in target_idx_list]
@@ -597,7 +703,7 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
     if compute_sieving_primes_count:
         t_count_start = time.perf_counter()
         sieving_primes_count, count_mode = count_sieving_primes_cached(
-            BASE_STORAGE_10PN, base_power, L_final)
+            BASE_STORAGE_10PN, base_power, L_final, use_known_pi_seed=use_known_pi_seed)
         t_count = time.perf_counter() - t_count_start
         base_gen_seconds = t_count   # v4.1: was print-only in v4.py, now threaded through to
                                       # write_scan_metrics_handoff() -- see this file's header
@@ -606,6 +712,8 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
             "cache_hit": "cache hit, L_final unchanged since last run on this floor",
             "incremental": "incremental -- reused cached count below the previous L_final",
             "shrink": "full count -- requested L_final smaller than the cached one",
+            "seeded": f"seeded from a known pi(10^n) value (source: {KNOWN_PI_SOURCE_URL}), "
+                      f"only the remaining sliver up to L_final was actually counted",
         }[count_mode]
         print(f"[*] Active sieving primes used (pi(L_final)): {sieving_primes_count:,} "
               f"(computed in {t_count:.3f}s -- {mode_note})")
@@ -902,6 +1010,17 @@ if __name__ == "__main__":
     WINDOW_M = int(sys.argv[8]) if len(sys.argv) > 8 else 10 ** 7
     target_idx_list = list(range(target_idx_start, target_idx_stop + 1))
 
+    # PRIMEATLAS_USE_KNOWN_PI_SEED: same env-var mechanism as CONSTELLATION_PORTAL_DIR above
+    # (not a CLI position) -- this process is normally launched as a subprocess three hops
+    # down from the GUI (Generation tab -> orchestrator_loop_v2.py -> orchestrator_v3.py's
+    # run_batch() -> here), and every hop in that chain launches its child with the default
+    # subprocess env (no env= override anywhere in that chain), so a value set once in the
+    # GUI's own build_wsl_logged_command() env_prefix reaches all the way down here for free,
+    # with no new positional CLI argument threaded through three separate scripts' argv
+    # parsing. See count_sieving_primes_cached()'s own docstring for what this flag does.
+    USE_KNOWN_PI_SEED = bool(int(os.environ.get("PRIMEATLAS_USE_KNOWN_PI_SEED", "0")))
+
     print("Start time:", datetime.datetime.now().strftime("%H:%M:%S"))
     main_batch_scanner(base_exponent, target_idx_list, WINDOW_M, write_files=WRITE_FILES,
-                        compute_sieving_primes_count=COMPUTE_SIEVING_PRIMES_COUNT)
+                        compute_sieving_primes_count=COMPUTE_SIEVING_PRIMES_COUNT,
+                        use_known_pi_seed=USE_KNOWN_PI_SEED)

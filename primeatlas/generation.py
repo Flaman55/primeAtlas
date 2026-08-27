@@ -383,6 +383,7 @@ DEFAULT_GENERATION_SETTINGS = {
         "n_instances": "2",
         "write_files": True,
         "compute_sieving_primes_count": False,
+        "use_known_pi_seed": False,
         "window_count_per_run": "1000",
         "workers": "24",
         "batches_per_worker": "2",
@@ -739,7 +740,8 @@ def generation_log_paths(portal_folder, prefix):
             run_id)
 
 
-def build_wsl_logged_command(argv, windows_log_path, windows_exit_path, portal_folder):
+def build_wsl_logged_command(argv, windows_log_path, windows_exit_path, portal_folder,
+                              use_known_pi_seed=False):
     """Wraps a Linux-side argv (e.g. ["python3", "/mnt/d/.../script.py", "20", ...]) in a
     `wsl.exe -e bash -c "..."` invocation that redirects combined stdout+stderr into
     windows_log_path (translated to its WSL mount path) and writes the process's exit
@@ -750,7 +752,17 @@ def build_wsl_logged_command(argv, windows_log_path, windows_exit_path, portal_f
     the exec-mode `wsl.exe -e <argv>` form used elsewhere in this app deliberately avoids
     a shell entirely for that reason, but the `>`/`;` here are shell syntax and need one. `portal_folder` is the CURRENT storage
     path, passed explicitly by the caller (see this module's own docstring for why -- this
-    function no longer reads a bare PORTAL_FOLDER global)."""
+    function no longer reads a bare PORTAL_FOLDER global).
+
+    use_known_pi_seed (default False, Artur's idea, 2026-08-27): sets
+    PRIMEATLAS_USE_KNOWN_PI_SEED=1 alongside CONSTELLATION_PORTAL_DIR below, using the exact
+    same env-prefix mechanism -- see prime_sieve_v4_1.py's own __main__ block (where it's
+    read) and count_sieving_primes_cached()'s docstring for what it does. Every call site
+    launches a DIFFERENT script (orchestrator_loop_v2.py, orchestrator_v3.py directly,
+    prime_sieve_primesieve.py, ktuple_sieve_v1.py, constellation_finder_v1.py) and only the
+    first two ever read this var -- the others simply ignore an env var they don't check, so
+    it's harmless to leave at its False default for every call site that doesn't pass it
+    explicitly (only the Generation tab's classic-engine Pipeline/Loop launches do)."""
     log_wsl = windows_path_to_wsl(windows_log_path)
     exit_wsl = windows_path_to_wsl(windows_exit_path)
     inner = " ".join(shlex.quote(str(t)) for t in argv)
@@ -763,6 +775,8 @@ def build_wsl_logged_command(argv, windows_log_path, windows_exit_path, portal_f
     # whatever storage path is currently configured, with no per-call-site changes needed.
     portal_wsl = windows_path_to_wsl(portal_folder)
     env_prefix = f"CONSTELLATION_PORTAL_DIR={shlex.quote(portal_wsl)} "
+    if use_known_pi_seed:
+        env_prefix += "PRIMEATLAS_USE_KNOWN_PI_SEED=1 "
     bash_cmd = (f"{env_prefix}{inner} > {shlex.quote(log_wsl)} 2>&1; "
                 f"echo $? > {shlex.quote(exit_wsl)}")
     return ["wsl.exe", "-e", "bash", "-c", bash_cmd]

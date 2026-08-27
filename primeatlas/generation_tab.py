@@ -396,12 +396,43 @@ class GenerationTab(BaseTab):
         ttk.Checkbutton(loop_form, text=self.T("gen.check_write_files"),
                          variable=self._loop_write_files_var).grid(
             row=4, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        # These two checkboxes are mutually exclusive ALTERNATIVES for computing
+        # pi(L_final), not an independent base+modifier pair (Artur, 2026-08-27: picking
+        # one must uncheck the other; both off means "don't compute pi(L_final) at all").
+        # Effective compute_sieving_primes_count sent to the scripts is the OR of the two
+        # (see _collect_loop_settings_from_form()/_on_run_orchestrator_direct()) --
+        # "count sieving primes" means "full recount, no seed", "use Wikipedia seed" means
+        # "count, but seeded" -- see count_sieving_primes_cached()'s own docstring
+        # (prime_sieve_v4_1.py) and build_wsl_logged_command()'s docstring (generation.py)
+        # for the full mechanism.
+        use_pi_seed_initial = bool(loop_settings.get("use_known_pi_seed", False))
         self._loop_count_sieving_var = tk.BooleanVar(
-            value=bool(loop_settings.get("compute_sieving_primes_count", False)))
+            value=bool(loop_settings.get("compute_sieving_primes_count", False))
+            and not use_pi_seed_initial)
         ttk.Checkbutton(
             loop_form, text=self.T("gen.check_count_sieving"),
             variable=self._loop_count_sieving_var).grid(
             row=4, column=2, columnspan=2, sticky="w", pady=(6, 0))
+        self._loop_use_pi_seed_var = tk.BooleanVar(value=use_pi_seed_initial)
+        ttk.Checkbutton(
+            loop_form, text=self.T("gen.check_use_pi_seed"),
+            variable=self._loop_use_pi_seed_var).grid(
+            row=5, column=0, columnspan=4, sticky="w", pady=(0, 0))
+
+        def _on_count_sieving_toggle(*_args):
+            if self._loop_count_sieving_var.get() and self._loop_use_pi_seed_var.get():
+                self._loop_use_pi_seed_var.set(False)
+
+        def _on_use_pi_seed_toggle(*_args):
+            if self._loop_use_pi_seed_var.get() and self._loop_count_sieving_var.get():
+                self._loop_count_sieving_var.set(False)
+
+        # trace_add fires on every write, but each handler only ever acts when BOTH vars
+        # are True at once (impossible to sustain past this callback), so there's no
+        # infinite ping-pong -- setting the other var to False triggers its own trace,
+        # which sees its own condition (get() and other.get()) already false and no-ops.
+        self._loop_count_sieving_var.trace_add("write", _on_count_sieving_toggle)
+        self._loop_use_pi_seed_var.trace_add("write", _on_use_pi_seed_toggle)
 
         loop_btn_row = ttk.Frame(loop_advanced_content)
         loop_btn_row.pack(fill="x", pady=(6, 0))
@@ -1500,7 +1531,10 @@ class GenerationTab(BaseTab):
             messagebox.showerror(self.T("quick.dialog_title"), self.T("quick.error_already_running"))
             return
         write_files = self._loop_write_files_var.get()
-        compute_sieving = self._loop_count_sieving_var.get()
+        use_pi_seed = self._loop_use_pi_seed_var.get()
+        # Effective flag: either checkbox on means "compute pi(L_final)" -- see the
+        # mutual-exclusion comment above the two Checkbuttons in _build_generation_tab.
+        compute_sieving = self._loop_count_sieving_var.get() or use_pi_seed
 
         def _positive_int_or(key, default):
             raw = self._loop_vars[key].get().strip()
@@ -1514,7 +1548,9 @@ class GenerationTab(BaseTab):
                 QUICK_GEN_MAX_WINDOW_WIDTH, write_files, compute_sieving,
                 workers, batches_per_worker)
             log_path, exit_path, _run_id = generation_log_paths(self._get_portal_folder(), "orchdirect")
-            cmd = build_wsl_logged_command(argv, log_path, exit_path, self._get_portal_folder())
+            cmd = build_wsl_logged_command(
+                argv, log_path, exit_path, self._get_portal_folder(),
+                use_known_pi_seed=use_pi_seed)
 
             self.loop_console.append(self._new_run_separator())
             self._loop_output_queue = queue.Queue()
@@ -2170,7 +2206,12 @@ class GenerationTab(BaseTab):
                 return None
             parsed[key] = int(raw)
         parsed["write_files"] = self._loop_write_files_var.get()
-        parsed["compute_sieving_primes_count"] = self._loop_count_sieving_var.get()
+        parsed["use_known_pi_seed"] = self._loop_use_pi_seed_var.get()
+        # Effective flag sent to the scripts: either checkbox being on means "compute
+        # pi(L_final)" -- see the mutual-exclusion comment above the two Checkbuttons in
+        # _build_generation_tab for why these are alternatives, not independent toggles.
+        parsed["compute_sieving_primes_count"] = (
+            self._loop_count_sieving_var.get() or parsed["use_known_pi_seed"])
         return parsed
 
     def _on_run_loop(self):
@@ -2188,6 +2229,7 @@ class GenerationTab(BaseTab):
                 "n_instances": str(parsed["n_instances"]),
                 "write_files": parsed["write_files"],
                 "compute_sieving_primes_count": parsed["compute_sieving_primes_count"],
+                "use_known_pi_seed": parsed["use_known_pi_seed"],
                 "window_count_per_run": str(parsed["window_count_per_run"]),
                 "workers": str(parsed["workers"]),
                 "batches_per_worker": str(parsed["batches_per_worker"]),
@@ -2201,7 +2243,9 @@ class GenerationTab(BaseTab):
                 parsed["window_count_per_run"], parsed["workers"], parsed["batches_per_worker"],
                 parsed["window_m"])
             log_path, exit_path, _run_id = generation_log_paths(self._get_portal_folder(), "loop")
-            cmd = build_wsl_logged_command(argv, log_path, exit_path, self._get_portal_folder())
+            cmd = build_wsl_logged_command(
+                argv, log_path, exit_path, self._get_portal_folder(),
+                use_known_pi_seed=parsed["use_known_pi_seed"])
 
             self.loop_console.append(self._new_run_separator())
             self._loop_output_queue = queue.Queue()
