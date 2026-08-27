@@ -61,13 +61,15 @@ interchangeable engine generations, v3/v4/v4.1 -- see "Architecture" below).
 - **Generation** -- two ways to launch the sieve/orchestrator pipeline and the
   constellation finder over WSL, both with live streamed output (stackable across
   runs, detachable into its own window) and a stop control:
-  - **Quick generation** -- four simple modes (Floor only, Range from/to,
-    Exploration, primesieve) that translate a plain request into the right low-level
-    parameters, check what is already on disk first, and report "already in storage"
-    instead of launching a redundant run. An "Auto" button estimates a safe window count
-    from the WSL environment's available RAM (see "Window count, throughput, and RAM"
-    below). See "The primesieve mode" below for how the fourth mode differs from the
-    other three. Exploration mode's own Floor field auto-continues from whichever
+  - **Quick generation** -- five simple modes (Floor only, Range from/to,
+    Exploration, primesieve, cudasieve) that translate a plain request into the right
+    low-level parameters, check what is already on disk first, and report "already in
+    storage" instead of launching a redundant run. An "Auto" button estimates a safe window
+    count from the WSL environment's available RAM (see "Window count, throughput, and RAM"
+    below). See "The primesieve mode" and "The cudasieve mode" below for how the fourth and
+    fifth modes differ from the first three -- cudasieve is an optional, opt-in GPU engine,
+    hidden behind its own installer (Settings > Aktualizacje) and requiring an Nvidia GPU.
+    Exploration mode's own Floor field auto-continues from whichever
     floor currently holds the deepest generated data (leave it blank, or use its
     dedicated Auto button) instead of requiring a manually-typed floor every time, and
     rolls forward into floor 7+ once the fixed floors-0-6 batch is complete, rather
@@ -302,6 +304,44 @@ libprimesieve is an independent, third-party, open-source project by Kim Walisch
 (https://github.com/kimwalisch/primesieve, BSD 2-Clause License) -- see `NOTICE.md` for the
 full attribution. The Quick generation panel shows this attribution directly whenever
 primesieve mode is selected, not just in source comments.
+
+## The cudasieve mode (optional GPU engine)
+
+A fifth engine, `prime_sieve/prime_sieve_cudasieve.py`, shells out to CUDASieve, an
+independent, third-party, GPU-accelerated sieve of Eratosthenes by Curtis Seizert
+(https://github.com/curtisseizert/CUDASieve, **GNU GPLv3** -- a different, copyleft license,
+NOT the same as primesieve's BSD or this project's own). Like primesieve mode, it maps its
+output onto this project's own PGS2 window format and the same sharded `source_primes/`
+folder layout, so a floor it generates is fully interchangeable with one from any other
+engine. UNLIKE primesieve mode, it never links a library into this process at all -- see
+that file's own module header, "PROCESS BOUNDARY, NOT LINKING", for why that distinction
+specifically matters for a GPLv3 dependency: it is invoked purely as a separate OS
+subprocess, never vendored into this repository.
+
+Installing it is entirely optional and opt-in, from Settings > Aktualizacje
+(`primeatlas/settings_tab.py`): the installer clones/builds it fresh from its own GitHub
+repository into your WSL home folder and shows you its ACTUAL, just-fetched `License` file
+text, requiring explicit acceptance before the build step ever runs -- not a copy of the
+license kept in this project. Requires an Nvidia GPU and the CUDA Toolkit (`nvcc`) inside
+WSL; `cmd_build()` autodetects `CUDA_DIR` and the GPU's compute-capability architecture
+flags (via `nvidia-smi`) instead of trusting CUDASieve's own makefile default (Maxwell-era,
+circa 2014), and patches in `-rdc=true`, which modern `nvcc` versions require for
+CUDASieve's own template code to link -- confirmed on real hardware (RTX 5070 + WSL2 +
+CUDA 13.3).
+
+cudasieve mode's Quick generation fields are identical in shape to primesieve mode's own
+(Floor + From + Width, same floor-relative navigation, same uint64-range Width field with
+no RAM-driven cap), with two engine-specific differences: the uint64 ceiling check uses
+CUDASieve's own limit (`2**64 - 1`, same domain as libprimesieve's), and there is an
+additional lower bound -- CUDASieve's own CLI documents that printing individual primes is
+ignored below `2**40` (~1.0995e12). A request entirely below that value is rejected with a
+clear error rather than silently returning an incomplete result; its own Auto button clamps
+a too-low continuation point up to `2**40` instead of handing back a value the engine would
+just reject anyway. Use primesieve, Floor, Range, or Exploration mode for anything below
+that floor. CUDASieve's own README also documents a roughly 1-in-20,000 chance of an
+off-by-one count under concurrent GPU load -- worth keeping in mind for anything where exact
+counts matter; `generate_primes_in_range()` does a strictly-increasing sanity check on the
+returned primes as a (partial) defense against a badly parsed or truncated stdout stream.
 
 ## Window count, throughput, and RAM
 
@@ -557,6 +597,10 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
   prime_sieve_primesieve.py  "primesieve mode" -- calls libprimesieve's own public C API
                               (primesieve_generate_primes()) directly via ctypes, no custom
                               engine or batching pipeline; see "The primesieve mode" above
+  prime_sieve_cudasieve.py   "cudasieve mode" (optional, opt-in) -- shells out to the
+                              third-party CUDASieve GPU CLI as a separate OS process
+                              (never linked, GPLv3 process boundary); see "The cudasieve
+                              mode" above
   primesieve_query.py        one-shot standalone libprimesieve queries (count/nth/
                               next/prev primes) behind the Prime numbers tab's
                               primesieve calculator sub-tab -- independent of

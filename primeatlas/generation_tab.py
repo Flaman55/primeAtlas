@@ -60,6 +60,8 @@ from .generation import (
     _floor_window_count, _KTUPLE_STRATEGY_KEYS, load_generation_settings,
     save_generation_settings, recommended_digit_sweep_n_locations, PRIMESIEVE_MAX_STOP,
     PRIMESIEVE_MAX_WIDTH_MULT, build_loop_argv, build_primesieve_argv,
+    CUDASIEVE_MIN_PRINTABLE_TOP, CUDASIEVE_MAX_STOP, CUDASIEVE_MAX_WIDTH_MULT,
+    build_cudasieve_argv,
     build_orchestrator_direct_argv, build_constellation_finder_argv,
     build_ktuple_sieve_argv, generation_log_paths, build_wsl_logged_command,
     estimate_wsl_available_ram_bytes, recommended_max_windows,
@@ -120,6 +122,17 @@ class GenerationTab(BaseTab):
         # lifecycle as _gen_step_total above.
         self._gen_loop_run_count = None
         self._gen_loop_iteration = None
+        # Whether the CURRENTLY RUNNING engine actually prints anything
+        # _update_shared_progress_from_generation_chunk() can parse mid-run -- see
+        # that method's own _set_gen_progress_bar() helper for the full rationale
+        # (Artur, 2026-08-27: confirmed from a real screenshot that primesieve/
+        # cudasieve mode's own stdout has nothing granular to show, so the bar was
+        # jumping straight from empty to "100% done" with nothing meaningful in
+        # between -- worse than just leaving it alone). Defaults True (the old
+        # batched engine's behavior, which DOES print granular progress); each
+        # _on_run_*() launcher below sets this to match its own engine right before
+        # starting.
+        self._gen_progress_bar_active = True
 
         self._build_generation_tab()
 
@@ -931,6 +944,14 @@ class GenerationTab(BaseTab):
         self.quick_primesieve_floor_var = tk.StringVar(value="")
         self.quick_primesieve_from_var = tk.StringVar(value="")
         self.quick_primesieve_width_var = tk.StringVar(value="1")
+        # cudasieve mode (optional GPU engine, task #460, ported from `cudasieve` branch):
+        # own Floor/From/Width variables, same reasoning as primesieve mode's own three
+        # just above (see _build_quick_mode_primesieve's docstring) -- kept entirely
+        # separate so the two GPU-vs-CPU "fast single-shot" modes never cross-populate
+        # each other's fields on a mode switch.
+        self.quick_cudasieve_floor_var = tk.StringVar(value="")
+        self.quick_cudasieve_from_var = tk.StringVar(value="")
+        self.quick_cudasieve_width_var = tk.StringVar(value="1")
         self.quick_hint_var = tk.StringVar(value="")
         self.quick_status_var = tk.StringVar(value="")
         self._quick_panels = []
@@ -973,6 +994,7 @@ class GenerationTab(BaseTab):
             ("range", self.T("quick.mode_range")),
             ("explore", self.T("quick.mode_explore")),
             ("primesieve", self.T("quick.mode_primesieve")),
+            ("cudasieve", self.T("quick.mode_cudasieve")),
         ]
         for value, label in quick_modes:
             ttk.Radiobutton(mode_row, text=label, value=value, variable=self.quick_mode_var,
@@ -989,6 +1011,7 @@ class GenerationTab(BaseTab):
         self._build_quick_mode_range(fields_container, mode_frames)
         self._build_quick_mode_explore(fields_container, mode_frames)
         self._build_quick_mode_primesieve(fields_container, mode_frames)
+        self._build_quick_mode_cudasieve(fields_container, mode_frames)
 
         ttk.Label(parent, textvariable=self.quick_hint_var, foreground="#555555",
                   wraplength=900, justify="left").pack(anchor="w", padx=8, pady=(0, 4))
@@ -1092,6 +1115,15 @@ class GenerationTab(BaseTab):
         if proposed == "":
             return True
         return proposed.isdigit() and 1 <= int(proposed) <= PRIMESIEVE_MAX_WIDTH_MULT
+
+    def _validate_cudasieve_width_spinbox(self, proposed):
+        """validatecommand for cudasieve mode's OWN Width spinbox -- same shape as
+        _validate_primesieve_width_spinbox, bounded to CUDASIEVE_MAX_WIDTH_MULT (same
+        uint64_t domain as libprimesieve's own PRIMESIEVE_MAX_STOP -- see that constant's
+        own docstring in generation.py)."""
+        if proposed == "":
+            return True
+        return proposed.isdigit() and 1 <= int(proposed) <= CUDASIEVE_MAX_WIDTH_MULT
 
     def _on_quick_floor_start_changed(self, *_args):
         """Gives the Floor field its two roles (see _build_quick_mode_floor's
@@ -1289,6 +1321,78 @@ class GenerationTab(BaseTab):
             "quick.primesieve_auto_from_result", floor=floor_value,
             existing_count=real_window_count, continuation_point=f"{continuation_point:,}"))
 
+    def _build_quick_mode_cudasieve(self, container, mode_frames):
+        """GPU counterpart to _build_quick_mode_primesieve -- IDENTICAL Floor + From +
+        Width layout and reasoning (see that method's own docstring for the full
+        rationale), just launching prime_sieve_cudasieve.py instead of
+        prime_sieve_primesieve.py. Requires the third-party CUDASieve CLI to already be
+        built via Settings > Aktualizacje -- if it isn't, this mode still shows up (no
+        WSL round-trip is paid just to build the Quick-gen panel), but the run itself
+        fails with prime_sieve_cudasieve.py's own clear "not found, install it first"
+        error rather than a mysterious hang.
+
+        The attribution label is ALWAYS visible while this mode is selected, same
+        reasoning as primesieve mode's own -- this calls a separate, GPLv3-licensed,
+        third-party GPU executable as its own OS process, never linked into this
+        project (see prime_sieve_cudasieve.py's module header, "PROCESS BOUNDARY, NOT
+        LINKING")."""
+        frame = ttk.Frame(container)
+        frame.grid(row=0, column=0, sticky="w")
+        row1 = ttk.Frame(frame)
+        row1.pack(anchor="w")
+        ttk.Label(row1, text=self.T("quick.field_floor")).pack(side="left")
+        ttk.Entry(row1, textvariable=self.quick_cudasieve_floor_var, width=10).pack(
+            side="left", padx=(6, 20))
+        ttk.Label(row1, text=self.T("quick.field_from")).pack(side="left")
+        ttk.Entry(row1, textvariable=self.quick_cudasieve_from_var, width=24).pack(
+            side="left", padx=(6, 4))
+        ttk.Button(row1, text=self.T("quick.auto_button"),
+                   command=self._on_cudasieve_auto_from_clicked).pack(
+            side="left", padx=(0, 20))
+        ttk.Label(row1, text=self.T("quick.field_width")).pack(side="left")
+        width_vcmd = (self.register(self._validate_cudasieve_width_spinbox), "%P")
+        ttk.Spinbox(row1, from_=1, to=CUDASIEVE_MAX_WIDTH_MULT,
+                    textvariable=self.quick_cudasieve_width_var,
+                    width=14, validate="key", validatecommand=width_vcmd).pack(
+            side="left", padx=(6, 0))
+        ttk.Label(frame, text=self.T("quick.attribution_cudasieve"), foreground="#777777",
+                  font=("TkDefaultFont", 8), wraplength=860, justify="left").pack(
+            anchor="w", pady=(4, 0))
+        mode_frames["cudasieve"] = frame
+
+    def _on_cudasieve_auto_from_clicked(self):
+        """cudasieve mode's OWN Auto button -- same continuation-lookup logic as
+        _on_primesieve_auto_from_clicked (this just reads whatever is already on disk,
+        which doesn't care which engine wrote it), PLUS one addition: CUDASieve's own
+        CLI documents that printing individual primes is ignored below 2**40
+        (CUDASIEVE_MIN_PRINTABLE_TOP) -- a continuation point below that is clamped UP
+        to it instead of silently handing back a value this mode can never actually
+        use (prime_sieve_cudasieve.py would just reject it with a RuntimeError anyway;
+        better to say so here, before a WSL round-trip)."""
+        raw_floor = self.quick_cudasieve_floor_var.get().strip()
+        floor_value = _eval_quick_number(raw_floor)
+        if not raw_floor or floor_value is None or floor_value < 0:
+            messagebox.showerror(self.T("quick.dialog_title"), self.T("quick.error_floor_required"))
+            return
+        existing_count = find_continuation_target_idx(
+            self._get_portal_folder(), floor_value, QUICK_GEN_MAX_WINDOW_WIDTH)
+        if floor_value < LOW_FLOOR_CUTOFF:
+            continuation_point = 10 ** floor_value
+        else:
+            continuation_point = (
+                10 ** floor_value + existing_count * QUICK_GEN_MAX_WINDOW_WIDTH)
+        if continuation_point < CUDASIEVE_MIN_PRINTABLE_TOP:
+            self.quick_cudasieve_from_var.set(str(CUDASIEVE_MIN_PRINTABLE_TOP))
+            messagebox.showinfo(self.T("quick.dialog_title"), self.T(
+                "quick.cudasieve_auto_from_clamped", floor=floor_value,
+                min_printable=f"{CUDASIEVE_MIN_PRINTABLE_TOP:,}"))
+            return
+        self.quick_cudasieve_from_var.set(str(continuation_point))
+        real_window_count = count_existing_windows(self._get_portal_folder(), floor_value)
+        messagebox.showinfo(self.T("quick.dialog_title"), self.T(
+            "quick.primesieve_auto_from_result", floor=floor_value,
+            existing_count=real_window_count, continuation_point=f"{continuation_point:,}"))
+
     def _on_explore_auto_floor_clicked(self):
         """Exploration mode's OWN Floor-Auto button -- fills quick_explore_floor_var
         with find_highest_populated_floor()'s result, the SAME value leaving Floor
@@ -1397,6 +1501,7 @@ class GenerationTab(BaseTab):
             "range": self.T("quick.hint_range"),
             "explore": self.T("quick.hint_explore"),
             "primesieve": self.T("quick.hint_primesieve"),
+            "cudasieve": self.T("quick.hint_cudasieve"),
         }
         self.quick_hint_var.set(hints.get(self.quick_mode_var.get(), ""))
 
@@ -1475,6 +1580,11 @@ class GenerationTab(BaseTab):
         if self._loop_runner is not None and self._loop_runner.is_running():
             messagebox.showerror(self.T("quick.dialog_title"), self.T("quick.error_already_running"))
             return
+        # primesieve mode's own stdout never prints granular progress (a single
+        # blocking libprimesieve call, no per-batch lines) -- see
+        # _set_gen_progress_bar()'s own docstring for why the shared bar is left
+        # inactive for this engine rather than faked.
+        self._gen_progress_bar_active = False
         write_files = self._loop_write_files_var.get()
         try:
             argv = build_primesieve_argv(
@@ -1491,6 +1601,58 @@ class GenerationTab(BaseTab):
             self._loop_runner = WslLoggedRunner(
                 cmd, log_path, exit_path, self._loop_output_queue,
                 kill_pattern="prime_sieve_primesieve.py")
+            self._loop_runner.start()
+        except Exception as e:  # noqa: BLE001 -- see _on_run_loop's own comment on
+            # why this is caught and surfaced instead of silently swallowed.
+            self._loop_runner = None
+            messagebox.showerror(self.T("gen.dialog_title"), self.T(
+                "gen.error_launch_failed", error=str(e)))
+            return
+        self.loop_run_btn.configure(state="disabled")
+        self.loop_stop_btn.configure(state="normal")
+        self.loop_status_label.set(self.T("common.running"))
+        for panel in self._quick_panels:
+            panel["generate_btn"].configure(text=self.T("common.stop"))
+        self._show_loop_terminal()
+
+    def _apply_cudasieve_params_and_run(self, base_exponent, target_idx_start,
+                                         window_count_per_run):
+        """Quick-gen 'cudasieve' mode's counterpart to _apply_primesieve_params_and_run()
+        -- identical reasoning; this engine also has no low-level form of its own (see
+        prime_sieve_cudasieve.py's module header), just launching
+        prime_sieve_cudasieve.py (`_on_run_cudasieve`) instead of
+        prime_sieve_primesieve.py."""
+        self._on_run_cudasieve(base_exponent, target_idx_start, window_count_per_run)
+
+    def _on_run_cudasieve(self, base_exponent, target_idx_start, window_count_per_run):
+        """Launch path for prime_sieve_cudasieve.py -- reuses the SAME
+        self._loop_runner/self._loop_output_queue/self.loop_console/self.loop_run_btn/
+        self.loop_stop_btn/self.loop_status_label/_poll_loop_output/_on_loop_finished
+        plumbing _on_run_primesieve() uses -- see that method's own docstring for why
+        (only one Generation run can be in flight at a time regardless of engine)."""
+        if self._loop_runner is not None and self._loop_runner.is_running():
+            messagebox.showerror(self.T("quick.dialog_title"), self.T("quick.error_already_running"))
+            return
+        # cudasieve mode's own stdout has no per-batch progress lines Atlas parses
+        # yet either (the CUDASieve CLI itself does print per-prime progress to its
+        # terminal, but this project doesn't read that back -- deferred, see
+        # _set_gen_progress_bar()'s own docstring), so the shared bar stays inactive
+        # here too, same reasoning as primesieve mode just above.
+        self._gen_progress_bar_active = False
+        write_files = self._loop_write_files_var.get()
+        try:
+            argv = build_cudasieve_argv(
+                base_exponent, target_idx_start, window_count_per_run,
+                QUICK_GEN_MAX_WINDOW_WIDTH, write_files)
+            log_path, exit_path, _run_id = generation_log_paths(self._get_portal_folder(), "cudasieve")
+            cmd = build_wsl_logged_command(argv, log_path, exit_path, self._get_portal_folder())
+
+            self.loop_console.append(self._new_run_separator())
+            self._loop_output_queue = queue.Queue()
+            self._benchmark_rows_before_run = len(read_benchmark_log(self._get_portal_folder())[1])
+            self._loop_runner = WslLoggedRunner(
+                cmd, log_path, exit_path, self._loop_output_queue,
+                kill_pattern="prime_sieve_cudasieve.py")
             self._loop_runner.start()
         except Exception as e:  # noqa: BLE001 -- see _on_run_loop's own comment on
             # why this is caught and surfaced instead of silently swallowed.
@@ -1530,6 +1692,11 @@ class GenerationTab(BaseTab):
         if self._loop_runner is not None and self._loop_runner.is_running():
             messagebox.showerror(self.T("quick.dialog_title"), self.T("quick.error_already_running"))
             return
+        # orchestrator_v3.py run directly still calls prime_sieve_v3/v4/v4_1's own
+        # generate_floor_windows(), same granular "[+] Progress: ..." lines as the
+        # loop path -- re-enable the shared bar, same reasoning as _on_run_loop()'s
+        # own comment.
+        self._gen_progress_bar_active = True
         write_files = self._loop_write_files_var.get()
         use_pi_seed = self._loop_use_pi_seed_var.get()
         # Effective flag: either checkbox on means "compute pi(L_final)" -- see the
@@ -2082,7 +2249,7 @@ class GenerationTab(BaseTab):
                       boundary=f"{10 ** (floor_value + 1):,}")
                    if truncated else ""))
             self._apply_loop_params_and_run(floor_value, iterations, window_count_per_run)
-        else:
+        elif mode == "primesieve":
             # mode == "primesieve": From + Width (NOT From/To -- see
             # _build_quick_mode_primesieve's docstring for why) determine the literal
             # [start, end) target the exact same way Floor mode's own "Starting point"
@@ -2181,6 +2348,79 @@ class GenerationTab(BaseTab):
                    if ceiling_truncated else ""))
             self._apply_primesieve_params_and_run(
                 plan["floor"], plan["target_idx_start"], plan["window_count_per_run"])
+        else:
+            # mode == "cudasieve": GPU counterpart to primesieve mode -- IDENTICAL From
+            # + Width planning logic (see the "primesieve" branch's own comment just
+            # above), with two engine-specific differences: the uint64 ceiling check
+            # uses CUDASIEVE_MAX_STOP (CUDASieve's own --help text documents examples up
+            # to 2**64, the same domain as libprimesieve's), and there's an ADDITIONAL
+            # floor -- CUDASieve's own CLI documents that printing individual primes is
+            # ignored below 2**40 (CUDASIEVE_MIN_PRINTABLE_TOP); prime_sieve_cudasieve.py's
+            # own generate_primes_in_range() rejects anything below that with a
+            # RuntimeError, so it's checked HERE too, before paying a WSL round-trip for
+            # a request already known to fail. Unlike primesieve mode, there's no
+            # low-floor (0-6) special case: LOW_FLOOR_CUTOFF's floors are always far
+            # below CUDASIEVE_MIN_PRINTABLE_TOP anyway, so that branch could never
+            # legitimately fire for this engine -- the general below-min check just past
+            # `end` below catches it instead, with a clear message rather than a silent
+            # floor jump.
+            raw_from = self.quick_cudasieve_from_var.get().strip()
+            start = _eval_quick_number(raw_from)
+            width_mult = _eval_quick_number(self.quick_cudasieve_width_var.get()) or 1
+            if not raw_from or start is None:
+                raw_floor = self.quick_cudasieve_floor_var.get().strip()
+                floor_value = _eval_quick_number(raw_floor)
+                if not raw_floor or floor_value is None or floor_value < 0:
+                    messagebox.showerror(
+                        self.T("quick.dialog_title"), self.T("quick.error_primesieve_from_required"))
+                    return
+                start = 10 ** floor_value
+                if floor_value >= LOW_FLOOR_CUTOFF:
+                    existing_count = find_continuation_target_idx(
+                        self._get_portal_folder(), floor_value, QUICK_GEN_MAX_WINDOW_WIDTH)
+                    start = 10 ** floor_value + existing_count * QUICK_GEN_MAX_WINDOW_WIDTH
+                self.quick_cudasieve_from_var.set(str(start))
+            if start < 0:
+                messagebox.showerror(self.T("quick.dialog_title"), self.T("quick.error_range_negative"))
+                return
+
+            end = start + width_mult * QUICK_GEN_MAX_WINDOW_WIDTH
+            if (end - 1) < CUDASIEVE_MIN_PRINTABLE_TOP:
+                messagebox.showerror(self.T("quick.dialog_title"), self.T(
+                    "quick.error_cudasieve_below_min",
+                    min_printable=f"{CUDASIEVE_MIN_PRINTABLE_TOP:,}"))
+                return
+            if start > CUDASIEVE_MAX_STOP:
+                messagebox.showerror(self.T("quick.dialog_title"), self.T(
+                    "quick.error_cudasieve_beyond_ceiling",
+                    max_stop=f"{CUDASIEVE_MAX_STOP:,}"))
+                return
+            plan = self._quick_gen_plan_literal_range(start, end)
+            if plan.get("error"):
+                messagebox.showerror(*plan["error"])
+                return
+            if plan.get("already"):
+                self.quick_status_var.set(self.T(
+                    "quick.status_already_in_storage",
+                    rounded_start=f"{plan['rounded_start']:,}",
+                    rounded_end=f"{plan['rounded_end']:,}",
+                    existing_count=plan["real_existing_count"]))
+                return
+            ceiling_truncated = (plan["rounded_end"] - 1) > CUDASIEVE_MAX_STOP
+            self.quick_status_var.set(self.T(
+                "quick.summary_range", start=f"{start:,}", end=f"{end:,}",
+                rounded_start=f"{plan['rounded_start']:,}",
+                rounded_end=f"{plan['rounded_end']:,}", floor=plan["floor"],
+                existing_count=plan["real_existing_count"],
+                added_count=plan["window_count_per_run"])
+                + (self.T("quick.note_truncated_floor_boundary",
+                      boundary=f"{plan['rounded_end']:,}")
+                   if plan.get("truncated") else "")
+                + (self.T("quick.note_cudasieve_ceiling",
+                      max_stop=f"{CUDASIEVE_MAX_STOP:,}")
+                   if ceiling_truncated else ""))
+            self._apply_cudasieve_params_and_run(
+                plan["floor"], plan["target_idx_start"], plan["window_count_per_run"])
 
     def _collect_loop_settings_from_form(self):
         """Reads + validates every orchestrator_loop_v2 form field. Returns a dict of
@@ -2218,6 +2458,11 @@ class GenerationTab(BaseTab):
         if self._loop_runner is not None and self._loop_runner.is_running():
             messagebox.showerror(self.T("quick.dialog_title"), self.T("quick.error_already_running"))
             return
+        # The old batched engine (orchestrator_v3.py via orchestrator_loop_v2.py)
+        # DOES print granular "[+] Progress: ..." lines -- re-enable the shared bar
+        # in case a previous run left it off (primesieve/cudasieve mode, see
+        # _set_gen_progress_bar()'s own docstring).
+        self._gen_progress_bar_active = True
         parsed = self._collect_loop_settings_from_form()
         if parsed is None:
             return
@@ -2671,6 +2916,27 @@ class GenerationTab(BaseTab):
         except queue.Empty:
             pass
 
+    def _set_gen_progress_bar(self, **configure_kwargs):
+        """Applies a totals_progress.configure(**configure_kwargs) update, but ONLY
+        when self._gen_progress_bar_active is True -- see that attribute's own
+        __init__ comment. primesieve/cudasieve mode's own stdout never produces
+        anything for _update_shared_progress_from_generation_chunk() to parse mid-run
+        (both are a single blocking call with no per-batch reporting -- confirmed by
+        reading their actual print() statements, 2026-08-27), so the only line of
+        theirs that ever matches anything here is the final "[*] TOTAL PRIMES
+        FOUND..." line (_GEN_SIEVE_DONE_RE) -- which, without this guard, would snap
+        the bar straight from whatever it was already showing to "100% done", with
+        nothing meaningful in between. Artur's explicit call (2026-08-27): leave the
+        bar alone entirely for those two engines rather than show a fake step count --
+        the status TEXT (self.status.set(...), untouched by this helper) still updates
+        normally either way, so the user isn't left with zero feedback, just no bar
+        animation. Deferred, not fixed here: cudasieve's own CLI does print real
+        per-prime progress to its terminal, Atlas just doesn't parse it yet."""
+        if not self._gen_progress_bar_active:
+            return
+        self.totals_progress.stop()
+        self.totals_progress.configure(**configure_kwargs)
+
     def _update_shared_progress_from_generation_chunk(self, chunk):
         """Reflects a generation run's live console output onto the shared bottom status
         bar -- the SAME self.status/self.totals_progress the floor-totals scan and the
@@ -2721,11 +2987,15 @@ class GenerationTab(BaseTab):
         line orchestrator_loop_v2.py itself prints once ALL iterations are over --
         snaps the bar to full and clears _gen_loop_run_count/_gen_loop_iteration back
         to None; the per-iteration "[*] TOTAL PRIMES FOUND..." line just marks that
-        iteration's slice as complete and keeps waiting."""
+        iteration's slice as complete and keeps waiting.
+
+        Every totals_progress write below goes through _set_gen_progress_bar() (see
+        that method's own docstring), not a direct .configure() call -- it silently
+        no-ops for engines that don't actually report granular progress (primesieve/
+        cudasieve mode, see self._gen_progress_bar_active's own __init__ comment)."""
         if _LOOP_SESSION_DONE_RE.search(chunk):
             total = self._gen_step_total or 1
-            self.totals_progress.stop()
-            self.totals_progress.configure(mode="determinate", maximum=total, value=total)
+            self._set_gen_progress_bar(mode="determinate", maximum=total, value=total)
             self.status.set(self.T("gen.status_progress_done"))
             self._gen_step_total = None
             self._gen_loop_run_count = None
@@ -2753,16 +3023,14 @@ class GenerationTab(BaseTab):
                 run_count = self._gen_loop_run_count
                 iteration = self._gen_loop_iteration or 1
                 step_total = self._gen_step_total or 1
-                self.totals_progress.stop()
-                self.totals_progress.configure(
+                self._set_gen_progress_bar(
                     mode="determinate", maximum=run_count * step_total,
                     value=min(iteration, run_count) * step_total)
                 self.status.set(self.T("gen.status_progress_loop_iteration_done",
                                    iteration=iteration, run_count=run_count))
                 return
             total = self._gen_step_total or 1
-            self.totals_progress.stop()
-            self.totals_progress.configure(mode="determinate", maximum=total, value=total)
+            self._set_gen_progress_bar(mode="determinate", maximum=total, value=total)
             self.status.set(self.T("gen.status_progress_done"))
             self._gen_step_total = None
             return
@@ -2772,19 +3040,18 @@ class GenerationTab(BaseTab):
             percent_str, done_str, total_str = sieve_matches[-1]
             done, n_batches = int(done_str), int(total_str)
             self._gen_step_total = n_batches + 1  # +1 for the prep step already done
-            self.totals_progress.stop()
             if self._gen_loop_run_count is not None:
                 run_count = self._gen_loop_run_count
                 iteration = self._gen_loop_iteration or 1
-                self.totals_progress.configure(
+                self._set_gen_progress_bar(
                     mode="determinate", maximum=run_count * self._gen_step_total,
                     value=(iteration - 1) * self._gen_step_total + (done + 1))
                 self.status.set(self.T("gen.status_progress_loop_sieve", iteration=iteration,
                                    run_count=run_count, percent=percent_str,
                                    done=done, total=n_batches))
             else:
-                self.totals_progress.configure(mode="determinate",
-                                                maximum=self._gen_step_total, value=done + 1)
+                self._set_gen_progress_bar(mode="determinate",
+                                            maximum=self._gen_step_total, value=done + 1)
                 self.status.set(self.T("gen.status_progress_sieve", percent=percent_str,
                                    done=done, total=n_batches))
             return
@@ -2794,24 +3061,22 @@ class GenerationTab(BaseTab):
             done_str, total_str = const_matches[-1]
             done, total = int(done_str), int(total_str)
             self._gen_step_total = total
-            self.totals_progress.stop()
-            self.totals_progress.configure(mode="determinate", maximum=max(1, total), value=done)
+            self._set_gen_progress_bar(mode="determinate", maximum=max(1, total), value=done)
             self.status.set(self.T("gen.status_progress_const", done=done, total=total))
             return
 
         if _GEN_PREP_DONE_RE.search(chunk):
             self._gen_step_total = None  # real total not known until the first
                                           # batch-progress line -- see docstring above
-            self.totals_progress.stop()
             if self._gen_loop_run_count is not None:
                 run_count = self._gen_loop_run_count
                 iteration = self._gen_loop_iteration or 1
-                self.totals_progress.configure(
+                self._set_gen_progress_bar(
                     mode="determinate", maximum=run_count * 2, value=(iteration - 1) * 2 + 1)
                 self.status.set(self.T("gen.status_progress_loop_prep", iteration=iteration,
                                    run_count=run_count))
             else:
-                self.totals_progress.configure(mode="determinate", maximum=2, value=1)
+                self._set_gen_progress_bar(mode="determinate", maximum=2, value=1)
                 self.status.set(self.T("gen.status_progress_prep"))
 
     # --- Tab 5: Settings -----------------------------------------------------
