@@ -166,6 +166,8 @@ from primeatlas.generation import (  # noqa: E402
     build_primesieve_argv, generation_log_paths, WslLoggedRunner, LocalLoggedRunner,
     build_pip_install_argv, estimate_wsl_available_ram_bytes, recommended_max_windows,
     find_continuation_target_idx,
+    build_cudasieve_status_argv, build_cudasieve_fetch_license_argv,
+    build_cudasieve_build_argv, run_cudasieve_wsl_blocking,
 )
 # PRIMESIEVE_QUERY_SCRIPT/windows_path_to_wsl/build_primesieve_query_argv/
 # run_primesieve_query_wsl used to be imported/defined here for the "primesieve"
@@ -1157,6 +1159,20 @@ def _build_gui():
                 "try_import_sympy": primality_try_import_sympy,
                 "build_pip_install_argv": build_pip_install_argv,
                 "LocalLoggedRunner": LocalLoggedRunner,
+                # CUDASieve (optional GPU engine) installer, ported from the `cudasieve`
+                # branch onto cudasieve-v2 -- see primeatlas/generation.py's own
+                # run_cudasieve_wsl_blocking() docstring for why it's NOT the plain
+                # subprocess.run(timeout=...) shape run_primesieve_query_wsl() uses.
+                # Wrapped in a lambda supplying the current PORTAL_FOLDER, same as
+                # build_wsl_logged_command above, since generation.py's own copy takes
+                # portal_folder as an explicit argument rather than reading a bare
+                # module global.
+                "build_cudasieve_status_argv": build_cudasieve_status_argv,
+                "build_cudasieve_fetch_license_argv": build_cudasieve_fetch_license_argv,
+                "build_cudasieve_build_argv": build_cudasieve_build_argv,
+                "run_cudasieve_wsl_blocking":
+                    lambda argv, timeout=120:
+                        run_cudasieve_wsl_blocking(argv, PORTAL_FOLDER, timeout),
             }
             self.settings_tab = settings_tab_cls(
                 self.settings_tab_container, APP_SETTINGS, wsl_helpers, TRANSLATOR)

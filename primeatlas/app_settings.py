@@ -114,6 +114,33 @@ class AppSettings:
         self._data["theme"] = theme_name or DEFAULT_THEME
         self.save()
 
+    @property
+    def cudasieve_status(self):
+        """Last known result of the Settings > Aktualizacje CUDASieve status probe
+        (see settings_tab.py's _on_check_cudasieve_status()) -- {"ok": bool,
+        "payload": dict-or-error-string}, or None if never checked on this install.
+
+        Deliberately NOT re-probed automatically at app startup (Artur, 2026-08-23,
+        ported from the original `cudasieve` branch): an earlier version called the WSL
+        status check directly from the Settings tab's __init__, which (a) paid a WSL
+        round-trip on every single launch for a GPU-only, opt-in engine most sessions
+        never touch, and (b) raced the app's own mainloop() startup (RuntimeError: main
+        thread is not in main loop, confirmed live) since cmd_status() answers fast
+        enough to finish before mainloop() even starts. Caching here fixes the slowdown
+        at its root instead of just the crash: this value is shown as-is on every
+        startup; a fresh WSL probe only happens when the user explicitly clicks
+        Sprawdz status / Pobierz z GitHub / Zainstaluj."""
+        return self._data.get("cudasieve_status") or None
+
+    def set_cudasieve_status(self, ok, payload):
+        """Persists the (ok, payload) pair settings_tab.py's cudasieve probe callers
+        already produce, so it survives an app restart -- see cudasieve_status's own
+        docstring for why this replaces querying WSL on every launch. Called after every
+        real probe (manual status check, post-download, post-build), never
+        speculatively."""
+        self._data["cudasieve_status"] = {"ok": bool(ok), "payload": payload}
+        self.save()
+
     def load(self):
         if not os.path.exists(self._path):
             self._data = {}

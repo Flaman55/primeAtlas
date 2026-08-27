@@ -65,6 +65,7 @@ saying the change takes effect after restarting the app.
 import os
 import queue
 import threading
+import webbrowser
 
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
@@ -82,6 +83,12 @@ from . import full_backup as fb
 from . import storage_integrate as si
 from . import background
 from .i18n import Translator, SUPPORTED_LANGUAGES
+
+# Same URL prime_sieve_cudasieve.py's own CUDASIEVE_REPO_URL clones from -- duplicated
+# here (not imported -- that module is WSL-side, this is the Windows GUI process) purely
+# to open the real GitHub page in the user's browser (_on_open_cudasieve_github_clicked
+# below), never fetched by this process itself.
+CUDASIEVE_REPO_URL = "https://github.com/curtisseizert/CUDASieve"
 
 
 class SettingsTab(BaseTab):
@@ -131,6 +138,22 @@ class SettingsTab(BaseTab):
         self._libs_runner = None
         self._libs_queue = None
 
+        # CUDASieve (GPU engine) installer -- ported from the `cudasieve` branch onto
+        # cudasieve-v2 (task #459). A quick WSL call clones/updates the repo and reads
+        # back its OWN current License file (GPLv3, third-party, NOT this project's
+        # license -- see prime_sieve_cudasieve.py's module header), shown to the user
+        # for explicit accept/decline BEFORE the longer `make` build step
+        # (WslLoggedRunner, same shape as every Generation-tab job) ever runs.
+        # _cudasieve_status_running guards the quick status probe; _cudasieve_install_running
+        # spans the WHOLE fetch-license -> consent -> build sequence (not just the build
+        # step) so a second click can't start an overlapping sequence while a consent
+        # dialog is still open. No separate "download only" flow -- Zainstaluj clones/
+        # updates on its own; Otworz na GitHub below just links to the real repo page.
+        self._cudasieve_status_running = False
+        self._cudasieve_install_running = False
+        self._cudasieve_runner = None
+        self._cudasieve_queue = None
+
         # Full-data (compressed) backup, primeatlas/full_backup.py -- see this class's
         # own docstring for the threading shape. _full_backup_job_running gates the
         # buttons (only one backup/restore job at a time); _full_backup_stop_event is a
@@ -166,6 +189,17 @@ class SettingsTab(BaseTab):
         self._refresh_floor_delete_list()
         self._refresh_full_backup_floor_picker()
         self._refresh_full_backup_entries()
+        # Does NOT probe WSL here -- an earlier version of this installer called
+        # _on_check_cudasieve_status() directly from __init__, which paid a WSL
+        # round-trip on every single app launch for a GPU-only, opt-in engine most
+        # sessions never touch (and briefly also crashed outright on the `cudasieve`
+        # branch: RuntimeError: main thread is not in main loop, a background thread's
+        # self.after(...) callback landing before mainloop() had started). Only probe
+        # when the user explicitly asks (Sprawdz status/Pobierz/Zainstaluj); until then,
+        # show whatever the LAST real probe found, persisted in app_settings so it
+        # survives a restart -- see AppSettings.cudasieve_status's own docstring. No
+        # thread, no WSL call, no mainloop race: this just reads a dict.
+        self._show_cached_cudasieve_status()
 
     # ---- language -----------------------------------------------------------------------
 
@@ -1626,6 +1660,212 @@ class SettingsTab(BaseTab):
         self.libs_output.see("end")
         self.libs_output.configure(state="disabled")
 
+    # ---- CUDASieve (GPU engine) installer, ported from `cudasieve` branch (task #459) ----
+    #
+    # Flow: [Sprawdz status] -> quick WSL probe (background thread, since unlike
+    # try_import_sympy() this is a real wsl.exe round-trip, not an in-process import --
+    # see run_cudasieve_wsl_blocking()'s own docstring) -> status label + enable/disable
+    # the install button. [Zainstaluj] -> fetch-license (background thread) -> modal
+    # consent dialog showing the license text JUST fetched (never a copy embedded in this
+    # project) -> only on Accept, a WslLoggedRunner-driven `make` build (same live-log
+    # shape as every Generation-tab job) -> re-run the status probe on completion so the
+    # label reflects reality without a second manual click.
+
+    def _cudasieve_log(self, text):
+        self.cudasieve_output.configure(state="normal")
+        self.cudasieve_output.insert("end", text)
+        self.cudasieve_output.see("end")
+        self.cudasieve_output.configure(state="disabled")
+
+    def _show_cached_cudasieve_status(self):
+        """Called once from __init__ instead of probing WSL -- see that call site's own
+        comment. Renders whatever the last real Sprawdz status/Pobierz/Zainstaluj call
+        found (AppSettings.cudasieve_status), or a neutral "not checked yet" label if this
+        install has never run one. Routes through _on_cudasieve_status_result() itself
+        (not a separate rendering path) so the two can never drift out of sync -- the
+        cost is one harmless re-save of the same cached value back to app_settings."""
+        cached = self.app_settings.cudasieve_status
+        if cached is None:
+            self.cudasieve_status_var.set(self.T("settings.cudasieve_status_not_checked"))
+            return
+        self._on_cudasieve_status_result(cached.get("ok"), cached.get("payload"))
+
+    def _on_check_cudasieve_status(self):
+        if self._cudasieve_status_running:
+            return
+        self._cudasieve_status_running = True
+        self.cudasieve_status_var.set(self.T("settings.cudasieve_status_checking"))
+
+        def worker():
+            # try/except is load-bearing here, not defensive boilerplate: ANY exception
+            # raised inside it (before or during the WSL call) would silently kill this
+            # daemon thread -- self.after(...) below would never run, so
+            # _cudasieve_status_running would never go back to False and the label would
+            # stay on "sprawdzam..." forever. Confirmed live on the original `cudasieve`
+            # branch (2026-08-23) -- looked exactly like a wsl.exe hang until found.
+            try:
+                argv = self.wsl["build_cudasieve_status_argv"]()
+                ok, payload = self.wsl["run_cudasieve_wsl_blocking"](argv, 30)
+            except Exception as e:  # noqa: BLE001 -- must always resolve the guard flag
+                ok, payload = False, f"{type(e).__name__}: {e}"
+            self.after(0, lambda: self._on_cudasieve_status_result(ok, payload))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_cudasieve_status_result(self, ok, payload):
+        self._cudasieve_status_running = False
+        # Persisted so a restart shows this same result instead of falling back to
+        # "not checked yet" -- see AppSettings.cudasieve_status's own docstring for why
+        # this app deliberately never re-probes WSL on its own at startup. Also reached
+        # from _show_cached_cudasieve_status() with the very value it just read back out
+        # of this same setting -- a harmless no-op re-save in that path.
+        self.app_settings.set_cudasieve_status(ok, payload)
+        if not ok:
+            self.cudasieve_status_var.set(
+                self.T("settings.cudasieve_status_error", error=str(payload)[:200]))
+            # Still lets the user try to install even if the status probe itself failed
+            # (e.g. WSL cold-start hiccup) -- the install flow's own fetch-license step
+            # will surface the real error again if it's persistent.
+            self.install_cudasieve_btn.configure(
+                state="disabled" if self._cudasieve_install_running else "normal")
+            return
+        if payload.get("binary_exists"):
+            # Once actually installed, the button reads as "done, nothing left to do"
+            # (disabled) rather than staying clickable -- the status line above already
+            # names the exact path (payload["binary_path"]).
+            self.cudasieve_status_var.set(self.T(
+                "settings.cudasieve_status_installed", path=payload.get("binary_path") or ""))
+            self.install_cudasieve_btn.configure(
+                text=self.T("settings.cudasieve_install_button"), state="disabled")
+            return
+        if payload.get("cloned"):
+            # Cloned (via Zainstaluj's own fetch-license step, possibly from a previous,
+            # not-yet-built run) but not yet built -- distinct from "missing entirely" so
+            # the status label reflects exactly what's going on between those two steps.
+            # Button stays disabled here (verify the CUDA toolchain by hand first, then
+            # use Atlas's own build) -- see prime_sieve_cudasieve.py's cmd_build()
+            # docstring for the toolchain issues a failed build here usually means.
+            self.cudasieve_status_var.set(self.T(
+                "settings.cudasieve_status_cloned_not_built",
+                path=payload.get("install_dir") or ""))
+            self.install_cudasieve_btn.configure(state="disabled")
+            return
+        if not payload.get("has_nvidia_smi"):
+            self.cudasieve_status_var.set(self.T("settings.cudasieve_status_no_gpu"))
+        elif not payload.get("has_nvcc"):
+            self.cudasieve_status_var.set(self.T("settings.cudasieve_status_no_nvcc"))
+        else:
+            self.cudasieve_status_var.set(self.T("settings.cudasieve_status_missing"))
+        self.install_cudasieve_btn.configure(
+            state="disabled" if self._cudasieve_install_running else "normal")
+
+    def _on_open_cudasieve_github_clicked(self):
+        """Opens the real GitHub page rather than an in-app clone-only button -- Zainstaluj
+        below remains fully self-sufficient (clones/updates on its own), this is purely
+        for someone who wants to inspect/clone by hand before trusting the automated
+        build (git clone URL, README, releases, issues)."""
+        webbrowser.open(CUDASIEVE_REPO_URL)
+
+    def _on_install_cudasieve_clicked(self):
+        if self._cudasieve_install_running:
+            return
+        self._cudasieve_install_running = True
+        self.install_cudasieve_btn.configure(state="disabled")
+        self._cudasieve_log(self.T("settings.cudasieve_fetching_license") + "\n")
+
+        def worker():
+            # See the matching comment in _on_check_cudasieve_status's worker() -- same
+            # silent-thread-death hazard applies here.
+            try:
+                argv = self.wsl["build_cudasieve_fetch_license_argv"]()
+                ok, payload = self.wsl["run_cudasieve_wsl_blocking"](argv, 120)
+            except Exception as e:  # noqa: BLE001 -- must always resolve the guard flag
+                ok, payload = False, f"{type(e).__name__}: {e}"
+            self.after(0, lambda: self._on_cudasieve_license_fetched(ok, payload))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_cudasieve_license_fetched(self, ok, payload):
+        if not ok:
+            self._cudasieve_log(self.T(
+                "settings.cudasieve_license_fetch_failed", error=str(payload)[:800]) + "\n")
+            self._cudasieve_install_running = False
+            self.install_cudasieve_btn.configure(state="normal")
+            return
+        license_text = payload.get("license_text") or ""
+        self._show_cudasieve_consent_dialog(license_text)
+
+    def _show_cudasieve_consent_dialog(self, license_text):
+        """Modal Toplevel showing the REAL, just-fetched License file of the repository
+        that was just cloned/updated on disk -- see cmd_fetch_license()'s own docstring
+        (prime_sieve_cudasieve.py) for why this is read back from the actual clone rather
+        than a copy kept in this project. Declining leaves the clone on disk (harmless --
+        unbuilt source is not a usable engine) and simply resets the install flow; only
+        Accept proceeds to the `make` build step."""
+        dialog = tk.Toplevel(self)
+        dialog.title(self.T("settings.cudasieve_consent_title"))
+        dialog.geometry("700x520")
+        dialog.transient(self.winfo_toplevel())
+        dialog.grab_set()
+        ttk.Label(dialog, text=self.T("settings.cudasieve_consent_intro"),
+                  wraplength=670, justify="left").pack(anchor="w", padx=10, pady=(10, 6))
+        text_widget = ScrolledText(dialog, font=("Consolas", 9), wrap="word")
+        text_widget.pack(fill="both", expand=True, padx=10, pady=(0, 6))
+        text_widget.insert("1.0", license_text)
+        text_widget.configure(state="disabled")
+        btn_row = ttk.Frame(dialog)
+        btn_row.pack(fill="x", padx=10, pady=(0, 10))
+
+        def on_accept():
+            dialog.destroy()
+            self._start_cudasieve_build()
+
+        def on_decline():
+            dialog.destroy()
+            self._cudasieve_install_running = False
+            self.install_cudasieve_btn.configure(state="normal")
+            self._cudasieve_log(self.T("settings.cudasieve_consent_declined") + "\n")
+
+        ttk.Button(btn_row, text=self.T("settings.cudasieve_consent_decline"),
+                   command=on_decline).pack(side="right")
+        ttk.Button(btn_row, text=self.T("settings.cudasieve_consent_accept"),
+                   command=on_accept).pack(side="right", padx=(0, 6))
+        dialog.protocol("WM_DELETE_WINDOW", on_decline)
+
+    def _start_cudasieve_build(self):
+        self._cudasieve_log(self.T("settings.cudasieve_build_starting") + "\n")
+        argv = self.wsl["build_cudasieve_build_argv"]()
+        log_path, exit_path, _run_id = self.wsl["generation_log_paths"](
+            self.wsl["get_portal_folder"](), "cudasieve_build")
+        cmd = self.wsl["build_wsl_logged_command"](argv, log_path, exit_path)
+        q = queue.Queue()
+        runner = self.wsl["WslLoggedRunner"](
+            cmd, log_path, exit_path, q, kill_pattern="prime_sieve_cudasieve.py")
+        self._cudasieve_runner = runner
+        self._cudasieve_queue = q
+        runner.start()
+        self._poll_cudasieve_queue()
+
+    def _poll_cudasieve_queue(self):
+        try:
+            while True:
+                item = self._cudasieve_queue.get_nowait()
+                if isinstance(item, tuple) and item and item[0] == "__exit__":
+                    code = item[1]
+                    self._cudasieve_install_running = False
+                    if code == 0:
+                        self._cudasieve_log(self.T("settings.cudasieve_build_done") + "\n")
+                    else:
+                        self._cudasieve_log(
+                            self.T("settings.cudasieve_build_failed", code=code) + "\n")
+                    self.install_cudasieve_btn.configure(state="normal")
+                    self._on_check_cudasieve_status()
+                    return
+                self._cudasieve_log(item)
+        except queue.Empty:
+            pass
+        self.after(150, self._poll_cudasieve_queue)
+
     # ---- widget construction ---------------------------------------------------------------
 
     def _build_widgets(self):
@@ -2131,6 +2371,35 @@ class SettingsTab(BaseTab):
             libs_frame, height=5, font=("Consolas", 9), state="disabled",
             background="#111318", foreground="#d8d8d8")
         self.libs_output.pack(fill="x", padx=6, pady=(0, 6))
+
+        # CUDASieve (optional GPU engine) installer -- ported from the `cudasieve` branch
+        # (task #459). Separate Labelframe from the sympy one above: different license
+        # (GPLv3, not MIT), different runtime (WSL subprocess, not this same Python
+        # process), and its own mandatory consent dialog -- see
+        # _on_install_cudasieve_clicked's own docstring block above.
+        cudasieve_frame = ttk.Labelframe(outer, text=self.T("settings.cudasieve_frame"))
+        cudasieve_frame.pack(fill="x", pady=(0, 8))
+        ttk.Label(cudasieve_frame, text=self.T("settings.cudasieve_hint"),
+                  wraplength=760, justify="left", foreground="#555").pack(
+            anchor="w", padx=6, pady=(6, 4))
+        cudasieve_btn_row = ttk.Frame(cudasieve_frame)
+        cudasieve_btn_row.pack(fill="x", padx=6, pady=(0, 4))
+        self.cudasieve_status_var = tk.StringVar(
+            value=self.T("settings.cudasieve_status_not_checked"))
+        ttk.Label(cudasieve_btn_row, textvariable=self.cudasieve_status_var).pack(side="left")
+        ttk.Button(cudasieve_btn_row, text=self.T("settings.cudasieve_check_button"),
+                   command=self._on_check_cudasieve_status).pack(side="left", padx=(10, 0))
+        ttk.Button(
+            cudasieve_btn_row, text=self.T("settings.cudasieve_open_github_button"),
+            command=self._on_open_cudasieve_github_clicked).pack(side="left", padx=(6, 0))
+        self.install_cudasieve_btn = ttk.Button(
+            cudasieve_btn_row, text=self.T("settings.cudasieve_install_button"),
+            command=self._on_install_cudasieve_clicked, state="disabled")
+        self.install_cudasieve_btn.pack(side="left", padx=(6, 0))
+        self.cudasieve_output = ScrolledText(
+            cudasieve_frame, height=5, font=("Consolas", 9), state="disabled",
+            background="#111318", foreground="#d8d8d8")
+        self.cudasieve_output.pack(fill="x", padx=6, pady=(0, 6))
 
         # PrimeAtlas's own self-update (checking/downloading a newer app version) is
         # a stated FUTURE addition, not built yet -- Artur, 2026-08-17: "w przyszlosci

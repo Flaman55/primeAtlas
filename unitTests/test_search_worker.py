@@ -222,6 +222,43 @@ def main():
         finally:
             tsc_module.update_pietro_totals_cache = _real_update_totals
 
+        # --- Regression test: show_cached_grand_total() must reset totals_progress
+        # (2026-08-27 bug fix, confirmed with Artur from a real screenshot: after a
+        # generation run finished, the shared bottom progress bar stayed visibly full
+        # forever, reading as "still busy" while the app sat idle). Root cause:
+        # generation's own completion handler (generation_tab.py's
+        # _update_shared_progress_from_generation_chunk) deliberately snaps the bar to
+        # full and relies on WHATEVER runs next to clear it -- before 2026-08-27 that
+        # was compute_all_pietro_totals()'s own automatic post-reload call, which reset
+        # the bar as a side effect of a real rescan that ran unconditionally after
+        # every reload. Once that automatic call was replaced by the lightweight
+        # show_cached_grand_total() (this test's own portal already exercises that
+        # exact call path via app.reload_primes_tree() above), nothing was left to
+        # perform the reset. Simulates the "just-finished generation" state directly
+        # (mode=determinate, full) rather than actually launching a generation run
+        # (no WSL/engine in this sandbox -- see test_generation_launch_planning.py's
+        # own module docstring for why), then calls show_cached_grand_total() the same
+        # way PrimesTreeCoordinator._on_scan_done() does on every reload.
+        bar = app._totals_search.totals_progress
+        bar.configure(mode="determinate", maximum=5, value=5)
+        check(bar["value"] == 5, "test setup: bar starts in the simulated 'just finished' full state")
+        app._totals_search.show_cached_grand_total(
+            totals_cache={}, pietro_gen_seconds={}, floor_count=1)
+        check(int(bar["maximum"]) == 1 and int(bar["value"]) == 0,
+              f"show_cached_grand_total() (the normal floor_count > 0 path) must reset "
+              f"totals_progress back to its empty 0/1 resting state, not leave it "
+              f"however generation left it "
+              f"(got maximum={bar['maximum']!r}, value={bar['value']!r})")
+
+        # floor_count == 0 (empty portal) is a separate early-return branch -- must
+        # reset the bar too, not just the normal path above.
+        bar.configure(mode="determinate", maximum=7, value=7)
+        app._totals_search.show_cached_grand_total(
+            totals_cache={}, pietro_gen_seconds={}, floor_count=0)
+        check(int(bar["maximum"]) == 1 and int(bar["value"]) == 0,
+              f"show_cached_grand_total()'s floor_count==0 branch must also reset "
+              f"totals_progress (got maximum={bar['maximum']!r}, value={bar['value']!r})")
+
         app.destroy()
     finally:
         shutil.rmtree(tmp_portal, ignore_errors=True)

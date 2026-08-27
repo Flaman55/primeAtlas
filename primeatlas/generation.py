@@ -549,6 +549,128 @@ PRIMESIEVE_MAX_STOP = 2 ** 64 - 1
 PRIMESIEVE_MAX_WIDTH_MULT = PRIMESIEVE_MAX_STOP // QUICK_GEN_MAX_WINDOW_WIDTH + 1
 
 
+# ------------------------------------------------------------------------------------------
+# CUDASieve (optional GPU engine) -- argv builders + blocking WSL status/install calls.
+# Ported from the `cudasieve` branch's prime_atlas_v2.py (forked 2026-08-22, before this
+# refactor's tab-by-tab extraction existed) onto this module, task #459/cudasieve-v2 branch.
+# See prime_sieve/prime_sieve_cudasieve.py's own module header for what --status/
+# --fetch-license/--build each do and why the install consent-gate is split across two of
+# them; this is only the "how do I invoke it from Windows via wsl.exe" layer, same division
+# of responsibility every other build_*_argv() in this module already follows.
+# ------------------------------------------------------------------------------------------
+
+CUDASIEVE_SCRIPT = os.path.abspath(
+    os.path.join(_SCRIPT_DIR, "prime_sieve", "prime_sieve_cudasieve.py"))
+
+
+def build_cudasieve_status_argv():
+    """`python3 prime_sieve_cudasieve.py --status` -- see that function's own docstring
+    for the JSON shape returned."""
+    return ["python3", windows_path_to_wsl(CUDASIEVE_SCRIPT), "--status"]
+
+
+def build_cudasieve_fetch_license_argv():
+    """`python3 prime_sieve_cudasieve.py --fetch-license` -- clones/updates CUDASieve and
+    returns its OWN current License file text as JSON; see cmd_fetch_license()'s own
+    docstring for why this (not a copy embedded in this project) is what the consent
+    dialog shows."""
+    return ["python3", windows_path_to_wsl(CUDASIEVE_SCRIPT), "--fetch-license"]
+
+
+def build_cudasieve_build_argv():
+    """`python3 -u prime_sieve_cudasieve.py --build` -- runs `make` in the already-cloned
+    install dir (see cmd_build()'s own docstring); -u (unbuffered) for the same reason
+    build_constellation_finder_argv() uses it -- this is a long-running job whose progress
+    lines should reach WslLoggedRunner's log file as they're printed, not only at exit."""
+    return ["python3", "-u", windows_path_to_wsl(CUDASIEVE_SCRIPT), "--build"]
+
+
+def run_cudasieve_wsl_blocking(argv, portal_folder, timeout=120):
+    """Blocking wsl.exe call for --status/--fetch-license (both answer in a few seconds at
+    most under normal conditions -- --fetch-license's git clone/fetch is the slow part,
+    hence the longer default timeout than a quick status ping). Returns (True, payload)/
+    (False, error_message), same two-tuple contract as run_primesieve_query_wsl()
+    (primesieve_calc_tab.py) and every other WSL-launching call in this app.
+
+    `portal_folder` is an explicit parameter, not a bare module global -- see this
+    module's own docstring for why every WSL-launching function here takes it that way
+    (settings_tab.py's wsl_helpers wraps this in a lambda supplying the CURRENT storage
+    path, same as it already does for build_wsl_logged_command).
+
+    Deliberately does NOT use the simple subprocess.run(cmd, timeout=timeout) pattern
+    run_primesieve_query_wsl() uses (primesieve_calc_tab.py) -- ported forward from a real,
+    confirmed-live bug hit on the `cudasieve` branch (2026-08-23):
+
+    1) subprocess.run() against wsl.exe's own stdout pipe hung indefinitely from within
+       this windowed/console-less Tk process, even though a bare `wsl.exe -e bash -c
+       "echo hi"` from a plain terminal returned instantly -- the same console-allocation/
+       pipe-hang failure mode build_wsl_logged_command()'s own docstring documents.
+    2) Switching to build_wsl_logged_command()'s file-redirection (real stdout/stderr never
+       touch a pipe wsl.exe itself owns) while still calling subprocess.run(...,
+       timeout=timeout) STILL hung, even after a full app restart + `wsl --shutdown`. Root
+       cause: on Windows, when Popen.communicate(timeout=timeout) raises TimeoutExpired,
+       CPython's subprocess.run() calls process.kill() and then calls
+       process.communicate() a SECOND time with NO timeout at all, as a "collect the real
+       output" fallback (see subprocess.py's own source). If wsl.exe's own process doesn't
+       actually die from kill() (WSL's process-lifecycle model doesn't guarantee a killed
+       Windows-side wrapper takes the underlying Linux process down with it -- see
+       WslLoggedRunner's own docstring), that second, untimed call can hang forever,
+       silently defeating `timeout=` entirely regardless of its value.
+
+    WslLoggedRunner itself never hits this: it uses Popen() (non-blocking) plus its own
+    manual proc.poll() loop, and never calls wait()/communicate() with (or without) a
+    timeout anywhere. This function now copies that exact pattern instead of leaning on
+    subprocess.run's timeout machinery at all. (run_primesieve_query_wsl() has not hit
+    this in practice since a single count/nth/next/prev query answers in well under a
+    second, but the same latent hang risk applies there too -- flagged separately, not
+    fixed here, since that function belongs to an unrelated tab.)"""
+    log_path, exit_path, _run_id = generation_log_paths(portal_folder, "cudasieve_query")
+    cmd = build_wsl_logged_command(argv, log_path, exit_path, portal_folder)
+    try:
+        proc = subprocess.Popen(cmd, **_popen_kwargs_no_window())
+    except OSError as e:
+        return False, f"Could not launch WSL: {e}"
+    deadline = time.time() + timeout
+    while proc.poll() is None:
+        if time.time() > deadline:
+            try:
+                proc.kill()
+            except OSError:
+                pass
+            for p in (log_path, exit_path):
+                try:
+                    os.remove(p)
+                except OSError:
+                    pass
+            # Deliberately does NOT wait()/communicate() after kill() -- see history item
+            # 2 above; this is exactly the untimed call that could hang forever. The
+            # underlying wsl.exe process may still be running in the background after this
+            # returns -- WSL's process model does not guarantee kill() reaches the Linux
+            # side, only that this app stops waiting on it.
+            return False, f"Timed out after {timeout}s."
+        time.sleep(0.2)
+    try:
+        with open(log_path, encoding="utf-8", errors="replace") as f:
+            stdout = f.read().strip()
+    except OSError as e:
+        return False, f"Could not read WSL output log: {e}"
+    finally:
+        for p in (log_path, exit_path):
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+    last_line = stdout.splitlines()[-1] if stdout else ""
+    try:
+        payload = json.loads(last_line)
+    except (ValueError, IndexError):
+        detail = stdout or "(no output)"
+        return False, detail[:2000]
+    if payload.get("ok"):
+        return True, payload
+    return False, payload.get("error", "unknown error")
+
+
 def build_loop_argv(base_exponent, run_count, n_instances, write_files,
                      compute_sieving_primes_count, window_count_per_run,
                      workers, batches_per_worker, window_m, script_path=None):
@@ -611,6 +733,38 @@ def build_primesieve_argv(base_exponent, target_idx_start, window_count_per_run,
     _quick_gen_plan_literal_range()), so there's no reason for this simpler script to
     duplicate that disk-scanning logic itself."""
     script = script_path if script_path is not None else PRIMESIEVE_SCRIPT
+    script_wsl = windows_path_to_wsl(script)
+    return [
+        "python3", "-u", script_wsl,
+        str(base_exponent), str(target_idx_start), str(window_count_per_run), str(window_m),
+        "1" if write_files else "0",
+    ]
+
+
+# Duplicated from prime_sieve_cudasieve.py's own MIN_PRINTABLE_TOP -- CUDASieve's own CLI
+# documents that its -p/--print flag "will be ignored below 2**40", so this mode can never
+# usefully list individual primes below that value. Checked here too (not just backend-side)
+# so a doomed request is rejected before paying a WSL round-trip, exactly like
+# PRIMESIEVE_MAX_STOP's own pre-flight check above.
+CUDASIEVE_MIN_PRINTABLE_TOP = 2 ** 40
+
+# CUDASieve's own --help text documents examples up to 2**64 (e.g. "-b 2**64-2**35-2**30 -t
+# 2**64-2**35"), confirmed on real hardware (RTX 5070, 2026-08-23, `cudasieve` branch) --
+# same uint64_t domain as libprimesieve's own PRIMESIEVE_MAX_STOP, so the same
+# ceiling/truncation-note logic applies.
+CUDASIEVE_MAX_STOP = 2 ** 64 - 1
+CUDASIEVE_MAX_WIDTH_MULT = CUDASIEVE_MAX_STOP // QUICK_GEN_MAX_WINDOW_WIDTH + 1
+
+
+def build_cudasieve_argv(base_exponent, target_idx_start, window_count_per_run, window_m,
+                          write_files, script_path=None):
+    """Returns the LINUX-side argv for prime_sieve_cudasieve.py -- the GPU 'cudasieve mode'
+    engine. Argument order matches that script's __main__ CLI exactly, and is deliberately
+    identical in shape to build_primesieve_argv()'s: <base_exponent> <target_idx_start>
+    <target_idx_count> <window_m> <write_files 0/1> -- both engines skip the batching/
+    orchestrator machinery entirely, so neither has a workers/batches_per_worker/
+    compute_sieving_primes_count concept to pass through."""
+    script = script_path if script_path is not None else CUDASIEVE_SCRIPT
     script_wsl = windows_path_to_wsl(script)
     return [
         "python3", "-u", script_wsl,

@@ -347,9 +347,27 @@ class TotalsSearchCoordinator:
         before -- it's reached only via the Primes tab's explicit 'Zweryfikuj sumy'
         button now, instead of running automatically, for the rare case these
         persisted totals ever drift (a crash mid-write, or files touched outside the
-        app)."""
+        app).
+
+        Also resets self.totals_progress back to its empty 0/1 resting state (bug fix,
+        2026-08-27, confirmed with Artur): this is called on EVERY reload_primes_tree()
+        -- including the one GenerationTab triggers right after a run finishes (see
+        _on_loop_finished()'s own reload_primes_tree() call) -- but before this fix it
+        never touched totals_progress at all, only self.status. A finished generation
+        run snaps totals_progress to fully complete on purpose (see generation_tab.py's
+        _update_shared_progress_from_generation_chunk() docstring, "snaps the bar to
+        fully complete") and relies on WHATEVER runs next to clear it back to empty --
+        before 2026-08-27 that was compute_all_pietro_totals()'s own automatic
+        post-reload call (_on_pietro_total_ready's completion branch resets the bar),
+        which ran unconditionally after every reload. Once that automatic call was
+        replaced by this lightweight cached-total read (this method), nothing was left
+        to perform that reset -- the bar stayed visibly full indefinitely after a
+        generation run, reading as "still busy" even though the app was idle. Mirrors
+        the exact same reset call _on_pietro_total_ready's own completion branch and
+        _finish_search_job() already use."""
         if floor_count == 0:
             self.status.set(self.T("primes.status_none_to_compute"))
+            self.totals_progress.configure(maximum=1, value=0)
             return
         known = get_global_total(totals_cache)
         if known is None:
@@ -361,6 +379,7 @@ class TotalsSearchCoordinator:
             self.T("primes.status_grand_total", count=floor_count,
                    sum=f"{total_sum:,}", duration=format_duration(total_seconds),
                    size=format_bytes(total_bytes)))
+        self.totals_progress.configure(maximum=1, value=0)
 
     def compute_all_pietro_totals(self):
         """Kicks off the bulk "every floor's total" batch -- called from the Primes
