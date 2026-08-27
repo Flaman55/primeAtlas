@@ -49,10 +49,12 @@ from tkinter import ttk, messagebox
 import pattern_catalog_v1
 
 from .base_tab import BaseTab
+from .benchmark import read_benchmark_log
 from .generation_console import GenerationConsole
-from .storage import digit_count_floor, LOW_FLOOR_CUTOFF
+from .storage import bump_pietro_total, digit_count_floor, load_totals_cache, LOW_FLOOR_CUTOFF, save_totals_cache
 from .generation import (
-    QUICK_GEN_MAX_WINDOW_WIDTH, count_existing_windows, find_continuation_target_idx,
+    QUICK_GEN_MAX_WINDOW_WIDTH, compute_totals_bumps_from_new_rows, count_existing_windows,
+    find_continuation_target_idx,
     find_first_gap_target_idx, _trim_existing_from_target_idx_range,
     find_highest_populated_floor, _eval_quick_number, _round_range_to_window,
     _floor_window_count, _KTUPLE_STRATEGY_KEYS, load_generation_settings,
@@ -431,6 +433,17 @@ class GenerationTab(BaseTab):
 
         self._loop_runner = None
         self._loop_output_queue = queue.Queue()
+        self._benchmark_rows_before_run = None  # row count of benchmark_log.csv as of
+        # the moment the currently-running (or just-launched) self._loop_runner started
+        # -- set by _on_run_loop()/_on_run_primesieve()/_on_run_orchestrator_direct()
+        # right before starting the subprocess, consumed by _on_loop_finished()'s
+        # _bump_totals_from_finished_run() to know which rows in the CSV are new since
+        # then. See storage.py's own module docstring for the feature this belongs to
+        # (added 2026-08-27, after Artur pointed out that a full per-floor rescan --
+        # the ONLY way a newly-generated window's prime count used to reach the
+        # persisted totals cache -- was expensive and unnecessary given
+        # benchmark_log.csv already logs each run's own total_primes/windows_written/
+        # bytes_written/write_files).
 
         # --- Section B: constellation_finder_v1.py (k-tuple search) --------------
         const_outer = ttk.Labelframe(
@@ -1441,6 +1454,9 @@ class GenerationTab(BaseTab):
 
             self.loop_console.append(self._new_run_separator())
             self._loop_output_queue = queue.Queue()
+            # Snapshot BEFORE starting the subprocess -- see this attribute's own
+            # comment in __init__ for why _on_loop_finished needs it.
+            self._benchmark_rows_before_run = len(read_benchmark_log(self._get_portal_folder())[1])
             self._loop_runner = WslLoggedRunner(
                 cmd, log_path, exit_path, self._loop_output_queue,
                 kill_pattern="prime_sieve_primesieve.py")
@@ -1502,6 +1518,9 @@ class GenerationTab(BaseTab):
 
             self.loop_console.append(self._new_run_separator())
             self._loop_output_queue = queue.Queue()
+            # Snapshot BEFORE starting the subprocess -- see this attribute's own
+            # comment in __init__ for why _on_loop_finished needs it.
+            self._benchmark_rows_before_run = len(read_benchmark_log(self._get_portal_folder())[1])
             self._loop_runner = WslLoggedRunner(
                 cmd, log_path, exit_path, self._loop_output_queue,
                 kill_pattern="orchestrator_v3.py")
@@ -2186,6 +2205,9 @@ class GenerationTab(BaseTab):
 
             self.loop_console.append(self._new_run_separator())
             self._loop_output_queue = queue.Queue()
+            # Snapshot BEFORE starting the subprocess -- see this attribute's own
+            # comment in __init__ for why _on_loop_finished needs it.
+            self._benchmark_rows_before_run = len(read_benchmark_log(self._get_portal_folder())[1])
             self._loop_runner = WslLoggedRunner(
                 cmd, log_path, exit_path, self._loop_output_queue,
                 kill_pattern="orchestrator_loop_v2.py")
@@ -2216,6 +2238,36 @@ class GenerationTab(BaseTab):
             self._loop_runner.stop()
             self.loop_status_label.set(self.T("common.stopping"))
 
+    def _bump_totals_from_finished_run(self):
+        """Reads benchmark_log.csv fresh and folds every NEW row written since
+        self._benchmark_rows_before_run's snapshot (see that attribute's own comment in
+        __init__) directly into the persisted totals cache via storage.bump_pietro_total(),
+        instead of relying on the next full per-floor rescan to notice the new windows --
+        see storage.py's own module docstring for the feature this is one of three write-
+        path hooks for (generation here; storage_integrate.py's merge and
+        delete_manager.py's floor delete are the other two). The actual row-filtering/
+        parsing decision is generation.compute_totals_bumps_from_new_rows() -- see that
+        function's own docstring for why it's split out.
+
+        Called BEFORE reload_primes_tree() in _on_loop_finished() -- reload's own
+        PrimesTreeCoordinator._scan() reads the totals cache fresh from disk every time
+        (see that module's own docstring), so by the time the tree repopulates it already
+        reflects whatever this method just bumped, with no extra rescan needed for that to
+        be true."""
+        portal_folder = self._get_portal_folder()
+        before = self._benchmark_rows_before_run
+        self._benchmark_rows_before_run = None
+        if before is None:
+            return
+        _fieldnames, rows = read_benchmark_log(portal_folder)
+        bumps = compute_totals_bumps_from_new_rows(rows, before)
+        if not bumps:
+            return
+        cache = load_totals_cache(portal_folder)
+        for base_exponent, delta_count, delta_files, delta_bytes in bumps:
+            bump_pietro_total(cache, base_exponent, delta_count, delta_files, delta_bytes)
+        save_totals_cache(portal_folder, cache)
+
     def _on_loop_finished(self):
         """_drain_output_queue's on_exit callback for the loop queue -- resets every
         open Quick-gen panel's 'Generate' button back from its temporary 'Stop'
@@ -2233,6 +2285,7 @@ class GenerationTab(BaseTab):
         change."""
         for panel in self._quick_panels:
             panel["generate_btn"].configure(text=self.T("quick.generate_button"))
+        self._bump_totals_from_finished_run()
         self.reload_primes_tree()
 
         # A search-triggered "generate the missing window" run (see

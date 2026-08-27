@@ -118,11 +118,14 @@ class PrimesTreeCoordinator:
 
     def reload(self):
         """Rebuilds the floor list from disk (picks up newly created/removed 10pN
-        folders) AND re-runs the totals scan for every floor -- so pressing Refresh
-        after generating new windows is enough to see updated totals, no separate
-        button needed. Each floor's total is cached (see
-        update_pietro_totals_cache()'s own docstring), so a floor with no new files
-        costs one cheap os.listdir() + an in-memory set diff.
+        folders) and shows the grand total straight from the persisted totals cache
+        (see _on_scan_done()'s own comment -- no per-file rescan runs here anymore,
+        see storage.py's own module docstring). Each floor's own total is read
+        straight from that same persisted cache too (see
+        update_pietro_totals_cache()'s own docstring for how it's kept accurate), so
+        pressing Refresh after generating new windows shows up-to-date totals with no
+        disk-scanning cost beyond the cheap floor-list/benchmark_log.csv read _scan()
+        already does.
 
         The actual disk scan (_scan) runs on background.run_in_background() -- this
         method just dispatches it and returns immediately; _on_scan_done does the real
@@ -167,7 +170,16 @@ class PrimesTreeCoordinator:
             pietra, result["pietro_total_known"], result["pietro_gen_seconds"])
         self.status.set(self.T("app.status_portal_with_count", folder=portal_folder,
                                 count=len(pietra)))
-        self._totals_search.compute_all_pietro_totals()
+        # Was compute_all_pietro_totals() (a real per-file rescan submitted for EVERY
+        # floor) until 2026-08-27 -- see storage.py's own module docstring for why that
+        # ran unconditionally after every single reload/startup even when nothing had
+        # changed, and TotalsSearchCoordinator.show_cached_grand_total()'s own
+        # docstring for what replaced it (an all-in-memory read of the persisted
+        # totals cache this scan already loaded, via result["totals_cache"] above).
+        # The real rescan still exists, just moved behind the Primes tab's explicit
+        # "Zweryfikuj sumy" button (PrimesTab._verify_all_totals).
+        self._totals_search.show_cached_grand_total(
+            result["totals_cache"], result["pietro_gen_seconds"], len(pietra))
 
         if self._on_startup_scan_done is not None:
             self._on_startup_scan_done("primes")

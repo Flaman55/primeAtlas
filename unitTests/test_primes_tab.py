@@ -201,9 +201,21 @@ def main():
         node3 = node_by_text["10p3"]
 
         # --- cumulative running-total column (added 2026-08-27) ---------------------
+        # Startup no longer auto-triggers a real per-floor rescan (compute_all_pietro_
+        # totals()) -- see storage.py's own module docstring for the persisted-totals
+        # feature added the same day: a fresh portal folder's .portal_totals_cache.json
+        # doesn't exist yet, so pietro_total_known is genuinely empty right after
+        # startup, and the cumulative column is correctly blank for BOTH floors at this
+        # point (nothing to assert here beyond that; asserted implicitly by the totals
+        # verify below actually changing things). Explicitly clicking "Zweryfikuj sumy"
+        # (widget._verify_all_totals, the manual safety-net verify that replaced the
+        # old automatic behavior) is what makes floor 0's real total known.
+        widget._verify_all_totals()
+        _pump(app, 5.0)
+
         # Floor 0's cumulative is INCLUSIVE of its own count -- with nothing below it,
-        # that's just its own 10 primes, once the startup totals worker has actually
-        # finished computing it (same 5s pump above already waits for that). Floor 3's
+        # that's just its own 10 primes, once the manual verify above has actually
+        # finished computing it (the second 5s pump waits for that). Floor 3's
         # cumulative can NEVER be shown here: floors 1 and 2 were never seeded/
         # generated at all (a real gap in the floor SEQUENCE, not just an unknown
         # total -- see _cumulative_pietro_totals's own docstring), so it must stay

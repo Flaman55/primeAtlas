@@ -701,7 +701,8 @@ def _build_gui():
                 is_search_busy=lambda: self._totals_search.search_busy,
                 offer_generate_missing_prime_window=lambda be, num:
                     self._offer_generate_missing_prime_window("prime", be, num),
-                submit_totals_job=lambda be: self._totals_search.submit_totals_job(be))
+                submit_totals_job=lambda be: self._totals_search.submit_totals_job(be),
+                verify_all_totals=lambda: self._totals_search.compute_all_pietro_totals())
             self.primes_tab_widget.pack(fill="both", expand=True)
 
         def reload_primes_tree(self):

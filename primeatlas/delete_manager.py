@@ -29,6 +29,8 @@ import csv
 
 import window_sharding
 
+from .storage import remove_pietro_total, load_totals_cache, save_totals_cache, TOTALS_CACHE_FILENAME
+
 _PIETRO_DIR_RE = re.compile(r"^10p(\d+)$")
 _SOURCE_WINDOW_RE = re.compile(r"^PRIME_WINDOW_10p\d+_off_(\d+)(M)?\.bin$")
 _CONSTELLATION_K_RE = re.compile(r"^k(\d+)$")
@@ -86,6 +88,20 @@ class PortalWiper:
                     os.replace(tmp_path, csv_path)
             except OSError as e:
                 errors.append(f"benchmark_log.csv: {e}")
+
+        # Every floor this wipe just removed is gone from storage.py's persisted
+        # totals cache too -- see storage.py's own module docstring for that feature
+        # (added 2026-08-27). A full wipe simply deletes the whole cache FILE outright
+        # rather than calling remove_pietro_total() per floor (see FloorWiper.
+        # execute_delete_floor() below for that narrower, single-floor version) --
+        # every floor is gone at once here, so there is nothing left for the cache to
+        # describe; the next floor generated writes a fresh cache from scratch.
+        totals_cache_path = os.path.join(self.storage_path, TOTALS_CACHE_FILENAME)
+        if os.path.exists(totals_cache_path):
+            try:
+                os.remove(totals_cache_path)
+            except OSError as e:
+                errors.append(f"{TOTALS_CACHE_FILENAME}: {e}")
 
         return deleted, errors
 
@@ -168,7 +184,15 @@ class FloorWiper:
         together -- they share that one directory) plus that floor's own
         benchmark_log.csv rows. Returns (ok, error) -- ok=False with error=None means
         "nothing there to delete" (not itself an error, just a no-op); error is set
-        only for an actual OSError during the rmtree."""
+        only for an actual OSError during the rmtree.
+
+        Also drops this floor's entry from storage.py's persisted totals cache and
+        subtracts its last-known total from the persisted global sum
+        (remove_pietro_total()) -- see storage.py's own module docstring for that
+        feature (added 2026-08-27, one of the three write-path hooks Artur asked for:
+        generation, storage merge, and this one). Runs AFTER the rmtree succeeds, not
+        before -- a floor whose files failed to delete should keep being counted in
+        the totals, since it's still really there on disk."""
         floor_dir = os.path.join(self.storage_path, f"10p{base_exponent}")
         if not os.path.isdir(floor_dir):
             return False, None
@@ -177,6 +201,9 @@ class FloorWiper:
         except OSError as e:
             return False, str(e)
         _prune_benchmark_csv_rows(self.storage_path, base_exponent)
+        cache = load_totals_cache(self.storage_path)
+        if remove_pietro_total(cache, base_exponent) is not None:
+            save_totals_cache(self.storage_path, cache)
         return True, None
 
     def plan_constellations(self, base_exponent):

@@ -137,20 +137,24 @@ def main():
         check(0 in app.primes_tab_widget._pietro_node_by_exp,
               f"seeded floor 10p0 shows up in the Prime numbers tree "
               f"(got exponents: {list(app.primes_tab_widget._pietro_node_by_exp.keys())})")
-        # Not asserting on app.status.get()'s CONTENT here -- by the time the 5s pump
-        # above finishes, the totals worker kicked off at the end of
-        # PrimesTreeCoordinator._on_scan_done has typically already overwritten the
-        # "N floors found" message with its own "GRAND TOTAL" summary (both are
-        # legitimate, sequential status states, not a bug). The grand total itself is a better,
-        # non-timing-dependent proxy that the seeded floor was genuinely read: 4
-        # primes (2,3,5,7) were written into it above.
-        #
-        # _grand_total_sum lives on app._totals_search (TotalsSearchCoordinator),
-        # not on app itself -- moved there by task #410's coordinator extraction
-        # (2026-08-26); this assertion was left pointing at the pre-extraction
-        # location and only surfaced once actually run under real Tk (task #416).
+        # PrimesTreeCoordinator._on_scan_done no longer kicks off a real per-floor
+        # rescan (compute_all_pietro_totals()) automatically after startup -- see
+        # storage.py's own module docstring for the persisted-totals feature added
+        # 2026-08-27. A brand-new portal folder has no .portal_totals_cache.json yet,
+        # so nothing has actually READ the seeded floor's header at this point --
+        # show_cached_grand_total()'s self-heal (recompute_global_total()) only sums
+        # whatever per-floor totals are ALREADY cached, and there are none yet, so it
+        # correctly reports 0 here, not 4. That's the intended behavior, not a bug:
+        # the real read only happens once something asks for it -- either a real
+        # write (generation/merge/delete, none of which apply to this fixture) or the
+        # Primes tab's manual "Zweryfikuj sumy" button, which this test triggers
+        # explicitly below to exercise the SAME real rescan _grand_total_sum used to
+        # get for free at startup.
+        app._totals_search.compute_all_pietro_totals()
+        _pump(app, 5.0)
         check(app._totals_search._grand_total_sum == 4,
-              f"totals worker actually summed the seeded floor's real prime count "
+              f"a manual 'Zweryfikuj sumy' verify (compute_all_pietro_totals()) still "
+              f"correctly sums the seeded floor's real prime count "
               f"(got _grand_total_sum={app._totals_search._grand_total_sum!r})")
 
         # --- re-entrancy: a reload triggered while one is still in flight coalesces -

@@ -36,7 +36,9 @@ import shutil
 import window_sharding
 
 from .manifest import PietroSnapshot, ConstellationSnapshot
-from .storage import _offset_from_filename
+from .storage import (
+    _offset_from_filename, bump_pietro_total, load_totals_cache, save_totals_cache,
+)
 from .delete_manager import FloorWiper
 from . import floor_meta
 
@@ -178,6 +180,19 @@ def integrate_floor(destination_path, external_path, base_exponent,
     (merge_floor_meta_into_benchmark_log(), already wired -- see this module's own
     docstring for why this file never touches benchmark_log.csv directly itself).
 
+    Also bumps storage.py's persisted totals cache (bump_pietro_total()) for every
+    copied window whose prime count is already KNOWN from the external side's own
+    .portal_totals_cache.json -- added 2026-08-27 at Artur's explicit request ("sumuje
+    się wartość z magazynu docelowego z importowanym magazynem zamiast zliczać każdą
+    sztukę", i.e. sum the two sides' already-known totals instead of recounting every
+    prime -- see storage.py's own module docstring for the full feature). Deliberately
+    does NOT open/read any window file to learn its count if the external cache
+    doesn't already know it (e.g. that floor was never opened in PrimeAtlas on the
+    external side at all) -- a copied window this can't account for here just leaves
+    the destination cache exactly as stale as it already was before this merge, to be
+    caught later by the manual "Zweryfikuj sumy" verify action, rather than defeating
+    the whole point of this feature by reading every file's header during the merge.
+
     Returns {"copied_windows": n, "copied_hits": n, "cancelled": bool}."""
     live_dest = PietroSnapshot.scan(destination_path, base_exponent)
     live_ext = PietroSnapshot.scan(external_path, base_exponent)
@@ -190,6 +205,15 @@ def integrate_floor(destination_path, external_path, base_exponent,
     copied_windows = 0
     copied_hits = 0
     cancelled = False
+
+    # Known-totals lookup for the bump below -- {filename: {"count", "size", ...}} from
+    # the EXTERNAL side's own persisted cache (may be partial or entirely absent; see
+    # this function's own docstring paragraph on why an unknown file is simply skipped
+    # rather than read from disk to fill the gap).
+    ext_known_files = load_totals_cache(external_path).get(f"10p{base_exponent}", {}).get("files", {})
+    bumped_count = 0
+    bumped_file_count = 0
+    bumped_bytes = 0
 
     dest_source_dir = _floor_source_dir(destination_path, base_exponent)
     ext_source_dir = _floor_source_dir(external_path, base_exponent)
@@ -214,6 +238,11 @@ def integrate_floor(destination_path, external_path, base_exponent,
                 dest_source_dir, _offset_from_filename(name))
             _stream_copy_plain(src_path, os.path.join(dst_shard_dir, name))
             copied_windows += 1
+            known = ext_known_files.get(name)
+            if isinstance(known, dict) and "count" in known:
+                bumped_count += known["count"]
+                bumped_file_count += 1
+                bumped_bytes += known.get("size", 0)
 
         for j, rel_path in enumerate(missing_hits):
             if should_stop is not None and should_stop():
@@ -247,5 +276,10 @@ def integrate_floor(destination_path, external_path, base_exponent,
     if ext_meta and ext_meta["benchmark_rows"]:
         floor_meta.merge_rows_into_floor_meta(
             destination_path, base_exponent, ext_meta["benchmark_rows"])
+
+    if bumped_file_count > 0:
+        dest_cache = load_totals_cache(destination_path)
+        bump_pietro_total(dest_cache, base_exponent, bumped_count, bumped_file_count, bumped_bytes)
+        save_totals_cache(destination_path, dest_cache)
 
     return {"copied_windows": copied_windows, "copied_hits": copied_hits, "cancelled": cancelled}

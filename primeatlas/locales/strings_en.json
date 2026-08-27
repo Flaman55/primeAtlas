@@ -210,6 +210,7 @@
   "primes.col_pietro": "Floor / file",
   "primes.col_count": "Primes",
   "primes.col_cumulative": "Running total",
+  "primes.btn_verify_totals": "Verify totals",
   "primes.col_files": "Files",
   "primes.col_size": "Size",
   "primes.col_generated": "Generated (UTC)",

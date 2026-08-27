@@ -100,7 +100,8 @@ class PrimesTab(BaseTab):
     def __init__(self, parent, get_portal_folder, status_var, translator,
                  update_nav_controls, render_page, page_size, floor_page_size,
                  reload_primes_tree, start_search_job, is_search_busy,
-                 offer_generate_missing_prime_window, submit_totals_job):
+                 offer_generate_missing_prime_window, submit_totals_job,
+                 verify_all_totals):
         """
         get_portal_folder/status_var/translator/update_nav_controls: same dependency-
         injection pattern as BenchmarkTab's own constructor (see that class's
@@ -143,7 +144,18 @@ class PrimesTab(BaseTab):
         submit_totals_job(base_exponent): prime_atlas_v1.py's per-floor totals
         PersistentWorker's submit() method -- expanding a floor re-checks its total
         (cheap no-op if nothing changed, see update_pietro_totals_cache()'s own
-        docstring), the same worker the Refresh button's "compute all" batch uses.
+        docstring), the same worker the "Zweryfikuj sumy" button's "compute all" batch
+        (verify_all_totals below) also uses.
+
+        verify_all_totals(): TotalsSearchCoordinator.compute_all_pietro_totals(), bound
+        to the new "Zweryfikuj sumy" button (added 2026-08-27, see this class's own
+        _build_widgets() comment and storage.py's own module docstring for the
+        "persisted totals, updated incrementally instead of by a full rescan" feature
+        this button is the manual safety-net verify for). Refresh no longer triggers
+        this automatically -- it used to, back when this was the ONLY way any total
+        ever got refreshed at all -- so this is now the one place a real per-file
+        rescan can still be asked for, for the rare case the persisted totals drift
+        (a crash mid-write, or files touched outside the app).
         """
         super().__init__(parent, translator)
         self._get_portal_folder = get_portal_folder
@@ -157,6 +169,7 @@ class PrimesTab(BaseTab):
         self._is_search_busy = is_search_busy
         self._offer_generate_missing_prime_window = offer_generate_missing_prime_window
         self._submit_totals_job = submit_totals_job
+        self._verify_all_totals = verify_all_totals
 
         self._pietro_total_known = {}   # base_exponent -> (total, file_count,
                                          # total_bytes), seeded by populate_floors(),
@@ -173,6 +186,8 @@ class PrimesTab(BaseTab):
         top = ttk.Frame(self)
         top.pack(fill="x", padx=6, pady=4)
         ttk.Button(top, text=T("common.refresh"), command=self._reload_primes_tree).pack(side="left")
+        ttk.Button(top, text=T("primes.btn_verify_totals"),
+                   command=self._verify_all_totals).pack(side="left", padx=(6, 0))
 
         ttk.Label(top, text=T("common.search_label")).pack(side="left")
         self.search_entry = ttk.Entry(top, width=26)
@@ -182,14 +197,15 @@ class PrimesTab(BaseTab):
             top, text=T("common.search_button"), command=self._search_prime)
         self.search_button.pack(side="left")
 
-        # No separate "compute all totals" button --
-        # Refresh already re-runs the totals scan for every floor (see
-        # prime_atlas_v1.py's reload_primes_tree()), so a second button doing the same
-        # thing was redundant. Re-running costs almost nothing when nothing changed:
-        # update_pietro_totals_cache() only re-reads files NOT already in its cache (a
-        # cheap os.listdir() + in-memory set diff per floor either way -- see that
-        # function's docstring), so hitting Refresh after generating new windows only
-        # pays for the new files, not a full floor-by-floor rescan.
+        # "Zweryfikuj sumy" (verify_all_totals, added above) used to be redundant with
+        # Refresh -- Refresh called compute_all_pietro_totals() (a real per-file
+        # rescan) automatically after every reload. That's no longer true (2026-08-27,
+        # see storage.py's own module docstring): Refresh now shows the grand total
+        # straight from the persisted totals cache instead, so THIS button is the only
+        # remaining way to trigger a real rescan -- kept as a manual safety net for the
+        # rare case those persisted totals ever drift (a crash mid-write, or files
+        # touched outside the app), per Artur's explicit choice to keep it rather than
+        # remove the verify path entirely.
         paned = ttk.Panedwindow(self, orient="horizontal")
         paned.pack(fill="both", expand=True, padx=6, pady=4)
 

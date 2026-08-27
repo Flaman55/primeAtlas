@@ -99,6 +99,48 @@ QUICK_GEN_MAX_WINDOW_WIDTH = 10_000_000  # window width the (future) range ->
 # else in this file.
 
 
+def compute_totals_bumps_from_new_rows(rows, before_count):
+    """Pure logic behind GenerationTab._bump_totals_from_finished_run() (see that
+    method's own docstring for the full feature rationale -- storage.py's persisted
+    totals cache, updated incrementally instead of by a full per-floor rescan). `rows`
+    is benchmark_log.csv's own row list (read_benchmark_log()'s second return value,
+    each row a plain dict of strings -- csv.DictReader's own shape), `before_count` is
+    how many rows existed right before the just-finished run started (see
+    GenerationTab.__init__'s own comment on self._benchmark_rows_before_run).
+
+    Returns a list of (base_exponent, delta_count, delta_file_count, delta_bytes)
+    tuples, one per NEW row (rows[before_count:]) that both (a) has write_files == "1"
+    -- a count-only benchmark run logs a real total_primes number too, but wrote
+    nothing to disk, so it must never be folded into a total that's supposed to track
+    real files -- and (b) parses cleanly as integers; a malformed/legacy row (missing
+    a column that predates it, non-numeric field) is skipped rather than raising, same
+    defensive stance load_totals_cache() takes toward a corrupt cache file. A
+    genuinely-zero delta (delta_count == delta_file_count == delta_bytes == 0) is also
+    dropped -- nothing changed, no reason to touch the cache over it.
+
+    Pulled out as its own pure function (no cache/disk I/O of its own) purely so this
+    row-filtering/parsing logic is unit-testable without constructing a real
+    GenerationTab/tkinter widget or a real benchmark_log.csv on disk -- the same
+    "extract the decision logic, keep the I/O at the edges" convention this package
+    already uses for primes_tab.py's _cumulative_pietro_totals()/benchmark_tab.py's
+    _hover_label_position()."""
+    bumps = []
+    for row in rows[before_count:]:
+        if row.get("write_files") != "1":
+            continue
+        try:
+            base_exponent = int(row["base_exponent"])
+            delta_count = int(row["total_primes"])
+            delta_file_count = int(row["windows_written"])
+            delta_bytes = int(row.get("bytes_written") or 0)
+        except (KeyError, TypeError, ValueError):
+            continue
+        if delta_count == 0 and delta_file_count == 0 and delta_bytes == 0:
+            continue
+        bumps.append((base_exponent, delta_count, delta_file_count, delta_bytes))
+    return bumps
+
+
 def count_existing_windows(portal_folder, base_exponent):
     """Real count of window FILES actually on disk for this floor -- len(list_source_
     filenames(...)), nothing more. Added 2026-08-18 at Artur's request after a real-world

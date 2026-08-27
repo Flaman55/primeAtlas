@@ -87,9 +87,57 @@ def _touch_window(portal, floor, target_idx, window_m=10_000_000):
     open(os.path.join(shard_dir, name), "wb").close()
 
 
+def _test_compute_totals_bumps_from_new_rows():
+    """compute_totals_bumps_from_new_rows() -- the pure row-filtering logic behind
+    GenerationTab._bump_totals_from_finished_run() (added 2026-08-27, see storage.py's
+    own module docstring for the persisted-totals feature this belongs to). No temp
+    directory needed -- this function only ever looks at plain row dicts, the exact
+    shape read_benchmark_log()/csv.DictReader hands back, never touching disk itself."""
+    import primeatlas.generation as m
+
+    rows = [
+        {"base_exponent": "5", "total_primes": "100", "windows_written": "1",
+         "bytes_written": "800", "write_files": "1"},  # row 0: pre-existing, before_count skips it
+        {"base_exponent": "7", "total_primes": "40", "windows_written": "2",
+         "bytes_written": "500", "write_files": "1"},  # row 1: NEW, real write
+        {"base_exponent": "7", "total_primes": "999", "windows_written": "3",
+         "bytes_written": "9999", "write_files": "0"},  # row 2: NEW but count-only, must be skipped
+        {"base_exponent": "9", "total_primes": "bogus", "windows_written": "1",
+         "bytes_written": "10", "write_files": "1"},  # row 3: NEW but malformed, must be skipped
+        {"base_exponent": "5", "total_primes": "0", "windows_written": "0",
+         "bytes_written": "0", "write_files": "1"},  # row 4: NEW but genuinely zero, must be skipped
+        {"base_exponent": "5", "total_primes": "12", "windows_written": "1",
+         "bytes_written": "96", "write_files": "1"},  # row 5: NEW, real write, SAME floor as row 0
+    ]
+    bumps = m.compute_totals_bumps_from_new_rows(rows, before_count=1)
+    check(bumps == [(7, 40, 2, 500), (5, 12, 1, 96)],
+          f"compute_totals_bumps_from_new_rows skips the pre-existing row (index 0, "
+          f"before before_count=1), the count-only row (write_files='0'), the malformed "
+          f"row (non-numeric total_primes), and the genuinely-zero row, keeping only the "
+          f"two real new writes in order (got {bumps!r})")
+
+    check(m.compute_totals_bumps_from_new_rows(rows, before_count=len(rows)) == [],
+          "before_count == len(rows) (nothing written since the snapshot) returns an "
+          "empty list, not an error")
+    check(m.compute_totals_bumps_from_new_rows([], before_count=0) == [],
+          "an empty benchmark_log.csv returns an empty list")
+
+    legacy_row = [{"base_exponent": "3", "total_primes": "5", "windows_written": "1"}]
+    # No "write_files" key at all -- a genuinely ancient row from before that column
+    # existed (see orchestrator_v3.py's own BENCHMARK_FIELDNAMES comment: "Rows written
+    # before this column existed have it blank"). row.get("write_files") returns None,
+    # which never equals the string "1", so this is skipped -- the SAFE default (never
+    # silently trust an unmarked-legacy row as a confirmed real write).
+    check(m.compute_totals_bumps_from_new_rows(legacy_row, before_count=0) == [],
+          "a legacy row with no write_files column at all is treated as NOT a confirmed "
+          "real write (skipped), not silently trusted")
+
+
 def main():
     import primeatlas.generation as m
     from primeatlas.storage import digit_count_floor
+
+    _test_compute_totals_bumps_from_new_rows()
 
     portal = tempfile.mkdtemp(prefix="primeatlas_gen_arith_test_")
     try:

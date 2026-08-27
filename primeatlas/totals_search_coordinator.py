@@ -38,8 +38,8 @@ from . import floor_meta
 from .background import PersistentWorker
 from .constellations import find_constellation_participation
 from .storage import (
-    find_prime_in_floor, format_bytes, format_duration, load_totals_cache,
-    save_totals_cache, update_pietro_totals_cache,
+    find_prime_in_floor, format_bytes, format_duration, get_global_total,
+    load_totals_cache, recompute_global_total, save_totals_cache, update_pietro_totals_cache,
 )
 
 
@@ -289,6 +289,15 @@ class TotalsSearchCoordinator:
                 # sitting permanently full, which reads as "still busy" even though
                 # nothing is running.
                 self.totals_progress.configure(maximum=1, value=0)
+                # This bulk batch (the manual "Zweryfikuj sumy" verify action, see
+                # PrimesTab's own button -- compute_all_pietro_totals() is no longer
+                # called automatically after every reload, see storage.py's own module
+                # docstring) just re-read every floor's TRUE total for real -- persist
+                # a freshly self-healed '_global' summary from those real numbers now,
+                # so the next ordinary reload's show_cached_grand_total() reads a
+                # trustworthy value instead of a stale or missing one.
+                recompute_global_total(self._totals_cache)
+                save_totals_cache(self._get_portal_folder(), self._totals_cache)
                 if allow_status_write:
                     self.status.set(
                         self.T("primes.status_grand_total", count=expected,
@@ -310,10 +319,55 @@ class TotalsSearchCoordinator:
                            total=f"{total:,}", files=f"{file_count:,}",
                            size=format_bytes(total_bytes), extra=extra))
 
+    def show_cached_grand_total(self, totals_cache, pietro_gen_seconds, floor_count):
+        """Lightweight, all-in-memory replacement for the automatic post-reload call to
+        compute_all_pietro_totals() that used to run here -- see storage.py's own
+        module docstring for the full "persisted totals, updated incrementally instead
+        of by a full rescan" feature (added 2026-08-27, at Artur's explicit request:
+        the old behavior submitted a real per-file directory-listing + os.stat()-every-
+        file rescan job for EVERY floor after every single reload/startup, even when
+        nothing had changed since the last visit -- exactly the cost this replaces).
+
+        `totals_cache` already reflects every floor's own persisted total (kept
+        accurate by the three incremental write-path hooks -- generation finishing a
+        run, storage_integrate.py's merge, delete_manager.py's floor delete -- see
+        storage.py), so reading its already-computed '_global' summary
+        (get_global_total()) costs nothing beyond summing numbers already sitting in
+        memory. A cache with no '_global' key yet (the very first run after upgrading
+        to this feature, before anything has triggered a bump or a manual verify)
+        self-heals via recompute_global_total() -- also pure/in-memory, since it only
+        sums each floor's already-known cached total, never re-reads a single window
+        file -- persisted back to disk so this self-heal only ever needs to happen
+        once. `pietro_gen_seconds` (already computed fresh by PrimesTreeCoordinator._
+        scan() from benchmark_log.csv, no extra cost) supplies the duration figure the
+        status message shows, since generation seconds were never part of the totals
+        cache itself.
+
+        compute_all_pietro_totals() (the real per-file rescan) still exists exactly as
+        before -- it's reached only via the Primes tab's explicit 'Zweryfikuj sumy'
+        button now, instead of running automatically, for the rare case these
+        persisted totals ever drift (a crash mid-write, or files touched outside the
+        app)."""
+        if floor_count == 0:
+            self.status.set(self.T("primes.status_none_to_compute"))
+            return
+        known = get_global_total(totals_cache)
+        if known is None:
+            known = recompute_global_total(totals_cache)
+            save_totals_cache(self._get_portal_folder(), totals_cache)
+        total_sum, _file_count, total_bytes = known
+        total_seconds = sum(pietro_gen_seconds.values()) if pietro_gen_seconds else 0.0
+        self.status.set(
+            self.T("primes.status_grand_total", count=floor_count,
+                   sum=f"{total_sum:,}", duration=format_duration(total_seconds),
+                   size=format_bytes(total_bytes)))
+
     def compute_all_pietro_totals(self):
-        """Kicks off the bulk "every floor's total" batch -- called automatically
-        after every reload_primes_tree()/Refresh (see prime_atlas_v1.py's
-        _on_primes_tree_scan_done), not a direct user click on any one floor.
+        """Kicks off the bulk "every floor's total" batch -- called from the Primes
+        tab's explicit "Zweryfikuj sumy" button (see PrimesTab's own docstring on that
+        button) as a manual safety-net verify, no longer automatically after every
+        reload_primes_tree()/Refresh (see show_cached_grand_total() above for what
+        replaced the automatic call, and storage.py's own module docstring for why).
 
         _totals_batch_suppressed is seeded from _search_busy right here: even though
         reload_primes_tree()'s own coalescing chain (see that method's docstring)
