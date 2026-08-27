@@ -300,11 +300,23 @@ def print_benchmark_summary(base_exponent, start_idx, end_idx, total_seconds, po
         total_primes = 0
         windows_found = 0
 
+        # Sharded (see window_sharding.py, task #405): a window at this offset now lives
+        # under source_dir/shard_NNNNN/, not directly in source_dir -- this loop used to
+        # os.path.exists() a flat source_dir path for every window, which is ALWAYS False
+        # post-sharding, silently zeroing out total_primes/windows_found (and therefore
+        # this run's whole benchmark_log.csv row) even though the files were written
+        # correctly. Missed in the original task #405 sweep because this function re-derives
+        # counts from disk instead of trusting write_scan_metrics_handoff()'s numbers --
+        # caught 2026-08-27 from a real generation run on 10^13 reporting "0 windows
+        # written" despite prime_sieve_v4_1.py's own console output showing 1000 windows/
+        # 334M primes written correctly.
         source_dir = os.path.join(portal_folder, f"10p{base_exponent}", "source_primes")
         for target_idx in range(start_idx, end_idx):
             offset = target_idx * window_m
             tag = f"10p{base_exponent}_off_{prime_sieve_module.format_offset(offset)}"
-            path = os.path.join(source_dir, f"PRIME_WINDOW_{tag}.bin")
+            window_index = window_sharding.shard_index_for_offset(offset, window_m)
+            shard_folder = window_sharding.shard_dir(source_dir, window_index)
+            path = os.path.join(shard_folder, f"PRIME_WINDOW_{tag}.bin")
             if not os.path.exists(path):
                 continue
             header = prime_sieve_module.read_prime_window_header(path)
