@@ -48,6 +48,54 @@ from .storage import (
 from .widgets import FlowRow
 
 
+def _cumulative_pietro_totals(pietra, pietro_total_known):
+    """Running INCLUSIVE total of primes found through each floor -- this floor's own
+    count PLUS every floor below it -- computed purely for DISPLAY next to the
+    existing per-floor "Primes" (own-count-only) column, so a floor's row shows both
+    "how many primes are ON this floor" and "how many primes have been found in total
+    through this floor".
+
+    Added 2026-08-27 after Artur compared the Primes tab against Wikipedia's pi(x)
+    table and noticed the numbers didn't line up. An earlier version of this function
+    matched Wikipedia's pi(10**base_exponent) EXACTLY -- i.e. EXCLUDING the floor's own
+    count, since every floor's own stored primes live in the open-left range
+    (10**base_exponent, 10**(base_exponent+1)] (see migrate_shard_source_primes.py's
+    "offset = base_prime - 10**base_exponent" convention) -- but Artur asked for it to
+    follow the app's own floor/file structure instead of Wikipedia's x-column
+    ("zgodnie z plikami a nie z wiki"): the exclusive version put a floor's own count
+    OFF BY ONE from its own cumulative row, which read as confusing next to the
+    "Primes" column right beside it. This INCLUSIVE version instead answers "if I
+    generated everything up through this floor, how many primes would I have", which
+    lines up with the SAME "10pN" label the "Primes" own-count column already uses.
+
+    Returns {base_exponent: cumulative_int_or_None}. A floor's value is None once
+    EITHER its own total isn't known yet (from pietro_total_known, see
+    storage.load_totals_cache()) OR a LOWER exponent has no floor folder in `pietra`
+    at all (e.g. floors 0 and 3 exist but 1/2 were never generated) -- an accurate
+    running total can't be shown past either kind of gap, and every floor at or above
+    it stays None too, even if some of them individually happen to be known.
+    Iterates the full contiguous range 0..max(pietra) (not just the base_exponents
+    actually present) specifically to detect that second kind of gap; only entries
+    for base_exponents actually in `pietra` are returned."""
+    pietra_set = set(pietra)
+    if not pietra_set:
+        return {}
+    result = {}
+    running = 0
+    for base_exponent in range(0, max(pietra_set) + 1):
+        if base_exponent not in pietra_set:
+            running = None
+            continue
+        if running is not None:
+            known = pietro_total_known.get(base_exponent)
+            if known is None:
+                running = None
+            else:
+                running += known[0]
+        result[base_exponent] = running
+    return result
+
+
 class PrimesTab(BaseTab):
     def __init__(self, parent, get_portal_folder, status_var, translator,
                  update_nav_controls, render_page, page_size, floor_page_size,
@@ -187,17 +235,25 @@ class PrimesTab(BaseTab):
         # always means a UTC timestamp (blank on floor rows -- no single date is
         # meaningful for a whole floor), "timer" is new: total REAL generation time for
         # that floor (write_files=True runs only, see aggregate_write_seconds_by_pietro()).
+        # "cumulative" (added 2026-08-27, see _cumulative_pietro_totals's own docstring)
+        # is READ-ONLY/derived -- the running total of primes found through this floor
+        # (this floor's own "count" PLUS every lower floor's), computed purely for
+        # display. It sits right after "count" (the floor's own total on its own) so
+        # the two numbers -- "how many primes are ON this floor" vs "how many primes
+        # in total have been found through this floor" -- read side by side.
         self.tree = ttk.Treeview(
-            tree_frame, columns=("count", "files", "size", "generated", "timer"),
+            tree_frame, columns=("count", "cumulative", "files", "size", "generated", "timer"),
             show="tree headings")
         self.tree.heading("#0", text=T("primes.col_pietro"))
         self.tree.heading("count", text=T("primes.col_count"))
+        self.tree.heading("cumulative", text=T("primes.col_cumulative"))
         self.tree.heading("files", text=T("primes.col_files"))
         self.tree.heading("size", text=T("primes.col_size"))
         self.tree.heading("generated", text=T("primes.col_generated"))
         self.tree.heading("timer", text=T("primes.col_timer"))
         self.tree.column("#0", width=260)
         self.tree.column("count", width=90, anchor="e")
+        self.tree.column("cumulative", width=120, anchor="e")
         self.tree.column("files", width=90, anchor="e")
         self.tree.column("size", width=90, anchor="e")
         self.tree.column("generated", width=170)
@@ -303,6 +359,11 @@ class PrimesTab(BaseTab):
         self._path_by_item = {}
         self._pietro_node_by_exp = {}
         self._refresh_floor_nav_controls()
+        # Running (inclusive) total for every floor, computed once up front from
+        # whatever's already known (see _cumulative_pietro_totals's own docstring) --
+        # floors whose total arrives later via update_floor_row() get their (and every
+        # HIGHER floor's) cumulative value recomputed there too.
+        cumulative = _cumulative_pietro_totals(pietra, self._pietro_total_known)
         for base_exponent in pietra:
             # If a previous scan (this session or a past one, via the on-disk cache)
             # already knows this floor's total, show it immediately -- otherwise leave
@@ -312,8 +373,10 @@ class PrimesTab(BaseTab):
             known = self._pietro_total_known.get(base_exponent)
             gen_seconds = self._pietro_gen_seconds.get(base_exponent)
             timer_str = format_duration(gen_seconds) if gen_seconds is not None else ""
-            values = ((f"{known[0]:,}", f"{known[1]:,}", format_bytes(known[2]), "", timer_str)
-                      if known else ("", "", "", "", timer_str))
+            cum = cumulative.get(base_exponent)
+            cum_str = f"{cum:,}" if cum is not None else ""
+            values = ((f"{known[0]:,}", cum_str, f"{known[1]:,}", format_bytes(known[2]), "", timer_str)
+                      if known else ("", cum_str, "", "", "", timer_str))
             node = self.tree.insert("", "end", text=f"10p{base_exponent}",
                                      values=values, open=False, tags=("pietro",))
             self.tree.insert(node, "end", text=T("common.loading"))
@@ -338,14 +401,26 @@ class PrimesTab(BaseTab):
         totals worker finishes (re-)computing one floor's total -- updates this tab's
         own copy of _pietro_total_known plus the corresponding tree row, and refreshes
         the floor-nav page-total label if that floor happens to be the currently active
-        one."""
+        one.
+
+        A single floor's total changing shifts the running total for that floor AND
+        every HIGHER one (see _cumulative_pietro_totals's own docstring), so the cumulative
+        column is recomputed for every known floor here, not just this row -- cheap
+        (a handful of floors at most) compared to the disk work that got us here."""
         self._pietro_total_known[base_exponent] = (total, file_count, total_bytes)
         node = self._pietro_node_by_exp.get(base_exponent)
         gen_seconds = self._pietro_gen_seconds.get(base_exponent)
         timer_str = format_duration(gen_seconds) if gen_seconds is not None else ""
         if node is not None and self.tree.exists(node):
             self.tree.item(node, values=(
-                f"{total:,}", f"{file_count:,}", format_bytes(total_bytes), "", timer_str))
+                f"{total:,}", "", f"{file_count:,}", format_bytes(total_bytes), "", timer_str))
+        cumulative = _cumulative_pietro_totals(
+            self._pietro_node_by_exp.keys(), self._pietro_total_known)
+        for exp, other_node in self._pietro_node_by_exp.items():
+            if not self.tree.exists(other_node):
+                continue
+            cum = cumulative.get(exp)
+            self.tree.set(other_node, "cumulative", f"{cum:,}" if cum is not None else "")
         if self._active_floor_node == node:
             self._refresh_floor_nav_controls()
 
@@ -465,8 +540,11 @@ class PrimesTab(BaseTab):
                 count_str = f"{header['count']:,}"
                 gen_str = header["generated_at_iso"]
                 page_total += header["count"]
+            # ("count", "cumulative", "files", "size", "generated", "timer") -- a single
+            # file row has no cumulative/files/timer value of its own (those are
+            # floor-summary-only columns), so those three stay blank.
             child = self.tree.insert(node, "end", text=name,
-                                      values=(count_str, "", size_str, gen_str, ""),
+                                      values=(count_str, "", "", size_str, gen_str, ""),
                                       tags=("file",))
             self._path_by_item[child] = (path, header)
         state["page_total"] = page_total

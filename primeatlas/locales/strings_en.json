@@ -209,6 +209,7 @@
   "primes.detail_hint": "Select a file to see its details.",
   "primes.col_pietro": "Floor / file",
   "primes.col_count": "Primes",
+  "primes.col_cumulative": "Running total",
   "primes.col_files": "Files",
   "primes.col_size": "Size",
   "primes.col_generated": "Generated (UTC)",

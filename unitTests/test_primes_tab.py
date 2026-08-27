@@ -81,7 +81,62 @@ def _primes_upto(n):
     return [p for p in range(2, n) if all(p % d for d in range(2, int(p ** 0.5) + 1))]
 
 
+def _test_cumulative_pietro_totals():
+    """Direct unit test of primeatlas.primes_tab._cumulative_pietro_totals -- a plain
+    function with no tkinter dependency (mirrors the existing convention of testing
+    such extracted pure functions directly, e.g. benchmark_tab.py's
+    _nearest_hover_point/_hover_label_position) -- so this runs even without Xvfb/a
+    real display. Added 2026-08-27 alongside the new "cumulative" tree column.
+
+    An EARLIER version of this function excluded a floor's own count (matching
+    Wikipedia's pi(10**N) exactly), but Artur asked for it to follow the app's own
+    floor/file structure instead ("zgodnie z plikami a nie z wiki") -- putting a
+    floor's own count off by one from its own cumulative row read as confusing next
+    to the "Primes" column right beside it. This INCLUSIVE version instead answers
+    "how many primes in total through this floor" -- see that function's own
+    docstring for the full reasoning."""
+    from primeatlas.primes_tab import _cumulative_pietro_totals
+
+    # Fully known, contiguous floors 0..3 -- each floor's OWN count folded in, so the
+    # numbers land one row "later" than Wikipedia's pi(10**N) would (that's the point):
+    # floor 0 (own=4) reads 4, floor 1 (own=21) reads 4+21=25, floor 2 (own=143) reads
+    # 25+143=168, matching pi(10)=4, pi(100)=25, pi(1000)=168 respectively.
+    known = {0: (4, 1, 100), 1: (21, 1, 100), 2: (143, 1, 100), 3: (1061, 1, 100)}
+    result = _cumulative_pietro_totals([0, 1, 2, 3], known)
+    check(result == {0: 4, 1: 25, 2: 168, 3: 1229},
+          f"contiguous fully-known floors give an inclusive running total, own count "
+          f"included (got {result})")
+
+    # A GAP IN THE FLOOR SEQUENCE ITSELF (0 and 3 exist on disk, 1/2 were never
+    # generated at all) -- floor 3's cumulative can't be trusted (missing floors 1/2's
+    # contribution entirely), so it must come back None, not a falsely-small number.
+    result = _cumulative_pietro_totals([0, 3], {0: (4, 1, 100), 3: (1061, 1, 100)})
+    check(result == {0: 4, 3: None},
+          f"a gap in the floor SEQUENCE (1/2 missing) poisons floor 3's cumulative "
+          f"(got {result})")
+
+    # A gap in KNOWN TOTALS (floor 1 exists on disk but its total hasn't been
+    # (re-)computed yet) poisons its OWN cumulative too now (inclusive means floor 1's
+    # cumulative needs floor 1's own count, unlike the earlier exclusive version).
+    result = _cumulative_pietro_totals([0, 1, 2], {0: (4, 1, 100), 2: (143, 1, 100)})
+    check(result == {0: 4, 1: None, 2: None},
+          f"an unknown TOTAL (floor 1's count not yet known) poisons floor 1's own "
+          f"cumulative and every floor above it (got {result})")
+
+    # Once poisoned, stays poisoned for every higher floor, even ones individually known.
+    result = _cumulative_pietro_totals(
+        [0, 1, 2, 3], {0: (4, 1, 100), 2: (143, 1, 100), 3: (1061, 1, 100)})
+    check(result == {0: 4, 1: None, 2: None, 3: None},
+          f"a gap stays poisoned for every floor above it, even a later known one "
+          f"(got {result})")
+
+    check(_cumulative_pietro_totals([], {}) == {},
+          "an empty floor list returns an empty dict, no crash")
+
+
 def main():
+    _test_cumulative_pietro_totals()
+
     import prime_sieve_v1
     import window_sharding
 
@@ -144,6 +199,22 @@ def main():
               f"both seeded floors show up by name (got {sorted(node_by_text)})")
         node0 = node_by_text["10p0"]
         node3 = node_by_text["10p3"]
+
+        # --- cumulative running-total column (added 2026-08-27) ---------------------
+        # Floor 0's cumulative is INCLUSIVE of its own count -- with nothing below it,
+        # that's just its own 10 primes, once the startup totals worker has actually
+        # finished computing it (same 5s pump above already waits for that). Floor 3's
+        # cumulative can NEVER be shown here: floors 1 and 2 were never seeded/
+        # generated at all (a real gap in the floor SEQUENCE, not just an unknown
+        # total -- see _cumulative_pietro_totals's own docstring), so it must stay
+        # blank rather than silently showing floor0's count alone as if that were the
+        # true running total through floor 3.
+        check(widget.tree.set(node0, "cumulative") == "10",
+              f"floor 10p0's cumulative column shows its own inclusive running total "
+              f"(got {widget.tree.set(node0, 'cumulative')!r})")
+        check(widget.tree.set(node3, "cumulative") == "",
+              f"floor 10p3's cumulative column stays blank -- floors 1/2 are missing "
+              f"entirely, not just unknown (got {widget.tree.set(node3, 'cumulative')!r})")
 
         # --- floor pagination: expand 10p3 (7 files / FLOOR_PAGE_SIZE=3 -> 3 pages) --
         widget.tree.focus(node3)
