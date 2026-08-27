@@ -60,15 +60,14 @@ VERSION = "v0.1"
 # individual primes, not just a count -- so MIN_PRINTABLE_TOP below refuses anything
 # under that documented ceiling with a clear error pointing at primesieve/CPU mode
 # instead, rather than silently returning an empty or wrong result.
-#   TODO(needs real CUDA hardware to verify): the exact boundary behavior AT 2**40, the
-#   precise stdout line format `-p -s` produces (this module's parsing was written
-#   against CUDASieve's documented CLI and source, NOT observed output -- there is no
-#   CUDA-capable GPU in the environment this file was written in), and whether the
-#   documented ~1-in-20000 count-off-by-one risk under concurrent GPU load (CUDASieve's
-#   own README, "Correctness" section) has any practical impact on this project's own
-#   generated windows. Validate all three against a small, easily-cross-checked range
-#   (e.g. compare cudasieve's output for [2**40, 2**40+10**6) against primesieve's own
-#   output for the identical range) before trusting this mode for anything unattended.
+#   VERIFIED on real hardware (RTX 5070 + WSL2, 2026-08-27, see
+#   verify_cudasieve_hardware.py in this same folder): the exact boundary behavior AT
+#   2**40, the stdout line format `-p -s` produces, and the documented ~1-in-20000
+#   count-off-by-one risk under concurrent GPU load (CUDASieve's own README,
+#   "Correctness" section) were all checked against primesieve's own output for
+#   [2**40, 2**40+10**6) and a second, unrelated sample at 10**13+10**6 -- exact set
+#   match (not just count) on both ranges, zero dropped stdout lines. Re-run
+#   verify_cudasieve_hardware.py after any future change to this file's stdout parsing.
 # ==========================================================================================
 
 
@@ -382,9 +381,9 @@ def generate_primes_in_range(lo, hi, gpu_index=None):
     close as its CLI allows to) prime-list-only; -p asks it to print each prime it finds.
     Every non-blank stdout line that is NOT a bare run of digits is treated as diagnostic
     noise that slipped through -s rather than a parse error, and is dropped with a
-    printed warning -- TODO(needs real hardware): confirm -s actually suppresses
-    everything else CUDASieve's own code path prints in -p mode; this was written against
-    the documented CLI, not observed output (see module header)."""
+    printed warning -- VERIFIED on real hardware (RTX 5070 + WSL2, 2026-08-27,
+    verify_cudasieve_hardware.py): -s does suppress everything else CUDASieve prints in
+    -p mode -- zero dropped-line warnings across both real-hardware test ranges."""
     if hi <= lo:
         return []
     if hi - 1 < MIN_PRINTABLE_TOP:
@@ -540,10 +539,16 @@ def generate_floor_windows(base_power, target_idx_start, target_idx_count, windo
 # explicit consent BEFORE the longer `make` build step ever runs -- see settings_tab_v2.py's
 # own installer section for that consent-gate flow.
 #
-# TODO(needs real hardware): this project's own sandbox has no CUDA Toolkit and no Nvidia
-# GPU -- --build's CUDA_DIR guess (/usr/local/cuda) and its whole `make` invocation are
-# untested here; validate on the actual WSL2 + Nvidia GPU + CUDA Toolkit target machine
-# before trusting this installer unattended.
+# PARTIALLY VERIFIED on real hardware (RTX 5070 + WSL2): _detect_cuda_dir()/
+# _detect_gpu_arch()/_ensure_rdc_flag() each encode a specific failure fixed by hand on
+# that machine on 2026-08-23 (see each function's own docstring for the exact error each
+# one addresses) -- that manual run is what this automated cmd_build() reproduces. What
+# has NOT yet been exercised is cmd_build() itself, as automated code, against a
+# completely fresh clone (run_cudasieve_hardware_check.sh, 2026-08-27, found a binary
+# already built from that manual run and skipped straight to verification -- see that
+# script's own step [1/5]/[2/5]). To close this out for real: `rm -rf
+# ~/.primeatlas/cudasieve` then re-run run_cudasieve_hardware_check.sh so steps 2-3
+# (clone + build) actually execute.
 # ------------------------------------------------------------------------------------------
 
 def cmd_status(install_dir):
