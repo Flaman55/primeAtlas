@@ -70,7 +70,12 @@ marking_two_tier_poc's binary since this file calls it unmodified):
                                   [--cpu-fraction F]    (default 0.5 -- fraction of combined_size
                                                           given to the CPU side; sweep this, since
                                                           CPU-with-write and GPU-marking-only are
-                                                          not necessarily equally fast per number)
+                                                          not necessarily equally fast per number.
+                                                          Give a comma-separated list, e.g.
+                                                          --cpu-fraction 0.6,0.65,0.7, to run a
+                                                          load-balance sweep at a FIXED
+                                                          combined_size instead of one run --
+                                                          see run_fraction_sweep_mode())
                                   [--gpu-gen-threads N] (default 12 -- CPU threads used by the GPU
                                                           side's OWN prime generation, independent
                                                           of --cpu-workers below since both run
@@ -705,6 +710,54 @@ def run_full_scale_mode(gpu_binary, engine_so_path, cpu_fraction, gpu_gen_thread
     flattening as predicted, not just a one-off. The fixed-generation-cost hypothesis is
     confirmed: the bigger the single combined_size given to one split run, the bigger the win
     over running production/GPU sequentially that many times.
+
+    BREAK-EVEN BISECTION (2026-08-29, still cpu_workers=24, gpu_gen_threads=12 -- see the
+    CORRECTED section below before trusting these numbers): a finer sweep across
+    10/12/13/14/15/16/18*10**9 pinned the crossover (both vs-seq ratios flip from >1.0x to <1.0x)
+    at roughly combined_size~=14.7-14.8*10**9 -- 14*10**9 still measured slightly SLOWER on the
+    CPU reference (0.98x) and slightly slower on GPU (1.02x); 15*10**9 was the first point faster
+    on both.
+
+    CPU-CORE CONTENTION BUG FOUND AND FIXED (2026-08-29): while chasing the load-balance question
+    (does skewing cpu_fraction away from 0.5 help), noticed gpu_total INCREASING as cpu_fraction
+    rose even though cs_gpu was SHRINKING -- backwards for two supposedly independent devices.
+    Root cause: this whole break-even sweep ran with the DEFAULT cpu_workers=24 (real CPU
+    marking processes) simultaneously with gpu_gen_threads=12 (GPU's OWN host-side prime
+    generation threads) -- 36 total OS threads/processes on Artur's 24-logical-core machine, a
+    real 1.5x oversubscription. The two "independent" devices were fighting over physical cores
+    the whole time, and every number in this whole file up to this point was measured under that
+    oversubscription.
+
+    CORRECTED BREAK-EVEN (2026-08-29, cpu_workers=12, gpu_gen_threads=12 -- sums to exactly 24,
+    Artur's real core count), full 10-15*10**9 sweep re-run for a clean before/after comparison:
+        combined_size=1.0*10**10: t_wall=220.085s (was 230.508s) -- 1.25x/1.30x SLOWER.
+        combined_size=1.2*10**10: t_wall=232.575s (was 241.951s) -- 1.10x/1.14x SLOWER.
+        combined_size=1.3*10**10: t_wall=232.847s (was 244.847s) -- 1.02x/1.06x SLOWER.
+        combined_size=1.4*10**10: t_wall=233.541s (was 241.246s) -- 0.95x/0.98x FASTER.
+        combined_size=1.5*10**10: t_wall=240.693s (was 251.293s) -- 0.91x/0.95x FASTER.
+    Every single point landed 8-12s faster than the SAME combined_size measured under the
+    oversubscribed 24+12 budget -- a real, consistent effect, not noise. The break-even crossover
+    itself moved down accordingly: vs seq CPU crosses between 1.3*10**10 (1.02x) and 1.4*10**10
+    (0.95x) -- linear estimate ~1.325*10**10; vs seq GPU crosses between the same two points --
+    linear estimate ~1.377*10**10. So the real, corrected break-even is roughly combined_size~=
+    1.33-1.38*10**10, noticeably lower than the ~1.47-1.48*10**10 measured under the
+    oversubscribed thread budget. Lesson for any future sweep in this file: cpu_workers +
+    gpu_gen_threads should sum to <= the real logical core count, or the measurement itself
+    becomes the bottleneck being studied.
+
+    LOAD-BALANCE SWEEP FINDING (2026-08-29, run_fraction_sweep_mode(), combined_size=1.2*10**10,
+    corrected cpu_workers=12/gpu_gen_threads=12 budget): tried cpu_fraction in {0.5, 0.6, 0.7,
+    0.8, 0.9} expecting a skewed split to beat 50/50 (GPU was the visible "long pole" at 0.5).
+    Result: 0.5 was the FASTEST of the five (233.803s), and t_wall got monotonically WORSE as
+    cpu_fraction rose (290.956s at 0.9) -- shifting share toward CPU doesn't help here, because
+    CPU's own per-share marking cost grows faster than what it saves on GPU's side. The naive
+    "GPU is idle longer so give it less" intuition doesn't hold once CPU's own super-linear cost
+    growth (dense-tier marking work grows with cs_cpu*ln(ln(cs_cpu)), not linearly) is accounted
+    for. Simple fraction-skewing is not the lever; see the shared-work-queue idea discussed with
+    Artur (dynamic per-fragment assignment instead of one static a-priori ratio) for the
+    architecture that would actually realize further gains here, gated on solving the
+    fixed-generation-cost-per-invocation problem first (see run_fraction_sweep_mode()'s own
+    docstring).
     """
     print()
     print("=" * 78)
@@ -833,6 +886,139 @@ def run_full_sweep_mode(gpu_binary, engine_so_path, cpu_fraction, gpu_gen_thread
               f"{d_wall:.3f}s extra wall time for {d_combined:,} extra numbers covered "
               f"({marginal_rate * 1e9:.4f}s per billion numbers) -- the flatter this is, the "
               f"more strongly the fixed-generation-cost hypothesis is confirmed.")
+
+    # Break-even (crossover) detection: find the consecutive pair of sweep points where
+    # vs_seq_cpu / vs_seq_gpu cross 1.0x (split flips from a loss to a win, or vice versa), and
+    # linearly interpolate the combined_size at which the ratio would equal exactly 1.0. This is
+    # only a linear interpolation between two real measured points, not a new measurement --
+    # treat it as "narrow the next sweep around here," not as a final answer, until a real run
+    # actually lands close to it.
+    print()
+    print("  Break-even (vs seq ratio == 1.0x) search across this sweep's points:")
+    found_any_crossing = False
+    for key, label, ref_time in (("vs_seq_cpu", "vs seq CPU", 176.018),
+                                  ("vs_seq_gpu", "vs seq GPU", 169.623)):
+        crossing_reported = False
+        for a, b in zip(results, results[1:]):
+            ra, rb = a[key], b[key]
+            if (ra - 1.0) * (rb - 1.0) < 0:  # opposite sides of 1.0x -> a real crossing
+                frac = (1.0 - ra) / (rb - ra)
+                cs_cross = a["combined_size"] + frac * (b["combined_size"] - a["combined_size"])
+                print(f"    {label}: crosses 1.0x between combined_size={a['combined_size']:,} "
+                      f"({ra:.2f}x) and {b['combined_size']:,} ({rb:.2f}x) -- linear estimate: "
+                      f"~{cs_cross:,.0f} ({cs_cross / 1e9:.2f} billion)")
+                crossing_reported = True
+                found_any_crossing = True
+        if not crossing_reported:
+            all_above = all(r[key] >= 1.0 for r in results)
+            all_below = all(r[key] < 1.0 for r in results)
+            if all_above:
+                print(f"    {label}: every point in this sweep is still >=1.0x (SLOWER) -- "
+                      f"break-even is above the largest combined_size tried "
+                      f"({results[-1]['combined_size']:,}), not bracketed yet.")
+            elif all_below:
+                print(f"    {label}: every point in this sweep is already <1.0x (FASTER) -- "
+                      f"break-even is below the smallest combined_size tried "
+                      f"({results[0]['combined_size']:,}), not bracketed yet.")
+    if not found_any_crossing and len(results) >= 2:
+        print("    (no crossing inside this sweep's range -- pick a combined_size outside the "
+              "range above, on the side break-even is expected to be, for the next sweep.)")
+
+    return results
+
+
+def run_fraction_sweep_mode(gpu_binary, engine_so_path, gpu_gen_threads, gpu_chunk_size,
+                             cpu_workers, cpu_batches_per_worker, combined_size, cpu_fractions):
+    """Load-balance sweep (2026-08-29, Artur's follow-up to the combined_size break-even sweep):
+    at a FIXED combined_size, run run_full_scale_mode() once per cpu_fraction in `cpu_fractions`,
+    to find the split ratio that actually minimizes wall time -- as opposed to the break-even
+    sweep above, which held cpu_fraction=0.5 fixed and varied combined_size.
+
+    Why this is a genuinely different question: the 50/50 runs in the combined_size sweep showed
+    CPU and GPU finishing at very different times for the SAME nominal share (e.g. at
+    combined_size=18*10**9, cs_cpu=cs_gpu=9*10**9: cpu_elapsed=164.124s but gpu_total=245.430s --
+    CPU sits idle for ~80s waiting on GPU). Since wall time for two concurrent, non-overlapping-
+    buffer devices is bounded below by max(cpu_elapsed, gpu_total), an UNBALANCED split wastes the
+    faster device's spare capacity -- shifting some of GPU's share to CPU should let both finish
+    closer to the same time, pulling wall time down toward that lower bound. This is a real,
+    separate lever from "is splitting worth it at all" (the break-even sweep's question) -- it
+    answers "how much better can any given combined_size get if we stop assuming 50/50."
+
+    Finds the fraction where cpu_elapsed and gpu_total cross (linear interpolation between the
+    two bracketing measured points, same technique as run_full_sweep_mode()'s break-even search)
+    and reports the fastest fraction actually measured in this sweep as the real, hardware-
+    confirmed answer -- the interpolated crossing is only a hint for where to sample next if it
+    isn't already bracketed tightly.
+    """
+    print()
+    print("=" * 78)
+    print(f"CPU-FRACTION LOAD-BALANCE SWEEP -- combined_size={combined_size:,} fixed, "
+          f"{len(cpu_fractions)} back-to-back FULL-mode runs at cpu_fraction="
+          f"{', '.join(f'{f:.3f}' for f in cpu_fractions)}")
+    print("=" * 78)
+
+    results = []
+    for i, frac in enumerate(cpu_fractions):
+        print()
+        print(f"[fraction-sweep {i + 1}/{len(cpu_fractions)}] cpu_fraction={frac:.4f}")
+        result = run_full_scale_mode(gpu_binary, engine_so_path, frac, gpu_gen_threads,
+                                      gpu_chunk_size, cpu_workers, cpu_batches_per_worker,
+                                      combined_size=combined_size)
+        result["cpu_fraction"] = frac
+        results.append(result)
+
+    results.sort(key=lambda r: r["cpu_fraction"])
+
+    print()
+    print("=" * 78)
+    print("CPU-FRACTION SWEEP SUMMARY")
+    print("=" * 78)
+    header = (f"{'cpu_fraction':>12}  {'~cs_cpu':>16}  {'~cs_gpu':>16}  {'t_wall':>10}  "
+              f"{'cpu_elapsed':>12}  {'gpu_total':>10}  {'imbalance':>12}")
+    print(header)
+    print("-" * len(header))
+    for r in results:
+        cs_cpu_approx = combined_size * r["cpu_fraction"]
+        cs_gpu_approx = combined_size - cs_cpu_approx
+        imbalance = r["cpu_elapsed"] - r["gpu_total"]
+        print(f"{r['cpu_fraction']:>12.4f}  {cs_cpu_approx:>16,.0f}  {cs_gpu_approx:>16,.0f}  "
+              f"{r['t_wall']:>9.3f}s  {r['cpu_elapsed']:>11.3f}s  {r['gpu_total']:>9.3f}s  "
+              f"{imbalance:>+11.3f}s")
+    print()
+    print("  'imbalance' = cpu_elapsed - gpu_total. Positive = CPU is the long pole (give it LESS "
+          "of the range next); negative = GPU is the long pole (give it LESS of the range next). "
+          "The fraction where this crosses zero is the load-balanced split for this combined_size.")
+
+    best = min(results, key=lambda r: r["t_wall"])
+    print(f"  Fastest measured in this sweep: cpu_fraction={best['cpu_fraction']:.4f} -> "
+          f"t_wall={best['t_wall']:.3f}s (vs seq CPU={best['vs_seq_cpu']:.2f}x, "
+          f"vs seq GPU={best['vs_seq_gpu']:.2f}x)")
+
+    print()
+    print("  Load-balance point (imbalance == 0) search across this sweep's points:")
+    found_crossing = False
+    for a, b in zip(results, results[1:]):
+        ia = a["cpu_elapsed"] - a["gpu_total"]
+        ib = b["cpu_elapsed"] - b["gpu_total"]
+        if (ia) * (ib) < 0:  # opposite sides of zero -> a real crossing
+            frac_cross = a["cpu_fraction"] + (0 - ia) / (ib - ia) * (b["cpu_fraction"] -
+                                                                      a["cpu_fraction"])
+            print(f"    crosses zero imbalance between cpu_fraction={a['cpu_fraction']:.4f} "
+                  f"({ia:+.3f}s) and {b['cpu_fraction']:.4f} ({ib:+.3f}s) -- linear estimate: "
+                  f"~{frac_cross:.4f}")
+            found_crossing = True
+    if not found_crossing:
+        all_cpu_long = all((r["cpu_elapsed"] - r["gpu_total"]) > 0 for r in results)
+        all_gpu_long = all((r["cpu_elapsed"] - r["gpu_total"]) < 0 for r in results)
+        if all_cpu_long:
+            print(f"    every point in this sweep still has CPU as the long pole -- try a "
+                  f"SMALLER cpu_fraction than {results[0]['cpu_fraction']:.4f} next.")
+        elif all_gpu_long:
+            print(f"    every point in this sweep still has GPU as the long pole -- try a "
+                  f"LARGER cpu_fraction than {results[-1]['cpu_fraction']:.4f} next.")
+        print("    (linear estimate only -- confirm with a real run at the estimated fraction "
+              "before trusting it as final.)")
+
     return results
 
 
@@ -862,7 +1048,7 @@ def main():
     gpu_binary = DEFAULT_GPU_BINARY
     engine_so = DEFAULT_ENGINE_SO
     mode = "both"
-    cpu_fraction = 0.5
+    cpu_fractions = [0.5]
     gpu_gen_threads = 12
     gpu_chunk_size = DEFAULT_GPU_CHUNK_SIZE
     cpu_workers = DEFAULT_CPU_WORKERS
@@ -875,7 +1061,11 @@ def main():
     if "--mode" in sys.argv:
         mode = sys.argv[sys.argv.index("--mode") + 1]
     if "--cpu-fraction" in sys.argv:
-        cpu_fraction = float(sys.argv[sys.argv.index("--cpu-fraction") + 1])
+        # Comma-separated list allowed: --cpu-fraction 0.6,0.7,0.8 runs a load-balance sweep at a
+        # FIXED combined_size (the first value in --combined-size, or the default) instead of the
+        # usual single-fraction FULL run -- see run_fraction_sweep_mode()'s own docstring.
+        raw = sys.argv[sys.argv.index("--cpu-fraction") + 1]
+        cpu_fractions = [float(x) for x in raw.split(",") if x.strip()]
     if "--gpu-gen-threads" in sys.argv:
         gpu_gen_threads = int(sys.argv[sys.argv.index("--gpu-gen-threads") + 1])
     if "--gpu-chunk-size" in sys.argv:
@@ -892,28 +1082,37 @@ def main():
         raw = sys.argv[sys.argv.index("--combined-size") + 1]
         full_combined_sizes = [int(x) for x in raw.split(",") if x.strip()]
 
-    print(f"[*] cpu_fraction={cpu_fraction}  "
+    print(f"[*] cpu_fraction(s)={', '.join(f'{f:.4f}' for f in cpu_fractions)}  "
           f"gpu_gen_threads={gpu_gen_threads}  gpu_chunk_size={gpu_chunk_size:,}  "
           f"cpu_workers={cpu_workers}  cpu_batches_per_worker={cpu_batches_per_worker}  "
           f"combined_size(s)(FULL only)={', '.join(f'{cs:,}' for cs in full_combined_sizes)} "
           f"(EXACT mode uses its own small, fixed per-case values and always stays "
           f"single-threaded -- cpu_workers/cpu_batches_per_worker/combined_size only apply to "
           f"STRESS/FULL, and --combined-size only to FULL; give a comma-separated list to sweep "
-          f"multiple scales in one run)")
+          f"multiple scales in one run; give --cpu-fraction a comma-separated list instead to "
+          f"run a load-balance sweep at a FIXED combined_size -- see run_fraction_sweep_mode())")
 
     ok = True
     if mode in ("exact", "both"):
         ok = run_exact_mode(gpu_binary, engine_so) and ok
     if mode in ("stress", "both"):
-        run_stress_mode(gpu_binary, engine_so, cpu_fraction, gpu_gen_threads,
+        run_stress_mode(gpu_binary, engine_so, cpu_fractions[0], gpu_gen_threads,
                          gpu_chunk_size, cpu_workers, cpu_batches_per_worker)
     if mode == "full":
-        if len(full_combined_sizes) > 1:
-            run_full_sweep_mode(gpu_binary, engine_so, cpu_fraction, gpu_gen_threads,
+        if len(cpu_fractions) > 1:
+            if len(full_combined_sizes) > 1:
+                print(f"[!] both --cpu-fraction and --combined-size were given comma-separated "
+                      f"lists -- running the fraction sweep at only the FIRST combined_size "
+                      f"({full_combined_sizes[0]:,}), ignoring the rest of that list.")
+            run_fraction_sweep_mode(gpu_binary, engine_so, gpu_gen_threads, gpu_chunk_size,
+                                     cpu_workers, cpu_batches_per_worker,
+                                     full_combined_sizes[0], cpu_fractions)
+        elif len(full_combined_sizes) > 1:
+            run_full_sweep_mode(gpu_binary, engine_so, cpu_fractions[0], gpu_gen_threads,
                                  gpu_chunk_size, cpu_workers, cpu_batches_per_worker,
                                  full_combined_sizes)
         else:
-            run_full_scale_mode(gpu_binary, engine_so, cpu_fraction, gpu_gen_threads,
+            run_full_scale_mode(gpu_binary, engine_so, cpu_fractions[0], gpu_gen_threads,
                                  gpu_chunk_size, cpu_workers, cpu_batches_per_worker,
                                  combined_size=full_combined_sizes[0])
 

@@ -27,10 +27,27 @@
 #                                                              # grows, per run_full_scale_mode()'s
 #                                                              # own docstring in
 #                                                              # cpu_gpu_split_poc.py
+#   bash .../build_and_run_cpu_gpu_split.sh --mode full --combined-size 14000000000,16000000000
+#                                                              # comma-separated list -- runs each
+#                                                              # value back to back and prints one
+#                                                              # summary table with a break-even
+#                                                              # (vs-seq == 1.0x) crossover estimate,
+#                                                              # see run_full_sweep_mode()
+#   bash .../build_and_run_cpu_gpu_split.sh --mode full --combined-size 15000000000 --cpu-fraction 0.6,0.7,0.8
+#                                                              # give --cpu-fraction a comma-
+#                                                              # separated list instead to run a
+#                                                              # LOAD-BALANCE sweep at a FIXED
+#                                                              # combined_size -- finds the split
+#                                                              # ratio that minimizes wall time
+#                                                              # (CPU and GPU rarely finish at the
+#                                                              # same time at a plain 50/50 split),
+#                                                              # see run_fraction_sweep_mode()
 # Note: STRESS/FULL mode's CPU side now uses a real multi-process architecture by default
 # (--cpu-workers 24, matching production's MAX_WORKERS) -- see prepare_cpu_side_parallel()'s
 # docstring in cpu_gpu_split_poc.py. EXACT mode always stays single-threaded (small ranges,
-# correctness is what matters there, not speed). --combined-size only applies to FULL mode.
+# correctness is what matters there, not speed). --combined-size and --cpu-fraction only apply
+# to FULL mode; give only ONE of them a comma-separated list at a time (--combined-size sweeps
+# scale at a fixed 50/50 split, --cpu-fraction sweeps ratio at a fixed scale).
 
 set -uo pipefail
 

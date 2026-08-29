@@ -1160,29 +1160,108 @@ bash /mnt/h/PrimeAtlas_refactor/primeAtlas/prime_sieve/gpu_poc/build_and_run_cpu
 bash /mnt/h/PrimeAtlas_refactor/primeAtlas/prime_sieve/gpu_poc/build_and_run_cpu_gpu_split.sh --mode full --combined-size 30000000000,40000000000
 ```
 
-## What's next: finding the actual break-even point, not just "it gets better" (2026-08-29)
+## Break-even bisection, first pass (2026-08-29): ~14.7-14.8B, under a budget bug
 
 Artur's framing, and the right one: every real tradeoff like this has a crossover point somewhere
--- "tak wyglada rzeczywistosc" (that's what reality looks like). We have one bracketed between two
-known real points: 10B is confirmed 1.31x SLOWER, 20B is confirmed 0.76x FASTER, so the true
-break-even (`t_wall` / sequential == 1.0x) sits somewhere inside `(10, 20)` billion -- not yet
-pinned down, and not necessarily in the middle (the fixed-cost-amortization curve is not linear
-near the low end, it's closer to `fixed_cost/combined_size`-shaped). Next step is a bisection-style
-sweep inside that bracket (e.g. 15B first, then narrow toward whichever half still straddles 1.0x)
-using the same `run_full_sweep_mode()` machinery already built -- feed it a comma-separated list of
-candidate `combined_size` values and read where the "vs seq" columns cross 1.0x. Once the crossover
-is bracketed tightly, that number becomes the actual, practical answer to "when is this split worth
-turning on" -- more useful for a real production decision than "it gets better at large scale" on
-its own.
+-- "tak wyglada rzeczywistosc" (that's what reality looks like). A bisection sweep (10/12/13/14/
+15/16/18*10**9, all at the default `cpu_workers=24`, `gpu_gen_threads=12`) pinned the crossover at
+roughly combined_size~=14.7-14.8*10**9 -- 14B still measured slightly slower (0.98x/1.02x), 15B
+the first point faster on both references. **This number turned out to be measured under a real
+bug -- see the next section before trusting it.**
+
+## CPU-core contention bug found and fixed (2026-08-29)
+
+While chasing a follow-up question (does skewing `cpu_fraction` away from 0.5 help, since GPU
+visibly sat as the "long pole" at every 50/50 point above), something backwards showed up: raising
+`cpu_fraction` made `gpu_total` go UP even though `cs_gpu` was shrinking. For two supposedly
+independent devices (that's the whole premise of this design -- disjoint sub-windows, zero shared
+buffer), GPU getting LESS work should never make it slower.
+
+Root cause: this whole break-even sweep ran with the default `cpu_workers=24` (real CPU marking
+processes) running CONCURRENTLY with `gpu_gen_threads=12` (GPU's own host-side prime generation
+threads) -- 36 total OS threads/processes competing for cores on Artur's real 24-logical-core WSL
+machine (`nproc` confirmed). A 1.5x oversubscription, present in every FULL-mode number measured in
+this file up to this point. The two "independent" devices were fighting over physical cores the
+whole time.
+
+**Corrected re-run** (`cpu_workers=12`, `gpu_gen_threads=12` -- sums to exactly 24), same 10-15B
+range for a clean before/after:
+
+| combined_size | t_wall (old 24+12) | t_wall (corrected 12+12) | vs seq CPU | vs seq GPU |
+|---|---|---|---|---|
+| 10B | 230.508s | **220.085s** | 1.25x slower | 1.30x slower |
+| 12B | 241.951s | **232.575s** | 1.10x slower | 1.14x slower |
+| 13B | 244.847s | **232.847s** | 1.02x slower | 1.06x slower |
+| 14B | 241.246s | **233.541s** | 0.95x FASTER | 0.98x FASTER |
+| 15B | 251.293s | **240.693s** | 0.91x FASTER | 0.95x FASTER |
+
+Every single point landed 8-12s faster than the identical `combined_size` measured under the
+oversubscribed 24+12 budget -- a real, consistent effect across the whole range, not noise. The
+break-even crossover moved down accordingly: vs seq CPU now crosses between 13B (1.02x) and 14B
+(0.95x) -- linear estimate ~13.25B; vs seq GPU crosses the same two points -- linear estimate
+~13.77B. **Corrected practical break-even: roughly combined_size~=13.3-13.8B**, down from the
+~14.7-14.8B measured under the thread-budget bug. Lesson for any future sweep in this file:
+`cpu_workers + gpu_gen_threads` should sum to <= the real logical core count, or the measurement
+becomes the thing being studied.
+
+## Load-balance sweep: 50/50 already near-optimal here (2026-08-29)
+
+Natural follow-up question once GPU was visibly the "long pole" at every 50/50 point: does shifting
+`cpu_fraction` toward CPU (giving GPU less, since it's slower per-share) reduce `t_wall`? Built
+`run_fraction_sweep_mode()` (sweeps `cpu_fraction` at a FIXED `combined_size`, reports where
+`cpu_elapsed` and `gpu_total` cross, i.e. the load-balanced ratio) and tested at combined_size=12B
+with the corrected 12+12 thread budget, `cpu_fraction` in {0.5, 0.6, 0.7, 0.8, 0.9}:
+
+| cpu_fraction | t_wall | cpu_elapsed | gpu_total |
+|---|---|---|---|
+| 0.5 | **233.803s** (fastest) | 179.449s | 227.908s |
+| 0.6 | 240.666s | 227.432s | 236.037s |
+| 0.7 | 241.705s | 240.673s | 236.676s |
+| 0.8 | 255.698s | 254.408s | 244.736s |
+| 0.9 | 290.956s | 289.441s | 255.826s |
+
+Result: 0.5 (plain 50/50) was the FASTEST of the five, and `t_wall` got monotonically WORSE as
+`cpu_fraction` rose -- the opposite of the naive "GPU is idle longer so give it less" intuition.
+Why: CPU's own per-share marking cost grows faster than what shifting share away from GPU actually
+saves (CPU's dense-tier marking cost scales roughly with `cs_cpu*ln(ln(cs_cpu))`, not linearly, so
+giving CPU a bigger share costs progressively more per additional unit). Simple fraction-skewing is
+not the lever that helps here -- see the next section for the architecture that Artur and I think
+actually would.
+
+## The real fix, not yet built: a shared work queue instead of a fixed split ratio (2026-08-29)
+
+Artur's own framing, working through a concrete example live: instead of committing to ONE fixed
+`cpu_fraction` up front, divide `combined_size` into many small fragments and let CPU and GPU each
+pull a new fragment from a shared queue the instant they finish their current one -- the system
+self-balances (the faster device naturally pulls more fragments before the slower one finishes)
+without ever needing to measure or interpolate a "right" ratio. This generalizes both the plain
+50/50 split AND any fixed-ratio load-balance attempt as special/degenerate cases of the same idea.
+
+The math backs the intuition: for N identical-cost fragments split between two devices with
+per-fragment costs `tc` (CPU) and `tg` (GPU), the theoretically optimal continuous allocation gives
+makespan `T = N * tc*tg/(tc+tg)` -- meaningfully better than any fixed a-priori split, and it
+requires no tuning at all, just a live queue.
+
+**The real blocker, not yet solved**: every engine invocation in this file re-pays a large FIXED
+cost (generating the full sieving-prime base up to `l_final`) once per invocation. Handing a device
+"one more fragment" as a fresh `run_split()`/process call would re-pay that fixed cost per
+fragment -- catastrophic, exactly the duplication problem the whole `combined_size`-scaling
+hypothesis was built around avoiding. Making the queue idea real requires keeping each device's
+worker pool (and its already-generated prime base) ALIVE across multiple fragment assignments,
+feeding it more marking work on the same base rather than spawning a fresh invocation per fragment
+-- a genuine architecture change, bigger than anything built in this file so far. Not started;
+recorded here as the clear next target once the current split mode's basic viability is fully
+settled.
 
 ## What to report back (cpu_gpu_split_poc, current priority)
 
-From `--mode exact`: PASS/FAIL per case (expect 7/7). From a break-even-hunting `--mode full` sweep
-(e.g. `--combined-size 12000000000,15000000000,18000000000` or similar, narrowing the bracket):
-the full sweep summary table, and specifically which `combined_size` values land above vs. below
-1.0x on `vs seq CPU`/`vs seq GPU` -- that's what pins down the crossover. Once it's tight enough to
-be useful (e.g. within 1B), that number is the real, hardware-measured answer to where this split
-starts paying for itself.
+From `--mode exact`: PASS/FAIL per case (expect 7/7). For further break-even narrowing, sweep
+`--combined-size` around the corrected ~13.3-13.8B estimate (e.g. `13000000000,13500000000,
+14000000000`) WITH `--cpu-workers 12 --gpu-gen-threads 12` (or whatever sums to the real core
+count on the machine running it -- confirm via `nproc`) to avoid re-introducing the oversubscription
+bug. For the load-balance/shared-queue direction, no further sweeping is likely to help until the
+queue architecture itself is built (see above) -- fixed-ratio tuning has already been shown to lose
+to plain 50/50 at the one scale tested.
 
 ## What to report back (parallel chunked marking, superseded by the two-tier section above)
 
