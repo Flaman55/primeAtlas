@@ -5,6 +5,71 @@ Status: **not committed yet** -- these are new, untracked files. Please review, 
 this on your own hardware first; I'll commit once you've had a look (per the usual rule: no
 commit without your go-ahead in chat).
 
+## Executive summary (2026-09-02): does CPU+GPU concurrent marking beat either device alone?
+
+This whole file documents a multi-week investigation into whether the RTX 5070 can accelerate
+PrimeAtlas's prime-marking step, and specifically whether running the CPU's existing parallel
+marking engine and a new GPU marking kernel CONCURRENTLY on disjoint sub-windows of the same
+range ("the split") beats either device working alone. The arc, in order:
+
+1. **Phase computation alone** (`phase_mod_poc`, `phase_mod_resident_poc`,
+   `phase_mod_chunked_poc`) -- proved the `distance mod p` arithmetic itself is cheap on GPU
+   once the one-time primes upload is amortized across many windows, and that VRAM-bounded
+   chunking/streaming works correctly at real floor-25 scale. This only tested the arithmetic,
+   not real marking.
+2. **Real marking kernel** (`marking_poc`, `marking_chunked_poc`,
+   `marking_chunked_parallel_poc`) -- built and verified (byte-for-byte against the real
+   production engine) a one-block-per-prime marking kernel, combined with VRAM-bounded chunked
+   streaming and a bounded producer/consumer pipeline for parallel CPU-side prime generation.
+   Converged to a purely GPU-kernel-bound result: 580.386s at `combined_size=10^10`, ~3.3x
+   slower than production's 176.018s.
+3. **Two-tier dense/sparse kernel + bucketed writes** (`marking_two_tier_poc`,
+   `sparse_overhead_poc`, `sparse_bucketed_poc`) -- found and fixed the real bottleneck by
+   mirroring production's own O(1)-vs-loop split for primes above/below the window width, then
+   decomposed the remaining cost down to the atomic write itself (85% of sparse-tier kernel
+   time, memory-bandwidth-bound) and fixed that too via shard-sorted writes. Brought the GPU
+   marking-only step down to competitive territory with the CPU sieve-only step.
+4. **CPU+GPU concurrent split** (`cpu_gpu_split_poc`) -- the core idea tested this segment:
+   split a range in two, mark one half on CPU (real parallel multi-process engine) and the other
+   half on GPU (the two-tier kernel above) AT THE SAME TIME, to add their throughputs together.
+   Tuned `cpu_fraction`, `cpu_workers`, a three-way CPU-bonus round, and a dual-window variant.
+
+**The decisive real-hardware result (2026-09-02), all measured at `combined_size=12*10**9`,
+marking-only (no disk write), same session, no naive linear scaling anywhere in this comparison:**
+
+| configuration | time |
+|---|---|
+| CPU alone (`cpu_workers=24`, real parallel engine, no GPU) | **134.408s** |
+| GPU alone (two-tier kernel, full width, no CPU) | 166.996s |
+| Best CPU+GPU split found (`cpu_workers=12`) | 217.110s |
+
+**Conclusion: the split is worse than running either device alone** -- 61.5% slower than CPU
+alone, 30.0% slower than GPU alone. Running CPU and GPU concurrently on disjoint sub-windows
+does not add their throughputs together, because concurrent execution causes real, large
+resource contention: measured separately, running CPU marking work alongside GPU costs the GPU
+roughly **41% of its own solo generation time**, even with `cpu_workers + gpu_gen_threads`
+exactly matched to the real core count. That contention cost outweighs whatever parallelism
+gain splitting the range was supposed to provide.
+
+This also corrected an earlier guess: GPU marking throughput was assumed to beat CPU's, but at
+this scale CPU alone is actually ~19.5% faster than GPU alone -- the GPU work in this series
+(steps 1-3 above) is real and got the two-tier/bucketed kernel to a genuinely competitive place
+against CPU, it just isn't worth combining with CPU concurrently the way step 4 tried.
+
+**Open question, not yet answered:** does this ranking (CPU alone < GPU alone < split) hold at
+scales other than `12*10**9`? Every earlier "the split gets better at larger scale" claim in
+this file was checked against a naive linear-scaling estimate for CPU, never a real CPU-alone
+measurement at matching width -- so that question remains genuinely open, not just unlikely.
+See the "cpu_workers COUNT does affect contention" section below for the full sweep and the
+three-way comparison in detail.
+
+**Where this leaves the production Generation tab:** nothing here is wired into production yet.
+Given this result, deploying a concurrent CPU+GPU split mode is not currently recommended at
+this scale; the two-tier GPU-alone kernel (step 3) remains a real, separately-useful result if
+GPU-only marking is ever wanted as its own mode. Task #499 (self-calibrating CPU+GPU
+auto-balance in production) is gated and its premise should be revisited in light of this
+finding before any further work goes into it.
+
 ## Why this exists
 
 This is the first concrete artifact from the 2026-08-27/28 conversation about using the RTX
