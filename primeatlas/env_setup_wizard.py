@@ -52,6 +52,9 @@ class _EnvSetupWizardMixin:
     tk.Toplevel have incompatible constructors -- each concrete subclass calls its own
     parent __init__ first, then this mixin's _init_wizard()."""
 
+    # Overridden to False on _EnvSetupWizardToplevel -- see that class's own comment.
+    _auto_close_when_ready = True
+
     def _init_wizard(self, app_settings, T, distro):
         self.app_settings = app_settings
         self.T = T
@@ -78,7 +81,7 @@ class _EnvSetupWizardMixin:
         self.checklist_frame.pack(fill="x", padx=12, pady=(6, 6))
         self.progress = ttk.Progressbar(self, mode="indeterminate")
         self.progress.pack(fill="x", padx=12, pady=(0, 6))
-        self.progress.start(12)
+        self._progress_busy()
         self.log_widget = ScrolledText(self, height=10, font=("Consolas", 9), state="disabled")
         self.log_widget.pack(fill="both", expand=True, padx=12, pady=(0, 6))
         btn_row = ttk.Frame(self)
@@ -92,12 +95,53 @@ class _EnvSetupWizardMixin:
         self.skip_btn = ttk.Button(btn_row, text=self.T("wizard.skip_button"),
                                     command=self._on_skip_clicked)
         self.skip_btn.pack(side="left")
+        self.copy_log_btn = ttk.Button(btn_row, text=self.T("wizard.copy_log_button"),
+                                        command=self._on_copy_log_clicked)
+        self.copy_log_btn.pack(side="left", padx=(6, 0))
+
+    def _progress_busy(self):
+        """Switches the bar into its moving, animated state. Always pair with
+        _progress_idle() on completion -- see that method's docstring for why leaving the
+        bar in indeterminate mode after stop() looks broken rather than finished."""
+        self.progress.configure(mode="indeterminate")
+        self.progress.start(12)
+
+    def _progress_idle(self):
+        """Stops the animation AND switches to determinate mode at value=0, so the trough
+        renders fully empty. ttk.Progressbar.stop() alone is not enough: an indeterminate
+        bar that is merely stopped keeps showing whatever small colored block happened to
+        be mid-sweep when stop() was called, sitting there motionless. A user glancing at
+        that (Artur, 2026-09-02, live test on real hardware) cannot tell it apart from a
+        stuck/hung install -- there is no visual difference between "idle, waiting for you
+        to click a button" and "frozen". An empty determinate bar reads unambiguously as
+        idle instead."""
+        self.progress.stop()
+        self.progress.configure(mode="determinate")
+        self.progress["value"] = 0
 
     def _log(self, text):
         self.log_widget.configure(state="normal")
         self.log_widget.insert("end", text + "\n")
         self.log_widget.see("end")
         self.log_widget.configure(state="disabled")
+
+    def _on_copy_log_clicked(self):
+        """Copies the log widget's full text to the clipboard, so a user hitting an error
+        here (no other way to select/copy multi-line text out of a ttk-themed window on
+        every platform, and this window has no menu bar or right-click context menu) can
+        paste the real error text elsewhere -- e.g. back to whoever is helping them debug
+        it, exactly the gap Artur hit on real hardware (2026-09-02) trying to report the
+        "elevation was declined" bug. self.update() right after clipboard_append() is the
+        standard Tk idiom for making the clipboard content actually stick around after this
+        window closes (X11 in particular only owns the clipboard while the owning window is
+        alive unless something forces a flush)."""
+        text = self.log_widget.get("1.0", "end-1c")
+        self.clipboard_clear()
+        self.clipboard_append(text)
+        self.update()
+        original_text = self.copy_log_btn.cget("text")
+        self.copy_log_btn.configure(text=self.T("wizard.copy_log_done"))
+        self.after(1200, lambda: self.copy_log_btn.configure(text=original_text))
 
     def _render_checklist(self, report):
         for child in self.checklist_frame.winfo_children():
@@ -116,7 +160,7 @@ class _EnvSetupWizardMixin:
         self.install_btn.configure(state="disabled")
         self.recheck_btn.configure(state="disabled")
         self.status_var.set(self.T("wizard.checking"))
-        self.progress.start(12)
+        self._progress_busy()
 
         def worker():
             # try/except is load-bearing here (same reasoning as every WSL-touching
@@ -133,7 +177,19 @@ class _EnvSetupWizardMixin:
         threading.Thread(target=worker, daemon=True).start()
 
     def _on_check_done(self, report):
-        self.progress.stop()
+        self._progress_idle()
+        # Stashed so _on_install_clicked can hand it straight to run_install() -- this
+        # check just ran (it's literally what decided whether install_btn is even enabled
+        # below), so re-running check_environment() a second time right before install
+        # would just be a redundant WSL round-trip; see run_install()'s own docstring.
+        self._last_report = report
+        # Persisted on EVERY check (ready or missing), not just the ready branch below --
+        # settings_tab.py's on-demand button reads this back once this window closes, so
+        # it can keep showing a real status line instead of nothing (see AppSettings.
+        # env_status's own docstring: this is exactly what Artur hit, 2026-09-02 -- the
+        # on-demand wizard flashed "ready" and closed too fast to read, and Settings itself
+        # had nowhere to show the result afterward).
+        self.app_settings.set_env_status(report)
         self._render_checklist(report)
         self.recheck_btn.configure(state="normal")
         if report["all_ok"]:
@@ -141,7 +197,15 @@ class _EnvSetupWizardMixin:
             self.result = "ready"
             self.app_settings.set_setup_completed(True)
             self._log(self.T("wizard.log_ready"))
-            self.after(600, self.destroy)
+            if self._auto_close_when_ready:
+                self.after(600, self.destroy)
+            else:
+                # On-demand (Settings button) check: relabel the skip button to "Zamknij"
+                # (Close) instead of auto-vanishing -- the whole point of clicking this
+                # button was to READ a result, so it must stay on screen until the user
+                # dismisses it themselves (Artur, 2026-09-02: the 600ms auto-close made it
+                # impossible to read even a successful result on demand).
+                self.skip_btn.configure(text=self.T("wizard.close_button"))
         else:
             self.status_var.set(self.T("wizard.status_missing"))
             self.install_btn.configure(state="normal")
@@ -153,12 +217,13 @@ class _EnvSetupWizardMixin:
         self.recheck_btn.configure(state="disabled")
         self.skip_btn.configure(state="disabled")
         self.status_var.set(self.T("wizard.status_installing"))
-        self.progress.start(12)
+        self._progress_busy()
         self._log(self.T("wizard.log_install_starting"))
 
         def worker():
             try:
-                result = env_setup.run_install(distro=self.distro)
+                result = env_setup.run_install(
+                    distro=self.distro, report=getattr(self, "_last_report", None))
             except Exception as e:  # noqa: BLE001 -- same reasoning as _start_check's worker
                 result = {"ok": False, "restart_required": False, "transcript": "",
                           "error": str(e)}
@@ -167,7 +232,7 @@ class _EnvSetupWizardMixin:
         threading.Thread(target=worker, daemon=True).start()
 
     def _on_install_done(self, result):
-        self.progress.stop()
+        self._progress_idle()
         if result.get("transcript"):
             self._log(result["transcript"])
         if result["restart_required"]:
@@ -214,6 +279,14 @@ class _EnvSetupWizardToplevel(tk.Toplevel, _EnvSetupWizardMixin):
     """Modal child of the ALREADY-running PortalBrowserApp -- used by Settings >
     Aktualizacje's on-demand re-check (see this module's own docstring for why this is a
     Toplevel of the existing root rather than a second tk.Tk())."""
+
+    # The automatic startup wizard (_EnvSetupWizardRoot) SHOULD auto-close fast when
+    # everything is already fine -- a working machine should barely see it flash by. But
+    # this Toplevel is only ever opened because the user explicitly clicked "Zweryfikuj
+    # srodowisko" wanting to READ a result, so it must stay open until they dismiss it
+    # themselves (Artur, 2026-09-02: the 600ms auto-close made even a successful on-demand
+    # check unreadable).
+    _auto_close_when_ready = False
 
     def __init__(self, master, app_settings, T, distro=env_setup.DEFAULT_WSL_DISTRO):
         tk.Toplevel.__init__(self, master)

@@ -159,6 +159,30 @@ class AppSettings:
         self._data["setup_completed"] = bool(value)
         self.save()
 
+    @property
+    def env_status(self):
+        """Last check_environment() report the wizard (env_setup_wizard.py) produced --
+        the full dict ({"all_ok", "distro", "checks": [...]}), not just the collapsed
+        True/False setup_completed above. None if never checked on this install.
+
+        Exists because setup_completed alone can't answer "what, specifically, is
+        missing" -- Settings > Aktualizacje's on-demand 'Zweryfikuj srodowisko' button
+        (settings_tab.py) needs to keep showing a real status line (not just revert to
+        a blank/neutral one) after its wizard Toplevel closes, same "persist the last
+        real result instead of re-probing on every render" reasoning as cudasieve_status
+        above (Artur, 2026-09-02: the on-demand wizard window closes/flashes by too fast
+        to read when everything is already fine, so the result needs to live on
+        somewhere the user CAN actually read it)."""
+        return self._data.get("env_status") or None
+
+    def set_env_status(self, report):
+        """Called by env_setup_wizard.py after every check_environment() run (both the
+        automatic startup check and the on-demand Settings one), regardless of outcome --
+        always persists the LATEST report, mirroring set_cudasieve_status's own
+        after-every-real-probe timing."""
+        self._data["env_status"] = report
+        self.save()
+
     def load(self):
         if not os.path.exists(self._path):
             self._data = {}

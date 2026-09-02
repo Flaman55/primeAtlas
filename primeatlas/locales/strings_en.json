@@ -599,6 +599,8 @@
   "wizard.recheck_button": "Check again",
   "wizard.skip_button": "Skip (run anyway)",
   "wizard.close_button": "Close",
+  "wizard.copy_log_button": "Copy log",
+  "wizard.copy_log_done": "Copied!",
   "wizard.check_wsl": "WSL installed and working",
   "wizard.check_distro": "{distro} distribution installed",
   "wizard.check_packages": "System packages (numpy, libprimesieve)",
@@ -610,5 +612,8 @@
   "wizard.log_restart_required": "Windows components were enabled, but a computer restart is required. Relaunch PrimeAtlas after restarting -- the same setup will continue automatically.",
   "settings.env_frame": "WSL environment",
   "settings.env_hint": "Re-check whether WSL, the Ubuntu distribution, and required packages (numpy, libprimesieve) are still correctly installed -- useful if something got uninstalled or broken since the first-run check.",
-  "settings.env_recheck_button": "Verify environment"
+  "settings.env_recheck_button": "Verify environment",
+  "settings.env_status_not_checked": "Not checked yet on this install.",
+  "settings.env_status_ok": "Environment is ready (all components present).",
+  "settings.env_status_missing": "Missing: {missing}"
 }

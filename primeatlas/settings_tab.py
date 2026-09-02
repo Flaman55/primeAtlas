@@ -1880,6 +1880,37 @@ class SettingsTab(BaseTab):
         from .env_setup_wizard import maybe_run_first_run_wizard
         maybe_run_first_run_wizard(self.app_settings, self.T, force=True,
                                     master=self.winfo_toplevel())
+        # wait_window (inside maybe_run_first_run_wizard) blocks until the Toplevel is
+        # closed -- by that point the wizard has already called
+        # AppSettings.set_env_status() (env_setup_wizard.py's _on_check_done()), so this
+        # tab's own label just needs to re-read it, same as _show_cached_env_status()
+        # does at build time (Artur, 2026-09-02: "nawet jesli status jest wszystko
+        # zainstalowane to nie ma tego statusu w oknie atlasa" -- this is what fixes that).
+        self._show_cached_env_status()
+
+    def _show_cached_env_status(self):
+        """Renders AppSettings.env_status (the last real check_environment() report, from
+        either the automatic startup check or an on-demand one here) into
+        self.env_status_var. A neutral "not checked yet" label if this install has never
+        run a check at all. Mirrors _show_cached_cudasieve_status()'s read-cached-value
+        pattern, but -- unlike that one -- safe to call directly at widget-build time: it's
+        a plain local JSON read, no WSL subprocess involved, so there's no mainloop()-
+        startup race to defer past."""
+        report = self.app_settings.env_status
+        if report is None:
+            self.env_status_var.set(self.T("settings.env_status_not_checked"))
+            return
+        if report.get("all_ok"):
+            self.env_status_var.set(self.T("settings.env_status_ok"))
+            return
+        from .env_setup_wizard import _CHECK_LABEL_KEYS
+        missing_labels = [
+            self.T(_CHECK_LABEL_KEYS.get(c["id"], "wizard.check_error"),
+                    distro=report.get("distro", ""))
+            for c in report.get("checks", []) if not c.get("ok")
+        ]
+        self.env_status_var.set(self.T(
+            "settings.env_status_missing", missing=", ".join(missing_labels)))
 
     # ---- widget construction ---------------------------------------------------------------
 
@@ -2430,8 +2461,15 @@ class SettingsTab(BaseTab):
             anchor="w", padx=6, pady=(6, 4))
         env_btn_row = ttk.Frame(env_frame)
         env_btn_row.pack(fill="x", padx=6, pady=(0, 6))
+        self.env_status_var = tk.StringVar(value=self.T("settings.env_status_not_checked"))
+        ttk.Label(env_btn_row, textvariable=self.env_status_var).pack(side="left")
         ttk.Button(env_btn_row, text=self.T("settings.env_recheck_button"),
-                   command=self._on_verify_environment_clicked).pack(side="left")
+                   command=self._on_verify_environment_clicked).pack(side="left", padx=(10, 0))
+        # Seeded immediately (unlike _show_cached_cudasieve_status(), which __init__
+        # defers past _build_widgets() to avoid a live WSL round-trip racing mainloop()
+        # startup) -- AppSettings.env_status is a plain local JSON read with no subprocess
+        # involved, so there's no such race to avoid here.
+        self._show_cached_env_status()
 
         # PrimeAtlas's own self-update (checking/downloading a newer app version) is
         # a stated FUTURE addition, not built yet -- Artur, 2026-08-17: "w przyszlosci
