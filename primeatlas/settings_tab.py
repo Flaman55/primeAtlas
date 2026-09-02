@@ -8,9 +8,8 @@ delete_manager.py), and the full-data (compressed) backup section (primeatlas/
 full_backup.py -- a second, data-carrying backup mode alongside the metadata-only one
 above; see that module's own docstring for the design). Laid out as a 3-tab Notebook --
 Ogolne (language + path), Backup (backup/restore/delete, everything storage-affecting),
-Aktualizacje (currently just the optional-library installer; PrimeAtlas's own
-self-update is a stated future addition, not built yet) -- see _build_widgets' own
-docstring for why.
+Aktualizacje (optional-library installer, CUDASieve installer, WSL environment re-check,
+and PrimeAtlas's own self-update via git) -- see _build_widgets' own docstring for why.
 
 Full-data backup driving: unlike the WSL-subprocess-driven restore job above,
 copy_floor_increment()/restore_floor_from_full_backup() are plain in-process Python
@@ -41,6 +40,16 @@ circular: that file imports SettingsTab from this package). Expected keys:
   - build_loop_argv, build_constellation_finder_argv, build_wsl_logged_command  (functions)
   - WslLoggedRunner                                  (class)
   - generation_log_paths                             (function)
+  - is_any_job_running() -> bool             True if a Generation-tab runner is active --
+                                              used by the theme/language auto-restart
+                                              guard (_has_running_job() below)
+  - repo_dir                                 str, the git checkout root this process runs
+                                              out of -- used by the app self-update section
+                                              (app_update.py's check_for_update()/
+                                              download_update())
+(this list has not been kept exhaustive as later features added more keys -- see the
+lambda literal itself in prime_atlas_v1.py's _build_settings_tab() for the full,
+authoritative set)
 
 Restore driving semantics: orchestrator_loop_v2.py doesn't accept "regenerate exactly these
 offsets" -- it appends the next N windows from wherever a floor's file count currently sits.
@@ -58,9 +67,13 @@ Translator instance (primeatlas/i18n.py) passed in at construction, backed by
 locales/strings_pl.json and locales/strings_en.json. The language PICKER lives in this
 tab (top of _build_widgets) but only writes the choice to AppSettings -- it does NOT
 rebuild this tab's own already-built widgets, since a live-relabel of every widget in
-all 5 tabs would be a much larger and riskier change than a restart-required switch
-(see i18n.py's own docstring for the full rationale). The Settings tab shows a note
-saying the change takes effect after restarting the app.
+all 5 tabs would be a much larger and riskier change than restarting the whole process
+(see i18n.py's own docstring for the full rationale of why relabeling isn't attempted).
+Both the language AND theme pickers instead trigger an automatic restart (via
+app_restart.py's restart_app(), see _restart_now_or_warn() below) as soon as the change
+is saved -- UNLESS a background job is currently running somewhere in the app, in which
+case the old "restart required" note is shown instead (Artur, 2026-09-02: this used to
+always be a fully manual close-and-reopen).
 """
 import os
 import queue
@@ -82,6 +95,7 @@ from .delete_manager import PortalWiper, FloorWiper
 from . import full_backup as fb
 from . import storage_integrate as si
 from . import background
+from . import app_update
 from .i18n import Translator, SUPPORTED_LANGUAGES
 
 # Same URL prime_sieve_cudasieve.py's own CUDASIEVE_REPO_URL clones from -- duplicated
@@ -154,6 +168,13 @@ class SettingsTab(BaseTab):
         self._cudasieve_runner = None
         self._cudasieve_queue = None
 
+        # App self-update (primeatlas/app_update.py, task #524) -- guard flags for the
+        # same "daemon thread + self.after(0, ...) callback" shape every other
+        # WSL/network-touching probe in this file uses, see _check_for_app_update()/
+        # _download_app_update() below.
+        self._app_update_check_running = False
+        self._app_update_download_running = False
+
         # Full-data (compressed) backup, primeatlas/full_backup.py -- see this class's
         # own docstring for the threading shape. _full_backup_job_running gates the
         # buttons (only one backup/restore job at a time); _full_backup_stop_event is a
@@ -210,13 +231,11 @@ class SettingsTab(BaseTab):
             return
         self.app_settings.set_language(code)
         # The person changing language usually can't read the CURRENT one (that's why
-        # they're switching) -- so this confirmation has to speak the NEWLY chosen
-        # language, not self.T (still bound to the language the app was launched with,
-        # since the switch itself is restart-required). A throwaway Translator for just
-        # this one popup is cheap and doesn't touch self.T or rebuild any other widget.
-        target_t = Translator(code).t
-        messagebox.showinfo(target_t("settings.dialog_title"),
-                             target_t("settings.language_restart_note"))
+        # they're switching) -- so if a restart has to be deferred (job running), that
+        # notice has to speak the NEWLY chosen language, not self.T (still bound to the
+        # language the app was launched with). A throwaway Translator for just this one
+        # popup is cheap and doesn't touch self.T or rebuild any other widget.
+        self._restart_now_or_warn(notice_translator=Translator(code).t)
 
     # ---- theme ----------------------------------------------------------------------
 
@@ -226,12 +245,163 @@ class SettingsTab(BaseTab):
         if code is None or code == self.app_settings.theme:
             return
         self.app_settings.set_theme(code)
-        # Unlike the language switch above, the restart note itself can stay in
+        # Unlike the language switch above, a deferred-restart notice can stay in
         # self.T's CURRENT language -- picking a theme doesn't affect what language
         # the person reads, so there's no need for language's throwaway-Translator
         # trick here.
-        messagebox.showinfo(self.T("settings.dialog_title"),
-                             self.T("settings.theme_restart_note"))
+        self._restart_now_or_warn(notice_translator=self.T)
+
+    # ---- restart-to-apply (language/theme) ---------------------------------------------
+
+    def _has_running_job(self):
+        """True if restarting the process right now would silently kill in-progress work.
+        Checks this tab's own jobs directly (it already tracks them) plus, via the
+        is_any_job_running callback in wsl_helpers, the Generation tab's three runners --
+        this tab has no direct reference to GenerationTab itself (see this module's own
+        docstring on wsl_helpers), so that cross-tab check has to be threaded through from
+        prime_atlas_v1.py the same way every other cross-tab capability here is."""
+        if self._active_job is not None and self._active_job.status == STATUS_RUNNING:
+            return True
+        if self._full_backup_job_running:
+            return True
+        if self._storage_integrate_job_running:
+            return True
+        is_any_job_running = self.wsl.get("is_any_job_running")
+        return bool(is_any_job_running and is_any_job_running())
+
+    def _restart_now_or_warn(self, notice_translator):
+        """Restarts PrimeAtlas immediately so the theme/language change just saved above
+        actually takes effect (Artur, 2026-09-02: this used to be a fully manual
+        close-and-reopen, with only a "restart required" note shown here) -- UNLESS a
+        background job is currently in flight somewhere in the app, in which case
+        restarting would silently kill it; in that case fall back to the old
+        restart-required note instead of yanking the process out from under a running job.
+
+        notice_translator is a T(key, **kwargs)-shaped callable -- self.T for the theme
+        case, or a throwaway language-specific Translator.t for the language case (see the
+        two call sites' own comments)."""
+        if self._has_running_job():
+            messagebox.showinfo(notice_translator("settings.dialog_title"),
+                                 notice_translator("settings.restart_blocked_job_running"))
+            return
+        from .app_restart import restart_app
+        # Deferred via after() rather than called synchronously so the combobox's own
+        # <<ComboboxSelected>> event handler returns normally (and the AppSettings.save()
+        # call above is fully flushed to disk) before the process gets replaced.
+        self.after(150, restart_app)
+
+    # ---- app self-update (task #524) ---------------------------------------------------
+
+    def _on_auto_update_check_toggled(self):
+        self.app_settings.set_auto_update_check(self.auto_update_check_var.get())
+
+    def _on_auto_update_download_toggled(self):
+        self.app_settings.set_auto_update_download(self.auto_update_download_var.get())
+
+    def _on_check_app_update_clicked(self):
+        self._check_for_app_update()
+
+    def _check_for_app_update(self):
+        """Runs app_update.check_for_update() (a `git fetch` against GitHub) on a
+        background thread -- same "daemon thread + self.after(0, ...) callback" shape
+        every other network/WSL-touching probe in this file uses, since a real network
+        round-trip must never block the GUI thread. Reused for BOTH the manual 'Sprawdz
+        teraz' button (_on_check_app_update_clicked above) and prime_atlas_v1.py's own
+        startup hook (which only calls this at all when AppSettings.auto_update_check is
+        on) -- single code path, so the status label always reflects the most recent
+        check regardless of which one triggered it.
+
+        On finding an update: downloads it immediately, with no prompt, if
+        AppSettings.auto_update_download is on; otherwise asks via a plain Yes/No dialog
+        first. Either way, a successful download is followed by _offer_restart_after_
+        update() -- the new code is on disk but not yet running until the process
+        restarts."""
+        if self._app_update_check_running:
+            return
+        self._app_update_check_running = True
+        self.app_update_check_btn.configure(state="disabled")
+        self.app_update_status_var.set(self.T("settings.app_update_status_checking"))
+        repo_dir = self.wsl.get("repo_dir")
+
+        def worker():
+            # try/except is load-bearing here, not defensive boilerplate -- see every
+            # other worker() in this file for why an uncaught exception here would leave
+            # _app_update_check_running stuck True forever (self.after(...) below would
+            # never fire).
+            try:
+                result = app_update.check_for_update(repo_dir)
+            except Exception as e:  # noqa: BLE001 -- must always resolve the guard flag
+                result = {"ok": False, "update_available": False, "commits_behind": 0,
+                          "local_commit": None, "remote_commit": None,
+                          "error": f"{type(e).__name__}: {e}"}
+            self.after(0, lambda: self._on_app_update_check_result(result))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_app_update_check_result(self, result):
+        self._app_update_check_running = False
+        self.app_update_check_btn.configure(state="normal")
+        if not result["ok"]:
+            self.app_update_status_var.set(
+                self.T("settings.app_update_status_error", error=str(result["error"])[:200]))
+            return
+        if not result["update_available"]:
+            self.app_update_status_var.set(self.T("settings.app_update_status_up_to_date"))
+            return
+        self.app_update_status_var.set(self.T(
+            "settings.app_update_status_available", count=result["commits_behind"]))
+        if self.app_settings.auto_update_download:
+            self._download_app_update()
+            return
+        if messagebox.askyesno(self.T("settings.dialog_title"),
+                                self.T("settings.app_update_confirm_download",
+                                       count=result["commits_behind"])):
+            self._download_app_update()
+
+    def _download_app_update(self):
+        if self._app_update_download_running:
+            return
+        self._app_update_download_running = True
+        self.app_update_check_btn.configure(state="disabled")
+        self.app_update_status_var.set(self.T("settings.app_update_status_downloading"))
+        repo_dir = self.wsl.get("repo_dir")
+
+        def worker():
+            try:
+                result = app_update.download_update(repo_dir)
+            except Exception as e:  # noqa: BLE001 -- must always resolve the guard flag
+                result = {"ok": False, "error": f"{type(e).__name__}: {e}"}
+            self.after(0, lambda: self._on_app_update_download_result(result))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_app_update_download_result(self, result):
+        self._app_update_download_running = False
+        self.app_update_check_btn.configure(state="normal")
+        if not result["ok"]:
+            self.app_update_status_var.set(self.T(
+                "settings.app_update_status_download_failed", error=str(result["error"])[:200]))
+            return
+        self.app_update_status_var.set(self.T("settings.app_update_status_downloaded"))
+        self._offer_restart_after_update()
+
+    def _offer_restart_after_update(self):
+        """After a successful `git pull`, the new code is on disk but not yet running --
+        same "process needs replacing" situation _restart_now_or_warn() handles for
+        theme/language, so this reuses _has_running_job()/restart_app() directly rather
+        than duplicating that safety check. Unlike the theme/language case, this ALWAYS
+        asks first (even when restarting right now would be perfectly safe) -- a git pull
+        can touch far more of the app than a theme swap, so a silent auto-restart here
+        would be more surprising than helpful, regardless of the auto_update_download
+        setting (that setting only governs skipping the DOWNLOAD prompt, not this one)."""
+        if self._has_running_job():
+            messagebox.showinfo(self.T("settings.dialog_title"),
+                                 self.T("settings.app_update_restart_blocked_job_running"))
+            return
+        if messagebox.askyesno(self.T("settings.dialog_title"),
+                                self.T("settings.app_update_restart_confirm")):
+            from .app_restart import restart_app
+            self.after(150, restart_app)
 
     # ---- storage path -----------------------------------------------------------------
 
@@ -2471,12 +2641,39 @@ class SettingsTab(BaseTab):
         # involved, so there's no such race to avoid here.
         self._show_cached_env_status()
 
-        # PrimeAtlas's own self-update (checking/downloading a newer app version) is
-        # a stated FUTURE addition, not built yet -- Artur, 2026-08-17: "w przyszlosci
-        # aktualizacja atlasu ale nie teraz". This tab is named for where that will
-        # live once it exists; for now it just holds the optional-library installer
-        # above, plus this note so the empty space below isn't mistaken for "nothing
-        # planned here".
-        ttk.Label(outer, text=self.T("settings.updates_future_note"),
-                  foreground="#777", wraplength=760, justify="left").pack(
-            anchor="w", pady=(4, 0))
+        # PrimeAtlas's own self-update (task #524) -- checks GitHub (via `git fetch`
+        # against this checkout's own `origin` remote) for newer commits on main and, on
+        # request, applies them with `git pull --ff-only` -- see primeatlas/app_update.py's
+        # own module docstring for why this reuses git directly instead of a separate
+        # release/version-number scheme. Was a stated future addition (Artur, 2026-08-17:
+        # "w przyszlosci aktualizacja atlasu ale nie teraz") -- built now (2026-09-02).
+        app_update_frame = ttk.Labelframe(outer, text=self.T("settings.app_update_frame"))
+        app_update_frame.pack(fill="x", pady=(0, 8))
+        ttk.Label(app_update_frame, text=self.T("settings.app_update_hint"),
+                  wraplength=760, justify="left", foreground="#555").pack(
+            anchor="w", padx=6, pady=(6, 4))
+
+        app_update_toggle_row = ttk.Frame(app_update_frame)
+        app_update_toggle_row.pack(fill="x", padx=6, pady=(0, 4))
+        self.auto_update_check_var = tk.BooleanVar(value=self.app_settings.auto_update_check)
+        ttk.Checkbutton(
+            app_update_toggle_row, text=self.T("settings.app_update_auto_check_label"),
+            variable=self.auto_update_check_var,
+            command=self._on_auto_update_check_toggled).pack(side="left")
+        self.auto_update_download_var = tk.BooleanVar(
+            value=self.app_settings.auto_update_download)
+        ttk.Checkbutton(
+            app_update_toggle_row, text=self.T("settings.app_update_auto_download_label"),
+            variable=self.auto_update_download_var,
+            command=self._on_auto_update_download_toggled).pack(side="left", padx=(16, 0))
+
+        app_update_btn_row = ttk.Frame(app_update_frame)
+        app_update_btn_row.pack(fill="x", padx=6, pady=(0, 6))
+        self.app_update_status_var = tk.StringVar(
+            value=self.T("settings.app_update_status_not_checked"))
+        ttk.Label(app_update_btn_row, textvariable=self.app_update_status_var).pack(
+            side="left")
+        self.app_update_check_btn = ttk.Button(
+            app_update_btn_row, text=self.T("settings.app_update_check_button"),
+            command=self._on_check_app_update_clicked)
+        self.app_update_check_btn.pack(side="left", padx=(10, 0))

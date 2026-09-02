@@ -199,7 +199,13 @@ interchangeable engine generations, v3/v4/v4.1 -- see "Architecture" below).
   delete together run taller than a non-maximized window, so each sub-tab scrolls
   independently):
   - **Ogolne** -- language switch, light/dark theme switch, and storage-location
-    configuration.
+    configuration. Saving a language or theme change automatically relaunches the app
+    (`primeatlas/app_restart.py`, `os.execv()` in-place process replacement -- exactly
+    one PrimeAtlas process exists at any instant, never a manual close-and-reopen) --
+    unless a background job (a Generation-tab pipeline/constellation-finder/k-tuple run,
+    or this tab's own restore/full-backup/storage-merge job) is currently running, in
+    which case it warns instead of restarting, so the change is not silently lost the
+    next time the app happens to close.
   - **Backup** -- backup create/list/delete, restore (manifest-based drift detection
     against what is actually on disk, then a checkpointed, pausable/resumable/
     cancellable regeneration job -- see "Restore" below for ordering and engine
@@ -214,9 +220,19 @@ interchangeable engine generations, v3/v4/v4.1 -- see "Architecture" below).
   - **Aktualizacje** -- an optional-library installer (currently `sympy`, used by the
     Primality tests sub-tab's factorization when present) that runs natively on
     Windows via `pip`, not through WSL -- checks whether it is already importable and
-    installs it on request, with the install's own live output shown in place. A note
-    marks PrimeAtlas's own self-update (checking/downloading a newer app version) as
-    planned but not yet built.
+    installs it on request, with the install's own live output shown in place. Also
+    hosts PrimeAtlas's own self-update (`primeatlas/app_update.py`): since the app runs
+    directly out of its own git checkout rather than a packaged install, "check for
+    update" is a plain `git fetch origin main` plus a local-HEAD-vs-`origin/main`
+    comparison, and "download" is `git pull --ff-only` -- refused outright (no files
+    touched) if the working tree has uncommitted changes or local history has diverged
+    from `origin`, so an in-progress edit is never silently clobbered. Two checkboxes
+    control it: auto-check on startup (on by default -- a background, non-blocking probe
+    a few seconds after launch) and auto-download without asking (off by default, since
+    unlike the read-only check this one changes files on disk). A manual "Sprawdz teraz"
+    button works independently of the auto-check toggle. When a downloaded update needs
+    a restart to take effect, the same job-running guard used by the theme/language
+    auto-restart above applies.
 
 ## Search
 
@@ -567,6 +583,12 @@ primeatlas/                 backend + GUI-tab package, one file (or pure-logic/U
   full_backup.py, storage_integrate.py, delete_manager.py -- see "Backup manifest
   contents" / "Moving floor data between storages" / "Full-data backup" /
   "Integrating an external storage" below for what each backs
+  app_restart.py                execv()-based in-place relaunch, used by the
+                              theme/language auto-restart and the self-update
+                              restart-after-download prompt (Settings > Ogolne /
+                              Aktualizacje)
+  app_update.py                 git fetch/pull based self-update check + download
+                              (Settings > Aktualizacje) -- pure Python, no tkinter
 
   shared infrastructure (used across many tabs, not feature-specific):
   background.py                run_in_background()/PersistentWorker -- see "GUI module
@@ -768,7 +790,9 @@ python prime_atlas_v1.py
 ```
 
 Language (English/Polish) and theme (light/dark, light by default) are both set from
-the Settings tab and both take effect on restart.
+the Settings tab; saving either automatically restarts the app so the change takes
+effect immediately (see "Settings" above), unless a background job is running, in which
+case a restart is required manually once it finishes.
 
 ## License
 

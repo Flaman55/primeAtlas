@@ -184,6 +184,12 @@ from primeatlas.generation import (  # noqa: E402
 APP_SETTINGS = AppSettings(_SCRIPT_DIR)
 PORTAL_FOLDER = APP_SETTINGS.storage_path
 
+# How long after __init__ finishes to fire the app self-update auto-check (task #524) --
+# see PortalBrowserApp.__init__'s own comment at the call site. Long enough that it never
+# competes with the loading screen or the two startup tree scans for attention/bandwidth,
+# short enough that it still fires well within the first minute of a normal session.
+_APP_UPDATE_STARTUP_CHECK_DELAY_MS = 5000
+
 # Every user-visible string in the GUI classes below goes through T("some.key", **kwargs)
 # instead of a hardcoded literal -- see primeatlas/i18n.py's docstring for the full
 # rationale (a language switch requires a RESTART, not a live re-render, since this app's
@@ -497,6 +503,21 @@ def _build_gui():
             self.reload_primes_tree()  # this ALSO kicks off the floor-totals scan for every
                                         # floor -- see reload_primes_tree()'s docstring
             self.reload_constellations_tree()
+
+            # App self-update auto-check (task #524) -- deferred several seconds past
+            # startup (not run inline here) so a `git fetch` against GitHub -- a real
+            # network round-trip that can be slow or simply hang on a bad connection --
+            # never delays the loading screen or the two tree scans just kicked off
+            # above. Reuses SettingsTab's own _check_for_app_update() (built for the
+            # manual 'Sprawdz teraz' button) rather than duplicating its network-thread/
+            # dialog/download logic here -- single code path, so the Settings tab's
+            # status label reflects this automatic check too, not just manual ones.
+            # Only actually runs if AppSettings.auto_update_check is on (default True;
+            # see that property's own docstring) -- settings_tab is already fully built
+            # by this point (it's the last of the loading_steps above).
+            if APP_SETTINGS.auto_update_check:
+                self.after(_APP_UPDATE_STARTUP_CHECK_DELAY_MS,
+                           self.settings_tab._check_for_app_update)
 
         def _finish_loading_screen(self):
             """Reveals the real UI (status_frame + notebook) and tears down the loading
@@ -1173,6 +1194,22 @@ def _build_gui():
                 "run_cudasieve_wsl_blocking":
                     lambda argv, timeout=120:
                         run_cudasieve_wsl_blocking(argv, PORTAL_FOLDER, timeout),
+                # Added so the theme/language auto-restart feature (settings_tab.py's
+                # _has_running_job()) can tell whether a Generation-tab pipeline/
+                # constellation-finder/k-tuple run is currently in flight before
+                # replacing the whole process via os.execv -- SettingsTab has no direct
+                # reference to GenerationTab itself (same reasoning as every other entry
+                # in this dict), so this is threaded through the same way. Each runner is
+                # None until its first launch, hence the None-check before .is_running().
+                "is_any_job_running": lambda: any(
+                    r is not None and r.is_running() for r in (
+                        self.generation_tab_widget._loop_runner,
+                        self.generation_tab_widget._const_runner,
+                        self.generation_tab_widget._ktuple_runner)),
+                # repo_dir for the app-update checker (primeatlas/app_update.py) -- the
+                # git checkout root this running process is executing out of, same value
+                # AppSettings(_SCRIPT_DIR) above was constructed with.
+                "repo_dir": _SCRIPT_DIR,
             }
             self.settings_tab = settings_tab_cls(
                 self.settings_tab_container, APP_SETTINGS, wsl_helpers, TRANSLATOR)

@@ -183,6 +183,34 @@ class AppSettings:
         self._data["env_status"] = report
         self.save()
 
+    @property
+    def auto_update_check(self):
+        """Whether prime_atlas_v1.py should silently check GitHub for a newer version a
+        few seconds after startup (primeatlas/app_update.py's check_for_update()), without
+        the user having to click Settings > Aktualizacje's manual 'Sprawdz teraz' button.
+        Defaults to True -- an unattended install that never re-checks would silently miss
+        every future bugfix, which is worse than a brief, non-blocking background check
+        every launch (see prime_atlas_v1.py's own startup hook for why this is dispatched
+        on a background thread rather than blocking mainloop() startup)."""
+        return bool(self._data.get("auto_update_check", True))
+
+    def set_auto_update_check(self, value):
+        self._data["auto_update_check"] = bool(value)
+        self.save()
+
+    @property
+    def auto_update_download(self):
+        """Whether a detected update should be pulled (app_update.py's download_update())
+        immediately and automatically, instead of asking the user first via a Yes/No
+        dialog. Defaults to False -- unlike auto_update_check (a read-only network probe),
+        this actually changes files on disk (`git pull --ff-only`), so it stays opt-in
+        until the user explicitly turns it on in Settings > Aktualizacje."""
+        return bool(self._data.get("auto_update_download", False))
+
+    def set_auto_update_download(self, value):
+        self._data["auto_update_download"] = bool(value)
+        self.save()
+
     def load(self):
         if not os.path.exists(self._path):
             self._data = {}
