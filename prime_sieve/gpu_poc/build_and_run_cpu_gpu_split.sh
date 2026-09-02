@@ -54,12 +54,67 @@
 #                                                              # measured a net loss on real
 #                                                              # hardware -- see
 #                                                              # run_split_three_way()'s docstring
+#   bash .../build_and_run_cpu_gpu_split.sh --mode gpu-isolation
+#                                                              # DIAGNOSTIC (2026-09-02), CLOSED --
+#                                                              # already run: confirmed CPU/GPU
+#                                                              # contention costs GPU ~41% of its
+#                                                              # own generation time even at
+#                                                              # cpu_workers+gpu_gen_threads=24,
+#                                                              # dwarfing the original 8s anomaly
+#                                                              # this was built to chase (which
+#                                                              # itself decomposes 59% contention
+#                                                              # growth / 41% genuine window-size
+#                                                              # effect) -- see README.md and
+#                                                              # run_gpu_isolation_mode()'s
+#                                                              # docstring for the real numbers.
+#   bash .../build_and_run_cpu_gpu_split.sh --mode full --combined-size 12000000000 --cpu-fraction 0.5 --cpu-workers 4,8,12 --gpu-gen-threads 12
+#                                                              # DIAGNOSTIC (2026-09-02), first
+#                                                              # pass CLOSED -- real result: gpu_total
+#                                                              # contention DOES grow with cpu_workers
+#                                                              # count (+33.9s/+46.0s/+49.8s vs solo
+#                                                              # at workers=4/8/12), but t_wall still
+#                                                              # IMPROVES throughout (386.6/233.8/
+#                                                              # 217.1s) because CPU-side parallelism
+#                                                              # gains dominate -- see
+#                                                              # run_cpu_workers_sweep_mode()'s
+#                                                              # docstring for the full numbers and
+#                                                              # an important cross-day measurement-
+#                                                              # noise caveat (~15-16s swings on
+#                                                              # supposedly identical configs).
+#   bash .../build_and_run_cpu_gpu_split.sh --mode full --combined-size 12000000000 --cpu-fraction 0.5 --cpu-workers 16,20,24 --gpu-gen-threads 12
+#                                                              # NEW PRIORITY (2026-09-02): cpu_workers=12
+#                                                              # was the best point tested so far
+#                                                              # (t_wall=217.110s) despite the WORST
+#                                                              # GPU contention of the three -- test
+#                                                              # higher values to see whether t_wall
+#                                                              # keeps improving or where CPU-side
+#                                                              # gains flatten out against rising
+#                                                              # contention.
+#   bash .../build_and_run_cpu_gpu_split.sh --mode cpu-isolation --combined-size 12000000000 --cpu-workers 24
+#                                                              # DECISIVE RESULT (2026-09-02):
+#                                                              # 134.408s -- CPU alone (real multi-
+#                                                              # process architecture, no GPU, no
+#                                                              # split) beats the best split found
+#                                                              # (217.110s) by 38% at this scale. See
+#                                                              # run_cpu_isolation_mode()'s docstring
+#                                                              # for the full number and caveats.
+#   bash .../build_and_run_cpu_gpu_split.sh --mode cpu-isolation --combined-size 10000000000,14000000000,15000000000,20000000000,30000000000,40000000000 --cpu-workers 24
+#                                                              # CURRENT PRIORITY (2026-09-02): does
+#                                                              # CPU-alone's advantage over the split
+#                                                              # hold at every scale the split itself
+#                                                              # was tested at, or is 12B special?
+#                                                              # See run_cpu_isolation_mode()'s
+#                                                              # docstring for the reasoning.
 # Note: STRESS/FULL mode's CPU side now uses a real multi-process architecture by default
 # (--cpu-workers 24, matching production's MAX_WORKERS) -- see prepare_cpu_side_parallel()'s
 # docstring in cpu_gpu_split_poc.py. EXACT mode always stays single-threaded (small ranges,
 # correctness is what matters there, not speed). --combined-size and --cpu-fraction only apply
-# to FULL mode; give only ONE of them a comma-separated list at a time (--combined-size sweeps
-# scale at a fixed 50/50 split, --cpu-fraction sweeps ratio at a fixed scale).
+# to FULL mode; give only ONE of --combined-size/--cpu-fraction/--cpu-workers a comma-separated
+# list at a time (--combined-size sweeps scale at a fixed 50/50 split, --cpu-fraction sweeps ratio
+# at a fixed scale, --cpu-workers sweeps CPU process count at a fixed scale/ratio -- a contention
+# diagnostic, not a throughput/ratio search). --mode cpu-isolation is a separate mode (not a FULL
+# sub-case) that measures real solo-CPU wall time with no GPU running at all -- see
+# run_cpu_isolation_mode()'s docstring.
 
 set -uo pipefail
 
@@ -145,10 +200,15 @@ echo "      twice each -- single-threaded and 4-worker -- so 14 dual-window sub-
 echo "      FULL mode (--mode full): the real floor-25 scale -- watch whether t_wall lands"
 echo "      close to max(cpu_elapsed, gpu_total) (real overlap) and whether it beats both"
 echo "      production CPU alone (176.018s) and GPU-only two-tier (169.623s) for covering the"
-echo "      FULL range. Add --cpu-bonus-fraction F --dual-window to try the single-pass CPU"
-echo "      bonus round (see dual_window_engine_poc.c's header for why this exists -- the"
-echo "      round-based --cpu-bonus-fraction WITHOUT --dual-window was already measured a net"
-echo "      loss on real hardware, 2026-08-29)."
+echo "      FULL range -- NOTE this 176.018s/169.623s comparison is a NAIVE linear-scaling"
+echo "      estimate, not a real measurement at the split's own width. --cpu-bonus-fraction F"
+echo "      --dual-window, --mode gpu-isolation, and the cpu_workers sweep (4/8/12 then 16/20/24)"
+echo "      are all CLOSED questions now (2026-09-02) -- see README.md. DECISIVE RESULT: --mode"
+echo "      cpu-isolation (CPU alone, real 24-worker architecture, no GPU) covers combined_size="
+echo "      12B in 134.408s, beating the best split (217.110s) by 38% -- see"
+echo "      run_cpu_isolation_mode()'s docstring. CURRENT PRIORITY: run --mode cpu-isolation across"
+echo "      the same combined_size scales the split itself was tested at (10/14/15/20/30/40 B) to"
+echo "      see whether CPU-alone's advantage holds everywhere or is scale-specific."
 python3 cpu_gpu_split_poc.py "$@"
 RUN_EXIT=$?
 

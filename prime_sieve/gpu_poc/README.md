@@ -1376,6 +1376,165 @@ bash /mnt/h/PrimeAtlas_refactor/primeAtlas/prime_sieve/gpu_poc/build_and_run_cpu
 bash /mnt/h/PrimeAtlas_refactor/primeAtlas/prime_sieve/gpu_poc/build_and_run_cpu_gpu_split.sh --mode full --combined-size 13500000000 --cpu-fraction 0.5 --cpu-bonus-fraction 0.15 --cpu-workers 12 --gpu-gen-threads 12 --dual-window
 ```
 
+## GPU/CPU contention is real and LARGE -- ~41% of GPU's own time, not just an 8s anomaly (2026-09-02)
+
+Follow-up to the load-balance sweep table above: at combined_size=12B, `gpu_total` ROSE from
+227.908s (cpu_fraction=0.5, cs_gpu=6.0B) to 236.037s (cpu_fraction=0.6, cs_gpu=4.8B) even though
+GPU's own window SHRANK. Backwards for two devices that never touch a shared buffer -- GPU getting
+LESS work to mark should never make it slower.
+
+Reading `marking_two_tier_poc.cu`'s actual dense/sparse split (`dense_hi = combined_size` --
+i.e. GPU's own window size IS the dense/sparse boundary: dense phase covers `[2, cs_gpu)`, sparse
+phase covers `[cs_gpu, l_final)`) rules out a genuine window-size effect quantitatively: `l_final`
+is ~3.16e12 here, and the cs_gpu shift between these two points is only 1.2e9 -- about 0.04% of
+`l_final`, nowhere near enough to explain an ~8s / 3.6% change. It also points the wrong way for
+the dense phase (which shrinks and should get cheaper, not slower). So a genuine window-size
+effect predicts `gpu_total` should stay roughly FLAT, not rise -- the opposite of what was
+measured.
+
+The better-supported hypothesis: contention with the CONCURRENTLY-RUNNING CPU workers, driven by
+OVERLAP DURATION rather than thread count. `cpu_elapsed` grew from 179.449s to 227.432s across the
+same two points -- meaning the time GPU spent running genuinely ALONE (after CPU finished) shrank
+from ~49s (228-179) down to ~9s (236-227). Even with `cpu_workers + gpu_gen_threads = 24` exactly
+matching the real core count (no thread-COUNT oversubscription -- that bug was already found and
+fixed earlier), CPU's atomic-write-heavy dense-tier marking work could still be memory-bandwidth/
+cache-heavy enough to slow GPU's own host-side generation threads for as long as the two genuinely
+overlap in time -- a different, more subtle contention effect than the oversubscription bug.
+
+**`run_gpu_isolation_mode()`** (new in `cpu_gpu_split_poc.py`) tests this directly: runs GPU ALONE
+(`marking_two_tier_poc`, no CPU thread/pool started at all -- reuses `run_gpu_side()` verbatim) at
+the SAME two window sizes.
+
+**REAL-HARDWARE RESULT (2026-09-02)**: BOTH effects turned out to be real -- not either/or. Solo
+`gpu_total` was `161.794s` (`cs_gpu=6.0B`) and `165.127s` (`cs_gpu=4.8B`): a genuine `+3.333s` as
+the window shrinks, small but real, and in the SAME anomalous direction the quantitative prediction
+above said shouldn't happen (that prediction was too confident about the window-size effect being
+negligible). But the much bigger finding: **contention is massive in absolute terms**, not just an
+explanation for the original ~8s spread. Running CONCURRENTLY with CPU cost GPU `+66.114s` (+40.9%)
+at `cs_gpu=6.0B` and `+70.910s` (+42.9%) at `cs_gpu=4.8B` -- **CPU's marking work slows GPU's own
+generation by over 40%**, even with `cpu_workers + gpu_gen_threads = 24` exactly matching the real
+core count. The original 8.129s anomaly decomposes cleanly: `4.796s` (59%) from the GROWTH in
+contention overhead as `cpu_fraction` rises 0.5->0.6, plus `3.333s` (41%) from the small genuine
+window-size effect -- `4.796 + 3.333 = 8.129`, exactly matching. So contention is the majority
+contributor to the ORIGINAL anomaly, but the real headline is that it costs ~41% of GPU's own time
+at EITHER split point -- dwarfing the 3.6% anomaly this diagnostic was built to chase.
+
+**This means real wall-time headroom likely exists in reducing CPU/GPU contention itself, not just
+re-tuning `cpu_fraction`** -- worth investigating directly: does `cpu_workers` COUNT (not just the
+`cpu_workers + gpu_gen_threads` sum) independently affect contention severity; does core pinning /
+NUMA-aware placement help; is CPU's atomic-write marking specifically the culprit vs. its
+batch-submission/IPC overhead. Sandbox-verified before the real run with a monkeypatched
+`run_gpu_side()` across three synthetic scenarios, and again afterward reproducing these exact real
+numbers to confirm the printed decomposition math; `py_compile` and the Polish-diacritic grep both
+clean.
+
+Run:
+```
+bash /mnt/h/PrimeAtlas_refactor/primeAtlas/prime_sieve/gpu_poc/build_and_run_cpu_gpu_split.sh --mode gpu-isolation
+```
+
+## cpu_workers COUNT does affect contention -- but more workers still wins on t_wall; and a cross-day measurement-noise warning (2026-09-02)
+
+`run_cpu_workers_sweep_mode()` (holds `cpu_fraction=0.5`, `gpu_gen_threads=12`, `combined_size=12B`
+all fixed -- so `cs_cpu`/`cs_gpu` never change -- and varies only `cpu_workers`) ran on real
+hardware:
+
+| cpu_workers | t_wall | cpu_elapsed | gpu_total | delta vs. solo (161.794s) |
+|---|---|---|---|---|
+| 4 | 386.577s | 385.831s | 195.704s | +33.910s |
+| 8 | 233.849s | 233.159s | 207.799s | +46.005s |
+| 12 | 217.110s | 165.880s | 211.552s | +49.758s |
+
+Contention delta grows monotonically with `cpu_workers` count (all three measured against the SAME
+solo-GPU baseline from the isolation run above, same session, apples-to-apples) -- confirms process
+COUNT itself is part of what drives contention, not just total marking work. But `t_wall` keeps
+IMPROVING anyway (386.6s -> 233.8s -> 217.1s) because CPU-side parallelism gains dominate the extra
+GPU contention cost. In this data, MORE `cpu_workers` is still the net win for wall time -- the
+opposite of the "cap `cpu_workers` to protect GPU" idea this diagnostic was originally built to
+test. `cpu_workers=12` (the highest value tested so far) is also the current best split point
+overall.
+
+**Cross-day measurement-noise caution**: this exact nominal config (`cpu_workers=12`,
+`gpu_gen_threads=12`, `cpu_fraction=0.5`, `combined_size=12B`) was already measured on 2026-08-29,
+twice -- `gpu_total=227.908s` (the load-balance sweep's own reference point) and `t_wall=232.575s`
+(the corrected break-even section above). Today's run of the SAME config gave `gpu_total=211.552s`
+and `t_wall=217.110s` -- ~15-16s (6.6-7.2%) FASTER on BOTH metrics, which is larger than the entire
+`cpu_workers=4-vs-12` spread this sweep exists to detect (15.848s). Both metrics moved the same
+direction by a similar amount (not one up/one down, as pure per-run jitter might produce),
+suggesting a systematic day-to-day factor (machine load, thermal state, or similar) rather than
+pure noise -- but this hasn't been isolated further. Conclusion: trust SAME-SESSION relative
+comparisons in this file (like the monotonic delta growth above); treat CROSS-DAY absolute numbers
+with real skepticism.
+
+**The deeper question this surfaced (Artur, 2026-09-02)**: every "DIRECT COMPARISON" line
+`run_full_scale_mode()` has ever printed compares the split against a NAIVE linear-scaling estimate
+for CPU alone (`176.018s * n_10b_units`), never a real measurement at the split's own width -- and
+this file already found that exact assumption FALSE for GPU (GPU's dominant generation cost is
+roughly fixed regardless of window width, not linear). If CPU's real engine has the same shape
+(plausible -- it also calls primesieve internally up to the same `l_final`), the naive reference has
+been systematically pessimistic about CPU-alone this whole time, which would mean the split's real
+value has never actually been checked against its true best baseline: does splitting across CPU+GPU
+cover MORE range per unit wall time than CPU alone covering that same range by itself?
+
+**`run_cpu_isolation_mode()`** (new in `cpu_gpu_split_poc.py`) answers this directly: runs the CPU
+side ALONE (real multi-process `prepare_cpu_side_parallel()`/`wait_cpu_side_parallel()`
+architecture, no GPU thread, no split -- `cs_cpu = combined_size`) and reports both the real ratio
+against the naive linear estimate and, where known, against the best split `t_wall` found so far.
+
+**REAL-HARDWARE RESULT, BOTH DIAGNOSTICS (2026-09-02):**
+
+`--cpu-workers 16,20,24` (extending the sweep above): `t_wall` gets WORSE monotonically past 12
+(217.110s -> 218.623s -> 225.060s -> 228.694s at cpu_workers=12/16/20/24), even though
+`cpu_elapsed` keeps dropping (165.9s -> 153.0s -> 142.8s -> 129.7s) -- the opposite of the 4->8->12
+trend. There's a real interior optimum around `cpu_workers=12-16`: past that, contention's steady
+growth (`delta`: +49.8s -> +51.1s -> +57.7s -> +61.4s) outpaces CPU's diminishing per-worker
+speedup. `cpu_workers=12` (t_wall=217.110s) remains the best split point found.
+
+`--mode cpu-isolation --combined-size 12000000000 --cpu-workers 24` (CPU alone, real 24-worker
+architecture, NO GPU at all): **elapsed=134.408s**. Against the best split (217.110s, apples-to-
+apples, neither side writes to disk): **ratio=0.619x -- CPU ALONE IS 38% FASTER THAN THE BEST
+SPLIT CONFIGURATION FOUND SO FAR.** (Against the naive-linear estimate, 211.222s: ratio=0.636x --
+also far faster, though that specific comparison mixes in production's write step, which this
+marking-only run skips; the vs-best-split comparison above is the clean one.)
+
+To make this apples-to-apples, a matching GPU-alone number was also measured at the FULL
+`combined_size` (not a split half): `--mode gpu-isolation --combined-size 12000000000` ->
+`gpu_total=166.996s` (dense gen=10.791s gpu=10.675s, sparse gen=154.948s gpu=154.791s,
+download=0.743s) -- close to the naive-linear GPU reference (169.623s), unlike CPU's, confirming
+GPU's cost really is close to fixed-width-independent as this file already found.
+
+**THREE-WAY COMPARISON, COMPLETE (2026-09-02, all at `combined_size=12*10**9`, all marking-only,
+all real hardware, no naive scaling anywhere in this ranking):**
+
+| configuration | time | 
+|---|---|
+| CPU alone (`cpu_workers=24`) | **134.408s** |
+| GPU alone (`cs_gpu=12B` full width) | 166.996s |
+| Best split found (`cpu_workers=12`) | 217.110s |
+
+CPU alone is faster than GPU alone here (~19.5% faster) -- worth noting since the raw guess "GPU
+marking throughput beats CPU" turned out backwards at this scale. But the real headline, matching
+Artur's own hypothesis exactly: **the split is worse than EITHER device running alone** -- 61.5%
+slower than CPU alone, 30.0% slower than GPU alone. Running both devices concurrently on disjoint
+sub-windows doesn't add their throughputs together; contention (the ~41%-of-GPU's-own-time finding
+above, and the same mechanism presumably costing CPU too) makes the combination actively worse than
+just running the faster device alone. **This is a decisive result at this scale.**
+
+**Open question, not yet answered**: does this ranking (CPU alone < GPU alone < split) hold at
+OTHER `combined_size` values, or is 12B special? Every "the split gets better at larger scale"
+claim in `run_full_scale_mode()`'s docstring (the original `CONFIRMED` section, 1-4 * 10**10) was
+measured against the naive linear CPU reference, never real solo numbers at those scales. Worth
+checking with both `--mode cpu-isolation` and `--mode gpu-isolation` across the same scale sweep
+the split itself was tested at (10, 14, 15, 20, 30, 40 * 10**9) before drawing a final verdict on
+the whole split architecture.
+
+Run (already done, 2026-09-02, results above):
+```
+bash /mnt/h/PrimeAtlas_refactor/primeAtlas/prime_sieve/gpu_poc/build_and_run_cpu_gpu_split.sh --mode full --combined-size 12000000000 --cpu-fraction 0.5 --cpu-workers 16,20,24 --gpu-gen-threads 12
+bash /mnt/h/PrimeAtlas_refactor/primeAtlas/prime_sieve/gpu_poc/build_and_run_cpu_gpu_split.sh --mode cpu-isolation --combined-size 12000000000 --cpu-workers 24
+bash /mnt/h/PrimeAtlas_refactor/primeAtlas/prime_sieve/gpu_poc/build_and_run_cpu_gpu_split.sh --mode gpu-isolation --combined-size 12000000000
+```
+
 ## What to report back (cpu_gpu_split_poc, current priority)
 
 From `--mode exact`: PASS/FAIL per case (expect 28/28 as of the dual-window addition -- 7 plain
@@ -1385,10 +1544,25 @@ the plain 2-way split, sweep `--combined-size` around the corrected ~13.3-13.8B 
 sums to the real core count on the machine running it -- confirm via `nproc`) to avoid
 re-introducing the oversubscription bug. Do NOT use `--cpu-bonus-fraction` WITHOUT `--dual-window`
 expecting a speedup -- that's the round-based mechanism, a confirmed net loss (see above). The
-NEW priority is the real-hardware FULL-mode run for `--cpu-bonus-fraction 0.15 --dual-window` at
-`combined_size=13.5*10**9` (command above) -- this is the first real test of whether removing the
-double-generation-cost bug lets a CPU-heavier split match or beat plain 50/50, an open question,
-not a guaranteed win (see the dual-window section above for why).
+dual-window `--cpu-bonus-fraction 0.15 --dual-window` run at `combined_size=13.5*10**9` is now a
+CLOSED question (see the dual-window section above -- it does not beat plain 50/50), no further
+real-hardware time needed there for now.
+
+`--mode gpu-isolation` is CLOSED (real hardware, confirmed contention costs GPU ~41% of its own
+generation time). `run_cpu_workers_sweep_mode()` is CLOSED (real hardware, both passes: 4/8/12 then
+16/20/24) -- found a real interior optimum around `cpu_workers=12-16` (`t_wall` gets WORSE past 12,
+despite `cpu_elapsed` still dropping, because contention growth outpaces it), `cpu_workers=12`
+(`t_wall=217.110s`) is the best split point found. `run_cpu_isolation_mode()` is CLOSED for its
+first data point and delivered a DECISIVE result (see the section above): CPU alone, real
+24-worker architecture, no GPU, beats the best split by 38% (`134.408s` vs `217.110s`) at
+`combined_size=12*10**9`. **This reframes the whole series' current priority**: not further
+split-tuning, but checking whether CPU-alone's advantage holds at OTHER scales -- run
+`--mode cpu-isolation` across the same `combined_size` sweep the split itself was tested at (10,
+14, 15, 20, 30, 40 * 10**9) to build a real solo-CPU curve and settle whether the split has ANY
+real value anywhere in this file's tested range, or whether it should be retired in favor of just
+running CPU's own real parallel architecture alone.
+**STATUS (2026-09-02): the 12B data point is real and decisive; the multi-scale sweep needed to
+generalize it has not been run yet.**
 
 ## What to report back (parallel chunked marking, superseded by the two-tier section above)
 

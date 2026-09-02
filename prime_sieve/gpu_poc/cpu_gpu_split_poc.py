@@ -2022,6 +2022,494 @@ def run_fraction_sweep_mode(gpu_binary, engine_so_path, gpu_gen_threads, gpu_chu
     return results
 
 
+def run_gpu_isolation_mode(gpu_binary, gpu_gen_threads, gpu_chunk_size, cs_gpu_values,
+                            floor=25):
+    """Diagnostic mode (2026-09-02, following up on a real-hardware anomaly Artur flagged): the
+    load-balance sweep (run_fraction_sweep_mode(), combined_size=12*10**9, corrected 12+12 core
+    budget) found gpu_total INCREASING as cs_gpu SHRANK -- cpu_fraction=0.5 -> cs_gpu=6*10**9,
+    gpu_total=227.908s; cpu_fraction=0.6 -> cs_gpu=4.8*10**9, gpu_total=236.037s. Backwards for two
+    supposedly independent, non-shared-buffer devices: GPU getting LESS window to mark should never
+    make it slower.
+
+    Two candidate explanations, worked out by reading marking_two_tier_poc.cu's actual dense/sparse
+    split logic (dense_hi=combined_size itself -- i.e. dense phase covers [2, cs_gpu), sparse phase
+    covers [cs_gpu, l_final)):
+      (a) genuine window-size dependency -- as cs_gpu shrinks, the sparse phase's start point
+          shifts down, nominally WIDENING the sparse (dominant-cost) prime range. Quantitatively
+          this is negligible here: l_final ~= 3.16*10**12 while the cs_gpu shift between these two
+          points is only 1.2*10**9 -- about 0.04% of l_final, nowhere near enough to explain an ~8s
+          / 3.6% change. Also works the WRONG direction for the dense phase (which shrinks and
+          should therefore get CHEAPER, not more expensive, as cs_gpu shrinks) -- so (a) predicts
+          gpu_total should stay roughly FLAT or even improve slightly, not rise.
+      (b) contention with the CONCURRENTLY-RUNNING CPU workers -- not about GPU's own workload at
+          all. cpu_elapsed grew from 179.449s (cpu_fraction=0.5) to 227.432s (cpu_fraction=0.6) in
+          the same sweep -- meaning the OVERLAP DURATION between CPU's still-running marking
+          workers and GPU's own host-side generator threads grew from ~49s (228-179) to ~9s
+          (236-227) of GPU running essentially alone. Even with cpu_workers+gpu_gen_threads=24
+          exactly matching the real core count (no thread-count oversubscription), CPU's
+          atomic-write-heavy dense-tier marking work could still be memory-bandwidth/cache-heavy
+          enough to slow GPU's own host-side generation for as long as the two genuinely overlap in
+          time -- a real contention effect distinct from the thread-COUNT oversubscription bug
+          already found and fixed earlier in this file.
+
+    THIS FUNCTION tests (a) vs (b) directly: it runs GPU ALONE (marking_two_tier_poc, no CPU
+    thread/pool started at all) at each `cs_gpu` value given, so ANY change in gpu_total between
+    the tested window sizes must come from GPU's own true window-size sensitivity -- there is
+    nothing else running to contend with.
+
+    REAL-HARDWARE RESULT (2026-09-02, cs_gpu=6*10**9 and cs_gpu=4.8*10**9, gpu_gen_threads=12):
+    BOTH (a) and (b) turned out to be real, not either/or -- solo gpu_total=161.794s (6*10**9) and
+    165.127s (4.8*10**9), a genuine +3.333s as the window shrinks (small, but real, and in the
+    SAME anomalous direction my quantitative prediction said shouldn't happen -- that prediction
+    was too confident about (a) being negligible). But the much bigger finding: CONTENTION is
+    massive in absolute terms, not just as an explanation for the original ~8s spread -- running
+    CONCURRENTLY with CPU cost GPU +66.114s (+40.9%) at cs_gpu=6*10**9 and +70.910s (+42.9%) at
+    cs_gpu=4.8*10**9, EVEN THOUGH cpu_workers+gpu_gen_threads=24 exactly matches the real logical
+    core count (no thread-COUNT oversubscription -- that bug was already found and fixed earlier).
+    The original sweep's 8.129s anomaly decomposes cleanly: 4.796s (59%) from the GROWTH in
+    contention overhead as cpu_fraction rises from 0.5 to 0.6 (i.e. (b) growing), plus 3.333s (41%)
+    from the small genuine window-size effect (i.e. (a)) -- 4.796+3.333=8.129, exactly matching.
+    So (b) is the majority contributor to the ORIGINAL anomaly, but the far bigger headline is that
+    (b) alone costs ~41% of GPU's own generation time at EITHER split point, dwarfing the ~3.6%
+    anomaly this diagnostic was built to chase. This means real wall-time headroom likely exists in
+    reducing CPU/GPU contention itself (not just re-tuning cpu_fraction) -- worth investigating
+    directly (e.g. does cpu_workers count, NOT just cpu_workers+gpu_gen_threads sum, independently
+    affect contention severity; does core pinning/NUMA-aware placement help; is CPU's atomic-write
+    marking specifically the culprit vs. its batch-submission/IPC overhead).
+
+    REAL-HARDWARE RESULT, FULL-WIDTH POINT (2026-09-02, cs_gpu=12,000,000,000 -- the FULL
+    combined_size, not a split half, run specifically to get an apples-to-apples comparison
+    against run_cpu_isolation_mode()'s CPU-alone number at the same width): gpu_total=166.996s
+    (dense gen=10.791s gpu=10.675s, sparse gen=154.948s gpu=154.791s, download=0.743s). Close to
+    the naive-linear GPU reference (169.623s) -- unlike CPU, whose naive reference turned out to be
+    a big overestimate, GPU's real fixed-cost-dominated behavior was already well characterized by
+    that number. This closes the three-way comparison at combined_size=12*10**9: CPU alone
+    (134.408s) < GPU alone (166.996s) < best split found (217.110s, cpu_workers=12) -- see
+    run_cpu_isolation_mode()'s docstring for the full ranking and conclusion.
+
+    Reuses run_gpu_side() directly (the same function run_split() calls for its own GPU thread) --
+    no new binary or C code needed, this is purely a different Python-side harness around the
+    existing marking_two_tier_poc binary."""
+    print()
+    print("=" * 78)
+    print(f"GPU ISOLATION -- solo GPU runs (no CPU thread/pool at all) at "
+          f"{len(cs_gpu_values)} window size(s), isolating window-size effects from "
+          f"CPU-contention effects")
+    print("=" * 78)
+
+    distance = 10 ** floor
+
+    # Known reference points from the corrected (cpu_workers=12, gpu_gen_threads=12) load-balance
+    # sweep at combined_size=12*10**9 -- see run_fraction_sweep_mode()'s docstring / README's
+    # "Load-balance sweep" section. These gpu_total values were measured CONCURRENTLY with CPU
+    # doing real marking work at the same time; this function's own solo measurements at the SAME
+    # cs_gpu values are the direct comparison point.
+    known_concurrent = {
+        6_000_000_000: (0.5, 227.908),
+        4_800_000_000: (0.6, 236.037),
+    }
+
+    results = []
+    for i, cs_gpu in enumerate(cs_gpu_values):
+        print()
+        print(f"[gpu-isolation {i + 1}/{len(cs_gpu_values)}] cs_gpu={cs_gpu:,} (solo, no CPU)")
+        l_final = math.isqrt(distance + cs_gpu) + 1
+        dh, dl = to_hi_lo(distance)
+        t_process_start = time.perf_counter()
+        bits, counts, timings = run_gpu_side(gpu_binary, l_final, dh, dl, cs_gpu, gpu_chunk_size,
+                                              gpu_gen_threads, f"isolation_{i}")
+        t_process_wall = time.perf_counter() - t_process_start
+        (t_dense_gen, t_dense_gpu, t_sparse_gen, t_sparse_gpu, t_download, t_gpu_total) = timings
+        print(f"  l_final={l_final:,}  gpu_total={t_gpu_total:.3f}s  "
+              f"(dense gen={t_dense_gen:.3f}s gpu={t_dense_gpu:.3f}s | "
+              f"sparse gen={t_sparse_gen:.3f}s gpu={t_sparse_gpu:.3f}s | "
+              f"download={t_download:.3f}s)  process wall={t_process_wall:.3f}s")
+        results.append({"cs_gpu": cs_gpu, "l_final": l_final, "gpu_total": t_gpu_total,
+                         "timings": timings, "counts": counts})
+
+    print()
+    print("=" * 78)
+    print("GPU ISOLATION SUMMARY")
+    print("=" * 78)
+    header = (f"{'cs_gpu':>16}  {'solo gpu_total':>15}  {'concurrent gpu_total':>21}  "
+              f"{'delta':>10}  note")
+    print(header)
+    print("-" * len(header))
+    for r in results:
+        cs_gpu = r["cs_gpu"]
+        known = known_concurrent.get(cs_gpu)
+        if known:
+            frac, concurrent_total = known
+            delta = concurrent_total - r["gpu_total"]
+            note = f"matches cpu_fraction={frac} point from the 12B load-balance sweep"
+            print(f"{cs_gpu:>16,}  {r['gpu_total']:>14.3f}s  {concurrent_total:>20.3f}s  "
+                  f"{delta:>+9.3f}s  {note}")
+        else:
+            print(f"{cs_gpu:>16,}  {r['gpu_total']:>14.3f}s  {'(no known ref)':>21}  "
+                  f"{'':>10}  (no known concurrent reference for this cs_gpu value)")
+
+    # NOTE (2026-09-02, corrected after the first real-hardware run): a plain "is the spread of
+    # differences comparable" check is the WRONG comparison -- it can look like "no contention"
+    # even when contention is the dominant effect in absolute terms. The real decomposition needs
+    # the per-point delta (concurrent_total - solo_total, i.e. contention overhead AT that point)
+    # and how much that delta itself GROWS between points, not just how the two totals' spreads
+    # compare to each other.
+    matched = sorted([r for r in results if r["cs_gpu"] in known_concurrent],
+                      key=lambda r: r["cs_gpu"], reverse=True)  # largest cs_gpu (lowest
+                                                                 # cpu_fraction) first
+    if len(matched) >= 2:
+        deltas = [(r["cs_gpu"], known_concurrent[r["cs_gpu"]][0],
+                   known_concurrent[r["cs_gpu"]][1] - r["gpu_total"]) for r in matched]
+        print()
+        print("  Contention overhead at each point (concurrent gpu_total - solo gpu_total):")
+        for cs_gpu, frac, delta in deltas:
+            pct = delta / [r["gpu_total"] for r in matched if r["cs_gpu"] == cs_gpu][0] * 100
+            print(f"    cs_gpu={cs_gpu:,} (cpu_fraction={frac}): {delta:+.3f}s "
+                  f"({pct:.1f}% slower than solo)")
+
+        window_effect = matched[-1]["gpu_total"] - matched[0]["gpu_total"]  # smallest window's
+                                                                             # solo total minus
+                                                                             # largest window's
+        contention_growth = deltas[-1][2] - deltas[0][2]
+        total_anomaly = (known_concurrent[matched[-1]["cs_gpu"]][1] -
+                          known_concurrent[matched[0]["cs_gpu"]][1])
+        print()
+        print(f"  Genuine window-size effect (solo runs only, largest window's cs_gpu vs "
+              f"smallest): {window_effect:+.3f}s")
+        print(f"  Growth in contention overhead across the same two points: "
+              f"{contention_growth:+.3f}s")
+        print(f"  Sum: {window_effect + contention_growth:+.3f}s  (should match the original "
+              f"concurrent-run anomaly, {total_anomaly:+.3f}s, if these are the only two effects "
+              f"at play)")
+        if abs(total_anomaly) > 1e-6:
+            window_share = window_effect / total_anomaly * 100
+            contention_share = contention_growth / total_anomaly * 100
+            print(f"  VERDICT: of the original {total_anomaly:+.3f}s anomaly, "
+                  f"{contention_share:.1f}% is CPU contention growing with cpu_fraction and "
+                  f"{window_share:.1f}% is a genuine (if small) GPU window-size effect. Contention "
+                  f"is real, large in ABSOLUTE terms (see the per-point overhead above -- this "
+                  f"can dwarf the anomaly itself), and IS the majority contributor to why the "
+                  f"anomaly grows with cpu_fraction, but it does not fully explain the anomaly "
+                  f"alone -- both effects are real and should be reported together.")
+
+    return results
+
+
+# Known solo GPU baselines (2026-09-02, run_gpu_isolation_mode() real-hardware run, NO CPU running
+# at all) -- reused by run_cpu_workers_sweep_mode() below to compute contention overhead directly
+# at each cpu_workers point without needing a fresh solo run for comparison every time.
+KNOWN_SOLO_GPU_TOTAL = {
+    6_000_000_000: 161.794,
+    4_800_000_000: 165.127,
+}
+
+
+def run_cpu_workers_sweep_mode(gpu_binary, engine_so_path, cpu_fraction, gpu_gen_threads,
+                                gpu_chunk_size, cpu_workers_list, cpu_batches_per_worker,
+                                combined_size):
+    """Diagnostic mode (2026-09-02, direct follow-up to run_gpu_isolation_mode()'s real-hardware
+    finding that CPU/GPU contention costs GPU ~41% of its own generation time, even at exactly
+    cpu_workers+gpu_gen_threads=24): tests whether contention severity tracks the NUMBER of
+    concurrent CPU worker PROCESSES independently of that sum, by running run_full_scale_mode()
+    once per cpu_workers value in `cpu_workers_list`, holding cpu_fraction, gpu_gen_threads, and
+    combined_size all FIXED -- so cs_cpu/cs_gpu never change across the sweep, only how many
+    separate OS processes CPU's marking work is spread across.
+
+    Two candidate outcomes:
+      - gpu_total stays roughly FLAT across cpu_workers values -> contention is driven by the
+        TOTAL marking work / memory bandwidth CPU needs, not by how many processes do it. Fewer,
+        busier CPU workers wouldn't help GPU.
+      - gpu_total drops meaningfully as cpu_workers shrinks (fewer concurrent processes, even
+        though each does more work per process) -> contention is driven by PROCESS COUNT itself
+        (e.g. cache-line/TLB pressure from more independent working sets, more OS scheduling
+        overhead, more simultaneous memory-bandwidth consumers) -- suggesting a real, actionable
+        lever: capping cpu_workers below what pure CPU-side throughput would want, specifically to
+        protect GPU's concurrent generation threads, could be a net win even if it makes CPU's own
+        cpu_elapsed slightly worse (GPU is consistently the long pole at 50/50 per the earlier
+        load-balance sweep, so a faster GPU matters more than a faster CPU here).
+
+    Where the computed cs_gpu (via split_window(), same align=64 rounding run_split() itself uses,
+    at a fixed distance=10**25 matching every other FULL-mode function in this file) matches a
+    KNOWN_SOLO_GPU_TOTAL entry, this function reports the contention delta directly (gpu_total -
+    known solo total) at each cpu_workers point, without needing a fresh solo run.
+
+    STATUS (2026-09-02): built and sandbox-syntax-checked, NOT yet run on real hardware -- Artur is
+    testing this directly in WSL rather than via the usual sandbox monkeypatch harness.
+
+    REAL-HARDWARE RESULT (2026-09-02, combined_size=12,000,000,000, cpu_fraction=0.5,
+    gpu_gen_threads=12 fixed, cs_gpu=6,000,000,000 throughout):
+        cpu_workers= 4: t_wall=386.577s  cpu_elapsed=385.831s  gpu_total=195.704s  delta=+33.910s
+        cpu_workers= 8: t_wall=233.849s  cpu_elapsed=233.159s  gpu_total=207.799s  delta=+46.005s
+        cpu_workers=12: t_wall=217.110s  cpu_elapsed=165.880s  gpu_total=211.552s  delta=+49.758s
+    gpu_total spread=15.848s -> code printed VERDICT "varies meaningfully with cpu_workers COUNT",
+    and WITHIN this same session that trend is real: contention delta grows monotonically
+    (+33.9s -> +46.0s -> +49.8s) as cpu_workers rises, all three points measured against the SAME
+    solo-GPU baselines from run_gpu_isolation_mode()'s own real run earlier in this session (so
+    those three deltas are apples-to-apples, same-day, same-environment).
+
+    CAUTION, found by comparing ACROSS days: this exact nominal configuration (cpu_workers=12,
+    gpu_gen_threads=12, cpu_fraction=0.5, combined_size=1.2*10**10) was already measured twice
+    before today -- known_concurrent's gpu_total=227.908s (run_gpu_isolation_mode()'s own
+    reference dict) and run_full_scale_mode()'s CORRECTED BREAK-EVEN section's t_wall=232.575s
+    (2026-08-29). Today's SAME nominal config gave gpu_total=211.552s and t_wall=217.110s --
+    ~15-16s (6.6-7.2%) FASTER on BOTH metrics than the earlier-day measurements. That is larger
+    than the entire cpu_workers=4-vs-12 spread this sweep is built to detect (15.848s), so
+    CROSS-DAY absolute numbers in this file should not be trusted at face value; only SAME-SESSION
+    relative comparisons (like the monotonic delta growth above) are on solid ground. The
+    consistent direction and similar magnitude on both metrics (not one up/one down, as pure
+    per-run noise might produce) suggests a systematic day-to-day factor (machine load, thermal
+    state, or similar) rather than pure measurement jitter, but this has not been isolated further.
+
+    NET EFFECT ON t_wall (the number that actually matters): despite gpu_total's contention
+    growing with cpu_workers, t_wall keeps IMPROVING (386.6s -> 233.8s -> 217.1s) because CPU-side
+    parallelism gains (cpu_elapsed: 385.8s -> 233.2s -> 165.9s) dominate the extra GPU contention
+    cost. In THIS data, more cpu_workers is still the net win for wall time -- the opposite
+    direction from this function's own "capping cpu_workers may help" speculation above. Next:
+    test cpu_workers values ABOVE 12 (e.g. 16/20/24) to see whether t_wall keeps improving or
+    whether CPU-side gains flatten out while GPU contention keeps rising, which would locate a
+    real optimum instead of just observing one edge of the curve. See also run_cpu_isolation_mode()
+    below, built the same day to answer a more fundamental question Artur raised: is CPU ALONE
+    (no GPU, no split, real multi-process architecture) covering the FULL combined_size faster
+    than this split covers it -- i.e. does the split help AT ALL at this scale, once contention is
+    accounted for.
+
+    REAL-HARDWARE RESULT, SECOND PASS (2026-09-02, same session, same combined_size=12,000,000,000/
+    cpu_fraction=0.5/gpu_gen_threads=12, cpu_workers=16/20/24 -- extending the curve above):
+        cpu_workers=16: t_wall=218.623s  cpu_elapsed=152.973s  gpu_total=212.891s  delta=+51.097s
+        cpu_workers=20: t_wall=225.060s  cpu_elapsed=142.767s  gpu_total=219.484s  delta=+57.690s
+        cpu_workers=24: t_wall=228.694s  cpu_elapsed=129.659s  gpu_total=223.169s  delta=+61.375s
+    t_wall now gets WORSE monotonically as cpu_workers rises past 12 (12->16->20->24:
+    217.110s -> 218.623s -> 225.060s -> 228.694s), even though cpu_elapsed keeps dropping
+    (165.880s -> 152.973s -> 142.767s -> 129.659s) -- the OPPOSITE of the 4->8->12 trend, where
+    t_wall improved every step. So there IS a real interior optimum, not a monotonic "more workers
+    always wins": cpu_elapsed's diminishing returns (each extra worker buys less CPU speedup) cross
+    over contention's continued, roughly linear growth (delta keeps rising steadily: +49.8s ->
+    +51.1s -> +57.7s -> +61.4s) somewhere around cpu_workers=12-16. cpu_workers=16's t_wall
+    (218.623s) is close enough to cpu_workers=12's (217.110s, from an earlier same-day but separate
+    invocation) that the true optimum could be either point -- not worth chasing further given the
+    much bigger finding immediately below. KNOWN_BEST_SPLIT_T_WALL keeps its cpu_workers=12 entry
+    as the reference "best split found" point.
+
+    THIS QUESTION IS NOW SUPERSEDED: run_cpu_isolation_mode()'s real result (see its own docstring)
+    found CPU alone beats EVERY split point tested here by a wide margin (134.408s vs. this
+    function's best of 217.110s, 38% faster) -- so further fine-tuning cpu_workers within the split
+    architecture is no longer the most valuable next step; the split itself is in question at this
+    scale."""
+    print()
+    print("=" * 78)
+    print(f"CPU-WORKERS SWEEP -- combined_size={combined_size:,} cpu_fraction={cpu_fraction} "
+          f"gpu_gen_threads={gpu_gen_threads} fixed, {len(cpu_workers_list)} back-to-back "
+          f"FULL-mode runs at cpu_workers={', '.join(str(w) for w in cpu_workers_list)}")
+    print("=" * 78)
+
+    _, _, _, _, cs_gpu = split_window(10 ** 25, combined_size, cpu_fraction)
+    known_solo = KNOWN_SOLO_GPU_TOTAL.get(cs_gpu)
+    if known_solo is not None:
+        print(f"[*] cs_gpu={cs_gpu:,} matches a known solo GPU baseline: {known_solo:.3f}s "
+              f"(run_gpu_isolation_mode(), 2026-09-02, no CPU running at all) -- the contention "
+              f"delta column below is gpu_total - {known_solo:.3f}s at each point.")
+    else:
+        print(f"[*] cs_gpu={cs_gpu:,} has no known solo GPU baseline -- only relative comparison "
+              f"across cpu_workers values in this sweep is available, no absolute contention "
+              f"delta. Run --mode gpu-isolation --combined-size {cs_gpu} first to get one.")
+
+    results = []
+    for i, workers in enumerate(cpu_workers_list):
+        print()
+        print(f"[cpu-workers-sweep {i + 1}/{len(cpu_workers_list)}] cpu_workers={workers}")
+        result = run_full_scale_mode(gpu_binary, engine_so_path, cpu_fraction, gpu_gen_threads,
+                                      gpu_chunk_size, workers, cpu_batches_per_worker,
+                                      combined_size=combined_size)
+        result["cpu_workers"] = workers
+        results.append(result)
+
+    print()
+    print("=" * 78)
+    print("CPU-WORKERS SWEEP SUMMARY")
+    print("=" * 78)
+    header = (f"{'cpu_workers':>11}  {'total OS threads':>17}  {'t_wall':>10}  "
+              f"{'cpu_elapsed':>12}  {'gpu_total':>10}  {'contention delta':>17}")
+    print(header)
+    print("-" * len(header))
+    for r in results:
+        total_threads = r["cpu_workers"] + gpu_gen_threads
+        delta_str = (f"{r['gpu_total'] - known_solo:>+16.3f}s" if known_solo is not None
+                     else f"{'n/a':>17}")
+        print(f"{r['cpu_workers']:>11}  {total_threads:>17}  {r['t_wall']:>9.3f}s  "
+              f"{r['cpu_elapsed']:>11.3f}s  {r['gpu_total']:>9.3f}s  {delta_str}")
+
+    if len(results) >= 2:
+        gpu_totals = [r["gpu_total"] for r in results]
+        spread = max(gpu_totals) - min(gpu_totals)
+        print()
+        print(f"  gpu_total spread across this cpu_workers sweep: {spread:.3f}s.")
+        if spread > 5.0:
+            print("  VERDICT: gpu_total varies meaningfully with cpu_workers COUNT alone (cs_gpu, "
+                  "cpu_fraction, gpu_gen_threads, and combined_size all held fixed) -- contention "
+                  "is driven at least partly by the NUMBER of concurrent CPU processes, not just "
+                  "the total marking work. Capping cpu_workers below what pure CPU throughput "
+                  "wants may be worth testing as a real lever to speed up the FULL split, even at "
+                  "the cost of slightly worse cpu_elapsed.")
+        else:
+            print("  VERDICT: gpu_total is roughly flat across cpu_workers values -- contention "
+                  "severity does not depend meaningfully on process COUNT here; it's more likely "
+                  "driven by total memory-bandwidth demand of CPU's marking work regardless of how "
+                  "many processes share it.")
+
+    return results
+
+
+# Known best split t_wall per combined_size (2026-09-02, real hardware, from
+# run_cpu_workers_sweep_mode()'s own run -- the FASTEST split point found so far at that scale) --
+# reused by run_cpu_isolation_mode() below to print a direct "is splitting even worth it" line
+# without needing the caller to paste the number in by hand.
+KNOWN_BEST_SPLIT_T_WALL = {
+    12_000_000_000: (12, 217.110),   # (cpu_workers used, t_wall)
+}
+
+
+def run_cpu_isolation_mode(engine_so_path, cpu_workers_values, cpu_batches_per_worker,
+                            combined_size_values, floor=25):
+    """CPU solo-isolation diagnostic (2026-09-02) -- direct follow-up to Artur's question after
+    seeing run_cpu_workers_sweep_mode()'s real result: every 'DIRECT COMPARISON' line
+    run_full_scale_mode() has ever printed compares the split's t_wall against a NAIVE
+    linear-scaling estimate for CPU alone (176.018s * n_10b_units, see that function's own
+    docstring) -- NOT a real measurement of CPU alone covering that same wider combined_size. That
+    estimate silently assumes CPU's own sieving-prime-generation cost scales linearly with window
+    width. This file's own earlier finding for GPU (run_full_scale_mode()'s 'CONFIRMED' section)
+    was exactly the opposite: GPU's dominant generation cost is roughly FIXED regardless of window
+    width, so GPU's real throughput at wider windows came out far better than naive linear scaling
+    would predict. CPU's real engine (generate_and_sieve_segment_bits, prime_sieve_engine_v4.c)
+    also calls primesieve internally to build its own sieving-prime base up to the same l_final --
+    plausibly the SAME fixed-cost shape -- which would mean the naive 176.018s*n reference has been
+    systematically PESSIMISTIC about CPU-alone this whole time, and every 'still slower'/'FASTER'
+    verdict printed against it should be treated as unverified until checked against a real number.
+
+    This function measures REAL solo-CPU wall time at the FULL combined_size (cs_cpu =
+    combined_size, no GPU thread running at all, no split), using the EXACT same
+    prepare_cpu_side_parallel()/wait_cpu_side_parallel() multi-process path run_split() itself
+    uses for the CPU side -- so this is genuinely the same architecture, not a different
+    (e.g. single-threaded) code path that would make the comparison unfair. l_final is computed
+    the same way split_window() derives it by default (isqrt(distance + combined_size) + 1, at
+    the same distance=10**25 floor-25 scale every other FULL-mode function in this file uses), so
+    it matches exactly what a split run at that combined_size would use.
+
+    Answers the real question Artur raised: does CPU+GPU split actually cover MORE range per unit
+    wall time than CPU alone covering the SAME range by itself? Where KNOWN_BEST_SPLIT_T_WALL has
+    an entry for the tested combined_size, this function prints a direct ratio against that real
+    (not naive) split number, in addition to the naive-linear-estimate ratio.
+
+    STATUS (2026-09-02): built, sandbox syntax/logic-verified, NOT yet run on real hardware.
+
+    REAL-HARDWARE RESULT (2026-09-02, combined_size=12,000,000,000, cpu_workers=24, no GPU running
+    at all): elapsed=134.408s. Two comparisons:
+      - vs. naive-linear-estimate (211.222s = 176.018s * 1.2): ratio=0.636x -- real solo CPU is
+        FAR faster than the naive estimate assumed. CAUTION on this specific ratio: the 176.018s
+        reference is production's sieve-AND-WRITE number, while this run (like every marking-only
+        PoC in this series) does NOT write to disk -- so part of this gap is the write step, not
+        purely CPU's generation-cost shape. Not a new problem introduced here; every prior
+        DIRECT COMPARISON line in this file already carried the same write-step caveat.
+      - vs. best known split t_wall (217.110s, cpu_workers=12, from run_cpu_workers_sweep_mode()
+        above): ratio=0.619x -- CPU ALONE IS 38% FASTER THAN THE BEST SPLIT FOUND. This comparison
+        IS apples-to-apples on the write question (neither side writes to disk -- see
+        run_full_scale_mode()'s own DIRECT COMPARISON footnote and prepare_cpu_side_parallel()'s
+        docstring, both marking-only).
+
+    CONCLUSION: at combined_size=12*10**9 (floor=25), running CPU alone with its real 24-worker
+    production-style architecture and NO GPU involvement covers the range faster than ANY split
+    configuration tested in this file so far (best was cpu_workers=12, t_wall=217.110s). GPU
+    doesn't just fail to help here -- given run_gpu_isolation_mode()'s finding that concurrent
+    CPU/GPU contention costs GPU ~41% of its own time, and this result showing CPU-alone beats
+    the split by 38%, running GPU concurrently is actively counterproductive at this scale: it
+    slows CPU down (via the same contention, symmetric direction) while adding no net benefit,
+    since CPU alone was already faster than what the split achieves with GPU's help. This
+    supersedes every "DIRECT COMPARISON ... still slower / FASTER" line printed by
+    run_full_scale_mode() historically, since those all compared against the NAIVE linear
+    estimate rather than this real number.
+
+    THREE-WAY COMPARISON, NOW COMPLETE (2026-09-02, all at combined_size=12,000,000,000, all
+    marking-only/no-write, all real hardware, no naive scaling anywhere in this ranking):
+        CPU alone:        134.408s  (run_cpu_isolation_mode(), cpu_workers=24)
+        GPU alone:        166.996s  (run_gpu_isolation_mode(), cs_gpu=12*10**9 full-width point)
+        Split (CPU+GPU):  217.110s  (run_cpu_workers_sweep_mode(), best point, cpu_workers=12)
+    CPU alone is FASTER than GPU alone here (134.408s vs. 166.996s, CPU ~19.5% faster) -- contrary
+    to an initial guess that GPU's raw marking throughput would beat CPU's. But the real headline,
+    matching Artur's own hypothesis exactly: the SPLIT is worse than EITHER device running alone --
+    61.5% slower than CPU alone, 30.0% slower than GPU alone. Running both devices concurrently on
+    disjoint sub-windows does not just fail to add the two devices' throughput together; contention
+    (see run_gpu_isolation_mode()'s ~41%-of-GPU's-own-time finding, and the symmetric effect on CPU
+    implied by the same mechanism) makes the combination actively worse than doing nothing clever
+    at all and just running the faster of the two devices by itself.
+
+    OPEN QUESTION, NOT YET ANSWERED: does this ranking (CPU alone < GPU alone < split) hold at
+    OTHER combined_size values, or is 12*10**9 special? Every prior "the split gets better at
+    larger scale" claim in run_full_scale_mode()'s docstring (the original CONFIRMED section,
+    1*10**10 through 4*10**10) was measured against the naive linear CPU reference, never real
+    solo-CPU/solo-GPU numbers at those scales. Natural next step: run both --mode cpu-isolation
+    and --mode gpu-isolation across the same combined_size sweep already used for the split (e.g.
+    10, 14, 15, 20, 30, 40 *10**9) to build real solo curves for both devices, directly comparable
+    to the split's own historical sweep, before drawing a final verdict on whether this split
+    architecture has any real value anywhere in this file's tested range."""
+    print()
+    print("=" * 78)
+    print("CPU ISOLATION -- real solo-CPU wall time at the FULL combined_size, no GPU running at "
+          "all (checks whether the naive 176.018s*n linear-scaling reference used everywhere else "
+          "in this file actually holds, and whether the CPU+GPU split is worth it AT ALL)")
+    print("=" * 78)
+
+    distance = 10 ** floor
+    results = []
+    for combined_size in combined_size_values:
+        l_final = math.isqrt(distance + combined_size) + 1
+        n_10b_units = combined_size / 10 ** 10
+        naive = 176.018 * n_10b_units
+        best_split = KNOWN_BEST_SPLIT_T_WALL.get(combined_size)
+        for workers in cpu_workers_values:
+            print()
+            print(f"[cpu-isolation] combined_size={combined_size:,} cpu_workers={workers} "
+                  f"(l_final={l_final:,})")
+            t_start = time.perf_counter()
+            executor, futures, n_bytes, n_batches = prepare_cpu_side_parallel(
+                engine_so_path, l_final, distance, combined_size, workers, cpu_batches_per_worker)
+            print(f"  {n_batches} equal-cost batches submitted to {workers} forked worker "
+                  f"processes", flush=True)
+            _, elapsed = wait_cpu_side_parallel(executor, futures, n_bytes, t_start)
+            ratio_naive = elapsed / naive if naive > 0 else float("nan")
+            print(f"  DONE: elapsed={elapsed:.3f}s  naive-linear-estimate={naive:.3f}s  "
+                  f"ratio={ratio_naive:.3f}x" +
+                  (" (real solo CPU is SLOWER than the naive estimate assumed)"
+                   if elapsed > naive else
+                   " (real solo CPU is FASTER than the naive estimate assumed -- every prior "
+                   "'DIRECT COMPARISON' line in this file understated CPU-alone)"))
+            if best_split is not None:
+                best_workers, best_t_wall = best_split
+                ratio_split = elapsed / best_t_wall
+                print(f"  vs. best known split t_wall at this combined_size "
+                      f"({best_t_wall:.3f}s, cpu_workers={best_workers}): {ratio_split:.3f}x" +
+                      (" (CPU ALONE beats the split -- splitting is NOT worth it at this scale)"
+                       if elapsed < best_t_wall else
+                       " (the split still beats CPU alone at this scale)"))
+            results.append({"combined_size": combined_size, "cpu_workers": workers,
+                             "elapsed": elapsed, "naive": naive,
+                             "best_split_t_wall": best_split[1] if best_split else None})
+
+    print()
+    print("=" * 78)
+    print("CPU ISOLATION SUMMARY")
+    print("=" * 78)
+    header = (f"{'combined_size':>14}  {'cpu_workers':>11}  {'elapsed':>10}  {'naive-est':>10}  "
+              f"{'vs naive':>9}  {'vs best split':>14}")
+    print(header)
+    print("-" * len(header))
+    for r in results:
+        vs_split = (f"{r['elapsed'] / r['best_split_t_wall']:>13.3f}x"
+                    if r["best_split_t_wall"] else f"{'n/a':>14}")
+        print(f"{r['combined_size']:>14,}  {r['cpu_workers']:>11}  {r['elapsed']:>9.3f}s  "
+              f"{r['naive']:>9.3f}s  {r['elapsed'] / r['naive']:>8.3f}x  {vs_split}")
+
+    return results
+
+
 def _report_split(split):
     counts = split["gpu_counts"]
     timings = split["gpu_timings"]
@@ -2099,8 +2587,16 @@ def main():
         gpu_gen_threads = int(sys.argv[sys.argv.index("--gpu-gen-threads") + 1])
     if "--gpu-chunk-size" in sys.argv:
         gpu_chunk_size = int(sys.argv[sys.argv.index("--gpu-chunk-size") + 1])
+    cpu_workers_values = [cpu_workers]
     if "--cpu-workers" in sys.argv:
-        cpu_workers = int(sys.argv[sys.argv.index("--cpu-workers") + 1])
+        # Comma-separated list allowed: --cpu-workers 4,8,12 (with --gpu-gen-threads FIXED, e.g.
+        # still 12 -- deliberately NOT summing to 24 for the smaller values) runs a diagnostic
+        # sweep testing whether CPU/GPU contention severity tracks cpu_workers COUNT independently
+        # of the cpu_workers+gpu_gen_threads sum -- see run_cpu_workers_sweep_mode()'s docstring.
+        # A single value behaves exactly as before (plain int, no sweep).
+        raw = sys.argv[sys.argv.index("--cpu-workers") + 1]
+        cpu_workers_values = [int(x) for x in raw.split(",") if x.strip()]
+        cpu_workers = cpu_workers_values[0]
     if "--cpu-batches-per-worker" in sys.argv:
         cpu_batches_per_worker = int(sys.argv[sys.argv.index("--cpu-batches-per-worker") + 1])
     if "--combined-size" in sys.argv:
@@ -2121,13 +2617,16 @@ def main():
     print(f"[*] cpu_fraction(s)={', '.join(f'{f:.4f}' for f in cpu_fractions)}  "
           f"cpu_bonus_fraction={cpu_bonus_fraction:.4f}  dual_window={dual_window}  "
           f"gpu_gen_threads={gpu_gen_threads}  gpu_chunk_size={gpu_chunk_size:,}  "
-          f"cpu_workers={cpu_workers}  cpu_batches_per_worker={cpu_batches_per_worker}  "
+          f"cpu_workers(s)={', '.join(str(w) for w in cpu_workers_values)}  "
+          f"cpu_batches_per_worker={cpu_batches_per_worker}  "
           f"combined_size(s)(FULL only)={', '.join(f'{cs:,}' for cs in full_combined_sizes)} "
           f"(EXACT mode uses its own small, fixed per-case values and always stays "
           f"single-threaded -- cpu_workers/cpu_batches_per_worker/combined_size only apply to "
           f"STRESS/FULL, and --combined-size only to FULL; give a comma-separated list to sweep "
           f"multiple scales in one run; give --cpu-fraction a comma-separated list instead to "
           f"run a load-balance sweep at a FIXED combined_size -- see run_fraction_sweep_mode(); "
+          f"give --cpu-workers a comma-separated list (with --gpu-gen-threads fixed, not summing "
+          f"to it) to run a contention diagnostic sweep -- see run_cpu_workers_sweep_mode(); "
           f"--dual-window switches the CPU bonus mechanism from run_split_three_way()'s two "
           f"rounds (confirmed a net loss on real hardware, 2026-08-29) to run_split_dual_window()'s "
           f"single dual-marking pass -- only meaningful together with --cpu-bonus-fraction > 0)")
@@ -2162,6 +2661,15 @@ def main():
                                            cpu_bonus_fraction, gpu_gen_threads, gpu_chunk_size,
                                            cpu_workers, cpu_batches_per_worker,
                                            combined_size=full_combined_sizes[0])
+        elif len(cpu_workers_values) > 1:
+            if len(cpu_fractions) > 1 or len(full_combined_sizes) > 1:
+                print(f"[!] --cpu-workers sweep does not yet support combining with other "
+                      f"sweeps -- running at only cpu_fraction={cpu_fractions[0]}, "
+                      f"combined_size={full_combined_sizes[0]:,}, ignoring the rest of either "
+                      f"list.")
+            run_cpu_workers_sweep_mode(gpu_binary, engine_so, cpu_fractions[0], gpu_gen_threads,
+                                        gpu_chunk_size, cpu_workers_values,
+                                        cpu_batches_per_worker, full_combined_sizes[0])
         elif len(cpu_fractions) > 1:
             if len(full_combined_sizes) > 1:
                 print(f"[!] both --cpu-fraction and --combined-size were given comma-separated "
@@ -2178,6 +2686,31 @@ def main():
             run_full_scale_mode(gpu_binary, engine_so, cpu_fractions[0], gpu_gen_threads,
                                  gpu_chunk_size, cpu_workers, cpu_batches_per_worker,
                                  combined_size=full_combined_sizes[0])
+    if mode == "gpu-isolation":
+        # Diagnostic mode (2026-09-02) -- see run_gpu_isolation_mode()'s own docstring. Reuses
+        # --combined-size as the list of cs_gpu (solo GPU window size) values to test; defaults to
+        # the two specific window sizes from the 12B load-balance sweep anomaly (cs_gpu=6*10**9 at
+        # cpu_fraction=0.5, cs_gpu=4.8*10**9 at cpu_fraction=0.6) when --combined-size isn't given,
+        # since those are the exact points this diagnostic exists to re-test in isolation.
+        cs_gpu_values = full_combined_sizes
+        if "--combined-size" not in sys.argv:
+            cs_gpu_values = [6_000_000_000, 4_800_000_000]
+        run_gpu_isolation_mode(gpu_binary, gpu_gen_threads, gpu_chunk_size, cs_gpu_values)
+    if mode == "cpu-isolation":
+        # Diagnostic mode (2026-09-02) -- see run_cpu_isolation_mode()'s own docstring. Reuses
+        # --combined-size as the list of FULL combined_size values to test (defaults to
+        # [12_000_000_000], the scale KNOWN_BEST_SPLIT_T_WALL has a real split reference for) and
+        # --cpu-workers as the list of worker-process counts to test at each (defaults to
+        # [24], production's own MAX_WORKERS, since that's the real CPU-alone architecture, not
+        # the smaller values used to probe GPU contention in the cpu-workers sweep).
+        cpu_iso_combined_sizes = full_combined_sizes
+        if "--combined-size" not in sys.argv:
+            cpu_iso_combined_sizes = [12_000_000_000]
+        cpu_iso_workers = cpu_workers_values
+        if "--cpu-workers" not in sys.argv:
+            cpu_iso_workers = [24]
+        run_cpu_isolation_mode(engine_so, cpu_iso_workers, cpu_batches_per_worker,
+                                cpu_iso_combined_sizes)
 
     print()
     print("=" * 78)
