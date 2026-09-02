@@ -92,6 +92,20 @@ marking_two_tier_poc's binary since this file calls it unmodified):
                                                           prepare_cpu_side_parallel()'s docstring)
                                   [--cpu-batches-per-worker N] (default 2, matches production's
                                                           BATCHES_PER_WORKER)
+                                  [--cpu-bonus-fraction F] (default 0.0 -- Artur's 'CPU bonus
+                                                          round' idea, 2026-08-29: a slice of
+                                                          combined_size, on top of --cpu-fraction's
+                                                          own split of the remainder, that CPU
+                                                          picks up right after its first round
+                                                          finishes, reusing the SAME already-forked
+                                                          worker pool -- no second fork, so it's
+                                                          safe even while the GPU thread is still
+                                                          printing. FULL mode only, single value
+                                                          only (no sweep support yet). See
+                                                          run_split_three_way()'s docstring for the
+                                                          full architecture and
+                                                          run_full_scale_mode_three_way() for the
+                                                          FULL-mode entry point this dispatches to)
 """
 import concurrent.futures
 import ctypes
@@ -113,6 +127,7 @@ import marking_two_tier_poc as gpu_mod  # reuses its exact, already-verified bin
 
 MASK64 = (1 << 64) - 1
 DEFAULT_ENGINE_SO = os.path.join(_PRIME_SIEVE_DIR, "prime_sieve_engine_v4.so")
+DEFAULT_DUAL_ENGINE_SO = os.path.join(_SCRIPT_DIR, "dual_window_engine_poc.so")
 DEFAULT_GPU_BINARY = os.path.join(_SCRIPT_DIR, "marking_two_tier_poc")
 DEFAULT_GPU_CHUNK_SIZE = 20_000_000
 DEFAULT_CPU_WORKERS = 24              # matches production's MAX_WORKERS (prime_sieve_v4_1.py)
@@ -127,6 +142,13 @@ _shm_mmap = None
 _shm_size = 0
 _cpu_worker_lib = None
 _CPU_ENGINE_SO_PATH = None
+
+# Same reasoning, for the dual-window engine (dual_window_engine_poc.c/.so -- see
+# run_split_dual_window()'s docstring): a SEPARATE .so from the plain single-window engine above,
+# since it exports a different function (generate_and_sieve_dual_window_atomic), so it needs its
+# own module-level path/handle pair that forked workers inherit the same way.
+_dual_worker_lib = None
+_DUAL_ENGINE_SO_PATH = None
 
 
 def to_hi_lo(distance):
@@ -180,6 +202,48 @@ def run_cpu_side(lib, l_final, distance_hi, distance_lo, combined_size):
     if ret != 0:
         raise RuntimeError(f"CPU engine returned error code {ret}")
     return bytes(buf), elapsed
+
+
+def load_dual_engine(dual_engine_so_path):
+    """Loads dual_window_engine_poc.so (see that file's header) -- a SEPARATE, purely additive
+    engine variant from load_engine()'s prime_sieve_engine_v4.so, built specifically for
+    run_split_dual_window()'s single-pass CPU bonus round. Unlike load_engine(), there is no
+    build_engine_so_if_missing() equivalent here (the .so is a PoC file, not part of production --
+    build it explicitly via `gcc -O3 -shared -fPIC dual_window_engine_poc.c -o
+    dual_window_engine_poc.so -lprimesieve -lstdc++ -lm`, or let
+    build_and_run_cpu_gpu_split.sh do it)."""
+    lib = ctypes.CDLL(dual_engine_so_path)
+    argtypes = [
+        ctypes.c_uint64, ctypes.c_uint64,
+        ctypes.c_uint64, ctypes.c_uint64, ctypes.c_uint64, ctypes.POINTER(ctypes.c_ubyte),
+        ctypes.c_uint64, ctypes.c_uint64, ctypes.c_uint64, ctypes.POINTER(ctypes.c_ubyte),
+    ]
+    lib.generate_and_sieve_dual_window.argtypes = argtypes
+    lib.generate_and_sieve_dual_window.restype = ctypes.c_int
+    lib.generate_and_sieve_dual_window_atomic.argtypes = argtypes
+    lib.generate_and_sieve_dual_window_atomic.restype = ctypes.c_int
+    return lib
+
+
+def run_cpu_side_dual(lib_dual, l_final, dh1, dl1, window_m1, dh2, dl2, window_m2):
+    """Single-threaded, non-atomic dual-window call -- the direct correctness/ground-truth-style
+    counterpart of run_cpu_side(), used by EXACT mode (cpu_workers<=1) and by the sandbox test
+    harness to verify dual_window_engine_poc.c's marking logic against two INDEPENDENT
+    single-window run_engine_ground_truth() calls at the SAME (l_final, distance, window_m) pairs
+    -- see run_exact_mode_dual_window()."""
+    n_bytes1 = (window_m1 + 7) // 8
+    n_bytes2 = (window_m2 + 7) // 8
+    buf1 = (ctypes.c_ubyte * n_bytes1)() if window_m1 > 0 else None
+    buf2 = (ctypes.c_ubyte * n_bytes2)() if window_m2 > 0 else None
+    t0 = time.perf_counter()
+    ret = lib_dual.generate_and_sieve_dual_window(2, l_final, dh1, dl1, window_m1, buf1,
+                                                   dh2, dl2, window_m2, buf2)
+    elapsed = time.perf_counter() - t0
+    if ret != 0:
+        raise RuntimeError(f"dual-window CPU engine returned error code {ret}")
+    bits1 = bytes(buf1) if buf1 is not None else b""
+    bits2 = bytes(buf2) if buf2 is not None else b""
+    return bits1, bits2, elapsed
 
 
 def run_engine_ground_truth(lib, l_final, distance_hi, distance_lo, combined_size):
@@ -293,13 +357,22 @@ def _load_cpu_worker_lib():
     return _cpu_worker_lib
 
 
-def process_batch_cpu(start_stop_list, distance, window_m):
+def process_batch_cpu(start_stop_list, distance, window_m, out_byte_offset=0):
     """Runs inside a forked worker process. Writes ATOMICALLY straight into the ONE shared
     buffer (module-level _shm_mmap/_shm_size, inherited via fork() -- see
-    _init_shared_cpu_buffer()). Mirrors prime_sieve_v4_1.py's process_batch() verbatim."""
+    _init_shared_cpu_buffer()). Mirrors prime_sieve_v4_1.py's process_batch() verbatim.
+
+    `out_byte_offset` (2026-08-29, added for run_split_three_way()'s CPU bonus round): lets
+    multiple logically-separate "rounds" share ONE physically-allocated buffer at different byte
+    offsets, instead of needing a second mmap -- important because a second mmap created in the
+    PARENT process after the worker pool has already forked would NOT be visible to the
+    already-running worker processes (they only inherited the ORIGINAL mapping at fork time).
+    Writing into a different offset of the SAME already-inherited buffer sidesteps that
+    entirely -- no new mmap, no new fork, just a different `window_m`/`distance` (both already
+    per-call parameters, not fork-time globals) and a shifted output pointer."""
     lib = _load_cpu_worker_lib()
     buf_ctypes = (ctypes.c_ubyte * _shm_size).from_buffer(_shm_mmap)
-    out_ptr = ctypes.cast(buf_ctypes, ctypes.POINTER(ctypes.c_ubyte))
+    out_ptr = ctypes.cast(ctypes.byref(buf_ctypes, out_byte_offset), ctypes.POINTER(ctypes.c_ubyte))
     distance_hi = distance >> 64
     distance_lo = distance & MASK64
 
@@ -312,8 +385,126 @@ def process_batch_cpu(start_stop_list, distance, window_m):
     return had_error
 
 
+def _load_dual_worker_lib():
+    global _dual_worker_lib
+    if _dual_worker_lib is None:
+        _dual_worker_lib = load_dual_engine(_DUAL_ENGINE_SO_PATH)
+    return _dual_worker_lib
+
+
+def process_batch_cpu_dual(start_stop_list, distance1, window_m1, out_byte_offset1,
+                            distance2, window_m2, out_byte_offset2):
+    """Dual-window counterpart of process_batch_cpu() -- runs inside a forked worker process,
+    walking its assigned sieving-prime sub-ranges via dual_window_engine_poc.c's
+    generate_and_sieve_dual_window_atomic(), which marks BOTH (distance, window_m) targets per
+    prime found in a SINGLE primesieve pass. This is the whole point of the dual-window engine
+    (see that file's header): run_split_three_way()'s round1/round2 approach called
+    process_batch_cpu() TWICE over the same [2, l_final) range -- once per round -- duplicating
+    the dominant generation cost; this function calls the dual-window engine ONCE per batch,
+    covering both windows in the same walk, so that cost is paid exactly once regardless of how
+    many logical CPU "rounds" get folded in.
+
+    Both windows share the SAME physical buffer (module-level _shm_mmap/_shm_size, inherited via
+    fork()), at their own byte offsets -- same layout as process_batch_cpu()'s out_byte_offset,
+    just two of them here instead of one. `window_m2=0` (bonus round empty) degenerates correctly
+    -- see dual_window_engine_poc.c's mark_one()."""
+    lib = _load_dual_worker_lib()
+    buf_ctypes = (ctypes.c_ubyte * _shm_size).from_buffer(_shm_mmap)
+    out_ptr1 = ctypes.cast(ctypes.byref(buf_ctypes, out_byte_offset1),
+                            ctypes.POINTER(ctypes.c_ubyte))
+    out_ptr2 = ctypes.cast(ctypes.byref(buf_ctypes, out_byte_offset2),
+                            ctypes.POINTER(ctypes.c_ubyte))
+    d1_hi, d1_lo = distance1 >> 64, distance1 & MASK64
+    d2_hi, d2_lo = distance2 >> 64, distance2 & MASK64
+
+    had_error = False
+    for start, stop in start_stop_list:
+        code = lib.generate_and_sieve_dual_window_atomic(start, stop, d1_hi, d1_lo, window_m1,
+                                                           out_ptr1, d2_hi, d2_lo, window_m2,
+                                                           out_ptr2)
+        if code != 0:
+            had_error = True
+    return had_error
+
+
+def _create_cpu_executor(engine_so_path, total_n_bytes, max_workers):
+    """Allocates the shared buffer (sized `total_n_bytes` -- may cover MORE than one round's own
+    combined_size, see run_split_three_way()) and fork()s the worker pool, WITHOUT submitting any
+    work yet. Split out of prepare_cpu_side_parallel() (2026-08-29) so run_split_three_way() can
+    create one pool and submit to it multiple times (multiple "rounds") without a second fork."""
+    global _CPU_ENGINE_SO_PATH, _cpu_worker_lib
+    _CPU_ENGINE_SO_PATH = engine_so_path
+    _cpu_worker_lib = None  # reset so a fresh call always re-loads against the right .so
+    _init_shared_cpu_buffer(total_n_bytes)
+    ctx = multiprocessing.get_context("fork")  # REQUIRED, not spawn/forkserver -- see
+                                                # _init_shared_cpu_buffer()'s docstring
+    return ProcessPoolExecutor(max_workers=max_workers, mp_context=ctx)
+
+
+def _submit_cpu_round(executor, l_final, distance, combined_size, max_workers, batches_per_worker,
+                       out_byte_offset=0):
+    """Submits ONE round's batches to an ALREADY-CREATED executor (from _create_cpu_executor()) --
+    does NOT fork. `combined_size<=0` submits nothing and returns an empty future list (a round
+    with no work, e.g. cpu_fraction=0.0's round 1)."""
+    if combined_size <= 0:
+        return []
+    n_batches = max(1, max_workers * batches_per_worker)
+    batches = _build_equal_cost_batches(l_final, combined_size, n_batches)
+    return [executor.submit(process_batch_cpu, batch, distance, combined_size, out_byte_offset)
+            for batch in batches]
+
+
+def _create_dual_cpu_executor(dual_engine_so_path, total_n_bytes, max_workers):
+    """Dual-window counterpart of _create_cpu_executor() -- same shared-buffer-then-fork
+    mechanics, but sets up the DUAL engine's module-level path/handle pair
+    (_DUAL_ENGINE_SO_PATH/_dual_worker_lib) instead of the single-window one, so forked workers
+    load dual_window_engine_poc.so via _load_dual_worker_lib()."""
+    global _DUAL_ENGINE_SO_PATH, _dual_worker_lib
+    _DUAL_ENGINE_SO_PATH = dual_engine_so_path
+    _dual_worker_lib = None  # reset so a fresh call always re-loads against the right .so
+    _init_shared_cpu_buffer(total_n_bytes)
+    ctx = multiprocessing.get_context("fork")
+    return ProcessPoolExecutor(max_workers=max_workers, mp_context=ctx)
+
+
+def _submit_cpu_round_dual(executor, l_final, distance1, window_m1, out_byte_offset1,
+                            distance2, window_m2, out_byte_offset2, max_workers,
+                            batches_per_worker):
+    """Builds ONE set of equal-cost batches over [2, l_final) and submits them ONCE to an
+    already-created executor, each batch calling process_batch_cpu_dual() -- marking BOTH windows
+    in the SAME primesieve walk per worker, instead of run_split_three_way()'s two separate
+    sequential submission rounds (which duplicated the dominant generation cost -- see
+    dual_window_engine_poc.c's header for the real-hardware numbers that motivated this).
+
+    Batching threshold uses max(window_m1, window_m2) as an approximation for the equal-COST
+    split -- this only affects how evenly work is spread among the worker processes (some workers
+    might get a slightly cost-imbalanced share if window_m1 and window_m2 differ a lot), NOT
+    correctness: each batch still calls the dual engine with BOTH windows' own real (distance,
+    window_m) values, so every prime is checked against its true marking rule regardless of which
+    batch happened to process it."""
+    threshold_size = max(window_m1, window_m2)
+    n_batches = max(1, max_workers * batches_per_worker)
+    batches = _build_equal_cost_batches(l_final, threshold_size, n_batches)
+    return [executor.submit(process_batch_cpu_dual, batch, distance1, window_m1, out_byte_offset1,
+                             distance2, window_m2, out_byte_offset2)
+            for batch in batches]
+
+
+def _wait_batches(futures):
+    """Waits for an already-submitted set of futures, raising if any batch reported an error.
+    Does not read the buffer or shut down the executor -- see wait_cpu_side_parallel() for the
+    single-round version that does both, and run_split_three_way() for the multi-round version
+    that defers both until the LAST round finishes."""
+    errors = 0
+    for fut in concurrent.futures.as_completed(futures):
+        if fut.result():
+            errors += 1
+    if errors:
+        raise RuntimeError(f"CPU parallel engine: {errors} batch(es) returned an error code")
+
+
 def prepare_cpu_side_parallel(engine_so_path, l_final, distance, combined_size, max_workers,
-                               batches_per_worker):
+                               batches_per_worker, total_n_bytes=None, out_byte_offset=0):
     """PHASE 1 of the multi-worker CPU side -- MUST be called before any other thread in this
     process starts doing its own work (concretely: before run_split() starts the GPU worker
     thread, which streams its subprocess's stderr via constant print() calls). Allocates the
@@ -332,22 +523,18 @@ def prepare_cpu_side_parallel(engine_so_path, l_final, distance, combined_size, 
     itself before the GPU thread is started; the second phase (wait_cpu_side_parallel) only
     WAITS on already-created futures and does no further forking, so it's safe to run
     concurrently with the GPU thread's printing.
+
+    `total_n_bytes`/`out_byte_offset` (2026-08-29): thin passthrough to
+    _create_cpu_executor()/_submit_cpu_round() for run_split_three_way()'s benefit -- unused by
+    the plain 2-way run_split(), which leaves both at their defaults (buffer sized exactly to
+    this call's own combined_size, written at offset 0), preserving this function's original
+    behavior exactly.
     """
-    global _CPU_ENGINE_SO_PATH, _cpu_worker_lib
-    _CPU_ENGINE_SO_PATH = engine_so_path
-    _cpu_worker_lib = None  # reset so a fresh call always re-loads against the right .so
-    n_bytes = (combined_size + 7) // 8
-    _init_shared_cpu_buffer(n_bytes)
-
-    n_batches = max(1, max_workers * batches_per_worker)
-    batches = _build_equal_cost_batches(l_final, combined_size, n_batches)
-
-    ctx = multiprocessing.get_context("fork")  # REQUIRED, not spawn/forkserver -- see
-                                                # _init_shared_cpu_buffer()'s docstring
-    executor = ProcessPoolExecutor(max_workers=max_workers, mp_context=ctx)
-    futures = [executor.submit(process_batch_cpu, batch, distance, combined_size)
-               for batch in batches]
-    return executor, futures, n_bytes, len(batches)
+    n_bytes = total_n_bytes if total_n_bytes is not None else (combined_size + 7) // 8
+    executor = _create_cpu_executor(engine_so_path, n_bytes, max_workers)
+    futures = _submit_cpu_round(executor, l_final, distance, combined_size, max_workers,
+                                 batches_per_worker, out_byte_offset)
+    return executor, futures, n_bytes, len(futures)
 
 
 def wait_cpu_side_parallel(executor, futures, n_bytes, t_start):
@@ -536,6 +723,408 @@ def run_split(lib, gpu_binary, gpu_gen_threads, gpu_chunk_size,
 
 
 # -------------------------------------------------------------------------------------------
+# THREE-WAY split: CPU round 1 + GPU + CPU "bonus" round 2 (Artur's idea, 2026-08-29)
+# -------------------------------------------------------------------------------------------
+# Motivation (see gpu_poc/README.md's "The real fix, not yet built" section for the full writeup):
+# the load-balance sweep found plain 50/50 already near-optimal for a SINGLE fixed split, because
+# CPU's own marking cost grows superlinearly with its own share -- giving CPU a bigger up-front
+# slice just makes CPU itself the new long pole. But GPU is consistently the long pole at 50/50
+# (its fixed sieving-prime-generation cost dominates), and CPU reliably finishes its round well
+# before GPU does. Artur's idea: instead of a single fixed split, give CPU a SECOND, smaller
+# "bonus" slice of the range to pick up the instant its first slice is done, using its own spare
+# capacity while GPU is still working -- shrinking GPU's own share (and therefore its wall time)
+# without ever growing CPU's SINGLE round large enough to make CPU the new long pole.
+#
+# This is a restricted, concrete version of the full "shared work queue" idea Artur and I discussed
+# (many small fragments, either device pulls the next one the instant it's free) -- just ONE extra
+# CPU round instead of N, but built on the same key mechanical fact that makes it safe: a
+# ProcessPoolExecutor's forked worker processes stay alive across multiple .submit() calls, so the
+# bonus round's batches can be submitted to the SAME already-forked pool from round 1 -- no second
+# fork, so no risk of forking during the GPU thread's concurrent stderr-printing (see
+# prepare_cpu_side_parallel()'s docstring for why that would be a real hazard).
+
+
+def split_window_three_way(distance, combined_size, cpu_fraction, cpu_bonus_fraction,
+                            l_final=None, align=64):
+    """Splits [distance, distance+combined_size) into THREE disjoint, contiguous sub-windows,
+    laid out back-to-back with no gaps or overlaps:
+
+        [distance,                distance+cs_cpu1)              -- CPU round 1
+        [distance+cs_cpu1,        distance+cs_cpu1+cs_gpu)       -- GPU
+        [distance+cs_cpu1+cs_gpu, distance+combined_size)        -- CPU round 2 ("bonus")
+
+    `cpu_bonus_fraction` is a fraction of the FULL combined_size, carved out first as the round-2
+    slice; `cpu_fraction` then splits what's LEFT (combined_size - bonus) between CPU round 1 and
+    GPU, exactly like split_window() does for the plain 2-way case. cpu_bonus_fraction=0.0
+    degenerates to split_window()'s own split exactly (cs_cpu2=0, no round 2 at all).
+
+    Every boundary is rounded to the nearest multiple of `align` bits first, same reasoning as
+    split_window(): each independently-computed piece's own byte boundary then lines up exactly
+    for a plain three-way concatenation, no bit-shifting needed."""
+    if l_final is None:
+        l_final = math.isqrt(distance + combined_size) + 1
+
+    def _round_align(x):
+        return int(round(x / align)) * align
+
+    if cpu_bonus_fraction <= 0.0:
+        bonus = 0
+    else:
+        bonus = _round_align(combined_size * cpu_bonus_fraction)
+        bonus = max(0, min(combined_size, bonus))
+    remaining = combined_size - bonus
+
+    if cpu_fraction <= 0.0:
+        split = 0
+    elif cpu_fraction >= 1.0:
+        split = remaining
+    else:
+        split = _round_align(remaining * cpu_fraction)
+        split = max(0, min(remaining, split))
+
+    cs_cpu1 = split
+    cs_gpu = remaining - split
+    cs_cpu2 = bonus
+
+    return {
+        "l_final": l_final,
+        "cs_cpu1": cs_cpu1, "cs_gpu": cs_gpu, "cs_cpu2": cs_cpu2,
+        "distance_cpu1": distance,
+        "distance_gpu": distance + cs_cpu1,
+        "distance_cpu2": distance + cs_cpu1 + cs_gpu,
+    }
+
+
+def run_split_three_way(lib, gpu_binary, gpu_gen_threads, gpu_chunk_size,
+                         distance, combined_size, cpu_fraction, cpu_bonus_fraction, tag,
+                         l_final=None, engine_so_path=None, cpu_workers=1,
+                         cpu_batches_per_worker=2):
+    """Three-way version of run_split(): CPU round 1 and GPU run concurrently (same as the plain
+    2-way split); the moment CPU round 1 finishes, it submits a SECOND ("bonus") batch of work to
+    the SAME already-forked worker pool, covering the round-2 window carved out by
+    split_window_three_way(), while GPU is (typically) still working on its own, now-smaller
+    share. cpu_bonus_fraction=0.0 makes this behave identically to run_split().
+
+    cpu_workers=1 (EXACT mode) runs both CPU rounds sequentially via the original single-threaded
+    run_cpu_side(), matching run_split()'s own cpu_workers=1 fallback -- correctness only here,
+    not speed (a real "bonus round" only pays off with the multi-process path, since single-
+    threaded round 2 would just serialize after round 1 with no pipelining benefit at all).
+
+    REAL-HARDWARE RESULT (2026-08-29): NEGATIVE -- confirmed correct (EXACT mode, 14/14 cases)
+    but SLOWER than a plain 2-way split at the same total combined_size (see
+    run_full_scale_mode_three_way()'s own docstring for the numbers and root cause). Reusing the
+    same forked executor for round 2 avoids re-forking, but each round still independently walks
+    the full [2, l_final) sieving-prime range to build its own batches -- the actual dominant
+    cost in this whole file -- so round 2 duplicates most of round 1's generation cost instead of
+    avoiding it. This function is being kept (and its correctness is real) as the necessary first
+    step toward a proper fix: a single-pass, dual-window marking primitive would need this exact
+    three-window bookkeeping (offsets, distances, byte layout) as its foundation."""
+    split = split_window_three_way(distance, combined_size, cpu_fraction, cpu_bonus_fraction,
+                                    l_final=l_final)
+    l_final = split["l_final"]
+    cs_cpu1, cs_gpu, cs_cpu2 = split["cs_cpu1"], split["cs_gpu"], split["cs_cpu2"]
+    distance_cpu1 = split["distance_cpu1"]
+    distance_gpu = split["distance_gpu"]
+    distance_cpu2 = split["distance_cpu2"]
+    dh_cpu1, dl_cpu1 = to_hi_lo(distance_cpu1)
+    dh_gpu, dl_gpu = to_hi_lo(distance_gpu)
+    dh_cpu2, dl_cpu2 = to_hi_lo(distance_cpu2)
+
+    n_bytes_cpu1 = cs_cpu1 // 8  # exact: align (>=8) guarantees no remainder, same as split_window()
+    n_bytes_cpu2 = cs_cpu2 // 8
+
+    result = {}
+    errors = []
+
+    # PHASE 1 of the multi-worker CPU path (if enabled): must run here, before t_gpu starts below
+    # -- same ordering requirement as run_split(), see prepare_cpu_side_parallel()'s docstring.
+    # The buffer is sized for BOTH CPU rounds up front (round 2 writes at byte offset
+    # n_bytes_cpu1 of the SAME buffer -- see process_batch_cpu()'s docstring for why a second
+    # mmap created later would NOT be visible to the already-forked workers).
+    cpu_parallel_ctx = None
+    if (cs_cpu1 > 0 or cs_cpu2 > 0) and cpu_workers > 1:
+        if not engine_so_path:
+            raise ValueError("cpu_workers > 1 requires engine_so_path")
+        t_cpu_start = time.perf_counter()
+        total_n_bytes = n_bytes_cpu1 + n_bytes_cpu2
+        executor = _create_cpu_executor(engine_so_path, total_n_bytes, cpu_workers)
+        if cs_cpu1 > 0:
+            # Normal case: round 1 submitted now (also forces the pool to fully spin up its
+            # worker processes safely, before the GPU thread starts printing); round 2 is
+            # submitted later, from inside the CPU thread, once round 1's futures resolve.
+            futures_first = _submit_cpu_round(executor, l_final, distance_cpu1, cs_cpu1,
+                                               cpu_workers, cpu_batches_per_worker,
+                                               out_byte_offset=0)
+            print(f"[cpu] round 1: {len(futures_first)} equal-cost batches submitted to "
+                  f"{cpu_workers} forked worker processes (cs_cpu1={cs_cpu1:,})", flush=True)
+            cpu_parallel_ctx = ("normal", executor, futures_first, total_n_bytes, t_cpu_start)
+        else:
+            # cs_cpu1 == 0 (e.g. cpu_fraction=0.0): there's no separate round 1 to wait for, so
+            # submit round 2's real work directly here instead -- this ALSO safely forces the
+            # pool to spin up before the GPU thread starts, avoiding a fork-during-concurrent-
+            # printing hazard on what would otherwise be this pool's very first submit() call.
+            futures_only = _submit_cpu_round(executor, l_final, distance_cpu2, cs_cpu2,
+                                              cpu_workers, cpu_batches_per_worker,
+                                              out_byte_offset=n_bytes_cpu1)
+            print(f"[cpu] round 2 (bonus, no separate round 1): {len(futures_only)} equal-cost "
+                  f"batches submitted to {cpu_workers} forked worker processes "
+                  f"(cs_cpu2={cs_cpu2:,})", flush=True)
+            cpu_parallel_ctx = ("bonus_only", executor, futures_only, total_n_bytes, t_cpu_start)
+
+    def cpu_worker():
+        try:
+            if cs_cpu1 == 0 and cs_cpu2 == 0:
+                result["cpu1_bits"] = b""
+                result["cpu2_bits"] = b""
+                result["cpu1_elapsed"] = 0.0
+                result["cpu2_elapsed"] = 0.0
+                return
+            if cpu_parallel_ctx is not None:
+                mode, executor, futures_first, total_n_bytes, t_cpu_start = cpu_parallel_ctx
+                if mode == "normal":
+                    _wait_batches(futures_first)
+                    cpu1_elapsed = time.perf_counter() - t_cpu_start
+                    print(f"[cpu] round 1 done: cs_cpu1={cs_cpu1:,} elapsed={cpu1_elapsed:.4f}s "
+                          f"({cpu_workers} workers)", flush=True)
+
+                    t_cpu2_start = time.perf_counter()
+                    futures2 = _submit_cpu_round(executor, l_final, distance_cpu2, cs_cpu2,
+                                                  cpu_workers, cpu_batches_per_worker,
+                                                  out_byte_offset=n_bytes_cpu1)
+                    if futures2:
+                        print(f"[cpu] round 2 (bonus): {len(futures2)} equal-cost batches "
+                              f"submitted to the SAME {cpu_workers} worker processes "
+                              f"(cs_cpu2={cs_cpu2:,}, no new fork)", flush=True)
+                        _wait_batches(futures2)
+                    cpu2_elapsed = time.perf_counter() - t_cpu2_start
+                    if cs_cpu2 > 0:
+                        print(f"[cpu] round 2 done: cs_cpu2={cs_cpu2:,} "
+                              f"elapsed={cpu2_elapsed:.4f}s", flush=True)
+                else:  # "bonus_only" -- cs_cpu1 was 0, everything already submitted up front
+                    _wait_batches(futures_first)
+                    cpu1_elapsed = 0.0
+                    cpu2_elapsed = time.perf_counter() - t_cpu_start
+                    print(f"[cpu] round 2 (bonus, no separate round 1) done: "
+                          f"cs_cpu2={cs_cpu2:,} elapsed={cpu2_elapsed:.4f}s", flush=True)
+
+                executor.shutdown(wait=True)
+                full_bits = bytes(_shm_mmap[:total_n_bytes])
+                _shm_mmap.close()
+                result["cpu1_bits"] = full_bits[:n_bytes_cpu1]
+                result["cpu2_bits"] = full_bits[n_bytes_cpu1:n_bytes_cpu1 + n_bytes_cpu2]
+                result["cpu1_elapsed"] = cpu1_elapsed
+                result["cpu2_elapsed"] = cpu2_elapsed
+            else:
+                # cpu_workers<=1: sequential single-threaded rounds, correctness-only (EXACT mode)
+                bits1, elapsed1 = (run_cpu_side(lib, l_final, dh_cpu1, dl_cpu1, cs_cpu1)
+                                    if cs_cpu1 > 0 else (b"", 0.0))
+                bits2, elapsed2 = (run_cpu_side(lib, l_final, dh_cpu2, dl_cpu2, cs_cpu2)
+                                    if cs_cpu2 > 0 else (b"", 0.0))
+                result["cpu1_bits"] = bits1
+                result["cpu2_bits"] = bits2
+                result["cpu1_elapsed"] = elapsed1
+                result["cpu2_elapsed"] = elapsed2
+        except Exception as e:
+            errors.append(("cpu", e))
+
+    def gpu_worker():
+        try:
+            if cs_gpu == 0:
+                result["gpu_bits"] = b""
+                result["gpu_counts"] = {}
+                result["gpu_timings"] = (0.0,) * 6
+                return
+            bits, counts, timings = run_gpu_side(
+                gpu_binary, l_final, dh_gpu, dl_gpu, cs_gpu, gpu_chunk_size, gpu_gen_threads, tag)
+            result["gpu_bits"] = bits
+            result["gpu_counts"] = counts
+            result["gpu_timings"] = timings
+        except Exception as e:
+            errors.append(("gpu", e))
+
+    t_wall_start = time.perf_counter()
+    t_cpu = threading.Thread(target=cpu_worker)
+    t_gpu = threading.Thread(target=gpu_worker)
+    t_cpu.start()
+    t_gpu.start()
+    t_cpu.join()
+    t_gpu.join()
+    t_wall = time.perf_counter() - t_wall_start
+
+    if errors:
+        for who, e in errors:
+            print(f"[{who} ERROR] {e}", file=sys.stderr)
+        raise RuntimeError("three-way split run failed -- see errors above")
+
+    n_bytes_gpu = (cs_gpu + 7) // 8
+    combined_bits = (result.get("cpu1_bits", b"")[:n_bytes_cpu1] +
+                      result.get("gpu_bits", b"")[:n_bytes_gpu] +
+                      result.get("cpu2_bits", b"")[:n_bytes_cpu2])
+
+    return {
+        "l_final": l_final,
+        "cs_cpu1": cs_cpu1, "cs_gpu": cs_gpu, "cs_cpu2": cs_cpu2,
+        "combined_bits": combined_bits,
+        "cpu1_elapsed": result.get("cpu1_elapsed", 0.0),
+        "cpu2_elapsed": result.get("cpu2_elapsed", 0.0),
+        "gpu_counts": result.get("gpu_counts", {}),
+        "gpu_timings": result.get("gpu_timings", (0.0,) * 6),
+        "t_wall": t_wall,
+    }
+
+
+def run_split_dual_window(lib, gpu_binary, gpu_gen_threads, gpu_chunk_size,
+                           distance, combined_size, cpu_fraction, cpu_bonus_fraction, tag,
+                           l_final=None, engine_so_path=None, dual_engine_so_path=None,
+                           cpu_workers=1, cpu_batches_per_worker=2):
+    """Second attempt at Artur's 'CPU bonus round' idea (2026-08-29), after run_split_three_way()
+    was measured on real hardware to be a net LOSS (see that function's own docstring): instead
+    of CPU doing two SEQUENTIAL sub-invocations (round 1, then round 2 on the same pool -- each
+    independently re-walking [2, l_final)), this version submits ONE set of batches that each
+    mark BOTH windows in a SINGLE primesieve pass, via dual_window_engine_poc.c's
+    generate_and_sieve_dual_window_atomic(). The window/offset LAYOUT is identical to
+    run_split_three_way() (reuses split_window_three_way() verbatim) -- only the CPU-side
+    EXECUTION mechanism changes, from two rounds to one dual-marking pass.
+
+    WORTH READING BEFORE trusting this to be a win: giving CPU a bigger TOTAL share
+    (cs_cpu1+cs_cpu2, whether as one window or two) is mathematically close to just raising
+    cpu_fraction directly in the plain 2-way run_split() -- and run_fraction_sweep_mode() already
+    found that skewing cpu_fraction above 0.5 makes wall time monotonically WORSE (CPU's own
+    dense-tier marking cost grows faster than what it saves GPU). What this function actually
+    tests, that the fraction sweep didn't, is whether removing the DOUBLE generation-cost bug
+    (the actual, confirmed root cause of run_split_three_way()'s 298.712s result) is enough to
+    let a CPU-heavier split at least match the plain 50/50 baseline (~233s at 13.5B),
+    or whether CPU-heavier splits lose for the same fundamental cost-shape reason the fraction
+    sweep already found, independent of the double-generation bug. Both outcomes are informative;
+    neither should be assumed going in.
+
+    REAL-HARDWARE RESULT (2026-09-02, combined_size=13.5*10**9, cpu_fraction=0.5,
+    cpu_bonus_fraction=0.15, cpu_workers=12, gpu_gen_threads=12): the double-generation-cost bug
+    IS fixed -- cs_cpu1=5,737,500,032 + cs_cpu2=2,025,000,000 marked in ONE dual pass took
+    cpu_elapsed=250.181s, vs. 296.723s (172.034s+124.689s) for the same two windows under
+    run_split_three_way()'s two SEPARATE passes -- a real 46.5s / 15.7% CPU-side improvement, and
+    t_wall=251.981s vs. 298.712s (46.7s / 15.6% faster overall). BUT it still does not match the
+    plain 50/50 baseline (~233.2s interpolated at this scale) -- 251.981s is ~8.1% SLOWER. So both
+    outcomes documented above turned out to be true at once: removing the double-generation bug was
+    real and worth doing (this mechanism should always be preferred over run_split_three_way()'s
+    round-based one whenever cpu_bonus_fraction>0), but it was not the WHOLE story -- CPU's own
+    dense-tier marking cost growing faster than what it saves GPU (run_fraction_sweep_mode()'s
+    finding) also holds here, independent of which mechanism assembles the CPU-heavier split. A
+    CPU-heavier split (effective ~57.5% CPU share here) still loses to plain 50/50 even with the
+    generation-duplication bug gone.
+
+    cpu_workers=1 (EXACT mode) uses run_cpu_side_dual() -- the single-threaded, non-atomic dual
+    call -- directly, matching run_split()/run_split_three_way()'s own cpu_workers=1 fallback
+    pattern (correctness only, not speed)."""
+    split = split_window_three_way(distance, combined_size, cpu_fraction, cpu_bonus_fraction,
+                                    l_final=l_final)
+    l_final = split["l_final"]
+    cs_cpu1, cs_gpu, cs_cpu2 = split["cs_cpu1"], split["cs_gpu"], split["cs_cpu2"]
+    distance_cpu1 = split["distance_cpu1"]
+    distance_gpu = split["distance_gpu"]
+    distance_cpu2 = split["distance_cpu2"]
+    dh_cpu1, dl_cpu1 = to_hi_lo(distance_cpu1)
+    dh_gpu, dl_gpu = to_hi_lo(distance_gpu)
+    dh_cpu2, dl_cpu2 = to_hi_lo(distance_cpu2)
+
+    n_bytes_cpu1 = cs_cpu1 // 8
+    n_bytes_cpu2 = cs_cpu2 // 8
+
+    result = {}
+    errors = []
+
+    cpu_parallel_ctx = None
+    if (cs_cpu1 > 0 or cs_cpu2 > 0) and cpu_workers > 1:
+        if not dual_engine_so_path:
+            raise ValueError("cpu_workers > 1 requires dual_engine_so_path")
+        t_cpu_start = time.perf_counter()
+        total_n_bytes = n_bytes_cpu1 + n_bytes_cpu2
+        executor = _create_dual_cpu_executor(dual_engine_so_path, total_n_bytes, cpu_workers)
+        futures = _submit_cpu_round_dual(executor, l_final, distance_cpu1, cs_cpu1, 0,
+                                          distance_cpu2, cs_cpu2, n_bytes_cpu1, cpu_workers,
+                                          cpu_batches_per_worker)
+        print(f"[cpu] dual-window pass: {len(futures)} equal-cost batches submitted to "
+              f"{cpu_workers} forked worker processes, each marking BOTH windows in one "
+              f"primesieve walk (cs_cpu1={cs_cpu1:,} cs_cpu2={cs_cpu2:,})", flush=True)
+        cpu_parallel_ctx = (executor, futures, total_n_bytes, t_cpu_start)
+
+    def cpu_worker():
+        try:
+            if cs_cpu1 == 0 and cs_cpu2 == 0:
+                result["cpu1_bits"] = b""
+                result["cpu2_bits"] = b""
+                result["cpu_elapsed"] = 0.0
+                return
+            if cpu_parallel_ctx is not None:
+                executor, futures, total_n_bytes, t_cpu_start = cpu_parallel_ctx
+                _wait_batches(futures)
+                cpu_elapsed = time.perf_counter() - t_cpu_start
+                print(f"[cpu] dual-window pass done: cs_cpu1={cs_cpu1:,} cs_cpu2={cs_cpu2:,} "
+                      f"elapsed={cpu_elapsed:.4f}s ({cpu_workers} workers)", flush=True)
+                executor.shutdown(wait=True)
+                full_bits = bytes(_shm_mmap[:total_n_bytes])
+                _shm_mmap.close()
+                result["cpu1_bits"] = full_bits[:n_bytes_cpu1]
+                result["cpu2_bits"] = full_bits[n_bytes_cpu1:n_bytes_cpu1 + n_bytes_cpu2]
+                result["cpu_elapsed"] = cpu_elapsed
+            else:
+                lib_dual = load_dual_engine(dual_engine_so_path)
+                bits1, bits2, elapsed = run_cpu_side_dual(
+                    lib_dual, l_final, dh_cpu1, dl_cpu1, cs_cpu1, dh_cpu2, dl_cpu2, cs_cpu2)
+                print(f"[cpu] dual-window (single-threaded) done: cs_cpu1={cs_cpu1:,} "
+                      f"cs_cpu2={cs_cpu2:,} elapsed={elapsed:.4f}s", flush=True)
+                result["cpu1_bits"] = bits1
+                result["cpu2_bits"] = bits2
+                result["cpu_elapsed"] = elapsed
+        except Exception as e:
+            errors.append(("cpu", e))
+
+    def gpu_worker():
+        try:
+            if cs_gpu == 0:
+                result["gpu_bits"] = b""
+                result["gpu_counts"] = {}
+                result["gpu_timings"] = (0.0,) * 6
+                return
+            bits, counts, timings = run_gpu_side(
+                gpu_binary, l_final, dh_gpu, dl_gpu, cs_gpu, gpu_chunk_size, gpu_gen_threads, tag)
+            result["gpu_bits"] = bits
+            result["gpu_counts"] = counts
+            result["gpu_timings"] = timings
+        except Exception as e:
+            errors.append(("gpu", e))
+
+    t_wall_start = time.perf_counter()
+    t_cpu = threading.Thread(target=cpu_worker)
+    t_gpu = threading.Thread(target=gpu_worker)
+    t_cpu.start()
+    t_gpu.start()
+    t_cpu.join()
+    t_gpu.join()
+    t_wall = time.perf_counter() - t_wall_start
+
+    if errors:
+        for who, e in errors:
+            print(f"[{who} ERROR] {e}", file=sys.stderr)
+        raise RuntimeError("dual-window split run failed -- see errors above")
+
+    n_bytes_gpu = (cs_gpu + 7) // 8
+    combined_bits = (result.get("cpu1_bits", b"")[:n_bytes_cpu1] +
+                      result.get("gpu_bits", b"")[:n_bytes_gpu] +
+                      result.get("cpu2_bits", b"")[:n_bytes_cpu2])
+
+    return {
+        "l_final": l_final,
+        "cs_cpu1": cs_cpu1, "cs_gpu": cs_gpu, "cs_cpu2": cs_cpu2,
+        "combined_bits": combined_bits,
+        "cpu_elapsed": result.get("cpu_elapsed", 0.0),
+        "gpu_counts": result.get("gpu_counts", {}),
+        "gpu_timings": result.get("gpu_timings", (0.0,) * 6),
+        "t_wall": t_wall,
+    }
+
+
+# -------------------------------------------------------------------------------------------
 # EXACT mode
 # -------------------------------------------------------------------------------------------
 
@@ -569,6 +1158,188 @@ def exact_case(lib, gpu_binary, tag, name, distance, combined_size, cpu_fraction
                       f"got=0b{got[byte_idx]:08b}  truth=0b{truth[byte_idx]:08b}  "
                       f"xor=0b{got[byte_idx] ^ truth[byte_idx]:08b}")
     return ok
+
+
+def exact_case_three_way(lib, gpu_binary, tag, name, distance, combined_size, cpu_fraction,
+                          cpu_bonus_fraction, l_final, gpu_gen_threads, gpu_chunk_size):
+    """Three-way counterpart of exact_case(): verifies CPU-round-1 + GPU + CPU-round-2-bonus,
+    split-then-concatenated, matches a single unsplit, unchunked, single-threaded real-engine
+    call over the full window byte-for-byte -- same discipline as the plain 2-way split's own
+    EXACT cases, applied to the new three-window layout before ever touching real hardware."""
+    split = run_split_three_way(lib, gpu_binary, gpu_gen_threads, gpu_chunk_size,
+                                 distance, combined_size, cpu_fraction, cpu_bonus_fraction, tag,
+                                 l_final=l_final)
+    dh, dl = to_hi_lo(distance)
+    truth_bits = run_engine_ground_truth(lib, split["l_final"], dh, dl, combined_size)
+    n_bytes = (combined_size + 7) // 8
+    got = split["combined_bits"][:n_bytes]
+    truth = truth_bits[:n_bytes]
+    mismatches = sum(1 for a, b in zip(got, truth) if a != b)
+    ok = mismatches == 0 and len(got) == len(truth)
+    status = "PASS" if ok else \
+        f"FAIL ({mismatches} mismatched bytes, len got={len(got)} vs truth={len(truth)})"
+    print(f"    [{name}] {status}  (cs_cpu1={split['cs_cpu1']:,} cs_gpu={split['cs_gpu']:,} "
+          f"cs_cpu2={split['cs_cpu2']:,}, cpu1={split['cpu1_elapsed']:.4f}s "
+          f"cpu2={split['cpu2_elapsed']:.4f}s gpu_total={split['gpu_timings'][-1]:.4f}s "
+          f"wall={split['t_wall']:.4f}s)")
+    if not ok:
+        cs_cpu1, cs_gpu = split["cs_cpu1"], split["cs_gpu"]
+        boundary2 = cs_cpu1 + cs_gpu
+        print(f"      DEBUG: combined_size={combined_size}  cs_cpu1={cs_cpu1}  cs_gpu={cs_gpu}  "
+              f"cs_cpu2={split['cs_cpu2']}  l_final={split['l_final']}")
+        for byte_idx in range(min(len(got), len(truth))):
+            if got[byte_idx] != truth[byte_idx]:
+                bit_lo, bit_hi = byte_idx * 8, byte_idx * 8 + 7
+                if bit_hi < cs_cpu1:
+                    side = "CPU1"
+                elif bit_lo >= boundary2:
+                    side = "CPU2"
+                elif bit_lo >= cs_cpu1 and bit_hi < boundary2:
+                    side = "GPU"
+                else:
+                    side = "BOUNDARY"
+                print(f"      byte {byte_idx:3d} (bits {bit_lo}-{bit_hi}, {side}): "
+                      f"got=0b{got[byte_idx]:08b}  truth=0b{truth[byte_idx]:08b}  "
+                      f"xor=0b{got[byte_idx] ^ truth[byte_idx]:08b}")
+    return ok
+
+
+def run_exact_mode_three_way(gpu_binary, engine_so_path):
+    print("=" * 78)
+    print("EXACT mode (three-way) -- CPU round1 + GPU + CPU round2 bonus vs. a single unsplit,")
+    print("unchunked, single-threaded real-engine call over the full window")
+    print("=" * 78)
+    lib = load_engine(engine_so_path)
+
+    # (tag, name, distance, combined_size, cpu_fraction, cpu_bonus_fraction, l_final) -- same
+    # distance!=0 discipline as run_exact_mode()'s own cases (see that function's long comment
+    # for why distance=0 is avoided here: prime_sieve_engine_v4.c's self-elimination guard has a
+    # real quirk at distance=0 that only a split -- now with a THIRD window's own boundary --
+    # would expose).
+    cases = [
+        ("case1", "balanced three-way, dense-only tier",
+         10 ** 6, 10_000, 0.5, 0.2, 2_000),
+        ("case2", "cpu_bonus_fraction=0.0 -- must degenerate to the plain 2-way split exactly",
+         10 ** 6, 5_000, 0.5, 0.0, 31_781),
+        ("case3", "cpu_fraction=0.0 (no round 1) + nonzero bonus -- exercises the "
+         "'bonus_only' pool-startup path",
+         10 ** 6, 5_000, 0.0, 0.3, 31_781),
+        ("case4", "cpu_fraction=1.0 (GPU side empty) + nonzero bonus",
+         10 ** 6, 5_000, 1.0, 0.2, 31_781),
+        ("case5", "distance_hi != 0 (u128 branch), three-way mixed split",
+         (1 << 64) + 12_345, 5_000, 0.4, 0.25, 31_781),
+        ("case6", "uneven fractions (0.37 / 0.15) + oversized gen-threads",
+         10 ** 6, 97, 0.37, 0.15, 200),
+        ("case7", "tiny combined_size, sanity check at small scale",
+         10 ** 6, 256, 0.5, 0.25, 1_000),
+    ]
+    all_pass = True
+    for i, (tag, name, distance, cs, frac, bonus_frac, l_final) in enumerate(cases):
+        gpu_gen_threads = 2 if i != 5 else 8  # case6 also exercises oversized gen-threads
+        gpu_chunk_size = 50
+        ok = exact_case_three_way(lib, gpu_binary, tag, name, distance, cs, frac, bonus_frac,
+                                   l_final, gpu_gen_threads, gpu_chunk_size)
+        all_pass = all_pass and ok
+    return all_pass
+
+
+def exact_case_dual_window(lib, gpu_binary, tag, name, distance, combined_size, cpu_fraction,
+                            cpu_bonus_fraction, l_final, gpu_gen_threads, gpu_chunk_size,
+                            dual_engine_so_path, cpu_workers=1, cpu_batches_per_worker=2):
+    """Dual-window counterpart of exact_case_three_way() -- same window LAYOUT (reuses
+    split_window_three_way() via run_split_dual_window()), same "single unsplit call over the
+    full window" ground truth, but exercises run_split_dual_window()'s single-pass CPU
+    mechanism (dual_window_engine_poc.c) instead of run_split_three_way()'s two-round mechanism.
+    Runs with BOTH cpu_workers=1 (tests generate_and_sieve_dual_window(), the single-threaded
+    non-atomic path) and cpu_workers>1 (tests generate_and_sieve_dual_window_atomic() via the
+    real multi-process pool) depending on the `cpu_workers` argument -- callers should exercise
+    both, not just one, since they're genuinely different code paths in dual_window_engine_poc.c
+    and in this file's own orchestration."""
+    split = run_split_dual_window(lib, gpu_binary, gpu_gen_threads, gpu_chunk_size,
+                                   distance, combined_size, cpu_fraction, cpu_bonus_fraction, tag,
+                                   l_final=l_final, dual_engine_so_path=dual_engine_so_path,
+                                   cpu_workers=cpu_workers,
+                                   cpu_batches_per_worker=cpu_batches_per_worker)
+    dh, dl = to_hi_lo(distance)
+    truth_bits = run_engine_ground_truth(lib, split["l_final"], dh, dl, combined_size)
+    n_bytes = (combined_size + 7) // 8
+    got = split["combined_bits"][:n_bytes]
+    truth = truth_bits[:n_bytes]
+    mismatches = sum(1 for a, b in zip(got, truth) if a != b)
+    ok = mismatches == 0 and len(got) == len(truth)
+    status = "PASS" if ok else \
+        f"FAIL ({mismatches} mismatched bytes, len got={len(got)} vs truth={len(truth)})"
+    print(f"    [{name}] {status}  (cs_cpu1={split['cs_cpu1']:,} cs_gpu={split['cs_gpu']:,} "
+          f"cs_cpu2={split['cs_cpu2']:,}, cpu_workers={cpu_workers}, "
+          f"cpu_elapsed={split['cpu_elapsed']:.4f}s "
+          f"gpu_total={split['gpu_timings'][-1]:.4f}s wall={split['t_wall']:.4f}s)")
+    if not ok:
+        cs_cpu1, cs_gpu = split["cs_cpu1"], split["cs_gpu"]
+        boundary2 = cs_cpu1 + cs_gpu
+        print(f"      DEBUG: combined_size={combined_size}  cs_cpu1={cs_cpu1}  cs_gpu={cs_gpu}  "
+              f"cs_cpu2={split['cs_cpu2']}  l_final={split['l_final']}  "
+              f"cpu_workers={cpu_workers}")
+        for byte_idx in range(min(len(got), len(truth))):
+            if got[byte_idx] != truth[byte_idx]:
+                bit_lo, bit_hi = byte_idx * 8, byte_idx * 8 + 7
+                if bit_hi < cs_cpu1:
+                    side = "CPU1"
+                elif bit_lo >= boundary2:
+                    side = "CPU2"
+                elif bit_lo >= cs_cpu1 and bit_hi < boundary2:
+                    side = "GPU"
+                else:
+                    side = "BOUNDARY"
+                print(f"      byte {byte_idx:3d} (bits {bit_lo}-{bit_hi}, {side}): "
+                      f"got=0b{got[byte_idx]:08b}  truth=0b{truth[byte_idx]:08b}  "
+                      f"xor=0b{got[byte_idx] ^ truth[byte_idx]:08b}")
+    return ok
+
+
+def run_exact_mode_dual_window(gpu_binary, engine_so_path, dual_engine_so_path):
+    print("=" * 78)
+    print("EXACT mode (dual-window) -- CPU marks BOTH windows in ONE primesieve pass, vs. a")
+    print("single unsplit, unchunked, single-threaded real-engine call over the full window")
+    print("=" * 78)
+    lib = load_engine(engine_so_path)
+
+    # Same case set and distance!=0 discipline as run_exact_mode_three_way()'s own cases (see
+    # run_exact_mode()'s long comment for the distance=0 self-elimination-guard quirk this
+    # avoids) -- reused here so the two mechanisms (round-based vs single-pass) are exercised
+    # against the SAME window layouts, making any behavioral difference easy to attribute to the
+    # mechanism change rather than to different test inputs.
+    cases = [
+        ("case1", "balanced dual-window, dense-only tier", 10 ** 6, 10_000, 0.5, 0.2, 2_000),
+        ("case2", "cpu_bonus_fraction=0.0 -- must degenerate to the plain 2-way split exactly",
+         10 ** 6, 5_000, 0.5, 0.0, 31_781),
+        ("case3", "cpu_fraction=0.0 (window1 empty) + nonzero window2",
+         10 ** 6, 5_000, 0.0, 0.3, 31_781),
+        ("case4", "cpu_fraction=1.0 (GPU side empty) + nonzero window2",
+         10 ** 6, 5_000, 1.0, 0.2, 31_781),
+        ("case5", "distance_hi != 0 (u128 branch), dual-window mixed split",
+         (1 << 64) + 12_345, 5_000, 0.4, 0.25, 31_781),
+        ("case6", "uneven fractions (0.37 / 0.15) + oversized gen-threads",
+         10 ** 6, 97, 0.37, 0.15, 200),
+        ("case7", "tiny combined_size, sanity check at small scale",
+         10 ** 6, 256, 0.5, 0.25, 1_000),
+    ]
+    all_pass = True
+    for i, (tag, name, distance, cs, frac, bonus_frac, l_final) in enumerate(cases):
+        gpu_gen_threads = 2 if i != 5 else 8
+        gpu_chunk_size = 50
+        # cpu_workers=1 exercises the single-threaded non-atomic dual call directly.
+        ok1 = exact_case_dual_window(lib, gpu_binary, tag + "-single", name + " [single-thread]",
+                                      distance, cs, frac, bonus_frac, l_final, gpu_gen_threads,
+                                      gpu_chunk_size, dual_engine_so_path, cpu_workers=1)
+        # cpu_workers=4 exercises the real multi-process atomic path (small worker count is
+        # plenty to prove correctness at these tiny EXACT-mode sizes -- speed isn't the point
+        # here, see FULL mode for that).
+        ok4 = exact_case_dual_window(lib, gpu_binary, tag + "-multi", name + " [4 workers]",
+                                      distance, cs, frac, bonus_frac, l_final, gpu_gen_threads,
+                                      gpu_chunk_size, dual_engine_so_path, cpu_workers=4,
+                                      cpu_batches_per_worker=2)
+        all_pass = all_pass and ok1 and ok4
+    return all_pass
 
 
 def run_exact_mode(gpu_binary, engine_so_path):
@@ -836,6 +1607,235 @@ def run_full_scale_mode(gpu_binary, engine_so_path, cpu_fraction, gpu_gen_thread
     }
 
 
+def run_full_scale_mode_three_way(gpu_binary, engine_so_path, cpu_fraction, cpu_bonus_fraction,
+                                   gpu_gen_threads, gpu_chunk_size, cpu_workers,
+                                   cpu_batches_per_worker, combined_size=10 ** 10):
+    """Three-way counterpart of run_full_scale_mode() -- adds a CPU 'bonus round' on top of the
+    plain 2-way split (see run_split_three_way()'s docstring for the full architecture). Reports
+    the same DIRECT COMPARISON block as the 2-way FULL mode, plus a breakdown of cpu1/cpu2/gpu so
+    the bonus round's actual effect on gpu_total (should shrink, since cs_gpu shrinks) and on
+    t_wall (the real question: does the bonus round's own cost stay hidden under GPU's remaining
+    work, or does it become visible as extra wall time once GPU finishes first) can be read
+    directly off one run, before committing to a specific cpu_bonus_fraction value.
+
+    REAL-HARDWARE RESULT (2026-08-29, first and so far only run: combined_size=13.5*10**9,
+    cpu_fraction=0.5, cpu_bonus_fraction=0.15, cpu_workers=12, gpu_gen_threads=12) -- NEGATIVE.
+    EXACT mode passed all 14 cases (7 plain 2-way + 7 three-way) byte-for-byte first, confirming
+    the split/concatenate mechanism itself is correct. But the FULL run came back WORSE than a
+    plain 50/50 split at the same scale: t_wall=298.712s, vs. ~233s interpolated from the
+    corrected 13B/14B sweep points in run_full_scale_mode()'s own docstring (roughly 28% SLOWER,
+    not faster).
+
+    ROOT CAUSE: reusing the SAME already-forked ProcessPoolExecutor for round 2 (no new fork())
+    only avoids re-paying the process-STARTUP cost -- it does nothing about the actual dominant
+    cost this whole file has been chasing since its first FULL run, which is each worker walking
+    the sieving-prime range from 2 up to l_final (here 3.16*10**12) to find which primes even
+    need checking. That walk is genuinely re-done, in full, for round 2: cs_cpu1=5.7375*10**9
+    took cpu1_elapsed=172.034s, and cs_cpu2=2.025*10**9 -- a window only 35% as big -- still took
+    cpu2_elapsed=124.689s (73% as long), because the dominant sparse-tier generation cost from
+    threshold up to l_final barely depends on where `threshold` (=~combined_size for that
+    invocation) sits when l_final is this much bigger than either window. Submitting a second
+    batch of tasks to the SAME live worker pool was never going to fix this -- the duplicated
+    cost lives in _build_equal_cost_batches()+process_batch_cpu() being invoked TWICE over the
+    same [2, l_final) range, once per round, regardless of whether the OS processes doing the
+    work are freshly forked or already warm.
+
+    WHAT WOULD ACTUALLY FIX IT (not yet built): a single primesieve walk per worker that marks
+    into BOTH windows' output buffers in the SAME pass -- i.e. a new engine function taking two
+    (distance, window_m, byte_offset) tuples instead of one, checking both per prime found,
+    so the expensive part (walking to l_final) is paid exactly once no matter how many logical
+    "rounds" of CPU work get folded into it. That requires a new C function (this PoC's engine
+    changes so far have all been additive -- see marking_two_tier_poc.cu's own precedent -- so
+    this would follow the same pattern, not modify prime_sieve_engine_v4.c itself), a real step
+    up in scope from this pool-reuse attempt. See run_split_three_way()'s own docstring for the
+    (now confirmed insufficient) reasoning that motivated the pool-reuse-only approach."""
+    print()
+    print("=" * 78)
+    print("FULL mode (three-way) -- REAL floor-25 scale, CPU round1 + GPU + CPU bonus round2")
+    print("=" * 78)
+    lib = load_engine(engine_so_path)
+    floor = 25
+    distance = 10 ** floor
+    n_10b_units = combined_size / 10 ** 10
+
+    print(f"[*] floor={floor}  combined_size={combined_size:,} ({n_10b_units:.2f}x the original "
+          f"10-billion baseline)  cpu_fraction={cpu_fraction}  "
+          f"cpu_bonus_fraction={cpu_bonus_fraction}  gpu_gen_threads={gpu_gen_threads}  "
+          f"gpu_chunk_size={gpu_chunk_size:,}  cpu_workers={cpu_workers}  "
+          f"cpu_batches_per_worker={cpu_batches_per_worker}")
+    if cpu_workers <= 1:
+        print(f"    [!] cpu_workers={cpu_workers} -- CPU side will run the SINGLE-THREADED "
+              f"sequential-rounds path, far slower than the real multi-process architecture and "
+              f"with NO pipelining benefit from the bonus round at all. Pass --cpu-workers 12 "
+              f"(or whatever sums to your real core count with --gpu-gen-threads) for a fair "
+              f"timing.")
+
+    split = run_split_three_way(lib, gpu_binary, gpu_gen_threads, gpu_chunk_size,
+                                 distance, combined_size, cpu_fraction, cpu_bonus_fraction,
+                                 "full3", engine_so_path=engine_so_path, cpu_workers=cpu_workers,
+                                 cpu_batches_per_worker=cpu_batches_per_worker)
+    _report_split_three_way(split)
+
+    gpu_total = split["gpu_timings"][-1] if split["gpu_timings"] else 0.0
+    cpu_total = split["cpu1_elapsed"] + split["cpu2_elapsed"]
+    ideal = max(cpu_total, gpu_total)
+    print()
+    print(f"  overlap check: t_wall={split['t_wall']:.3f}s vs. ideal max(cpu1+cpu2,gpu)="
+          f"{ideal:.3f}s vs. naive sum={cpu_total + gpu_total:.3f}s (no overlap at all)")
+    seq_cpu_naive = 176.018 * n_10b_units
+    seq_gpu_naive = 169.623 * n_10b_units
+    print(f"  DIRECT COMPARISON -- this run covers the FULL {combined_size:,}-number range "
+          f"({n_10b_units:.2f}x the 10-billion baseline).")
+    print(f"    vs. production CPU run SEQUENTIALLY {n_10b_units:.2f}x to cover the same total "
+          f"range ({n_10b_units:.2f} * 176.018s = {seq_cpu_naive:.1f}s, naive linear scaling): "
+          f"{split['t_wall'] / seq_cpu_naive:.2f}x" +
+          (" (FASTER)" if split['t_wall'] < seq_cpu_naive else " (still slower)"))
+    print(f"    vs. GPU two-tier run SEQUENTIALLY {n_10b_units:.2f}x to cover the same total "
+          f"range ({n_10b_units:.2f} * 169.623s = {seq_gpu_naive:.1f}s, naive linear scaling): "
+          f"{split['t_wall'] / seq_gpu_naive:.2f}x" +
+          (" (FASTER)" if split['t_wall'] < seq_gpu_naive else " (still slower)"))
+
+    return {
+        "combined_size": combined_size,
+        "n_10b_units": n_10b_units,
+        "t_wall": split["t_wall"],
+        "cpu1_elapsed": split["cpu1_elapsed"],
+        "cpu2_elapsed": split["cpu2_elapsed"],
+        "gpu_total": gpu_total,
+        "seq_cpu_naive": seq_cpu_naive,
+        "seq_gpu_naive": seq_gpu_naive,
+        "vs_seq_cpu": split["t_wall"] / seq_cpu_naive,
+        "vs_seq_gpu": split["t_wall"] / seq_gpu_naive,
+    }
+
+
+def run_full_scale_mode_dual_window(gpu_binary, engine_so_path, dual_engine_so_path,
+                                     cpu_fraction, cpu_bonus_fraction, gpu_gen_threads,
+                                     gpu_chunk_size, cpu_workers, cpu_batches_per_worker,
+                                     combined_size=10 ** 10):
+    """Dual-window counterpart of run_full_scale_mode_three_way() -- same window layout, but the
+    CPU side marks BOTH windows in ONE primesieve pass per worker (run_split_dual_window())
+    instead of two sequential rounds. Built specifically to test whether removing the double
+    generation-cost bug (see run_full_scale_mode_three_way()'s own docstring for the confirmed
+    root cause of that approach's 298.712s real-hardware result) makes a CPU-heavier split
+    competitive with -- or even better than -- the plain 50/50 baseline.
+
+    IMPORTANT CAVEAT (read before over-interpreting a win here): giving CPU a bigger TOTAL share
+    of combined_size, whether as one window or two, is close in COST to just raising
+    `cpu_fraction` directly in the plain 2-way split -- and run_fraction_sweep_mode() already
+    found that skewing cpu_fraction above 0.5 makes wall time monotonically WORSE there. If this
+    run ALSO comes back worse than 50/50, that's consistent with CPU's own dense-tier marking
+    cost being the real limiter (not the double-generation bug) -- i.e., the fraction sweep's
+    finding would extend here too, independent of which mechanism assembles the CPU-heavier
+    split. If this run comes back BETTER than run_split_three_way()'s 298.712s AND competitive
+    with the 50/50 baseline, that isolates the double-generation-cost bug as the specific reason
+    the round-based approach failed, without yet proving CPU-heavier splits are worth pursuing in
+    general.
+
+    REAL-HARDWARE RESULT (2026-09-02, combined_size=13.5*10**9, cpu_fraction=0.5,
+    cpu_bonus_fraction=0.15, cpu_workers=12, gpu_gen_threads=12): BOTH of the caveat's predicted
+    outcomes landed at once. cpu_elapsed=250.181s (one dual pass) vs. 296.723s for the same two
+    windows under run_split_three_way()'s two separate passes -- BETTER than the round-based
+    298.712s by 46.7s / 15.6% (t_wall=251.981s vs. 298.712s), confirming the double-generation-cost
+    bug was real and is now fixed. But t_wall=251.981s is still NOT competitive with the plain
+    50/50 baseline (~233.2s interpolated at 13.5B) -- ~8.1% SLOWER (1.06x vs. sequential-CPU
+    reference, 1.10x vs. sequential-GPU reference, both printed as 'still slower' by this
+    function). So the double-generation bug was A reason for the round-based loss, but not the
+    ONLY one -- CPU's own dense-tier marking cost (run_fraction_sweep_mode()'s finding, effective
+    cpu share here ~57.5%) still dominates and still loses to plain 50/50, independent of
+    mechanism. CONCLUSION: this dual-window engine is a strict improvement over
+    run_split_three_way() whenever a CPU bonus round is used at all, but a CPU-heavier split is
+    not, on this evidence, a path to beating plain 50/50 -- the shared work-queue idea (see
+    README's 'real fix, not yet built' section) remains the more promising direction for actually
+    improving on 50/50, since it would let the FASTER device naturally do more work without ever
+    over-committing a fixed a-priori share to the slower one."""
+    print()
+    print("=" * 78)
+    print("FULL mode (dual-window) -- REAL floor-25 scale, CPU marks both windows in one pass")
+    print("=" * 78)
+    lib = load_engine(engine_so_path)
+    floor = 25
+    distance = 10 ** floor
+    n_10b_units = combined_size / 10 ** 10
+
+    print(f"[*] floor={floor}  combined_size={combined_size:,} ({n_10b_units:.2f}x the original "
+          f"10-billion baseline)  cpu_fraction={cpu_fraction}  "
+          f"cpu_bonus_fraction={cpu_bonus_fraction}  gpu_gen_threads={gpu_gen_threads}  "
+          f"gpu_chunk_size={gpu_chunk_size:,}  cpu_workers={cpu_workers}  "
+          f"cpu_batches_per_worker={cpu_batches_per_worker}")
+    if cpu_workers <= 1:
+        print(f"    [!] cpu_workers={cpu_workers} -- CPU side will run the SINGLE-THREADED "
+              f"non-atomic dual call, far slower than the real multi-process architecture. Pass "
+              f"--cpu-workers 12 (or whatever sums to your real core count with "
+              f"--gpu-gen-threads) for a fair timing.")
+
+    split = run_split_dual_window(lib, gpu_binary, gpu_gen_threads, gpu_chunk_size,
+                                   distance, combined_size, cpu_fraction, cpu_bonus_fraction,
+                                   "fulldual", engine_so_path=engine_so_path,
+                                   dual_engine_so_path=dual_engine_so_path,
+                                   cpu_workers=cpu_workers,
+                                   cpu_batches_per_worker=cpu_batches_per_worker)
+    _report_split_dual_window(split)
+
+    gpu_total = split["gpu_timings"][-1] if split["gpu_timings"] else 0.0
+    cpu_total = split["cpu_elapsed"]
+    ideal = max(cpu_total, gpu_total)
+    print()
+    print(f"  overlap check: t_wall={split['t_wall']:.3f}s vs. ideal max(cpu,gpu)={ideal:.3f}s "
+          f"vs. naive sum={cpu_total + gpu_total:.3f}s (no overlap at all)")
+    seq_cpu_naive = 176.018 * n_10b_units
+    seq_gpu_naive = 169.623 * n_10b_units
+    print(f"  DIRECT COMPARISON -- this run covers the FULL {combined_size:,}-number range "
+          f"({n_10b_units:.2f}x the 10-billion baseline).")
+    print(f"    vs. production CPU run SEQUENTIALLY {n_10b_units:.2f}x to cover the same total "
+          f"range ({n_10b_units:.2f} * 176.018s = {seq_cpu_naive:.1f}s, naive linear scaling): "
+          f"{split['t_wall'] / seq_cpu_naive:.2f}x" +
+          (" (FASTER)" if split['t_wall'] < seq_cpu_naive else " (still slower)"))
+    print(f"    vs. GPU two-tier run SEQUENTIALLY {n_10b_units:.2f}x to cover the same total "
+          f"range ({n_10b_units:.2f} * 169.623s = {seq_gpu_naive:.1f}s, naive linear scaling): "
+          f"{split['t_wall'] / seq_gpu_naive:.2f}x" +
+          (" (FASTER)" if split['t_wall'] < seq_gpu_naive else " (still slower)"))
+    print(f"    vs. run_split_three_way()'s round-based result at 13.5B/0.5/0.15 (298.712s, "
+          f"cpu_workers=12): compare directly only if this run used the SAME combined_size/"
+          f"cpu_fraction/cpu_bonus_fraction/cpu_workers -- otherwise use the 50/50 baseline "
+          f"above as the fairer reference.")
+
+    return {
+        "combined_size": combined_size,
+        "n_10b_units": n_10b_units,
+        "t_wall": split["t_wall"],
+        "cpu_elapsed": cpu_total,
+        "gpu_total": gpu_total,
+        "seq_cpu_naive": seq_cpu_naive,
+        "seq_gpu_naive": seq_gpu_naive,
+        "vs_seq_cpu": split["t_wall"] / seq_cpu_naive,
+        "vs_seq_gpu": split["t_wall"] / seq_gpu_naive,
+    }
+
+
+def _report_split_dual_window(split):
+    counts = split["gpu_counts"]
+    timings = split["gpu_timings"]
+    print()
+    print(f"  l_final={split['l_final']:,}  cs_cpu1={split['cs_cpu1']:,}  "
+          f"cs_gpu={split['cs_gpu']:,}  cs_cpu2={split['cs_cpu2']:,}")
+    print(f"  cpu_elapsed={split['cpu_elapsed']:.3f}s (single dual-window pass, no round split)")
+    if counts:
+        (t_dense_gen, t_dense_gpu, t_sparse_gen, t_sparse_gpu, t_download, t_gpu_total) = timings
+        print(f"  gpu: {counts.get('total_primes', 0):,} primes "
+              f"({counts.get('n_dense_primes', 0):,} dense + "
+              f"{counts.get('n_sparse_primes', 0):,} sparse)  "
+              f"dense(gen={t_dense_gen:.3f}s gpu={t_dense_gpu:.3f}s)  "
+              f"sparse(gen={t_sparse_gen:.3f}s gpu={t_sparse_gpu:.3f}s)  "
+              f"download={t_download:.3f}s  gpu_total={t_gpu_total:.3f}s")
+    print(f"  WALL (both devices concurrent): {split['t_wall']:.3f}s")
+    total_bits_set = int.from_bytes(split["combined_bits"], "little").bit_count()
+    combined_size = split["cs_cpu1"] + split["cs_gpu"] + split["cs_cpu2"]
+    if combined_size > 0:
+        density = total_bits_set / combined_size
+        print(f"  marked-composite density: {density:.4%}")
+
+
 def run_full_sweep_mode(gpu_binary, engine_so_path, cpu_fraction, gpu_gen_threads,
                          gpu_chunk_size, cpu_workers, cpu_batches_per_worker,
                          combined_sizes):
@@ -1044,9 +2044,34 @@ def _report_split(split):
         print(f"  marked-composite density: {density:.4%}")
 
 
+def _report_split_three_way(split):
+    counts = split["gpu_counts"]
+    timings = split["gpu_timings"]
+    print()
+    print(f"  l_final={split['l_final']:,}  cs_cpu1={split['cs_cpu1']:,}  "
+          f"cs_gpu={split['cs_gpu']:,}  cs_cpu2={split['cs_cpu2']:,}")
+    print(f"  cpu1_elapsed={split['cpu1_elapsed']:.3f}s  cpu2_elapsed={split['cpu2_elapsed']:.3f}s"
+          f"  cpu_total={split['cpu1_elapsed'] + split['cpu2_elapsed']:.3f}s")
+    if counts:
+        (t_dense_gen, t_dense_gpu, t_sparse_gen, t_sparse_gpu, t_download, t_gpu_total) = timings
+        print(f"  gpu: {counts.get('total_primes', 0):,} primes "
+              f"({counts.get('n_dense_primes', 0):,} dense + "
+              f"{counts.get('n_sparse_primes', 0):,} sparse)  "
+              f"dense(gen={t_dense_gen:.3f}s gpu={t_dense_gpu:.3f}s)  "
+              f"sparse(gen={t_sparse_gen:.3f}s gpu={t_sparse_gpu:.3f}s)  "
+              f"download={t_download:.3f}s  gpu_total={t_gpu_total:.3f}s")
+    print(f"  WALL (both devices concurrent): {split['t_wall']:.3f}s")
+    total_bits_set = int.from_bytes(split["combined_bits"], "little").bit_count()
+    combined_size = split["cs_cpu1"] + split["cs_gpu"] + split["cs_cpu2"]
+    if combined_size > 0:
+        density = total_bits_set / combined_size
+        print(f"  marked-composite density: {density:.4%}")
+
+
 def main():
     gpu_binary = DEFAULT_GPU_BINARY
     engine_so = DEFAULT_ENGINE_SO
+    dual_engine_so = DEFAULT_DUAL_ENGINE_SO
     mode = "both"
     cpu_fractions = [0.5]
     gpu_gen_threads = 12
@@ -1054,10 +2079,14 @@ def main():
     cpu_workers = DEFAULT_CPU_WORKERS
     cpu_batches_per_worker = DEFAULT_CPU_BATCHES_PER_WORKER
     full_combined_sizes = [10 ** 10]
+    cpu_bonus_fraction = 0.0
+    dual_window = "--dual-window" in sys.argv
     if "--gpu-binary" in sys.argv:
         gpu_binary = sys.argv[sys.argv.index("--gpu-binary") + 1]
     if "--engine-so" in sys.argv:
         engine_so = sys.argv[sys.argv.index("--engine-so") + 1]
+    if "--dual-engine-so" in sys.argv:
+        dual_engine_so = sys.argv[sys.argv.index("--dual-engine-so") + 1]
     if "--mode" in sys.argv:
         mode = sys.argv[sys.argv.index("--mode") + 1]
     if "--cpu-fraction" in sys.argv:
@@ -1081,8 +2110,16 @@ def main():
         # sweep multiple scales in one sitting rather than one manual invocation per data point.
         raw = sys.argv[sys.argv.index("--combined-size") + 1]
         full_combined_sizes = [int(x) for x in raw.split(",") if x.strip()]
+    if "--cpu-bonus-fraction" in sys.argv:
+        # CPU 'bonus round' (2026-08-29, Artur's idea): a slice of combined_size, on top of
+        # --cpu-fraction's own split of the remainder, that CPU picks up AFTER its first round
+        # finishes, reusing the same already-forked worker pool -- see run_split_three_way()'s
+        # docstring. Only applies to FULL mode, and only when neither --cpu-fraction nor
+        # --combined-size was ALSO given a multi-value (sweep) list -- see the dispatch below.
+        cpu_bonus_fraction = float(sys.argv[sys.argv.index("--cpu-bonus-fraction") + 1])
 
     print(f"[*] cpu_fraction(s)={', '.join(f'{f:.4f}' for f in cpu_fractions)}  "
+          f"cpu_bonus_fraction={cpu_bonus_fraction:.4f}  dual_window={dual_window}  "
           f"gpu_gen_threads={gpu_gen_threads}  gpu_chunk_size={gpu_chunk_size:,}  "
           f"cpu_workers={cpu_workers}  cpu_batches_per_worker={cpu_batches_per_worker}  "
           f"combined_size(s)(FULL only)={', '.join(f'{cs:,}' for cs in full_combined_sizes)} "
@@ -1090,16 +2127,42 @@ def main():
           f"single-threaded -- cpu_workers/cpu_batches_per_worker/combined_size only apply to "
           f"STRESS/FULL, and --combined-size only to FULL; give a comma-separated list to sweep "
           f"multiple scales in one run; give --cpu-fraction a comma-separated list instead to "
-          f"run a load-balance sweep at a FIXED combined_size -- see run_fraction_sweep_mode())")
+          f"run a load-balance sweep at a FIXED combined_size -- see run_fraction_sweep_mode(); "
+          f"--dual-window switches the CPU bonus mechanism from run_split_three_way()'s two "
+          f"rounds (confirmed a net loss on real hardware, 2026-08-29) to run_split_dual_window()'s "
+          f"single dual-marking pass -- only meaningful together with --cpu-bonus-fraction > 0)")
 
     ok = True
     if mode in ("exact", "both"):
         ok = run_exact_mode(gpu_binary, engine_so) and ok
+        ok = run_exact_mode_three_way(gpu_binary, engine_so) and ok
+        ok = run_exact_mode_dual_window(gpu_binary, engine_so, dual_engine_so) and ok
     if mode in ("stress", "both"):
         run_stress_mode(gpu_binary, engine_so, cpu_fractions[0], gpu_gen_threads,
                          gpu_chunk_size, cpu_workers, cpu_batches_per_worker)
     if mode == "full":
-        if len(cpu_fractions) > 1:
+        if cpu_bonus_fraction > 0.0 and dual_window:
+            if len(cpu_fractions) > 1 or len(full_combined_sizes) > 1:
+                print(f"[!] --cpu-bonus-fraction/--dual-window does not yet support sweeps -- "
+                      f"running a single dual-window FULL run at cpu_fraction={cpu_fractions[0]}, "
+                      f"combined_size={full_combined_sizes[0]:,}, ignoring any other values in "
+                      f"either list.")
+            run_full_scale_mode_dual_window(gpu_binary, engine_so, dual_engine_so,
+                                             cpu_fractions[0], cpu_bonus_fraction,
+                                             gpu_gen_threads, gpu_chunk_size, cpu_workers,
+                                             cpu_batches_per_worker,
+                                             combined_size=full_combined_sizes[0])
+        elif cpu_bonus_fraction > 0.0:
+            if len(cpu_fractions) > 1 or len(full_combined_sizes) > 1:
+                print(f"[!] --cpu-bonus-fraction does not yet support sweeps -- running a single "
+                      f"three-way FULL run at cpu_fraction={cpu_fractions[0]}, "
+                      f"combined_size={full_combined_sizes[0]:,}, ignoring any other values in "
+                      f"either list.")
+            run_full_scale_mode_three_way(gpu_binary, engine_so, cpu_fractions[0],
+                                           cpu_bonus_fraction, gpu_gen_threads, gpu_chunk_size,
+                                           cpu_workers, cpu_batches_per_worker,
+                                           combined_size=full_combined_sizes[0])
+        elif len(cpu_fractions) > 1:
             if len(full_combined_sizes) > 1:
                 print(f"[!] both --cpu-fraction and --combined-size were given comma-separated "
                       f"lists -- running the fraction sweep at only the FIRST combined_size "

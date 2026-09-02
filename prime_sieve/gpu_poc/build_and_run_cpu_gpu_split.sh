@@ -42,6 +42,18 @@
 #                                                              # (CPU and GPU rarely finish at the
 #                                                              # same time at a plain 50/50 split),
 #                                                              # see run_fraction_sweep_mode()
+#   bash .../build_and_run_cpu_gpu_split.sh --mode full --combined-size 13500000000 --cpu-fraction 0.5 --cpu-bonus-fraction 0.15 --dual-window
+#                                                              # CPU 'bonus round' -- an EXTRA
+#                                                              # slice of combined_size CPU marks
+#                                                              # on top of its normal share.
+#                                                              # --dual-window uses the single-
+#                                                              # pass dual_window_engine_poc.so
+#                                                              # mechanism (2026-08-29); WITHOUT
+#                                                              # --dual-window it uses the older
+#                                                              # round-based mechanism, already
+#                                                              # measured a net loss on real
+#                                                              # hardware -- see
+#                                                              # run_split_three_way()'s docstring
 # Note: STRESS/FULL mode's CPU side now uses a real multi-process architecture by default
 # (--cpu-workers 24, matching production's MAX_WORKERS) -- see prepare_cpu_side_parallel()'s
 # docstring in cpu_gpu_split_poc.py. EXACT mode always stays single-threaded (small ranges,
@@ -108,15 +120,35 @@ else
     echo "[*] Built ../prime_sieve_engine_v4.so"
 fi
 
+if [ -f ./dual_window_engine_poc.so ]; then
+    echo "[*] ./dual_window_engine_poc.so already built -- dual-window CPU bonus round"
+    echo "    (--cpu-bonus-fraction + --dual-window) will reuse it."
+else
+    echo "[*] ./dual_window_engine_poc.so not found -- building it now (purely additive PoC"
+    echo "    engine, see dual_window_engine_poc.c's header -- production's own engine is"
+    echo "    untouched)..."
+    gcc -O3 -shared -fPIC dual_window_engine_poc.c -o dual_window_engine_poc.so \
+        -lprimesieve -lstdc++ -lm
+    if [ $? -ne 0 ]; then
+        echo "[ABORT] gcc compile failed -- see errors above."
+        exit 1
+    fi
+    echo "[*] Built ./dual_window_engine_poc.so"
+fi
+
 echo
 echo "[4/4] Running cpu_gpu_split_poc.py $@ ..."
 echo "      EXACT mode: split-then-concatenate result checked byte-for-byte against a single"
-echo "      unsplit, unchunked, single-threaded real-engine call over the full window (7 cases,"
-echo "      including cpu_fraction=0.0/1.0 edge cases and a nonzero-distance GPU-side-shift"
-echo "      case). FULL mode (--mode full): the real floor-25 scale -- watch whether t_wall lands"
+echo "      unsplit, unchunked, single-threaded real-engine call over the full window (28 cases:"
+echo "      7 plain 2-way + 7 three-way round-based + 7 dual-window single-pass, the latter run"
+echo "      twice each -- single-threaded and 4-worker -- so 14 dual-window sub-cases total)."
+echo "      FULL mode (--mode full): the real floor-25 scale -- watch whether t_wall lands"
 echo "      close to max(cpu_elapsed, gpu_total) (real overlap) and whether it beats both"
 echo "      production CPU alone (176.018s) and GPU-only two-tier (169.623s) for covering the"
-echo "      FULL range."
+echo "      FULL range. Add --cpu-bonus-fraction F --dual-window to try the single-pass CPU"
+echo "      bonus round (see dual_window_engine_poc.c's header for why this exists -- the"
+echo "      round-based --cpu-bonus-fraction WITHOUT --dual-window was already measured a net"
+echo "      loss on real hardware, 2026-08-29)."
 python3 cpu_gpu_split_poc.py "$@"
 RUN_EXIT=$?
 

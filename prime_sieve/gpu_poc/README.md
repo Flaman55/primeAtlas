@@ -1253,15 +1253,142 @@ feeding it more marking work on the same base rather than spawning a fresh invoc
 recorded here as the clear next target once the current split mode's basic viability is fully
 settled.
 
+## CPU "bonus round" (three-way split): tried, confirmed correct, confirmed a net LOSS (2026-08-29)
+
+A concrete, smaller first stab at the shared-queue idea above: instead of the full N-fragment
+queue, give CPU just ONE extra "bonus" slice on top of its normal round -- carved out of
+`combined_size` via `--cpu-bonus-fraction` -- that CPU picks up the moment its first round
+finishes, submitted to the SAME already-forked `ProcessPoolExecutor` (no second `fork()`, so no
+risk of forking while the GPU thread is concurrently printing its subprocess's stderr -- see
+`prepare_cpu_side_parallel()`'s docstring for why that ordering matters). See
+`split_window_three_way()`/`run_split_three_way()`/`run_full_scale_mode_three_way()` in
+`cpu_gpu_split_poc.py`.
+
+EXACT mode: 14/14 cases PASS (7 plain 2-way regression + 7 new three-way cases, including
+`cpu_bonus_fraction=0.0` degenerating to the plain split, `cpu_fraction=0.0` with a nonzero bonus
+exercising the no-round-1 pool-startup path, and the u128-distance branch) -- the split/concatenate
+mechanism itself is genuinely correct.
+
+FULL mode (`combined_size=13.5*10**9`, `cpu_fraction=0.5`, `cpu_bonus_fraction=0.15`,
+`cpu_workers=12`, `gpu_gen_threads=12`): **NEGATIVE**. `t_wall=298.712s` -- roughly 28% SLOWER
+than a plain 50/50 split at the same scale (~233s interpolated from the corrected 13B/14B sweep
+points above). `cs_cpu1=5.7375*10**9` took `cpu1_elapsed=172.034s`; `cs_cpu2=2.025*10**9` -- a
+window only 35% as big -- still took `cpu2_elapsed=124.689s` (73% as long).
+
+**Root cause**: reusing the same forked pool avoids re-paying the process-STARTUP cost, but does
+nothing about the actual dominant cost this whole file has been chasing since its first FULL run
+-- each worker walking the sieving-prime range from 2 up to `l_final` (here 3.16*10**12) to find
+which primes even need checking. That walk is genuinely redone, in full, for round 2, because
+`_build_equal_cost_batches()`+`process_batch_cpu()` gets invoked a SECOND time over the same
+`[2, l_final)` range. Submitting to an already-alive pool only sidesteps the fork-safety hazard,
+not the actual duplicated generation work, which barely depends on window size once `l_final` is
+this much bigger than either window. This confirms the design-phase worry (see
+`run_fraction_sweep_mode()`'s docstring) was right for the wrong reason solved: pool-reuse alone
+was never going to be enough.
+
+**What would actually fix it, not yet built**: a single primesieve walk per worker that marks
+into BOTH windows' output buffers in the SAME pass -- a new engine function taking two
+`(distance, window_m, byte_offset)` tuples instead of one, checking both per prime found, so the
+expensive part (walking to `l_final`) is paid exactly once no matter how many logical CPU
+"rounds" get folded into it. This is a real engineering step up (a new additive C function, same
+pattern as `marking_two_tier_poc.cu` never touching the production engine) rather than a pure
+Python-orchestration change like this attempt was.
+
+## CPU "bonus round" v2: dual-window single-pass marking (2026-08-29, sandbox-verified, not yet on real hardware)
+
+The fix the previous section said was "not yet built": `dual_window_engine_poc.c`, a new additive
+C engine (does NOT modify `prime_sieve_engine_v4.c`, same discipline as `marking_two_tier_poc.cu`
+on the GPU side). Its `generate_and_sieve_dual_window[_atomic]()` walks the sieving-prime range
+from `start` to `stop` via `primesieve_next_prime()` **exactly once** per worker, and marks into
+TWO independent `(distance, window_m, out_bits)` targets per prime found (`mark_one()`, a verbatim
+port of the production engine's phase/self-elimination-guard/dense-sparse marking logic, called
+twice per prime instead of once). This removes the round1/round2 architecture entirely: there is
+no "CPU finishes round 1, then submits round 2" anymore, just one pass that marks both windows as
+it goes -- so the walk-to-`l_final` cost that `run_split_three_way()` was shown to duplicate
+(172.034s + 124.689s for two rounds instead of ~172s total) is structurally paid only once,
+regardless of how the total CPU share is divided between the "normal" and "bonus" windows.
+
+Python-side wiring in `cpu_gpu_split_poc.py`: `split_window_three_way()` is reused unchanged for
+the window layout (same `cpu_fraction`/`cpu_bonus_fraction` carve-up as the round-based version,
+so the two mechanisms are directly comparable at identical scale). `run_split_dual_window()` is
+the new orchestrator -- CPU side is a single dual-marking pass (`_create_dual_cpu_executor()` +
+`_submit_cpu_round_dual()` for the real multi-process path, `run_cpu_side_dual()` for the
+single-threaded EXACT-mode ground-truth path), GPU side is unchanged (same `marking_two_tier_poc`
+binary, same window). New CLI flag `--dual-window` selects this path (only takes effect together
+with `--cpu-bonus-fraction F > 0`); without it, `--cpu-bonus-fraction` still uses the older,
+already-confirmed-negative round-based mechanism from the previous section.
+
+**Explicit open question, not yet answered -- documented directly in `run_split_dual_window()`'s
+and `run_full_scale_mode_dual_window()`'s docstrings so it isn't mistaken for a promised win**:
+removing the double-generation-cost bug only isolates whether that bug was the WHOLE reason the
+three-way split lost. It's still an open question whether a CPU-heavier split (bigger total CPU
+share, whether as two windows or one) can beat or even match the plain 50/50 baseline once that
+bug is gone -- `run_fraction_sweep_mode()` already found that skewing `cpu_fraction` above 0.5
+makes wall time monotonically WORSE in the plain 2-way split, because CPU's own dense-tier marking
+cost grows faster (`~cs*ln(ln(cs))`) than what it saves GPU. Both outcomes (dual-window matches/
+beats 50/50, or dual-window still loses because the fraction-skew cost dominates regardless of the
+generation-duplication fix) are informative and neither was assumed going in.
+
+**Sandbox verification (no real libprimesieve/GPU in this environment, same fake-trial-division-
+engine technique used for the three-way split)**: `dual_window_engine_poc.c` syntax-checked clean
+(`gcc -fsyntax-only`) against a stub header matching the real `primesieve.h` API shape. A from-
+scratch test harness ran all three EXACT-mode suites together -- plain 2-way (7/7), three-way
+(7/7), and the new dual-window suite (14/14 -- same 7 case definitions as three-way, each run twice:
+once through `generate_and_sieve_dual_window` single-threaded, once through the atomic
+multi-process path via `generate_and_sieve_dual_window_atomic`) -- 28/28 total, no regressions from
+the refactoring needed to add the dual-window path. A direct correctness cross-check confirmed
+`run_split_three_way()` and `run_split_dual_window()` produce byte-identical `combined_bits` for
+the same window layout. A synthetic small-scale cost comparison (`combined_size=4000,
+l_final=60000`, chosen so `l_final >> combined_size` to mirror the real floor-25 shape where
+generation cost dominates) found dual-window's CPU total cost 0.950x the three-way mechanism's --
+directionally supportive of the fix, though not scale-representative of real hardware.
+
+**REAL-HARDWARE RESULT (2026-09-02)**: EXACT mode **28/28 PASS**. FULL mode
+(`combined_size=13.5*10**9`, `cpu_fraction=0.5`, `cpu_bonus_fraction=0.15`, `cpu_workers=12`,
+`gpu_gen_threads=12`): `cs_cpu1=5,737,500,032`, `cs_cpu2=2,025,000,000` marked in ONE dual pass
+took `cpu_elapsed=250.181s`, vs `296.723s` (172.034s+124.689s) for the SAME two windows under the
+round-based mechanism's two separate passes -- confirming the double-generation-cost bug is fixed:
+a real **46.5s / 15.7% CPU-side improvement**. `t_wall=251.981s` vs `298.712s` for the round-based
+run at the same scale/split -- **46.7s / 15.6% faster overall**. But `t_wall=251.981s` is still NOT
+competitive with the plain 50/50 baseline (`~233.2s` interpolated at 13.5B from the corrected
+13B/14B sweep) -- about **8.1% SLOWER** (printed by the script as `1.06x` vs. the sequential-CPU
+reference and `1.10x` vs. the sequential-GPU reference, both "still slower").
+
+**Conclusion**: both outcomes the docstrings flagged as open landed at once. The double-generation
+bug was real and this mechanism fixes it -- `run_split_dual_window()` should always be preferred
+over `run_split_three_way()`'s round-based mechanism whenever a CPU bonus round is used at all.
+But fixing that bug alone does not make a CPU-heavier split beat plain 50/50 -- CPU's own
+dense-tier marking cost (the same effect `run_fraction_sweep_mode()` already found: cost grows
+faster than linear as `cpu_fraction` rises, here the effective CPU share is ~57.5%) still dominates
+and still loses, independent of mechanism. The "CPU bonus round" idea, in both its forms, is now a
+closed question: it does not beat plain 50/50 at this scale. **The shared work-queue idea above
+("The real fix, not yet built") remains the more promising direction** -- it lets the faster device
+naturally absorb more work without ever over-committing a fixed a-priori share to the slower one,
+which is exactly the failure mode both bonus-round mechanisms hit.
+
+Per Artur's standing instruction ("najpierw test nowego kodu potem komit" -- test first, then
+commit): real-hardware testing is now done and the result is documented above; no commit has been
+made yet -- pending Artur's explicit go-ahead.
+
+Run (WSL, real hardware):
+```
+bash /mnt/h/PrimeAtlas_refactor/primeAtlas/prime_sieve/gpu_poc/build_and_run_cpu_gpu_split.sh --mode exact
+bash /mnt/h/PrimeAtlas_refactor/primeAtlas/prime_sieve/gpu_poc/build_and_run_cpu_gpu_split.sh --mode full --combined-size 13500000000 --cpu-fraction 0.5 --cpu-bonus-fraction 0.15 --cpu-workers 12 --gpu-gen-threads 12 --dual-window
+```
+
 ## What to report back (cpu_gpu_split_poc, current priority)
 
-From `--mode exact`: PASS/FAIL per case (expect 7/7). For further break-even narrowing, sweep
-`--combined-size` around the corrected ~13.3-13.8B estimate (e.g. `13000000000,13500000000,
-14000000000`) WITH `--cpu-workers 12 --gpu-gen-threads 12` (or whatever sums to the real core
-count on the machine running it -- confirm via `nproc`) to avoid re-introducing the oversubscription
-bug. For the load-balance/shared-queue direction, no further sweeping is likely to help until the
-queue architecture itself is built (see above) -- fixed-ratio tuning has already been shown to lose
-to plain 50/50 at the one scale tested.
+From `--mode exact`: PASS/FAIL per case (expect 28/28 as of the dual-window addition -- 7 plain
+2-way + 7 three-way round-based + 14 dual-window sub-cases). For further break-even narrowing on
+the plain 2-way split, sweep `--combined-size` around the corrected ~13.3-13.8B estimate (e.g.
+`13000000000,13500000000,14000000000`) WITH `--cpu-workers 12 --gpu-gen-threads 12` (or whatever
+sums to the real core count on the machine running it -- confirm via `nproc`) to avoid
+re-introducing the oversubscription bug. Do NOT use `--cpu-bonus-fraction` WITHOUT `--dual-window`
+expecting a speedup -- that's the round-based mechanism, a confirmed net loss (see above). The
+NEW priority is the real-hardware FULL-mode run for `--cpu-bonus-fraction 0.15 --dual-window` at
+`combined_size=13.5*10**9` (command above) -- this is the first real test of whether removing the
+double-generation-cost bug lets a CPU-heavier split match or beat plain 50/50, an open question,
+not a guaranteed win (see the dual-window section above for why).
 
 ## What to report back (parallel chunked marking, superseded by the two-tier section above)
 
