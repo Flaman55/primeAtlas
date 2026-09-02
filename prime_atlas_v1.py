@@ -1206,6 +1206,19 @@ def _build_gui():
 
 
 def main():
+    # First-run environment check/install wizard (task #513) -- runs BEFORE _build_gui()
+    # is even called, let alone PortalBrowserApp constructed. Deliberately not folded into
+    # the loading_frame steps below: enabling the WSL Windows features can require a full
+    # REBOOT before anything else in this app can usefully run (WSL itself, hence every
+    # generation/constellation script this app launches, would not work yet) -- see
+    # primeatlas/env_setup.py's own module docstring for the full reasoning. Gated on
+    # AppSettings.setup_completed (primeatlas/app_settings.py), so an already-set-up
+    # install skips straight past this with only a near-instant background check, not a
+    # visible dialog.
+    from primeatlas.env_setup_wizard import maybe_run_first_run_wizard
+    if not maybe_run_first_run_wizard(APP_SETTINGS, TRANSLATOR):
+        return
+
     app_cls = _build_gui()
     app = app_cls()
     app.mainloop()

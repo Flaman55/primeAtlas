@@ -1866,6 +1866,21 @@ class SettingsTab(BaseTab):
             pass
         self.after(150, self._poll_cudasieve_queue)
 
+    # ---- environment setup re-check (task #514) ---------------------------------------
+
+    def _on_verify_environment_clicked(self):
+        """Opens the same first-run environment wizard (env_setup_wizard.py) on demand,
+        as a Toplevel of THIS running app (master=self.winfo_toplevel(), matching the
+        pattern already used for the cudasieve consent dialog above) rather than a second
+        tk.Tk() root -- see env_setup_wizard.py's own module docstring. force=True so it
+        re-shows even though AppSettings.setup_completed is already True from an earlier
+        successful check; this call is itself synchronous from the caller's point of view
+        (it blocks -- via wait_window -- only until the wizard closes, same as any other
+        modal dialog in this app), not a background job needing its own queue/poll loop."""
+        from .env_setup_wizard import maybe_run_first_run_wizard
+        maybe_run_first_run_wizard(self.app_settings, self.T, force=True,
+                                    master=self.winfo_toplevel())
+
     # ---- widget construction ---------------------------------------------------------------
 
     def _build_widgets(self):
@@ -2400,6 +2415,23 @@ class SettingsTab(BaseTab):
             cudasieve_frame, height=5, font=("Consolas", 9), state="disabled",
             background="#111318", foreground="#d8d8d8")
         self.cudasieve_output.pack(fill="x", padx=6, pady=(0, 6))
+
+        # Environment setup re-check (task #514) -- reuses the exact same
+        # check_environment()/run_install() flow the first-run wizard (env_setup.py,
+        # env_setup_wizard.py) runs automatically at startup, opened here on demand as a
+        # Toplevel of THIS already-running app (see env_setup_wizard.py's own module
+        # docstring for why: a second, independent tk.Tk() root while one is already
+        # alive is unreliable across platforms). Useful if WSL/a package got uninstalled
+        # or broken after the first-run check already passed once.
+        env_frame = ttk.Labelframe(outer, text=self.T("settings.env_frame"))
+        env_frame.pack(fill="x", pady=(0, 8))
+        ttk.Label(env_frame, text=self.T("settings.env_hint"),
+                  wraplength=760, justify="left", foreground="#555").pack(
+            anchor="w", padx=6, pady=(6, 4))
+        env_btn_row = ttk.Frame(env_frame)
+        env_btn_row.pack(fill="x", padx=6, pady=(0, 6))
+        ttk.Button(env_btn_row, text=self.T("settings.env_recheck_button"),
+                   command=self._on_verify_environment_clicked).pack(side="left")
 
         # PrimeAtlas's own self-update (checking/downloading a newer app version) is
         # a stated FUTURE addition, not built yet -- Artur, 2026-08-17: "w przyszlosci

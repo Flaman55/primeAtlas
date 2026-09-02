@@ -141,6 +141,24 @@ class AppSettings:
         self._data["cudasieve_status"] = {"ok": bool(ok), "payload": payload}
         self.save()
 
+    @property
+    def setup_completed(self):
+        """Whether the first-run environment wizard (env_setup_wizard.py, task #513) has
+        already confirmed WSL + Ubuntu + required packages are present on THIS install.
+        Checked once at startup (prime_atlas_v1.py's main(), before PortalBrowserApp is
+        even constructed -- see that module's own comment) to decide whether to show the
+        wizard at all; False (the default for any install that predates this flag, or a
+        genuinely fresh one) means the wizard runs. Deliberately NOT re-verified against
+        a live WSL probe on every launch, same "cache the last real result, don't pay a
+        round-trip every startup" reasoning as cudasieve_status above -- Settings >
+        Aktualizacje's 'Zweryfikuj srodowisko' button (settings_tab.py) re-runs the real
+        check on demand if something changes later (e.g. Ubuntu gets uninstalled)."""
+        return bool(self._data.get("setup_completed", False))
+
+    def set_setup_completed(self, value):
+        self._data["setup_completed"] = bool(value)
+        self.save()
+
     def load(self):
         if not os.path.exists(self._path):
             self._data = {}
