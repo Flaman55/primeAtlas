@@ -631,5 +631,22 @@
   "settings.env_recheck_button": "Zweryfikuj srodowisko",
   "settings.env_status_not_checked": "Nie sprawdzono jeszcze na tej instalacji.",
   "settings.env_status_ok": "Srodowisko jest gotowe (wszystkie skladniki obecne).",
-  "settings.env_status_missing": "Brakuje: {missing}"
+  "settings.env_status_missing": "Brakuje: {missing}",
+  "tabs.rings": "Wizualizacja pierścieni",
+  "rings.intro": "Otwiera interaktywną, sterowaną GPU wizualizację pierścieni liczb pierwszych wokół wybranego n -- osobne okno (GLFW/OpenGL) uruchamiane jako proces, zasilane liczbami pierwszymi z aktualnie skonfigurowanego magazynu. Zamknij to okno w dowolnym momencie (Esc lub przycisk zamykania okna), żeby wrócić tutaj.",
+  "rings.field_n": "n:",
+  "rings.hint_invalid": "nieprawidłowa liczba",
+  "rings.hint_floor": "piętro {floor}",
+  "rings.open_button": "Otwórz wizualizację",
+  "rings.stop_button": "Zatrzymaj",
+  "rings.console_title": "Wizualizacja pierścieni -- konsola",
+  "rings.error_dialog_title": "Błąd",
+  "rings.error_n_invalid": "Podaj n jako liczbę całkowitą >= 2.",
+  "rings.error_no_portal": "Nie skonfigurowano folderu magazynu (zakładka Ustawienia).",
+  "rings.console_launching": "Uruchamiam wizualizację dla n={n}...",
+  "rings.status_launching": "Uruchamianie wizualizacji pierścieni...",
+  "rings.console_closed_ok": "Okno wizualizacji zamknięte.",
+  "rings.status_closed": "Wizualizacja pierścieni zamknięta.",
+  "rings.console_closed_error": "Proces wizualizacji zakończył się błędem (kod {code}).",
+  "rings.status_error": "Błąd wizualizacji pierścieni."
 }

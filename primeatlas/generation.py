@@ -1272,10 +1272,20 @@ class LocalLoggedRunner:
 
     def start(self):
         self.output_queue.put(f"$ {' '.join(self.cmd)}\n")
+        # _popen_kwargs_no_window() already sets stdout=DEVNULL/stderr=DEVNULL (the
+        # right default for WslLoggedRunner/env_setup.py's fire-and-forget callers,
+        # which don't want piped output at all) -- this class DOES need piped output,
+        # so those two keys must be overridden in the dict rather than also passed as
+        # separate keyword args to Popen(), which raised "got multiple values for
+        # keyword argument 'stdout'" the first time this path was actually exercised
+        # for real (RingsTab's launch, 2026-09-04 -- every earlier caller of this
+        # class, e.g. settings_tab.py's sympy installer, apparently never hit this
+        # live before).
+        kwargs = _popen_kwargs_no_window()
+        kwargs["stdout"] = subprocess.PIPE
+        kwargs["stderr"] = subprocess.STDOUT
         try:
-            self.proc = subprocess.Popen(
-                self.cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                text=True, bufsize=1, **_popen_kwargs_no_window())
+            self.proc = subprocess.Popen(self.cmd, text=True, bufsize=1, **kwargs)
         except OSError as e:
             self.output_queue.put(f"[!] Could not start process: {e}\n")
             self.output_queue.put(("__exit__", None))

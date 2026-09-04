@@ -357,12 +357,14 @@ def _build_gui():
             self.constellations_tab = ttk.Frame(notebook)
             self.research_tab = ttk.Frame(notebook)
             self.generation_tab = ttk.Frame(notebook)
+            self.rings_tab = ttk.Frame(notebook)
             self.benchmark_tab = ttk.Frame(notebook)
             self.settings_tab_container = ttk.Frame(notebook)
             notebook.add(self.primes_tab, text=T("tabs.primes"))
             notebook.add(self.constellations_tab, text=T("tabs.constellations"))
             notebook.add(self.research_tab, text=T("tabs.research"))
             notebook.add(self.generation_tab, text=T("tabs.generation"))
+            notebook.add(self.rings_tab, text=T("tabs.rings"))
             notebook.add(self.benchmark_tab, text=T("tabs.benchmark"))
             notebook.add(self.settings_tab_container, text=T("tabs.settings"))
 
@@ -371,6 +373,7 @@ def _build_gui():
                 (T("tabs.constellations"), self._build_constellations_section),
                 (T("tabs.research"), self._build_research_section),
                 (T("tabs.generation"), self._build_generation_tab),
+                (T("tabs.rings"), self._build_rings_tab),
                 (T("tabs.benchmark"), self._build_benchmark_tab),
                 (T("tabs.settings"), lambda: self._build_settings_tab(SettingsTab)),
             )
@@ -1090,7 +1093,25 @@ def _build_gui():
                 research_goldbach_tab_widget=self.research_goldbach_tab_widget)
             self.generation_tab_widget.pack(fill="both", expand=True)
 
-        # --- Tab 5: Settings -----------------------------------------------------
+        # --- Tab 5: Ring visualization ---------------------------------------------
+
+        def _build_rings_tab(self):
+            """Thin wrapper -- the whole tab lives in primeatlas/rings_tab.py's
+            RingsTab (Faza 3, see PLAN.md at the repo root for the phased rollout),
+            same construction pattern as _build_generation_tab above. get_portal_folder
+            is a deferred lambda (not the resolved PORTAL_FOLDER value) so a later
+            Settings-tab storage-path change is picked up on the NEXT launch without
+            this tab needing its own change-notification wiring, same reasoning as
+            every other tab's own get_portal_folder injection."""
+            from primeatlas.rings_tab import RingsTab
+
+            self.rings_tab_widget = RingsTab(
+                self.rings_tab, get_portal_folder=lambda: PORTAL_FOLDER,
+                status_var=self.status, translator=TRANSLATOR,
+                totals_progress=self.totals_progress)
+            self.rings_tab_widget.pack(fill="both", expand=True)
+
+        # --- Tab 6: Settings -----------------------------------------------------
 
         def _set_portal_folder(self, new_path):
             """The one place that rebinds the module-level PORTAL_FOLDER global -- passed
