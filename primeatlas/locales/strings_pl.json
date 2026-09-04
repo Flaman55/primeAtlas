@@ -648,5 +648,12 @@
   "rings.console_closed_ok": "Okno wizualizacji zamknięte.",
   "rings.status_closed": "Wizualizacja pierścieni zamknięta.",
   "rings.console_closed_error": "Proces wizualizacji zakończył się błędem (kod {code}).",
-  "rings.status_error": "Błąd wizualizacji pierścieni."
+  "rings.status_error": "Błąd wizualizacji pierścieni.",
+  "rings.windows_label": "Podświetl okna:",
+  "rings.window_bertrand": "Bertrand",
+  "rings.window_legendre": "Legendre",
+  "rings.window_general_law": "General Law",
+  "rings.general_law_theta_label": "theta:",
+  "rings.general_law_mode_label": "tryb:",
+  "rings.point_size_label": "rozmiar punktów:"
 }

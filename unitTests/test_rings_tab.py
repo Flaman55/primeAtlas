@@ -70,6 +70,32 @@ def _test_build_renderer_argv():
     check(default_argv[0] == sys.executable,
           f"python_executable defaults to sys.executable, THIS interpreter, not a bare "
           f"'python' resolved from PATH (got {default_argv[0]!r})")
+    check("--windows" not in default_argv,
+          f"no --windows arg at all when windows=() (matches renderer.py's own default "
+          f"of no highlighting) (got {default_argv!r})")
+
+    # [ADDED Faza 4, see PLAN.md] Window-highlight-family argv wiring.
+    windows_argv = build_renderer_argv("/x", 1, windows=["bertrand", "legendre"])
+    check("--windows" in windows_argv and windows_argv[windows_argv.index("--windows") + 1] == "bertrand,legendre",
+          f"--windows joins the given family ids with commas (got {windows_argv!r})")
+    check("--general-law-theta" not in windows_argv,
+          f"--general-law-theta is omitted when generalLaw isn't among the enabled windows "
+          f"(got {windows_argv!r})")
+
+    gl_argv = build_renderer_argv("/x", 1, windows=["generalLaw"], general_law_theta=0.7,
+                                   general_law_mode="sliding")
+    check("--general-law-theta" in gl_argv and gl_argv[gl_argv.index("--general-law-theta") + 1] == "0.7",
+          f"--general-law-theta is included and correct when generalLaw IS enabled (got {gl_argv!r})")
+    check("--general-law-mode" in gl_argv and gl_argv[gl_argv.index("--general-law-mode") + 1] == "sliding",
+          f"--general-law-mode is included and correct when generalLaw IS enabled (got {gl_argv!r})")
+
+    # [ADDED Faza 4 point-size investigation, see PLAN.md / task #593] point_size argv wiring.
+    check("--point-size" not in default_argv,
+          f"no --point-size arg at all when point_size=None (matches renderer.py's own "
+          f"argparse default) (got {default_argv!r})")
+    ps_argv = build_renderer_argv("/x", 1, point_size=12.5)
+    check("--point-size" in ps_argv and ps_argv[ps_argv.index("--point-size") + 1] == "12.5",
+          f"--point-size is included and correct when a value is given (got {ps_argv!r})")
 
 
 def _write_fake_renderer(exit_code):

@@ -44,7 +44,9 @@ _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 RENDERER_SCRIPT = os.path.join(_THIS_DIR, "ring_viz", "renderer.py")
 
 
-def build_renderer_argv(portal_folder, upto, python_executable=None):
+def build_renderer_argv(portal_folder, upto, python_executable=None,
+                         windows=(), general_law_theta=0.5, general_law_mode="stepped",
+                         point_size=None):
     """Builds the argv for launching renderer.py against a real magazyn.
 
     Uses `python_executable` (defaults to sys.executable -- THIS SAME Python
@@ -58,10 +60,39 @@ def build_renderer_argv(portal_folder, upto, python_executable=None):
     -- see renderer.py's own module docstring for exactly why that matters
     (its internal sys.path fix for the prime_sieve/ sibling directory runs
     too late to help a `-m`/dotted-import invocation, which imports the
-    primeatlas package first)."""
+    primeatlas package first).
+
+    [ADDED Faza 4, see PLAN.md] `windows` -- an iterable of window family ids
+    (any of "bertrand"/"legendre"/"generalLaw") to highlight, chosen once at
+    launch time via this tab's checkboxes (there is no live in-GL-window
+    toggle -- see renderer.py's own "no live in-window toggle yet" note).
+    `general_law_theta`/`general_law_mode` are only appended when
+    "generalLaw" is among `windows` -- passing them unconditionally would be
+    harmless (renderer.py ignores them when that family isn't enabled) but
+    a shorter argv is easier to read in the console pane's own `$ ...` echo
+    line.
+
+    [ADDED as part of Faza 4's point-size investigation, 2026-09-04]
+    `point_size` -- None (default) omits --point-size entirely, so
+    renderer.py's own argparse default (3.0) applies; a real value is
+    forwarded as-is. Exposed here (rather than only via renderer.py's own
+    CLI, which needs hand-editing its argparse default to test) specifically
+    so a real value change is verifiable from the GUI alone -- see
+    renderer.py's own [diag] startup print for the other half of that
+    investigation (confirming the requested value actually reaches the
+    renderer, vs. a possible GL_POINT_SIZE_RANGE hardware/driver clamp)."""
     exe = python_executable or sys.executable
-    return [exe, RENDERER_SCRIPT, "--source", "magazyn",
+    argv = [exe, RENDERER_SCRIPT, "--source", "magazyn",
             "--portal-folder", portal_folder, "--upto", str(upto)]
+    windows = list(windows)
+    if windows:
+        argv += ["--windows", ",".join(windows)]
+        if "generalLaw" in windows:
+            argv += ["--general-law-theta", str(general_law_theta),
+                     "--general-law-mode", general_law_mode]
+    if point_size is not None:
+        argv += ["--point-size", str(point_size)]
+    return argv
 
 
 class RingsTab(BaseTab):
@@ -89,6 +120,47 @@ class RingsTab(BaseTab):
         self.n_hint_var = tk.StringVar(value="")
         ttk.Label(field_row, textvariable=self.n_hint_var, foreground="#888888").pack(side="left")
         self.n_entry.bind("<KeyRelease>", self._on_n_changed)
+
+        # [ADDED as part of Faza 4's point-size investigation, 2026-09-04]
+        # Exposed here (instead of only reachable by hand-editing
+        # renderer.py's argparse default) so a real value change is
+        # verifiable from the GUI alone -- see build_renderer_argv's own
+        # doc-comment for the full context.
+        point_size_row = ttk.Frame(container)
+        point_size_row.pack(fill="x", pady=(0, 6))
+        ttk.Label(point_size_row, text=self.T("rings.point_size_label")).pack(side="left")
+        self.point_size_entry = ttk.Entry(point_size_row, width=8)
+        self.point_size_entry.insert(0, "3.0")
+        self.point_size_entry.pack(side="left", padx=(6, 0))
+
+        # [ADDED Faza 4, see PLAN.md] Window-highlight-family checkboxes --
+        # chosen once here, at launch time, and passed as --windows to
+        # renderer.py (see build_renderer_argv's own doc-comment for why
+        # this is launch-time-only rather than a live in-GL-window toggle).
+        windows_row = ttk.Frame(container)
+        windows_row.pack(fill="x", pady=(0, 6))
+        ttk.Label(windows_row, text=self.T("rings.windows_label")).pack(side="left")
+        self.bertrand_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(windows_row, text=self.T("rings.window_bertrand"),
+                         variable=self.bertrand_var).pack(side="left", padx=(6, 0))
+        self.legendre_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(windows_row, text=self.T("rings.window_legendre"),
+                         variable=self.legendre_var).pack(side="left", padx=(6, 0))
+        self.general_law_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(windows_row, text=self.T("rings.window_general_law"),
+                         variable=self.general_law_var).pack(side="left", padx=(6, 0))
+
+        general_law_row = ttk.Frame(container)
+        general_law_row.pack(fill="x", pady=(0, 10))
+        ttk.Label(general_law_row, text=self.T("rings.general_law_theta_label")).pack(side="left")
+        self.general_law_theta_entry = ttk.Entry(general_law_row, width=6)
+        self.general_law_theta_entry.insert(0, "0.5")
+        self.general_law_theta_entry.pack(side="left", padx=(6, 16))
+        ttk.Label(general_law_row, text=self.T("rings.general_law_mode_label")).pack(side="left")
+        self.general_law_mode_combo = ttk.Combobox(general_law_row, width=10, state="readonly",
+                                                     values=["stepped", "sliding"])
+        self.general_law_mode_combo.set("stepped")
+        self.general_law_mode_combo.pack(side="left", padx=(6, 0))
 
         button_row = ttk.Frame(container)
         button_row.pack(fill="x", pady=(0, 10))
@@ -131,7 +203,37 @@ class RingsTab(BaseTab):
             messagebox.showerror(self.T("rings.error_dialog_title"), self.T("rings.error_no_portal"))
             return
 
-        argv = build_renderer_argv(portal_folder, n)
+        windows = []
+        if self.bertrand_var.get():
+            windows.append("bertrand")
+        if self.legendre_var.get():
+            windows.append("legendre")
+        if self.general_law_var.get():
+            windows.append("generalLaw")
+        # Deliberately NOT _eval_quick_number here -- that helper is
+        # int-only (see its own docstring), and theta is a fraction (e.g.
+        # 0.5) -- a plain float() with a safe fallback to the same 0.5
+        # default renderer.py's own --general-law-theta argparse default
+        # uses is simpler and correct for this one field.
+        try:
+            theta = float(self.general_law_theta_entry.get().strip())
+        except ValueError:
+            theta = 0.5
+        mode = self.general_law_mode_combo.get() or "stepped"
+
+        # Same reasoning as theta above: point size is a float, and an
+        # empty/invalid field should just omit --point-size entirely so
+        # renderer.py's own argparse default (3.0) applies, rather than
+        # silently forcing some fallback value here too.
+        point_size_raw = self.point_size_entry.get().strip()
+        try:
+            point_size = float(point_size_raw) if point_size_raw else None
+        except ValueError:
+            point_size = None
+
+        argv = build_renderer_argv(portal_folder, n, windows=windows,
+                                    general_law_theta=theta, general_law_mode=mode,
+                                    point_size=point_size)
         q = queue.Queue()
         runner = LocalLoggedRunner(argv, q)
         self._runner = runner

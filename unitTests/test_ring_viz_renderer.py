@@ -179,12 +179,125 @@ def _test_empty_portal():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+# ---------------------------------------------------------------------------
+# Faza 4 (see PLAN.md): build_vertex_data's window-highlight-color blending
+# and hud_lines_for_n's HUD text -- both pure numpy/Python, no moderngl/glfw
+# import (the module only imports those inside run(), which none of these
+# tests call), so they're fully exercisable in this headless sandbox.
+# Cross-checked against ring_geometry's own already-tested functions
+# directly, not hand-picked expected values -- see test_ring_geometry.py's
+# own docstring note about why (an earlier hand-derived-expectation mistake
+# in that file, caught and fixed the same way).
+# ---------------------------------------------------------------------------
+
+def _test_build_vertex_data_no_windows_matches_old_behavior():
+    from primeatlas.ring_viz.renderer import build_vertex_data
+    from primeatlas.ring_geometry import ring_positions
+
+    primes = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23], dtype=np.int64)
+    n = 20
+    active = primes[primes <= n]
+    max_radius = 100.0
+
+    expected_pos = ring_positions(active, n, max_radius)
+    data, count, pos = build_vertex_data(active, n, max_radius)
+
+    check(count == len(active), f"ring count matches active prime count (got {count})")
+    check(np.array_equal(pos["is_hit"], expected_pos["is_hit"]),
+          "returned pos dict's is_hit matches a direct ring_positions() call")
+    check(np.allclose(data[:, 0], expected_pos["x"]) and np.allclose(data[:, 1], expected_pos["y"]),
+          "vertex x/y matches ring_positions() output exactly")
+
+    for i, p in enumerate(active):
+        is_hit = bool(expected_pos["is_hit"][i])
+        rgb = data[i, 2:5]
+        if not is_hit:
+            check(np.allclose(rgb, (0.0, 188 / 255, 212 / 255), atol=1e-6),
+                  f"non-hit ring (prime={p}) is plain cyan with no windows enabled (got {rgb})")
+        elif p >= 11:
+            check(np.allclose(rgb, (1.0, 215 / 255, 0.0), atol=1e-6),
+                  f"hit ring prime={p} (>=11) is gold with no windows enabled (got {rgb})")
+        else:
+            check(np.allclose(rgb, (1.0, 87 / 255, 34 / 255), atol=1e-6),
+                  f"hit ring prime={p} (<11) is orange with no windows enabled (got {rgb})")
+
+
+def _test_build_vertex_data_bertrand_highlight():
+    from primeatlas.ring_viz.renderer import build_vertex_data
+    from primeatlas.ring_geometry import compute_highlight_colors
+
+    primes = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37], dtype=np.int64)
+    n = 40  # bertrand window (20, 40] -- matches 23,29,31,37 among these primes
+    max_radius = 100.0
+
+    expected_colors, expected_matched = compute_highlight_colors(primes, n, {"bertrand"})
+    check(expected_matched.any(), "sanity: the chosen n/primes actually produce a non-empty Bertrand match")
+
+    data, count, _pos = build_vertex_data(primes, n, max_radius, enabled_ids={"bertrand"})
+    for i, p in enumerate(primes):
+        rgb = data[i, 2:5]
+        if expected_matched[i]:
+            expected_rgb = expected_colors[i] / 255.0
+            check(np.allclose(rgb, expected_rgb, atol=1e-6),
+                  f"Bertrand-matched ring prime={p} gets compute_highlight_colors' own blended "
+                  f"color (got {rgb}, expected {expected_rgb})")
+        else:
+            check(not np.allclose(rgb, (255, 51, 204) / np.array([255.0, 255.0, 255.0]), atol=1e-6) or p > n,
+                  f"non-Bertrand-matched ring prime={p} does not carry the Bertrand pink color")
+
+
+def _test_hud_lines_for_n():
+    from primeatlas.ring_viz.renderer import hud_lines_for_n, build_vertex_data
+    from primeatlas.ring_geometry import legendre_level_at, general_law_window_bounds
+
+    primes = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37], dtype=np.int64)
+    n = 30  # divisible by 2, 3, 5 among these primes -- a real "factors of N" case
+    max_radius = 100.0
+    enabled_ids = {"bertrand", "legendre", "generalLaw"}
+    theta, mode = 0.5, "stepped"
+
+    _data, _count, pos = build_vertex_data(primes, n, max_radius, enabled_ids, theta, mode)
+    lines = hud_lines_for_n(primes, n, pos, enabled_ids, theta, mode)
+    joined = "\n".join(lines)
+
+    expected_factors = [int(p) for p in primes if n % int(p) == 0]
+    check(bool(expected_factors), "sanity: n=30 has at least one active-prime factor among the test primes")
+    check(any(str(f) in joined for f in expected_factors) and "Factors of N" in joined,
+          f"hud_lines_for_n includes a 'Factors of N' line mentioning the real divisors "
+          f"(expected {expected_factors}, got lines={lines!r})")
+
+    lo_bertrand = n // 2
+    check(f"({lo_bertrand:,}, {n:,}]" in joined,
+          f"Bertrand window range text uses the real (floor(n/2), n] bounds (got lines={lines!r})")
+
+    k = legendre_level_at(n)
+    check(f"k={k}" in joined and f"({k * k:,}, {n:,}]" in joined,
+          f"Legendre window range text uses legendre_level_at's own k and k^2 bound "
+          f"(got lines={lines!r})")
+
+    lo, hi, gl_k, _factor = general_law_window_bounds(n, theta, mode)
+    lo_floor = int(np.floor(lo))
+    check(f"({lo_floor:,}, {hi:,}]" in joined,
+          f"General Law window range text uses general_law_window_bounds' own lo/hi "
+          f"(got lines={lines!r})")
+
+    # No enabled families, no divisors -> no lines at all (n prime, e.g. 31 is
+    # itself an active prime here, so it IS a factor of itself -- pick a
+    # value with none of the test primes dividing it and no families on).
+    _data2, _count2, pos2 = build_vertex_data(primes, 41, max_radius, set(), theta, mode)
+    empty_lines = hud_lines_for_n(primes, 41, pos2, set(), theta, mode)
+    check(empty_lines == [], f"no enabled families and no active-prime factors -> no HUD lines (got {empty_lines!r})")
+
+
 def main():
     _test_basic_multi_floor_load()
     _test_gap_between_floors()
     _test_batching_does_not_change_result()
     _test_progress_callback_invoked()
     _test_empty_portal()
+    _test_build_vertex_data_no_windows_matches_old_behavior()
+    _test_build_vertex_data_bertrand_highlight()
+    _test_hud_lines_for_n()
 
     if failures:
         print(f"\n{len(failures)} FAILURE(S)")

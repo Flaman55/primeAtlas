@@ -648,5 +648,12 @@
   "rings.console_closed_ok": "Visualization window closed.",
   "rings.status_closed": "Ring visualization closed.",
   "rings.console_closed_error": "Visualization process exited with an error (code {code}).",
-  "rings.status_error": "Ring visualization error."
+  "rings.status_error": "Ring visualization error.",
+  "rings.windows_label": "Highlight windows:",
+  "rings.window_bertrand": "Bertrand",
+  "rings.window_legendre": "Legendre",
+  "rings.window_general_law": "General Law",
+  "rings.general_law_theta_label": "theta:",
+  "rings.general_law_mode_label": "mode:",
+  "rings.point_size_label": "point size:"
 }

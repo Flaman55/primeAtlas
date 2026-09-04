@@ -130,7 +130,12 @@ _PRIME_SIEVE_DIR = os.path.join(_REPO_ROOT, "prime_sieve")
 if _PRIME_SIEVE_DIR not in sys.path:
     sys.path.insert(0, _PRIME_SIEVE_DIR)
 
-from primeatlas.ring_geometry import ring_positions
+from primeatlas.ring_geometry import (
+    ring_positions,
+    compute_highlight_colors,
+    legendre_level_at,
+    general_law_window_bounds,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -326,27 +331,108 @@ void main() {
 """
 
 
-def build_vertex_data(primes, n, max_radius):
+# [ADDED Faza 4, see PLAN.md] Colors as plain 0..255 RGB triples so they can
+# be combined with WINDOW_FAMILY_COLORS (ring_geometry.py's own scale)
+# before normalizing to 0..1 once at the very end -- ports DrumRenderer's
+# #drawRingTeeth base-color chain (see that method's own doc-comment):
+# cyan by default, gold/orange when the ring's tooth sits at phase==0 (a
+# "hit"), split at prime>=11 same as the JS version's own threshold.
+_CYAN_RGB = (0.0, 188.0, 212.0)      # "#00bcd4"
+_GOLD_RGB = (255.0, 215.0, 0.0)      # "#ffd700" -- hit, prime >= 11
+_ORANGE_RGB = (255.0, 87.0, 34.0)    # "#ff5722" -- hit, prime < 11
+
+
+def build_vertex_data(primes, n, max_radius, enabled_ids=(), theta=0.5, mode="stepped"):
     """ring_geometry.ring_positions() -> flat (x,y,r,g,b) float32 array ready
-    for a moderngl buffer. Color: cyan for a normal ring, gold for a ring
-    whose tooth currently sits at phase==0 (DrumRenderer's own 'hit' case) --
-    kept deliberately simple (no window-highlight colors ported here yet)
-    since Faza 0's job is landing the proven rendering scale, not visual
-    parity with the browser version's full highlight logic (that is Faza 1,
-    see PLAN.md)."""
+    for a moderngl buffer.
+
+    [Faza 0] Originally just cyan/gold based on hit status.
+    [Faza 4, see PLAN.md] Now also layers in window-highlight colors via
+    ring_geometry.compute_highlight_colors (already-tested Bertrand pink /
+    Legendre green / General Law violet additive blend, ported in Faza 1) --
+    ports DrumRenderer's own priority chain: base cyan, then hit recolors to
+    gold/orange, then `ring.highlightColor` (if any family matches) OVERRIDES
+    whatever came before, hit or not -- see #drawRingTeeth's own doc-comment
+    ("This file no longer knows Bertrand's pink or Legendre's green as
+    literals... it just paints whatever color... the app already computed").
+    `enabled_ids` empty (the Faza-0/3 default, no window UI wired yet at
+    launch time) reproduces the exact old cyan/gold-only behavior since
+    compute_highlight_colors returns matched=all-False for an empty family
+    set.
+
+    Deliberately does NOT port the tracked-ring white-outline recoloring
+    (needs a "Track P" UI field + its own anchor-based color pass, see the
+    project's ring-visualization task list for that follow-up) -- this pass
+    is the window-highlight half of "visual parity" only."""
     pos = ring_positions(primes, n, max_radius)
     count = len(pos["x"])
+    hit = pos["is_hit"]
+
+    rgb = np.empty((count, 3), dtype=np.float64)
+    rgb[:] = _CYAN_RGB
+    primes_arr = np.asarray(primes, dtype=np.int64)
+    hit_gold = hit & (primes_arr >= 11)
+    hit_orange = hit & (primes_arr < 11)
+    rgb[hit_gold] = _GOLD_RGB
+    rgb[hit_orange] = _ORANGE_RGB
+
+    if enabled_ids:
+        highlight_colors, matched = compute_highlight_colors(primes_arr, n, enabled_ids, theta, mode)
+        rgb[matched] = highlight_colors[matched]
+
     data = np.empty((count, 5), dtype=np.float32)
     data[:, 0] = pos["x"]
     data[:, 1] = pos["y"]
-    hit = pos["is_hit"]
-    data[hit, 2] = 1.0
-    data[hit, 3] = 0.85
-    data[hit, 4] = 0.0
-    data[~hit, 2] = 0.0
-    data[~hit, 3] = 0.74
-    data[~hit, 4] = 0.83
-    return data, count
+    data[:, 2:5] = rgb / 255.0
+    return data, count, pos
+
+
+def hud_lines_for_n(primes_active, n, pos, enabled_ids, theta, mode):
+    """Ports the non-tracked-primes subset of DrumRenderer's #drawHud /
+    StructuralSieveApp's #renderFrame draw-state construction (see those
+    methods' own doc-comments in js/render/DrumRenderer.js and
+    js/app/StructuralSieveApp.js in the RelationalMathematics repo) as
+    PLAIN TEXT LINES printed to stdout, rather than drawn as an in-GL-window
+    overlay.
+
+    Why stdout and not a GL text overlay (per PLAN.md's Faza 4 "decide
+    which [surface]" note): this project has no OpenGL text-rendering
+    pipeline (glyph atlas / freetype / textured-quad-per-glyph shader) --
+    building one from scratch here would be a real new subsystem, and one
+    this sandbox (no GPU/display) could not visually verify at all before
+    landing it. rings_tab.py's GenerationConsole pane (Faza 3) is already
+    proven working on real hardware, since LocalLoggedRunner pipes this
+    module's stdout straight into it -- reusing that live text surface for
+    HUD info is lower-risk than shipping unverified GL text rendering.
+
+    Deliberately excludes the tracked-primes LCM/phase/toResonance block
+    (#buildLcmLines in the JS) -- that needs its own "Track P" UI field and
+    LCM math port, left for a later phase (see task list).
+
+    Returns a list of plain-text lines (may be empty)."""
+    lines = []
+    factor_primes = primes_active[pos["is_hit"]] if len(primes_active) else primes_active
+    if len(factor_primes):
+        lines.append("Factors of N: " + ", ".join(str(int(p)) for p in factor_primes))
+
+    if "bertrand" in enabled_ids:
+        lo = n // 2
+        lines.append(f"Bertrand window: ({lo:,}, {n:,}]")
+
+    if "legendre" in enabled_ids:
+        k = legendre_level_at(n)
+        lo = k * k
+        lines.append(f"Legendre window: k={k}  ({lo:,}, {n:,}]")
+
+    if "generalLaw" in enabled_ids:
+        lo, hi, k, _factor = general_law_window_bounds(n, theta, mode)
+        lo_floor = int(np.floor(lo))
+        if mode == "stepped":
+            lines.append(f"General Law window (theta={theta}, k={k}): ({lo_floor:,}, {hi:,}]")
+        else:
+            lines.append(f"General Law window (theta={theta}): ({lo_floor:,}, {hi:,}]")
+
+    return lines
 
 
 def run(args):
@@ -371,9 +457,44 @@ def run(args):
     ctx = moderngl.create_context()
     ctx.enable(moderngl.BLEND)
     ctx.blend_func = moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA
+    # In an OpenGL 3.3 CORE PROFILE context, writing gl_PointSize from the
+    # vertex shader has NO EFFECT at all unless GL_PROGRAM_POINT_SIZE is
+    # explicitly enabled -- otherwise every point renders at a fixed,
+    # driver-controlled size regardless of u_point_size's value. This was
+    # missing from Faza 0's original landing (the fixed-function
+    # glPointSize() path this project never used doesn't need it, which is
+    # presumably why it went unnoticed until Artur tried changing
+    # --point-size for real and saw zero visual change -- see the
+    # "Rendered rings too small at high zoom" report/task #593, 2026-09-04).
+    ctx.enable(moderngl.PROGRAM_POINT_SIZE)
+    # Belt-and-suspenders alongside PROGRAM_POINT_SIZE above: per the GL
+    # spec, once PROGRAM_POINT_SIZE is enabled, the fixed-function
+    # glPointSize() value (ctx.point_size) is SUPPOSED to be ignored
+    # entirely in favor of the shader's own gl_PointSize output -- but
+    # setting it too costs nothing and removes one more variable if a
+    # given driver doesn't honor that part of the spec cleanly.
+    ctx.point_size = args.point_size
 
     prog = ctx.program(vertex_shader=VERTEX_SHADER, fragment_shader=FRAGMENT_SHADER)
     prog["u_point_size"].value = args.point_size
+
+    # [DIAGNOSTIC, added 2026-09-04] Artur reported that --point-size still
+    # produces no visible change at all across a wide range (0.5 to 100)
+    # even after the PROGRAM_POINT_SIZE fix above made points visible in
+    # the first place. Two real possibilities this sandbox (no GPU/display)
+    # cannot test directly: (a) the requested value genuinely isn't
+    # reaching this point (argv/parsing issue), or (b) this specific
+    # GPU/driver clamps the actual renderable point size to a narrow
+    # hardware range regardless of what the shader requests (a real,
+    # documented OpenGL behavior -- GL_POINT_SIZE_RANGE / the analogous key
+    # in ctx.info). Printing both here, unconditionally, so the next real
+    # run's console pane settles which one it is instead of guessing blind.
+    print(f"[diag] requested point size (--point-size): {args.point_size}")
+    try:
+        point_size_info = {k: v for k, v in ctx.info.items() if "POINT" in k.upper()}
+        print(f"[diag] GL point-size-related context info: {point_size_info}")
+    except Exception as e:  # noqa: BLE001 -- diagnostic only, must never crash the run
+        print(f"[diag] could not read ctx.info: {e}")
 
     print(f"Loading primes via --source={args.source} ...")
     t0 = time.perf_counter()
@@ -391,14 +512,26 @@ def run(args):
     n = int(primes[-1]) if len(primes) else 0
     max_radius = min(args.width, args.height) * 0.45
 
+    # [ADDED Faza 4, see PLAN.md] Window-highlight families enabled at
+    # launch time -- parsed once here (not per-frame): "" -> empty set,
+    # reproducing Faza 0-3's plain cyan/gold-only behavior exactly (see
+    # build_vertex_data's own doc-comment). No live in-window toggle yet
+    # (would need on-screen UI this raw GL window doesn't have) -- set via
+    # rings_tab.py's launch-time checkboxes instead, same as N itself.
+    enabled_ids = {f.strip() for f in args.windows.split(",") if f.strip()} if args.windows else set()
+    theta = args.general_law_theta
+    law_mode = args.general_law_mode
+
     state = {"pan": [0.0, 0.0], "zoom": 1.0, "dragging": False, "last_mouse": (0.0, 0.0)}
 
     def rebuild_buffer(n_value):
         t0 = time.perf_counter()
         active = primes[primes <= n_value]
-        data, count = build_vertex_data(active, n_value, max_radius)
+        data, count, pos = build_vertex_data(active, n_value, max_radius, enabled_ids, theta, law_mode)
         t1 = time.perf_counter()
         print(f"N={n_value:,}  rings={count:,}  rebuild={1000 * (t1 - t0):.1f}ms")
+        for line in hud_lines_for_n(active, n_value, pos, enabled_ids, theta, law_mode):
+            print(line)
         return ctx.buffer(data.tobytes()), count
 
     vbo, ring_count = rebuild_buffer(n)
@@ -491,10 +624,23 @@ def main():
     parser.add_argument("--height", type=int, default=1000)
     parser.add_argument("--point-size", type=float, default=3.0)
     parser.add_argument("--n-step", type=int, default=1000)
+    # [ADDED Faza 4, see PLAN.md] Window-highlight-color parity with the
+    # browser version's Bertrand/Legendre/General Law toggles -- comma list
+    # of family ids among the three ring_geometry.WINDOW_FAMILY_COLORS keys.
+    parser.add_argument("--windows", type=str, default="",
+                         help="comma-separated window families to highlight: bertrand,legendre,generalLaw")
+    parser.add_argument("--general-law-theta", type=float, default=0.5)
+    parser.add_argument("--general-law-mode", choices=["stepped", "sliding"], default="stepped")
     args = parser.parse_args()
 
     if args.source == "magazyn" and not args.portal_folder:
         parser.error("--source magazyn requires --portal-folder")
+
+    valid_families = {"bertrand", "legendre", "generalLaw"}
+    requested_families = {f.strip() for f in args.windows.split(",") if f.strip()}
+    unknown = requested_families - valid_families
+    if unknown:
+        parser.error(f"--windows has unknown family id(s) {sorted(unknown)!r}, expected any of {sorted(valid_families)}")
 
     run(args)
 
