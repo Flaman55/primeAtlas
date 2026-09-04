@@ -289,6 +289,43 @@ def _test_hud_lines_for_n():
     check(empty_lines == [], f"no enabled families and no active-prime factors -> no HUD lines (got {empty_lines!r})")
 
 
+def _test_initial_n_for_source():
+    """[ADDED, see Artur's 2026-09-04 bug report] run() must open the ring
+    view on the N the user actually asked for, not on the last loaded prime.
+    Regression test for initial_n_for_source()'s extraction of that fix --
+    see that function's own docstring for the full bug description."""
+    from primeatlas.ring_viz.renderer import initial_n_for_source
+
+    primes = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37], dtype=np.int64)
+
+    # sieve/magazyn: real user-specified upto (e.g. 1000, typed in rings_tab's
+    # N field) -- must open exactly there, even though 1000 itself isn't
+    # prime and the largest actual prime <=1000 among these primes is 37.
+    check(initial_n_for_source("magazyn", 1000, primes) == 1000,
+          "source=magazyn opens on --upto verbatim, not primes[-1] (was the bug: "
+          "typing 1000 silently opened on 997/whatever the largest loaded prime was)")
+    check(initial_n_for_source("sieve", 1000, primes) == 1000,
+          "source=sieve opens on --upto verbatim too (same real-target-N semantics as magazyn)")
+
+    # An upto that happens to BE prime should still just be itself, not
+    # accidentally "work" only by coincidence.
+    check(initial_n_for_source("magazyn", 37, primes) == 37,
+          "source=magazyn with a prime --upto still returns --upto itself, not primes[-1]")
+
+    # synthetic: no real user-specified N (only --count) -- keeps the old
+    # primes[-1] behavior, since there is nothing else meaningful to open on.
+    check(initial_n_for_source("synthetic", 1000, primes) == int(primes[-1]),
+          f"source=synthetic still opens on the last generated value (got "
+          f"{initial_n_for_source('synthetic', 1000, primes)}, expected {int(primes[-1])})")
+
+    empty = np.empty(0, dtype=np.int64)
+    check(initial_n_for_source("synthetic", 1000, empty) == 0,
+          "source=synthetic with an empty array falls back to 0, does not crash")
+    check(initial_n_for_source("magazyn", 1000, empty) == 1000,
+          "source=magazyn with an empty array still opens on --upto (an empty ring field "
+          "at the requested N, not a crash or a silent fallback to 0)")
+
+
 def main():
     _test_basic_multi_floor_load()
     _test_gap_between_floors()
@@ -298,6 +335,7 @@ def main():
     _test_build_vertex_data_no_windows_matches_old_behavior()
     _test_build_vertex_data_bertrand_highlight()
     _test_hud_lines_for_n()
+    _test_initial_n_for_source()
 
     if failures:
         print(f"\n{len(failures)} FAILURE(S)")

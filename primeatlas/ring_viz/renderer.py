@@ -387,6 +387,29 @@ def build_vertex_data(primes, n, max_radius, enabled_ids=(), theta=0.5, mode="st
     return data, count, pos
 
 
+def initial_n_for_source(source, upto, primes):
+    """Picks the N the ring view should OPEN on, given how the ring array was
+    sourced.
+
+    [FIXED, see Artur's 2026-09-04 bug report] For --source sieve/magazyn,
+    the user has a real target N in mind (rings_tab.py's N field, passed
+    through verbatim as --upto) -- the view must open exactly there, not on
+    whatever the last loaded prime happens to be. ring_positions() computes
+    is_hit as n % prime == 0 (real divisors of N), so N is not required to be
+    prime itself; snapping to primes[-1] silently showed the wrong number
+    (e.g. typing 1000 opened on N=997, the largest prime <=1000, with
+    "Factors of N: 997" -- itself, since 997 is prime -- instead of 1000's
+    real factors 2 and 5).
+
+    --source synthetic has no user-specified target N at all (only --count,
+    an arbitrary ring COUNT -- see load_synthetic's own docstring), so there
+    is no "the value the user asked for" to open on; it keeps using the last
+    generated value instead, same as before this fix."""
+    if source == "synthetic":
+        return int(primes[-1]) if len(primes) else 0
+    return upto
+
+
 def hud_lines_for_n(primes_active, n, pos, enabled_ids, theta, mode):
     """Ports the non-tracked-primes subset of DrumRenderer's #drawHud /
     StructuralSieveApp's #renderFrame draw-state construction (see those
@@ -509,7 +532,7 @@ def run(args):
     t1 = time.perf_counter()
     print(f"Loaded {len(primes):,} values in {t1 - t0:.2f}s")
 
-    n = int(primes[-1]) if len(primes) else 0
+    n = initial_n_for_source(args.source, args.upto, primes)
     max_radius = min(args.width, args.height) * 0.45
 
     # [ADDED Faza 4, see PLAN.md] Window-highlight families enabled at
