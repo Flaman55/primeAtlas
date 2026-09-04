@@ -41,11 +41,12 @@ Deliberately decoupled from two things this module is NOT responsible for:
          --upto, for a real-looking demo.
        - magazyn: reads real floors from an existing PrimeAtlas portal folder
          via primeatlas/storage.py + prime_sieve_v1.read_prime_window, up to
-         --upto. NOTE (Faza 0 landing): still the naive, unchunked per-floor
-         loop from the original prototype -- Faza 2 (see PLAN.md) hardens
-         this against the same class of failure the project already hit once
-         with 04_C_skaner reading a magazyn in one giant pass. Fine for the
-         scales exercised so far; do not assume it scales past that yet.
+         --upto. HARDENED (Faza 2, see PLAN.md and load_magazyn's own
+         docstring): real floor enumeration via storage.list_pietra(), reads
+         batched (not one unbounded pass), optional progress_callback -- the
+         real per-load wall-clock ceiling at extreme N is still unmeasured
+         against a real magazyn (no such data or GPU in the sandbox that
+         wrote this), see load_magazyn's own docstring for what to expect.
 
   2. Whether the resulting picture is mathematically interesting at huge N --
      a separate, later question once the rendering-feasibility question this
@@ -165,19 +166,62 @@ def load_sieve(upto):
     return np.array(primes, dtype=np.int64)
 
 
-def load_magazyn(portal_folder, upto):
+def load_magazyn(portal_folder, upto, progress_callback=None, batch_files=64):
     """Reads real primes up to `upto` from an existing PrimeAtlas portal
-    folder, floor by floor (10p0, 10p1, ... up to the floor containing
-    `upto`), via primeatlas.storage's own file-listing helpers and
+    folder, via primeatlas.storage's own file-listing helpers and
     prime_sieve_v1.read_prime_window for the actual decode.
 
-    NAIVE ON PURPOSE, FOR NOW -- see this module's own docstring, data-source
-    point 1: this is the unmodified Faza-0 landing of the original
-    feasibility prototype's loader. It reads every window file for every
-    floor up to `upto` in one unbounded pass; Faza 2 (see PLAN.md) replaces
-    this with a chunked version before any real large-N usage. `prime_sieve`
-    (this repo's sibling top-level directory to `primeatlas/`) is added to
-    sys.path here because primeatlas.storage itself does a bare
+    HARDENED (Faza 2, see PLAN.md) vs the Faza-0 landing of the original
+    feasibility prototype's loader, in three ways:
+
+    1. Enumerates REAL floors on disk via storage.list_pietra() instead of
+       blindly incrementing floor with only a fixed sanity cap (`floor > 30`)
+       as a guard. A gap in the portal (e.g. floor 5 populated, floor 6 not
+       yet) no longer costs an empty list_source_filenames() call for every
+       skipped floor, and a portal whose highest real floor is well below
+       `upto`'s own floor stops there immediately instead of still counting
+       up toward the old hardcoded 30 regardless.
+    2. Reads window files in BOUNDED BATCHES (`batch_files` at a time,
+       default 64) rather than accumulating one unbounded Python list across
+       an entire floor (or several floors) before ever concatenating -- see
+       this project's own `c_skaner_odczyt_porcjami` history (04_C_skaner
+       once failed the whole sieve, without warning, from a single ~1GB
+       fread instead of reading in ~160MB portions) for the class of failure
+       an unbounded single pass caused elsewhere in this codebase. Each
+       batch is concatenated and appended to the running result list right
+       away, so peak EXTRA memory during the load is bounded by one batch's
+       worth of arrays, not the whole load -- the final full-array
+       concatenate at the end is unavoidable (the renderer needs one
+       contiguous sorted array to hand to ring_geometry), but the batching
+       here at least keeps the INTERMEDIATE working set bounded.
+    3. Accepts an optional `progress_callback(base_exponent, files_read_in_floor,
+       primes_loaded_so_far)`, invoked after every batch, so a caller
+       (primeatlas/rings_tab.py, Faza 3) can drive a real progress bar
+       instead of a frozen GUI during what can be a multi-second load at
+       real magazyn scale. Deliberately NOT trying to make the load itself
+       faster (see this module's own docstring, data-source point 1, for why
+       generation/read throughput is explicitly out of scope for this
+       feature to optimize) -- only making the existing cost observable and
+       boundable instead of an opaque hang.
+
+    REAL CEILING (documented per PLAN.md's Faza 2 ask): NOT benchmarked here
+    -- this sandbox has no real magazyn data or GPU to measure against. The
+    rendering ceiling already confirmed on Artur's real hardware is
+    20,000,000 rings at 50+ fps (see PLAN.md's "Feasibility already
+    confirmed" section); this loader's own cost is dominated by per-file
+    open() latency on the FUSE-mounted storage drive (~5ms/file -- the same
+    figure storage.update_pietro_totals_cache()'s own docstring measured on
+    this exact drive), not the PGS decode work itself. That means the real
+    bottleneck to watch for at very high N is FILE COUNT, not prime count: a
+    floor with many thousands of small window files costs far more
+    wall-clock load time than one with a few large ones holding the same
+    total prime count. Artur should measure the real number on his own
+    hardware once Faza 3's tab exists to launch this against a real
+    magazyn -- this docstring intentionally does not claim a number this
+    sandbox cannot verify.
+
+    `prime_sieve` (this repo's sibling top-level directory to `primeatlas/`)
+    is added to sys.path here because primeatlas.storage itself does a bare
     `import prime_sieve_v1` / `import window_sharding` (see storage.py's own
     module docstring for why those two live as separate top-level modules
     rather than inside this package)."""
@@ -188,27 +232,44 @@ def load_magazyn(portal_folder, upto):
     import prime_sieve_v1
 
     chunks = []
-    floor = 0
-    while True:
-        base_exponent = floor
+    total_loaded = 0
+
+    for base_exponent in storage.list_pietra(portal_folder):
         floor_lo = 10 ** base_exponent if base_exponent > 0 else 0
         if floor_lo > upto:
             break
+
         entries = storage.list_source_filenames(portal_folder, base_exponent)
         if not entries:
-            floor += 1
             continue
-        for name, path in entries:
-            window_primes = prime_sieve_v1.read_prime_window(path)
-            arr = np.asarray(window_primes, dtype=np.int64)
-            if arr.size and arr[0] > upto:
+
+        files_read_in_floor = 0
+        floor_done = False
+        for batch_start in range(0, len(entries), batch_files):
+            batch = entries[batch_start:batch_start + batch_files]
+            batch_chunks = []
+            for name, path in batch:
+                window_primes = prime_sieve_v1.read_prime_window(path)
+                arr = np.asarray(window_primes, dtype=np.int64)
+                files_read_in_floor += 1
+                if arr.size and arr[0] > upto:
+                    floor_done = True
+                    break
+                trimmed = arr[arr <= upto]
+                if trimmed.size:
+                    batch_chunks.append(trimmed)
+                    total_loaded += int(trimmed.size)
+                if arr.size and arr[-1] >= upto:
+                    floor_done = True
+                    break
+
+            if batch_chunks:
+                chunks.append(batch_chunks[0] if len(batch_chunks) == 1 else np.concatenate(batch_chunks))
+            if progress_callback is not None:
+                progress_callback(base_exponent, files_read_in_floor, total_loaded)
+            if floor_done:
                 break
-            chunks.append(arr[arr <= upto])
-            if arr.size and arr[-1] >= upto:
-                break
-        floor += 1
-        if floor > 30:  # sanity guard against a runaway loop on a malformed portal_folder
-            break
+
     if not chunks:
         return np.empty(0, dtype=np.int64)
     result = np.concatenate(chunks)
