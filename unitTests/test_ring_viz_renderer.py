@@ -326,6 +326,58 @@ def _test_initial_n_for_source():
           "at the requested N, not a crash or a silent fallback to 0)")
 
 
+def _test_zoom_to_point():
+    """[ADDED, see Artur's 2026-09-04 bug report] Regression test for
+    zoom_to_point()'s fix -- see that function's own docstring for the full
+    before/after bug description (old on_scroll only multiplied zoom, never
+    adjusted pan, so every zoom anchored on the ring field's mathematical
+    center instead of the cursor -- zooming in on a panned-to tail raced
+    back toward the center, zooming out flew the view away entirely)."""
+    from primeatlas.ring_viz.renderer import zoom_to_point
+
+    # Core invariant: whatever world-space point sits under `cursor` before
+    # the zoom must map back to that SAME screen point after the zoom, for
+    # any old_zoom/old_pan/cursor/factor combination -- that's the actual
+    # definition of "zoom to cursor".
+    cases = [
+        (1.0, (400.0, 300.0), (400.0, 300.0), (800.0, 600.0), 1.1),   # cursor at screen/viewport center
+        (1.0, (400.0, 300.0), (700.0, 550.0), (800.0, 600.0), 1.1),   # cursor near a corner, zooming in
+        (2.5, (100.0, 900.0), (50.0, 20.0), (800.0, 600.0), 1 / 1.1), # panned far off-origin, zooming out
+        (0.3, (-500.0, 1200.0), (0.0, 0.0), (800.0, 600.0), 1.1),     # extreme pan+zoom, cursor at origin
+    ]
+    for old_zoom, old_pan, cursor, viewport, factor in cases:
+        cx, cy = cursor
+        old_pan_x, old_pan_y = old_pan
+        world_x = (cx - old_pan_x) / old_zoom
+        world_y = (cy - old_pan_y) / old_zoom
+
+        new_zoom, new_pan = zoom_to_point(old_zoom, old_pan, cursor, viewport, factor)
+        new_pan_x, new_pan_y = new_pan
+
+        check(abs(new_zoom - old_zoom * factor) < 1e-9,
+              f"zoom itself still scales by factor exactly (old={old_zoom}, factor={factor}, "
+              f"got new_zoom={new_zoom})")
+
+        screen_after_x = world_x * new_zoom + new_pan_x
+        screen_after_y = world_y * new_zoom + new_pan_y
+        check(abs(screen_after_x - cx) < 1e-6 and abs(screen_after_y - cy) < 1e-6,
+              f"the world point under the cursor before the zoom stays under the cursor "
+              f"after it (cursor={cursor}, old_zoom={old_zoom}, old_pan={old_pan}, factor={factor}: "
+              f"world=({world_x},{world_y}) maps to screen=({screen_after_x},{screen_after_y}) "
+              f"after zoom, expected ({cx},{cy}))")
+
+    # Regression check for the OLD (buggy) behavior specifically: with the
+    # bug, new_pan == old_pan always (pan never adjusted) -- confirm the fix
+    # actually changes pan whenever the cursor isn't exactly at world (0,0)'s
+    # current screen position (the one case where old and new coincidentally
+    # agree, since that point's own zoom-anchor never needed correcting).
+    old_zoom, old_pan, cursor, viewport, factor = 1.0, (400.0, 300.0), (700.0, 550.0), (800.0, 600.0), 1.1
+    _new_zoom, new_pan = zoom_to_point(old_zoom, old_pan, cursor, viewport, factor)
+    check(new_pan != old_pan,
+          f"pan is actually adjusted by the zoom (not left untouched, which was the bug) -- "
+          f"got new_pan={new_pan}, old_pan={old_pan}")
+
+
 def main():
     _test_basic_multi_floor_load()
     _test_gap_between_floors()
@@ -336,6 +388,7 @@ def main():
     _test_build_vertex_data_bertrand_highlight()
     _test_hud_lines_for_n()
     _test_initial_n_for_source()
+    _test_zoom_to_point()
 
     if failures:
         print(f"\n{len(failures)} FAILURE(S)")

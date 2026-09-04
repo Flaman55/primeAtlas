@@ -387,6 +387,44 @@ def build_vertex_data(primes, n, max_radius, enabled_ids=(), theta=0.5, mode="st
     return data, count, pos
 
 
+def zoom_to_point(old_zoom, old_pan, cursor, viewport, factor):
+    """Computes the new (zoom, pan) that keeps the WORLD-space point
+    currently under `cursor` fixed on screen after multiplying zoom by
+    `factor` -- i.e. real "zoom to cursor" (or, called with the viewport's
+    own center as `cursor`, "zoom to screen center").
+
+    [FIXED, see Artur's 2026-09-04 bug report] The vertex shader computes
+    screen = world*zoom + pan (see VERTEX_SHADER's u_pan/u_zoom uniforms),
+    where `pan` here is the EFFECTIVE pan already including the viewport-
+    center offset (i.e. exactly the u_pan value -- run()'s render loop adds
+    state["pan"] + viewport/2 to get this; see this function's own callers).
+    Naively multiplying zoom alone (the old on_scroll behavior) leaves world
+    position (0,0) -- the ring field's own mathematical center -- pinned to
+    whatever screen point `pan` currently is, regardless of where the cursor
+    or the viewport center actually are. That made every zoom anchor on the
+    ring field's center: zooming in on a panned-to tail raced back toward
+    that center instead of staying under the cursor, and zooming out from
+    there flew the view away from the ring field entirely.
+
+    `old_pan`, returned `new_pan` -- (x, y) tuples, the EFFECTIVE pan (world
+    origin's current screen position), NOT run()'s `state["pan"]` (which is
+    that value minus viewport/2 -- see run()'s on_scroll for the conversion
+    at both ends of a call to this function).
+    `cursor`, `viewport` -- (x, y) tuples in the same screen-pixel space as
+    `old_pan`.
+    `factor` -- zoom multiplier (>1 to zoom in, <1 to zoom out).
+
+    Returns (new_zoom, (new_pan_x, new_pan_y))."""
+    new_zoom = old_zoom * factor
+    cx, cy = cursor
+    old_pan_x, old_pan_y = old_pan
+    world_x = (cx - old_pan_x) / old_zoom
+    world_y = (cy - old_pan_y) / old_zoom
+    new_pan_x = cx - world_x * new_zoom
+    new_pan_y = cy - world_y * new_zoom
+    return new_zoom, (new_pan_x, new_pan_y)
+
+
 def initial_n_for_source(source, upto, primes):
     """Picks the N the ring view should OPEN on, given how the ring array was
     sourced.
@@ -561,8 +599,22 @@ def run(args):
     vao = ctx.vertex_array(prog, [(vbo, "2f 3f", "in_pos", "in_color")])
 
     def on_scroll(_window, _dx, dy):
+        # [FIXED, see Artur's 2026-09-04 bug report and zoom_to_point's own
+        # docstring for the full before/after explanation] Previously this
+        # only multiplied state["zoom"], leaving state["pan"] untouched --
+        # which anchored every zoom on the ring field's own mathematical
+        # center rather than the cursor. zoom_to_point() does the real
+        # zoom-to-cursor math; this closure only converts between
+        # state["pan"] (relative to viewport center) and the EFFECTIVE pan
+        # that function needs (absolute screen position of world (0,0),
+        # matching what the shader's u_pan uniform actually receives below).
         factor = 1.1 if dy > 0 else (1 / 1.1)
-        state["zoom"] *= factor
+        width, height = glfw.get_framebuffer_size(window)
+        old_pan = (state["pan"][0] + width / 2, state["pan"][1] + height / 2)
+        new_zoom, new_pan = zoom_to_point(state["zoom"], old_pan, state["last_mouse"], (width, height), factor)
+        state["zoom"] = new_zoom
+        state["pan"][0] = new_pan[0] - width / 2
+        state["pan"][1] = new_pan[1] - height / 2
 
     def on_mouse_button(_window, button, action, _mods):
         if button == glfw.MOUSE_BUTTON_LEFT:
