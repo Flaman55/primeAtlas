@@ -304,6 +304,75 @@ def _test_compute_tracked_colors():
           "compute_tracked_colors: exactly 2 rings matched (one per distinct anchor)")
 
 
+def _brute_resonance_at(primes_arr, n):
+    """Independent, unvectorized reimplementation of the SAME formula
+    resonance_events_in_range is supposed to compute in bulk (mirrors
+    SieveModel.js's getStepState per-n resonance test directly, not the bulk
+    marking-pass algorithm) -- used ONLY as a cross-check in the test below,
+    deliberately NOT sharing any code with the module under test, after two
+    hand-derived expectations elsewhere in this file turned out wrong on
+    first pass. If this and resonance_events_in_range disagree, at least one
+    of the two independent derivations has a bug worth finding, rather than
+    trusting either one blind."""
+    factors = []
+    primorial = 1
+    max_resonance = 0
+    still_growing = True
+    for p in primes_arr:
+        p = int(p)
+        if p > n:
+            break
+        if n % p == 0:
+            factors.append(p)
+        if still_growing:
+            primorial *= p
+            if primorial > n:
+                still_growing = False
+            else:
+                max_resonance += 1
+    active = max_resonance > 0 and len(factors) >= max_resonance
+    return active, factors
+
+
+def _test_resonance_events_in_range():
+    from primeatlas.ring_geometry import resonance_events_in_range
+
+    primes = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47], dtype=np.int64)
+    from_n, to_n = 0, 60
+
+    events = resonance_events_in_range(primes, from_n, to_n)
+    event_by_n = {e["n"]: e["factors"] for e in events}
+
+    brute_ns = []
+    mismatches = []
+    for n in range(from_n, to_n + 1):
+        active, factors = _brute_resonance_at(primes, n)
+        if active:
+            brute_ns.append(n)
+            if n not in event_by_n:
+                mismatches.append(f"n={n}: brute says active, resonance_events_in_range missed it")
+            elif sorted(event_by_n[n]) != sorted(factors):
+                mismatches.append(f"n={n}: factor mismatch, brute={sorted(factors)} vs ported={sorted(event_by_n[n])}")
+    for n in event_by_n:
+        if n not in brute_ns:
+            mismatches.append(f"n={n}: resonance_events_in_range flagged it, brute says not active")
+
+    check(not mismatches,
+          "resonance_events_in_range matches an independent per-n brute-force reimplementation over n in [0,60]"
+          + ("" if not mismatches else f" -- {mismatches[:3]}"))
+    check(len(brute_ns) > 0,
+          "sanity: this prime list + range actually contains at least one resonance event (a vacuous pass would be a weak test)")
+
+    check(resonance_events_in_range(primes, 10, 5) == [],
+          "resonance_events_in_range returns [] when to_n < from_n")
+    # n=0 with to_n=0: the smallest active prime (2) already exceeds to_n, so
+    # no threshold is ever reached (max_resonance stays 0 for every n in
+    # range) -- the honest "not enough range to have a resonance yet" case,
+    # not a crash or an off-by-one.
+    check(resonance_events_in_range(primes, 0, 0) == [],
+          "resonance_events_in_range(primes, 0, 0) correctly finds no event (to_n=0 is below the smallest active prime)")
+
+
 def main():
     _test_legendre_level_at()
     _test_ring_radii()
@@ -315,6 +384,7 @@ def main():
     _test_blend_family_colors()
     _test_compute_highlight_colors_strict_sticky_precedence()
     _test_compute_tracked_colors()
+    _test_resonance_events_in_range()
 
     if failures:
         print(f"\n{len(failures)} FAILURE(S)")

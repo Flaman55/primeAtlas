@@ -421,3 +421,80 @@ def active_window_count(enabled_ids):
     already-resolved set directly), kept as a named function purely so a
     caller mirrors the JS call site 1:1 rather than inlining `len(...)`."""
     return len(enabled_ids)
+
+
+# ---------------------------------------------------------------------------
+# Resonance -- [ADDED Faza 1, PLAN.md] ports SieveModel.resonanceEventsInRange,
+# the bulk "goto catch-up" resonance-flash finder used by
+# StructuralSieveApp's resonance log. See that JS method's own extensive
+# doc-comment (SieveModel.js) for the full algorithm rationale and the
+# long-standing toy bug it fixes (goto silently skipping every resonance
+# event strictly before the jumped-to n). Ported here as a near-literal
+# translation rather than further-vectorized, because the JS algorithm is
+# itself already the efficient form (a marking pass, not O(range * primes)
+# trial division) -- the one place numpy helps is the per-prime multiple
+# marking (a slice increment instead of a per-multiple Python loop).
+# ---------------------------------------------------------------------------
+
+def resonance_events_in_range(primes, from_n, to_n):
+    """Every "resonance" step n in [from_n, to_n] (inclusive): n is a
+    resonance step when every prime whose leading primorial product still
+    fits under n also divides n (getStepState's own doc-comment has the
+    full definition; this is the BULK finder for a whole span at once, not
+    a per-n test).
+
+    Returns a list of {"n": int, "factors": [int, ...]} dicts in ascending n
+    order, factors listing every dividing prime for that n (same shape as
+    the JS version's plain objects).
+    """
+    if to_n < from_n:
+        return []
+    primes_arr = np.asarray(primes, dtype=np.int64)
+    size = to_n - from_n + 1
+    factor_count = np.zeros(size, dtype=np.int64)
+
+    # Marking pass: for each active prime p, bump every multiple of p inside
+    # [from_n, to_n] by 1 (a numpy slice add instead of the JS version's own
+    # per-multiple loop -- same O((to_n-from_n) log log to_n) shape overall).
+    for p in primes_arr:
+        p_int = int(p)
+        if p_int > to_n:
+            break
+        m = max(from_n, p_int)
+        m += (p_int - (m % p_int)) % p_int  # round m up to the next multiple of p
+        if m > to_n:
+            continue
+        start = m - from_n
+        factor_count[start::p_int] += 1
+
+    # maxResonance(n) only changes at the handful of n where the running
+    # primorial crosses n (Python ints here, not int64, so this stays exact
+    # well past where a naive int64 accumulator would silently overflow --
+    # a correctness improvement over the JS version's plain float64 numbers,
+    # though not one expected to matter at the N scale this module targets).
+    thresholds = []
+    primorial = 1
+    for p in primes_arr:
+        primorial *= int(p)
+        if primorial > to_n:
+            break
+        thresholds.append(primorial)
+
+    events = []
+    threshold_idx = 0
+    for offset in range(size):
+        n = from_n + offset
+        while threshold_idx < len(thresholds) and thresholds[threshold_idx] <= n:
+            threshold_idx += 1
+        max_resonance = threshold_idx
+        count = int(factor_count[offset])
+        if max_resonance > 0 and count >= max_resonance:
+            factors = []
+            for p in primes_arr:
+                p_int = int(p)
+                if p_int > n or len(factors) >= count:
+                    break
+                if n % p_int == 0:
+                    factors.append(p_int)
+            events.append({"n": n, "factors": factors})
+    return events
