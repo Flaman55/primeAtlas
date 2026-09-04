@@ -158,12 +158,163 @@ def _test_general_law():
           "Sliding mode k/factor are None (no level concept)")
 
 
+def _test_legendre_highlighted_sticky():
+    from primeatlas.ring_geometry import is_legendre_highlighted, is_legendre_member
+
+    # n=30: level k = floor(sqrt(29)) = 5, window (25,30] -> strict member: 29 only.
+    primes = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23, 29], dtype=np.int64)
+    strict = is_legendre_member(primes, 30)
+    check(list(strict) == [False] * 9 + [True],
+          "is_legendre_member at n=30: only 29 strictly in (25,30]")
+
+    # Sticky test uses each RING's OWN prime value, not n=30. For ring=23:
+    # legendre_level_at(23) = floor(sqrt(22)) = 4, close_edge = 5^2 = 25,
+    # next_crossing = (25 // 23 + 1) * 23 = (1+1)*23 = 46 > 30 -> still sticky-highlighted.
+    sticky = is_legendre_highlighted(primes, 30)
+    check(bool(sticky[primes == 23][0]) is True,
+          "is_legendre_highlighted: ring 23 still sticky-green at n=30 (own window not yet re-crossed)")
+    check(bool(sticky[primes == 29][0]) is True,
+          "is_legendre_highlighted: ring 29 (strict member) is also sticky-highlighted")
+    # Small primes cycle out of sticky status fast: legendre_level_at(2)=1,
+    # closeEdge=(1+1)^2=4, nextCrossing=(4//2+1)*2=6 -- by n=30 ring 2's own
+    # sticky window closed long ago (verified against SieveModel.js's
+    # isLegendreHighlighted directly, not hand-derived -- see this test
+    # file's own note on why hand-derived anchor expectations were wrong
+    # twice before this fix).
+    check(bool(is_legendre_highlighted(np.array([2]), 30)[0]) is False,
+          "is_legendre_highlighted: ring 2's own sticky window (closed at n=6) has long since lapsed by n=30")
+
+
+def _test_anchor_functions():
+    from primeatlas.ring_geometry import bertrand_anchor_at, legendre_anchor_at, general_law_anchor_at
+
+    primes = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23, 29], dtype=np.int64)
+    # bertrand_anchor_at replays the freeze/jump chain from scratch (see
+    # SieveModel.js's bertrandAnchorAt doc-comment): anchor starts at 2, and
+    # jumps to the largest active prime < 2*anchor whenever n >= 2*anchor.
+    # At n=30 the chain is 2->3->5->7->13->23 (2*13=26<=30 triggers one more
+    # jump to 23; 2*23=46>30 stops it there).
+    check(bertrand_anchor_at(primes, 30) == 23,
+          "bertrand_anchor_at(30): freeze/jump chain 2->3->5->7->13->23 (2*23=46 > 30 stops the chain)")
+    check(legendre_anchor_at(primes, 30) == 23,
+          "legendre_anchor_at(30): level k=5, largest prime < 25 is 23 (coincides with bertrand here)")
+    check(bertrand_anchor_at(np.array([], dtype=np.int64), 30) is None,
+          "bertrand_anchor_at with no primes returns None")
+    check(general_law_anchor_at(primes, 30, 0.5, "stepped") == legendre_anchor_at(primes, 30),
+          "general_law_anchor_at @theta=0.5 stepped matches legendre_anchor_at exactly")
+
+    # n=40 is where Bertrand and Legendre anchors genuinely diverge (used by
+    # _test_compute_tracked_colors below to exercise a real two-family blend
+    # rather than a coincidental tie).
+    primes_40 = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37], dtype=np.int64)
+    check(bertrand_anchor_at(primes_40, 40) == 23,
+          "bertrand_anchor_at(40): chain 2->3->5->7->13->23 (2*23=46 > 40 stops the chain)")
+    check(legendre_anchor_at(primes_40, 40) == 31,
+          "legendre_anchor_at(40): level k=6, largest prime < 36 is 31")
+
+
+def _test_blend_family_colors():
+    from primeatlas.ring_geometry import _blend_family_colors, WINDOW_FAMILY_COLORS
+
+    masks = {
+        "bertrand": np.array([True, False, True]),
+        "legendre": np.array([True, True, False]),
+    }
+    colors, matched = _blend_family_colors(masks)
+    expected_ring0 = np.clip(
+        np.array(WINDOW_FAMILY_COLORS["bertrand"], dtype=np.float64)
+        + np.array(WINDOW_FAMILY_COLORS["legendre"], dtype=np.float64),
+        0, 255,
+    )
+    check(np.allclose(colors[0], expected_ring0), "_blend_family_colors: ring 0 additively sums both families, clamped")
+    check(np.allclose(colors[1], WINDOW_FAMILY_COLORS["legendre"]), "_blend_family_colors: ring 1 is pure legendre")
+    check(np.allclose(colors[2], WINDOW_FAMILY_COLORS["bertrand"]), "_blend_family_colors: ring 2 is pure bertrand")
+    check(list(matched) == [True, True, True], "_blend_family_colors: matched True wherever any family contributed")
+
+    empty_colors, empty_matched = _blend_family_colors({})
+    check(empty_colors.shape == (0, 3) and empty_matched.shape == (0,),
+          "_blend_family_colors: no families gives empty arrays")
+
+
+def _test_compute_highlight_colors_strict_sticky_precedence():
+    from primeatlas.ring_geometry import compute_highlight_colors, WINDOW_FAMILY_COLORS
+
+    # Hand-derived scenario (n=30, Bertrand ON window (15,30], Legendre ON
+    # strict window (25,30] containing only 29): rings 17/19/23 are
+    # Bertrand-strict AND Legendre-sticky (see _test_legendre_highlighted_sticky
+    # for why 23 is sticky), but the two-tier strict/sticky rule must resolve
+    # them to PURE Bertrand pink, since Bertrand strictly matches those rings
+    # and sticky-only Legendre must NOT blend in once any family strictly
+    # matches. Ring 29 is strict for BOTH families and must be a genuine blend.
+    primes = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23, 29], dtype=np.int64)
+    colors, matched = compute_highlight_colors(primes, 30, {"bertrand", "legendre"})
+
+    def idx(p):
+        return int(np.where(primes == p)[0][0])
+
+    for p in (17, 19, 23):
+        check(np.allclose(colors[idx(p)], WINDOW_FAMILY_COLORS["bertrand"]),
+              f"compute_highlight_colors: ring {p} is pure Bertrand pink (strict wins over Legendre's sticky-only match)")
+
+    expected_29 = np.clip(
+        np.array(WINDOW_FAMILY_COLORS["bertrand"], dtype=np.float64)
+        + np.array(WINDOW_FAMILY_COLORS["legendre"], dtype=np.float64),
+        0, 255,
+    )
+    check(np.allclose(colors[idx(29)], expected_29),
+          "compute_highlight_colors: ring 29 is a genuine Bertrand+Legendre blend (both strictly match)")
+
+    for p in (2, 3, 5, 7, 11, 13):
+        check(bool(matched[idx(p)]) is False,
+              f"compute_highlight_colors: ring {p} matches neither family (outside both windows, not sticky either)")
+
+    # No enabled families -> nothing matches, empty-but-correctly-shaped output.
+    empty_colors, empty_matched = compute_highlight_colors(primes, 30, set())
+    check(empty_colors.shape == (10, 3) and not empty_matched.any(),
+          "compute_highlight_colors: empty enabled_ids matches nothing but keeps ring count")
+
+
+def _test_compute_tracked_colors():
+    from primeatlas.ring_geometry import (
+        compute_tracked_colors,
+        bertrand_anchor_at,
+        legendre_anchor_at,
+        WINDOW_FAMILY_COLORS,
+    )
+
+    # n=40, not n=30: at n=30 both anchors happen to coincide at 23 (see
+    # _test_anchor_functions), which would make this test pass even if the
+    # two-family separation were broken. n=40 is confirmed (by direct
+    # computation, not hand arithmetic) to give genuinely different anchors.
+    primes = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37], dtype=np.int64)
+    b_anchor = bertrand_anchor_at(primes, 40)
+    l_anchor = legendre_anchor_at(primes, 40)
+    check(b_anchor != l_anchor, "sanity: bertrand and legendre anchors differ at n=40 (23 vs 31)")
+
+    colors, matched = compute_tracked_colors(primes, 40, {"bertrand", "legendre"})
+
+    def idx(p):
+        return int(np.where(primes == p)[0][0])
+
+    check(np.allclose(colors[idx(b_anchor)], WINDOW_FAMILY_COLORS["bertrand"]),
+          "compute_tracked_colors: the Bertrand anchor ring gets pure Bertrand color")
+    check(np.allclose(colors[idx(l_anchor)], WINDOW_FAMILY_COLORS["legendre"]),
+          "compute_tracked_colors: the Legendre anchor ring gets pure Legendre color (different ring from Bertrand)")
+    check(int(matched.sum()) == 2,
+          "compute_tracked_colors: exactly 2 rings matched (one per distinct anchor)")
+
+
 def main():
     _test_legendre_level_at()
     _test_ring_radii()
     _test_ring_positions()
     _test_bertrand_legendre_membership()
     _test_general_law()
+    _test_legendre_highlighted_sticky()
+    _test_anchor_functions()
+    _test_blend_family_colors()
+    _test_compute_highlight_colors_strict_sticky_precedence()
+    _test_compute_tracked_colors()
 
     if failures:
         print(f"\n{len(failures)} FAILURE(S)")

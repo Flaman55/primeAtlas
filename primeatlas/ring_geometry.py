@@ -187,3 +187,237 @@ def is_general_law_member(primes, n, theta, mode):
     primes_arr = np.asarray(primes)
     lo, hi, _k, _factor = general_law_window_bounds(n, theta, mode)
     return (primes_arr > lo) & (primes_arr <= hi)
+
+
+# ---------------------------------------------------------------------------
+# Highlight-color blending -- [ADDED Faza 1, PLAN.md] ports
+# StructuralSieveApp.js's #windowHighlightFamilies / #computeHighlightColor /
+# #computeTrackedColor / #activeWindowCount into vectorized numpy form. See
+# that file for the full design rationale (Artur's own quotes on why the
+# blend is additive-RGB and why Legendre's own highlight test is "sticky").
+# The JS versions operate per single (n, prime) pair, called once per ring
+# per animation tick; this module instead computes highlight color for EVERY
+# active ring at once (a whole-frame batch), which is what the ring-count
+# scale this feature exists for actually needs -- a Python-level loop over
+# millions of rings would defeat that scale the same way it would for
+# ring_positions() above.
+# ---------------------------------------------------------------------------
+
+#: Same three families, same colors, as StructuralSieveApp.js's
+#: #windowHighlightFamilies registry (bertrand=#ff33cc, legendre=#39ff14,
+#: generalLaw=#a855f7). A caller enables a subset via `enabled_ids` on the
+#: functions below -- this list itself never needs to change to add/remove a
+#: family from a given render, only to add an entirely new family type.
+WINDOW_FAMILY_COLORS = {
+    "bertrand": (255, 51, 204),
+    "legendre": (57, 255, 20),
+    "generalLaw": (168, 85, 247),
+}
+
+
+def _legendre_level_at_vec(values):
+    """Vectorized counterpart of legendre_level_at, applied elementwise to a
+    numpy array (needed because isLegendreHighlighted applies legendreLevelAt
+    to the RING's own prime value, not to n -- see that JS method's own
+    doc-comment). Same floor(sqrt(v-1)) formula, v<=1 -> 0."""
+    values_arr = np.asarray(values, dtype=np.float64)
+    result = np.zeros_like(values_arr, dtype=np.int64)
+    mask = values_arr > 1
+    result[mask] = np.floor(np.sqrt(values_arr[mask] - 1)).astype(np.int64)
+    return result
+
+
+def is_legendre_highlighted(primes, n):
+    """Vectorized port of isLegendreHighlighted -- the STICKY variant used
+    for the ring's own highlight color (not the strict membership test): a
+    ring stays green after its own Legendre window closes until it crosses
+    its next self-multiple. Superset of is_legendre_member (every strict
+    match is also sticky) -- see that JS method's own doc-comment for why
+    this matters to the strict/sticky blend tiering below."""
+    primes_arr = np.asarray(primes, dtype=np.int64)
+    strict = is_legendre_member(primes_arr, n)
+    k = _legendre_level_at_vec(primes_arr)
+    close_edge = (k + 1) * (k + 1)
+    next_crossing = (close_edge // primes_arr + 1) * primes_arr
+    return strict | (n < next_crossing)
+
+
+def _largest_below(sorted_arr, bound):
+    """Largest element of ascending `sorted_arr` strictly less than `bound`,
+    or None if none exists. Ports SieveModel's private #largestBelow binary
+    search via np.searchsorted (equivalent asymptotics, no Python-level loop)."""
+    if len(sorted_arr) == 0:
+        return None
+    idx = np.searchsorted(sorted_arr, bound, side="left")
+    return int(sorted_arr[idx - 1]) if idx > 0 else None
+
+
+def bertrand_anchor_at(primes, n):
+    """Ports SieveModel.bertrandAnchorAt: the frozen/jumping Bertrand witness
+    at step n (see that method's own doc-comment for the freeze/jump rule).
+    Returns a single int or None (no active primes yet)."""
+    primes_arr = np.asarray(primes, dtype=np.int64)
+    if len(primes_arr) == 0:
+        return None
+    anchor = int(primes_arr[0])
+    while n >= 2 * anchor:
+        candidate = _largest_below(primes_arr, 2 * anchor)
+        if candidate is None or candidate <= anchor:
+            break
+        anchor = candidate
+    return anchor
+
+
+def legendre_anchor_at(primes, n):
+    """Ports SieveModel.legendreAnchorAt: largest active prime strictly below
+    the current level's own opening edge k*k. Returns None if none exists
+    (k in {0,1})."""
+    primes_arr = np.asarray(primes, dtype=np.int64)
+    if len(primes_arr) == 0:
+        return None
+    k = legendre_level_at(n)
+    return _largest_below(primes_arr, k * k)
+
+
+def general_law_anchor_at(primes, n, theta, mode):
+    """Ports SieveModel.generalLawAnchorAt: largest active prime at or below
+    the window's own current opening edge `lo` (computed as "strictly below
+    floor(lo)+1", equivalent for integer primes -- see the JS method's own
+    doc-comment)."""
+    primes_arr = np.asarray(primes, dtype=np.int64)
+    if len(primes_arr) == 0:
+        return None
+    lo, _hi, _k, _factor = general_law_window_bounds(n, theta, mode)
+    return _largest_below(primes_arr, int(np.floor(lo)) + 1)
+
+
+ANCHOR_FUNCTIONS = {
+    "bertrand": lambda primes, n, theta, mode: bertrand_anchor_at(primes, n),
+    "legendre": lambda primes, n, theta, mode: legendre_anchor_at(primes, n),
+    "generalLaw": lambda primes, n, theta, mode: general_law_anchor_at(primes, n, theta, mode),
+}
+
+
+def _blend_family_colors(masks_by_family):
+    """Shared additive-RGB blend core used by both compute_highlight_colors
+    and compute_tracked_colors below -- ports the summation half of
+    #computeHighlightColor / #computeTrackedColor (channel sum, clamp to
+    255), factored out because both JS methods do exactly this arithmetic
+    and differ only in HOW each family's per-ring participation mask is
+    derived (strict/sticky tiering for highlight color; plain anchor-equality
+    for tracked color -- see the two callers below).
+
+    `masks_by_family` -- dict of family_id -> boolean numpy array (same
+    length, one entry per ring): True where that family contributes its
+    color to that ring.
+
+    Returns (colors, matched) -- colors is an (N, 3) float64 array (channel
+    values already clamped to [0, 255], NOT yet cast to uint8 so a caller can
+    still do further math before quantizing for a GPU buffer -- see
+    build_vertex_data's own float32 buffer for why this module leaves that
+    choice to the renderer), matched is an (N,) boolean array, True where at
+    least one family contributed (the null/None case in the JS version)."""
+    if not masks_by_family:
+        n = 0
+    else:
+        n = len(next(iter(masks_by_family.values())))
+    colors = np.zeros((n, 3), dtype=np.float64)
+    matched = np.zeros(n, dtype=bool)
+    for family_id, mask in masks_by_family.items():
+        color = np.asarray(WINDOW_FAMILY_COLORS[family_id], dtype=np.float64)
+        colors[mask] += color
+        matched |= mask
+    np.clip(colors, 0, 255, out=colors)
+    return colors, matched
+
+
+def compute_highlight_colors(primes, n, enabled_ids, theta=0.5, mode="stepped"):
+    """Vectorized port of #computeHighlightColor for every ring in `primes`
+    at once. `enabled_ids` is an iterable of family ids from
+    WINDOW_FAMILY_COLORS currently toggled on (e.g. {"bertrand", "legendre"}).
+
+    Implements the exact two-tier strict/sticky precedence rule from the JS
+    version (see #computeHighlightColor's own doc-comment for the full
+    rationale and the motivating bug it fixes): PER RING, if any enabled
+    family's STRICT membership test matches, only strictly-matching families
+    blend for that ring; a family that merely `isHighlighted` (sticky) but
+    does not strictly match is excluded from that ring's blend in that case.
+    Only when NO family strictly matches a given ring does the sticky-only
+    fallback apply. Bertrand and General Law have no separate sticky
+    variant (their strict and highlighted tests are identical); only
+    Legendre does (is_legendre_highlighted vs is_legendre_member).
+
+    Returns (colors, matched) -- see _blend_family_colors's own docstring for
+    the exact shape; `matched[i] is False` is this function's counterpart to
+    the JS version returning null for ring i."""
+    primes_arr = np.asarray(primes, dtype=np.int64)
+    count = len(primes_arr)
+
+    strict_by_family = {}
+    highlighted_by_family = {}
+    for family_id in enabled_ids:
+        if family_id == "bertrand":
+            strict = is_bertrand_member(primes_arr, n)
+            highlighted = strict
+        elif family_id == "legendre":
+            strict = is_legendre_member(primes_arr, n)
+            highlighted = is_legendre_highlighted(primes_arr, n)
+        elif family_id == "generalLaw":
+            strict = is_general_law_member(primes_arr, n, theta, mode)
+            highlighted = strict
+        else:
+            raise ValueError(f"unknown window family id {family_id!r}")
+        strict_by_family[family_id] = strict
+        highlighted_by_family[family_id] = highlighted
+
+    if not strict_by_family:
+        return np.zeros((count, 3), dtype=np.float64), np.zeros(count, dtype=bool)
+
+    any_strict = np.zeros(count, dtype=bool)
+    for strict in strict_by_family.values():
+        any_strict |= strict
+
+    # Per ring: if any_strict, only THIS family's own strict flag decides its
+    # contribution (even if it is also sticky-highlighted); otherwise THIS
+    # family's own highlighted flag decides -- exactly the
+    # `matches = strictMatches.length > 0 ? strictMatches : stickyMatches`
+    # rule from #computeHighlightColor, applied per family per ring via
+    # np.where instead of per-ring family-list branching.
+    effective_masks = {
+        family_id: np.where(any_strict, strict_by_family[family_id], highlighted_by_family[family_id])
+        for family_id in enabled_ids
+    }
+    return _blend_family_colors(effective_masks)
+
+
+def compute_tracked_colors(primes, n, enabled_ids, theta=0.5, mode="stepped"):
+    """Vectorized port of #computeTrackedColor: for each ring, sums the
+    colors of every enabled family whose OWN anchor (bertrand_anchor_at /
+    legendre_anchor_at / general_law_anchor_at) is exactly that ring's prime.
+    Deliberately a DIFFERENT question from compute_highlight_colors (window
+    membership) -- see that JS method's own doc-comment for the exact bug
+    this distinction fixes (two different anchors collapsing to the same
+    blended color because both happened to satisfy each other's window-
+    membership test).
+
+    Returns (colors, matched) -- same shape as compute_highlight_colors."""
+    primes_arr = np.asarray(primes, dtype=np.int64)
+    count = len(primes_arr)
+
+    masks = {}
+    for family_id in enabled_ids:
+        anchor = ANCHOR_FUNCTIONS[family_id](primes_arr, n, theta, mode)
+        masks[family_id] = (primes_arr == anchor) if anchor is not None else np.zeros(count, dtype=bool)
+
+    if not masks:
+        return np.zeros((count, 3), dtype=np.float64), np.zeros(count, dtype=bool)
+    return _blend_family_colors(masks)
+
+
+def active_window_count(enabled_ids):
+    """Ports #activeWindowCount: trivial here since `enabled_ids` already IS
+    the set of currently-on families (the JS version derives this by
+    checking each family's isOn() closure; this module's callers pass the
+    already-resolved set directly), kept as a named function purely so a
+    caller mirrors the JS call site 1:1 rather than inlining `len(...)`."""
+    return len(enabled_ids)
