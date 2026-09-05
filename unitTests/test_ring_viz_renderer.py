@@ -535,6 +535,222 @@ def _test_format_big():
     check(formatted_neg.startswith("-1.234"), f"sign preserved past the threshold too (got {formatted_neg!r})")
 
 
+# ---------------------------------------------------------------------------
+# Faza 8 (see PLAN.md): tracked-ring outline circles, center marker, flash
+# overlays. Only the PURE GEOMETRY/COLOR/DECAY math is tested here -- the
+# actual GL draw calls in run() need a real GPU/display this sandbox does
+# not have (see PLAN.md's own Faza 8 risk note), same split as every other
+# GL-adjacent phase in this file.
+# ---------------------------------------------------------------------------
+
+def _test_tracked_ring_mask():
+    """[ADDED Faza 8] ring_geometry.tracked_ring_mask -- plain per-ring list
+    membership (DrumRenderer's `ring.tracked`), a different question from
+    filter_active_tracked (which returns tracked VALUES, not a mask)."""
+    from primeatlas.ring_geometry import tracked_ring_mask
+
+    active = np.array([2, 3, 5, 7, 11], dtype=np.int64)
+    mask = tracked_ring_mask(active, [7, 2])
+    check(list(mask) == [True, False, False, True, False],
+          f"marks exactly the rings whose prime is in the tracked list, in `active`'s own "
+          f"order (got {list(mask)!r})")
+
+    empty_tracked = tracked_ring_mask(active, [])
+    check(not empty_tracked.any() and len(empty_tracked) == len(active),
+          f"empty tracked list -> all-False mask of the right length (got {list(empty_tracked)!r})")
+
+    empty_active = tracked_ring_mask(np.empty(0, dtype=np.int64), [2, 3])
+    check(len(empty_active) == 0, f"empty active array -> empty mask (got {list(empty_active)!r})")
+
+    none_active_match = tracked_ring_mask(active, [13, 17])
+    check(not none_active_match.any(),
+          f"tracked primes not present among active rings at all -> all-False (got {list(none_active_match)!r})")
+
+
+def _test_unit_circle_vertices():
+    """[ADDED Faza 8] unit_circle_vertices -- every point on the unit circle,
+    ascending angle from 0, first point at angle 0 (i.e. (1,0))."""
+    from primeatlas.ring_viz.renderer import unit_circle_vertices
+
+    verts = unit_circle_vertices(segments=8)
+    check(verts.shape == (8, 2), f"returns (segments, 2) shaped array (got shape {verts.shape})")
+    check(verts.dtype == np.float32, f"float32, ready for a GL buffer (got dtype {verts.dtype})")
+    check(np.allclose(verts[0], (1.0, 0.0), atol=1e-6), f"first point is angle 0 -> (1,0) (got {verts[0]!r})")
+    radii = np.sqrt(verts[:, 0] ** 2 + verts[:, 1] ** 2)
+    check(np.allclose(radii, 1.0, atol=1e-6), f"every point lies exactly on the unit circle (got radii {radii!r})")
+
+
+def _test_tracked_outline_color():
+    """[ADDED Faza 8] tracked_outline_color -- ports DrumRenderer's
+    `(state.activeWindowCount > 1 && ring.trackedColor) ? ... : gray` branch
+    exactly."""
+    from primeatlas.ring_viz.renderer import tracked_outline_color
+
+    gray = tracked_outline_color(0, False, (255.0, 51.0, 204.0))
+    check(gray == (180 / 255.0, 180 / 255.0, 180 / 255.0, 0.5),
+          f"no windows active -> flat gray regardless of matched (got {gray!r})")
+
+    gray_unmatched = tracked_outline_color(2, False, (255.0, 51.0, 204.0))
+    check(gray_unmatched == (180 / 255.0, 180 / 255.0, 180 / 255.0, 0.5),
+          f">1 window active but this ring's own anchor didn't match -> still gray (got {gray_unmatched!r})")
+
+    gray_single_window = tracked_outline_color(1, True, (255.0, 51.0, 204.0))
+    check(gray_single_window == (180 / 255.0, 180 / 255.0, 180 / 255.0, 0.5),
+          f"matched but only 1 window active -> still gray (activeWindowCount > 1 required) "
+          f"(got {gray_single_window!r})")
+
+    colored = tracked_outline_color(2, True, (255.0, 51.0, 204.0))
+    check(colored == (1.0, 51 / 255.0, 204 / 255.0, 0.5),
+          f">1 window active AND matched -> the family's own color at alpha 0.5 (got {colored!r})")
+
+
+def _test_build_tracked_outline_draws():
+    """[ADDED Faza 8] build_tracked_outline_draws -- one (radius, rgba) tuple
+    per tracked-and-active ring, using compute_tracked_colors/
+    active_window_count under the hood, matching tracked_outline_color's own
+    gating rules."""
+    from primeatlas.ring_viz.renderer import build_tracked_outline_draws
+    from primeatlas.ring_geometry import ring_positions
+
+    primes = np.array([2, 3, 5, 7, 11], dtype=np.int64)
+    n = 10
+    max_radius = 100.0
+    pos = ring_positions(primes, n, max_radius)
+
+    no_tracked = build_tracked_outline_draws(primes, n, set(), 0.5, "stepped", [], pos["radius"])
+    check(no_tracked == [], f"no tracked primes -> no draws at all (got {no_tracked!r})")
+
+    draws = build_tracked_outline_draws(primes, n, set(), 0.5, "stepped", [7, 2], pos["radius"])
+    check(len(draws) == 2, f"one draw per tracked-and-active ring (got {len(draws)} draws: {draws!r})")
+    radii_drawn = sorted(r for r, _c in draws)
+    expected_radii = sorted(float(pos["radius"][i]) for i, p in enumerate(primes) if p in (2, 7))
+    check(np.allclose(radii_drawn, expected_radii),
+          f"each draw's radius matches that ring's own ring_positions() radius "
+          f"(got {radii_drawn!r}, expected {expected_radii!r})")
+    check(all(c == (180 / 255.0, 180 / 255.0, 180 / 255.0, 0.5) for _r, c in draws),
+          f"no window families enabled -> every tracked outline is the flat gray fallback "
+          f"(got colors {[c for _r, c in draws]!r})")
+
+    not_active = build_tracked_outline_draws(primes, n, set(), 0.5, "stepped", [13, 17], pos["radius"])
+    check(not_active == [], f"tracked primes not active yet -> no draws (got {not_active!r})")
+
+
+def _test_center_marker_triangle_offsets():
+    """[ADDED Faza 8] center_marker_triangle_offsets -- ports DrumRenderer's
+    #drawCenterMarker fixed arrow shape: tip at the anchor itself, two back
+    corners at (+-12s, -35s)."""
+    from primeatlas.ring_viz.renderer import center_marker_triangle_offsets
+
+    offsets = center_marker_triangle_offsets(2.0)
+    check(offsets.shape == (3, 2), f"three (dx, dy) offsets (got shape {offsets.shape})")
+    check(tuple(offsets[0]) == (0.0, 0.0), f"tip offset is (0,0) -- at the anchor itself (got {offsets[0]!r})")
+    check(tuple(offsets[1]) == (-24.0, -70.0) and tuple(offsets[2]) == (24.0, -70.0),
+          f"back corners scale linearly with s (s=2.0 -> +-24, -70) (got {offsets[1]!r}, {offsets[2]!r})")
+
+
+def _test_marker_device_scale():
+    """[ADDED Faza 8] marker_device_scale -- ports DrumRenderer's
+    `s = min(w, h) / REFERENCE_MIN_DIM` (REFERENCE_MIN_DIM = 2160)."""
+    from primeatlas.ring_viz.renderer import marker_device_scale
+
+    check(abs(marker_device_scale(3840, 2160) - 1.0) < 1e-9,
+          f"the JS's own reference resolution (3840x2160) gives scale 1.0 (got {marker_device_scale(3840, 2160)!r})")
+    check(abs(marker_device_scale(1600, 1000) - (1000 / 2160)) < 1e-9,
+          f"uses min(w,h) (got {marker_device_scale(1600, 1000)!r}, expected {1000 / 2160!r})")
+
+
+def _test_build_center_marker_vertex_data():
+    """[ADDED Faza 8] build_center_marker_vertex_data -- triangle at the
+    anchor with the right offsets/color, line from the anchor straight up to
+    screen y=0."""
+    from primeatlas.ring_viz.renderer import build_center_marker_vertex_data
+
+    triangle, line = build_center_marker_vertex_data(cx=400.0, cy=300.0, s=1.0)
+    check(triangle.shape == (3, 6) and line.shape == (2, 6),
+          f"triangle has 3 vertices, line has 2, both (pos.xy, color.rgba) (got shapes "
+          f"{triangle.shape!r}, {line.shape!r})")
+    check(tuple(triangle[0, :2]) == (400.0, 300.0), f"triangle tip sits exactly at the anchor (got {triangle[0, :2]!r})")
+    check(tuple(line[0, :2]) == (400.0, 300.0) and tuple(line[1, :2]) == (400.0, 0.0),
+          f"line runs from the anchor straight up to screen y=0, same x (got {line[:, :2]!r})")
+    check(triangle[0, 5] == 1.0, f"triangle fill is fully opaque (alpha=1.0) (got alpha={triangle[0, 5]!r})")
+    check(0.0 < line[0, 5] < 1.0, f"line is semi-transparent (got alpha={line[0, 5]!r})")
+
+
+def _test_build_flash_quad_vertex_data():
+    """[ADDED Faza 8] build_flash_quad_vertex_data -- 4 corners covering the
+    full viewport, all sharing the given rgba."""
+    from primeatlas.ring_viz.renderer import build_flash_quad_vertex_data
+
+    quad = build_flash_quad_vertex_data(800.0, 600.0, (1.0, 0.5, 0.0, 0.25))
+    check(quad.shape == (4, 6), f"4 vertices, (pos.xy, color.rgba) each (got shape {quad.shape})")
+    corners = {tuple(quad[i, :2]) for i in range(4)}
+    check(corners == {(0.0, 0.0), (800.0, 0.0), (800.0, 600.0), (0.0, 600.0)},
+          f"the four corners exactly cover the given viewport (got {corners!r})")
+    check(all(tuple(quad[i, 2:6]) == (1.0, 0.5, 0.0, 0.25) for i in range(4)),
+          f"every vertex shares the same flat color (got {[tuple(quad[i, 2:6]) for i in range(4)]!r})")
+
+
+def _test_decay_flash():
+    """[ADDED Faza 8] decay_flash -- ports DrumRenderer's own
+    `value *= factor; if (value < 0.01) value = 0;` epsilon-snap exactly."""
+    from primeatlas.ring_viz.renderer import decay_flash
+
+    check(abs(decay_flash(1.0, 0.65) - 0.65) < 1e-9, f"one frame of 0.65 decay from 1.0 (got {decay_flash(1.0, 0.65)!r})")
+    check(decay_flash(0.001, 0.65) == 0.0, f"snaps to exactly 0 once below the 0.01 epsilon (got {decay_flash(0.001, 0.65)!r})")
+    check(decay_flash(0.0, 0.85) == 0.0, "already-zero stays zero")
+
+    # Repeated decay from 1.0 must reach exactly 0.0 in finite steps (not
+    # asymptotically hover just above it forever) -- the epsilon snap is
+    # what guarantees the flash overlay actually stops drawing eventually.
+    v = 1.0
+    steps = 0
+    while v > 0.0 and steps < 1000:
+        v = decay_flash(v, 0.65)
+        steps += 1
+    check(v == 0.0 and steps < 1000, f"decay reaches exactly 0.0 in a bounded number of steps (got steps={steps}, final={v!r})")
+
+
+def _test_flash_overlay_rgba():
+    """[ADDED Faza 8] flash_overlay_rgba -- ports DrumRenderer's
+    #drawFlashOverlay: alpha = flash_value * max_alpha, color unchanged."""
+    from primeatlas.ring_viz.renderer import flash_overlay_rgba, _FLASH_RESONANCE_RGB, _FLASH_PRIME_RGB
+
+    rgba = flash_overlay_rgba(1.0, _FLASH_RESONANCE_RGB, max_alpha=0.25)
+    check(abs(rgba[3] - 0.25) < 1e-9, f"alpha = flash_value(1.0) * max_alpha(0.25) (got {rgba!r})")
+    check(np.allclose(rgba[:3], (1.0, 140 / 255.0, 0.0)), f"rgb comes from the given base color, normalized to 0..1 (got {rgba!r})")
+
+    rgba_half = flash_overlay_rgba(0.5, _FLASH_PRIME_RGB, max_alpha=0.25)
+    check(abs(rgba_half[3] - 0.125) < 1e-9, f"alpha scales linearly with flash_value (got {rgba_half!r})")
+
+    rgba_zero = flash_overlay_rgba(0.0, _FLASH_RESONANCE_RGB)
+    check(rgba_zero[3] == 0.0, f"flash_value=0 -> fully transparent (got {rgba_zero!r})")
+
+
+def _test_resonance_is_active():
+    """[ADDED Faza 8] resonance_is_active -- ports SieveModel's
+    `resonance.active` (every active ring's tooth at phase 0), with the
+    same maxResonance>0 guard against a spurious resonance when there are
+    no active rings at all."""
+    from primeatlas.ring_viz.renderer import resonance_is_active
+    from primeatlas.ring_geometry import ring_positions
+
+    # n=6 divisible by both 2 and 3 -> both active rings hit -> resonance.
+    pos_all_hit = ring_positions(np.array([2, 3], dtype=np.int64), 6, 100.0)
+    check(resonance_is_active(pos_all_hit), f"every active ring divides n -> resonance active (is_hit={pos_all_hit['is_hit']!r})")
+
+    # n=7 with active primes [2,3] -> neither divides 7 -> not a resonance.
+    pos_none_hit = ring_positions(np.array([2, 3], dtype=np.int64), 7, 100.0)
+    check(not resonance_is_active(pos_none_hit), f"no active ring divides n -> not a resonance (is_hit={pos_none_hit['is_hit']!r})")
+
+    # n=10 with active primes [2,3,5] -> 2 and 5 divide, 3 doesn't -> partial, not resonance.
+    pos_partial = ring_positions(np.array([2, 3, 5], dtype=np.int64), 10, 100.0)
+    check(not resonance_is_active(pos_partial), f"a partial hit is not a resonance (is_hit={pos_partial['is_hit']!r})")
+
+    # No active rings at all -> guarded False, not a vacuous True.
+    pos_empty = ring_positions(np.empty(0, dtype=np.int64), 0, 100.0)
+    check(not resonance_is_active(pos_empty), "no active rings at all -> not a resonance (guards the vacuous-True case)")
+
+
 def main():
     _test_basic_multi_floor_load()
     _test_gap_between_floors()
@@ -551,6 +767,17 @@ def main():
     _test_lcm_of_list()
     _test_tracked_resonance_state()
     _test_format_big()
+    _test_tracked_ring_mask()
+    _test_unit_circle_vertices()
+    _test_tracked_outline_color()
+    _test_build_tracked_outline_draws()
+    _test_center_marker_triangle_offsets()
+    _test_marker_device_scale()
+    _test_build_center_marker_vertex_data()
+    _test_build_flash_quad_vertex_data()
+    _test_decay_flash()
+    _test_flash_overlay_rgba()
+    _test_resonance_is_active()
 
     if failures:
         print(f"\n{len(failures)} FAILURE(S)")

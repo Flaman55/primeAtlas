@@ -133,6 +133,9 @@ if _PRIME_SIEVE_DIR not in sys.path:
 from primeatlas.ring_geometry import (
     ring_positions,
     compute_highlight_colors,
+    compute_tracked_colors,
+    active_window_count,
+    tracked_ring_mask,
     legendre_level_at,
     general_law_window_bounds,
     tracked_resonance_state,
@@ -333,6 +336,90 @@ void main() {
 """
 
 
+# [ADDED Faza 8, see PLAN.md] Tracked-ring outline circles use the SAME
+# world-space transform as VERTEX_SHADER above (world*zoom+pan -> NDC), so a
+# tracked ring's outline circle scales/pans with the camera exactly like its
+# own point does -- but drawn as a GL_LINE_LOOP over a shared unit-circle
+# buffer (see unit_circle_vertices) scaled by a per-draw-call `u_radius`
+# uniform, with a flat (non-point-sprite) fragment shader since there is no
+# gl_PointCoord for a line primitive.
+OUTLINE_VERTEX_SHADER = """
+#version 330
+
+in vec2 in_pos;   // unit-circle point (cos, sin)
+
+uniform float u_radius;
+uniform vec2 u_pan;
+uniform float u_zoom;
+uniform vec2 u_viewport;
+uniform vec4 u_color;
+
+out vec4 v_color;
+
+void main() {
+    vec2 world = in_pos * u_radius;
+    vec2 screen = world * u_zoom + u_pan;
+    vec2 ndc = (screen / u_viewport) * 2.0 - 1.0;
+    ndc.y = -ndc.y;
+    gl_Position = vec4(ndc, 0.0, 1.0);
+    v_color = u_color;
+}
+"""
+
+OUTLINE_FRAGMENT_SHADER = """
+#version 330
+
+in vec4 v_color;
+out vec4 f_color;
+
+void main() {
+    f_color = v_color;
+}
+"""
+
+# [ADDED Faza 8] Screen-space shader for the center marker (triangle + line)
+# and the full-screen flash-overlay quad -- both are drawn in absolute PIXEL
+# space (no u_zoom, no u_pan multiply in the shader itself), matching
+# DrumRenderer's own Canvas 2D calls for these two elements, which draw at
+# literal screen coordinates (`cx, cy` already include pan but are never
+# multiplied by the interactive zoomValue -- see
+# center_marker_triangle_offsets' own doc-comment). Pan/anchor/color are all
+# baked into the vertex data HOST-SIDE instead of passed as uniforms: these
+# shapes are at most a handful of vertices (triangle=3, line=2, quad=4), so
+# rewriting their tiny buffers every frame (needed anyway for the line,
+# whose endpoint depends on the current pan+viewport) costs nothing
+# regardless of ring count, and a single shared vertex format (2f pos, 4f
+# rgba color) keeps run()'s draw calls for all three shapes identical.
+SCREEN_VERTEX_SHADER = """
+#version 330
+
+in vec2 in_pos;    // absolute pixel-space position
+in vec4 in_color;
+
+uniform vec2 u_viewport;
+
+out vec4 v_color;
+
+void main() {
+    vec2 ndc = (in_pos / u_viewport) * 2.0 - 1.0;
+    ndc.y = -ndc.y;
+    gl_Position = vec4(ndc, 0.0, 1.0);
+    v_color = in_color;
+}
+"""
+
+SCREEN_FRAGMENT_SHADER = """
+#version 330
+
+in vec4 v_color;
+out vec4 f_color;
+
+void main() {
+    f_color = v_color;
+}
+"""
+
+
 # [ADDED Faza 4, see PLAN.md] Colors as plain 0..255 RGB triples so they can
 # be combined with WINDOW_FAMILY_COLORS (ring_geometry.py's own scale)
 # before normalizing to 0..1 once at the very end -- ports DrumRenderer's
@@ -387,6 +474,211 @@ def build_vertex_data(primes, n, max_radius, enabled_ids=(), theta=0.5, mode="st
     data[:, 1] = pos["y"]
     data[:, 2:5] = rgb / 255.0
     return data, count, pos
+
+
+# ---------------------------------------------------------------------------
+# Faza 8 (see PLAN.md) -- tracked-ring outline circles, birth/resonance flash
+# overlays, center marker. Ports DrumRenderer.draw's `if (ring.tracked) {...}`
+# outline-stroke branch, #drawCenterMarker, and the #drawFlashOverlay/
+# triggerBirthFlash/triggerResonanceFlash trio.
+#
+# All of the ANCHOR/COLOR math these draw calls need (compute_tracked_colors,
+# active_window_count) already existed in ring_geometry.py from Faza 1 --
+# this phase's only new pure-math surface is the small amount below that is
+# specific to the GL layer itself (unit-circle geometry, screen-space marker
+# offsets, flash decay/alpha), everything kept as plain functions so it can
+# be unit-tested without a GPU (see run()'s own GL wiring further down for
+# the untestable-without-a-display half of this phase).
+# ---------------------------------------------------------------------------
+
+def unit_circle_vertices(segments=64):
+    """(segments, 2) float32 array of (cos, sin) pairs around the unit
+    circle, ascending angle from 0 -- the shared base geometry for every
+    tracked-ring outline. Each tracked ring's actual on-screen circle is
+    this SAME buffer scaled by a per-draw-call `u_radius` uniform (see
+    OUTLINE_VERTEX_SHADER / run()'s tracked-outline draw loop) rather than
+    rebuilding a new vertex buffer per ring: moderngl has no built-in arc
+    primitive the way Canvas 2D's `ctx.arc(cx, cy, radius, 0, 2*PI)` does
+    (DrumRenderer's own tracked-ring stroke), so this is the GL equivalent
+    -- a GL_LINE_LOOP over `segments` points -- computed once and reused."""
+    angles = np.linspace(0.0, 2.0 * np.pi, num=segments, endpoint=False, dtype=np.float64)
+    return np.stack([np.cos(angles), np.sin(angles)], axis=1).astype(np.float32)
+
+
+_TRACKED_OUTLINE_GRAY = (180.0 / 255.0, 180.0 / 255.0, 180.0 / 255.0)
+_TRACKED_OUTLINE_ALPHA = 0.5
+
+
+def tracked_outline_color(active_window_count_value, matched, tracked_color_rgb):
+    """Per-ring outline stroke (r, g, b, a) in 0..1 -- ports DrumRenderer's
+    `ring.tracked` branch exactly:
+
+        ctx.strokeStyle = (state.activeWindowCount > 1 && ring.trackedColor)
+          ? hexToRgba(ring.trackedColor, 0.5)
+          : "rgba(180,180,180,0.5)"
+
+    `tracked_color_rgb` is a plain 0..255 (r, g, b) triple, already summed by
+    ring_geometry.compute_tracked_colors for this ring -- this function only
+    decides WHETHER to use it (via the `matched` flag from that same call),
+    mirroring the JS's `&& ring.trackedColor` truthiness check: a real
+    "no family matched" zero vector and a genuinely matched color are
+    otherwise indistinguishable by value alone, so `matched` (not a
+    non-zero check) is what compute_tracked_colors already returns for
+    exactly this reason -- see that function's own doc-comment."""
+    if active_window_count_value > 1 and matched:
+        r, g, b = tracked_color_rgb
+        return (r / 255.0, g / 255.0, b / 255.0, _TRACKED_OUTLINE_ALPHA)
+    return (_TRACKED_OUTLINE_GRAY[0], _TRACKED_OUTLINE_GRAY[1], _TRACKED_OUTLINE_GRAY[2], _TRACKED_OUTLINE_ALPHA)
+
+
+def build_tracked_outline_draws(primes_active, n, enabled_ids, theta, mode, track_primes, radii):
+    """Everything the GL layer needs to draw one outline circle per tracked-
+    AND-active ring, computed ONCE per N-change inside rebuild_buffer (same
+    convention as build_vertex_data -- see module docstring's architecture
+    note: geometry/color recompute on N-change only, camera/GPU work every
+    frame).
+
+    `radii` -- ring_geometry.ring_positions()["radius"] for this same
+    `primes_active` array (same indexing), i.e. the caller's already-computed
+    `pos["radius"]`; not recomputed here to avoid doing ring_positions' own
+    trig twice per N-change.
+
+    Returns a list of (radius, (r, g, b, a)) tuples, one per tracked-and-
+    active ring, in `primes_active`'s own ascending order (matching how
+    `radii` is indexed) -- NOT `track_primes`'s user-typed order, unlike
+    filter_active_tracked's LCM-facing list."""
+    primes_arr = np.asarray(primes_active, dtype=np.int64)
+    mask = tracked_ring_mask(primes_arr, track_primes)
+    if not mask.any():
+        return []
+    if enabled_ids:
+        colors, matched = compute_tracked_colors(primes_arr, n, enabled_ids, theta, mode)
+    else:
+        colors = np.zeros((len(primes_arr), 3), dtype=np.float64)
+        matched = np.zeros(len(primes_arr), dtype=bool)
+    active_count = active_window_count(enabled_ids)
+    draws = []
+    for i in np.nonzero(mask)[0]:
+        draws.append((float(radii[i]), tracked_outline_color(active_count, bool(matched[i]), tuple(colors[i]))))
+    return draws
+
+
+def center_marker_triangle_offsets(s):
+    """(3, 2) float32 array of (dx, dy) triangle-vertex offsets from the
+    view's screen-space center point (cx, cy) -- ports DrumRenderer's
+    #drawCenterMarker filled triangle exactly: tip pointing toward the ring
+    field (0,0 offset, i.e. AT the center point itself) with two back
+    corners 35*s pixels toward the top of the screen and 12*s pixels to
+    each side.
+
+    `s` is DrumRenderer's own resolution-only device scale (`min(w,h) /
+    REFERENCE_MIN_DIM`) -- NOT the interactive camera zoom (state.zoomValue
+    / this module's u_zoom) -- see run()'s caller for where `s` comes from
+    on the Python side; the marker's size tracks window resolution, not how
+    far the user has zoomed the ring field."""
+    return np.array([[0.0, 0.0], [-12.0 * s, -35.0 * s], [12.0 * s, -35.0 * s]], dtype=np.float32)
+
+
+def decay_flash(value, factor):
+    """One frame's worth of exponential decay for a flash-overlay alpha
+    accumulator. Ports DrumRenderer's own
+        this.#flashResonance *= 0.65; if (this.#flashResonance < 0.01) this.#flashResonance = 0;
+    (and the analogous 0.85-factor line for #flashPrime) as a single pure
+    function, so run()'s render loop calls one thing instead of duplicating
+    the epsilon-snap-to-zero rule inline at both call sites."""
+    value = value * factor
+    return 0.0 if value < 0.01 else value
+
+
+_FLASH_RESONANCE_RGB = (255.0, 140.0, 0.0)  # "rgba(255,140,0,{a})" -- orange, resonance
+_FLASH_PRIME_RGB = (60.0, 60.0, 60.0)       # "rgba(60,60,60,{a})" -- dark gray, prime birth
+_FLASH_MAX_ALPHA = 0.25
+
+
+def flash_overlay_rgba(flash_value, base_rgb, max_alpha=_FLASH_MAX_ALPHA):
+    """(r, g, b, a) in 0..1 for a full-screen flash-overlay quad at the given
+    accumulator value -- ports DrumRenderer's #drawFlashOverlay (a filled
+    rect over the whole canvas, alpha = flash_value * max_alpha, wired
+    through a `rgba(...,{a})` template string there) as a plain tuple for a
+    GL uniform instead of a CSS color string. `flash_value <= 0` (the
+    resting state most frames are in) yields alpha 0 -- callers can skip
+    the draw call entirely in that case rather than drawing an invisible
+    quad every frame, since flash_value is 0 the overwhelming majority of
+    the time (only nonzero for a few frames after a trigger, per
+    decay_flash's own decay rate)."""
+    r, g, b = base_rgb
+    return (r / 255.0, g / 255.0, b / 255.0, flash_value * max_alpha)
+
+
+def resonance_is_active(pos):
+    """Whether EVERY currently active ring's tooth sits at phase 0 -- ports
+    SieveModel.getStepState's `resonance.active` condition (`maxResonance >
+    0 && factors.length >= maxResonance`, which reduces to "every active
+    prime divides n" once at least one ring exists -- see that method's own
+    doc-comment for why the maxResonance>0 guard exists, to avoid a
+    spurious resonance at n=0/no active primes). `pos` is
+    ring_geometry.ring_positions()'s own return dict; an empty ring set
+    (count==0) is never a resonance, matching the JS guard."""
+    hit = pos["is_hit"]
+    return bool(len(hit)) and bool(np.all(hit))
+
+
+_MARKER_REFERENCE_MIN_DIM = 2160.0  # ports DrumRenderer's own REFERENCE_MIN_DIM constant
+
+
+def marker_device_scale(width, height):
+    """DrumRenderer's own `s = Math.min(w, h) / REFERENCE_MIN_DIM` -- the
+    resolution-only proportion scale every absolute-pixel marker constant is
+    multiplied by (see that module's own doc-comment: its reference layout
+    was 3840x2160)."""
+    return min(width, height) / _MARKER_REFERENCE_MIN_DIM
+
+
+_MARKER_TRIANGLE_RGBA = (1.0, 0.067, 0.067, 1.0)      # DrumRenderer's opaque marker fill, "#ff1111"
+_MARKER_LINE_RGBA = (1.0, 0.157, 0.157, 0.55)         # DrumRenderer's "rgba(255,40,40,0.55)" glow line
+
+
+def build_center_marker_vertex_data(cx, cy, s):
+    """(triangle_data, line_data) -- two small float32 (pos.xy, color.rgba)
+    arrays ready for a moderngl buffer via SCREEN_VERTEX_SHADER, at the
+    given screen-space anchor (cx, cy) -- the ring field's own world-origin
+    screen position, i.e. the SAME value already computed each frame as
+    run()'s `prog["u_pan"]` (see center_marker_triangle_offsets' own
+    doc-comment for why zoom does not enter into this) -- and device scale
+    `s` (see marker_device_scale).
+
+    triangle_data: 3 vertices, ports #drawCenterMarker's filled arrow.
+    line_data: 2 vertices, from the anchor itself up to screen y=0 -- ports
+    `ctx.moveTo(cx, cy); ctx.lineTo(cx, 0)`. Recomputed fresh every frame
+    (this function is cheap: 5 vertices total) since both cx/cy (camera pan)
+    and the line's own length (cy's distance to the top of the window) can
+    change every frame -- there is no fixed buffer to reuse the way the
+    tracked-ring outline's shared unit circle is."""
+    offsets = center_marker_triangle_offsets(s)
+    triangle = np.empty((3, 6), dtype=np.float32)
+    triangle[:, 0] = cx + offsets[:, 0]
+    triangle[:, 1] = cy + offsets[:, 1]
+    triangle[:, 2:6] = _MARKER_TRIANGLE_RGBA
+
+    line = np.empty((2, 6), dtype=np.float32)
+    line[0] = (cx, cy, *_MARKER_LINE_RGBA)
+    line[1] = (cx, 0.0, *_MARKER_LINE_RGBA)
+    return triangle, line
+
+
+def build_flash_quad_vertex_data(width, height, rgba):
+    """4-vertex float32 (pos.xy, color.rgba) array covering the full
+    viewport (a TRIANGLE_FAN quad: corners in order (0,0),(w,0),(w,h),(0,h))
+    at a single flat color -- ports DrumRenderer's #drawFlashOverlay
+    (`ctx.fillRect(0, 0, w, h)` at that color). All four vertices share the
+    same `rgba` (see flash_overlay_rgba for how that's derived from the
+    current flash accumulator) since the overlay is a flat wash, not a
+    gradient."""
+    quad = np.empty((4, 6), dtype=np.float32)
+    quad[:, 0] = (0.0, width, width, 0.0)
+    quad[:, 1] = (0.0, 0.0, height, height)
+    quad[:, 2:6] = rgba
+    return quad
 
 
 def zoom_to_point(old_zoom, old_pan, cursor, viewport, factor):
@@ -583,6 +875,29 @@ def run(args):
     except Exception as e:  # noqa: BLE001 -- diagnostic only, must never crash the run
         print(f"[diag] could not read ctx.info: {e}")
 
+    # [ADDED Faza 8, see PLAN.md] Tracked-ring outline circles: one shared
+    # unit-circle VBO/VAO reused for every tracked ring's draw call (see
+    # unit_circle_vertices' own doc-comment for why a shared buffer + a
+    # per-draw-call radius/color uniform pair, rather than one buffer per
+    # ring).
+    prog_outline = ctx.program(vertex_shader=OUTLINE_VERTEX_SHADER, fragment_shader=OUTLINE_FRAGMENT_SHADER)
+    unit_circle_vbo = ctx.buffer(unit_circle_vertices().tobytes())
+    unit_circle_vao = ctx.vertex_array(prog_outline, [(unit_circle_vbo, "2f", "in_pos")])
+
+    # [ADDED Faza 8] Screen-space shapes: center marker (triangle + line) and
+    # the birth/resonance flash-overlay quad, all sharing one program and
+    # vertex format (see SCREEN_VERTEX_SHADER's own doc-comment). Each gets
+    # its own small dynamic buffer, rewritten every frame from plain numpy
+    # arrays (build_center_marker_vertex_data / build_flash_quad_vertex_data)
+    # -- cheap regardless of ring count since these are always <= 4 vertices.
+    prog_screen = ctx.program(vertex_shader=SCREEN_VERTEX_SHADER, fragment_shader=SCREEN_FRAGMENT_SHADER)
+    marker_triangle_vbo = ctx.buffer(reserve=3 * 6 * 4)
+    marker_triangle_vao = ctx.vertex_array(prog_screen, [(marker_triangle_vbo, "2f 4f", "in_pos", "in_color")])
+    marker_line_vbo = ctx.buffer(reserve=2 * 6 * 4)
+    marker_line_vao = ctx.vertex_array(prog_screen, [(marker_line_vbo, "2f 4f", "in_pos", "in_color")])
+    flash_quad_vbo = ctx.buffer(reserve=4 * 6 * 4)
+    flash_quad_vao = ctx.vertex_array(prog_screen, [(flash_quad_vbo, "2f 4f", "in_pos", "in_color")])
+
     print(f"Loading primes via --source={args.source} ...")
     t0 = time.perf_counter()
     if args.source == "synthetic":
@@ -622,7 +937,15 @@ def run(args):
 
     state = {"pan": [0.0, 0.0], "zoom": 1.0, "dragging": False, "last_mouse": (0.0, 0.0)}
 
-    def rebuild_buffer(n_value):
+    # [ADDED Faza 8, see PLAN.md] flash-overlay decay accumulators (ports
+    # DrumRenderer's #flashPrime/#flashResonance instance fields) and the
+    # tracked-ring outline draw list -- all recomputed/updated on N-change
+    # inside rebuild_buffer below, never per-frame (same convention as the
+    # main ring buffer).
+    flash_state = {"prime": 0.0, "resonance": 0.0}
+    outline_draws_holder = {"draws": []}
+
+    def rebuild_buffer(n_value, prev_ring_count=None):
         t0 = time.perf_counter()
         active = primes[primes <= n_value]
         data, count, pos = build_vertex_data(active, n_value, max_radius, enabled_ids, theta, law_mode)
@@ -638,6 +961,41 @@ def run(args):
         tracked_state = tracked_resonance_state(track_primes, active, n_value, auto_orbit=auto_orbit)
         for line in hud_lines_for_n(active, n_value, pos, enabled_ids, theta, law_mode, tracked_state):
             print(line)
+
+        # [ADDED Faza 8] Tracked-ring outline circles -- recomputed here
+        # alongside the main buffer, same N-change-only cadence.
+        outline_draws_holder["draws"] = build_tracked_outline_draws(
+            active, n_value, enabled_ids, theta, law_mode, track_primes, pos["radius"]
+        )
+
+        # [ADDED Faza 8] Birth/resonance flash triggers -- approximates
+        # DrumRenderer's own triggerBirthFlash()/triggerResonanceFlash()
+        # call sites (StructuralSieveApp's per-tick `step.justBorn` /
+        # `step.resonance.active`, see those call sites' own doc-comments in
+        # StructuralSieveApp.js), adapted to this module's discrete N-jump
+        # model (Up/Down/PageUp/PageDown key presses) rather than the JS's
+        # per-tick playback loop, which doesn't exist here yet (Faza 10).
+        # "Just born" here means "this jump increased the active ring
+        # count" -- exact for a single-step (+n_step) jump, an
+        # over-approximation for a coarse PageUp/PageDown jump that crosses
+        # more than one prime (fires once for the whole jump rather than
+        # once per prime crossed, same simplification a discrete-jump model
+        # has to make regardless of flash granularity) -- and a jump that
+        # DECREASES n (count goes down) never fires it, matching the JS's
+        # own justBorn being a forward-only concept. Resonance uses
+        # resonance_is_active(pos) directly (every active ring's tooth at
+        # phase 0) rather than tracked_state's own to-resonance==0 condition
+        # -- the JS keeps these as two deliberately separate signals (see
+        # StructuralSieveApp.js's own comment on the LCM chime being a
+        # "SEPARATE condition from step.resonance.active"); this port only
+        # has the general one wired to the flash (the tracked-LCM chime has
+        # no visual flash counterpart in DrumRenderer to begin with -- it is
+        # HUD-text-and-audio-only there).
+        if prev_ring_count is not None and count > prev_ring_count:
+            flash_state["prime"] = 1.0
+        if resonance_is_active(pos):
+            flash_state["resonance"] = 1.0
+
         return ctx.buffer(data.tobytes()), count
 
     vbo, ring_count = rebuild_buffer(n)
@@ -707,18 +1065,71 @@ def run(args):
 
         if n_holder["n"] != last_n:
             last_n = n_holder["n"]
-            vbo, ring_count = rebuild_buffer(last_n)
+            vbo, new_ring_count = rebuild_buffer(last_n, prev_ring_count=ring_count)
+            ring_count = new_ring_count
             vao = ctx.vertex_array(prog, [(vbo, "2f 3f", "in_pos", "in_color")])
 
         width, height = glfw.get_framebuffer_size(window)
         ctx.viewport = (0, 0, width, height)
         ctx.clear(0.05, 0.05, 0.07)
 
-        prog["u_pan"].value = (state["pan"][0] + width / 2, state["pan"][1] + height / 2)
+        pan_x = state["pan"][0] + width / 2
+        pan_y = state["pan"][1] + height / 2
+        prog["u_pan"].value = (pan_x, pan_y)
         prog["u_zoom"].value = state["zoom"]
         prog["u_viewport"].value = (width, height)
 
         vao.render(moderngl.POINTS)
+
+        # [ADDED Faza 8, see PLAN.md] Tracked-ring outline circles -- one
+        # LINE_LOOP draw call per tracked-and-active ring over the shared
+        # unit-circle buffer, scaled/positioned/colored per ring via
+        # per-draw-call uniforms (see unit_circle_vertices' own doc-comment
+        # for why a shared buffer rather than one per ring). Tracked-ring
+        # counts are always small (user-typed or Faza-7-capped), so a few
+        # extra draw calls per frame here is negligible next to the single
+        # GL_POINTS call above carrying the real ring count.
+        if outline_draws_holder["draws"]:
+            prog_outline["u_pan"].value = (pan_x, pan_y)
+            prog_outline["u_zoom"].value = state["zoom"]
+            prog_outline["u_viewport"].value = (width, height)
+            for radius, color in outline_draws_holder["draws"]:
+                prog_outline["u_radius"].value = radius
+                prog_outline["u_color"].value = color
+                unit_circle_vao.render(moderngl.LINE_LOOP)
+
+        # [ADDED Faza 8] Center marker -- fixed decorative triangle + glow
+        # line at the ring field's own screen-space origin (pan_x, pan_y;
+        # see build_center_marker_vertex_data's own doc-comment for why this
+        # is the same point as u_pan above, not further scaled by zoom).
+        s = marker_device_scale(width, height)
+        triangle_data, line_data = build_center_marker_vertex_data(pan_x, pan_y, s)
+        marker_triangle_vbo.write(triangle_data.tobytes())
+        marker_line_vbo.write(line_data.tobytes())
+        prog_screen["u_viewport"].value = (width, height)
+        marker_triangle_vao.render(moderngl.TRIANGLES)
+        marker_line_vao.render(moderngl.LINES)
+
+        # [ADDED Faza 8] Birth/resonance flash overlays -- full-screen washes
+        # that decay over subsequent frames after a trigger (see
+        # rebuild_buffer's own Faza-8 comment for the trigger conditions).
+        # Skipped entirely once decayed to 0 (the overwhelming majority of
+        # frames) rather than drawing an alpha-0 quad every frame.
+        if flash_state["resonance"] > 0.0:
+            quad = build_flash_quad_vertex_data(
+                width, height, flash_overlay_rgba(flash_state["resonance"], _FLASH_RESONANCE_RGB)
+            )
+            flash_quad_vbo.write(quad.tobytes())
+            flash_quad_vao.render(moderngl.TRIANGLE_FAN)
+            flash_state["resonance"] = decay_flash(flash_state["resonance"], 0.65)
+        if flash_state["prime"] > 0.0:
+            quad = build_flash_quad_vertex_data(
+                width, height, flash_overlay_rgba(flash_state["prime"], _FLASH_PRIME_RGB)
+            )
+            flash_quad_vbo.write(quad.tobytes())
+            flash_quad_vao.render(moderngl.TRIANGLE_FAN)
+            flash_state["prime"] = decay_flash(flash_state["prime"], 0.85)
+
         glfw.swap_buffers(window)
 
         frame_count += 1

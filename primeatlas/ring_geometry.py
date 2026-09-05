@@ -535,6 +535,33 @@ def filter_active_tracked(tracked, active_primes):
     return [int(p) for p in tracked if int(p) in active_set]
 
 
+def tracked_ring_mask(primes, tracked):
+    """Boolean mask into `primes` (an active ring array, same array
+    ring_positions()/build_vertex_data() were called with) marking every
+    ring whose OWN prime literally appears in `tracked`.
+
+    Ports DrumRenderer's own per-ring `ring.tracked = trackedSet.has(r.prime)`
+    (see StructuralSieveApp.js's per-frame ring-state construction) -- plain
+    list membership, a DIFFERENT and narrower question from
+    filter_active_tracked above: that function answers "which tracked VALUES
+    are active" (used for the LCM/resonance HUD block, order-preserving,
+    plain list); this one answers "which RING INDICES are tracked" so a
+    caller can index a position/radius/color array (e.g.
+    ring_geometry.ring_positions()'s own "radius" array) directly to draw
+    something at each tracked ring's location -- see Faza 8 (tracked-ring
+    outline circles) in PLAN.md for the caller.
+
+    Returns an all-False bool array (length len(primes)) when `tracked` is
+    empty, matching np.isin's own behavior against an empty second operand
+    -- no special-casing needed, but spelled out here since an empty
+    `tracked` is the common "nothing tracked yet" case."""
+    primes_arr = np.asarray(primes, dtype=np.int64)
+    if len(primes_arr) == 0 or not tracked:
+        return np.zeros(len(primes_arr), dtype=bool)
+    tracked_arr = np.asarray(list(tracked), dtype=np.int64)
+    return np.isin(primes_arr, tracked_arr)
+
+
 # ---------------------------------------------------------------------------
 # Tracked-primes LCM/resonance -- [ADDED Faza 7A, PLAN.md] pure port of
 # StructuralSieveApp.js's #trackedResonanceState / SieveModel.js's
