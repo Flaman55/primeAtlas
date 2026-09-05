@@ -48,6 +48,8 @@ of millions) -- a Python-level loop per ring would defeat the entire point of
 the GPU-scale ring count already proven feasible.
 """
 
+import math
+
 import numpy as np
 
 
@@ -531,3 +533,81 @@ def filter_active_tracked(tracked, active_primes):
     """
     active_set = {int(p) for p in active_primes}
     return [int(p) for p in tracked if int(p) in active_set]
+
+
+# ---------------------------------------------------------------------------
+# Tracked-primes LCM/resonance -- [ADDED Faza 7A, PLAN.md] pure port of
+# StructuralSieveApp.js's #trackedResonanceState / SieveModel.js's
+# lcmOfListBig / #formatBig. See PLAN.md's own design note: the JS's
+# bitmask/lookup-table idea does NOT apply here (its own cap defaults to
+# 500 tracked primes, only tractable in the teens/twenties for a real
+# lookup table) -- this is a straight product-based LCM port instead.
+#
+# Python has no Number/BigInt split -- `int` is already arbitrary-precision
+# -- so unlike the JS (which keeps lcmOfList/lcmOfListBig as two separate
+# implementations for a plain-Number fast path vs. an exact BigInt path)
+# there is only one lcm_of_list here, and it is exact by construction.
+# ---------------------------------------------------------------------------
+
+def lcm_of_list(values):
+    """LCM of a list of positive ints, or 0 for an empty list -- mirrors
+    SieveModel.js's lcmOfList/lcmOfListBig (both return 0/0n for an empty
+    list, not 1, so callers can use `lcm <= 0` as the same "nothing to
+    show" signal the JS uses)."""
+    values = [int(v) for v in values]
+    if not values:
+        return 0
+    return math.lcm(*values)
+
+
+def tracked_resonance_state(tracked, active_primes, n, auto_orbit=False,
+                             max_tracked_for_exact_lcm=500):
+    """Port of StructuralSieveApp.js's #trackedResonanceState -- the single
+    computation behind both the HUD's tracked/LCM/phase/to-resonance lines
+    and (in the JS) the live chime trigger.
+
+    Returns None under the same conditions the JS returns null: auto_orbit
+    is on, `tracked` is empty, or none of `tracked` is active yet at this N
+    (via filter_active_tracked above -- same filtering, not reimplemented).
+    Returns `{"too_large": True, "tracked": [...], "limit": ...}` when the
+    tracked-and-active count exceeds max_tracked_for_exact_lcm (mirrors the
+    JS's own device-calibrated cap, passed in here rather than calibrated,
+    since there is no equivalent "how fast is this specific machine" probe
+    on this side yet -- callers pick a value, see renderer.py's own default).
+    Otherwise returns `{"tracked": [...], "lcm": int, "phase": int,
+    "to_resonance": int}` -- plain Python ints throughout, no BigInt/Number
+    distinction needed (see lcm_of_list's own doc-comment)."""
+    if auto_orbit or not tracked:
+        return None
+    tracked_active = filter_active_tracked(tracked, active_primes)
+    if not tracked_active:
+        return None
+    if len(tracked_active) > max_tracked_for_exact_lcm:
+        return {"too_large": True, "tracked": tracked_active, "limit": max_tracked_for_exact_lcm}
+    lcm = lcm_of_list(tracked_active)
+    if lcm <= 0:
+        return None
+    n_int = int(n)
+    phase = n_int % lcm
+    to_resonance = 0 if phase == 0 else lcm - phase
+    return {"tracked": tracked_active, "lcm": lcm, "phase": phase, "to_resonance": to_resonance}
+
+
+def format_big(value, digit_threshold=15):
+    """Port of StructuralSieveApp.js's #formatBig: below digit_threshold
+    digits (JS default 15, ~Number.MAX_SAFE_INTEGER's own digit count),
+    the plain digit string; past it, "mantissa×10^exponent (N digits)"
+    since NWW/Faza/Do-rezonancy can genuinely reach hundreds or thousands
+    of digits once dozens of pairwise-coprime primes are multiplied
+    together, and printing all of them would be noise, not information.
+    English-only wording (unlike the JS's #t()-localized string) since
+    this is a console/HUD diagnostic string on the Python side, not
+    user-facing app chrome with its own PL/EN locale files."""
+    value = int(value)
+    negative = value < 0
+    s = str(-value if negative else value)
+    if len(s) <= digit_threshold:
+        return ("-" if negative else "") + s
+    mantissa = f"{s[0]}.{s[1:5]}"
+    exponent = len(s) - 1
+    return ("-" if negative else "") + f"{mantissa}×10^{exponent} ({len(s)} digits)"

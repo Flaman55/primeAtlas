@@ -411,11 +411,15 @@ def _test_filter_active_tracked():
           f"returns plain Python ints, not numpy scalars (got types {[type(p) for p in result]!r})")
 
 
-def _test_hud_lines_for_n_tracked_active():
-    """[ADDED Faza 6, see PLAN.md] hud_lines_for_n's new tracked_active param
-    -- a HUD line appears only when non-empty, listing exactly the given
-    (already-filtered) primes in the given order."""
+def _test_hud_lines_for_n_tracked_state():
+    """[ADDED Faza 6, EXTENDED Faza 7B, see PLAN.md] hud_lines_for_n's
+    tracked_state param (renamed/extended from Faza 6's tracked_active --
+    see hud_lines_for_n's own doc-comment): None means no lines at all, a
+    too_large dict produces the single overflow line, and a real state dict
+    produces the full tracked/LCM/phase/to-resonance block, using format_big
+    for the numeric values."""
     from primeatlas.ring_viz.renderer import hud_lines_for_n, build_vertex_data
+    from primeatlas.ring_geometry import tracked_resonance_state
 
     primes = np.array([2, 3, 5, 7, 11, 13], dtype=np.int64)
     n = 41
@@ -424,17 +428,111 @@ def _test_hud_lines_for_n_tracked_active():
 
     lines_none = hud_lines_for_n(primes, n, pos, set(), 0.5, "stepped")
     check(not any("Tracked" in line for line in lines_none),
-          f"no tracked_active given -> no 'Tracked' HUD line at all (got {lines_none!r})")
+          f"no tracked_state given -> no 'Tracked' HUD line at all (got {lines_none!r})")
 
-    lines_empty = hud_lines_for_n(primes, n, pos, set(), 0.5, "stepped", tracked_active=[])
-    check(not any("Tracked" in line for line in lines_empty),
-          f"empty tracked_active -> no 'Tracked' HUD line (got {lines_empty!r})")
+    lines_none2 = hud_lines_for_n(primes, n, pos, set(), 0.5, "stepped", tracked_state=None)
+    check(not any("Tracked" in line for line in lines_none2),
+          f"explicit tracked_state=None -> no 'Tracked' HUD line (got {lines_none2!r})")
 
-    lines_some = hud_lines_for_n(primes, n, pos, set(), 0.5, "stepped", tracked_active=[7, 2])
-    joined = "\n".join(lines_some)
-    check("Tracked (active): 7, 2" in joined,
-          f"non-empty tracked_active produces a 'Tracked (active): ...' line in the "
-          f"exact given order (got lines={lines_some!r})")
+    too_large = {"too_large": True, "tracked": [2, 3, 5], "limit": 2}
+    lines_large = hud_lines_for_n(primes, n, pos, set(), 0.5, "stepped", tracked_state=too_large)
+    joined_large = "\n".join(lines_large)
+    check("too many active" in joined_large and "3" in joined_large and "2" in joined_large,
+          f"too_large state produces a single overflow-explanation line, no LCM/phase "
+          f"attempted (got lines={lines_large!r})")
+
+    state = tracked_resonance_state([7, 2], primes, n)
+    check(state is not None, "sanity: 7 and 2 are both active at n=41")
+    lines_full = hud_lines_for_n(primes, n, pos, set(), 0.5, "stepped", tracked_state=state)
+    joined_full = "\n".join(lines_full)
+    check("Tracked (active): 7, 2" in joined_full,
+          f"full state produces the tracked-list line in the state's own order "
+          f"(got lines={lines_full!r})")
+    check(f"LCM: {state['lcm']}" in joined_full, f"LCM line uses the state's lcm (got lines={lines_full!r})")
+    check(f"Phase: {state['phase']} / {state['lcm']}" in joined_full,
+          f"phase line shows phase / lcm (got lines={lines_full!r})")
+    check(f"To resonance: {state['to_resonance']}" in joined_full,
+          f"to-resonance line uses the state's own value (got lines={lines_full!r})")
+
+
+def _test_lcm_of_list():
+    """[ADDED Faza 7A, see PLAN.md] Mirrors SieveModel.js's lcmOfList/
+    lcmOfListBig: 0 for empty, exact product-based LCM otherwise (duplicates
+    and non-coprime values handled correctly, not just pairwise-coprime
+    primes)."""
+    from primeatlas.ring_geometry import lcm_of_list
+
+    check(lcm_of_list([]) == 0, f"empty list -> 0, not 1 (matches JS's lcmOfList/lcmOfListBig) (got {lcm_of_list([])!r})")
+    check(lcm_of_list([2, 3, 5]) == 30, f"LCM of pairwise-coprime primes is their product (got {lcm_of_list([2, 3, 5])!r})")
+    check(lcm_of_list([4, 6]) == 12, f"LCM of non-coprime values is exact, not naive product (got {lcm_of_list([4, 6])!r})")
+    check(lcm_of_list([7, 7, 7]) == 7, f"duplicates don't inflate the LCM (got {lcm_of_list([7, 7, 7])!r})")
+    big = lcm_of_list(list(range(2, 100)))
+    check(isinstance(big, int) and big > 10**20,
+          f"large tracked lists produce an exact arbitrary-precision int, no overflow "
+          f"(got type {type(big)!r}, value has {len(str(big))} digits)")
+
+
+def _test_tracked_resonance_state():
+    """[ADDED Faza 7A, see PLAN.md] Port of StructuralSieveApp.js's
+    #trackedResonanceState -- mirrors its None-return conditions (auto_orbit,
+    empty tracked, none active), too_large case, and the phase/to_resonance
+    math itself."""
+    from primeatlas.ring_geometry import tracked_resonance_state
+
+    active = [2, 3, 5, 7, 11]
+
+    check(tracked_resonance_state([2, 3], active, 100, auto_orbit=True) is None,
+          "auto_orbit=True always returns None, regardless of tracked/active")
+    check(tracked_resonance_state([], active, 100) is None, "empty tracked list -> None")
+    check(tracked_resonance_state([13, 17], active, 100) is None,
+          "tracked primes that aren't active yet at this N -> None")
+
+    state = tracked_resonance_state([2, 3, 5], active, 100)
+    check(state is not None and state["lcm"] == 30,
+          f"LCM of the tracked-and-active primes (got {state!r})")
+    check(state["phase"] == 100 % 30, f"phase = n mod lcm (got {state!r})")
+    check(state["to_resonance"] == 30 - (100 % 30),
+          f"to_resonance = lcm - phase when phase != 0 (got {state!r})")
+
+    state_exact = tracked_resonance_state([2, 3, 5], active, 90)
+    check(state_exact["phase"] == 0 and state_exact["to_resonance"] == 0,
+          f"phase=0 at an exact multiple of the LCM gives to_resonance=0, not lcm "
+          f"(got {state_exact!r})")
+
+    state_partial = tracked_resonance_state([2, 13], active, 100)
+    check(state_partial is not None and state_partial["tracked"] == [2],
+          f"only the active subset of tracked is used, order preserved "
+          f"(got {state_partial!r})")
+
+    too_large = tracked_resonance_state([2, 3, 5], active, 100, max_tracked_for_exact_lcm=2)
+    check(too_large == {"too_large": True, "tracked": [2, 3, 5], "limit": 2},
+          f"exceeding max_tracked_for_exact_lcm returns the too_large marker instead "
+          f"of computing the LCM (got {too_large!r})")
+
+
+def _test_format_big():
+    """[ADDED Faza 7A, see PLAN.md] Port of StructuralSieveApp.js's
+    #formatBig -- plain digits below the threshold, mantissa×10^exp (N
+    digits) past it, sign handled either way."""
+    from primeatlas.ring_geometry import format_big
+
+    check(format_big(0) == "0", f"zero (got {format_big(0)!r})")
+    check(format_big(30) == "30", f"small positive value stays a plain digit string (got {format_big(30)!r})")
+    check(format_big(-30) == "-30", f"small negative value keeps its sign, plain digits (got {format_big(-30)!r})")
+
+    fourteen_nines = int("9" * 14)
+    check(format_big(fourteen_nines, digit_threshold=15) == str(fourteen_nines),
+          "exactly at the threshold (14 <= 15) still prints plain digits")
+
+    big = int("123456789" * 6)  # 54 digits, well past the default threshold
+    formatted = format_big(big, digit_threshold=15)
+    check("×10^" in formatted and formatted.endswith(f"({len(str(big))} digits)"),
+          f"past the threshold, switches to mantissa×10^exponent (N digits) "
+          f"(got {formatted!r})")
+    check(formatted.startswith("1.234"), f"mantissa uses the first digit + next 4 (got {formatted!r})")
+
+    formatted_neg = format_big(-big, digit_threshold=15)
+    check(formatted_neg.startswith("-1.234"), f"sign preserved past the threshold too (got {formatted_neg!r})")
 
 
 def main():
@@ -449,7 +547,10 @@ def main():
     _test_initial_n_for_source()
     _test_zoom_to_point()
     _test_filter_active_tracked()
-    _test_hud_lines_for_n_tracked_active()
+    _test_hud_lines_for_n_tracked_state()
+    _test_lcm_of_list()
+    _test_tracked_resonance_state()
+    _test_format_big()
 
     if failures:
         print(f"\n{len(failures)} FAILURE(S)")

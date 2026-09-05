@@ -135,7 +135,8 @@ from primeatlas.ring_geometry import (
     compute_highlight_colors,
     legendre_level_at,
     general_law_window_bounds,
-    filter_active_tracked,
+    tracked_resonance_state,
+    format_big,
 )
 
 
@@ -449,7 +450,7 @@ def initial_n_for_source(source, upto, primes):
     return upto
 
 
-def hud_lines_for_n(primes_active, n, pos, enabled_ids, theta, mode, tracked_active=()):
+def hud_lines_for_n(primes_active, n, pos, enabled_ids, theta, mode, tracked_state=None):
     """Ports the non-tracked-primes subset of DrumRenderer's #drawHud /
     StructuralSieveApp's #renderFrame draw-state construction (see those
     methods' own doc-comments in js/render/DrumRenderer.js and
@@ -467,13 +468,19 @@ def hud_lines_for_n(primes_active, n, pos, enabled_ids, theta, mode, tracked_act
     module's stdout straight into it -- reusing that live text surface for
     HUD info is lower-risk than shipping unverified GL text rendering.
 
-    [ADDED Faza 6, see PLAN.md] `tracked_active` -- the already-filtered
-    result of ring_geometry.filter_active_tracked(track_primes, primes_active)
-    (filtering happens once in run(), not per-call here, since it's cheap
-    but there's no reason to redo it). Deliberately still excludes the LCM/
-    phase/toResonance computation itself (#buildLcmLines in the JS) -- that
-    is Faza 7's own scope; this phase only surfaces WHICH tracked primes are
-    currently active, as the foundation Faza 7/8 build on.
+    [ADDED Faza 6, see PLAN.md; EXTENDED Faza 7B] `tracked_state` -- the
+    already-computed result of ring_geometry.tracked_resonance_state(...)
+    (computed once in run(), not per-call here -- mirrors the JS's own
+    "no longer computed a second time here" note on #buildLcmLines, which
+    takes the already-computed #trackedResonanceState result rather than
+    recomputing it). None means "nothing to show" (auto-orbit on, no
+    tracked primes, or none active yet -- see tracked_resonance_state's own
+    doc-comment for the exact conditions); a `too_large` dict means the
+    tracked-and-active count exceeded the exact-LCM budget; otherwise the
+    full tracked/lcm/phase/to_resonance block is rendered, mirroring
+    #buildLcmLines's four HUD lines exactly (tracked list, LCM, phase, and
+    to-resonance), using format_big for the potentially-huge BigInt-sized
+    values.
 
     Returns a list of plain-text lines (may be empty)."""
     lines = []
@@ -481,8 +488,19 @@ def hud_lines_for_n(primes_active, n, pos, enabled_ids, theta, mode, tracked_act
     if len(factor_primes):
         lines.append("Factors of N: " + ", ".join(str(int(p)) for p in factor_primes))
 
-    if tracked_active:
-        lines.append("Tracked (active): " + ", ".join(str(int(p)) for p in tracked_active))
+    if tracked_state is not None:
+        if tracked_state.get("too_large"):
+            lines.append(
+                f"Tracked: too many active to compute an exact LCM "
+                f"({len(tracked_state['tracked'])} > {tracked_state['limit']})"
+            )
+        else:
+            lines.append("Tracked (active): " + ", ".join(str(p) for p in tracked_state["tracked"]))
+            lines.append("LCM: " + format_big(tracked_state["lcm"]))
+            lines.append(
+                f"Phase: {format_big(tracked_state['phase'])} / {format_big(tracked_state['lcm'])}"
+            )
+            lines.append("To resonance: " + format_big(tracked_state["to_resonance"]))
 
     if "bertrand" in enabled_ids:
         lo = n // 2
@@ -595,8 +613,10 @@ def run(args):
     # per-frame), same launch-time-only convention as --windows above (no
     # live in-window text field yet, see rings_tab.py's own Track P field
     # docstring for why). `--auto-orbit` is accepted and stored now so
-    # Faza 10's playback loop has something to read once it exists; it has
-    # no visible effect yet on its own (see task list's own note on this).
+    # Faza 10's playback loop has something to read once it exists; as of
+    # Faza 7B its only visible effect on its own is suppressing the tracked/
+    # LCM HUD block below (mirrors the JS's own #trackedResonanceState guard)
+    # -- the actual auto-cycling behavior is still Faza 10's own scope.
     track_primes = [int(p.strip()) for p in args.track_primes.split(",") if p.strip()] if args.track_primes else []
     auto_orbit = args.auto_orbit
 
@@ -608,8 +628,15 @@ def run(args):
         data, count, pos = build_vertex_data(active, n_value, max_radius, enabled_ids, theta, law_mode)
         t1 = time.perf_counter()
         print(f"N={n_value:,}  rings={count:,}  rebuild={1000 * (t1 - t0):.1f}ms")
-        tracked_active = [] if auto_orbit else filter_active_tracked(track_primes, active)
-        for line in hud_lines_for_n(active, n_value, pos, enabled_ids, theta, law_mode, tracked_active):
+        # [ADDED Faza 7B, see PLAN.md] tracked_resonance_state does its own
+        # active-filtering internally (ring_geometry.filter_active_tracked,
+        # same function Faza 6 introduced) -- no separate filter step needed
+        # here anymore. auto_orbit=True short-circuits to None inside that
+        # function too (mirrors the JS's own `if (this.#autoOrbit || ...)
+        # return null` guard), so the explicit `if auto_orbit` branch Faza 6
+        # had here is gone; there is nothing left for it to skip.
+        tracked_state = tracked_resonance_state(track_primes, active, n_value, auto_orbit=auto_orbit)
+        for line in hud_lines_for_n(active, n_value, pos, enabled_ids, theta, law_mode, tracked_state):
             print(line)
         return ctx.buffer(data.tobytes()), count
 
