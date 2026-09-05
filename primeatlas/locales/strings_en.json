@@ -659,5 +659,10 @@
   "rings.track_primes_label": "Track P (comma-separated):",
   "rings.auto_orbit_label": "Auto orbit",
   "rings.load_range_label": "Load Range from:",
-  "rings.load_range_to_label": "to:"
+  "rings.load_range_to_label": "to:",
+  "rings.hud_panel_title": "HUD",
+  "rings.hud_panel_placeholder": "(open a visualization to see live status here)",
+  "rings.hud_status_running": "running, {tempo}ms/tick",
+  "rings.hud_status_stopped": "stopped",
+  "rings.hud_header": "N = {n}    rings = {count}    rebuild = {rebuild_ms}ms    [{status}]"
 }

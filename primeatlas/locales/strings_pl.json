@@ -659,5 +659,10 @@
   "rings.track_primes_label": "Śledzone P (po przecinku):",
   "rings.auto_orbit_label": "Auto-orbita",
   "rings.load_range_label": "Wczytaj zakres od:",
-  "rings.load_range_to_label": "do:"
+  "rings.load_range_to_label": "do:",
+  "rings.hud_panel_title": "HUD",
+  "rings.hud_panel_placeholder": "(otwórz wizualizację, aby zobaczyć tu bieżący status)",
+  "rings.hud_status_running": "odtwarzanie, {tempo}ms/takt",
+  "rings.hud_status_stopped": "zatrzymane",
+  "rings.hud_header": "N = {n}    pierścienie = {count}    rebuild = {rebuild_ms}ms    [{status}]"
 }

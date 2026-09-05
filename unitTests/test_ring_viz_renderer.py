@@ -872,6 +872,64 @@ def _test_advance_auto_orbit():
           f"wrap-around gap of 10 advances on the 10th tick, landing back on index 0/prime 2 (got {(idx, cnt, chosen)!r})")
 
 
+def _test_compose_hud_canvas_lines():
+    from primeatlas.ring_viz.renderer import compose_hud_canvas_lines
+
+    lines = compose_hud_canvas_lines(n=1234567, count=42, lines=["Factors of N: 7, 11"],
+                                      running=False, tempo_ms=120)
+    check(lines[0] == "N = 1,234,567    rings = 42    [Stopped]",
+          f"header line formats N/count with thousands separators and 'Stopped' status (got {lines[0]!r})")
+    check(lines[1:] == ["Factors of N: 7, 11"],
+          f"hud_lines_for_n's own lines pass through verbatim, in order (got {lines[1:]!r})")
+
+    lines = compose_hud_canvas_lines(n=5, count=0, lines=[], running=True, tempo_ms=250)
+    check(lines == ["N = 5    rings = 0    [Running (250ms/tick)]"],
+          f"running status includes the tempo, empty extra-lines list is fine (got {lines!r})")
+
+
+def _test_hud_quad_vertex_data():
+    from primeatlas.ring_viz.renderer import hud_quad_vertex_data
+
+    verts = hud_quad_vertex_data(100.0, 50.0, x=10.0, y=20.0)
+    check(verts.shape == (6, 4), f"two triangles = 6 vertices, each (pos_x, pos_y, uv_x, uv_y) (got shape {verts.shape})")
+    xs, ys = verts[:, 0], verts[:, 1]
+    check(xs.min() == 10.0 and xs.max() == 110.0, f"quad spans x in [10, 110] (anchor + width) (got [{xs.min()}, {xs.max()}])")
+    check(ys.min() == 20.0 and ys.max() == 70.0, f"quad spans y in [20, 70] (anchor + height) (got [{ys.min()}, {ys.max()}])")
+    # Top-left corner (min x, min y) must carry uv (0, 0) -- matches PIL's
+    # own top-left-origin image layout, so the rasterized bitmap shows up
+    # right-side-up with no manual flip anywhere in the pipeline.
+    top_left_rows = verts[(xs == 10.0) & (ys == 20.0)]
+    check(bool(np.all(top_left_rows[:, 2:4] == 0.0)), f"top-left corner has uv=(0,0) (got {top_left_rows[:, 2:4].tolist()})")
+    bottom_right_rows = verts[(xs == 110.0) & (ys == 70.0)]
+    check(bool(np.all(bottom_right_rows[:, 2:4] == 1.0)), f"bottom-right corner has uv=(1,1) (got {bottom_right_rows[:, 2:4].tolist()})")
+
+
+def _test_rasterize_hud_text():
+    from primeatlas.ring_viz.renderer import rasterize_hud_text, _PIL_AVAILABLE
+
+    check(rasterize_hud_text([]) is None, "empty line list rasterizes to None (nothing to draw)")
+
+    if not _PIL_AVAILABLE:
+        print("skip: Pillow not installed in this environment -- rasterize_hud_text's "
+              "real-bitmap behavior is untested here (renderer.py itself degrades "
+              "gracefully in this case, see its own _PIL_AVAILABLE guard)")
+        return
+
+    rgba = rasterize_hud_text(["N = 100", "Factors of N: 2, 5"])
+    check(rgba is not None, "non-empty lines produce a real bitmap")
+    check(rgba.ndim == 3 and rgba.shape[2] == 4, f"result is an (H, W, 4) RGBA array (got shape {rgba.shape})")
+    check(rgba.dtype == np.uint8, f"result is uint8 (got {rgba.dtype})")
+    check(rgba.shape[0] > 0 and rgba.shape[1] > 0, f"non-empty text produces a non-degenerate image (got shape {rgba.shape})")
+    # Two lines of text must be taller than a single line of the same text,
+    # otherwise the per-line layout loop isn't actually stacking anything.
+    one_line = rasterize_hud_text(["N = 100"])
+    check(rgba.shape[0] > one_line.shape[0],
+          f"two lines are taller than one line ({rgba.shape[0]} vs {one_line.shape[0]})")
+    # Some pixel must actually be opaque (alpha > 0) -- otherwise this drew
+    # nothing (e.g. a font/color bug silently producing a blank image).
+    check(bool((rgba[:, :, 3] > 0).any()), "at least one pixel has non-zero alpha (text was actually drawn)")
+
+
 def main():
     _test_basic_multi_floor_load()
     _test_gap_between_floors()
@@ -904,6 +962,9 @@ def main():
     _test_can_start_playback()
     _test_tick_next_n()
     _test_advance_auto_orbit()
+    _test_compose_hud_canvas_lines()
+    _test_hud_quad_vertex_data()
+    _test_rasterize_hud_text()
 
     if failures:
         print(f"\n{len(failures)} FAILURE(S)")

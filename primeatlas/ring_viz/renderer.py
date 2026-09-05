@@ -77,6 +77,9 @@ Architecture (the part that was actually tested):
 
 Usage -- run as a PLAIN SCRIPT PATH, not `python -m primeatlas.ring_viz.renderer`:
     pip install moderngl glfw numpy
+    pip install Pillow   # optional -- enables the on-canvas HUD text overlay
+                          # (Faza 11B, see PLAN.md); everything else in this
+                          # module works fine without it, see _PIL_AVAILABLE.
     python primeatlas/ring_viz/renderer.py --source synthetic --count 20000000
     python primeatlas/ring_viz/renderer.py --source sieve --upto 5000000
     python primeatlas/ring_viz/renderer.py --source magazyn \
@@ -117,9 +120,18 @@ Controls:
                       --load-range was active (mirrors the HTML's own Reset
                       button, which always calls resetSequential())
     Esc               quit
+
+HUD (Faza 11B, see PLAN.md): current N, ring count, playback status, factors
+of N, tracked/LCM block, and any active window's range (Bertrand/Legendre/
+General Law) are drawn directly in this window's top-left corner -- ports
+DrumRenderer's own #drawHud text overlay, previously only reachable via the
+console pane or rings_tab.py's side panel (see hud_lines_for_n's own
+doc-comment for that history). Needs Pillow; degrades to "no on-canvas text"
+(everything else unaffected) if it isn't installed -- see _PIL_AVAILABLE.
 """
 
 import argparse
+import json
 import os
 import sys
 import time
@@ -157,6 +169,22 @@ from primeatlas.ring_geometry import (
     tracked_resonance_state,
     format_big,
 )
+
+# [ADDED Faza 11B, see PLAN.md] On-canvas GL HUD text -- Pillow is used only
+# to RASTERIZE plain text into an RGBA bitmap (PIL.ImageFont.load_default(),
+# no external .ttf needed) once per HUD-content change, which is then
+# uploaded as an ordinary moderngl texture and drawn as a single
+# screen-space textured quad (see rasterize_hud_text / run()'s own
+# `refresh_hud_texture` closure further down). Guarded so a machine without
+# Pillow installed still runs every other feature of this module unchanged
+# -- only the on-canvas HUD silently stays off (one console line explains
+# why), same "optional dependency, never a hard crash" convention this
+# project already uses for sympy (see primality.py's own module docstring).
+try:
+    from PIL import Image, ImageDraw, ImageFont
+    _PIL_AVAILABLE = True
+except ImportError:
+    _PIL_AVAILABLE = False
 
 
 # ---------------------------------------------------------------------------
@@ -432,6 +460,43 @@ out vec4 f_color;
 
 void main() {
     f_color = v_color;
+}
+"""
+
+# [ADDED Faza 11B, see PLAN.md] On-canvas HUD text quad -- same absolute-
+# pixel-space / y-down convention as SCREEN_VERTEX_SHADER above (so both
+# share run()'s own u_viewport-from-framebuffer-size wiring), but samples a
+# texture (the Pillow-rasterized HUD bitmap, see rasterize_hud_text) instead
+# of taking a flat vertex color -- text needs per-pixel coverage from the
+# glyph bitmap, which a flat color can't express.
+TEXT_VERTEX_SHADER = """
+#version 330
+
+in vec2 in_pos;    // absolute pixel-space position
+in vec2 in_uv;
+
+uniform vec2 u_viewport;
+
+out vec2 v_uv;
+
+void main() {
+    vec2 ndc = (in_pos / u_viewport) * 2.0 - 1.0;
+    ndc.y = -ndc.y;
+    gl_Position = vec4(ndc, 0.0, 1.0);
+    v_uv = in_uv;
+}
+"""
+
+TEXT_FRAGMENT_SHADER = """
+#version 330
+
+in vec2 v_uv;
+out vec4 f_color;
+
+uniform sampler2D u_tex;
+
+void main() {
+    f_color = texture(u_tex, v_uv);
 }
 """
 
@@ -944,6 +1009,114 @@ def hud_lines_for_n(primes_active, n, pos, enabled_ids, theta, mode, tracked_sta
     return lines
 
 
+# ---------------------------------------------------------------------------
+# Faza 11B (see PLAN.md) -- on-canvas GL HUD text. Ports the actual
+# DrumRenderer.#drawHud text overlay itself (the part hud_lines_for_n above
+# deliberately did NOT port -- see that function's own doc-comment, written
+# back when this sandbox had no way to visually verify GL text rendering at
+# all). Artur's 2026-09-06 follow-up report -- "nie widzę informacji hud w
+# oknie wizualizacji" -- is exactly this gap: the console pane (and Faza
+# 11's rings_tab.py side panel) both show this same text, but neither is
+# the GL window itself, which is where the HTML tool actually draws it.
+#
+# compose_hud_canvas_lines is kept as a PLAIN pure function (no PIL, no GL)
+# so it is fully unit-testable even in a sandbox without Pillow or a
+# display -- it only decides WHAT text appears; rasterize_hud_text (needs
+# Pillow) decides how it becomes pixels.
+# ---------------------------------------------------------------------------
+
+def compose_hud_canvas_lines(n, count, lines, running, tempo_ms):
+    """The exact list of text lines the GL window's HUD overlay should show,
+    in order: a header line (current N and how many rings are active, ports
+    DrumRenderer's own N/count header), a playback-status line (mirrors the
+    HTML's Start/Stop button label + tempo, so Space/]/[  presses are
+    confirmable on-canvas the same way the console print already is), then
+    `lines` (hud_lines_for_n's own output: factors of N, tracked/LCM block,
+    window ranges) verbatim and in the same order.
+
+    `count` is the number of ACTIVE rings at this N (same value
+    rebuild_buffer already computes), not len(lines)."""
+    status = f"Running ({tempo_ms}ms/tick)" if running else "Stopped"
+    header = f"N = {n:,}    rings = {count:,}    [{status}]"
+    return [header] + list(lines)
+
+
+_HUD_FONT_SIZE = 16
+_HUD_LINE_SPACING = 4
+_HUD_TEXT_RGB = (235, 235, 235)
+_HUD_MARGIN = 8
+
+
+def rasterize_hud_text(lines):
+    """Renders `lines` (top to bottom) into an RGBA numpy uint8 array sized
+    exactly to fit them, white-ish text on a fully transparent background --
+    ready to upload as a moderngl texture and draw as one screen-space quad
+    (see run()'s own `refresh_hud_texture` closure). Uses
+    PIL.ImageFont.load_default() deliberately: it ships INSIDE Pillow
+    itself, so this needs no .ttf file anywhere on disk (no font-hunting
+    logic, no risk of a missing-file crash on Artur's machine).
+
+    Returns None for an empty `lines` list (nothing to draw -- caller should
+    leave any existing HUD texture as-is or skip drawing entirely) or if
+    Pillow is not installed (`_PIL_AVAILABLE` is the caller's own guard;
+    this function still defends itself in case it's ever called directly)."""
+    if not lines or not _PIL_AVAILABLE:
+        return None
+    # Measuring text extents needs a real ImageDraw bound to SOME image --
+    # PIL has no font-metrics call that doesn't go through one -- so this
+    # throwaway 1x1 probe exists purely for its .textbbox() method.
+    probe_img = Image.new("RGBA", (1, 1), (0, 0, 0, 0))
+    probe_draw = ImageDraw.Draw(probe_img)
+    try:
+        font = ImageFont.load_default(size=_HUD_FONT_SIZE)
+    except TypeError:
+        # Older Pillow (<10.1) load_default() takes no `size` kwarg at all --
+        # falls back to its one fixed built-in size rather than crashing.
+        font = ImageFont.load_default()
+
+    line_boxes = [probe_draw.textbbox((0, 0), line, font=font) for line in lines]
+    line_heights = [(box[3] - box[1]) for box in line_boxes]
+    line_widths = [(box[2] - box[0]) for box in line_boxes]
+    width = max(line_widths) + 2 * _HUD_MARGIN
+    height = sum(line_heights) + _HUD_LINE_SPACING * (len(lines) - 1) + 2 * _HUD_MARGIN
+
+    img = Image.new("RGBA", (int(width), int(height)), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    y = _HUD_MARGIN
+    for line, box, h in zip(lines, line_boxes, line_heights):
+        draw.text((_HUD_MARGIN - box[0], y - box[1]), line, font=font, fill=_HUD_TEXT_RGB + (255,))
+        y += h + _HUD_LINE_SPACING
+
+    return np.asarray(img, dtype=np.uint8)
+
+
+_HUD_ANCHOR_X = 12.0
+_HUD_ANCHOR_Y = 12.0
+
+
+def hud_quad_vertex_data(width, height, x=_HUD_ANCHOR_X, y=_HUD_ANCHOR_Y):
+    """(6, 4) float32 array -- two triangles covering a `width` x `height`
+    pixel-space quad anchored at (x, y) (top-left corner, ports this
+    module's own SCREEN_VERTEX_SHADER pixel/y-down convention), each vertex
+    (pos_x, pos_y, uv_x, uv_y). uv (0,0) is the texture's top-left texel
+    (matches PIL's own top-left-origin image layout in rasterize_hud_text,
+    so the quad shows the HUD bitmap right-side-up with no manual flip).
+
+    Kept as a plain pure function (no GL calls) so the quad geometry itself
+    is unit-testable without a display -- run()'s own `refresh_hud_texture`
+    closure is the only caller that actually uploads this into a buffer."""
+    x0, y0 = float(x), float(y)
+    x1, y1 = x0 + float(width), y0 + float(height)
+    return np.array([
+        [x0, y0, 0.0, 0.0],
+        [x1, y0, 1.0, 0.0],
+        [x1, y1, 1.0, 1.0],
+        [x0, y0, 0.0, 0.0],
+        [x1, y1, 1.0, 1.0],
+        [x0, y1, 0.0, 1.0],
+    ], dtype=np.float32)
+
+
 def run(args):
     import glfw
     import moderngl
@@ -1027,6 +1200,29 @@ def run(args):
     marker_line_vao = ctx.vertex_array(prog_screen, [(marker_line_vbo, "2f 4f", "in_pos", "in_color")])
     flash_quad_vbo = ctx.buffer(reserve=4 * 6 * 4)
     flash_quad_vao = ctx.vertex_array(prog_screen, [(flash_quad_vbo, "2f 4f", "in_pos", "in_color")])
+
+    # [ADDED Faza 11B, see PLAN.md] On-canvas HUD text -- a textured quad
+    # (hud_quad_vertex_data, "2f 2f" pos+uv) sampling a Pillow-rasterized
+    # bitmap (rasterize_hud_text). Ports DrumRenderer's own #drawHud text
+    # overlay directly into this GL window, replacing "console pane only"
+    # as the HUD's real home (see hud_lines_for_n's own doc-comment for why
+    # that was this module's original, deliberately lower-risk choice, and
+    # Artur's 2026-09-06 "nie widzę informacji hud w oknie wizualizacji"
+    # report for why that turned out not to be enough). hud_tex is
+    # recreated (not just rewritten) each time the text changes, since
+    # moderngl textures are fixed-size -- see refresh_hud_texture below.
+    # Only set up at all if Pillow is actually importable; otherwise the
+    # HUD quad is simply never drawn (main loop's own `if hud_tex_holder`
+    # guard), same graceful-degradation convention as everywhere else this
+    # module treats an optional library as optional.
+    prog_text = ctx.program(vertex_shader=TEXT_VERTEX_SHADER, fragment_shader=TEXT_FRAGMENT_SHADER) if _PIL_AVAILABLE else None
+    hud_quad_vbo = ctx.buffer(reserve=6 * 4 * 4) if _PIL_AVAILABLE else None
+    hud_quad_vao = ctx.vertex_array(prog_text, [(hud_quad_vbo, "2f 2f", "in_pos", "in_uv")]) if _PIL_AVAILABLE else None
+    hud_tex_holder = {"tex": None}
+    if not _PIL_AVAILABLE:
+        print("[hud] Pillow not installed -- on-canvas HUD text disabled "
+              "(run `pip install --user Pillow` to enable it). Everything "
+              "else in this window is unaffected.")
 
     # [ADDED Faza 10, see PLAN.md] For --source sieve/magazyn, Faza 4 made
     # the view OPEN exactly at N=args.upto (see initial_n_for_source's own
@@ -1150,6 +1346,59 @@ def run(args):
     flash_state = {"prime": 0.0, "resonance": 0.0}
     outline_draws_holder = {"draws": []}
 
+    # [ADDED Faza 11, see PLAN.md] Persistent HUD snapshot -- rebuild_buffer
+    # keeps this updated (below) alongside its existing human-readable
+    # console prints; emit_hud_state() serializes it (plus the always-live
+    # playback/tempo fields) as ONE JSON line on stdout, prefixed so
+    # rings_tab.py's own console-line callback can pick it out of the
+    # stream. This is IN ADDITION TO the existing print(line) calls, not a
+    # replacement -- those stay useful for a still frame or scrolling back
+    # through history in the console pane.
+    #
+    # Why this exists at all (Artur, 2026-09-06, right after confirming
+    # Faza 10 works): "brak panelu HUD w ogóle" -- the HUD text technically
+    # already reached the console pane (Faza 4/7/11's own long-standing
+    # console-pane convention), but during Faza 10 playback it reprints
+    # every single tick and scrolls past far too fast to ever read; there
+    # was no ALWAYS-CURRENT snapshot anywhere. rings_tab.py renders this
+    # into a small always-visible panel instead of leaving it to scroll by.
+    hud_state = {"n": n, "count": 0, "rebuild_ms": 0.0, "lines": []}
+
+    def emit_hud_state():
+        payload = {
+            "n": hud_state["n"],
+            "count": hud_state["count"],
+            "rebuild_ms": hud_state["rebuild_ms"],
+            "lines": hud_state["lines"],
+            "running": playback["running"],
+            "tempo_ms": tempo_ms,
+        }
+        print("HUD_STATE:" + json.dumps(payload))
+
+    # [ADDED Faza 11B, see PLAN.md] Rebuilds the on-canvas HUD texture from
+    # hud_state's current contents -- called from the same two places
+    # emit_hud_state() already is (end of rebuild_buffer, and on_key after
+    # a Space/]/[/R press), since those are exactly the moments the text
+    # COULD have changed (N changed, or playback running/tempo changed).
+    # A no-op if Pillow isn't installed (hud_quad_vao is None in that case).
+    def refresh_hud_texture():
+        if hud_quad_vao is None:
+            return
+        canvas_lines = compose_hud_canvas_lines(
+            hud_state["n"], hud_state["count"], hud_state["lines"], playback["running"], tempo_ms
+        )
+        rgba = rasterize_hud_text(canvas_lines)
+        if hud_tex_holder["tex"] is not None:
+            hud_tex_holder["tex"].release()
+            hud_tex_holder["tex"] = None
+        if rgba is None:
+            return
+        h, w = rgba.shape[0], rgba.shape[1]
+        tex = ctx.texture((w, h), 4, rgba.tobytes())
+        tex.filter = (moderngl.NEAREST, moderngl.NEAREST)
+        hud_tex_holder["tex"] = tex
+        hud_quad_vbo.write(hud_quad_vertex_data(w, h).tobytes())
+
     def rebuild_buffer(n_value, prev_ring_count=None, advancing=False):
         t0 = time.perf_counter()
         # [ADDED Faza 9, see PLAN.md] range_mode's ring set is FIXED
@@ -1169,7 +1418,8 @@ def run(args):
         # return null` guard), so the explicit `if auto_orbit` branch Faza 6
         # had here is gone; there is nothing left for it to skip.
         tracked_state = tracked_resonance_state(track_primes, active, n_value, auto_orbit=auto_orbit)
-        for line in hud_lines_for_n(active, n_value, pos, enabled_ids, theta, law_mode, tracked_state):
+        current_hud_lines = hud_lines_for_n(active, n_value, pos, enabled_ids, theta, law_mode, tracked_state)
+        for line in current_hud_lines:
             print(line)
 
         # [ADDED Faza 10, see PLAN.md] Auto-orbit's actual cycling -- only
@@ -1249,6 +1499,19 @@ def run(args):
         # crashing the whole GL subprocess over an empty ring set.
         buf_bytes = data.tobytes()
         vbo = ctx.buffer(buf_bytes) if buf_bytes else ctx.buffer(reserve=20)
+
+        # [ADDED Faza 11, see PLAN.md] Refresh + emit the HUD snapshot every
+        # time this function runs (every N-change, whether from a manual
+        # jump or a playback tick) -- see hud_state's own doc-comment above
+        # for why this exists alongside (not instead of) the plain
+        # print(line) calls above.
+        hud_state["n"] = n_value
+        hud_state["count"] = count
+        hud_state["rebuild_ms"] = round(1000 * (t1 - t0), 1)
+        hud_state["lines"] = current_hud_lines
+        emit_hud_state()
+        refresh_hud_texture()
+
         return vbo, count
 
     vbo, ring_count = rebuild_buffer(n)
@@ -1366,6 +1629,17 @@ def run(args):
             tempo_ms = clamp_tempo_ms(round(tempo_ms / 0.8))
             print(f"Tempo: {tempo_ms}ms/tick (slower)")
 
+        # [ADDED Faza 11, see PLAN.md] Space/tempo changes update
+        # playback["running"]/tempo_ms without necessarily triggering a
+        # rebuild_buffer call this same frame (R's own force_rebuild=True
+        # is the one exception, but re-emitting here too is harmless) --
+        # re-emit right away so the HUD panel's running/tempo fields don't
+        # lag behind a key press by up to one whole tempo_ms tick. Same
+        # reasoning for refresh_hud_texture() -- the on-canvas HUD's own
+        # running/tempo line would otherwise lag one tick behind too.
+        emit_hud_state()
+        refresh_hud_texture()
+
     glfw.set_scroll_callback(window, on_scroll)
     glfw.set_mouse_button_callback(window, on_mouse_button)
     glfw.set_cursor_pos_callback(window, on_cursor_pos)
@@ -1395,6 +1669,13 @@ def run(args):
                 if should_stop:
                     playback["running"] = False
                     print("Playback stopped: N reached the loaded ceiling")
+                    # [ADDED Faza 11] N itself doesn't change on this branch,
+                    # so no rebuild_buffer call (and thus no emit_hud_state)
+                    # happens this frame -- emit directly so the panel's
+                    # "running" field flips to stopped immediately instead
+                    # of looking stuck on the last real tick's snapshot.
+                    emit_hud_state()
+                    refresh_hud_texture()
                 else:
                     n_holder["n"] = new_n
                     n_holder["advancing"] = True
@@ -1475,6 +1756,18 @@ def run(args):
             flash_quad_vbo.write(quad.tobytes())
             flash_quad_vao.render(moderngl.TRIANGLE_FAN)
             flash_state["prime"] = decay_flash(flash_state["prime"], 0.85)
+
+        # [ADDED Faza 11B, see PLAN.md] On-canvas HUD text quad -- drawn
+        # LAST (after rings/outlines/marker/flash, right before the swap)
+        # so it always sits on top, same as DrumRenderer's own #drawHud
+        # being the final call in its own #renderFrame. hud_tex_holder is
+        # only ever non-None when Pillow is installed AND the current HUD
+        # text is non-empty (see refresh_hud_texture's own early-outs).
+        if hud_tex_holder["tex"] is not None:
+            hud_tex_holder["tex"].use(location=0)
+            prog_text["u_tex"].value = 0
+            prog_text["u_viewport"].value = (width, height)
+            hud_quad_vao.render(moderngl.TRIANGLES)
 
         glfw.swap_buffers(window)
 

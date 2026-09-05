@@ -29,6 +29,7 @@ other extracted tab -- see research_goldbach_tab.py's own docstring), read fresh
 launch time rather than captured once, so a Settings-tab storage-path change takes
 effect on the NEXT launch without this tab needing its own change-notification wiring.
 """
+import json
 import os
 import queue
 import sys
@@ -42,6 +43,13 @@ from . import storage
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 RENDERER_SCRIPT = os.path.join(_THIS_DIR, "ring_viz", "renderer.py")
+
+# [ADDED Faza 11, see PLAN.md] Must match renderer.py's own emit_hud_state()
+# print prefix exactly -- kept as one shared constant name (even though it's
+# only ever referenced in THIS file, renderer.py runs as a separate
+# subprocess and can't import a shared constant from here) so a future
+# rename doesn't silently desync the two string literals.
+_HUD_STATE_PREFIX = "HUD_STATE:"
 
 
 def build_renderer_argv(portal_folder, upto, python_executable=None,
@@ -238,6 +246,24 @@ class RingsTab(BaseTab):
                                        command=self._on_stop, state="disabled")
         self.stop_button.pack(side="left", padx=(6, 0))
 
+        # [ADDED Faza 11, see PLAN.md] Always-current HUD status panel --
+        # separate from self.console below on purpose. renderer.py's own
+        # human-readable HUD lines (N, factors of N, tracked/LCM state,
+        # etc.) already reached that console pane since Faza 4/7 -- but
+        # during Faza 10 playback they reprint every single tick and
+        # scroll past far too fast to ever read (Artur, 2026-09-06, right
+        # after confirming Faza 10 works: "brak panelu HUD w ogóle" -- the
+        # text existed, there was just no ALWAYS-VISIBLE snapshot of it).
+        # This label's content gets REPLACED wholesale on every
+        # "HUD_STATE:" line (see renderer.py's own emit_hud_state()), never
+        # appended -- see _on_console_line's own doc-comment for how those
+        # lines are told apart from ordinary console output.
+        hud_frame = ttk.LabelFrame(container, text=self.T("rings.hud_panel_title"))
+        hud_frame.pack(fill="x", pady=(0, 10))
+        self.hud_var = tk.StringVar(value=self.T("rings.hud_panel_placeholder"))
+        ttk.Label(hud_frame, textvariable=self.hud_var, justify="left", anchor="w",
+                  font=("TkFixedFont",)).pack(fill="x", padx=8, pady=6)
+
         self.console = GenerationConsole(container, self.T, height=14,
                                           window_title=self.T("rings.console_title"))
 
@@ -335,6 +361,11 @@ class RingsTab(BaseTab):
         self.console.show()
         self.console.append(self.T("rings.console_launching", n=f"{n:,}") + "\n")
         self.status.set(self.T("rings.status_launching"))
+        # [ADDED Faza 11] Reset the HUD panel back to its placeholder text
+        # on every new launch -- otherwise a stale snapshot from a PREVIOUS
+        # run (different N entirely) would sit there until the new
+        # process's first rebuild happens to emit its own HUD_STATE line.
+        self.hud_var.set(self.T("rings.hud_panel_placeholder"))
         runner.start()
         self._poll_queue()
 
@@ -366,7 +397,45 @@ class RingsTab(BaseTab):
                     self._runner = None
                     self._queue = None
                     return
+                # [ADDED Faza 11, see PLAN.md] renderer.py's own
+                # emit_hud_state() prints exactly one such line per HUD
+                # refresh (see that function's own doc-comment) --
+                # LocalLoggedRunner's _read_loop puts one whole stdout
+                # line per queue item (confirmed against its own
+                # `for line in self.proc.stdout` body), so a plain
+                # startswith check is reliable here, no partial-line
+                # reassembly needed. Routed to the HUD panel INSTEAD OF
+                # the scrolling console -- a raw JSON blob in the log
+                # would just be noise next to the human-readable HUD
+                # lines that already print alongside it.
+                if item.startswith(_HUD_STATE_PREFIX):
+                    self._apply_hud_state(item[len(_HUD_STATE_PREFIX):])
+                    continue
                 self.console.append(item)
         except queue.Empty:
             pass
         self.after(150, self._poll_queue)
+
+    def _apply_hud_state(self, raw_json):
+        """Parses one renderer.py emit_hud_state() JSON payload and
+        replaces (never appends to) self.hud_var's content. Malformed/
+        truncated JSON is silently skipped rather than raised -- a stray
+        parse hiccup on one tick's line must never crash the GUI thread;
+        the next tick's line (a few dozen ms later during playback) simply
+        supersedes it."""
+        try:
+            data = json.loads(raw_json)
+        except (ValueError, TypeError):
+            return
+        n = data.get("n", 0)
+        count = data.get("count", 0)
+        rebuild_ms = data.get("rebuild_ms", 0.0)
+        running = data.get("running", False)
+        tempo_ms = data.get("tempo_ms", 0)
+        lines = data.get("lines", [])
+        status = (self.T("rings.hud_status_running", tempo=tempo_ms) if running
+                  else self.T("rings.hud_status_stopped"))
+        header = self.T("rings.hud_header", n=f"{n:,}", count=f"{count:,}",
+                         rebuild_ms=f"{rebuild_ms:.1f}", status=status)
+        body = "\n".join(str(line) for line in lines)
+        self.hud_var.set(header + ("\n" + body if body else ""))

@@ -283,6 +283,56 @@ def main():
     tab.load_range_from_entry.delete(0, "end")
     tab.load_range_to_entry.delete(0, "end")
 
+    # --- [ADDED Faza 11, see PLAN.md] HUD panel: direct _apply_hud_state unit test --
+    tab.hud_var.set("stale")
+    tab._apply_hud_state(
+        '{"n": 1234, "count": 56, "rebuild_ms": 2.5, "lines": ["line one", "line two"], '
+        '"running": true, "tempo_ms": 80}'
+    )
+    hud_text = tab.hud_var.get()
+    check("1,234" in hud_text and "56" in hud_text,
+          f"HUD panel header shows N and ring count, thousands-separated (got {hud_text!r})")
+    check("line one" in hud_text and "line two" in hud_text,
+          f"HUD panel body includes every hud line (got {hud_text!r})")
+    check("80" in hud_text, f"HUD panel shows the current running tempo (got {hud_text!r})")
+
+    tab._apply_hud_state("not valid json{{{")
+    check(tab.hud_var.get() == hud_text,
+          "malformed HUD_STATE JSON is silently ignored -- panel keeps its last good value")
+
+    tab._apply_hud_state('{"n": 7, "count": 1, "rebuild_ms": 0.1, "lines": [], "running": false, "tempo_ms": 120}')
+    hud_text_stopped = tab.hud_var.get()
+    check(tab.T("rings.hud_status_stopped") in hud_text_stopped,
+          f"a stopped/running=false state shows the stopped status text (got {hud_text_stopped!r})")
+
+    # --- [ADDED Faza 11] end-to-end: a fake renderer emitting a real HUD_STATE line --
+    fd, fake_hud_script = tempfile.mkstemp(suffix="_fake_renderer_hud.py")
+    with os.fdopen(fd, "w") as f:
+        f.write(
+            "import sys\n"
+            "print('fake renderer: loading magazyn...')\n"
+            "print('HUD_STATE:{\"n\": 42, \"count\": 3, \"rebuild_ms\": 1.2, "
+            "\"lines\": [\"N = 42\"], \"running\": false, \"tempo_ms\": 120}')\n"
+            "sys.exit(0)\n"
+        )
+    rings_tab_module.RENDERER_SCRIPT = fake_hud_script
+    tab._get_portal_folder = lambda: tmp_portal
+    tab.n_entry.delete(0, "end")
+    tab.n_entry.insert(0, "500")
+    shown.clear()
+    tab._on_open()
+    _pump(app, 3.0)
+    hud_text2 = tab.hud_var.get()
+    check("42" in hud_text2, f"HUD panel updated from a real subprocess's HUD_STATE stdout line (got {hud_text2!r})")
+    console_text2 = tab.console.text.get("1.0", "end")
+    check("HUD_STATE:" not in console_text2,
+          f"HUD_STATE lines are routed to the panel, never appended to the scrolling console pane "
+          f"(got console text: {console_text2!r})")
+    check("fake renderer: loading magazyn..." in console_text2,
+          f"ordinary (non-HUD_STATE) lines from the same process still reach the console normally "
+          f"(got console text: {console_text2!r})")
+    os.remove(fake_hud_script)
+
     # --- failure path: real subprocess, fake renderer script, exit 1 ----------------
     fake_fail_script = _write_fake_renderer(1)
     rings_tab_module.RENDERER_SCRIPT = fake_fail_script
