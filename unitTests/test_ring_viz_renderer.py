@@ -797,6 +797,81 @@ def _test_load_prime_range_slice():
         check("exceeds the loaded ceiling" in str(e), f"empty primes array -> ceiling -1 -> any to >= 0 raises (got {e!r})")
 
 
+def _test_clamp_tempo_ms():
+    from primeatlas.ring_viz.renderer import clamp_tempo_ms, _TEMPO_MS_DEFAULT, _TEMPO_MS_MIN, _TEMPO_MS_MAX
+
+    check(clamp_tempo_ms(120) == 120, "a value already inside [30,2000] passes through unchanged")
+    check(clamp_tempo_ms(5) == _TEMPO_MS_MIN, f"a too-low value clamps up to the min ({_TEMPO_MS_MIN})")
+    check(clamp_tempo_ms(9999) == _TEMPO_MS_MAX, f"a too-high value clamps down to the max ({_TEMPO_MS_MAX})")
+    check(clamp_tempo_ms(30) == 30, "the min boundary itself is accepted as-is")
+    check(clamp_tempo_ms(2000) == 2000, "the max boundary itself is accepted as-is")
+    check(clamp_tempo_ms(None) == _TEMPO_MS_DEFAULT, f"a missing value falls back to the JS's own default ({_TEMPO_MS_DEFAULT})")
+
+
+def _test_can_start_playback():
+    from primeatlas.ring_viz.renderer import can_start_playback
+
+    check(can_start_playback(n=50, range_mode=False, ceiling=100) is True,
+          "sequential mode below the ceiling can start")
+    check(can_start_playback(n=100, range_mode=False, ceiling=100) is False,
+          "sequential mode already AT the ceiling refuses to start (ports #toggleRunning's own guard)")
+    check(can_start_playback(n=150, range_mode=False, ceiling=100) is False,
+          "sequential mode past the ceiling (shouldn't normally happen, but) also refuses")
+    check(can_start_playback(n=0, range_mode=True, ceiling=100) is True,
+          "range mode has no ceiling concept -- always allowed to start")
+    check(can_start_playback(n=100, range_mode=True, ceiling=100) is True,
+          "range mode still allowed to start even at a value equal to some unrelated ceiling")
+
+
+def _test_tick_next_n():
+    from primeatlas.ring_viz.renderer import tick_next_n
+
+    new_n, stop = tick_next_n(n=50, range_mode=False, ceiling=100)
+    check((new_n, stop) == (51, False), f"sequential mode below ceiling advances by exactly 1 (got {(new_n, stop)!r})")
+
+    new_n, stop = tick_next_n(n=100, range_mode=False, ceiling=100)
+    check((new_n, stop) == (100, True), f"sequential mode AT the ceiling stops instead of advancing (got {(new_n, stop)!r})")
+
+    new_n, stop = tick_next_n(n=150, range_mode=False, ceiling=100)
+    check((new_n, stop) == (150, True), f"sequential mode past the ceiling also stops (got {(new_n, stop)!r})")
+
+    new_n, stop = tick_next_n(n=999, range_mode=True, ceiling=100)
+    check((new_n, stop) == (1000, False), f"range mode ignores the ceiling entirely and always advances (got {(new_n, stop)!r})")
+
+
+def _test_advance_auto_orbit():
+    from primeatlas.ring_viz.renderer import advance_auto_orbit
+
+    active = np.array([2, 3, 5, 7, 11], dtype=np.int64)
+
+    # A single active prime is a no-op (mirrors the JS's own early-return guard).
+    idx, cnt, chosen = advance_auto_orbit(np.array([2], dtype=np.int64), index=0, counter=0)
+    check((idx, cnt, chosen) == (0, 0, None), f"len<=1 is a no-op (got {(idx, cnt, chosen)!r})")
+
+    # gap(2->3) == 1, so the very first tick already crosses it.
+    idx, cnt, chosen = advance_auto_orbit(active, index=0, counter=0)
+    check((idx, cnt, chosen) == (1, 0, 3),
+          f"gap of 1 (3-2) advances on the very first tick, landing on index 1/prime 3 (got {(idx, cnt, chosen)!r})")
+
+    # gap(3->5) == 2: one tick short of crossing (counter goes 0->1, no advance yet).
+    idx, cnt, chosen = advance_auto_orbit(active, index=1, counter=0)
+    check((idx, cnt, chosen) == (1, 1, None),
+          f"gap of 2 (5-3) does not advance after only 1 tick (got {(idx, cnt, chosen)!r})")
+    # ...and the second tick crosses it.
+    idx, cnt, chosen = advance_auto_orbit(active, index=1, counter=1)
+    check((idx, cnt, chosen) == (2, 0, 5),
+          f"gap of 2 (5-3) advances on the 2nd tick, landing on index 2/prime 5 (got {(idx, cnt, chosen)!r})")
+
+    # Wrapping past the last index uses the fixed gap of 10 (ports the JS's
+    # own `nextIndex === 0 ? 10 : ...` line).
+    idx, cnt, chosen = advance_auto_orbit(active, index=4, counter=8)
+    check((idx, cnt, chosen) == (4, 9, None),
+          f"wrap-around gap of 10 does not advance after only 9 ticks (got {(idx, cnt, chosen)!r})")
+    idx, cnt, chosen = advance_auto_orbit(active, index=4, counter=9)
+    check((idx, cnt, chosen) == (0, 0, 2),
+          f"wrap-around gap of 10 advances on the 10th tick, landing back on index 0/prime 2 (got {(idx, cnt, chosen)!r})")
+
+
 def main():
     _test_basic_multi_floor_load()
     _test_gap_between_floors()
@@ -825,6 +900,10 @@ def main():
     _test_flash_overlay_rgba()
     _test_resonance_is_active()
     _test_load_prime_range_slice()
+    _test_clamp_tempo_ms()
+    _test_can_start_playback()
+    _test_tick_next_n()
+    _test_advance_auto_orbit()
 
     if failures:
         print(f"\n{len(failures)} FAILURE(S)")

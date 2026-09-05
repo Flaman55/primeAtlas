@@ -100,6 +100,22 @@ Controls:
     scroll            zoom to cursor
     Up / Down         change N by +/- --n-step (recomputes ring buffer)
     PageUp / PageDown change N by +/- 100 * --n-step (coarse jump)
+    Space             start/stop playback -- auto-advances N by exactly 1 per
+                      tick (independent of --n-step), same as the HTML's own
+                      Start/Stop button (Faza 10, see PLAN.md)
+    ] / [             faster / slower playback (+ / - also work as
+                      aliases, in case ]/[ don't reach this window on a
+                      given keyboard layout) -- multiplies the tempo
+                      (ms/tick) by 0.8 / 1.25 each press (not a fixed ms
+                      step: a flat +/-10ms was imperceptible at low tempos
+                      and negligible at high ones -- see Artur's 2026-09-06
+                      "nie widzę różnicy" report), clamped to [30, 2000],
+                      printed to the console each press so the change is
+                      confirmable even when it's visually subtle
+    R                 reset -- stops playback, N=1, clears Track P, re-enables
+                      auto-orbit, and drops back to sequential mode even if
+                      --load-range was active (mirrors the HTML's own Reset
+                      button, which always calls resetSequential())
     Esc               quit
 """
 
@@ -510,6 +526,84 @@ def load_prime_range_slice(primes, from_n, to_n):
     lo = int(np.searchsorted(primes_arr, from_n, side="left"))
     hi = int(np.searchsorted(primes_arr, to_n, side="right"))
     return primes_arr[lo:hi]
+
+
+# ---------------------------------------------------------------------------
+# Faza 10 (see PLAN.md) -- playback controls (Space to start/stop, ]/[ for
+# tempo, R to reset) and auto-orbit's actual cycling behavior, which needed
+# a real "N advances on its own over time" loop to have anything to animate
+# -- Faza 6 only landed the FOUNDATION (the --auto-orbit flag and its effect
+# of suppressing the tracked/LCM HUD block), never the cycling itself, since
+# this module had no notion of "time passing" until now. Ports
+# StructuralSieveApp's #toggleRunning / #stop / #tick / #setTempo /
+# #advanceAutoOrbit / (the resetSequential()-calling half of) #reset.
+# ---------------------------------------------------------------------------
+
+_TEMPO_MS_MIN = 30
+_TEMPO_MS_MAX = 2000
+_TEMPO_MS_DEFAULT = 120
+
+
+def clamp_tempo_ms(value):
+    """Ports #setTempo's own clamp exactly: [30, 2000] ms/tick, falling back
+    to the JS's own default (120) for a missing/non-finite value -- see
+    that method's own `Math.min(2000, Math.max(30, ...))` line."""
+    if value is None:
+        value = _TEMPO_MS_DEFAULT
+    return min(_TEMPO_MS_MAX, max(_TEMPO_MS_MIN, int(value)))
+
+
+def can_start_playback(n, range_mode, ceiling):
+    """Ports #toggleRunning's own pre-start guard: sequential mode refuses to
+    START playback once N has already reached the loaded ceiling (the caller
+    should show the JS's own "ss-info-ceiling-reached" message in that case
+    instead of silently doing nothing) -- range mode has no ceiling at all
+    and can always start (mirrors `this.#model.mode === "sequential" &&
+    this.#n >= ceiling` being the ONLY case that blocks a start)."""
+    return range_mode or n < ceiling
+
+
+def tick_next_n(n, range_mode, ceiling):
+    """One playback tick's worth of N-advance -- ports #tick's own body
+    exactly: sequential mode STOPS (does not advance, `should_stop=True`)
+    once N has reached the ceiling; range mode has no ceiling and always
+    advances by exactly 1 (NOT by --n-step, which only applies to the
+    manual Up/Down/PageUp/PageDown keys -- #tick's own `this.#n += 1` is a
+    single hard-coded step regardless of any user-facing "step size"
+    concept). Returns (new_n, should_stop)."""
+    if not range_mode and n >= ceiling:
+        return n, True
+    return n + 1, False
+
+
+def advance_auto_orbit(active_primes, index, counter):
+    """One tick's worth of #advanceAutoOrbit -- ports that method's body
+    exactly: cycles a "which ring is tracked" index forward through
+    `active_primes`, holding each one for a number of ticks proportional to
+    the gap to the next active prime (wrapping to a fixed gap of 10 once it
+    cycles past the last one back to index 0 -- ports the JS's own
+    `nextIndex === 0 ? 10 : ...` line verbatim).
+
+    Returns (new_index, new_counter, chosen_prime_or_None) -- `chosen_prime`
+    is only non-None on the tick where the orbit actually ADVANCES to a new
+    ring (mirrors the JS only reassigning `this.#trackedPrimes` inside the
+    `if (counter >= gap)` branch); the caller is responsible for remembering
+    the LAST chosen prime across ticks where this returns None (see run()'s
+    own `orbit_state["current_prime"]`, which persists across calls the same
+    way the JS's own `this.#trackedPrimes` instance field does).
+
+    `len(active_primes) <= 1` is a no-op (mirrors the JS's own early-return
+    guard: nothing to orbit through) -- returns the index/counter unchanged
+    and None."""
+    n = len(active_primes)
+    if n <= 1:
+        return index, counter, None
+    next_index = (index + 1) % n
+    gap = 10 if next_index == 0 else int(active_primes[next_index]) - int(active_primes[index])
+    counter += 1
+    if counter >= gap:
+        return next_index, 0, int(active_primes[next_index])
+    return index, counter, None
 
 
 # ---------------------------------------------------------------------------
@@ -934,14 +1028,30 @@ def run(args):
     flash_quad_vbo = ctx.buffer(reserve=4 * 6 * 4)
     flash_quad_vao = ctx.vertex_array(prog_screen, [(flash_quad_vbo, "2f 4f", "in_pos", "in_color")])
 
+    # [ADDED Faza 10, see PLAN.md] For --source sieve/magazyn, Faza 4 made
+    # the view OPEN exactly at N=args.upto (see initial_n_for_source's own
+    # docstring) -- but sequential playback needs somewhere to advance TO,
+    # and loading only up to that exact N leaves zero headroom: N would
+    # already equal the load ceiling on frame one, so Space would silently
+    # refuse to start every single time (Artur hit this directly testing
+    # Faza 10 itself, 2026-09-06 -- "spacja nie działa"). `load_upto` pads
+    # the underlying LOAD by a modest +5% (at least 1000) past the
+    # requested N so there is room to play forward and actually see
+    # auto-orbit cycle; the DISPLAY still opens at the user's exact
+    # args.upto below (n = initial_n_for_source(..., args.upto, ...), not
+    # load_upto) -- only the loaded prime array itself is padded.
+    load_upto = args.upto
+    if args.source in ("sieve", "magazyn"):
+        load_upto = args.upto + max(1000, args.upto // 20)
+
     print(f"Loading primes via --source={args.source} ...")
     t0 = time.perf_counter()
     if args.source == "synthetic":
         primes = load_synthetic(args.count)
     elif args.source == "sieve":
-        primes = load_sieve(args.upto)
+        primes = load_sieve(load_upto)
     elif args.source == "magazyn":
-        primes = load_magazyn(args.portal_folder, args.upto)
+        primes = load_magazyn(args.portal_folder, load_upto)
     else:
         raise ValueError(f"unknown --source {args.source!r}")
     t1 = time.perf_counter()
@@ -970,6 +1080,26 @@ def run(args):
     # -- the actual auto-cycling behavior is still Faza 10's own scope.
     track_primes = [int(p.strip()) for p in args.track_primes.split(",") if p.strip()] if args.track_primes else []
     auto_orbit = args.auto_orbit
+
+    # [ADDED Faza 10, see PLAN.md] Playback state -- ports #isRunning,
+    # #tempoMs, #autoOrbitIndex/#autoOrbitCounter/#trackedPrimes (the
+    # auto-orbit half). `ceiling` mirrors the JS's own PrimeDataSource
+    # ceiling check inside #tick/#toggleRunning (sequential mode only --
+    # range mode has no ceiling, same as tick_next_n/can_start_playback's
+    # own `range_mode` bypass).
+    #
+    # [FIXED, see Artur's 2026-09-06 "spacja nie działa" report] This used
+    # to be `int(primes[-1])` -- the largest ACTUAL prime found -- which is
+    # the wrong quantity: the real boundary of trustworthy data is how far
+    # loading went (load_upto), not where the last prime happened to land
+    # (primes can be sparse near the boundary, e.g. load_upto=100 with
+    # primes[-1]=97 would have refused 3 perfectly safe ticks). Using
+    # load_upto also gives the load-time headroom padding above something
+    # real to advance into instead of refusing on frame one.
+    ceiling = load_upto if args.source in ("sieve", "magazyn") else (int(primes[-1]) if len(primes) else -1)
+    tempo_ms = clamp_tempo_ms(args.tempo_ms)
+    playback = {"running": False}
+    orbit_state = {"index": 0, "counter": 0, "current_prime": None}
 
     # [ADDED Faza 9, see PLAN.md] Load Range -- ports #loadPrimeRange: switch
     # to a FIXED ring set (range_primes), independent of N from here on
@@ -1020,7 +1150,7 @@ def run(args):
     flash_state = {"prime": 0.0, "resonance": 0.0}
     outline_draws_holder = {"draws": []}
 
-    def rebuild_buffer(n_value, prev_ring_count=None):
+    def rebuild_buffer(n_value, prev_ring_count=None, advancing=False):
         t0 = time.perf_counter()
         # [ADDED Faza 9, see PLAN.md] range_mode's ring set is FIXED
         # (range_primes, set once above) -- it does not grow/shrink with
@@ -1042,10 +1172,41 @@ def run(args):
         for line in hud_lines_for_n(active, n_value, pos, enabled_ids, theta, law_mode, tracked_state):
             print(line)
 
+        # [ADDED Faza 10, see PLAN.md] Auto-orbit's actual cycling -- only
+        # advances on a FORWARD playback tick (advancing=True), never on a
+        # manual jump/goto, a range-mode reload, or a non-advancing redraw,
+        # exactly mirroring #advanceAutoOrbit only ever being called from
+        # inside #tick (see that method's own call site in
+        # StructuralSieveApp.js). orbit_state["current_prime"] persists the
+        # last-chosen ring across every OTHER rebuild_buffer call so a
+        # manual N jump mid-playback still shows the last-orbited ring
+        # rather than reverting to nothing.
+        if auto_orbit and advancing:
+            new_index, new_counter, chosen = advance_auto_orbit(
+                active, orbit_state["index"], orbit_state["counter"]
+            )
+            orbit_state["index"] = new_index
+            orbit_state["counter"] = new_counter
+            if chosen is not None:
+                orbit_state["current_prime"] = chosen
+        effective_track_primes = (
+            ([orbit_state["current_prime"]] if orbit_state["current_prime"] is not None else [])
+            if auto_orbit
+            else track_primes
+        )
+
         # [ADDED Faza 8] Tracked-ring outline circles -- recomputed here
-        # alongside the main buffer, same N-change-only cadence.
+        # alongside the main buffer, same N-change-only cadence. Uses
+        # effective_track_primes (Faza 10) rather than track_primes
+        # directly, so auto-orbit mode outlines whichever single ring it is
+        # currently on instead of every launch-time --track-primes entry
+        # (mirrors DrumRenderer's own outline loop reading
+        # `this.#trackedPrimes`, which IS what auto-orbit overwrites --
+        # unlike tracked_resonance_state below, which auto-orbit instead
+        # short-circuits to None entirely, per that function's own
+        # doc-comment).
         outline_draws_holder["draws"] = build_tracked_outline_draws(
-            active, n_value, enabled_ids, theta, law_mode, track_primes, pos["radius"]
+            active, n_value, enabled_ids, theta, law_mode, effective_track_primes, pos["radius"]
         )
 
         # [ADDED Faza 8] Birth/resonance flash triggers -- approximates
@@ -1076,7 +1237,19 @@ def run(args):
         if resonance_is_active(pos):
             flash_state["resonance"] = 1.0
 
-        return ctx.buffer(data.tobytes()), count
+        # [FIXED, see Artur's 2026-09-06 R/reset crash report]
+        # moderngl.Context.buffer() refuses a truly zero-length buffer
+        # ("the buffer cannot be empty") -- previously unreachable in
+        # practice (N always opened well above 0 active rings), but Faza
+        # 10's own R/reset lands N on 1 (0 active rings, since the
+        # smallest prime is 2), and Up/Down/PageDown can reach N=0 the
+        # same way. Falls back to a 1-vertex placeholder reservation
+        # (never actually drawn -- the main loop's own vao.render call
+        # is told the REAL count, `count`=0, explicitly) rather than
+        # crashing the whole GL subprocess over an empty ring set.
+        buf_bytes = data.tobytes()
+        vbo = ctx.buffer(buf_bytes) if buf_bytes else ctx.buffer(reserve=20)
+        return vbo, count
 
     vbo, ring_count = rebuild_buffer(n)
     vao = ctx.vertex_array(prog, [(vbo, "2f 3f", "in_pos", "in_color")])
@@ -1110,7 +1283,13 @@ def run(args):
             state["pan"][1] += y - ly
         state["last_mouse"] = (x, y)
 
-    n_holder = {"n": n}
+    # [ADDED Faza 10] "advancing" and "force_rebuild" are read by the main
+    # loop's own N-change branch below: "advancing" tells rebuild_buffer
+    # this N-change came from a forward playback tick (so auto-orbit should
+    # cycle), and "force_rebuild" forces a rebuild even when n hasn't
+    # actually changed (needed for R/reset landing back on n=1 when n was
+    # ALREADY 1 -- a plain `n != last_n` check would otherwise miss it).
+    n_holder = {"n": n, "advancing": False, "force_rebuild": False}
 
     def on_key(_window, key, _scancode, action, _mods):
         if action not in (glfw.PRESS, glfw.REPEAT):
@@ -1130,6 +1309,62 @@ def run(args):
             delta = -step * 100
         if delta:
             n_holder["n"] = max(0, n_holder["n"] + delta)
+            return
+
+        # [ADDED Faza 10, see PLAN.md] Playback controls -- gated to PRESS
+        # only (not REPEAT), unlike the arrow keys above: these are
+        # toggle/step actions, not continuous ones, so holding Space down
+        # must not rapid-fire start/stop the way holding Up rapid-fires N
+        # jumps.
+        if action != glfw.PRESS:
+            return
+        nonlocal auto_orbit, range_mode, tempo_ms
+        if key == glfw.KEY_SPACE:
+            # Ports #toggleRunning exactly: STOP always succeeds; START is
+            # refused (with a message, mirroring the JS's own
+            # "ss-info-ceiling-reached") once sequential mode has already
+            # reached the loaded ceiling -- see can_start_playback's own
+            # doc-comment.
+            if playback["running"]:
+                playback["running"] = False
+            elif can_start_playback(n_holder["n"], range_mode, ceiling):
+                playback["running"] = True
+            else:
+                print("Playback: N is already at the loaded ceiling -- nothing left to advance to")
+        elif key == glfw.KEY_R:
+            # Ports #reset exactly (the resetSequential()-calling half --
+            # see this function's own module docstring "Controls:" entry
+            # for R): stop playback, N=1, drop Track P, re-enable
+            # auto-orbit, and fall back to sequential mode even if
+            # --load-range was active at launch.
+            playback["running"] = False
+            track_primes.clear()
+            auto_orbit = True
+            range_mode = False
+            orbit_state["index"] = 0
+            orbit_state["counter"] = 0
+            orbit_state["current_prime"] = None
+            n_holder["n"] = 1
+            n_holder["force_rebuild"] = True
+        elif key in (glfw.KEY_RIGHT_BRACKET, glfw.KEY_EQUAL):
+            # [FIXED, see Artur's 2026-09-06 "nie widzę różnicy" report]
+            # Was a flat tempo_ms += 10 -- a barely-there ~8% change at the
+            # 120ms default, and a rounding error at the low end (30ms) or
+            # invisible at the high end (2000ms). Multiplicative scaling
+            # (20% per press) stays proportionally noticeable across the
+            # whole [30,2000] range, and the print gives Artur a way to
+            # CONFIRM the value actually changed independent of whether
+            # the animation itself looks any different to the eye.
+            # KEY_EQUAL (the unshifted '=' key, i.e. the '+' position) is
+            # accepted as an alias for KEY_RIGHT_BRACKET in case '[' / ']'
+            # don't reach this callback at all on a given keyboard layout
+            # -- '+' faster / '-' slower is also the more universal
+            # media-player convention regardless.
+            tempo_ms = clamp_tempo_ms(round(tempo_ms * 0.8))
+            print(f"Tempo: {tempo_ms}ms/tick (faster)")
+        elif key in (glfw.KEY_LEFT_BRACKET, glfw.KEY_MINUS):
+            tempo_ms = clamp_tempo_ms(round(tempo_ms / 0.8))
+            print(f"Tempo: {tempo_ms}ms/tick (slower)")
 
     glfw.set_scroll_callback(window, on_scroll)
     glfw.set_mouse_button_callback(window, on_mouse_button)
@@ -1139,15 +1374,39 @@ def run(args):
     last_n = n
     frame_count = 0
     fps_t0 = time.perf_counter()
+    last_tick_time = time.perf_counter()
 
     while not glfw.window_should_close(window):
         glfw.poll_events()
 
-        if n_holder["n"] != last_n:
+        # [ADDED Faza 10, see PLAN.md] Playback loop -- ports #tick's own
+        # setTimeout(tempoMs)-based scheduling as a plain elapsed-time check
+        # against wall-clock time (this loop already runs every frame
+        # uncapped -- see glfw.swap_interval(0) above -- so there is no
+        # separate timer callback to install, just a gate on how often the
+        # N-advance actually fires). tick_next_n's own should_stop covers
+        # sequential mode reaching its ceiling (mirrors #tick's own
+        # ceiling check, which STOPS rather than advancing past it).
+        if playback["running"]:
+            now_tick = time.perf_counter()
+            if (now_tick - last_tick_time) * 1000.0 >= tempo_ms:
+                last_tick_time = now_tick
+                new_n, should_stop = tick_next_n(n_holder["n"], range_mode, ceiling)
+                if should_stop:
+                    playback["running"] = False
+                    print("Playback stopped: N reached the loaded ceiling")
+                else:
+                    n_holder["n"] = new_n
+                    n_holder["advancing"] = True
+
+        if n_holder["n"] != last_n or n_holder["force_rebuild"]:
             last_n = n_holder["n"]
-            vbo, new_ring_count = rebuild_buffer(last_n, prev_ring_count=ring_count)
+            advancing = n_holder["advancing"]
+            vbo, new_ring_count = rebuild_buffer(last_n, prev_ring_count=ring_count, advancing=advancing)
             ring_count = new_ring_count
             vao = ctx.vertex_array(prog, [(vbo, "2f 3f", "in_pos", "in_color")])
+            n_holder["advancing"] = False
+            n_holder["force_rebuild"] = False
 
         width, height = glfw.get_framebuffer_size(window)
         ctx.viewport = (0, 0, width, height)
@@ -1159,7 +1418,14 @@ def run(args):
         prog["u_zoom"].value = state["zoom"]
         prog["u_viewport"].value = (width, height)
 
-        vao.render(moderngl.POINTS)
+        # [FIXED, see Faza 10's own empty-buffer note above] vertices=
+        # ring_count explicitly, rather than letting moderngl infer the
+        # count from the vbo's own byte size -- needed now that a 0-ring
+        # buffer is padded to a 1-vertex placeholder reservation instead
+        # of a true zero-length allocation (inferring from buffer size
+        # would otherwise draw that bogus placeholder vertex at the
+        # origin).
+        vao.render(moderngl.POINTS, vertices=ring_count)
 
         # [ADDED Faza 8, see PLAN.md] Tracked-ring outline circles -- one
         # LINE_LOOP draw call per tracked-and-active ring over the shared
@@ -1258,6 +1524,13 @@ def main():
     parser.add_argument("--load-range", type=str, default="",
                          help="comma-separated FROM,TO -- switch to a fixed range mode showing exactly the "
                               "primes in [FROM,TO], auto-tracking all of them if there aren't too many")
+    # [ADDED Faza 10, see PLAN.md] Playback speed -- ports #tempoMs's own
+    # default (120ms/tick) and clamp range ([30,2000], see
+    # clamp_tempo_ms's own doc-comment); Space starts/stops playback at
+    # this rate, ]/[ adjust it live by +/-10ms per press.
+    parser.add_argument("--tempo-ms", type=int, default=_TEMPO_MS_DEFAULT,
+                         help="playback speed in ms/tick, clamped to [30,2000] "
+                              "(Space starts/stops playback, ]/[ adjust it live)")
     args = parser.parse_args()
 
     if args.source == "magazyn" and not args.portal_folder:
