@@ -751,6 +751,52 @@ def _test_resonance_is_active():
     check(not resonance_is_active(pos_empty), "no active rings at all -> not a resonance (guards the vacuous-True case)")
 
 
+# ---------------------------------------------------------------------------
+# Faza 9 (see PLAN.md): Load Range -- load_prime_range_slice, the only pure
+# function this phase needed (the rest -- n reset to 0, auto-tracking,
+# switching rebuild_buffer's active-set source -- lives in run()'s own
+# closures, exercised only by the CLI/argv wiring tests in test_rings_tab.py
+# and by manual/real-hardware verification, same GL-adjacent split as every
+# other phase in this file).
+# ---------------------------------------------------------------------------
+
+def _test_load_prime_range_slice():
+    from primeatlas.ring_viz.renderer import load_prime_range_slice
+
+    primes = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23, 29], dtype=np.int64)
+
+    sliced = load_prime_range_slice(primes, 5, 19)
+    check(list(sliced) == [5, 7, 11, 13, 17, 19],
+          f"returns the ascending sub-array within [from, to] inclusive (got {list(sliced)!r})")
+
+    exact_edges = load_prime_range_slice(primes, 2, 29)
+    check(list(exact_edges) == list(primes), f"[from, to] spanning the whole array returns everything (got {list(exact_edges)!r})")
+
+    between = load_prime_range_slice(primes, 4, 6)
+    check(list(between) == [5], f"a range with no primes at its own edges still finds an interior one (got {list(between)!r})")
+
+    empty_slice = load_prime_range_slice(primes, 24, 28)
+    check(list(empty_slice) == [], f"a range entirely inside the loaded ceiling but with no primes in it -> empty, no error (got {list(empty_slice)!r})")
+
+    try:
+        load_prime_range_slice(primes, 20, 10)
+        check(False, "from > to should raise ValueError")
+    except ValueError as e:
+        check("invalid range" in str(e), f"from > to raises ValueError mentioning the invalid range (got {e!r})")
+
+    try:
+        load_prime_range_slice(primes, 5, 1000)
+        check(False, "to beyond the loaded ceiling should raise ValueError")
+    except ValueError as e:
+        check("exceeds the loaded ceiling" in str(e), f"to > primes[-1] raises ValueError mentioning the ceiling (got {e!r})")
+
+    try:
+        load_prime_range_slice(np.empty(0, dtype=np.int64), 0, 10)
+        check(False, "an empty primes array with any to >= 0 should raise ValueError (ceiling is -1)")
+    except ValueError as e:
+        check("exceeds the loaded ceiling" in str(e), f"empty primes array -> ceiling -1 -> any to >= 0 raises (got {e!r})")
+
+
 def main():
     _test_basic_multi_floor_load()
     _test_gap_between_floors()
@@ -778,6 +824,7 @@ def main():
     _test_decay_flash()
     _test_flash_overlay_rgba()
     _test_resonance_is_active()
+    _test_load_prime_range_slice()
 
     if failures:
         print(f"\n{len(failures)} FAILURE(S)")

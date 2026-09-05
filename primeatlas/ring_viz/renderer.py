@@ -477,6 +477,42 @@ def build_vertex_data(primes, n, max_radius, enabled_ids=(), theta=0.5, mode="st
 
 
 # ---------------------------------------------------------------------------
+# Faza 9 (see PLAN.md) -- Load Range: switch to a FIXED ring set (a slice of
+# already-loaded primes in [from, to]), independent of N, mirroring
+# SieveModel's "range"/slice mode (see that class's own module doc-comment:
+# sequential mode's ring set is primesUpTo(n) and grows with n; range mode's
+# ring set is a fixed array chosen once and never re-filtered by n again --
+# only each ring's phase/hit status still depends on n via ring_positions,
+# which doesn't care how its `primes` argument was derived).
+# ---------------------------------------------------------------------------
+
+def load_prime_range_slice(primes, from_n, to_n):
+    """The ascending sub-array of `primes` (this renderer's own already-
+    loaded array -- there is no separate always-larger data source here the
+    way the JS's PrimeDataSource is, so `primes` itself plays that role)
+    whose values fall in [from_n, to_n] inclusive. Ports
+    SieveModel.loadPrimeRange's slicing half only -- the mode-switching side
+    effects (n reset to 0, auto-populating Track P, printing an info line)
+    are run()'s own job, kept out of this pure function the same way this
+    module keeps every other GL-adjacent decision out of its pure helpers.
+
+    Raises ValueError (Python's RangeError-equivalent) for the same two
+    cases SieveModel.loadPrimeRange throws for: an inverted range (`from_n
+    > to_n`), or a `to_n` beyond what is actually loaded (`to_n >
+    primes[-1]`, or `primes` is empty) -- ports the "exceeds the loaded
+    ceiling" check using THIS renderer's own loaded array as the ceiling."""
+    if from_n > to_n:
+        raise ValueError(f"load_prime_range_slice: invalid range [{from_n}, {to_n}] (from > to)")
+    primes_arr = np.asarray(primes, dtype=np.int64)
+    ceiling = int(primes_arr[-1]) if len(primes_arr) else -1
+    if to_n > ceiling:
+        raise ValueError(f"load_prime_range_slice: {to_n} exceeds the loaded ceiling ({ceiling})")
+    lo = int(np.searchsorted(primes_arr, from_n, side="left"))
+    hi = int(np.searchsorted(primes_arr, to_n, side="right"))
+    return primes_arr[lo:hi]
+
+
+# ---------------------------------------------------------------------------
 # Faza 8 (see PLAN.md) -- tracked-ring outline circles, birth/resonance flash
 # overlays, center marker. Ports DrumRenderer.draw's `if (ring.tracked) {...}`
 # outline-stroke branch, #drawCenterMarker, and the #drawFlashOverlay/
@@ -935,6 +971,45 @@ def run(args):
     track_primes = [int(p.strip()) for p in args.track_primes.split(",") if p.strip()] if args.track_primes else []
     auto_orbit = args.auto_orbit
 
+    # [ADDED Faza 9, see PLAN.md] Load Range -- ports #loadPrimeRange: switch
+    # to a FIXED ring set (range_primes), independent of N from here on
+    # (rebuild_buffer below uses it verbatim instead of `primes[primes <=
+    # n_value]` whenever range_mode is True -- see load_prime_range_slice's
+    # own doc-comment for why `primes` itself is the ceiling here, unlike
+    # the JS's separate always-larger PrimeDataSource). Failures are
+    # reported the same friendly way the JS's #loadPrimeRange does (a plain
+    # printed line, this module's only "info" surface -- see
+    # hud_lines_for_n's own doc-comment for why stdout and not a GL overlay)
+    # rather than crashing the whole subprocess over a bad --load-range.
+    range_mode = False
+    range_primes = None
+    if args.load_range:
+        load_from, load_to = (int(p.strip()) for p in args.load_range.split(","))
+        try:
+            range_primes = load_prime_range_slice(primes, load_from, load_to)
+            range_mode = True
+            n = 0  # mirrors the JS's own `this.#n = 0` on a successful range load
+            range_count = len(range_primes)
+            # [ADDED Faza 9] Auto-populate Track P with EVERY ring in the
+            # loaded range (Artur, ported from the JS's own 2026-09-03 note:
+            # "loading a P-range should show all its rings tracked at once,
+            # so the LCM/phase/to-resonance HUD reflects the whole set") --
+            # but only up to Faza 7's own tracked_resonance_state cap
+            # (max_tracked_for_exact_lcm's default, 500), same reasoning as
+            # the JS's #maxTrackedForExactLcm: past that the exact BigInt
+            # LCM of the whole set would be too slow to multiply even once.
+            # Overwrites whatever --track-primes was set at launch, exactly
+            # like the JS overwrites this.#trackedPrimes unconditionally on
+            # a successful range load.
+            if 0 < range_count <= 500:
+                track_primes = [int(p) for p in range_primes]
+                auto_orbit = False
+                print(f"Range [{load_from:,}, {load_to:,}] loaded: {range_count:,} primes, all tracked")
+            else:
+                print(f"Range [{load_from:,}, {load_to:,}] loaded: {range_count:,} primes")
+        except ValueError as e:
+            print(f"Load Range failed: {e}")
+
     state = {"pan": [0.0, 0.0], "zoom": 1.0, "dragging": False, "last_mouse": (0.0, 0.0)}
 
     # [ADDED Faza 8, see PLAN.md] flash-overlay decay accumulators (ports
@@ -947,7 +1022,12 @@ def run(args):
 
     def rebuild_buffer(n_value, prev_ring_count=None):
         t0 = time.perf_counter()
-        active = primes[primes <= n_value]
+        # [ADDED Faza 9, see PLAN.md] range_mode's ring set is FIXED
+        # (range_primes, set once above) -- it does not grow/shrink with
+        # n_value the way sequential mode's `primes[primes <= n_value]`
+        # does; only each ring's phase/hit status still depends on n_value,
+        # via ring_positions inside build_vertex_data below.
+        active = range_primes if range_mode else primes[primes <= n_value]
         data, count, pos = build_vertex_data(active, n_value, max_radius, enabled_ids, theta, law_mode)
         t1 = time.perf_counter()
         print(f"N={n_value:,}  rings={count:,}  rebuild={1000 * (t1 - t0):.1f}ms")
@@ -1171,6 +1251,13 @@ def main():
                          help="comma-separated prime values to track, e.g. 2,3,5")
     parser.add_argument("--auto-orbit", action="store_true",
                          help="auto-cycle through active primes instead of a fixed Track P list")
+    # [ADDED Faza 9, see PLAN.md] Load Range -- comma-separated FROM,TO (two
+    # non-negative integers, FROM <= TO checked here; the "does TO actually
+    # fit under what got loaded" check needs the real loaded `primes` array,
+    # so that half happens in run() via load_prime_range_slice instead).
+    parser.add_argument("--load-range", type=str, default="",
+                         help="comma-separated FROM,TO -- switch to a fixed range mode showing exactly the "
+                              "primes in [FROM,TO], auto-tracking all of them if there aren't too many")
     args = parser.parse_args()
 
     if args.source == "magazyn" and not args.portal_folder:
@@ -1196,6 +1283,21 @@ def main():
                 bad.append(raw)
         if bad:
             parser.error(f"--track-primes has non-integer value(s) {bad!r}, expected comma-separated primes e.g. 2,3,5")
+
+    # [ADDED Faza 9, see PLAN.md] Same fail-fast format validation as
+    # --track-primes/--windows above: catch a malformed --load-range before
+    # run() ever starts loading primes, rather than raising an uncaught
+    # ValueError/unpack error later. The "exceeds what got loaded" case
+    # cannot be checked here (no `primes` array yet) -- see run()'s own
+    # call to load_prime_range_slice for that half.
+    if args.load_range:
+        parts = args.load_range.split(",")
+        if len(parts) != 2 or not all(p.strip().isdigit() for p in parts):
+            parser.error(f"--load-range must be exactly two comma-separated non-negative integers FROM,TO, "
+                         f"got {args.load_range!r}")
+        load_from, load_to = int(parts[0]), int(parts[1])
+        if load_from > load_to:
+            parser.error(f"--load-range FROM must be <= TO, got {args.load_range!r}")
 
     run(args)
 

@@ -46,7 +46,7 @@ RENDERER_SCRIPT = os.path.join(_THIS_DIR, "ring_viz", "renderer.py")
 
 def build_renderer_argv(portal_folder, upto, python_executable=None,
                          windows=(), general_law_theta=0.5, general_law_mode="stepped",
-                         point_size=None, track_primes=(), auto_orbit=False):
+                         point_size=None, track_primes=(), auto_orbit=False, load_range=None):
     """Builds the argv for launching renderer.py against a real magazyn.
 
     Uses `python_executable` (defaults to sys.executable -- THIS SAME Python
@@ -88,7 +88,15 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
     once at launch time via the new "Track P" field, forwarded as-is to
     renderer.py's --track-primes. `auto_orbit` mirrors the JS's auto-orbit
     checkbox; same launch-time-only convention as `windows` above -- no
-    live in-GL-window toggle for either."""
+    live in-GL-window toggle for either.
+
+    [ADDED Faza 9, see PLAN.md] `load_range` -- None (default, sequential
+    mode, unchanged behavior) or a (from, to) pair forwarded as-is to
+    renderer.py's --load-range. As with track_primes, the string values are
+    NOT int()-cast here -- an empty or malformed field just omits
+    --load-range entirely rather than raising inside the GUI thread;
+    renderer.py's own main() does the real format validation (same
+    parser.error() convention as --track-primes/--windows)."""
     exe = python_executable or sys.executable
     argv = [exe, RENDERER_SCRIPT, "--source", "magazyn",
             "--portal-folder", portal_folder, "--upto", str(upto)]
@@ -112,6 +120,9 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
         argv += ["--track-primes", ",".join(str(p) for p in track_primes)]
     if auto_orbit:
         argv += ["--auto-orbit"]
+    if load_range is not None:
+        load_from, load_to = load_range
+        argv += ["--load-range", f"{load_from},{load_to}"]
     return argv
 
 
@@ -193,13 +204,30 @@ class RingsTab(BaseTab):
         # here rather than disabling the Track P field, since Faza 10 is
         # what actually wires auto-orbit's visible behavior.
         track_row = ttk.Frame(container)
-        track_row.pack(fill="x", pady=(0, 10))
+        track_row.pack(fill="x", pady=(0, 6))
         ttk.Label(track_row, text=self.T("rings.track_primes_label")).pack(side="left")
         self.track_primes_entry = ttk.Entry(track_row, width=20)
         self.track_primes_entry.pack(side="left", padx=(6, 16))
         self.auto_orbit_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(track_row, text=self.T("rings.auto_orbit_label"),
                          variable=self.auto_orbit_var).pack(side="left")
+
+        # [ADDED Faza 9, see PLAN.md] Load Range -- From/To fields, launch-time
+        # only (same convention as every other field on this tab: read once by
+        # _on_open, no live subprocess IPC). Leaving BOTH empty keeps today's
+        # sequential-mode behavior unchanged; filling in both switches to a
+        # fixed range mode that auto-tracks every prime in it (see
+        # renderer.py's own --load-range handling in run() for the full
+        # behavior, ported from the HTML's #loadPrimeRange/"Load Range"
+        # button).
+        range_row = ttk.Frame(container)
+        range_row.pack(fill="x", pady=(0, 10))
+        ttk.Label(range_row, text=self.T("rings.load_range_label")).pack(side="left")
+        self.load_range_from_entry = ttk.Entry(range_row, width=16)
+        self.load_range_from_entry.pack(side="left", padx=(6, 6))
+        ttk.Label(range_row, text=self.T("rings.load_range_to_label")).pack(side="left")
+        self.load_range_to_entry = ttk.Entry(range_row, width=16)
+        self.load_range_to_entry.pack(side="left", padx=(6, 0))
 
         button_row = ttk.Frame(container)
         button_row.pack(fill="x", pady=(0, 10))
@@ -278,10 +306,26 @@ class RingsTab(BaseTab):
         track_primes = [p.strip() for p in track_primes_raw.split(",") if p.strip()] if track_primes_raw else []
         auto_orbit = self.auto_orbit_var.get()
 
+        # [ADDED Faza 9, see PLAN.md] Load Range -- both fields must be
+        # non-empty AND parse as plain integers to activate range mode;
+        # anything else (both blank, one blank, garbage text) silently
+        # falls back to sequential mode rather than raising inside the GUI
+        # thread -- renderer.py's own --load-range parsing/validation
+        # (main()'s parser.error, run()'s load_prime_range_slice) is where
+        # a well-formed-but-nonsensical range (e.g. FROM > TO, or TO beyond
+        # what's loaded) surfaces, as a normal subprocess error visible in
+        # the console pane, same convention as track_primes above.
+        range_from_raw = self.load_range_from_entry.get().strip()
+        range_to_raw = self.load_range_to_entry.get().strip()
+        load_range = None
+        if range_from_raw and range_to_raw and range_from_raw.isdigit() and range_to_raw.isdigit():
+            load_range = (int(range_from_raw), int(range_to_raw))
+
         argv = build_renderer_argv(portal_folder, n, windows=windows,
                                     general_law_theta=theta, general_law_mode=mode,
                                     point_size=point_size,
-                                    track_primes=track_primes, auto_orbit=auto_orbit)
+                                    track_primes=track_primes, auto_orbit=auto_orbit,
+                                    load_range=load_range)
         q = queue.Queue()
         runner = LocalLoggedRunner(argv, q)
         self._runner = runner

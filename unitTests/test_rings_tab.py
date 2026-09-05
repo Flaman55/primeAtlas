@@ -120,6 +120,14 @@ def _test_build_renderer_argv():
           f"a non-numeric track_primes entry passes through as a plain string instead "
           f"of raising inside the GUI thread (got {garbage_argv!r})")
 
+    # [ADDED Faza 9, see PLAN.md] Load Range argv wiring.
+    check("--load-range" not in default_argv,
+          f"no --load-range arg at all when load_range=None (matches renderer.py's own "
+          f"default of sequential mode) (got {default_argv!r})")
+    lr_argv = build_renderer_argv("/x", 1, load_range=(100, 500))
+    check("--load-range" in lr_argv and lr_argv[lr_argv.index("--load-range") + 1] == "100,500",
+          f"--load-range joins the (from, to) pair with a comma (got {lr_argv!r})")
+
 
 def _write_fake_renderer(exit_code):
     """A stand-in for primeatlas/ring_viz/renderer.py that never touches moderngl/glfw
@@ -235,6 +243,45 @@ def main():
     os.remove(fake_ok_script2)
     tab.track_primes_entry.delete(0, "end")
     tab.auto_orbit_var.set(False)
+
+    # --- [ADDED Faza 9, see PLAN.md] Load Range From/To field wiring ----------------
+    fake_ok_script3 = _write_fake_renderer(0)
+    rings_tab_module.RENDERER_SCRIPT = fake_ok_script3
+    tab.load_range_from_entry.delete(0, "end")
+    tab.load_range_from_entry.insert(0, "100")
+    tab.load_range_to_entry.delete(0, "end")
+    tab.load_range_to_entry.insert(0, "500")
+    tab.n_entry.delete(0, "end")
+    tab.n_entry.insert(0, "500")
+    shown.clear()
+    tab._on_open()
+    launched_cmd = list(tab._runner.cmd) if tab._runner is not None else []
+    check("--load-range" in launched_cmd and
+          launched_cmd[launched_cmd.index("--load-range") + 1] == "100,500",
+          f"both From/To fields filled in reach the launched argv as --load-range "
+          f"FROM,TO (got argv: {launched_cmd!r})")
+    _pump(app, 3.0)
+    os.remove(fake_ok_script3)
+
+    # Leaving one field blank must NOT activate range mode (silent fallback to
+    # sequential, per _on_open's own doc-comment -- no crash, no --load-range).
+    fake_ok_script4 = _write_fake_renderer(0)
+    rings_tab_module.RENDERER_SCRIPT = fake_ok_script4
+    tab.load_range_from_entry.delete(0, "end")
+    tab.load_range_from_entry.insert(0, "100")
+    tab.load_range_to_entry.delete(0, "end")  # To left blank
+    tab.n_entry.delete(0, "end")
+    tab.n_entry.insert(0, "500")
+    shown.clear()
+    tab._on_open()
+    launched_cmd = list(tab._runner.cmd) if tab._runner is not None else []
+    check("--load-range" not in launched_cmd,
+          f"a half-filled Load Range (From set, To blank) omits --load-range entirely, "
+          f"does not raise (got argv: {launched_cmd!r})")
+    _pump(app, 3.0)
+    os.remove(fake_ok_script4)
+    tab.load_range_from_entry.delete(0, "end")
+    tab.load_range_to_entry.delete(0, "end")
 
     # --- failure path: real subprocess, fake renderer script, exit 1 ----------------
     fake_fail_script = _write_fake_renderer(1)

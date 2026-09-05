@@ -657,5 +657,7 @@
   "rings.general_law_mode_label": "mode:",
   "rings.point_size_label": "point size:",
   "rings.track_primes_label": "Track P (comma-separated):",
-  "rings.auto_orbit_label": "Auto orbit"
+  "rings.auto_orbit_label": "Auto orbit",
+  "rings.load_range_label": "Load Range from:",
+  "rings.load_range_to_label": "to:"
 }
