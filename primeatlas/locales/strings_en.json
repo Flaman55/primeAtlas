@@ -655,5 +655,7 @@
   "rings.window_general_law": "General Law",
   "rings.general_law_theta_label": "theta:",
   "rings.general_law_mode_label": "mode:",
-  "rings.point_size_label": "point size:"
+  "rings.point_size_label": "point size:",
+  "rings.track_primes_label": "Track P (comma-separated):",
+  "rings.auto_orbit_label": "Auto orbit"
 }

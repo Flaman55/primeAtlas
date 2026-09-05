@@ -97,6 +97,29 @@ def _test_build_renderer_argv():
     check("--point-size" in ps_argv and ps_argv[ps_argv.index("--point-size") + 1] == "12.5",
           f"--point-size is included and correct when a value is given (got {ps_argv!r})")
 
+    # [ADDED Faza 6, see PLAN.md] Track P / auto-orbit argv wiring.
+    check("--track-primes" not in default_argv,
+          f"no --track-primes arg at all when track_primes=() (matches renderer.py's "
+          f"own default of no tracking) (got {default_argv!r})")
+    check("--auto-orbit" not in default_argv,
+          f"no --auto-orbit flag at all when auto_orbit=False (got {default_argv!r})")
+    tp_argv = build_renderer_argv("/x", 1, track_primes=["2", "3", "5"])
+    check("--track-primes" in tp_argv and tp_argv[tp_argv.index("--track-primes") + 1] == "2,3,5",
+          f"--track-primes joins the given values with commas, preserving order "
+          f"(got {tp_argv!r})")
+    ao_argv = build_renderer_argv("/x", 1, auto_orbit=True)
+    check("--auto-orbit" in ao_argv, f"--auto-orbit flag is included when auto_orbit=True (got {ao_argv!r})")
+    # Deliberately str(p), not int(p) -- a raw, unvalidated string from the Track P
+    # text field must pass through here without raising, even if it's garbage;
+    # renderer.py's own --track-primes parsing is where validation happens (same
+    # convention as --windows's unknown-family check) -- see build_renderer_argv's
+    # own doc-comment for why.
+    garbage_argv = build_renderer_argv("/x", 1, track_primes=["2", "not-a-number"])
+    check("--track-primes" in garbage_argv and
+          garbage_argv[garbage_argv.index("--track-primes") + 1] == "2,not-a-number",
+          f"a non-numeric track_primes entry passes through as a plain string instead "
+          f"of raising inside the GUI thread (got {garbage_argv!r})")
+
 
 def _write_fake_renderer(exit_code):
     """A stand-in for primeatlas/ring_viz/renderer.py that never touches moderngl/glfw
@@ -182,7 +205,36 @@ def main():
     check("fake renderer: ready" in console_text,
           f"the fake renderer's real stdout line reached the console pane "
           f"(got console text: {console_text!r})")
+    check("--track-primes" not in console_text and "--auto-orbit" not in console_text,
+          f"empty Track P field + unchecked Auto orbit means neither flag reaches "
+          f"the launched argv (got console text: {console_text!r})")
     os.remove(fake_ok_script)
+
+    # --- [ADDED Faza 6, see PLAN.md] Track P field + Auto orbit checkbox wiring ----
+    # Uses runner.cmd directly (the actual argv LocalLoggedRunner launched)
+    # rather than scraping console text, which is cumulative across every
+    # _on_open() call in this test and would make substring checks fragile.
+    fake_ok_script2 = _write_fake_renderer(0)
+    rings_tab_module.RENDERER_SCRIPT = fake_ok_script2
+    tab.track_primes_entry.delete(0, "end")
+    tab.track_primes_entry.insert(0, "2, 3, 5")
+    tab.auto_orbit_var.set(True)
+    tab.n_entry.delete(0, "end")
+    tab.n_entry.insert(0, "500")
+    shown.clear()
+    tab._on_open()
+    launched_cmd = list(tab._runner.cmd) if tab._runner is not None else []
+    check("--track-primes" in launched_cmd and
+          launched_cmd[launched_cmd.index("--track-primes") + 1] == "2,3,5",
+          f"Track P field's comma-separated value reaches the launched argv, "
+          f"whitespace stripped (got argv: {launched_cmd!r})")
+    check("--auto-orbit" in launched_cmd,
+          f"checked Auto orbit checkbox adds --auto-orbit to the launched argv "
+          f"(got argv: {launched_cmd!r})")
+    _pump(app, 3.0)
+    os.remove(fake_ok_script2)
+    tab.track_primes_entry.delete(0, "end")
+    tab.auto_orbit_var.set(False)
 
     # --- failure path: real subprocess, fake renderer script, exit 1 ----------------
     fake_fail_script = _write_fake_renderer(1)

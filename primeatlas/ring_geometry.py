@@ -498,3 +498,36 @@ def resonance_events_in_range(primes, from_n, to_n):
                     factors.append(p_int)
             events.append({"n": n, "factors": factors})
     return events
+
+
+# ---------------------------------------------------------------------------
+# Tracked primes -- [ADDED Faza 6, PLAN.md] foundation shared by Faza 7 (LCM/
+# resonance HUD) and Faza 8 (tracked-ring outline circles/flash overlays).
+# Ports the filtering half of StructuralSieveApp.js's #trackedResonanceState
+# (see that method's own doc-comment): "which of the primes the user asked
+# to track are actually active (born) yet at the current N". Deliberately
+# does NOT port the LCM/phase/to-resonance computation itself -- that's
+# Faza 7's own scope, kept separate so this foundation stays a pure,
+# single-purpose filter usable by both later phases without either one
+# depending on the other's math.
+# ---------------------------------------------------------------------------
+
+def filter_active_tracked(tracked, active_primes):
+    """Which of `tracked` (an iterable of prime values, in whatever order the
+    user entered them) are present in `active_primes` (the ring array's
+    current active/born set at this N).
+
+    Mirrors `#trackedResonanceState`'s own `tracked.filter((p) =>
+    activePrimes.includes(p))` line exactly: preserves `tracked`'s original
+    order (NOT sorted, NOT deduplicated beyond whatever duplicates the user
+    typed) rather than active_primes's order, since the tracked list is a
+    small, user-authored sequence where "the order Artur typed them in" is
+    itself meaningful (e.g. for a future Track-P text field round-trip).
+
+    Returns a plain list of ints -- deliberately not a numpy array, since
+    the tracked list is always small (user-typed or capped, see Faza 7's
+    own max_tracked) and every caller (HUD text formatting, LCM product)
+    wants plain Python ints, not numpy scalars.
+    """
+    active_set = {int(p) for p in active_primes}
+    return [int(p) for p in tracked if int(p) in active_set]

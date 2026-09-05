@@ -46,7 +46,7 @@ RENDERER_SCRIPT = os.path.join(_THIS_DIR, "ring_viz", "renderer.py")
 
 def build_renderer_argv(portal_folder, upto, python_executable=None,
                          windows=(), general_law_theta=0.5, general_law_mode="stepped",
-                         point_size=None):
+                         point_size=None, track_primes=(), auto_orbit=False):
     """Builds the argv for launching renderer.py against a real magazyn.
 
     Uses `python_executable` (defaults to sys.executable -- THIS SAME Python
@@ -80,7 +80,15 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
     so a real value change is verifiable from the GUI alone -- see
     renderer.py's own [diag] startup print for the other half of that
     investigation (confirming the requested value actually reaches the
-    renderer, vs. a possible GL_POINT_SIZE_RANGE hardware/driver clamp)."""
+    renderer, vs. a possible GL_POINT_SIZE_RANGE hardware/driver clamp).
+
+    [ADDED Faza 6, see PLAN.md] `track_primes` -- an iterable of prime
+    values (any order/dupes as typed by the user, see ring_geometry.py's
+    own filter_active_tracked docstring for why order is preserved) chosen
+    once at launch time via the new "Track P" field, forwarded as-is to
+    renderer.py's --track-primes. `auto_orbit` mirrors the JS's auto-orbit
+    checkbox; same launch-time-only convention as `windows` above -- no
+    live in-GL-window toggle for either."""
     exe = python_executable or sys.executable
     argv = [exe, RENDERER_SCRIPT, "--source", "magazyn",
             "--portal-folder", portal_folder, "--upto", str(upto)]
@@ -92,6 +100,18 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
                      "--general-law-mode", general_law_mode]
     if point_size is not None:
         argv += ["--point-size", str(point_size)]
+    # Deliberately str(p) here, NOT int(p) -- track_primes may come straight
+    # from the Track P text field's raw (unvalidated) split, and forcing an
+    # int() cast here would raise ValueError inside the GUI thread itself on
+    # a typo. renderer.py's own --track-primes parsing (main()'s parser.error()
+    # path, same convention as --windows) is where a bad entry surfaces, as a
+    # normal subprocess-launch error visible in the console pane -- not a
+    # crash of this tab.
+    track_primes = list(track_primes)
+    if track_primes:
+        argv += ["--track-primes", ",".join(str(p) for p in track_primes)]
+    if auto_orbit:
+        argv += ["--auto-orbit"]
     return argv
 
 
@@ -162,6 +182,25 @@ class RingsTab(BaseTab):
         self.general_law_mode_combo.set("stepped")
         self.general_law_mode_combo.pack(side="left", padx=(6, 0))
 
+        # [ADDED Faza 6, see PLAN.md] Track P field -- comma-separated prime
+        # values, forwarded as-is to renderer.py's --track-primes (see
+        # build_renderer_argv's own doc-comment). Launch-time-only, same
+        # convention as the windows checkboxes above: no live in-GL-window
+        # text field yet. "Auto orbit" mirrors the JS's auto-cycle mode
+        # (mutually exclusive in effect with a real Track P list -- see
+        # renderer.py's own rebuild_buffer(), which skips the tracked-filter
+        # entirely when auto-orbit is on); left as an independent checkbox
+        # here rather than disabling the Track P field, since Faza 10 is
+        # what actually wires auto-orbit's visible behavior.
+        track_row = ttk.Frame(container)
+        track_row.pack(fill="x", pady=(0, 10))
+        ttk.Label(track_row, text=self.T("rings.track_primes_label")).pack(side="left")
+        self.track_primes_entry = ttk.Entry(track_row, width=20)
+        self.track_primes_entry.pack(side="left", padx=(6, 16))
+        self.auto_orbit_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(track_row, text=self.T("rings.auto_orbit_label"),
+                         variable=self.auto_orbit_var).pack(side="left")
+
         button_row = ttk.Frame(container)
         button_row.pack(fill="x", pady=(0, 10))
         self.open_button = ttk.Button(button_row, text=self.T("rings.open_button"),
@@ -231,9 +270,18 @@ class RingsTab(BaseTab):
         except ValueError:
             point_size = None
 
+        # [ADDED Faza 6, see PLAN.md] Track P -- comma-separated prime values,
+        # forwarded as-is (renderer.py's own --track-primes does the
+        # digit/validity check, mirroring --windows's own error-reporting
+        # convention -- see that module's main() for the parser.error()).
+        track_primes_raw = self.track_primes_entry.get().strip()
+        track_primes = [p.strip() for p in track_primes_raw.split(",") if p.strip()] if track_primes_raw else []
+        auto_orbit = self.auto_orbit_var.get()
+
         argv = build_renderer_argv(portal_folder, n, windows=windows,
                                     general_law_theta=theta, general_law_mode=mode,
-                                    point_size=point_size)
+                                    point_size=point_size,
+                                    track_primes=track_primes, auto_orbit=auto_orbit)
         q = queue.Queue()
         runner = LocalLoggedRunner(argv, q)
         self._runner = runner

@@ -135,6 +135,7 @@ from primeatlas.ring_geometry import (
     compute_highlight_colors,
     legendre_level_at,
     general_law_window_bounds,
+    filter_active_tracked,
 )
 
 
@@ -448,7 +449,7 @@ def initial_n_for_source(source, upto, primes):
     return upto
 
 
-def hud_lines_for_n(primes_active, n, pos, enabled_ids, theta, mode):
+def hud_lines_for_n(primes_active, n, pos, enabled_ids, theta, mode, tracked_active=()):
     """Ports the non-tracked-primes subset of DrumRenderer's #drawHud /
     StructuralSieveApp's #renderFrame draw-state construction (see those
     methods' own doc-comments in js/render/DrumRenderer.js and
@@ -466,15 +467,22 @@ def hud_lines_for_n(primes_active, n, pos, enabled_ids, theta, mode):
     module's stdout straight into it -- reusing that live text surface for
     HUD info is lower-risk than shipping unverified GL text rendering.
 
-    Deliberately excludes the tracked-primes LCM/phase/toResonance block
-    (#buildLcmLines in the JS) -- that needs its own "Track P" UI field and
-    LCM math port, left for a later phase (see task list).
+    [ADDED Faza 6, see PLAN.md] `tracked_active` -- the already-filtered
+    result of ring_geometry.filter_active_tracked(track_primes, primes_active)
+    (filtering happens once in run(), not per-call here, since it's cheap
+    but there's no reason to redo it). Deliberately still excludes the LCM/
+    phase/toResonance computation itself (#buildLcmLines in the JS) -- that
+    is Faza 7's own scope; this phase only surfaces WHICH tracked primes are
+    currently active, as the foundation Faza 7/8 build on.
 
     Returns a list of plain-text lines (may be empty)."""
     lines = []
     factor_primes = primes_active[pos["is_hit"]] if len(primes_active) else primes_active
     if len(factor_primes):
         lines.append("Factors of N: " + ", ".join(str(int(p)) for p in factor_primes))
+
+    if tracked_active:
+        lines.append("Tracked (active): " + ", ".join(str(int(p)) for p in tracked_active))
 
     if "bertrand" in enabled_ids:
         lo = n // 2
@@ -583,6 +591,15 @@ def run(args):
     theta = args.general_law_theta
     law_mode = args.general_law_mode
 
+    # [ADDED Faza 6, see PLAN.md] Track P foundation -- parsed once here (not
+    # per-frame), same launch-time-only convention as --windows above (no
+    # live in-window text field yet, see rings_tab.py's own Track P field
+    # docstring for why). `--auto-orbit` is accepted and stored now so
+    # Faza 10's playback loop has something to read once it exists; it has
+    # no visible effect yet on its own (see task list's own note on this).
+    track_primes = [int(p.strip()) for p in args.track_primes.split(",") if p.strip()] if args.track_primes else []
+    auto_orbit = args.auto_orbit
+
     state = {"pan": [0.0, 0.0], "zoom": 1.0, "dragging": False, "last_mouse": (0.0, 0.0)}
 
     def rebuild_buffer(n_value):
@@ -591,7 +608,8 @@ def run(args):
         data, count, pos = build_vertex_data(active, n_value, max_radius, enabled_ids, theta, law_mode)
         t1 = time.perf_counter()
         print(f"N={n_value:,}  rings={count:,}  rebuild={1000 * (t1 - t0):.1f}ms")
-        for line in hud_lines_for_n(active, n_value, pos, enabled_ids, theta, law_mode):
+        tracked_active = [] if auto_orbit else filter_active_tracked(track_primes, active)
+        for line in hud_lines_for_n(active, n_value, pos, enabled_ids, theta, law_mode, tracked_active):
             print(line)
         return ctx.buffer(data.tobytes()), count
 
@@ -706,6 +724,15 @@ def main():
                          help="comma-separated window families to highlight: bertrand,legendre,generalLaw")
     parser.add_argument("--general-law-theta", type=float, default=0.5)
     parser.add_argument("--general-law-mode", choices=["stepped", "sliding"], default="stepped")
+    # [ADDED Faza 6, see PLAN.md] Track P foundation -- comma-separated prime
+    # values (same convention as --windows), and --auto-orbit as the
+    # JS's #autoOrbit mode (auto-cycle active primes when nothing is
+    # explicitly tracked). See rings_tab.py's Track P field docstring for
+    # the launch-time-only rationale.
+    parser.add_argument("--track-primes", type=str, default="",
+                         help="comma-separated prime values to track, e.g. 2,3,5")
+    parser.add_argument("--auto-orbit", action="store_true",
+                         help="auto-cycle through active primes instead of a fixed Track P list")
     args = parser.parse_args()
 
     if args.source == "magazyn" and not args.portal_folder:
@@ -716,6 +743,21 @@ def main():
     unknown = requested_families - valid_families
     if unknown:
         parser.error(f"--windows has unknown family id(s) {sorted(unknown)!r}, expected any of {sorted(valid_families)}")
+
+    # [ADDED Faza 6, see PLAN.md] Validate --track-primes up front (same
+    # fail-fast convention as --windows above) instead of letting a
+    # malformed entry raise an uncaught ValueError later inside run()'s
+    # own int(p.strip()) parsing.
+    if args.track_primes:
+        bad = []
+        for raw in args.track_primes.split(","):
+            raw = raw.strip()
+            if not raw:
+                continue
+            if not raw.isdigit():
+                bad.append(raw)
+        if bad:
+            parser.error(f"--track-primes has non-integer value(s) {bad!r}, expected comma-separated primes e.g. 2,3,5")
 
     run(args)
 

@@ -378,6 +378,65 @@ def _test_zoom_to_point():
           f"got new_pan={new_pan}, old_pan={old_pan}")
 
 
+def _test_filter_active_tracked():
+    """[ADDED Faza 6, see PLAN.md] filter_active_tracked's own docstring:
+    preserves tracked's order (not active_primes's), keeps duplicates as
+    typed, drops anything not yet active."""
+    from primeatlas.ring_geometry import filter_active_tracked
+
+    active = np.array([2, 3, 5, 7, 11], dtype=np.int64)
+
+    result = filter_active_tracked([7, 2, 11], active)
+    check(result == [7, 2, 11],
+          f"preserves the caller's own order, not active_primes's ascending order "
+          f"(got {result!r})")
+
+    result_not_yet_active = filter_active_tracked([2, 13, 17], active)
+    check(result_not_yet_active == [2],
+          f"primes not yet active (born) at this N are dropped, only 2 survives "
+          f"(got {result_not_yet_active!r})")
+
+    result_dupes = filter_active_tracked([3, 3, 5], active)
+    check(result_dupes == [3, 3, 5],
+          f"duplicates in the tracked list are preserved as typed, not deduped "
+          f"(got {result_dupes!r})")
+
+    result_empty_tracked = filter_active_tracked([], active)
+    check(result_empty_tracked == [], f"empty tracked list -> empty result (got {result_empty_tracked!r})")
+
+    result_empty_active = filter_active_tracked([2, 3], [])
+    check(result_empty_active == [], f"empty active set -> empty result (got {result_empty_active!r})")
+
+    check(all(isinstance(p, int) for p in result),
+          f"returns plain Python ints, not numpy scalars (got types {[type(p) for p in result]!r})")
+
+
+def _test_hud_lines_for_n_tracked_active():
+    """[ADDED Faza 6, see PLAN.md] hud_lines_for_n's new tracked_active param
+    -- a HUD line appears only when non-empty, listing exactly the given
+    (already-filtered) primes in the given order."""
+    from primeatlas.ring_viz.renderer import hud_lines_for_n, build_vertex_data
+
+    primes = np.array([2, 3, 5, 7, 11, 13], dtype=np.int64)
+    n = 41
+    max_radius = 100.0
+    _data, _count, pos = build_vertex_data(primes, n, max_radius, set(), 0.5, "stepped")
+
+    lines_none = hud_lines_for_n(primes, n, pos, set(), 0.5, "stepped")
+    check(not any("Tracked" in line for line in lines_none),
+          f"no tracked_active given -> no 'Tracked' HUD line at all (got {lines_none!r})")
+
+    lines_empty = hud_lines_for_n(primes, n, pos, set(), 0.5, "stepped", tracked_active=[])
+    check(not any("Tracked" in line for line in lines_empty),
+          f"empty tracked_active -> no 'Tracked' HUD line (got {lines_empty!r})")
+
+    lines_some = hud_lines_for_n(primes, n, pos, set(), 0.5, "stepped", tracked_active=[7, 2])
+    joined = "\n".join(lines_some)
+    check("Tracked (active): 7, 2" in joined,
+          f"non-empty tracked_active produces a 'Tracked (active): ...' line in the "
+          f"exact given order (got lines={lines_some!r})")
+
+
 def main():
     _test_basic_multi_floor_load()
     _test_gap_between_floors()
@@ -389,6 +448,8 @@ def main():
     _test_hud_lines_for_n()
     _test_initial_n_for_source()
     _test_zoom_to_point()
+    _test_filter_active_tracked()
+    _test_hud_lines_for_n_tracked_active()
 
     if failures:
         print(f"\n{len(failures)} FAILURE(S)")
