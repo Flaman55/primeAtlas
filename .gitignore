@@ -10,3 +10,7 @@ prime_sieve/*.so
 # test runs that didn't isolate it properly (see test_env_setup.py Section E).
 primeatlas/locales/app_settings.json
 primeatlas/locales/language_settings.json
+
+# Generated prime windows, benchmark reports and per-run logs.  This is the
+# local Atlas magazyn/output cache, never source code or a portable fixture.
+CONSTELLATION_PORTAL/
