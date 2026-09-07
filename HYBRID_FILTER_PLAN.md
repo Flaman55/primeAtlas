@@ -410,4 +410,4 @@ python3 unitTests/test_hybrid_native.py
 python3 unitTests/test_hybrid_sieve.py
 ```
 
-Commit: pending.
+Commit: `ae9f4aa feat(hybrid): select one window by user intent`.
