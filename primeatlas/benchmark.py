@@ -196,28 +196,33 @@ def aggregate_benchmark_fair_spw(rows):
 
 
 def aggregate_benchmark_sieve_nps(rows):
-    """Reduces benchmark_log.csv rows to one (base_exponent, sieve_numbers_per_second) point
-    per floor -- the pure sieve-phase throughput (numbers swept / sieve_seconds), isolated
-    from base-gen and disk-write time. Only populated for rows logged by prime_sieve_v4_1.py
-    (SCANNER_VERSION="v4.1" -- see orchestrator_v3.py's BENCHMARK_FIELDNAMES comment); rows
-    from v3/v4 leave sieve_seconds blank and are skipped, same as any unparseable value.
-    windows_written * QUICK_GEN_MAX_WINDOW_WIDTH approximates the numbers actually swept --
-    window_m itself isn't a logged CSV column (every run in practice uses the same fixed
-    window width), so this reuses the same fixed-window-width assumption prime_atlas_v1.py's
-    own _floor_window_count() already makes elsewhere. Same last-row-per-floor-wins / skip-
-    unparseable-or-non-positive reduction as aggregate_benchmark_growth(). Returns
-    (base_exponent, sieve_numbers_per_second) pairs sorted ascending by base_exponent."""
+    """Actual target integers swept / sieve phase seconds, last valid row per floor.
+
+    Storage window sizes do not measure computational work. Legacy Hybrid rows
+    for one complete low floor have an exact recoverable count (9 * 10**floor).
+    Other legacy rows without measured counts are omitted rather than guessed.
+    """
     latest = {}
     for row in rows:
         try:
             base_exponent = int(row.get("base_exponent", ""))
-            windows_written = int(row.get("windows_written", ""))
             sieve_seconds = float(row.get("sieve_seconds", ""))
+            raw_count = row.get("numbers_processed")
+            if raw_count in (None, ""):
+                engine = row.get("engine") or row.get("instance_of_n")
+                if (engine == "hybrid" and 0 <= base_exponent < 7
+                        and int(row.get("windows_written", "")) == 1
+                        and int(row.get("target_idx_start", "")) == 0):
+                    numbers_processed = 9 * 10 ** base_exponent
+                else:
+                    continue
+            else:
+                numbers_processed = int(raw_count)
         except (TypeError, ValueError):
             continue
-        if sieve_seconds <= 0 or math.isnan(sieve_seconds):
+        if not math.isfinite(sieve_seconds) or sieve_seconds <= 0 or numbers_processed <= 0:
             continue
-        latest[base_exponent] = windows_written * QUICK_GEN_MAX_WINDOW_WIDTH / sieve_seconds
+        latest[base_exponent] = numbers_processed / sieve_seconds
     return sorted(latest.items())
 
 

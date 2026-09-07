@@ -99,7 +99,7 @@ _FIELDNAMES = [
     "windows_written", "total_seconds", "seconds_per_window", "total_primes",
     "avg_primes_per_window", "primes_per_second",
     "l_final", "sieving_primes_count", "max_child_rss_mb",
-    "base_gen_seconds", "sieve_seconds", "write_seconds", "bytes_written",
+    "base_gen_seconds", "sieve_seconds", "write_seconds", "bytes_written", "numbers_processed",
     "instance_of_n", "loop_session_seconds", "loop_numbers_per_second",
     "loop_seconds_per_window", "write_files",
 ]
@@ -124,6 +124,7 @@ def _row(base_exponent, idx, **overrides):
         "sieve_seconds": 2.0,
         "write_seconds": 1.0,
         "bytes_written": 1_000_000,
+        "numbers_processed": 100_000_000,
         "instance_of_n": "1/1",
         "loop_session_seconds": 5.0,
         "loop_numbers_per_second": 1_000_000 + idx,

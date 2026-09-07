@@ -161,7 +161,8 @@ def main():
                         and new_row["target_idx_start"] == "17"
                         and new_row["target_idx_end"] == "18"
                         and new_row["base_gen_seconds"] == "0.100"
-                        and new_row["sieve_seconds"] == "1.200"
+                        and float(new_row["sieve_seconds"]) == 1.2
+                        and new_row["numbers_processed"] == "99"
                         and new_row["write_seconds"] == "1.700"
                         and new_row["bytes_written"] == "456",
                         "hybrid benchmark timings and bytes land in their named columns")

@@ -39,7 +39,7 @@ BENCHMARK_FIELDNAMES = [
     "avg_primes_per_window", "primes_per_second", "l_final", "sieving_primes_count",
     "max_child_rss_mb", "instance_of_n", "loop_session_seconds", "loop_numbers_per_second",
     "loop_seconds_per_window", "write_files", "base_gen_seconds", "sieve_seconds",
-    "write_seconds", "bytes_written", "engine",
+    "write_seconds", "bytes_written", "engine", "numbers_processed",
 ]
 
 
@@ -80,11 +80,12 @@ def write_hybrid_benchmark_row(portal_folder, base_exponent, target_idx_start, w
             "primes_per_second": f"{total_primes / total_seconds:.2f}" if total_seconds else "",
             "l_final": "", "sieving_primes_count": "", "max_child_rss_mb": "",
             "engine": "hybrid", "instance_of_n": "1/1",
+            "numbers_processed": numbers_processed if numbers_processed is not None else "",
             "loop_session_seconds": f"{total_seconds:.6f}",
-            "loop_numbers_per_second": f"{(numbers_processed if numbers_processed is not None else windows_written * WINDOW_M) / total_seconds:.2f}" if total_seconds > 0 else "",
+            "loop_numbers_per_second": f"{numbers_processed / total_seconds:.2f}" if total_seconds > 0 and numbers_processed is not None else "",
             "loop_seconds_per_window": f"{total_seconds / windows_written:.6f}", "write_files": "1" if write_files else "0",
             "base_gen_seconds": f"{bootstrap_seconds:.3f}",
-            "sieve_seconds": f"{sieve_seconds:.3f}", "write_seconds": f"{write_seconds:.3f}",
+            "sieve_seconds": f"{sieve_seconds:.9f}", "write_seconds": f"{write_seconds:.3f}",
             "bytes_written": bytes_written,
         }
         writer.writerow(row)
@@ -344,7 +345,9 @@ def run_hybrid_narrow(start: int, end: int, main_cap: int, filter_prime_count: i
             total_main_seconds += main_seconds
             total_filter_seconds += filter_seconds
         else:
+            sieve_started = time.perf_counter()
             result = sieve_reference_segment(plan, reference_main or (), lo, hi)
+            total_main_seconds += time.perf_counter() - sieve_started
         if write_files:
             write_started = time.perf_counter()
             write_new_pgs2_floor_window(portal_folder, floor, target_idx, window_m, result.primes)
@@ -439,7 +442,9 @@ def run_hybrid_sieve(base_exponent: int, iterations: int, width_windows: int, fi
                 stage_main_seconds += main_seconds
                 stage_filter_seconds += filter_seconds
             else:
+                sieve_started = time.perf_counter()
                 result = sieve_reference_segment(plan, reference_main or (), lo, hi)
+                stage_main_seconds += time.perf_counter() - sieve_started
             if write_files:
                 write_started = time.perf_counter()
                 write_new_pgs2_floor_window(portal_folder, output_floor, target_idx,
