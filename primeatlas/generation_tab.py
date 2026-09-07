@@ -59,7 +59,7 @@ from .generation import (
     find_highest_populated_floor, _eval_quick_number, _round_range_to_window,
     _floor_window_count, _KTUPLE_STRATEGY_KEYS, load_generation_settings,
     save_generation_settings, recommended_digit_sweep_n_locations, PRIMESIEVE_MAX_STOP,
-    PRIMESIEVE_MAX_WIDTH_MULT, build_loop_argv, build_primesieve_argv,
+    PRIMESIEVE_MAX_WIDTH_MULT, build_loop_argv, build_primesieve_argv, build_hybrid_argv,
     CUDASIEVE_MIN_PRINTABLE_TOP, CUDASIEVE_MAX_STOP, CUDASIEVE_MAX_WIDTH_MULT,
     build_cudasieve_argv,
     build_orchestrator_direct_argv, build_constellation_finder_argv,
@@ -68,7 +68,7 @@ from .generation import (
     estimate_wsl_available_cpu_count, recommended_worker_count, WslLoggedRunner,
     _LOOP_SESSION_DONE_RE, _LOOP_SESSION_START_RE, _LOOP_ITERATION_START_RE,
     _GEN_SIEVE_DONE_RE, _GEN_CONST_DONE_RE, _GEN_SIEVE_PROGRESS_RE,
-    _GEN_CONST_PROGRESS_RE, _GEN_PREP_DONE_RE,
+    _GEN_CONST_PROGRESS_RE, _GEN_PREP_DONE_RE, _GEN_HYBRID_STAGE_RE, _GEN_HYBRID_DONE_RE,
 )
 
 
@@ -1682,6 +1682,45 @@ class GenerationTab(BaseTab):
             panel["generate_btn"].configure(text=self.T("common.stop"))
         self._show_loop_terminal()
 
+    def _on_run_hybrid(self, base_exponent, iterations, filter_prime_count):
+        """Launch the separate reference hybrid runner through the normal Generation UI.
+
+        It shares the one-run-at-a-time console, Stop control and completion refresh
+        with every other engine.  It never routes through v4: the child process first
+        verifies that storage really supplies a continuous MAIN prefix.
+        """
+        if self._loop_runner is not None and self._loop_runner.is_running():
+            messagebox.showerror(self.T("quick.dialog_title"), self.T("quick.error_already_running"))
+            return
+        self._gen_progress_bar_active = True
+        self._gen_loop_run_count = iterations
+        self._gen_loop_iteration = None
+        self._gen_step_total = None
+        write_files = self._loop_write_files_var.get()
+        try:
+            argv = build_hybrid_argv(base_exponent, iterations, filter_prime_count, write_files)
+            log_path, exit_path, _run_id = generation_log_paths(self._get_portal_folder(), "hybrid")
+            cmd = build_wsl_logged_command(argv, log_path, exit_path, self._get_portal_folder())
+            self.loop_console.append(self._new_run_separator())
+            self._loop_output_queue = queue.Queue()
+            self._benchmark_rows_before_run = len(read_benchmark_log(self._get_portal_folder())[1])
+            self._loop_runner = WslLoggedRunner(
+                cmd, log_path, exit_path, self._loop_output_queue,
+                kill_pattern="hybrid_sieve.py")
+            self._loop_runner.start()
+        except Exception as e:  # noqa: BLE001 -- launch errors belong in the GUI.
+            self._loop_runner = None
+            self._gen_loop_run_count = None
+            messagebox.showerror(self.T("gen.dialog_title"), self.T(
+                "gen.error_launch_failed", error=str(e)))
+            return
+        self.loop_run_btn.configure(state="disabled")
+        self.loop_stop_btn.configure(state="normal")
+        self.loop_status_label.set(self.T("common.running"))
+        for panel in self._quick_panels:
+            panel["generate_btn"].configure(text=self.T("common.stop"))
+        self._show_loop_terminal()
+
     def _apply_cudasieve_params_and_run(self, base_exponent, target_idx_start,
                                          window_count_per_run):
         """Quick-gen 'cudasieve' mode's counterpart to _apply_primesieve_params_and_run()
@@ -2317,11 +2356,6 @@ class GenerationTab(BaseTab):
                    if truncated else ""))
             self._apply_loop_params_and_run(floor_value, iterations, window_count_per_run)
         elif mode == "hybrid":
-            # Phase 1 deliberately makes the mode visible and validates its own,
-            # non-Exploration inputs, but does not route a click into the existing
-            # v4 loop.  Doing so would silently run a classical sieve while the UI
-            # claims "Hybryda".  Phase 4 connects this exact contract to the verified
-            # reference runner built in Phase 3.
             raw_floor = self.quick_hybrid_floor_var.get().strip()
             if raw_floor:
                 floor_value = _eval_quick_number(raw_floor)
@@ -2343,9 +2377,9 @@ class GenerationTab(BaseTab):
                     self.T("quick.dialog_title"), self.T("quick.error_hybrid_parameters"))
                 return
             self.quick_status_var.set(self.T(
-                "quick.summary_hybrid_pending", floor=floor_value,
+                "quick.summary_hybrid_running", floor=floor_value,
                 iterations=iterations, filter_prime_count=f"{filter_prime_count:,}"))
-            messagebox.showinfo(self.T("quick.dialog_title"), self.T("quick.info_hybrid_backend_pending"))
+            self._on_run_hybrid(floor_value, iterations, filter_prime_count)
         elif mode == "primesieve":
             # mode == "primesieve": From + Width (NOT From/To -- see
             # _build_quick_mode_primesieve's docstring for why) determine the literal
@@ -3090,6 +3124,26 @@ class GenerationTab(BaseTab):
         that method's own docstring), not a direct .configure() call -- it silently
         no-ops for engines that don't actually report granular progress (primesieve/
         cudasieve mode, see self._gen_progress_bar_active's own __init__ comment)."""
+        hybrid_stage_matches = _GEN_HYBRID_STAGE_RE.findall(chunk)
+        if hybrid_stage_matches:
+            stage_str, total_str = hybrid_stage_matches[-1]
+            stage, total = int(stage_str), int(total_str)
+            self._gen_loop_run_count = total
+            self._gen_loop_iteration = stage
+            self._gen_step_total = 1
+            self._set_gen_progress_bar(mode="determinate", maximum=max(1, total), value=stage - 1)
+            self.status.set(self.T("quick.status_hybrid_stage", stage=stage, total=total))
+            return
+
+        if _GEN_HYBRID_DONE_RE.search(chunk):
+            total = self._gen_loop_run_count or 1
+            self._set_gen_progress_bar(mode="determinate", maximum=total, value=total)
+            self.status.set(self.T("gen.status_progress_done"))
+            self._gen_step_total = None
+            self._gen_loop_run_count = None
+            self._gen_loop_iteration = None
+            return
+
         if _LOOP_SESSION_DONE_RE.search(chunk):
             total = self._gen_step_total or 1
             self._set_gen_progress_bar(mode="determinate", maximum=total, value=total)

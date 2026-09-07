@@ -1105,6 +1105,8 @@ _GEN_SIEVE_PROGRESS_RE = re.compile(r"\[\+\] Progress: ([\d.]+)% \((\d+)/(\d+) b
 _GEN_SIEVE_DONE_RE = re.compile(r"\[\*\] TOTAL PRIMES FOUND this run:")
 _GEN_CONST_PROGRESS_RE = re.compile(r"\[CONSTELLATIONS v1\] (\d+)/(\d+): ")
 _GEN_CONST_DONE_RE = re.compile(r"\[CONSTELLATIONS v1\] Done\. New hits this run")
+_GEN_HYBRID_STAGE_RE = re.compile(r"\[HYBRID\] stage (\d+)/(\d+):")
+_GEN_HYBRID_DONE_RE = re.compile(r"\[HYBRID\] done:")
 _LOOP_SESSION_START_RE = re.compile(
     r"\[LOOP\] orchestrator_loop_v2 \S+ \(parallel instances\): (\d+) iteration\(s\)")
 _LOOP_ITERATION_START_RE = re.compile(r"\[LOOP\] iteration (\d+)/(\d+): launching")

@@ -353,6 +353,8 @@
   "quick.summary_range": "Tryb: zakres (od/do)\nOd: {start}\nDo: {end}\nZakres pracy (po zaokrągleniu do okien 10 mln): {rounded_start} -- {rounded_end} (piętro {floor})\nObecnie w magazynie: {existing_count} okien -- uruchamiam dodanie {added_count} kolejnych.",
   "quick.summary_explore": "Tryb: eksploracja\nPiętro: {floor}\nSzerokość: {width_mult} x 10 mln na iterację\nLiczba iteracji: {iterations} x {width_mult}x10mln = {iterations_total}\nObecnie w magazynie: {existing_count} okien -- uruchamiam dodanie {added_count} kolejnych.",
   "quick.summary_hybrid_pending": "Tryb: hybryda\nPiętro: {floor}\nLiczba iteracji: {iterations}\nPierwsze filtra na etap: {filter_prime_count}\nInterfejs i kontrakt uruchomienia są gotowe; backend hybrydowy jest następną fazą.",
+  "quick.summary_hybrid_running": "Tryb: hybryda\nPiętro: {floor}\nLiczba iteracji: {iterations}\nPierwsze filtra na etap: {filter_prime_count}\nUruchomiono referencyjny filtr hybrydowy; przed pracą sprawdzi ciągłość bazy MAIN.",
+  "quick.status_hybrid_stage": "Hybryda: etap {stage}/{total}",
   "quick.error_range_required": "Wypełnij oba pola: Od i Do.",
   "quick.error_range_negative": "Pole Od nie może być mniejsze od 0.",
   "quick.error_range_order": "Pole Od musi być mniejsze od pola Do.",

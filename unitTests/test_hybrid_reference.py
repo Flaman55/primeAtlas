@@ -77,6 +77,12 @@ def main() -> int:
           "triple-filter segment agrees value-for-value with an independent ordinary sieve")
     check(dict(triple.tuple_product_counts).get(3, 0) > 0,
           "triple-filter segment recorded actual triple-product eliminations")
+    # A later window has many filter products below its left boundary.  They
+    # must be ignored for THIS window, not treated as Python negative indexes.
+    later_lo = 80
+    later = sieve_reference_segment(triple_plan, [2, 3], later_lo, triple_plan.limit + 1)
+    check(later.primes == ordinary_primes(later_lo, triple_plan.limit + 1),
+          "later segment ignores earlier tuple products without corrupting its bytearray")
 
     expects_error(
         lambda: sieve_reference_segment(pair_plan, [2, 3, 5], 0, 10),

@@ -353,6 +353,8 @@
   "quick.summary_range": "Mode: range (from/to)\nFrom: {start}\nTo: {end}\nWorking range (rounded to 10M windows): {rounded_start} -- {rounded_end} (floor {floor})\nCurrently in storage: {existing_count} windows -- launching {added_count} more.",
   "quick.summary_explore": "Mode: exploration\nFloor: {floor}\nWidth: {width_mult} × 10M per iteration\nIterations: {iterations} x {width_mult}x10M = {iterations_total}\nCurrently in storage: {existing_count} windows -- launching {added_count} more.",
   "quick.summary_hybrid_pending": "Mode: hybrid\nFloor: {floor}\nIterations: {iterations}\nFilter primes per stage: {filter_prime_count}\nThe interface and launch contract are ready; the hybrid backend is the next phase.",
+  "quick.summary_hybrid_running": "Mode: hybrid\nFloor: {floor}\nIterations: {iterations}\nFilter primes per stage: {filter_prime_count}\nThe reference hybrid filter has started; it verifies MAIN-base continuity before work begins.",
+  "quick.status_hybrid_stage": "Hybrid: stage {stage}/{total}",
   "quick.error_range_required": "Fill in both the From and To fields.",
   "quick.error_range_negative": "The From field cannot be less than 0.",
   "quick.error_range_order": "The From field must be less than the To field.",

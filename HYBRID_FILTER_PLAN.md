@@ -129,7 +129,7 @@ python3 unitTests/test_hybrid_reference_primesieve.py
 
 Commit: `078bd87 feat(hybrid): add verified reference extension backend`.
 
-### [ ] Phase 4 — End-to-end Generation integration
+### [x] Phase 4 — End-to-end Generation integration
 
 Connect the Quick-mode command to the reference runner.  Add console output,
 stop behavior, real iteration progress, PGS2-compatible benchmark rows and
@@ -144,7 +144,25 @@ any special-case code.
 
 **Commit:** `feat(generation): launch hybrid extension runs`
 
-**Evidence / commit:** pending.
+**Evidence / commit:** Artur confirmed the Windows Generation/reference checks
+and the WSL runner/reference-`primesieve` checks passed after the segment-boundary,
+path-type and immutable-per-stage-MAIN regressions were corrected.
+
+```powershell
+cd H:\PrimeAtlas_gpt\primeAtlas
+python unitTests\test_generation_window_arithmetic.py
+python unitTests\test_generation_launch_planning.py
+python unitTests\test_hybrid_reference.py
+python unitTests\test_hybrid_progress_protocol.py
+```
+
+```bash
+cd /mnt/h/PrimeAtlas_gpt/primeAtlas
+python3 unitTests/test_hybrid_sieve.py
+python3 unitTests/test_hybrid_reference_primesieve.py
+```
+
+Commit: pending in this working step.
 
 ### [ ] Phase 5 — Native C tuple-filter backend
 

@@ -66,7 +66,7 @@ def _mark_filter_tuple_products(
 ) -> dict[int, int]:
     """Mark all nondecreasing filter-prime products that land in ``[lo, hi)``.
 
-    Reusing the same index permits powers such as \(p^3\); advancing it prevents
+    Reusing the same index permits powers such as p³; advancing it prevents
     duplicate permutations.  Unique prime factorisation means each product is
     visited exactly once under that rule.
     """
@@ -82,8 +82,12 @@ def _mark_filter_tuple_products(
             candidate = product * prime
             next_depth = depth + 1
             if next_depth >= 2:
-                bits[candidate - lo] = 1
-                counts[next_depth] += 1
+                # A tuple product can precede this particular segment while a
+                # longer product made by extending it still lands inside it.  Do
+                # not use a negative bytearray index for the earlier product.
+                if candidate >= lo:
+                    bits[candidate - lo] = 1
+                    counts[next_depth] += 1
             if next_depth < plan.required_tuple_order:
                 extend(candidate, index, next_depth)
 
