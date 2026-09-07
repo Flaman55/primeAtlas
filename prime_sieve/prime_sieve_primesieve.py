@@ -199,10 +199,10 @@ def _low_floor_segments(base_power, combined_lo, combined_hi):
 BENCHMARK_FIELDNAMES = [
     "run_timestamp_utc", "base_exponent", "target_idx_start", "target_idx_end",
     "windows_written", "total_seconds", "seconds_per_window", "total_primes",
-    "avg_primes_per_window", "primes_per_second",
-    "l_final", "sieving_primes_count", "max_child_rss_mb",
-    "instance_of_n", "loop_session_seconds", "loop_numbers_per_second",
-    "loop_seconds_per_window", "write_files",
+    "avg_primes_per_window", "primes_per_second", "l_final", "sieving_primes_count",
+    "max_child_rss_mb", "instance_of_n", "loop_session_seconds", "loop_numbers_per_second",
+    "loop_seconds_per_window", "write_files", "base_gen_seconds", "sieve_seconds",
+    "write_seconds", "bytes_written", "engine",
 ]
 
 
@@ -302,6 +302,7 @@ def write_benchmark_row(base_exponent, target_idx_start, target_idx_count, total
             if is_new:
                 writer.writeheader()
             row = {
+                "engine": "primesieve",
                 "run_timestamp_utc": datetime.datetime.now(datetime.timezone.utc).strftime(
                     "%Y-%m-%d %H:%M:%S UTC"),
                 "base_exponent": base_exponent,

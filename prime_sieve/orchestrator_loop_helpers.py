@@ -66,10 +66,10 @@ WINDOW_M = 10 ** 7
 BENCHMARK_FIELDNAMES = [
     "run_timestamp_utc", "base_exponent", "target_idx_start", "target_idx_end",
     "windows_written", "total_seconds", "seconds_per_window", "total_primes",
-    "avg_primes_per_window", "primes_per_second",
-    "l_final", "sieving_primes_count", "max_child_rss_mb",
-    "instance_of_n", "loop_session_seconds", "loop_numbers_per_second",
-    "loop_seconds_per_window",
+    "avg_primes_per_window", "primes_per_second", "l_final", "sieving_primes_count",
+    "max_child_rss_mb", "instance_of_n", "loop_session_seconds", "loop_numbers_per_second",
+    "loop_seconds_per_window", "write_files", "base_gen_seconds", "sieve_seconds",
+    "write_seconds", "bytes_written", "engine",
 ]
 
 

@@ -39,13 +39,13 @@ BENCHMARK_FIELDNAMES = [
     "avg_primes_per_window", "primes_per_second", "l_final", "sieving_primes_count",
     "max_child_rss_mb", "instance_of_n", "loop_session_seconds", "loop_numbers_per_second",
     "loop_seconds_per_window", "write_files", "base_gen_seconds", "sieve_seconds",
-    "write_seconds", "bytes_written",
+    "write_seconds", "bytes_written", "engine",
 ]
 
 
 def write_hybrid_benchmark_row(portal_folder, base_exponent, target_idx_start, windows_written, total_seconds,
                                total_primes, write_files, bootstrap_seconds, sieve_seconds,
-                               write_seconds, bytes_written):
+                               write_seconds, bytes_written, numbers_processed=None):
     """Append a schema-aligned Atlas 4.1 benchmark row for a hybrid run."""
     if windows_written == 0:
         return
@@ -79,8 +79,10 @@ def write_hybrid_benchmark_row(portal_folder, base_exponent, target_idx_start, w
             "avg_primes_per_window": f"{total_primes / windows_written:.1f}",
             "primes_per_second": f"{total_primes / total_seconds:.2f}" if total_seconds else "",
             "l_final": "", "sieving_primes_count": "", "max_child_rss_mb": "",
-            "instance_of_n": "hybrid", "loop_session_seconds": "", "loop_numbers_per_second": "",
-            "loop_seconds_per_window": "", "write_files": "1" if write_files else "0",
+            "engine": "hybrid", "instance_of_n": "1/1",
+            "loop_session_seconds": f"{total_seconds:.6f}",
+            "loop_numbers_per_second": f"{(numbers_processed if numbers_processed is not None else windows_written * WINDOW_M) / total_seconds:.2f}" if total_seconds > 0 else "",
+            "loop_seconds_per_window": f"{total_seconds / windows_written:.6f}", "write_files": "1" if write_files else "0",
             "base_gen_seconds": f"{bootstrap_seconds:.3f}",
             "sieve_seconds": f"{sieve_seconds:.3f}", "write_seconds": f"{write_seconds:.3f}",
             "bytes_written": bytes_written,
@@ -306,11 +308,20 @@ def run_hybrid_narrow(start: int, end: int, main_cap: int, filter_prime_count: i
                       write_files: bool, portal_folder: str | os.PathLike[str],
                       window_m: int = WINDOW_M) -> None:
     """Run one rounded PGS2 window under an explicit, intentionally small plan."""
-    rounded_start = (start // window_m) * window_m
-    rounded_end = -(-end // window_m) * window_m
-    if start < 0 or end <= start or rounded_end - rounded_start != window_m:
+    if start < 0 or end <= start:
         raise HybridSieveError("narrow hybrid accepts one non-empty standard output window only")
+    floor = _floor_for(start)
+    if floor < LOW_FLOOR_CUTOFF:
+        rounded_start, rounded_end = 10 ** floor, 10 ** (floor + 1)
+    else:
+        rounded_start = (start // window_m) * window_m
+        rounded_end = -(-end // window_m) * window_m
+    if rounded_end - rounded_start > window_m:
+        raise HybridSieveError("narrow hybrid accepts one non-empty standard output window only")
+    started = time.perf_counter()
+    bootstrap_started = time.perf_counter()
     plan = build_narrow_plan(main_cap, filter_prime_count)
+    bootstrap_seconds = time.perf_counter() - bootstrap_started
     if rounded_end - 1 > plan.limit:
         raise HybridSieveError(
             f"window ends at {rounded_end - 1:,}, beyond this filter proof limit {plan.limit:,}")
@@ -319,20 +330,42 @@ def run_hybrid_narrow(start: int, end: int, main_cap: int, filter_prime_count: i
     from hybrid_native import native_library_available, sieve_native_segment_timed
     native = native_library_available()
     reference_main = None if native else tuple(generate_primes_in_range(2, plan.main_last_prime + 1))
-    total_primes = total_windows = 0
+    total_primes = total_windows = skipped_windows = 0
+    total_main_seconds = total_filter_seconds = total_write_seconds = 0.0
+    total_numbers = 0
+    total_bytes_written = 0
     for floor, target_idx, lo, hi in _iter_output_windows(rounded_start, rounded_end, window_m):
         path = _window_path(Path(portal_folder), floor, target_idx, window_m)
         if path.is_file():
+            skipped_windows += 1
             continue
         if native:
-            result, _main_seconds, _filter_seconds = sieve_native_segment_timed(plan, lo, hi)
+            result, main_seconds, filter_seconds = sieve_native_segment_timed(plan, lo, hi)
+            total_main_seconds += main_seconds
+            total_filter_seconds += filter_seconds
         else:
             result = sieve_reference_segment(plan, reference_main or (), lo, hi)
         if write_files:
+            write_started = time.perf_counter()
             write_new_pgs2_floor_window(portal_folder, floor, target_idx, window_m, result.primes)
+            total_write_seconds += time.perf_counter() - write_started
+            total_bytes_written += path.stat().st_size
         total_primes += len(result.primes)
         total_windows += 1
-    print(f"[HYBRID] done: {total_primes:,} primes, {total_windows} window(s)", flush=True)
+        total_numbers += hi - lo
+    elapsed = time.perf_counter() - started
+    print(f"[HYBRID] timing: bootstrap {bootstrap_seconds:.3f}s; MAIN {total_main_seconds:.3f}s; "
+          f"filter {total_filter_seconds:.3f}s; write {total_write_seconds:.3f}s; total {elapsed:.3f}s", flush=True)
+    print(f"[HYBRID] done: {total_primes:,} primes, {total_windows} new window(s), "
+          f"{skipped_windows} existing window(s)", flush=True)
+    write_scan_metrics_handoff(str(portal_folder), total_primes_found=total_primes,
+                               windows_processed=total_windows, write_files=write_files)
+    target_floor = _floor_for(rounded_start)
+    target_idx = 0 if target_floor < LOW_FLOOR_CUTOFF else (rounded_start - 10 ** target_floor) // window_m
+    write_hybrid_benchmark_row(str(portal_folder), target_floor, target_idx, total_windows, elapsed,
+                               total_primes, write_files, bootstrap_seconds,
+                               total_main_seconds + total_filter_seconds,
+                               total_write_seconds, total_bytes_written, total_numbers)
 
 
 def run_hybrid_sieve(base_exponent: int, iterations: int, width_windows: int, filter_prime_count: int, write_files: bool,
@@ -362,6 +395,7 @@ def run_hybrid_sieve(base_exponent: int, iterations: int, width_windows: int, fi
     total_main_seconds = 0.0
     total_filter_seconds = 0.0
     total_write_seconds = 0.0
+    total_numbers = 0
     total_bytes_written = 0
     native_backend = False
     native_segment = None
@@ -414,6 +448,7 @@ def run_hybrid_sieve(base_exponent: int, iterations: int, width_windows: int, fi
                 total_bytes_written += _window_path(Path(portal_folder), output_floor, target_idx, window_m).stat().st_size
             total_primes += len(result.primes)
             total_windows += 1
+            total_numbers += hi - lo
             for order, count in result.tuple_product_counts:
                 stage_tuple_counts[order] += count
         print("[HYBRID] stage tuples: " + ", ".join(
@@ -438,7 +473,7 @@ def run_hybrid_sieve(base_exponent: int, iterations: int, width_windows: int, fi
     write_hybrid_benchmark_row(str(portal_folder), base_exponent, start_target_idx, total_windows, elapsed,
                                total_primes, write_files, bootstrap_seconds,
                                total_main_seconds + total_filter_seconds,
-                               total_write_seconds, total_bytes_written)
+                               total_write_seconds, total_bytes_written, total_numbers)
 
 
 def _main(argv: Iterable[str]) -> int:

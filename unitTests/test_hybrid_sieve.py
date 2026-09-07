@@ -146,14 +146,18 @@ def main():
             writer.writeheader()
             writer.writerow({"base_exponent": "9", "total_seconds": "1.25"})
         hybrid_sieve.write_hybrid_benchmark_row(
-            portal, 10, 17, 2, 3.0, 123, True, 0.1, 1.2, 1.7, 456)
+            portal, 10, 17, 2, 3.0, 123, True, 0.1, 1.2, 1.7, 456, 99)
         with open(log_path, newline="") as stream:
             reader = csv.DictReader(stream)
             fields, rows = reader.fieldnames, list(reader)
         passed &= check(fields == hybrid_sieve.BENCHMARK_FIELDNAMES,
                         "hybrid benchmark writer preserves the canonical 4.1 CSV schema")
         new_row = rows[-1]
-        passed &= check(new_row["instance_of_n"] == "hybrid"
+        passed &= check(new_row["engine"] == "hybrid"
+                        and new_row["instance_of_n"] == "1/1"
+                        and float(new_row["loop_session_seconds"]) == 3.0
+                        and float(new_row["loop_seconds_per_window"]) == 1.5
+                        and float(new_row["loop_numbers_per_second"]) == 33.0
                         and new_row["target_idx_start"] == "17"
                         and new_row["target_idx_end"] == "18"
                         and new_row["base_gen_seconds"] == "0.100"
@@ -161,6 +165,27 @@ def main():
                         and new_row["write_seconds"] == "1.700"
                         and new_row["bytes_written"] == "456",
                         "hybrid benchmark timings and bytes land in their named columns")
+
+    # Narrow Hybrid is launched by the Quick-generation button, hence it must
+    # produce the same two completion signals as every other generator: a
+    # benchmark row (which lets GenerationTab update the persistent totals
+    # cache before rebuilding the tree) and scan metrics for the dashboard.
+    # A tiny low-floor window keeps this executable without changing the real
+    # production contract, whose ordinary window is 10,000,000 numbers.
+    with tempfile.TemporaryDirectory(prefix="primeatlas_hybrid_narrow_refresh_") as portal:
+        hybrid_sieve.run_hybrid_narrow(1, 10, 7, 1, True, portal, window_m=10)
+        log_path = os.path.join(portal, "benchmark_log.csv")
+        with open(log_path, newline="") as stream:
+            rows = list(csv.DictReader(stream))
+        metrics_path = os.path.join(portal, "last_scan_metrics.json")
+        passed &= check(len(rows) == 1 and rows[0]["engine"] == "hybrid"
+                        and rows[0]["windows_written"] == "1"
+                        and rows[0]["base_gen_seconds"] != ""
+                        and rows[0]["sieve_seconds"] != ""
+                        and rows[0]["write_seconds"] != "",
+                        "narrow Hybrid writes a timed benchmark row so completed output updates magazine totals")
+        passed &= check(os.path.isfile(metrics_path),
+                        "narrow Hybrid writes scan metrics for the completed-generation refresh path")
     return 0 if passed else 1
 
 

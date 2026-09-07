@@ -355,6 +355,10 @@ def hybrid_window_for_number(number, window=QUICK_GEN_MAX_WINDOW_WIDTH):
     """Canonical one-window Hybrid target containing a concrete integer ``n``."""
     if not isinstance(number, int) or number < 0:
         raise ValueError("n must be a non-negative integer")
+    floor = len(str(number)) - 1
+    if floor < LOW_FLOOR_CUTOFF:
+        start = 10 ** floor
+        return start, 10 ** (floor + 1)
     start = (number // window) * window
     return start, start + window
 
@@ -363,6 +367,10 @@ def hybrid_window_for_floor_index(floor, target_idx, window=QUICK_GEN_MAX_WINDOW
     """Canonical absolute window selected by an Atlas floor/index coordinate."""
     if not isinstance(floor, int) or not isinstance(target_idx, int) or floor < 0 or target_idx < 0:
         raise ValueError("floor and target_idx must be non-negative integers")
+    if floor < LOW_FLOOR_CUTOFF:
+        if target_idx != 0:
+            raise ValueError("low floors have exactly one whole-floor output window")
+        return 10 ** floor, 10 ** (floor + 1)
     start = 10 ** floor + target_idx * window
     return start, start + window
 

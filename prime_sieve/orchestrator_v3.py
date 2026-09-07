@@ -178,11 +178,10 @@ def run_batch(scanner_path, base_exponent, target_idx_start, target_idx_stop, wo
 BENCHMARK_FIELDNAMES = [
     "run_timestamp_utc", "base_exponent", "target_idx_start", "target_idx_end",
     "windows_written", "total_seconds", "seconds_per_window", "total_primes",
-    "avg_primes_per_window", "primes_per_second",
-    "l_final", "sieving_primes_count", "max_child_rss_mb",
-    "instance_of_n", "loop_session_seconds", "loop_numbers_per_second",
-    "loop_seconds_per_window", "write_files",
-    "base_gen_seconds", "sieve_seconds", "write_seconds", "bytes_written",
+    "avg_primes_per_window", "primes_per_second", "l_final", "sieving_primes_count",
+    "max_child_rss_mb", "instance_of_n", "loop_session_seconds", "loop_numbers_per_second",
+    "loop_seconds_per_window", "write_files", "base_gen_seconds", "sieve_seconds",
+    "write_seconds", "bytes_written", "engine",
 ]
 # write_files: lets the GUI's floor list show total REAL generation time per floor, which
 # requires distinguishing actual disk-writing runs from write_files=False count-only
@@ -371,6 +370,7 @@ def print_benchmark_summary(base_exponent, start_idx, end_idx, total_seconds, po
             if is_new:
                 writer.writeheader()
             row = {
+                "engine": SCANNER_VERSION,
                 "run_timestamp_utc": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
                 "base_exponent": base_exponent,
                 "target_idx_start": start_idx,
