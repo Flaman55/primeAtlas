@@ -232,6 +232,38 @@ python3 unitTests/test_hybrid_sieve.py
 
 Commit: `0e3ff63 fix(hybrid): decouple generation from storage state`.
 
+### [x] Phase 5c — Reuse the established native MAIN and align benchmark rows
+
+Replace Hybrid's temporary Python per-multiple MAIN marking with the existing
+v4/v4.1 `generate_and_sieve_segment_bits_atomic` C primitive, restricted to
+the planned MAIN boundary \(p\le a\).  The MAIN and tuple filters share the
+same atomic compact bit buffer, so their elimination order is immaterial.  Keep
+the Python reference only as a no-native-library fallback.  Write Hybrid timing
+results through the canonical Atlas 4.1 benchmark CSV schema, including
+bootstrap, sieve, write and byte-count fields.
+
+**Acceptance tests**
+
+- Native survivors and tuple counters match the independent reference and
+  `libprimesieve`, including the diagnostic `lo=0` boundary.
+- Full runner/output-cache regressions remain green with native MAIN enabled.
+- A legacy shorter benchmark header migrates without shifting a Hybrid timing
+  value into an unrelated column.
+
+**Commit:** `perf(hybrid): reuse v4 native MAIN marking`
+
+**Evidence / commit:** Artur confirmed both WSL executable tests passed after
+the native `lo=0` compatibility guard and benchmark-schema regression were
+added:
+
+```bash
+cd /mnt/h/PrimeAtlas_gpt/primeAtlas
+python3 unitTests/test_hybrid_native.py
+python3 unitTests/test_hybrid_sieve.py
+```
+
+Commit: pending.
+
 ### [~] Phase 6 — Measured tuning and release decision
 
 Benchmark the complete operation, not the filter alone, across `k_adv`, MAIN

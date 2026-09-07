@@ -3,6 +3,7 @@
 Usage (WSL or a Python environment with this repository on disk):
     python3 unitTests/test_hybrid_sieve.py
 """
+import csv
 import os
 import sys
 import tempfile
@@ -38,14 +39,14 @@ def main():
         # deterministic reference stage.  window_m=10 keeps this test tiny;
         # production always uses the runner's 10,000,000 default.
         write_new_pgs2_floor_window(portal, 0, 0, 10, [2, 3, 5, 7])
-        original_benchmark = hybrid_sieve.write_benchmark_row
+        original_benchmark = hybrid_sieve.write_hybrid_benchmark_row
         original_metrics = hybrid_sieve.write_scan_metrics_handoff
-        hybrid_sieve.write_benchmark_row = lambda *args: None
+        hybrid_sieve.write_hybrid_benchmark_row = lambda *args: None
         hybrid_sieve.write_scan_metrics_handoff = lambda *args, **kwargs: None
         try:
             hybrid_sieve.run_hybrid_sieve(0, 1, 10, 1, True, portal, window_m=10)
         finally:
-            hybrid_sieve.write_benchmark_row = original_benchmark
+            hybrid_sieve.write_hybrid_benchmark_row = original_benchmark
             hybrid_sieve.write_scan_metrics_handoff = original_metrics
         result = []
         source = os.path.join(portal, "10p1", "source_primes")
@@ -69,7 +70,7 @@ def main():
     # Storage is output only: an empty portal is valid, a rerun leaves existing
     # windows byte-identical, and a single missing output window is regenerated.
     with tempfile.TemporaryDirectory(prefix="primeatlas_hybrid_output_") as portal:
-        hybrid_sieve.write_benchmark_row = lambda *args: None
+        hybrid_sieve.write_hybrid_benchmark_row = lambda *args: None
         hybrid_sieve.write_scan_metrics_handoff = lambda *args, **kwargs: None
         try:
             hybrid_sieve.run_hybrid_sieve(0, 1, 10, 1, True, portal, window_m=10)
@@ -96,8 +97,33 @@ def main():
                                 for path, data in preserved.items()),
                             "filling a gap leaves every other output window unchanged")
         finally:
-            hybrid_sieve.write_benchmark_row = original_benchmark
+            hybrid_sieve.write_hybrid_benchmark_row = original_benchmark
             hybrid_sieve.write_scan_metrics_handoff = original_metrics
+
+    # Hybrid must append into exactly the same 4.1 CSV schema used by the
+    # Benchmark tab and the established engines.  In particular, timing must
+    # not shift into unrelated columns when an older shorter header exists.
+    with tempfile.TemporaryDirectory(prefix="primeatlas_hybrid_benchmark_") as portal:
+        log_path = os.path.join(portal, "benchmark_log.csv")
+        old_fields = hybrid_sieve.BENCHMARK_FIELDNAMES[:18]
+        with open(log_path, "w", newline="") as stream:
+            writer = csv.DictWriter(stream, fieldnames=old_fields)
+            writer.writeheader()
+            writer.writerow({"base_exponent": "9", "total_seconds": "1.25"})
+        hybrid_sieve.write_hybrid_benchmark_row(
+            portal, 10, 2, 3.0, 123, True, 0.1, 1.2, 1.7, 456)
+        with open(log_path, newline="") as stream:
+            reader = csv.DictReader(stream)
+            fields, rows = reader.fieldnames, list(reader)
+        passed &= check(fields == hybrid_sieve.BENCHMARK_FIELDNAMES,
+                        "hybrid benchmark writer preserves the canonical 4.1 CSV schema")
+        new_row = rows[-1]
+        passed &= check(new_row["instance_of_n"] == "hybrid"
+                        and new_row["base_gen_seconds"] == "0.100"
+                        and new_row["sieve_seconds"] == "1.200"
+                        and new_row["write_seconds"] == "1.700"
+                        and new_row["bytes_written"] == "456",
+                        "hybrid benchmark timings and bytes land in their named columns")
     return 0 if passed else 1
 
 

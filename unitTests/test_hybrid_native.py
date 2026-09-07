@@ -38,6 +38,10 @@ def main():
         for lo in (0, max(1, plan.limit // 2)):
             reference = sieve_reference_segment(plan, main_primes, lo, plan.limit + 1)
             native = sieve_native_segment(plan, main_primes, lo, plan.limit + 1)
+            if native.primes != reference.primes:
+                missing = sorted(set(reference.primes) - set(native.primes))[:12]
+                extra = sorted(set(native.primes) - set(reference.primes))[:12]
+                print(f"       native mismatch detail: missing={missing}, extra={extra}")
             passed &= check(native.primes == reference.primes,
                             f"native survivors match reference for lo={lo}, tuples<={plan.required_tuple_order}")
             passed &= check(native.tuple_product_counts == reference.tuple_product_counts,

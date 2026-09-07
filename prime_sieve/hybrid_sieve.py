@@ -1,12 +1,13 @@
-"""Reference CLI for PrimeAtlas's storage-backed hybrid extension.
+"""Hybrid generator CLI for PrimeAtlas.
 
-Usage: ``hybrid_sieve.py <floor> <iterations> <filter_prime_count> <write_files 0|1>``.
+Usage: ``hybrid_sieve.py <floor> <iterations> <width_windows>
+<filter_prime_count> <write_files 0|1>``.
 
-This is deliberately a correctness-first bridge to :mod:`hybrid_reference`, not
-the native tuple-filter backend.  It accepts only a continuous PGS2 prefix from
-floor 0 through the selected continuation point.  That check is material: an
-arbitrary high floor alone is not a valid MAIN base, because it does not contain
-all primes below its last prime.
+The mathematical MAIN/filter base is planned independently.  PGS2 storage is
+only the normal output cache: empty, partial and gapped storage are valid, and
+only missing complete windows are written.  The native v4 MAIN plus C tuple
+filter is preferred when both shared libraries are present; the Python
+reference remains the correctness fallback.
 """
 
 from __future__ import annotations
@@ -15,19 +16,75 @@ import math
 import os
 import sys
 import time
+import csv
+import datetime
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
 from hybrid_planner import HybridPlanError, plan_hybrid_extension
 from hybrid_reference import HybridReferenceError, sieve_reference_segment, write_new_pgs2_floor_window
-from prime_sieve_primesieve import generate_primes_in_range, write_benchmark_row, write_scan_metrics_handoff
+from prime_sieve_primesieve import generate_primes_in_range, write_scan_metrics_handoff
 from prime_sieve_v1 import format_offset, read_prime_window
 import window_sharding
 
 
 WINDOW_M = 10_000_000
 LOW_FLOOR_CUTOFF = 7
+BENCHMARK_FIELDNAMES = [
+    "run_timestamp_utc", "base_exponent", "target_idx_start", "target_idx_end",
+    "windows_written", "total_seconds", "seconds_per_window", "total_primes",
+    "avg_primes_per_window", "primes_per_second", "l_final", "sieving_primes_count",
+    "max_child_rss_mb", "instance_of_n", "loop_session_seconds", "loop_numbers_per_second",
+    "loop_seconds_per_window", "write_files", "base_gen_seconds", "sieve_seconds",
+    "write_seconds", "bytes_written",
+]
+
+
+def write_hybrid_benchmark_row(portal_folder, base_exponent, windows_written, total_seconds,
+                               total_primes, write_files, bootstrap_seconds, sieve_seconds,
+                               write_seconds, bytes_written):
+    """Append a schema-aligned Atlas 4.1 benchmark row for a hybrid run."""
+    if windows_written == 0:
+        return
+    path = os.path.join(portal_folder, "benchmark_log.csv")
+    rows = []
+    if os.path.exists(path):
+        with open(path, newline="") as stream:
+            reader = csv.DictReader(stream)
+            old_fields = reader.fieldnames or []
+            rows = list(reader)
+        if old_fields != BENCHMARK_FIELDNAMES:
+            if not all(field in BENCHMARK_FIELDNAMES for field in old_fields):
+                raise HybridSieveError("benchmark_log.csv has an incompatible schema")
+            with open(path, "w", newline="") as stream:
+                writer = csv.DictWriter(stream, fieldnames=BENCHMARK_FIELDNAMES)
+                writer.writeheader()
+                for old_row in rows:
+                    writer.writerow({field: old_row.get(field, "") for field in BENCHMARK_FIELDNAMES})
+    is_new = not os.path.exists(path)
+    with open(path, "a", newline="") as stream:
+        writer = csv.DictWriter(stream, fieldnames=BENCHMARK_FIELDNAMES)
+        if is_new:
+            writer.writeheader()
+        row = {
+            "run_timestamp_utc": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
+            "base_exponent": base_exponent, "target_idx_start": 0,
+            "target_idx_end": windows_written - 1, "windows_written": windows_written,
+            "total_seconds": f"{total_seconds:.3f}",
+            "seconds_per_window": f"{total_seconds / windows_written:.4f}",
+            "total_primes": total_primes,
+            "avg_primes_per_window": f"{total_primes / windows_written:.1f}",
+            "primes_per_second": f"{total_primes / total_seconds:.2f}" if total_seconds else "",
+            "l_final": "", "sieving_primes_count": "", "max_child_rss_mb": "",
+            "instance_of_n": "hybrid", "loop_session_seconds": "", "loop_numbers_per_second": "",
+            "loop_seconds_per_window": "", "write_files": "1" if write_files else "0",
+            "base_gen_seconds": f"{bootstrap_seconds:.3f}",
+            "sieve_seconds": f"{sieve_seconds:.3f}", "write_seconds": f"{write_seconds:.3f}",
+            "bytes_written": bytes_written,
+        }
+        writer.writerow(row)
+    print(f"[BENCHMARK] logged to {path} (schema-aligned hybrid row)")
 
 
 class HybridSieveError(RuntimeError):
@@ -193,6 +250,10 @@ def run_hybrid_sieve(base_exponent: int, iterations: int, width_windows: int, fi
     started = time.perf_counter()
     total_primes = 0
     total_windows = 0
+    total_main_seconds = 0.0
+    total_filter_seconds = 0.0
+    total_write_seconds = 0.0
+    total_bytes_written = 0
     native_backend = False
     native_segment = None
     try:
@@ -210,7 +271,12 @@ def run_hybrid_sieve(base_exponent: int, iterations: int, width_windows: int, fi
         stage_started = time.perf_counter()
         stage_lo = start + (stage - 1) * stage_width
         stage_hi = stage_lo + stage_width
-        print(f"[HYBRID] stage {stage}/{iterations}: [{stage_lo:,}, {stage_hi:,}) "
+        output_windows = tuple(_iter_output_windows(stage_lo, stage_hi, window_m))
+        if not output_windows:
+            raise HybridSieveError("requested block contains no complete Atlas output window")
+        emitted_lo, emitted_hi = output_windows[0][2], output_windows[-1][3]
+        print(f"[HYBRID] stage {stage}/{iterations}: requested [{stage_lo:,}, {stage_hi:,}); "
+              f"complete output [{emitted_lo:,}, {emitted_hi:,}) "
               f"MAIN<= {plan.main_last_prime:,}; filter {plan.filter_start:,}..{plan.filter_end:,}; "
               f"tuples<= {plan.required_tuple_order}", flush=True)
         stage_tuple_counts: dict[int, int] = {order: 0 for order in plan.tuple_orders}
@@ -218,7 +284,7 @@ def run_hybrid_sieve(base_exponent: int, iterations: int, width_windows: int, fi
         stage_filter_seconds = 0.0
         stage_write_seconds = 0.0
         skipped_windows = 0
-        for output_floor, target_idx, lo, hi in _iter_output_windows(stage_lo, stage_hi, window_m):
+        for output_floor, target_idx, lo, hi in output_windows:
             if _window_path(Path(portal_folder), output_floor, target_idx, window_m).is_file():
                 skipped_windows += 1
                 continue
@@ -233,6 +299,7 @@ def run_hybrid_sieve(base_exponent: int, iterations: int, width_windows: int, fi
                 write_new_pgs2_floor_window(portal_folder, output_floor, target_idx,
                                             window_m, result.primes)
                 stage_write_seconds += time.perf_counter() - write_started
+                total_bytes_written += _window_path(Path(portal_folder), output_floor, target_idx, window_m).stat().st_size
             total_primes += len(result.primes)
             total_windows += 1
             for order, count in result.tuple_product_counts:
@@ -240,6 +307,9 @@ def run_hybrid_sieve(base_exponent: int, iterations: int, width_windows: int, fi
         print("[HYBRID] stage tuples: " + ", ".join(
             f"{order}: {stage_tuple_counts[order]:,}" for order in sorted(stage_tuple_counts)), flush=True)
         print(f"[HYBRID] stage storage: skipped {skipped_windows} existing window(s)", flush=True)
+        total_main_seconds += stage_main_seconds
+        total_filter_seconds += stage_filter_seconds
+        total_write_seconds += stage_write_seconds
         if native_backend:
             print(f"[HYBRID] stage timing: bootstrap {bootstrap_seconds:.3f}s; "
                   f"MAIN {stage_main_seconds:.3f}s; filter {stage_filter_seconds:.3f}s; "
@@ -253,8 +323,10 @@ def run_hybrid_sieve(base_exponent: int, iterations: int, width_windows: int, fi
     print(f"[HYBRID] done: {total_primes:,} primes, {total_windows} window(s), {elapsed:.3f}s", flush=True)
     write_scan_metrics_handoff(str(portal_folder), total_primes_found=total_primes,
                                windows_processed=total_windows, write_files=write_files)
-    write_benchmark_row(base_exponent, 0, total_windows, elapsed, total_primes, total_windows,
-                        write_files, str(portal_folder))
+    write_hybrid_benchmark_row(str(portal_folder), base_exponent, total_windows, elapsed,
+                               total_primes, write_files, bootstrap_seconds,
+                               total_main_seconds + total_filter_seconds,
+                               total_write_seconds, total_bytes_written)
 
 
 def _main(argv: Iterable[str]) -> int:
