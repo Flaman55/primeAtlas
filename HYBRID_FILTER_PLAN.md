@@ -1,0 +1,145 @@
+# Hybrid filter engine -- phased integration plan
+
+Branch: `hybrid-filter-integration` (from `main`, created 2026-09-07).
+
+## Goal
+
+Add a **Hybryda** mode to Generation.  It extends a continuous existing prime
+magazyn without modifying earlier PGS2 windows.  The existing magazyn supplies
+the MAIN prime base \(P_{\le a}\); a short bootstrap produces the next filter
+primes \([b,c]\); a new backend combines classical marking by the MAIN base
+with tuple-product filtering by \([b,c]\).  Output remains ordinary PGS2
+prime-window data, indistinguishable to the rest of PrimeAtlas from data made
+by the current engines.
+
+The correctness contract for a planned extension is:
+
+\[
+  b=\operatorname{nextprime}(a),\quad
+  d=\operatorname{nextprime}(c),\quad
+  N=b d-1.
+\]
+
+For every candidate \(n\le N\), it is composite iff it is eliminated either
+by a MAIN prime \(p\le a\), or by a required tuple product of filter primes
+in \([b,c]\).  Every tuple order permitted by \(b^r\le N\) must be covered.
+
+## Working rules
+
+- No change to pre-existing PGS2 windows; hybrid starts at a validated,
+  contiguous continuation boundary.
+- `prime_sieve_v4` remains untouched as a correctness and performance control.
+  Hybrid has separate files until evidence supports a later consolidation.
+- `k_adv` is a visible Quick-generation parameter named **filter-prime count
+  per stage**, not an Advanced-settings-only value.
+- A phase is complete only after its listed tests pass and its commit exists.
+- After each phase, update the checkbox, test evidence and commit hash in this
+  file before starting the next phase.
+
+## Phase checklist
+
+### [ ] Phase 1 — Hybrid Quick-mode contract and UI
+
+Add the `hybrid` mode beside Floor, Range, Exploration, primesieve and
+cudasieve.  Its continuation/iteration behavior follows Exploration, while
+its visible parameters include the filter-prime count per stage (`k_adv`).
+Add independent Tk variables, PL/EN locale strings, validation and a
+`build_hybrid_argv()` command contract; do not overload another mode's state.
+
+**Acceptance tests**
+
+- Extend `unitTests/test_generation_launch_planning.py` with a launch recorder
+  for hybrid mode.
+- Extend `unitTests/test_generation_window_arithmetic.py` for hybrid parameter
+  validation and window-boundary planning.
+- Run the existing Quick-generation regressions relevant to the touched code.
+
+**Commit:** `feat(generation): add hybrid quick-mode UI`
+
+**Evidence / commit:** pending.
+
+### [ ] Phase 2 — Pure hybrid extension planner
+
+Create a GUI-free planner that validates a continuous base, determines
+\(a,b,c,d,N\), the bootstrap interval and the maximum tuple order.  It must
+refuse a gapped/insufficient base or a requested range for which its selected
+tuple capability is incomplete.
+
+**Acceptance tests**
+
+- New pure-Python planner test: pairs, triples, quadruples and each exact
+  threshold \(b^r\).
+- Tests for no-gap continuation, invalid input and deterministic plans.
+
+**Commit:** `feat(hybrid): add extension planner and invariants`
+
+**Evidence / commit:** pending.
+
+### [ ] Phase 3 — Reference hybrid backend and PGS2 compatibility
+
+Implement a correctness-first WSL runner.  It uses a conventional bootstrap
+for \([b,c]\), marks MAIN factors in the extension, applies all planned tuple
+orders, and writes only new standard PGS2 windows.  This is the reference for
+the native backend, not the final throughput target.
+
+**Acceptance tests**
+
+- Small end-to-end ranges agree exactly with `primesieve` counts and values.
+- Existing PGS2 files are unchanged; newly written windows follow the normal
+  naming, sharding and header conventions.
+- Interrupted/invalid work cannot leave a partial window presented as complete.
+
+**Commit:** `feat(hybrid): add verified reference extension backend`
+
+**Evidence / commit:** pending.
+
+### [ ] Phase 4 — End-to-end Generation integration
+
+Connect the Quick-mode command to the reference runner.  Add console output,
+stop behavior, real iteration progress, PGS2-compatible benchmark rows and
+documentation.  Storage and Constellations must consume hybrid windows without
+any special-case code.
+
+**Acceptance tests**
+
+- Command construction and runner-launch tests with subprocess recorders.
+- Console/progress parser test using real hybrid-runner output samples.
+- Existing Generation launch and progress-bar regressions.
+
+**Commit:** `feat(generation): launch hybrid extension runs`
+
+**Evidence / commit:** pending.
+
+### [ ] Phase 5 — Native C tuple-filter backend
+
+Add a separate C backend using the established shared-mmap/atomic-OR model:
+MAIN marking for \(P_{\le a}\), plus tuple filtering for \([b,c]\).  Keep
+per-phase timings for bootstrap, MAIN, tuple filter and writing.  Do not change
+`prime_sieve_engine_v4.c` in this phase.
+
+**Acceptance tests**
+
+- Native output matches Phase 3's reference backend and `primesieve`.
+- Regression cases across tuple-order thresholds and window boundaries.
+- Count-only benchmark records all component timings and total wall time.
+
+**Commit:** `perf(hybrid): add native tuple-filter backend`
+
+**Evidence / commit:** pending.
+
+### [ ] Phase 6 — Measured tuning and release decision
+
+Benchmark the complete operation, not the filter alone, across `k_adv`, MAIN
+boundary, tuple order, workers, instances and window size.  Compare the same
+new PGS2 range with v4/primesieve.  Decide from evidence whether Hybryda is an
+experimental selectable engine or a default for a defined range of workloads.
+
+**Acceptance tests**
+
+- Reproducible benchmark matrix and count agreement for every reported run.
+- No performance claim without full wall-clock measurement including bootstrap,
+  MAIN, filter and writing.
+
+**Commit:** `perf(hybrid): record tuned defaults and benchmark evidence`
+
+**Evidence / commit:** pending.
