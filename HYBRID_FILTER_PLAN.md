@@ -164,7 +164,7 @@ python3 unitTests/test_hybrid_reference_primesieve.py
 
 Commit: `e977ef1 feat(generation): launch hybrid extension runs`.
 
-### [ ] Phase 5 — Native C tuple-filter backend
+### [x] Phase 5 — Native C tuple-filter backend
 
 Add a separate C backend using the established shared-mmap/atomic-OR model:
 MAIN marking for \(P_{\le a}\), plus tuple filtering for \([b,c]\).  Keep
@@ -179,7 +179,21 @@ per-phase timings for bootstrap, MAIN, tuple filter and writing.  Do not change
 
 **Commit:** `perf(hybrid): add native tuple-filter backend`
 
-**Evidence / commit:** pending.
+**Evidence / commit:** Artur built the separate WSL library and confirmed both
+native-vs-reference/`primesieve` and full-runner tests passed.  When the local
+library is present, the runner selects it automatically and reports bootstrap,
+MAIN, filter and writing times per stage.  `prime_sieve_engine_v4.c` remains
+unchanged.
+
+```bash
+cd /mnt/h/PrimeAtlas_gpt/primeAtlas/prime_sieve
+gcc -O3 -shared -fPIC hybrid_filter_engine.c -o hybrid_filter_engine.so
+cd /mnt/h/PrimeAtlas_gpt/primeAtlas
+python3 unitTests/test_hybrid_native.py
+python3 unitTests/test_hybrid_sieve.py
+```
+
+Commit: pending in this working step.
 
 ### [ ] Phase 6 — Measured tuning and release decision
 

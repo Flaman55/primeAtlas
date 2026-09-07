@@ -153,12 +153,28 @@ def run_hybrid_sieve(base_exponent: int, iterations: int, filter_prime_count: in
     started = time.perf_counter()
     total_primes = 0
     total_windows = 0
+    native_backend = False
+    native_segment = None
+    try:
+        from hybrid_native import native_library_available, sieve_native_segment_timed
+        if native_library_available():
+            native_segment = sieve_native_segment_timed
+            native_backend = True
+    except (ImportError, OSError):
+        # The reference path remains a complete correctness fallback when a C
+        # compiler/library is unavailable on the current machine.
+        native_backend = False
+    print("[HYBRID] backend: native tuple filter" if native_backend
+          else "[HYBRID] backend: Python reference tuple filter", flush=True)
     for stage in range(1, iterations + 1):
+        stage_started = time.perf_counter()
         # MAIN is immutable throughout this stage.  Its newly found survivors
         # become eligible MAIN primes only for the following stage and must not
         # silently alter the boundary a that the current plan proves.
         stage_main = tuple(all_main)
+        bootstrap_started = time.perf_counter()
         bootstrap = bootstrap_following_primes(stage_main[-1], filter_prime_count)
+        bootstrap_seconds = time.perf_counter() - bootstrap_started
         plan = plan_hybrid_extension(stage_main, bootstrap[:-1], bootstrap[-1],
                                      base_is_contiguous=True, filter_is_consecutive=True)
         write_hi = _stage_complete_window_hi(prefix, plan.limit, window_m)
@@ -166,14 +182,24 @@ def run_hybrid_sieve(base_exponent: int, iterations: int, filter_prime_count: in
               f"MAIN<= {plan.main_last_prime:,}; filter {plan.filter_start:,}..{plan.filter_end:,}; "
               f"tuples<= {plan.required_tuple_order}", flush=True)
         stage_tuple_counts: dict[int, int] = {order: 0 for order in plan.tuple_orders}
+        stage_main_seconds = 0.0
+        stage_filter_seconds = 0.0
+        stage_write_seconds = 0.0
         lo = prefix.coverage_hi
         while lo < write_hi:
             hi = lo + window_m
-            result = sieve_reference_segment(plan, stage_main, lo, hi)
+            if native_backend:
+                result, main_seconds, filter_seconds = native_segment(plan, stage_main, lo, hi)
+                stage_main_seconds += main_seconds
+                stage_filter_seconds += filter_seconds
+            else:
+                result = sieve_reference_segment(plan, stage_main, lo, hi)
             target_idx = (lo - 10 ** prefix.current_floor) // window_m
             if write_files:
+                write_started = time.perf_counter()
                 write_new_pgs2_floor_window(portal_folder, prefix.current_floor, target_idx,
                                             window_m, result.primes)
+                stage_write_seconds += time.perf_counter() - write_started
             all_main.extend(result.primes)
             total_primes += len(result.primes)
             total_windows += 1
@@ -182,6 +208,15 @@ def run_hybrid_sieve(base_exponent: int, iterations: int, filter_prime_count: in
             lo = hi
         print("[HYBRID] stage tuples: " + ", ".join(
             f"{order}: {stage_tuple_counts[order]:,}" for order in sorted(stage_tuple_counts)), flush=True)
+        if native_backend:
+            print(f"[HYBRID] stage timing: bootstrap {bootstrap_seconds:.3f}s; "
+                  f"MAIN {stage_main_seconds:.3f}s; filter {stage_filter_seconds:.3f}s; "
+                  f"write {stage_write_seconds:.3f}s; total {time.perf_counter() - stage_started:.3f}s",
+                  flush=True)
+        else:
+            print(f"[HYBRID] stage timing: bootstrap {bootstrap_seconds:.3f}s; "
+                  f"reference sieve+filter; write {stage_write_seconds:.3f}s; "
+                  f"total {time.perf_counter() - stage_started:.3f}s", flush=True)
         prefix = MainPrefix(tuple(all_main), write_hi, prefix.current_floor,
                             prefix.next_target_idx + (write_hi - prefix.coverage_hi) // window_m)
         if prefix.coverage_hi == 10 ** (prefix.current_floor + 1) and stage < iterations:
