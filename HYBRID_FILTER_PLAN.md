@@ -193,7 +193,7 @@ python3 unitTests/test_hybrid_native.py
 python3 unitTests/test_hybrid_sieve.py
 ```
 
-Commit: pending in this working step.
+Commit: `02f7228 perf(hybrid): add native tuple-filter backend`.
 
 ### [ ] Phase 6 — Measured tuning and release decision
 
