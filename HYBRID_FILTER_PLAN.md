@@ -377,4 +377,4 @@ python3 unitTests/test_hybrid_native.py
 python3 unitTests/test_hybrid_sieve.py
 ```
 
-Commit: pending.
+Commit: `d93f6be feat(hybrid): limit filter mode to one output window`.
