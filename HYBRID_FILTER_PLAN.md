@@ -71,7 +71,7 @@ python unitTests\test_generation_window_arithmetic.py
 python unitTests\test_generation_launch_planning.py
 ```
 
-Commit: pending in this working step.
+Commit: `5bdad36 feat(generation): add hybrid quick-mode UI`.
 
 ### [ ] Phase 2 — Pure hybrid extension planner
 
