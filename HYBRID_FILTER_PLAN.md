@@ -162,7 +162,7 @@ python3 unitTests/test_hybrid_sieve.py
 python3 unitTests/test_hybrid_reference_primesieve.py
 ```
 
-Commit: pending in this working step.
+Commit: `e977ef1 feat(generation): launch hybrid extension runs`.
 
 ### [ ] Phase 5 — Native C tuple-filter backend
 
