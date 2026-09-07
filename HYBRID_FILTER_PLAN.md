@@ -96,7 +96,7 @@ cd H:\PrimeAtlas_gpt\primeAtlas
 python unitTests\test_hybrid_planner.py
 ```
 
-Commit: pending in this working step.
+Commit: `1979742 feat(hybrid): add extension planner and invariants`.
 
 ### [ ] Phase 3 — Reference hybrid backend and PGS2 compatibility
 
