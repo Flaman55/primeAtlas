@@ -35,6 +35,12 @@ in \([b,c]\).  Every tuple order permitted by \(b^r\le N\) must be covered.
 - A phase is complete only after its listed tests pass and its commit exists.
 - After each phase, update the checkbox, test evidence and commit hash in this
   file before starting the next phase.
+- Tests are the repository's existing or newly added executable test scripts,
+  not informal re-checks recreated in chat.  If this agent's environment lacks
+  access to WSL, hardware, a library or another required dependency, it will
+  state that limitation explicitly, provide the exact script command for Artur
+  to run, and mark the phase **awaiting test evidence**.  It will not repeat
+  blocked attempts or treat an unavailable test as passed.
 
 ## Phase checklist
 
