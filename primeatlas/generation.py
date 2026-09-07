@@ -334,6 +334,23 @@ def _round_range_to_window(start, end, window=QUICK_GEN_MAX_WINDOW_WIDTH):
     return rounded_start, rounded_end
 
 
+def plan_hybrid_narrow_range(start, end, window=QUICK_GEN_MAX_WINDOW_WIDTH):
+    """Classify a literal request for the one-window Hybrid experiment.
+
+    Storage always receives complete standard windows.  Hybrid is deliberately
+    limited to exactly one such window; a wider rounded request must use the
+    normal Range/v4.1 pipeline instead of pretending to be a scalable engine.
+    """
+    if not isinstance(start, int) or not isinstance(end, int) or start < 0 or end <= start:
+        raise ValueError("hybrid range must be a non-empty non-negative interval")
+    rounded_start, rounded_end = _round_range_to_window(start, end, window)
+    return {
+        "rounded_start": rounded_start,
+        "rounded_end": rounded_end,
+        "use_hybrid": rounded_end - rounded_start == window,
+    }
+
+
 def _floor_window_count(base_power, window=QUICK_GEN_MAX_WINDOW_WIDTH):
     """How many `window`-sized windows fit EXACTLY within floor base_power's own numeric
     domain [10**base_power, 10**(base_power+1)) -- i.e. target_idx 0..(this value - 1) are
@@ -763,6 +780,17 @@ def build_hybrid_argv(base_exponent, iterations, width_windows, filter_prime_cou
     return [
         "python3", "-u", windows_path_to_wsl(script),
         str(base_exponent), str(iterations), str(width_windows), str(filter_prime_count),
+        "1" if write_files else "0",
+    ]
+
+
+def build_hybrid_narrow_argv(start, end, main_cap, filter_prime_count, write_files,
+                             script_path=None):
+    """Build the one-standard-window experimental Hybrid invocation."""
+    script = script_path if script_path is not None else HYBRID_SIEVE_SCRIPT
+    return [
+        "python3", "-u", windows_path_to_wsl(script), "narrow",
+        str(start), str(end), str(main_cap), str(filter_prime_count),
         "1" if write_files else "0",
     ]
 

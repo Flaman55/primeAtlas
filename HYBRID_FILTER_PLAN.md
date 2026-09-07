@@ -342,3 +342,39 @@ python3 unitTests/test_hybrid_sieve.py
 ```
 
 Commit: `b02d254 perf(hybrid): avoid materializing native MAIN primes`.
+
+### [x] Phase 7 — One-window Hybrid experiment and Range fallback
+
+Redefine Hybryda as a deliberately local experiment: it accepts literal
+`Od–Do`, rounds the request outward using the canonical 10,000,000-number PGS2
+grid, and runs only if exactly one standard window results.  MAIN's upper cap
+and filter-prime count are explicit.  A rounded request needing two or more
+windows switches the visible Quick panel to Range/v4.1 and reuses its ordinary
+range planning instead of applying a non-scalable tuple filter.
+
+**Acceptance tests**
+
+- A sub-window request rounds to exactly one PGS2 window and builds the narrow
+  CLI with literal bounds plus explicit MAIN/filter parameters.
+- A request crossing a second standard window is classified for Range/v4.1.
+- GUI launch recorder receives the narrow Hybrid contract; existing planner,
+  native/reference and storage-cache checks remain green.
+
+**Commit:** `feat(hybrid): limit filter mode to one output window`
+
+**Evidence / commit:** Artur confirmed all executable checks passed:
+
+```powershell
+cd H:\PrimeAtlas_gpt\primeAtlas
+python unitTests\test_generation_window_arithmetic.py
+python unitTests\test_generation_launch_planning.py
+```
+
+```bash
+cd /mnt/h/PrimeAtlas_gpt/primeAtlas
+python3 unitTests/test_hybrid_planner.py
+python3 unitTests/test_hybrid_native.py
+python3 unitTests/test_hybrid_sieve.py
+```
+
+Commit: pending.

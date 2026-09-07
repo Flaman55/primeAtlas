@@ -226,6 +226,20 @@ def first_prime_at_or_after(value: int) -> int:
         width *= 2
 
 
+def last_prime_at_or_before(value: int) -> int:
+    """Find the MAIN boundary locally, never by listing the full prefix."""
+    hi = value + 1
+    width = max(128, int(math.log(max(3, value)) * 32))
+    while hi > 2:
+        lo = max(2, hi - width)
+        found = generate_primes_in_range(lo, hi)
+        if found:
+            return found[-1]
+        hi = lo
+        width *= 2
+    raise HybridSieveError("could not establish a positive MAIN prime boundary")
+
+
 def _stage_complete_window_hi(prefix: MainPrefix, limit: int, window_m: int) -> int:
     """Return the last *whole* Atlas window proven by this stage's mathematical limit."""
     floor_end = 10 ** (prefix.current_floor + 1)
@@ -278,6 +292,47 @@ def build_independent_plan(target_hi: int, filter_prime_count: int):
     if plan.limit < target_hi - 1:
         raise HybridSieveError("boundary planner failed to cover its requested output")
     return plan
+
+
+def build_narrow_plan(main_cap: int, filter_prime_count: int):
+    """Build the explicit small MAIN/filter contract for one Hybrid window."""
+    main_last_prime = last_prime_at_or_before(main_cap)
+    bootstrap = bootstrap_following_primes(main_last_prime, filter_prime_count)
+    return plan_hybrid_boundaries(main_last_prime, bootstrap[:-1], bootstrap[-1],
+                                  base_is_contiguous=True, filter_is_consecutive=True)
+
+
+def run_hybrid_narrow(start: int, end: int, main_cap: int, filter_prime_count: int,
+                      write_files: bool, portal_folder: str | os.PathLike[str],
+                      window_m: int = WINDOW_M) -> None:
+    """Run one rounded PGS2 window under an explicit, intentionally small plan."""
+    rounded_start = (start // window_m) * window_m
+    rounded_end = -(-end // window_m) * window_m
+    if start < 0 or end <= start or rounded_end - rounded_start != window_m:
+        raise HybridSieveError("narrow hybrid accepts one non-empty standard output window only")
+    plan = build_narrow_plan(main_cap, filter_prime_count)
+    if rounded_end - 1 > plan.limit:
+        raise HybridSieveError(
+            f"window ends at {rounded_end - 1:,}, beyond this filter proof limit {plan.limit:,}")
+    print(f"[HYBRID] narrow: requested [{start:,}, {end:,}); output [{rounded_start:,}, {rounded_end:,}) "
+          f"MAIN<= {plan.main_last_prime:,}; filter {plan.filter_start:,}..{plan.filter_end:,}", flush=True)
+    from hybrid_native import native_library_available, sieve_native_segment_timed
+    native = native_library_available()
+    reference_main = None if native else tuple(generate_primes_in_range(2, plan.main_last_prime + 1))
+    total_primes = total_windows = 0
+    for floor, target_idx, lo, hi in _iter_output_windows(rounded_start, rounded_end, window_m):
+        path = _window_path(Path(portal_folder), floor, target_idx, window_m)
+        if path.is_file():
+            continue
+        if native:
+            result, _main_seconds, _filter_seconds = sieve_native_segment_timed(plan, lo, hi)
+        else:
+            result = sieve_reference_segment(plan, reference_main or (), lo, hi)
+        if write_files:
+            write_new_pgs2_floor_window(portal_folder, floor, target_idx, window_m, result.primes)
+        total_primes += len(result.primes)
+        total_windows += 1
+    print(f"[HYBRID] done: {total_primes:,} primes, {total_windows} window(s)", flush=True)
 
 
 def run_hybrid_sieve(base_exponent: int, iterations: int, width_windows: int, filter_prime_count: int, write_files: bool,
@@ -388,6 +443,20 @@ def run_hybrid_sieve(base_exponent: int, iterations: int, width_windows: int, fi
 
 def _main(argv: Iterable[str]) -> int:
     args = list(argv)
+    if args and args[0] == "narrow":
+        if len(args) != 6:
+            print("Usage: hybrid_sieve.py narrow <start> <end> <main_cap> <filter_prime_count> <write_files 0|1>")
+            return 2
+        try:
+            start, end, main_cap, count, write_raw = (int(value) for value in args[1:])
+            if write_raw not in (0, 1):
+                raise ValueError("write_files must be 0 or 1")
+            portal = os.environ.get("CONSTELLATION_PORTAL_DIR", "/mnt/c/CONSTELLATION_PORTAL")
+            run_hybrid_narrow(start, end, main_cap, count, bool(write_raw), portal)
+            return 0
+        except (ValueError, HybridPlanError, HybridReferenceError, HybridSieveError, RuntimeError) as exc:
+            print(f"[HYBRID] ERROR: {exc}", file=sys.stderr)
+            return 2
     if len(args) != 5:
         print("Usage: hybrid_sieve.py <floor> <iterations> <width_windows> <filter_prime_count> <write_files 0|1>")
         return 2

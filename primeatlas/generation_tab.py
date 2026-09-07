@@ -56,10 +56,10 @@ from .generation import (
     QUICK_GEN_MAX_WINDOW_WIDTH, compute_totals_bumps_from_new_rows, count_existing_windows,
     find_continuation_target_idx,
     find_first_gap_target_idx, _trim_existing_from_target_idx_range,
-    find_highest_populated_floor, _eval_quick_number, _round_range_to_window,
+    find_highest_populated_floor, _eval_quick_number, _round_range_to_window, plan_hybrid_narrow_range,
     _floor_window_count, _KTUPLE_STRATEGY_KEYS, load_generation_settings,
     save_generation_settings, recommended_digit_sweep_n_locations, PRIMESIEVE_MAX_STOP,
-    PRIMESIEVE_MAX_WIDTH_MULT, build_loop_argv, build_primesieve_argv, build_hybrid_argv,
+    PRIMESIEVE_MAX_WIDTH_MULT, build_loop_argv, build_primesieve_argv, build_hybrid_argv, build_hybrid_narrow_argv,
     CUDASIEVE_MIN_PRINTABLE_TOP, CUDASIEVE_MAX_STOP, CUDASIEVE_MAX_WIDTH_MULT,
     build_cudasieve_argv,
     build_orchestrator_direct_argv, build_constellation_finder_argv,
@@ -941,6 +941,9 @@ class GenerationTab(BaseTab):
         self.quick_hybrid_iterations_var = tk.StringVar(value="1")
         self.quick_hybrid_width_var = tk.StringVar(value="1")
         self.quick_hybrid_filter_prime_count_var = tk.StringVar(value="10000")
+        self.quick_hybrid_from_var = tk.StringVar(value="")
+        self.quick_hybrid_to_var = tk.StringVar(value="")
+        self.quick_hybrid_main_cap_var = tk.StringVar(value="997")
         # primesieve mode: deliberately its OWN Floor/From/Width variables rather than
         # reusing quick_from_var/quick_to_var (an earlier version of this mode did) --
         # see _build_quick_mode_primesieve's docstring for why: this mode's own Auto
@@ -1252,21 +1255,12 @@ class GenerationTab(BaseTab):
         """
         frame = ttk.Frame(container)
         frame.grid(row=0, column=0, sticky="w")
-        ttk.Label(frame, text=self.T("quick.field_floor")).pack(side="left")
-        ttk.Entry(frame, textvariable=self.quick_hybrid_floor_var, width=10).pack(
-            side="left", padx=(6, 4))
-        ttk.Button(frame, text=self.T("quick.explore_auto_floor_button"),
-                   command=self._on_hybrid_auto_floor_clicked).pack(side="left", padx=(0, 20))
-        ttk.Label(frame, text=self.T("quick.field_iterations")).pack(side="left")
-        iterations_vcmd = (self.register(self._validate_quick_iterations_spinbox), "%P")
-        ttk.Spinbox(frame, from_=1, to=100, textvariable=self.quick_hybrid_iterations_var,
-                    width=6, validate="key", validatecommand=iterations_vcmd).pack(
-            side="left", padx=(6, 20))
-        ttk.Label(frame, text=self.T("quick.field_width")).pack(side="left")
-        width_vcmd = (self.register(self._validate_quick_width_spinbox), "%P")
-        ttk.Spinbox(frame, from_=1, to=1_000_000, textvariable=self.quick_hybrid_width_var,
-                    width=8, validate="key", validatecommand=width_vcmd).pack(
-            side="left", padx=(6, 20))
+        ttk.Label(frame, text=self.T("quick.field_from")).pack(side="left")
+        ttk.Entry(frame, textvariable=self.quick_hybrid_from_var, width=20).pack(side="left", padx=(6, 12))
+        ttk.Label(frame, text=self.T("quick.field_to")).pack(side="left")
+        ttk.Entry(frame, textvariable=self.quick_hybrid_to_var, width=20).pack(side="left", padx=(6, 12))
+        ttk.Label(frame, text="MAIN <=").pack(side="left")
+        ttk.Entry(frame, textvariable=self.quick_hybrid_main_cap_var, width=8).pack(side="left", padx=(6, 12))
         ttk.Label(frame, text=self.T("quick.field_filter_prime_count")).pack(side="left")
         filter_vcmd = (self.register(self._validate_hybrid_filter_prime_count_spinbox), "%P")
         ttk.Spinbox(frame, from_=1, to=1_000_000,
@@ -1719,6 +1713,37 @@ class GenerationTab(BaseTab):
             self._gen_loop_run_count = None
             messagebox.showerror(self.T("gen.dialog_title"), self.T(
                 "gen.error_launch_failed", error=str(e)))
+            return
+        self.loop_run_btn.configure(state="disabled")
+        self.loop_stop_btn.configure(state="normal")
+        self.loop_status_label.set(self.T("common.running"))
+        for panel in self._quick_panels:
+            panel["generate_btn"].configure(text=self.T("common.stop"))
+        self._show_loop_terminal()
+
+    def _on_run_hybrid_narrow(self, start, end, main_cap, filter_prime_count):
+        """Launch the explicit one-window Hybrid experiment through the usual console."""
+        if self._loop_runner is not None and self._loop_runner.is_running():
+            messagebox.showerror(self.T("quick.dialog_title"), self.T("quick.error_already_running"))
+            return
+        self._gen_progress_bar_active = True
+        self._gen_loop_run_count = 1
+        self._gen_loop_iteration = None
+        self._gen_step_total = None
+        try:
+            argv = build_hybrid_narrow_argv(start, end, main_cap, filter_prime_count,
+                                            self._loop_write_files_var.get())
+            log_path, exit_path, _run_id = generation_log_paths(self._get_portal_folder(), "hybrid")
+            cmd = build_wsl_logged_command(argv, log_path, exit_path, self._get_portal_folder())
+            self.loop_console.append(self._new_run_separator())
+            self._loop_output_queue = queue.Queue()
+            self._benchmark_rows_before_run = len(read_benchmark_log(self._get_portal_folder())[1])
+            self._loop_runner = WslLoggedRunner(cmd, log_path, exit_path, self._loop_output_queue,
+                                                 kill_pattern="hybrid_sieve.py")
+            self._loop_runner.start()
+        except Exception as e:  # noqa: BLE001
+            self._loop_runner = None
+            messagebox.showerror(self.T("gen.dialog_title"), self.T("gen.error_launch_failed", error=str(e)))
             return
         self.loop_run_btn.configure(state="disabled")
         self.loop_stop_btn.configure(state="normal")
@@ -2362,33 +2387,29 @@ class GenerationTab(BaseTab):
                    if truncated else ""))
             self._apply_loop_params_and_run(floor_value, iterations, window_count_per_run)
         elif mode == "hybrid":
-            raw_floor = self.quick_hybrid_floor_var.get().strip()
-            if raw_floor:
-                floor_value = _eval_quick_number(raw_floor)
-                if floor_value is None or floor_value < 0:
-                    messagebox.showerror(
-                        self.T("quick.dialog_title"), self.T("quick.error_hybrid_floor_required"))
-                    return
-            else:
-                floor_value = find_highest_populated_floor(self._get_portal_folder())
-                if floor_value is None:
-                    messagebox.showerror(
-                        self.T("quick.dialog_title"), self.T("quick.error_hybrid_floor_required"))
-                    return
-            iterations = _eval_quick_number(self.quick_hybrid_iterations_var.get())
-            width_windows = _eval_quick_number(self.quick_hybrid_width_var.get())
-            filter_prime_count = _eval_quick_number(
-                self.quick_hybrid_filter_prime_count_var.get())
-            if (iterations is None or iterations < 1 or width_windows is None or width_windows < 1
+            start = _eval_quick_number(self.quick_hybrid_from_var.get())
+            end = _eval_quick_number(self.quick_hybrid_to_var.get())
+            main_cap = _eval_quick_number(self.quick_hybrid_main_cap_var.get())
+            filter_prime_count = _eval_quick_number(self.quick_hybrid_filter_prime_count_var.get())
+            if (start is None or end is None or main_cap is None or main_cap < 2
                     or filter_prime_count is None or filter_prime_count < 1):
                 messagebox.showerror(
                     self.T("quick.dialog_title"), self.T("quick.error_hybrid_parameters"))
                 return
-            self.quick_status_var.set(self.T(
-                "quick.summary_hybrid_running", floor=floor_value,
-                iterations=iterations, width_windows=width_windows,
-                filter_prime_count=f"{filter_prime_count:,}"))
-            self._on_run_hybrid(floor_value, iterations, width_windows, filter_prime_count)
+            try:
+                narrow = plan_hybrid_narrow_range(start, end)
+            except ValueError:
+                messagebox.showerror(self.T("quick.dialog_title"), self.T("quick.error_hybrid_parameters"))
+                return
+            if not narrow["use_hybrid"]:
+                self.quick_mode_var.set("range")
+                self.quick_from_var.set(str(start))
+                self.quick_to_var.set(str(end))
+                self._on_quick_mode_changed()
+                self.quick_status_var.set("Hybrid supports one 10,000,000-number window; switched to Range / v4.1.")
+                self._on_quick_generate_clicked()
+                return
+            self._on_run_hybrid_narrow(start, end, main_cap, filter_prime_count)
         elif mode == "primesieve":
             # mode == "primesieve": From + Width (NOT From/To -- see
             # _build_quick_mode_primesieve's docstring for why) determine the literal
