@@ -743,7 +743,7 @@ def build_primesieve_argv(base_exponent, target_idx_start, window_count_per_run,
     ]
 
 
-def build_hybrid_argv(base_exponent, iterations, filter_prime_count, write_files,
+def build_hybrid_argv(base_exponent, iterations, width_windows, filter_prime_count, write_files,
                       script_path=None):
     """Return the WSL argv for the future ``hybrid_sieve.py`` extension runner.
 
@@ -757,12 +757,12 @@ def build_hybrid_argv(base_exponent, iterations, filter_prime_count, write_files
 
     CLI order is fixed now, before the runner exists, so the GUI and runner can be
     tested independently in later phases:
-    ``<base_exponent> <iterations> <filter_prime_count> <write_files 0/1>``.
+    ``<base_exponent> <iterations> <width_windows> <filter_prime_count> <write_files 0/1>``.
     """
     script = script_path if script_path is not None else HYBRID_SIEVE_SCRIPT
     return [
         "python3", "-u", windows_path_to_wsl(script),
-        str(base_exponent), str(iterations), str(filter_prime_count),
+        str(base_exponent), str(iterations), str(width_windows), str(filter_prime_count),
         "1" if write_files else "0",
     ]
 

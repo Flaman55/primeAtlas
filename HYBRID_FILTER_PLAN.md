@@ -4,13 +4,13 @@ Branch: `hybrid-filter-integration` (from `main`, created 2026-09-07).
 
 ## Goal
 
-Add a **Hybryda** mode to Generation.  It extends a continuous existing prime
-magazyn without modifying earlier PGS2 windows.  The existing magazyn supplies
-the MAIN prime base \(P_{\le a}\); a short bootstrap produces the next filter
-primes \([b,c]\); a new backend combines classical marking by the MAIN base
-with tuple-product filtering by \([b,c]\).  Output remains ordinary PGS2
-prime-window data, indistinguishable to the rest of PrimeAtlas from data made
-by the current engines.
+Add a **Hybryda** mode to Generation.  It generates independently of the
+magazyn: MAIN \(P_{\le a}\) and the filter \([b,c]\) are constructed by the
+backend, while the magazyn is only the ordinary PGS2 output/cache.  Existing
+windows are excluded from the requested work; gaps are filled and existing
+files are never overwritten.  Output remains ordinary PGS2 prime-window data,
+indistinguishable to the rest of PrimeAtlas from data made by the current
+engines.
 
 The correctness contract for a planned extension is:
 
@@ -26,12 +26,16 @@ in \([b,c]\).  Every tuple order permitted by \(b^r\le N\) must be covered.
 
 ## Working rules
 
-- No change to pre-existing PGS2 windows; hybrid starts at a validated,
-  contiguous continuation boundary.
+- No change to pre-existing PGS2 windows.  Empty, partial and gapped storage
+  are all valid output states; only missing planned windows are generated.
 - `prime_sieve_v4` remains untouched as a correctness and performance control.
   Hybrid has separate files until evidence supports a later consolidation.
 - `k_adv` is a visible Quick-generation parameter named **filter-prime count
   per stage**, not an Advanced-settings-only value.
+- In Quick mode, **Floor** chooses the owner/range of output windows and
+  **Width** chooses their count.  Iterations repeat that fixed-width block so
+  one built MAIN/filter base can be amortised.  A floor never owns values from
+  another floor merely because a broad run began there.
 - A phase is complete only after its listed tests pass and its commit exists.
 - After each phase, update the checkbox, test evidence and commit hash in this
   file before starting the next phase.
@@ -195,7 +199,40 @@ python3 unitTests/test_hybrid_sieve.py
 
 Commit: `02f7228 perf(hybrid): add native tuple-filter backend`.
 
-### [ ] Phase 6 — Measured tuning and release decision
+### [x] Phase 5b — Output-planning correction
+
+Replace the temporary storage-as-MAIN reference runner with independent hybrid
+generation.  Add hybrid Width and fixed-base iteration semantics.  Plan missing
+windows by the selected floor's standard window indexes, preserve floor
+boundaries, skip already-existing files (including gapped layouts), and never
+infer mathematical MAIN completeness from storage.  MAIN/bootstrap selection is
+an explicit backend concern, not a PGS2 precondition.
+
+**Acceptance tests**
+
+- Empty storage generates the requested first missing windows.
+- Partial and gapped storage produces exactly the missing selected windows.
+- A broad request crossing a digit boundary files each output window under its
+  actual floor, never under the originally selected floor.
+- Repeated fixed-width iterations reuse one planned MAIN/filter base whenever
+  its proved bound covers the next block.
+
+**Commit:** `fix(hybrid): decouple generation from storage state`
+
+**Evidence / commit:** Artur confirmed the expanded WSL output-state test passed:
+empty storage generated normal floor-routed PGS2 output, a rerun skipped the
+existing files byte-for-byte, and a deliberate gap regenerated only its missing
+window.  Existing UI/argument regressions were also confirmed green after the
+Width contract change.
+
+```bash
+cd /mnt/h/PrimeAtlas_gpt/primeAtlas
+python3 unitTests/test_hybrid_sieve.py
+```
+
+Commit: pending in this working step.
+
+### [~] Phase 6 — Measured tuning and release decision
 
 Benchmark the complete operation, not the filter alone, across `k_adv`, MAIN
 boundary, tuple order, workers, instances and window size.  Compare the same
@@ -210,4 +247,5 @@ experimental selectable engine or a default for a defined range of workloads.
 
 **Commit:** `perf(hybrid): record tuned defaults and benchmark evidence`
 
-**Evidence / commit:** pending.
+**Evidence / commit:** whole-pipeline native benchmark script is implemented;
+awaiting reproducible WSL measurements before defaults or performance claims.

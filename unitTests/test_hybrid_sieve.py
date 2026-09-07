@@ -38,16 +38,13 @@ def main():
         # deterministic reference stage.  window_m=10 keeps this test tiny;
         # production always uses the runner's 10,000,000 default.
         write_new_pgs2_floor_window(portal, 0, 0, 10, [2, 3, 5, 7])
-        original_bootstrap = hybrid_sieve.bootstrap_following_primes
         original_benchmark = hybrid_sieve.write_benchmark_row
         original_metrics = hybrid_sieve.write_scan_metrics_handoff
-        hybrid_sieve.bootstrap_following_primes = lambda _a, _k: (11, 13)
         hybrid_sieve.write_benchmark_row = lambda *args: None
         hybrid_sieve.write_scan_metrics_handoff = lambda *args, **kwargs: None
         try:
-            hybrid_sieve.run_hybrid_sieve(0, 1, 1, True, portal, window_m=10)
+            hybrid_sieve.run_hybrid_sieve(0, 1, 10, 1, True, portal, window_m=10)
         finally:
-            hybrid_sieve.bootstrap_following_primes = original_bootstrap
             hybrid_sieve.write_benchmark_row = original_benchmark
             hybrid_sieve.write_scan_metrics_handoff = original_metrics
         result = []
@@ -68,6 +65,39 @@ def main():
             passed &= check("gap" in str(exc), "runner rejects a gapped selected MAIN floor")
         else:
             passed &= check(False, "runner rejects a gapped selected MAIN floor")
+
+    # Storage is output only: an empty portal is valid, a rerun leaves existing
+    # windows byte-identical, and a single missing output window is regenerated.
+    with tempfile.TemporaryDirectory(prefix="primeatlas_hybrid_output_") as portal:
+        hybrid_sieve.write_benchmark_row = lambda *args: None
+        hybrid_sieve.write_scan_metrics_handoff = lambda *args, **kwargs: None
+        try:
+            hybrid_sieve.run_hybrid_sieve(0, 1, 10, 1, True, portal, window_m=10)
+            floor0 = hybrid_sieve._window_path(hybrid_sieve.Path(portal), 0, 0, 10)
+            floor1 = hybrid_sieve._window_path(hybrid_sieve.Path(portal), 1, 0, 10)
+            passed &= check(floor0.is_file() and floor1.is_file(),
+                            "empty magazyn generates and routes floor-0/floor-1 output separately")
+            # Floors below LOW_FLOOR_CUTOFF each have one whole-floor PGS2
+            # window, even when this test deliberately uses window_m=10.
+            all_paths = [
+                hybrid_sieve._window_path(hybrid_sieve.Path(portal), 0, 0, 10),
+                hybrid_sieve._window_path(hybrid_sieve.Path(portal), 1, 0, 10),
+            ]
+            preserved = {path: path.read_bytes() for path in all_paths}
+            hybrid_sieve.run_hybrid_sieve(0, 1, 10, 1, True, portal, window_m=10)
+            passed &= check(all(path.read_bytes() == data for path, data in preserved.items()),
+                            "rerun skips complete PGS2 windows rather than overwriting them")
+            missing = all_paths[1]
+            missing.unlink()
+            hybrid_sieve.run_hybrid_sieve(0, 1, 10, 1, True, portal, window_m=10)
+            passed &= check(missing.is_file() and missing.read_bytes() == preserved[missing],
+                            "a gapped magazyn regenerates only the missing standard window")
+            passed &= check(all(path == missing or path.read_bytes() == data
+                                for path, data in preserved.items()),
+                            "filling a gap leaves every other output window unchanged")
+        finally:
+            hybrid_sieve.write_benchmark_row = original_benchmark
+            hybrid_sieve.write_scan_metrics_handoff = original_metrics
     return 0 if passed else 1
 
 

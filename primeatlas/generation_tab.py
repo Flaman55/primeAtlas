@@ -939,6 +939,7 @@ class GenerationTab(BaseTab):
         # numerical contract and would make a later mode switch overwrite input.
         self.quick_hybrid_floor_var = tk.StringVar(value="")
         self.quick_hybrid_iterations_var = tk.StringVar(value="1")
+        self.quick_hybrid_width_var = tk.StringVar(value="1")
         self.quick_hybrid_filter_prime_count_var = tk.StringVar(value="10000")
         # primesieve mode: deliberately its OWN Floor/From/Width variables rather than
         # reusing quick_from_var/quick_to_var (an earlier version of this mode did) --
@@ -1260,6 +1261,11 @@ class GenerationTab(BaseTab):
         iterations_vcmd = (self.register(self._validate_quick_iterations_spinbox), "%P")
         ttk.Spinbox(frame, from_=1, to=100, textvariable=self.quick_hybrid_iterations_var,
                     width=6, validate="key", validatecommand=iterations_vcmd).pack(
+            side="left", padx=(6, 20))
+        ttk.Label(frame, text=self.T("quick.field_width")).pack(side="left")
+        width_vcmd = (self.register(self._validate_quick_width_spinbox), "%P")
+        ttk.Spinbox(frame, from_=1, to=1_000_000, textvariable=self.quick_hybrid_width_var,
+                    width=8, validate="key", validatecommand=width_vcmd).pack(
             side="left", padx=(6, 20))
         ttk.Label(frame, text=self.T("quick.field_filter_prime_count")).pack(side="left")
         filter_vcmd = (self.register(self._validate_hybrid_filter_prime_count_spinbox), "%P")
@@ -1682,7 +1688,7 @@ class GenerationTab(BaseTab):
             panel["generate_btn"].configure(text=self.T("common.stop"))
         self._show_loop_terminal()
 
-    def _on_run_hybrid(self, base_exponent, iterations, filter_prime_count):
+    def _on_run_hybrid(self, base_exponent, iterations, width_windows, filter_prime_count):
         """Launch the separate reference hybrid runner through the normal Generation UI.
 
         It shares the one-run-at-a-time console, Stop control and completion refresh
@@ -1698,7 +1704,7 @@ class GenerationTab(BaseTab):
         self._gen_step_total = None
         write_files = self._loop_write_files_var.get()
         try:
-            argv = build_hybrid_argv(base_exponent, iterations, filter_prime_count, write_files)
+            argv = build_hybrid_argv(base_exponent, iterations, width_windows, filter_prime_count, write_files)
             log_path, exit_path, _run_id = generation_log_paths(self._get_portal_folder(), "hybrid")
             cmd = build_wsl_logged_command(argv, log_path, exit_path, self._get_portal_folder())
             self.loop_console.append(self._new_run_separator())
@@ -2370,16 +2376,19 @@ class GenerationTab(BaseTab):
                         self.T("quick.dialog_title"), self.T("quick.error_hybrid_floor_required"))
                     return
             iterations = _eval_quick_number(self.quick_hybrid_iterations_var.get())
+            width_windows = _eval_quick_number(self.quick_hybrid_width_var.get())
             filter_prime_count = _eval_quick_number(
                 self.quick_hybrid_filter_prime_count_var.get())
-            if iterations is None or iterations < 1 or filter_prime_count is None or filter_prime_count < 1:
+            if (iterations is None or iterations < 1 or width_windows is None or width_windows < 1
+                    or filter_prime_count is None or filter_prime_count < 1):
                 messagebox.showerror(
                     self.T("quick.dialog_title"), self.T("quick.error_hybrid_parameters"))
                 return
             self.quick_status_var.set(self.T(
                 "quick.summary_hybrid_running", floor=floor_value,
-                iterations=iterations, filter_prime_count=f"{filter_prime_count:,}"))
-            self._on_run_hybrid(floor_value, iterations, filter_prime_count)
+                iterations=iterations, width_windows=width_windows,
+                filter_prime_count=f"{filter_prime_count:,}"))
+            self._on_run_hybrid(floor_value, iterations, width_windows, filter_prime_count)
         elif mode == "primesieve":
             # mode == "primesieve": From + Width (NOT From/To -- see
             # _build_quick_mode_primesieve's docstring for why) determine the literal

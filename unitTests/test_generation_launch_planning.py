@@ -117,18 +117,19 @@ def main():
         gen._apply_primesieve_params_and_run = recorder.primesieve
         gen._apply_orchestrator_direct_params_and_run = recorder.orchestrator_direct
         hybrid_calls = []
-        gen._on_run_hybrid = lambda floor, iterations, filter_prime_count: hybrid_calls.append(
-            (floor, iterations, filter_prime_count))
+        gen._on_run_hybrid = lambda floor, iterations, width, filter_prime_count: hybrid_calls.append(
+            (floor, iterations, width, filter_prime_count))
 
         # Hybrid Quick mode must launch its own fixed contract, never translate
         # k_adv into the classical loop's width/window settings.
         gen.quick_mode_var.set("hybrid")
         gen.quick_hybrid_floor_var.set("7")
         gen.quick_hybrid_iterations_var.set("2")
+        gen.quick_hybrid_width_var.set("3")
         gen.quick_hybrid_filter_prime_count_var.set("11")
         gen._on_quick_generate_clicked()
-        check(hybrid_calls == [(7, 2, 11)],
-              f"hybrid Quick mode delegates its independent (floor, iterations, k_adv) "
+        check(hybrid_calls == [(7, 2, 3, 11)],
+              f"hybrid Quick mode delegates its independent (floor, iterations, width, k_adv) "
               f"contract to the hybrid runner (got {hybrid_calls!r})")
         gen.quick_mode_var.set("floor")
 

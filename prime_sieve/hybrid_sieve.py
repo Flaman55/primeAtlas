@@ -141,15 +141,55 @@ def _stage_complete_window_hi(prefix: MainPrefix, limit: int, window_m: int) -> 
     return full
 
 
-def run_hybrid_sieve(base_exponent: int, iterations: int, filter_prime_count: int, write_files: bool,
+def _floor_for(value: int) -> int:
+    return len(str(value)) - 1
+
+
+def _iter_output_windows(start: int, stop: int, window_m: int):
+    """Yield complete Atlas windows, routing each one to its actual digit floor."""
+    lo = start
+    while lo < stop:
+        floor = _floor_for(lo)
+        floor_lo, floor_hi = 10 ** floor, 10 ** (floor + 1)
+        if floor < LOW_FLOOR_CUTOFF:
+            if lo != floor_lo or floor_hi > stop:
+                break
+            yield floor, 0, floor_lo, floor_hi
+            lo = floor_hi
+            continue
+        if (lo - floor_lo) % window_m:
+            raise HybridSieveError("output range is not aligned to the floor window grid")
+        hi = min(lo + window_m, floor_hi, stop)
+        if hi - lo != window_m:
+            break
+        yield floor, (lo - floor_lo) // window_m, lo, hi
+        lo = hi
+
+
+def build_independent_plan(target_hi: int, filter_prime_count: int):
+    """Build one fixed MAIN/filter base that proves the entire requested output."""
+    bound = max(3, math.isqrt(target_hi - 1) // 2)
+    while True:
+        main = tuple(generate_primes_in_range(2, bound + 1))
+        bootstrap = bootstrap_following_primes(main[-1], filter_prime_count)
+        plan = plan_hybrid_extension(main, bootstrap[:-1], bootstrap[-1],
+                                     base_is_contiguous=True, filter_is_consecutive=True)
+        if plan.limit >= target_hi - 1:
+            return plan, main
+        bound *= 2
+
+
+def run_hybrid_sieve(base_exponent: int, iterations: int, width_windows: int, filter_prime_count: int, write_files: bool,
                      portal_folder: str | os.PathLike[str], window_m: int = WINDOW_M) -> None:
-    """Run one or more safe reference stages and publish only complete new windows."""
-    if iterations < 1 or filter_prime_count < 1:
-        raise HybridSieveError("iterations and filter_prime_count must be positive")
-    prefix = load_contiguous_main_prefix(portal_folder, base_exponent, window_m)
-    all_main = list(prefix.primes)
-    if not all_main or all_main[0] != 2:
-        raise HybridSieveError("MAIN prefix must begin with prime 2")
+    """Generate missing windows; PGS2 storage is output/cache, never mathematical input."""
+    if base_exponent < 0 or iterations < 1 or width_windows < 1 or filter_prime_count < 1:
+        raise HybridSieveError("floor, iterations, width and filter_prime_count must be positive")
+    start = 10 ** base_exponent
+    stage_width = width_windows * window_m
+    target_hi = start + iterations * stage_width
+    bootstrap_started = time.perf_counter()
+    plan, stage_main = build_independent_plan(target_hi, filter_prime_count)
+    bootstrap_seconds = time.perf_counter() - bootstrap_started
     started = time.perf_counter()
     total_primes = 0
     total_windows = 0
@@ -168,46 +208,38 @@ def run_hybrid_sieve(base_exponent: int, iterations: int, filter_prime_count: in
           else "[HYBRID] backend: Python reference tuple filter", flush=True)
     for stage in range(1, iterations + 1):
         stage_started = time.perf_counter()
-        # MAIN is immutable throughout this stage.  Its newly found survivors
-        # become eligible MAIN primes only for the following stage and must not
-        # silently alter the boundary a that the current plan proves.
-        stage_main = tuple(all_main)
-        bootstrap_started = time.perf_counter()
-        bootstrap = bootstrap_following_primes(stage_main[-1], filter_prime_count)
-        bootstrap_seconds = time.perf_counter() - bootstrap_started
-        plan = plan_hybrid_extension(stage_main, bootstrap[:-1], bootstrap[-1],
-                                     base_is_contiguous=True, filter_is_consecutive=True)
-        write_hi = _stage_complete_window_hi(prefix, plan.limit, window_m)
-        print(f"[HYBRID] stage {stage}/{iterations}: [{prefix.coverage_hi:,}, {write_hi:,}) "
+        stage_lo = start + (stage - 1) * stage_width
+        stage_hi = stage_lo + stage_width
+        print(f"[HYBRID] stage {stage}/{iterations}: [{stage_lo:,}, {stage_hi:,}) "
               f"MAIN<= {plan.main_last_prime:,}; filter {plan.filter_start:,}..{plan.filter_end:,}; "
               f"tuples<= {plan.required_tuple_order}", flush=True)
         stage_tuple_counts: dict[int, int] = {order: 0 for order in plan.tuple_orders}
         stage_main_seconds = 0.0
         stage_filter_seconds = 0.0
         stage_write_seconds = 0.0
-        lo = prefix.coverage_hi
-        while lo < write_hi:
-            hi = lo + window_m
+        skipped_windows = 0
+        for output_floor, target_idx, lo, hi in _iter_output_windows(stage_lo, stage_hi, window_m):
+            if _window_path(Path(portal_folder), output_floor, target_idx, window_m).is_file():
+                skipped_windows += 1
+                continue
             if native_backend:
                 result, main_seconds, filter_seconds = native_segment(plan, stage_main, lo, hi)
                 stage_main_seconds += main_seconds
                 stage_filter_seconds += filter_seconds
             else:
                 result = sieve_reference_segment(plan, stage_main, lo, hi)
-            target_idx = (lo - 10 ** prefix.current_floor) // window_m
             if write_files:
                 write_started = time.perf_counter()
-                write_new_pgs2_floor_window(portal_folder, prefix.current_floor, target_idx,
+                write_new_pgs2_floor_window(portal_folder, output_floor, target_idx,
                                             window_m, result.primes)
                 stage_write_seconds += time.perf_counter() - write_started
-            all_main.extend(result.primes)
             total_primes += len(result.primes)
             total_windows += 1
             for order, count in result.tuple_product_counts:
                 stage_tuple_counts[order] += count
-            lo = hi
         print("[HYBRID] stage tuples: " + ", ".join(
             f"{order}: {stage_tuple_counts[order]:,}" for order in sorted(stage_tuple_counts)), flush=True)
+        print(f"[HYBRID] stage storage: skipped {skipped_windows} existing window(s)", flush=True)
         if native_backend:
             print(f"[HYBRID] stage timing: bootstrap {bootstrap_seconds:.3f}s; "
                   f"MAIN {stage_main_seconds:.3f}s; filter {stage_filter_seconds:.3f}s; "
@@ -217,10 +249,6 @@ def run_hybrid_sieve(base_exponent: int, iterations: int, filter_prime_count: in
             print(f"[HYBRID] stage timing: bootstrap {bootstrap_seconds:.3f}s; "
                   f"reference sieve+filter; write {stage_write_seconds:.3f}s; "
                   f"total {time.perf_counter() - stage_started:.3f}s", flush=True)
-        prefix = MainPrefix(tuple(all_main), write_hi, prefix.current_floor,
-                            prefix.next_target_idx + (write_hi - prefix.coverage_hi) // window_m)
-        if prefix.coverage_hi == 10 ** (prefix.current_floor + 1) and stage < iterations:
-            prefix = MainPrefix(prefix.primes, prefix.coverage_hi, prefix.current_floor + 1, 0)
     elapsed = time.perf_counter() - started
     print(f"[HYBRID] done: {total_primes:,} primes, {total_windows} window(s), {elapsed:.3f}s", flush=True)
     write_scan_metrics_handoff(str(portal_folder), total_primes_found=total_primes,
@@ -231,15 +259,15 @@ def run_hybrid_sieve(base_exponent: int, iterations: int, filter_prime_count: in
 
 def _main(argv: Iterable[str]) -> int:
     args = list(argv)
-    if len(args) != 4:
-        print("Usage: hybrid_sieve.py <floor> <iterations> <filter_prime_count> <write_files 0|1>")
+    if len(args) != 5:
+        print("Usage: hybrid_sieve.py <floor> <iterations> <width_windows> <filter_prime_count> <write_files 0|1>")
         return 2
     try:
-        floor, iterations, count, write_raw = (int(value) for value in args)
+        floor, iterations, width_windows, count, write_raw = (int(value) for value in args)
         if write_raw not in (0, 1):
             raise ValueError("write_files must be 0 or 1")
         portal = os.environ.get("CONSTELLATION_PORTAL_DIR", "/mnt/c/CONSTELLATION_PORTAL")
-        run_hybrid_sieve(floor, iterations, count, bool(write_raw), portal)
+        run_hybrid_sieve(floor, iterations, width_windows, count, bool(write_raw), portal)
         return 0
     except (ValueError, HybridPlanError, HybridReferenceError, HybridSieveError, RuntimeError) as exc:
         print(f"[HYBRID] ERROR: {exc}", file=sys.stderr)
