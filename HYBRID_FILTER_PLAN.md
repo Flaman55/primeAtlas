@@ -247,5 +247,6 @@ experimental selectable engine or a default for a defined range of workloads.
 
 **Commit:** `perf(hybrid): record tuned defaults and benchmark evidence`
 
-**Evidence / commit:** whole-pipeline native benchmark script is implemented;
-awaiting reproducible WSL measurements before defaults or performance claims.
+**Evidence / commit:** Artur confirmed the supplied benchmark matrix completed
+with matching counts.  The executable benchmark is committed; detailed timing
+rows are still required before defaults or performance claims.
