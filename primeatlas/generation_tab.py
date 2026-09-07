@@ -1,6 +1,6 @@
 """
 generation_tab.py -- GenerationTab, the tkinter widgets for the Generation tab: the
-Quick-gen panel (Floor/Range/Exploration/primesieve modes), the low-level
+Quick-gen panel (Floor/Range/Exploration/Hybryda/primesieve modes), the low-level
 orchestrator_loop_v2.py pipeline form (Section A), the constellation_finder_v1.py search
 form (Section B), and the k-tuple sieve form (Section C) -- plus every launch/poll/finish
 handler behind their Run/Stop buttons and the shared bottom progress bar.
@@ -933,6 +933,13 @@ class GenerationTab(BaseTab):
         self.quick_explore_floor_var = tk.StringVar(value="")
         self.quick_iterations_var = tk.StringVar(value="1")
         self.quick_explore_width_var = tk.StringVar(value="1")
+        # Hybryda intentionally owns its state instead of borrowing Exploration's
+        # variables.  Its stage size is a filter-prime prefix (k_adv), not a count of
+        # fixed 10M windows, so sharing the Width field would falsely imply the same
+        # numerical contract and would make a later mode switch overwrite input.
+        self.quick_hybrid_floor_var = tk.StringVar(value="")
+        self.quick_hybrid_iterations_var = tk.StringVar(value="1")
+        self.quick_hybrid_filter_prime_count_var = tk.StringVar(value="10000")
         # primesieve mode: deliberately its OWN Floor/From/Width variables rather than
         # reusing quick_from_var/quick_to_var (an earlier version of this mode did) --
         # see _build_quick_mode_primesieve's docstring for why: this mode's own Auto
@@ -993,6 +1000,7 @@ class GenerationTab(BaseTab):
             ("floor", self.T("quick.mode_floor")),
             ("range", self.T("quick.mode_range")),
             ("explore", self.T("quick.mode_explore")),
+            ("hybrid", self.T("quick.mode_hybrid")),
             ("primesieve", self.T("quick.mode_primesieve")),
             ("cudasieve", self.T("quick.mode_cudasieve")),
         ]
@@ -1010,6 +1018,7 @@ class GenerationTab(BaseTab):
         floor_entry = self._build_quick_mode_floor(fields_container, mode_frames)
         self._build_quick_mode_range(fields_container, mode_frames)
         self._build_quick_mode_explore(fields_container, mode_frames)
+        self._build_quick_mode_hybrid(fields_container, mode_frames)
         self._build_quick_mode_primesieve(fields_container, mode_frames)
         self._build_quick_mode_cudasieve(fields_container, mode_frames)
 
@@ -1226,6 +1235,40 @@ class GenerationTab(BaseTab):
                          variable=self.quick_floor_fill_gaps_var).pack(side="left")
         mode_frames["explore"] = outer
 
+    def _build_quick_mode_hybrid(self, container, mode_frames):
+        """Build the visible contract for the hybrid-extension engine.
+
+        The continuation choice intentionally mirrors Exploration: blank Floor means
+        the deepest populated floor, while the Auto button makes that choice visible.
+        Unlike Exploration, a hybrid stage has no fixed-width field.  Its reach comes
+        from the explicit filter-prime count ``k_adv`` and must be computed by the
+        hybrid planner after it has validated the current magazyn boundary.
+
+        This first UI phase does not offer the shared "fill gaps first" checkbox:
+        hybrid correctness requires a contiguous trusted MAIN base, so Phase 2's
+        planner will reject a gapped base rather than silently defining a different
+        continuation policy here.
+        """
+        frame = ttk.Frame(container)
+        frame.grid(row=0, column=0, sticky="w")
+        ttk.Label(frame, text=self.T("quick.field_floor")).pack(side="left")
+        ttk.Entry(frame, textvariable=self.quick_hybrid_floor_var, width=10).pack(
+            side="left", padx=(6, 4))
+        ttk.Button(frame, text=self.T("quick.explore_auto_floor_button"),
+                   command=self._on_hybrid_auto_floor_clicked).pack(side="left", padx=(0, 20))
+        ttk.Label(frame, text=self.T("quick.field_iterations")).pack(side="left")
+        iterations_vcmd = (self.register(self._validate_quick_iterations_spinbox), "%P")
+        ttk.Spinbox(frame, from_=1, to=100, textvariable=self.quick_hybrid_iterations_var,
+                    width=6, validate="key", validatecommand=iterations_vcmd).pack(
+            side="left", padx=(6, 20))
+        ttk.Label(frame, text=self.T("quick.field_filter_prime_count")).pack(side="left")
+        filter_vcmd = (self.register(self._validate_hybrid_filter_prime_count_spinbox), "%P")
+        ttk.Spinbox(frame, from_=1, to=1_000_000,
+                    textvariable=self.quick_hybrid_filter_prime_count_var,
+                    width=9, validate="key", validatecommand=filter_vcmd).pack(
+            side="left", padx=(6, 0))
+        mode_frames["hybrid"] = frame
+
     def _build_quick_mode_primesieve(self, container, mode_frames):
         """Floor + From + Width -- NOT the From/To pair the first version of this mode
         used. From is a literal absolute starting point (like Floor mode's own
@@ -1417,6 +1460,19 @@ class GenerationTab(BaseTab):
             return
         self.quick_explore_floor_var.set(str(highest))
 
+    def _on_hybrid_auto_floor_clicked(self):
+        """Hybrid counterpart of Exploration's explicit highest-floor picker.
+
+        It deliberately does not share the Exploration StringVar: the two modes must
+        retain independently typed values when the user compares them side by side.
+        """
+        highest = find_highest_populated_floor(self._get_portal_folder())
+        if highest is None:
+            messagebox.showinfo(
+                self.T("quick.dialog_title"), self.T("quick.explore_auto_floor_empty"))
+            return
+        self.quick_hybrid_floor_var.set(str(highest))
+
     def _validate_quick_iterations_spinbox(self, proposed):
         """validatecommand for the Number of iterations spinbox -- same shape as
         _validate_quick_width_spinbox, bounded to [1, 100] (100 x 10 bln = 1 trillion
@@ -1424,6 +1480,16 @@ class GenerationTab(BaseTab):
         if proposed == "":
             return True
         return proposed.isdigit() and 1 <= int(proposed) <= 100
+
+    def _validate_hybrid_filter_prime_count_spinbox(self, proposed):
+        """Accept a visible positive ``k_adv`` value without letting an accidental
+        multi-billion entry freeze a future planner before it can present a clear
+        validation message.  One million is a UI safety bound, not a mathematical
+        limitation of the engine; later phases may make it configurable if benchmarks
+        justify that."""
+        if proposed == "":
+            return True
+        return proposed.isdigit() and 1 <= int(proposed) <= 1_000_000
 
     def _on_quick_auto_width_clicked(self, width_var):
         """Auto button handler, shared by every mode's button (see
@@ -1500,6 +1566,7 @@ class GenerationTab(BaseTab):
             "floor": self.T("quick.hint_floor"),
             "range": self.T("quick.hint_range"),
             "explore": self.T("quick.hint_explore"),
+            "hybrid": self.T("quick.hint_hybrid"),
             "primesieve": self.T("quick.hint_primesieve"),
             "cudasieve": self.T("quick.hint_cudasieve"),
         }
@@ -2249,6 +2316,36 @@ class GenerationTab(BaseTab):
                       boundary=f"{10 ** (floor_value + 1):,}")
                    if truncated else ""))
             self._apply_loop_params_and_run(floor_value, iterations, window_count_per_run)
+        elif mode == "hybrid":
+            # Phase 1 deliberately makes the mode visible and validates its own,
+            # non-Exploration inputs, but does not route a click into the existing
+            # v4 loop.  Doing so would silently run a classical sieve while the UI
+            # claims "Hybryda".  Phase 4 connects this exact contract to the verified
+            # reference runner built in Phase 3.
+            raw_floor = self.quick_hybrid_floor_var.get().strip()
+            if raw_floor:
+                floor_value = _eval_quick_number(raw_floor)
+                if floor_value is None or floor_value < 0:
+                    messagebox.showerror(
+                        self.T("quick.dialog_title"), self.T("quick.error_hybrid_floor_required"))
+                    return
+            else:
+                floor_value = find_highest_populated_floor(self._get_portal_folder())
+                if floor_value is None:
+                    messagebox.showerror(
+                        self.T("quick.dialog_title"), self.T("quick.error_hybrid_floor_required"))
+                    return
+            iterations = _eval_quick_number(self.quick_hybrid_iterations_var.get())
+            filter_prime_count = _eval_quick_number(
+                self.quick_hybrid_filter_prime_count_var.get())
+            if iterations is None or iterations < 1 or filter_prime_count is None or filter_prime_count < 1:
+                messagebox.showerror(
+                    self.T("quick.dialog_title"), self.T("quick.error_hybrid_parameters"))
+                return
+            self.quick_status_var.set(self.T(
+                "quick.summary_hybrid_pending", floor=floor_value,
+                iterations=iterations, filter_prime_count=f"{filter_prime_count:,}"))
+            messagebox.showinfo(self.T("quick.dialog_title"), self.T("quick.info_hybrid_backend_pending"))
         elif mode == "primesieve":
             # mode == "primesieve": From + Width (NOT From/To -- see
             # _build_quick_mode_primesieve's docstring for why) determine the literal
@@ -3080,4 +3177,3 @@ class GenerationTab(BaseTab):
                 self.status.set(self.T("gen.status_progress_prep"))
 
     # --- Tab 5: Settings -----------------------------------------------------
-

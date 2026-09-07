@@ -139,6 +139,24 @@ def main():
 
     _test_compute_totals_bumps_from_new_rows()
 
+    # === Hybrid argv contract: pure GUI-to-WSL command construction =====================
+    # The backend itself lands in a later phase.  Pin the argument order now so neither
+    # side can silently reinterpret k_adv as the old fixed-window Width multiplier.
+    hybrid_argv = m.build_hybrid_argv(
+        17, 3, 10_000, True,
+        script_path=r"C:\PrimeAtlas\prime_sieve\hybrid_sieve.py")
+    check(hybrid_argv == [
+        "python3", "-u", "/mnt/c/PrimeAtlas/prime_sieve/hybrid_sieve.py",
+        "17", "3", "10000", "1",
+    ], f"build_hybrid_argv keeps the fixed CLI contract "
+       f"<floor> <iterations> <filter_prime_count> <write_files>, got {hybrid_argv!r}")
+    hybrid_count_only_argv = m.build_hybrid_argv(
+        21, 1, 7, False,
+        script_path=r"D:\work\hybrid_sieve.py")
+    check(hybrid_count_only_argv[-4:] == ["21", "1", "7", "0"],
+          f"build_hybrid_argv preserves a small explicit k_adv and count-only flag "
+          f"without adding window-width arguments, got {hybrid_count_only_argv!r}")
+
     portal = tempfile.mkdtemp(prefix="primeatlas_gen_arith_test_")
     try:
         W = 10_000_000

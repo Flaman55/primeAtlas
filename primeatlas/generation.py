@@ -1,8 +1,8 @@
 """
 generation.py -- pure-logic (no tkinter) backend for the Generation tab: window/floor
 arithmetic, generation-settings persistence, WSL argv builders for every engine this app
-launches (orchestrator_loop_v2.py, prime_sieve_primesieve.py, orchestrator_v3.py direct,
-constellation_finder_v1.py, ktuple_sieve_v1.py), the file-tailing WSL/local subprocess
+launches (orchestrator_loop_v2.py, prime_sieve_primesieve.py, hybrid_sieve.py,
+orchestrator_v3.py direct, constellation_finder_v1.py, ktuple_sieve_v1.py), the file-tailing WSL/local subprocess
 runners (WslLoggedRunner/LocalLoggedRunner), and the WSL RAM/CPU-probing helpers used by
 the Quick-gen panel's "Auto" suggestions.
 
@@ -524,6 +524,8 @@ def recommended_digit_sweep_n_locations(base_exponent, window_m, target_windows_
 
 PRIMESIEVE_SCRIPT = os.path.abspath(
     os.path.join(_SCRIPT_DIR, "prime_sieve", "prime_sieve_primesieve.py"))
+HYBRID_SIEVE_SCRIPT = os.path.abspath(
+    os.path.join(_SCRIPT_DIR, "prime_sieve", "hybrid_sieve.py"))
 PRIMESIEVE_QUERY_SCRIPT = os.path.abspath(
     os.path.join(_SCRIPT_DIR, "prime_sieve", "primesieve_query.py"))
 
@@ -737,6 +739,30 @@ def build_primesieve_argv(base_exponent, target_idx_start, window_count_per_run,
     return [
         "python3", "-u", script_wsl,
         str(base_exponent), str(target_idx_start), str(window_count_per_run), str(window_m),
+        "1" if write_files else "0",
+    ]
+
+
+def build_hybrid_argv(base_exponent, iterations, filter_prime_count, write_files,
+                      script_path=None):
+    """Return the WSL argv for the future ``hybrid_sieve.py`` extension runner.
+
+    This deliberately has a compact, hybrid-specific contract rather than borrowing
+    ``build_loop_argv()``'s window-count semantics.  A hybrid stage's reach is
+    determined by the visible ``filter_prime_count`` (``k_adv``), not by a fixed
+    numeric-width multiplier: the runner derives its exact extension bound only after
+    it has built that filter-prime prefix.  The base floor selects the existing,
+    continuous magazyn that supplies MAIN; ``iterations`` requests successive hybrid
+    extensions of that base.
+
+    CLI order is fixed now, before the runner exists, so the GUI and runner can be
+    tested independently in later phases:
+    ``<base_exponent> <iterations> <filter_prime_count> <write_files 0/1>``.
+    """
+    script = script_path if script_path is not None else HYBRID_SIEVE_SCRIPT
+    return [
+        "python3", "-u", windows_path_to_wsl(script),
+        str(base_exponent), str(iterations), str(filter_prime_count),
         "1" if write_files else "0",
     ]
 

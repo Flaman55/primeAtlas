@@ -44,7 +44,7 @@ in \([b,c]\).  Every tuple order permitted by \(b^r\le N\) must be covered.
 
 ## Phase checklist
 
-### [ ] Phase 1 — Hybrid Quick-mode contract and UI
+### [x] Phase 1 — Hybrid Quick-mode contract and UI
 
 Add the `hybrid` mode beside Floor, Range, Exploration, primesieve and
 cudasieve.  Its continuation/iteration behavior follows Exploration, while
@@ -62,7 +62,16 @@ Add independent Tk variables, PL/EN locale strings, validation and a
 
 **Commit:** `feat(generation): add hybrid quick-mode UI`
 
-**Evidence / commit:** pending.
+**Evidence / commit:** static checks passed (`git diff --check`, both locale
+files parsed as JSON); Artur confirmed both executable scripts passed:
+
+```powershell
+cd H:\PrimeAtlas_gpt\primeAtlas
+python unitTests\test_generation_window_arithmetic.py
+python unitTests\test_generation_launch_planning.py
+```
+
+Commit: pending in this working step.
 
 ### [ ] Phase 2 — Pure hybrid extension planner
 
