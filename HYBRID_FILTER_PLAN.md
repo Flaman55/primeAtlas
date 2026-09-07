@@ -230,7 +230,7 @@ cd /mnt/h/PrimeAtlas_gpt/primeAtlas
 python3 unitTests/test_hybrid_sieve.py
 ```
 
-Commit: pending in this working step.
+Commit: `0e3ff63 fix(hybrid): decouple generation from storage state`.
 
 ### [~] Phase 6 — Measured tuning and release decision
 
