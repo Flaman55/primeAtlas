@@ -98,7 +98,7 @@ python unitTests\test_hybrid_planner.py
 
 Commit: `1979742 feat(hybrid): add extension planner and invariants`.
 
-### [ ] Phase 3 — Reference hybrid backend and PGS2 compatibility
+### [x] Phase 3 — Reference hybrid backend and PGS2 compatibility
 
 Implement a correctness-first WSL runner.  It uses a conventional bootstrap
 for \([b,c]\), marks MAIN factors in the extension, applies all planned tuple
@@ -114,7 +114,20 @@ the native backend, not the final throughput target.
 
 **Commit:** `feat(hybrid): add verified reference extension backend`
 
-**Evidence / commit:** pending.
+**Evidence / commit:** static `git diff --check` passed; Artur confirmed both
+repository test scripts passed:
+
+```powershell
+cd H:\PrimeAtlas_gpt\primeAtlas
+python unitTests\test_hybrid_reference.py
+```
+
+```bash
+cd /mnt/h/PrimeAtlas_gpt/primeAtlas
+python3 unitTests/test_hybrid_reference_primesieve.py
+```
+
+Commit: pending in this working step.
 
 ### [ ] Phase 4 — End-to-end Generation integration
 
