@@ -73,7 +73,7 @@ python unitTests\test_generation_launch_planning.py
 
 Commit: `5bdad36 feat(generation): add hybrid quick-mode UI`.
 
-### [ ] Phase 2 — Pure hybrid extension planner
+### [x] Phase 2 — Pure hybrid extension planner
 
 Create a GUI-free planner that validates a continuous base, determines
 \(a,b,c,d,N\), the bootstrap interval and the maximum tuple order.  It must
@@ -88,7 +88,15 @@ tuple capability is incomplete.
 
 **Commit:** `feat(hybrid): add extension planner and invariants`
 
-**Evidence / commit:** pending.
+**Evidence / commit:** static `git diff --check` passed; Artur confirmed the
+following executable test passed:
+
+```powershell
+cd H:\PrimeAtlas_gpt\primeAtlas
+python unitTests\test_hybrid_planner.py
+```
+
+Commit: pending in this working step.
 
 ### [ ] Phase 3 — Reference hybrid backend and PGS2 compatibility
 
