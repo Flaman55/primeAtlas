@@ -262,7 +262,7 @@ python3 unitTests/test_hybrid_native.py
 python3 unitTests/test_hybrid_sieve.py
 ```
 
-Commit: pending.
+Commit: `d5506d4 perf(hybrid): reuse v4 native MAIN marking`.
 
 ### [~] Phase 6 — Measured tuning and release decision
 
