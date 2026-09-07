@@ -50,7 +50,7 @@ def main():
     while lo <= plan.limit:
         hi = min(plan.limit + 1, lo + args.segment_size)
         materialize_started = time.perf_counter()
-        result, segment_main, segment_filter = sieve_native_segment_timed(plan, main_primes, lo, hi)
+        result, segment_main, segment_filter = sieve_native_segment_timed(plan, lo, hi, main_primes)
         materialize_seconds += time.perf_counter() - materialize_started - segment_main - segment_filter
         main_seconds += segment_main
         filter_seconds += segment_filter

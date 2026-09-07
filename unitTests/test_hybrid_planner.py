@@ -15,7 +15,7 @@ _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(_SCRIPT_DIR)
 sys.path.insert(0, os.path.join(_REPO_ROOT, "prime_sieve"))
 
-from hybrid_planner import HybridPlanError, plan_hybrid_extension, required_tuple_order
+from hybrid_planner import HybridPlanError, plan_hybrid_boundaries, plan_hybrid_extension, required_tuple_order
 
 
 failures: list[str] = []
@@ -59,6 +59,10 @@ def main() -> int:
           f"pair plan derives N=186 and exactly order (2,), got {pair!r}")
     check(pair.bootstrap_bounds == (11, 13),
           "pair plan exposes the inclusive bootstrap interval [b,c]")
+    check(pair == plan_hybrid_boundaries(
+        7, [11, 13], 17,
+        base_is_contiguous=True, filter_is_consecutive=True),
+        "boundary-only native plan has exactly the same proof contract as a materialized MAIN")
 
     # Triple plan: b=5, c=29, d=31 gives N=154; 5**3 <= N < 5**4.
     triple = plan_hybrid_extension(
@@ -80,6 +84,11 @@ def main() -> int:
         base_is_contiguous=True, filter_is_consecutive=True),
         "identical trusted inputs produce an immutable deterministic plan")
 
+    expects_error(
+        lambda: plan_hybrid_boundaries(
+            1, [5, 7], 11,
+            base_is_contiguous=True, filter_is_consecutive=True),
+        "main_last_prime", "invalid native MAIN boundary")
     expects_error(
         lambda: plan_hybrid_extension(
             [2, 3], [5, 7], 11,

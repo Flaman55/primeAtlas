@@ -79,19 +79,19 @@ def mark_filter_tuple_products_native(plan: HybridExtensionPlan, lo: int, hi: in
     return bits, tuple((order, int(counts[order])) for order in plan.tuple_orders)
 
 
-def sieve_native_segment(plan: HybridExtensionPlan, main_primes: Iterable[int], lo: int, hi: int) -> ReferenceSegmentResult:
-    main = _strict_positive_primes(main_primes, "main_primes")
-    if main[-1] != plan.main_last_prime:
-        raise HybridReferenceError("main_primes must end at the plan's trusted MAIN boundary")
-    result, _main_seconds, _filter_seconds = sieve_native_segment_timed(plan, main_primes, lo, hi)
+def sieve_native_segment(plan: HybridExtensionPlan, main_primes: Iterable[int] | None, lo: int, hi: int) -> ReferenceSegmentResult:
+    result, _main_seconds, _filter_seconds = sieve_native_segment_timed(plan, lo, hi, main_primes)
     return result
 
 
-def sieve_native_segment_timed(plan: HybridExtensionPlan, main_primes: Iterable[int], lo: int, hi: int) -> tuple[ReferenceSegmentResult, float, float]:
-    """Native segment result plus isolated Python-MAIN/C-filter wall times."""
-    main = _strict_positive_primes(main_primes, "main_primes")
-    if main[-1] != plan.main_last_prime:
-        raise HybridReferenceError("main_primes must end at the plan's trusted MAIN boundary")
+def sieve_native_segment_timed(plan: HybridExtensionPlan, lo: int, hi: int,
+                               main_primes: Iterable[int] | None = None) -> tuple[ReferenceSegmentResult, float, float]:
+    """Native segment result plus isolated C-MAIN/C-filter wall times.
+
+    ``main_primes`` exists only for the `lo == 0` reference diagnostic, where
+    the production v4 MAIN convention needs its self-marked primes restored.
+    Real Atlas windows begin at one or above, so no Python MAIN list is needed.
+    """
     t_filter = time.perf_counter()
     bits, counts = mark_filter_tuple_products_native(plan, lo, hi)
     filter_seconds = time.perf_counter() - t_filter
@@ -115,6 +115,11 @@ def sieve_native_segment_timed(plan: HybridExtensionPlan, main_primes: Iterable[
     # themselves.  Restore only those exact prime positions.  Real output
     # windows begin at 1 or above and never enter this compatibility branch.
     if lo == 0:
+        if main_primes is None:
+            raise HybridReferenceError("main_primes are required only for the lo=0 diagnostic segment")
+        main = _strict_positive_primes(main_primes, "main_primes")
+        if main[-1] != plan.main_last_prime:
+            raise HybridReferenceError("main_primes must end at the plan's trusted MAIN boundary")
         for prime in main:
             if prime >= hi:
                 break

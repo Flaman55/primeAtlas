@@ -307,3 +307,38 @@ experimental selectable engine or a default for a defined range of workloads.
 **Evidence / commit:** Artur confirmed the supplied benchmark matrix completed
 with matching counts.  The executable benchmark is committed; detailed timing
 rows are still required before defaults or performance claims.
+
+#### [x] Phase 6a — Remove Python MAIN materialisation
+
+Use the boundary-only planner when the native backend is available.  Native
+MAIN already generates \(P_{\le a}\) internally; constructing that entire set
+as Python integers and validating it once per output window is neither part of
+the proof nor useful work.  Keep the materialised list only in the no-native
+reference fallback and in the `lo=0` diagnostic test convention.
+
+This changes representation cost, not the hybrid theorem.  For high \(N\), a
+short filter prefix still cannot substantially reduce \(a\): the proof bound
+\(N < b d\) forces the filter endpoint toward \(N/b\).  If the filter grows
+to that scale, tuple-product enumeration becomes more costly than ordinary
+segmented marking; it must not be presented as a high-floor optimisation.
+
+**Acceptance tests**
+
+- Boundary-only planner produces the same immutable proof contract as the
+  materialised planner.
+- Runner regression asserts that native planning never requests a `[2,a]`
+  Python prime list.
+- Existing native/reference/output-cache test suite remains green.
+
+**Commit:** `perf(hybrid): avoid materializing native MAIN primes`
+
+**Evidence / commit:** Artur confirmed all relevant executable tests passed:
+
+```bash
+cd /mnt/h/PrimeAtlas_gpt/primeAtlas
+python3 unitTests/test_hybrid_planner.py
+python3 unitTests/test_hybrid_native.py
+python3 unitTests/test_hybrid_sieve.py
+```
+
+Commit: pending.

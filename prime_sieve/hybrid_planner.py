@@ -123,7 +123,38 @@ def plan_hybrid_extension(
 
     main = _as_strictly_increasing_positive_ints(main_primes, "main_primes")
     advanced = _as_strictly_increasing_positive_ints(filter_primes, "filter_primes")
-    a = main[-1]
+    return plan_hybrid_boundaries(
+        main[-1], advanced, next_prime_after_filter,
+        base_is_contiguous=base_is_contiguous,
+        filter_is_consecutive=filter_is_consecutive,
+        tuple_order_cap=tuple_order_cap)
+
+
+def plan_hybrid_boundaries(
+    main_last_prime: int,
+    filter_primes: Iterable[int],
+    next_prime_after_filter: int,
+    *,
+    base_is_contiguous: bool,
+    filter_is_consecutive: bool,
+    tuple_order_cap: int | None = None,
+) -> HybridExtensionPlan:
+    """Create the same proof contract from trusted MAIN/filter boundaries.
+
+    Native MAIN marks the complete interval ``P_{<= a}`` internally.  At high
+    floors, materialising every MAIN prime in Python only to recover its known
+    last boundary costs more than the sieve.  This form preserves the exact
+    proof while avoiding that representation cost.
+    """
+    if base_is_contiguous is not True:
+        raise HybridPlanError("hybrid extension requires a contiguous MAIN base")
+    if filter_is_consecutive is not True:
+        raise HybridPlanError("hybrid extension requires a consecutive filter-prime prefix")
+    if (isinstance(main_last_prime, bool) or not isinstance(main_last_prime, int)
+            or main_last_prime < 2):
+        raise HybridPlanError("main_last_prime must be a trusted prime integer >= 2")
+    a = main_last_prime
+    advanced = _as_strictly_increasing_positive_ints(filter_primes, "filter_primes")
     b = advanced[0]
     c = advanced[-1]
 

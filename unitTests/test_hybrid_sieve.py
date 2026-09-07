@@ -34,6 +34,23 @@ def check(condition, message):
 
 def main():
     passed = True
+    # High-floor planning must not allocate the complete Python list P_{<=a}.
+    # The native C MAIN owns that interval; Python needs only one boundary
+    # prime plus the short filter prefix immediately after it.
+    planner_calls = []
+    original_generate = hybrid_sieve.generate_primes_in_range
+    def boundary_only_generate(lo, hi):
+        planner_calls.append((lo, hi))
+        return [11] if lo == 9 else [13, 17]
+    hybrid_sieve.generate_primes_in_range = boundary_only_generate
+    try:
+        plan = hybrid_sieve.build_independent_plan(100, 1)
+        passed &= check(plan.main_last_prime == 11 and plan.limit >= 99
+                        and all(lo != 2 for lo, _hi in planner_calls),
+                        "native plan probes only its MAIN boundary and filter prefix, never P_{<=a}")
+    finally:
+        hybrid_sieve.generate_primes_in_range = original_generate
+
     with tempfile.TemporaryDirectory(prefix="primeatlas_hybrid_sieve_") as portal:
         # A real continuous PGS2 seed through 10 is sufficient for a tiny,
         # deterministic reference stage.  window_m=10 keeps this test tiny;

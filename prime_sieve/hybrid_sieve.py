@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
-from hybrid_planner import HybridPlanError, plan_hybrid_extension
+from hybrid_planner import HybridPlanError, plan_hybrid_boundaries
 from hybrid_reference import HybridReferenceError, sieve_reference_segment, write_new_pgs2_floor_window
 from prime_sieve_primesieve import generate_primes_in_range, write_scan_metrics_handoff
 from prime_sieve_v1 import format_offset, read_prime_window
@@ -212,6 +212,20 @@ def bootstrap_following_primes(main_last_prime: int, count: int) -> tuple[int, .
     return tuple(found[:wanted])
 
 
+def first_prime_at_or_after(value: int) -> int:
+    """Find one prime at/above ``value`` without materialising a prefix [2,value]."""
+    lo = max(2, value)
+    # The interval grows defensively rather than relying on an unproved prime-gap
+    # estimate.  At Atlas scales this normally succeeds in the first tiny probe.
+    width = max(128, int(math.log(lo + 1) * 32))
+    while True:
+        found = generate_primes_in_range(lo, lo + width)
+        if found:
+            return found[0]
+        lo += width
+        width *= 2
+
+
 def _stage_complete_window_hi(prefix: MainPrefix, limit: int, window_m: int) -> int:
     """Return the last *whole* Atlas window proven by this stage's mathematical limit."""
     floor_end = 10 ** (prefix.current_floor + 1)
@@ -250,15 +264,20 @@ def _iter_output_windows(start: int, stop: int, window_m: int):
 
 def build_independent_plan(target_hi: int, filter_prime_count: int):
     """Build one fixed MAIN/filter base that proves the entire requested output."""
-    bound = max(3, math.isqrt(target_hi - 1) // 2)
-    while True:
-        main = tuple(generate_primes_in_range(2, bound + 1))
-        bootstrap = bootstrap_following_primes(main[-1], filter_prime_count)
-        plan = plan_hybrid_extension(main, bootstrap[:-1], bootstrap[-1],
-                                     base_is_contiguous=True, filter_is_consecutive=True)
-        if plan.limit >= target_hi - 1:
-            return plan, main
-        bound *= 2
+    if target_hi < 3:
+        raise HybridSieveError("target_hi must exceed 2")
+    # b is the first prime after a and d is after the filter.  Choosing a at
+    # or above sqrt(target_hi-1) guarantees b*d > target_hi-1.  Crucially, C
+    # MAIN can generate P_{<=a} itself: making a Python list of every such
+    # prime was the dominant high-floor bootstrap cost and is mathematically
+    # unnecessary.
+    main_last_prime = first_prime_at_or_after(math.isqrt(target_hi - 1))
+    bootstrap = bootstrap_following_primes(main_last_prime, filter_prime_count)
+    plan = plan_hybrid_boundaries(main_last_prime, bootstrap[:-1], bootstrap[-1],
+                                  base_is_contiguous=True, filter_is_consecutive=True)
+    if plan.limit < target_hi - 1:
+        raise HybridSieveError("boundary planner failed to cover its requested output")
+    return plan
 
 
 def run_hybrid_sieve(base_exponent: int, iterations: int, width_windows: int, filter_prime_count: int, write_files: bool,
@@ -280,7 +299,7 @@ def run_hybrid_sieve(base_exponent: int, iterations: int, width_windows: int, fi
     stage_width = width_windows * window_m
     target_hi = start + iterations * stage_width
     bootstrap_started = time.perf_counter()
-    plan, stage_main = build_independent_plan(target_hi, filter_prime_count)
+    plan = build_independent_plan(target_hi, filter_prime_count)
     bootstrap_seconds = time.perf_counter() - bootstrap_started
     started = time.perf_counter()
     total_primes = 0
@@ -291,6 +310,7 @@ def run_hybrid_sieve(base_exponent: int, iterations: int, width_windows: int, fi
     total_bytes_written = 0
     native_backend = False
     native_segment = None
+    reference_main: tuple[int, ...] | None = None
     try:
         from hybrid_native import native_library_available, sieve_native_segment_timed
         if native_library_available():
@@ -302,6 +322,8 @@ def run_hybrid_sieve(base_exponent: int, iterations: int, width_windows: int, fi
         native_backend = False
     print("[HYBRID] backend: native tuple filter" if native_backend
           else "[HYBRID] backend: Python reference tuple filter", flush=True)
+    if not native_backend:
+        reference_main = tuple(generate_primes_in_range(2, plan.main_last_prime + 1))
     for stage in range(1, iterations + 1):
         stage_started = time.perf_counter()
         stage_lo = start + (stage - 1) * stage_width
@@ -324,11 +346,11 @@ def run_hybrid_sieve(base_exponent: int, iterations: int, width_windows: int, fi
                 skipped_windows += 1
                 continue
             if native_backend:
-                result, main_seconds, filter_seconds = native_segment(plan, stage_main, lo, hi)
+                result, main_seconds, filter_seconds = native_segment(plan, lo, hi)
                 stage_main_seconds += main_seconds
                 stage_filter_seconds += filter_seconds
             else:
-                result = sieve_reference_segment(plan, stage_main, lo, hi)
+                result = sieve_reference_segment(plan, reference_main or (), lo, hi)
             if write_files:
                 write_started = time.perf_counter()
                 write_new_pgs2_floor_window(portal_folder, output_floor, target_idx,
