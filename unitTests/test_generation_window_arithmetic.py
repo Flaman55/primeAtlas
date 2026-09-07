@@ -179,6 +179,10 @@ def main():
     hybrid_wide = m.plan_hybrid_narrow_range(12_000_000, 20_000_500)
     check(not hybrid_wide["use_hybrid"] and hybrid_wide["rounded_end"] == 30_000_000,
           "hybrid range crossing two standard windows is delegated to Range/v4.1")
+    check(m.hybrid_window_for_number(12_000_500) == (10_000_000, 20_000_000),
+          "a concrete n resolves to its one canonical Hybrid PGS2 window")
+    check(m.hybrid_window_for_floor_index(9, 500) == (6_000_000_000, 6_010_000_000),
+          "an explicit floor/index resolves without backfilling earlier windows")
 
         # === _floor_window_count: LOW_FLOOR_CUTOFF boundary + exact division ===========
         check(m._floor_window_count(6) is None,

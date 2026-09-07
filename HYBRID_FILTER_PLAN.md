@@ -378,3 +378,36 @@ python3 unitTests/test_hybrid_sieve.py
 ```
 
 Commit: `d93f6be feat(hybrid): limit filter mode to one output window`.
+
+### [x] Phase 8 — Intent-based Hybrid window selection
+
+Replace the redundant literal `Od–Do` controls with real one-window intents:
+one concrete number `n`, continuation after a floor's highest output, that
+floor's first gap, or an explicit floor/window index.  Each intent resolves to
+one canonical standard PGS2 window before the backend is launched.
+
+**Acceptance tests**
+
+- `n` and floor/index map to the correct absolute standard window.
+- GUI launch recorder confirms the `n` intent launches the canonical window,
+  not the literal sub-range.
+- Existing Hybrid planner/native/output tests remain green.
+
+**Commit:** `feat(hybrid): select one window by user intent`
+
+**Evidence / commit:** Artur confirmed all executable checks passed:
+
+```powershell
+cd H:\PrimeAtlas_gpt\primeAtlas
+python unitTests\test_generation_window_arithmetic.py
+python unitTests\test_generation_launch_planning.py
+```
+
+```bash
+cd /mnt/h/PrimeAtlas_gpt/primeAtlas
+python3 unitTests/test_hybrid_planner.py
+python3 unitTests/test_hybrid_native.py
+python3 unitTests/test_hybrid_sieve.py
+```
+
+Commit: pending.

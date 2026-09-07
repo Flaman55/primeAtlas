@@ -351,6 +351,22 @@ def plan_hybrid_narrow_range(start, end, window=QUICK_GEN_MAX_WINDOW_WIDTH):
     }
 
 
+def hybrid_window_for_number(number, window=QUICK_GEN_MAX_WINDOW_WIDTH):
+    """Canonical one-window Hybrid target containing a concrete integer ``n``."""
+    if not isinstance(number, int) or number < 0:
+        raise ValueError("n must be a non-negative integer")
+    start = (number // window) * window
+    return start, start + window
+
+
+def hybrid_window_for_floor_index(floor, target_idx, window=QUICK_GEN_MAX_WINDOW_WIDTH):
+    """Canonical absolute window selected by an Atlas floor/index coordinate."""
+    if not isinstance(floor, int) or not isinstance(target_idx, int) or floor < 0 or target_idx < 0:
+        raise ValueError("floor and target_idx must be non-negative integers")
+    start = 10 ** floor + target_idx * window
+    return start, start + window
+
+
 def _floor_window_count(base_power, window=QUICK_GEN_MAX_WINDOW_WIDTH):
     """How many `window`-sized windows fit EXACTLY within floor base_power's own numeric
     domain [10**base_power, 10**(base_power+1)) -- i.e. target_idx 0..(this value - 1) are

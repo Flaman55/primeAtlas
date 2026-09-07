@@ -123,12 +123,12 @@ def main():
         # Hybrid Quick mode must launch its own fixed contract, never translate
         # k_adv into the classical loop's width/window settings.
         gen.quick_mode_var.set("hybrid")
-        gen.quick_hybrid_from_var.set("12000000")
-        gen.quick_hybrid_to_var.set("12000500")
+        gen.quick_hybrid_target_var.set("n")
+        gen.quick_hybrid_value_var.set("12000500")
         gen.quick_hybrid_main_cap_var.set("997")
         gen.quick_hybrid_filter_prime_count_var.set("11")
         gen._on_quick_generate_clicked()
-        check(hybrid_calls == [(12_000_000, 12_000_500, 997, 11)],
+        check(hybrid_calls == [(10_000_000, 20_000_000, 997, 11)],
               f"hybrid Quick mode delegates one literal narrow range plus explicit MAIN/filter bounds "
               f"contract to the hybrid runner (got {hybrid_calls!r})")
         gen.quick_mode_var.set("floor")

@@ -55,7 +55,7 @@ from .storage import bump_pietro_total, digit_count_floor, load_totals_cache, LO
 from .generation import (
     QUICK_GEN_MAX_WINDOW_WIDTH, compute_totals_bumps_from_new_rows, count_existing_windows,
     find_continuation_target_idx,
-    find_first_gap_target_idx, _trim_existing_from_target_idx_range,
+    find_first_gap_target_idx, _trim_existing_from_target_idx_range, hybrid_window_for_number, hybrid_window_for_floor_index,
     find_highest_populated_floor, _eval_quick_number, _round_range_to_window, plan_hybrid_narrow_range,
     _floor_window_count, _KTUPLE_STRATEGY_KEYS, load_generation_settings,
     save_generation_settings, recommended_digit_sweep_n_locations, PRIMESIEVE_MAX_STOP,
@@ -944,6 +944,9 @@ class GenerationTab(BaseTab):
         self.quick_hybrid_from_var = tk.StringVar(value="")
         self.quick_hybrid_to_var = tk.StringVar(value="")
         self.quick_hybrid_main_cap_var = tk.StringVar(value="997")
+        self.quick_hybrid_target_var = tk.StringVar(value="n")
+        self.quick_hybrid_value_var = tk.StringVar(value="")
+        self.quick_hybrid_target_floor_var = tk.StringVar(value="")
         # primesieve mode: deliberately its OWN Floor/From/Width variables rather than
         # reusing quick_from_var/quick_to_var (an earlier version of this mode did) --
         # see _build_quick_mode_primesieve's docstring for why: this mode's own Auto
@@ -1255,10 +1258,13 @@ class GenerationTab(BaseTab):
         """
         frame = ttk.Frame(container)
         frame.grid(row=0, column=0, sticky="w")
-        ttk.Label(frame, text=self.T("quick.field_from")).pack(side="left")
-        ttk.Entry(frame, textvariable=self.quick_hybrid_from_var, width=20).pack(side="left", padx=(6, 12))
-        ttk.Label(frame, text=self.T("quick.field_to")).pack(side="left")
-        ttk.Entry(frame, textvariable=self.quick_hybrid_to_var, width=20).pack(side="left", padx=(6, 12))
+        ttk.Label(frame, text="Cel").pack(side="left")
+        ttk.Combobox(frame, state="readonly", width=15, textvariable=self.quick_hybrid_target_var,
+                     values=("n", "kontynuuj piętro", "uzupełnij lukę", "dokładne okno")).pack(side="left", padx=(6, 12))
+        ttk.Label(frame, text="n / indeks").pack(side="left")
+        ttk.Entry(frame, textvariable=self.quick_hybrid_value_var, width=20).pack(side="left", padx=(6, 12))
+        ttk.Label(frame, text=self.T("quick.field_floor")).pack(side="left")
+        ttk.Entry(frame, textvariable=self.quick_hybrid_target_floor_var, width=7).pack(side="left", padx=(6, 12))
         ttk.Label(frame, text="MAIN <=").pack(side="left")
         ttk.Entry(frame, textvariable=self.quick_hybrid_main_cap_var, width=8).pack(side="left", padx=(6, 12))
         ttk.Label(frame, text=self.T("quick.field_filter_prime_count")).pack(side="left")
@@ -2387,16 +2393,29 @@ class GenerationTab(BaseTab):
                    if truncated else ""))
             self._apply_loop_params_and_run(floor_value, iterations, window_count_per_run)
         elif mode == "hybrid":
-            start = _eval_quick_number(self.quick_hybrid_from_var.get())
-            end = _eval_quick_number(self.quick_hybrid_to_var.get())
+            target_kind = self.quick_hybrid_target_var.get()
+            value = _eval_quick_number(self.quick_hybrid_value_var.get())
+            floor = _eval_quick_number(self.quick_hybrid_target_floor_var.get())
             main_cap = _eval_quick_number(self.quick_hybrid_main_cap_var.get())
             filter_prime_count = _eval_quick_number(self.quick_hybrid_filter_prime_count_var.get())
-            if (start is None or end is None or main_cap is None or main_cap < 2
+            if (main_cap is None or main_cap < 2
                     or filter_prime_count is None or filter_prime_count < 1):
                 messagebox.showerror(
                     self.T("quick.dialog_title"), self.T("quick.error_hybrid_parameters"))
                 return
             try:
+                if target_kind == "n":
+                    start, end = hybrid_window_for_number(value)
+                elif target_kind == "kontynuuj piętro":
+                    start, end = hybrid_window_for_floor_index(
+                        floor, find_continuation_target_idx(self._get_portal_folder(), floor,
+                                                            QUICK_GEN_MAX_WINDOW_WIDTH))
+                elif target_kind == "uzupełnij lukę":
+                    start, end = hybrid_window_for_floor_index(
+                        floor, find_first_gap_target_idx(self._get_portal_folder(), floor,
+                                                         QUICK_GEN_MAX_WINDOW_WIDTH))
+                else:
+                    start, end = hybrid_window_for_floor_index(floor, value)
                 narrow = plan_hybrid_narrow_range(start, end)
             except ValueError:
                 messagebox.showerror(self.T("quick.dialog_title"), self.T("quick.error_hybrid_parameters"))
