@@ -127,7 +127,7 @@ cd /mnt/h/PrimeAtlas_gpt/primeAtlas
 python3 unitTests/test_hybrid_reference_primesieve.py
 ```
 
-Commit: pending in this working step.
+Commit: `078bd87 feat(hybrid): add verified reference extension backend`.
 
 ### [ ] Phase 4 — End-to-end Generation integration
 
