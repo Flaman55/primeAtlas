@@ -287,7 +287,7 @@ cd /mnt/h/PrimeAtlas_gpt/primeAtlas
 python3 unitTests/test_hybrid_sieve.py
 ```
 
-Commit: pending.
+Commit: `cd527cf fix(hybrid): continue from existing floor output`.
 
 ### [~] Phase 6 — Measured tuning and release decision
 
