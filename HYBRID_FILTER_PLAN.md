@@ -341,4 +341,4 @@ python3 unitTests/test_hybrid_native.py
 python3 unitTests/test_hybrid_sieve.py
 ```
 
-Commit: pending.
+Commit: `b02d254 perf(hybrid): avoid materializing native MAIN primes`.
