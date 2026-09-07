@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import math
 import os
+import re
 import sys
 import time
 import csv
@@ -31,6 +32,7 @@ import window_sharding
 
 WINDOW_M = 10_000_000
 LOW_FLOOR_CUTOFF = 7
+_WINDOW_FILE_RE = re.compile(r"^PRIME_WINDOW_10p(?P<floor>\d+)_off_(?P<offset>\d+)(?P<million>M)?\.bin$")
 BENCHMARK_FIELDNAMES = [
     "run_timestamp_utc", "base_exponent", "target_idx_start", "target_idx_end",
     "windows_written", "total_seconds", "seconds_per_window", "total_primes",
@@ -41,7 +43,7 @@ BENCHMARK_FIELDNAMES = [
 ]
 
 
-def write_hybrid_benchmark_row(portal_folder, base_exponent, windows_written, total_seconds,
+def write_hybrid_benchmark_row(portal_folder, base_exponent, target_idx_start, windows_written, total_seconds,
                                total_primes, write_files, bootstrap_seconds, sieve_seconds,
                                write_seconds, bytes_written):
     """Append a schema-aligned Atlas 4.1 benchmark row for a hybrid run."""
@@ -69,8 +71,8 @@ def write_hybrid_benchmark_row(portal_folder, base_exponent, windows_written, to
             writer.writeheader()
         row = {
             "run_timestamp_utc": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
-            "base_exponent": base_exponent, "target_idx_start": 0,
-            "target_idx_end": windows_written - 1, "windows_written": windows_written,
+            "base_exponent": base_exponent, "target_idx_start": target_idx_start,
+            "target_idx_end": target_idx_start + windows_written - 1, "windows_written": windows_written,
             "total_seconds": f"{total_seconds:.3f}",
             "seconds_per_window": f"{total_seconds / windows_written:.4f}",
             "total_primes": total_primes,
@@ -108,6 +110,29 @@ def _window_path(portal: Path, floor: int, target_idx: int, window_m: int) -> Pa
     offset = target_idx * window_m
     shard = Path(window_sharding.shard_dir(str(source), target_idx))
     return shard / f"PRIME_WINDOW_10p{floor}_off_{format_offset(offset)}.bin"
+
+
+def _continuation_target_idx(portal_folder: str | os.PathLike[str], floor: int,
+                             window_m: int) -> int:
+    """Return the index immediately after the selected floor's highest PGS2 window.
+
+    This is deliberately an *output-position* query, not a mathematical MAIN
+    input.  It gives repeated Hybrid launches the same continuation behaviour
+    as the other Atlas generators without making the correctness proof depend
+    on whether storage is empty, partial or gapped.
+    """
+    source = Path(portal_folder) / f"10p{floor}" / "source_primes"
+    highest = -1
+    for name, _path in window_sharding.list_sharded_files(str(source)):
+        match = _WINDOW_FILE_RE.match(name)
+        if not match or int(match.group("floor")) != floor:
+            continue
+        offset = int(match.group("offset"))
+        if match.group("million"):
+            offset *= 1_000_000
+        if offset % window_m == 0:
+            highest = max(highest, offset // window_m)
+    return highest + 1
 
 
 def _read_checked_window(path: Path, lo: int, hi: int) -> list[int]:
@@ -241,7 +266,17 @@ def run_hybrid_sieve(base_exponent: int, iterations: int, width_windows: int, fi
     """Generate missing windows; PGS2 storage is output/cache, never mathematical input."""
     if base_exponent < 0 or iterations < 1 or width_windows < 1 or filter_prime_count < 1:
         raise HybridSieveError("floor, iterations, width and filter_prime_count must be positive")
-    start = 10 ** base_exponent
+    # Like the established generators, a repeated launch for a normal
+    # windowed floor extends after that floor's highest existing output.  The
+    # files only decide WHERE to resume; build_independent_plan() below still
+    # constructs the complete mathematical MAIN/filter base from scratch.
+    start_target_idx = 0
+    if base_exponent >= LOW_FLOOR_CUTOFF:
+        start_target_idx = _continuation_target_idx(portal_folder, base_exponent, window_m)
+        capacity = _floor_window_count(base_exponent, window_m)
+        if start_target_idx >= capacity:
+            raise HybridSieveError(f"selected floor 10p{base_exponent} is complete; select 10p{base_exponent + 1}")
+    start = 10 ** base_exponent + start_target_idx * window_m
     stage_width = width_windows * window_m
     target_hi = start + iterations * stage_width
     bootstrap_started = time.perf_counter()
@@ -323,7 +358,7 @@ def run_hybrid_sieve(base_exponent: int, iterations: int, width_windows: int, fi
     print(f"[HYBRID] done: {total_primes:,} primes, {total_windows} window(s), {elapsed:.3f}s", flush=True)
     write_scan_metrics_handoff(str(portal_folder), total_primes_found=total_primes,
                                windows_processed=total_windows, write_files=write_files)
-    write_hybrid_benchmark_row(str(portal_folder), base_exponent, total_windows, elapsed,
+    write_hybrid_benchmark_row(str(portal_folder), base_exponent, start_target_idx, total_windows, elapsed,
                                total_primes, write_files, bootstrap_seconds,
                                total_main_seconds + total_filter_seconds,
                                total_write_seconds, total_bytes_written)

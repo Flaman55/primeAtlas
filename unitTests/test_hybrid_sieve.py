@@ -100,6 +100,24 @@ def main():
             hybrid_sieve.write_hybrid_benchmark_row = original_benchmark
             hybrid_sieve.write_scan_metrics_handoff = original_metrics
 
+    # Repeating a normal windowed-floor run resumes after the selected floor's
+    # highest output, just like the established generators.  That position is
+    # only a storage/output decision; Hybrid still plans its own MAIN/filter.
+    with tempfile.TemporaryDirectory(prefix="primeatlas_hybrid_continue_") as portal:
+        first = hybrid_sieve._window_path(hybrid_sieve.Path(portal), 7, 0, 10)
+        write_new_pgs2_floor_window(portal, 7, 0, 10, [])
+        original = first.read_bytes()
+        hybrid_sieve.write_hybrid_benchmark_row = lambda *args: None
+        hybrid_sieve.write_scan_metrics_handoff = lambda *args, **kwargs: None
+        try:
+            hybrid_sieve.run_hybrid_sieve(7, 1, 1, 1, True, portal, window_m=10)
+            second = hybrid_sieve._window_path(hybrid_sieve.Path(portal), 7, 1, 10)
+            passed &= check(second.is_file() and first.read_bytes() == original,
+                            "repeated windowed-floor run continues after the highest existing window")
+        finally:
+            hybrid_sieve.write_hybrid_benchmark_row = original_benchmark
+            hybrid_sieve.write_scan_metrics_handoff = original_metrics
+
     # Hybrid must append into exactly the same 4.1 CSV schema used by the
     # Benchmark tab and the established engines.  In particular, timing must
     # not shift into unrelated columns when an older shorter header exists.
@@ -111,7 +129,7 @@ def main():
             writer.writeheader()
             writer.writerow({"base_exponent": "9", "total_seconds": "1.25"})
         hybrid_sieve.write_hybrid_benchmark_row(
-            portal, 10, 2, 3.0, 123, True, 0.1, 1.2, 1.7, 456)
+            portal, 10, 17, 2, 3.0, 123, True, 0.1, 1.2, 1.7, 456)
         with open(log_path, newline="") as stream:
             reader = csv.DictReader(stream)
             fields, rows = reader.fieldnames, list(reader)
@@ -119,6 +137,8 @@ def main():
                         "hybrid benchmark writer preserves the canonical 4.1 CSV schema")
         new_row = rows[-1]
         passed &= check(new_row["instance_of_n"] == "hybrid"
+                        and new_row["target_idx_start"] == "17"
+                        and new_row["target_idx_end"] == "18"
                         and new_row["base_gen_seconds"] == "0.100"
                         and new_row["sieve_seconds"] == "1.200"
                         and new_row["write_seconds"] == "1.700"

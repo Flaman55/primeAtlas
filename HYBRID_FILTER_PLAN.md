@@ -264,6 +264,31 @@ python3 unitTests/test_hybrid_sieve.py
 
 Commit: `d5506d4 perf(hybrid): reuse v4 native MAIN marking`.
 
+### [x] Phase 5d — Output-position continuation
+
+Make a repeated Hybrid launch for a normal windowed floor resume immediately
+after that floor's highest existing PGS2 window, matching the established
+generator convention.  This lookup is deliberately limited to choosing the
+output position: it never supplies mathematical MAIN/filter data.  Record the
+actual target-window range in the Hybrid benchmark row as well.
+
+**Acceptance tests**
+
+- A repeated floor-7 test leaves the first window byte-identical and writes
+  precisely the next target index.
+- Benchmark schema test confirms the recorded start and inclusive end indexes.
+
+**Commit:** `fix(hybrid): continue from existing floor output`
+
+**Evidence / commit:** Artur confirmed the extended WSL runner test passed:
+
+```bash
+cd /mnt/h/PrimeAtlas_gpt/primeAtlas
+python3 unitTests/test_hybrid_sieve.py
+```
+
+Commit: pending.
+
 ### [~] Phase 6 — Measured tuning and release decision
 
 Benchmark the complete operation, not the filter alone, across `k_adv`, MAIN
