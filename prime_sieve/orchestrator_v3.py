@@ -178,11 +178,10 @@ def run_batch(scanner_path, base_exponent, target_idx_start, target_idx_stop, wo
 BENCHMARK_FIELDNAMES = [
     "run_timestamp_utc", "base_exponent", "target_idx_start", "target_idx_end",
     "windows_written", "total_seconds", "seconds_per_window", "total_primes",
-    "avg_primes_per_window", "primes_per_second",
-    "l_final", "sieving_primes_count", "max_child_rss_mb",
-    "instance_of_n", "loop_session_seconds", "loop_numbers_per_second",
-    "loop_seconds_per_window", "write_files",
-    "base_gen_seconds", "sieve_seconds", "write_seconds", "bytes_written",
+    "avg_primes_per_window", "primes_per_second", "l_final", "sieving_primes_count",
+    "max_child_rss_mb", "instance_of_n", "loop_session_seconds", "loop_numbers_per_second",
+    "loop_seconds_per_window", "write_files", "base_gen_seconds", "sieve_seconds",
+    "write_seconds", "bytes_written", "engine", "numbers_processed",
 ]
 # write_files: lets the GUI's floor list show total REAL generation time per floor, which
 # requires distinguishing actual disk-writing runs from write_files=False count-only
@@ -286,7 +285,7 @@ def print_benchmark_summary(base_exponent, start_idx, end_idx, total_seconds, po
                              l_final=None, sieving_primes_count=None, max_child_rss_mb=None,
                              write_files=True, total_primes_found=None, windows_processed=None,
                              window_m=None, base_gen_seconds=None, sieve_seconds=None,
-                             write_seconds=None, bytes_written=None):
+                             write_seconds=None, bytes_written=None, numbers_processed=None):
     """Logs to the SAME benchmark_log.csv used by every orchestrator variant (see this file's
     header for why that's deliberately shared, not forked).
 
@@ -371,6 +370,8 @@ def print_benchmark_summary(base_exponent, start_idx, end_idx, total_seconds, po
             if is_new:
                 writer.writeheader()
             row = {
+                "engine": SCANNER_VERSION,
+                "numbers_processed": numbers_processed if numbers_processed is not None else "",
                 "run_timestamp_utc": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
                 "base_exponent": base_exponent,
                 "target_idx_start": start_idx,
@@ -539,7 +540,8 @@ def run_orchestrator(base_exponent=None, window_count=None, start_auto=None, sta
                                  total_primes_found=total_primes_found,
                                  windows_processed=windows_processed, window_m=window_m,
                                  base_gen_seconds=base_gen_seconds, sieve_seconds=sieve_seconds,
-                                 write_seconds=write_seconds, bytes_written=bytes_written)
+                                 write_seconds=write_seconds, bytes_written=bytes_written,
+                                 numbers_processed=metrics.get("numbers_processed"))
 
     return not interrupted
 

@@ -75,6 +75,9 @@ def _order_benchmark_tree_columns(fieldnames):
     either column is missing (older schema / already filtered out), so this is safe to
     call unconditionally."""
     fieldnames = list(fieldnames)
+    if "engine" in fieldnames:
+        fieldnames.remove("engine")
+        fieldnames.insert(0, "engine")
     if "loop_seconds_per_window" not in fieldnames or "seconds_per_window" not in fieldnames:
         return fieldnames
     fieldnames.remove("loop_seconds_per_window")
@@ -117,7 +120,28 @@ def read_benchmark_log(portal_folder):
         reader = csv.DictReader(f)
         fieldnames = reader.fieldnames or []
         rows = [_normalize_decimal_commas(row) for row in reader]
+    if "engine" not in fieldnames:
+        fieldnames.append("engine")
+    for row in rows:
+        row["engine"] = row.get("engine") or ("hybrid" if row.get("instance_of_n") == "hybrid" else "unknown")
+        _, row["sieve_count_basis"] = benchmark_sieve_count(row)
+    if "sieve_count_basis" not in fieldnames:
+        fieldnames.append("sieve_count_basis")
     return fieldnames, rows
+
+
+def benchmark_metric_engines(rows, metric):
+    """Engine of the last valid measurement, matching chart reduction."""
+    latest = {}
+    for row in rows:
+        try:
+            floor = int(row.get("base_exponent", ""))
+            value = float(row.get(metric, ""))
+        except (TypeError, ValueError):
+            continue
+        if not math.isnan(value):
+            latest[floor] = row.get("engine") or ("hybrid" if row.get("instance_of_n") == "hybrid" else "unknown")
+    return latest
 
 
 def aggregate_benchmark_growth(rows):
@@ -174,29 +198,54 @@ def aggregate_benchmark_fair_spw(rows):
     return sorted(latest.items())
 
 
+def benchmark_sieve_count(row):
+    """Return count and provenance without altering historical measurements.
+
+    main never recorded actual range widths. Keep those rows intact, but do not
+    invent computational work from storage capacity. Only measured or exactly
+    recoverable counts participate in sieve throughput. Invalid counts never
+    fall back to estimates.
+    """
+    try:
+        raw = row.get("numbers_processed")
+        if raw not in (None, ""):
+            count = int(raw)
+            return (count, "measured") if count > 0 else (None, "unavailable")
+        floor = int(row.get("base_exponent", ""))
+        windows = int(row.get("windows_written", ""))
+        if floor < 0 or windows <= 0:
+            return None, "unavailable"
+        engine = row.get("engine")
+        is_hybrid = engine == "hybrid" or (engine in (None, "", "unknown")
+                                          and row.get("instance_of_n") == "hybrid")
+        if is_hybrid:
+            if floor < 7 and windows == 1 and int(row.get("target_idx_start", "")) == 0:
+                return 9 * 10 ** floor, "whole_floor"
+            return None, "unavailable"
+        return None, "unavailable"
+    except (TypeError, ValueError):
+        return None, "unavailable"
+
+
 def aggregate_benchmark_sieve_nps(rows):
-    """Reduces benchmark_log.csv rows to one (base_exponent, sieve_numbers_per_second) point
-    per floor -- the pure sieve-phase throughput (numbers swept / sieve_seconds), isolated
-    from base-gen and disk-write time. Only populated for rows logged by prime_sieve_v4_1.py
-    (SCANNER_VERSION="v4.1" -- see orchestrator_v3.py's BENCHMARK_FIELDNAMES comment); rows
-    from v3/v4 leave sieve_seconds blank and are skipped, same as any unparseable value.
-    windows_written * QUICK_GEN_MAX_WINDOW_WIDTH approximates the numbers actually swept --
-    window_m itself isn't a logged CSV column (every run in practice uses the same fixed
-    window width), so this reuses the same fixed-window-width assumption prime_atlas_v1.py's
-    own _floor_window_count() already makes elsewhere. Same last-row-per-floor-wins / skip-
-    unparseable-or-non-positive reduction as aggregate_benchmark_growth(). Returns
-    (base_exponent, sieve_numbers_per_second) pairs sorted ascending by base_exponent."""
+    """Actual target integers swept / sieve phase seconds, last valid row per floor.
+
+    Storage window sizes do not measure computational work. Legacy Hybrid rows
+    for one complete low floor have an exact recoverable count (9 * 10**floor).
+    Older Atlas rows lacking recoverable counts remain in the table and report,
+    marked unavailable by sieve_count_basis, but have no sieve throughput point.
+    """
     latest = {}
     for row in rows:
         try:
             base_exponent = int(row.get("base_exponent", ""))
-            windows_written = int(row.get("windows_written", ""))
             sieve_seconds = float(row.get("sieve_seconds", ""))
+            numbers_processed, _ = benchmark_sieve_count(row)
         except (TypeError, ValueError):
             continue
-        if sieve_seconds <= 0 or math.isnan(sieve_seconds):
+        if not math.isfinite(sieve_seconds) or sieve_seconds <= 0 or numbers_processed is None:
             continue
-        latest[base_exponent] = windows_written * QUICK_GEN_MAX_WINDOW_WIDTH / sieve_seconds
+        latest[base_exponent] = numbers_processed / sieve_seconds
     return sorted(latest.items())
 
 
@@ -266,7 +315,7 @@ def benchmark_row_stats(rows):
 
 def _pdf_chart_ops(points, x0, y0, w, h, points2=None, translator=None,
                     label_key1="bench.axis_nps", label_key2="bench.axis_spw",
-                    fmt1="{:,.0f}", fmt2="{:,.3f}"):
+                    fmt1="{:,.0f}", fmt2="{:,.3f}", engines=None):
     """Returns PDF content-stream ops drawing a (pietro, primary-series) growth chart as
     benchmark_tab.py's own _draw_growth_chart() (same axis/tick/point layout logic),
     inside the box [x0, x0+w] x [y0, y0+h] in PDF's bottom-left-origin point space --
@@ -398,7 +447,7 @@ def _pdf_chart_ops(points, x0, y0, w, h, points2=None, translator=None,
         for x_val, y_val in points:
             cx, cy = sx(x_val), sy(y_val)
             ops.append(_pdf_dot_op(cx, cy, 2.5, rgb=(0.11, 0.37, 0.66)))
-            ops.append(_pdf_text_op(cx - 10, cy + 8, 7, "Courier", fmt1.format(y_val)))
+            ops.append(_pdf_text_op(cx - 10, cy + 8, 7, "Courier", fmt1.format(y_val) + (" [" + engines.get(x_val, "unknown") + "]" if engines else "")))
 
     if has_secondary:
         if len(points2) > 1:
@@ -480,7 +529,7 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
         for row in row_slice:
             for i, name in enumerate(fieldnames):
                 ops.append(_pdf_text_op(content_left + i * col_w + 2, y - row_h + 3,
-                                         font_size, "Courier", cell_text(row.get(name, ""))))
+                                         min(font_size, (col_w - 4) / (0.6 * max(1, len(str(row.get(name, "")))))) if name == "engine" else font_size, "Courier", str(row.get(name, "")) if name == "engine" else cell_text(row.get(name, ""))))
             y -= row_h
         return y
 
@@ -499,7 +548,8 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
     chart_top = content_top - 40
     chart_y0 = chart_top - chart_h
     ops.extend(_pdf_chart_ops(points, content_left, chart_y0, content_width, chart_h,
-                               points2=points2, translator=translator))
+                               points2=points2, translator=translator,
+                               engines=benchmark_metric_engines(rows, "loop_numbers_per_second")))
 
     if has_speed_chart:
         chart2_h = 140

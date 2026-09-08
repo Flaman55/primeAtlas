@@ -1,6 +1,6 @@
 """
 generation_tab.py -- GenerationTab, the tkinter widgets for the Generation tab: the
-Quick-gen panel (Floor/Range/Exploration/primesieve modes), the low-level
+Quick-gen panel (Floor/Range/Exploration/Hybryda/primesieve modes), the low-level
 orchestrator_loop_v2.py pipeline form (Section A), the constellation_finder_v1.py search
 form (Section B), and the k-tuple sieve form (Section C) -- plus every launch/poll/finish
 handler behind their Run/Stop buttons and the shared bottom progress bar.
@@ -49,17 +49,18 @@ from tkinter import ttk, messagebox
 import pattern_catalog_v1
 
 from .base_tab import BaseTab
+from .hybrid_controls import HybridControls
 from .benchmark import read_benchmark_log
 from .generation_console import GenerationConsole
 from .storage import bump_pietro_total, digit_count_floor, load_totals_cache, LOW_FLOOR_CUTOFF, save_totals_cache
 from .generation import (
     QUICK_GEN_MAX_WINDOW_WIDTH, compute_totals_bumps_from_new_rows, count_existing_windows,
     find_continuation_target_idx,
-    find_first_gap_target_idx, _trim_existing_from_target_idx_range,
-    find_highest_populated_floor, _eval_quick_number, _round_range_to_window,
+    find_first_gap_target_idx, _trim_existing_from_target_idx_range, hybrid_window_for_number, hybrid_window_for_floor_index,
+    find_highest_populated_floor, _eval_quick_number, _round_range_to_window, plan_hybrid_narrow_range,
     _floor_window_count, _KTUPLE_STRATEGY_KEYS, load_generation_settings,
     save_generation_settings, recommended_digit_sweep_n_locations, PRIMESIEVE_MAX_STOP,
-    PRIMESIEVE_MAX_WIDTH_MULT, build_loop_argv, build_primesieve_argv,
+    PRIMESIEVE_MAX_WIDTH_MULT, build_loop_argv, build_primesieve_argv, build_hybrid_argv, build_hybrid_narrow_argv,
     CUDASIEVE_MIN_PRINTABLE_TOP, CUDASIEVE_MAX_STOP, CUDASIEVE_MAX_WIDTH_MULT,
     build_cudasieve_argv,
     build_orchestrator_direct_argv, build_constellation_finder_argv,
@@ -68,11 +69,11 @@ from .generation import (
     estimate_wsl_available_cpu_count, recommended_worker_count, WslLoggedRunner,
     _LOOP_SESSION_DONE_RE, _LOOP_SESSION_START_RE, _LOOP_ITERATION_START_RE,
     _GEN_SIEVE_DONE_RE, _GEN_CONST_DONE_RE, _GEN_SIEVE_PROGRESS_RE,
-    _GEN_CONST_PROGRESS_RE, _GEN_PREP_DONE_RE,
+    _GEN_CONST_PROGRESS_RE, _GEN_PREP_DONE_RE, _GEN_HYBRID_STAGE_RE, _GEN_HYBRID_DONE_RE,
 )
 
 
-class GenerationTab(BaseTab):
+class GenerationTab(HybridControls, BaseTab):
     def __init__(self, parent, get_portal_folder, status_var, translator,
                  totals_progress, reload_primes_tree, reload_constellations_tree,
                  research_goldbach_tab_widget):
@@ -933,6 +934,30 @@ class GenerationTab(BaseTab):
         self.quick_explore_floor_var = tk.StringVar(value="")
         self.quick_iterations_var = tk.StringVar(value="1")
         self.quick_explore_width_var = tk.StringVar(value="1")
+        # Hybryda intentionally owns its state instead of borrowing Exploration's
+        # variables.  Its stage size is a filter-prime prefix (k_adv), not a count of
+        # fixed 10M windows, so sharing the Width field would falsely imply the same
+        # numerical contract and would make a later mode switch overwrite input.
+        self.quick_hybrid_floor_var = tk.StringVar(value="")
+        self.quick_hybrid_iterations_var = tk.StringVar(value="1")
+        self.quick_hybrid_width_var = tk.StringVar(value="1")
+        self.quick_hybrid_filter_prime_count_var = tk.StringVar(value="10000")
+        self.quick_hybrid_from_var = tk.StringVar(value="")
+        self.quick_hybrid_to_var = tk.StringVar(value="")
+        self.quick_hybrid_main_cap_var = tk.StringVar(value="100")
+        self.quick_hybrid_range_var = tk.StringVar(value="Zasięg: obliczanie…")
+        # The ordinary intent is to extend a selected floor.  A concrete n is
+        # available for research, but must never silently turn a typed floor
+        # into the unrelated global window containing zero.
+        self.quick_hybrid_target_var = tk.StringVar(value="kontynuuj piętro")
+        self.quick_hybrid_value_var = tk.StringVar(value="")
+        self.quick_hybrid_target_floor_var = tk.StringVar(value="")
+        self._hybrid_target_groups = []
+        for var in (self.quick_hybrid_main_cap_var, self.quick_hybrid_filter_prime_count_var,
+                    self.quick_hybrid_target_var, self.quick_hybrid_value_var,
+                    self.quick_hybrid_target_floor_var):
+            var.trace_add("write", self._schedule_hybrid_preview)
+        self.quick_hybrid_target_var.trace_add("write", self._sync_hybrid_target_fields)
         # primesieve mode: deliberately its OWN Floor/From/Width variables rather than
         # reusing quick_from_var/quick_to_var (an earlier version of this mode did) --
         # see _build_quick_mode_primesieve's docstring for why: this mode's own Auto
@@ -993,6 +1018,7 @@ class GenerationTab(BaseTab):
             ("floor", self.T("quick.mode_floor")),
             ("range", self.T("quick.mode_range")),
             ("explore", self.T("quick.mode_explore")),
+            ("hybrid", self.T("quick.mode_hybrid")),
             ("primesieve", self.T("quick.mode_primesieve")),
             ("cudasieve", self.T("quick.mode_cudasieve")),
         ]
@@ -1010,6 +1036,7 @@ class GenerationTab(BaseTab):
         floor_entry = self._build_quick_mode_floor(fields_container, mode_frames)
         self._build_quick_mode_range(fields_container, mode_frames)
         self._build_quick_mode_explore(fields_container, mode_frames)
+        self._build_quick_mode_hybrid(fields_container, mode_frames)
         self._build_quick_mode_primesieve(fields_container, mode_frames)
         self._build_quick_mode_cudasieve(fields_container, mode_frames)
 
@@ -1226,6 +1253,62 @@ class GenerationTab(BaseTab):
                          variable=self.quick_floor_fill_gaps_var).pack(side="left")
         mode_frames["explore"] = outer
 
+    def _build_quick_mode_hybrid(self, container, mode_frames):
+        """Build the visible contract for the hybrid-extension engine.
+
+        The continuation choice intentionally mirrors Exploration: blank Floor means
+        the deepest populated floor, while the Auto button makes that choice visible.
+        Unlike Exploration, a hybrid stage has no fixed-width field.  Its reach comes
+        from the explicit filter-prime count ``k_adv`` and must be computed by the
+        hybrid planner after it has validated the current magazyn boundary.
+
+        This first UI phase does not offer the shared "fill gaps first" checkbox:
+        hybrid correctness requires a contiguous trusted MAIN base, so Phase 2's
+        planner will reject a gapped base rather than silently defining a different
+        continuation policy here.
+        """
+        wrapper = ttk.Frame(container)
+        wrapper.grid(row=0, column=0, sticky="w")
+        frame = ttk.Frame(wrapper)
+        frame.pack(anchor="w")
+        ttk.Label(frame, text="Cel").pack(side="left")
+        ttk.Combobox(frame, state="readonly", width=15, textvariable=self.quick_hybrid_target_var,
+                     values=("n", "kontynuuj piętro", "uzupełnij lukę", "dokładne okno")).pack(side="left", padx=(6, 12))
+        value_group = ttk.Frame(frame)
+        ttk.Label(value_group, text="n / indeks").pack(side="left")
+        ttk.Entry(value_group, textvariable=self.quick_hybrid_value_var, width=20).pack(side="left", padx=(6, 12))
+        floor_group = ttk.Frame(frame)
+        ttk.Label(floor_group, text=self.T("quick.field_floor")).pack(side="left")
+        ttk.Entry(floor_group, textvariable=self.quick_hybrid_target_floor_var, width=7).pack(side="left", padx=(6, 12))
+        ttk.Label(frame, text="MAIN <=").pack(side="left")
+        ttk.Entry(frame, textvariable=self.quick_hybrid_main_cap_var, width=8).pack(side="left", padx=(6, 12))
+        ttk.Label(frame, text=self.T("quick.field_filter_prime_count")).pack(side="left")
+        filter_vcmd = (self.register(self._validate_hybrid_filter_prime_count_spinbox), "%P")
+        ttk.Spinbox(frame, from_=1, to=1_000_000,
+                    textvariable=self.quick_hybrid_filter_prime_count_var,
+                    width=9, validate="key", validatecommand=filter_vcmd).pack(
+            side="left", padx=(6, 0))
+        ttk.Label(wrapper, textvariable=self.quick_hybrid_range_var, wraplength=950).pack(fill="x")
+        self._schedule_hybrid_preview()
+        self._hybrid_target_groups.append((value_group, floor_group))
+        self._sync_hybrid_target_fields()
+        mode_frames["hybrid"] = wrapper
+
+    def _sync_hybrid_target_fields(self, *_args):
+        """Show only inputs meaningful for the selected one-window intent."""
+        target = self.quick_hybrid_target_var.get()
+        show_value = target in ("n", "dokładne okno")
+        show_floor = target in ("kontynuuj piętro", "uzupełnij lukę", "dokładne okno")
+        for value_group, floor_group in self._hybrid_target_groups:
+            if show_value:
+                value_group.pack(side="left")
+            else:
+                value_group.pack_forget()
+            if show_floor:
+                floor_group.pack(side="left")
+            else:
+                floor_group.pack_forget()
+
     def _build_quick_mode_primesieve(self, container, mode_frames):
         """Floor + From + Width -- NOT the From/To pair the first version of this mode
         used. From is a literal absolute starting point (like Floor mode's own
@@ -1417,6 +1500,19 @@ class GenerationTab(BaseTab):
             return
         self.quick_explore_floor_var.set(str(highest))
 
+    def _on_hybrid_auto_floor_clicked(self):
+        """Hybrid counterpart of Exploration's explicit highest-floor picker.
+
+        It deliberately does not share the Exploration StringVar: the two modes must
+        retain independently typed values when the user compares them side by side.
+        """
+        highest = find_highest_populated_floor(self._get_portal_folder())
+        if highest is None:
+            messagebox.showinfo(
+                self.T("quick.dialog_title"), self.T("quick.explore_auto_floor_empty"))
+            return
+        self.quick_hybrid_floor_var.set(str(highest))
+
     def _validate_quick_iterations_spinbox(self, proposed):
         """validatecommand for the Number of iterations spinbox -- same shape as
         _validate_quick_width_spinbox, bounded to [1, 100] (100 x 10 bln = 1 trillion
@@ -1424,6 +1520,16 @@ class GenerationTab(BaseTab):
         if proposed == "":
             return True
         return proposed.isdigit() and 1 <= int(proposed) <= 100
+
+    def _validate_hybrid_filter_prime_count_spinbox(self, proposed):
+        """Accept a visible positive ``k_adv`` value without letting an accidental
+        multi-billion entry freeze a future planner before it can present a clear
+        validation message.  One million is a UI safety bound, not a mathematical
+        limitation of the engine; later phases may make it configurable if benchmarks
+        justify that."""
+        if proposed == "":
+            return True
+        return proposed.isdigit() and 1 <= int(proposed) <= 1_000_000
 
     def _on_quick_auto_width_clicked(self, width_var):
         """Auto button handler, shared by every mode's button (see
@@ -1500,6 +1606,7 @@ class GenerationTab(BaseTab):
             "floor": self.T("quick.hint_floor"),
             "range": self.T("quick.hint_range"),
             "explore": self.T("quick.hint_explore"),
+            "hybrid": self.T("quick.hint_hybrid"),
             "primesieve": self.T("quick.hint_primesieve"),
             "cudasieve": self.T("quick.hint_cudasieve"),
         }
@@ -1607,6 +1714,103 @@ class GenerationTab(BaseTab):
             self._loop_runner = None
             messagebox.showerror(self.T("gen.dialog_title"), self.T(
                 "gen.error_launch_failed", error=str(e)))
+            return
+        self.loop_run_btn.configure(state="disabled")
+        self.loop_stop_btn.configure(state="normal")
+        self.loop_status_label.set(self.T("common.running"))
+        for panel in self._quick_panels:
+            panel["generate_btn"].configure(text=self.T("common.stop"))
+        self._show_loop_terminal()
+
+    def _on_run_hybrid(self, base_exponent, iterations, width_windows, filter_prime_count):
+        """Launch the separate reference hybrid runner through the normal Generation UI.
+
+        It shares the one-run-at-a-time console, Stop control and completion refresh
+        with every other engine.  It never routes through v4: the child process first
+        verifies that storage really supplies a continuous MAIN prefix.
+        """
+        if self._loop_runner is not None and self._loop_runner.is_running():
+            messagebox.showerror(self.T("quick.dialog_title"), self.T("quick.error_already_running"))
+            return
+        self._gen_progress_bar_active = True
+        self._gen_loop_run_count = iterations
+        self._gen_loop_iteration = None
+        self._gen_step_total = None
+        write_files = self._loop_write_files_var.get()
+        try:
+            argv = build_hybrid_argv(base_exponent, iterations, width_windows, filter_prime_count, write_files)
+            log_path, exit_path, _run_id = generation_log_paths(self._get_portal_folder(), "hybrid")
+            cmd = build_wsl_logged_command(argv, log_path, exit_path, self._get_portal_folder())
+            self.loop_console.append(self._new_run_separator())
+            self._loop_output_queue = queue.Queue()
+            self._benchmark_rows_before_run = len(read_benchmark_log(self._get_portal_folder())[1])
+            self._loop_runner = WslLoggedRunner(
+                cmd, log_path, exit_path, self._loop_output_queue,
+                kill_pattern="hybrid_sieve.py")
+            self._loop_runner.start()
+        except Exception as e:  # noqa: BLE001 -- launch errors belong in the GUI.
+            self._loop_runner = None
+            self._gen_loop_run_count = None
+            messagebox.showerror(self.T("gen.dialog_title"), self.T(
+                "gen.error_launch_failed", error=str(e)))
+            return
+        self.loop_run_btn.configure(state="disabled")
+        self.loop_stop_btn.configure(state="normal")
+        self.loop_status_label.set(self.T("common.running"))
+        for panel in self._quick_panels:
+            panel["generate_btn"].configure(text=self.T("common.stop"))
+        self._show_loop_terminal()
+
+    def _hybrid_selected_range(self):
+        target_kind = self.quick_hybrid_target_var.get()
+        value = _eval_quick_number(self.quick_hybrid_value_var.get())
+        floor = _eval_quick_number(self.quick_hybrid_target_floor_var.get())
+        if target_kind != "n" and (floor is None or floor < 0):
+            raise ValueError("Podaj nieujemne piętro.")
+        if target_kind == "n":
+            start, end = hybrid_window_for_number(value)
+        elif target_kind == "kontynuuj piętro":
+            # Low floors each own exactly one whole-floor PGS2 window.
+            # Continuing past it means the first window of the next floor,
+            # never a fictitious index 1 inside the completed floor.
+            target_idx = find_continuation_target_idx(
+                self._get_portal_folder(), floor, QUICK_GEN_MAX_WINDOW_WIDTH)
+            while floor < LOW_FLOOR_CUTOFF and target_idx >= 1:
+                floor += 1
+                target_idx = find_continuation_target_idx(
+                    self._get_portal_folder(), floor, QUICK_GEN_MAX_WINDOW_WIDTH)
+            start, end = hybrid_window_for_floor_index(floor, target_idx)
+        elif target_kind == "uzupełnij lukę":
+            start, end = hybrid_window_for_floor_index(
+                floor, find_first_gap_target_idx(self._get_portal_folder(), floor,
+                                                 QUICK_GEN_MAX_WINDOW_WIDTH))
+        else:
+            start, end = hybrid_window_for_floor_index(floor, value)
+        return start, end
+
+    def _on_run_hybrid_narrow(self, start, end, main_cap, filter_prime_count):
+        """Launch the explicit one-window Hybrid experiment through the usual console."""
+        if self._loop_runner is not None and self._loop_runner.is_running():
+            messagebox.showerror(self.T("quick.dialog_title"), self.T("quick.error_already_running"))
+            return
+        self._gen_progress_bar_active = True
+        self._gen_loop_run_count = 1
+        self._gen_loop_iteration = None
+        self._gen_step_total = None
+        try:
+            argv = build_hybrid_narrow_argv(start, end, main_cap, filter_prime_count,
+                                            self._loop_write_files_var.get())
+            log_path, exit_path, _run_id = generation_log_paths(self._get_portal_folder(), "hybrid")
+            cmd = build_wsl_logged_command(argv, log_path, exit_path, self._get_portal_folder())
+            self.loop_console.append(self._new_run_separator())
+            self._loop_output_queue = queue.Queue()
+            self._benchmark_rows_before_run = len(read_benchmark_log(self._get_portal_folder())[1])
+            self._loop_runner = WslLoggedRunner(cmd, log_path, exit_path, self._loop_output_queue,
+                                                 kill_pattern="hybrid_sieve.py")
+            self._loop_runner.start()
+        except Exception as e:  # noqa: BLE001
+            self._loop_runner = None
+            messagebox.showerror(self.T("gen.dialog_title"), self.T("gen.error_launch_failed", error=str(e)))
             return
         self.loop_run_btn.configure(state="disabled")
         self.loop_stop_btn.configure(state="normal")
@@ -2249,6 +2453,15 @@ class GenerationTab(BaseTab):
                       boundary=f"{10 ** (floor_value + 1):,}")
                    if truncated else ""))
             self._apply_loop_params_and_run(floor_value, iterations, window_count_per_run)
+        elif mode == "hybrid":
+            main_cap = _eval_quick_number(self.quick_hybrid_main_cap_var.get())
+            filter_prime_count = _eval_quick_number(self.quick_hybrid_filter_prime_count_var.get())
+            try:
+                start, end = self._hybrid_selected_range()
+            except (ValueError, TypeError):
+                messagebox.showerror("Hybryda", "Podaj poprawny cel: n, piętro lub indeks okna.")
+                return
+            self._prepare_hybrid(start, end, main_cap, filter_prime_count)
         elif mode == "primesieve":
             # mode == "primesieve": From + Width (NOT From/To -- see
             # _build_quick_mode_primesieve's docstring for why) determine the literal
@@ -2993,6 +3206,36 @@ class GenerationTab(BaseTab):
         that method's own docstring), not a direct .configure() call -- it silently
         no-ops for engines that don't actually report granular progress (primesieve/
         cudasieve mode, see self._gen_progress_bar_active's own __init__ comment)."""
+        pending = getattr(self, '_hybrid_error_tail', '') + chunk
+        lines = pending.split("\n")
+        self._hybrid_error_tail = lines.pop()[-8192:]
+        for line in lines:
+            if '[HYBRID] ERROR:' in line:
+                detail = line.split('[HYBRID] ERROR:', 1)[1].strip()
+                self.quick_status_var.set('Hybryda nie zakończyła obliczeń: ' + detail)
+                messagebox.showerror('Hybryda — obliczenia przerwane',
+                    detail + '\nSprawdź parametry i dostępność bibliotek WSL oraz magazynu. '
+                    'Dla zbyt dużego zakresu wybierz primesieve. Szczegóły są w terminalu.')
+        hybrid_stage_matches = _GEN_HYBRID_STAGE_RE.findall(chunk)
+        if hybrid_stage_matches:
+            stage_str, total_str = hybrid_stage_matches[-1]
+            stage, total = int(stage_str), int(total_str)
+            self._gen_loop_run_count = total
+            self._gen_loop_iteration = stage
+            self._gen_step_total = 1
+            self._set_gen_progress_bar(mode="determinate", maximum=max(1, total), value=stage - 1)
+            self.status.set(self.T("quick.status_hybrid_stage", stage=stage, total=total))
+            return
+
+        if _GEN_HYBRID_DONE_RE.search(chunk):
+            total = self._gen_loop_run_count or 1
+            self._set_gen_progress_bar(mode="determinate", maximum=total, value=total)
+            self.status.set(self.T("gen.status_progress_done"))
+            self._gen_step_total = None
+            self._gen_loop_run_count = None
+            self._gen_loop_iteration = None
+            return
+
         if _LOOP_SESSION_DONE_RE.search(chunk):
             total = self._gen_step_total or 1
             self._set_gen_progress_bar(mode="determinate", maximum=total, value=total)
@@ -3080,4 +3323,3 @@ class GenerationTab(BaseTab):
                 self.status.set(self.T("gen.status_progress_prep"))
 
     # --- Tab 5: Settings -----------------------------------------------------
-

@@ -116,6 +116,31 @@ def main():
         recorder = _LaunchRecorder()
         gen._apply_primesieve_params_and_run = recorder.primesieve
         gen._apply_orchestrator_direct_params_and_run = recorder.orchestrator_direct
+        hybrid_calls = []
+        gen._on_run_hybrid_narrow = lambda start, end, main_cap, filter_prime_count: hybrid_calls.append(
+            (start, end, main_cap, filter_prime_count))
+
+        # Hybrid Quick mode must launch its own fixed contract, never translate
+        # k_adv into the classical loop's width/window settings.
+        gen.quick_mode_var.set("hybrid")
+        gen.quick_hybrid_target_var.set("n")
+        gen.quick_hybrid_value_var.set("12000500")
+        gen.quick_hybrid_main_cap_var.set("997")
+        gen.quick_hybrid_filter_prime_count_var.set("11")
+        gen._on_quick_generate_clicked()
+        # Preflight now runs in the background and increases the filter when needed.
+        import time
+        from prime_sieve.hybrid_policy import parameters
+        deadline = time.monotonic() + 10
+        while not hybrid_calls and time.monotonic() < deadline:
+            app.update()
+            time.sleep(0.01)
+        fitted = parameters(997, 11, 20_000_000)
+        check(hybrid_calls == [(10_000_000, 20_000_000, fitted["main"], fitted["count"])],
+              f"hybrid Quick mode waits for preflight and launches the fitted range (got {hybrid_calls!r})")
+        check(gen.quick_hybrid_filter_prime_count_var.get() == str(fitted["count"]),
+              "automatically fitted filter is visible before launch")
+        gen.quick_mode_var.set("floor")
 
         # =====================================================================
         # BUG #1 -- MemoryError on floor 25: a starting point picked deep into an

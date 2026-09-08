@@ -1,8 +1,8 @@
 """
 generation.py -- pure-logic (no tkinter) backend for the Generation tab: window/floor
 arithmetic, generation-settings persistence, WSL argv builders for every engine this app
-launches (orchestrator_loop_v2.py, prime_sieve_primesieve.py, orchestrator_v3.py direct,
-constellation_finder_v1.py, ktuple_sieve_v1.py), the file-tailing WSL/local subprocess
+launches (orchestrator_loop_v2.py, prime_sieve_primesieve.py, hybrid_sieve.py,
+orchestrator_v3.py direct, constellation_finder_v1.py, ktuple_sieve_v1.py), the file-tailing WSL/local subprocess
 runners (WslLoggedRunner/LocalLoggedRunner), and the WSL RAM/CPU-probing helpers used by
 the Quick-gen panel's "Auto" suggestions.
 
@@ -334,6 +334,47 @@ def _round_range_to_window(start, end, window=QUICK_GEN_MAX_WINDOW_WIDTH):
     return rounded_start, rounded_end
 
 
+def plan_hybrid_narrow_range(start, end, window=QUICK_GEN_MAX_WINDOW_WIDTH):
+    """Classify a literal request for the one-window Hybrid experiment.
+
+    Storage always receives complete standard windows.  Hybrid is deliberately
+    limited to exactly one such window; a wider rounded request must use the
+    normal Range/v4.1 pipeline instead of pretending to be a scalable engine.
+    """
+    if not isinstance(start, int) or not isinstance(end, int) or start < 0 or end <= start:
+        raise ValueError("hybrid range must be a non-empty non-negative interval")
+    rounded_start, rounded_end = _round_range_to_window(start, end, window)
+    return {
+        "rounded_start": rounded_start,
+        "rounded_end": rounded_end,
+        "use_hybrid": rounded_end - rounded_start == window,
+    }
+
+
+def hybrid_window_for_number(number, window=QUICK_GEN_MAX_WINDOW_WIDTH):
+    """Canonical one-window Hybrid target containing a concrete integer ``n``."""
+    if not isinstance(number, int) or number < 0:
+        raise ValueError("n must be a non-negative integer")
+    floor = len(str(number)) - 1
+    if floor < LOW_FLOOR_CUTOFF:
+        start = 10 ** floor
+        return start, 10 ** (floor + 1)
+    start = (number // window) * window
+    return start, start + window
+
+
+def hybrid_window_for_floor_index(floor, target_idx, window=QUICK_GEN_MAX_WINDOW_WIDTH):
+    """Canonical absolute window selected by an Atlas floor/index coordinate."""
+    if not isinstance(floor, int) or not isinstance(target_idx, int) or floor < 0 or target_idx < 0:
+        raise ValueError("floor and target_idx must be non-negative integers")
+    if floor < LOW_FLOOR_CUTOFF:
+        if target_idx != 0:
+            raise ValueError("low floors have exactly one whole-floor output window")
+        return 10 ** floor, 10 ** (floor + 1)
+    start = 10 ** floor + target_idx * window
+    return start, start + window
+
+
 def _floor_window_count(base_power, window=QUICK_GEN_MAX_WINDOW_WIDTH):
     """How many `window`-sized windows fit EXACTLY within floor base_power's own numeric
     domain [10**base_power, 10**(base_power+1)) -- i.e. target_idx 0..(this value - 1) are
@@ -524,6 +565,8 @@ def recommended_digit_sweep_n_locations(base_exponent, window_m, target_windows_
 
 PRIMESIEVE_SCRIPT = os.path.abspath(
     os.path.join(_SCRIPT_DIR, "prime_sieve", "prime_sieve_primesieve.py"))
+HYBRID_SIEVE_SCRIPT = os.path.abspath(
+    os.path.join(_SCRIPT_DIR, "prime_sieve", "hybrid_sieve.py"))
 PRIMESIEVE_QUERY_SCRIPT = os.path.abspath(
     os.path.join(_SCRIPT_DIR, "prime_sieve", "primesieve_query.py"))
 
@@ -737,6 +780,41 @@ def build_primesieve_argv(base_exponent, target_idx_start, window_count_per_run,
     return [
         "python3", "-u", script_wsl,
         str(base_exponent), str(target_idx_start), str(window_count_per_run), str(window_m),
+        "1" if write_files else "0",
+    ]
+
+
+def build_hybrid_argv(base_exponent, iterations, width_windows, filter_prime_count, write_files,
+                      script_path=None):
+    """Return the WSL argv for the future ``hybrid_sieve.py`` extension runner.
+
+    This deliberately has a compact, hybrid-specific contract rather than borrowing
+    ``build_loop_argv()``'s window-count semantics.  A hybrid stage's reach is
+    determined by the visible ``filter_prime_count`` (``k_adv``), not by a fixed
+    numeric-width multiplier: the runner derives its exact extension bound only after
+    it has built that filter-prime prefix.  The base floor selects the existing,
+    continuous magazyn that supplies MAIN; ``iterations`` requests successive hybrid
+    extensions of that base.
+
+    CLI order is fixed now, before the runner exists, so the GUI and runner can be
+    tested independently in later phases:
+    ``<base_exponent> <iterations> <width_windows> <filter_prime_count> <write_files 0/1>``.
+    """
+    script = script_path if script_path is not None else HYBRID_SIEVE_SCRIPT
+    return [
+        "python3", "-u", windows_path_to_wsl(script),
+        str(base_exponent), str(iterations), str(width_windows), str(filter_prime_count),
+        "1" if write_files else "0",
+    ]
+
+
+def build_hybrid_narrow_argv(start, end, main_cap, filter_prime_count, write_files,
+                             script_path=None):
+    """Build the one-standard-window experimental Hybrid invocation."""
+    script = script_path if script_path is not None else HYBRID_SIEVE_SCRIPT
+    return [
+        "python3", "-u", windows_path_to_wsl(script), "narrow",
+        str(start), str(end), str(main_cap), str(filter_prime_count),
         "1" if write_files else "0",
     ]
 
@@ -1079,6 +1157,8 @@ _GEN_SIEVE_PROGRESS_RE = re.compile(r"\[\+\] Progress: ([\d.]+)% \((\d+)/(\d+) b
 _GEN_SIEVE_DONE_RE = re.compile(r"\[\*\] TOTAL PRIMES FOUND this run:")
 _GEN_CONST_PROGRESS_RE = re.compile(r"\[CONSTELLATIONS v1\] (\d+)/(\d+): ")
 _GEN_CONST_DONE_RE = re.compile(r"\[CONSTELLATIONS v1\] Done\. New hits this run")
+_GEN_HYBRID_STAGE_RE = re.compile(r"\[HYBRID\] stage (\d+)/(\d+):")
+_GEN_HYBRID_DONE_RE = re.compile(r"\[HYBRID\] done:")
 _LOOP_SESSION_START_RE = re.compile(
     r"\[LOOP\] orchestrator_loop_v2 \S+ \(parallel instances\): (\d+) iteration\(s\)")
 _LOOP_ITERATION_START_RE = re.compile(r"\[LOOP\] iteration (\d+)/(\d+): launching")

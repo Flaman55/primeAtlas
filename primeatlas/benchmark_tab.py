@@ -38,7 +38,7 @@ from .benchmark import (
     BENCHMARK_PAGE_SIZE, BENCHMARK_TREE_HIDDEN_COLUMNS,
     _order_benchmark_tree_columns, aggregate_benchmark_fair_spw,
     aggregate_benchmark_growth, aggregate_benchmark_sieve_nps,
-    aggregate_benchmark_write_mbps, benchmark_row_stats,
+    aggregate_benchmark_write_mbps, benchmark_row_stats, benchmark_metric_engines,
     group_benchmark_rows_by_pietro, read_benchmark_log, render_benchmark_pdf,
 )
 from .i18n import Translator, DEFAULT_LANGUAGE
@@ -205,7 +205,7 @@ def _bind_chart_hover(canvas, hover_points, t, fg_color, bg_color, width, height
 def _draw_growth_chart(canvas, points, width, height, points2=None, translator=None,
                         label_key1="bench.axis_nps", label_key2="bench.axis_spw",
                         fmt1="{:,.0f}", fmt2="{:,.3f}",
-                        bg_color="#ffffff", fg_color="#000000", grid_color="#666666"):
+                        bg_color="#ffffff", fg_color="#000000", grid_color="#666666", engines=None):
     """Draws (base_exponent, primary-series) points onto `canvas` as a simple axes +
     connected-scatter chart -- x = floor depth, y = the primary series (by default numbers
     swept per second, real session-level wall-clock throughput, higher is better). Plain
@@ -374,7 +374,7 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
         for x_val, y_val in points:
             cx, cy = sx(x_val), sy(y_val)
             canvas.create_oval(cx - r, cy - r, cx + r, cy + r, fill="#1c5fa8", outline="")
-            hover_points.append((cx, cy, x_val, y_val, fmt1, "#1c5fa8", label_key1))
+            hover_points.append((cx, cy, x_val, y_val, fmt1 + (" [" + engines.get(x_val, "unknown") + "]" if engines else ""), "#1c5fa8", label_key1))
 
     if has_secondary:
         if len(points2) > 1:
@@ -554,6 +554,7 @@ class BenchmarkTab(BaseTab):
         p = self._theme_palette
         _draw_growth_chart(self.benchmark_chart, self._benchmark_growth_points, width, height,
                             points2=self._benchmark_fair_spw_points, translator=self.T,
+                            engines=benchmark_metric_engines(self._benchmark_rows, "loop_numbers_per_second"),
                             bg_color=p["console_bg"], fg_color=p["console_fg"],
                             grid_color=p["border"])
 
@@ -707,7 +708,7 @@ class BenchmarkTab(BaseTab):
             # so it can live here instead, in the column that would otherwise sit empty
             # for every data row (target_idx_start/target_idx_end are already their own
             # columns, so #0 had nothing else useful to show).
-            label = row.get("run_timestamp_utc", "")
+            label = row.get("run_timestamp_utc", "") + " [" + (row.get("engine") or "unknown") + "]"
             values = [row.get(c, "") for c in fieldnames]
             self.benchmark_tree.insert(node, "end", text=label, values=values, tags=("row",))
 

@@ -139,6 +139,28 @@ def main():
 
     _test_compute_totals_bumps_from_new_rows()
 
+    # === Hybrid argv contract: pure GUI-to-WSL command construction =====================
+    # The backend itself lands in a later phase.  Pin the argument order now so neither
+    # side can silently reinterpret the explicit Width or k_adv.
+    hybrid_argv = m.build_hybrid_argv(
+        17, 3, 9, 10_000, True,
+        script_path=r"C:\PrimeAtlas\prime_sieve\hybrid_sieve.py")
+    check(hybrid_argv == [
+        "python3", "-u", "/mnt/c/PrimeAtlas/prime_sieve/hybrid_sieve.py",
+        "17", "3", "9", "10000", "1",
+    ], f"build_hybrid_argv keeps the fixed CLI contract "
+       f"<floor> <iterations> <width_windows> <filter_prime_count> <write_files>, got {hybrid_argv!r}")
+    hybrid_count_only_argv = m.build_hybrid_argv(
+        21, 1, 2, 7, False,
+        script_path=r"D:\work\hybrid_sieve.py")
+    check(hybrid_count_only_argv[-5:] == ["21", "1", "2", "7", "0"],
+          f"build_hybrid_argv preserves independent Width, k_adv and count-only values "
+          f"(got {hybrid_count_only_argv!r}")
+    narrow_argv = m.build_hybrid_narrow_argv(12, 34, 997, 10_000, True,
+                                              script_path=r"C:\PrimeAtlas\prime_sieve\hybrid_sieve.py")
+    check(narrow_argv[-6:] == ["narrow", "12", "34", "997", "10000", "1"],
+          "narrow hybrid argv carries literal range and explicit MAIN/filter bounds")
+
     portal = tempfile.mkdtemp(prefix="primeatlas_gen_arith_test_")
     try:
         W = 10_000_000
@@ -150,6 +172,17 @@ def main():
               "round_range_to_window leaves an already-aligned span untouched")
         check(m._round_range_to_window(0, 1) == (0, 10_000_000),
               "round_range_to_window rounds a tiny span up to one full window, never zero")
+        hybrid_one = m.plan_hybrid_narrow_range(12_000_000, 12_000_500)
+        check(hybrid_one == {"rounded_start": 10_000_000, "rounded_end": 20_000_000,
+                             "use_hybrid": True},
+              "narrow hybrid range rounds a sub-window request to its one PGS2 window")
+        hybrid_wide = m.plan_hybrid_narrow_range(12_000_000, 20_000_500)
+        check(not hybrid_wide["use_hybrid"] and hybrid_wide["rounded_end"] == 30_000_000,
+              "hybrid range crossing two standard windows is delegated to Range/v4.1")
+        check(m.hybrid_window_for_number(12_000_500) == (10_000_000, 20_000_000),
+              "a concrete n resolves to its one canonical Hybrid PGS2 window")
+        check(m.hybrid_window_for_floor_index(9, 500) == (6_000_000_000, 6_010_000_000),
+              "an explicit floor/index resolves without backfilling earlier windows")
 
         # === _floor_window_count: LOW_FLOOR_CUTOFF boundary + exact division ===========
         check(m._floor_window_count(6) is None,

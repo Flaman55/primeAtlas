@@ -1,8 +1,16 @@
 __pycache__/
 *.pyc
 
+# Native sieve backends are built locally under WSL; source and build commands are tracked,
+# never machine-specific ELF shared objects.
+prime_sieve/*.so
+
 # Per-install runtime state (storage path, theme, cudasieve/env-check status, etc.) --
 # not source, diverges on every real machine, and was getting accidentally clobbered by
 # test runs that didn't isolate it properly (see test_env_setup.py Section E).
 primeatlas/locales/app_settings.json
 primeatlas/locales/language_settings.json
+
+# Generated prime windows, benchmark reports and per-run logs.  This is the
+# local Atlas magazyn/output cache, never source code or a portable fixture.
+CONSTELLATION_PORTAL/

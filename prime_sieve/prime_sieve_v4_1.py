@@ -859,7 +859,8 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
                                     windows_processed=len(low_floor_segments),
                                     write_files=write_files,
                                     base_gen_seconds=base_gen_seconds, sieve_seconds=t_sieve,
-                                    write_seconds=t_write, bytes_written=bytes_written)
+                                    write_seconds=t_write, bytes_written=bytes_written,
+                                    numbers_processed=combined_size)
         print("=" * 70)
         return
 
@@ -916,7 +917,8 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
                                 total_primes_found=total_primes_found, windows_processed=N,
                                 write_files=write_files,
                                 base_gen_seconds=base_gen_seconds, sieve_seconds=t_sieve,
-                                write_seconds=t_write, bytes_written=bytes_written)
+                                write_seconds=t_write, bytes_written=bytes_written,
+                                    numbers_processed=combined_size)
 
     print("=" * 70)
 
@@ -927,7 +929,7 @@ SCAN_METRICS_FILENAME = "last_scan_metrics.json"
 def write_scan_metrics_handoff(portal_folder, l_final, sieving_primes_count,
                                 total_primes_found=None, windows_processed=None,
                                 write_files=None, base_gen_seconds=None, sieve_seconds=None,
-                                write_seconds=None, bytes_written=None):
+                                write_seconds=None, bytes_written=None, numbers_processed=None):
     """Same role as prime_sieve_v3.py/v4.py's version -- writes the one JSON file
     orchestrator_v3.py reads back (read_scan_metrics_handoff()) to log a benchmark_log.csv
     row without needing to re-derive anything itself. v4.1 ADDS the four timing/size fields
@@ -953,6 +955,8 @@ def write_scan_metrics_handoff(portal_folder, l_final, sieving_primes_count,
         data["write_seconds"] = write_seconds
     if bytes_written is not None:
         data["bytes_written"] = bytes_written
+    if numbers_processed is not None:
+        data["numbers_processed"] = numbers_processed
     try:
         os.makedirs(portal_folder, exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
