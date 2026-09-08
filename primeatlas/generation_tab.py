@@ -49,6 +49,7 @@ from tkinter import ttk, messagebox
 import pattern_catalog_v1
 
 from .base_tab import BaseTab
+from .hybrid_controls import HybridControls
 from .benchmark import read_benchmark_log
 from .generation_console import GenerationConsole
 from .storage import bump_pietro_total, digit_count_floor, load_totals_cache, LOW_FLOOR_CUTOFF, save_totals_cache
@@ -72,7 +73,7 @@ from .generation import (
 )
 
 
-class GenerationTab(BaseTab):
+class GenerationTab(HybridControls, BaseTab):
     def __init__(self, parent, get_portal_folder, status_var, translator,
                  totals_progress, reload_primes_tree, reload_constellations_tree,
                  research_goldbach_tab_widget):
@@ -943,7 +944,8 @@ class GenerationTab(BaseTab):
         self.quick_hybrid_filter_prime_count_var = tk.StringVar(value="10000")
         self.quick_hybrid_from_var = tk.StringVar(value="")
         self.quick_hybrid_to_var = tk.StringVar(value="")
-        self.quick_hybrid_main_cap_var = tk.StringVar(value="997")
+        self.quick_hybrid_main_cap_var = tk.StringVar(value="100")
+        self.quick_hybrid_range_var = tk.StringVar(value="Zasięg: obliczanie…")
         # The ordinary intent is to extend a selected floor.  A concrete n is
         # available for research, but must never silently turn a typed floor
         # into the unrelated global window containing zero.
@@ -951,6 +953,10 @@ class GenerationTab(BaseTab):
         self.quick_hybrid_value_var = tk.StringVar(value="")
         self.quick_hybrid_target_floor_var = tk.StringVar(value="")
         self._hybrid_target_groups = []
+        for var in (self.quick_hybrid_main_cap_var, self.quick_hybrid_filter_prime_count_var,
+                    self.quick_hybrid_target_var, self.quick_hybrid_value_var,
+                    self.quick_hybrid_target_floor_var):
+            var.trace_add("write", self._schedule_hybrid_preview)
         self.quick_hybrid_target_var.trace_add("write", self._sync_hybrid_target_fields)
         # primesieve mode: deliberately its OWN Floor/From/Width variables rather than
         # reusing quick_from_var/quick_to_var (an earlier version of this mode did) --
@@ -1261,8 +1267,10 @@ class GenerationTab(BaseTab):
         planner will reject a gapped base rather than silently defining a different
         continuation policy here.
         """
-        frame = ttk.Frame(container)
-        frame.grid(row=0, column=0, sticky="w")
+        wrapper = ttk.Frame(container)
+        wrapper.grid(row=0, column=0, sticky="w")
+        frame = ttk.Frame(wrapper)
+        frame.pack(anchor="w")
         ttk.Label(frame, text="Cel").pack(side="left")
         ttk.Combobox(frame, state="readonly", width=15, textvariable=self.quick_hybrid_target_var,
                      values=("n", "kontynuuj piętro", "uzupełnij lukę", "dokładne okno")).pack(side="left", padx=(6, 12))
@@ -1280,9 +1288,11 @@ class GenerationTab(BaseTab):
                     textvariable=self.quick_hybrid_filter_prime_count_var,
                     width=9, validate="key", validatecommand=filter_vcmd).pack(
             side="left", padx=(6, 0))
+        ttk.Label(wrapper, textvariable=self.quick_hybrid_range_var, wraplength=950).pack(fill="x")
+        self._schedule_hybrid_preview()
         self._hybrid_target_groups.append((value_group, floor_group))
         self._sync_hybrid_target_fields()
-        mode_frames["hybrid"] = frame
+        mode_frames["hybrid"] = wrapper
 
     def _sync_hybrid_target_fields(self, *_args):
         """Show only inputs meaningful for the selected one-window intent."""
@@ -1750,6 +1760,33 @@ class GenerationTab(BaseTab):
         for panel in self._quick_panels:
             panel["generate_btn"].configure(text=self.T("common.stop"))
         self._show_loop_terminal()
+
+    def _hybrid_selected_range(self):
+        target_kind = self.quick_hybrid_target_var.get()
+        value = _eval_quick_number(self.quick_hybrid_value_var.get())
+        floor = _eval_quick_number(self.quick_hybrid_target_floor_var.get())
+        if target_kind != "n" and (floor is None or floor < 0):
+            raise ValueError("Podaj nieujemne piętro.")
+        if target_kind == "n":
+            start, end = hybrid_window_for_number(value)
+        elif target_kind == "kontynuuj piętro":
+            # Low floors each own exactly one whole-floor PGS2 window.
+            # Continuing past it means the first window of the next floor,
+            # never a fictitious index 1 inside the completed floor.
+            target_idx = find_continuation_target_idx(
+                self._get_portal_folder(), floor, QUICK_GEN_MAX_WINDOW_WIDTH)
+            while floor < LOW_FLOOR_CUTOFF and target_idx >= 1:
+                floor += 1
+                target_idx = find_continuation_target_idx(
+                    self._get_portal_folder(), floor, QUICK_GEN_MAX_WINDOW_WIDTH)
+            start, end = hybrid_window_for_floor_index(floor, target_idx)
+        elif target_kind == "uzupełnij lukę":
+            start, end = hybrid_window_for_floor_index(
+                floor, find_first_gap_target_idx(self._get_portal_folder(), floor,
+                                                 QUICK_GEN_MAX_WINDOW_WIDTH))
+        else:
+            start, end = hybrid_window_for_floor_index(floor, value)
+        return start, end
 
     def _on_run_hybrid_narrow(self, start, end, main_cap, filter_prime_count):
         """Launch the explicit one-window Hybrid experiment through the usual console."""
@@ -2417,42 +2454,14 @@ class GenerationTab(BaseTab):
                    if truncated else ""))
             self._apply_loop_params_and_run(floor_value, iterations, window_count_per_run)
         elif mode == "hybrid":
-            target_kind = self.quick_hybrid_target_var.get()
-            value = _eval_quick_number(self.quick_hybrid_value_var.get())
-            floor = _eval_quick_number(self.quick_hybrid_target_floor_var.get())
             main_cap = _eval_quick_number(self.quick_hybrid_main_cap_var.get())
             filter_prime_count = _eval_quick_number(self.quick_hybrid_filter_prime_count_var.get())
-            if (main_cap is None or main_cap < 2
-                    or filter_prime_count is None or filter_prime_count < 1):
-                messagebox.showerror(self.T("quick.dialog_title"),
-                                     "Wprowadź poprawny cel Hybrydy oraz dodatni MAIN i filtr.")
-                return
             try:
-                if target_kind == "n":
-                    start, end = hybrid_window_for_number(value)
-                elif target_kind == "kontynuuj piętro":
-                    # Low floors each own exactly one whole-floor PGS2 window.
-                    # Continuing past it means the first window of the next floor,
-                    # never a fictitious index 1 inside the completed floor.
-                    target_idx = find_continuation_target_idx(
-                        self._get_portal_folder(), floor, QUICK_GEN_MAX_WINDOW_WIDTH)
-                    while floor < LOW_FLOOR_CUTOFF and target_idx >= 1:
-                        floor += 1
-                        target_idx = find_continuation_target_idx(
-                            self._get_portal_folder(), floor, QUICK_GEN_MAX_WINDOW_WIDTH)
-                    start, end = hybrid_window_for_floor_index(floor, target_idx)
-                elif target_kind == "uzupełnij lukę":
-                    start, end = hybrid_window_for_floor_index(
-                        floor, find_first_gap_target_idx(self._get_portal_folder(), floor,
-                                                         QUICK_GEN_MAX_WINDOW_WIDTH))
-                else:
-                    start, end = hybrid_window_for_floor_index(floor, value)
-                plan_hybrid_narrow_range(start, end)
-            except ValueError:
-                messagebox.showerror(self.T("quick.dialog_title"),
-                                     "Dla celu n podaj n; dla piętra podaj poprawne piętro, a dla dokładnego okna także indeks.")
+                start, end = self._hybrid_selected_range()
+            except (ValueError, TypeError):
+                messagebox.showerror("Hybryda", "Podaj poprawny cel: n, piętro lub indeks okna.")
                 return
-            self._on_run_hybrid_narrow(start, end, main_cap, filter_prime_count)
+            self._prepare_hybrid(start, end, main_cap, filter_prime_count)
         elif mode == "primesieve":
             # mode == "primesieve": From + Width (NOT From/To -- see
             # _build_quick_mode_primesieve's docstring for why) determine the literal
@@ -3197,6 +3206,16 @@ class GenerationTab(BaseTab):
         that method's own docstring), not a direct .configure() call -- it silently
         no-ops for engines that don't actually report granular progress (primesieve/
         cudasieve mode, see self._gen_progress_bar_active's own __init__ comment)."""
+        pending = getattr(self, '_hybrid_error_tail', '') + chunk
+        lines = pending.split("\n")
+        self._hybrid_error_tail = lines.pop()[-8192:]
+        for line in lines:
+            if '[HYBRID] ERROR:' in line:
+                detail = line.split('[HYBRID] ERROR:', 1)[1].strip()
+                self.quick_status_var.set('Hybryda nie zakończyła obliczeń: ' + detail)
+                messagebox.showerror('Hybryda — obliczenia przerwane',
+                    detail + '\nSprawdź parametry i dostępność bibliotek WSL oraz magazynu. '
+                    'Dla zbyt dużego zakresu wybierz primesieve. Szczegóły są w terminalu.')
         hybrid_stage_matches = _GEN_HYBRID_STAGE_RE.findall(chunk)
         if hybrid_stage_matches:
             stage_str, total_str = hybrid_stage_matches[-1]

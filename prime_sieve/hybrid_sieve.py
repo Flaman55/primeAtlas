@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
+from hybrid_policy import check_target, MAX_FILTER
 from hybrid_planner import HybridPlanError, plan_hybrid_boundaries
 from hybrid_reference import HybridReferenceError, sieve_reference_segment, write_new_pgs2_floor_window
 from prime_sieve_primesieve import generate_primes_in_range, write_scan_metrics_handoff
@@ -319,6 +320,9 @@ def run_hybrid_narrow(start: int, end: int, main_cap: int, filter_prime_count: i
         rounded_end = -(-end // window_m) * window_m
     if rounded_end - rounded_start > window_m:
         raise HybridSieveError("narrow hybrid accepts one non-empty standard output window only")
+    check_target(rounded_end)
+    if not 1 <= filter_prime_count <= MAX_FILTER:
+        raise HybridSieveError("Filtr: dozwolone od 1 do 1 000 000 liczb pierwszych.")
     started = time.perf_counter()
     bootstrap_started = time.perf_counter()
     plan = build_narrow_plan(main_cap, filter_prime_count)
@@ -389,6 +393,7 @@ def run_hybrid_sieve(base_exponent: int, iterations: int, width_windows: int, fi
     start = 10 ** base_exponent + start_target_idx * window_m
     stage_width = width_windows * window_m
     target_hi = start + iterations * stage_width
+    check_target(target_hi)
     bootstrap_started = time.perf_counter()
     plan = build_independent_plan(target_hi, filter_prime_count)
     bootstrap_seconds = time.perf_counter() - bootstrap_started
@@ -494,7 +499,7 @@ def _main(argv: Iterable[str]) -> int:
             portal = os.environ.get("CONSTELLATION_PORTAL_DIR", "/mnt/c/CONSTELLATION_PORTAL")
             run_hybrid_narrow(start, end, main_cap, count, bool(write_raw), portal)
             return 0
-        except (ValueError, HybridPlanError, HybridReferenceError, HybridSieveError, RuntimeError) as exc:
+        except (ValueError, HybridPlanError, HybridReferenceError, HybridSieveError, RuntimeError, OSError) as exc:
             print(f"[HYBRID] ERROR: {exc}", file=sys.stderr)
             return 2
     if len(args) != 5:
@@ -507,7 +512,7 @@ def _main(argv: Iterable[str]) -> int:
         portal = os.environ.get("CONSTELLATION_PORTAL_DIR", "/mnt/c/CONSTELLATION_PORTAL")
         run_hybrid_sieve(floor, iterations, width_windows, count, bool(write_raw), portal)
         return 0
-    except (ValueError, HybridPlanError, HybridReferenceError, HybridSieveError, RuntimeError) as exc:
+    except (ValueError, HybridPlanError, HybridReferenceError, HybridSieveError, RuntimeError, OSError) as exc:
         print(f"[HYBRID] ERROR: {exc}", file=sys.stderr)
         return 2
 
