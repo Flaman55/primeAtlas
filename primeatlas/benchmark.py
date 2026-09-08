@@ -124,6 +124,9 @@ def read_benchmark_log(portal_folder):
         fieldnames.append("engine")
     for row in rows:
         row["engine"] = row.get("engine") or ("hybrid" if row.get("instance_of_n") == "hybrid" else "unknown")
+        _, row["sieve_count_basis"] = benchmark_sieve_count(row)
+    if "sieve_count_basis" not in fieldnames:
+        fieldnames.append("sieve_count_basis")
     return fieldnames, rows
 
 
@@ -195,32 +198,52 @@ def aggregate_benchmark_fair_spw(rows):
     return sorted(latest.items())
 
 
+def benchmark_sieve_count(row):
+    """Return count and provenance without altering historical measurements.
+
+    main never recorded actual range widths. Keep those rows intact, but do not
+    invent computational work from storage capacity. Only measured or exactly
+    recoverable counts participate in sieve throughput. Invalid counts never
+    fall back to estimates.
+    """
+    try:
+        raw = row.get("numbers_processed")
+        if raw not in (None, ""):
+            count = int(raw)
+            return (count, "measured") if count > 0 else (None, "unavailable")
+        floor = int(row.get("base_exponent", ""))
+        windows = int(row.get("windows_written", ""))
+        if floor < 0 or windows <= 0:
+            return None, "unavailable"
+        engine = row.get("engine")
+        is_hybrid = engine == "hybrid" or (engine in (None, "", "unknown")
+                                          and row.get("instance_of_n") == "hybrid")
+        if is_hybrid:
+            if floor < 7 and windows == 1 and int(row.get("target_idx_start", "")) == 0:
+                return 9 * 10 ** floor, "whole_floor"
+            return None, "unavailable"
+        return None, "unavailable"
+    except (TypeError, ValueError):
+        return None, "unavailable"
+
+
 def aggregate_benchmark_sieve_nps(rows):
     """Actual target integers swept / sieve phase seconds, last valid row per floor.
 
     Storage window sizes do not measure computational work. Legacy Hybrid rows
     for one complete low floor have an exact recoverable count (9 * 10**floor).
-    Other legacy rows without measured counts are omitted rather than guessed.
+    Older Atlas rows lacking recoverable counts remain in the table and report,
+    marked unavailable by sieve_count_basis, but have no sieve throughput point.
     """
     latest = {}
     for row in rows:
         try:
             base_exponent = int(row.get("base_exponent", ""))
             sieve_seconds = float(row.get("sieve_seconds", ""))
-            raw_count = row.get("numbers_processed")
-            if raw_count in (None, ""):
-                engine = row.get("engine") or row.get("instance_of_n")
-                if (engine == "hybrid" and 0 <= base_exponent < 7
-                        and int(row.get("windows_written", "")) == 1
-                        and int(row.get("target_idx_start", "")) == 0):
-                    numbers_processed = 9 * 10 ** base_exponent
-                else:
-                    continue
-            else:
-                numbers_processed = int(raw_count)
+            numbers_processed, _ = benchmark_sieve_count(row)
         except (TypeError, ValueError):
             continue
-        if not math.isfinite(sieve_seconds) or sieve_seconds <= 0 or numbers_processed <= 0:
+        if not math.isfinite(sieve_seconds) or sieve_seconds <= 0 or numbers_processed is None:
             continue
         latest[base_exponent] = numbers_processed / sieve_seconds
     return sorted(latest.items())

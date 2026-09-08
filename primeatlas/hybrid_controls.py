@@ -56,7 +56,7 @@ class HybridControls:
                     f"dla tego filtra | limit Hybrydy: {MAX_TARGET:,}")
             try:
                 _, end = self._hybrid_selected_range()
-                text += ' | Cel osiągalny' if end - 1 <= result['limit'] else ' | Parametry zostaną dopasowane'
+                text += ' | Przy starcie: minimalny MAIN, potem najmniejszy wystarczający filtr'
                 if end - 1 > MAX_TARGET:
                     text = text.rsplit(' | ', 1)[0] + ' | Cel wymaga primesieve'
             except (ValueError, TypeError):

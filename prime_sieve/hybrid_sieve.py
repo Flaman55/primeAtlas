@@ -19,6 +19,7 @@ import sys
 import time
 import csv
 import datetime
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -60,11 +61,19 @@ def write_hybrid_benchmark_row(portal_folder, base_exponent, target_idx_start, w
         if old_fields != BENCHMARK_FIELDNAMES:
             if not all(field in BENCHMARK_FIELDNAMES for field in old_fields):
                 raise HybridSieveError("benchmark_log.csv has an incompatible schema")
-            with open(path, "w", newline="") as stream:
-                writer = csv.DictWriter(stream, fieldnames=BENCHMARK_FIELDNAMES)
-                writer.writeheader()
-                for old_row in rows:
-                    writer.writerow({field: old_row.get(field, "") for field in BENCHMARK_FIELDNAMES})
+            temp_path = None
+            try:
+                with tempfile.NamedTemporaryFile(mode="w", newline="", dir=portal_folder,
+                                                 prefix=".benchmark_", delete=False) as stream:
+                    temp_path = stream.name
+                    writer = csv.DictWriter(stream, fieldnames=BENCHMARK_FIELDNAMES)
+                    writer.writeheader()
+                    for old_row in rows:
+                        writer.writerow({field: old_row.get(field, "") for field in BENCHMARK_FIELDNAMES})
+                os.replace(temp_path, path)
+            finally:
+                if temp_path is not None and os.path.exists(temp_path):
+                    os.unlink(temp_path)
     is_new = not os.path.exists(path)
     with open(path, "a", newline="") as stream:
         writer = csv.DictWriter(stream, fieldnames=BENCHMARK_FIELDNAMES)

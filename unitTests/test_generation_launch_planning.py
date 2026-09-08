@@ -128,9 +128,18 @@ def main():
         gen.quick_hybrid_main_cap_var.set("997")
         gen.quick_hybrid_filter_prime_count_var.set("11")
         gen._on_quick_generate_clicked()
-        check(hybrid_calls == [(10_000_000, 20_000_000, 997, 11)],
-              f"hybrid Quick mode delegates one literal narrow range plus explicit MAIN/filter bounds "
-              f"contract to the hybrid runner (got {hybrid_calls!r})")
+        # Preflight now runs in the background and increases the filter when needed.
+        import time
+        from prime_sieve.hybrid_policy import parameters
+        deadline = time.monotonic() + 10
+        while not hybrid_calls and time.monotonic() < deadline:
+            app.update()
+            time.sleep(0.01)
+        fitted = parameters(997, 11, 20_000_000)
+        check(hybrid_calls == [(10_000_000, 20_000_000, fitted["main"], fitted["count"])],
+              f"hybrid Quick mode waits for preflight and launches the fitted range (got {hybrid_calls!r})")
+        check(gen.quick_hybrid_filter_prime_count_var.get() == str(fitted["count"]),
+              "automatically fitted filter is visible before launch")
         gen.quick_mode_var.set("floor")
 
         # =====================================================================

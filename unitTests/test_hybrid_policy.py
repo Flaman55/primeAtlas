@@ -43,8 +43,9 @@ class PolicyTests(unittest.TestCase):
         ui._on_run_hybrid_narrow = Mock()
         ui._prepare_hybrid(110000000, 120000000, 100, 1)
         args = ui._on_run_hybrid_narrow.call_args.args
-        self.assertEqual(args[:3], (110000000, 120000000, 100))
-        self.assertGreater(args[3], 1)
+        self.assertEqual(args[:3], (110000000, 120000000, 7))
+        self.assertGreaterEqual(args[3], 1)
+        self.assertLessEqual(args[3], MAX_FILTER)
         self.assertEqual(ui.quick_hybrid_filter_prime_count_var.get(), str(args[3]))
 
     def test_preflight_cancels_if_inputs_change(self):
@@ -72,21 +73,43 @@ class PolicyTests(unittest.TestCase):
         p = parameters(100, 10000)
         self.assertEqual(p['main_prime'], 97)
         self.assertEqual(p['proof_limit'], 10607322)
-        self.assertEqual(parameters(100, 10000, p['limit'] + 1)['count'], 10000)
-        self.assertGreater(parameters(100, 10000, p['limit'] + 2)['count'], 10000)
+        fitted = parameters(100, 10000, p['limit'] + 1)
+        self.assertGreaterEqual(fitted['count'], 1)
+        self.assertGreaterEqual(fitted['limit'], p['limit'])
 
-    def test_filter_first_and_minimal(self):
-        p = parameters(100, 1, 120000001)
-        self.assertEqual(p['main'], 100)
-        self.assertGreaterEqual(p['limit'], 120000000)
-        self.assertLess(parameters(100, p['count'] - 1)['limit'], 120000000)
+    def test_minimum_main_independent_of_previous_parameters(self):
+        for target in (9, 20_000_000, 120_000_000, MAX_TARGET):
+            plans = [parameters(main, count, target + 1)
+                     for main, count in ((2, 1), (100, 10000), (100000, MAX_FILTER))]
+            self.assertTrue(all(p == plans[0] for p in plans))
+            p = plans[0]
+            self.assertLessEqual(p['count'], MAX_FILTER)
+            if p['count'] > 1:
+                self.assertLess(parameters(p['main'], p['count'] - 1)['limit'], target)
+            self.assertGreaterEqual(p['limit'], target)
+            if p['main'] > 2:
+                self.assertLess(parameters(p['main'] - 1, MAX_FILTER)['limit'], target)
+
+    def test_descending_target_reduces_main(self):
+        high = parameters(100, 10000, MAX_TARGET + 1)
+        low = parameters(high['main'], high['count'], 20_000_000)
+        self.assertEqual(low['main'], 2)
+        self.assertLess(low['main'], high['main'])
+        self.assertLess(low['count'], MAX_FILTER)
 
     def test_main_only_after_max_filter(self):
         p = parameters(100, 10000, MAX_TARGET + 1)
-        self.assertEqual(p['count'], MAX_FILTER)
+        self.assertLessEqual(p['count'], MAX_FILTER)
         self.assertEqual(p['limit'], MAX_TARGET)
         self.assertGreater(p['main'], 100)
         self.assertLess(parameters(p['main'] - 1, MAX_FILTER)['limit'], MAX_TARGET)
+
+    def test_minimum_filter_and_exact_boundary(self):
+        for target, expected_count in ((9, 1), (14, 1), (15, 2)):
+            p = parameters(100000, MAX_FILTER, target + 1)
+            self.assertEqual((p['main'], p['count']), (2, expected_count))
+            self.assertGreaterEqual(p['limit'], target)
+        self.assertEqual(parameters(2, 1)['limit'], 14)
 
     def test_main_cap_depends_on_filter(self):
         small, large = parameters(10**30, 1), parameters(10**30, MAX_FILTER)

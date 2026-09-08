@@ -27,7 +27,7 @@ class ActualRangeTests(unittest.TestCase):
 
     def test_unknown_or_invalid_work_is_not_estimated(self):
         for count in (None, "", "nan", "-1", "0"):
-            row = dict(base_exponent="9", windows_written="1",
+            row = dict(base_exponent="9", windows_written="1", engine="hybrid",
                        numbers_processed=count, sieve_seconds="1")
             self.assertEqual(aggregate_benchmark_sieve_nps([row]), [])
         for seconds in ("0", "-1", "nan", "inf"):

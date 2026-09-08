@@ -52,7 +52,7 @@ def _first_main(primes, count, target, lo=0):
 
 
 def parameters(main, count, end=None):
-    """Preview, or fit a target: increase filter first, then MAIN.
+    """Preview, or minimize MAIN first and then the sufficient filter count.
 
     MAIN is capped at the first prime sufficient for the global limit with
     the selected filter. A larger MAIN cannot extend the permitted range.
@@ -69,20 +69,18 @@ def parameters(main, count, end=None):
     cap_index = _first_main(primes, count, MAX_TARGET)
     main = min(main, primes[cap_index])
     index = bisect_right(primes, main) - 1
-    if end is not None and _limit(primes, index, count) < end - 1:
-        if _limit(primes, index, MAX_FILTER) >= end - 1:
-            lo, hi = count, MAX_FILTER
-            while lo < hi:
-                mid = (lo + hi) // 2
-                if _limit(primes, index, mid) >= end - 1:
-                    hi = mid
-                else:
-                    lo = mid + 1
-            count = lo
-        else:
-            count = MAX_FILTER
-            index = _first_main(primes, count, end - 1, index)
-            main = primes[index]
+    if end is not None:
+        count = MAX_FILTER
+        index = _first_main(primes, count, end - 1)
+        main = primes[index]
+        lo, hi = 1, MAX_FILTER
+        while lo < hi:
+            mid = (lo + hi) // 2
+            if _limit(primes, index, mid) >= end - 1:
+                hi = mid
+            else:
+                lo = mid + 1
+        count = lo
     cap_index = _first_main(primes, count, MAX_TARGET)
     main = min(main, primes[cap_index])
     index = bisect_right(primes, main) - 1

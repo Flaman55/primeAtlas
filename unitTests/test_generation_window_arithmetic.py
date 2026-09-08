@@ -170,19 +170,19 @@ def main():
               "round_range_to_window widens a mid-window span out to whole windows")
         check(m._round_range_to_window(10_000_000, 20_000_000) == (10_000_000, 20_000_000),
               "round_range_to_window leaves an already-aligned span untouched")
-    check(m._round_range_to_window(0, 1) == (0, 10_000_000),
-          "round_range_to_window rounds a tiny span up to one full window, never zero")
-    hybrid_one = m.plan_hybrid_narrow_range(12_000_000, 12_000_500)
-    check(hybrid_one == {"rounded_start": 10_000_000, "rounded_end": 20_000_000,
-                         "use_hybrid": True},
-          "narrow hybrid range rounds a sub-window request to its one PGS2 window")
-    hybrid_wide = m.plan_hybrid_narrow_range(12_000_000, 20_000_500)
-    check(not hybrid_wide["use_hybrid"] and hybrid_wide["rounded_end"] == 30_000_000,
-          "hybrid range crossing two standard windows is delegated to Range/v4.1")
-    check(m.hybrid_window_for_number(12_000_500) == (10_000_000, 20_000_000),
-          "a concrete n resolves to its one canonical Hybrid PGS2 window")
-    check(m.hybrid_window_for_floor_index(9, 500) == (6_000_000_000, 6_010_000_000),
-          "an explicit floor/index resolves without backfilling earlier windows")
+        check(m._round_range_to_window(0, 1) == (0, 10_000_000),
+              "round_range_to_window rounds a tiny span up to one full window, never zero")
+        hybrid_one = m.plan_hybrid_narrow_range(12_000_000, 12_000_500)
+        check(hybrid_one == {"rounded_start": 10_000_000, "rounded_end": 20_000_000,
+                             "use_hybrid": True},
+              "narrow hybrid range rounds a sub-window request to its one PGS2 window")
+        hybrid_wide = m.plan_hybrid_narrow_range(12_000_000, 20_000_500)
+        check(not hybrid_wide["use_hybrid"] and hybrid_wide["rounded_end"] == 30_000_000,
+              "hybrid range crossing two standard windows is delegated to Range/v4.1")
+        check(m.hybrid_window_for_number(12_000_500) == (10_000_000, 20_000_000),
+              "a concrete n resolves to its one canonical Hybrid PGS2 window")
+        check(m.hybrid_window_for_floor_index(9, 500) == (6_000_000_000, 6_010_000_000),
+              "an explicit floor/index resolves without backfilling earlier windows")
 
         # === _floor_window_count: LOW_FLOOR_CUTOFF boundary + exact division ===========
         check(m._floor_window_count(6) is None,
