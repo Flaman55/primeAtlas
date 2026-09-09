@@ -128,6 +128,16 @@ DrumRenderer's own #drawHud text overlay, previously only reachable via the
 console pane or rings_tab.py's side panel (see hud_lines_for_n's own
 doc-comment for that history). Needs Pillow; degrades to "no on-canvas text"
 (everything else unaffected) if it isn't installed -- see _PIL_AVAILABLE.
+Size it with --hud-font-size (pixels, default 35) if the default is too
+small on your screen/resolution -- see rasterize_hud_text's own docstring
+(Artur, 2026-09-07: original 16px default was unreadable at his resolution;
+2026-09-09: default bumped to 35).
+
+--hit-point-size (Faza 11C, see PLAN.md): independent point size for rings
+ON the vertical reference line (real divisors of N), separate from
+--point-size for every other ring -- defaults to 40.0 (Artur, 2026-09-09),
+or falls back to --point-size's own value if you pass an explicit empty
+override some other way.
 """
 
 import argparse
@@ -555,6 +565,38 @@ def build_vertex_data(primes, n, max_radius, enabled_ids=(), theta=0.5, mode="st
     data[:, 1] = pos["y"]
     data[:, 2:5] = rgb / 255.0
     return data, count, pos
+
+
+def split_hit_normal_vertex_data(data, hit_mask):
+    """Splits `data` (build_vertex_data's own (count, 5) array) into two
+    row subsets by `hit_mask` (pos["is_hit"], same row order/length as
+    `data`) -- rings ON the vertical reference line (real divisors of N)
+    vs everything else.
+
+    [ADDED Faza 11C, see PLAN.md] Why this exists: Artur, 2026-09-07, wants
+    hit rings sized independently of the rest (--hit-point-size vs
+    --point-size). u_point_size is a single shared shader uniform (see
+    VERTEX_SHADER) -- there is no per-vertex point-size attribute in this
+    pipeline -- so getting two different on-screen sizes means two separate
+    draw calls over two separate vertex buffers, each with its own
+    u_point_size value set immediately before its own render() call (see
+    run()'s own main loop). This function is the CPU-side half of that
+    split (kept pure/GL-free so it's unit-testable without a display); the
+    GL-side half (two ctx.buffer()/vertex_array() pairs, two render calls)
+    lives entirely in run() since it needs a real moderngl context.
+
+    Returns (data_normal, data_hit, count_hit) -- `data_normal`/`data_hit`
+    are plain row-subset views (numpy fancy-indexing copies, not views, but
+    that distinction doesn't matter to the caller, which immediately calls
+    .tobytes() on each), `count_hit` is `data_hit`'s own row count (the
+    caller already has `data`'s total row count separately, so there's no
+    matching `count_normal` -- `total - count_hit` is cheaper than a second
+    redundant field). An empty `data`/`hit_mask` (0 active rings) returns
+    two empty arrays and count_hit=0, never raises."""
+    if len(hit_mask) == 0:
+        return data, data[:0], 0
+    count_hit = int(np.count_nonzero(hit_mask))
+    return data[~hit_mask], data[hit_mask], count_hit
 
 
 # ---------------------------------------------------------------------------
@@ -1041,13 +1083,11 @@ def compose_hud_canvas_lines(n, count, lines, running, tempo_ms):
     return [header] + list(lines)
 
 
-_HUD_FONT_SIZE = 16
-_HUD_LINE_SPACING = 4
+_HUD_FONT_SIZE_DEFAULT = 35
 _HUD_TEXT_RGB = (235, 235, 235)
-_HUD_MARGIN = 8
 
 
-def rasterize_hud_text(lines):
+def rasterize_hud_text(lines, font_size=_HUD_FONT_SIZE_DEFAULT):
     """Renders `lines` (top to bottom) into an RGBA numpy uint8 array sized
     exactly to fit them, white-ish text on a fully transparent background --
     ready to upload as a moderngl texture and draw as one screen-space quad
@@ -1056,36 +1096,50 @@ def rasterize_hud_text(lines):
     itself, so this needs no .ttf file anywhere on disk (no font-hunting
     logic, no risk of a missing-file crash on Artur's machine).
 
+    [ADDED Faza 11C, see PLAN.md] `font_size` -- pixel size of the glyphs,
+    forwarded to load_default(size=...) (Pillow >= 10.1's own scalable
+    bitmap default font). Artur, 2026-09-07: the previous fixed 16px was
+    unreadably small on his screen -- exposed as --hud-font-size so it's a
+    launch-time choice rather than a hand-edited constant. Margin and
+    line-spacing are DERIVED from font_size (roughly half and a quarter of
+    it) rather than fixed pixel constants, so the whole HUD block stays
+    proportional at any size instead of the padding looking tiny next to
+    huge text or huge next to tiny text.
+
     Returns None for an empty `lines` list (nothing to draw -- caller should
     leave any existing HUD texture as-is or skip drawing entirely) or if
     Pillow is not installed (`_PIL_AVAILABLE` is the caller's own guard;
     this function still defends itself in case it's ever called directly)."""
     if not lines or not _PIL_AVAILABLE:
         return None
+    margin = max(4, round(font_size * 0.5))
+    line_spacing = max(2, round(font_size * 0.25))
     # Measuring text extents needs a real ImageDraw bound to SOME image --
     # PIL has no font-metrics call that doesn't go through one -- so this
     # throwaway 1x1 probe exists purely for its .textbbox() method.
     probe_img = Image.new("RGBA", (1, 1), (0, 0, 0, 0))
     probe_draw = ImageDraw.Draw(probe_img)
     try:
-        font = ImageFont.load_default(size=_HUD_FONT_SIZE)
+        font = ImageFont.load_default(size=font_size)
     except TypeError:
         # Older Pillow (<10.1) load_default() takes no `size` kwarg at all --
-        # falls back to its one fixed built-in size rather than crashing.
+        # falls back to its one fixed built-in size rather than crashing
+        # (the --hud-font-size knob simply has no effect on that Pillow
+        # version; everything else in this module is unaffected).
         font = ImageFont.load_default()
 
     line_boxes = [probe_draw.textbbox((0, 0), line, font=font) for line in lines]
     line_heights = [(box[3] - box[1]) for box in line_boxes]
     line_widths = [(box[2] - box[0]) for box in line_boxes]
-    width = max(line_widths) + 2 * _HUD_MARGIN
-    height = sum(line_heights) + _HUD_LINE_SPACING * (len(lines) - 1) + 2 * _HUD_MARGIN
+    width = max(line_widths) + 2 * margin
+    height = sum(line_heights) + line_spacing * (len(lines) - 1) + 2 * margin
 
     img = Image.new("RGBA", (int(width), int(height)), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
-    y = _HUD_MARGIN
+    y = margin
     for line, box, h in zip(lines, line_boxes, line_heights):
-        draw.text((_HUD_MARGIN - box[0], y - box[1]), line, font=font, fill=_HUD_TEXT_RGB + (255,))
-        y += h + _HUD_LINE_SPACING
+        draw.text((margin - box[0], y - box[1]), line, font=font, fill=_HUD_TEXT_RGB + (255,))
+        y += h + line_spacing
 
     return np.asarray(img, dtype=np.uint8)
 
@@ -1159,6 +1213,17 @@ def run(args):
 
     prog = ctx.program(vertex_shader=VERTEX_SHADER, fragment_shader=FRAGMENT_SHADER)
     prog["u_point_size"].value = args.point_size
+
+    # [ADDED Faza 11C, see PLAN.md] Independent size for rings ON the
+    # vertical reference line (pos["is_hit"] -- real divisors of N) --
+    # falls back to args.point_size when --hit-point-size wasn't given, so
+    # omitting it reproduces the old single-size behavior exactly. u_point_size
+    # is a single shared uniform (see VERTEX_SHADER), so getting two sizes on
+    # screen means two separate draw calls over two separate vertex buffers
+    # (hit rings vs everything else), not a single draw with per-vertex
+    # size -- see rebuild_buffer's own hit/normal split further down and the
+    # two vao.render() calls in the main loop.
+    hit_point_size = args.hit_point_size if args.hit_point_size is not None else args.point_size
 
     # [DIAGNOSTIC, added 2026-09-04] Artur reported that --point-size still
     # produces no visible change at all across a wide range (0.5 to 100)
@@ -1387,7 +1452,7 @@ def run(args):
         canvas_lines = compose_hud_canvas_lines(
             hud_state["n"], hud_state["count"], hud_state["lines"], playback["running"], tempo_ms
         )
-        rgba = rasterize_hud_text(canvas_lines)
+        rgba = rasterize_hud_text(canvas_lines, font_size=args.hud_font_size)
         if hud_tex_holder["tex"] is not None:
             hud_tex_holder["tex"].release()
             hud_tex_holder["tex"] = None
@@ -1494,11 +1559,23 @@ def run(args):
         # 10's own R/reset lands N on 1 (0 active rings, since the
         # smallest prime is 2), and Up/Down/PageDown can reach N=0 the
         # same way. Falls back to a 1-vertex placeholder reservation
-        # (never actually drawn -- the main loop's own vao.render call
-        # is told the REAL count, `count`=0, explicitly) rather than
-        # crashing the whole GL subprocess over an empty ring set.
-        buf_bytes = data.tobytes()
-        vbo = ctx.buffer(buf_bytes) if buf_bytes else ctx.buffer(reserve=20)
+        # (never actually drawn -- the main loop's own vao.render calls are
+        # told the REAL counts, `count_normal`/`count_hit`, explicitly)
+        # rather than crashing the whole GL subprocess over an empty set.
+        #
+        # [ADDED Faza 11C, see PLAN.md] Split into TWO buffers here -- rings
+        # ON the vertical reference line (pos["is_hit"], real divisors of N)
+        # vs everything else -- so the main loop can draw each with its own
+        # u_point_size uniform (Artur, 2026-09-07: wants hit rings sized
+        # independently of the rest). See split_hit_normal_vertex_data's own
+        # doc-comment for why this is a separate, unit-tested pure function
+        # rather than inlined here.
+        data_normal, data_hit, count_hit = split_hit_normal_vertex_data(data, pos["is_hit"])
+
+        normal_bytes = data_normal.tobytes()
+        vbo_normal = ctx.buffer(normal_bytes) if normal_bytes else ctx.buffer(reserve=20)
+        hit_bytes = data_hit.tobytes()
+        vbo_hit = ctx.buffer(hit_bytes) if hit_bytes else ctx.buffer(reserve=20)
 
         # [ADDED Faza 11, see PLAN.md] Refresh + emit the HUD snapshot every
         # time this function runs (every N-change, whether from a manual
@@ -1512,10 +1589,11 @@ def run(args):
         emit_hud_state()
         refresh_hud_texture()
 
-        return vbo, count
+        return vbo_normal, vbo_hit, count, count_hit
 
-    vbo, ring_count = rebuild_buffer(n)
-    vao = ctx.vertex_array(prog, [(vbo, "2f 3f", "in_pos", "in_color")])
+    vbo_normal, vbo_hit, ring_count, ring_count_hit = rebuild_buffer(n)
+    vao_normal = ctx.vertex_array(prog, [(vbo_normal, "2f 3f", "in_pos", "in_color")])
+    vao_hit = ctx.vertex_array(prog, [(vbo_hit, "2f 3f", "in_pos", "in_color")])
 
     def on_scroll(_window, _dx, dy):
         # [FIXED, see Artur's 2026-09-04 bug report and zoom_to_point's own
@@ -1683,9 +1761,13 @@ def run(args):
         if n_holder["n"] != last_n or n_holder["force_rebuild"]:
             last_n = n_holder["n"]
             advancing = n_holder["advancing"]
-            vbo, new_ring_count = rebuild_buffer(last_n, prev_ring_count=ring_count, advancing=advancing)
+            vbo_normal, vbo_hit, new_ring_count, new_ring_count_hit = rebuild_buffer(
+                last_n, prev_ring_count=ring_count, advancing=advancing
+            )
             ring_count = new_ring_count
-            vao = ctx.vertex_array(prog, [(vbo, "2f 3f", "in_pos", "in_color")])
+            ring_count_hit = new_ring_count_hit
+            vao_normal = ctx.vertex_array(prog, [(vbo_normal, "2f 3f", "in_pos", "in_color")])
+            vao_hit = ctx.vertex_array(prog, [(vbo_hit, "2f 3f", "in_pos", "in_color")])
             n_holder["advancing"] = False
             n_holder["force_rebuild"] = False
 
@@ -1700,13 +1782,23 @@ def run(args):
         prog["u_viewport"].value = (width, height)
 
         # [FIXED, see Faza 10's own empty-buffer note above] vertices=
-        # ring_count explicitly, rather than letting moderngl infer the
-        # count from the vbo's own byte size -- needed now that a 0-ring
-        # buffer is padded to a 1-vertex placeholder reservation instead
-        # of a true zero-length allocation (inferring from buffer size
-        # would otherwise draw that bogus placeholder vertex at the
+        # ring_count(_hit) explicitly, rather than letting moderngl infer
+        # the count from the vbo's own byte size -- needed now that a
+        # 0-ring buffer is padded to a 1-vertex placeholder reservation
+        # instead of a true zero-length allocation (inferring from buffer
+        # size would otherwise draw that bogus placeholder vertex at the
         # origin).
-        vao.render(moderngl.POINTS, vertices=ring_count)
+        #
+        # [ADDED Faza 11C, see PLAN.md] TWO draw calls, one per split buffer
+        # from rebuild_buffer (see that function's own hit/normal split
+        # comment), each with its own u_point_size uniform value -- this is
+        # what actually makes --hit-point-size independent of --point-size
+        # on screen. Normal rings drawn first, hit rings drawn last so they
+        # stay visually on top of anything they'd otherwise overlap.
+        prog["u_point_size"].value = args.point_size
+        vao_normal.render(moderngl.POINTS, vertices=ring_count - ring_count_hit)
+        prog["u_point_size"].value = hit_point_size
+        vao_hit.render(moderngl.POINTS, vertices=ring_count_hit)
 
         # [ADDED Faza 8, see PLAN.md] Tracked-ring outline circles -- one
         # LINE_LOOP draw call per tracked-and-active ring over the shared
@@ -1793,6 +1885,30 @@ def main():
     parser.add_argument("--width", type=int, default=1600)
     parser.add_argument("--height", type=int, default=1000)
     parser.add_argument("--point-size", type=float, default=3.0)
+    # [ADDED Faza 11C, see PLAN.md] Independent point size for rings ON the
+    # vertical reference line (pos["is_hit"] -- real divisors of N) --
+    # Artur, 2026-09-07: wants to make these bigger/smaller separately from
+    # every other ring, e.g. to spot factors of N at a glance without the
+    # rest of the field growing too. Artur, 2026-09-09: set the default to
+    # 40 outright (was None/"same as --point-size") so the axis rings are
+    # readably distinct even when this flag isn't passed explicitly --
+    # rings_tab.py's own GUI field is pre-filled with "40" to match (see
+    # that file's own comment) -- the None-fallback-to-point-size behavior
+    # in run()'s hit_point_size computation still applies if a caller
+    # explicitly passes an empty/omitted value some other way.
+    parser.add_argument("--hit-point-size", type=float, default=40.0,
+                         help="point size for rings on the vertical reference line "
+                              "(divisors of N); defaults to 40.0")
+    # [ADDED Faza 11C] Font size (pixels) for the on-canvas HUD text (Faza
+    # 11B) -- Artur, 2026-09-07: the original default (16px) was unreadably
+    # small on his screen/resolution. rasterize_hud_text derives
+    # margin/line-spacing from this value too, so scaling it up keeps the
+    # whole HUD block proportional instead of just the glyphs. Artur,
+    # 2026-09-09: bumped the default itself to 35 (see
+    # _HUD_FONT_SIZE_DEFAULT above) rather than just relying on the GUI's
+    # pre-filled field, so direct CLI use without the GUI is readable too.
+    parser.add_argument("--hud-font-size", type=int, default=_HUD_FONT_SIZE_DEFAULT,
+                         help="pixel size of the on-canvas HUD text (Faza 11B), default 35")
     parser.add_argument("--n-step", type=int, default=1000)
     # [ADDED Faza 4, see PLAN.md] Window-highlight-color parity with the
     # browser version's Bertrand/Legendre/General Law toggles -- comma list

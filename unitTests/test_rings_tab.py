@@ -128,6 +128,28 @@ def _test_build_renderer_argv():
     check("--load-range" in lr_argv and lr_argv[lr_argv.index("--load-range") + 1] == "100,500",
           f"--load-range joins the (from, to) pair with a comma (got {lr_argv!r})")
 
+    # [ADDED Faza 11C, see PLAN.md -- Artur's real-screen HUD-too-small +
+    # independent hit-point-size report] hit_point_size/hud_font_size argv
+    # wiring, mirroring point_size's own omit-if-None convention exactly.
+    # [UPDATED Artur, 2026-09-09] renderer.py's own argparse defaults are now
+    # 40.0 / 35 (previously None-falls-back-to-point-size / 16px) -- this
+    # test only checks build_renderer_argv's own function-level default
+    # (None omits the flag from argv), which is unchanged; the actual
+    # numeric value that then applies lives in renderer.py's argparse, not
+    # here.
+    check("--hit-point-size" not in default_argv,
+          f"no --hit-point-size arg at all when hit_point_size=None (renderer.py's own "
+          f"argparse default of 40.0 then applies) (got {default_argv!r})")
+    check("--hud-font-size" not in default_argv,
+          f"no --hud-font-size arg at all when hud_font_size=None (renderer.py's own "
+          f"argparse default of 35px then applies) (got {default_argv!r})")
+    hps_argv = build_renderer_argv("/x", 1, hit_point_size=8.0)
+    check("--hit-point-size" in hps_argv and hps_argv[hps_argv.index("--hit-point-size") + 1] == "8.0",
+          f"--hit-point-size is included and correct when a value is given (got {hps_argv!r})")
+    hfs_argv = build_renderer_argv("/x", 1, hud_font_size=32)
+    check("--hud-font-size" in hfs_argv and hfs_argv[hfs_argv.index("--hud-font-size") + 1] == "32",
+          f"--hud-font-size is included and correct when a value is given (got {hfs_argv!r})")
+
 
 def _write_fake_renderer(exit_code):
     """A stand-in for primeatlas/ring_viz/renderer.py that never touches moderngl/glfw

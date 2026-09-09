@@ -54,7 +54,8 @@ _HUD_STATE_PREFIX = "HUD_STATE:"
 
 def build_renderer_argv(portal_folder, upto, python_executable=None,
                          windows=(), general_law_theta=0.5, general_law_mode="stepped",
-                         point_size=None, track_primes=(), auto_orbit=False, load_range=None):
+                         point_size=None, track_primes=(), auto_orbit=False, load_range=None,
+                         hit_point_size=None, hud_font_size=None):
     """Builds the argv for launching renderer.py against a real magazyn.
 
     Uses `python_executable` (defaults to sys.executable -- THIS SAME Python
@@ -104,7 +105,17 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
     NOT int()-cast here -- an empty or malformed field just omits
     --load-range entirely rather than raising inside the GUI thread;
     renderer.py's own main() does the real format validation (same
-    parser.error() convention as --track-primes/--windows)."""
+    parser.error() convention as --track-primes/--windows).
+
+    [ADDED Faza 11C, 2026-09-06 -- Artur's real-screen report: "hud jest
+    tak mikroskopijny ... że nie jestem wstanie go przeczytać"] `hit_point_size`
+    -- None (default) omits --hit-point-size entirely, so renderer.py's own
+    default (fall back to --point-size) applies; a real value gives rings on
+    the vertical reference line (divisors of N) an independent on-screen
+    size from every other ring. `hud_font_size` -- None (default) omits
+    --hud-font-size entirely, so renderer.py's own argparse default (16px)
+    applies; a real value scales the on-canvas HUD text. Same
+    omit-if-None convention as `point_size` above."""
     exe = python_executable or sys.executable
     argv = [exe, RENDERER_SCRIPT, "--source", "magazyn",
             "--portal-folder", portal_folder, "--upto", str(upto)]
@@ -116,6 +127,10 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
                      "--general-law-mode", general_law_mode]
     if point_size is not None:
         argv += ["--point-size", str(point_size)]
+    if hit_point_size is not None:
+        argv += ["--hit-point-size", str(hit_point_size)]
+    if hud_font_size is not None:
+        argv += ["--hud-font-size", str(hud_font_size)]
     # Deliberately str(p) here, NOT int(p) -- track_primes may come straight
     # from the Track P text field's raw (unvalidated) split, and forcing an
     # int() cast here would raise ValueError inside the GUI thread itself on
@@ -171,6 +186,30 @@ class RingsTab(BaseTab):
         self.point_size_entry = ttk.Entry(point_size_row, width=8)
         self.point_size_entry.insert(0, "3.0")
         self.point_size_entry.pack(side="left", padx=(6, 0))
+
+        # [ADDED Faza 11C, see build_renderer_argv's own doc-comment --
+        # Artur's real-screen report that the HUD was unreadably small and
+        # that hit-rings (on the vertical reference line) needed an
+        # independent size from every other ring.] Pre-filled with Artur's
+        # own chosen defaults (2026-09-09: hit-ring size 40, HUD font 35) --
+        # same convention as point_size_entry's own "3.0" pre-fill above --
+        # so these values are visibly wired in at launch rather than hidden
+        # behind a blank field the user has to know to fill in. Clearing the
+        # field still omits the CLI flag entirely (renderer.py's own
+        # argparse defaults, ALSO 40/35 as of this phase, apply then too).
+        hit_point_size_row = ttk.Frame(container)
+        hit_point_size_row.pack(fill="x", pady=(0, 6))
+        ttk.Label(hit_point_size_row, text=self.T("rings.hit_point_size_label")).pack(side="left")
+        self.hit_point_size_entry = ttk.Entry(hit_point_size_row, width=8)
+        self.hit_point_size_entry.insert(0, "40")
+        self.hit_point_size_entry.pack(side="left", padx=(6, 0))
+
+        hud_font_size_row = ttk.Frame(container)
+        hud_font_size_row.pack(fill="x", pady=(0, 6))
+        ttk.Label(hud_font_size_row, text=self.T("rings.hud_font_size_label")).pack(side="left")
+        self.hud_font_size_entry = ttk.Entry(hud_font_size_row, width=8)
+        self.hud_font_size_entry.insert(0, "35")
+        self.hud_font_size_entry.pack(side="left", padx=(6, 0))
 
         # [ADDED Faza 4, see PLAN.md] Window-highlight-family checkboxes --
         # chosen once here, at launch time, and passed as --windows to
@@ -324,6 +363,20 @@ class RingsTab(BaseTab):
         except ValueError:
             point_size = None
 
+        # [ADDED Faza 11C] Same empty-or-invalid-omits-the-flag convention
+        # as point_size above.
+        hit_point_size_raw = self.hit_point_size_entry.get().strip()
+        try:
+            hit_point_size = float(hit_point_size_raw) if hit_point_size_raw else None
+        except ValueError:
+            hit_point_size = None
+
+        hud_font_size_raw = self.hud_font_size_entry.get().strip()
+        try:
+            hud_font_size = int(hud_font_size_raw) if hud_font_size_raw else None
+        except ValueError:
+            hud_font_size = None
+
         # [ADDED Faza 6, see PLAN.md] Track P -- comma-separated prime values,
         # forwarded as-is (renderer.py's own --track-primes does the
         # digit/validity check, mirroring --windows's own error-reporting
@@ -351,7 +404,9 @@ class RingsTab(BaseTab):
                                     general_law_theta=theta, general_law_mode=mode,
                                     point_size=point_size,
                                     track_primes=track_primes, auto_orbit=auto_orbit,
-                                    load_range=load_range)
+                                    load_range=load_range,
+                                    hit_point_size=hit_point_size,
+                                    hud_font_size=hud_font_size)
         q = queue.Queue()
         runner = LocalLoggedRunner(argv, q)
         self._runner = runner

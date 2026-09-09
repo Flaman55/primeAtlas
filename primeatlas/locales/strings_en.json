@@ -656,6 +656,8 @@
   "rings.general_law_theta_label": "theta:",
   "rings.general_law_mode_label": "mode:",
   "rings.point_size_label": "point size:",
+  "rings.hit_point_size_label": "hit-ring point size (axis rings, default 40):",
+  "rings.hud_font_size_label": "HUD font size in px (default 35):",
   "rings.track_primes_label": "Track P (comma-separated):",
   "rings.auto_orbit_label": "Auto orbit",
   "rings.load_range_label": "Load Range from:",

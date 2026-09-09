@@ -246,6 +246,37 @@ def _test_build_vertex_data_bertrand_highlight():
                   f"non-Bertrand-matched ring prime={p} does not carry the Bertrand pink color")
 
 
+def _test_split_hit_normal_vertex_data():
+    from primeatlas.ring_viz.renderer import build_vertex_data, split_hit_normal_vertex_data
+
+    primes = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23], dtype=np.int64)
+    n = 20  # hits (divisors of 20): 2, 5 -- everything else is a normal ring
+    active = primes[primes <= n]
+    data, count, pos = build_vertex_data(active, n, 100.0)
+
+    data_normal, data_hit, count_hit = split_hit_normal_vertex_data(data, pos["is_hit"])
+    expected_hit = int(np.count_nonzero(pos["is_hit"]))
+    check(count_hit == expected_hit, f"count_hit matches pos['is_hit']'s own true-count (got {count_hit}, expected {expected_hit})")
+    check(data_hit.shape[0] == count_hit and data_normal.shape[0] == count - count_hit,
+          f"row counts add up: hit={data_hit.shape[0]}, normal={data_normal.shape[0]}, total={count} "
+          f"(expected hit={count_hit}, normal={count - count_hit})")
+    # Every hit row's (x, y) must appear in expected_pos's hit-masked rows and
+    # nowhere in the normal split, and vice versa -- proves the split didn't
+    # scramble which row went where (not just that the counts happen to add up).
+    hit_xy_expected = set(zip(data[pos["is_hit"], 0].tolist(), data[pos["is_hit"], 1].tolist()))
+    hit_xy_actual = set(zip(data_hit[:, 0].tolist(), data_hit[:, 1].tolist()))
+    check(hit_xy_actual == hit_xy_expected,
+          f"data_hit contains exactly the rows pos['is_hit'] marks true, no more/fewer/wrong (got {hit_xy_actual}, expected {hit_xy_expected})")
+
+    # Empty-array edge case (0 active rings, e.g. after R/reset lands N=1) --
+    # must not raise, and must return an empty (not error-triggering) split.
+    empty_data = np.empty((0, 5), dtype=np.float32)
+    empty_mask = np.empty((0,), dtype=bool)
+    d_normal, d_hit, c_hit = split_hit_normal_vertex_data(empty_data, empty_mask)
+    check(d_normal.shape[0] == 0 and d_hit.shape[0] == 0 and c_hit == 0,
+          f"0 active rings splits into two empty arrays and count_hit=0, no crash (got normal={d_normal.shape[0]}, hit={d_hit.shape[0]}, count_hit={c_hit})")
+
+
 def _test_hud_lines_for_n():
     from primeatlas.ring_viz.renderer import hud_lines_for_n, build_vertex_data
     from primeatlas.ring_geometry import legendre_level_at, general_law_window_bounds
@@ -929,6 +960,16 @@ def _test_rasterize_hud_text():
     # nothing (e.g. a font/color bug silently producing a blank image).
     check(bool((rgba[:, :, 3] > 0).any()), "at least one pixel has non-zero alpha (text was actually drawn)")
 
+    # Faza 11C: font_size must actually change the rasterized bitmap size --
+    # this is the whole point of the --hud-font-size CLI param (Artur's
+    # "hud jest mikroskopijny" report), so a bug here would silently make
+    # the new flag a no-op.
+    small = rasterize_hud_text(["N = 100"], font_size=10)
+    big = rasterize_hud_text(["N = 100"], font_size=40)
+    check(big.shape[0] > small.shape[0] and big.shape[1] > small.shape[1],
+          f"font_size=40 produces a taller AND wider bitmap than font_size=10 "
+          f"(got small={small.shape}, big={big.shape})")
+
 
 def main():
     _test_basic_multi_floor_load()
@@ -938,6 +979,7 @@ def main():
     _test_empty_portal()
     _test_build_vertex_data_no_windows_matches_old_behavior()
     _test_build_vertex_data_bertrand_highlight()
+    _test_split_hit_normal_vertex_data()
     _test_hud_lines_for_n()
     _test_initial_n_for_source()
     _test_zoom_to_point()
