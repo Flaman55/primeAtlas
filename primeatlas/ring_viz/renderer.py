@@ -178,6 +178,8 @@ from primeatlas.ring_geometry import (
     general_law_window_bounds,
     tracked_resonance_state,
     format_big,
+    resonance_log_lines,
+    format_log_panel_text,
 )
 
 # [ADDED Faza 11B, see PLAN.md] On-canvas GL HUD text -- Pillow is used only
@@ -681,6 +683,55 @@ def tick_next_n(n, range_mode, ceiling):
     if not range_mode and n >= ceiling:
         return n, True
     return n + 1, False
+
+
+def update_resonance_log(state, active, n_value, range_mode, advancing):
+    """[ADDED PLAN.md Faza 11] Ports StructuralSieveApp.js's own
+    #backfillResonanceLog / #logResonance split, mutating `state` in place
+    (`state["lines"]`, `state["last_n"]`, `state["last_range_mode"]` --
+    caller owns and persists this dict across calls, same convention as
+    `flash_state`/`orbit_state` elsewhere in this module).
+
+    A full O(from_n..n_value) recompute via ring_geometry.resonance_log_lines
+    only runs on a JUMP: the first call ever (`state["last_n"] is None`), a
+    sequential<->range mode switch, or any call that isn't a simple forward
+    playback tick -- exactly StructuralSieveApp.js's own #renderFrame
+    jump-detection condition (`this.#n !== this.#lastRenderedN ||
+    this.#model.mode !== this.#lastRenderedMode`, OR'd with "not a +1
+    forward tick"). A full backfill is cheap even here because
+    resonance_log_lines' own resonance_events_in_range is a whole-range
+    vectorized numpy pass, not a python loop -- same cost argument as this
+    module's other jump-time full recomputes (build_vertex_data itself).
+
+    A simple FORWARD tick (`advancing=True`) instead only checks whether
+    n_value itself is a new resonance step: tick_next_n always advances by
+    exactly +1 (see that function's own doc-comment), so the only NEW n to
+    consider is n_value -- one O(1)-ish call into resonance_log_lines with
+    from_n=to_n=n_value (cost bound by the active-prime count, not by
+    n_value), not a full [from_n, n_value] rescan on every single tick.
+    This is exactly the performance concern StructuralSieveApp.js's own
+    #logResonance doc-comment calls out ("O(1) per tick ... this full-range
+    recompute only runs for actual jumps") -- skipping it would make
+    playback at a large N rescan the WHOLE history every tick.
+
+    Returns nothing; mutates `state` in place (mirrors the JS's own
+    #resonanceLog being a private instance field mutated by both methods,
+    not returned/reassigned by the caller)."""
+    is_jump = (
+        state["last_n"] is None
+        or state["last_range_mode"] != range_mode
+        or not advancing
+    )
+    if is_jump:
+        resonance_from_n = 0 if range_mode else 1
+        state["lines"] = resonance_log_lines(active, resonance_from_n, n_value)
+    else:
+        new_lines = resonance_log_lines(active, n_value, n_value)
+        for new_line in new_lines:
+            if not state["lines"] or state["lines"][-1] != new_line:
+                state["lines"].append(new_line)
+    state["last_n"] = n_value
+    state["last_range_mode"] = range_mode
 
 
 def advance_auto_orbit(active_primes, index, counter):
@@ -1411,6 +1462,19 @@ def run(args):
     flash_state = {"prime": 0.0, "resonance": 0.0}
     outline_draws_holder = {"draws": []}
 
+    # [ADDED PLAN.md Faza 11 -- resonance log + surviving-primes panel; NOT
+    # to be confused with this file's own pre-existing "Faza 11"/"Faza 11B"
+    # labels a few lines below, which name the HUD_STATE snapshot / on-canvas
+    # GL text work instead -- that numbering was assigned informally on
+    # 2026-09-06 before PLAN.md's Faza 6+ phase list (written 2026-09-05) was
+    # cross-checked, and PLAN.md's own Faza 11 is this resonance-log/
+    # surviving-primes feature, landed here.]
+    #
+    # Persisted across rebuild_buffer calls (ports StructuralSieveApp.js's
+    # own #resonanceLog array) -- see update_resonance_log's own doc-comment
+    # for the full jump-vs-tick algorithm this dict feeds.
+    resonance_log_state = {"lines": [], "last_n": None, "last_range_mode": None}
+
     # [ADDED Faza 11, see PLAN.md] Persistent HUD snapshot -- rebuild_buffer
     # keeps this updated (below) alongside its existing human-readable
     # console prints; emit_hud_state() serializes it (plus the always-live
@@ -1486,6 +1550,16 @@ def run(args):
         current_hud_lines = hud_lines_for_n(active, n_value, pos, enabled_ids, theta, law_mode, tracked_state)
         for line in current_hud_lines:
             print(line)
+
+        # [ADDED PLAN.md Faza 11 -- resonance log + surviving-primes panel]
+        # See update_resonance_log's own doc-comment for the jump-vs-tick
+        # distinction this relies on.
+        update_resonance_log(resonance_log_state, active, n_value, range_mode, advancing)
+
+        resonance_count, resonance_text = format_log_panel_text(resonance_log_state["lines"])
+        print(f"Resonance log ({resonance_count}): {resonance_text}")
+        primes_count, primes_text = format_log_panel_text(list(active))
+        print(f"Surviving primes ({primes_count}): {primes_text}")
 
         # [ADDED Faza 10, see PLAN.md] Auto-orbit's actual cycling -- only
         # advances on a FORWARD playback tick (advancing=True), never on a

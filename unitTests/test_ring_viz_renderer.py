@@ -903,6 +903,74 @@ def _test_advance_auto_orbit():
           f"wrap-around gap of 10 advances on the 10th tick, landing back on index 0/prime 2 (got {(idx, cnt, chosen)!r})")
 
 
+def _test_update_resonance_log():
+    from primeatlas.ring_viz.renderer import update_resonance_log
+    from primeatlas.ring_geometry import resonance_log_lines
+
+    primes = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47], dtype=np.int64)
+
+    # First call ever (last_n is None) is always a jump: full backfill from
+    # from_n=1 (sequential mode).
+    state = {"lines": [], "last_n": None, "last_range_mode": None}
+    active = primes[primes <= 30]
+    update_resonance_log(state, active, n_value=30, range_mode=False, advancing=False)
+    expected = resonance_log_lines(active, 1, 30)
+    check(state["lines"] == expected,
+          f"first-ever call backfills the full [1, n] range (sequential mode) (got {state['lines']!r})")
+    check(state["last_n"] == 30 and state["last_range_mode"] is False,
+          "state's last_n/last_range_mode are updated after the call")
+
+    # A manual jump (advancing=False) forces a fresh full backfill, even if
+    # last_n was already set -- e.g. jumping backwards or skipping ahead.
+    state = {"lines": ["stale", "data"], "last_n": 10, "last_range_mode": False}
+    active = primes[primes <= 30]
+    update_resonance_log(state, active, n_value=30, range_mode=False, advancing=False)
+    check(state["lines"] == resonance_log_lines(active, 1, 30),
+          "a manual jump (advancing=False) REPLACES stale lines with a fresh full backfill, "
+          "not an append")
+
+    # A forward tick (advancing=True) does NOT rescan -- it only checks
+    # whether the new n_value itself is a resonance step, appending at most
+    # one line, never touching earlier entries.
+    state = {"lines": ["previous entry"], "last_n": 29, "last_range_mode": False}
+    active = primes[primes <= 30]
+    update_resonance_log(state, active, n_value=30, range_mode=False, advancing=True)
+    tick_addition = resonance_log_lines(active, 30, 30)
+    check(state["lines"] == ["previous entry"] + tick_addition,
+          f"a forward tick only appends n_value's own resonance line(s) (if any) after existing entries "
+          f"(got {state['lines']!r}, expected append of {tick_addition!r})")
+
+    # A tick that produces NO new resonance event leaves the log untouched.
+    # (n=8 is confirmed NOT a resonance step for this prime list -- the
+    # earlier full-backfill assertion's own printed event list, over
+    # [1, 30], never includes 8.)
+    state = {"lines": ["kept as-is"], "last_n": 7, "last_range_mode": False}
+    active = primes[primes <= 8]
+    update_resonance_log(state, active, n_value=8, range_mode=False, advancing=True)
+    check(state["lines"] == ["kept as-is"],
+          f"a tick landing on a non-resonance n leaves state['lines'] unchanged (got {state['lines']!r})")
+
+    # A tick is never double-appended if called twice with the same n_value
+    # (defensive dedupe, mirrors #logResonance's own last-entry check).
+    state = {"lines": [], "last_n": 29, "last_range_mode": False}
+    active = primes[primes <= 30]
+    update_resonance_log(state, active, n_value=30, range_mode=False, advancing=True)
+    before = list(state["lines"])
+    state["last_n"] = 29  # simulate calling again for the "same" tick
+    update_resonance_log(state, active, n_value=30, range_mode=False, advancing=True)
+    check(state["lines"] == before,
+          "calling update_resonance_log twice for the same n_value tick does not duplicate the entry")
+
+    # A mode switch (sequential -> range) forces a jump even with advancing=True.
+    state = {"lines": ["sequential data"], "last_n": 30, "last_range_mode": False}
+    range_active = np.array([101, 103, 107], dtype=np.int64)
+    update_resonance_log(state, range_active, n_value=2, range_mode=True, advancing=True)
+    check(state["lines"] == resonance_log_lines(range_active, 0, 2),
+          f"a mode switch forces a full backfill (from_n=0 for range mode) even with advancing=True "
+          f"(got {state['lines']!r})")
+    check(state["last_range_mode"] is True, "last_range_mode reflects the new mode after the switch")
+
+
 def _test_compose_hud_canvas_lines():
     from primeatlas.ring_viz.renderer import compose_hud_canvas_lines
 
@@ -1004,6 +1072,7 @@ def main():
     _test_can_start_playback()
     _test_tick_next_n()
     _test_advance_auto_orbit()
+    _test_update_resonance_log()
     _test_compose_hud_canvas_lines()
     _test_hud_quad_vertex_data()
     _test_rasterize_hud_text()

@@ -373,6 +373,64 @@ def _test_resonance_events_in_range():
           "resonance_events_in_range(primes, 0, 0) correctly finds no event (to_n=0 is below the smallest active prime)")
 
 
+def _test_resonance_log_lines():
+    from primeatlas.ring_geometry import resonance_log_lines, resonance_events_in_range
+
+    primes = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47], dtype=np.int64)
+    from_n, to_n = 0, 60
+
+    lines = resonance_log_lines(primes, from_n, to_n)
+    events = resonance_events_in_range(primes, from_n, to_n)
+    expected = [f"{e['n']} = {' × '.join(str(f) for f in e['factors'])}" for e in events]
+    check(lines == expected,
+          "resonance_log_lines formats every resonance_events_in_range event as 'N = f1 × f2 × ...', "
+          "same order, same content, no independent formatting drift")
+    check(len(lines) > 0,
+          "sanity: this range actually produces at least one resonance log line")
+    check(all(" × " in line or " = " in line for line in lines),
+          "every resonance_log_lines entry contains the 'N = ...' separator")
+
+    check(resonance_log_lines(primes, 10, 5) == [],
+          "resonance_log_lines returns [] for an empty (to_n < from_n) range, same as resonance_events_in_range")
+
+
+def _test_format_log_panel_text():
+    from primeatlas.ring_geometry import format_log_panel_text, LOG_PANEL_TRUNCATE_THRESHOLD
+
+    count, text = format_log_panel_text([])
+    check(count == 0 and text == "-",
+          "format_log_panel_text([]) -> (0, '-') for an empty list")
+
+    small = [2, 3, 5, 7, 11]
+    count, text = format_log_panel_text(small)
+    check(count == 5 and text == "2, 3, 5, 7, 11",
+          f"format_log_panel_text of a short list is fully joined by ', ' with no truncation (got {text!r})")
+
+    check(LOG_PANEL_TRUNCATE_THRESHOLD == 50,
+          "LOG_PANEL_TRUNCATE_THRESHOLD mirrors StructuralSieveApp.js's own threshold (50)")
+
+    exact = list(range(LOG_PANEL_TRUNCATE_THRESHOLD))
+    count, text = format_log_panel_text(exact)
+    check(count == LOG_PANEL_TRUNCATE_THRESHOLD and "more" not in text,
+          "a list with EXACTLY threshold items is shown in full, not truncated (JS: only ABOVE threshold collapses)")
+
+    over = list(range(LOG_PANEL_TRUNCATE_THRESHOLD + 7))
+    count, text = format_log_panel_text(over)
+    check(count == LOG_PANEL_TRUNCATE_THRESHOLD + 7,
+          "format_log_panel_text reports the TRUE total count even when the text itself is truncated")
+    check(text.endswith("(+7 more)"),
+          f"a list 7 over threshold is truncated with a trailing '(+7 more)' marker (got {text!r})")
+    check(text.startswith("0, 1, 2"),
+          "the truncated text still starts with the list's own first items, in order")
+    check(len(text.split(" (+")[0].split(", ")) == LOG_PANEL_TRUNCATE_THRESHOLD,
+          "the truncated text shows exactly `threshold` items before the '(+K more)' marker")
+
+    # Custom threshold, so the test doesn't only ever exercise the default 50.
+    count, text = format_log_panel_text([1, 2, 3, 4, 5], threshold=3)
+    check(text == "1, 2, 3 (+2 more)",
+          f"a custom threshold=3 truncates at 3 items (got {text!r})")
+
+
 def main():
     _test_legendre_level_at()
     _test_ring_radii()
@@ -385,6 +443,8 @@ def main():
     _test_compute_highlight_colors_strict_sticky_precedence()
     _test_compute_tracked_colors()
     _test_resonance_events_in_range()
+    _test_resonance_log_lines()
+    _test_format_log_panel_text()
 
     if failures:
         print(f"\n{len(failures)} FAILURE(S)")

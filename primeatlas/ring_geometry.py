@@ -503,6 +503,57 @@ def resonance_events_in_range(primes, from_n, to_n):
 
 
 # ---------------------------------------------------------------------------
+# Resonance log + surviving-primes panel text -- [ADDED Faza 11, PLAN.md]
+# ports StructuralSieveApp.js's #resonanceLog formatting and #renderLogPanel's
+# text-truncation rules to plain strings for renderer.py's console-pane
+# prints (NOT the on-canvas HUD/HUD_STATE path -- PLAN.md's Faza 11 entry is
+# explicit this is a console-pane port, same precedent as the plain print()
+# HUD lines Faza 4/7B already emit). No new math: resonance_log_lines is a
+# thin formatter over resonance_events_in_range above; format_log_panel_text
+# is generic and used for both the resonance-log lines and the raw
+# surviving-primes list.
+# ---------------------------------------------------------------------------
+
+LOG_PANEL_TRUNCATE_THRESHOLD = 50  # mirrors JS's own LOG_PANEL_TRUNCATE_THRESHOLD
+
+
+def resonance_log_lines(primes, from_n, to_n):
+    """Ports #resonanceLog's own entry format exactly (`${e.n} = ${e.factors
+    .join(" × ")}`) -- turns resonance_events_in_range's structured events
+    for [from_n, to_n] into the same human-readable strings the HTML
+    reference's Resonances panel shows, one per resonance step, ascending n
+    order (resonance_events_in_range's own order, unchanged)."""
+    events = resonance_events_in_range(primes, from_n, to_n)
+    return [f"{e['n']} = {' × '.join(str(f) for f in e['factors'])}" for e in events]
+
+
+def format_log_panel_text(items, threshold=LOG_PANEL_TRUNCATE_THRESHOLD):
+    """Ports StructuralSieveApp.js's #renderLogPanel text-formatting rules
+    (see that method's own doc-comment for the full rationale) for a plain
+    console-pane line rather than a DOM panel with a live collapse/expand
+    toggle: the console pane is a scrolling text stream, not an interactive
+    widget, so there is nothing to click here -- this always renders the
+    COLLAPSED view once a list exceeds `threshold` items (JS's own default
+    state for a freshly rendered long panel), which is strictly more useful
+    for a scrollback than dumping a potentially huge comma-separated line.
+
+    Returns a (count, text) tuple: `count` is len(items) (for the caller's
+    own "(count)" header, matching JS's `els.count.textContent`); `text` is
+    "-" for an empty list, the full ", "-joined list at or below
+    `threshold` items, or the first `threshold` items joined by ", "
+    followed by " (+K more)" above it -- K is the omitted remainder,
+    mirroring JS's own "+N more" wording (ss-log-panel-truncated)."""
+    count = len(items)
+    if count == 0:
+        return count, "-"
+    if count <= threshold:
+        return count, ", ".join(str(x) for x in items)
+    shown = items[:threshold]
+    remaining = count - threshold
+    return count, ", ".join(str(x) for x in shown) + f" (+{remaining} more)"
+
+
+# ---------------------------------------------------------------------------
 # Tracked primes -- [ADDED Faza 6, PLAN.md] foundation shared by Faza 7 (LCM/
 # resonance HUD) and Faza 8 (tracked-ring outline circles/flash overlays).
 # Ports the filtering half of StructuralSieveApp.js's #trackedResonanceState
