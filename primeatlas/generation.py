@@ -1264,11 +1264,19 @@ class LocalLoggedRunner:
     No tkinter dependency -- exercised directly against a trivial local command (e.g.
     [sys.executable, "-c", "print('hi')"]) without any WSL install required."""
 
-    def __init__(self, cmd, output_queue):
+    def __init__(self, cmd, output_queue, pipe_stdin=False):
         self.cmd = cmd
         self.output_queue = output_queue
         self.proc = None
         self._thread = None
+        # [ADDED 2026-09-10, Faza 13] Opt-in only -- every existing caller
+        # (e.g. settings_tab.py's sympy installer) keeps stdin inherited/
+        # default exactly as before. RingsTab is the first caller that
+        # needs a way to send commands INTO the running subprocess (see
+        # send_line() below) -- ring_viz/renderer.py's own PAUSE/RESUME
+        # protocol reads them off stdin when launched with
+        # --pipe-stdin-commands (see build_renderer_argv/rings_tab.py).
+        self._pipe_stdin = pipe_stdin
 
     def start(self):
         self.output_queue.put(f"$ {' '.join(self.cmd)}\n")
@@ -1284,6 +1292,8 @@ class LocalLoggedRunner:
         kwargs = _popen_kwargs_no_window()
         kwargs["stdout"] = subprocess.PIPE
         kwargs["stderr"] = subprocess.STDOUT
+        if self._pipe_stdin:
+            kwargs["stdin"] = subprocess.PIPE
         try:
             self.proc = subprocess.Popen(self.cmd, text=True, bufsize=1, **kwargs)
         except OSError as e:
@@ -1292,6 +1302,24 @@ class LocalLoggedRunner:
             return
         self._thread = threading.Thread(target=self._read_loop, daemon=True)
         self._thread.start()
+
+    def send_line(self, text):
+        """[ADDED 2026-09-10, Faza 13] Write one line to the subprocess's
+        stdin (only meaningful when started with pipe_stdin=True -- a no-op,
+        not an error, otherwise, since a caller checking is_running() first
+        has no easy way to know in advance whether stdin was piped). Used by
+        RingsTab to send "RESUME" while the renderer is idling in its own
+        paused/hidden state -- see that class's own PAUSE/RESUME doc-comment.
+        Swallows a broken pipe (process already gone) same as stop() does,
+        since the caller's next _poll_queue tick will see the __exit__
+        sentinel regardless and react to that instead."""
+        if self.proc is None or self.proc.stdin is None:
+            return
+        try:
+            self.proc.stdin.write(text.rstrip("\n") + "\n")
+            self.proc.stdin.flush()
+        except (BrokenPipeError, OSError):
+            pass
 
     def _read_loop(self):
         try:

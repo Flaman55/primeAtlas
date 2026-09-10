@@ -389,6 +389,85 @@ def main():
           "stale last-seen N over Reset's own default -- _last_hud_n was "
           "already None by the time the exit was processed")
 
+    # --- [ADDED 2026-09-10, Faza 13] Live pause/resume: a fake renderer that
+    # immediately reports itself paused (simulating the real renderer.py's
+    # own window-close interception -- see that file's own doc-comment on
+    # start_stdin_command_reader), then blocks on stdin until "RESUME"
+    # arrives, then reports resumed and exits cleanly. Exercises the actual
+    # stdin pipe end-to-end (LocalLoggedRunner.send_line -> the subprocess's
+    # own sys.stdin), not a mock -- same real-subprocess philosophy as the
+    # rest of this file (see module docstring).
+    # Deliberately sleeps a couple seconds AFTER printing RESUMED, rather than
+    # exiting right away -- otherwise, on a fast sandbox, the __exit__
+    # sentinel can land in the SAME _poll_queue drain batch as the
+    # RING_VIZ_RESUMED line (both process._read_loop and the OS process exit
+    # can outrun a single _pump() window), which would make the "resumed but
+    # still running" state below unobservable as a distinct moment.
+    fd, fake_pause_script = tempfile.mkstemp(suffix="_fake_renderer_pause.py")
+    with os.fdopen(fd, "w") as f:
+        f.write(
+            "import sys, time\n"
+            "print('fake renderer: ready')\n"
+            "print('RING_VIZ_PAUSED')\n"
+            "sys.stdout.flush()\n"
+            "for line in sys.stdin:\n"
+            "    if line.strip() == 'RESUME':\n"
+            "        print('RING_VIZ_RESUMED')\n"
+            "        sys.stdout.flush()\n"
+            "        time.sleep(3)\n"
+            "        break\n"
+            "sys.exit(0)\n"
+        )
+    rings_tab_module.RENDERER_SCRIPT = fake_pause_script
+    tab.n_entry.delete(0, "end")
+    tab.n_entry.insert(0, "321")
+    tab._on_open()
+    _pump(app, 1.5)
+    check(tab._paused is True,
+          f"_paused flips True once the RING_VIZ_PAUSED line is drained from the queue "
+          f"(got {tab._paused!r})")
+    check(str(tab.open_button["state"]) == "normal",
+          "open_button is re-enabled while paused, so Start/Resume is clickable again")
+    check(str(tab.stop_button["state"]) == "normal",
+          "stop_button STAYS enabled while paused -- Reset must still be able to kill "
+          "a paused (window-hidden, but very much alive) process")
+    check(tab.status.get() == tab.T("rings.status_paused"),
+          f"status bar shows the paused message (got {tab.status.get()!r})")
+    paused_runner = tab._runner
+    check(paused_runner is not None and paused_runner.is_running(),
+          "the OS process is still alive while paused -- pausing hides the window, it "
+          "does not exit the subprocess (that's the whole point of Faza 13)")
+
+    # Clicking Start/Resume while paused must send "RESUME" down the existing
+    # pipe, NOT launch a second subprocess.
+    tab._on_open()
+    check(tab._runner is paused_runner,
+          "clicking Start/Resume while paused reuses the SAME runner/process -- it "
+          "does not launch a brand new one (that would be the old bookmark-only "
+          "behavior this feature replaces)")
+    _pump(app, 1.5)
+    check(tab._paused is False,
+          f"_paused flips back False once the RING_VIZ_RESUMED line is drained "
+          f"(got {tab._paused!r})")
+    check(str(tab.open_button["state"]) == "disabled",
+          "open_button is disabled again once resumed (back to the normal "
+          "while-running state)")
+    check(tab.status.get() == tab.T("rings.status_running"),
+          f"status bar shows the running message after resume (got {tab.status.get()!r})")
+
+    # The fake script sleeps 3s after RESUMED, then exits -- confirm the
+    # normal __exit__ path still fires correctly afterwards, and that it
+    # leaves no stale _paused=True behind for the next launch.
+    _pump(app, 4.0)
+    check(str(tab.open_button["state"]) == "normal",
+          "open_button re-enabled once the (now-resumed) process actually exits")
+    check(str(tab.stop_button["state"]) == "disabled",
+          "stop_button disabled once the process actually exits")
+    check(tab._paused is False,
+          "_paused stays False after a real exit (no stale pause flag left behind "
+          "for the next Start/Resume click)")
+    os.remove(fake_pause_script)
+
     # --- failure path: real subprocess, fake renderer script, exit 1 ----------------
     fake_fail_script = _write_fake_renderer(1)
     rings_tab_module.RENDERER_SCRIPT = fake_fail_script

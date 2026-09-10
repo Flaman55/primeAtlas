@@ -52,12 +52,20 @@ RENDERER_SCRIPT = os.path.join(_THIS_DIR, "ring_viz", "renderer.py")
 # rename doesn't silently desync the two string literals.
 _HUD_STATE_PREFIX = "HUD_STATE:"
 
+# [ADDED 2026-09-10, Faza 13] Must match renderer.py's own two plain
+# print("RING_VIZ_PAUSED"/"RING_VIZ_RESUMED") lines exactly -- these are NOT
+# JSON payloads like _HUD_STATE_PREFIX, just bare sentinel lines, since
+# there's no data to carry, only a state transition to react to.
+_RING_VIZ_PAUSED_LINE = "RING_VIZ_PAUSED"
+_RING_VIZ_RESUMED_LINE = "RING_VIZ_RESUMED"
+
 
 def build_renderer_argv(portal_folder, upto, python_executable=None,
                          windows=(), general_law_theta=0.5, general_law_mode="stepped",
                          point_size=None, track_primes=(), auto_orbit=False, load_range=None,
                          hit_point_size=None, hud_font_size=None, audio=False,
-                         sound_low='sine', sound_prime='triangle', sound_lcm='choir'):
+                         sound_low='sine', sound_prime='triangle', sound_lcm='choir',
+                         pipe_stdin_commands=False):
     """Builds the argv for launching renderer.py against a real magazyn.
 
     Uses `python_executable` (defaults to sys.executable -- THIS SAME Python
@@ -151,6 +159,15 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
     if audio:
         argv += ['--audio', '--sound-low', sound_low, '--sound-prime', sound_prime,
                  '--sound-lcm', sound_lcm]
+    # [ADDED Faza 13, see PLAN.md] Opt-in ONLY when the caller is actually
+    # going to act on the RING_VIZ_PAUSED/RESUMED lines this makes
+    # renderer.py print (see that flag's own doc-comment there) --
+    # RingsTab._on_open is the one real caller and always passes True;
+    # False (default) keeps every existing pure-function test above byte-
+    # for-byte unchanged, and keeps a plain terminal invocation of this
+    # function's own CLI output copy-pasteable with no surprise behavior.
+    if pipe_stdin_commands:
+        argv += ["--pipe-stdin-commands"]
     return argv
 
 
@@ -171,6 +188,14 @@ class RingsTab(BaseTab):
         # off, instead of wherever the field happened to still say. Cleared
         # by _on_reset, which is the one path that deliberately discards it.
         self._last_hud_n = None
+        # [ADDED 2026-09-10, Faza 13] True while the running renderer.py
+        # process is alive but hidden/idling, waiting for a RESUME command
+        # (see _poll_queue's RING_VIZ_PAUSED/RESUMED handling below and
+        # renderer.py's own start_stdin_command_reader doc-comment for the
+        # full protocol). Distinct from "not running at all" -- open_button
+        # is re-enabled in BOTH cases, but only this one sends "RESUME"
+        # over stdin instead of launching a brand new subprocess.
+        self._paused = False
         self._build_ui()
 
     def _build_ui(self):
@@ -367,6 +392,18 @@ class RingsTab(BaseTab):
         self.n_hint_var.set(self.T("rings.hint_floor", floor=floor))
 
     def _on_open(self):
+        # [ADDED 2026-09-10, Faza 13] Live resume path: the process never
+        # actually exited, it's just idling with its window hidden (see
+        # renderer.py's own PAUSE/RESUME protocol) -- send it a command
+        # instead of launching a brand new one, so N, playback state,
+        # tempo, LCM cache, and (the whole point) audio all continue
+        # exactly as they were, with zero discontinuity. is_running() is
+        # still True here (the OS process never died), which is exactly
+        # why self._paused is tracked as its own flag rather than reusing
+        # that check.
+        if self._runner is not None and self._paused:
+            self._runner.send_line("RESUME")
+            return
         if self._runner is not None and self._runner.is_running():
             return
         raw = self.n_entry.get().strip()
@@ -454,11 +491,17 @@ class RingsTab(BaseTab):
                                     audio=self.audio_enabled.get(),
                                     sound_low=INSTRUMENTS[self.audio_choices['low'].current()],
                                     sound_prime=INSTRUMENTS[self.audio_choices['prime'].current()],
-                                    sound_lcm=INSTRUMENTS[self.audio_choices['lcm'].current()])
+                                    sound_lcm=INSTRUMENTS[self.audio_choices['lcm'].current()],
+                                    pipe_stdin_commands=True)
         q = queue.Queue()
-        runner = LocalLoggedRunner(argv, q)
+        # [ADDED 2026-09-10, Faza 13] pipe_stdin=True so send_line("RESUME")
+        # further down (and in _on_open's own live-resume branch above) has
+        # an actual pipe to write to -- see LocalLoggedRunner's own
+        # doc-comment for why this is opt-in rather than the default.
+        runner = LocalLoggedRunner(argv, q, pipe_stdin=True)
         self._runner = runner
         self._queue = q
+        self._paused = False
         self.open_button.configure(state="disabled")
         self.stop_button.configure(state="normal")
         self.console.show()
@@ -485,6 +528,13 @@ class RingsTab(BaseTab):
         if self._runner is not None:
             self._runner.stop()
         self._last_hud_n = None
+        # [ADDED 2026-09-10, Faza 13] terminate() kills the OS process
+        # outright regardless of whether it's currently idling in the
+        # hidden-window pause loop or actively rendering -- no special-
+        # casing needed there -- but the Tkinter-side _paused flag is only
+        # ever cleared by a RING_VIZ_RESUMED line, which will never arrive
+        # for a process we just killed, so it must be reset explicitly here.
+        self._paused = False
         self.n_entry.delete(0, "end")
         self.n_entry.insert(0, "2")
         self._on_n_changed()
@@ -497,6 +547,11 @@ class RingsTab(BaseTab):
                 item = self._queue.get_nowait()
                 if isinstance(item, tuple) and item and item[0] == "__exit__":
                     code = item[1]
+                    # [ADDED 2026-09-10, Faza 13] The process is actually
+                    # gone now (proc.wait() returned), whether it was paused
+                    # or not -- clear the flag so a later _on_open never
+                    # mistakes a brand-new launch for a resume.
+                    self._paused = False
                     self.open_button.configure(state="normal")
                     self.stop_button.configure(state="disabled")
                     if code == 0:
@@ -534,6 +589,27 @@ class RingsTab(BaseTab):
                 # the scrolling console -- a raw JSON blob in the log
                 # would just be noise next to the human-readable HUD
                 # lines that already print alongside it.
+                # [ADDED 2026-09-10, Faza 13] The process is idling with its
+                # window hidden, not exiting -- so this does NOT go through
+                # the __exit__ branch above (the OS process is still alive,
+                # LocalLoggedRunner's _read_loop only puts __exit__ once
+                # proc.wait() actually returns). open_button is re-enabled so
+                # Start/Resume becomes clickable again, but stop_button stays
+                # enabled too since Reset must still be able to kill a paused
+                # process (LocalLoggedRunner.stop()'s terminate() call works
+                # regardless of what the subprocess's Python code is doing).
+                if item.strip() == _RING_VIZ_PAUSED_LINE:
+                    self._paused = True
+                    self.open_button.configure(state="normal")
+                    self.status.set(self.T("rings.status_paused"))
+                    self.console.append(self.T("rings.console_paused") + "\n")
+                    continue
+                if item.strip() == _RING_VIZ_RESUMED_LINE:
+                    self._paused = False
+                    self.open_button.configure(state="disabled")
+                    self.status.set(self.T("rings.status_running"))
+                    self.console.append(self.T("rings.console_resumed") + "\n")
+                    continue
                 if item.startswith(_HUD_STATE_PREFIX):
                     self._apply_hud_state(item[len(_HUD_STATE_PREFIX):])
                     continue
