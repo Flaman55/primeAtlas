@@ -61,14 +61,16 @@ interchangeable engine generations, v3/v4/v4.1 -- see "Architecture" below).
 - **Generation** -- two ways to launch the sieve/orchestrator pipeline and the
   constellation finder over WSL, both with live streamed output (stackable across
   runs, detachable into its own window) and a stop control:
-  - **Quick generation** -- five simple modes (Floor only, Range from/to,
-    Exploration, primesieve, cudasieve) that translate a plain request into the right
-    low-level parameters, check what is already on disk first, and report "already in
+  - **Quick generation** -- six simple modes (Floor only, Range from/to,
+    Exploration, primesieve, cudasieve, Hybrid) that translate a plain request into the
+    right low-level parameters, check what is already on disk first, and report "already in
     storage" instead of launching a redundant run. An "Auto" button estimates a safe window
     count from the WSL environment's available RAM (see "Window count, throughput, and RAM"
-    below). See "The primesieve mode" and "The cudasieve mode" below for how the fourth and
-    fifth modes differ from the first three -- cudasieve is an optional, opt-in GPU engine,
-    hidden behind its own installer (Settings > Aktualizacje) and requiring an Nvidia GPU.
+    below). See "The primesieve mode", "The cudasieve mode", and "The Hybrid mode" below for
+    how the fourth, fifth, and sixth modes differ from the first three -- cudasieve is an
+    optional, opt-in GPU engine, hidden behind its own installer (Settings > Aktualizacje)
+    and requiring an Nvidia GPU; Hybrid is a deliberately narrow, single-window
+    experimental engine, not a general-purpose replacement for the other five.
     Exploration mode's own Floor field auto-continues from whichever
     floor currently holds the deepest generated data (leave it blank, or use its
     dedicated Auto button) instead of requiring a manually-typed floor every time, and
@@ -168,13 +170,19 @@ interchangeable engine generations, v3/v4/v4.1 -- see "Architecture" below).
     constellation finder's own `CHECKPOINT.txt` -- its own checkpoint is a completely
     separate file, since these locations are not tied to any pre-existing prime
     window at all (see `ktuple_sieve_v1.py`'s own module docstring).
-- **Benchmark** -- a throughput chart (numbers generated per second vs. floor depth),
-  plus a second chart (sieve speed and write speed per floor) whenever the active
-  engine reports that level of phase timing (see `prime_sieve_v4_1.py` under
-  "Architecture" below), a full benchmark log table, and one-click PDF export
-  covering both charts. The progress bar shown during a generation run models the
-  whole pipeline as a sequence of steps (prep, then each sieve batch, then done)
-  rather than only moving during the sieve phase and sitting empty through prep.
+- **Ring visualization** -- a seventh top-level tab (between Generation and Benchmark)
+  that opens an interactive, GPU-rendered view of prime rings around a chosen `n`, fed
+  from whatever is already in storage. See "Ring visualization" below for what it shows
+  and how it's launched.
+- **Benchmark** -- a throughput chart (numbers generated per second vs. floor depth,
+  derived from the actual count of integers swept per floor rather than a window-count
+  approximation, so a mode like Hybrid whose swept range is normally far smaller than
+  one full window still plots accurately), plus a second chart (sieve speed and write
+  speed per floor) whenever the active engine reports that level of phase timing (see
+  `prime_sieve_v4_1.py` under "Architecture" below), a full benchmark log table, and
+  one-click PDF export covering both charts. The progress bar shown during a generation
+  run models the whole pipeline as a sequence of steps (prep, then each sieve batch,
+  then done) rather than only moving during the sieve phase and sitting empty through prep.
 - **Research (Badania)** -- an inner notebook of five sub-tabs, grouped by shared
   question shape rather than by conjecture name; one is implemented so far, the other
   four are structural placeholders reserved for later phases:
@@ -223,16 +231,24 @@ interchangeable engine generations, v3/v4/v4.1 -- see "Architecture" below).
     installs it on request, with the install's own live output shown in place. Also
     hosts PrimeAtlas's own self-update (`primeatlas/app_update.py`): since the app runs
     directly out of its own git checkout rather than a packaged install, "check for
-    update" is a plain `git fetch origin main` plus a local-HEAD-vs-`origin/main`
-    comparison, and "download" is `git pull --ff-only` -- refused outright (no files
-    touched) if the working tree has uncommitted changes or local history has diverged
-    from `origin`, so an in-progress edit is never silently clobbered. Two checkboxes
-    control it: auto-check on startup (on by default -- a background, non-blocking probe
-    a few seconds after launch) and auto-download without asking (off by default, since
-    unlike the read-only check this one changes files on disk). A manual "Sprawdz teraz"
-    button works independently of the auto-check toggle. When a downloaded update needs
-    a restart to take effect, the same job-running guard used by the theme/language
-    auto-restart above applies.
+    update" resolves `origin`'s branch HEAD via the GitHub REST API first (no local git
+    or network fetch needed for the check itself), falling back to a real `git fetch` +
+    local-HEAD-vs-`origin/main` comparison only when the remote isn't a recognizable
+    `github.com` remote or the API call fails; "download" fetches and fast-forwards
+    (`git merge --ff-only`) -- refused outright (no files touched) if the working tree
+    has uncommitted changes or local history has genuinely diverged from `origin`, so an
+    in-progress edit is never silently clobbered. A leftover git lock file from an
+    interrupted process (or a momentary hold by another concurrent git invocation) is
+    told apart from a real divergence by attempting an OS-verified release (a rename
+    that only succeeds if nothing still has the lock file open) and retried
+    automatically for close to 30 seconds before surfacing an error, rather than
+    leaving the user stuck with a raw git error they have no way to resolve themselves.
+    Two checkboxes control the feature overall: auto-check on startup (on by default --
+    a background, non-blocking probe a few seconds after launch) and auto-download
+    without asking (off by default, since unlike the read-only check this one changes
+    files on disk). A manual "Sprawdz teraz" button works independently of the
+    auto-check toggle. When a downloaded update needs a restart to take effect, the
+    same job-running guard used by the theme/language auto-restart above applies.
 
 ## Search
 
@@ -359,12 +375,46 @@ off-by-one count under concurrent GPU load -- worth keeping in mind for anything
 counts matter; `generate_primes_in_range()` does a strictly-increasing sanity check on the
 returned primes as a (partial) defense against a badly parsed or truncated stdout stream.
 
+## The Hybrid mode
+
+Hybrid is a sixth Quick generation mode, deliberately narrower in scope than the other
+five: a single-window experimental engine built around one MAIN prime cap and a small
+filter-prime tuple, rather than sieving a whole range the way libprimesieve or this
+project's own orchestrator do. Every candidate up to a limit `N = b*d - 1` (`b` the
+prime just above MAIN, `d` the prime just above the filter tuple's own top member) is
+guaranteed eliminated either by MAIN's ordinary sieve or by the filter tuple's own
+residue check -- the two visible parameters are "MAIN <=" (the prime cap) and "Filter
+primes / stage" (how many filter primes to use), and a debounced (350ms) background
+reach preview shows the resulting range live as either is edited, without blocking typing.
+
+Rather than an explicit From/To range, Hybrid is driven by a "Cel" (intent) picker: a
+concrete number, "continue this floor" (from wherever that floor's storage currently
+ends), "fill this floor's first gap", or an explicit floor + window index -- each
+resolves to exactly one standard PGS2 window before anything launches, so Hybrid's
+output is ordinary window data, indistinguishable from any other engine's, and never
+overwrites or disturbs windows already on disk. Before actually launching, the chosen
+MAIN and filter-count values are auto-minimized (smallest MAIN, then the smallest
+sufficient filter count for the resolved window) via the same policy function the reach
+preview itself uses -- if the values typed in weren't already minimal, the console
+reports what was adjusted and why.
+
+A single MAIN+filter combination can only reach up to `10**11` (inclusive; also capped
+at 1,000,000 filter primes) -- a target past that limit cannot be reached by Hybrid at
+all, so rather than failing outright it offers to switch to primesieve mode instead,
+with that mode's own Floor/From/Width fields pre-filled from the request. A native C
+backend (reusing the same segment-sieving primitive `prime_sieve_v4.py`'s own engine
+uses for MAIN) does the actual work when built; a pure-Python reference implementation
+is used automatically as a fallback otherwise, at a real cost to speed but not
+correctness -- both produce byte-identical output.
+
 ## Window count, throughput, and RAM
 
 This section is about Floor only, Range, and Exploration mode -- the three engines that run
 through this project's own batching/orchestration pipeline. primesieve mode (see above) has
 no such relationship: it makes one direct call into libprimesieve's own bulk-generation
 function per run, with no batches, workers, or shared buffer of this project's own involved.
+Hybrid (see above) also sits outside this pipeline -- it sieves a single, small,
+explicitly-resolved window rather than a batch of windows sharing one buffer.
 
 The Quick generation panel's window-count fields (and the low-level form's own) have a
 direct, mechanical relationship to both how fast a run goes and how much RAM it needs.
@@ -513,25 +563,59 @@ to the orchestrator pipeline, using a RAM-based automatic window count per run -
 formula behind Quick generation's own "Auto" button, re-evaluated fresh for each floor
 rather than a fixed default.
 
+## Ring visualization
+
+Opens an interactive, GPU-driven visualization of prime rings around a chosen `n`, fed
+primes from whatever is currently in storage. Unlike every other tab, it does not build
+its own tkinter widgets for the visualization itself: `rings_tab.py` launches
+`ring_viz/renderer.py` (moderngl + GLFW) as a separate native Windows subprocess, since a
+GL render loop does not compose with Tkinter's own `mainloop()`. Closing the render
+window (Esc, or its own close control) doesn't kill the process outright -- it hides and
+idles in the background, preserving playback position, tempo, and audio state, so
+clicking Start / Resume again continues exactly where it left off rather than
+relaunching from scratch; an explicit Reset is needed to actually start over. An
+always-visible HUD panel in the main tkinter window mirrors the renderer's own live
+status (current N, ring count, rebuild time, running/paused state) even while the render
+window itself is hidden.
+
+Configurable before launch: point size and a separate hit-ring point size (the axis
+rings), HUD font size, and three independent audio channels (rings `<= 7`, rings `> 7`,
+and the LCM ring) each assignable to one of seven instruments (sine/triangle/square/
+sawtooth/bell/choir/mute) -- audio requires the optional `sounddevice` package and is
+otherwise silently unavailable with a clear console message, never a crash. Window
+highlight checkboxes for the Bertrand, Legendre, and General Law windows (the same three
+families the standalone Structural Sieve HTML tool defines) can be enabled together,
+with the General Law family's own theta and sliding/stepped mode fields; these, like
+point size and audio, are launch-time-only -- fixed for the life of one running
+subprocess and only editable again after Reset. A Track P field (plus an Auto orbit
+toggle) follows specific primes' LCM/resonance state live in the HUD; Load Range
+auto-tracks every prime in a chosen range at once instead of naming them individually.
+Playback controls (Space to start/stop, `[`/`]` and `-`/`=` to adjust speed, R to reset)
+drive automatic advancement through N; a resonance log and a surviving-primes list panel
+are both collapsible, with their own counts shown in the header. F11 toggles fullscreen,
+restoring the window's prior geometry on exit (and releasing the fullscreen monitor
+before the process is allowed to pause, so a paused, hidden process never leaves a
+monitor stuck in exclusive-fullscreen mode).
+
 ## Architecture
 
 ```
 prime_atlas_v1.py           thin composition root (tkinter); builds the main window and
-                              its six top-level tabs (three of which -- Prime numbers,
+                              its seven top-level tabs (three of which -- Prime numbers,
                               Constellations, Research -- are themselves inner
-                              notebooks of sub-tabs, see "Features" above), owns the
-                              handful of genuinely CROSS-tab pieces (module globals
+                              notebooks of sub-tabs, see "Features" above; a further one,
+                              Ring visualization, launches a separate GPU-rendered
+                              subprocess rather than building tkinter widgets of its own
+                              -- see "Ring visualization" above), owns the handful of
+                              genuinely CROSS-tab pieces (module globals
                               PORTAL_FOLDER/TRANSLATOR/T/APP_SETTINGS; the totals-cache
                               and search PersistentWorkers, shared by more than one
                               tab; the Prime-numbers/Constellations background tree
                               scans; the three "generate missing data, then retry"
                               methods), and otherwise just instantiates and wires each
-                              tab class below -- see "GUI module conventions" below for
-                              the full design
+                              tab class below
 primeatlas/                 backend + GUI-tab package, one file (or pure-logic/UI pair
-                              of files) per feature -- see "GUI module conventions"
-                              below for the split convention and dependency-injection
-                              pattern shared by every *_tab.py class
+                              of files) per feature
   GUI tab classes (ttk.Frame subclasses, one file each unless noted):
   primes_tab.py               PrimesTab -- Prime numbers -> Storage sub-tab
   primesieve_calc_tab.py      PrimesieveCalcTab -- Prime numbers -> primesieve
@@ -548,9 +632,20 @@ primeatlas/                 backend + GUI-tab package, one file (or pure-logic/U
   research_goldbach_tab.py    ResearchGoldbachTab -- Research -> Goldbach sub-tab (UI;
                               research_goldbach.py below is the pure-logic backend)
   generation_tab.py           GenerationTab -- the Generation tab (largest one: Quick-
-                              gen panel plus the loop/orchestrator-direct/primesieve/
-                              k-tuple-sieve launch forms; generation.py below is the
-                              pure-logic backend)
+                              gen panel -- Floor only/Range/Exploration/primesieve/
+                              cudasieve/Hybrid modes -- plus the loop/orchestrator-
+                              direct/primesieve/k-tuple-sieve launch forms;
+                              generation.py below is the pure-logic backend;
+                              hybrid_controls.py holds the Hybrid mode's own debounced
+                              reach-preview/auto-fit UI logic, kept in its own file
+                              since it runs its preview calculation off the Tk main
+                              thread)
+  rings_tab.py                RingsTab -- the Ring visualization tab: launches
+                              ring_viz/renderer.py (moderngl/GLFW) as a separate native
+                              Windows subprocess, and exchanges state with it over
+                              stdin/stdout (HUD JSON, pause/resume commands) rather than
+                              building any of the visualization itself as tkinter
+                              widgets; see "Ring visualization" above
   benchmark_tab.py            BenchmarkTab -- the Benchmark tab (charts + PDF export;
                               benchmark.py below is the pure-logic backend)
   settings_tab.py             SettingsTab -- the Settings tab (Ogolne/Backup/
@@ -573,6 +668,11 @@ primeatlas/                 backend + GUI-tab package, one file (or pure-logic/U
   primality.py                 Miller-Rabin/Fermat/Solovay-Strassen primality tests
                               plus factorization (trial division + Pollard's rho, or
                               sympy.factorint() if installed) -- pure Python, no WSL
+  ring_geometry.py              ring/drum placement math, plus Bertrand/Legendre/
+                              General Law highlight-window membership and blended
+                              colors -- ported from the standalone Structural Sieve
+                              HTML tool's own SieveModel.js; pure functions, no OpenGL
+                              or subprocess code (that lives in ring_viz/, below)
   storage.py                    the core prime-window storage layer (listing floors/
                               files, totals caches, format_duration/format_bytes)
                               shared by several tabs above, not specific to any one
@@ -587,12 +687,31 @@ primeatlas/                 backend + GUI-tab package, one file (or pure-logic/U
                               theme/language auto-restart and the self-update
                               restart-after-download prompt (Settings > Ogolne /
                               Aktualizacje)
-  app_update.py                 git fetch/pull based self-update check + download
-                              (Settings > Aktualizacje) -- pure Python, no tkinter
+  app_update.py                 GitHub-API/git-fetch based self-update check + fetch-
+                              and-fast-forward download, with OS-verified git-lock
+                              recovery (Settings > Aktualizacje) -- pure Python, no
+                              tkinter
+
+  ring_viz/                      the GPU renderer subprocess launched by rings_tab.py --
+                              kept in its own subpackage since it's a separate OS
+                              process, not additional widgets in the main Tk process;
+                              see "Ring visualization" above
+    renderer.py                  moderngl/GLFW render loop -- camera, HUD (on-canvas GL
+                              bitmap-font text, no native window-chrome dependency),
+                              audio wiring, CLI entrypoint (invoked via rings_tab.py's
+                              build_renderer_argv())
+    audio.py                     standalone tone-synthesis module (sine/triangle/
+                              square/sawtooth/bell/choir/mute) for the three
+                              independently assignable audio channels (low/prime/lcm)
+    window_mode.py                shared General Law theta/mode CLI parsing, used by
+                              both build_renderer_argv() and renderer.py itself so the
+                              two never drift out of sync
 
   shared infrastructure (used across many tabs, not feature-specific):
-  background.py                run_in_background()/PersistentWorker -- see "GUI module
-                              conventions" below
+  background.py                run_in_background()/PersistentWorker -- shared
+                              background-job helpers used by any tab that launches a
+                              one-shot call or a queue of same-kind jobs off the Tk
+                              main thread
   pdf_writer.py                 a minimal, dependency-free PDF writer (text, lines,
                               filled rects, basic pagination) shared by the Benchmark
                               tab's export and the Constellations Records table's export
@@ -623,6 +742,24 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               third-party CUDASieve GPU CLI as a separate OS process
                               (never linked, GPLv3 process boundary); see "The cudasieve
                               mode" above
+  hybrid_policy.py           Hybrid mode's parameter minimization (MAIN cap + filter
+                              count -> reachable limit), shared by the reach preview and
+                              the actual launch-time auto-fit; MAX_TARGET=10**11,
+                              MAX_FILTER=1_000_000 are its hard caps
+  hybrid_planner.py          pure extension-planning invariants (MAIN<=a, filter tuple
+                              over [b,c], N=b*d-1 correctness contract) -- no I/O
+  hybrid_reference.py        pure-Python reference tuple-filter sieve, PGS2-output-
+                              compatible -- the fallback used when the native backend
+                              below isn't built
+  hybrid_native.py           ctypes binding to hybrid_filter_engine.c's native tuple-
+                              filter backend (reuses v4's own segment-sieving primitive
+                              for the MAIN sieve)
+  hybrid_filter_engine.c     C tuple-filter sieve core for hybrid_native.py (ctypes)
+  hybrid_sieve.py            Hybrid mode's own launch/orchestration entrypoint --
+                              resolves the selected intent (a concrete n, "continue this
+                              floor", "fill this floor's first gap", or an explicit
+                              floor+window index) to exactly one canonical PGS2 window,
+                              then runs MAIN+filter over it; see "The Hybrid mode" above
   primesieve_query.py        one-shot standalone libprimesieve queries (count/nth/
                               next/prev primes) behind the Prime numbers tab's
                               primesieve calculator sub-tab -- independent of
@@ -648,94 +785,6 @@ Run_PrimeAtlas.bat           launches the GUI, visible console (errors surfaced 
 Run_PrimeAtlas_Hidden.vbs    launches the GUI with no console window
 ```
 
-### GUI module conventions
-
-`prime_atlas_v1.py` was a single ~10,500-line monolith through most of this project's
-history (one `PortalBrowserApp(tk.Tk)` class holding every tab's widgets, state, and
-event handlers together). The `refactor` branch (2026-08-23/24) split it tab by tab into
-the `primeatlas/*_tab.py` classes listed above, in order from smallest to largest, and
-shrank `prime_atlas_v1.py` itself down to ~1,700 lines. `refactor-phase2` (task #410,
-2026-08-26) and `refactor-phase3` (2026-08-27) continued past the tab split, pulling the
-remaining genuinely cross-tab ORCHESTRATION logic (not owned by any one tab) into its own
-small coordinator classes -- `TotalsSearchCoordinator`, `PrimesTreeCoordinator`,
-`ConstellationsTreeCoordinator`, `GenerationOfferCoordinator` (all four in
-`primeatlas/`, one file each) -- bringing `prime_atlas_v1.py` down to ~1,200 lines. The
-result is not yet a fully "clean" object-oriented architecture (see "Known gaps" below),
-but every GUI tab -- and now every cross-tab coordination concern -- is a properly
-encapsulated unit instead of a slice of one giant class:
-
-- **One `ttk.Frame` subclass per tab**, in its own file, constructed with explicit
-  dependency injection -- e.g. `GenerationTab(parent, get_portal_folder, status_var,
-  translator, totals_progress, reload_primes_tree, reload_constellations_tree,
-  research_goldbach_tab_widget)`. A tab class reads its own injected callables/values
-  (`self._get_portal_folder()`, `self.status`, `self.T`, ...) instead of reaching into
-  a shared app object -- the constructor signature IS the tab's declared dependency
-  list, readable without hunting through the method bodies. No tab class imports
-  `prime_atlas_v1` itself; the import direction is always `prime_atlas_v1.py -> tab
-  module`, never the reverse (this is what keeps every tab module independently
-  unit-testable and Xvfb-runnable in isolation -- see `unitTests/`).
-- **Pure-logic vs. UI split, by size.** A small, self-contained tab (Storage sub-tab,
-  primesieve calculator, primality tests, constellation calculator) keeps its handful
-  of non-UI functions in the SAME file as its widget class -- splitting a 300-line file
-  in two would just add an import for no real benefit. A larger tab (Generation,
-  Benchmark, Constellations, Research/Goldbach) splits into a `feature.py` with zero
-  tkinter imports (pure functions + a couple of small classes, e.g. `WslLoggedRunner`)
-  and a `feature_tab.py` that imports it and builds the widgets. The pure-logic half is
-  what `unitTests/test_generation_window_arithmetic.py` and friends exercise directly,
-  with no display needed at all.
-- **`prime_atlas_v1.py` is a composition root, not a dead file.** It still owns the
-  module-level globals every tab needs (`PORTAL_FOLDER`, `TRANSLATOR`/`T`,
-  `APP_SETTINGS`, `PAGE_SIZE`/`FLOOR_PAGE_SIZE`), the notebook/sub-notebook construction
-  and build order (`_build_primes_section` etc.), and a handful of genuine multi-tab
-  glue methods that reach into more than one sibling tab's widgets directly
-  (`_select_constellations_hits_view`, `_jump_records_detail_to_hits`,
-  `_on_const_search_result`, `_set_portal_folder`). Everything that used to be
-  cross-tab STATE + WORKER ownership -- the two shared `PersistentWorker`s (totals
-  cache, prime/constellation search), the Prime-numbers/Constellations background
-  tree-scan jobs, and the three "generate the missing data, then retry" methods -- now
-  lives in the four coordinator classes named above instead, constructed once in
-  `__init__` right after the tabs that need them exist, and reached via a handful of
-  one-line delegating methods (`reload_primes_tree()`,
-  `_offer_generate_missing_prime_window()`, ...) kept on `PortalBrowserApp` purely so
-  every existing caller keeps working unchanged. Its own `__init__` still builds tabs
-  in a fixed order specifically because `GenerationTab` needs `ResearchGoldbachTab` to
-  already exist (it's passed in directly, `research_goldbach_tab_widget=...`) -- see
-  the `loading_steps` tuple in `__init__` for the exact order if you're adding a tab
-  with its own cross-tab dependency.
-- **Reverse-direction coupling is explicit, not implicit.** `GenerationOfferCoordinator`
-  (`primeatlas/generation_offer_coordinator.py`) reaches INTO the Generation tab
-  widget's internals via a local alias, e.g. `gen = self._get_generation_tab_widget();
-  gen._quick_gen_plan_literal_range(...)` -- these are the only points in the whole app
-  where coordinator-level code touches a tab's otherwise-private (`_`-prefixed)
-  methods, and each such touch point is called out in both the caller's and the tab
-  class's own docstring.
-- **Background jobs** go through `primeatlas/background.py`: `run_in_background()` for
-  a one-shot call (fire a thread, poll for the result, done), `PersistentWorker` for a
-  tab that submits many jobs of the same kind over its lifetime (one daemon thread, one
-  queue, strictly in submission order). Every tab-specific worker is constructed inside
-  that tab's OWN `__init__` now (e.g. `PrimalityTab._primality_worker`) -- only the two
-  genuinely shared ones above stay on `PortalBrowserApp` itself.
-
-**Known gaps** (remaining candidates for further `refactor-phase3`+ work): all 9 tab
-classes subclass `primeatlas/base_tab.py`'s `BaseTab(ttk.Frame)`, which standardizes
-`__init__(self, parent, translator)` (`self.T = translator`) plus two helpers that were
-byte-for-byte duplicated across several tabs -- `_copy_to_clipboard(text)` and
-`_start_busy_progress()`/`_stop_busy_progress()` (the shared `totals_progress` bar's
-indeterminate-spin/reset cycle). Each tab's own constructor signature is still exactly
-as varied as it needs to be -- BaseTab only factors out the ONE thing every class
-shared, not a rigid shape every tab must fit. `PortalBrowserApp` is down to ~1,200 lines
-(from ~1,700 after the Faza 3 tab split, ~10,500 originally) after `refactor-phase2`/
-`refactor-phase3` pulled every shared-worker/background-scan/generation-offer concern
-into the four coordinator classes above -- it's no longer the single "God object" doing
-composition AND state/worker ownership AND reverse-coupling glue all at once, but it's
-still one class for composition (tab construction/build order) plus the handful of
-genuine multi-tab glue methods named above; whether splitting THOSE apart further is
-worth it depends on whether more such methods accumulate. The pure-logic backend
-modules (`generation.py`, `storage.py`, `benchmark.py`, `constellations.py`,
-`primality.py`, ...) are collections of free functions rather than classes -- a
-deliberate choice (easier to unit-test as pure functions than as stateful objects) but
-worth naming explicitly if "more object-oriented" is the goal for further phases.
-
 Generated data is stored under a folder named `CONSTELLATION_PORTAL` (the name predates
 and is independent of the application's own name). By default this folder is created
 next to `prime_atlas_v1.py`, so the application is self-contained regardless of where
@@ -756,6 +805,11 @@ GUI:
   Pollard's rho implementation. Installable from inside the app itself (Settings tab's
   optional-library installer, runs `pip install --user sympy` natively on Windows, no
   WSL involved).
+- For Ring visualization: `numpy`, `moderngl`, and `glfw`, installed into the same native
+  Windows Python that runs `prime_atlas_v1.py` (the renderer is launched as a plain
+  subprocess of that same interpreter, not through WSL). Optional: `sounddevice`, for the
+  tab's live audio -- without it, audio is silently unavailable with a clear message in
+  the console, never a crash.
 
 Generation pipeline (only needed to generate new data; browsing existing data needs
 only the GUI requirements above):
