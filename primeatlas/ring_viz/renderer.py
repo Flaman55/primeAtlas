@@ -143,7 +143,9 @@ override some other way.
 import argparse
 import json
 import os
+import queue
 import sys
+import threading
 import time
 
 import numpy as np
@@ -1234,6 +1236,45 @@ def emit_audio_tick(audio, active, hit_mask, tracked_state, advancing):
                                           and tracked_state.get('to_resonance') == 0))
 
 
+def start_stdin_command_reader():
+    """[ADDED Faza 13, see PLAN.md] Background daemon thread that blocks on
+    `sys.stdin.readline()` in a loop, pushing each stripped non-empty line
+    into a thread-safe queue.Queue the main GLFW loop polls NON-blockingly
+    (queue.get_nowait()) once per frame -- same producer/thread-consumer-
+    queue shape as generation.py's own LocalLoggedRunner._read_loop, just
+    the opposite direction (that one reads the subprocess's stdOUT into a
+    queue for Tkinter to drain; this one reads OUR stdIN, fed by
+    LocalLoggedRunner.send_line() on the Tkinter side, into a queue this
+    same process's own main loop drains).
+
+    When stdin hits EOF (the parent process died, or closed the pipe --
+    e.g. Tkinter's own process exiting without an explicit Reset first),
+    the special sentinel "__STDIN_CLOSED__" is pushed exactly once so the
+    main loop can tell "no command right now" (empty queue) apart from
+    "there will never be another command" (must not idle forever).
+
+    Only ever started when --pipe-stdin-commands is passed (see that
+    flag's own doc-comment) -- reading stdin at all when it's just an
+    inherited console (the flag OFF) would block forever on a real
+    terminal with nothing to read, hanging what should be a normal
+    Ctrl-C-able CLI run."""
+    q = queue.Queue()
+
+    def _loop():
+        try:
+            for line in sys.stdin:
+                cmd = line.strip()
+                if cmd:
+                    q.put(cmd)
+        except Exception:  # noqa: BLE001 -- must never crash this thread silently
+            pass
+        q.put("__STDIN_CLOSED__")
+
+    t = threading.Thread(target=_loop, daemon=True)
+    t.start()
+    return q
+
+
 def run(args):
     from primeatlas.ring_viz.audio import Instruments, LiveAudio
     audio = None
@@ -1738,6 +1779,13 @@ def _run_visualization(args, audio=None):
     # ALREADY 1 -- a plain `n != last_n` check would otherwise miss it).
     n_holder = {"n": n, "advancing": False, "force_rebuild": False}
 
+    # [ADDED Faza 13, see PLAN.md] Live pause/resume -- opt-in (see
+    # --pipe-stdin-commands's own doc-comment). command_queue is None when
+    # the flag is off, which the main loop's pause branch below treats as
+    # "no reader running" and skips entirely -- window-close behaves
+    # exactly as every earlier Faza (immediate real exit).
+    command_queue = start_stdin_command_reader() if args.pipe_stdin_commands else None
+
     def on_key(_window, key, _scancode, action, _mods):
         if action not in (glfw.PRESS, glfw.REPEAT):
             return
@@ -1836,6 +1884,48 @@ def _run_visualization(args, audio=None):
 
     while not glfw.window_should_close(window):
         glfw.poll_events()
+
+        # [ADDED Faza 13, see PLAN.md] Live pause/resume -- only reachable
+        # with command_queue set (--pipe-stdin-commands, see its own
+        # doc-comment). A window-close request (Esc, titlebar X, or an OS
+        # close) is intercepted HERE instead of being allowed to fall
+        # through to the loop's own exit condition: we cancel the close,
+        # hide the window, print a PAUSED marker line rings_tab.py's
+        # _poll_queue recognizes (mirrors the existing HUD_STATE: prefix
+        # convention), and idle -- still pumping the OS message loop via
+        # wait_events_timeout so Windows doesn't mark it "Not Responding",
+        # but doing zero rendering/audio work -- until either a "RESUME"
+        # line arrives (show the window again, print RESUMED, fall through
+        # to the normal frame below with everything -- n_holder, playback,
+        # audio state -- untouched since none of it was ever torn down) or
+        # stdin hits EOF (the __STDIN_CLOSED__ sentinel -- the Tkinter side
+        # is gone, e.g. an explicit Reset already called proc.terminate(),
+        # or Tkinter itself exited -- in which case there is no one left
+        # to send RESUME, so let the real exit happen by leaving
+        # window_should_close(window) True and breaking out of this
+        # sub-loop; the outer while's own condition then ends the process).
+        if command_queue is not None and glfw.window_should_close(window):
+            glfw.set_window_should_close(window, False)
+            glfw.hide_window(window)
+            print("RING_VIZ_PAUSED", flush=True)
+            paused = True
+            while paused:
+                glfw.wait_events_timeout(0.2)
+                try:
+                    while True:
+                        cmd = command_queue.get_nowait()
+                        if cmd == "RESUME":
+                            paused = False
+                        elif cmd == "__STDIN_CLOSED__":
+                            glfw.set_window_should_close(window, True)
+                            paused = False
+                except queue.Empty:
+                    pass
+            if glfw.window_should_close(window):
+                break
+            glfw.show_window(window)
+            print("RING_VIZ_RESUMED", flush=True)
+            continue
 
         # [ADDED Faza 10, see PLAN.md] Playback loop -- ports #tick's own
         # setTimeout(tempoMs)-based scheduling as a plain elapsed-time check
@@ -2051,6 +2141,20 @@ def main():
     parser.add_argument("--tempo-ms", type=int, default=_TEMPO_MS_DEFAULT,
                          help="playback speed in ms/tick, clamped to [30,2000] "
                               "(Space starts/stops playback, ]/[ adjust it live)")
+    # [ADDED Faza 13, see PLAN.md] Opt-in live pause/resume protocol -- OFF
+    # by default so running this file directly from a terminal (Artur's own
+    # manual testing, or anyone else's) behaves exactly as before: closing
+    # the window (Esc / titlebar X) really exits. Only rings_tab.py passes
+    # this flag, since it's the only caller that pipes stdin (see
+    # LocalLoggedRunner.send_line()) and can actually act on the PAUSED/
+    # RESUMED lines this prints -- see start_stdin_command_reader's own
+    # doc-comment for the full protocol.
+    parser.add_argument("--pipe-stdin-commands", action="store_true",
+                         help="read RESUME commands from stdin and, instead of "
+                              "exiting on window-close, hide the window and idle "
+                              "until one arrives (used by rings_tab.py for live "
+                              "pause/resume; harmless but pointless when running "
+                              "this file directly from a terminal)")
     args = parser.parse_args()
 
     if args.source == "magazyn" and not args.portal_folder:

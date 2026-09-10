@@ -355,6 +355,178 @@ def main():
           f"(got console text: {console_text2!r})")
     os.remove(fake_hud_script)
 
+    # --- [ADDED 2026-09-10] Start/Resume: a clean exit after a HUD_STATE line
+    # updates the N field to the last-seen N, so clicking the Start/Resume
+    # button again reopens right there instead of at whatever the field
+    # said at launch time (launched above with N=500, HUD_STATE said n=42).
+    check(tab._last_hud_n == 42,
+          f"the tab remembers the last N seen in a HUD_STATE line (got {tab._last_hud_n!r})")
+    check(tab.n_entry.get() == "42",
+          f"a clean process exit rewrites the N field to that last-seen N, powering "
+          f"resume on the next Start/Resume click (got {tab.n_entry.get()!r})")
+
+    # --- [ADDED 2026-09-10] Reset: discards the resume state and puts the N
+    # field back to the tab's own startup default, even while a process is
+    # still running (Reset is only enabled while running, same as the old
+    # Stop button it replaced).
+    fake_hud_script2 = _write_fake_renderer(0)
+    rings_tab_module.RENDERER_SCRIPT = fake_hud_script2
+    tab.n_entry.delete(0, "end")
+    tab.n_entry.insert(0, "777")
+    tab._on_open()
+    tab._last_hud_n = 999  # simulate a HUD_STATE line having arrived mid-run
+    tab._on_reset()
+    check(tab._last_hud_n is None,
+          "Reset discards the remembered resume N")
+    check(tab.n_entry.get() == "2",
+          f"Reset puts the N field back to the tab's own startup default, "
+          f"not the last-seen HUD N (got {tab.n_entry.get()!r})")
+    _pump(app, 3.0)
+    check(str(tab.open_button["state"]) == "normal",
+          "Reset also stops the running process, same as the old Stop button")
+    check(tab.n_entry.get() == "2",
+          "the process's own exit (triggered by Reset) does NOT re-apply a "
+          "stale last-seen N over Reset's own default -- _last_hud_n was "
+          "already None by the time the exit was processed")
+
+    # --- [ADDED 2026-09-10, Faza 13] Live pause/resume: a fake renderer that
+    # immediately reports itself paused (simulating the real renderer.py's
+    # own window-close interception -- see that file's own doc-comment on
+    # start_stdin_command_reader), then blocks on stdin until "RESUME"
+    # arrives, then reports resumed and exits cleanly. Exercises the actual
+    # stdin pipe end-to-end (LocalLoggedRunner.send_line -> the subprocess's
+    # own sys.stdin), not a mock -- same real-subprocess philosophy as the
+    # rest of this file (see module docstring).
+    # Deliberately sleeps a couple seconds AFTER printing RESUMED, rather than
+    # exiting right away -- otherwise, on a fast sandbox, the __exit__
+    # sentinel can land in the SAME _poll_queue drain batch as the
+    # RING_VIZ_RESUMED line (both process._read_loop and the OS process exit
+    # can outrun a single _pump() window), which would make the "resumed but
+    # still running" state below unobservable as a distinct moment.
+    fd, fake_pause_script = tempfile.mkstemp(suffix="_fake_renderer_pause.py")
+    with os.fdopen(fd, "w") as f:
+        f.write(
+            "import sys, time\n"
+            "print('fake renderer: ready')\n"
+            "print('RING_VIZ_PAUSED')\n"
+            "sys.stdout.flush()\n"
+            "for line in sys.stdin:\n"
+            "    if line.strip() == 'RESUME':\n"
+            "        print('RING_VIZ_RESUMED')\n"
+            "        sys.stdout.flush()\n"
+            "        time.sleep(3)\n"
+            "        break\n"
+            "sys.exit(0)\n"
+        )
+    rings_tab_module.RENDERER_SCRIPT = fake_pause_script
+    tab.n_entry.delete(0, "end")
+    tab.n_entry.insert(0, "321")
+    tab._on_open()
+    # [CHANGED 2026-09-10] Artur: "blokada powinna być uruchomiona już po
+    # otworciu okna" (the lock should already be active right after opening
+    # the window) -- checked BEFORE the first _pump() call below, i.e.
+    # before the process has even had a chance to report itself paused, to
+    # prove the lock isn't waiting on that signal at all.
+    check(str(tab.n_entry["state"]) == "disabled",
+          f"N field is locked immediately on launch, before any pause/resume "
+          f"signal arrives (got {tab.n_entry['state']!r})")
+    _pump(app, 1.5)
+    check(tab._paused is True,
+          f"_paused flips True once the RING_VIZ_PAUSED line is drained from the queue "
+          f"(got {tab._paused!r})")
+    check(str(tab.open_button["state"]) == "normal",
+          "open_button is re-enabled while paused, so Start/Resume is clickable again")
+    check(str(tab.stop_button["state"]) == "normal",
+          "stop_button STAYS enabled while paused -- Reset must still be able to kill "
+          "a paused (window-hidden, but very much alive) process")
+    check(tab.status.get() == tab.T("rings.status_paused"),
+          f"status bar shows the paused message (got {tab.status.get()!r})")
+    paused_runner = tab._runner
+    check(paused_runner is not None and paused_runner.is_running(),
+          "the OS process is still alive while paused -- pausing hides the window, it "
+          "does not exit the subprocess (that's the whole point of Faza 13)")
+
+    # [ADDED 2026-09-10] Every launch-time-only field must still read as
+    # disabled/readonly once paused -- editing them would silently do
+    # nothing until the NEXT fresh launch, which is exactly the misleading
+    # state Artur flagged ("sugeruje że zmiana ich coś zmieni"). Spot-check
+    # one widget from each of the three state-spelling groups rather than
+    # every single one -- _set_launch_params_readonly applies the same two
+    # states uniformly, so this is enough to catch a wiring mistake.
+    check(str(tab.n_entry["state"]) == "disabled",
+          f"N field is still read-only once paused (got {tab.n_entry['state']!r})")
+    check(str(tab._bertrand_check["state"]) == "disabled",
+          f"window-highlight checkboxes are still read-only once paused (got {tab._bertrand_check['state']!r})")
+    check(str(tab.general_law_mode_combo["state"]) == "disabled",
+          f"dropdowns are read-only (not just 'readonly') once paused "
+          f"(got {tab.general_law_mode_combo['state']!r})")
+
+    # Clicking Start/Resume while paused must send "RESUME" down the existing
+    # pipe, NOT launch a second subprocess.
+    tab._on_open()
+    check(tab._runner is paused_runner,
+          "clicking Start/Resume while paused reuses the SAME runner/process -- it "
+          "does not launch a brand new one (that would be the old bookmark-only "
+          "behavior this feature replaces)")
+    _pump(app, 1.5)
+    check(tab._paused is False,
+          f"_paused flips back False once the RING_VIZ_RESUMED line is drained "
+          f"(got {tab._paused!r})")
+    check(str(tab.open_button["state"]) == "disabled",
+          "open_button is disabled again once resumed (back to the normal "
+          "while-running state)")
+    check(tab.status.get() == tab.T("rings.status_running"),
+          f"status bar shows the running message after resume (got {tab.status.get()!r})")
+    # [CHANGED 2026-09-10] Artur: "odblokowane ustawienia dopiero po
+    # resecie" (fields unlock only after Reset) -- resuming is still not a
+    # fresh launch, so the fields stay LOCKED here, unlike the earlier
+    # (superseded) design where resume re-enabled them.
+    check(str(tab.n_entry["state"]) == "disabled",
+          f"N field STAYS locked after resume -- only Reset unlocks it "
+          f"(got {tab.n_entry['state']!r})")
+    check(str(tab._bertrand_check["state"]) == "disabled",
+          f"checkboxes STAY locked after resume too (got {tab._bertrand_check['state']!r})")
+    check(str(tab.general_law_mode_combo["state"]) == "disabled",
+          f"dropdowns STAY locked after resume too (got {tab.general_law_mode_combo['state']!r})")
+
+    # The fake script sleeps 3s after RESUMED, then exits -- confirm the
+    # normal __exit__ path still fires correctly afterwards, and that it
+    # leaves no stale _paused=True behind for the next launch. A real exit
+    # (crash, or the process ending on its own) is the one other case
+    # besides Reset that unlocks the fields -- there's genuinely no live
+    # process left afterward for them to (mis)represent.
+    _pump(app, 4.0)
+    check(str(tab.open_button["state"]) == "normal",
+          "open_button re-enabled once the (now-resumed) process actually exits")
+    check(str(tab.stop_button["state"]) == "disabled",
+          "stop_button disabled once the process actually exits")
+    check(tab._paused is False,
+          "_paused stays False after a real exit (no stale pause flag left behind "
+          "for the next Start/Resume click)")
+    check(str(tab.n_entry["state"]) == "normal",
+          f"fields unlock again once the process actually exits, same as Reset "
+          f"(got {tab.n_entry['state']!r})")
+
+    # [ADDED 2026-09-10] Reset must re-enable the fields IMMEDIATELY, not
+    # wait for the async __exit__ queue item -- launch fresh, let it pause,
+    # then Reset while still paused and check the fields are already
+    # editable before any _pump() call processes the exit.
+    rings_tab_module.RENDERER_SCRIPT = fake_pause_script
+    tab.n_entry.delete(0, "end")
+    tab.n_entry.insert(0, "654")
+    tab._on_open()
+    _pump(app, 1.5)
+    check(tab._paused is True, "sanity: paused again for the Reset-while-paused check")
+    check(str(tab.n_entry["state"]) == "disabled", "sanity: read-only again before Reset")
+    tab._on_reset()
+    check(str(tab.n_entry["state"]) == "normal",
+          "Reset re-enables the N field synchronously, without waiting for the "
+          "subprocess's own (async) exit to be drained from the queue")
+    check(str(tab._bertrand_check["state"]) == "normal",
+          "Reset re-enables checkboxes synchronously too")
+    _pump(app, 3.0)  # drain the exit so the next launch starts from a clean queue
+    os.remove(fake_pause_script)
+
     # --- failure path: real subprocess, fake renderer script, exit 1 ----------------
     fake_fail_script = _write_fake_renderer(1)
     rings_tab_module.RENDERER_SCRIPT = fake_fail_script

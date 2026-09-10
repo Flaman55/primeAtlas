@@ -52,12 +52,20 @@ RENDERER_SCRIPT = os.path.join(_THIS_DIR, "ring_viz", "renderer.py")
 # rename doesn't silently desync the two string literals.
 _HUD_STATE_PREFIX = "HUD_STATE:"
 
+# [ADDED 2026-09-10, Faza 13] Must match renderer.py's own two plain
+# print("RING_VIZ_PAUSED"/"RING_VIZ_RESUMED") lines exactly -- these are NOT
+# JSON payloads like _HUD_STATE_PREFIX, just bare sentinel lines, since
+# there's no data to carry, only a state transition to react to.
+_RING_VIZ_PAUSED_LINE = "RING_VIZ_PAUSED"
+_RING_VIZ_RESUMED_LINE = "RING_VIZ_RESUMED"
+
 
 def build_renderer_argv(portal_folder, upto, python_executable=None,
                          windows=(), general_law_theta=0.5, general_law_mode="stepped",
                          point_size=None, track_primes=(), auto_orbit=False, load_range=None,
                          hit_point_size=None, hud_font_size=None, audio=False,
-                         sound_low='sine', sound_prime='triangle', sound_lcm='choir'):
+                         sound_low='sine', sound_prime='triangle', sound_lcm='choir',
+                         pipe_stdin_commands=False):
     """Builds the argv for launching renderer.py against a real magazyn.
 
     Uses `python_executable` (defaults to sys.executable -- THIS SAME Python
@@ -151,6 +159,15 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
     if audio:
         argv += ['--audio', '--sound-low', sound_low, '--sound-prime', sound_prime,
                  '--sound-lcm', sound_lcm]
+    # [ADDED Faza 13, see PLAN.md] Opt-in ONLY when the caller is actually
+    # going to act on the RING_VIZ_PAUSED/RESUMED lines this makes
+    # renderer.py print (see that flag's own doc-comment there) --
+    # RingsTab._on_open is the one real caller and always passes True;
+    # False (default) keeps every existing pure-function test above byte-
+    # for-byte unchanged, and keeps a plain terminal invocation of this
+    # function's own CLI output copy-pasteable with no surprise behavior.
+    if pipe_stdin_commands:
+        argv += ["--pipe-stdin-commands"]
     return argv
 
 
@@ -162,6 +179,23 @@ class RingsTab(BaseTab):
         self.totals_progress = totals_progress
         self._runner = None
         self._queue = None
+        # [ADDED 2026-09-10] Last N seen in a HUD_STATE line from the most
+        # recently running process (see _apply_hud_state/_poll_queue below).
+        # Powers the "Uruchom / Wznów" (Start/Resume) button: when the GL
+        # window closes on its own (Esc, window-close control, or a crash)
+        # rather than via an explicit Reset click, the N field is updated to
+        # this value so the next launch reopens right where playback left
+        # off, instead of wherever the field happened to still say. Cleared
+        # by _on_reset, which is the one path that deliberately discards it.
+        self._last_hud_n = None
+        # [ADDED 2026-09-10, Faza 13] True while the running renderer.py
+        # process is alive but hidden/idling, waiting for a RESUME command
+        # (see _poll_queue's RING_VIZ_PAUSED/RESUMED handling below and
+        # renderer.py's own start_stdin_command_reader doc-comment for the
+        # full protocol). Distinct from "not running at all" -- open_button
+        # is re-enabled in BOTH cases, but only this one sends "RESUME"
+        # over stdin instead of launching a brand new subprocess.
+        self._paused = False
         self._build_ui()
 
     def _build_ui(self):
@@ -224,8 +258,9 @@ class RingsTab(BaseTab):
         audio_row = ttk.Frame(container)
         audio_row.pack(fill='x', pady=(0, 6))
         self.audio_enabled = tk.BooleanVar(value=False)
-        ttk.Checkbutton(audio_row, text=self.T('rings.audio_enable'),
-                        variable=self.audio_enabled).pack(side='left')
+        self._audio_enable_check = ttk.Checkbutton(audio_row, text=self.T('rings.audio_enable'),
+                                                     variable=self.audio_enabled)
+        self._audio_enable_check.pack(side='left')
         self.audio_choices = {}
         for channel, default in (('low', 'sine'), ('prime', 'triangle'), ('lcm', 'choir')):
             ttk.Label(audio_row, text=self.T('rings.sound_' + channel)).pack(side='left', padx=(8, 3))
@@ -244,14 +279,17 @@ class RingsTab(BaseTab):
         windows_row.pack(fill="x", pady=(0, 6))
         ttk.Label(windows_row, text=self.T("rings.windows_label")).pack(side="left")
         self.bertrand_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(windows_row, text=self.T("rings.window_bertrand"),
-                         variable=self.bertrand_var).pack(side="left", padx=(6, 0))
+        self._bertrand_check = ttk.Checkbutton(windows_row, text=self.T("rings.window_bertrand"),
+                                                 variable=self.bertrand_var)
+        self._bertrand_check.pack(side="left", padx=(6, 0))
         self.legendre_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(windows_row, text=self.T("rings.window_legendre"),
-                         variable=self.legendre_var).pack(side="left", padx=(6, 0))
+        self._legendre_check = ttk.Checkbutton(windows_row, text=self.T("rings.window_legendre"),
+                                                 variable=self.legendre_var)
+        self._legendre_check.pack(side="left", padx=(6, 0))
         self.general_law_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(windows_row, text=self.T("rings.window_general_law"),
-                         variable=self.general_law_var).pack(side="left", padx=(6, 0))
+        self._general_law_check = ttk.Checkbutton(windows_row, text=self.T("rings.window_general_law"),
+                                                     variable=self.general_law_var)
+        self._general_law_check.pack(side="left", padx=(6, 0))
 
         general_law_row = ttk.Frame(container)
         general_law_row.pack(fill="x", pady=(0, 10))
@@ -281,8 +319,9 @@ class RingsTab(BaseTab):
         self.track_primes_entry = ttk.Entry(track_row, width=20)
         self.track_primes_entry.pack(side="left", padx=(6, 16))
         self.auto_orbit_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(track_row, text=self.T("rings.auto_orbit_label"),
-                         variable=self.auto_orbit_var).pack(side="left")
+        self._auto_orbit_check = ttk.Checkbutton(track_row, text=self.T("rings.auto_orbit_label"),
+                                                   variable=self.auto_orbit_var)
+        self._auto_orbit_check.pack(side="left")
 
         # [ADDED Faza 9, see PLAN.md] Load Range -- From/To fields, launch-time
         # only (same convention as every other field on this tab: read once by
@@ -301,13 +340,23 @@ class RingsTab(BaseTab):
         self.load_range_to_entry = ttk.Entry(range_row, width=16)
         self.load_range_to_entry.pack(side="left", padx=(6, 0))
 
+        # [RELABELED 2026-09-10] These two buttons keep their original
+        # attribute names (open_button/stop_button -- unchanged, so
+        # test_rings_tab.py's state checks keep working) and _on_open's own
+        # launch logic is untouched, but their labels/semantics now read as
+        # Start/Resume and Reset -- see _on_reset's and __init__'s own
+        # doc-comments for how the resume half works (short version: the N
+        # field gets silently updated to the last live N whenever the GL
+        # window closes on its own, so clicking this button again reopens
+        # right there; Reset is the one path that discards that and puts
+        # the field back to the tab's own startup default instead).
         button_row = ttk.Frame(container)
         button_row.pack(fill="x", pady=(0, 10))
         self.open_button = ttk.Button(button_row, text=self.T("rings.open_button"),
                                        command=self._on_open)
         self.open_button.pack(side="left")
         self.stop_button = ttk.Button(button_row, text=self.T("rings.stop_button"),
-                                       command=self._on_stop, state="disabled")
+                                       command=self._on_reset, state="disabled")
         self.stop_button.pack(side="left", padx=(6, 0))
 
         # [ADDED Faza 11, see PLAN.md] Always-current HUD status panel --
@@ -331,6 +380,54 @@ class RingsTab(BaseTab):
         self.console = GenerationConsole(container, self.T, height=14,
                                           window_title=self.T("rings.console_title"))
 
+        # [ADDED 2026-09-10, Faza 13] Every field below is read ONCE, at
+        # _on_open's launch-time argv build -- see build_renderer_argv's own
+        # doc-comment. While the process is paused-and-resumable
+        # (self._paused, see _set_launch_params_readonly's own doc-comment),
+        # editing any of them would silently do nothing until the NEXT fresh
+        # launch, which is exactly the kind of "changing this looks like it
+        # should matter" trap Artur flagged. Split into two groups because
+        # ttk widgets don't share one disabled-state spelling: entries/
+        # checkbuttons use "normal"/"disabled", comboboxes use "readonly"
+        # (their own normal state here, since they're never free-text) vs
+        # "disabled".
+        self._launch_param_entries = [
+            self.n_entry, self.point_size_entry, self.hit_point_size_entry,
+            self.hud_font_size_entry, self.general_law_theta_entry,
+            self.track_primes_entry, self.load_range_from_entry, self.load_range_to_entry,
+        ]
+        self._launch_param_checkbuttons = [
+            self._audio_enable_check, self._bertrand_check, self._legendre_check,
+            self._general_law_check, self._auto_orbit_check,
+        ]
+        self._launch_param_dropdowns = [
+            self.general_law_mode_combo,
+            self.audio_choices['low'], self.audio_choices['prime'], self.audio_choices['lcm'],
+        ]
+
+    def _set_launch_params_readonly(self, readonly):
+        """[ADDED 2026-09-10, Faza 13] Toggles every launch-time-only field
+        (N, point sizes, window-highlight checkboxes, Track P, Load Range,
+        audio instrument pickers, ...) between editable and read-only.
+        Called with readonly=True the moment the process reports itself
+        paused (RING_VIZ_PAUSED, see _poll_queue below) -- while paused, the
+        Start/Resume button sends RESUME instead of relaunching, so these
+        fields would no longer feed anything even though they still LOOK
+        live and editable (Artur, 2026-09-10: "sugeruje że zmiana ich coś
+        zmieni, a to jest używane tylko przy uruchomieniu"). Called with
+        readonly=False on RING_VIZ_RESUMED, on Reset, and on any real
+        process exit, so the fields are always editable again the instant a
+        fresh launch (not a resume) is what the next Start/Resume click
+        will actually do."""
+        entry_state = "disabled" if readonly else "normal"
+        for entry in self._launch_param_entries:
+            entry.configure(state=entry_state)
+        for check in self._launch_param_checkbuttons:
+            check.configure(state=entry_state)
+        dropdown_state = "disabled" if readonly else "readonly"
+        for dropdown in self._launch_param_dropdowns:
+            dropdown.configure(state=dropdown_state)
+
     def _on_n_changed(self, _event=None):
         """Live floor hint next to the N field -- purely informational (which
         10p{N} floor this N would fall in, via the SAME digit_count_floor()
@@ -348,6 +445,18 @@ class RingsTab(BaseTab):
         self.n_hint_var.set(self.T("rings.hint_floor", floor=floor))
 
     def _on_open(self):
+        # [ADDED 2026-09-10, Faza 13] Live resume path: the process never
+        # actually exited, it's just idling with its window hidden (see
+        # renderer.py's own PAUSE/RESUME protocol) -- send it a command
+        # instead of launching a brand new one, so N, playback state,
+        # tempo, LCM cache, and (the whole point) audio all continue
+        # exactly as they were, with zero discontinuity. is_running() is
+        # still True here (the OS process never died), which is exactly
+        # why self._paused is tracked as its own flag rather than reusing
+        # that check.
+        if self._runner is not None and self._paused:
+            self._runner.send_line("RESUME")
+            return
         if self._runner is not None and self._runner.is_running():
             return
         raw = self.n_entry.get().strip()
@@ -435,13 +544,29 @@ class RingsTab(BaseTab):
                                     audio=self.audio_enabled.get(),
                                     sound_low=INSTRUMENTS[self.audio_choices['low'].current()],
                                     sound_prime=INSTRUMENTS[self.audio_choices['prime'].current()],
-                                    sound_lcm=INSTRUMENTS[self.audio_choices['lcm'].current()])
+                                    sound_lcm=INSTRUMENTS[self.audio_choices['lcm'].current()],
+                                    pipe_stdin_commands=True)
         q = queue.Queue()
-        runner = LocalLoggedRunner(argv, q)
+        # [ADDED 2026-09-10, Faza 13] pipe_stdin=True so send_line("RESUME")
+        # further down (and in _on_open's own live-resume branch above) has
+        # an actual pipe to write to -- see LocalLoggedRunner's own
+        # doc-comment for why this is opt-in rather than the default.
+        runner = LocalLoggedRunner(argv, q, pipe_stdin=True)
         self._runner = runner
         self._queue = q
+        self._paused = False
         self.open_button.configure(state="disabled")
         self.stop_button.configure(state="normal")
+        # [CHANGED 2026-09-10] Lock the launch-time-only fields the moment a
+        # process is actually launched, not only once it's paused -- Artur:
+        # "blokada powinna być uruchomiona już po otworciu okna" (the block
+        # should already be active right after opening the window). They now
+        # stay locked through running AND paused AND resumed -- Reset is the
+        # only path that unlocks them again (see _on_reset), aside from the
+        # process dying on its own (see _poll_queue's __exit__ branch, which
+        # is the one other case where there's genuinely no live process left
+        # to protect these fields' meaning against).
+        self._set_launch_params_readonly(True)
         self.console.show()
         self.console.append(self.T("rings.console_launching", n=f"{n:,}") + "\n")
         self.status.set(self.T("rings.status_launching"))
@@ -453,14 +578,34 @@ class RingsTab(BaseTab):
         runner.start()
         self._poll_queue()
 
-    def _on_stop(self):
-        """Best-effort: closes the GL window's own process. The user can also
-        just close the GL window directly (Esc, or the window's own close
-        control) -- either path ends up here via _poll_queue's own
-        __exit__ handling, since LocalLoggedRunner's queue reports the
-        process ending either way, not just when THIS button caused it."""
+    def _on_reset(self):
+        """[RENAMED from _on_stop, 2026-09-10] Closes the GL window's own
+        process, same as before -- but ALSO discards the resume state
+        (_last_hud_n) and puts the N field back to its own startup default,
+        which is what distinguishes an explicit Reset click from just
+        closing the GL window yourself (Esc / the window's own close
+        control): a plain close is handled by _poll_queue's own __exit__
+        branch below, which treats it as an implicit pause and preserves
+        the last-seen N for the Start/Resume button; THIS path means the
+        user asked to throw that away and start clean next time."""
         if self._runner is not None:
             self._runner.stop()
+        self._last_hud_n = None
+        # [ADDED 2026-09-10, Faza 13] terminate() kills the OS process
+        # outright regardless of whether it's currently idling in the
+        # hidden-window pause loop or actively rendering -- no special-
+        # casing needed there -- but the Tkinter-side _paused flag is only
+        # ever cleared by a RING_VIZ_RESUMED line, which will never arrive
+        # for a process we just killed, so it must be reset explicitly here.
+        self._paused = False
+        # Don't wait for the async __exit__ queue item to re-enable these --
+        # Reset is a deliberate "I'm done with this run" click, so the
+        # fields should read as editable again immediately, not lag a poll
+        # cycle behind terminate()'s own OS-level kill.
+        self._set_launch_params_readonly(False)
+        self.n_entry.delete(0, "end")
+        self.n_entry.insert(0, "2")
+        self._on_n_changed()
 
     def _poll_queue(self):
         if self._queue is None:
@@ -470,14 +615,39 @@ class RingsTab(BaseTab):
                 item = self._queue.get_nowait()
                 if isinstance(item, tuple) and item and item[0] == "__exit__":
                     code = item[1]
+                    # [ADDED 2026-09-10, Faza 13] The process is actually
+                    # gone now (proc.wait() returned), whether it was paused
+                    # or not -- clear the flag so a later _on_open never
+                    # mistakes a brand-new launch for a resume.
+                    self._paused = False
                     self.open_button.configure(state="normal")
                     self.stop_button.configure(state="disabled")
+                    # A real exit always means the fields are editable again
+                    # -- covers both "exited while paused" (readonly was
+                    # True) and the ordinary running-then-exits case (already
+                    # editable, this is just a harmless no-op then).
+                    self._set_launch_params_readonly(False)
                     if code == 0:
                         self.console.append(self.T("rings.console_closed_ok") + "\n")
                         self.status.set(self.T("rings.status_closed"))
                     else:
                         self.console.append(self.T("rings.console_closed_error", code=code) + "\n")
                         self.status.set(self.T("rings.status_error"))
+                    # [ADDED 2026-09-10] Implicit-pause resume: this branch
+                    # fires whether the process ended by itself (Esc / the
+                    # GL window's own close control / a crash) or via the
+                    # Reset button (_on_reset) -- but _on_reset already
+                    # cleared _last_hud_n to None BEFORE calling
+                    # runner.stop(), so it always reads None here and this
+                    # is a no-op on that path. Any other exit means the user
+                    # didn't explicitly ask to discard progress, so drop the
+                    # last N seen in a HUD_STATE line into the N field --
+                    # the Start/Resume button's next click reopens right
+                    # there instead of at whatever the field last said.
+                    if self._last_hud_n is not None:
+                        self.n_entry.delete(0, "end")
+                        self.n_entry.insert(0, str(self._last_hud_n))
+                        self._on_n_changed()
                     self._runner = None
                     self._queue = None
                     return
@@ -492,6 +662,35 @@ class RingsTab(BaseTab):
                 # the scrolling console -- a raw JSON blob in the log
                 # would just be noise next to the human-readable HUD
                 # lines that already print alongside it.
+                # [ADDED 2026-09-10, Faza 13] The process is idling with its
+                # window hidden, not exiting -- so this does NOT go through
+                # the __exit__ branch above (the OS process is still alive,
+                # LocalLoggedRunner's _read_loop only puts __exit__ once
+                # proc.wait() actually returns). open_button is re-enabled so
+                # Start/Resume becomes clickable again, but stop_button stays
+                # enabled too since Reset must still be able to kill a paused
+                # process (LocalLoggedRunner.stop()'s terminate() call works
+                # regardless of what the subprocess's Python code is doing).
+                if item.strip() == _RING_VIZ_PAUSED_LINE:
+                    self._paused = True
+                    self.open_button.configure(state="normal")
+                    self.status.set(self.T("rings.status_paused"))
+                    self.console.append(self.T("rings.console_paused") + "\n")
+                    # [CHANGED 2026-09-10] No _set_launch_params_readonly()
+                    # call here anymore -- the fields were already locked
+                    # back at _on_open's initial launch (see there), and
+                    # pausing doesn't change that.
+                    continue
+                if item.strip() == _RING_VIZ_RESUMED_LINE:
+                    self._paused = False
+                    self.open_button.configure(state="disabled")
+                    self.status.set(self.T("rings.status_running"))
+                    self.console.append(self.T("rings.console_resumed") + "\n")
+                    # [CHANGED 2026-09-10] Deliberately NOT re-enabling the
+                    # fields here -- Artur: "odblokowane ustawienia dopiero
+                    # po resecie" (fields unlock only after Reset). Resuming
+                    # is still not a fresh launch, so they stay locked.
+                    continue
                 if item.startswith(_HUD_STATE_PREFIX):
                     self._apply_hud_state(item[len(_HUD_STATE_PREFIX):])
                     continue
@@ -512,6 +711,11 @@ class RingsTab(BaseTab):
         except (ValueError, TypeError):
             return
         n = data.get("n", 0)
+        # [ADDED 2026-09-10] Track the current N for the Start/Resume button
+        # -- see __init__'s own doc-comment on _last_hud_n and _poll_queue's
+        # __exit__ branch, which is what actually reads this back into the
+        # N field once the process ends.
+        self._last_hud_n = n
         count = data.get("count", 0)
         rebuild_ms = data.get("rebuild_ms", 0.0)
         running = data.get("running", False)
