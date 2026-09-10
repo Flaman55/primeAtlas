@@ -162,6 +162,15 @@ class RingsTab(BaseTab):
         self.totals_progress = totals_progress
         self._runner = None
         self._queue = None
+        # [ADDED 2026-09-10] Last N seen in a HUD_STATE line from the most
+        # recently running process (see _apply_hud_state/_poll_queue below).
+        # Powers the "Uruchom / Wznów" (Start/Resume) button: when the GL
+        # window closes on its own (Esc, window-close control, or a crash)
+        # rather than via an explicit Reset click, the N field is updated to
+        # this value so the next launch reopens right where playback left
+        # off, instead of wherever the field happened to still say. Cleared
+        # by _on_reset, which is the one path that deliberately discards it.
+        self._last_hud_n = None
         self._build_ui()
 
     def _build_ui(self):
@@ -301,13 +310,23 @@ class RingsTab(BaseTab):
         self.load_range_to_entry = ttk.Entry(range_row, width=16)
         self.load_range_to_entry.pack(side="left", padx=(6, 0))
 
+        # [RELABELED 2026-09-10] These two buttons keep their original
+        # attribute names (open_button/stop_button -- unchanged, so
+        # test_rings_tab.py's state checks keep working) and _on_open's own
+        # launch logic is untouched, but their labels/semantics now read as
+        # Start/Resume and Reset -- see _on_reset's and __init__'s own
+        # doc-comments for how the resume half works (short version: the N
+        # field gets silently updated to the last live N whenever the GL
+        # window closes on its own, so clicking this button again reopens
+        # right there; Reset is the one path that discards that and puts
+        # the field back to the tab's own startup default instead).
         button_row = ttk.Frame(container)
         button_row.pack(fill="x", pady=(0, 10))
         self.open_button = ttk.Button(button_row, text=self.T("rings.open_button"),
                                        command=self._on_open)
         self.open_button.pack(side="left")
         self.stop_button = ttk.Button(button_row, text=self.T("rings.stop_button"),
-                                       command=self._on_stop, state="disabled")
+                                       command=self._on_reset, state="disabled")
         self.stop_button.pack(side="left", padx=(6, 0))
 
         # [ADDED Faza 11, see PLAN.md] Always-current HUD status panel --
@@ -453,14 +472,22 @@ class RingsTab(BaseTab):
         runner.start()
         self._poll_queue()
 
-    def _on_stop(self):
-        """Best-effort: closes the GL window's own process. The user can also
-        just close the GL window directly (Esc, or the window's own close
-        control) -- either path ends up here via _poll_queue's own
-        __exit__ handling, since LocalLoggedRunner's queue reports the
-        process ending either way, not just when THIS button caused it."""
+    def _on_reset(self):
+        """[RENAMED from _on_stop, 2026-09-10] Closes the GL window's own
+        process, same as before -- but ALSO discards the resume state
+        (_last_hud_n) and puts the N field back to its own startup default,
+        which is what distinguishes an explicit Reset click from just
+        closing the GL window yourself (Esc / the window's own close
+        control): a plain close is handled by _poll_queue's own __exit__
+        branch below, which treats it as an implicit pause and preserves
+        the last-seen N for the Start/Resume button; THIS path means the
+        user asked to throw that away and start clean next time."""
         if self._runner is not None:
             self._runner.stop()
+        self._last_hud_n = None
+        self.n_entry.delete(0, "end")
+        self.n_entry.insert(0, "2")
+        self._on_n_changed()
 
     def _poll_queue(self):
         if self._queue is None:
@@ -478,6 +505,21 @@ class RingsTab(BaseTab):
                     else:
                         self.console.append(self.T("rings.console_closed_error", code=code) + "\n")
                         self.status.set(self.T("rings.status_error"))
+                    # [ADDED 2026-09-10] Implicit-pause resume: this branch
+                    # fires whether the process ended by itself (Esc / the
+                    # GL window's own close control / a crash) or via the
+                    # Reset button (_on_reset) -- but _on_reset already
+                    # cleared _last_hud_n to None BEFORE calling
+                    # runner.stop(), so it always reads None here and this
+                    # is a no-op on that path. Any other exit means the user
+                    # didn't explicitly ask to discard progress, so drop the
+                    # last N seen in a HUD_STATE line into the N field --
+                    # the Start/Resume button's next click reopens right
+                    # there instead of at whatever the field last said.
+                    if self._last_hud_n is not None:
+                        self.n_entry.delete(0, "end")
+                        self.n_entry.insert(0, str(self._last_hud_n))
+                        self._on_n_changed()
                     self._runner = None
                     self._queue = None
                     return
@@ -512,6 +554,11 @@ class RingsTab(BaseTab):
         except (ValueError, TypeError):
             return
         n = data.get("n", 0)
+        # [ADDED 2026-09-10] Track the current N for the Start/Resume button
+        # -- see __init__'s own doc-comment on _last_hud_n and _poll_queue's
+        # __exit__ branch, which is what actually reads this back into the
+        # N field once the process ends.
+        self._last_hud_n = n
         count = data.get("count", 0)
         rebuild_ms = data.get("rebuild_ms", 0.0)
         running = data.get("running", False)

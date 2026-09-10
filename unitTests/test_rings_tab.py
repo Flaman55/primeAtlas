@@ -355,6 +355,40 @@ def main():
           f"(got console text: {console_text2!r})")
     os.remove(fake_hud_script)
 
+    # --- [ADDED 2026-09-10] Start/Resume: a clean exit after a HUD_STATE line
+    # updates the N field to the last-seen N, so clicking the Start/Resume
+    # button again reopens right there instead of at whatever the field
+    # said at launch time (launched above with N=500, HUD_STATE said n=42).
+    check(tab._last_hud_n == 42,
+          f"the tab remembers the last N seen in a HUD_STATE line (got {tab._last_hud_n!r})")
+    check(tab.n_entry.get() == "42",
+          f"a clean process exit rewrites the N field to that last-seen N, powering "
+          f"resume on the next Start/Resume click (got {tab.n_entry.get()!r})")
+
+    # --- [ADDED 2026-09-10] Reset: discards the resume state and puts the N
+    # field back to the tab's own startup default, even while a process is
+    # still running (Reset is only enabled while running, same as the old
+    # Stop button it replaced).
+    fake_hud_script2 = _write_fake_renderer(0)
+    rings_tab_module.RENDERER_SCRIPT = fake_hud_script2
+    tab.n_entry.delete(0, "end")
+    tab.n_entry.insert(0, "777")
+    tab._on_open()
+    tab._last_hud_n = 999  # simulate a HUD_STATE line having arrived mid-run
+    tab._on_reset()
+    check(tab._last_hud_n is None,
+          "Reset discards the remembered resume N")
+    check(tab.n_entry.get() == "2",
+          f"Reset puts the N field back to the tab's own startup default, "
+          f"not the last-seen HUD N (got {tab.n_entry.get()!r})")
+    _pump(app, 3.0)
+    check(str(tab.open_button["state"]) == "normal",
+          "Reset also stops the running process, same as the old Stop button")
+    check(tab.n_entry.get() == "2",
+          "the process's own exit (triggered by Reset) does NOT re-apply a "
+          "stale last-seen N over Reset's own default -- _last_hud_n was "
+          "already None by the time the exit was processed")
+
     # --- failure path: real subprocess, fake renderer script, exit 1 ----------------
     fake_fail_script = _write_fake_renderer(1)
     rings_tab_module.RENDERER_SCRIPT = fake_fail_script
