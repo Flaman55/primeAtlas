@@ -386,11 +386,13 @@ class SettingsTab(BaseTab):
         self._offer_restart_after_update()
 
     def _offer_restart_after_update(self):
-        """After a successful `git pull`, the new code is on disk but not yet running --
+        """After a successful update (fetch + fast-forward via app_update.download_update()
+        -- see that module's docstring for the fetch/merge-base/merge sequence and its
+        2026-09-10 lock-recovery follow-up), the new code is on disk but not yet running --
         same "process needs replacing" situation _restart_now_or_warn() handles for
         theme/language, so this reuses _has_running_job()/restart_app() directly rather
         than duplicating that safety check. Unlike the theme/language case, this ALWAYS
-        asks first (even when restarting right now would be perfectly safe) -- a git pull
+        asks first (even when restarting right now would be perfectly safe) -- an update
         can touch far more of the app than a theme swap, so a silent auto-restart here
         would be more surprising than helpful, regardless of the auto_update_download
         setting (that setting only governs skipping the DOWNLOAD prompt, not this one)."""
@@ -2643,10 +2645,13 @@ class SettingsTab(BaseTab):
 
         # PrimeAtlas's own self-update (task #524) -- checks GitHub (via `git fetch`
         # against this checkout's own `origin` remote) for newer commits on main and, on
-        # request, applies them with `git pull --ff-only` -- see primeatlas/app_update.py's
-        # own module docstring for why this reuses git directly instead of a separate
-        # release/version-number scheme. Was a stated future addition (Artur, 2026-08-17:
-        # "w przyszlosci aktualizacja atlasu ale nie teraz") -- built now (2026-09-02).
+        # request, applies them by fetching and fast-forwarding (`git merge --ff-only`,
+        # with proactive/automatic recovery from leftover git lock files -- see
+        # primeatlas/app_update.py's own module docstring, including its 2026-09-10
+        # follow-ups, for the full fetch/merge-base/merge sequence and why this reuses git
+        # directly instead of a separate release/version-number scheme). Was a stated
+        # future addition (Artur, 2026-08-17: "w przyszlosci aktualizacja atlasu ale nie
+        # teraz") -- built now (2026-09-02).
         app_update_frame = ttk.Labelframe(outer, text=self.T("settings.app_update_frame"))
         app_update_frame.pack(fill="x", pady=(0, 8))
         ttk.Label(app_update_frame, text=self.T("settings.app_update_hint"),
