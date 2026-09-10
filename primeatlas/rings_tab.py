@@ -40,6 +40,7 @@ from .base_tab import BaseTab
 from .generation import LocalLoggedRunner, _eval_quick_number
 from .generation_console import GenerationConsole
 from . import storage
+from .ring_viz.audio import INSTRUMENTS
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 RENDERER_SCRIPT = os.path.join(_THIS_DIR, "ring_viz", "renderer.py")
@@ -55,7 +56,8 @@ _HUD_STATE_PREFIX = "HUD_STATE:"
 def build_renderer_argv(portal_folder, upto, python_executable=None,
                          windows=(), general_law_theta=0.5, general_law_mode="stepped",
                          point_size=None, track_primes=(), auto_orbit=False, load_range=None,
-                         hit_point_size=None, hud_font_size=None):
+                         hit_point_size=None, hud_font_size=None, audio=False,
+                         sound_low='sine', sound_prime='triangle', sound_lcm='choir'):
     """Builds the argv for launching renderer.py against a real magazyn.
 
     Uses `python_executable` (defaults to sys.executable -- THIS SAME Python
@@ -146,6 +148,9 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
     if load_range is not None:
         load_from, load_to = load_range
         argv += ["--load-range", f"{load_from},{load_to}"]
+    if audio:
+        argv += ['--audio', '--sound-low', sound_low, '--sound-prime', sound_prime,
+                 '--sound-lcm', sound_lcm]
     return argv
 
 
@@ -210,6 +215,20 @@ class RingsTab(BaseTab):
         self.hud_font_size_entry = ttk.Entry(hud_font_size_row, width=8)
         self.hud_font_size_entry.insert(0, "35")
         self.hud_font_size_entry.pack(side="left", padx=(6, 0))
+        audio_row = ttk.Frame(container)
+        audio_row.pack(fill='x', pady=(0, 6))
+        self.audio_enabled = tk.BooleanVar(value=False)
+        ttk.Checkbutton(audio_row, text=self.T('rings.audio_enable'),
+                        variable=self.audio_enabled).pack(side='left')
+        self.audio_choices = {}
+        for channel, default in (('low', 'sine'), ('prime', 'triangle'), ('lcm', 'choir')):
+            ttk.Label(audio_row, text=self.T('rings.sound_' + channel)).pack(side='left', padx=(8, 3))
+            choice = ttk.Combobox(audio_row, state='readonly', width=11,
+                                 values=[self.T('rings.instrument_' + name) for name in INSTRUMENTS])
+            choice.current(INSTRUMENTS.index(default))
+            choice.pack(side='left')
+            self.audio_choices[channel] = choice
+        ttk.Label(container, text=self.T('rings.audio_hint')).pack(anchor='w', pady=(0, 6))
 
         # [ADDED Faza 4, see PLAN.md] Window-highlight-family checkboxes --
         # chosen once here, at launch time, and passed as --windows to
@@ -406,7 +425,11 @@ class RingsTab(BaseTab):
                                     track_primes=track_primes, auto_orbit=auto_orbit,
                                     load_range=load_range,
                                     hit_point_size=hit_point_size,
-                                    hud_font_size=hud_font_size)
+                                    hud_font_size=hud_font_size,
+                                    audio=self.audio_enabled.get(),
+                                    sound_low=INSTRUMENTS[self.audio_choices['low'].current()],
+                                    sound_prime=INSTRUMENTS[self.audio_choices['prime'].current()],
+                                    sound_lcm=INSTRUMENTS[self.audio_choices['lcm'].current()])
         q = queue.Queue()
         runner = LocalLoggedRunner(argv, q)
         self._runner = runner

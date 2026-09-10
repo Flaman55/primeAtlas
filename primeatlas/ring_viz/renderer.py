@@ -1222,7 +1222,38 @@ def hud_quad_vertex_data(width, height, x=_HUD_ANCHOR_X, y=_HUD_ANCHOR_Y):
     ], dtype=np.float32)
 
 
+def emit_audio_tick(audio, active, hit_mask, tracked_state, advancing):
+    """Reuse computed hit/HUD state; inspect only the audible index prefix."""
+    if audio is None or not advancing:
+        return
+    # After the 15 reference pitches, frequency = 130 + index*40.
+    limit = max(15, int(np.ceil((audio.mixer.sample_rate/2 - 130)/40)))
+    indices = np.flatnonzero(hit_mask[:limit])
+    audio.on_frame(((int(i), int(active[i])) for i in indices), advancing=True,
+                   tracked_resonance=bool(tracked_state and not tracked_state.get('too_large')
+                                          and tracked_state.get('to_resonance') == 0))
+
+
 def run(args):
+    from primeatlas.ring_viz.audio import Instruments, LiveAudio
+    audio = None
+    try:
+        if getattr(args, 'audio', False):
+            audio = LiveAudio(Instruments(args.sound_low, args.sound_prime, args.sound_lcm))
+            if not audio.start():
+                print(f'AUDIO: unavailable: {audio.error}. Install sounddevice in this Python '
+                      'or check the output device; visualization continues without sound.', flush=True)
+                audio.close()
+                audio = None
+            else:
+                print('AUDIO: enabled (8 voices maximum; sound on advancing ticks)', flush=True)
+        return _run_visualization(args, audio)
+    finally:
+        if audio is not None:
+            audio.close()
+
+
+def _run_visualization(args, audio=None):
     import glfw
     import moderngl
 
@@ -1547,6 +1578,7 @@ def run(args):
         # return null` guard), so the explicit `if auto_orbit` branch Faza 6
         # had here is gone; there is nothing left for it to skip.
         tracked_state = tracked_resonance_state(track_primes, active, n_value, auto_orbit=auto_orbit)
+        emit_audio_tick(audio, active, pos['is_hit'], tracked_state, advancing)
         current_hud_lines = hud_lines_for_n(active, n_value, pos, enabled_ids, theta, law_mode, tracked_state)
         for line in current_hud_lines:
             print(line)
@@ -1951,7 +1983,12 @@ def run(args):
 
 
 def main():
+    from primeatlas.ring_viz.audio import INSTRUMENTS
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('--audio', action='store_true', help='enable optional live sound (requires sounddevice)')
+    parser.add_argument('--sound-low', choices=INSTRUMENTS, default='sine')
+    parser.add_argument('--sound-prime', choices=INSTRUMENTS, default='triangle')
+    parser.add_argument('--sound-lcm', choices=INSTRUMENTS, default='choir')
     parser.add_argument("--source", choices=["synthetic", "sieve", "magazyn"], default="synthetic")
     parser.add_argument("--count", type=int, default=1_000_000, help="ring count for --source synthetic")
     parser.add_argument("--upto", type=int, default=1_000_000, help="upper bound for --source sieve/magazyn")

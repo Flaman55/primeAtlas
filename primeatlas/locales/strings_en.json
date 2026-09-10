@@ -666,5 +666,17 @@
   "rings.hud_panel_placeholder": "(open a visualization to see live status here)",
   "rings.hud_status_running": "running, {tempo}ms/tick",
   "rings.hud_status_stopped": "stopped",
-  "rings.hud_header": "N = {n}    rings = {count}    rebuild = {rebuild_ms}ms    [{status}]"
+  "rings.hud_header": "N = {n}    rings = {count}    rebuild = {rebuild_ms}ms    [{status}]",
+  "rings.audio_enable": "Sound",
+  "rings.sound_low": "Rings <= 7:",
+  "rings.sound_prime": "Rings > 7:",
+  "rings.sound_lcm": "LCM:",
+  "rings.audio_hint": "Sound settings apply when opening a new visualization. Requires sounddevice.",
+  "rings.instrument_sine": "Sine",
+  "rings.instrument_triangle": "Triangle",
+  "rings.instrument_square": "Square",
+  "rings.instrument_sawtooth": "Sawtooth",
+  "rings.instrument_bell": "Bell",
+  "rings.instrument_choir": "Choir",
+  "rings.instrument_mute": "Mute"
 }

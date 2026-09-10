@@ -248,6 +248,23 @@ not ported, not just named differently.
   Faza 4's HUD text.
 
 **Faza 12 -- Live audio (tone synth)**
+- Integration implementation (GPT, 2026-09-10): optional
+  `--audio` with `--sound-low`, `--sound-prime`, `--sound-lcm`, plus translated
+  launch-time controls in RingsTab. Install `sounddevice` in the same Python
+  used to launch Atlas (`python -m pip install sounddevice`); NumPy is already
+  a renderer dependency. Missing backend/device leaves visualization running
+  silently with a console explanation. Defaults: sound off, sine/triangle/choir.
+- Event hook reuses the computed hit mask and tracked-LCM HUD state only on
+  advancing ticks. It inspects at most the audible active-index prefix, not
+  an additional full ring array; eight voices/events bound callback work.
+  Audio closes in a finally block, including renderer failure. High-frequency
+  partials are omitted and waveforms approximate browser oscillators.
+- Validation: eight audio/integration tests, geometry/renderer checks and real
+  Tk tab tests passed. The full-app Tk test also emitted an unrelated settings
+  update-thread warning (`main thread is not in main loop`). Artur confirmed
+  audible playback on 2026-09-10 after sounddevice was installed in his Python
+  3.13 environment. A direct device smoke test had no callback errors. Detailed
+  perceptual parity remains unverified; no WAV/MIDI export added.
 - Ports `ToneSynth.js`'s trigger logic (note on hit / tracked-prime /
   LCM-resonance) to a Python audio backend (e.g. `sounddevice`) plus
   instrument selection (the HTML's `soundLow`/`soundPrime`/`soundLCM`

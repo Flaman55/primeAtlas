@@ -666,5 +666,17 @@
   "rings.hud_panel_placeholder": "(otwórz wizualizację, aby zobaczyć tu bieżący status)",
   "rings.hud_status_running": "odtwarzanie, {tempo}ms/takt",
   "rings.hud_status_stopped": "zatrzymane",
-  "rings.hud_header": "N = {n}    pierścienie = {count}    rebuild = {rebuild_ms}ms    [{status}]"
+  "rings.hud_header": "N = {n}    pierścienie = {count}    rebuild = {rebuild_ms}ms    [{status}]",
+  "rings.audio_enable": "Dźwięk",
+  "rings.sound_low": "Pierścienie <= 7:",
+  "rings.sound_prime": "Pierścienie > 7:",
+  "rings.sound_lcm": "NWW:",
+  "rings.audio_hint": "Ustawienia dźwięku działają po otwarciu nowej wizualizacji. Wymagany sounddevice.",
+  "rings.instrument_sine": "Sinus",
+  "rings.instrument_triangle": "Trójkąt",
+  "rings.instrument_square": "Prostokąt",
+  "rings.instrument_sawtooth": "Piła",
+  "rings.instrument_bell": "Dzwon",
+  "rings.instrument_choir": "Chór",
+  "rings.instrument_mute": "Wyciszenie"
 }

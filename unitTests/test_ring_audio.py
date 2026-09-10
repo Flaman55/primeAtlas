@@ -4,6 +4,7 @@ from pathlib import Path
 import sys
 import unittest
 import time
+from unittest.mock import patch
 import numpy as np
 
 path = Path(__file__).resolve().parents[1]/'primeatlas/ring_viz/audio.py'
@@ -24,6 +25,48 @@ class FakeStream:
 
 
 class AudioTests(unittest.TestCase):
+    def test_renderer_hook_and_cleanup(self):
+        root = Path(__file__).resolve().parents[1]
+        sys.path.insert(0, str(root))
+        sys.path.insert(0, str(root/'prime_sieve'))
+        from primeatlas.ring_viz import renderer
+        from primeatlas.ring_viz.audio import LiveAudio
+        from types import SimpleNamespace
+        live = LiveAudio(stream_factory=FakeStream)
+        live.start()
+        active = np.array([2,3,5,7,11])
+        mask = np.array([True,True,False,False,False])
+        renderer.emit_audio_tick(live,active,mask,{'to_resonance':0},False)
+        self.assertEqual(live.mixer.pending.qsize(),0)
+        renderer.emit_audio_tick(live,active,mask,{'to_resonance':0},True)
+        self.assertEqual(live.mixer.pending.qsize(),3)
+        self.assertEqual(live.mixer.pending.get_nowait().duration,6)
+        live.close()
+        args = SimpleNamespace(audio=True,sound_low='sine',sound_prime='bell',sound_lcm='choir')
+        with patch('primeatlas.ring_viz.audio.LiveAudio',return_value=live), \
+             patch.object(renderer,'_run_visualization',side_effect=RuntimeError('GL failure')):
+            with self.assertRaises(RuntimeError):
+                renderer.run(args)
+        self.assertIsNone(live.stream)
+        def unavailable(**kwargs):
+            raise RuntimeError('No device')
+        live = LiveAudio(stream_factory=unavailable)
+        with patch('primeatlas.ring_viz.audio.LiveAudio',return_value=live), \
+             patch.object(renderer,'_run_visualization') as draw:
+            renderer.run(args)
+            draw.assert_called_once_with(args,None)
+
+    def test_audio_launch_arguments(self):
+        root = Path(__file__).resolve().parents[1]
+        sys.path.insert(0,str(root))
+        sys.path.insert(0,str(root/'prime_sieve'))
+        from primeatlas.rings_tab import build_renderer_argv
+        self.assertNotIn('--audio',build_renderer_argv('/tmp',100))
+        args=build_renderer_argv('/tmp',100,audio=True,sound_low='mute',sound_prime='bell',sound_lcm='sine')
+        self.assertIn('--audio',args)
+        for key,value in [('low','mute'),('prime','bell'),('lcm','sine')]:
+            self.assertEqual(args[args.index('--sound-'+key)+1],value)
+
     def test_default_choir_load_benchmark(self):
         mixer = audio.ToneMixer()
         for _ in range(mixer.max_voices):
