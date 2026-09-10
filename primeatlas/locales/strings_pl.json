@@ -656,7 +656,7 @@
   "rings.general_law_theta_label": "theta:",
   "rings.general_law_mode_label": "tryb:",
   "rings.point_size_label": "rozmiar punktów:",
-  "rings.hit_point_size_label": "rozmiar punktów na osi (domyślnie 40):",
+  "rings.hit_point_size_label": "rozmiar punktów na osi (domyślnie 20):",
   "rings.hud_font_size_label": "rozmiar czcionki HUD w px (domyślnie 35):",
   "rings.track_primes_label": "Śledzone P (po przecinku):",
   "rings.auto_orbit_label": "Auto-orbita",

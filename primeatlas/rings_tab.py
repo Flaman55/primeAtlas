@@ -175,10 +175,14 @@ class RingsTab(BaseTab):
         field_row.pack(fill="x", pady=(0, 6))
         ttk.Label(field_row, text=self.T("rings.field_n")).pack(side="left")
         self.n_entry = ttk.Entry(field_row, width=28)
+        # [CHANGED 2026-09-10] Artur asked for N pre-filled at startup instead
+        # of an empty field, so the field/hint are non-empty on first render.
+        self.n_entry.insert(0, "2")
         self.n_entry.pack(side="left", padx=(6, 10))
         self.n_hint_var = tk.StringVar(value="")
         ttk.Label(field_row, textvariable=self.n_hint_var, foreground="#888888").pack(side="left")
         self.n_entry.bind("<KeyRelease>", self._on_n_changed)
+        self._on_n_changed()
 
         # [ADDED as part of Faza 4's point-size investigation, 2026-09-04]
         # Exposed here (instead of only reachable by hand-editing
@@ -189,7 +193,8 @@ class RingsTab(BaseTab):
         point_size_row.pack(fill="x", pady=(0, 6))
         ttk.Label(point_size_row, text=self.T("rings.point_size_label")).pack(side="left")
         self.point_size_entry = ttk.Entry(point_size_row, width=8)
-        self.point_size_entry.insert(0, "3.0")
+        # [CHANGED 2026-09-10] Artur's own chosen default, raised from 3.0 to 15.
+        self.point_size_entry.insert(0, "15")
         self.point_size_entry.pack(side="left", padx=(6, 0))
 
         # [ADDED Faza 11C, see build_renderer_argv's own doc-comment --
@@ -206,7 +211,8 @@ class RingsTab(BaseTab):
         hit_point_size_row.pack(fill="x", pady=(0, 6))
         ttk.Label(hit_point_size_row, text=self.T("rings.hit_point_size_label")).pack(side="left")
         self.hit_point_size_entry = ttk.Entry(hit_point_size_row, width=8)
-        self.hit_point_size_entry.insert(0, "40")
+        # [CHANGED 2026-09-10] Artur's own chosen default, lowered from 40 to 20.
+        self.hit_point_size_entry.insert(0, "20")
         self.hit_point_size_entry.pack(side="left", padx=(6, 0))
 
         hud_font_size_row = ttk.Frame(container)
