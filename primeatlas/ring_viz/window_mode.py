@@ -6,6 +6,23 @@ class FullscreenToggle:
         self.glfw = glfw
         self.window = window
         self.saved_geometry = None
+        self.resume_fullscreen = False
+
+    def hide_for_pause(self):
+        """Release exclusive monitor ownership before hiding the window."""
+        was_fullscreen = bool(self.glfw.get_window_monitor(self.window))
+        if was_fullscreen and not self.toggle():
+            return False
+        self.resume_fullscreen = was_fullscreen
+        self.glfw.hide_window(self.window)
+        return True
+
+    def show_after_pause(self):
+        """Restore visibility first, then the user's previous fullscreen mode."""
+        self.glfw.show_window(self.window)
+        if self.resume_fullscreen:
+            self.toggle()
+        self.resume_fullscreen = False
 
     def toggle(self):
         api, window = self.glfw, self.window

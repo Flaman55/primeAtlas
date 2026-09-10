@@ -1911,7 +1911,9 @@ def _run_visualization(args, audio=None):
         # sub-loop; the outer while's own condition then ends the process).
         if command_queue is not None and glfw.window_should_close(window):
             glfw.set_window_should_close(window, False)
-            glfw.hide_window(window)
+            if not fullscreen.hide_for_pause():
+                print("Could not leave fullscreen; window remains visible", flush=True)
+                continue
             print("RING_VIZ_PAUSED", flush=True)
             paused = True
             while paused:
@@ -1928,7 +1930,7 @@ def _run_visualization(args, audio=None):
                     pass
             if glfw.window_should_close(window):
                 break
-            glfw.show_window(window)
+            fullscreen.show_after_pause()
             print("RING_VIZ_RESUMED", flush=True)
             continue
 

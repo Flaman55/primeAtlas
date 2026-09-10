@@ -29,6 +29,11 @@ class FakeGLFW:
     def get_monitor_pos(self,m): return ((m-1)*1920,0)
     def get_video_mode(self,m):
         return SimpleNamespace(size=SimpleNamespace(width=1920,height=1080),refresh_rate=60)
+    def hide_window(self,w):
+        assert self.monitor is None, 'Cannot hide an exclusive fullscreen window'
+        self.visible = False
+    def show_window(self,w):
+        self.visible = True
     def set_window_monitor(self,w,m,x,y,width,height,rate):
         self.calls.append((m,x,y,width,height,rate))
         self.monitor=m
@@ -37,6 +42,37 @@ class FakeGLFW:
 
 
 class FullscreenTests(unittest.TestCase):
+    def test_fullscreen_pause_releases_monitor_and_resume_restores_mode(self):
+        api = FakeGLFW()
+        toggle = module.FullscreenToggle(api, object())
+        toggle.toggle()
+        for _ in range(2):
+            self.assertTrue(toggle.hide_for_pause())
+            self.assertIsNone(api.monitor)
+            self.assertFalse(api.visible)
+            toggle.show_after_pause()
+            self.assertTrue(api.visible)
+            self.assertEqual(api.monitor, 2)
+        toggle.toggle()
+        self.assertEqual((api.pos, api.size), ((2100, 100), (800, 600)))
+
+    def test_windowed_pause_stays_windowed_on_resume(self):
+        api = FakeGLFW()
+        toggle = module.FullscreenToggle(api, object())
+        self.assertTrue(toggle.hide_for_pause())
+        toggle.show_after_pause()
+        self.assertIsNone(api.monitor)
+        self.assertTrue(api.visible)
+        self.assertEqual(api.calls, [])
+
+    def test_failed_monitor_release_does_not_hide_window(self):
+        api = FakeGLFW()
+        api.monitor = 2
+        api.visible = True
+        toggle = module.FullscreenToggle(api, object())
+        self.assertFalse(toggle.hide_for_pause())
+        self.assertTrue(api.visible)
+
     def test_round_trip_on_current_monitor(self):
         api=FakeGLFW()
         toggle=module.FullscreenToggle(api,object())
@@ -89,11 +125,19 @@ def device_smoke():
         toggle=module.FullscreenToggle(glfw,window)
         assert toggle.toggle(), 'Entering fullscreen failed'
         glfw.poll_events()
+        assert toggle.hide_for_pause(), 'Could not release fullscreen for pause'
+        glfw.poll_events()
+        assert not glfw.get_window_monitor(window), 'Paused window still owns monitor'
+        assert not glfw.get_window_attrib(window, glfw.VISIBLE), 'Paused window is visible'
+        toggle.show_after_pause()
+        glfw.poll_events()
+        assert glfw.get_window_monitor(window), 'Resume did not restore fullscreen'
+        assert glfw.get_window_attrib(window, glfw.VISIBLE), 'Resumed window is hidden'
         assert toggle.toggle(), 'Leaving fullscreen failed'
         glfw.poll_events()
         assert not glfw.get_window_monitor(window)
         assert glfw.get_window_size(window)==original[1]
-        print('Native GLFW fullscreen round trip passed; window size restored.')
+        print('Native GLFW fullscreen pause/resume passed; monitor released and window size restored.')
     finally:
         glfw.terminate()
 
