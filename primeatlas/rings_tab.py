@@ -557,6 +557,16 @@ class RingsTab(BaseTab):
         self._paused = False
         self.open_button.configure(state="disabled")
         self.stop_button.configure(state="normal")
+        # [CHANGED 2026-09-10] Lock the launch-time-only fields the moment a
+        # process is actually launched, not only once it's paused -- Artur:
+        # "blokada powinna być uruchomiona już po otworciu okna" (the block
+        # should already be active right after opening the window). They now
+        # stay locked through running AND paused AND resumed -- Reset is the
+        # only path that unlocks them again (see _on_reset), aside from the
+        # process dying on its own (see _poll_queue's __exit__ branch, which
+        # is the one other case where there's genuinely no live process left
+        # to protect these fields' meaning against).
+        self._set_launch_params_readonly(True)
         self.console.show()
         self.console.append(self.T("rings.console_launching", n=f"{n:,}") + "\n")
         self.status.set(self.T("rings.status_launching"))
@@ -666,14 +676,20 @@ class RingsTab(BaseTab):
                     self.open_button.configure(state="normal")
                     self.status.set(self.T("rings.status_paused"))
                     self.console.append(self.T("rings.console_paused") + "\n")
-                    self._set_launch_params_readonly(True)
+                    # [CHANGED 2026-09-10] No _set_launch_params_readonly()
+                    # call here anymore -- the fields were already locked
+                    # back at _on_open's initial launch (see there), and
+                    # pausing doesn't change that.
                     continue
                 if item.strip() == _RING_VIZ_RESUMED_LINE:
                     self._paused = False
                     self.open_button.configure(state="disabled")
                     self.status.set(self.T("rings.status_running"))
                     self.console.append(self.T("rings.console_resumed") + "\n")
-                    self._set_launch_params_readonly(False)
+                    # [CHANGED 2026-09-10] Deliberately NOT re-enabling the
+                    # fields here -- Artur: "odblokowane ustawienia dopiero
+                    # po resecie" (fields unlock only after Reset). Resuming
+                    # is still not a fresh launch, so they stay locked.
                     continue
                 if item.startswith(_HUD_STATE_PREFIX):
                     self._apply_hud_state(item[len(_HUD_STATE_PREFIX):])

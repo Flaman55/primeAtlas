@@ -422,6 +422,14 @@ def main():
     tab.n_entry.delete(0, "end")
     tab.n_entry.insert(0, "321")
     tab._on_open()
+    # [CHANGED 2026-09-10] Artur: "blokada powinna być uruchomiona już po
+    # otworciu okna" (the lock should already be active right after opening
+    # the window) -- checked BEFORE the first _pump() call below, i.e.
+    # before the process has even had a chance to report itself paused, to
+    # prove the lock isn't waiting on that signal at all.
+    check(str(tab.n_entry["state"]) == "disabled",
+          f"N field is locked immediately on launch, before any pause/resume "
+          f"signal arrives (got {tab.n_entry['state']!r})")
     _pump(app, 1.5)
     check(tab._paused is True,
           f"_paused flips True once the RING_VIZ_PAUSED line is drained from the queue "
@@ -438,19 +446,19 @@ def main():
           "the OS process is still alive while paused -- pausing hides the window, it "
           "does not exit the subprocess (that's the whole point of Faza 13)")
 
-    # [ADDED 2026-09-10] While paused-and-resumable, every launch-time-only
-    # field must read as disabled/readonly -- editing them would silently do
+    # [ADDED 2026-09-10] Every launch-time-only field must still read as
+    # disabled/readonly once paused -- editing them would silently do
     # nothing until the NEXT fresh launch, which is exactly the misleading
     # state Artur flagged ("sugeruje że zmiana ich coś zmieni"). Spot-check
     # one widget from each of the three state-spelling groups rather than
     # every single one -- _set_launch_params_readonly applies the same two
     # states uniformly, so this is enough to catch a wiring mistake.
     check(str(tab.n_entry["state"]) == "disabled",
-          f"N field is read-only while paused (got {tab.n_entry['state']!r})")
+          f"N field is still read-only once paused (got {tab.n_entry['state']!r})")
     check(str(tab._bertrand_check["state"]) == "disabled",
-          f"window-highlight checkboxes are read-only while paused (got {tab._bertrand_check['state']!r})")
+          f"window-highlight checkboxes are still read-only once paused (got {tab._bertrand_check['state']!r})")
     check(str(tab.general_law_mode_combo["state"]) == "disabled",
-          f"dropdowns are read-only (not just 'readonly') while paused "
+          f"dropdowns are read-only (not just 'readonly') once paused "
           f"(got {tab.general_law_mode_combo['state']!r})")
 
     # Clicking Start/Resume while paused must send "RESUME" down the existing
@@ -469,17 +477,24 @@ def main():
           "while-running state)")
     check(tab.status.get() == tab.T("rings.status_running"),
           f"status bar shows the running message after resume (got {tab.status.get()!r})")
-    check(str(tab.n_entry["state"]) == "normal",
-          f"N field is editable again once resumed (got {tab.n_entry['state']!r})")
-    check(str(tab._bertrand_check["state"]) == "normal",
-          f"checkboxes are editable again once resumed (got {tab._bertrand_check['state']!r})")
-    check(str(tab.general_law_mode_combo["state"]) == "readonly",
-          f"dropdowns go back to their own normal 'readonly' state (never free-text) "
-          f"once resumed (got {tab.general_law_mode_combo['state']!r})")
+    # [CHANGED 2026-09-10] Artur: "odblokowane ustawienia dopiero po
+    # resecie" (fields unlock only after Reset) -- resuming is still not a
+    # fresh launch, so the fields stay LOCKED here, unlike the earlier
+    # (superseded) design where resume re-enabled them.
+    check(str(tab.n_entry["state"]) == "disabled",
+          f"N field STAYS locked after resume -- only Reset unlocks it "
+          f"(got {tab.n_entry['state']!r})")
+    check(str(tab._bertrand_check["state"]) == "disabled",
+          f"checkboxes STAY locked after resume too (got {tab._bertrand_check['state']!r})")
+    check(str(tab.general_law_mode_combo["state"]) == "disabled",
+          f"dropdowns STAY locked after resume too (got {tab.general_law_mode_combo['state']!r})")
 
     # The fake script sleeps 3s after RESUMED, then exits -- confirm the
     # normal __exit__ path still fires correctly afterwards, and that it
-    # leaves no stale _paused=True behind for the next launch.
+    # leaves no stale _paused=True behind for the next launch. A real exit
+    # (crash, or the process ending on its own) is the one other case
+    # besides Reset that unlocks the fields -- there's genuinely no live
+    # process left afterward for them to (mis)represent.
     _pump(app, 4.0)
     check(str(tab.open_button["state"]) == "normal",
           "open_button re-enabled once the (now-resumed) process actually exits")
@@ -488,6 +503,9 @@ def main():
     check(tab._paused is False,
           "_paused stays False after a real exit (no stale pause flag left behind "
           "for the next Start/Resume click)")
+    check(str(tab.n_entry["state"]) == "normal",
+          f"fields unlock again once the process actually exits, same as Reset "
+          f"(got {tab.n_entry['state']!r})")
 
     # [ADDED 2026-09-10] Reset must re-enable the fields IMMEDIATELY, not
     # wait for the async __exit__ queue item -- launch fresh, let it pause,
