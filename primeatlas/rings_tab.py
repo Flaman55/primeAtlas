@@ -258,8 +258,9 @@ class RingsTab(BaseTab):
         audio_row = ttk.Frame(container)
         audio_row.pack(fill='x', pady=(0, 6))
         self.audio_enabled = tk.BooleanVar(value=False)
-        ttk.Checkbutton(audio_row, text=self.T('rings.audio_enable'),
-                        variable=self.audio_enabled).pack(side='left')
+        self._audio_enable_check = ttk.Checkbutton(audio_row, text=self.T('rings.audio_enable'),
+                                                     variable=self.audio_enabled)
+        self._audio_enable_check.pack(side='left')
         self.audio_choices = {}
         for channel, default in (('low', 'sine'), ('prime', 'triangle'), ('lcm', 'choir')):
             ttk.Label(audio_row, text=self.T('rings.sound_' + channel)).pack(side='left', padx=(8, 3))
@@ -278,14 +279,17 @@ class RingsTab(BaseTab):
         windows_row.pack(fill="x", pady=(0, 6))
         ttk.Label(windows_row, text=self.T("rings.windows_label")).pack(side="left")
         self.bertrand_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(windows_row, text=self.T("rings.window_bertrand"),
-                         variable=self.bertrand_var).pack(side="left", padx=(6, 0))
+        self._bertrand_check = ttk.Checkbutton(windows_row, text=self.T("rings.window_bertrand"),
+                                                 variable=self.bertrand_var)
+        self._bertrand_check.pack(side="left", padx=(6, 0))
         self.legendre_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(windows_row, text=self.T("rings.window_legendre"),
-                         variable=self.legendre_var).pack(side="left", padx=(6, 0))
+        self._legendre_check = ttk.Checkbutton(windows_row, text=self.T("rings.window_legendre"),
+                                                 variable=self.legendre_var)
+        self._legendre_check.pack(side="left", padx=(6, 0))
         self.general_law_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(windows_row, text=self.T("rings.window_general_law"),
-                         variable=self.general_law_var).pack(side="left", padx=(6, 0))
+        self._general_law_check = ttk.Checkbutton(windows_row, text=self.T("rings.window_general_law"),
+                                                     variable=self.general_law_var)
+        self._general_law_check.pack(side="left", padx=(6, 0))
 
         general_law_row = ttk.Frame(container)
         general_law_row.pack(fill="x", pady=(0, 10))
@@ -315,8 +319,9 @@ class RingsTab(BaseTab):
         self.track_primes_entry = ttk.Entry(track_row, width=20)
         self.track_primes_entry.pack(side="left", padx=(6, 16))
         self.auto_orbit_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(track_row, text=self.T("rings.auto_orbit_label"),
-                         variable=self.auto_orbit_var).pack(side="left")
+        self._auto_orbit_check = ttk.Checkbutton(track_row, text=self.T("rings.auto_orbit_label"),
+                                                   variable=self.auto_orbit_var)
+        self._auto_orbit_check.pack(side="left")
 
         # [ADDED Faza 9, see PLAN.md] Load Range -- From/To fields, launch-time
         # only (same convention as every other field on this tab: read once by
@@ -374,6 +379,54 @@ class RingsTab(BaseTab):
 
         self.console = GenerationConsole(container, self.T, height=14,
                                           window_title=self.T("rings.console_title"))
+
+        # [ADDED 2026-09-10, Faza 13] Every field below is read ONCE, at
+        # _on_open's launch-time argv build -- see build_renderer_argv's own
+        # doc-comment. While the process is paused-and-resumable
+        # (self._paused, see _set_launch_params_readonly's own doc-comment),
+        # editing any of them would silently do nothing until the NEXT fresh
+        # launch, which is exactly the kind of "changing this looks like it
+        # should matter" trap Artur flagged. Split into two groups because
+        # ttk widgets don't share one disabled-state spelling: entries/
+        # checkbuttons use "normal"/"disabled", comboboxes use "readonly"
+        # (their own normal state here, since they're never free-text) vs
+        # "disabled".
+        self._launch_param_entries = [
+            self.n_entry, self.point_size_entry, self.hit_point_size_entry,
+            self.hud_font_size_entry, self.general_law_theta_entry,
+            self.track_primes_entry, self.load_range_from_entry, self.load_range_to_entry,
+        ]
+        self._launch_param_checkbuttons = [
+            self._audio_enable_check, self._bertrand_check, self._legendre_check,
+            self._general_law_check, self._auto_orbit_check,
+        ]
+        self._launch_param_dropdowns = [
+            self.general_law_mode_combo,
+            self.audio_choices['low'], self.audio_choices['prime'], self.audio_choices['lcm'],
+        ]
+
+    def _set_launch_params_readonly(self, readonly):
+        """[ADDED 2026-09-10, Faza 13] Toggles every launch-time-only field
+        (N, point sizes, window-highlight checkboxes, Track P, Load Range,
+        audio instrument pickers, ...) between editable and read-only.
+        Called with readonly=True the moment the process reports itself
+        paused (RING_VIZ_PAUSED, see _poll_queue below) -- while paused, the
+        Start/Resume button sends RESUME instead of relaunching, so these
+        fields would no longer feed anything even though they still LOOK
+        live and editable (Artur, 2026-09-10: "sugeruje że zmiana ich coś
+        zmieni, a to jest używane tylko przy uruchomieniu"). Called with
+        readonly=False on RING_VIZ_RESUMED, on Reset, and on any real
+        process exit, so the fields are always editable again the instant a
+        fresh launch (not a resume) is what the next Start/Resume click
+        will actually do."""
+        entry_state = "disabled" if readonly else "normal"
+        for entry in self._launch_param_entries:
+            entry.configure(state=entry_state)
+        for check in self._launch_param_checkbuttons:
+            check.configure(state=entry_state)
+        dropdown_state = "disabled" if readonly else "readonly"
+        for dropdown in self._launch_param_dropdowns:
+            dropdown.configure(state=dropdown_state)
 
     def _on_n_changed(self, _event=None):
         """Live floor hint next to the N field -- purely informational (which
@@ -535,6 +588,11 @@ class RingsTab(BaseTab):
         # ever cleared by a RING_VIZ_RESUMED line, which will never arrive
         # for a process we just killed, so it must be reset explicitly here.
         self._paused = False
+        # Don't wait for the async __exit__ queue item to re-enable these --
+        # Reset is a deliberate "I'm done with this run" click, so the
+        # fields should read as editable again immediately, not lag a poll
+        # cycle behind terminate()'s own OS-level kill.
+        self._set_launch_params_readonly(False)
         self.n_entry.delete(0, "end")
         self.n_entry.insert(0, "2")
         self._on_n_changed()
@@ -554,6 +612,11 @@ class RingsTab(BaseTab):
                     self._paused = False
                     self.open_button.configure(state="normal")
                     self.stop_button.configure(state="disabled")
+                    # A real exit always means the fields are editable again
+                    # -- covers both "exited while paused" (readonly was
+                    # True) and the ordinary running-then-exits case (already
+                    # editable, this is just a harmless no-op then).
+                    self._set_launch_params_readonly(False)
                     if code == 0:
                         self.console.append(self.T("rings.console_closed_ok") + "\n")
                         self.status.set(self.T("rings.status_closed"))
@@ -603,12 +666,14 @@ class RingsTab(BaseTab):
                     self.open_button.configure(state="normal")
                     self.status.set(self.T("rings.status_paused"))
                     self.console.append(self.T("rings.console_paused") + "\n")
+                    self._set_launch_params_readonly(True)
                     continue
                 if item.strip() == _RING_VIZ_RESUMED_LINE:
                     self._paused = False
                     self.open_button.configure(state="disabled")
                     self.status.set(self.T("rings.status_running"))
                     self.console.append(self.T("rings.console_resumed") + "\n")
+                    self._set_launch_params_readonly(False)
                     continue
                 if item.startswith(_HUD_STATE_PREFIX):
                     self._apply_hud_state(item[len(_HUD_STATE_PREFIX):])

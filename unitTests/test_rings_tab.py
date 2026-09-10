@@ -438,6 +438,21 @@ def main():
           "the OS process is still alive while paused -- pausing hides the window, it "
           "does not exit the subprocess (that's the whole point of Faza 13)")
 
+    # [ADDED 2026-09-10] While paused-and-resumable, every launch-time-only
+    # field must read as disabled/readonly -- editing them would silently do
+    # nothing until the NEXT fresh launch, which is exactly the misleading
+    # state Artur flagged ("sugeruje że zmiana ich coś zmieni"). Spot-check
+    # one widget from each of the three state-spelling groups rather than
+    # every single one -- _set_launch_params_readonly applies the same two
+    # states uniformly, so this is enough to catch a wiring mistake.
+    check(str(tab.n_entry["state"]) == "disabled",
+          f"N field is read-only while paused (got {tab.n_entry['state']!r})")
+    check(str(tab._bertrand_check["state"]) == "disabled",
+          f"window-highlight checkboxes are read-only while paused (got {tab._bertrand_check['state']!r})")
+    check(str(tab.general_law_mode_combo["state"]) == "disabled",
+          f"dropdowns are read-only (not just 'readonly') while paused "
+          f"(got {tab.general_law_mode_combo['state']!r})")
+
     # Clicking Start/Resume while paused must send "RESUME" down the existing
     # pipe, NOT launch a second subprocess.
     tab._on_open()
@@ -454,6 +469,13 @@ def main():
           "while-running state)")
     check(tab.status.get() == tab.T("rings.status_running"),
           f"status bar shows the running message after resume (got {tab.status.get()!r})")
+    check(str(tab.n_entry["state"]) == "normal",
+          f"N field is editable again once resumed (got {tab.n_entry['state']!r})")
+    check(str(tab._bertrand_check["state"]) == "normal",
+          f"checkboxes are editable again once resumed (got {tab._bertrand_check['state']!r})")
+    check(str(tab.general_law_mode_combo["state"]) == "readonly",
+          f"dropdowns go back to their own normal 'readonly' state (never free-text) "
+          f"once resumed (got {tab.general_law_mode_combo['state']!r})")
 
     # The fake script sleeps 3s after RESUMED, then exits -- confirm the
     # normal __exit__ path still fires correctly afterwards, and that it
@@ -466,6 +488,25 @@ def main():
     check(tab._paused is False,
           "_paused stays False after a real exit (no stale pause flag left behind "
           "for the next Start/Resume click)")
+
+    # [ADDED 2026-09-10] Reset must re-enable the fields IMMEDIATELY, not
+    # wait for the async __exit__ queue item -- launch fresh, let it pause,
+    # then Reset while still paused and check the fields are already
+    # editable before any _pump() call processes the exit.
+    rings_tab_module.RENDERER_SCRIPT = fake_pause_script
+    tab.n_entry.delete(0, "end")
+    tab.n_entry.insert(0, "654")
+    tab._on_open()
+    _pump(app, 1.5)
+    check(tab._paused is True, "sanity: paused again for the Reset-while-paused check")
+    check(str(tab.n_entry["state"]) == "disabled", "sanity: read-only again before Reset")
+    tab._on_reset()
+    check(str(tab.n_entry["state"]) == "normal",
+          "Reset re-enables the N field synchronously, without waiting for the "
+          "subprocess's own (async) exit to be drained from the queue")
+    check(str(tab._bertrand_check["state"]) == "normal",
+          "Reset re-enables checkboxes synchronously too")
+    _pump(app, 3.0)  # drain the exit so the next launch starts from a clean queue
     os.remove(fake_pause_script)
 
     # --- failure path: real subprocess, fake renderer script, exit 1 ----------------
