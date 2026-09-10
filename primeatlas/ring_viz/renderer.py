@@ -1705,8 +1705,13 @@ def run(args):
     # actually changed (needed for R/reset landing back on n=1 when n was
     # ALREADY 1 -- a plain `n != last_n` check would otherwise miss it).
     n_holder = {"n": n, "advancing": False, "force_rebuild": False}
+    from primeatlas.ring_viz.window_mode import FullscreenToggle
+    fullscreen = FullscreenToggle(glfw, window)
+    print('F11: toggle fullscreen; Esc: close visualization', flush=True)
 
     def on_key(_window, key, _scancode, action, _mods):
+        if fullscreen.handle_key(key, action):
+            return
         if action not in (glfw.PRESS, glfw.REPEAT):
             return
         if key == glfw.KEY_ESCAPE:

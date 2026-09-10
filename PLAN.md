@@ -263,9 +263,14 @@ tę chwilę sobie darujmy"]**
   not silently dropped, decided. Revisit only if Artur asks again later.
 
 **Faza 14 -- Fullscreen toggle**
-- Small, likely a single `glfw` window-mode call. Independent of everything
-  above -- can be slotted in whenever convenient, including before Faza 6
-  if a quick low-risk win is wanted first.
+- Implemented: F11 toggles fullscreen on the monitor with the largest overlap
+  with the window, then restores the saved windowed position and size. Key
+  repeat is ignored; Escape retains its existing close-window behavior.
+- The existing GLFW window and GL context are retained across transitions.
+- Validation: four deterministic tests in `unitTests/test_ring_fullscreen.py`,
+  renderer regression checks, and the opt-in `--device-smoke` native GLFW
+  round trip passed on Windows (2026-09-10). Native smoke verifies mode and
+  restored size; multi-monitor selection is covered by the deterministic tests.
 
 **Video/animation export (WebM/MP4 RECORD button) -- [CUT, Artur 2026-09-05:
 "wideo i eksport na tę chwilę sobie darujmy"].** Was flagged as a real new
