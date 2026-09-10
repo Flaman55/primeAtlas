@@ -246,6 +246,37 @@ def _test_build_vertex_data_bertrand_highlight():
                   f"non-Bertrand-matched ring prime={p} does not carry the Bertrand pink color")
 
 
+def _test_split_hit_normal_vertex_data():
+    from primeatlas.ring_viz.renderer import build_vertex_data, split_hit_normal_vertex_data
+
+    primes = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23], dtype=np.int64)
+    n = 20  # hits (divisors of 20): 2, 5 -- everything else is a normal ring
+    active = primes[primes <= n]
+    data, count, pos = build_vertex_data(active, n, 100.0)
+
+    data_normal, data_hit, count_hit = split_hit_normal_vertex_data(data, pos["is_hit"])
+    expected_hit = int(np.count_nonzero(pos["is_hit"]))
+    check(count_hit == expected_hit, f"count_hit matches pos['is_hit']'s own true-count (got {count_hit}, expected {expected_hit})")
+    check(data_hit.shape[0] == count_hit and data_normal.shape[0] == count - count_hit,
+          f"row counts add up: hit={data_hit.shape[0]}, normal={data_normal.shape[0]}, total={count} "
+          f"(expected hit={count_hit}, normal={count - count_hit})")
+    # Every hit row's (x, y) must appear in expected_pos's hit-masked rows and
+    # nowhere in the normal split, and vice versa -- proves the split didn't
+    # scramble which row went where (not just that the counts happen to add up).
+    hit_xy_expected = set(zip(data[pos["is_hit"], 0].tolist(), data[pos["is_hit"], 1].tolist()))
+    hit_xy_actual = set(zip(data_hit[:, 0].tolist(), data_hit[:, 1].tolist()))
+    check(hit_xy_actual == hit_xy_expected,
+          f"data_hit contains exactly the rows pos['is_hit'] marks true, no more/fewer/wrong (got {hit_xy_actual}, expected {hit_xy_expected})")
+
+    # Empty-array edge case (0 active rings, e.g. after R/reset lands N=1) --
+    # must not raise, and must return an empty (not error-triggering) split.
+    empty_data = np.empty((0, 5), dtype=np.float32)
+    empty_mask = np.empty((0,), dtype=bool)
+    d_normal, d_hit, c_hit = split_hit_normal_vertex_data(empty_data, empty_mask)
+    check(d_normal.shape[0] == 0 and d_hit.shape[0] == 0 and c_hit == 0,
+          f"0 active rings splits into two empty arrays and count_hit=0, no crash (got normal={d_normal.shape[0]}, hit={d_hit.shape[0]}, count_hit={c_hit})")
+
+
 def _test_hud_lines_for_n():
     from primeatlas.ring_viz.renderer import hud_lines_for_n, build_vertex_data
     from primeatlas.ring_geometry import legendre_level_at, general_law_window_bounds
@@ -378,6 +409,636 @@ def _test_zoom_to_point():
           f"got new_pan={new_pan}, old_pan={old_pan}")
 
 
+def _test_filter_active_tracked():
+    """[ADDED Faza 6, see PLAN.md] filter_active_tracked's own docstring:
+    preserves tracked's order (not active_primes's), keeps duplicates as
+    typed, drops anything not yet active."""
+    from primeatlas.ring_geometry import filter_active_tracked
+
+    active = np.array([2, 3, 5, 7, 11], dtype=np.int64)
+
+    result = filter_active_tracked([7, 2, 11], active)
+    check(result == [7, 2, 11],
+          f"preserves the caller's own order, not active_primes's ascending order "
+          f"(got {result!r})")
+
+    result_not_yet_active = filter_active_tracked([2, 13, 17], active)
+    check(result_not_yet_active == [2],
+          f"primes not yet active (born) at this N are dropped, only 2 survives "
+          f"(got {result_not_yet_active!r})")
+
+    result_dupes = filter_active_tracked([3, 3, 5], active)
+    check(result_dupes == [3, 3, 5],
+          f"duplicates in the tracked list are preserved as typed, not deduped "
+          f"(got {result_dupes!r})")
+
+    result_empty_tracked = filter_active_tracked([], active)
+    check(result_empty_tracked == [], f"empty tracked list -> empty result (got {result_empty_tracked!r})")
+
+    result_empty_active = filter_active_tracked([2, 3], [])
+    check(result_empty_active == [], f"empty active set -> empty result (got {result_empty_active!r})")
+
+    check(all(isinstance(p, int) for p in result),
+          f"returns plain Python ints, not numpy scalars (got types {[type(p) for p in result]!r})")
+
+
+def _test_hud_lines_for_n_tracked_state():
+    """[ADDED Faza 6, EXTENDED Faza 7B, see PLAN.md] hud_lines_for_n's
+    tracked_state param (renamed/extended from Faza 6's tracked_active --
+    see hud_lines_for_n's own doc-comment): None means no lines at all, a
+    too_large dict produces the single overflow line, and a real state dict
+    produces the full tracked/LCM/phase/to-resonance block, using format_big
+    for the numeric values."""
+    from primeatlas.ring_viz.renderer import hud_lines_for_n, build_vertex_data
+    from primeatlas.ring_geometry import tracked_resonance_state
+
+    primes = np.array([2, 3, 5, 7, 11, 13], dtype=np.int64)
+    n = 41
+    max_radius = 100.0
+    _data, _count, pos = build_vertex_data(primes, n, max_radius, set(), 0.5, "stepped")
+
+    lines_none = hud_lines_for_n(primes, n, pos, set(), 0.5, "stepped")
+    check(not any("Tracked" in line for line in lines_none),
+          f"no tracked_state given -> no 'Tracked' HUD line at all (got {lines_none!r})")
+
+    lines_none2 = hud_lines_for_n(primes, n, pos, set(), 0.5, "stepped", tracked_state=None)
+    check(not any("Tracked" in line for line in lines_none2),
+          f"explicit tracked_state=None -> no 'Tracked' HUD line (got {lines_none2!r})")
+
+    too_large = {"too_large": True, "tracked": [2, 3, 5], "limit": 2}
+    lines_large = hud_lines_for_n(primes, n, pos, set(), 0.5, "stepped", tracked_state=too_large)
+    joined_large = "\n".join(lines_large)
+    check("too many active" in joined_large and "3" in joined_large and "2" in joined_large,
+          f"too_large state produces a single overflow-explanation line, no LCM/phase "
+          f"attempted (got lines={lines_large!r})")
+
+    state = tracked_resonance_state([7, 2], primes, n)
+    check(state is not None, "sanity: 7 and 2 are both active at n=41")
+    lines_full = hud_lines_for_n(primes, n, pos, set(), 0.5, "stepped", tracked_state=state)
+    joined_full = "\n".join(lines_full)
+    check("Tracked (active): 7, 2" in joined_full,
+          f"full state produces the tracked-list line in the state's own order "
+          f"(got lines={lines_full!r})")
+    check(f"LCM: {state['lcm']}" in joined_full, f"LCM line uses the state's lcm (got lines={lines_full!r})")
+    check(f"Phase: {state['phase']} / {state['lcm']}" in joined_full,
+          f"phase line shows phase / lcm (got lines={lines_full!r})")
+    check(f"To resonance: {state['to_resonance']}" in joined_full,
+          f"to-resonance line uses the state's own value (got lines={lines_full!r})")
+
+
+def _test_lcm_of_list():
+    """[ADDED Faza 7A, see PLAN.md] Mirrors SieveModel.js's lcmOfList/
+    lcmOfListBig: 0 for empty, exact product-based LCM otherwise (duplicates
+    and non-coprime values handled correctly, not just pairwise-coprime
+    primes)."""
+    from primeatlas.ring_geometry import lcm_of_list
+
+    check(lcm_of_list([]) == 0, f"empty list -> 0, not 1 (matches JS's lcmOfList/lcmOfListBig) (got {lcm_of_list([])!r})")
+    check(lcm_of_list([2, 3, 5]) == 30, f"LCM of pairwise-coprime primes is their product (got {lcm_of_list([2, 3, 5])!r})")
+    check(lcm_of_list([4, 6]) == 12, f"LCM of non-coprime values is exact, not naive product (got {lcm_of_list([4, 6])!r})")
+    check(lcm_of_list([7, 7, 7]) == 7, f"duplicates don't inflate the LCM (got {lcm_of_list([7, 7, 7])!r})")
+    big = lcm_of_list(list(range(2, 100)))
+    check(isinstance(big, int) and big > 10**20,
+          f"large tracked lists produce an exact arbitrary-precision int, no overflow "
+          f"(got type {type(big)!r}, value has {len(str(big))} digits)")
+
+
+def _test_tracked_resonance_state():
+    """[ADDED Faza 7A, see PLAN.md] Port of StructuralSieveApp.js's
+    #trackedResonanceState -- mirrors its None-return conditions (auto_orbit,
+    empty tracked, none active), too_large case, and the phase/to_resonance
+    math itself."""
+    from primeatlas.ring_geometry import tracked_resonance_state
+
+    active = [2, 3, 5, 7, 11]
+
+    check(tracked_resonance_state([2, 3], active, 100, auto_orbit=True) is None,
+          "auto_orbit=True always returns None, regardless of tracked/active")
+    check(tracked_resonance_state([], active, 100) is None, "empty tracked list -> None")
+    check(tracked_resonance_state([13, 17], active, 100) is None,
+          "tracked primes that aren't active yet at this N -> None")
+
+    state = tracked_resonance_state([2, 3, 5], active, 100)
+    check(state is not None and state["lcm"] == 30,
+          f"LCM of the tracked-and-active primes (got {state!r})")
+    check(state["phase"] == 100 % 30, f"phase = n mod lcm (got {state!r})")
+    check(state["to_resonance"] == 30 - (100 % 30),
+          f"to_resonance = lcm - phase when phase != 0 (got {state!r})")
+
+    state_exact = tracked_resonance_state([2, 3, 5], active, 90)
+    check(state_exact["phase"] == 0 and state_exact["to_resonance"] == 0,
+          f"phase=0 at an exact multiple of the LCM gives to_resonance=0, not lcm "
+          f"(got {state_exact!r})")
+
+    state_partial = tracked_resonance_state([2, 13], active, 100)
+    check(state_partial is not None and state_partial["tracked"] == [2],
+          f"only the active subset of tracked is used, order preserved "
+          f"(got {state_partial!r})")
+
+    too_large = tracked_resonance_state([2, 3, 5], active, 100, max_tracked_for_exact_lcm=2)
+    check(too_large == {"too_large": True, "tracked": [2, 3, 5], "limit": 2},
+          f"exceeding max_tracked_for_exact_lcm returns the too_large marker instead "
+          f"of computing the LCM (got {too_large!r})")
+
+
+def _test_format_big():
+    """[ADDED Faza 7A, see PLAN.md] Port of StructuralSieveApp.js's
+    #formatBig -- plain digits below the threshold, mantissa×10^exp (N
+    digits) past it, sign handled either way."""
+    from primeatlas.ring_geometry import format_big
+
+    check(format_big(0) == "0", f"zero (got {format_big(0)!r})")
+    check(format_big(30) == "30", f"small positive value stays a plain digit string (got {format_big(30)!r})")
+    check(format_big(-30) == "-30", f"small negative value keeps its sign, plain digits (got {format_big(-30)!r})")
+
+    fourteen_nines = int("9" * 14)
+    check(format_big(fourteen_nines, digit_threshold=15) == str(fourteen_nines),
+          "exactly at the threshold (14 <= 15) still prints plain digits")
+
+    big = int("123456789" * 6)  # 54 digits, well past the default threshold
+    formatted = format_big(big, digit_threshold=15)
+    check("×10^" in formatted and formatted.endswith(f"({len(str(big))} digits)"),
+          f"past the threshold, switches to mantissa×10^exponent (N digits) "
+          f"(got {formatted!r})")
+    check(formatted.startswith("1.234"), f"mantissa uses the first digit + next 4 (got {formatted!r})")
+
+    formatted_neg = format_big(-big, digit_threshold=15)
+    check(formatted_neg.startswith("-1.234"), f"sign preserved past the threshold too (got {formatted_neg!r})")
+
+
+# ---------------------------------------------------------------------------
+# Faza 8 (see PLAN.md): tracked-ring outline circles, center marker, flash
+# overlays. Only the PURE GEOMETRY/COLOR/DECAY math is tested here -- the
+# actual GL draw calls in run() need a real GPU/display this sandbox does
+# not have (see PLAN.md's own Faza 8 risk note), same split as every other
+# GL-adjacent phase in this file.
+# ---------------------------------------------------------------------------
+
+def _test_tracked_ring_mask():
+    """[ADDED Faza 8] ring_geometry.tracked_ring_mask -- plain per-ring list
+    membership (DrumRenderer's `ring.tracked`), a different question from
+    filter_active_tracked (which returns tracked VALUES, not a mask)."""
+    from primeatlas.ring_geometry import tracked_ring_mask
+
+    active = np.array([2, 3, 5, 7, 11], dtype=np.int64)
+    mask = tracked_ring_mask(active, [7, 2])
+    check(list(mask) == [True, False, False, True, False],
+          f"marks exactly the rings whose prime is in the tracked list, in `active`'s own "
+          f"order (got {list(mask)!r})")
+
+    empty_tracked = tracked_ring_mask(active, [])
+    check(not empty_tracked.any() and len(empty_tracked) == len(active),
+          f"empty tracked list -> all-False mask of the right length (got {list(empty_tracked)!r})")
+
+    empty_active = tracked_ring_mask(np.empty(0, dtype=np.int64), [2, 3])
+    check(len(empty_active) == 0, f"empty active array -> empty mask (got {list(empty_active)!r})")
+
+    none_active_match = tracked_ring_mask(active, [13, 17])
+    check(not none_active_match.any(),
+          f"tracked primes not present among active rings at all -> all-False (got {list(none_active_match)!r})")
+
+
+def _test_unit_circle_vertices():
+    """[ADDED Faza 8] unit_circle_vertices -- every point on the unit circle,
+    ascending angle from 0, first point at angle 0 (i.e. (1,0))."""
+    from primeatlas.ring_viz.renderer import unit_circle_vertices
+
+    verts = unit_circle_vertices(segments=8)
+    check(verts.shape == (8, 2), f"returns (segments, 2) shaped array (got shape {verts.shape})")
+    check(verts.dtype == np.float32, f"float32, ready for a GL buffer (got dtype {verts.dtype})")
+    check(np.allclose(verts[0], (1.0, 0.0), atol=1e-6), f"first point is angle 0 -> (1,0) (got {verts[0]!r})")
+    radii = np.sqrt(verts[:, 0] ** 2 + verts[:, 1] ** 2)
+    check(np.allclose(radii, 1.0, atol=1e-6), f"every point lies exactly on the unit circle (got radii {radii!r})")
+
+
+def _test_tracked_outline_color():
+    """[ADDED Faza 8] tracked_outline_color -- ports DrumRenderer's
+    `(state.activeWindowCount > 1 && ring.trackedColor) ? ... : gray` branch
+    exactly."""
+    from primeatlas.ring_viz.renderer import tracked_outline_color
+
+    gray = tracked_outline_color(0, False, (255.0, 51.0, 204.0))
+    check(gray == (180 / 255.0, 180 / 255.0, 180 / 255.0, 0.5),
+          f"no windows active -> flat gray regardless of matched (got {gray!r})")
+
+    gray_unmatched = tracked_outline_color(2, False, (255.0, 51.0, 204.0))
+    check(gray_unmatched == (180 / 255.0, 180 / 255.0, 180 / 255.0, 0.5),
+          f">1 window active but this ring's own anchor didn't match -> still gray (got {gray_unmatched!r})")
+
+    gray_single_window = tracked_outline_color(1, True, (255.0, 51.0, 204.0))
+    check(gray_single_window == (180 / 255.0, 180 / 255.0, 180 / 255.0, 0.5),
+          f"matched but only 1 window active -> still gray (activeWindowCount > 1 required) "
+          f"(got {gray_single_window!r})")
+
+    colored = tracked_outline_color(2, True, (255.0, 51.0, 204.0))
+    check(colored == (1.0, 51 / 255.0, 204 / 255.0, 0.5),
+          f">1 window active AND matched -> the family's own color at alpha 0.5 (got {colored!r})")
+
+
+def _test_build_tracked_outline_draws():
+    """[ADDED Faza 8] build_tracked_outline_draws -- one (radius, rgba) tuple
+    per tracked-and-active ring, using compute_tracked_colors/
+    active_window_count under the hood, matching tracked_outline_color's own
+    gating rules."""
+    from primeatlas.ring_viz.renderer import build_tracked_outline_draws
+    from primeatlas.ring_geometry import ring_positions
+
+    primes = np.array([2, 3, 5, 7, 11], dtype=np.int64)
+    n = 10
+    max_radius = 100.0
+    pos = ring_positions(primes, n, max_radius)
+
+    no_tracked = build_tracked_outline_draws(primes, n, set(), 0.5, "stepped", [], pos["radius"])
+    check(no_tracked == [], f"no tracked primes -> no draws at all (got {no_tracked!r})")
+
+    draws = build_tracked_outline_draws(primes, n, set(), 0.5, "stepped", [7, 2], pos["radius"])
+    check(len(draws) == 2, f"one draw per tracked-and-active ring (got {len(draws)} draws: {draws!r})")
+    radii_drawn = sorted(r for r, _c in draws)
+    expected_radii = sorted(float(pos["radius"][i]) for i, p in enumerate(primes) if p in (2, 7))
+    check(np.allclose(radii_drawn, expected_radii),
+          f"each draw's radius matches that ring's own ring_positions() radius "
+          f"(got {radii_drawn!r}, expected {expected_radii!r})")
+    check(all(c == (180 / 255.0, 180 / 255.0, 180 / 255.0, 0.5) for _r, c in draws),
+          f"no window families enabled -> every tracked outline is the flat gray fallback "
+          f"(got colors {[c for _r, c in draws]!r})")
+
+    not_active = build_tracked_outline_draws(primes, n, set(), 0.5, "stepped", [13, 17], pos["radius"])
+    check(not_active == [], f"tracked primes not active yet -> no draws (got {not_active!r})")
+
+
+def _test_center_marker_triangle_offsets():
+    """[ADDED Faza 8] center_marker_triangle_offsets -- ports DrumRenderer's
+    #drawCenterMarker fixed arrow shape: tip at the anchor itself, two back
+    corners at (+-12s, -35s)."""
+    from primeatlas.ring_viz.renderer import center_marker_triangle_offsets
+
+    offsets = center_marker_triangle_offsets(2.0)
+    check(offsets.shape == (3, 2), f"three (dx, dy) offsets (got shape {offsets.shape})")
+    check(tuple(offsets[0]) == (0.0, 0.0), f"tip offset is (0,0) -- at the anchor itself (got {offsets[0]!r})")
+    check(tuple(offsets[1]) == (-24.0, -70.0) and tuple(offsets[2]) == (24.0, -70.0),
+          f"back corners scale linearly with s (s=2.0 -> +-24, -70) (got {offsets[1]!r}, {offsets[2]!r})")
+
+
+def _test_marker_device_scale():
+    """[ADDED Faza 8] marker_device_scale -- ports DrumRenderer's
+    `s = min(w, h) / REFERENCE_MIN_DIM` (REFERENCE_MIN_DIM = 2160)."""
+    from primeatlas.ring_viz.renderer import marker_device_scale
+
+    check(abs(marker_device_scale(3840, 2160) - 1.0) < 1e-9,
+          f"the JS's own reference resolution (3840x2160) gives scale 1.0 (got {marker_device_scale(3840, 2160)!r})")
+    check(abs(marker_device_scale(1600, 1000) - (1000 / 2160)) < 1e-9,
+          f"uses min(w,h) (got {marker_device_scale(1600, 1000)!r}, expected {1000 / 2160!r})")
+
+
+def _test_build_center_marker_vertex_data():
+    """[ADDED Faza 8] build_center_marker_vertex_data -- triangle at the
+    anchor with the right offsets/color, line from the anchor straight up to
+    screen y=0."""
+    from primeatlas.ring_viz.renderer import build_center_marker_vertex_data
+
+    triangle, line = build_center_marker_vertex_data(cx=400.0, cy=300.0, s=1.0)
+    check(triangle.shape == (3, 6) and line.shape == (2, 6),
+          f"triangle has 3 vertices, line has 2, both (pos.xy, color.rgba) (got shapes "
+          f"{triangle.shape!r}, {line.shape!r})")
+    check(tuple(triangle[0, :2]) == (400.0, 300.0), f"triangle tip sits exactly at the anchor (got {triangle[0, :2]!r})")
+    check(tuple(line[0, :2]) == (400.0, 300.0) and tuple(line[1, :2]) == (400.0, 0.0),
+          f"line runs from the anchor straight up to screen y=0, same x (got {line[:, :2]!r})")
+    check(triangle[0, 5] == 1.0, f"triangle fill is fully opaque (alpha=1.0) (got alpha={triangle[0, 5]!r})")
+    check(0.0 < line[0, 5] < 1.0, f"line is semi-transparent (got alpha={line[0, 5]!r})")
+
+
+def _test_build_flash_quad_vertex_data():
+    """[ADDED Faza 8] build_flash_quad_vertex_data -- 4 corners covering the
+    full viewport, all sharing the given rgba."""
+    from primeatlas.ring_viz.renderer import build_flash_quad_vertex_data
+
+    quad = build_flash_quad_vertex_data(800.0, 600.0, (1.0, 0.5, 0.0, 0.25))
+    check(quad.shape == (4, 6), f"4 vertices, (pos.xy, color.rgba) each (got shape {quad.shape})")
+    corners = {tuple(quad[i, :2]) for i in range(4)}
+    check(corners == {(0.0, 0.0), (800.0, 0.0), (800.0, 600.0), (0.0, 600.0)},
+          f"the four corners exactly cover the given viewport (got {corners!r})")
+    check(all(tuple(quad[i, 2:6]) == (1.0, 0.5, 0.0, 0.25) for i in range(4)),
+          f"every vertex shares the same flat color (got {[tuple(quad[i, 2:6]) for i in range(4)]!r})")
+
+
+def _test_decay_flash():
+    """[ADDED Faza 8] decay_flash -- ports DrumRenderer's own
+    `value *= factor; if (value < 0.01) value = 0;` epsilon-snap exactly."""
+    from primeatlas.ring_viz.renderer import decay_flash
+
+    check(abs(decay_flash(1.0, 0.65) - 0.65) < 1e-9, f"one frame of 0.65 decay from 1.0 (got {decay_flash(1.0, 0.65)!r})")
+    check(decay_flash(0.001, 0.65) == 0.0, f"snaps to exactly 0 once below the 0.01 epsilon (got {decay_flash(0.001, 0.65)!r})")
+    check(decay_flash(0.0, 0.85) == 0.0, "already-zero stays zero")
+
+    # Repeated decay from 1.0 must reach exactly 0.0 in finite steps (not
+    # asymptotically hover just above it forever) -- the epsilon snap is
+    # what guarantees the flash overlay actually stops drawing eventually.
+    v = 1.0
+    steps = 0
+    while v > 0.0 and steps < 1000:
+        v = decay_flash(v, 0.65)
+        steps += 1
+    check(v == 0.0 and steps < 1000, f"decay reaches exactly 0.0 in a bounded number of steps (got steps={steps}, final={v!r})")
+
+
+def _test_flash_overlay_rgba():
+    """[ADDED Faza 8] flash_overlay_rgba -- ports DrumRenderer's
+    #drawFlashOverlay: alpha = flash_value * max_alpha, color unchanged."""
+    from primeatlas.ring_viz.renderer import flash_overlay_rgba, _FLASH_RESONANCE_RGB, _FLASH_PRIME_RGB
+
+    rgba = flash_overlay_rgba(1.0, _FLASH_RESONANCE_RGB, max_alpha=0.25)
+    check(abs(rgba[3] - 0.25) < 1e-9, f"alpha = flash_value(1.0) * max_alpha(0.25) (got {rgba!r})")
+    check(np.allclose(rgba[:3], (1.0, 140 / 255.0, 0.0)), f"rgb comes from the given base color, normalized to 0..1 (got {rgba!r})")
+
+    rgba_half = flash_overlay_rgba(0.5, _FLASH_PRIME_RGB, max_alpha=0.25)
+    check(abs(rgba_half[3] - 0.125) < 1e-9, f"alpha scales linearly with flash_value (got {rgba_half!r})")
+
+    rgba_zero = flash_overlay_rgba(0.0, _FLASH_RESONANCE_RGB)
+    check(rgba_zero[3] == 0.0, f"flash_value=0 -> fully transparent (got {rgba_zero!r})")
+
+
+def _test_resonance_is_active():
+    """[ADDED Faza 8] resonance_is_active -- ports SieveModel's
+    `resonance.active` (every active ring's tooth at phase 0), with the
+    same maxResonance>0 guard against a spurious resonance when there are
+    no active rings at all."""
+    from primeatlas.ring_viz.renderer import resonance_is_active
+    from primeatlas.ring_geometry import ring_positions
+
+    # n=6 divisible by both 2 and 3 -> both active rings hit -> resonance.
+    pos_all_hit = ring_positions(np.array([2, 3], dtype=np.int64), 6, 100.0)
+    check(resonance_is_active(pos_all_hit), f"every active ring divides n -> resonance active (is_hit={pos_all_hit['is_hit']!r})")
+
+    # n=7 with active primes [2,3] -> neither divides 7 -> not a resonance.
+    pos_none_hit = ring_positions(np.array([2, 3], dtype=np.int64), 7, 100.0)
+    check(not resonance_is_active(pos_none_hit), f"no active ring divides n -> not a resonance (is_hit={pos_none_hit['is_hit']!r})")
+
+    # n=10 with active primes [2,3,5] -> 2 and 5 divide, 3 doesn't -> partial, not resonance.
+    pos_partial = ring_positions(np.array([2, 3, 5], dtype=np.int64), 10, 100.0)
+    check(not resonance_is_active(pos_partial), f"a partial hit is not a resonance (is_hit={pos_partial['is_hit']!r})")
+
+    # No active rings at all -> guarded False, not a vacuous True.
+    pos_empty = ring_positions(np.empty(0, dtype=np.int64), 0, 100.0)
+    check(not resonance_is_active(pos_empty), "no active rings at all -> not a resonance (guards the vacuous-True case)")
+
+
+# ---------------------------------------------------------------------------
+# Faza 9 (see PLAN.md): Load Range -- load_prime_range_slice, the only pure
+# function this phase needed (the rest -- n reset to 0, auto-tracking,
+# switching rebuild_buffer's active-set source -- lives in run()'s own
+# closures, exercised only by the CLI/argv wiring tests in test_rings_tab.py
+# and by manual/real-hardware verification, same GL-adjacent split as every
+# other phase in this file).
+# ---------------------------------------------------------------------------
+
+def _test_load_prime_range_slice():
+    from primeatlas.ring_viz.renderer import load_prime_range_slice
+
+    primes = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23, 29], dtype=np.int64)
+
+    sliced = load_prime_range_slice(primes, 5, 19)
+    check(list(sliced) == [5, 7, 11, 13, 17, 19],
+          f"returns the ascending sub-array within [from, to] inclusive (got {list(sliced)!r})")
+
+    exact_edges = load_prime_range_slice(primes, 2, 29)
+    check(list(exact_edges) == list(primes), f"[from, to] spanning the whole array returns everything (got {list(exact_edges)!r})")
+
+    between = load_prime_range_slice(primes, 4, 6)
+    check(list(between) == [5], f"a range with no primes at its own edges still finds an interior one (got {list(between)!r})")
+
+    empty_slice = load_prime_range_slice(primes, 24, 28)
+    check(list(empty_slice) == [], f"a range entirely inside the loaded ceiling but with no primes in it -> empty, no error (got {list(empty_slice)!r})")
+
+    try:
+        load_prime_range_slice(primes, 20, 10)
+        check(False, "from > to should raise ValueError")
+    except ValueError as e:
+        check("invalid range" in str(e), f"from > to raises ValueError mentioning the invalid range (got {e!r})")
+
+    try:
+        load_prime_range_slice(primes, 5, 1000)
+        check(False, "to beyond the loaded ceiling should raise ValueError")
+    except ValueError as e:
+        check("exceeds the loaded ceiling" in str(e), f"to > primes[-1] raises ValueError mentioning the ceiling (got {e!r})")
+
+    try:
+        load_prime_range_slice(np.empty(0, dtype=np.int64), 0, 10)
+        check(False, "an empty primes array with any to >= 0 should raise ValueError (ceiling is -1)")
+    except ValueError as e:
+        check("exceeds the loaded ceiling" in str(e), f"empty primes array -> ceiling -1 -> any to >= 0 raises (got {e!r})")
+
+
+def _test_clamp_tempo_ms():
+    from primeatlas.ring_viz.renderer import clamp_tempo_ms, _TEMPO_MS_DEFAULT, _TEMPO_MS_MIN, _TEMPO_MS_MAX
+
+    check(clamp_tempo_ms(120) == 120, "a value already inside [30,2000] passes through unchanged")
+    check(clamp_tempo_ms(5) == _TEMPO_MS_MIN, f"a too-low value clamps up to the min ({_TEMPO_MS_MIN})")
+    check(clamp_tempo_ms(9999) == _TEMPO_MS_MAX, f"a too-high value clamps down to the max ({_TEMPO_MS_MAX})")
+    check(clamp_tempo_ms(30) == 30, "the min boundary itself is accepted as-is")
+    check(clamp_tempo_ms(2000) == 2000, "the max boundary itself is accepted as-is")
+    check(clamp_tempo_ms(None) == _TEMPO_MS_DEFAULT, f"a missing value falls back to the JS's own default ({_TEMPO_MS_DEFAULT})")
+
+
+def _test_can_start_playback():
+    from primeatlas.ring_viz.renderer import can_start_playback
+
+    check(can_start_playback(n=50, range_mode=False, ceiling=100) is True,
+          "sequential mode below the ceiling can start")
+    check(can_start_playback(n=100, range_mode=False, ceiling=100) is False,
+          "sequential mode already AT the ceiling refuses to start (ports #toggleRunning's own guard)")
+    check(can_start_playback(n=150, range_mode=False, ceiling=100) is False,
+          "sequential mode past the ceiling (shouldn't normally happen, but) also refuses")
+    check(can_start_playback(n=0, range_mode=True, ceiling=100) is True,
+          "range mode has no ceiling concept -- always allowed to start")
+    check(can_start_playback(n=100, range_mode=True, ceiling=100) is True,
+          "range mode still allowed to start even at a value equal to some unrelated ceiling")
+
+
+def _test_tick_next_n():
+    from primeatlas.ring_viz.renderer import tick_next_n
+
+    new_n, stop = tick_next_n(n=50, range_mode=False, ceiling=100)
+    check((new_n, stop) == (51, False), f"sequential mode below ceiling advances by exactly 1 (got {(new_n, stop)!r})")
+
+    new_n, stop = tick_next_n(n=100, range_mode=False, ceiling=100)
+    check((new_n, stop) == (100, True), f"sequential mode AT the ceiling stops instead of advancing (got {(new_n, stop)!r})")
+
+    new_n, stop = tick_next_n(n=150, range_mode=False, ceiling=100)
+    check((new_n, stop) == (150, True), f"sequential mode past the ceiling also stops (got {(new_n, stop)!r})")
+
+    new_n, stop = tick_next_n(n=999, range_mode=True, ceiling=100)
+    check((new_n, stop) == (1000, False), f"range mode ignores the ceiling entirely and always advances (got {(new_n, stop)!r})")
+
+
+def _test_advance_auto_orbit():
+    from primeatlas.ring_viz.renderer import advance_auto_orbit
+
+    active = np.array([2, 3, 5, 7, 11], dtype=np.int64)
+
+    # A single active prime is a no-op (mirrors the JS's own early-return guard).
+    idx, cnt, chosen = advance_auto_orbit(np.array([2], dtype=np.int64), index=0, counter=0)
+    check((idx, cnt, chosen) == (0, 0, None), f"len<=1 is a no-op (got {(idx, cnt, chosen)!r})")
+
+    # gap(2->3) == 1, so the very first tick already crosses it.
+    idx, cnt, chosen = advance_auto_orbit(active, index=0, counter=0)
+    check((idx, cnt, chosen) == (1, 0, 3),
+          f"gap of 1 (3-2) advances on the very first tick, landing on index 1/prime 3 (got {(idx, cnt, chosen)!r})")
+
+    # gap(3->5) == 2: one tick short of crossing (counter goes 0->1, no advance yet).
+    idx, cnt, chosen = advance_auto_orbit(active, index=1, counter=0)
+    check((idx, cnt, chosen) == (1, 1, None),
+          f"gap of 2 (5-3) does not advance after only 1 tick (got {(idx, cnt, chosen)!r})")
+    # ...and the second tick crosses it.
+    idx, cnt, chosen = advance_auto_orbit(active, index=1, counter=1)
+    check((idx, cnt, chosen) == (2, 0, 5),
+          f"gap of 2 (5-3) advances on the 2nd tick, landing on index 2/prime 5 (got {(idx, cnt, chosen)!r})")
+
+    # Wrapping past the last index uses the fixed gap of 10 (ports the JS's
+    # own `nextIndex === 0 ? 10 : ...` line).
+    idx, cnt, chosen = advance_auto_orbit(active, index=4, counter=8)
+    check((idx, cnt, chosen) == (4, 9, None),
+          f"wrap-around gap of 10 does not advance after only 9 ticks (got {(idx, cnt, chosen)!r})")
+    idx, cnt, chosen = advance_auto_orbit(active, index=4, counter=9)
+    check((idx, cnt, chosen) == (0, 0, 2),
+          f"wrap-around gap of 10 advances on the 10th tick, landing back on index 0/prime 2 (got {(idx, cnt, chosen)!r})")
+
+
+def _test_update_resonance_log():
+    from primeatlas.ring_viz.renderer import update_resonance_log
+    from primeatlas.ring_geometry import resonance_log_lines
+
+    primes = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47], dtype=np.int64)
+
+    # First call ever (last_n is None) is always a jump: full backfill from
+    # from_n=1 (sequential mode).
+    state = {"lines": [], "last_n": None, "last_range_mode": None}
+    active = primes[primes <= 30]
+    update_resonance_log(state, active, n_value=30, range_mode=False, advancing=False)
+    expected = resonance_log_lines(active, 1, 30)
+    check(state["lines"] == expected,
+          f"first-ever call backfills the full [1, n] range (sequential mode) (got {state['lines']!r})")
+    check(state["last_n"] == 30 and state["last_range_mode"] is False,
+          "state's last_n/last_range_mode are updated after the call")
+
+    # A manual jump (advancing=False) forces a fresh full backfill, even if
+    # last_n was already set -- e.g. jumping backwards or skipping ahead.
+    state = {"lines": ["stale", "data"], "last_n": 10, "last_range_mode": False}
+    active = primes[primes <= 30]
+    update_resonance_log(state, active, n_value=30, range_mode=False, advancing=False)
+    check(state["lines"] == resonance_log_lines(active, 1, 30),
+          "a manual jump (advancing=False) REPLACES stale lines with a fresh full backfill, "
+          "not an append")
+
+    # A forward tick (advancing=True) does NOT rescan -- it only checks
+    # whether the new n_value itself is a resonance step, appending at most
+    # one line, never touching earlier entries.
+    state = {"lines": ["previous entry"], "last_n": 29, "last_range_mode": False}
+    active = primes[primes <= 30]
+    update_resonance_log(state, active, n_value=30, range_mode=False, advancing=True)
+    tick_addition = resonance_log_lines(active, 30, 30)
+    check(state["lines"] == ["previous entry"] + tick_addition,
+          f"a forward tick only appends n_value's own resonance line(s) (if any) after existing entries "
+          f"(got {state['lines']!r}, expected append of {tick_addition!r})")
+
+    # A tick that produces NO new resonance event leaves the log untouched.
+    # (n=8 is confirmed NOT a resonance step for this prime list -- the
+    # earlier full-backfill assertion's own printed event list, over
+    # [1, 30], never includes 8.)
+    state = {"lines": ["kept as-is"], "last_n": 7, "last_range_mode": False}
+    active = primes[primes <= 8]
+    update_resonance_log(state, active, n_value=8, range_mode=False, advancing=True)
+    check(state["lines"] == ["kept as-is"],
+          f"a tick landing on a non-resonance n leaves state['lines'] unchanged (got {state['lines']!r})")
+
+    # A tick is never double-appended if called twice with the same n_value
+    # (defensive dedupe, mirrors #logResonance's own last-entry check).
+    state = {"lines": [], "last_n": 29, "last_range_mode": False}
+    active = primes[primes <= 30]
+    update_resonance_log(state, active, n_value=30, range_mode=False, advancing=True)
+    before = list(state["lines"])
+    state["last_n"] = 29  # simulate calling again for the "same" tick
+    update_resonance_log(state, active, n_value=30, range_mode=False, advancing=True)
+    check(state["lines"] == before,
+          "calling update_resonance_log twice for the same n_value tick does not duplicate the entry")
+
+    # A mode switch (sequential -> range) forces a jump even with advancing=True.
+    state = {"lines": ["sequential data"], "last_n": 30, "last_range_mode": False}
+    range_active = np.array([101, 103, 107], dtype=np.int64)
+    update_resonance_log(state, range_active, n_value=2, range_mode=True, advancing=True)
+    check(state["lines"] == resonance_log_lines(range_active, 0, 2),
+          f"a mode switch forces a full backfill (from_n=0 for range mode) even with advancing=True "
+          f"(got {state['lines']!r})")
+    check(state["last_range_mode"] is True, "last_range_mode reflects the new mode after the switch")
+
+
+def _test_compose_hud_canvas_lines():
+    from primeatlas.ring_viz.renderer import compose_hud_canvas_lines
+
+    lines = compose_hud_canvas_lines(n=1234567, count=42, lines=["Factors of N: 7, 11"],
+                                      running=False, tempo_ms=120)
+    check(lines[0] == "N = 1,234,567    rings = 42    [Stopped]",
+          f"header line formats N/count with thousands separators and 'Stopped' status (got {lines[0]!r})")
+    check(lines[1:] == ["Factors of N: 7, 11"],
+          f"hud_lines_for_n's own lines pass through verbatim, in order (got {lines[1:]!r})")
+
+    lines = compose_hud_canvas_lines(n=5, count=0, lines=[], running=True, tempo_ms=250)
+    check(lines == ["N = 5    rings = 0    [Running (250ms/tick)]"],
+          f"running status includes the tempo, empty extra-lines list is fine (got {lines!r})")
+
+
+def _test_hud_quad_vertex_data():
+    from primeatlas.ring_viz.renderer import hud_quad_vertex_data
+
+    verts = hud_quad_vertex_data(100.0, 50.0, x=10.0, y=20.0)
+    check(verts.shape == (6, 4), f"two triangles = 6 vertices, each (pos_x, pos_y, uv_x, uv_y) (got shape {verts.shape})")
+    xs, ys = verts[:, 0], verts[:, 1]
+    check(xs.min() == 10.0 and xs.max() == 110.0, f"quad spans x in [10, 110] (anchor + width) (got [{xs.min()}, {xs.max()}])")
+    check(ys.min() == 20.0 and ys.max() == 70.0, f"quad spans y in [20, 70] (anchor + height) (got [{ys.min()}, {ys.max()}])")
+    # Top-left corner (min x, min y) must carry uv (0, 0) -- matches PIL's
+    # own top-left-origin image layout, so the rasterized bitmap shows up
+    # right-side-up with no manual flip anywhere in the pipeline.
+    top_left_rows = verts[(xs == 10.0) & (ys == 20.0)]
+    check(bool(np.all(top_left_rows[:, 2:4] == 0.0)), f"top-left corner has uv=(0,0) (got {top_left_rows[:, 2:4].tolist()})")
+    bottom_right_rows = verts[(xs == 110.0) & (ys == 70.0)]
+    check(bool(np.all(bottom_right_rows[:, 2:4] == 1.0)), f"bottom-right corner has uv=(1,1) (got {bottom_right_rows[:, 2:4].tolist()})")
+
+
+def _test_rasterize_hud_text():
+    from primeatlas.ring_viz.renderer import rasterize_hud_text, _PIL_AVAILABLE
+
+    check(rasterize_hud_text([]) is None, "empty line list rasterizes to None (nothing to draw)")
+
+    if not _PIL_AVAILABLE:
+        print("skip: Pillow not installed in this environment -- rasterize_hud_text's "
+              "real-bitmap behavior is untested here (renderer.py itself degrades "
+              "gracefully in this case, see its own _PIL_AVAILABLE guard)")
+        return
+
+    rgba = rasterize_hud_text(["N = 100", "Factors of N: 2, 5"])
+    check(rgba is not None, "non-empty lines produce a real bitmap")
+    check(rgba.ndim == 3 and rgba.shape[2] == 4, f"result is an (H, W, 4) RGBA array (got shape {rgba.shape})")
+    check(rgba.dtype == np.uint8, f"result is uint8 (got {rgba.dtype})")
+    check(rgba.shape[0] > 0 and rgba.shape[1] > 0, f"non-empty text produces a non-degenerate image (got shape {rgba.shape})")
+    # Two lines of text must be taller than a single line of the same text,
+    # otherwise the per-line layout loop isn't actually stacking anything.
+    one_line = rasterize_hud_text(["N = 100"])
+    check(rgba.shape[0] > one_line.shape[0],
+          f"two lines are taller than one line ({rgba.shape[0]} vs {one_line.shape[0]})")
+    # Some pixel must actually be opaque (alpha > 0) -- otherwise this drew
+    # nothing (e.g. a font/color bug silently producing a blank image).
+    check(bool((rgba[:, :, 3] > 0).any()), "at least one pixel has non-zero alpha (text was actually drawn)")
+
+    # Faza 11C: font_size must actually change the rasterized bitmap size --
+    # this is the whole point of the --hud-font-size CLI param (Artur's
+    # "hud jest mikroskopijny" report), so a bug here would silently make
+    # the new flag a no-op.
+    small = rasterize_hud_text(["N = 100"], font_size=10)
+    big = rasterize_hud_text(["N = 100"], font_size=40)
+    check(big.shape[0] > small.shape[0] and big.shape[1] > small.shape[1],
+          f"font_size=40 produces a taller AND wider bitmap than font_size=10 "
+          f"(got small={small.shape}, big={big.shape})")
+
+
 def main():
     _test_basic_multi_floor_load()
     _test_gap_between_floors()
@@ -386,9 +1047,35 @@ def main():
     _test_empty_portal()
     _test_build_vertex_data_no_windows_matches_old_behavior()
     _test_build_vertex_data_bertrand_highlight()
+    _test_split_hit_normal_vertex_data()
     _test_hud_lines_for_n()
     _test_initial_n_for_source()
     _test_zoom_to_point()
+    _test_filter_active_tracked()
+    _test_hud_lines_for_n_tracked_state()
+    _test_lcm_of_list()
+    _test_tracked_resonance_state()
+    _test_format_big()
+    _test_tracked_ring_mask()
+    _test_unit_circle_vertices()
+    _test_tracked_outline_color()
+    _test_build_tracked_outline_draws()
+    _test_center_marker_triangle_offsets()
+    _test_marker_device_scale()
+    _test_build_center_marker_vertex_data()
+    _test_build_flash_quad_vertex_data()
+    _test_decay_flash()
+    _test_flash_overlay_rgba()
+    _test_resonance_is_active()
+    _test_load_prime_range_slice()
+    _test_clamp_tempo_ms()
+    _test_can_start_playback()
+    _test_tick_next_n()
+    _test_advance_auto_orbit()
+    _test_update_resonance_log()
+    _test_compose_hud_canvas_lines()
+    _test_hud_quad_vertex_data()
+    _test_rasterize_hud_text()
 
     if failures:
         print(f"\n{len(failures)} FAILURE(S)")

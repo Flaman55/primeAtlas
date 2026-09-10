@@ -48,6 +48,8 @@ of millions) -- a Python-level loop per ring would defeat the entire point of
 the GPU-scale ring count already proven feasible.
 """
 
+import math
+
 import numpy as np
 
 
@@ -498,3 +500,192 @@ def resonance_events_in_range(primes, from_n, to_n):
                     factors.append(p_int)
             events.append({"n": n, "factors": factors})
     return events
+
+
+# ---------------------------------------------------------------------------
+# Resonance log + surviving-primes panel text -- [ADDED Faza 11, PLAN.md]
+# ports StructuralSieveApp.js's #resonanceLog formatting and #renderLogPanel's
+# text-truncation rules to plain strings for renderer.py's console-pane
+# prints (NOT the on-canvas HUD/HUD_STATE path -- PLAN.md's Faza 11 entry is
+# explicit this is a console-pane port, same precedent as the plain print()
+# HUD lines Faza 4/7B already emit). No new math: resonance_log_lines is a
+# thin formatter over resonance_events_in_range above; format_log_panel_text
+# is generic and used for both the resonance-log lines and the raw
+# surviving-primes list.
+# ---------------------------------------------------------------------------
+
+LOG_PANEL_TRUNCATE_THRESHOLD = 50  # mirrors JS's own LOG_PANEL_TRUNCATE_THRESHOLD
+
+
+def resonance_log_lines(primes, from_n, to_n):
+    """Ports #resonanceLog's own entry format exactly (`${e.n} = ${e.factors
+    .join(" × ")}`) -- turns resonance_events_in_range's structured events
+    for [from_n, to_n] into the same human-readable strings the HTML
+    reference's Resonances panel shows, one per resonance step, ascending n
+    order (resonance_events_in_range's own order, unchanged)."""
+    events = resonance_events_in_range(primes, from_n, to_n)
+    return [f"{e['n']} = {' × '.join(str(f) for f in e['factors'])}" for e in events]
+
+
+def format_log_panel_text(items, threshold=LOG_PANEL_TRUNCATE_THRESHOLD):
+    """Ports StructuralSieveApp.js's #renderLogPanel text-formatting rules
+    (see that method's own doc-comment for the full rationale) for a plain
+    console-pane line rather than a DOM panel with a live collapse/expand
+    toggle: the console pane is a scrolling text stream, not an interactive
+    widget, so there is nothing to click here -- this always renders the
+    COLLAPSED view once a list exceeds `threshold` items (JS's own default
+    state for a freshly rendered long panel), which is strictly more useful
+    for a scrollback than dumping a potentially huge comma-separated line.
+
+    Returns a (count, text) tuple: `count` is len(items) (for the caller's
+    own "(count)" header, matching JS's `els.count.textContent`); `text` is
+    "-" for an empty list, the full ", "-joined list at or below
+    `threshold` items, or the first `threshold` items joined by ", "
+    followed by " (+K more)" above it -- K is the omitted remainder,
+    mirroring JS's own "+N more" wording (ss-log-panel-truncated)."""
+    count = len(items)
+    if count == 0:
+        return count, "-"
+    if count <= threshold:
+        return count, ", ".join(str(x) for x in items)
+    shown = items[:threshold]
+    remaining = count - threshold
+    return count, ", ".join(str(x) for x in shown) + f" (+{remaining} more)"
+
+
+# ---------------------------------------------------------------------------
+# Tracked primes -- [ADDED Faza 6, PLAN.md] foundation shared by Faza 7 (LCM/
+# resonance HUD) and Faza 8 (tracked-ring outline circles/flash overlays).
+# Ports the filtering half of StructuralSieveApp.js's #trackedResonanceState
+# (see that method's own doc-comment): "which of the primes the user asked
+# to track are actually active (born) yet at the current N". Deliberately
+# does NOT port the LCM/phase/to-resonance computation itself -- that's
+# Faza 7's own scope, kept separate so this foundation stays a pure,
+# single-purpose filter usable by both later phases without either one
+# depending on the other's math.
+# ---------------------------------------------------------------------------
+
+def filter_active_tracked(tracked, active_primes):
+    """Which of `tracked` (an iterable of prime values, in whatever order the
+    user entered them) are present in `active_primes` (the ring array's
+    current active/born set at this N).
+
+    Mirrors `#trackedResonanceState`'s own `tracked.filter((p) =>
+    activePrimes.includes(p))` line exactly: preserves `tracked`'s original
+    order (NOT sorted, NOT deduplicated beyond whatever duplicates the user
+    typed) rather than active_primes's order, since the tracked list is a
+    small, user-authored sequence where "the order Artur typed them in" is
+    itself meaningful (e.g. for a future Track-P text field round-trip).
+
+    Returns a plain list of ints -- deliberately not a numpy array, since
+    the tracked list is always small (user-typed or capped, see Faza 7's
+    own max_tracked) and every caller (HUD text formatting, LCM product)
+    wants plain Python ints, not numpy scalars.
+    """
+    active_set = {int(p) for p in active_primes}
+    return [int(p) for p in tracked if int(p) in active_set]
+
+
+def tracked_ring_mask(primes, tracked):
+    """Boolean mask into `primes` (an active ring array, same array
+    ring_positions()/build_vertex_data() were called with) marking every
+    ring whose OWN prime literally appears in `tracked`.
+
+    Ports DrumRenderer's own per-ring `ring.tracked = trackedSet.has(r.prime)`
+    (see StructuralSieveApp.js's per-frame ring-state construction) -- plain
+    list membership, a DIFFERENT and narrower question from
+    filter_active_tracked above: that function answers "which tracked VALUES
+    are active" (used for the LCM/resonance HUD block, order-preserving,
+    plain list); this one answers "which RING INDICES are tracked" so a
+    caller can index a position/radius/color array (e.g.
+    ring_geometry.ring_positions()'s own "radius" array) directly to draw
+    something at each tracked ring's location -- see Faza 8 (tracked-ring
+    outline circles) in PLAN.md for the caller.
+
+    Returns an all-False bool array (length len(primes)) when `tracked` is
+    empty, matching np.isin's own behavior against an empty second operand
+    -- no special-casing needed, but spelled out here since an empty
+    `tracked` is the common "nothing tracked yet" case."""
+    primes_arr = np.asarray(primes, dtype=np.int64)
+    if len(primes_arr) == 0 or not tracked:
+        return np.zeros(len(primes_arr), dtype=bool)
+    tracked_arr = np.asarray(list(tracked), dtype=np.int64)
+    return np.isin(primes_arr, tracked_arr)
+
+
+# ---------------------------------------------------------------------------
+# Tracked-primes LCM/resonance -- [ADDED Faza 7A, PLAN.md] pure port of
+# StructuralSieveApp.js's #trackedResonanceState / SieveModel.js's
+# lcmOfListBig / #formatBig. See PLAN.md's own design note: the JS's
+# bitmask/lookup-table idea does NOT apply here (its own cap defaults to
+# 500 tracked primes, only tractable in the teens/twenties for a real
+# lookup table) -- this is a straight product-based LCM port instead.
+#
+# Python has no Number/BigInt split -- `int` is already arbitrary-precision
+# -- so unlike the JS (which keeps lcmOfList/lcmOfListBig as two separate
+# implementations for a plain-Number fast path vs. an exact BigInt path)
+# there is only one lcm_of_list here, and it is exact by construction.
+# ---------------------------------------------------------------------------
+
+def lcm_of_list(values):
+    """LCM of a list of positive ints, or 0 for an empty list -- mirrors
+    SieveModel.js's lcmOfList/lcmOfListBig (both return 0/0n for an empty
+    list, not 1, so callers can use `lcm <= 0` as the same "nothing to
+    show" signal the JS uses)."""
+    values = [int(v) for v in values]
+    if not values:
+        return 0
+    return math.lcm(*values)
+
+
+def tracked_resonance_state(tracked, active_primes, n, auto_orbit=False,
+                             max_tracked_for_exact_lcm=500):
+    """Port of StructuralSieveApp.js's #trackedResonanceState -- the single
+    computation behind both the HUD's tracked/LCM/phase/to-resonance lines
+    and (in the JS) the live chime trigger.
+
+    Returns None under the same conditions the JS returns null: auto_orbit
+    is on, `tracked` is empty, or none of `tracked` is active yet at this N
+    (via filter_active_tracked above -- same filtering, not reimplemented).
+    Returns `{"too_large": True, "tracked": [...], "limit": ...}` when the
+    tracked-and-active count exceeds max_tracked_for_exact_lcm (mirrors the
+    JS's own device-calibrated cap, passed in here rather than calibrated,
+    since there is no equivalent "how fast is this specific machine" probe
+    on this side yet -- callers pick a value, see renderer.py's own default).
+    Otherwise returns `{"tracked": [...], "lcm": int, "phase": int,
+    "to_resonance": int}` -- plain Python ints throughout, no BigInt/Number
+    distinction needed (see lcm_of_list's own doc-comment)."""
+    if auto_orbit or not tracked:
+        return None
+    tracked_active = filter_active_tracked(tracked, active_primes)
+    if not tracked_active:
+        return None
+    if len(tracked_active) > max_tracked_for_exact_lcm:
+        return {"too_large": True, "tracked": tracked_active, "limit": max_tracked_for_exact_lcm}
+    lcm = lcm_of_list(tracked_active)
+    if lcm <= 0:
+        return None
+    n_int = int(n)
+    phase = n_int % lcm
+    to_resonance = 0 if phase == 0 else lcm - phase
+    return {"tracked": tracked_active, "lcm": lcm, "phase": phase, "to_resonance": to_resonance}
+
+
+def format_big(value, digit_threshold=15):
+    """Port of StructuralSieveApp.js's #formatBig: below digit_threshold
+    digits (JS default 15, ~Number.MAX_SAFE_INTEGER's own digit count),
+    the plain digit string; past it, "mantissa×10^exponent (N digits)"
+    since NWW/Faza/Do-rezonancy can genuinely reach hundreds or thousands
+    of digits once dozens of pairwise-coprime primes are multiplied
+    together, and printing all of them would be noise, not information.
+    English-only wording (unlike the JS's #t()-localized string) since
+    this is a console/HUD diagnostic string on the Python side, not
+    user-facing app chrome with its own PL/EN locale files."""
+    value = int(value)
+    negative = value < 0
+    s = str(-value if negative else value)
+    if len(s) <= digit_threshold:
+        return ("-" if negative else "") + s
+    mantissa = f"{s[0]}.{s[1:5]}"
+    exponent = len(s) - 1
+    return ("-" if negative else "") + f"{mantissa}×10^{exponent} ({len(s)} digits)"

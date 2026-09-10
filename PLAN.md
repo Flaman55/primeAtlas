@@ -136,6 +136,167 @@ reviewable chunk, verified before the next starts.
   GPU itself) -- the CPU-numpy recompute-on-N-change already tested fine at
   20M+ rings; only worth revisiting if a future need requires smooth
   per-frame N animation (not just navigation) at that scale.
-- Video/animation export parity with Structural Sieve's own Stage 6 -- a
-  separate feature, not blocking the "interactive navigation at large
-  scale" goal this whole investigation started from.
+- Video/animation export parity with Structural Sieve's own Stage 6 -- see
+  Faza 6+ section below, where this is revisited (not silently dropped) now
+  that the goal has widened to full feature parity.
+
+## Faza 6+ -- Full feature parity with the HTML reference (branch `ring-outline-drawing`, 2026-09-05)
+
+**Goal, restated by Artur (2026-09-05):** the ring visualization in PrimeAtlas
+should support exactly the same functions as the browser Structural Sieve
+(`StructuralSieve.html` / `StructuralSieveApp.js` / `DrumRenderer.js` /
+`SieveModel.js` in the RelationalMathematics repo), just usable at far
+larger N/ring counts than a browser tab can reach -- not a subset, and not
+a reinterpretation. Faza 0-5 (done, merged to `main`) covered the raw ring
+field, window highlight colors, and navigation/zoom. This section is a full
+audit of the HTML reference's UI (`StructuralSieve.html`'s controls) against
+current PrimeAtlas state, turned into a dependency-ordered phase list.
+
+**Audit method:** two passes. First pass read every `<button>`/`<input>`/
+`<select>` in `StructuralSieve.html` plus the JS methods each one wires to.
+**Second pass (2026-09-05, prompted by Artur suspecting the first pass
+undercounted the reference's real feature set)** read the full method
+inventory of all three JS files directly (every `methodName(...) {` in
+`StructuralSieveApp.js`/`DrumRenderer.js`/`SieveModel.js`, not just the ones
+reachable from a visible UI control) -- this caught two real gaps the
+control-only pass missed: `triggerBirthFlash()` (a distinct flash from
+`triggerResonanceFlash()`, fires when a new prime ring is born) and
+`#drawCenterMarker` (a small always-drawn marker at the ring field's
+origin). Both folded into Faza 8 below. Cross-checked the full method list
+against `renderer.py`/`ring_geometry.py`'s current code -- all came back
+with zero matches for the still-missing ones, confirming they're genuinely
+not ported, not just named differently.
+
+**Gap list, in dependency order:**
+
+**Faza 6 -- Tracked-primes foundation ("Track P")**
+- `--track-primes` CLI arg + a launch-time "Track P" field in `rings_tab.py`
+  (same restart-to-change pattern as the existing N/windows/point-size
+  fields -- see Faza 3's own "no live IPC into the running subprocess"
+  precedent).
+- Pure filter (ring_geometry.py or renderer.py): which of the entered
+  primes are actually active at the current N.
+- Also folds in `#advanceAutoOrbit`'s mode (JS: when nothing is explicitly
+  tracked, auto-cycle through active primes one at a time) as a
+  `--auto-orbit` flag -- same "what's tracked" bucket, and only meaningful
+  once Faza 10's playback loop exists to advance through, so implement the
+  flag/state here but its visible effect waits on Faza 10.
+- This is a **shared prerequisite** for Faza 7 and Faza 8 below -- both the
+  LCM/resonance HUD and the outline circles need "which primes are tracked
+  and currently active" as their input. Build it once, here, rather than
+  twice.
+
+**Faza 7 -- Tracked-primes LCM/resonance HUD**
+- Ports `#trackedResonanceState` / `#lcmOfTracked` / `#buildLcmLines` /
+  `#formatBig` (see this file's git history for the fuller design note
+  written 2026-09-04 on the `ring-viz-lcm-resonance` branch -- the mask/
+  lookup-table idea does NOT apply here, JS's own tracked-prime cap
+  defaults to 500, a bitmask table is only tractable in the teens/twenties).
+  Straight port: product-based LCM (pairwise coprime), cached by the
+  tracked-and-active list's content, HUD lines via the console pane.
+
+**Faza 8 -- Tracked-ring outline circles (task #595)**
+- [VERIFIED against source, 2026-09-05] `DrumRenderer.js` draws a full
+  circle stroke (`ctx.arc(...).stroke()`) ONLY for `ring.tracked` rings --
+  NOT for every ring. Non-tracked rings only ever get their hit-tooth dot
+  (draw()'s ring loop, `if (ring.tracked) { ...stroke... }` gates the
+  circle; `#drawRingTeeth` runs unconditionally for the dot). So this phase
+  needs Faza 6's tracked list, not a blanket "outline every ring" change.
+- Color: gray (`rgba(180,180,180,0.5)`) by default, or the ring's own
+  `trackedColor` (which window family picked this exact prime as its
+  anchor -- already computed by Faza 1's highlight-color logic) when more
+  than one window family is active at once.
+- New GL work: current renderer only draws `GL_POINTS` (see
+  `build_vertex_data`) -- circle outlines need a second draw call
+  (`GL_LINE_LOOP` per tracked ring, or a triangle-strip ring mesh), a new
+  shader/VAO path alongside the existing points pass, not just new vertex
+  color data. This is the one phase in this list with real new
+  rendering-pipeline work, not just new pure-Python math plus a stdout line.
+- [ADDED after the second-pass audit above] Also covers the two flash
+  overlays (`triggerBirthFlash`/`triggerResonanceFlash` -- a screen-wide
+  translucent color wash, decaying each frame, `*= 0.65` per the JS) and
+  `#drawCenterMarker` (a small always-on marker at the ring field's
+  origin) -- all three are the same class of work (new draw calls in the
+  existing GL loop, no new pure-math needed: `ring_geometry.py` already has
+  every anchor/color function this phase touches --
+  `bertrand_anchor_at`/`legendre_anchor_at`/`general_law_anchor_at`/
+  `compute_tracked_colors` all landed in Faza 1, confirmed present by
+  `grep`). Birth-flash needs one small new bit of state (did the active-ring
+  count grow since the last frame) -- everything else in this phase is
+  pure rendering plumbing over already-ported math.
+
+**Faza 9 -- Load Range (auto-track a whole loaded range)**
+- Ports `#loadPrimeRange`: From/To fields + a "Load Range" button in
+  `rings_tab.py`, auto-populating Faza 6's Track P list with every prime in
+  the range (capped the same way Faza 7's `max_tracked` already caps single
+  entries).
+
+**Faza 10 -- Playback / navigation controls**
+- START/STOP: auto-advance N over time inside the GL render loop at a
+  configurable speed (mirrors the HTML's tempo slider).
+- RESET: return to the N the renderer was launched with.
+- GOTO N already effectively exists (the N field + relaunch) -- decide
+  whether a live in-window goto (no relaunch) is worth the same live-IPC
+  investment flagged for Track P in Faza 6, or whether relaunch-to-jump
+  stays the standing convention for this renderer.
+
+**Faza 11 -- Resonance log + primes list panels**
+- `ring_geometry.resonance_events_in_range` already exists (landed in
+  Faza 1) -- this phase is wiring it to output, not new math. Port
+  `#resonanceLog` (text log of "N = factor x factor..." entries) and the
+  primes/surviving-list panel to the console pane, same precedent as
+  Faza 4's HUD text.
+
+**Faza 12 -- Live audio (tone synth)**
+- Integration implementation (GPT, 2026-09-10): optional
+  `--audio` with `--sound-low`, `--sound-prime`, `--sound-lcm`, plus translated
+  launch-time controls in RingsTab. Install `sounddevice` in the same Python
+  used to launch Atlas (`python -m pip install sounddevice`); NumPy is already
+  a renderer dependency. Missing backend/device leaves visualization running
+  silently with a console explanation. Defaults: sound off, sine/triangle/choir.
+- Event hook reuses the computed hit mask and tracked-LCM HUD state only on
+  advancing ticks. It inspects at most the audible active-index prefix, not
+  an additional full ring array; eight voices/events bound callback work.
+  Audio closes in a finally block, including renderer failure. High-frequency
+  partials are omitted and waveforms approximate browser oscillators.
+- Validation: eight audio/integration tests, geometry/renderer checks and real
+  Tk tab tests passed. The full-app Tk test also emitted an unrelated settings
+  update-thread warning (`main thread is not in main loop`). Artur confirmed
+  audible playback on 2026-09-10 after sounddevice was installed in his Python
+  3.13 environment. A direct device smoke test had no callback errors. Detailed
+  perceptual parity remains unverified; no WAV/MIDI export added.
+- Ports `ToneSynth.js`'s trigger logic (note on hit / tracked-prime /
+  LCM-resonance) to a Python audio backend (e.g. `sounddevice`) plus
+  instrument selection (the HTML's `soundLow`/`soundPrime`/`soundLCM`
+  selects). **Flagged as the highest-risk phase in this list**: there is no
+  existing audio code anywhere in PrimeAtlas to build on, unlike every
+  other phase above which extends an already-proven pattern (CLI arg +
+  Tk field, pure function + cache, stdout line, or a second GL draw call).
+
+**Faza 13 -- WAV / MIDI export [CUT, Artur 2026-09-05: "wideo i eksport na
+tę chwilę sobie darujmy"]**
+- Was: offline (non-realtime) render reusing Faza 12's trigger logic.
+  Explicitly out of scope for now, same decision as video export below --
+  not silently dropped, decided. Revisit only if Artur asks again later.
+
+**Faza 14 -- Fullscreen toggle**
+- Implemented: F11 toggles fullscreen on the monitor with the largest overlap
+  with the window, then restores the saved windowed position and size. Key
+  repeat is ignored; Escape retains its existing close-window behavior.
+- The existing GLFW window and GL context are retained across transitions.
+- Validation: four deterministic tests in `unitTests/test_ring_fullscreen.py`,
+  renderer regression checks, and the opt-in `--device-smoke` native GLFW
+  round trip passed on Windows (2026-09-10). Native smoke verifies mode and
+  restored size; multi-monitor selection is covered by the deterministic tests.
+
+**Video/animation export (WebM/MP4 RECORD button) -- [CUT, Artur 2026-09-05:
+"wideo i eksport na tę chwilę sobie darujmy"].** Was flagged as a real new
+subsystem (frame capture + encoding) with nothing existing in PrimeAtlas to
+build on. Decided out of scope for now, same as Faza 13 above. Revisit only
+if Artur asks again later.
+
+**Sequencing note:** Faza 6 must come before Faza 7, 8, and 9 (shared Track
+P prerequisite; Faza 6's auto-orbit flag also waits on Faza 10 for its
+visible effect). Faza 10, 11, 12, and 14 have no dependency on each other
+and can be reordered freely if Artur wants a different priority. (Faza 13's
+former dependency on Faza 12 is moot now that Faza 13 is cut.)

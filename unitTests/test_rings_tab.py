@@ -97,6 +97,59 @@ def _test_build_renderer_argv():
     check("--point-size" in ps_argv and ps_argv[ps_argv.index("--point-size") + 1] == "12.5",
           f"--point-size is included and correct when a value is given (got {ps_argv!r})")
 
+    # [ADDED Faza 6, see PLAN.md] Track P / auto-orbit argv wiring.
+    check("--track-primes" not in default_argv,
+          f"no --track-primes arg at all when track_primes=() (matches renderer.py's "
+          f"own default of no tracking) (got {default_argv!r})")
+    check("--auto-orbit" not in default_argv,
+          f"no --auto-orbit flag at all when auto_orbit=False (got {default_argv!r})")
+    tp_argv = build_renderer_argv("/x", 1, track_primes=["2", "3", "5"])
+    check("--track-primes" in tp_argv and tp_argv[tp_argv.index("--track-primes") + 1] == "2,3,5",
+          f"--track-primes joins the given values with commas, preserving order "
+          f"(got {tp_argv!r})")
+    ao_argv = build_renderer_argv("/x", 1, auto_orbit=True)
+    check("--auto-orbit" in ao_argv, f"--auto-orbit flag is included when auto_orbit=True (got {ao_argv!r})")
+    # Deliberately str(p), not int(p) -- a raw, unvalidated string from the Track P
+    # text field must pass through here without raising, even if it's garbage;
+    # renderer.py's own --track-primes parsing is where validation happens (same
+    # convention as --windows's unknown-family check) -- see build_renderer_argv's
+    # own doc-comment for why.
+    garbage_argv = build_renderer_argv("/x", 1, track_primes=["2", "not-a-number"])
+    check("--track-primes" in garbage_argv and
+          garbage_argv[garbage_argv.index("--track-primes") + 1] == "2,not-a-number",
+          f"a non-numeric track_primes entry passes through as a plain string instead "
+          f"of raising inside the GUI thread (got {garbage_argv!r})")
+
+    # [ADDED Faza 9, see PLAN.md] Load Range argv wiring.
+    check("--load-range" not in default_argv,
+          f"no --load-range arg at all when load_range=None (matches renderer.py's own "
+          f"default of sequential mode) (got {default_argv!r})")
+    lr_argv = build_renderer_argv("/x", 1, load_range=(100, 500))
+    check("--load-range" in lr_argv and lr_argv[lr_argv.index("--load-range") + 1] == "100,500",
+          f"--load-range joins the (from, to) pair with a comma (got {lr_argv!r})")
+
+    # [ADDED Faza 11C, see PLAN.md -- Artur's real-screen HUD-too-small +
+    # independent hit-point-size report] hit_point_size/hud_font_size argv
+    # wiring, mirroring point_size's own omit-if-None convention exactly.
+    # [UPDATED Artur, 2026-09-09] renderer.py's own argparse defaults are now
+    # 40.0 / 35 (previously None-falls-back-to-point-size / 16px) -- this
+    # test only checks build_renderer_argv's own function-level default
+    # (None omits the flag from argv), which is unchanged; the actual
+    # numeric value that then applies lives in renderer.py's argparse, not
+    # here.
+    check("--hit-point-size" not in default_argv,
+          f"no --hit-point-size arg at all when hit_point_size=None (renderer.py's own "
+          f"argparse default of 40.0 then applies) (got {default_argv!r})")
+    check("--hud-font-size" not in default_argv,
+          f"no --hud-font-size arg at all when hud_font_size=None (renderer.py's own "
+          f"argparse default of 35px then applies) (got {default_argv!r})")
+    hps_argv = build_renderer_argv("/x", 1, hit_point_size=8.0)
+    check("--hit-point-size" in hps_argv and hps_argv[hps_argv.index("--hit-point-size") + 1] == "8.0",
+          f"--hit-point-size is included and correct when a value is given (got {hps_argv!r})")
+    hfs_argv = build_renderer_argv("/x", 1, hud_font_size=32)
+    check("--hud-font-size" in hfs_argv and hfs_argv[hfs_argv.index("--hud-font-size") + 1] == "32",
+          f"--hud-font-size is included and correct when a value is given (got {hfs_argv!r})")
+
 
 def _write_fake_renderer(exit_code):
     """A stand-in for primeatlas/ring_viz/renderer.py that never touches moderngl/glfw
@@ -182,7 +235,297 @@ def main():
     check("fake renderer: ready" in console_text,
           f"the fake renderer's real stdout line reached the console pane "
           f"(got console text: {console_text!r})")
+    check("--track-primes" not in console_text and "--auto-orbit" not in console_text,
+          f"empty Track P field + unchecked Auto orbit means neither flag reaches "
+          f"the launched argv (got console text: {console_text!r})")
     os.remove(fake_ok_script)
+
+    # --- [ADDED Faza 6, see PLAN.md] Track P field + Auto orbit checkbox wiring ----
+    # Uses runner.cmd directly (the actual argv LocalLoggedRunner launched)
+    # rather than scraping console text, which is cumulative across every
+    # _on_open() call in this test and would make substring checks fragile.
+    fake_ok_script2 = _write_fake_renderer(0)
+    rings_tab_module.RENDERER_SCRIPT = fake_ok_script2
+    tab.track_primes_entry.delete(0, "end")
+    tab.track_primes_entry.insert(0, "2, 3, 5")
+    tab.auto_orbit_var.set(True)
+    tab.n_entry.delete(0, "end")
+    tab.n_entry.insert(0, "500")
+    shown.clear()
+    tab._on_open()
+    launched_cmd = list(tab._runner.cmd) if tab._runner is not None else []
+    check("--track-primes" in launched_cmd and
+          launched_cmd[launched_cmd.index("--track-primes") + 1] == "2,3,5",
+          f"Track P field's comma-separated value reaches the launched argv, "
+          f"whitespace stripped (got argv: {launched_cmd!r})")
+    check("--auto-orbit" in launched_cmd,
+          f"checked Auto orbit checkbox adds --auto-orbit to the launched argv "
+          f"(got argv: {launched_cmd!r})")
+    _pump(app, 3.0)
+    os.remove(fake_ok_script2)
+    tab.track_primes_entry.delete(0, "end")
+    tab.auto_orbit_var.set(False)
+
+    # --- [ADDED Faza 9, see PLAN.md] Load Range From/To field wiring ----------------
+    fake_ok_script3 = _write_fake_renderer(0)
+    rings_tab_module.RENDERER_SCRIPT = fake_ok_script3
+    tab.load_range_from_entry.delete(0, "end")
+    tab.load_range_from_entry.insert(0, "100")
+    tab.load_range_to_entry.delete(0, "end")
+    tab.load_range_to_entry.insert(0, "500")
+    tab.n_entry.delete(0, "end")
+    tab.n_entry.insert(0, "500")
+    shown.clear()
+    tab._on_open()
+    launched_cmd = list(tab._runner.cmd) if tab._runner is not None else []
+    check("--load-range" in launched_cmd and
+          launched_cmd[launched_cmd.index("--load-range") + 1] == "100,500",
+          f"both From/To fields filled in reach the launched argv as --load-range "
+          f"FROM,TO (got argv: {launched_cmd!r})")
+    _pump(app, 3.0)
+    os.remove(fake_ok_script3)
+
+    # Leaving one field blank must NOT activate range mode (silent fallback to
+    # sequential, per _on_open's own doc-comment -- no crash, no --load-range).
+    fake_ok_script4 = _write_fake_renderer(0)
+    rings_tab_module.RENDERER_SCRIPT = fake_ok_script4
+    tab.load_range_from_entry.delete(0, "end")
+    tab.load_range_from_entry.insert(0, "100")
+    tab.load_range_to_entry.delete(0, "end")  # To left blank
+    tab.n_entry.delete(0, "end")
+    tab.n_entry.insert(0, "500")
+    shown.clear()
+    tab._on_open()
+    launched_cmd = list(tab._runner.cmd) if tab._runner is not None else []
+    check("--load-range" not in launched_cmd,
+          f"a half-filled Load Range (From set, To blank) omits --load-range entirely, "
+          f"does not raise (got argv: {launched_cmd!r})")
+    _pump(app, 3.0)
+    os.remove(fake_ok_script4)
+    tab.load_range_from_entry.delete(0, "end")
+    tab.load_range_to_entry.delete(0, "end")
+
+    # --- [ADDED Faza 11, see PLAN.md] HUD panel: direct _apply_hud_state unit test --
+    tab.hud_var.set("stale")
+    tab._apply_hud_state(
+        '{"n": 1234, "count": 56, "rebuild_ms": 2.5, "lines": ["line one", "line two"], '
+        '"running": true, "tempo_ms": 80}'
+    )
+    hud_text = tab.hud_var.get()
+    check("1,234" in hud_text and "56" in hud_text,
+          f"HUD panel header shows N and ring count, thousands-separated (got {hud_text!r})")
+    check("line one" in hud_text and "line two" in hud_text,
+          f"HUD panel body includes every hud line (got {hud_text!r})")
+    check("80" in hud_text, f"HUD panel shows the current running tempo (got {hud_text!r})")
+
+    tab._apply_hud_state("not valid json{{{")
+    check(tab.hud_var.get() == hud_text,
+          "malformed HUD_STATE JSON is silently ignored -- panel keeps its last good value")
+
+    tab._apply_hud_state('{"n": 7, "count": 1, "rebuild_ms": 0.1, "lines": [], "running": false, "tempo_ms": 120}')
+    hud_text_stopped = tab.hud_var.get()
+    check(tab.T("rings.hud_status_stopped") in hud_text_stopped,
+          f"a stopped/running=false state shows the stopped status text (got {hud_text_stopped!r})")
+
+    # --- [ADDED Faza 11] end-to-end: a fake renderer emitting a real HUD_STATE line --
+    fd, fake_hud_script = tempfile.mkstemp(suffix="_fake_renderer_hud.py")
+    with os.fdopen(fd, "w") as f:
+        f.write(
+            "import sys\n"
+            "print('fake renderer: loading magazyn...')\n"
+            "print('HUD_STATE:{\"n\": 42, \"count\": 3, \"rebuild_ms\": 1.2, "
+            "\"lines\": [\"N = 42\"], \"running\": false, \"tempo_ms\": 120}')\n"
+            "sys.exit(0)\n"
+        )
+    rings_tab_module.RENDERER_SCRIPT = fake_hud_script
+    tab._get_portal_folder = lambda: tmp_portal
+    tab.n_entry.delete(0, "end")
+    tab.n_entry.insert(0, "500")
+    shown.clear()
+    tab._on_open()
+    _pump(app, 3.0)
+    hud_text2 = tab.hud_var.get()
+    check("42" in hud_text2, f"HUD panel updated from a real subprocess's HUD_STATE stdout line (got {hud_text2!r})")
+    console_text2 = tab.console.text.get("1.0", "end")
+    check("HUD_STATE:" not in console_text2,
+          f"HUD_STATE lines are routed to the panel, never appended to the scrolling console pane "
+          f"(got console text: {console_text2!r})")
+    check("fake renderer: loading magazyn..." in console_text2,
+          f"ordinary (non-HUD_STATE) lines from the same process still reach the console normally "
+          f"(got console text: {console_text2!r})")
+    os.remove(fake_hud_script)
+
+    # --- [ADDED 2026-09-10] Start/Resume: a clean exit after a HUD_STATE line
+    # updates the N field to the last-seen N, so clicking the Start/Resume
+    # button again reopens right there instead of at whatever the field
+    # said at launch time (launched above with N=500, HUD_STATE said n=42).
+    check(tab._last_hud_n == 42,
+          f"the tab remembers the last N seen in a HUD_STATE line (got {tab._last_hud_n!r})")
+    check(tab.n_entry.get() == "42",
+          f"a clean process exit rewrites the N field to that last-seen N, powering "
+          f"resume on the next Start/Resume click (got {tab.n_entry.get()!r})")
+
+    # --- [ADDED 2026-09-10] Reset: discards the resume state and puts the N
+    # field back to the tab's own startup default, even while a process is
+    # still running (Reset is only enabled while running, same as the old
+    # Stop button it replaced).
+    fake_hud_script2 = _write_fake_renderer(0)
+    rings_tab_module.RENDERER_SCRIPT = fake_hud_script2
+    tab.n_entry.delete(0, "end")
+    tab.n_entry.insert(0, "777")
+    tab._on_open()
+    tab._last_hud_n = 999  # simulate a HUD_STATE line having arrived mid-run
+    tab._on_reset()
+    check(tab._last_hud_n is None,
+          "Reset discards the remembered resume N")
+    check(tab.n_entry.get() == "2",
+          f"Reset puts the N field back to the tab's own startup default, "
+          f"not the last-seen HUD N (got {tab.n_entry.get()!r})")
+    _pump(app, 3.0)
+    check(str(tab.open_button["state"]) == "normal",
+          "Reset also stops the running process, same as the old Stop button")
+    check(tab.n_entry.get() == "2",
+          "the process's own exit (triggered by Reset) does NOT re-apply a "
+          "stale last-seen N over Reset's own default -- _last_hud_n was "
+          "already None by the time the exit was processed")
+
+    # --- [ADDED 2026-09-10, Faza 13] Live pause/resume: a fake renderer that
+    # immediately reports itself paused (simulating the real renderer.py's
+    # own window-close interception -- see that file's own doc-comment on
+    # start_stdin_command_reader), then blocks on stdin until "RESUME"
+    # arrives, then reports resumed and exits cleanly. Exercises the actual
+    # stdin pipe end-to-end (LocalLoggedRunner.send_line -> the subprocess's
+    # own sys.stdin), not a mock -- same real-subprocess philosophy as the
+    # rest of this file (see module docstring).
+    # Deliberately sleeps a couple seconds AFTER printing RESUMED, rather than
+    # exiting right away -- otherwise, on a fast sandbox, the __exit__
+    # sentinel can land in the SAME _poll_queue drain batch as the
+    # RING_VIZ_RESUMED line (both process._read_loop and the OS process exit
+    # can outrun a single _pump() window), which would make the "resumed but
+    # still running" state below unobservable as a distinct moment.
+    fd, fake_pause_script = tempfile.mkstemp(suffix="_fake_renderer_pause.py")
+    with os.fdopen(fd, "w") as f:
+        f.write(
+            "import sys, time\n"
+            "print('fake renderer: ready')\n"
+            "print('RING_VIZ_PAUSED')\n"
+            "sys.stdout.flush()\n"
+            "for line in sys.stdin:\n"
+            "    if line.strip() == 'RESUME':\n"
+            "        print('RING_VIZ_RESUMED')\n"
+            "        sys.stdout.flush()\n"
+            "        time.sleep(3)\n"
+            "        break\n"
+            "sys.exit(0)\n"
+        )
+    rings_tab_module.RENDERER_SCRIPT = fake_pause_script
+    tab.n_entry.delete(0, "end")
+    tab.n_entry.insert(0, "321")
+    tab._on_open()
+    # [CHANGED 2026-09-10] Artur: "blokada powinna być uruchomiona już po
+    # otworciu okna" (the lock should already be active right after opening
+    # the window) -- checked BEFORE the first _pump() call below, i.e.
+    # before the process has even had a chance to report itself paused, to
+    # prove the lock isn't waiting on that signal at all.
+    check(str(tab.n_entry["state"]) == "disabled",
+          f"N field is locked immediately on launch, before any pause/resume "
+          f"signal arrives (got {tab.n_entry['state']!r})")
+    _pump(app, 1.5)
+    check(tab._paused is True,
+          f"_paused flips True once the RING_VIZ_PAUSED line is drained from the queue "
+          f"(got {tab._paused!r})")
+    check(str(tab.open_button["state"]) == "normal",
+          "open_button is re-enabled while paused, so Start/Resume is clickable again")
+    check(str(tab.stop_button["state"]) == "normal",
+          "stop_button STAYS enabled while paused -- Reset must still be able to kill "
+          "a paused (window-hidden, but very much alive) process")
+    check(tab.status.get() == tab.T("rings.status_paused"),
+          f"status bar shows the paused message (got {tab.status.get()!r})")
+    paused_runner = tab._runner
+    check(paused_runner is not None and paused_runner.is_running(),
+          "the OS process is still alive while paused -- pausing hides the window, it "
+          "does not exit the subprocess (that's the whole point of Faza 13)")
+
+    # [ADDED 2026-09-10] Every launch-time-only field must still read as
+    # disabled/readonly once paused -- editing them would silently do
+    # nothing until the NEXT fresh launch, which is exactly the misleading
+    # state Artur flagged ("sugeruje że zmiana ich coś zmieni"). Spot-check
+    # one widget from each of the three state-spelling groups rather than
+    # every single one -- _set_launch_params_readonly applies the same two
+    # states uniformly, so this is enough to catch a wiring mistake.
+    check(str(tab.n_entry["state"]) == "disabled",
+          f"N field is still read-only once paused (got {tab.n_entry['state']!r})")
+    check(str(tab._bertrand_check["state"]) == "disabled",
+          f"window-highlight checkboxes are still read-only once paused (got {tab._bertrand_check['state']!r})")
+    check(str(tab.general_law_mode_combo["state"]) == "disabled",
+          f"dropdowns are read-only (not just 'readonly') once paused "
+          f"(got {tab.general_law_mode_combo['state']!r})")
+
+    # Clicking Start/Resume while paused must send "RESUME" down the existing
+    # pipe, NOT launch a second subprocess.
+    tab._on_open()
+    check(tab._runner is paused_runner,
+          "clicking Start/Resume while paused reuses the SAME runner/process -- it "
+          "does not launch a brand new one (that would be the old bookmark-only "
+          "behavior this feature replaces)")
+    _pump(app, 1.5)
+    check(tab._paused is False,
+          f"_paused flips back False once the RING_VIZ_RESUMED line is drained "
+          f"(got {tab._paused!r})")
+    check(str(tab.open_button["state"]) == "disabled",
+          "open_button is disabled again once resumed (back to the normal "
+          "while-running state)")
+    check(tab.status.get() == tab.T("rings.status_running"),
+          f"status bar shows the running message after resume (got {tab.status.get()!r})")
+    # [CHANGED 2026-09-10] Artur: "odblokowane ustawienia dopiero po
+    # resecie" (fields unlock only after Reset) -- resuming is still not a
+    # fresh launch, so the fields stay LOCKED here, unlike the earlier
+    # (superseded) design where resume re-enabled them.
+    check(str(tab.n_entry["state"]) == "disabled",
+          f"N field STAYS locked after resume -- only Reset unlocks it "
+          f"(got {tab.n_entry['state']!r})")
+    check(str(tab._bertrand_check["state"]) == "disabled",
+          f"checkboxes STAY locked after resume too (got {tab._bertrand_check['state']!r})")
+    check(str(tab.general_law_mode_combo["state"]) == "disabled",
+          f"dropdowns STAY locked after resume too (got {tab.general_law_mode_combo['state']!r})")
+
+    # The fake script sleeps 3s after RESUMED, then exits -- confirm the
+    # normal __exit__ path still fires correctly afterwards, and that it
+    # leaves no stale _paused=True behind for the next launch. A real exit
+    # (crash, or the process ending on its own) is the one other case
+    # besides Reset that unlocks the fields -- there's genuinely no live
+    # process left afterward for them to (mis)represent.
+    _pump(app, 4.0)
+    check(str(tab.open_button["state"]) == "normal",
+          "open_button re-enabled once the (now-resumed) process actually exits")
+    check(str(tab.stop_button["state"]) == "disabled",
+          "stop_button disabled once the process actually exits")
+    check(tab._paused is False,
+          "_paused stays False after a real exit (no stale pause flag left behind "
+          "for the next Start/Resume click)")
+    check(str(tab.n_entry["state"]) == "normal",
+          f"fields unlock again once the process actually exits, same as Reset "
+          f"(got {tab.n_entry['state']!r})")
+
+    # [ADDED 2026-09-10] Reset must re-enable the fields IMMEDIATELY, not
+    # wait for the async __exit__ queue item -- launch fresh, let it pause,
+    # then Reset while still paused and check the fields are already
+    # editable before any _pump() call processes the exit.
+    rings_tab_module.RENDERER_SCRIPT = fake_pause_script
+    tab.n_entry.delete(0, "end")
+    tab.n_entry.insert(0, "654")
+    tab._on_open()
+    _pump(app, 1.5)
+    check(tab._paused is True, "sanity: paused again for the Reset-while-paused check")
+    check(str(tab.n_entry["state"]) == "disabled", "sanity: read-only again before Reset")
+    tab._on_reset()
+    check(str(tab.n_entry["state"]) == "normal",
+          "Reset re-enables the N field synchronously, without waiting for the "
+          "subprocess's own (async) exit to be drained from the queue")
+    check(str(tab._bertrand_check["state"]) == "normal",
+          "Reset re-enables checkboxes synchronously too")
+    _pump(app, 3.0)  # drain the exit so the next launch starts from a clean queue
+    os.remove(fake_pause_script)
 
     # --- failure path: real subprocess, fake renderer script, exit 1 ----------------
     fake_fail_script = _write_fake_renderer(1)
