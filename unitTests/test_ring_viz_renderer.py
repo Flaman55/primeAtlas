@@ -409,6 +409,71 @@ def _test_zoom_to_point():
           f"got new_pan={new_pan}, old_pan={old_pan}")
 
 
+def _test_fit_zoom_for_viewport():
+    """[ADDED, Artur 2026-09-11: "przejście w tryb pełnoekranowy jak i
+    okienkowy wizualizację ustawiało na wartości zoom tak by zajmowało pełną
+    wysokość okna lub szerokość jeśli okno będzie węższe od wysokości"] --
+    fit_zoom_for_viewport() is the pure computation behind both the F11
+    fullscreen<->windowed re-fit and the middle-click recenter action."""
+    from primeatlas.ring_viz.renderer import fit_zoom_for_viewport, _FIT_MARGIN
+
+    max_radius = 900.0  # e.g. min(1920, 1080) * 0.45, a plausible real launch size
+
+    # Landscape viewport (wider than tall): the SMALLER dimension (height)
+    # is the constraint -- "fills the full height" per Artur's own wording.
+    zoom = fit_zoom_for_viewport(max_radius, 1920.0, 1080.0)
+    expected = (1080.0 * _FIT_MARGIN) / max_radius
+    check(abs(zoom - expected) < 1e-9,
+          f"landscape viewport (1920x1080): height is the limiting/smaller dimension, "
+          f"got zoom={zoom}, expected={expected}")
+
+    # Portrait viewport (narrower than tall): now WIDTH is the smaller
+    # dimension -- "or width if the window is narrower than tall".
+    zoom = fit_zoom_for_viewport(max_radius, 600.0, 1200.0)
+    expected = (600.0 * _FIT_MARGIN) / max_radius
+    check(abs(zoom - expected) < 1e-9,
+          f"portrait viewport (600x1200): width is the limiting/smaller dimension, "
+          f"got zoom={zoom}, expected={expected}")
+
+    # Square viewport: either dimension is equally the constraint (same
+    # value either way), just confirms no landscape/portrait branch bug.
+    zoom = fit_zoom_for_viewport(max_radius, 1000.0, 1000.0)
+    expected = (1000.0 * _FIT_MARGIN) / max_radius
+    check(abs(zoom - expected) < 1e-9,
+          f"square viewport: width == height == the constraint, got zoom={zoom}, expected={expected}")
+
+    # Core invariant tying this function back to how max_radius itself is
+    # computed at launch (max_radius = min(args.width, args.height) *
+    # _FIT_MARGIN, see _run_visualization): re-fitting to the EXACT launch
+    # window size must return zoom == 1.0 exactly -- "the view as it already
+    # opens" and "the view after an explicit re-fit" are provably the same
+    # computation, not two independently hand-tuned constants that could
+    # drift apart over time.
+    launch_width, launch_height = 1920.0, 1080.0
+    launch_max_radius = min(launch_width, launch_height) * _FIT_MARGIN
+    zoom = fit_zoom_for_viewport(launch_max_radius, launch_width, launch_height)
+    check(abs(zoom - 1.0) < 1e-9,
+          f"re-fitting to the exact launch window size reproduces the launch zoom (1.0) exactly, "
+          f"got {zoom}")
+
+    # Degenerate inputs fall back to 1.0 rather than raising or returning
+    # something nonsensical (a transient 0-sized framebuffer during a
+    # resize is the realistic trigger for this, not user-facing input).
+    check(fit_zoom_for_viewport(0.0, 1920.0, 1080.0) == 1.0,
+          "max_radius <= 0 falls back to zoom=1.0")
+    check(fit_zoom_for_viewport(max_radius, 0.0, 1080.0) == 1.0,
+          "width <= 0 falls back to zoom=1.0")
+    check(fit_zoom_for_viewport(max_radius, 1920.0, 0.0) == 1.0,
+          "height <= 0 falls back to zoom=1.0")
+
+    # A custom margin is honored (not hardcoded past its default parameter).
+    zoom_default = fit_zoom_for_viewport(max_radius, 1920.0, 1080.0)
+    zoom_custom = fit_zoom_for_viewport(max_radius, 1920.0, 1080.0, margin=0.9)
+    check(abs(zoom_custom - zoom_default * 2.0) < 1e-9,
+          f"doubling margin (0.45 -> 0.9) doubles the resulting zoom, "
+          f"got default={zoom_default}, custom={zoom_custom}")
+
+
 def _test_filter_active_tracked():
     """[ADDED Faza 6, see PLAN.md] filter_active_tracked's own docstring:
     preserves tracked's order (not active_primes's), keeps duplicates as
@@ -1200,6 +1265,7 @@ def main():
     _test_hud_lines_for_n()
     _test_initial_n_for_source()
     _test_zoom_to_point()
+    _test_fit_zoom_for_viewport()
     _test_filter_active_tracked()
     _test_hud_lines_for_n_tracked_state()
     _test_lcm_of_list()

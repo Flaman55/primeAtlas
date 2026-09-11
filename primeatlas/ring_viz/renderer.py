@@ -101,6 +101,17 @@ Usage -- run as a PLAIN SCRIPT PATH, not `python -m primeatlas.ring_viz.renderer
 Controls:
     drag              pan
     scroll            zoom to cursor
+    middle-click      recenter/fit -- resets pan to dead center and zoom to
+                      fit_zoom_for_viewport() (fills the window's full
+                      height, or width if the window is narrower than tall),
+                      undoing any amount of prior scroll/drag in one action
+                      (Artur, 2026-09-11: "szybkie przywrócenie do podglądu
+                      pełnej wizualizacji")
+    F11               toggle fullscreen -- ALSO re-fits zoom/pan the same
+                      way as middle-click above whenever the toggle actually
+                      changes the viewport size (both fullscreen->windowed
+                      and windowed->fullscreen), since the old zoom was only
+                      ever correct for the window size it was set at
     Up / Down         change N by +/- --n-step (recomputes ring buffer)
     PageUp / PageDown change N by +/- 100 * --n-step (coarse jump)
     Space             start/stop playback -- auto-advances N by exactly 1 per
@@ -1045,6 +1056,48 @@ def zoom_to_point(old_zoom, old_pan, cursor, viewport, factor):
     return new_zoom, (new_pan_x, new_pan_y)
 
 
+# Fraction of the viewport's SMALLER dimension the ring field's own radius
+# should fill -- 0.45 means the full ring-field DIAMETER (2*max_radius) ends
+# up covering 90% of that dimension, leaving a modest 5%-per-side margin.
+# This is the same 0.45 _run_visualization already used, inline, to size
+# max_radius itself from the LAUNCH window (max_radius = min(args.width,
+# args.height) * 0.45) -- pulling it out into a named constant shared with
+# fit_zoom_for_viewport below guarantees the two stay in lockstep: calling
+# fit_zoom_for_viewport(max_radius, launch_width, launch_height) returns
+# exactly 1.0, so "the view as it already opens" and "the view after an
+# explicit re-fit" are provably the same computation, not two independently
+# hand-tuned constants that could drift apart.
+_FIT_MARGIN = 0.45
+
+
+def fit_zoom_for_viewport(max_radius, width, height, margin=_FIT_MARGIN):
+    """Zoom multiplier that makes a ring field of world-space radius
+    `max_radius` fill `margin` of the viewport's SMALLER dimension -- i.e.
+    the full window HEIGHT, or the full WIDTH if the window is narrower than
+    it is tall (Artur, 2026-09-11: "zajmowało pełną wysokość okna lub
+    szerokość jeśli okno będzie węższe od wysokości"). Using min(width,
+    height) as the constraint is exactly that rule: whichever dimension is
+    the tighter one is the one the (roughly circular) ring field gets fit
+    against, so it's never clipped on either axis.
+
+    Used for two things that both need the same "make it fit again"
+    computation: (1) re-fitting after an F11 fullscreen<->windowed
+    transition changes the viewport size/aspect ratio out from under a zoom
+    value that was only ever correct for the OLD size, and (2) the explicit
+    recenter action (middle mouse button, see on_mouse_button below) that
+    snaps a zoomed/panned-away view back to "the whole picture, centered" in
+    one action.
+
+    Degenerate inputs (a non-positive radius or viewport dimension -- should
+    not happen in practice, but a GLFW framebuffer query returning 0 during
+    a transient resize is exactly the kind of thing worth not crashing on)
+    fall back to zoom=1.0 rather than dividing by zero or returning a
+    negative/infinite zoom."""
+    if max_radius <= 0 or width <= 0 or height <= 0:
+        return 1.0
+    return (min(width, height) * margin) / max_radius
+
+
 def initial_n_for_source(source, upto, primes):
     """Picks the N the ring view should OPEN on, given how the ring array was
     sourced.
@@ -1528,7 +1581,11 @@ def _run_visualization(args, audio=None):
     print(f"Loaded {len(primes):,} values in {t1 - t0:.2f}s")
 
     n = initial_n_for_source(args.source, args.upto, primes)
-    max_radius = min(args.width, args.height) * 0.45
+    # See fit_zoom_for_viewport's own doc-comment for why this uses the
+    # shared _FIT_MARGIN constant rather than a second, independent 0.45
+    # literal -- it keeps "the view as it opens" and "the view after an
+    # explicit re-fit (F11 / middle-click)" provably the same computation.
+    max_radius = min(args.width, args.height) * _FIT_MARGIN
 
     # [ADDED Faza 4, see PLAN.md] Window-highlight families enabled at
     # launch time -- parsed once here (not per-frame): "" -> empty set,
@@ -1877,6 +1934,18 @@ def _run_visualization(args, audio=None):
     def on_mouse_button(_window, button, action, _mods):
         if button == glfw.MOUSE_BUTTON_LEFT:
             state["dragging"] = action == glfw.PRESS
+        elif button == glfw.MOUSE_BUTTON_MIDDLE and action == glfw.PRESS:
+            # [ADDED, Artur 2026-09-11] "myszką można było wyśrodkować...
+            # szybkie przywrócenie do podglądu pełnej wizualizacji" -- a
+            # one-click way to snap an off-center/zoomed-in view straight
+            # back to "the whole ring field, centered, filling the window",
+            # without having to manually scroll-zoom-out and drag back.
+            # Middle-click was free (left drags, scroll zooms) and is the
+            # conventional "reset camera" gesture in most viewers/3D tools.
+            width, height = glfw.get_framebuffer_size(window)
+            state["zoom"] = fit_zoom_for_viewport(max_radius, width, height)
+            state["pan"][0] = 0.0
+            state["pan"][1] = 0.0
 
     def on_cursor_pos(_window, x, y):
         lx, ly = state["last_mouse"]
@@ -1894,7 +1963,8 @@ def _run_visualization(args, audio=None):
     n_holder = {"n": n, "advancing": False, "force_rebuild": False}
     from primeatlas.ring_viz.window_mode import FullscreenToggle
     fullscreen = FullscreenToggle(glfw, window)
-    print('F11: toggle fullscreen; Esc: close visualization', flush=True)
+    print('F11: toggle fullscreen (auto-fits zoom to the new window size); '
+          'middle-click: recenter/fit view; Esc: close visualization', flush=True)
 
     # [ADDED Faza 13, see PLAN.md] Live pause/resume -- opt-in (see
     # --pipe-stdin-commands's own doc-comment). command_queue is None when
@@ -1904,7 +1974,26 @@ def _run_visualization(args, audio=None):
     command_queue = start_stdin_command_reader() if args.pipe_stdin_commands else None
 
     def on_key(_window, key, _scancode, action, _mods):
-        if fullscreen.handle_key(key, action):
+        if key == glfw.KEY_F11:
+            # [ADDED, Artur 2026-09-11] "przejście w tryb pełnoekranowy jak i
+            # okienkowy wizualizację ustawiało na wartości zoom tak by
+            # zajmowało pełną wysokość okna lub szerokość" -- re-fit zoom
+            # (and recenter pan) after EITHER direction of the fullscreen
+            # transition, since a viewport-size/aspect-ratio change makes the
+            # OLD zoom value wrong for the NEW window regardless of which way
+            # F11 just went. Measuring the framebuffer size before AND after
+            # the toggle (rather than assuming it always changes) means a
+            # toggle that fails outright (no monitors found -- see
+            # FullscreenToggle.toggle()'s own early-return paths) leaves the
+            # current view untouched instead of unexpectedly resetting it.
+            before = glfw.get_framebuffer_size(window)
+            fullscreen.handle_key(key, action)
+            if action == glfw.PRESS:
+                after = glfw.get_framebuffer_size(window)
+                if after != before:
+                    state["zoom"] = fit_zoom_for_viewport(max_radius, after[0], after[1])
+                    state["pan"][0] = 0.0
+                    state["pan"][1] = 0.0
             return
         if action not in (glfw.PRESS, glfw.REPEAT):
             return
