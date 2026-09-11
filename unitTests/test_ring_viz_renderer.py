@@ -984,6 +984,53 @@ def _test_clamp_tempo_ms():
     check(clamp_tempo_ms(None) == _TEMPO_MS_DEFAULT, f"a missing value falls back to the JS's own default ({_TEMPO_MS_DEFAULT})")
 
 
+def _test_arrow_scrub_delta():
+    """[ADDED, Artur 2026-09-11: "strzalka lewo prawo ... o n+1 z wcisnietym
+    ctrl o n+10"] arrow_scrub_delta() is the pure delta computation behind
+    the LEFT/RIGHT scrub keys -- the pause/resume state machine around it
+    (scrub_state's held-count bookkeeping in run()) is plain closure state,
+    not extracted, same as on_mouse_button's own state["dragging"]."""
+    from primeatlas.ring_viz.renderer import arrow_scrub_delta
+
+    check(arrow_scrub_delta(is_right=True, ctrl_held=False) == 1,
+          "RIGHT without Ctrl steps by +1")
+    check(arrow_scrub_delta(is_right=False, ctrl_held=False) == -1,
+          "LEFT without Ctrl steps by -1")
+    check(arrow_scrub_delta(is_right=True, ctrl_held=True) == 10,
+          "RIGHT with Ctrl held steps by +10")
+    check(arrow_scrub_delta(is_right=False, ctrl_held=True) == -10,
+          "LEFT with Ctrl held steps by -10")
+
+
+def _test_clamp_scrub_n():
+    """[ADDED, fixing a real break Artur hit, 2026-09-11: "na uruchomionym
+    przewijalem do przodu do tylu z ctrl bez i sie zatrzymalo bez resetu nie
+    ma mozliwosci wznowienia"] clamp_scrub_n() is the guard that stops the
+    LEFT/RIGHT scrub keys' OS key-repeat from running N so far past the
+    loaded ceiling that can_start_playback() could never resume afterward."""
+    from primeatlas.ring_viz.renderer import clamp_scrub_n, can_start_playback
+
+    check(clamp_scrub_n(50, range_mode=False, ceiling=100) == 50,
+          "a value already well within bounds passes through unchanged")
+    check(clamp_scrub_n(-5, range_mode=False, ceiling=100) == 0,
+          "never goes negative, same floor as Up/Down/PageUp/PageDown")
+    check(clamp_scrub_n(9999, range_mode=False, ceiling=100) == 100,
+          "sequential mode: a huge overshoot (many rapid key-repeat deltas) clamps to the ceiling exactly")
+    check(clamp_scrub_n(100, range_mode=False, ceiling=100) == 100,
+          "landing exactly on the ceiling is left as-is (the same terminal state real forward playback reaches on its own)")
+    check(clamp_scrub_n(9999, range_mode=True, ceiling=100) == 9999,
+          "range mode has no ceiling at all -- an equally large value is NOT clamped")
+
+    # The actual bug this fixes, end to end: an unclamped overshoot would
+    # leave N somewhere can_start_playback() refuses to resume from; the
+    # clamped value must always stay resumable's own upper bound (n <
+    # ceiling) OR sit exactly at the expected "nothing left" edge -- never
+    # further out where even a full reset-free recovery would be unclear.
+    clamped = clamp_scrub_n(50_000, range_mode=False, ceiling=100)
+    check(clamped == 100,
+          f"clamped result never exceeds the ceiling, regardless of how large the raw overshoot was (got {clamped})")
+
+
 def _test_can_start_playback():
     from primeatlas.ring_viz.renderer import can_start_playback
 
@@ -1285,6 +1332,8 @@ def main():
     _test_resonance_is_active()
     _test_load_prime_range_slice()
     _test_clamp_tempo_ms()
+    _test_arrow_scrub_delta()
+    _test_clamp_scrub_n()
     _test_can_start_playback()
     _test_tick_next_n()
     _test_advance_auto_orbit()

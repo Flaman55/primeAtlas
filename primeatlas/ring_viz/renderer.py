@@ -114,6 +114,12 @@ Controls:
                       ever correct for the window size it was set at
     Up / Down         change N by +/- --n-step (recomputes ring buffer)
     PageUp / PageDown change N by +/- 100 * --n-step (coarse jump)
+    Left / Right      scrub N by -/+1 (-/+10 with Ctrl held) -- if playback
+                      is RUNNING, pressing either arrow pauses it for the
+                      duration of the key press and resumes it automatically
+                      the moment every held scrub key is released; if
+                      playback is already STOPPED, scrubbing just moves N
+                      and leaves it stopped (Artur, 2026-09-11)
     Space             start/stop playback -- auto-advances N by exactly 1 per
                       tick (independent of --n-step), same as the HTML's own
                       Start/Stop button (Faza 10, see PLAN.md)
@@ -676,6 +682,21 @@ def clamp_tempo_ms(value):
     return min(_TEMPO_MS_MAX, max(_TEMPO_MS_MIN, int(value)))
 
 
+_ARROW_SCRUB_STEP = 1
+_ARROW_SCRUB_STEP_CTRL = 10
+
+
+def arrow_scrub_delta(is_right, ctrl_held):
+    """[ADDED, Artur 2026-09-11: "sterowanie w przod i w tyl ... strzalka
+    lewo prawo ... o n+1 z wcisnietym ctrl o n+10"] The N delta for one
+    LEFT/RIGHT scrub step: +/-1 normally, +/-10 with Ctrl held. A separate,
+    literal step size from --n-step (which only governs Up/Down/PageUp/
+    PageDown) -- Artur asked for these specific magnitudes regardless of
+    how --n-step happens to be configured for a given run."""
+    magnitude = _ARROW_SCRUB_STEP_CTRL if ctrl_held else _ARROW_SCRUB_STEP
+    return magnitude if is_right else -magnitude
+
+
 def can_start_playback(n, range_mode, ceiling):
     """Ports #toggleRunning's own pre-start guard: sequential mode refuses to
     START playback once N has already reached the loaded ceiling (the caller
@@ -684,6 +705,38 @@ def can_start_playback(n, range_mode, ceiling):
     and can always start (mirrors `this.#model.mode === "sequential" &&
     this.#n >= ceiling` being the ONLY case that blocks a start)."""
     return range_mode or n < ceiling
+
+
+def clamp_scrub_n(n, range_mode, ceiling):
+    """[ADDED, fixing a real break Artur hit, 2026-09-11: "na uruchomionym
+    przewijalem do przodu do tylu z ctrl bez i sie zatrzymalo bez resetu nie
+    ma mozliwosci wznowienia"] Bounds for the LEFT/RIGHT scrub keys
+    specifically: never negative, and in SEQUENTIAL mode never past the
+    loaded ceiling.
+
+    Why this exists: unlike a single Up/Down/PageUp/PageDown press, OS key
+    repeat can fire a LEFT/RIGHT scrub's PRESS/REPEAT handler many times per
+    second while a key is held down -- especially with Ctrl held (10 per
+    step instead of 1) -- so a couple of seconds of holding RIGHT can push N
+    far past the ceiling before the key is ever released. Once N is past
+    the ceiling, can_start_playback() permanently refuses to (re)start
+    sequential playback -- exactly the "stuck, no way to resume without R"
+    Artur hit, since the scrub's own auto-resume-on-release (and even a
+    manual Space press afterward) both go through that same guard. Clamping
+    the scrub itself to the ceiling caps it at the same "end of loaded data"
+    edge real forward playback ticking already stops at on its own
+    (tick_next_n) instead of letting it run arbitrarily far past that edge.
+
+    Deliberately scoped to the scrub keys ONLY -- Up/Down/PageUp/PageDown's
+    own pre-existing, unclamped past-ceiling behavior (in place since Faza
+    10, never reported as broken) is left untouched here.
+
+    Range mode has no ceiling at all (mirrors tick_next_n/can_start_playback's
+    own range_mode bypass)."""
+    n = max(0, n)
+    if not range_mode:
+        n = min(n, ceiling)
+    return n
 
 
 def tick_next_n(n, range_mode, ceiling):
@@ -1961,6 +2014,17 @@ def _run_visualization(args, audio=None):
     # actually changed (needed for R/reset landing back on n=1 when n was
     # ALREADY 1 -- a plain `n != last_n` check would otherwise miss it).
     n_holder = {"n": n, "advancing": False, "force_rebuild": False}
+
+    # [ADDED, Artur 2026-09-11] LEFT/RIGHT scrub state -- "held" counts
+    # currently-pressed scrub keys (LEFT and RIGHT tracked together, not
+    # separately, so pressing both at once and releasing them in either
+    # order still only resumes once BOTH are up); "was_running" remembers
+    # whether playback was actually running at the moment the first scrub
+    # key of this hold-sequence went down, so a scrub performed while
+    # already stopped never auto-starts playback on release (Artur:
+    # "gdy używamy strzałek na zatrzymanym to przewija ale nie uruchamia
+    # wizualizacji, wciąż jest statyczna").
+    scrub_state = {"held": 0, "was_running": False}
     from primeatlas.ring_viz.window_mode import FullscreenToggle
     fullscreen = FullscreenToggle(glfw, window)
     print('F11: toggle fullscreen (auto-fits zoom to the new window size); '
@@ -1973,7 +2037,79 @@ def _run_visualization(args, audio=None):
     # exactly as every earlier Faza (immediate real exit).
     command_queue = start_stdin_command_reader() if args.pipe_stdin_commands else None
 
-    def on_key(_window, key, _scancode, action, _mods):
+    def on_key(_window, key, _scancode, action, mods):
+        # Declared at the very top of the function (not just before the
+        # Space/R/tempo branch that reassigns range_mode further down) --
+        # Python requires a nonlocal declaration to precede every use of
+        # that name within the function, including reads in the LEFT/RIGHT
+        # branch just below, which only READS range_mode/auto_orbit but
+        # still lives in the same function body as the branch that assigns
+        # them.
+        nonlocal auto_orbit, range_mode, tempo_ms
+        if key in (glfw.KEY_LEFT, glfw.KEY_RIGHT):
+            # [ADDED, Artur 2026-09-11: "sterowanie w przod i w tyl ...
+            # strzalka lewo prawo jesli klikamy na uruchomionym to robi
+            # pauze i przechodzimy w tryb manualny o n+1 z wcisnietym ctrl
+            # o n+10 ... gdy puscimy wizualizacja kontynuuje, gdy uzywamy
+            # strzalek na zatrzymanym to przewija ale nie uruchamia
+            # wizualizacji"] Handled BEFORE the PRESS/REPEAT-only filter
+            # below (unlike every other key here) because this is the one
+            # control that also needs the RELEASE event, to resume playback
+            # once scrubbing stops. See scrub_state's own comment (above,
+            # near n_holder) for the held-count/was-running bookkeeping.
+            ctrl_held = bool(mods & glfw.MOD_CONTROL)
+            delta = arrow_scrub_delta(key == glfw.KEY_RIGHT, ctrl_held)
+            if action in (glfw.PRESS, glfw.REPEAT):
+                if action == glfw.PRESS:
+                    if scrub_state["held"] == 0 and playback["running"]:
+                        scrub_state["was_running"] = True
+                        playback["running"] = False
+                    scrub_state["held"] += 1
+                # [FIXED, see Artur's 2026-09-11 "zatrzymalo sie bez resetu
+                # nie ma mozliwosci wznowienia" report] clamp_scrub_n caps
+                # this at the loaded ceiling in sequential mode -- see its
+                # own doc-comment for why an unclamped scrub (especially
+                # with OS key-repeat and the Ctrl 10x step both piling up
+                # deltas fast) could run N so far past the ceiling that
+                # nothing -- not even a plain Space press -- could resume
+                # playback afterward.
+                n_holder["n"] = clamp_scrub_n(n_holder["n"] + delta, range_mode, ceiling)
+                # n_holder["n"] changing is what actually refreshes the HUD
+                # (see the main loop's own `n_holder["n"] != last_n` branch,
+                # which calls rebuild_buffer -> emit_hud_state at its end) --
+                # no explicit emit_hud_state()/refresh_hud_texture() call
+                # needed here, same as the plain Up/Down/PageUp/PageDown
+                # keys just below.
+            elif action == glfw.RELEASE:
+                scrub_state["held"] = max(0, scrub_state["held"] - 1)
+                if scrub_state["held"] == 0 and scrub_state["was_running"]:
+                    scrub_state["was_running"] = False
+                    # [FIXED, same 2026-09-11 report] Gate the auto-resume
+                    # through the exact same guard Space uses, instead of
+                    # blindly setting running=True -- even with the
+                    # PRESS/REPEAT-side clamp above, scrubbing can still
+                    # legitimately land exactly ON the ceiling (the same
+                    # "end of loaded data" edge real forward playback
+                    # ticking stops at on its own), which is a real,
+                    # expected "nothing left to advance to" state, not a
+                    # bug -- resuming from there should refuse (with the
+                    # same message Space already prints) rather than
+                    # silently claim playback is running when it can't
+                    # actually advance.
+                    if can_start_playback(n_holder["n"], range_mode, ceiling):
+                        playback["running"] = True
+                    else:
+                        print("Playback: N is already at the loaded ceiling -- nothing left to advance to")
+                    # Unlike PRESS/REPEAT above, N does NOT change here, so
+                    # the main loop's own N-change branch will never fire on
+                    # its own this frame -- without this explicit pair, the
+                    # HUD panel's [Stopped]->[Running] text would lag behind
+                    # the actual resume by up to one whole tempo_ms tick
+                    # (same reasoning as the Space/tempo-key case below).
+                    emit_hud_state()
+                    refresh_hud_texture()
+            return
+
         if key == glfw.KEY_F11:
             # [ADDED, Artur 2026-09-11] "przejście w tryb pełnoekranowy jak i
             # okienkowy wizualizację ustawiało na wartości zoom tak by
@@ -2021,7 +2157,6 @@ def _run_visualization(args, audio=None):
         # jumps.
         if action != glfw.PRESS:
             return
-        nonlocal auto_orbit, range_mode, tempo_ms
         if key == glfw.KEY_SPACE:
             # Ports #toggleRunning exactly: STOP always succeeds; START is
             # refused (with a message, mirroring the JS's own
