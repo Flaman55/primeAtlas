@@ -151,6 +151,14 @@ def _test_build_renderer_argv():
           f"--hud-font-size is included and correct when a value is given (got {hfs_argv!r})")
 
 
+def _patch_app_settings(app_settings):
+    """Neuters persistence so this test's many _on_open() calls (each now also writing
+    ring_viz_params, see rings_tab.py's own doc-comment) never touch the real
+    primeatlas/locales/app_settings.json -- same convention as every other tab test
+    file's own _patch_app_settings (e.g. test_primes_tab.py)."""
+    app_settings.save = lambda: None
+
+
 def _write_fake_renderer(exit_code):
     """A stand-in for primeatlas/ring_viz/renderer.py that never touches moderngl/glfw
     -- just proves the real subprocess round trip (launch, live stdout lines, exit
@@ -185,6 +193,7 @@ def main():
     sys.argv = ["prime_atlas_v1.py"]
     import prime_atlas_v1
     import primeatlas.rings_tab as rings_tab_module
+    _patch_app_settings(prime_atlas_v1.APP_SETTINGS)
     app_cls = prime_atlas_v1._build_gui()
     app = app_cls()
     app.update()
@@ -365,10 +374,12 @@ def main():
           f"a clean process exit rewrites the N field to that last-seen N, powering "
           f"resume on the next Start/Resume click (got {tab.n_entry.get()!r})")
 
-    # --- [ADDED 2026-09-10] Reset: discards the resume state and puts the N
-    # field back to the tab's own startup default, even while a process is
-    # still running (Reset is only enabled while running, same as the old
-    # Stop button it replaced).
+    # --- [ADDED 2026-09-10, CHANGED 2026-09-11] Reset: discards the resume state,
+    # even while a process is still running (Reset is only enabled while running,
+    # same as the old Stop button it replaced) -- but, unlike before, does NOT
+    # touch the N field's own contents (Artur, 2026-09-11: Reset unlocking fields
+    # is right, silently discarding what was typed is not -- see _on_reset's own
+    # doc-comment in rings_tab.py).
     fake_hud_script2 = _write_fake_renderer(0)
     rings_tab_module.RENDERER_SCRIPT = fake_hud_script2
     tab.n_entry.delete(0, "end")
@@ -378,15 +389,15 @@ def main():
     tab._on_reset()
     check(tab._last_hud_n is None,
           "Reset discards the remembered resume N")
-    check(tab.n_entry.get() == "2",
-          f"Reset puts the N field back to the tab's own startup default, "
-          f"not the last-seen HUD N (got {tab.n_entry.get()!r})")
+    check(tab.n_entry.get() == "777",
+          f"Reset does NOT overwrite the N field -- the user's own last-entered "
+          f"value survives a Reset click (got {tab.n_entry.get()!r})")
     _pump(app, 3.0)
     check(str(tab.open_button["state"]) == "normal",
           "Reset also stops the running process, same as the old Stop button")
-    check(tab.n_entry.get() == "2",
+    check(tab.n_entry.get() == "777",
           "the process's own exit (triggered by Reset) does NOT re-apply a "
-          "stale last-seen N over Reset's own default -- _last_hud_n was "
+          "stale last-seen N over the user's own typed value -- _last_hud_n was "
           "already None by the time the exit was processed")
 
     # --- [ADDED 2026-09-10, Faza 13] Live pause/resume: a fake renderer that

@@ -83,6 +83,27 @@ class AppSettings:
         self.save()
 
     @property
+    def ring_viz_params(self):
+        """Last-used Ring visualization launch parameters (primeatlas/rings_tab.py's
+        RingsTab) -- N, point sizes, window/audio choices, everything that tab's own
+        _launch_param_entries/_launch_param_checkbuttons/_launch_param_dropdowns groups
+        cover, as the raw strings/bools the widgets themselves held. None on a fresh
+        install (no run has ever launched) -- RingsTab falls back to its own hardcoded
+        first-run defaults in that case; every launch after the first one instead
+        restores exactly where the previous session left off (Artur, 2026-09-11:
+        "ustawienia domyslne dla pierwszego uruchomienia... kazde kolejne to przyjmuje
+        ostatnie wpisane wartosci"). Same "remembered purely as a UI convenience"
+        reasoning as full_backup_destination above."""
+        return self._data.get("ring_viz_params") or None
+
+    def set_ring_viz_params(self, params):
+        """Called by RingsTab._on_open() with every launch-time field's current raw
+        value, each time a run actually starts -- not on every keystroke, since the
+        point is "what was last actually used", not a live draft."""
+        self._data["ring_viz_params"] = params
+        self.save()
+
+    @property
     def language(self):
         """Read once at startup (see prime_atlas_v1.py's TRANSLATOR construction) to
         build the Translator that every T(...) call in this app's GUI uses. Falls back

@@ -1108,7 +1108,7 @@ def _build_gui():
             self.rings_tab_widget = RingsTab(
                 self.rings_tab, get_portal_folder=lambda: PORTAL_FOLDER,
                 status_var=self.status, translator=TRANSLATOR,
-                totals_progress=self.totals_progress)
+                totals_progress=self.totals_progress, app_settings=APP_SETTINGS)
             self.rings_tab_widget.pack(fill="both", expand=True)
 
         # --- Tab 6: Settings -----------------------------------------------------

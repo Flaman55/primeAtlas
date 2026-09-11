@@ -172,11 +172,18 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
 
 
 class RingsTab(BaseTab):
-    def __init__(self, parent, get_portal_folder, status_var, translator, totals_progress):
+    def __init__(self, parent, get_portal_folder, status_var, translator, totals_progress,
+                 app_settings=None):
         super().__init__(parent, translator)
         self._get_portal_folder = get_portal_folder
         self.status = status_var
         self.totals_progress = totals_progress
+        # [ADDED 2026-09-11] Backs the "start from where you left off" behavior --
+        # see _build_ui's own use of ring_viz_params and _on_open's save call below.
+        # None in unit tests that construct RingsTab directly without an AppSettings
+        # (see test_rings_tab.py) -- every persistence call below is a no-op then, and
+        # _build_ui falls back to the same hardcoded first-run defaults it always had.
+        self._app_settings = app_settings
         self._runner = None
         self._queue = None
         # [ADDED 2026-09-10] Last N seen in a HUD_STATE line from the most
@@ -199,6 +206,14 @@ class RingsTab(BaseTab):
         self._build_ui()
 
     def _build_ui(self):
+        # [ADDED 2026-09-11] Every literal fallback below (e.g. "2", "15", "0.5") is
+        # the tab's ORIGINAL hardcoded default -- unchanged, and still what a genuinely
+        # fresh install (no saved_params yet) shows. Once at least one run has launched,
+        # saved_params overrides them, so every field after the first-ever run reopens
+        # exactly where the previous one left off (Artur, 2026-09-11 -- see
+        # ring_viz_params's own doc-comment in app_settings.py).
+        saved_params = (self._app_settings.ring_viz_params if self._app_settings else None) or {}
+
         container = ttk.Frame(self)
         container.pack(fill="both", expand=True, padx=12, pady=12)
 
@@ -211,7 +226,7 @@ class RingsTab(BaseTab):
         self.n_entry = ttk.Entry(field_row, width=28)
         # [CHANGED 2026-09-10] Artur asked for N pre-filled at startup instead
         # of an empty field, so the field/hint are non-empty on first render.
-        self.n_entry.insert(0, "2")
+        self.n_entry.insert(0, saved_params.get("n", "2"))
         self.n_entry.pack(side="left", padx=(6, 10))
         self.n_hint_var = tk.StringVar(value="")
         ttk.Label(field_row, textvariable=self.n_hint_var, foreground="#888888").pack(side="left")
@@ -228,7 +243,7 @@ class RingsTab(BaseTab):
         ttk.Label(point_size_row, text=self.T("rings.point_size_label")).pack(side="left")
         self.point_size_entry = ttk.Entry(point_size_row, width=8)
         # [CHANGED 2026-09-10] Artur's own chosen default, raised from 3.0 to 15.
-        self.point_size_entry.insert(0, "15")
+        self.point_size_entry.insert(0, saved_params.get("point_size", "15"))
         self.point_size_entry.pack(side="left", padx=(6, 0))
 
         # [ADDED Faza 11C, see build_renderer_argv's own doc-comment --
@@ -246,18 +261,18 @@ class RingsTab(BaseTab):
         ttk.Label(hit_point_size_row, text=self.T("rings.hit_point_size_label")).pack(side="left")
         self.hit_point_size_entry = ttk.Entry(hit_point_size_row, width=8)
         # [CHANGED 2026-09-10] Artur's own chosen default, lowered from 40 to 20.
-        self.hit_point_size_entry.insert(0, "20")
+        self.hit_point_size_entry.insert(0, saved_params.get("hit_point_size", "20"))
         self.hit_point_size_entry.pack(side="left", padx=(6, 0))
 
         hud_font_size_row = ttk.Frame(container)
         hud_font_size_row.pack(fill="x", pady=(0, 6))
         ttk.Label(hud_font_size_row, text=self.T("rings.hud_font_size_label")).pack(side="left")
         self.hud_font_size_entry = ttk.Entry(hud_font_size_row, width=8)
-        self.hud_font_size_entry.insert(0, "35")
+        self.hud_font_size_entry.insert(0, saved_params.get("hud_font_size", "35"))
         self.hud_font_size_entry.pack(side="left", padx=(6, 0))
         audio_row = ttk.Frame(container)
         audio_row.pack(fill='x', pady=(0, 6))
-        self.audio_enabled = tk.BooleanVar(value=False)
+        self.audio_enabled = tk.BooleanVar(value=saved_params.get("audio_enabled", False))
         self._audio_enable_check = ttk.Checkbutton(audio_row, text=self.T('rings.audio_enable'),
                                                      variable=self.audio_enabled)
         self._audio_enable_check.pack(side='left')
@@ -266,7 +281,9 @@ class RingsTab(BaseTab):
             ttk.Label(audio_row, text=self.T('rings.sound_' + channel)).pack(side='left', padx=(8, 3))
             choice = ttk.Combobox(audio_row, state='readonly', width=11,
                                  values=[self.T('rings.instrument_' + name) for name in INSTRUMENTS])
-            choice.current(INSTRUMENTS.index(default))
+            saved_instrument = saved_params.get('sound_' + channel, default)
+            choice.current(INSTRUMENTS.index(saved_instrument) if saved_instrument in INSTRUMENTS
+                            else INSTRUMENTS.index(default))
             choice.pack(side='left')
             self.audio_choices[channel] = choice
         ttk.Label(container, text=self.T('rings.audio_hint')).pack(anchor='w', pady=(0, 6))
@@ -278,15 +295,15 @@ class RingsTab(BaseTab):
         windows_row = ttk.Frame(container)
         windows_row.pack(fill="x", pady=(0, 6))
         ttk.Label(windows_row, text=self.T("rings.windows_label")).pack(side="left")
-        self.bertrand_var = tk.BooleanVar(value=False)
+        self.bertrand_var = tk.BooleanVar(value=saved_params.get("bertrand", False))
         self._bertrand_check = ttk.Checkbutton(windows_row, text=self.T("rings.window_bertrand"),
                                                  variable=self.bertrand_var)
         self._bertrand_check.pack(side="left", padx=(6, 0))
-        self.legendre_var = tk.BooleanVar(value=False)
+        self.legendre_var = tk.BooleanVar(value=saved_params.get("legendre", False))
         self._legendre_check = ttk.Checkbutton(windows_row, text=self.T("rings.window_legendre"),
                                                  variable=self.legendre_var)
         self._legendre_check.pack(side="left", padx=(6, 0))
-        self.general_law_var = tk.BooleanVar(value=False)
+        self.general_law_var = tk.BooleanVar(value=saved_params.get("general_law", False))
         self._general_law_check = ttk.Checkbutton(windows_row, text=self.T("rings.window_general_law"),
                                                      variable=self.general_law_var)
         self._general_law_check.pack(side="left", padx=(6, 0))
@@ -295,12 +312,12 @@ class RingsTab(BaseTab):
         general_law_row.pack(fill="x", pady=(0, 10))
         ttk.Label(general_law_row, text=self.T("rings.general_law_theta_label")).pack(side="left")
         self.general_law_theta_entry = ttk.Entry(general_law_row, width=6)
-        self.general_law_theta_entry.insert(0, "0.5")
+        self.general_law_theta_entry.insert(0, saved_params.get("general_law_theta", "0.5"))
         self.general_law_theta_entry.pack(side="left", padx=(6, 16))
         ttk.Label(general_law_row, text=self.T("rings.general_law_mode_label")).pack(side="left")
         self.general_law_mode_combo = ttk.Combobox(general_law_row, width=10, state="readonly",
                                                      values=["stepped", "sliding"])
-        self.general_law_mode_combo.set("stepped")
+        self.general_law_mode_combo.set(saved_params.get("general_law_mode", "stepped"))
         self.general_law_mode_combo.pack(side="left", padx=(6, 0))
 
         # [ADDED Faza 6, see PLAN.md] Track P field -- comma-separated prime
@@ -317,8 +334,9 @@ class RingsTab(BaseTab):
         track_row.pack(fill="x", pady=(0, 6))
         ttk.Label(track_row, text=self.T("rings.track_primes_label")).pack(side="left")
         self.track_primes_entry = ttk.Entry(track_row, width=20)
+        self.track_primes_entry.insert(0, saved_params.get("track_primes", ""))
         self.track_primes_entry.pack(side="left", padx=(6, 16))
-        self.auto_orbit_var = tk.BooleanVar(value=False)
+        self.auto_orbit_var = tk.BooleanVar(value=saved_params.get("auto_orbit", False))
         self._auto_orbit_check = ttk.Checkbutton(track_row, text=self.T("rings.auto_orbit_label"),
                                                    variable=self.auto_orbit_var)
         self._auto_orbit_check.pack(side="left")
@@ -335,9 +353,11 @@ class RingsTab(BaseTab):
         range_row.pack(fill="x", pady=(0, 10))
         ttk.Label(range_row, text=self.T("rings.load_range_label")).pack(side="left")
         self.load_range_from_entry = ttk.Entry(range_row, width=16)
+        self.load_range_from_entry.insert(0, saved_params.get("load_range_from", ""))
         self.load_range_from_entry.pack(side="left", padx=(6, 6))
         ttk.Label(range_row, text=self.T("rings.load_range_to_label")).pack(side="left")
         self.load_range_to_entry = ttk.Entry(range_row, width=16)
+        self.load_range_to_entry.insert(0, saved_params.get("load_range_to", ""))
         self.load_range_to_entry.pack(side="left", padx=(6, 0))
 
         # [RELABELED 2026-09-10] These two buttons keep their original
@@ -348,8 +368,8 @@ class RingsTab(BaseTab):
         # doc-comments for how the resume half works (short version: the N
         # field gets silently updated to the last live N whenever the GL
         # window closes on its own, so clicking this button again reopens
-        # right there; Reset is the one path that discards that and puts
-        # the field back to the tab's own startup default instead).
+        # right there; Reset is the one path that discards that live-resume
+        # value instead, without touching what's actually typed in any field).
         button_row = ttk.Frame(container)
         button_row.pack(fill="x", pady=(0, 10))
         self.open_button = ttk.Button(button_row, text=self.T("rings.open_button"),
@@ -546,6 +566,33 @@ class RingsTab(BaseTab):
                                     sound_prime=INSTRUMENTS[self.audio_choices['prime'].current()],
                                     sound_lcm=INSTRUMENTS[self.audio_choices['lcm'].current()],
                                     pipe_stdin_commands=True)
+        # [ADDED 2026-09-11] Persist every launch-time field as-typed, so the NEXT
+        # launch (this session's Reset+Start, or a whole new app restart) reopens
+        # with these same values instead of the tab's hardcoded first-run defaults
+        # -- see ring_viz_params's own doc-comment in app_settings.py. Raw strings/
+        # bools straight from the widgets, not the parsed n/point_size/etc. above,
+        # so a value that failed to parse (and therefore fell back to a CLI-flag-
+        # omitting None here) still round-trips as the text the user actually typed.
+        if self._app_settings is not None:
+            self._app_settings.set_ring_viz_params({
+                "n": raw,
+                "point_size": point_size_raw,
+                "hit_point_size": hit_point_size_raw,
+                "hud_font_size": hud_font_size_raw,
+                "audio_enabled": self.audio_enabled.get(),
+                "sound_low": INSTRUMENTS[self.audio_choices['low'].current()],
+                "sound_prime": INSTRUMENTS[self.audio_choices['prime'].current()],
+                "sound_lcm": INSTRUMENTS[self.audio_choices['lcm'].current()],
+                "bertrand": self.bertrand_var.get(),
+                "legendre": self.legendre_var.get(),
+                "general_law": self.general_law_var.get(),
+                "general_law_theta": self.general_law_theta_entry.get().strip(),
+                "general_law_mode": mode,
+                "track_primes": track_primes_raw,
+                "auto_orbit": auto_orbit,
+                "load_range_from": range_from_raw,
+                "load_range_to": range_to_raw,
+            })
         q = queue.Queue()
         # [ADDED 2026-09-10, Faza 13] pipe_stdin=True so send_line("RESUME")
         # further down (and in _on_open's own live-resume branch above) has
@@ -580,14 +627,25 @@ class RingsTab(BaseTab):
 
     def _on_reset(self):
         """[RENAMED from _on_stop, 2026-09-10] Closes the GL window's own
-        process, same as before -- but ALSO discards the resume state
-        (_last_hud_n) and puts the N field back to its own startup default,
-        which is what distinguishes an explicit Reset click from just
-        closing the GL window yourself (Esc / the window's own close
-        control): a plain close is handled by _poll_queue's own __exit__
-        branch below, which treats it as an implicit pause and preserves
-        the last-seen N for the Start/Resume button; THIS path means the
-        user asked to throw that away and start clean next time."""
+        process, same as before -- and unlocks every launch-time field again
+        (see _set_launch_params_readonly), which is what distinguishes an
+        explicit Reset click from just closing the GL window yourself (Esc /
+        the window's own close control): a plain close is handled by
+        _poll_queue's own __exit__ branch below, which treats it as an
+        implicit pause and drops the last-seen live N into the N field for
+        the Start/Resume button; THIS path discards that live-resume state
+        instead (_last_hud_n below).
+
+        [CHANGED 2026-09-11] Used to also force the N field back to the
+        tab's own hardcoded startup default ("2") -- Artur: pressing Reset
+        unlocked the fields as intended, but also silently threw away
+        whatever he'd actually typed, which fought against every field
+        otherwise remembering its last-used value across launches (see
+        ring_viz_params in app_settings.py). Reset no longer touches any
+        field's contents at all -- "start clean" now means unlocked and
+        ready to relaunch with the SAME values, not wiped ones; typing a
+        new value (or the Esc/window-close implicit-resume path above) are
+        the only ways any field's contents actually change now."""
         if self._runner is not None:
             self._runner.stop()
         self._last_hud_n = None
@@ -603,9 +661,6 @@ class RingsTab(BaseTab):
         # fields should read as editable again immediately, not lag a poll
         # cycle behind terminate()'s own OS-level kill.
         self._set_launch_params_readonly(False)
-        self.n_entry.delete(0, "end")
-        self.n_entry.insert(0, "2")
-        self._on_n_changed()
 
     def _poll_queue(self):
         if self._queue is None:
