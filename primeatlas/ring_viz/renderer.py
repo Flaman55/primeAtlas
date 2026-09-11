@@ -207,6 +207,7 @@ from primeatlas.ring_geometry import (
     resonance_log_lines,
     format_log_panel_text,
     window_anchor_primes,
+    cyclic_window_anchor_at,
     window_label_colors,
 )
 
@@ -576,9 +577,10 @@ void main() {
 _CYAN_RGB = (0.0, 188.0, 212.0)      # "#00bcd4"
 _GOLD_RGB = (255.0, 215.0, 0.0)      # "#ffd700" -- hit, prime >= 11
 _ORANGE_RGB = (255.0, 87.0, 34.0)    # "#ff5722" -- hit, prime < 11
+_TRACKED_WHITE_RGB = (255.0, 255.0, 255.0)
 
 
-def build_vertex_data(primes, n, max_radius, enabled_ids=(), theta=0.5, mode="stepped"):
+def build_vertex_data(primes, n, max_radius, enabled_ids=(), theta=0.5, mode="stepped", track_primes=()):
     """ring_geometry.ring_positions() -> flat (x,y,r,g,b) float32 array ready
     for a moderngl buffer.
 
@@ -596,10 +598,25 @@ def build_vertex_data(primes, n, max_radius, enabled_ids=(), theta=0.5, mode="st
     compute_highlight_colors returns matched=all-False for an empty family
     set.
 
-    Deliberately does NOT port the tracked-ring white-outline recoloring
-    (needs a "Track P" UI field + its own anchor-based color pass, see the
-    project's ring-visualization task list for that follow-up) -- this pass
-    is the window-highlight half of "visual parity" only."""
+    [ADDED 2026-09-11, closes the gap the paragraph above used to flag as
+    deferred] `track_primes` -- the SAME effective-tracked-ring set
+    rebuild_buffer feeds build_tracked_outline_draws (rings.py's
+    resolve_effective_track_primes: whichever rings are the currently
+    active anchors, from a window family, auto-orbit, or a manual --track-
+    primes list) -- gets its own DOT forced to plain white, ONE more link
+    in the same override chain, applied AFTER (so it wins over) the window-
+    highlight color above. Artur's own reasoning (2026-09-11): the tracked-
+    ring OUTLINE circle (build_tracked_outline_draws) already carries the
+    active window's own color (green for Legendre, violet for General Law,
+    additively blended when both happen to coincide) -- deliberately
+    UNCHANGED by this -- but the ring's actual POINT used to just blend
+    into every other same-colored member of that window; a plain white dot
+    makes the one ring actually being tracked/anchored instantly
+    identifiable at a glance, regardless of whatever window color its
+    surroundings carry. Empty (the default) reproduces the exact prior
+    behavior -- tracked_ring_mask (ring_geometry.py) already returns all-
+    False for an empty `track_primes`, so this is a no-op then, same
+    convention as `enabled_ids=()` above."""
     pos = ring_positions(primes, n, max_radius)
     count = len(pos["x"])
     hit = pos["is_hit"]
@@ -615,6 +632,9 @@ def build_vertex_data(primes, n, max_radius, enabled_ids=(), theta=0.5, mode="st
     if enabled_ids:
         highlight_colors, matched = compute_highlight_colors(primes_arr, n, enabled_ids, theta, mode)
         rgb[matched] = highlight_colors[matched]
+
+    if track_primes:
+        rgb[tracked_ring_mask(primes_arr, track_primes)] = _TRACKED_WHITE_RGB
 
     data = np.empty((count, 5), dtype=np.float32)
     data[:, 0] = pos["x"]
@@ -997,7 +1017,8 @@ def resolve_effective_track_primes(window_anchors, enabled_ids, auto_orbit, orbi
     return track_primes
 
 
-def build_tracked_outline_draws(primes_active, n, enabled_ids, theta, mode, track_primes, radii):
+def build_tracked_outline_draws(primes_active, n, enabled_ids, theta, mode, track_primes, radii,
+                                 anchor_overrides=None):
     """Everything the GL layer needs to draw one outline circle per tracked-
     AND-active ring, computed ONCE per N-change inside rebuild_buffer (same
     convention as build_vertex_data -- see module docstring's architecture
@@ -1009,6 +1030,13 @@ def build_tracked_outline_draws(primes_active, n, enabled_ids, theta, mode, trac
     `pos["radius"]`; not recomputed here to avoid doing ring_positions' own
     trig twice per N-change.
 
+    `anchor_overrides` -- [ADDED 2026-09-11] forwarded verbatim to
+    compute_tracked_colors (see that function's own doc-comment) -- lets
+    rebuild_buffer's cyclic_window_anchor_at result color the SAME ring
+    window_anchor_primes already chose to track, instead of
+    compute_tracked_colors recomputing "legendre"/"generalLaw"'s anchor its
+    own (now stale) way via ANCHOR_FUNCTIONS.
+
     Returns a list of (radius, (r, g, b, a)) tuples, one per tracked-and-
     active ring, in `primes_active`'s own ascending order (matching how
     `radii` is indexed) -- NOT `track_primes`'s user-typed order, unlike
@@ -1018,7 +1046,7 @@ def build_tracked_outline_draws(primes_active, n, enabled_ids, theta, mode, trac
     if not mask.any():
         return []
     if enabled_ids:
-        colors, matched = compute_tracked_colors(primes_arr, n, enabled_ids, theta, mode)
+        colors, matched = compute_tracked_colors(primes_arr, n, enabled_ids, theta, mode, anchor_overrides)
     else:
         colors = np.zeros((len(primes_arr), 3), dtype=np.float64)
         matched = np.zeros(len(primes_arr), dtype=bool)
@@ -1781,6 +1809,13 @@ def _run_visualization(args, audio=None):
     playback = {"running": False}
     orbit_state = {"index": 0, "counter": 0, "current_prime": None}
 
+    # [ADDED 2026-09-11] Persisted across rebuild_buffer calls, one entry
+    # per cyclic family ("legendre"/"generalLaw") -- see
+    # ring_geometry.cyclic_window_anchor_at's own doc-comment for the full
+    # freeze/jump rule this backs (Bertrand needs no such state; it stays on
+    # ANCHOR_FUNCTIONS' own from-scratch replay).
+    cyclic_anchor_state = {}
+
     # [ADDED Faza 9, see PLAN.md] Load Range -- ports #loadPrimeRange: switch
     # to a FIXED ring set (range_primes), independent of N from here on
     # (rebuild_buffer below uses it verbatim instead of `primes[primes <=
@@ -1913,31 +1948,6 @@ def _run_visualization(args, audio=None):
         # does; only each ring's phase/hit status still depends on n_value,
         # via ring_positions inside build_vertex_data below.
         active = range_primes if range_mode else primes[primes <= n_value]
-        data, count, pos = build_vertex_data(active, n_value, max_radius, enabled_ids, theta, law_mode)
-        t1 = time.perf_counter()
-        print(f"N={n_value:,}  rings={count:,}  rebuild={1000 * (t1 - t0):.1f}ms")
-        # [ADDED Faza 7B, see PLAN.md] tracked_resonance_state does its own
-        # active-filtering internally (ring_geometry.filter_active_tracked,
-        # same function Faza 6 introduced) -- no separate filter step needed
-        # here anymore. auto_orbit=True short-circuits to None inside that
-        # function too (mirrors the JS's own `if (this.#autoOrbit || ...)
-        # return null` guard), so the explicit `if auto_orbit` branch Faza 6
-        # had here is gone; there is nothing left for it to skip.
-        tracked_state = tracked_resonance_state(track_primes, active, n_value, auto_orbit=auto_orbit)
-        emit_audio_tick(audio, active, pos['is_hit'], tracked_state, advancing)
-        current_hud_lines = hud_lines_for_n(active, n_value, pos, enabled_ids, theta, law_mode, tracked_state)
-        for line in current_hud_lines:
-            print(line)
-
-        # [ADDED PLAN.md Faza 11 -- resonance log + surviving-primes panel]
-        # See update_resonance_log's own doc-comment for the jump-vs-tick
-        # distinction this relies on.
-        update_resonance_log(resonance_log_state, active, n_value, range_mode, advancing)
-
-        resonance_count, resonance_text = format_log_panel_text(resonance_log_state["lines"])
-        print(f"Resonance log ({resonance_count}): {resonance_text}")
-        primes_count, primes_text = format_log_panel_text(list(active))
-        print(f"Surviving primes ({primes_count}): {primes_text}")
 
         # [ADDED Faza 10, see PLAN.md] Auto-orbit's actual cycling -- only
         # advances on a FORWARD playback tick (advancing=True), never on a
@@ -1972,10 +1982,59 @@ def _run_visualization(args, audio=None):
         # draws the outline circle, because nothing before this fed window
         # anchors into effective_track_primes the way auto-orbit and
         # --track-primes already did.
-        window_anchors = window_anchor_primes(active, n_value, enabled_ids, theta, law_mode)
+        # [ADDED 2026-09-11, Artur's report: Legendre/General Law's own
+        # window is only a few dozen points wide near the start of the axis
+        # and narrows further, too narrow for Bertrand's 2x-doubling freeze
+        # condition to give the same "hold still, then jump" effect there --
+        # see cyclic_window_anchor_at's own doc-comment for the replacement
+        # rule.] Bertrand keeps resolving through ANCHOR_FUNCTIONS inside
+        # window_anchor_primes/compute_tracked_colors unchanged (no entry
+        # here) -- only the two families with narrow windows get an
+        # override, and only while actually enabled (no point mutating
+        # cyclic_anchor_state for a family the user has toggled off).
+        cyclic_anchor_overrides = {
+            family_id: cyclic_window_anchor_at(cyclic_anchor_state, family_id, active, n_value, theta, law_mode)
+            for family_id in ("legendre", "generalLaw")
+            if family_id in enabled_ids
+        }
+        window_anchors = window_anchor_primes(
+            active, n_value, enabled_ids, theta, law_mode, cyclic_anchor_overrides
+        )
+        # [MOVED 2026-09-11, was computed after build_vertex_data -- now
+        # needed BEFORE it, since build_vertex_data's own `track_primes`
+        # param (below) needs this same set to paint the tracked/anchor
+        # ring's DOT white -- see that param's own doc-comment for why.]
         effective_track_primes = resolve_effective_track_primes(
             window_anchors, enabled_ids, auto_orbit, orbit_state["current_prime"], track_primes
         )
+
+        data, count, pos = build_vertex_data(
+            active, n_value, max_radius, enabled_ids, theta, law_mode, effective_track_primes
+        )
+        t1 = time.perf_counter()
+        print(f"N={n_value:,}  rings={count:,}  rebuild={1000 * (t1 - t0):.1f}ms")
+        # [ADDED Faza 7B, see PLAN.md] tracked_resonance_state does its own
+        # active-filtering internally (ring_geometry.filter_active_tracked,
+        # same function Faza 6 introduced) -- no separate filter step needed
+        # here anymore. auto_orbit=True short-circuits to None inside that
+        # function too (mirrors the JS's own `if (this.#autoOrbit || ...)
+        # return null` guard), so the explicit `if auto_orbit` branch Faza 6
+        # had here is gone; there is nothing left for it to skip.
+        tracked_state = tracked_resonance_state(track_primes, active, n_value, auto_orbit=auto_orbit)
+        emit_audio_tick(audio, active, pos['is_hit'], tracked_state, advancing)
+        current_hud_lines = hud_lines_for_n(active, n_value, pos, enabled_ids, theta, law_mode, tracked_state)
+        for line in current_hud_lines:
+            print(line)
+
+        # [ADDED PLAN.md Faza 11 -- resonance log + surviving-primes panel]
+        # See update_resonance_log's own doc-comment for the jump-vs-tick
+        # distinction this relies on.
+        update_resonance_log(resonance_log_state, active, n_value, range_mode, advancing)
+
+        resonance_count, resonance_text = format_log_panel_text(resonance_log_state["lines"])
+        print(f"Resonance log ({resonance_count}): {resonance_text}")
+        primes_count, primes_text = format_log_panel_text(list(active))
+        print(f"Surviving primes ({primes_count}): {primes_text}")
 
         # [ADDED Faza 8, extended 2026-09-10] Tracked-ring outline circles --
         # recomputed here alongside the main buffer, same N-change-only
@@ -1992,7 +2051,8 @@ def _run_visualization(args, audio=None):
         # short-circuits to None entirely, per that function's own
         # doc-comment).
         outline_draws_holder["draws"] = build_tracked_outline_draws(
-            active, n_value, enabled_ids, theta, law_mode, effective_track_primes, pos["radius"]
+            active, n_value, enabled_ids, theta, law_mode, effective_track_primes, pos["radius"],
+            cyclic_anchor_overrides
         )
 
         # [ADDED Faza 8] Birth/resonance flash triggers -- approximates

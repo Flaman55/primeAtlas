@@ -284,6 +284,57 @@ def _test_build_vertex_data_bertrand_highlight():
                   f"non-Bertrand-matched ring prime={p} does not carry the Bertrand pink color")
 
 
+def _test_build_vertex_data_track_primes_white_dot():
+    """[ADDED 2026-09-11, Artur's report: with only Legendre on, the tracked/
+    anchor ring's own DOT just blended into the sea of same-colored (green)
+    window-member dots -- "punkt aktywnego pierscienia niech bedzie bialy
+    tak samo jak jest dla aktywnego pierscienia w innych przypadkach", i.e.
+    the tracked ring's POINT (not its separate outline circle, which stays
+    the window's own color -- see build_tracked_outline_draws/
+    tracked_outline_color, unchanged by this) should be plain white so it's
+    instantly identifiable regardless of the window color around it. Covers
+    the new `track_primes` param build_vertex_data now takes."""
+    from primeatlas.ring_viz.renderer import build_vertex_data
+    from primeatlas.ring_geometry import compute_highlight_colors
+
+    primes = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37], dtype=np.int64)
+    n = 40  # same fixture as the Bertrand-highlight test above: window (20,40]
+    max_radius = 100.0
+
+    expected_colors, expected_matched = compute_highlight_colors(primes, n, {"bertrand"})
+    check(expected_matched.any(), "sanity: the chosen n/primes actually produce a non-empty Bertrand match")
+
+    # Anchor is 23 (see _test_anchor_functions in test_ring_geometry.py's
+    # own n=40 fixture) -- a genuine Bertrand-strict member, so this also
+    # proves the white override WINS over the window-highlight color, not
+    # just over the plain cyan/gold/orange base.
+    data, count, _pos = build_vertex_data(primes, n, max_radius, enabled_ids={"bertrand"}, track_primes=[23])
+
+    idx23 = int(np.where(primes == 23)[0][0])
+    check(np.allclose(data[idx23, 2:5], (1.0, 1.0, 1.0), atol=1e-6),
+          f"tracked ring (prime=23) gets a plain white dot, overriding its own Bertrand-pink "
+          f"highlight color (got {data[idx23, 2:5]})")
+
+    for i, p in enumerate(primes):
+        if p == 23:
+            continue
+        if expected_matched[i]:
+            expected_rgb = expected_colors[i] / 255.0
+            check(np.allclose(data[i, 2:5], expected_rgb, atol=1e-6),
+                  f"non-tracked ring prime={p} keeps its normal window-highlight color, "
+                  f"unaffected by the other ring's white override (got {data[i, 2:5]})")
+
+    # track_primes=() (the default) reproduces the exact prior behavior --
+    # no white anywhere, identical to the plain Bertrand-highlight test above.
+    data_no_track, _count2, _pos2 = build_vertex_data(primes, n, max_radius, enabled_ids={"bertrand"})
+    check(not np.allclose(data_no_track[idx23, 2:5], (1.0, 1.0, 1.0), atol=1e-6),
+          "with no track_primes given (the default), ring 23 is NOT forced white -- it just "
+          "keeps its normal Bertrand highlight color")
+    check(np.array_equal(data_no_track[:, 2:5], data[:, 2:5]) is False,
+          "sanity: the two calls above actually produced different output (the white override "
+          "did something observable)")
+
+
 def _test_split_hit_normal_vertex_data():
     from primeatlas.ring_viz.renderer import build_vertex_data, split_hit_normal_vertex_data
 
@@ -1388,6 +1439,7 @@ def main():
     _test_empty_portal()
     _test_build_vertex_data_no_windows_matches_old_behavior()
     _test_build_vertex_data_bertrand_highlight()
+    _test_build_vertex_data_track_primes_white_dot()
     _test_split_hit_normal_vertex_data()
     _test_hud_lines_for_n()
     _test_initial_n_for_source()

@@ -196,7 +196,10 @@ def is_general_law_member(primes, n, theta, mode):
 # StructuralSieveApp.js's #windowHighlightFamilies / #computeHighlightColor /
 # #computeTrackedColor / #activeWindowCount into vectorized numpy form. See
 # that file for the full design rationale (Artur's own quotes on why the
-# blend is additive-RGB and why Legendre's own highlight test is "sticky").
+# blend is additive-RGB). Legendre's own highlight test USED to be a
+# separate "sticky" variant (is_legendre_highlighted, since removed -- see
+# compute_highlight_colors' own 2026-09-11 doc-comment for why: it produced
+# a false-positive green band nearly as wide as Bertrand's own window).
 # The JS versions operate per single (n, prime) pair, called once per ring
 # per animation tick; this module instead computes highlight color for EVERY
 # active ring at once (a whole-frame batch), which is what the ring-count
@@ -288,33 +291,6 @@ def window_label_colors(enabled_ids, n, theta=0.5, mode="stepped"):
     return result
 
 
-def _legendre_level_at_vec(values):
-    """Vectorized counterpart of legendre_level_at, applied elementwise to a
-    numpy array (needed because isLegendreHighlighted applies legendreLevelAt
-    to the RING's own prime value, not to n -- see that JS method's own
-    doc-comment). Same floor(sqrt(v-1)) formula, v<=1 -> 0."""
-    values_arr = np.asarray(values, dtype=np.float64)
-    result = np.zeros_like(values_arr, dtype=np.int64)
-    mask = values_arr > 1
-    result[mask] = np.floor(np.sqrt(values_arr[mask] - 1)).astype(np.int64)
-    return result
-
-
-def is_legendre_highlighted(primes, n):
-    """Vectorized port of isLegendreHighlighted -- the STICKY variant used
-    for the ring's own highlight color (not the strict membership test): a
-    ring stays green after its own Legendre window closes until it crosses
-    its next self-multiple. Superset of is_legendre_member (every strict
-    match is also sticky) -- see that JS method's own doc-comment for why
-    this matters to the strict/sticky blend tiering below."""
-    primes_arr = np.asarray(primes, dtype=np.int64)
-    strict = is_legendre_member(primes_arr, n)
-    k = _legendre_level_at_vec(primes_arr)
-    close_edge = (k + 1) * (k + 1)
-    next_crossing = (close_edge // primes_arr + 1) * primes_arr
-    return strict | (n < next_crossing)
-
-
 def _largest_below(sorted_arr, bound):
     """Largest element of ascending `sorted_arr` strictly less than `bound`,
     or None if none exists. Ports SieveModel's private #largestBelow binary
@@ -371,14 +347,135 @@ ANCHOR_FUNCTIONS = {
 }
 
 
+def cyclic_window_anchor_at(anchor_state, family_id, primes, n, theta=0.5, mode="stepped"):
+    """[ADDED 2026-09-11] Legendre/General Law's own tracked-ring anchor --
+    NOT a port of anything in SieveModel.js, a new design of Artur's that
+    REPLACES legendre_anchor_at/general_law_anchor_at for this purpose
+    (those two functions and ANCHOR_FUNCTIONS above are untouched and still
+    used for Bertrand, and still exist in their own right -- only the
+    renderer.py call sites that feed the tracked-ring OUTLINE now use this
+    function instead for "legendre"/"generalLaw").
+
+    Artur's report, 2026-09-11: Bertrand's freeze/jump rule (jump only once
+    n >= 2*anchor) gives a clean "wait for every pink prime below the
+    tracked ring to reach the vertical red line, then jump" effect on its
+    own wide (n/2, n] window -- but Legendre/General Law's window is only a
+    few dozen points wide near the start of the axis (and narrows further
+    as N grows), too narrow for that same 2x-doubling condition to ever
+    fire sensibly. legendre_anchor_at/general_law_anchor_at's plain
+    per-call recomputation (whatever prime currently sits at the window's
+    own edge) was a first attempt at mimicking Bertrand's effect there, but
+    it does not actually hold the tracked ring still long enough to show
+    anything -- it can select a different ring almost every step.
+
+    New rule (Artur's own words, kept close to verbatim): "nowe okno to
+    aktualne n i ono ma ten swoj pierscien i on nie zmienia sie gdy nie
+    stanie sie skrajna lewa strona okna i w nastepnym kroku wpada na swoja
+    skrajna wartosc prawej strony okna i znow leci w lewa strone i cykl sie
+    powtarza" -- the anchor freezes at the window's own RIGHT edge (the
+    largest active prime <= n) the moment a new window opens, and stays
+    frozen there for as long as that SAME window is still open, drifting
+    toward the window's own left side only in the sense that newer, bigger
+    rings keep entering to its right while it stays put; once the window
+    closes (a NEW one opens) the anchor re-freezes at the new window's own
+    right edge, and the cycle repeats.
+
+    What "a new window opens" means differs by family, because Legendre's
+    own `lo` (= k*k) is CONSTANT for the whole level, jumping in one
+    discrete step only at each perfect-square level boundary -- there,
+    "a new window opens" means legendre_level_at(n) itself changed.
+    General Law's `lo` (general_law_window_bounds) is NOT constant per
+    level in general: "sliding" mode has no level concept at all (`lo = n
+    - n**theta` creeps up on every single n), and "stepped" mode's own
+    `lo = n - (n - legendre_lo) * factor` (factor = general_law_tent_factor
+    (theta)) reduces to Legendre's own constant-per-level `lo` ONLY at the
+    exact tent peak theta=0.5 (factor == 1) -- for ANY other theta, factor
+    < 1, so `lo` still creeps up continuously WITHIN a level (just slower
+    than n itself, scaled by (1 - factor)), not just at level boundaries.
+
+    [FIXED 2026-09-11, Artur's report: with Legendre AND General Law both
+    on (theta != 0.5, stepped mode), the HUD showed two clearly DIFFERENT
+    window ranges (e.g. Legendre (1156,1199], General Law theta=0.3
+    (1177,1199]) yet only ONE ring appeared, in the additively-blended
+    color, as if both anchors had coincided -- "mimo ze sa dwa rozne punkty
+    startowe to jest tylko jeden pierscien". Root cause: this function used
+    to route EVERY "stepped"-mode General Law call through the SAME level-
+    keyed branch as Legendre, regardless of theta -- since that branch's
+    re-anchor trigger only looks at legendre_level_at(n) (never at General
+    Law's own, theta-dependent `lo`), it produced the EXACT SAME anchor
+    value as Legendre for every theta, not just theta=0.5. Fixed below: the
+    level-keyed branch is now used for General Law only when its `lo`
+    genuinely IS piecewise-constant per level (factor == 1.0, i.e.
+    theta==0.5 exactly); any other theta in "stepped" mode now takes the
+    same numeric-creep branch "sliding" mode already correctly used.]
+
+      - family_id == "legendre", or "generalLaw" with mode == "stepped"
+        AND theta == 0.5 exactly (factor == 1.0, `lo` piecewise-constant
+        per level, identical to Legendre's own): keyed on
+        legendre_level_at(n) -- re-anchor at the window's own right edge
+        exactly when the level differs from the level the currently-frozen
+        anchor was picked under (this is also why an immediate re-freeze
+        right after re-anchoring is NOT a bug here: the newly-picked
+        anchor's own level always matches the level that was just entered,
+        so the very next call at the same level leaves it untouched).
+      - family_id == "generalLaw" with mode == "sliding", OR "stepped" with
+        any theta != 0.5: keyed on the numeric `lo` from
+        general_law_window_bounds -- re-anchor whenever the frozen anchor
+        is <= the CURRENT call's `lo` (which, since it creeps up by a
+        little on every single n in both these cases, is what makes the
+        anchor eventually "become the window's own left edge").
+
+    `anchor_state` is a plain per-family-id dict the CALLER owns and keeps
+    across rebuild_buffer calls (renderer.py's run() holds one, same
+    convention as its own orbit_state/resonance_log_state dicts) -- this
+    function is otherwise a pure function of (state, n). Calling it twice
+    in a row with the same n is idempotent (the re-anchor condition, re-
+    evaluated against the just-updated state, no longer holds). Calling it
+    after an arbitrary FORWARD jump in n (goto/load range, not just a live-
+    playback tick) self-corrects on that very call, since both the level
+    and `lo` are always recomputed fresh from the actual current n rather
+    than accumulated incrementally step by step.
+
+    family_id must be "legendre" or "generalLaw" -- Bertrand has no cyclic
+    state of its own and keeps using bertrand_anchor_at (via
+    ANCHOR_FUNCTIONS) directly."""
+    primes_arr = np.asarray(primes, dtype=np.int64)
+    if family_id not in ("legendre", "generalLaw"):
+        raise ValueError(f"cyclic_window_anchor_at does not support family_id {family_id!r}")
+
+    if family_id == "legendre":
+        # Legendre proper has no separate sliding variant (mirrors
+        # ANCHOR_FUNCTIONS["legendre"] itself ignoring mode/theta) -- always
+        # level-keyed.
+        level_keyed = True
+    else:
+        # generalLaw: level-keyed ONLY when its own `lo` is provably
+        # identical to Legendre's constant-per-level `lo` (see this
+        # function's own 2026-09-11 doc-comment for why any other theta
+        # must NOT take this branch).
+        level_keyed = mode == "stepped" and general_law_tent_factor(theta) == 1.0
+
+    entry = anchor_state.setdefault(family_id, {"anchor": None, "level": None})
+    if level_keyed:
+        level = legendre_level_at(n)
+        if entry["anchor"] is None or entry["level"] != level:
+            entry["anchor"] = _largest_below(primes_arr, n + 1)
+            entry["level"] = level
+    else:
+        lo, _hi, _k, _factor = general_law_window_bounds(n, theta, mode)
+        if entry["anchor"] is None or entry["anchor"] <= lo:
+            entry["anchor"] = _largest_below(primes_arr, n + 1)
+    return entry["anchor"]
+
+
 def _blend_family_colors(masks_by_family):
     """Shared additive-RGB blend core used by both compute_highlight_colors
     and compute_tracked_colors below -- ports the summation half of
     #computeHighlightColor / #computeTrackedColor (channel sum, clamp to
     255), factored out because both JS methods do exactly this arithmetic
     and differ only in HOW each family's per-ring participation mask is
-    derived (strict/sticky tiering for highlight color; plain anchor-equality
-    for tracked color -- see the two callers below).
+    derived (strict window membership for highlight color; plain anchor-
+    equality for tracked color -- see the two callers below).
 
     `masks_by_family` -- dict of family_id -> boolean numpy array (same
     length, one entry per ring): True where that family contributes its
@@ -409,16 +506,20 @@ def compute_highlight_colors(primes, n, enabled_ids, theta=0.5, mode="stepped"):
     at once. `enabled_ids` is an iterable of family ids from
     WINDOW_FAMILY_COLORS currently toggled on (e.g. {"bertrand", "legendre"}).
 
-    Implements the exact two-tier strict/sticky precedence rule from the JS
-    version (see #computeHighlightColor's own doc-comment for the full
-    rationale and the motivating bug it fixes): PER RING, if any enabled
-    family's STRICT membership test matches, only strictly-matching families
-    blend for that ring; a family that merely `isHighlighted` (sticky) but
-    does not strictly match is excluded from that ring's blend in that case.
-    Only when NO family strictly matches a given ring does the sticky-only
-    fallback apply. Bertrand and General Law have no separate sticky
-    variant (their strict and highlighted tests are identical); only
-    Legendre does (is_legendre_highlighted vs is_legendre_member).
+    [CHANGED 2026-09-11, Artur's report: enabling ONLY Legendre showed green
+    dots across a range as wide as Bertrand's own (n/2, n] window, even
+    though the Legendre HUD label advertised a much narrower (k*k, n] range
+    -- confirmed the culprit was is_legendre_highlighted's own "sticky"
+    grace period (kept a ring green until it crossed its next self-multiple,
+    which for most primes past the midpoint of their own level works out to
+    almost exactly 2x their value -- i.e. reproducing Bertrand's own window
+    shape by coincidence). That function is gone; Legendre's own highlight
+    test is now exactly its strict membership test, same as Bertrand and
+    General Law already were. With no family left having a distinct sticky
+    variant, the strict/sticky two-tier precedence this function used to
+    implement (see #computeHighlightColor in the JS reference for where
+    that rule came from) had become a pure no-op, so it is gone too -- this
+    now just blends whichever families STRICTLY match each ring.]
 
     Returns (colors, matched) -- see _blend_family_colors's own docstring for
     the exact shape; `matched[i] is False` is this function's counterpart to
@@ -427,51 +528,42 @@ def compute_highlight_colors(primes, n, enabled_ids, theta=0.5, mode="stepped"):
     count = len(primes_arr)
 
     strict_by_family = {}
-    highlighted_by_family = {}
     for family_id in enabled_ids:
         if family_id == "bertrand":
             strict = is_bertrand_member(primes_arr, n)
-            highlighted = strict
         elif family_id == "legendre":
             strict = is_legendre_member(primes_arr, n)
-            highlighted = is_legendre_highlighted(primes_arr, n)
         elif family_id == "generalLaw":
             strict = is_general_law_member(primes_arr, n, theta, mode)
-            highlighted = strict
         else:
             raise ValueError(f"unknown window family id {family_id!r}")
         strict_by_family[family_id] = strict
-        highlighted_by_family[family_id] = highlighted
 
     if not strict_by_family:
         return np.zeros((count, 3), dtype=np.float64), np.zeros(count, dtype=bool)
 
-    any_strict = np.zeros(count, dtype=bool)
-    for strict in strict_by_family.values():
-        any_strict |= strict
-
-    # Per ring: if any_strict, only THIS family's own strict flag decides its
-    # contribution (even if it is also sticky-highlighted); otherwise THIS
-    # family's own highlighted flag decides -- exactly the
-    # `matches = strictMatches.length > 0 ? strictMatches : stickyMatches`
-    # rule from #computeHighlightColor, applied per family per ring via
-    # np.where instead of per-ring family-list branching.
-    effective_masks = {
-        family_id: np.where(any_strict, strict_by_family[family_id], highlighted_by_family[family_id])
-        for family_id in enabled_ids
-    }
-    return _blend_family_colors(effective_masks)
+    return _blend_family_colors(strict_by_family)
 
 
-def compute_tracked_colors(primes, n, enabled_ids, theta=0.5, mode="stepped"):
+def compute_tracked_colors(primes, n, enabled_ids, theta=0.5, mode="stepped", anchor_overrides=None):
     """Vectorized port of #computeTrackedColor: for each ring, sums the
     colors of every enabled family whose OWN anchor (bertrand_anchor_at /
-    legendre_anchor_at / general_law_anchor_at) is exactly that ring's prime.
-    Deliberately a DIFFERENT question from compute_highlight_colors (window
-    membership) -- see that JS method's own doc-comment for the exact bug
-    this distinction fixes (two different anchors collapsing to the same
-    blended color because both happened to satisfy each other's window-
-    membership test).
+    legendre_anchor_at / general_law_anchor_at, or `anchor_overrides` below)
+    is exactly that ring's prime. Deliberately a DIFFERENT question from
+    compute_highlight_colors (window membership) -- see that JS method's own
+    doc-comment for the exact bug this distinction fixes (two different
+    anchors collapsing to the same blended color because both happened to
+    satisfy each other's window-membership test).
+
+    `anchor_overrides` -- [ADDED 2026-09-11] optional {family_id: anchor}
+    dict; when a family_id is a key here (even with value None), its value
+    is used directly instead of calling ANCHOR_FUNCTIONS[family_id] -- this
+    is how renderer.py feeds in cyclic_window_anchor_at's own stateful
+    "legendre"/"generalLaw" anchors (see that function's own doc-comment)
+    while Bertrand keeps resolving through ANCHOR_FUNCTIONS as before. A
+    family_id absent from this dict falls back to ANCHOR_FUNCTIONS exactly
+    as it always has, so passing None (the default) reproduces the old
+    behavior unchanged.
 
     Returns (colors, matched) -- same shape as compute_highlight_colors."""
     primes_arr = np.asarray(primes, dtype=np.int64)
@@ -479,7 +571,10 @@ def compute_tracked_colors(primes, n, enabled_ids, theta=0.5, mode="stepped"):
 
     masks = {}
     for family_id in enabled_ids:
-        anchor = ANCHOR_FUNCTIONS[family_id](primes_arr, n, theta, mode)
+        if anchor_overrides is not None and family_id in anchor_overrides:
+            anchor = anchor_overrides[family_id]
+        else:
+            anchor = ANCHOR_FUNCTIONS[family_id](primes_arr, n, theta, mode)
         masks[family_id] = (primes_arr == anchor) if anchor is not None else np.zeros(count, dtype=bool)
 
     if not masks:
@@ -487,7 +582,7 @@ def compute_tracked_colors(primes, n, enabled_ids, theta=0.5, mode="stepped"):
     return _blend_family_colors(masks)
 
 
-def window_anchor_primes(primes, n, enabled_ids, theta=0.5, mode="stepped"):
+def window_anchor_primes(primes, n, enabled_ids, theta=0.5, mode="stepped", anchor_overrides=None):
     """[ADDED 2026-09-10] Ports #renderFrame's anchor-collection loop:
 
         const anchors = [];
@@ -524,7 +619,15 @@ def window_anchor_primes(primes, n, enabled_ids, theta=0.5, mode="stepped"):
     Returns [] if enabled_ids is empty -- caller falls back to whatever OTHER
     trackedPrimes source applies, mirroring the JS's own `if (anyWindowOn)`
     gate (no families on: this function contributes nothing, same as the JS
-    block simply not running that turn)."""
+    block simply not running that turn).
+
+    `anchor_overrides` -- [ADDED 2026-09-11] same {family_id: anchor} dict
+    compute_tracked_colors accepts (see that function's own doc-comment) --
+    a family_id present here (even with value None) uses that value
+    directly instead of calling ANCHOR_FUNCTIONS[family_id], so renderer.py
+    can feed cyclic_window_anchor_at's stateful "legendre"/"generalLaw"
+    anchors through the exact same collection loop Bertrand still resolves
+    through ANCHOR_FUNCTIONS."""
     if not enabled_ids:
         return []
     primes_arr = np.asarray(primes, dtype=np.int64)
@@ -532,7 +635,10 @@ def window_anchor_primes(primes, n, enabled_ids, theta=0.5, mode="stepped"):
     for family_id in WINDOW_FAMILY_COLORS:
         if family_id not in enabled_ids:
             continue
-        anchor = ANCHOR_FUNCTIONS[family_id](primes_arr, n, theta, mode)
+        if anchor_overrides is not None and family_id in anchor_overrides:
+            anchor = anchor_overrides[family_id]
+        else:
+            anchor = ANCHOR_FUNCTIONS[family_id](primes_arr, n, theta, mode)
         if anchor is not None and anchor not in anchors:
             anchors.append(anchor)
     return anchors

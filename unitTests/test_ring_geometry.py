@@ -158,31 +158,23 @@ def _test_general_law():
           "Sliding mode k/factor are None (no level concept)")
 
 
-def _test_legendre_highlighted_sticky():
-    from primeatlas.ring_geometry import is_legendre_highlighted, is_legendre_member
+def _test_legendre_member_strict_only():
+    """[RENAMED/REWRITTEN 2026-09-11, was _test_legendre_highlighted_sticky]
+    is_legendre_highlighted (the "sticky" grace-period variant this test
+    used to cover) is gone -- see compute_highlight_colors' own 2026-09-11
+    doc-comment for why: Artur's report that enabling ONLY Legendre showed
+    green dots as wide as Bertrand's own (n/2, n] window traced back to that
+    function's sticky formula reproducing almost exactly a 2x-multiple
+    window by coincidence. Legendre's highlight test is now simply
+    is_legendre_member -- this just re-confirms that function's own strict
+    behavior still holds now that it's the ONLY test in play."""
+    from primeatlas.ring_geometry import is_legendre_member
 
     # n=30: level k = floor(sqrt(29)) = 5, window (25,30] -> strict member: 29 only.
     primes = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23, 29], dtype=np.int64)
     strict = is_legendre_member(primes, 30)
     check(list(strict) == [False] * 9 + [True],
           "is_legendre_member at n=30: only 29 strictly in (25,30]")
-
-    # Sticky test uses each RING's OWN prime value, not n=30. For ring=23:
-    # legendre_level_at(23) = floor(sqrt(22)) = 4, close_edge = 5^2 = 25,
-    # next_crossing = (25 // 23 + 1) * 23 = (1+1)*23 = 46 > 30 -> still sticky-highlighted.
-    sticky = is_legendre_highlighted(primes, 30)
-    check(bool(sticky[primes == 23][0]) is True,
-          "is_legendre_highlighted: ring 23 still sticky-green at n=30 (own window not yet re-crossed)")
-    check(bool(sticky[primes == 29][0]) is True,
-          "is_legendre_highlighted: ring 29 (strict member) is also sticky-highlighted")
-    # Small primes cycle out of sticky status fast: legendre_level_at(2)=1,
-    # closeEdge=(1+1)^2=4, nextCrossing=(4//2+1)*2=6 -- by n=30 ring 2's own
-    # sticky window closed long ago (verified against SieveModel.js's
-    # isLegendreHighlighted directly, not hand-derived -- see this test
-    # file's own note on why hand-derived anchor expectations were wrong
-    # twice before this fix).
-    check(bool(is_legendre_highlighted(np.array([2]), 30)[0]) is False,
-          "is_legendre_highlighted: ring 2's own sticky window (closed at n=6) has long since lapsed by n=30")
 
 
 def _test_anchor_functions():
@@ -237,15 +229,16 @@ def _test_blend_family_colors():
 
 
 def _test_compute_highlight_colors_strict_sticky_precedence():
+    """[Name kept even though the sticky variant it originally covered is
+    gone -- see compute_highlight_colors' own 2026-09-11 doc-comment -- this
+    scenario (n=30, Bertrand ON, Legendre ON) still exercises the SAME
+    multi-family blend it always did; only the reasoning for rings 17/19/23
+    changed (they used to be pure Bertrand pink because Bertrand's strict
+    match beat Legendre's sticky-only match; now it's simply because
+    Legendre doesn't match them at all -- is_legendre_member(17/19/23, 30)
+    is False, no sticky fallback left to kick in)."""
     from primeatlas.ring_geometry import compute_highlight_colors, WINDOW_FAMILY_COLORS
 
-    # Hand-derived scenario (n=30, Bertrand ON window (15,30], Legendre ON
-    # strict window (25,30] containing only 29): rings 17/19/23 are
-    # Bertrand-strict AND Legendre-sticky (see _test_legendre_highlighted_sticky
-    # for why 23 is sticky), but the two-tier strict/sticky rule must resolve
-    # them to PURE Bertrand pink, since Bertrand strictly matches those rings
-    # and sticky-only Legendre must NOT blend in once any family strictly
-    # matches. Ring 29 is strict for BOTH families and must be a genuine blend.
     primes = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23, 29], dtype=np.int64)
     colors, matched = compute_highlight_colors(primes, 30, {"bertrand", "legendre"})
 
@@ -254,7 +247,8 @@ def _test_compute_highlight_colors_strict_sticky_precedence():
 
     for p in (17, 19, 23):
         check(np.allclose(colors[idx(p)], WINDOW_FAMILY_COLORS["bertrand"]),
-              f"compute_highlight_colors: ring {p} is pure Bertrand pink (strict wins over Legendre's sticky-only match)")
+              f"compute_highlight_colors: ring {p} is pure Bertrand pink -- Bertrand strictly matches "
+              f"(in (15,30]) and Legendre no longer has any sticky fallback to blend in with")
 
     expected_29 = np.clip(
         np.array(WINDOW_FAMILY_COLORS["bertrand"], dtype=np.float64)
@@ -266,12 +260,29 @@ def _test_compute_highlight_colors_strict_sticky_precedence():
 
     for p in (2, 3, 5, 7, 11, 13):
         check(bool(matched[idx(p)]) is False,
-              f"compute_highlight_colors: ring {p} matches neither family (outside both windows, not sticky either)")
+              f"compute_highlight_colors: ring {p} matches neither family (outside both strict windows)")
 
     # No enabled families -> nothing matches, empty-but-correctly-shaped output.
     empty_colors, empty_matched = compute_highlight_colors(primes, 30, set())
     check(empty_colors.shape == (10, 3) and not empty_matched.any(),
           "compute_highlight_colors: empty enabled_ids matches nothing but keeps ring count")
+
+    # --- [ADDED 2026-09-11] Direct regression test for Artur's own report:
+    # enabling ONLY Legendre (no Bertrand) must NOT color rings 17/19/23 at
+    # all -- those are exactly the rings the old is_legendre_highlighted
+    # sticky formula falsely lit up green (a band as wide as Bertrand's own
+    # window), even though none of them are in Legendre's own (25,30]
+    # strict window at n=30. ---
+    colors_legendre_only, matched_legendre_only = compute_highlight_colors(primes, 30, {"legendre"})
+    for p in (17, 19, 23):
+        check(bool(matched_legendre_only[idx(p)]) is False,
+              f"compute_highlight_colors: with ONLY legendre enabled, ring {p} is NOT highlighted -- "
+              f"it is outside Legendre's own (25,30] window and there is no sticky fallback left to "
+              f"falsely light it up (this is the exact bug Artur reported: green dots as wide as "
+              f"Bertrand's own window while only Legendre was on)")
+    check(bool(matched_legendre_only[idx(29)]) is True and np.allclose(colors_legendre_only[idx(29)], WINDOW_FAMILY_COLORS["legendre"]),
+          "compute_highlight_colors: with only legendre enabled, ring 29 (the one genuine strict "
+          "member of (25,30]) still gets legendre's own color")
 
 
 def _test_compute_tracked_colors():
@@ -302,6 +313,176 @@ def _test_compute_tracked_colors():
           "compute_tracked_colors: the Legendre anchor ring gets pure Legendre color (different ring from Bertrand)")
     check(int(matched.sum()) == 2,
           "compute_tracked_colors: exactly 2 rings matched (one per distinct anchor)")
+
+    # --- [ADDED 2026-09-11] anchor_overrides -- same hook as
+    # window_anchor_primes' own (see _test_window_anchor_primes), exercised
+    # here for the OUTLINE COLOR path instead of the tracked-set path: a
+    # family present in the dict colors whichever ring that override names,
+    # not whatever ANCHOR_FUNCTIONS would have picked.
+    override_anchor = 17
+    check(override_anchor != l_anchor,
+          "sanity: the override value below is a genuinely different ring from legendre's own real anchor")
+    colors_ov, matched_ov = compute_tracked_colors(
+        primes, 40, {"bertrand", "legendre"}, anchor_overrides={"legendre": override_anchor}
+    )
+    check(np.allclose(colors_ov[idx(override_anchor)], WINDOW_FAMILY_COLORS["legendre"]),
+          "compute_tracked_colors: anchor_overrides colors the OVERRIDDEN ring with legendre's color")
+    check(not np.allclose(colors_ov[idx(l_anchor)], WINDOW_FAMILY_COLORS["legendre"]),
+          "compute_tracked_colors: legendre's own real (non-overridden) anchor ring no longer gets "
+          "legendre's color once overridden elsewhere")
+    check(int(matched_ov.sum()) == 2,
+          "compute_tracked_colors: still exactly 2 matched rings with an override in play")
+
+
+def _test_cyclic_window_anchor_at():
+    """[ADDED 2026-09-11] Covers ring_geometry.cyclic_window_anchor_at --
+    Artur's replacement anchor rule for Legendre/General Law's own tracked-
+    ring outline (see that function's own doc-comment for the full
+    rationale: Bertrand's 2x-doubling freeze/jump doesn't fire sensibly on
+    Legendre/General Law's much narrower window). Two genuinely different
+    code paths to cover, per that doc-comment:
+      - "legendre" (and General Law "stepped", which shares the same level
+        concept) resets in one discrete jump exactly at each Legendre
+        level boundary.
+      - General Law "sliding" has no level at all -- its own numeric `lo`
+        creeps up on every single n, so the freeze/jump condition is a
+        plain numeric comparison instead.
+    """
+    from primeatlas.ring_geometry import (
+        cyclic_window_anchor_at,
+        legendre_level_at,
+        general_law_window_bounds,
+    )
+
+    primes = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47], dtype=np.int64)
+
+    # --- "legendre": level-keyed. legendre_level_at(17..25) == 4 (constant
+    # -- see _test_legendre_level_at's own n=17 case), legendre_level_at(26)
+    # == 5 (a fresh level opens in one jump, not a numeric creep). ---
+    check(legendre_level_at(17) == 4 and legendre_level_at(25) == 4 and legendre_level_at(26) == 5,
+          "sanity: level 4 spans n=17..25, level 5 opens at n=26 (fixture assumption for this test)")
+
+    state = {}
+    check(cyclic_window_anchor_at(state, "legendre", primes, 17) == 17,
+          "cyclic_window_anchor_at: first call (n=17, level 4) anchors at the window's own right "
+          "edge -- largest active prime <= 17 is 17 itself")
+    check(cyclic_window_anchor_at(state, "legendre", primes, 18) == 17,
+          "cyclic_window_anchor_at: still level 4 at n=18 -- anchor stays frozen at 17")
+    check(cyclic_window_anchor_at(state, "legendre", primes, 25) == 17,
+          "cyclic_window_anchor_at: level 4 lasts through n=25 -- anchor still frozen at 17")
+    check(cyclic_window_anchor_at(state, "legendre", primes, 26) == 23,
+          "cyclic_window_anchor_at: level 5 opens at n=26 -- anchor jumps to the NEW right edge "
+          "(largest active prime <= 26, i.e. 23, since 26 itself isn't prime)")
+    check(cyclic_window_anchor_at(state, "legendre", primes, 26) == 23,
+          "cyclic_window_anchor_at: a second call at the SAME n=26 is idempotent, no double-jump")
+    check(cyclic_window_anchor_at(state, "legendre", primes, 30) == 23,
+          "cyclic_window_anchor_at: level 5 continues through n=30 -- anchor still frozen at 23")
+
+    # --- General Law "stepped" @theta=0.5 shares Legendre's own level
+    # concept exactly (see general_law_window_bounds's own doc-comment /
+    # the pre-existing "General Law stepped @theta=0.5 matches Legendre lo
+    # exactly" invariant) -- same jump points, independent state dict. ---
+    state_gl_stepped = {}
+    check(cyclic_window_anchor_at(state_gl_stepped, "generalLaw", primes, 17, 0.5, "stepped") == 17,
+          "cyclic_window_anchor_at: generalLaw/stepped @theta=0.5 matches legendre's own n=17 anchor")
+    check(cyclic_window_anchor_at(state_gl_stepped, "generalLaw", primes, 25, 0.5, "stepped") == 17,
+          "cyclic_window_anchor_at: generalLaw/stepped stays frozen through level 4, same as legendre")
+    check(cyclic_window_anchor_at(state_gl_stepped, "generalLaw", primes, 26, 0.5, "stepped") == 23,
+          "cyclic_window_anchor_at: generalLaw/stepped jumps at the same level boundary as legendre")
+
+    # --- General Law "sliding" @theta=0.5: no level, lo = n - sqrt(n)
+    # creeps up every step -- jump points computed independently below and
+    # cross-checked against general_law_window_bounds directly, since
+    # sliding mode's jump condition is this function's OTHER code path. ---
+    for check_n in (18, 21, 22, 23, 24):
+        lo, _hi, k, _factor = general_law_window_bounds(check_n, 0.5, "sliding")
+        check(k is None, f"sanity: sliding mode has no level concept (n={check_n})")
+    lo21, _, _, _ = general_law_window_bounds(21, 0.5, "sliding")
+    lo22, _, _, _ = general_law_window_bounds(22, 0.5, "sliding")
+    check(lo21 < 17 <= lo22,
+          f"sanity: lo creeps past the n=17 anchor (17) between n=21 ({lo21:.3f}) and n=22 ({lo22:.3f}) "
+          f"-- fixture assumption for this test")
+    lo23, _, _, _ = general_law_window_bounds(23, 0.5, "sliding")
+    lo24, _, _, _ = general_law_window_bounds(24, 0.5, "sliding")
+    check(lo23 < 19 <= lo24,
+          f"sanity: lo creeps past the n=22 anchor (19) between n=23 ({lo23:.3f}) and n=24 ({lo24:.3f}) "
+          f"-- fixture assumption for this test")
+
+    state_gl_sliding = {}
+    check(cyclic_window_anchor_at(state_gl_sliding, "generalLaw", primes, 17, 0.5, "sliding") == 17,
+          "cyclic_window_anchor_at: generalLaw/sliding first call anchors at n=17's own right edge")
+    check(cyclic_window_anchor_at(state_gl_sliding, "generalLaw", primes, 18, 0.5, "sliding") == 17,
+          "cyclic_window_anchor_at: generalLaw/sliding frozen at n=18 (lo hasn't crept up to 17 yet)")
+    check(cyclic_window_anchor_at(state_gl_sliding, "generalLaw", primes, 21, 0.5, "sliding") == 17,
+          "cyclic_window_anchor_at: generalLaw/sliding still frozen at n=21 (lo just under 17)")
+    check(cyclic_window_anchor_at(state_gl_sliding, "generalLaw", primes, 22, 0.5, "sliding") == 19,
+          "cyclic_window_anchor_at: generalLaw/sliding jumps at n=22 once lo creeps past 17 -- new "
+          "right edge (largest active prime <= 22) is 19")
+    check(cyclic_window_anchor_at(state_gl_sliding, "generalLaw", primes, 22, 0.5, "sliding") == 19,
+          "cyclic_window_anchor_at: generalLaw/sliding is idempotent on a second n=22 call")
+    check(cyclic_window_anchor_at(state_gl_sliding, "generalLaw", primes, 23, 0.5, "sliding") == 19,
+          "cyclic_window_anchor_at: generalLaw/sliding still frozen at n=23 (lo just under 19)")
+    check(cyclic_window_anchor_at(state_gl_sliding, "generalLaw", primes, 24, 0.5, "sliding") == 23,
+          "cyclic_window_anchor_at: generalLaw/sliding jumps again at n=24 once lo creeps past 19")
+
+    check(cyclic_window_anchor_at({}, "legendre", np.array([], dtype=np.int64), 30) is None,
+          "cyclic_window_anchor_at: no active primes yet -> anchor is None, not a crash")
+
+    # --- [ADDED 2026-09-11] Regression test for Artur's own report: with
+    # Legendre AND General Law both on and theta != 0.5 (stepped mode), the
+    # HUD showed two clearly DIFFERENT window ranges (e.g. Legendre
+    # (1156,1199], General Law theta=0.3 (1177,1199]) but only ONE ring
+    # appeared -- "mimo ze sa dwa rozne punkty startowe to jest tylko jeden
+    # pierscien". Root cause: the level-keyed branch used to fire for EVERY
+    # "stepped" mode call regardless of theta, so General Law's anchor was
+    # computed by the exact same legendre_level_at(n)-keyed formula as
+    # Legendre's own -- identical output for ANY theta, not just 0.5. Fixed:
+    # only theta=0.5 (tent factor==1, General Law's own `lo` literally IS
+    # Legendre's) takes the level-keyed branch; any other theta now takes
+    # the same numeric-creep branch "sliding" mode already used. This test
+    # uses level 4 (n=17..25, legendre lo=16 constant) with theta=0.3
+    # (tent factor 0.5) so General Law's own lo = (n+16)/2 creeps from
+    # 16.5 to 20.5 across the level -- clearly not constant like Legendre's. ---
+    from primeatlas.ring_geometry import general_law_tent_factor
+    check(math.isclose(general_law_tent_factor(0.3), 0.5),
+          "sanity: theta=0.3's own tent factor is 0.5, not 1 -- General Law's lo genuinely "
+          "creeps within level 4, unlike Legendre's own constant lo=16 (fixture assumption)")
+
+    state_legendre_divergence = {}
+    state_gl_theta03 = {}
+    anchors_legendre = []
+    anchors_gl = []
+    for check_n in range(17, 26):
+        anchors_legendre.append(cyclic_window_anchor_at(state_legendre_divergence, "legendre", primes, check_n))
+        anchors_gl.append(cyclic_window_anchor_at(state_gl_theta03, "generalLaw", primes, check_n, 0.3, "stepped"))
+
+    check(anchors_legendre == [17] * 9,
+          f"cyclic_window_anchor_at: legendre stays frozen at 17 through all of level 4 (got {anchors_legendre})")
+    check(anchors_gl != anchors_legendre,
+          f"cyclic_window_anchor_at: generalLaw theta=0.3 stepped must NOT track legendre's identical "
+          f"anchor sequence -- its own lo genuinely differs within the level (got legendre={anchors_legendre}, "
+          f"generalLaw={anchors_gl})")
+    check(len(set(anchors_gl)) > 1,
+          f"cyclic_window_anchor_at: generalLaw theta=0.3 stepped's anchor actually CHANGES within "
+          f"level 4 (its own lo creeps continuously, unlike legendre's constant lo) -- got {anchors_gl}")
+
+    # theta=0.5 exactly must still coincide EXACTLY with legendre (the
+    # additive-blend case) -- this is the invariant the fix must not break.
+    state_legendre_05 = {}
+    state_gl_theta05 = {}
+    anchors_legendre_05 = [cyclic_window_anchor_at(state_legendre_05, "legendre", primes, n) for n in range(17, 26)]
+    anchors_gl_05 = [
+        cyclic_window_anchor_at(state_gl_theta05, "generalLaw", primes, n, 0.5, "stepped") for n in range(17, 26)
+    ]
+    check(anchors_gl_05 == anchors_legendre_05,
+          f"cyclic_window_anchor_at: theta=0.5 stepped still coincides EXACTLY with legendre at every "
+          f"step (got legendre={anchors_legendre_05}, generalLaw={anchors_gl_05})")
+
+    try:
+        cyclic_window_anchor_at({}, "bertrand", primes, 30)
+        check(False, "cyclic_window_anchor_at must reject family_id='bertrand' (no cyclic state of its own)")
+    except ValueError:
+        check(True, "cyclic_window_anchor_at rejects family_id='bertrand' with ValueError")
 
 
 def _test_window_anchor_primes():
@@ -358,6 +539,25 @@ def _test_window_anchor_primes():
     check(list(WINDOW_FAMILY_COLORS.keys())[0] == "bertrand",
           "sanity: WINDOW_FAMILY_COLORS' own key order starts with bertrand -- this is what window_anchor_primes "
           "relies on for its deterministic output order")
+
+    # --- [ADDED 2026-09-11] anchor_overrides -- renderer.py's own hook for
+    # feeding cyclic_window_anchor_at's stateful result through this same
+    # collection loop instead of the plain (now legacy-for-this-purpose)
+    # legendre_anchor_at/general_law_anchor_at recomputation. A family
+    # PRESENT in the dict must use that value verbatim, even if it differs
+    # from what ANCHOR_FUNCTIONS would have computed; a family ABSENT from
+    # it must fall back to ANCHOR_FUNCTIONS exactly as before (already
+    # exercised by every check above, none of which pass anchor_overrides).
+    override_anchor = 17  # a real active prime, deliberately != l_anchor (31) at n=40
+    check(override_anchor != l_anchor,
+          "sanity: the override value below is a genuinely different ring from legendre's own real anchor")
+    overridden = window_anchor_primes(primes, 40, {"bertrand", "legendre"}, anchor_overrides={"legendre": override_anchor})
+    check(overridden == [b_anchor, override_anchor],
+          f"window_anchor_primes: a family present in anchor_overrides uses that value verbatim, not "
+          f"ANCHOR_FUNCTIONS' own recomputation (got {overridden})")
+    check(window_anchor_primes(primes, 40, {"bertrand", "legendre"}, anchor_overrides={}) == anchors_both,
+          "window_anchor_primes: an anchor_overrides dict with no matching keys falls back to "
+          "ANCHOR_FUNCTIONS for every family, same as anchor_overrides=None")
 
 
 def _test_window_label_colors():
@@ -552,8 +752,9 @@ def main():
     _test_ring_positions()
     _test_bertrand_legendre_membership()
     _test_general_law()
-    _test_legendre_highlighted_sticky()
+    _test_legendre_member_strict_only()
     _test_anchor_functions()
+    _test_cyclic_window_anchor_at()
     _test_window_anchor_primes()
     _test_window_label_colors()
     _test_blend_family_colors()
