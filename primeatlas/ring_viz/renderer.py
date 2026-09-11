@@ -47,6 +47,14 @@ Deliberately decoupled from two things this module is NOT responsible for:
          real per-load wall-clock ceiling at extreme N is still unmeasured
          against a real magazyn (no such data or GPU in the sandbox that
          wrote this), see load_magazyn's own docstring for what to expect.
+         [ADDED, Artur 2026-09-11] The loaded buffer also TRAVELS with N
+         during playback/scrubbing (extend_buffer_if_needed, called once
+         per frame from run()): once N closes to within one launch-time
+         margin's worth of the loaded ceiling, another chunk is fetched
+         automatically, so the sequential-mode "ceiling wall" only actually
+         stops anything once the magazyn itself has no more data past that
+         point -- not merely because the ORIGINAL --upto load happened to
+         stop somewhere short of it.
 
   2. Whether the resulting picture is mathematically interesting at huge N --
      a separate, later question once the rendering-feasibility question this
@@ -252,10 +260,25 @@ def load_sieve(upto):
     return np.array(primes, dtype=np.int64)
 
 
-def load_magazyn(portal_folder, upto, progress_callback=None, batch_files=64):
-    """Reads real primes up to `upto` from an existing PrimeAtlas portal
-    folder, via primeatlas.storage's own file-listing helpers and
+def load_magazyn(portal_folder, upto, progress_callback=None, batch_files=64, from_n=0):
+    """Reads real primes in (from_n, upto] from an existing PrimeAtlas
+    portal folder, via primeatlas.storage's own file-listing helpers and
     prime_sieve_v1.read_prime_window for the actual decode.
+
+    [ADDED `from_n`, Artur 2026-09-11: "bufor bedzie podrozowal wraz z n z
+    wyprzedzeniem"] Defaults to 0, i.e. every real prime is >0 so this
+    reproduces the exact old `arr[arr <= upto]` behavior unchanged when the
+    caller doesn't pass it. A non-zero `from_n` lets a caller that already
+    holds every prime up to some point (extend_buffer_if_needed in
+    _run_visualization, below) fetch only the NEW primes past that point
+    instead of re-reading and re-returning the whole [0, upto] range again
+    -- two cheap wins over a naive "just call load_magazyn(new_upto) again"
+    approach: (1) whole floors entirely below `from_n` are skipped without
+    even listing their files (see the floor_hi_exclusive check below), and
+    (2) within the one floor spanning `from_n`, files are still opened (no
+    per-file range metadata to skip them by name alone) but their
+    already-covered primes are trimmed out before being added to the
+    result, so nothing already known gets duplicated into the array.
 
     HARDENED (Faza 2, see PLAN.md) vs the Faza-0 landing of the original
     feasibility prototype's loader, in three ways:
@@ -320,10 +343,21 @@ def load_magazyn(portal_folder, upto, progress_callback=None, batch_files=64):
     chunks = []
     total_loaded = 0
 
-    for base_exponent in storage.list_pietra(portal_folder):
+    # [ADDED, see `from_n` doc above] Materialized (not a lazy generator)
+    # so a floor's NEXT exponent is available while looking at the current
+    # one -- gives a cheap, exact "is this whole floor already below from_n"
+    # check without opening a single file, for every floor except the one
+    # that actually straddles from_n (at most one wasted full floor-listing
+    # in the worst case, none in the common case of extending near the top).
+    floor_exponents = list(storage.list_pietra(portal_folder))
+    for floor_index, base_exponent in enumerate(floor_exponents):
         floor_lo = 10 ** base_exponent if base_exponent > 0 else 0
         if floor_lo > upto:
             break
+        if floor_index + 1 < len(floor_exponents):
+            floor_hi_exclusive = 10 ** floor_exponents[floor_index + 1]
+            if floor_hi_exclusive <= from_n:
+                continue
 
         entries = storage.list_source_filenames(portal_folder, base_exponent)
         if not entries:
@@ -341,7 +375,7 @@ def load_magazyn(portal_folder, upto, progress_callback=None, batch_files=64):
                 if arr.size and arr[0] > upto:
                     floor_done = True
                     break
-                trimmed = arr[arr <= upto]
+                trimmed = arr[(arr > from_n) & (arr <= upto)]
                 if trimmed.size:
                     batch_chunks.append(trimmed)
                     total_loaded += int(trimmed.size)
@@ -737,6 +771,47 @@ def clamp_scrub_n(n, range_mode, ceiling):
     if not range_mode:
         n = min(n, ceiling)
     return n
+
+
+def should_extend_buffer(n, ceiling, margin, range_mode, can_extend_source):
+    """[ADDED, Artur 2026-09-11: "wystarczy ze bufor bedzie podrozowal wraz
+    z n z wyprzedzeniem nawet tym jaki jest teraz ustawiony na
+    uruchomieniu, dzieki temu nie da sie dojsc do sciany o ile magazyn
+    zapewnia dane"] Whether N has come close enough to the loaded ceiling
+    (within `margin`) that the buffer should be extended further NOW,
+    before N actually reaches it -- the whole point of a lookahead margin
+    is to finish the (possibly slow, disk-bound) extension load before N's
+    own advance ever catches up to a ceiling that would otherwise stop it.
+
+    `range_mode` and a data source that has nothing more to fetch anyway
+    (`can_extend_source=False` -- see extend_buffer_if_needed's own
+    doc-comment for why only --source magazyn qualifies) both return False
+    unconditionally, same as can_start_playback/tick_next_n's own
+    range_mode bypass: there is no "ceiling" concept worth extending in
+    either case.
+
+    Uses a STRICT `n > ceiling - margin` (not `>=`): the caller
+    (extend_buffer_if_needed) sets `ceiling` to exactly `ceiling + margin`
+    on a successful extension, so at the moment that happens N still sits
+    at (at most) the OLD ceiling -- `n > new_ceiling - margin` reduces to
+    `n > old_ceiling`, which is False right after extending (N cannot
+    exceed old_ceiling in sequential mode -- tick_next_n/clamp_scrub_n both
+    already guarantee that). A non-strict `>=` would immediately re-trigger
+    another extension the very next frame purely from floating/landing
+    exactly on that boundary, before N has advanced by so much as 1."""
+    if range_mode or not can_extend_source or margin <= 0:
+        return False
+    return n > ceiling - margin
+
+
+def next_buffer_ceiling(current_ceiling, margin):
+    """The new ceiling to request after a successful buffer extension --
+    simply one more `margin`'s worth of headroom past the current ceiling,
+    so the buffer keeps carrying the SAME lookahead margin it started with
+    at launch as N keeps moving forward (Artur's own words: "nawet tym
+    jaki jest teraz ustawiony na uruchomieniu" -- even the one already set
+    at launch is fine, no need for a fancier/growing margin)."""
+    return current_ceiling + margin
 
 
 def tick_next_n(n, range_mode, ceiling):
@@ -1677,6 +1752,31 @@ def _run_visualization(args, audio=None):
     # load_upto also gives the load-time headroom padding above something
     # real to advance into instead of refusing on frame one.
     ceiling = load_upto if args.source in ("sieve", "magazyn") else (int(primes[-1]) if len(primes) else -1)
+
+    # [ADDED, Artur 2026-09-11: "bufor bedzie podrozowal wraz z n z
+    # wyprzedzeniem ... dzieki temu nie da sie dojsc do sciany o ile
+    # magazyn zapewnia dane. ale zanim to tak comit i push" -- this is the
+    # "to" he asked to do after task #618's scrub-fix commit landed] Reuses
+    # the EXACT same margin figure as load_upto's own launch-time pad just
+    # above (his own words: "nawet tym jaki jest teraz ustawiony na
+    # uruchomieniu" -- even the one already set at launch is fine) instead
+    # of inventing a second, different margin concept.
+    #
+    # Scoped to --source magazyn only: synthetic/sieve are both bounded by
+    # their own launch-time argument with nothing further to ever fetch
+    # (see load_magazyn's own module-level docstring point 1) -- magazyn is
+    # the one real, always-possibly-larger data source this module has (a
+    # disk portal that can simply have more window files than were loaded
+    # at launch). See extend_buffer_if_needed (below, near n_holder) for
+    # the actual extension call.
+    buffer_margin = max(1000, args.upto // 20)
+    can_extend_buffer = args.source == "magazyn" and bool(args.portal_folder)
+    # `exhausted` flips True the first time a real extension attempt comes
+    # back with zero new primes -- see extend_buffer_if_needed's own
+    # doc-comment for why that means "stop trying", not "keep retrying
+    # every frame forever".
+    extend_state = {"exhausted": False}
+
     tempo_ms = clamp_tempo_ms(args.tempo_ms)
     playback = {"running": False}
     orbit_state = {"index": 0, "counter": 0, "current_prime": None}
@@ -2015,6 +2115,48 @@ def _run_visualization(args, audio=None):
     # ALREADY 1 -- a plain `n != last_n` check would otherwise miss it).
     n_holder = {"n": n, "advancing": False, "force_rebuild": False}
 
+    def extend_buffer_if_needed():
+        """[ADDED, Artur 2026-09-11, see buffer_margin's own comment above
+        for the full quote] Keeps the loaded `primes` array's lookahead
+        margin AHEAD of N as playback/scrubbing advances, instead of the
+        launch-time pad being a ONE-TIME margin that N eventually catches
+        up to and permanently stops at -- clamp_scrub_n/tick_next_n/
+        can_start_playback's own ceiling checks remain the correct SAFETY
+        NET (a real, exhausted magazyn still needs a hard stop somewhere),
+        they just become the rarely-exercised fallback instead of the
+        thing that fires on every normal long playback run.
+
+        Called once per frame from the main loop, before the playback-tick
+        block -- should_extend_buffer is a cheap O(1) check the overwhelming
+        majority of frames (N nowhere near the ceiling yet) and only does
+        real work (a fresh load_magazyn call) on the rare frame where N has
+        actually closed to within buffer_margin of it.
+
+        Deliberately gives up permanently once one real extension attempt
+        comes back with zero new primes (`extend_state["exhausted"]`)
+        rather than re-attempting a full load_magazyn scan every single
+        frame forever while N sits near an exhausted ceiling: that outcome
+        means the magazyn genuinely has no more data past the current
+        ceiling right now, so falling back to the pre-existing hard-stop
+        behavior there is the CORRECT outcome -- Artur's own caveat "o ile
+        magazyn zapewnia dane" (only as long as storage provides data), not
+        a bug to keep working around."""
+        nonlocal ceiling, primes
+        if not can_extend_buffer or extend_state["exhausted"]:
+            return
+        if not should_extend_buffer(n_holder["n"], ceiling, buffer_margin, range_mode, can_extend_buffer):
+            return
+        new_ceiling = next_buffer_ceiling(ceiling, buffer_margin)
+        new_primes = load_magazyn(args.portal_folder, new_ceiling, from_n=ceiling)
+        if len(new_primes) == 0:
+            extend_state["exhausted"] = True
+            print(f"Buffer extend: no more data past {ceiling:,} in the magazyn -- "
+                  f"the loaded ceiling is now the real end of stored data")
+            return
+        primes = np.concatenate([primes, new_primes])
+        ceiling = new_ceiling
+        print(f"Buffer extend: loaded {len(new_primes):,} more primes ahead of N, ceiling now {ceiling:,}")
+
     # [ADDED, Artur 2026-09-11] LEFT/RIGHT scrub state -- "held" counts
     # currently-pressed scrub keys (LEFT and RIGHT tracked together, not
     # separately, so pressing both at once and releasing them in either
@@ -2272,6 +2414,14 @@ def _run_visualization(args, audio=None):
             print("RING_VIZ_RESUMED", flush=True)
             continue
 
+        # [ADDED, Artur 2026-09-11, see extend_buffer_if_needed's own
+        # doc-comment near n_holder above] Checked BEFORE the playback-tick
+        # block below, every frame: if N has closed to within buffer_margin
+        # of the loaded ceiling, extend the buffer now so tick_next_n's own
+        # ceiling check (right below) essentially never actually fires for
+        # a magazyn that still has more data to give.
+        extend_buffer_if_needed()
+
         # [ADDED Faza 10, see PLAN.md] Playback loop -- ports #tick's own
         # setTimeout(tempoMs)-based scheduling as a plain elapsed-time check
         # against wall-clock time (this loop already runs every frame
@@ -2279,7 +2429,10 @@ def _run_visualization(args, audio=None):
         # separate timer callback to install, just a gate on how often the
         # N-advance actually fires). tick_next_n's own should_stop covers
         # sequential mode reaching its ceiling (mirrors #tick's own
-        # ceiling check, which STOPS rather than advancing past it).
+        # ceiling check, which STOPS rather than advancing past it) -- now
+        # the rarely-exercised fallback for a magazyn that has genuinely run
+        # out of data (extend_state["exhausted"]), not the normal outcome of
+        # a long sequential playback run.
         if playback["running"]:
             now_tick = time.perf_counter()
             if (now_tick - last_tick_time) * 1000.0 >= tempo_ms:

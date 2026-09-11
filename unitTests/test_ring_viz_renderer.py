@@ -165,6 +165,44 @@ def _test_progress_callback_invoked():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def _test_load_magazyn_from_n():
+    """[ADDED, Artur 2026-09-11: "bufor bedzie podrozowal wraz z n z
+    wyprzedzeniem"] The `from_n` parameter is what lets
+    extend_buffer_if_needed() fetch only the NEW primes past what's already
+    loaded instead of re-reading/re-returning everything from scratch on
+    every extension -- covers both halves of that: the whole-floor skip
+    (floor 0 here is entirely below from_n) and the within-floor trim
+    (floor 1's first window is partially below from_n)."""
+    from primeatlas.ring_viz.renderer import load_magazyn
+
+    tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
+    try:
+        portal_dir = os.path.join(tmp, "portal")
+        _write_floor(portal_dir, 0, [[2, 3, 5, 7]])
+        _write_floor(portal_dir, 1, [[11, 13, 17], [19, 23, 29]])
+        _write_floor(portal_dir, 2, [[101, 103, 107]])
+
+        result = load_magazyn(portal_dir, upto=200, from_n=17)
+        check(list(result) == [19, 23, 29, 101, 103, 107],
+              f"from_n=17 skips floor 0 entirely (all <=17) and trims floor "
+              f"1's first window down to just 19 (got {list(result)!r})")
+
+        result_zero = load_magazyn(portal_dir, upto=200, from_n=0)
+        result_default = load_magazyn(portal_dir, upto=200)
+        check(list(result_zero) == list(result_default),
+              "from_n=0 (explicit) reproduces the default (omitted) behavior exactly")
+        check(list(result_default) == [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 101, 103, 107],
+              f"sanity: the from_n=0/default baseline itself is still correct "
+              f"(got {list(result_default)!r})")
+
+        result_exhausted = load_magazyn(portal_dir, upto=200, from_n=107)
+        check(len(result_exhausted) == 0,
+              "from_n at the true end of stored data returns an empty array "
+              "(the extend_state['exhausted'] case in extend_buffer_if_needed)")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def _test_empty_portal():
     from primeatlas.ring_viz.renderer import load_magazyn
 
@@ -1031,6 +1069,47 @@ def _test_clamp_scrub_n():
           f"clamped result never exceeds the ceiling, regardless of how large the raw overshoot was (got {clamped})")
 
 
+def _test_should_extend_buffer():
+    """[ADDED, Artur 2026-09-11, see next_buffer_ceiling's own doc-comment
+    for the full quote] should_extend_buffer is the trigger condition for
+    extend_buffer_if_needed's own real (disk-hitting) extension call --
+    covers the lookahead-margin threshold itself, the range_mode/source
+    bypasses, and the strict-inequality boundary that stops a runaway
+    re-extend-every-frame loop right after a successful extension (see
+    that function's own doc-comment for why `>` and not `>=`)."""
+    from primeatlas.ring_viz.renderer import should_extend_buffer
+
+    check(should_extend_buffer(n=50, ceiling=1000, margin=100, range_mode=False, can_extend_source=True) is False,
+          "far from the ceiling (n well below ceiling-margin): no extension needed yet")
+    check(should_extend_buffer(n=901, ceiling=1000, margin=100, range_mode=False, can_extend_source=True) is True,
+          "n has closed to within margin of the ceiling: extend now")
+    check(should_extend_buffer(n=900, ceiling=1000, margin=100, range_mode=False, can_extend_source=True) is False,
+          "n exactly AT ceiling-margin does not yet trigger (strict > only) -- "
+          "this is the boundary that prevents re-triggering the very frame "
+          "after a fresh extension lands exactly here")
+    check(should_extend_buffer(n=999, ceiling=1000, margin=100, range_mode=True, can_extend_source=True) is False,
+          "range mode never extends -- it has no ceiling concept at all")
+    check(should_extend_buffer(n=999, ceiling=1000, margin=100, range_mode=False, can_extend_source=False) is False,
+          "a data source that can't be extended (synthetic/sieve) never extends, no matter how close n is")
+    check(should_extend_buffer(n=999, ceiling=1000, margin=0, range_mode=False, can_extend_source=True) is False,
+          "a zero margin never triggers (nothing to look ahead by)")
+
+
+def _test_next_buffer_ceiling():
+    """[ADDED, Artur 2026-09-11: "wystarczy ze bufor bedzie podrozowal wraz
+    z n z wyprzedzeniem nawet tym jaki jest teraz ustawiony na
+    uruchomieniu dzieki temu nie da sie dojsc do sciany o ile magazyn
+    zapewnia dane"] Each extension advances the ceiling by exactly one more
+    margin's worth, reusing the SAME margin figure every time (not a
+    growing/shrinking one) -- see extend_buffer_if_needed's own call site
+    for where that reused figure (buffer_margin) actually comes from."""
+    from primeatlas.ring_viz.renderer import next_buffer_ceiling
+
+    check(next_buffer_ceiling(1000, 100) == 1100, "advances by exactly one margin's worth")
+    check(next_buffer_ceiling(next_buffer_ceiling(1000, 100), 100) == 1200,
+          "repeated extensions keep advancing by the SAME margin each time, not a growing one")
+
+
 def _test_can_start_playback():
     from primeatlas.ring_viz.renderer import can_start_playback
 
@@ -1305,6 +1384,7 @@ def main():
     _test_gap_between_floors()
     _test_batching_does_not_change_result()
     _test_progress_callback_invoked()
+    _test_load_magazyn_from_n()
     _test_empty_portal()
     _test_build_vertex_data_no_windows_matches_old_behavior()
     _test_build_vertex_data_bertrand_highlight()
@@ -1334,6 +1414,8 @@ def main():
     _test_clamp_tempo_ms()
     _test_arrow_scrub_delta()
     _test_clamp_scrub_n()
+    _test_should_extend_buffer()
+    _test_next_buffer_ceiling()
     _test_can_start_playback()
     _test_tick_next_n()
     _test_advance_auto_orbit()
