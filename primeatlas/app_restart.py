@@ -42,10 +42,27 @@ def _build_execv_args():
     this robust to whatever relative/absolute form the original launch used (the .bat
     launcher `cd /d`s into the script's own directory first, but this doesn't rely on
     that -- it computes an absolute path itself regardless of the current working
-    directory at restart time)."""
+    directory at restart time).
+
+    Confirmed bug (Artur, 2026-09-11): on Windows, os.execv() builds the new process's
+    command line by naively space-joining argv -- unlike subprocess.Popen, it does NOT
+    quote elements containing spaces. Any checkout path with a space in it (e.g. this
+    OneDrive clone's "...\\AI Agent Ollama\\..." ancestor) then gets split at that space
+    by the relaunched process, which fails to find itself and exits immediately -- since
+    this already replaced the original process, the user just sees PrimeAtlas close
+    without reopening, with no visible error (it's a GUI app). Wrapping any argv element
+    that contains a space in double quotes (Windows' own quoting convention, which
+    CommandLineToArgvW -- and therefore the relaunched Python's own argv parsing --
+    strips back off) fixes it. The `python` value returned alongside argv is passed to
+    os.execv() as the file to execute, resolved directly rather than parsed out of the
+    joined command line, so it's returned unquoted."""
     python = sys.executable
     script = os.path.abspath(sys.argv[0])
-    return python, [python, script]
+    if os.name == "nt":
+        argv = [f'"{a}"' if " " in a else a for a in (python, script)]
+    else:
+        argv = [python, script]
+    return python, argv
 
 
 def restart_app():

@@ -76,9 +76,43 @@ def section_a():
         _python2, argv2 = ar._build_execv_args()
     finally:
         sys.argv = orig_argv
-    check(argv2[1] == "/already/absolute/prime_atlas_v1.py",
+    # Compared against os.path.abspath()'s own output, not the literal POSIX string above --
+    # on Windows, os.path.abspath("/already/absolute/...") prepends the current drive letter
+    # (e.g. "F:\already\absolute\..."), so comparing against the un-prefixed POSIX literal
+    # directly would always fail there even though _build_execv_args() did nothing wrong
+    # (bug confirmed 2026-09-11: this assertion was failing on Windows before this fix, for
+    # a reason unrelated to the space-quoting bug this file otherwise covers).
+    check(argv2[1] == os.path.abspath("/already/absolute/prime_atlas_v1.py"),
           f"an already-absolute path must not be altered beyond normalization "
           f"(got {argv2[1]!r})")
+
+    # --- A script path containing a space (e.g. this OneDrive clone's own
+    #     "...\\AI Agent Ollama\\..." ancestor folder) must come back quoted on Windows,
+    #     since os.execv() there -- unlike subprocess.Popen -- does NOT quote argv itself:
+    #     an unquoted space gets split into two arguments by the relaunched process, which
+    #     then can't find itself and exits immediately (bug confirmed 2026-09-11: this is
+    #     exactly why the auto-restart-after-theme/language-change silently failed to
+    #     reopen PrimeAtlas from this specific checkout location). ---
+    orig_argv = sys.argv
+    sys.argv = ["/some/dir with space/prime_atlas_v1.py"]
+    try:
+        python3, argv3 = ar._build_execv_args()
+    finally:
+        sys.argv = orig_argv
+
+    expected_path = os.path.abspath("/some/dir with space/prime_atlas_v1.py")
+    check(python3 == sys.executable,
+          f"the (python, argv) executable value must stay unquoted -- it's passed to "
+          f"os.execv() as the file to run directly, not parsed out of a joined command "
+          f"line (got {python3!r})")
+    if os.name == "nt":
+        check(argv3[1] == f'"{expected_path}"',
+              f"on Windows, a script path containing a space must be quoted for "
+              f"os.execv() (got {argv3[1]!r})")
+    else:
+        check(argv3[1] == expected_path,
+              f"on non-Windows platforms, execv() takes a real argv array (no shell "
+              f"join), so no quoting should be applied (got {argv3[1]!r})")
 
 
 # ============================================================================================
