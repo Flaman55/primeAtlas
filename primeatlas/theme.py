@@ -9,7 +9,7 @@ option-database entries -- applying a theme needs a live Tk root/ttk.Style insta
 which this "pure logic" package deliberately never touches, so the data (here) and the
 application logic (there) are deliberately split across the tkinter boundary.
 
-Two themes only, "light" (default) and "dark", picked from Settings > Ogolne (see
+Two themes only, "light" and "dark" (default), picked from Settings > Ogolne (see
 settings_tab.py's _build_general_tab) -- same restart-required UX as the language
 switch (i18n.py), for the same reason: re-styling every already-built widget live
 would be a much larger, riskier change than re-applying colors once at the next
@@ -31,7 +31,7 @@ theme's are dark-tinted equivalents (blue-ish/amber-ish) paired with this theme'
 both themes.
 """
 
-DEFAULT_THEME = "light"
+DEFAULT_THEME = "dark"
 
 THEMES = {
     "light": {

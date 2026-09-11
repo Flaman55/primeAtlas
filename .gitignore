@@ -14,3 +14,7 @@ primeatlas/locales/language_settings.json
 # Generated prime windows, benchmark reports and per-run logs.  This is the
 # local Atlas magazyn/output cache, never source code or a portable fixture.
 CONSTELLATION_PORTAL/
+
+# Working planning doc for the Ring visualization feature -- development-process
+# notes, not source or a user-facing artifact; not meant to ship in the repo.
+PLAN.md

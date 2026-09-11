@@ -16,7 +16,7 @@ import os
 import json
 
 LOCALES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "locales")
-DEFAULT_LANGUAGE = "pl"
+DEFAULT_LANGUAGE = "en"
 SUPPORTED_LANGUAGES = ("pl", "en")
 LANGUAGE_NAMES = {"pl": "Polski", "en": "English"}
 

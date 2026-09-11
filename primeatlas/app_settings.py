@@ -86,7 +86,7 @@ class AppSettings:
     def language(self):
         """Read once at startup (see prime_atlas_v1.py's TRANSLATOR construction) to
         build the Translator that every T(...) call in this app's GUI uses. Falls back
-        to DEFAULT_LANGUAGE ("pl") if unset.
+        to DEFAULT_LANGUAGE ("en") if unset.
 
         Persisted in primeatlas/locales/language_settings.json, next to the locale
         JSON files it actually governs (see i18n.py's load_saved_language()/
@@ -107,7 +107,7 @@ class AppSettings:
         already-built app). Stored directly in THIS file's own JSON
         (_data["theme"]), unlike `language` above -- theme has nothing to do with
         i18n.py's translation machinery, so it doesn't need that indirection.
-        Defaults to DEFAULT_THEME ("light") if unset or unrecognized."""
+        Defaults to DEFAULT_THEME ("dark") if unset or unrecognized."""
         return self._data.get("theme") or DEFAULT_THEME
 
     def set_theme(self, theme_name):

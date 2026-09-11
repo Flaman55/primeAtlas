@@ -843,7 +843,7 @@ errors) or `Run_PrimeAtlas_Hidden.vbs` (no console window). Equivalently:
 python prime_atlas_v1.py
 ```
 
-Language (English/Polish) and theme (light/dark, light by default) are both set from
+Language (English/Polish, English by default) and theme (light/dark, dark by default) are both set from
 the Settings tab; saving either automatically restarts the app so the change takes
 effect immediately (see "Settings" above), unless a background job is running, in which
 case a restart is required manually once it finishes.
