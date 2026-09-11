@@ -304,6 +304,121 @@ def _test_compute_tracked_colors():
           "compute_tracked_colors: exactly 2 rings matched (one per distinct anchor)")
 
 
+def _test_window_anchor_primes():
+    from primeatlas.ring_geometry import (
+        window_anchor_primes,
+        bertrand_anchor_at,
+        legendre_anchor_at,
+        general_law_anchor_at,
+        WINDOW_FAMILY_COLORS,
+    )
+
+    check(window_anchor_primes(np.array([2, 3, 5], dtype=np.int64), 30, set()) == [],
+          "window_anchor_primes: no enabled families -> empty list, regardless of n/primes")
+
+    # n=40 (same fixture as _test_compute_tracked_colors): Bertrand and
+    # Legendre anchors genuinely differ (23 vs 31) -- a real two-family case,
+    # not a coincidental tie.
+    primes = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37], dtype=np.int64)
+    b_anchor = bertrand_anchor_at(primes, 40)
+    l_anchor = legendre_anchor_at(primes, 40)
+    check(b_anchor != l_anchor, "sanity: bertrand and legendre anchors differ at n=40 (23 vs 31)")
+
+    anchors_both = window_anchor_primes(primes, 40, {"bertrand", "legendre"})
+    check(anchors_both == [b_anchor, l_anchor],
+          f"window_anchor_primes: both families on returns [bertrand_anchor, legendre_anchor] in registry order "
+          f"(bertrand first, matching WINDOW_FAMILY_COLORS' own key order), got {anchors_both}")
+
+    check(window_anchor_primes(primes, 40, {"legendre", "bertrand"}) == anchors_both,
+          "window_anchor_primes: output order follows the fixed registry, not enabled_ids' own (set) iteration order")
+
+    check(window_anchor_primes(primes, 40, {"bertrand"}) == [b_anchor],
+          "window_anchor_primes: only Bertrand on returns just its own anchor")
+    check(window_anchor_primes(primes, 40, {"legendre"}) == [l_anchor],
+          "window_anchor_primes: only Legendre on returns just its own anchor")
+
+    gl_anchor = general_law_anchor_at(primes, 30, 0.5, "stepped")
+    check(window_anchor_primes(primes, 30, {"generalLaw"}, 0.5, "stepped") == [gl_anchor],
+          "window_anchor_primes: General Law anchor is threaded through theta/mode correctly")
+
+    # n=30 (see _test_anchor_functions): bertrand_anchor_at and
+    # legendre_anchor_at both resolve to 23 -- the SAME prime from two
+    # different families must be deduplicated to a single entry, exactly
+    # like the JS's `if (a !== null && !anchors.includes(a)) anchors.push(a)`.
+    primes_30 = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23, 29], dtype=np.int64)
+    check(bertrand_anchor_at(primes_30, 30) == legendre_anchor_at(primes_30, 30) == 23,
+          "sanity: at n=30 bertrand and legendre anchors coincide at 23")
+    dedup = window_anchor_primes(primes_30, 30, {"bertrand", "legendre"})
+    check(dedup == [23],
+          f"window_anchor_primes: a prime that is simultaneously two families' own anchor appears exactly once, got {dedup}")
+
+    check(window_anchor_primes(np.array([], dtype=np.int64), 30, {"bertrand", "legendre"}) == [],
+          "window_anchor_primes: no active primes yet -> every anchor is None -> empty list, not [None, None]")
+
+    check(list(WINDOW_FAMILY_COLORS.keys())[0] == "bertrand",
+          "sanity: WINDOW_FAMILY_COLORS' own key order starts with bertrand -- this is what window_anchor_primes "
+          "relies on for its deterministic output order")
+
+
+def _test_window_label_colors():
+    """[ADDED, see Artur's 2026-09-10 report: "daj kolory podpisow w hud
+    zgodnie z kolorem pierscieni dla okien... i oby zmienialy na wspolny
+    tak jak pierscien zmienia gdy zakres okna sie pokrywa"] window_label_
+    colors' own docstring: solid per-family color normally, additive blend
+    when two+ enabled families' windows have the EXACT SAME (lo, hi) bounds
+    at this N -- not merely "overlap" (every window shares the same right
+    edge n, so that would trivially always fire)."""
+    from primeatlas.ring_geometry import window_label_colors, WINDOW_FAMILY_COLORS
+
+    # Single family on -> its own solid color, untouched.
+    result = window_label_colors({"bertrand"}, 100)
+    check(result == {"bertrand": WINDOW_FAMILY_COLORS["bertrand"]},
+          f"a single enabled family keeps its own plain WINDOW_FAMILY_COLORS entry (got {result!r})")
+
+    # n=141 (matches Artur's own screenshot): Bertrand=(70,141], Legendre
+    # k=11=(121,141] -- different bounds, so both keep their own solid color.
+    result_diff = window_label_colors({"bertrand", "legendre"}, 141)
+    check(result_diff["bertrand"] == WINDOW_FAMILY_COLORS["bertrand"],
+          f"Bertrand and Legendre windows differ at n=141 -- Bertrand keeps its own color (got {result_diff!r})")
+    check(result_diff["legendre"] == WINDOW_FAMILY_COLORS["legendre"],
+          f"Bertrand and Legendre windows differ at n=141 -- Legendre keeps its own color (got {result_diff!r})")
+    check(result_diff["bertrand"] != result_diff["legendre"],
+          "differing windows never end up sharing a color by accident")
+
+    # General Law stepped mode at theta=0.5 is provably identical to
+    # Legendre's own window (task #577) -- enabling both together must
+    # collapse their two labels to ONE shared additively-blended color.
+    result_coincide = window_label_colors({"legendre", "generalLaw"}, 141, theta=0.5, mode="stepped")
+    check(result_coincide["legendre"] == result_coincide["generalLaw"],
+          f"Legendre and General Law(theta=0.5, stepped) windows coincide exactly -- "
+          f"both labels get the SAME blended color (got {result_coincide!r})")
+    expected_blend = tuple(
+        min(255, a + b) for a, b in zip(WINDOW_FAMILY_COLORS["legendre"], WINDOW_FAMILY_COLORS["generalLaw"])
+    )
+    check(result_coincide["legendre"] == expected_blend,
+          f"the coincidence color is the additive-RGB sum (clamped to 255) of both families' "
+          f"own colors, same arithmetic as the ring highlight blend (got {result_coincide['legendre']!r}, "
+          f"expected {expected_blend!r})")
+
+    # All three enabled but only two coincide (legendre+generalLaw at
+    # theta=0.5) -- Bertrand must NOT be pulled into that blend just for
+    # being enabled at the same time.
+    result_mixed = window_label_colors({"bertrand", "legendre", "generalLaw"}, 141, theta=0.5, mode="stepped")
+    check(result_mixed["bertrand"] == WINDOW_FAMILY_COLORS["bertrand"],
+          f"a family whose window doesn't coincide with anyone else's keeps its own solid "
+          f"color even while other families ARE blending together (got {result_mixed!r})")
+    check(result_mixed["legendre"] == result_mixed["generalLaw"] == expected_blend,
+          f"the other two still blend together correctly in the same call (got {result_mixed!r})")
+
+    # Unknown/unrecognized family ids are silently skipped, not an error.
+    result_unknown = window_label_colors({"bertrand", "not-a-real-family"}, 100)
+    check(result_unknown == {"bertrand": WINDOW_FAMILY_COLORS["bertrand"]},
+          f"an unrecognized family id in enabled_ids is silently ignored (got {result_unknown!r})")
+
+    # Empty enabled_ids -> empty result, not an error.
+    check(window_label_colors(set(), 100) == {}, "no enabled families -> empty dict")
+
+
 def _brute_resonance_at(primes_arr, n):
     """Independent, unvectorized reimplementation of the SAME formula
     resonance_events_in_range is supposed to compute in bulk (mirrors
@@ -439,6 +554,8 @@ def main():
     _test_general_law()
     _test_legendre_highlighted_sticky()
     _test_anchor_functions()
+    _test_window_anchor_primes()
+    _test_window_label_colors()
     _test_blend_family_colors()
     _test_compute_highlight_colors_strict_sticky_precedence()
     _test_compute_tracked_colors()

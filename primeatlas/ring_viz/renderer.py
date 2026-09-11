@@ -174,7 +174,6 @@ from primeatlas.ring_geometry import (
     ring_positions,
     compute_highlight_colors,
     compute_tracked_colors,
-    active_window_count,
     tracked_ring_mask,
     legendre_level_at,
     general_law_window_bounds,
@@ -182,6 +181,8 @@ from primeatlas.ring_geometry import (
     format_big,
     resonance_log_lines,
     format_log_panel_text,
+    window_anchor_primes,
+    window_label_colors,
 )
 
 # [ADDED Faza 11B, see PLAN.md] On-canvas GL HUD text -- Pillow is used only
@@ -772,9 +773,9 @@ def advance_auto_orbit(active_primes, index, counter):
 # outline-stroke branch, #drawCenterMarker, and the #drawFlashOverlay/
 # triggerBirthFlash/triggerResonanceFlash trio.
 #
-# All of the ANCHOR/COLOR math these draw calls need (compute_tracked_colors,
-# active_window_count) already existed in ring_geometry.py from Faza 1 --
-# this phase's only new pure-math surface is the small amount below that is
+# All of the ANCHOR/COLOR math these draw calls need (compute_tracked_colors)
+# already existed in ring_geometry.py from Faza 1 -- this phase's only new
+# pure-math surface is the small amount below that is
 # specific to the GL layer itself (unit-circle geometry, screen-space marker
 # offsets, flash decay/alpha), everything kept as plain functions so it can
 # be unit-tested without a GPU (see run()'s own GL wiring further down for
@@ -799,26 +800,62 @@ _TRACKED_OUTLINE_GRAY = (180.0 / 255.0, 180.0 / 255.0, 180.0 / 255.0)
 _TRACKED_OUTLINE_ALPHA = 0.5
 
 
-def tracked_outline_color(active_window_count_value, matched, tracked_color_rgb):
-    """Per-ring outline stroke (r, g, b, a) in 0..1 -- ports DrumRenderer's
-    `ring.tracked` branch exactly:
+def tracked_outline_color(matched, tracked_color_rgb):
+    """Per-ring outline stroke (r, g, b, a) in 0..1.
 
-        ctx.strokeStyle = (state.activeWindowCount > 1 && ring.trackedColor)
-          ? hexToRgba(ring.trackedColor, 0.5)
-          : "rgba(180,180,180,0.5)"
+    [CHANGED 2026-09-10, see Artur's report: with only ONE window family
+    enabled, the HUD's own window-range label already shows that family's
+    full solid color (window_label_colors always returns one, regardless
+    of how many families are on -- see that function's own doc-comment),
+    but the matching tracked-ring outline still drew flat gray. Artur's own
+    words: "trzymajmy sie jednej zasady, ze skoro okno w hud ma kolor to
+    pierscien niech go tez ma tak samo" (one consistent rule: whenever a
+    window has a color in the HUD, its ring should carry that same color).
+    Originally this ported DrumRenderer's `ring.tracked` branch literally --
+    `(state.activeWindowCount > 1 && ring.trackedColor) ? ... : gray` --
+    which the ORIGINAL site actually does gate on more than one active
+    family; this is now a deliberate, explicit DEVIATION from that 1:1 port,
+    per Artur's above instruction, not a bug fix in the porting sense.
 
     `tracked_color_rgb` is a plain 0..255 (r, g, b) triple, already summed by
     ring_geometry.compute_tracked_colors for this ring -- this function only
-    decides WHETHER to use it (via the `matched` flag from that same call),
-    mirroring the JS's `&& ring.trackedColor` truthiness check: a real
-    "no family matched" zero vector and a genuinely matched color are
+    decides WHETHER to use it (via the `matched` flag from that same call):
+    a real "no family matched" zero vector and a genuinely matched color are
     otherwise indistinguishable by value alone, so `matched` (not a
     non-zero check) is what compute_tracked_colors already returns for
-    exactly this reason -- see that function's own doc-comment."""
-    if active_window_count_value > 1 and matched:
+    exactly this reason. `matched` is already False whenever NO window
+    family is enabled at all (build_tracked_outline_draws sets it to an
+    all-False array in that case), so a plain auto-orbit/manual-tracking
+    ring with no window context still falls through to gray here, same as
+    before -- only the ">1 windows" requirement is gone."""
+    if matched:
         r, g, b = tracked_color_rgb
         return (r / 255.0, g / 255.0, b / 255.0, _TRACKED_OUTLINE_ALPHA)
     return (_TRACKED_OUTLINE_GRAY[0], _TRACKED_OUTLINE_GRAY[1], _TRACKED_OUTLINE_GRAY[2], _TRACKED_OUTLINE_ALPHA)
+
+
+def resolve_effective_track_primes(window_anchors, enabled_ids, auto_orbit, orbit_current_prime, track_primes):
+    """[ADDED 2026-09-10] Pure precedence rule for which primes get an
+    outline ring THIS frame -- ports the combined effect of #renderFrame's
+    `if (anyWindowOn) { this.#trackedPrimes = anchors; }` block together with
+    the pre-existing `this.#trackedPrimes = [autoOrbit's current pick]` /
+    launch-time --track-primes fallback this module already had (Faza 10).
+
+    Precedence, matching the JS exactly: any window family on (`enabled_ids`
+    truthy) wins outright -- `window_anchors` (see
+    ring_geometry.window_anchor_primes) is used even if it happens to be an
+    empty list (no anchor resolved yet), exactly like the JS's own
+    unconditional overwrite. Only when NO window family is on does auto-orbit
+    or a plain --track-primes list apply, same as before this fix -- see
+    rebuild_buffer's own call site for why auto-orbit's cycling itself is
+    ALSO gated on `not enabled_ids` now (a family being on must fully stop
+    auto-orbit from advancing in the background, not just from being shown,
+    mirroring the JS's `if (!anyWindowOn) { this.#advanceAutoOrbit(...) }`)."""
+    if enabled_ids:
+        return window_anchors
+    if auto_orbit:
+        return [orbit_current_prime] if orbit_current_prime is not None else []
+    return track_primes
 
 
 def build_tracked_outline_draws(primes_active, n, enabled_ids, theta, mode, track_primes, radii):
@@ -846,10 +883,9 @@ def build_tracked_outline_draws(primes_active, n, enabled_ids, theta, mode, trac
     else:
         colors = np.zeros((len(primes_arr), 3), dtype=np.float64)
         matched = np.zeros(len(primes_arr), dtype=bool)
-    active_count = active_window_count(enabled_ids)
     draws = []
     for i in np.nonzero(mask)[0]:
-        draws.append((float(radii[i]), tracked_outline_color(active_count, bool(matched[i]), tuple(colors[i]))))
+        draws.append((float(radii[i]), tracked_outline_color(bool(matched[i]), tuple(colors[i]))))
     return draws
 
 
@@ -1139,8 +1175,47 @@ def compose_hud_canvas_lines(n, count, lines, running, tempo_ms):
 _HUD_FONT_SIZE_DEFAULT = 35
 _HUD_TEXT_RGB = (235, 235, 235)
 
+#: [ADDED 2026-09-10] The fixed leading text hud_lines_for_n uses for each
+#: window family's own range line -- see hud_line_colors' own doc-comment
+#: for why matching is done by text prefix rather than by line position.
+_HUD_WINDOW_LINE_PREFIXES = {
+    "bertrand": "Bertrand window:",
+    "legendre": "Legendre window:",
+    "generalLaw": "General Law window",
+}
 
-def rasterize_hud_text(lines, font_size=_HUD_FONT_SIZE_DEFAULT):
+
+def hud_line_colors(lines, window_colors):
+    """[ADDED 2026-09-10, see Artur's report on colorizing the HUD's window-
+    range labels] Parallel per-line RGB color list, same length as `lines`
+    (hud_lines_for_n's own text output, or compose_hud_canvas_lines' header+
+    lines combination -- either works, since neither the header nor any
+    Factors-of-N/Tracked-block line matches a window prefix and therefore
+    all fall through to the flat default).
+
+    Every line defaults to _HUD_TEXT_RGB EXCEPT a window-range line
+    (identified by its own fixed leading text, see
+    _HUD_WINDOW_LINE_PREFIXES), which gets that family's own color from
+    `window_colors` (ring_geometry.window_label_colors' output -- solid per-
+    family color, or the additive blend when two+ enabled families' windows
+    coincide exactly at this N).
+
+    Matches by TEXT PREFIX rather than by position/index so this stays
+    correct even if hud_lines_for_n's own Factors-of-N/Tracked-block line
+    count changes later -- the window-range lines are always identifiable
+    by their own fixed leading text regardless of what precedes them."""
+    colors = []
+    for line in lines:
+        color = _HUD_TEXT_RGB
+        for family_id, prefix in _HUD_WINDOW_LINE_PREFIXES.items():
+            if line.startswith(prefix):
+                color = window_colors.get(family_id, _HUD_TEXT_RGB)
+                break
+        colors.append(color)
+    return colors
+
+
+def rasterize_hud_text(lines, font_size=_HUD_FONT_SIZE_DEFAULT, line_colors=None):
     """Renders `lines` (top to bottom) into an RGBA numpy uint8 array sized
     exactly to fit them, white-ish text on a fully transparent background --
     ready to upload as a moderngl texture and draw as one screen-space quad
@@ -1162,7 +1237,17 @@ def rasterize_hud_text(lines, font_size=_HUD_FONT_SIZE_DEFAULT):
     Returns None for an empty `lines` list (nothing to draw -- caller should
     leave any existing HUD texture as-is or skip drawing entirely) or if
     Pillow is not installed (`_PIL_AVAILABLE` is the caller's own guard;
-    this function still defends itself in case it's ever called directly)."""
+    this function still defends itself in case it's ever called directly).
+
+    [ADDED 2026-09-10] `line_colors` -- optional list of (r, g, b) tuples,
+    one per entry in `lines`, drawn instead of the flat _HUD_TEXT_RGB for
+    that line (see hud_line_colors, which builds this list from
+    ring_geometry.window_label_colors so the Bertrand/Legendre/General Law
+    window-range lines get their own family color, or a shared blended
+    color when two enabled families' windows coincide exactly). None (the
+    default) keeps the old single-flat-color behavior unchanged; a line
+    index beyond len(line_colors) also falls back to _HUD_TEXT_RGB, so a
+    caller may pass a shorter list covering only the lines it cares about."""
     if not lines or not _PIL_AVAILABLE:
         return None
     margin = max(4, round(font_size * 0.5))
@@ -1190,8 +1275,9 @@ def rasterize_hud_text(lines, font_size=_HUD_FONT_SIZE_DEFAULT):
     img = Image.new("RGBA", (int(width), int(height)), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     y = margin
-    for line, box, h in zip(lines, line_boxes, line_heights):
-        draw.text((margin - box[0], y - box[1]), line, font=font, fill=_HUD_TEXT_RGB + (255,))
+    for i, (line, box, h) in enumerate(zip(lines, line_boxes, line_heights)):
+        color = line_colors[i] if line_colors is not None and i < len(line_colors) else _HUD_TEXT_RGB
+        draw.text((margin - box[0], y - box[1]), line, font=font, fill=tuple(color) + (255,))
         y += h + line_spacing
 
     return np.asarray(img, dtype=np.uint8)
@@ -1588,7 +1674,16 @@ def _run_visualization(args, audio=None):
         canvas_lines = compose_hud_canvas_lines(
             hud_state["n"], hud_state["count"], hud_state["lines"], playback["running"], tempo_ms
         )
-        rgba = rasterize_hud_text(canvas_lines, font_size=args.hud_font_size)
+        # [ADDED 2026-09-10, see Artur's report: HUD window-range labels
+        # colored like their own ring color, merging to a shared blended
+        # color when two enabled families' windows coincide exactly] --
+        # window_label_colors only needs enabled_ids/n/theta/law_mode (all
+        # already in scope in run()'s own closure), hud_line_colors then
+        # maps that onto canvas_lines by each window line's own fixed text
+        # prefix -- see both functions' own doc-comments.
+        window_colors = window_label_colors(enabled_ids, hud_state["n"], theta, law_mode)
+        line_colors = hud_line_colors(canvas_lines, window_colors)
+        rgba = rasterize_hud_text(canvas_lines, font_size=args.hud_font_size, line_colors=line_colors)
         if hud_tex_holder["tex"] is not None:
             hud_tex_holder["tex"].release()
             hud_tex_holder["tex"] = None
@@ -1643,7 +1738,15 @@ def _run_visualization(args, audio=None):
         # last-chosen ring across every OTHER rebuild_buffer call so a
         # manual N jump mid-playback still shows the last-orbited ring
         # rather than reverting to nothing.
-        if auto_orbit and advancing:
+        # [FIXED 2026-09-10, Artur's report: "pierscienie sa dla sledzonych i
+        # dla auto orbit ale nie ma dla bertranda legendre i dla general
+        # law"] Auto-orbit's cycling is now ALSO gated on `not enabled_ids`,
+        # mirroring the JS's own `if (!anyWindowOn) { this.#advanceAutoOrbit
+        # (...) }` -- a window family being on must fully stop auto-orbit
+        # from advancing in the background, not just from being shown (see
+        # resolve_effective_track_primes's own doc-comment for the full
+        # precedence rule this pairs with).
+        if auto_orbit and not enabled_ids and advancing:
             new_index, new_counter, chosen = advance_auto_orbit(
                 active, orbit_state["index"], orbit_state["counter"]
             )
@@ -1651,20 +1754,31 @@ def _run_visualization(args, audio=None):
             orbit_state["counter"] = new_counter
             if chosen is not None:
                 orbit_state["current_prime"] = chosen
-        effective_track_primes = (
-            ([orbit_state["current_prime"]] if orbit_state["current_prime"] is not None else [])
-            if auto_orbit
-            else track_primes
+        # [FIXED 2026-09-10] window_anchor_primes (ring_geometry.py) supplies
+        # each currently-on window family's own anchor -- see that function's
+        # doc-comment for the exact gap this closes: Bertrand/Legendre/
+        # General Law's highlight COLOR already worked (Faza 1), but their
+        # own anchor ring never got the tracked-set membership that actually
+        # draws the outline circle, because nothing before this fed window
+        # anchors into effective_track_primes the way auto-orbit and
+        # --track-primes already did.
+        window_anchors = window_anchor_primes(active, n_value, enabled_ids, theta, law_mode)
+        effective_track_primes = resolve_effective_track_primes(
+            window_anchors, enabled_ids, auto_orbit, orbit_state["current_prime"], track_primes
         )
 
-        # [ADDED Faza 8] Tracked-ring outline circles -- recomputed here
-        # alongside the main buffer, same N-change-only cadence. Uses
-        # effective_track_primes (Faza 10) rather than track_primes
+        # [ADDED Faza 8, extended 2026-09-10] Tracked-ring outline circles --
+        # recomputed here alongside the main buffer, same N-change-only
+        # cadence. Uses effective_track_primes (Faza 10, now also covering
+        # window-family anchors -- see resolve_effective_track_primes's own
+        # doc-comment for the full precedence) rather than track_primes
         # directly, so auto-orbit mode outlines whichever single ring it is
-        # currently on instead of every launch-time --track-primes entry
-        # (mirrors DrumRenderer's own outline loop reading
-        # `this.#trackedPrimes`, which IS what auto-orbit overwrites --
-        # unlike tracked_resonance_state below, which auto-orbit instead
+        # currently on, and window mode (Bertrand/Legendre/General Law)
+        # outlines each on family's own anchor, instead of every launch-time
+        # --track-primes entry (mirrors DrumRenderer's own outline loop
+        # reading `this.#trackedPrimes`, which IS what both auto-orbit AND
+        # the window-family anchor loop overwrite -- unlike
+        # tracked_resonance_state below, which auto-orbit instead
         # short-circuits to None entirely, per that function's own
         # doc-comment).
         outline_draws_holder["draws"] = build_tracked_outline_draws(

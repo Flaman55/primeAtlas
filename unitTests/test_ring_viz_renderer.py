@@ -612,36 +612,101 @@ def _test_unit_circle_vertices():
 
 
 def _test_tracked_outline_color():
-    """[ADDED Faza 8] tracked_outline_color -- ports DrumRenderer's
-    `(state.activeWindowCount > 1 && ring.trackedColor) ? ... : gray` branch
-    exactly."""
+    """[CHANGED 2026-09-10, see Artur's report: with only one window family
+    enabled, the HUD's own window-range label already shows that family's
+    full color (window_label_colors), so the matching tracked-ring outline
+    should too -- "skoro okno w hud ma kolor to pierscien niech go tez ma
+    tak samo". This is now a deliberate departure from the original site's
+    own `(state.activeWindowCount > 1 && ring.trackedColor) ? ... : gray`
+    gate (see tracked_outline_color's own doc-comment) -- `matched` alone
+    now decides the color, `active_window_count` is no longer a parameter
+    at all."""
     from primeatlas.ring_viz.renderer import tracked_outline_color
 
-    gray = tracked_outline_color(0, False, (255.0, 51.0, 204.0))
+    gray = tracked_outline_color(False, (255.0, 51.0, 204.0))
     check(gray == (180 / 255.0, 180 / 255.0, 180 / 255.0, 0.5),
-          f"no windows active -> flat gray regardless of matched (got {gray!r})")
+          f"not matched -> flat gray regardless of the color that would have been used (got {gray!r})")
 
-    gray_unmatched = tracked_outline_color(2, False, (255.0, 51.0, 204.0))
-    check(gray_unmatched == (180 / 255.0, 180 / 255.0, 180 / 255.0, 0.5),
-          f">1 window active but this ring's own anchor didn't match -> still gray (got {gray_unmatched!r})")
+    # [CHANGED 2026-09-10] Exactly ONE window family enabled and matched --
+    # used to fall back to gray (activeWindowCount > 1 was required); now
+    # gets that single family's own color, same as the HUD label does.
+    colored_single_window = tracked_outline_color(True, (255.0, 51.0, 204.0))
+    check(colored_single_window == (1.0, 51 / 255.0, 204 / 255.0, 0.5),
+          f"matched with only a single window family active now gets that family's "
+          f"own color, not gray (got {colored_single_window!r})")
 
-    gray_single_window = tracked_outline_color(1, True, (255.0, 51.0, 204.0))
-    check(gray_single_window == (180 / 255.0, 180 / 255.0, 180 / 255.0, 0.5),
-          f"matched but only 1 window active -> still gray (activeWindowCount > 1 required) "
-          f"(got {gray_single_window!r})")
-
-    colored = tracked_outline_color(2, True, (255.0, 51.0, 204.0))
+    colored = tracked_outline_color(True, (255.0, 51.0, 204.0))
     check(colored == (1.0, 51 / 255.0, 204 / 255.0, 0.5),
-          f">1 window active AND matched -> the family's own color at alpha 0.5 (got {colored!r})")
+          f"matched -> the family's own (or blended) color at alpha 0.5 (got {colored!r})")
+
+
+def _test_resolve_effective_track_primes():
+    """[ADDED, see Artur's 2026-09-10 bug report: "pierscienie sa dla
+    sledzonych i dla auto orbit ale nie ma dla bertranda legendre i dla
+    general law"] resolve_effective_track_primes's own docstring: window
+    anchors win outright whenever any family is on (even an empty anchor
+    list), else auto-orbit's current pick, else the plain track_primes
+    fallback -- exact precedence ported from StructuralSieveApp.js's
+    #renderFrame."""
+    from primeatlas.ring_viz.renderer import resolve_effective_track_primes
+
+    # Any window family on -> window_anchors wins, regardless of auto_orbit
+    # or track_primes both also being populated.
+    result = resolve_effective_track_primes(
+        window_anchors=[23, 31], enabled_ids={"bertrand", "legendre"},
+        auto_orbit=True, orbit_current_prime=7, track_primes=[2, 3])
+    check(result == [23, 31],
+          f"window anchors take precedence over both auto-orbit and track_primes (got {result!r})")
+
+    # A window family on but not yet resolved to any anchor -> empty list
+    # wins outright too (matches the JS's unconditional overwrite, not a
+    # "fall through if empty" special case).
+    result_empty_anchor = resolve_effective_track_primes(
+        window_anchors=[], enabled_ids={"generalLaw"},
+        auto_orbit=True, orbit_current_prime=7, track_primes=[2, 3])
+    check(result_empty_anchor == [],
+          f"an active window family with no resolved anchor yet still wins outright with "
+          f"an empty list, does not fall back to auto-orbit or track_primes (got {result_empty_anchor!r})")
+
+    # No window family on, auto-orbit on -> its current pick, as a single-item list.
+    result_orbit = resolve_effective_track_primes(
+        window_anchors=[], enabled_ids=set(),
+        auto_orbit=True, orbit_current_prime=17, track_primes=[2, 3])
+    check(result_orbit == [17], f"no window family on -> auto-orbit's current pick (got {result_orbit!r})")
+
+    # No window family on, auto-orbit on but with no current pick yet (e.g.
+    # a single-prime active set, see advance_auto_orbit's own no-op case).
+    result_orbit_none = resolve_effective_track_primes(
+        window_anchors=[], enabled_ids=set(),
+        auto_orbit=True, orbit_current_prime=None, track_primes=[2, 3])
+    check(result_orbit_none == [],
+          f"auto-orbit on but no current pick resolved yet -> empty, not a crash or "
+          f"fallback to track_primes (got {result_orbit_none!r})")
+
+    # Neither window family nor auto-orbit on -> the plain launch-time
+    # --track-primes / Track P field list passes through unchanged.
+    result_manual = resolve_effective_track_primes(
+        window_anchors=[], enabled_ids=set(),
+        auto_orbit=False, orbit_current_prime=None, track_primes=[5, 11])
+    check(result_manual == [5, 11],
+          f"neither window family nor auto-orbit on -> plain track_primes list (got {result_manual!r})")
+
+    # Nothing at all active -> empty list, not None or an error.
+    result_nothing = resolve_effective_track_primes(
+        window_anchors=[], enabled_ids=set(),
+        auto_orbit=False, orbit_current_prime=None, track_primes=[])
+    check(result_nothing == [], f"nothing active at all -> empty list (got {result_nothing!r})")
 
 
 def _test_build_tracked_outline_draws():
-    """[ADDED Faza 8] build_tracked_outline_draws -- one (radius, rgba) tuple
-    per tracked-and-active ring, using compute_tracked_colors/
-    active_window_count under the hood, matching tracked_outline_color's own
-    gating rules."""
+    """[ADDED Faza 8, CHANGED 2026-09-10] build_tracked_outline_draws -- one
+    (radius, rgba) tuple per tracked-and-active ring, using
+    compute_tracked_colors under the hood, matching tracked_outline_color's
+    own gating rules (matched -> colored, unmatched/no-window -> gray;
+    see that function's own doc-comment for the 2026-09-10 change dropping
+    the old ">1 window family" requirement)."""
     from primeatlas.ring_viz.renderer import build_tracked_outline_draws
-    from primeatlas.ring_geometry import ring_positions
+    from primeatlas.ring_geometry import ring_positions, bertrand_anchor_at, WINDOW_FAMILY_COLORS
 
     primes = np.array([2, 3, 5, 7, 11], dtype=np.int64)
     n = 10
@@ -664,6 +729,21 @@ def _test_build_tracked_outline_draws():
 
     not_active = build_tracked_outline_draws(primes, n, set(), 0.5, "stepped", [13, 17], pos["radius"])
     check(not_active == [], f"tracked primes not active yet -> no draws (got {not_active!r})")
+
+    # [ADDED 2026-09-10, see Artur's report] Exactly ONE window family
+    # enabled: the tracked prime that IS that family's own anchor must get
+    # its full solid color end-to-end through build_tracked_outline_draws,
+    # not gray -- this is the real regression case (tracked_outline_color's
+    # own unit test covers the same rule in isolation; this covers the
+    # whole pipeline that used to silently re-introduce activeWindowCount).
+    anchor = bertrand_anchor_at(primes, n)
+    check(anchor is not None, "sanity: n=10 already has a resolved Bertrand anchor")
+    single_window_draws = build_tracked_outline_draws(primes, n, {"bertrand"}, 0.5, "stepped", [int(anchor)], pos["radius"])
+    check(len(single_window_draws) == 1, f"exactly one tracked-and-active ring (got {single_window_draws!r})")
+    expected_rgb = tuple(c / 255.0 for c in WINDOW_FAMILY_COLORS["bertrand"])
+    check(single_window_draws[0][1] == expected_rgb + (0.5,),
+          f"with only Bertrand enabled, its own anchor ring gets Bertrand's full color, "
+          f"not gray (got {single_window_draws[0][1]!r}, expected {expected_rgb + (0.5,)!r})")
 
 
 def _test_center_marker_triangle_offsets():
@@ -986,6 +1066,51 @@ def _test_compose_hud_canvas_lines():
           f"running status includes the tempo, empty extra-lines list is fine (got {lines!r})")
 
 
+def _test_hud_line_colors():
+    """[ADDED, see Artur's 2026-09-10 report on colorizing HUD window-range
+    labels] hud_line_colors matches lines by their own fixed leading text
+    (see _HUD_WINDOW_LINE_PREFIXES), independent of what comes before them
+    -- Factors-of-N and Tracked-block lines, and the header line
+    compose_hud_canvas_lines prepends, all fall through to the flat
+    default _HUD_TEXT_RGB."""
+    from primeatlas.ring_viz.renderer import hud_line_colors, _HUD_TEXT_RGB
+    from primeatlas.ring_geometry import window_label_colors
+
+    window_colors = window_label_colors({"bertrand", "legendre"}, 141)
+    lines = [
+        "N = 141    rings = 34    [Stopped]",
+        "Factors of N: 3, 47",
+        "Bertrand window: (70, 141]",
+        "Legendre window: k=11  (121, 141]",
+    ]
+    colors = hud_line_colors(lines, window_colors)
+    check(len(colors) == len(lines), "one color per input line, same length")
+    check(colors[0] == _HUD_TEXT_RGB, f"the header line gets the flat default color (got {colors[0]!r})")
+    check(colors[1] == _HUD_TEXT_RGB, f"a Factors-of-N line gets the flat default color (got {colors[1]!r})")
+    check(colors[2] == window_colors["bertrand"],
+          f"the Bertrand window line gets Bertrand's own color from window_colors (got {colors[2]!r})")
+    check(colors[3] == window_colors["legendre"],
+          f"the Legendre window line gets Legendre's own color from window_colors (got {colors[3]!r})")
+
+    # General Law's line has extra parenthesized text before the colon
+    # (theta=..., k=... in stepped mode) -- the prefix match must still
+    # fire on just "General Law window", not the full literal string.
+    gl_colors = window_label_colors({"generalLaw"}, 141, theta=0.5, mode="stepped")
+    gl_line = "General Law window (theta=0.5, k=11): (121, 141]"
+    check(hud_line_colors([gl_line], gl_colors) == [gl_colors["generalLaw"]],
+          "General Law's line matches by its fixed leading text even with extra "
+          "parenthesized theta/k detail before the colon")
+
+    # A family present in window_colors but with no matching line at all
+    # (e.g. caller passed a stale/mismatched dict) must not crash or leak
+    # into an unrelated line -- every line either matches its own family's
+    # prefix or falls back to default, nothing else.
+    check(hud_line_colors(["Tracked (active): 2, 3"], window_colors) == [_HUD_TEXT_RGB],
+          "a Tracked-block line never accidentally matches a window prefix")
+
+    check(hud_line_colors([], window_colors) == [], "empty lines list -> empty colors list")
+
+
 def _test_hud_quad_vertex_data():
     from primeatlas.ring_viz.renderer import hud_quad_vertex_data
 
@@ -1038,6 +1163,30 @@ def _test_rasterize_hud_text():
           f"font_size=40 produces a taller AND wider bitmap than font_size=10 "
           f"(got small={small.shape}, big={big.shape})")
 
+    # [ADDED 2026-09-10, see Artur's report on colorizing HUD window labels]
+    # line_colors must actually change the rasterized pixel color, not just
+    # be accepted and ignored -- render the SAME single line twice with two
+    # very different colors and confirm the resulting opaque pixels differ.
+    pink = rasterize_hud_text(["Bertrand window: (70, 141]"], line_colors=[(255, 51, 204)])
+    green = rasterize_hud_text(["Bertrand window: (70, 141]"], line_colors=[(57, 255, 20)])
+    check(pink.shape == green.shape, "line_colors changes pixel color only, not the bitmap's own size")
+    pink_opaque = pink[pink[:, :, 3] > 0]
+    green_opaque = green[green[:, :, 3] > 0]
+    check(len(pink_opaque) > 0 and len(green_opaque) > 0, "sanity: both renders actually drew something")
+    check(tuple(pink_opaque[0][:3]) == (255, 51, 204),
+          f"an opaque text pixel carries the requested line_colors RGB exactly (got {tuple(pink_opaque[0][:3])!r})")
+    check(tuple(green_opaque[0][:3]) == (57, 255, 20),
+          f"a different line_colors value produces a different opaque pixel RGB (got {tuple(green_opaque[0][:3])!r})")
+
+    # No line_colors given (None, the default) keeps the old flat
+    # _HUD_TEXT_RGB behavior completely unchanged -- a real regression
+    # guard, not just an absence-of-crash check.
+    from primeatlas.ring_viz.renderer import _HUD_TEXT_RGB
+    default_rgba = rasterize_hud_text(["N = 100"])
+    default_opaque = default_rgba[default_rgba[:, :, 3] > 0]
+    check(tuple(default_opaque[0][:3]) == _HUD_TEXT_RGB,
+          f"omitting line_colors still renders the old flat _HUD_TEXT_RGB color (got {tuple(default_opaque[0][:3])!r})")
+
 
 def main():
     _test_basic_multi_floor_load()
@@ -1059,6 +1208,7 @@ def main():
     _test_tracked_ring_mask()
     _test_unit_circle_vertices()
     _test_tracked_outline_color()
+    _test_resolve_effective_track_primes()
     _test_build_tracked_outline_draws()
     _test_center_marker_triangle_offsets()
     _test_marker_device_scale()
@@ -1074,6 +1224,7 @@ def main():
     _test_advance_auto_orbit()
     _test_update_resonance_log()
     _test_compose_hud_canvas_lines()
+    _test_hud_line_colors()
     _test_hud_quad_vertex_data()
     _test_rasterize_hud_text()
 

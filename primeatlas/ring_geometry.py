@@ -217,6 +217,77 @@ WINDOW_FAMILY_COLORS = {
 }
 
 
+def _window_bounds_for_label(family_id, n, theta, mode):
+    """[ADDED 2026-09-10] The (lo, hi) integer bounds of `family_id`'s own
+    window at this N -- used only for GROUPING window HUD labels by
+    coincidence (see window_label_colors below), NOT the source of truth
+    for the HUD text itself (that stays in renderer.py's hud_lines_for_n,
+    computed independently -- duplicated on purpose, same "small
+    self-contained function over a shared derivation" tradeoff already
+    made for window_anchor_primes above, so a bug here can't silently
+    corrupt the printed window-range text)."""
+    if family_id == "bertrand":
+        return (n // 2, n)
+    if family_id == "legendre":
+        k = legendre_level_at(n)
+        return (k * k, n)
+    if family_id == "generalLaw":
+        lo, hi, _k, _factor = general_law_window_bounds(n, theta, mode)
+        return (int(np.floor(lo)), int(hi))
+    raise ValueError(f"unknown window family id {family_id!r}")
+
+
+def window_label_colors(enabled_ids, n, theta=0.5, mode="stepped"):
+    """[ADDED 2026-09-10, see Artur's report: "daj kolory podpisow w hud
+    zgodnie z kolorem pierscieni dla okien... i oby zmienialy na wspolny
+    tak jak pierscien zmienia gdy zakres okna sie pokrywa"] Colors for the
+    HUD's window-range text lines (e.g. "Bertrand window: (70, 141]"),
+    mirroring compute_highlight_colors' additive-RGB blend but applied to
+    whole TEXT LABELS instead of individual rings: each enabled family's
+    label normally gets that family's own WINDOW_FAMILY_COLORS entry, so
+    the color alone tells you which line is which -- but when two or more
+    enabled families' windows are the exact same (lo, hi) range at this N,
+    their labels collapse to ONE shared additively-blended color instead,
+    the same visual cue a ring itself gets when it strictly matches more
+    than one family (see compute_highlight_colors).
+
+    Grouping is by EXACT bound equality, not "any overlap": every enabled
+    family's window always ends at n, so a naive overlap test would
+    trivially fire for any 2+ enabled families and defeat the whole point
+    (telling them apart). Exact equality is the real, meaningful
+    coincidence -- e.g. General Law at theta=0.5 in stepped mode is
+    *provably* identical to Legendre's own window (general_law_window_
+    bounds' own doc-comment / task #577), so enabling both together merges
+    their two labels into one blended color; Bertrand's much wider
+    (n//2, n] window essentially never coincides with either, so it stays
+    solid pink on its own.
+
+    Returns dict family_id -> (r, g, b) int 0-255 tuple, one entry per id
+    in `enabled_ids` that is a real WINDOW_FAMILY_COLORS key (unknown ids
+    are silently skipped, same permissive convention window_anchor_primes
+    uses)."""
+    groups = {}
+    for family_id in enabled_ids:
+        if family_id not in WINDOW_FAMILY_COLORS:
+            continue
+        bounds = _window_bounds_for_label(family_id, n, theta, mode)
+        groups.setdefault(bounds, []).append(family_id)
+
+    result = {}
+    for family_ids in groups.values():
+        if len(family_ids) == 1:
+            result[family_ids[0]] = tuple(int(c) for c in WINDOW_FAMILY_COLORS[family_ids[0]])
+        else:
+            summed = np.zeros(3, dtype=np.float64)
+            for fid in family_ids:
+                summed += np.asarray(WINDOW_FAMILY_COLORS[fid], dtype=np.float64)
+            np.clip(summed, 0, 255, out=summed)
+            blended = tuple(int(round(c)) for c in summed)
+            for fid in family_ids:
+                result[fid] = blended
+    return result
+
+
 def _legendre_level_at_vec(values):
     """Vectorized counterpart of legendre_level_at, applied elementwise to a
     numpy array (needed because isLegendreHighlighted applies legendreLevelAt
@@ -414,6 +485,57 @@ def compute_tracked_colors(primes, n, enabled_ids, theta=0.5, mode="stepped"):
     if not masks:
         return np.zeros((count, 3), dtype=np.float64), np.zeros(count, dtype=bool)
     return _blend_family_colors(masks)
+
+
+def window_anchor_primes(primes, n, enabled_ids, theta=0.5, mode="stepped"):
+    """[ADDED 2026-09-10] Ports #renderFrame's anchor-collection loop:
+
+        const anchors = [];
+        for (const family of this.#windowHighlightFamilies) {
+          if (!family.isOn()) continue;
+          const a = family.anchorAt(this.#n);
+          if (a !== null && !anchors.includes(a)) anchors.push(a);
+        }
+        this.#trackedPrimes = anchors;
+
+    i.e. the deduplicated, order-preserving list of every ENABLED family's own
+    anchor prime at n, in WINDOW_FAMILY_COLORS' own registry order (bertrand,
+    legendre, generalLaw -- a plain dict preserves insertion order, same as
+    the JS's #windowHighlightFamilies array order). This is what the JS
+    unconditionally overwrites #trackedPrimes with whenever ANY window family
+    is on (see that method's own doc-comment) -- ring_geometry.py had
+    bertrand_anchor_at/legendre_anchor_at/general_law_anchor_at and
+    compute_tracked_colors (the per-ring OUTLINE COLOR once a ring is already
+    tracked) since Faza 1, but nothing yet computed WHICH rings should be
+    tracked in the first place when a window family -- rather than a manual
+    --track-primes list or auto-orbit -- is what's naming the anchor. Artur
+    caught this gap directly: "pierscienie sa dla sledzonych i dla auto orbit
+    ale nie ma dla bertranda legendre i dla general law" -- Bertrand/Legendre/
+    General Law's own highlight color rendered fine (Faza 1), but their own
+    anchor ring never got the gray/colored OUTLINE CIRCLE tracked rings and
+    auto-orbit's current ring both get, because nothing ever added that
+    anchor to the tracked set. See renderer.py's rebuild_buffer for the
+    caller that wires this into effective_track_primes with the correct
+    precedence (window anchors, when any family is on, take over from BOTH
+    auto-orbit and a launch-time --track-primes list -- exactly like the JS's
+    own `if (anyWindowOn) {...}` block runs unconditionally ahead of, and
+    instead of, #advanceAutoOrbit).
+
+    Returns [] if enabled_ids is empty -- caller falls back to whatever OTHER
+    trackedPrimes source applies, mirroring the JS's own `if (anyWindowOn)`
+    gate (no families on: this function contributes nothing, same as the JS
+    block simply not running that turn)."""
+    if not enabled_ids:
+        return []
+    primes_arr = np.asarray(primes, dtype=np.int64)
+    anchors = []
+    for family_id in WINDOW_FAMILY_COLORS:
+        if family_id not in enabled_ids:
+            continue
+        anchor = ANCHOR_FUNCTIONS[family_id](primes_arr, n, theta, mode)
+        if anchor is not None and anchor not in anchors:
+            anchors.append(anchor)
+    return anchors
 
 
 def active_window_count(enabled_ids):
