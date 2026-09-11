@@ -587,7 +587,11 @@ highlight checkboxes for the Bertrand, Legendre, and General Law windows (the sa
 families the standalone Structural Sieve HTML tool defines) can be enabled together,
 with the General Law family's own theta and sliding/stepped mode fields; these, like
 point size and audio, are launch-time-only -- fixed for the life of one running
-subprocess and only editable again after Reset. A Track P field (plus an Auto orbit
+subprocess and only editable again after Reset. Every one of these launch-time fields
+remembers its last-used value across app restarts (`AppSettings.ring_viz_params`) --
+only a fresh install falls back to hardcoded defaults -- and Reset unlocks them for
+editing without resetting their contents, so a relaunch always starts from wherever the
+previous run left off unless a field is actually retyped. A Track P field (plus an Auto orbit
 toggle) follows specific primes' LCM/resonance state live in the HUD; Load Range
 auto-tracks every prime in a chosen range at once instead of naming them individually.
 Playback controls (Space to start/stop, `[`/`]` and `-`/`=` to adjust speed, R to reset)
