@@ -675,6 +675,7 @@
   "rings.auto_orbit_label": "Auto orbit",
   "rings.load_range_label": "Load Range from:",
   "rings.load_range_to_label": "to:",
+  "rings.max_load_count_label": "Max loaded rings (default 2,000,000):",
   "rings.hud_panel_title": "HUD",
   "rings.hud_panel_placeholder": "(open a visualization to see live status here)",
   "rings.hud_status_running": "running, {tempo}ms/tick",

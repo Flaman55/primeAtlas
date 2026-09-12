@@ -209,6 +209,8 @@ from primeatlas.ring_geometry import (
     window_anchor_primes,
     cyclic_window_anchor_at,
     window_label_colors,
+    to_prime_array,
+    parse_big_int,
 )
 
 # [ADDED Faza 11B, see PLAN.md] On-canvas GL HUD text -- Pillow is used only
@@ -261,10 +263,28 @@ def load_sieve(upto):
     return np.array(primes, dtype=np.int64)
 
 
-def load_magazyn(portal_folder, upto, progress_callback=None, batch_files=64, from_n=0):
+def load_magazyn(portal_folder, upto, progress_callback=None, batch_files=64, from_n=0,
+                  max_load_count=None):
     """Reads real primes in (from_n, upto] from an existing PrimeAtlas
     portal folder, via primeatlas.storage's own file-listing helpers and
     prime_sieve_v1.read_prime_window for the actual decode.
+
+    [ADDED `max_load_count`, Artur 2026-09-12: "przyjac wartosc startowa i
+    ilosc pierscieni jakie wchodza do zakresu ... od-do i drugi parametr
+    dowolny zakres pierscieni ... jesli ... wiecej niz jakis prog ... zakres
+    od gory jest ciety do ilosci limitu"] Optional hard cap on how many
+    primes this call ever materializes. Enforced as an early stop (mirrors
+    the existing `floor_done` break just below) rather than a post-hoc
+    `result[:max_load_count]` slice, so a huge `(from_n, upto]` span --
+    the whole point of `from_n` jumping straight to a high floor -- never
+    reads a single file more than needed once the cap is hit. Truncation is
+    always from the TOP (the highest values get cut, exactly as Artur
+    asked), a natural consequence of floors/files being walked in ascending
+    order already. `None` (default) reproduces the old unbounded behavior
+    exactly. No fixed number is hardcoded here on purpose -- see this
+    function's own REAL CEILING note below: nobody has benchmarked a safe
+    figure on real magazyn hardware yet, so the caller (rings_tab.py) makes
+    this a plain configurable field instead of a guessed constant.
 
     [ADDED `from_n`, Artur 2026-09-11: "bufor bedzie podrozowal wraz z n z
     wyprzedzeniem"] Defaults to 0, i.e. every real prime is >0 so this
@@ -371,16 +391,37 @@ def load_magazyn(portal_folder, upto, progress_callback=None, batch_files=64, fr
             batch_chunks = []
             for name, path in batch:
                 window_primes = prime_sieve_v1.read_prime_window(path)
-                arr = np.asarray(window_primes, dtype=np.int64)
+                # [FIXED 2026-09-12, Artur's report: OverflowError loading a
+                # real piętro 25/27 window (~10**25-10**27 magnitude, see
+                # to_prime_array's own doc-comment)] was the old hardcoded
+                # `dtype=np.int64` here -- window files below the uint64
+                # ceiling (the overwhelming majority of a magazyn) still get
+                # the exact same fast native array as before; only a window
+                # whose values actually exceed it pays the `object`-dtype
+                # cost, and only for that one window's own `chunks` entry --
+                # np.concatenate below promotes the WHOLE result to `object`
+                # automatically if and only if at least one chunk needed it
+                # (see numpy's own dtype-promotion rules), so a from_n/upto
+                # query confined to low floors never pays anything extra.
+                arr = to_prime_array(window_primes)
                 files_read_in_floor += 1
                 if arr.size and arr[0] > upto:
                     floor_done = True
                     break
                 trimmed = arr[(arr > from_n) & (arr <= upto)]
+                if max_load_count is not None and trimmed.size:
+                    remaining = max_load_count - total_loaded
+                    if remaining <= 0:
+                        trimmed = trimmed[:0]
+                    elif trimmed.size > remaining:
+                        trimmed = trimmed[:remaining]
                 if trimmed.size:
                     batch_chunks.append(trimmed)
                     total_loaded += int(trimmed.size)
                 if arr.size and arr[-1] >= upto:
+                    floor_done = True
+                    break
+                if max_load_count is not None and total_loaded >= max_load_count:
                     floor_done = True
                     break
 
@@ -390,9 +431,11 @@ def load_magazyn(portal_folder, upto, progress_callback=None, batch_files=64, fr
                 progress_callback(base_exponent, files_read_in_floor, total_loaded)
             if floor_done:
                 break
+        if max_load_count is not None and total_loaded >= max_load_count:
+            break
 
     if not chunks:
-        return np.empty(0, dtype=np.int64)
+        return np.empty(0, dtype=np.uint64)
     result = np.concatenate(chunks)
     result.sort()
     return result
@@ -623,7 +666,7 @@ def build_vertex_data(primes, n, max_radius, enabled_ids=(), theta=0.5, mode="st
 
     rgb = np.empty((count, 3), dtype=np.float64)
     rgb[:] = _CYAN_RGB
-    primes_arr = np.asarray(primes, dtype=np.int64)
+    primes_arr = to_prime_array(primes)
     hit_gold = hit & (primes_arr >= 11)
     hit_orange = hit & (primes_arr < 11)
     rgb[hit_gold] = _GOLD_RGB
@@ -702,7 +745,7 @@ def load_prime_range_slice(primes, from_n, to_n):
     ceiling" check using THIS renderer's own loaded array as the ceiling."""
     if from_n > to_n:
         raise ValueError(f"load_prime_range_slice: invalid range [{from_n}, {to_n}] (from > to)")
-    primes_arr = np.asarray(primes, dtype=np.int64)
+    primes_arr = to_prime_array(primes)
     ceiling = int(primes_arr[-1]) if len(primes_arr) else -1
     if to_n > ceiling:
         raise ValueError(f"load_prime_range_slice: {to_n} exceeds the loaded ceiling ({ceiling})")
@@ -834,17 +877,44 @@ def next_buffer_ceiling(current_ceiling, margin):
     return current_ceiling + margin
 
 
-def tick_next_n(n, range_mode, ceiling):
-    """One playback tick's worth of N-advance -- ports #tick's own body
-    exactly: sequential mode STOPS (does not advance, `should_stop=True`)
-    once N has reached the ceiling; range mode has no ceiling and always
-    advances by exactly 1 (NOT by --n-step, which only applies to the
-    manual Up/Down/PageUp/PageDown keys -- #tick's own `this.#n += 1` is a
-    single hard-coded step regardless of any user-facing "step size"
-    concept). Returns (new_n, should_stop)."""
+#: [ADDED 2026-09-12, Artur's report: playback at a real magazyn-floor-scale
+#: range (~10**25) looked completely frozen] One full "orbit" (phase 0 back
+#: to 0) of the largest currently-active prime takes this many ticks in
+#: range mode -- see tick_next_n's own 2026-09-12 doc-comment for the derivation
+#: this feeds. Purely a pacing constant (tempo, i.e. ms/tick, is the OTHER,
+#: separate knob -- Artur's own note: "tempo to inna kwestia i to powinno
+#: być też widoczne jako parametr w opcjach ale nie teraz"); not exposed as
+#: its own CLI flag yet for the same "not now" reason.
+_RANGE_STEP_ORBIT_TICKS = 10_000
+
+
+def tick_next_n(n, range_mode, ceiling, range_step=1):
+    """One playback tick's worth of N-advance -- ports #tick's own body:
+    sequential mode STOPS (does not advance, `should_stop=True`) once N has
+    reached the ceiling, and always advances by exactly 1 regardless of
+    `range_step` (unchanged from #tick's own hard-coded `this.#n += 1`, NOT
+    --n-step, which only applies to the manual Up/Down/PageUp/PageDown keys).
+
+    [CHANGED 2026-09-12, Artur's report: with real magazyn-floor-scale primes
+    (~10**25) loaded via --load-range, range mode's own OLD fixed +1 step
+    was imperceptible -- phase = n mod prime needs n to advance by a
+    meaningful FRACTION of the prime's own value before any angular movement
+    is visible at all; +1 out of ~10**25 rounds to nothing for many, many
+    ticks in a row (`~10**25 ticks for one full orbit`), not a bug in the
+    tick loop itself, just a step size that only ever made sense at the
+    small N this feature was originally built for] `range_step` -- the
+    caller's own dynamically-computed step for RANGE MODE ONLY (see
+    _run_visualization's own range_step computation, `max(1, largest_active_
+    prime // _RANGE_STEP_ORBIT_TICKS)` -- naturally settles back down to the
+    exact old `1` at low floors, where a full orbit already fit inside
+    _RANGE_STEP_ORBIT_TICKS ticks, so nothing changes there). Sequential
+    mode's own advance is NEVER affected by this parameter. Defaults to 1
+    (the old, always-correct-for-what-it-was-then behavior) so any caller
+    that omits it (including every existing test) sees no change. Returns
+    (new_n, should_stop)."""
     if not range_mode and n >= ceiling:
         return n, True
-    return n + 1, False
+    return n + (range_step if range_mode else 1), False
 
 
 def update_resonance_log(state, active, n_value, range_mode, advancing):
@@ -865,16 +935,26 @@ def update_resonance_log(state, active, n_value, range_mode, advancing):
     vectorized numpy pass, not a python loop -- same cost argument as this
     module's other jump-time full recomputes (build_vertex_data itself).
 
-    A simple FORWARD tick (`advancing=True`) instead only checks whether
-    n_value itself is a new resonance step: tick_next_n always advances by
-    exactly +1 (see that function's own doc-comment), so the only NEW n to
-    consider is n_value -- one O(1)-ish call into resonance_log_lines with
-    from_n=to_n=n_value (cost bound by the active-prime count, not by
-    n_value), not a full [from_n, n_value] rescan on every single tick.
-    This is exactly the performance concern StructuralSieveApp.js's own
-    #logResonance doc-comment calls out ("O(1) per tick ... this full-range
-    recompute only runs for actual jumps") -- skipping it would make
-    playback at a large N rescan the WHOLE history every tick.
+    A simple FORWARD tick (`advancing=True`) instead only checks the span
+    actually crossed since the LAST call (`state["last_n"] + 1` .. `n_value`)
+    for new resonance steps: one call into resonance_log_lines bounded by
+    however far this single tick actually moved (cost bound by the active-
+    prime count times that span, not by n_value itself), not a full
+    [original from_n, n_value] rescan on every single tick. This is exactly
+    the performance concern StructuralSieveApp.js's own #logResonance
+    doc-comment calls out ("O(1) per tick ... this full-range recompute only
+    runs for actual jumps") -- skipping it would make playback at a large N
+    rescan the WHOLE history every tick.
+
+    [CHANGED 2026-09-12, alongside tick_next_n's own `range_step` fix]
+    Sequential mode's tick_next_n always advances by exactly +1, so this
+    span is always a single value (n_value..n_value) there, same as before.
+    Range mode's own tick_next_n step can now be > 1 (see that function's
+    own 2026-09-12 doc-comment) -- using `state["last_n"] + 1` as the actual
+    from_n here (instead of the old hardcoded `n_value` for both ends) is
+    what keeps this correct for a multi-step tick: a resonance event that
+    fell strictly BETWEEN two consecutive (now farther-apart) ticks would
+    otherwise never be scanned at all and silently vanish from the log.
 
     Returns nothing; mutates `state` in place (mirrors the JS's own
     #resonanceLog being a private instance field mutated by both methods,
@@ -888,7 +968,7 @@ def update_resonance_log(state, active, n_value, range_mode, advancing):
         resonance_from_n = 0 if range_mode else 1
         state["lines"] = resonance_log_lines(active, resonance_from_n, n_value)
     else:
-        new_lines = resonance_log_lines(active, n_value, n_value)
+        new_lines = resonance_log_lines(active, state["last_n"] + 1, n_value)
         for new_line in new_lines:
             if not state["lines"] or state["lines"][-1] != new_line:
                 state["lines"].append(new_line)
@@ -1041,7 +1121,7 @@ def build_tracked_outline_draws(primes_active, n, enabled_ids, theta, mode, trac
     active ring, in `primes_active`'s own ascending order (matching how
     `radii` is indexed) -- NOT `track_primes`'s user-typed order, unlike
     filter_active_tracked's LCM-facing list."""
-    primes_arr = np.asarray(primes_active, dtype=np.int64)
+    primes_arr = to_prime_array(primes_active)
     mask = tracked_ring_mask(primes_arr, track_primes)
     if not mask.any():
         return []
@@ -1311,9 +1391,25 @@ def hud_lines_for_n(primes_active, n, pos, enabled_ids, theta, mode, tracked_sta
 
     Returns a list of plain-text lines (may be empty)."""
     lines = []
-    factor_primes = primes_active[pos["is_hit"]] if len(primes_active) else primes_active
-    if len(factor_primes):
-        lines.append("Factors of N: " + ", ".join(str(int(p)) for p in factor_primes))
+    # [FIXED 2026-09-12, Artur's report while testing a real magazyn floor-25
+    # range: "hud poza n nie pokazuje pozostałych parametrów" -- the HUD
+    # panel effectively froze/blanked past the N=... header] n=0 is
+    # range/fixed mode's own placeholder starting value (see run()'s own
+    # "n = 0 mirrors the JS's own this.#n = 0" comment) -- but phase = n mod
+    # prime is trivially 0 for EVERY prime when n=0, so pos["is_hit"] was
+    # True for ALL of them, and the line below joined every single active
+    # ring's value into one string. That was survivable back when this
+    # feature only ever saw a handful of active primes; a real arbitrary-
+    # range load can auto-track/activate thousands of ~26-digit values at
+    # once, turning this into a single tens-of-thousands-of-characters
+    # line that stalls (or silently fails) HUD text rasterization -- never
+    # a MEANINGFUL "factors of N" list either, since N=0 has no real
+    # factorization. Skipped outright for n==0; any n>=1 still gets its
+    # real (and normally small) divisor list exactly as before.
+    if n != 0:
+        factor_primes = primes_active[pos["is_hit"]] if len(primes_active) else primes_active
+        if len(factor_primes):
+            lines.append("Factors of N: " + ", ".join(str(int(p)) for p in factor_primes))
 
     if tracked_state is not None:
         if tracked_state.get("too_large"):
@@ -1723,6 +1819,25 @@ def _run_visualization(args, audio=None):
     if args.source in ("sieve", "magazyn"):
         load_upto = args.upto + max(1000, args.upto // 20)
 
+    # [ADDED, Artur 2026-09-12: "przypomniało mi się czego brakuje w
+    # wizualizacji ... na zakresach 30 piętra ... nieosiągalne ze względu na
+    # ilość liczb pierwszych"] For --source magazyn with an explicit
+    # --load-range, the OLD path below would first load [0, load_upto] in
+    # full before load_range's post-hoc slice even ran -- infeasible once
+    # the requested range sits at a high floor, since every floor below it
+    # would be read first for nothing. Loading directly via `from_n=FROM`
+    # instead reuses load_magazyn's own already-existing cheap floor-skip
+    # (see that function's own `from_n` doc-comment) to jump straight to the
+    # requested floor, capped by --max-load-count so an accidentally huge
+    # span still can't stall the whole load (truncated from the top -- see
+    # load_magazyn's own doc-comment on that point). `primes` IS the range
+    # here already, so the load_range block further below (which still
+    # handles synthetic/sieve the old, unbounded way) is told to skip its
+    # own redundant re-slice via `magazyn_range_preload`.
+    magazyn_range_preload = None
+    if args.source == "magazyn" and args.load_range:
+        magazyn_range_preload = tuple(parse_big_int(p) for p in args.load_range.split(","))
+
     print(f"Loading primes via --source={args.source} ...")
     t0 = time.perf_counter()
     if args.source == "synthetic":
@@ -1730,7 +1845,12 @@ def _run_visualization(args, audio=None):
     elif args.source == "sieve":
         primes = load_sieve(load_upto)
     elif args.source == "magazyn":
-        primes = load_magazyn(args.portal_folder, load_upto)
+        if magazyn_range_preload is not None:
+            preload_from, preload_to = magazyn_range_preload
+            primes = load_magazyn(args.portal_folder, preload_to, from_n=preload_from,
+                                   max_load_count=args.max_load_count)
+        else:
+            primes = load_magazyn(args.portal_folder, load_upto)
     else:
         raise ValueError(f"unknown --source {args.source!r}")
     t1 = time.perf_counter()
@@ -1828,13 +1948,36 @@ def _run_visualization(args, audio=None):
     # rather than crashing the whole subprocess over a bad --load-range.
     range_mode = False
     range_primes = None
+    # [ADDED 2026-09-12, see tick_next_n's own doc-comment for the full
+    # rationale] Range mode's per-tick N-advance, dynamically sized to the
+    # largest currently-loaded prime once range_primes is known below;
+    # stays at this default (1, the old fixed step) for sequential mode
+    # and for a range that fails to load at all.
+    range_step = 1
     if args.load_range:
-        load_from, load_to = (int(p.strip()) for p in args.load_range.split(","))
+        load_from, load_to = (parse_big_int(p) for p in args.load_range.split(","))
         try:
-            range_primes = load_prime_range_slice(primes, load_from, load_to)
+            if magazyn_range_preload is not None:
+                # `primes` was already loaded directly as this exact (possibly
+                # --max-load-count-truncated) range above -- re-slicing it
+                # here would be redundant, and load_prime_range_slice's own
+                # "does TO fit under what got loaded" check would wrongly
+                # raise whenever truncation legitimately left primes[-1]
+                # short of load_to.
+                range_primes = primes
+            else:
+                range_primes = load_prime_range_slice(primes, load_from, load_to)
             range_mode = True
             n = 0  # mirrors the JS's own `this.#n = 0` on a successful range load
             range_count = len(range_primes)
+            # [ADDED 2026-09-12, Artur's report: playback looked frozen at a
+            # real magazyn-floor-scale range] See tick_next_n's own
+            # doc-comment -- naturally settles back to the old `1` at low
+            # floors (where a full orbit already fits inside
+            # _RANGE_STEP_ORBIT_TICKS), so this is a no-op for every range
+            # this feature was originally tested against.
+            if range_count:
+                range_step = max(1, int(range_primes[-1]) // _RANGE_STEP_ORBIT_TICKS)
             # [ADDED Faza 9] Auto-populate Track P with EVERY ring in the
             # loaded range (Artur, ported from the JS's own 2026-09-03 note:
             # "loading a P-range should show all its rings tracked at once,
@@ -1850,6 +1993,10 @@ def _run_visualization(args, audio=None):
                 track_primes = [int(p) for p in range_primes]
                 auto_orbit = False
                 print(f"Range [{load_from:,}, {load_to:,}] loaded: {range_count:,} primes, all tracked")
+            elif range_count and int(range_primes[-1]) < load_to:
+                print(f"Range [{load_from:,}, {load_to:,}] capped at --max-load-count="
+                      f"{args.max_load_count:,}: only [{load_from:,}, {int(range_primes[-1]):,}] "
+                      f"loaded ({range_count:,} primes)")
             else:
                 print(f"Range [{load_from:,}, {load_to:,}] loaded: {range_count:,} primes")
         except ValueError as e:
@@ -2497,7 +2644,7 @@ def _run_visualization(args, audio=None):
             now_tick = time.perf_counter()
             if (now_tick - last_tick_time) * 1000.0 >= tempo_ms:
                 last_tick_time = now_tick
-                new_n, should_stop = tick_next_n(n_holder["n"], range_mode, ceiling)
+                new_n, should_stop = tick_next_n(n_holder["n"], range_mode, ceiling, range_step)
                 if should_stop:
                     playback["running"] = False
                     print("Playback stopped: N reached the loaded ceiling")
@@ -2639,7 +2786,14 @@ def main():
     parser.add_argument('--sound-lcm', choices=INSTRUMENTS, default='choir')
     parser.add_argument("--source", choices=["synthetic", "sieve", "magazyn"], default="synthetic")
     parser.add_argument("--count", type=int, default=1_000_000, help="ring count for --source synthetic")
-    parser.add_argument("--upto", type=int, default=1_000_000, help="upper bound for --source sieve/magazyn")
+    # [ADDED, Artur 2026-09-12: "pisanie 25 zer nie jest przyjemne"] Accepts
+    # parse_big_int's flexible forms (plain digits, a*10**b, a*10^b, aEb) in
+    # addition to a bare int -- see that function's own doc-comment. A real
+    # magazyn floor's own magnitude (piętro 25 alone is 26 digits) is exactly
+    # why this exists.
+    parser.add_argument("--upto", type=parse_big_int, default=1_000_000,
+                         help="upper bound for --source sieve/magazyn -- accepts plain digits, "
+                              "a*10**b, a*10^b, or scientific notation (aEb)")
     parser.add_argument("--portal-folder", type=str, default=None, help="PrimeAtlas portal folder for --source magazyn")
     parser.add_argument("--width", type=int, default=1600)
     parser.add_argument("--height", type=int, default=1000)
@@ -2690,8 +2844,18 @@ def main():
     # fit under what got loaded" check needs the real loaded `primes` array,
     # so that half happens in run() via load_prime_range_slice instead).
     parser.add_argument("--load-range", type=str, default="",
-                         help="comma-separated FROM,TO -- switch to a fixed range mode showing exactly the "
-                              "primes in [FROM,TO], auto-tracking all of them if there aren't too many")
+                         help="comma-separated FROM,TO (each accepts plain digits, a*10**b, a*10^b, "
+                              "or aEb -- see --upto) -- switch to a fixed range mode showing exactly "
+                              "the primes in [FROM,TO], auto-tracking all of them if there aren't too many")
+    # [ADDED, Artur 2026-09-12: viewing a high floor (e.g. 30) must not
+    # require loading every floor below it first] For --source magazyn with
+    # --load-range, this caps how many primes actually get materialized --
+    # see load_magazyn's own `max_load_count` doc-comment for why it's a
+    # plain configurable number here, not a hardcoded guess.
+    parser.add_argument("--max-load-count", type=parse_big_int, default=2_000_000,
+                         help="safety cap on primes materialized for a magazyn --load-range load; "
+                              "the range is truncated from the top if it holds more than this "
+                              "(accepts plain digits, a*10**b, a*10^b, or aEb -- see --upto)")
     # [ADDED Faza 10, see PLAN.md] Playback speed -- ports #tempoMs's own
     # default (120ms/tick) and clamp range ([30,2000], see
     # clamp_tempo_ms's own doc-comment); Space starts/stops playback at
@@ -2747,10 +2911,15 @@ def main():
     # call to load_prime_range_slice for that half.
     if args.load_range:
         parts = args.load_range.split(",")
-        if len(parts) != 2 or not all(p.strip().isdigit() for p in parts):
-            parser.error(f"--load-range must be exactly two comma-separated non-negative integers FROM,TO, "
+        if len(parts) != 2:
+            parser.error(f"--load-range must be exactly two comma-separated FROM,TO values, "
                          f"got {args.load_range!r}")
-        load_from, load_to = int(parts[0]), int(parts[1])
+        try:
+            load_from, load_to = (parse_big_int(p) for p in parts)
+        except ValueError as e:
+            parser.error(f"--load-range: {e}")
+        if load_from < 0 or load_to < 0:
+            parser.error(f"--load-range FROM/TO must be non-negative, got {args.load_range!r}")
         if load_from > load_to:
             parser.error(f"--load-range FROM must be <= TO, got {args.load_range!r}")
 

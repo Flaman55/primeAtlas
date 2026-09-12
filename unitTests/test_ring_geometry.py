@@ -100,6 +100,110 @@ def _test_ring_positions():
           "ring_positions returns finite coordinates only")
 
 
+def _test_to_prime_array():
+    """[ADDED 2026-09-12, Artur's own report: a real magazyn floor (10p25/
+    10p27, ~10**25-10**27 magnitude) crashed the old hardcoded
+    `dtype=np.int64` cast with OverflowError] to_prime_array is the shared
+    fix every prime-handling function in this module (and renderer.py) now
+    routes through -- see its own doc-comment for the uint64-fast-path/
+    object-fallback design."""
+    from primeatlas.ring_geometry import to_prime_array, UINT64_MAX
+
+    small = to_prime_array([2, 3, 5, 7])
+    check(small.dtype == np.uint64,
+          "to_prime_array: values well under the uint64 ceiling use the fast uint64 dtype")
+    check(list(small) == [2, 3, 5, 7], "to_prime_array: values round-trip exactly on the fast path")
+
+    at_ceiling = to_prime_array([UINT64_MAX])
+    check(at_ceiling.dtype == np.uint64,
+          "to_prime_array: a value exactly AT the uint64 ceiling still fits the fast path")
+
+    # A real piętro-25-scale value (Artur's own magazyn, 2026-09-12 report).
+    huge = [10 ** 25, 10 ** 25 + 3, 10 ** 25 + 7]
+    big = to_prime_array(huge)
+    check(big.dtype == object, "to_prime_array: a value past the uint64 ceiling falls back to object dtype")
+    check(list(big) == huge, "to_prime_array: object-dtype values round-trip EXACTLY (no float rounding)")
+
+    just_past = to_prime_array([UINT64_MAX + 1])
+    check(just_past.dtype == object, "to_prime_array: one past the uint64 ceiling already falls back")
+
+    empty = to_prime_array([])
+    check(len(empty) == 0 and empty.dtype == np.uint64, "to_prime_array: empty input returns an empty uint64 array")
+
+    already_object = np.array([10 ** 30], dtype=object)
+    check(to_prime_array(already_object) is already_object,
+          "to_prime_array: an already-object-dtype ndarray is returned as-is (no needless re-copy)")
+
+    already_uint64 = np.array([2, 3, 5], dtype=np.uint64)
+    check(to_prime_array(already_uint64) is already_uint64,
+          "to_prime_array: an already-uint64-dtype ndarray is returned as-is too")
+
+
+def _test_parse_big_int():
+    """[ADDED 2026-09-12, Artur's own ask: "pisanie 25 zer nie jest
+    przyjemne"] parse_big_int accepts plain digits, a*10**b, a*10^b, and
+    scientific notation -- always via exact integer arithmetic, never
+    float(), so a piętro-25+-scale value never silently rounds."""
+    from primeatlas.ring_geometry import parse_big_int
+
+    check(parse_big_int("12345") == 12345, "parse_big_int: plain digits")
+    check(parse_big_int("1_000_000") == 1_000_000, "parse_big_int: underscore digit grouping")
+    check(parse_big_int("6*10**20") == 6 * 10 ** 20, "parse_big_int: a*10**b form")
+    check(parse_big_int("6*10^20") == 6 * 10 ** 20, "parse_big_int: a*10^b form (caret means power here, not XOR)")
+    check(parse_big_int(" 6 * 10 ^ 20 ") == 6 * 10 ** 20, "parse_big_int: tolerates internal whitespace")
+    check(parse_big_int("10**25") == 10 ** 25, "parse_big_int: bare 10**b (mantissa defaults to 1)")
+    check(parse_big_int("10^25") == 10 ** 25, "parse_big_int: bare 10^b (mantissa defaults to 1)")
+    check(parse_big_int("6e20") == 6 * 10 ** 20, "parse_big_int: scientific notation")
+    check(parse_big_int("6E20") == 6 * 10 ** 20, "parse_big_int: scientific notation, uppercase E")
+    check(parse_big_int("1.5e25") == 15 * 10 ** 24, "parse_big_int: decimal mantissa in scientific notation stays exact")
+
+    for bad in ("not a number", "", "   ", "10**5+3"):
+        try:
+            parse_big_int(bad)
+            check(False, f"parse_big_int({bad!r}) should raise ValueError")
+        except ValueError:
+            check(True, f"parse_big_int({bad!r}) raises ValueError as expected")
+
+
+def _test_ring_positions_beyond_uint64():
+    """[ADDED 2026-09-12, Artur's own report: a real magazyn floor (10p25/
+    10p27) crashed the old int64-hardcoded ring_positions] Confirms the fix
+    at real piętro-25-scale magnitude, AND the separate latent bug this fix
+    also caught along the way: the OLD `n_int % (1 << 63)` pre-reduction was
+    mathematically WRONG (not just imprecise) for any n >= 2**63 -- see
+    ring_positions' own 2026-09-12 doc-comment."""
+    from primeatlas.ring_geometry import ring_positions
+
+    primes = np.array([10 ** 25 + 3, 10 ** 25 + 7, 10 ** 25 + 13], dtype=object)
+    n = 10 ** 25 + 20
+    pos = ring_positions(primes, n=n, max_radius=100.0)
+    expected_phase = [n % p for p in primes]
+    check(list(pos["phase"]) == expected_phase,
+          f"ring_positions: exact phase at piętro-25 magnitude (got {list(pos['phase'])!r})")
+    check(list(pos["is_hit"]) == [False, False, False],
+          "ring_positions: is_hit correct at piętro-25 magnitude")
+    check(np.all(np.isfinite(pos["x"])) and np.all(np.isfinite(pos["y"])),
+          "ring_positions: finite coordinates even at piętro-25 magnitude (visual precision loss here is expected/OK)")
+
+    hit_n = 10 ** 25 + 7  # exactly equal to primes[1] -> that ring's phase is 0
+    pos_hit = ring_positions(primes, n=hit_n, max_radius=100.0)
+    check(list(pos_hit["is_hit"]) == [False, True, False],
+          "ring_positions: is_hit fires exactly when n equals one of the huge primes")
+
+    # The specific historical bug: n beyond uint64 but primes still uint64-
+    # sized -- the OLD `n_int % (1<<63)` reduction silently gave the WRONG
+    # phase here (nothing makes 2**63, or any other fixed power of two,
+    # a multiple of an arbitrary prime).
+    small_primes = np.array([7, 11, 13], dtype=np.uint64)
+    huge_n = (1 << 64) + 5
+    pos_uint64_primes = ring_positions(small_primes, n=huge_n, max_radius=50.0)
+    expected = [huge_n % 7, huge_n % 11, huge_n % 13]
+    got = [int(v) for v in pos_uint64_primes["phase"]]
+    check(got == expected,
+          f"ring_positions: n beyond uint64 still gives the mathematically correct phase against small "
+          f"primes (got {got!r}, expected {expected!r})")
+
+
 def _test_bertrand_legendre_membership():
     from primeatlas.ring_geometry import is_bertrand_member, is_legendre_member
 
@@ -687,6 +791,31 @@ def _test_resonance_events_in_range():
     check(resonance_events_in_range(primes, 0, 0) == [],
           "resonance_events_in_range(primes, 0, 0) correctly finds no event (to_n=0 is below the smallest active prime)")
 
+    # [ADDED 2026-09-12, Artur's crash report: "ValueError: Maximum allowed
+    # dimension exceeded"] A real magazyn-floor-25-scale range-mode tick has
+    # active primes ~10**25 and (for a long while) to_n only ~10**21 -- the
+    # smallest active prime already exceeds to_n, so no resonance is
+    # possible ANYWHERE in the span; this must return [] WITHOUT ever
+    # attempting the old `np.zeros(to_n - from_n + 1, ...)` allocation
+    # (a span this size would raise instead of finish).
+    huge_primes = np.array([12345678901234567890000023, 12345678901234567890000127], dtype=object)
+    huge_to_n = 1234567890123456789009  # ~10**21, four orders of magnitude below the primes above
+    check(resonance_events_in_range(huge_primes, 1, huge_to_n) == [],
+          "resonance_events_in_range at real magazyn-floor-25 scale (huge primes, a merely-large "
+          "to_n well below them) returns [] instead of crashing on the old dense array allocation")
+
+    # A second, independent guard for any combination that reaches a huge
+    # span even with small-enough primes to pass the check above: a hard
+    # cap on the span itself, past which the marking-pass algorithm could
+    # never finish regardless of memory.
+    from primeatlas.ring_geometry import _RESONANCE_SCAN_MAX_SIZE
+    small_primes = np.array([2, 3, 5], dtype=np.int64)
+    huge_span_to_n = _RESONANCE_SCAN_MAX_SIZE + 1_000_000
+    check(resonance_events_in_range(small_primes, 0, huge_span_to_n) == [],
+          f"resonance_events_in_range returns [] for a span past _RESONANCE_SCAN_MAX_SIZE "
+          f"({_RESONANCE_SCAN_MAX_SIZE:,}), even with small, otherwise-relevant primes, instead "
+          f"of attempting an infeasible allocation")
+
 
 def _test_resonance_log_lines():
     from primeatlas.ring_geometry import resonance_log_lines, resonance_events_in_range
@@ -750,6 +879,9 @@ def main():
     _test_legendre_level_at()
     _test_ring_radii()
     _test_ring_positions()
+    _test_to_prime_array()
+    _test_parse_big_int()
+    _test_ring_positions_beyond_uint64()
     _test_bertrand_legendre_membership()
     _test_general_law()
     _test_legendre_member_strict_only()

@@ -65,7 +65,7 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
                          point_size=None, track_primes=(), auto_orbit=False, load_range=None,
                          hit_point_size=None, hud_font_size=None, audio=False,
                          sound_low='sine', sound_prime='triangle', sound_lcm='choir',
-                         pipe_stdin_commands=False):
+                         pipe_stdin_commands=False, max_load_count=None):
     """Builds the argv for launching renderer.py against a real magazyn.
 
     Uses `python_executable` (defaults to sys.executable -- THIS SAME Python
@@ -125,7 +125,17 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
     size from every other ring. `hud_font_size` -- None (default) omits
     --hud-font-size entirely, so renderer.py's own argparse default (16px)
     applies; a real value scales the on-canvas HUD text. Same
-    omit-if-None convention as `point_size` above."""
+    omit-if-None convention as `point_size` above.
+
+    [ADDED, Artur 2026-09-12: arbitrary-range viewing at high floors]
+    `max_load_count` -- None (default) omits --max-load-count entirely, so
+    renderer.py's own argparse default applies; a real value overrides the
+    safety cap on how many primes a magazyn `load_range` load may
+    materialize (see load_magazyn's own `max_load_count` doc-comment for why
+    this is a plain configurable number, not a hardcoded constant). Only
+    meaningful together with `load_range`, but forwarded unconditionally
+    like every other optional flag here -- renderer.py itself ignores it
+    outside that mode."""
     exe = python_executable or sys.executable
     argv = [exe, RENDERER_SCRIPT, "--source", "magazyn",
             "--portal-folder", portal_folder, "--upto", str(upto)]
@@ -156,6 +166,8 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
     if load_range is not None:
         load_from, load_to = load_range
         argv += ["--load-range", f"{load_from},{load_to}"]
+    if max_load_count is not None:
+        argv += ["--max-load-count", str(max_load_count)]
     if audio:
         argv += ['--audio', '--sound-low', sound_low, '--sound-prime', sound_prime,
                  '--sound-lcm', sound_lcm]
@@ -360,6 +372,24 @@ class RingsTab(BaseTab):
         self.load_range_to_entry.insert(0, saved_params.get("load_range_to", ""))
         self.load_range_to_entry.pack(side="left", padx=(6, 0))
 
+        # [ADDED, Artur 2026-09-12: "przypomniało mi się czego brakuje w
+        # wizualizacji ... na zakresach 30 piętra ... nieosiągalne ze
+        # względu na ilość liczb pierwszych"] Safety cap for a Load Range
+        # load, so an arbitrary From/To spanning a huge value gap (the whole
+        # point of being able to open at a high floor without loading every
+        # floor below it first -- see load_magazyn's own `from_n`/
+        # `max_load_count` doc-comments) can't stall the launch. No safe
+        # number has been benchmarked on real magazyn hardware yet, so this
+        # is a plain editable field (persisted like every other field here)
+        # rather than a hardcoded constant -- left empty falls back to
+        # renderer.py's own argparse default.
+        max_load_row = ttk.Frame(container)
+        max_load_row.pack(fill="x", pady=(0, 10))
+        ttk.Label(max_load_row, text=self.T("rings.max_load_count_label")).pack(side="left")
+        self.max_load_count_entry = ttk.Entry(max_load_row, width=16)
+        self.max_load_count_entry.insert(0, saved_params.get("max_load_count", ""))
+        self.max_load_count_entry.pack(side="left", padx=(6, 0))
+
         # [RELABELED 2026-09-10] These two buttons keep their original
         # attribute names (open_button/stop_button -- unchanged, so
         # test_rings_tab.py's state checks keep working) and _on_open's own
@@ -415,6 +445,7 @@ class RingsTab(BaseTab):
             self.n_entry, self.point_size_entry, self.hit_point_size_entry,
             self.hud_font_size_entry, self.general_law_theta_entry,
             self.track_primes_entry, self.load_range_from_entry, self.load_range_to_entry,
+            self.max_load_count_entry,
         ]
         self._launch_param_checkbuttons = [
             self._audio_enable_check, self._bertrand_check, self._legendre_check,
@@ -548,11 +579,32 @@ class RingsTab(BaseTab):
         # a well-formed-but-nonsensical range (e.g. FROM > TO, or TO beyond
         # what's loaded) surfaces, as a normal subprocess error visible in
         # the console pane, same convention as track_primes above.
+        # [CHANGED 2026-09-12, Artur's own ask: "pisanie 25 zer nie jest
+        # przyjemne"] Now goes through the SAME _eval_quick_number the N
+        # field above already uses (plain digits, "10**5"-style expressions,
+        # and -- via that function's own parse_big_int fast path -- "a*10^b"
+        # / scientific notation too), instead of a bare `.isdigit()` check
+        # that rejected anything but plain decimal digits. A real magazyn
+        # floor's own magnitude (piętro 25 alone is 26 digits) is exactly why
+        # this matters here.
         range_from_raw = self.load_range_from_entry.get().strip()
         range_to_raw = self.load_range_to_entry.get().strip()
         load_range = None
-        if range_from_raw and range_to_raw and range_from_raw.isdigit() and range_to_raw.isdigit():
-            load_range = (int(range_from_raw), int(range_to_raw))
+        if range_from_raw and range_to_raw:
+            range_from = _eval_quick_number(range_from_raw)
+            range_to = _eval_quick_number(range_to_raw)
+            if range_from is not None and range_to is not None and range_from >= 0 and range_to >= 0:
+                load_range = (range_from, range_to)
+
+        # [ADDED, Artur 2026-09-12] Same empty-or-invalid-omits-the-flag
+        # convention as point_size/hit_point_size/hud_font_size above --
+        # renderer.py's own argparse default (2,000,000) applies when this
+        # is left blank or unparseable. Same _eval_quick_number convention
+        # as load_range above.
+        max_load_count_raw = self.max_load_count_entry.get().strip()
+        max_load_count = _eval_quick_number(max_load_count_raw) if max_load_count_raw else None
+        if max_load_count is not None and max_load_count < 0:
+            max_load_count = None
 
         argv = build_renderer_argv(portal_folder, n, windows=windows,
                                     general_law_theta=theta, general_law_mode=mode,
@@ -565,7 +617,8 @@ class RingsTab(BaseTab):
                                     sound_low=INSTRUMENTS[self.audio_choices['low'].current()],
                                     sound_prime=INSTRUMENTS[self.audio_choices['prime'].current()],
                                     sound_lcm=INSTRUMENTS[self.audio_choices['lcm'].current()],
-                                    pipe_stdin_commands=True)
+                                    pipe_stdin_commands=True,
+                                    max_load_count=max_load_count)
         # [ADDED 2026-09-11] Persist every launch-time field as-typed, so the NEXT
         # launch (this session's Reset+Start, or a whole new app restart) reopens
         # with these same values instead of the tab's hardcoded first-run defaults
@@ -592,6 +645,7 @@ class RingsTab(BaseTab):
                 "auto_orbit": auto_orbit,
                 "load_range_from": range_from_raw,
                 "load_range_to": range_to_raw,
+                "max_load_count": max_load_count_raw,
             })
         q = queue.Queue()
         # [ADDED 2026-09-10, Faza 13] pipe_stdin=True so send_line("RESUME")

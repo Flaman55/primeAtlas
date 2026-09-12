@@ -128,6 +128,15 @@ def _test_build_renderer_argv():
     check("--load-range" in lr_argv and lr_argv[lr_argv.index("--load-range") + 1] == "100,500",
           f"--load-range joins the (from, to) pair with a comma (got {lr_argv!r})")
 
+    # [ADDED, Artur 2026-09-12] max_load_count argv wiring -- same
+    # omit-if-None convention as point_size/hit_point_size/hud_font_size.
+    check("--max-load-count" not in default_argv,
+          f"no --max-load-count arg at all when max_load_count=None (renderer.py's own "
+          f"argparse default of 2,000,000 then applies) (got {default_argv!r})")
+    mlc_argv = build_renderer_argv("/x", 1, load_range=(100, 500), max_load_count=1000)
+    check("--max-load-count" in mlc_argv and mlc_argv[mlc_argv.index("--max-load-count") + 1] == "1000",
+          f"--max-load-count forwards a real value as-is (got {mlc_argv!r})")
+
     # [ADDED Faza 11C, see PLAN.md -- Artur's real-screen HUD-too-small +
     # independent hit-point-size report] hit_point_size/hud_font_size argv
     # wiring, mirroring point_size's own omit-if-None convention exactly.
@@ -313,6 +322,42 @@ def main():
     os.remove(fake_ok_script4)
     tab.load_range_from_entry.delete(0, "end")
     tab.load_range_to_entry.delete(0, "end")
+
+    # --- [ADDED, Artur 2026-09-12] Max load count field wiring -----------------------
+    fake_ok_script5 = _write_fake_renderer(0)
+    rings_tab_module.RENDERER_SCRIPT = fake_ok_script5
+    tab.max_load_count_entry.delete(0, "end")
+    tab.max_load_count_entry.insert(0, "1000")
+    tab.n_entry.delete(0, "end")
+    tab.n_entry.insert(0, "500")
+    shown.clear()
+    tab._on_open()
+    launched_cmd = list(tab._runner.cmd) if tab._runner is not None else []
+    check("--max-load-count" in launched_cmd and
+          launched_cmd[launched_cmd.index("--max-load-count") + 1] == "1000",
+          f"Max load count field reaches the launched argv as --max-load-count "
+          f"(got argv: {launched_cmd!r})")
+    _pump(app, 3.0)
+    os.remove(fake_ok_script5)
+
+    # A non-numeric value must NOT crash the GUI thread -- silent fallback to
+    # renderer.py's own argparse default, same convention as every other
+    # empty-or-invalid launch-time field.
+    fake_ok_script6 = _write_fake_renderer(0)
+    rings_tab_module.RENDERER_SCRIPT = fake_ok_script6
+    tab.max_load_count_entry.delete(0, "end")
+    tab.max_load_count_entry.insert(0, "not-a-number")
+    tab.n_entry.delete(0, "end")
+    tab.n_entry.insert(0, "500")
+    shown.clear()
+    tab._on_open()
+    launched_cmd = list(tab._runner.cmd) if tab._runner is not None else []
+    check("--max-load-count" not in launched_cmd,
+          f"a non-numeric Max load count value omits --max-load-count entirely, "
+          f"does not raise (got argv: {launched_cmd!r})")
+    _pump(app, 3.0)
+    os.remove(fake_ok_script6)
+    tab.max_load_count_entry.delete(0, "end")
 
     # --- [ADDED Faza 11, see PLAN.md] HUD panel: direct _apply_hud_state unit test --
     tab.hud_var.set("stale")
