@@ -58,6 +58,21 @@ def _test_legendre_level_at():
           "legendre_level_at(16) == 3 (closing edge of level 3, NOT opening of level 4)")
     check(legendre_level_at(17) == 4, "legendre_level_at(17) == 4")
 
+    # [ADDED 2026-09-12, Artur's report: enabling Legendre at a real
+    # magazyn-floor-scale N (~10**25) crashed with "TypeError: loop of
+    # ufunc does not support argument 0 of type int which has no callable
+    # sqrt method" -- the old np.sqrt(n - 1) couldn't handle a Python int
+    # this far outside float64's representable range. math.isqrt (the
+    # fix) is exact and arbitrary-precision, so this must both NOT raise
+    # and match floor(sqrt(n-1)) computed independently via math.isqrt
+    # itself on a value one notch different, as a sanity cross-check.
+    huge_n = 12345678901234567890000023
+    huge_level = legendre_level_at(huge_n)
+    check(huge_level == math.isqrt(huge_n - 1),
+          f"a real floor-25-scale N no longer crashes, and matches math.isqrt(n-1) directly (got {huge_level})")
+    check(huge_level * huge_level < huge_n <= (huge_level + 1) * (huge_level + 1),
+          f"the returned k still satisfies k*k < n <= (k+1)*(k+1) at this magnitude (got k={huge_level})")
+
 
 def _test_ring_radii():
     from primeatlas.ring_geometry import ring_radii
