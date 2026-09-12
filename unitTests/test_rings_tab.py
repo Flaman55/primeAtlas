@@ -137,6 +137,15 @@ def _test_build_renderer_argv():
     check("--max-load-count" in mlc_argv and mlc_argv[mlc_argv.index("--max-load-count") + 1] == "1000",
           f"--max-load-count forwards a real value as-is (got {mlc_argv!r})")
 
+    # [ADDED 2026-09-12, Artur's own ask: "dołóżmy ten parametr prędkości
+    # animacji"] tempo_ms argv wiring -- same omit-if-None convention.
+    check("--tempo-ms" not in default_argv,
+          f"no --tempo-ms arg at all when tempo_ms=None (renderer.py's own argparse/"
+          f"clamp_tempo_ms default of 120 then applies) (got {default_argv!r})")
+    tempo_argv = build_renderer_argv("/x", 1, tempo_ms=250)
+    check("--tempo-ms" in tempo_argv and tempo_argv[tempo_argv.index("--tempo-ms") + 1] == "250",
+          f"--tempo-ms forwards a real value as-is (got {tempo_argv!r})")
+
     # [ADDED Faza 11C, see PLAN.md -- Artur's real-screen HUD-too-small +
     # independent hit-point-size report] hit_point_size/hud_font_size argv
     # wiring, mirroring point_size's own omit-if-None convention exactly.
@@ -284,7 +293,41 @@ def main():
     tab.track_primes_entry.delete(0, "end")
     tab.auto_orbit_var.set(False)
 
-    # --- [ADDED Faza 9, see PLAN.md] Load Range From/To field wiring ----------------
+    # --- [ADDED 2026-09-12, Artur's own ask: "obok n dajmy przełącznik czy
+    # wizualizacja działa na n czy na zakresie od do"] Mode switch enable/
+    # disable wiring -----------------------------------------------------
+    check(tab.mode_var.get() == "sequential", "mode defaults to sequential")
+    check(str(tab.n_entry["state"]) == "normal", "N field starts enabled in sequential mode")
+    check(str(tab.load_range_from_entry["state"]) == "disabled",
+          "Load Range From field starts disabled in sequential mode")
+    check(str(tab.load_range_to_entry["state"]) == "disabled",
+          "Load Range To field starts disabled in sequential mode")
+    check(str(tab.max_load_count_entry["state"]) == "disabled",
+          "Max load count field starts disabled in sequential mode")
+
+    tab.mode_var.set("range")
+    tab._on_mode_changed()
+    check(str(tab.n_entry["state"]) == "disabled", "N field is disabled once range mode is selected")
+    check(str(tab.load_range_from_entry["state"]) == "normal",
+          "Load Range From field is enabled once range mode is selected")
+    check(str(tab.load_range_to_entry["state"]) == "normal",
+          "Load Range To field is enabled once range mode is selected")
+    check(str(tab.max_load_count_entry["state"]) == "normal",
+          "Max load count field is enabled once range mode is selected")
+
+    tab.mode_var.set("sequential")
+    tab._on_mode_changed()
+    check(str(tab.n_entry["state"]) == "normal", "N field is re-enabled switching back to sequential mode")
+    check(str(tab.load_range_from_entry["state"]) == "disabled",
+          "Load Range From field is disabled again switching back to sequential mode")
+
+    # --- [ADDED Faza 9, see PLAN.md; CHANGED 2026-09-12, Artur's own ask:
+    # explicit N-vs-range mode switch] Load Range From/To field wiring --
+    # now gated on mode_var == "range" (set + _on_mode_changed() to actually
+    # enable the fields, mirroring a real Radiobutton click) rather than
+    # "both fields happen to be filled in".
+    tab.mode_var.set("range")
+    tab._on_mode_changed()
     fake_ok_script3 = _write_fake_renderer(0)
     rings_tab_module.RENDERER_SCRIPT = fake_ok_script3
     tab.load_range_from_entry.delete(0, "end")
@@ -298,15 +341,14 @@ def main():
     launched_cmd = list(tab._runner.cmd) if tab._runner is not None else []
     check("--load-range" in launched_cmd and
           launched_cmd[launched_cmd.index("--load-range") + 1] == "100,500",
-          f"both From/To fields filled in reach the launched argv as --load-range "
-          f"FROM,TO (got argv: {launched_cmd!r})")
+          f"range mode with both From/To fields filled in reaches the launched argv as "
+          f"--load-range FROM,TO (got argv: {launched_cmd!r})")
     _pump(app, 3.0)
     os.remove(fake_ok_script3)
 
-    # Leaving one field blank must NOT activate range mode (silent fallback to
-    # sequential, per _on_open's own doc-comment -- no crash, no --load-range).
-    fake_ok_script4 = _write_fake_renderer(0)
-    rings_tab_module.RENDERER_SCRIPT = fake_ok_script4
+    # [CHANGED 2026-09-12] Range mode with one field blank/invalid now fails
+    # LOUDLY (an error dialog, no launch at all) instead of the old silent
+    # fallback to sequential -- explicit mode means explicit validation.
     tab.load_range_from_entry.delete(0, "end")
     tab.load_range_from_entry.insert(0, "100")
     tab.load_range_to_entry.delete(0, "end")  # To left blank
@@ -314,16 +356,47 @@ def main():
     tab.n_entry.insert(0, "500")
     shown.clear()
     tab._on_open()
-    launched_cmd = list(tab._runner.cmd) if tab._runner is not None else []
-    check("--load-range" not in launched_cmd,
-          f"a half-filled Load Range (From set, To blank) omits --load-range entirely, "
-          f"does not raise (got argv: {launched_cmd!r})")
-    _pump(app, 3.0)
-    os.remove(fake_ok_script4)
+    check(len(shown) == 1 and shown[0][0] == "error",
+          "range mode with To left blank shows an error dialog instead of launching")
+    check(tab._runner is None, "no runner was started for the half-filled-range-mode case")
     tab.load_range_from_entry.delete(0, "end")
     tab.load_range_to_entry.delete(0, "end")
 
-    # --- [ADDED, Artur 2026-09-12] Max load count field wiring -----------------------
+    # Switching BACK to sequential mode must not resurrect a stale
+    # From/To -- confirms _on_open reads mode_var, not field contents.
+    tab.mode_var.set("sequential")
+    tab._on_mode_changed()
+    fake_ok_script3b = _write_fake_renderer(0)
+    rings_tab_module.RENDERER_SCRIPT = fake_ok_script3b
+    tab.load_range_from_entry.configure(state="normal")
+    tab.load_range_from_entry.delete(0, "end")
+    tab.load_range_from_entry.insert(0, "100")
+    tab.load_range_to_entry.configure(state="normal")
+    tab.load_range_to_entry.delete(0, "end")
+    tab.load_range_to_entry.insert(0, "500")
+    tab._on_mode_changed()  # re-disable, as a real mode switch back would
+    tab.n_entry.delete(0, "end")
+    tab.n_entry.insert(0, "500")
+    shown.clear()
+    tab._on_open()
+    launched_cmd = list(tab._runner.cmd) if tab._runner is not None else []
+    check("--load-range" not in launched_cmd,
+          f"sequential mode ignores a leftover From/To in the (now disabled) range fields "
+          f"entirely -- no --load-range (got argv: {launched_cmd!r})")
+    _pump(app, 3.0)
+    os.remove(fake_ok_script3b)
+    tab.load_range_from_entry.configure(state="normal")
+    tab.load_range_from_entry.delete(0, "end")
+    tab.load_range_to_entry.configure(state="normal")
+    tab.load_range_to_entry.delete(0, "end")
+
+    # --- [ADDED, Artur 2026-09-12] Max load count field wiring (range mode) ---------
+    tab.mode_var.set("range")
+    tab._on_mode_changed()
+    tab.load_range_from_entry.delete(0, "end")
+    tab.load_range_from_entry.insert(0, "100")
+    tab.load_range_to_entry.delete(0, "end")
+    tab.load_range_to_entry.insert(0, "500")
     fake_ok_script5 = _write_fake_renderer(0)
     rings_tab_module.RENDERER_SCRIPT = fake_ok_script5
     tab.max_load_count_entry.delete(0, "end")
@@ -358,6 +431,41 @@ def main():
     _pump(app, 3.0)
     os.remove(fake_ok_script6)
     tab.max_load_count_entry.delete(0, "end")
+    tab.load_range_from_entry.delete(0, "end")
+    tab.load_range_to_entry.delete(0, "end")
+    tab.mode_var.set("sequential")
+    tab._on_mode_changed()
+
+    # --- [ADDED 2026-09-12, Artur's own ask: "dołóżmy ten parametr
+    # prędkości animacji"] Tempo field wiring -------------------------------
+    fake_ok_script7 = _write_fake_renderer(0)
+    rings_tab_module.RENDERER_SCRIPT = fake_ok_script7
+    tab.tempo_ms_entry.delete(0, "end")
+    tab.tempo_ms_entry.insert(0, "250")
+    tab.n_entry.delete(0, "end")
+    tab.n_entry.insert(0, "500")
+    shown.clear()
+    tab._on_open()
+    launched_cmd = list(tab._runner.cmd) if tab._runner is not None else []
+    check("--tempo-ms" in launched_cmd and launched_cmd[launched_cmd.index("--tempo-ms") + 1] == "250",
+          f"Tempo field reaches the launched argv as --tempo-ms (got argv: {launched_cmd!r})")
+    _pump(app, 3.0)
+    os.remove(fake_ok_script7)
+
+    fake_ok_script8 = _write_fake_renderer(0)
+    rings_tab_module.RENDERER_SCRIPT = fake_ok_script8
+    tab.tempo_ms_entry.delete(0, "end")
+    tab.n_entry.delete(0, "end")
+    tab.n_entry.insert(0, "500")
+    shown.clear()
+    tab._on_open()
+    launched_cmd = list(tab._runner.cmd) if tab._runner is not None else []
+    check("--tempo-ms" not in launched_cmd,
+          f"an empty Tempo field omits --tempo-ms entirely, does not raise "
+          f"(got argv: {launched_cmd!r})")
+    _pump(app, 3.0)
+    os.remove(fake_ok_script8)
+    tab.tempo_ms_entry.insert(0, "120")
 
     # --- [ADDED Faza 11, see PLAN.md] HUD panel: direct _apply_hud_state unit test --
     tab.hud_var.set("stale")

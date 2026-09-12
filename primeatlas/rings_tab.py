@@ -65,7 +65,7 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
                          point_size=None, track_primes=(), auto_orbit=False, load_range=None,
                          hit_point_size=None, hud_font_size=None, audio=False,
                          sound_low='sine', sound_prime='triangle', sound_lcm='choir',
-                         pipe_stdin_commands=False, max_load_count=None):
+                         pipe_stdin_commands=False, max_load_count=None, tempo_ms=None):
     """Builds the argv for launching renderer.py against a real magazyn.
 
     Uses `python_executable` (defaults to sys.executable -- THIS SAME Python
@@ -135,7 +135,15 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
     this is a plain configurable number, not a hardcoded constant). Only
     meaningful together with `load_range`, but forwarded unconditionally
     like every other optional flag here -- renderer.py itself ignores it
-    outside that mode."""
+    outside that mode.
+
+    [ADDED 2026-09-12, Artur's own ask: "dołóżmy ten parametr prędkości
+    animacji by można było zmieniać te 120ms/tick"] `tempo_ms` -- None
+    (default) omits --tempo-ms entirely, so renderer.py's own argparse
+    default (120, via clamp_tempo_ms) applies; a real value sets the
+    playback tick's own real-time pacing at launch, previously only
+    reachable live (post-launch, via the ]/[ keys inside the GL window).
+    Same omit-if-None convention as `point_size` above."""
     exe = python_executable or sys.executable
     argv = [exe, RENDERER_SCRIPT, "--source", "magazyn",
             "--portal-folder", portal_folder, "--upto", str(upto)]
@@ -168,6 +176,8 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
         argv += ["--load-range", f"{load_from},{load_to}"]
     if max_load_count is not None:
         argv += ["--max-load-count", str(max_load_count)]
+    if tempo_ms is not None:
+        argv += ["--tempo-ms", str(tempo_ms)]
     if audio:
         argv += ['--audio', '--sound-low', sound_low, '--sound-prime', sound_prime,
                  '--sound-lcm', sound_lcm]
@@ -232,8 +242,44 @@ class RingsTab(BaseTab):
         intro = ttk.Label(container, text=self.T("rings.intro"), wraplength=760, justify="left")
         intro.pack(anchor="w", pady=(0, 10))
 
-        field_row = ttk.Frame(container)
-        field_row.pack(fill="x", pady=(0, 6))
+        # [REORGANIZED 2026-09-12, Artur's own ask: "uporządkuj trochę
+        # rozkład tych parametrów bardziej logicznie bo trochę to
+        # chaotycznie wygląda"] Every field below used to be one flat stack
+        # of same-looking rows; grouped into labeled sections now (Position/
+        # mode, Appearance, Audio, Windows & tracking) purely as a visual/
+        # layout change -- every widget keeps its exact same attribute name,
+        # so _on_open/_set_launch_params_readonly/persistence and every
+        # existing test (which all address widgets by attribute, never by
+        # parent frame or pack position) are untouched.
+
+        # --- Position & mode ---------------------------------------------
+        position_frame = ttk.LabelFrame(container, text=self.T("rings.section_position"))
+        position_frame.pack(fill="x", pady=(0, 8))
+
+        # [ADDED 2026-09-12, Artur's own ask: "obok n dajmy przełącznik czy
+        # wizualizacja działa na n czy na zakresie od do"] Explicit mode
+        # switch, replacing the old implicit "load_range activates whenever
+        # BOTH From/To happen to be non-empty" rule -- that rule is exactly
+        # what silently activated range mode from a STALE leftover value
+        # once already (Artur's own report, same session: a 26-digit From
+        # left over from a previous test). _on_mode_changed greys out
+        # whichever of N / Load Range this mode doesn't use, so a leftover
+        # value in the inactive field is visibly inert instead of a trap.
+        mode_row = ttk.Frame(position_frame)
+        mode_row.pack(fill="x", padx=8, pady=(6, 6))
+        ttk.Label(mode_row, text=self.T("rings.mode_label")).pack(side="left")
+        self.mode_var = tk.StringVar(value=saved_params.get("mode", "sequential"))
+        self._mode_sequential_radio = ttk.Radiobutton(
+            mode_row, text=self.T("rings.mode_sequential"), value="sequential",
+            variable=self.mode_var, command=self._on_mode_changed)
+        self._mode_sequential_radio.pack(side="left", padx=(6, 0))
+        self._mode_range_radio = ttk.Radiobutton(
+            mode_row, text=self.T("rings.mode_range"), value="range",
+            variable=self.mode_var, command=self._on_mode_changed)
+        self._mode_range_radio.pack(side="left", padx=(10, 0))
+
+        field_row = ttk.Frame(position_frame)
+        field_row.pack(fill="x", padx=8, pady=(0, 6))
         ttk.Label(field_row, text=self.T("rings.field_n")).pack(side="left")
         self.n_entry = ttk.Entry(field_row, width=28)
         # [CHANGED 2026-09-10] Artur asked for N pre-filled at startup instead
@@ -245,124 +291,15 @@ class RingsTab(BaseTab):
         self.n_entry.bind("<KeyRelease>", self._on_n_changed)
         self._on_n_changed()
 
-        # [ADDED as part of Faza 4's point-size investigation, 2026-09-04]
-        # Exposed here (instead of only reachable by hand-editing
-        # renderer.py's argparse default) so a real value change is
-        # verifiable from the GUI alone -- see build_renderer_argv's own
-        # doc-comment for the full context.
-        point_size_row = ttk.Frame(container)
-        point_size_row.pack(fill="x", pady=(0, 6))
-        ttk.Label(point_size_row, text=self.T("rings.point_size_label")).pack(side="left")
-        self.point_size_entry = ttk.Entry(point_size_row, width=8)
-        # [CHANGED 2026-09-10] Artur's own chosen default, raised from 3.0 to 15.
-        self.point_size_entry.insert(0, saved_params.get("point_size", "15"))
-        self.point_size_entry.pack(side="left", padx=(6, 0))
-
-        # [ADDED Faza 11C, see build_renderer_argv's own doc-comment --
-        # Artur's real-screen report that the HUD was unreadably small and
-        # that hit-rings (on the vertical reference line) needed an
-        # independent size from every other ring.] Pre-filled with Artur's
-        # own chosen defaults (2026-09-09: hit-ring size 40, HUD font 35) --
-        # same convention as point_size_entry's own "3.0" pre-fill above --
-        # so these values are visibly wired in at launch rather than hidden
-        # behind a blank field the user has to know to fill in. Clearing the
-        # field still omits the CLI flag entirely (renderer.py's own
-        # argparse defaults, ALSO 40/35 as of this phase, apply then too).
-        hit_point_size_row = ttk.Frame(container)
-        hit_point_size_row.pack(fill="x", pady=(0, 6))
-        ttk.Label(hit_point_size_row, text=self.T("rings.hit_point_size_label")).pack(side="left")
-        self.hit_point_size_entry = ttk.Entry(hit_point_size_row, width=8)
-        # [CHANGED 2026-09-10] Artur's own chosen default, lowered from 40 to 20.
-        self.hit_point_size_entry.insert(0, saved_params.get("hit_point_size", "20"))
-        self.hit_point_size_entry.pack(side="left", padx=(6, 0))
-
-        hud_font_size_row = ttk.Frame(container)
-        hud_font_size_row.pack(fill="x", pady=(0, 6))
-        ttk.Label(hud_font_size_row, text=self.T("rings.hud_font_size_label")).pack(side="left")
-        self.hud_font_size_entry = ttk.Entry(hud_font_size_row, width=8)
-        self.hud_font_size_entry.insert(0, saved_params.get("hud_font_size", "35"))
-        self.hud_font_size_entry.pack(side="left", padx=(6, 0))
-        audio_row = ttk.Frame(container)
-        audio_row.pack(fill='x', pady=(0, 6))
-        self.audio_enabled = tk.BooleanVar(value=saved_params.get("audio_enabled", False))
-        self._audio_enable_check = ttk.Checkbutton(audio_row, text=self.T('rings.audio_enable'),
-                                                     variable=self.audio_enabled)
-        self._audio_enable_check.pack(side='left')
-        self.audio_choices = {}
-        for channel, default in (('low', 'sine'), ('prime', 'triangle'), ('lcm', 'choir')):
-            ttk.Label(audio_row, text=self.T('rings.sound_' + channel)).pack(side='left', padx=(8, 3))
-            choice = ttk.Combobox(audio_row, state='readonly', width=11,
-                                 values=[self.T('rings.instrument_' + name) for name in INSTRUMENTS])
-            saved_instrument = saved_params.get('sound_' + channel, default)
-            choice.current(INSTRUMENTS.index(saved_instrument) if saved_instrument in INSTRUMENTS
-                            else INSTRUMENTS.index(default))
-            choice.pack(side='left')
-            self.audio_choices[channel] = choice
-        ttk.Label(container, text=self.T('rings.audio_hint')).pack(anchor='w', pady=(0, 6))
-
-        # [ADDED Faza 4, see PLAN.md] Window-highlight-family checkboxes --
-        # chosen once here, at launch time, and passed as --windows to
-        # renderer.py (see build_renderer_argv's own doc-comment for why
-        # this is launch-time-only rather than a live in-GL-window toggle).
-        windows_row = ttk.Frame(container)
-        windows_row.pack(fill="x", pady=(0, 6))
-        ttk.Label(windows_row, text=self.T("rings.windows_label")).pack(side="left")
-        self.bertrand_var = tk.BooleanVar(value=saved_params.get("bertrand", False))
-        self._bertrand_check = ttk.Checkbutton(windows_row, text=self.T("rings.window_bertrand"),
-                                                 variable=self.bertrand_var)
-        self._bertrand_check.pack(side="left", padx=(6, 0))
-        self.legendre_var = tk.BooleanVar(value=saved_params.get("legendre", False))
-        self._legendre_check = ttk.Checkbutton(windows_row, text=self.T("rings.window_legendre"),
-                                                 variable=self.legendre_var)
-        self._legendre_check.pack(side="left", padx=(6, 0))
-        self.general_law_var = tk.BooleanVar(value=saved_params.get("general_law", False))
-        self._general_law_check = ttk.Checkbutton(windows_row, text=self.T("rings.window_general_law"),
-                                                     variable=self.general_law_var)
-        self._general_law_check.pack(side="left", padx=(6, 0))
-
-        general_law_row = ttk.Frame(container)
-        general_law_row.pack(fill="x", pady=(0, 10))
-        ttk.Label(general_law_row, text=self.T("rings.general_law_theta_label")).pack(side="left")
-        self.general_law_theta_entry = ttk.Entry(general_law_row, width=6)
-        self.general_law_theta_entry.insert(0, saved_params.get("general_law_theta", "0.5"))
-        self.general_law_theta_entry.pack(side="left", padx=(6, 16))
-        ttk.Label(general_law_row, text=self.T("rings.general_law_mode_label")).pack(side="left")
-        self.general_law_mode_combo = ttk.Combobox(general_law_row, width=10, state="readonly",
-                                                     values=["stepped", "sliding"])
-        self.general_law_mode_combo.set(saved_params.get("general_law_mode", "stepped"))
-        self.general_law_mode_combo.pack(side="left", padx=(6, 0))
-
-        # [ADDED Faza 6, see PLAN.md] Track P field -- comma-separated prime
-        # values, forwarded as-is to renderer.py's --track-primes (see
-        # build_renderer_argv's own doc-comment). Launch-time-only, same
-        # convention as the windows checkboxes above: no live in-GL-window
-        # text field yet. "Auto orbit" mirrors the JS's auto-cycle mode
-        # (mutually exclusive in effect with a real Track P list -- see
-        # renderer.py's own rebuild_buffer(), which skips the tracked-filter
-        # entirely when auto-orbit is on); left as an independent checkbox
-        # here rather than disabling the Track P field, since Faza 10 is
-        # what actually wires auto-orbit's visible behavior.
-        track_row = ttk.Frame(container)
-        track_row.pack(fill="x", pady=(0, 6))
-        ttk.Label(track_row, text=self.T("rings.track_primes_label")).pack(side="left")
-        self.track_primes_entry = ttk.Entry(track_row, width=20)
-        self.track_primes_entry.insert(0, saved_params.get("track_primes", ""))
-        self.track_primes_entry.pack(side="left", padx=(6, 16))
-        self.auto_orbit_var = tk.BooleanVar(value=saved_params.get("auto_orbit", False))
-        self._auto_orbit_check = ttk.Checkbutton(track_row, text=self.T("rings.auto_orbit_label"),
-                                                   variable=self.auto_orbit_var)
-        self._auto_orbit_check.pack(side="left")
-
         # [ADDED Faza 9, see PLAN.md] Load Range -- From/To fields, launch-time
         # only (same convention as every other field on this tab: read once by
-        # _on_open, no live subprocess IPC). Leaving BOTH empty keeps today's
-        # sequential-mode behavior unchanged; filling in both switches to a
-        # fixed range mode that auto-tracks every prime in it (see
-        # renderer.py's own --load-range handling in run() for the full
-        # behavior, ported from the HTML's #loadPrimeRange/"Load Range"
-        # button).
-        range_row = ttk.Frame(container)
-        range_row.pack(fill="x", pady=(0, 10))
+        # _on_open, no live subprocess IPC). [CHANGED 2026-09-12] Which mode
+        # is active is now decided by mode_var above, not by whether these
+        # happen to be filled in -- see renderer.py's own --load-range
+        # handling in run() for the full behavior, ported from the HTML's
+        # #loadPrimeRange/"Load Range" button.
+        range_row = ttk.Frame(position_frame)
+        range_row.pack(fill="x", padx=8, pady=(0, 6))
         ttk.Label(range_row, text=self.T("rings.load_range_label")).pack(side="left")
         self.load_range_from_entry = ttk.Entry(range_row, width=16)
         self.load_range_from_entry.insert(0, saved_params.get("load_range_from", ""))
@@ -383,12 +320,164 @@ class RingsTab(BaseTab):
         # is a plain editable field (persisted like every other field here)
         # rather than a hardcoded constant -- left empty falls back to
         # renderer.py's own argparse default.
-        max_load_row = ttk.Frame(container)
-        max_load_row.pack(fill="x", pady=(0, 10))
+        max_load_row = ttk.Frame(position_frame)
+        max_load_row.pack(fill="x", padx=8, pady=(0, 6))
         ttk.Label(max_load_row, text=self.T("rings.max_load_count_label")).pack(side="left")
         self.max_load_count_entry = ttk.Entry(max_load_row, width=16)
         self.max_load_count_entry.insert(0, saved_params.get("max_load_count", ""))
         self.max_load_count_entry.pack(side="left", padx=(6, 0))
+
+        # [ADDED 2026-09-12, Artur's own ask: "dołóżmy ten parametr
+        # prędkości animacji by można było zmieniać te 120ms/tick"] Exposes
+        # renderer.py's own --tempo-ms at launch time (previously only
+        # reachable live, post-launch, via the ]/[ keys inside the GL
+        # window itself -- see clamp_tempo_ms's own [30,2000] range there).
+        # Applies to BOTH modes (it is the playback tick's own real-time
+        # pacing, independent of tick_next_n's range_step -- see that
+        # function's own 2026-09-12 doc-comment for how those two are
+        # different knobs: tempo is "how often", range_step is "how far
+        # each time"). Empty/invalid falls back to renderer.py's own
+        # argparse default (120ms), same omit-if-blank convention as every
+        # other numeric field here.
+        tempo_row = ttk.Frame(position_frame)
+        tempo_row.pack(fill="x", padx=8, pady=(0, 8))
+        ttk.Label(tempo_row, text=self.T("rings.tempo_label")).pack(side="left")
+        self.tempo_ms_entry = ttk.Entry(tempo_row, width=8)
+        self.tempo_ms_entry.insert(0, saved_params.get("tempo_ms", "120"))
+        self.tempo_ms_entry.pack(side="left", padx=(6, 0))
+
+        # --- Windows & tracking -------------------------------------------
+        # [MOVED 2026-09-12, Artur's own ask: "podświetlenie i śledzenie daj
+        # między pozycja i tryb a wygląd bo to parametry pracy nie
+        # ustawienia wizualne" -- these are WORKING parameters (what the
+        # visualization computes/highlights), not visual/appearance
+        # settings, so they belong right after Position & mode, ahead of
+        # Appearance/Audio.]
+        windows_frame = ttk.LabelFrame(container, text=self.T("rings.section_windows"))
+        windows_frame.pack(fill="x", pady=(0, 8))
+
+        # [ADDED Faza 4, see PLAN.md] Window-highlight-family checkboxes --
+        # chosen once here, at launch time, and passed as --windows to
+        # renderer.py (see build_renderer_argv's own doc-comment for why
+        # this is launch-time-only rather than a live in-GL-window toggle).
+        windows_row = ttk.Frame(windows_frame)
+        windows_row.pack(fill="x", padx=8, pady=(6, 6))
+        ttk.Label(windows_row, text=self.T("rings.windows_label")).pack(side="left")
+        self.bertrand_var = tk.BooleanVar(value=saved_params.get("bertrand", False))
+        self._bertrand_check = ttk.Checkbutton(windows_row, text=self.T("rings.window_bertrand"),
+                                                 variable=self.bertrand_var)
+        self._bertrand_check.pack(side="left", padx=(6, 0))
+        self.legendre_var = tk.BooleanVar(value=saved_params.get("legendre", False))
+        self._legendre_check = ttk.Checkbutton(windows_row, text=self.T("rings.window_legendre"),
+                                                 variable=self.legendre_var)
+        self._legendre_check.pack(side="left", padx=(6, 0))
+        self.general_law_var = tk.BooleanVar(value=saved_params.get("general_law", False))
+        self._general_law_check = ttk.Checkbutton(windows_row, text=self.T("rings.window_general_law"),
+                                                     variable=self.general_law_var)
+        self._general_law_check.pack(side="left", padx=(6, 0))
+
+        general_law_row = ttk.Frame(windows_frame)
+        general_law_row.pack(fill="x", padx=8, pady=(0, 6))
+        ttk.Label(general_law_row, text=self.T("rings.general_law_theta_label")).pack(side="left")
+        self.general_law_theta_entry = ttk.Entry(general_law_row, width=6)
+        self.general_law_theta_entry.insert(0, saved_params.get("general_law_theta", "0.5"))
+        self.general_law_theta_entry.pack(side="left", padx=(6, 16))
+        ttk.Label(general_law_row, text=self.T("rings.general_law_mode_label")).pack(side="left")
+        self.general_law_mode_combo = ttk.Combobox(general_law_row, width=10, state="readonly",
+                                                     values=["stepped", "sliding"])
+        self.general_law_mode_combo.set(saved_params.get("general_law_mode", "stepped"))
+        self.general_law_mode_combo.pack(side="left", padx=(6, 0))
+
+        # [ADDED Faza 6, see PLAN.md] Track P field -- comma-separated prime
+        # values, forwarded as-is to renderer.py's --track-primes (see
+        # build_renderer_argv's own doc-comment). Launch-time-only, same
+        # convention as the windows checkboxes above: no live in-GL-window
+        # text field yet. "Auto orbit" mirrors the JS's auto-cycle mode
+        # (mutually exclusive in effect with a real Track P list -- see
+        # renderer.py's own rebuild_buffer(), which skips the tracked-filter
+        # entirely when auto-orbit is on); left as an independent checkbox
+        # here rather than disabling the Track P field, since Faza 10 is
+        # what actually wires auto-orbit's visible behavior.
+        track_row = ttk.Frame(windows_frame)
+        track_row.pack(fill="x", padx=8, pady=(0, 8))
+        ttk.Label(track_row, text=self.T("rings.track_primes_label")).pack(side="left")
+        self.track_primes_entry = ttk.Entry(track_row, width=20)
+        self.track_primes_entry.insert(0, saved_params.get("track_primes", ""))
+        self.track_primes_entry.pack(side="left", padx=(6, 16))
+        self.auto_orbit_var = tk.BooleanVar(value=saved_params.get("auto_orbit", False))
+        self._auto_orbit_check = ttk.Checkbutton(track_row, text=self.T("rings.auto_orbit_label"),
+                                                   variable=self.auto_orbit_var)
+        self._auto_orbit_check.pack(side="left")
+
+        # --- Appearance ----------------------------------------------------
+        appearance_frame = ttk.LabelFrame(container, text=self.T("rings.section_appearance"))
+        appearance_frame.pack(fill="x", pady=(0, 8))
+
+        # [ADDED as part of Faza 4's point-size investigation, 2026-09-04]
+        # Exposed here (instead of only reachable by hand-editing
+        # renderer.py's argparse default) so a real value change is
+        # verifiable from the GUI alone -- see build_renderer_argv's own
+        # doc-comment for the full context.
+        point_size_row = ttk.Frame(appearance_frame)
+        point_size_row.pack(fill="x", padx=8, pady=(6, 6))
+        ttk.Label(point_size_row, text=self.T("rings.point_size_label")).pack(side="left")
+        self.point_size_entry = ttk.Entry(point_size_row, width=8)
+        # [CHANGED 2026-09-10] Artur's own chosen default, raised from 3.0 to 15.
+        self.point_size_entry.insert(0, saved_params.get("point_size", "15"))
+        self.point_size_entry.pack(side="left", padx=(6, 0))
+
+        # [ADDED Faza 11C, see build_renderer_argv's own doc-comment --
+        # Artur's real-screen report that the HUD was unreadably small and
+        # that hit-rings (on the vertical reference line) needed an
+        # independent size from every other ring.] Pre-filled with Artur's
+        # own chosen defaults (2026-09-09: hit-ring size 40, HUD font 35) --
+        # same convention as point_size_entry's own "3.0" pre-fill above --
+        # so these values are visibly wired in at launch rather than hidden
+        # behind a blank field the user has to know to fill in. Clearing the
+        # field still omits the CLI flag entirely (renderer.py's own
+        # argparse defaults, ALSO 40/35 as of this phase, apply then too).
+        hit_point_size_row = ttk.Frame(appearance_frame)
+        hit_point_size_row.pack(fill="x", padx=8, pady=(0, 6))
+        ttk.Label(hit_point_size_row, text=self.T("rings.hit_point_size_label")).pack(side="left")
+        self.hit_point_size_entry = ttk.Entry(hit_point_size_row, width=8)
+        # [CHANGED 2026-09-10] Artur's own chosen default, lowered from 40 to 20.
+        self.hit_point_size_entry.insert(0, saved_params.get("hit_point_size", "20"))
+        self.hit_point_size_entry.pack(side="left", padx=(6, 0))
+
+        hud_font_size_row = ttk.Frame(appearance_frame)
+        hud_font_size_row.pack(fill="x", padx=8, pady=(0, 8))
+        ttk.Label(hud_font_size_row, text=self.T("rings.hud_font_size_label")).pack(side="left")
+        self.hud_font_size_entry = ttk.Entry(hud_font_size_row, width=8)
+        self.hud_font_size_entry.insert(0, saved_params.get("hud_font_size", "35"))
+        self.hud_font_size_entry.pack(side="left", padx=(6, 0))
+
+        # --- Audio -----------------------------------------------------------
+        audio_frame = ttk.LabelFrame(container, text=self.T("rings.section_audio"))
+        audio_frame.pack(fill="x", pady=(0, 8))
+        audio_row = ttk.Frame(audio_frame)
+        audio_row.pack(fill='x', padx=8, pady=(6, 4))
+        self.audio_enabled = tk.BooleanVar(value=saved_params.get("audio_enabled", False))
+        self._audio_enable_check = ttk.Checkbutton(audio_row, text=self.T('rings.audio_enable'),
+                                                     variable=self.audio_enabled)
+        self._audio_enable_check.pack(side='left')
+        self.audio_choices = {}
+        for channel, default in (('low', 'sine'), ('prime', 'triangle'), ('lcm', 'choir')):
+            ttk.Label(audio_row, text=self.T('rings.sound_' + channel)).pack(side='left', padx=(8, 3))
+            choice = ttk.Combobox(audio_row, state='readonly', width=11,
+                                 values=[self.T('rings.instrument_' + name) for name in INSTRUMENTS])
+            saved_instrument = saved_params.get('sound_' + channel, default)
+            choice.current(INSTRUMENTS.index(saved_instrument) if saved_instrument in INSTRUMENTS
+                            else INSTRUMENTS.index(default))
+            choice.pack(side='left')
+            self.audio_choices[channel] = choice
+        ttk.Label(audio_frame, text=self.T('rings.audio_hint')).pack(anchor='w', padx=8, pady=(0, 6))
+
+        # [ADDED 2026-09-12] Applies the mode switch's enabled/disabled
+        # wiring once, right after every field above has been created --
+        # must run after load_range_from/to and max_load_count entries above
+        # exist, and after n_entry, since it addresses all of them by
+        # attribute.
+        self._on_mode_changed()
 
         # [RELABELED 2026-09-10] These two buttons keep their original
         # attribute names (open_button/stop_button -- unchanged, so
@@ -445,11 +534,12 @@ class RingsTab(BaseTab):
             self.n_entry, self.point_size_entry, self.hit_point_size_entry,
             self.hud_font_size_entry, self.general_law_theta_entry,
             self.track_primes_entry, self.load_range_from_entry, self.load_range_to_entry,
-            self.max_load_count_entry,
+            self.max_load_count_entry, self.tempo_ms_entry,
         ]
         self._launch_param_checkbuttons = [
             self._audio_enable_check, self._bertrand_check, self._legendre_check,
             self._general_law_check, self._auto_orbit_check,
+            self._mode_sequential_radio, self._mode_range_radio,
         ]
         self._launch_param_dropdowns = [
             self.general_law_mode_combo,
@@ -478,6 +568,32 @@ class RingsTab(BaseTab):
         dropdown_state = "disabled" if readonly else "readonly"
         for dropdown in self._launch_param_dropdowns:
             dropdown.configure(state=dropdown_state)
+        if not readonly:
+            # [ADDED 2026-09-12] The blanket loop above just re-enabled N
+            # AND Load Range/max-load-count together -- re-apply the mode
+            # switch's own restriction on top, so unlocking (Reset, a clean
+            # exit, RING_VIZ_RESUMED) leaves only whichever pair the
+            # CURRENTLY selected mode actually uses editable, same as right
+            # after _build_ui runs.
+            self._on_mode_changed()
+
+    def _on_mode_changed(self, _event=None):
+        """[ADDED 2026-09-12, Artur's own ask: "obok n dajmy przełącznik czy
+        wizualizacja działa na n czy na zakresie od do"] Greys out whichever
+        of N / Load Range's fields the CURRENT mode doesn't use, instead of
+        leaving a stale, easy-to-miss leftover value in the inactive one
+        able to silently change behavior (see _on_open's own load_range
+        gating below, now keyed off mode_var rather than "both fields
+        happen to be non-empty" -- the exact old rule that once let a
+        26-digit leftover From value silently activate range mode).
+        max_load_count is only ever meaningful together with Load Range, so
+        it follows the same enabled state."""
+        is_range = self.mode_var.get() == "range"
+        self.n_entry.configure(state="disabled" if is_range else "normal")
+        range_state = "normal" if is_range else "disabled"
+        self.load_range_from_entry.configure(state=range_state)
+        self.load_range_to_entry.configure(state=range_state)
+        self.max_load_count_entry.configure(state=range_state)
 
     def _on_n_changed(self, _event=None):
         """Live floor hint next to the N field -- purely informational (which
@@ -570,41 +686,56 @@ class RingsTab(BaseTab):
         track_primes = [p.strip() for p in track_primes_raw.split(",") if p.strip()] if track_primes_raw else []
         auto_orbit = self.auto_orbit_var.get()
 
-        # [ADDED Faza 9, see PLAN.md] Load Range -- both fields must be
-        # non-empty AND parse as plain integers to activate range mode;
-        # anything else (both blank, one blank, garbage text) silently
-        # falls back to sequential mode rather than raising inside the GUI
-        # thread -- renderer.py's own --load-range parsing/validation
-        # (main()'s parser.error, run()'s load_prime_range_slice) is where
-        # a well-formed-but-nonsensical range (e.g. FROM > TO, or TO beyond
-        # what's loaded) surfaces, as a normal subprocess error visible in
-        # the console pane, same convention as track_primes above.
+        # [ADDED Faza 9, see PLAN.md; CHANGED 2026-09-12, Artur's own ask:
+        # "obok n dajmy przełącznik czy wizualizacja działa na n czy na
+        # zakresie od do"] Which mode is active is now decided EXPLICITLY by
+        # mode_var (the radiobuttons next to N), not by whether From/To
+        # happen to both be filled in -- that old implicit rule is exactly
+        # what let a stale leftover From value silently activate range mode
+        # once already (Artur's own report, same session). Range mode with
+        # missing/invalid From or To now fails loudly (an error dialog, same
+        # convention as the N-invalid case above) instead of silently
+        # falling back to sequential.
+        #
         # [CHANGED 2026-09-12, Artur's own ask: "pisanie 25 zer nie jest
-        # przyjemne"] Now goes through the SAME _eval_quick_number the N
-        # field above already uses (plain digits, "10**5"-style expressions,
-        # and -- via that function's own parse_big_int fast path -- "a*10^b"
-        # / scientific notation too), instead of a bare `.isdigit()` check
-        # that rejected anything but plain decimal digits. A real magazyn
-        # floor's own magnitude (piętro 25 alone is 26 digits) is exactly why
-        # this matters here.
+        # przyjemne"] Parsing itself goes through the SAME _eval_quick_number
+        # the N field above already uses (plain digits, "10**5"-style
+        # expressions, and -- via that function's own parse_big_int fast
+        # path -- "a*10^b"/scientific notation too), instead of a bare
+        # `.isdigit()` check that rejected anything but plain decimal
+        # digits. A real magazyn floor's own magnitude (piętro 25 alone is
+        # 26 digits) is exactly why this matters here.
+        range_mode_selected = self.mode_var.get() == "range"
         range_from_raw = self.load_range_from_entry.get().strip()
         range_to_raw = self.load_range_to_entry.get().strip()
         load_range = None
-        if range_from_raw and range_to_raw:
-            range_from = _eval_quick_number(range_from_raw)
-            range_to = _eval_quick_number(range_to_raw)
-            if range_from is not None and range_to is not None and range_from >= 0 and range_to >= 0:
-                load_range = (range_from, range_to)
+        if range_mode_selected:
+            range_from = _eval_quick_number(range_from_raw) if range_from_raw else None
+            range_to = _eval_quick_number(range_to_raw) if range_to_raw else None
+            if range_from is None or range_to is None or range_from < 0 or range_to < 0:
+                messagebox.showerror(self.T("rings.error_dialog_title"), self.T("rings.error_range_invalid"))
+                return
+            load_range = (range_from, range_to)
 
         # [ADDED, Artur 2026-09-12] Same empty-or-invalid-omits-the-flag
         # convention as point_size/hit_point_size/hud_font_size above --
         # renderer.py's own argparse default (2,000,000) applies when this
         # is left blank or unparseable. Same _eval_quick_number convention
-        # as load_range above.
+        # as load_range above. Only meaningful in range mode, but parsed
+        # unconditionally like every other optional field here -- harmless
+        # (never forwarded) when mode is sequential.
         max_load_count_raw = self.max_load_count_entry.get().strip()
         max_load_count = _eval_quick_number(max_load_count_raw) if max_load_count_raw else None
         if max_load_count is not None and max_load_count < 0:
             max_load_count = None
+
+        # [ADDED 2026-09-12, Artur's own ask: "dołóżmy ten parametr
+        # prędkości animacji"] Same empty-or-invalid-omits-the-flag
+        # convention as every other numeric field here -- renderer.py's own
+        # argparse/clamp_tempo_ms default (120ms, clamped to [30,2000])
+        # applies when this is left blank or unparseable.
+        tempo_ms_raw = self.tempo_ms_entry.get().strip()
+        tempo_ms = _eval_quick_number(tempo_ms_raw) if tempo_ms_raw else None
 
         argv = build_renderer_argv(portal_folder, n, windows=windows,
                                     general_law_theta=theta, general_law_mode=mode,
@@ -618,7 +749,8 @@ class RingsTab(BaseTab):
                                     sound_prime=INSTRUMENTS[self.audio_choices['prime'].current()],
                                     sound_lcm=INSTRUMENTS[self.audio_choices['lcm'].current()],
                                     pipe_stdin_commands=True,
-                                    max_load_count=max_load_count)
+                                    max_load_count=max_load_count,
+                                    tempo_ms=tempo_ms)
         # [ADDED 2026-09-11] Persist every launch-time field as-typed, so the NEXT
         # launch (this session's Reset+Start, or a whole new app restart) reopens
         # with these same values instead of the tab's hardcoded first-run defaults
@@ -643,6 +775,8 @@ class RingsTab(BaseTab):
                 "general_law_mode": mode,
                 "track_primes": track_primes_raw,
                 "auto_orbit": auto_orbit,
+                "mode": self.mode_var.get(),
+                "tempo_ms": tempo_ms_raw,
                 "load_range_from": range_from_raw,
                 "load_range_to": range_to_raw,
                 "max_load_count": max_load_count_raw,
