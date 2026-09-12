@@ -848,6 +848,35 @@ def _test_format_big():
     formatted_neg = format_big(-big, digit_threshold=15)
     check(formatted_neg.startswith("-1.234"), f"sign preserved past the threshold too (got {formatted_neg!r})")
 
+    # [ADDED 2026-09-12, Artur's report: format_big(LCM of ~500 real
+    # magazyn-floor-25-scale tracked primes) crashed with "ValueError:
+    # Exceeds the limit (4300 digits) for integer string conversion" --
+    # Python 3.11+'s int-to-str safety limit fired inside format_big's OWN
+    # str(value) call, before its truncation logic ever ran. This
+    # reproduces that exact class of value (well past 4300 digits) and
+    # confirms format_big itself no longer ever calls str() on the full
+    # value.] 12,000 nines is comfortably past Python's default
+    # sys.get_int_max_str_digits() (4300) -- str(huge) alone would raise
+    # here on an unpatched format_big.
+    huge = 10 ** 12_000 - 1  # 12,000 nines -- built via arithmetic, not int("9"*12000),
+    # since str->int parsing hits the exact same Python 3.11+ digit limit this test exists to guard against
+    formatted_huge = format_big(huge)
+    check("×10^" in formatted_huge and formatted_huge.endswith("(12000 digits)"),
+          f"a value far beyond Python's int-to-str digit limit is truncated correctly, "
+          f"never crashing (got {formatted_huge!r})")
+    check(formatted_huge.startswith("9.999"), f"mantissa is still the true leading digits (got {formatted_huge!r})")
+
+    huge_neg = format_big(-huge)
+    check(huge_neg.startswith("-9.999") and huge_neg.endswith("(12000 digits)"),
+          f"sign preserved for a value this large too (got {huge_neg!r})")
+
+    # A non-repunit huge value, to make sure the leading-digit extraction
+    # (magnitude // 10**shift) picks out the TRUE leading digits, not an
+    # artifact of every digit being the same.
+    huge_mixed = 10 ** 4308 + 23456789  # "1" then zeros then "23456789" at the tail, 4309 digits -- again built via arithmetic, not str parsing
+    formatted_mixed = format_big(huge_mixed)
+    check(formatted_mixed.startswith("1.0000"), f"leading digits extracted correctly for a non-repunit value (got {formatted_mixed!r})")
+
 
 # ---------------------------------------------------------------------------
 # Faza 8 (see PLAN.md): tracked-ring outline circles, center marker, flash

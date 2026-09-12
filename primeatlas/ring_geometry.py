@@ -247,10 +247,25 @@ def legendre_level_at(n):
     """k such that k*k < n <= (k+1)*(k+1); 0 for n <= 1.
     Ports SieveModel.legendreLevelAt (see its own doc-comment for the
     off-by-one-at-perfect-squares history -- floor(sqrt(n-1)), NOT
-    floor(sqrt(n)))."""
+    floor(sqrt(n))).
+
+    [FIXED 2026-09-12, Artur's report: enabling Legendre/General Law at a
+    real magazyn-floor-scale N (~10**25, far beyond what float64/np.sqrt
+    can even represent) crashed with "TypeError: loop of ufunc does not
+    support argument 0 of type int which has no callable sqrt method"] Was
+    `int(np.floor(np.sqrt(n - 1)))` -- np.sqrt cannot operate on a Python
+    int outside float64's representable range (numpy falls back to an
+    object-dtype ufunc loop that calls `.sqrt()` on the value itself,
+    which a plain int has no such method for). math.isqrt is the exact
+    integer-only equivalent of floor(sqrt(...)) for any non-negative
+    Python int, arbitrarily large, with no float conversion (and thus no
+    precision loss either, unlike the old np.sqrt path even when it did
+    work) -- ring_positions/to_prime_array already went big-int-safe this
+    same way; Legendre/General Law's own window math never had, until
+    now."""
     if n <= 1:
         return 0
-    return int(np.floor(np.sqrt(n - 1)))
+    return math.isqrt(n - 1)
 
 
 def is_bertrand_member(primes, n):
@@ -1054,6 +1069,25 @@ def tracked_resonance_state(tracked, active_primes, n, auto_orbit=False,
     return {"tracked": tracked_active, "lcm": lcm, "phase": phase, "to_resonance": to_resonance}
 
 
+def _int_digit_count(value):
+    """Exact decimal digit count of a non-negative int, WITHOUT ever
+    calling str() on it -- see format_big's own doc-comment for why that
+    matters. `value.bit_length() * log10(2)` gives a cheap starting
+    estimate (off by at most one, right at a power-of-ten boundary); the
+    two correction loops below fix that up using only integer power/
+    comparison, neither of which numpy or Python impose any digit-count
+    limit on (unlike str(int), see PEP-recommended
+    sys.set_int_max_str_digits() background)."""
+    if value == 0:
+        return 1
+    estimate = int(value.bit_length() * math.log10(2)) + 1
+    while 10 ** estimate <= value:
+        estimate += 1
+    while estimate > 1 and 10 ** (estimate - 1) > value:
+        estimate -= 1
+    return estimate
+
+
 def format_big(value, digit_threshold=15):
     """Port of StructuralSieveApp.js's #formatBig: below digit_threshold
     digits (JS default 15, ~Number.MAX_SAFE_INTEGER's own digit count),
@@ -1063,12 +1097,32 @@ def format_big(value, digit_threshold=15):
     together, and printing all of them would be noise, not information.
     English-only wording (unlike the JS's #t()-localized string) since
     this is a console/HUD diagnostic string on the Python side, not
-    user-facing app chrome with its own PL/EN locale files."""
+    user-facing app chrome with its own PL/EN locale files.
+
+    [FIXED 2026-09-12, Artur's report: the LCM of ~500 auto-tracked real
+    magazyn-floor-scale primes (~25 digits each) can reach roughly 12,500
+    digits, which crashed with "ValueError: Exceeds the limit (4300
+    digits) for integer string conversion" -- Python 3.11+'s int-to-str
+    safety limit (see sys.set_int_max_str_digits(), CVE-2020-10735) bites
+    BEFORE this function's own truncation logic ever got a chance to run,
+    since the old code called `str(value)` unconditionally just to measure
+    its length. Fixed by never converting the FULL value to a string:
+    _int_digit_count() gets the exact digit count via integer arithmetic
+    alone, and only the leading handful of digits (a small int, however
+    huge `value` itself is) is ever passed to str() for the truncated
+    mantissa. Below digit_threshold, `value` itself is already known to be
+    small (<=15 digits by default, i.e. nowhere near the 4300-digit limit),
+    so str() on the full value there is exactly as safe as it always was."""
     value = int(value)
     negative = value < 0
-    s = str(-value if negative else value)
-    if len(s) <= digit_threshold:
-        return ("-" if negative else "") + s
+    magnitude = -value if negative else value
+    digit_count = _int_digit_count(magnitude)
+    if digit_count <= digit_threshold:
+        return ("-" if negative else "") + str(magnitude)
+    leading_digit_count = 5
+    shift = digit_count - leading_digit_count
+    leading = magnitude // (10 ** shift) if shift > 0 else magnitude
+    s = str(leading)
     mantissa = f"{s[0]}.{s[1:5]}"
-    exponent = len(s) - 1
-    return ("-" if negative else "") + f"{mantissa}×10^{exponent} ({len(s)} digits)"
+    exponent = digit_count - 1
+    return ("-" if negative else "") + f"{mantissa}×10^{exponent} ({digit_count} digits)"
