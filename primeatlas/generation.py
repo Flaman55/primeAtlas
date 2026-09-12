@@ -40,6 +40,7 @@ import threading
 import time
 
 from .storage import LOW_FLOOR_CUTOFF, list_pietra, list_source_filenames, _offset_from_filename
+from .ring_geometry import parse_big_int
 
 _SCRIPT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # One level up from THIS file's own directory (primeatlas/) -- prime_atlas_v1.py's
@@ -316,6 +317,19 @@ def _eval_quick_number(raw):
     cleaned = re.sub(r"[\s,]", "", raw)
     if not cleaned:
         return None
+    # [ADDED 2026-09-12, Artur's own ask: "pisanie 25 zer nie jest przyjemne"]
+    # Tried FIRST, ahead of the general eval() below: parse_big_int recognizes
+    # a plain integer, "a*10**b"/"a*10^b", or scientific notation ("aEb")
+    # using EXACT integer arithmetic only -- never float() -- so a magazyn-
+    # floor-scale value (piętro 25 alone is 26 digits) round-trips exactly no
+    # matter how large the exponent. The eval() fallback stays exactly as it
+    # was for every other input this function has always accepted (general
+    # arithmetic expressions like "10**5+3", which parse_big_int intentionally
+    # does not attempt), so nothing already relying on it changes behavior.
+    try:
+        return parse_big_int(cleaned)
+    except ValueError:
+        pass
     try:
         return int(eval(cleaned, {"__builtins__": {}}, {}))
     except Exception:

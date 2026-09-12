@@ -49,8 +49,108 @@ the GPU-scale ring count already proven feasible.
 """
 
 import math
+import re
 
 import numpy as np
+
+UINT64_MAX = (1 << 64) - 1
+
+
+def to_prime_array(values):
+    """[ADDED 2026-09-12, Artur's report: a real magazyn floor (10p25/10p27,
+    ~10**25-10**27 in magnitude) overflowed the old hardcoded `dtype=np.int64`
+    cast every one of this module's (and renderer.py's) prime-handling
+    functions used to do independently] Converts an ascending sequence of
+    nonnegative prime values into the cheapest numpy dtype that holds every
+    value EXACTLY:
+
+      - `uint64` (native, vectorized, same speed as the old `int64` path for
+        anything that actually fits -- doubles int64's own ~9.2e18 ceiling to
+        ~1.8e19 for free, purely by dropping the sign bit primes never used)
+        when the largest value fits.
+      - plain-Python-int `object` dtype otherwise -- exact at any magnitude
+        (a real piętro 25/27 prime included), just slower per-element (numpy
+        dispatches object-dtype ufuncs through Python's own int arithmetic
+        instead of native SIMD) since there is no fixed-width integer type
+        that could hold a 25+-digit value at all.
+
+    Artur's own ask (2026-09-12): default to the fast path, only pay the
+    slow path's cost for the specific data that actually needs it -- so this
+    is checked ONCE here (via the last element, since callers always pass an
+    ascending sequence) rather than every downstream function re-deciding
+    it independently. Already-canonical input (an ndarray already dtype
+    uint64 or object) is returned as-is, no re-copy -- this function is cheap
+    to call at the top of every function that used to hardcode the int64
+    cast, including ones that will see the SAME array call after call.
+
+    An already-array `values` that is neither uint64 nor object is (e.g. the
+    old default int64, or a plain Python list) re-cast the slow way (`int(x)`
+    per element) only when its own dtype can't cheaply prove every element
+    fits uint64 -- negligible cost next to the actual load/render work this
+    feeds into."""
+    if isinstance(values, np.ndarray) and values.dtype in (np.uint64, object):
+        return values
+    n = len(values)
+    if n == 0:
+        return np.empty(0, dtype=np.uint64)
+    last = values[-1]
+    last = int(last) if not isinstance(last, np.integer) else int(last)
+    if 0 <= last <= UINT64_MAX:
+        return np.asarray(values, dtype=np.uint64)
+    return np.asarray([int(v) for v in values], dtype=object)
+
+
+_PARSE_INT_RE = re.compile(r'^[+-]?\d+$')
+# Mantissa is OPTIONAL (defaults to 1) so a bare "10**25"/"10^25" (Artur's
+# own shorthand for "piętro 25 starts here") parses the same as "1*10**25".
+_PARSE_POW_RE = re.compile(r'^(?:([+-]?\d+)\s*\*\s*)?10\s*(?:\*\*|\^)\s*([+-]?\d+)$')
+_PARSE_SCI_RE = re.compile(r'^([+-]?\d+)(?:\.(\d+))?\s*[eE]\s*([+-]?\d+)$')
+
+
+def parse_big_int(text):
+    """[ADDED 2026-09-12, Artur's own ask: "pisanie 25 zer nie jest
+    przyjemne"] Parses a Python int from `text`, accepting whichever of these
+    forms is most convenient to type for a value at a real magazyn floor's
+    magnitude (piętro 25 alone needs 26 digits):
+
+      - plain digits, optionally with `_` group separators (Python's own
+        integer-literal convention, e.g. "1_000_000") -- reproduces bare
+        `int()` behavior for anything that already parses that way.
+      - `a*10**b` or `a*10^b` ("mathematical/informatyczna" exponent forms
+        Artur named directly) -- e.g. "6*10**20", "6 * 10 ^ 20".
+      - scientific notation `aEb` / `a.fEb` -- e.g. "6e20", "1.5E25".
+
+    Always computed with exact Python integer arithmetic (`int(...) *
+    10**exponent`, decimal-point cases shift digits instead of dividing) --
+    NEVER via `float(text)`, which would silently round a value like this at
+    the 15-17th significant digit, exactly where a piętro-25+ value's own
+    precision matters. Raises ValueError (naming the rejected text, same
+    contract as `int()` itself) for anything else, so existing "invalid
+    field" handling around a bare `int()`/`.isdigit()` call needs no change
+    beyond swapping in this function."""
+    s = text.strip().replace('_', '')
+    if not s:
+        raise ValueError(f"parse_big_int: empty value {text!r}")
+    if _PARSE_INT_RE.match(s):
+        return int(s)
+    m = _PARSE_POW_RE.match(s)
+    if m:
+        mantissa = int(m.group(1)) if m.group(1) is not None else 1
+        exponent = int(m.group(2))
+        if exponent < 0:
+            raise ValueError(f"parse_big_int: negative exponent in {text!r}")
+        return mantissa * (10 ** exponent)
+    m = _PARSE_SCI_RE.match(s)
+    if m:
+        int_part, frac_part, exponent = m.group(1), m.group(2) or '', int(m.group(3))
+        exponent -= len(frac_part)
+        if exponent < 0:
+            raise ValueError(f"parse_big_int: {text!r} is not a whole number")
+        return int(int_part + frac_part) * (10 ** exponent)
+    raise ValueError(
+        f"parse_big_int: not a recognized integer (plain digits, a*10**b, a*10^b, "
+        f"or aEb expected): {text!r}"
+    )
 
 
 def ring_radii(count, max_radius):
@@ -87,36 +187,53 @@ def ring_positions(primes, n, max_radius, cx=0.0, cy=0.0):
     this (kept out of this module -- see module docstring: this is geometry
     only, same split as DrumRenderer.js deliberately not importing SieveModel.js).
 
-    Phase precision note: `n % primes` is computed with Python's arbitrary-
-    precision int modulo against each numpy element via `np.mod`, which
-    upcasts to float64 for the division -- exact for any prime that fits in
-    float64's 53-bit mantissa (i.e. primes below 2**53, far beyond any prime
-    count a magazyn floor or GPU point budget will reach), but `n` itself
-    should be reduced mod each prime in integer arithmetic, not float, once N
-    itself grows past 2**53 (a floor-index concern, not a ring-count concern).
-    This function uses `np.mod` on an int64 primes array (safe up to primes
-    < 2**63) with a Python-int `n` reduced via plain integer mod first (see
-    the implementation below for the exact guard).
-    """
+    Phase precision note: `n % primes` needs EXACT integer modulo, not a
+    float64 approximation, for `is_hit` (phase == 0) to ever be correct at
+    real magazyn scale -- see to_prime_array's own doc-comment for why
+    `primes_arr` itself is uint64 (fast, native, the common case, good for
+    primes up to ~1.8e19) or `object` (exact Python ints, the slower
+    fallback a real piętro 25+ value needs; see that function's own
+    doc-comment for why the cost is only ever paid when actually needed).
+
+    [FIXED 2026-09-12, found by Artur's own report of a magazyn floor
+    (10p25/10p27) crash while testing today's arbitrary-range feature] The
+    OLD code here unconditionally reduced n via `n_int % (1 << 63)` before
+    ever taking it mod a prime -- silently WRONG (not just imprecise) for
+    any `n >= 2**63`, since `(n % 2**63) % p != n % p` in general (nothing
+    makes 2**63 a multiple of an arbitrary prime p). That reduction was only
+    ever a no-op safety net for n already < 2**63 (this project's entire use
+    of ring_viz until real high-floor data existed) -- never a valid
+    shortcut for n at or past it, which real piętro 25+ viewing needs `n`
+    to reach. Replaced below with a dtype-aware branch: `primes_arr` uint64
+    AND `n` fits uint64 keeps the exact old fast vectorized `np.mod` path
+    (unchanged cost, unchanged result for every case that already worked);
+    anything past either ceiling routes through one `object`-dtype `np.mod`
+    call (numpy dispatches this via Python's own exact int `%` per element
+    -- correct at any magnitude, paid only in this branch)."""
     count = len(primes)
     if count == 0:
         empty = np.empty(0, dtype=np.float64)
         return {
-            "x": empty, "y": empty, "phase": empty.astype(np.int64),
+            "x": empty, "y": empty, "phase": empty.astype(np.uint64),
             "is_hit": empty.astype(bool), "radius": empty, "angle": empty,
         }
 
-    primes_arr = np.asarray(primes, dtype=np.int64)
+    primes_arr = to_prime_array(primes)
     radius = ring_radii(count, max_radius)
 
-    # Reduce n to a plain Python int first (safe for arbitrary size), then let
-    # numpy's integer mod handle the elementwise part -- avoids float64
-    # rounding entirely as long as `primes_arr` fits int64 (true for any
-    # prime this project's magazyn will ever hold; see LOW_FLOOR_CUTOFF-style
-    # floor scale in storage.py, nowhere near int64's ~9.2e18 ceiling).
     n_int = int(n)
-    n_mod = n_int % (1 << 63)  # numpy int64 wraps past this; primes stay well below it
-    phase = np.mod(n_mod, primes_arr)
+    if primes_arr.dtype == object or n_int > UINT64_MAX:
+        phase = np.mod(n_int, primes_arr.astype(object) if primes_arr.dtype != object else primes_arr)
+        if primes_arr.dtype != object:
+            # primes all fit uint64 (only n itself was the oversized operand
+            # above) -- phase < prime <= UINT64_MAX always, so it is safe (and
+            # keeps every downstream consumer, e.g. build_vertex_data's own
+            # `primes_arr >= 11` comparisons, on the cheap native dtype) to
+            # bring the RESULT back down once the exact object-dtype mod
+            # above has already done the actual work correctly.
+            phase = phase.astype(np.uint64)
+    else:
+        phase = np.mod(np.uint64(n_int), primes_arr)
 
     angle = phase.astype(np.float64) * (2.0 * np.pi) / primes_arr.astype(np.float64) - (np.pi / 2.0)
     x = cx + radius * np.cos(angle)
@@ -305,7 +422,7 @@ def bertrand_anchor_at(primes, n):
     """Ports SieveModel.bertrandAnchorAt: the frozen/jumping Bertrand witness
     at step n (see that method's own doc-comment for the freeze/jump rule).
     Returns a single int or None (no active primes yet)."""
-    primes_arr = np.asarray(primes, dtype=np.int64)
+    primes_arr = to_prime_array(primes)
     if len(primes_arr) == 0:
         return None
     anchor = int(primes_arr[0])
@@ -321,7 +438,7 @@ def legendre_anchor_at(primes, n):
     """Ports SieveModel.legendreAnchorAt: largest active prime strictly below
     the current level's own opening edge k*k. Returns None if none exists
     (k in {0,1})."""
-    primes_arr = np.asarray(primes, dtype=np.int64)
+    primes_arr = to_prime_array(primes)
     if len(primes_arr) == 0:
         return None
     k = legendre_level_at(n)
@@ -333,7 +450,7 @@ def general_law_anchor_at(primes, n, theta, mode):
     the window's own current opening edge `lo` (computed as "strictly below
     floor(lo)+1", equivalent for integer primes -- see the JS method's own
     doc-comment)."""
-    primes_arr = np.asarray(primes, dtype=np.int64)
+    primes_arr = to_prime_array(primes)
     if len(primes_arr) == 0:
         return None
     lo, _hi, _k, _factor = general_law_window_bounds(n, theta, mode)
@@ -439,7 +556,7 @@ def cyclic_window_anchor_at(anchor_state, family_id, primes, n, theta=0.5, mode=
     family_id must be "legendre" or "generalLaw" -- Bertrand has no cyclic
     state of its own and keeps using bertrand_anchor_at (via
     ANCHOR_FUNCTIONS) directly."""
-    primes_arr = np.asarray(primes, dtype=np.int64)
+    primes_arr = to_prime_array(primes)
     if family_id not in ("legendre", "generalLaw"):
         raise ValueError(f"cyclic_window_anchor_at does not support family_id {family_id!r}")
 
@@ -524,7 +641,7 @@ def compute_highlight_colors(primes, n, enabled_ids, theta=0.5, mode="stepped"):
     Returns (colors, matched) -- see _blend_family_colors's own docstring for
     the exact shape; `matched[i] is False` is this function's counterpart to
     the JS version returning null for ring i."""
-    primes_arr = np.asarray(primes, dtype=np.int64)
+    primes_arr = to_prime_array(primes)
     count = len(primes_arr)
 
     strict_by_family = {}
@@ -566,7 +683,7 @@ def compute_tracked_colors(primes, n, enabled_ids, theta=0.5, mode="stepped", an
     behavior unchanged.
 
     Returns (colors, matched) -- same shape as compute_highlight_colors."""
-    primes_arr = np.asarray(primes, dtype=np.int64)
+    primes_arr = to_prime_array(primes)
     count = len(primes_arr)
 
     masks = {}
@@ -630,7 +747,7 @@ def window_anchor_primes(primes, n, enabled_ids, theta=0.5, mode="stepped", anch
     through ANCHOR_FUNCTIONS."""
     if not enabled_ids:
         return []
-    primes_arr = np.asarray(primes, dtype=np.int64)
+    primes_arr = to_prime_array(primes)
     anchors = []
     for family_id in WINDOW_FAMILY_COLORS:
         if family_id not in enabled_ids:
@@ -666,6 +783,15 @@ def active_window_count(enabled_ids):
 # marking (a slice increment instead of a per-multiple Python loop).
 # ---------------------------------------------------------------------------
 
+#: [ADDED 2026-09-12] Hard ceiling on resonance_events_in_range's own
+#: O(to_n-from_n) marking-pass array -- 20M int64 entries is ~160MB, a
+#: reasonable bound for a single scan; well past this, the algorithm's own
+#: approach (dense per-n marking) is no longer viable regardless of memory,
+#: see that function's own 2026-09-12 doc-comment for the real-world case
+#: (a real magazyn-floor-scale range/tick) this actually guards against.
+_RESONANCE_SCAN_MAX_SIZE = 20_000_000
+
+
 def resonance_events_in_range(primes, from_n, to_n):
     """Every "resonance" step n in [from_n, to_n] (inclusive): n is a
     resonance step when every prime whose leading primorial product still
@@ -676,11 +802,40 @@ def resonance_events_in_range(primes, from_n, to_n):
     Returns a list of {"n": int, "factors": [int, ...]} dicts in ascending n
     order, factors listing every dividing prime for that n (same shape as
     the JS version's plain objects).
-    """
+
+    [FIXED 2026-09-12, Artur's crash report: `ValueError: Maximum allowed
+    dimension exceeded` at real magazyn-floor-25 scale] This function's own
+    marking pass is O(to_n - from_n) by design (see the module comment just
+    above it) -- fine at the small N/gaps this module was built around, but
+    tick_next_n's own 2026-09-12 `range_step` fix (see that function's
+    doc-comment) means a single range-mode tick's gap can now itself be
+    ~10**21-sized once real magazyn-floor primes are loaded, which a dense
+    `np.zeros(size, ...)` array can never hold. TWO guards below, cheapest
+    first:
+      1. A resonance step needs `primorial(smallest active prime) <= to_n`
+         (see `thresholds` below) -- if even the SMALLEST active prime
+         already exceeds to_n, NO resonance is possible ANYWHERE in this
+         span, full stop, so this returns immediately without ever
+         allocating anything. This is the exact case a real high-floor range
+         hits on literally every tick (active primes ~10**25, to_n only
+         ~10**21 for a long while) -- an O(1) check covers it for free.
+      2. A hard cap on `size` itself, for any other combination that still
+         slips past guard 1 (e.g. small-enough primes but an enormous gap
+         some other way) -- past this, resonance events genuinely cannot be
+         found by this algorithm's approach at all; returning [] (silently
+         "nothing found," same contract as the to_n<from_n case just above)
+         is correct behavior here, not a workaround -- a marking-pass scan
+         over a span this size was never going to finish in this session
+         regardless of memory, so there is no slower-but-correct fallback
+         worth reaching for."""
     if to_n < from_n:
         return []
-    primes_arr = np.asarray(primes, dtype=np.int64)
+    primes_arr = to_prime_array(primes)
+    if len(primes_arr) == 0 or int(primes_arr[0]) > to_n:
+        return []
     size = to_n - from_n + 1
+    if size > _RESONANCE_SCAN_MAX_SIZE:
+        return []
     factor_count = np.zeros(size, dtype=np.int64)
 
     # Marking pass: for each active prime p, bump every multiple of p inside
@@ -834,10 +989,10 @@ def tracked_ring_mask(primes, tracked):
     empty, matching np.isin's own behavior against an empty second operand
     -- no special-casing needed, but spelled out here since an empty
     `tracked` is the common "nothing tracked yet" case."""
-    primes_arr = np.asarray(primes, dtype=np.int64)
+    primes_arr = to_prime_array(primes)
     if len(primes_arr) == 0 or not tracked:
         return np.zeros(len(primes_arr), dtype=bool)
-    tracked_arr = np.asarray(list(tracked), dtype=np.int64)
+    tracked_arr = to_prime_array(sorted(tracked))
     return np.isin(primes_arr, tracked_arr)
 
 

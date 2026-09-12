@@ -75,7 +75,12 @@ def _test_basic_multi_floor_load():
         check(list(result) == [2, 3, 5, 7, 11, 13, 17, 19, 23, 29],
               f"load_magazyn(upto=30) across two floors returns every prime "
               f"<=30 in ascending order (got {list(result)!r})")
-        check(result.dtype == np.int64, "load_magazyn result is int64")
+        # [CHANGED 2026-09-12] uint64, not int64 -- see to_prime_array's own
+        # doc-comment (ring_geometry.py): the fast path doubled its ceiling
+        # from int64's ~9.2e18 to uint64's ~1.8e19 by dropping the sign bit
+        # primes never used, since a real magazyn floor (10p25/10p27) needs
+        # every bit of headroom before falling back to the slow `object` path.
+        check(result.dtype == np.uint64, "load_magazyn result is uint64")
 
         result_partial = load_magazyn(portal_dir, upto=20)
         check(list(result_partial) == [2, 3, 5, 7, 11, 13, 17, 19],
@@ -203,6 +208,98 @@ def _test_load_magazyn_from_n():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def _test_load_magazyn_max_load_count():
+    """[ADDED, Artur 2026-09-12: "od-do i drugi parametr dowolny zakres
+    pierscieni ... jesli ... wiecej niz jakis prog ... zakres od gory jest
+    ciety do ilosci limitu"] `max_load_count` truncates a load from the TOP
+    once the cap is hit -- covers truncation splitting a batch mid-window,
+    truncation landing exactly on a window/floor boundary, a cap bigger than
+    the whole result (no-op), and combining with `from_n` (jumping straight
+    to a high floor, the actual arbitrary-range-viewing use case)."""
+    from primeatlas.ring_viz.renderer import load_magazyn
+
+    tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
+    try:
+        portal_dir = os.path.join(tmp, "portal")
+        _write_floor(portal_dir, 0, [[2, 3, 5, 7]])
+        _write_floor(portal_dir, 1, [[11, 13, 17], [19, 23, 29]])
+        _write_floor(portal_dir, 2, [[101, 103, 107]])
+
+        result_mid_window = load_magazyn(portal_dir, upto=200, max_load_count=5)
+        check(list(result_mid_window) == [2, 3, 5, 7, 11],
+              f"max_load_count=5 cuts mid-window, keeping only the first 5 "
+              f"primes overall (got {list(result_mid_window)!r})")
+
+        result_on_boundary = load_magazyn(portal_dir, upto=200, max_load_count=4)
+        check(list(result_on_boundary) == [2, 3, 5, 7],
+              "max_load_count landing exactly on a window boundary stops cleanly there")
+
+        result_generous = load_magazyn(portal_dir, upto=200, max_load_count=1000)
+        result_unbounded = load_magazyn(portal_dir, upto=200)
+        check(list(result_generous) == list(result_unbounded),
+              "a cap bigger than the whole available result is a no-op")
+
+        result_none = load_magazyn(portal_dir, upto=200, max_load_count=None)
+        check(list(result_none) == list(result_unbounded),
+              "max_load_count=None (explicit) reproduces the default (omitted) behavior exactly")
+
+        # The actual feature this backs: jump straight to a high floor
+        # (from_n) AND cap how much of it gets materialized, without ever
+        # reading floor 0 or 1's files at all.
+        result_combined = load_magazyn(portal_dir, upto=200, from_n=100, max_load_count=2)
+        check(list(result_combined) == [101, 103],
+              f"from_n + max_load_count combine: skip straight to floor 2, "
+              f"then cap at 2 primes (got {list(result_combined)!r})")
+
+        result_zero_cap = load_magazyn(portal_dir, upto=200, max_load_count=0)
+        check(len(result_zero_cap) == 0, "max_load_count=0 returns an empty array without error")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _test_load_magazyn_high_floor_beyond_uint64():
+    """[ADDED 2026-09-12, reproduces Artur's own crash report] A real magazyn
+    has floors far past piętro 18 (his own portal's screenshot shows real
+    data at 10p25/10p27, ~10**25-10**27 magnitude) -- the old hardcoded
+    `dtype=np.int64` cast in load_magazyn's per-file loop overflowed on
+    exactly this, well before max_load_count/from_n even mattered. This pins
+    the fix: a floor whose own values exceed uint64 loads correctly (as
+    `object` dtype, exact values, no OverflowError), including when combined
+    with a low floor that still fits uint64 (np.concatenate must promote the
+    WHOLE result to object, never silently truncate/wrap the high values)."""
+    from primeatlas.ring_viz.renderer import load_magazyn
+
+    tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
+    try:
+        portal_dir = os.path.join(tmp, "portal")
+        base = 10 ** 25
+        high_values = [base, base + 4, base + 6, base + 10]
+        _write_floor(portal_dir, 25, [high_values])
+
+        result = load_magazyn(portal_dir, upto=base + 1000, from_n=base - 1)
+        check(list(result) == high_values,
+              f"load_magazyn loads a real piętro-25-scale floor without raising OverflowError "
+              f"(got {list(result)!r})")
+        check(result.dtype == object,
+              "load_magazyn: a floor whose values exceed the uint64 ceiling returns object dtype")
+
+        # Mixed: a low floor (fits uint64) plus the high one above, loaded
+        # together in one call (the from_n=0/default sequential path).
+        portal_dir2 = os.path.join(tmp, "portal2")
+        _write_floor(portal_dir2, 0, [[2, 3, 5, 7]])
+        _write_floor(portal_dir2, 25, [high_values])
+        result_mixed = load_magazyn(portal_dir2, upto=base + 1000)
+        check(list(result_mixed) == [2, 3, 5, 7] + high_values,
+              f"load_magazyn: a low floor (uint64-safe) plus a high floor (needs object) concatenate "
+              f"correctly, in ascending order (got {list(result_mixed)!r})")
+        check(result_mixed.dtype == object,
+              "load_magazyn: mixing a uint64-safe floor with an object-dtype floor promotes the WHOLE "
+              "result to object (numpy's own concatenate dtype-promotion rule), never silently truncating "
+              "the high values down to a fixed-width type")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def _test_empty_portal():
     from primeatlas.ring_viz.renderer import load_magazyn
 
@@ -212,7 +309,9 @@ def _test_empty_portal():
         os.makedirs(portal_dir, exist_ok=True)  # exists, but no 10p* floors at all
         result = load_magazyn(portal_dir, upto=1000)
         check(len(result) == 0, "load_magazyn on a portal folder with no floors returns an empty array")
-        check(result.dtype == np.int64, "the empty result is still int64, not a generic empty array")
+        # [CHANGED 2026-09-12] uint64, not int64 -- see the sibling check in
+        # _test_basic_multi_floor_load above for why.
+        check(result.dtype == np.uint64, "the empty result is still uint64, not a generic empty array")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -407,6 +506,34 @@ def _test_hud_lines_for_n():
     _data2, _count2, pos2 = build_vertex_data(primes, 41, max_radius, set(), theta, mode)
     empty_lines = hud_lines_for_n(primes, 41, pos2, set(), theta, mode)
     check(empty_lines == [], f"no enabled families and no active-prime factors -> no HUD lines (got {empty_lines!r})")
+
+    # [ADDED 2026-09-12, Artur's report while testing a real magazyn floor-25
+    # range: HUD panel showed nothing past "N=..."] n=0 is range/fixed mode's
+    # own placeholder starting value -- phase = n mod prime is trivially 0
+    # for EVERY prime there, so the OLD code's "Factors of N" line joined
+    # EVERY active ring's value into one string. Harmless with a handful of
+    # primes; with a real arbitrary-range load (thousands of ~26-digit
+    # values, all "hit" at n=0) that line explodes into tens of thousands of
+    # characters and stalls/breaks HUD rendering. Fixed: skipped outright at
+    # n=0, regardless of how many primes are active.
+    _data3, _count3, pos3 = build_vertex_data(primes, 0, max_radius, set(), theta, mode)
+    check(bool(pos3["is_hit"].all()),
+          "sanity: at n=0, phase=n%%prime is 0 for every active prime (is_hit is all-True)")
+    lines_n_zero = hud_lines_for_n(primes, 0, pos3, set(), theta, mode)
+    check("Factors of N" not in "\n".join(lines_n_zero),
+          f"hud_lines_for_n suppresses the degenerate 'Factors of N' line at n=0, even though "
+          f"every active prime is technically \"is_hit\" there (got lines={lines_n_zero!r})")
+
+    # A real load-range-scale case: thousands of huge (piętro-25-scale)
+    # primes, all active/hit at n=0 -- confirms the fix holds at the actual
+    # scale that triggered Artur's report, not just the small test fixture.
+    huge_primes = np.array([12345678901234567890000023 + 2 * i for i in range(2000)], dtype=object)
+    _data4, _count4, pos4 = build_vertex_data(huge_primes, 0, max_radius, set(), theta, mode)
+    lines_huge_n_zero = hud_lines_for_n(huge_primes, 0, pos4, set(), theta, mode)
+    check(lines_huge_n_zero == [],
+          f"hud_lines_for_n at n=0 with thousands of huge active primes produces NO lines at "
+          f"all (no families on, no tracked state) -- no giant 'Factors of N' string "
+          f"(got {len(lines_huge_n_zero)} lines)")
 
 
 def _test_initial_n_for_source():
@@ -1191,6 +1318,23 @@ def _test_tick_next_n():
     new_n, stop = tick_next_n(n=999, range_mode=True, ceiling=100)
     check((new_n, stop) == (1000, False), f"range mode ignores the ceiling entirely and always advances (got {(new_n, stop)!r})")
 
+    # [ADDED 2026-09-12, Artur's report: playback looked frozen at a real
+    # magazyn-floor-scale range (~10**25)] range_step -- omitted (default 1)
+    # reproduces the exact old behavior; a real value is range mode's own
+    # per-tick step, but NEVER affects sequential mode regardless.
+    new_n, stop = tick_next_n(n=999, range_mode=True, ceiling=100, range_step=1)
+    check((new_n, stop) == (1000, False),
+          f"range_step=1 (explicit) reproduces the default/omitted behavior exactly (got {(new_n, stop)!r})")
+    new_n, stop = tick_next_n(n=0, range_mode=True, ceiling=100, range_step=1234)
+    check((new_n, stop) == (1234, False),
+          f"range mode advances by range_step when given, not a fixed +1 (got {(new_n, stop)!r})")
+    new_n, stop = tick_next_n(n=50, range_mode=False, ceiling=100, range_step=1234)
+    check((new_n, stop) == (51, False),
+          f"sequential mode ignores range_step entirely, still advances by exactly 1 (got {(new_n, stop)!r})")
+    new_n, stop = tick_next_n(n=100, range_mode=False, ceiling=100, range_step=1234)
+    check((new_n, stop) == (100, True),
+          f"sequential mode at the ceiling still stops regardless of range_step (got {(new_n, stop)!r})")
+
 
 def _test_advance_auto_orbit():
     from primeatlas.ring_viz.renderer import advance_auto_orbit
@@ -1282,6 +1426,21 @@ def _test_update_resonance_log():
     update_resonance_log(state, active, n_value=30, range_mode=False, advancing=True)
     check(state["lines"] == before,
           "calling update_resonance_log twice for the same n_value tick does not duplicate the entry")
+
+    # [ADDED 2026-09-12, alongside tick_next_n's own range_step fix -- see
+    # that function's own doc-comment] A multi-step forward tick (range mode
+    # with range_step > 1) must scan the WHOLE skipped span since the last
+    # call, not just the new n_value alone -- otherwise a resonance event
+    # strictly BETWEEN two (now farther-apart) ticks would silently never
+    # get logged at all.
+    state = {"lines": [], "last_n": 0, "last_range_mode": True}
+    range_step_active = np.array([2, 3, 5, 7], dtype=np.int64)
+    update_resonance_log(state, range_step_active, n_value=42, range_mode=True, advancing=True)
+    expected_multi_step = resonance_log_lines(range_step_active, 1, 42)
+    check(bool(expected_multi_step), "sanity: this span actually contains at least one resonance event")
+    check(state["lines"] == expected_multi_step,
+          f"a multi-step forward tick (range_step > 1) scans the WHOLE span since the last call "
+          f"(from last_n+1, not just n_value) (got {state['lines']!r}, expected {expected_multi_step!r})")
 
     # A mode switch (sequential -> range) forces a jump even with advancing=True.
     state = {"lines": ["sequential data"], "last_n": 30, "last_range_mode": False}
@@ -1436,6 +1595,8 @@ def main():
     _test_batching_does_not_change_result()
     _test_progress_callback_invoked()
     _test_load_magazyn_from_n()
+    _test_load_magazyn_max_load_count()
+    _test_load_magazyn_high_floor_beyond_uint64()
     _test_empty_portal()
     _test_build_vertex_data_no_windows_matches_old_behavior()
     _test_build_vertex_data_bertrand_highlight()

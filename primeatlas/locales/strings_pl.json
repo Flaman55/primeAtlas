@@ -675,6 +675,7 @@
   "rings.auto_orbit_label": "Auto-orbita",
   "rings.load_range_label": "Wczytaj zakres od:",
   "rings.load_range_to_label": "do:",
+  "rings.max_load_count_label": "Limit wczytanych pierścieni (domyślnie 2 000 000):",
   "rings.hud_panel_title": "HUD",
   "rings.hud_panel_placeholder": "(otwórz wizualizację, aby zobaczyć tu bieżący status)",
   "rings.hud_status_running": "odtwarzanie, {tempo}ms/takt",
