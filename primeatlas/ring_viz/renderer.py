@@ -166,13 +166,10 @@ override some other way.
 """
 
 import argparse
-import json
 import os
 import queue
 import sys
 import time
-
-import numpy as np
 
 # Allow `python primeatlas/ring_viz/renderer.py` (not just `python -m
 # primeatlas.ring_viz.renderer`) to work by ensuring the repo root is on
@@ -194,23 +191,17 @@ _PRIME_SIEVE_DIR = os.path.join(_REPO_ROOT, "prime_sieve")
 if _PRIME_SIEVE_DIR not in sys.path:
     sys.path.insert(0, _PRIME_SIEVE_DIR)
 
-from primeatlas.ring_geometry import (
-    ring_positions,
-    compute_highlight_colors,
-    compute_tracked_colors,
-    tracked_ring_mask,
-    legendre_level_at,
-    general_law_window_bounds,
-    tracked_resonance_state,
-    format_big,
-    resonance_log_lines,
-    format_log_panel_text,
-    window_anchor_primes,
-    cyclic_window_anchor_at,
-    window_label_colors,
-    to_prime_array,
-    parse_big_int,
-)
+# [TRIMMED Faza 4 of the renderer.py split] Every ring_geometry function
+# this file used to call directly (ring_positions, compute_highlight_
+# colors, compute_tracked_colors, tracked_ring_mask, legendre_level_at,
+# general_law_window_bounds, tracked_resonance_state, format_big,
+# resonance_log_lines, format_log_panel_text, window_anchor_primes,
+# cyclic_window_anchor_at, window_label_colors, to_prime_array) was only
+# ever reached through rebuild_buffer/hud_lines_for_n/build_vertex_data
+# and friends -- all of which moved into geometry_draw.py/hud.py (Faza 2)
+# and then session.py (Faza 3/4). Only parse_big_int (--upto/--load-range/
+# main()'s own CLI parsing) is still used directly in this file.
+from primeatlas.ring_geometry import parse_big_int
 
 # [MOVED Faza 2 of the renderer.py split, see hud.py's own module docstring]
 # The guarded Pillow import (and rasterize_hud_text, the only function that
@@ -250,7 +241,6 @@ from primeatlas.ring_viz.shaders import (
     VERTEX_SHADER,
     FRAGMENT_SHADER,
     OUTLINE_VERTEX_SHADER,
-    FLAT_COLOR_FRAGMENT_SHADER,
     OUTLINE_FRAGMENT_SHADER,
     SCREEN_VERTEX_SHADER,
     SCREEN_FRAGMENT_SHADER,
@@ -262,31 +252,23 @@ from primeatlas.ring_viz.shaders import (
 # [MOVED Faza 2 of the renderer.py split, see geometry_draw.py's own module
 # docstring] build_vertex_data through initial_n_for_source used to be
 # defined here directly; none of them touch GL state, so they moved out
-# alongside Faza 1's cuts. Re-imported under their original names so every
-# remaining call site in _run_visualization below is unchanged -- two
-# helpers (tracked_outline_color, center_marker_triangle_offsets) are only
-# ever called from WITHIN geometry_draw.py itself now (by
-# build_tracked_outline_draws / build_center_marker_vertex_data
-# respectively), so they are not re-imported here; unitTests/
-# test_ring_viz_renderer.py imports them directly from geometry_draw.py.
+# alongside Faza 1's cuts. [TRIMMED Faza 4] Most of this module's OWN
+# call sites for these (build_vertex_data, resolve_effective_track_primes,
+# build_tracked_outline_draws, decay_flash, flash_overlay_rgba,
+# resonance_is_active, zoom_to_point, fit_zoom_for_viewport,
+# split_hit_normal_vertex_data, tracked_outline_color, center_marker_
+# triangle_offsets, the _FLASH_*_RGB constants) moved into session.rebuild/
+# session.on_scroll/session.recenter/session.resonance_flash_color/etc
+# (Faza 3/4) -- only the handful still called directly from
+# _run_visualization/main() are re-imported here now; unitTests/
+# test_ring_viz_renderer.py imports the rest directly from geometry_draw.py.
 from primeatlas.ring_viz.geometry_draw import (
-    build_vertex_data,
-    split_hit_normal_vertex_data,
     load_prime_range_slice,
     unit_circle_vertices,
-    resolve_effective_track_primes,
-    build_tracked_outline_draws,
-    decay_flash,
-    flash_overlay_rgba,
-    _FLASH_RESONANCE_RGB,
-    _FLASH_PRIME_RGB,
-    resonance_is_active,
     marker_device_scale,
     build_center_marker_vertex_data,
     build_flash_quad_vertex_data,
-    zoom_to_point,
     _FIT_MARGIN,
-    fit_zoom_for_viewport,
     initial_n_for_source,
 )
 
@@ -305,26 +287,18 @@ from primeatlas.ring_viz.geometry_draw import (
 # [MOVED Faza 1 of the renderer.py split, see playback.py's own module
 # docstring] All of Faza 10/11's pure playback-timing functions used to be
 # defined here directly; none of them touch GL state, so they moved out as
-# one more low-risk cut. Re-imported under their original names (including
-# the "private" constants a handful of tests and _run_visualization's own
-# range_step computation still reference by name) so every call site below
-# is unchanged.
+# one more low-risk cut. [TRIMMED Faza 4] Every one of these functions'
+# OWN call sites (clamp_tempo_ms, arrow_scrub_delta, can_start_playback,
+# clamp_scrub_n, should_extend_buffer, next_buffer_ceiling, tick_next_n,
+# update_resonance_log, advance_auto_orbit, and the _TEMPO_MS_MIN/MAX and
+# _ARROW_SCRUB_STEP* constants) moved into RenderSession's own methods --
+# only _TEMPO_MS_DEFAULT (main()'s --tempo-ms argparse default) and
+# _RANGE_STEP_ORBIT_TICKS (this file's own launch-time range_step
+# computation, still run before RenderSession is constructed) are still
+# referenced directly here.
 from primeatlas.ring_viz.playback import (
-    _TEMPO_MS_MIN,
-    _TEMPO_MS_MAX,
     _TEMPO_MS_DEFAULT,
-    clamp_tempo_ms,
-    _ARROW_SCRUB_STEP,
-    _ARROW_SCRUB_STEP_CTRL,
-    arrow_scrub_delta,
-    can_start_playback,
-    clamp_scrub_n,
-    should_extend_buffer,
-    next_buffer_ceiling,
     _RANGE_STEP_ORBIT_TICKS,
-    tick_next_n,
-    update_resonance_log,
-    advance_auto_orbit,
 )
 
 
@@ -332,19 +306,17 @@ from primeatlas.ring_viz.playback import (
 # hud_lines_for_n through emit_audio_tick used to be defined here directly;
 # none of them touch GL state (Pillow rasterization included -- see that
 # module's own docstring for why the guarded PIL import moved there too),
-# so they moved out alongside Faza 1's cuts. Re-imported under their
-# original names so every remaining call site in _run_visualization/main()
-# below is unchanged -- _HUD_TEXT_RGB is not re-imported here since nothing
-# left in this file uses it directly; unitTests/test_ring_viz_renderer.py
-# imports it from hud.py.
+# so they moved out alongside Faza 1's cuts. [TRIMMED Faza 4] hud_lines_
+# for_n/compose_hud_canvas_lines/hud_line_colors/rasterize_hud_text/
+# emit_audio_tick's own call sites moved into RenderSession.rebuild/
+# RenderSession.refresh_hud -- only _HUD_FONT_SIZE_DEFAULT (main()'s
+# --hud-font-size argparse default) and hud_quad_vertex_data (still
+# called directly by _apply_hud_refresh's own GL upload) are still
+# referenced here; unitTests/test_ring_viz_renderer.py imports the rest
+# directly from hud.py.
 from primeatlas.ring_viz.hud import (
-    hud_lines_for_n,
-    compose_hud_canvas_lines,
-    hud_line_colors,
-    rasterize_hud_text,
     _HUD_FONT_SIZE_DEFAULT,
     hud_quad_vertex_data,
-    emit_audio_tick,
 )
 
 
@@ -353,6 +325,14 @@ from primeatlas.ring_viz.hud import (
 # re-imported under its original name so run()'s own --pipe-stdin-commands
 # call site is unchanged.
 from primeatlas.ring_viz.stdin_commands import start_stdin_command_reader
+
+# [ADDED Faza 4 of the renderer.py split, see session.py's own module
+# docstring] RenderSession consolidates _run_visualization's own dozen
+# closure-captured state dicts (camera, playback, orbit, flash, HUD,
+# scrub, buffer-extension, tracked/range fields) into one object with
+# methods -- designed and unit-tested in isolation in Faza 3, wired in
+# here for real.
+from primeatlas.ring_viz.session import RenderSession
 
 
 def run(args):
@@ -617,22 +597,15 @@ def _run_visualization(args, audio=None):
     # the actual extension call.
     buffer_margin = max(1000, args.upto // 20)
     can_extend_buffer = args.source == "magazyn" and bool(args.portal_folder)
-    # `exhausted` flips True the first time a real extension attempt comes
-    # back with zero new primes -- see extend_buffer_if_needed's own
-    # doc-comment for why that means "stop trying", not "keep retrying
-    # every frame forever".
-    extend_state = {"exhausted": False}
-
-    tempo_ms = clamp_tempo_ms(args.tempo_ms)
-    playback = {"running": False}
-    orbit_state = {"index": 0, "counter": 0, "current_prime": None}
-
-    # [ADDED 2026-09-11] Persisted across rebuild_buffer calls, one entry
-    # per cyclic family ("legendre"/"generalLaw") -- see
-    # ring_geometry.cyclic_window_anchor_at's own doc-comment for the full
-    # freeze/jump rule this backs (Bertrand needs no such state; it stays on
-    # ANCHOR_FUNCTIONS' own from-scratch replay).
-    cyclic_anchor_state = {}
+    # [MOVED Faza 4 of the renderer.py split] `extend_state["exhausted"]`,
+    # `tempo_ms`/`playback["running"]`, `orbit_state`, and `cyclic_anchor_
+    # state` all used to be standalone dicts/locals declared here -- they
+    # are now RenderSession's own fields (self.extend_exhausted,
+    # self.tempo_ms/playback_running, self.orbit_*, self.cyclic_anchor_
+    # state), constructed further down once `range_mode`/`range_primes`/
+    # `range_step`/`track_primes`/`auto_orbit` below are all known -- see
+    # session.py's own RenderSession docstring for the full field-by-field
+    # mapping to what used to live here.
 
     # [ADDED Faza 9, see PLAN.md] Load Range -- ports #loadPrimeRange: switch
     # to a FIXED ring set (range_primes), independent of N from here on
@@ -700,387 +673,108 @@ def _run_visualization(args, audio=None):
         except ValueError as e:
             print(f"Load Range failed: {e}")
 
-    state = {"pan": [0.0, 0.0], "zoom": 1.0, "dragging": False, "last_mouse": (0.0, 0.0)}
+    # [REWIRED Faza 4 of the renderer.py split, see session.py's own module
+    # docstring for the full rationale] Everything from here down used to be
+    # a dozen separate closure-captured dicts (state/pan-zoom, playback,
+    # orbit_state, cyclic_anchor_state, flash_state, outline_draws_holder,
+    # resonance_log_state, hud_state, n_holder, scrub_state, extend_state)
+    # plus bare track_primes/auto_orbit/range_mode/range_primes/range_step/
+    # primes/ceiling locals mutated via `nonlocal` -- now one RenderSession
+    # object. `session.n` plays n_holder["n"]'s old role; every GLFW
+    # callback and the main loop below call session.* methods instead of
+    # mutating their own captured dict. See session.py's own RenderSession
+    # docstring for the field-by-field mapping to the old closures.
+    session = RenderSession(
+        primes=primes, n=n, ceiling=ceiling, range_mode=range_mode,
+        range_primes=range_primes, range_step=range_step,
+        track_primes=track_primes, auto_orbit=auto_orbit,
+        enabled_ids=enabled_ids, theta=theta, law_mode=law_mode,
+        max_radius=max_radius, tempo_ms=args.tempo_ms,
+        buffer_margin=buffer_margin, can_extend_buffer=can_extend_buffer,
+        portal_folder=args.portal_folder,
+    )
 
-    # [ADDED Faza 8, see PLAN.md] flash-overlay decay accumulators (ports
-    # DrumRenderer's #flashPrime/#flashResonance instance fields) and the
-    # tracked-ring outline draw list -- all recomputed/updated on N-change
-    # inside rebuild_buffer below, never per-frame (same convention as the
-    # main ring buffer).
-    flash_state = {"prime": 0.0, "resonance": 0.0}
-    outline_draws_holder = {"draws": []}
-
-    # [ADDED PLAN.md Faza 11 -- resonance log + surviving-primes panel; NOT
-    # to be confused with this file's own pre-existing "Faza 11"/"Faza 11B"
-    # labels a few lines below, which name the HUD_STATE snapshot / on-canvas
-    # GL text work instead -- that numbering was assigned informally on
-    # 2026-09-06 before PLAN.md's Faza 6+ phase list (written 2026-09-05) was
-    # cross-checked, and PLAN.md's own Faza 11 is this resonance-log/
-    # surviving-primes feature, landed here.]
-    #
-    # Persisted across rebuild_buffer calls (ports StructuralSieveApp.js's
-    # own #resonanceLog array) -- see update_resonance_log's own doc-comment
-    # for the full jump-vs-tick algorithm this dict feeds.
-    resonance_log_state = {"lines": [], "last_n": None, "last_range_mode": None}
-
-    # [ADDED Faza 11, see PLAN.md] Persistent HUD snapshot -- rebuild_buffer
-    # keeps this updated (below) alongside its existing human-readable
-    # console prints; emit_hud_state() serializes it (plus the always-live
-    # playback/tempo fields) as ONE JSON line on stdout, prefixed so
-    # rings_tab.py's own console-line callback can pick it out of the
-    # stream. This is IN ADDITION TO the existing print(line) calls, not a
-    # replacement -- those stay useful for a still frame or scrolling back
-    # through history in the console pane.
-    #
-    # Why this exists at all (Artur, 2026-09-06, right after confirming
-    # Faza 10 works): "brak panelu HUD w ogóle" -- the HUD text technically
-    # already reached the console pane (Faza 4/7/11's own long-standing
-    # console-pane convention), but during Faza 10 playback it reprints
-    # every single tick and scrolls past far too fast to ever read; there
-    # was no ALWAYS-CURRENT snapshot anywhere. rings_tab.py renders this
-    # into a small always-visible panel instead of leaving it to scroll by.
-    hud_state = {"n": n, "count": 0, "rebuild_ms": 0.0, "lines": []}
-
-    def emit_hud_state():
-        payload = {
-            "n": hud_state["n"],
-            "count": hud_state["count"],
-            "rebuild_ms": hud_state["rebuild_ms"],
-            "lines": hud_state["lines"],
-            "running": playback["running"],
-            "tempo_ms": tempo_ms,
-        }
-        print("HUD_STATE:" + json.dumps(payload))
-
-    # [ADDED Faza 11B, see PLAN.md] Rebuilds the on-canvas HUD texture from
-    # hud_state's current contents -- called from the same two places
-    # emit_hud_state() already is (end of rebuild_buffer, and on_key after
-    # a Space/]/[/R press), since those are exactly the moments the text
-    # COULD have changed (N changed, or playback running/tempo changed).
-    # A no-op if Pillow isn't installed (hud_quad_vao is None in that case).
-    def refresh_hud_texture():
+    def _apply_hud_refresh():
+        """Ports the pre-Faza-4 `_refresh_hud()` closure exactly: prints
+        the HUD JSON snapshot and uploads a fresh on-canvas HUD texture,
+        using session.refresh_hud()'s own pure computation for both (see
+        that method's own doc-comment) -- only the actual GL upload
+        (ctx.texture, hud_tex_holder release, hud_quad_vbo.write) stays
+        here, since session.py has no GL dependency at all."""
+        json_line, rgba, w, h = session.refresh_hud(args.hud_font_size)
+        print(json_line)
         if hud_quad_vao is None:
             return
-        canvas_lines = compose_hud_canvas_lines(
-            hud_state["n"], hud_state["count"], hud_state["lines"], playback["running"], tempo_ms
-        )
-        # [ADDED 2026-09-10, see Artur's report: HUD window-range labels
-        # colored like their own ring color, merging to a shared blended
-        # color when two enabled families' windows coincide exactly] --
-        # window_label_colors only needs enabled_ids/n/theta/law_mode (all
-        # already in scope in run()'s own closure), hud_line_colors then
-        # maps that onto canvas_lines by each window line's own fixed text
-        # prefix -- see both functions' own doc-comments.
-        window_colors = window_label_colors(enabled_ids, hud_state["n"], theta, law_mode)
-        line_colors = hud_line_colors(canvas_lines, window_colors)
-        rgba = rasterize_hud_text(canvas_lines, font_size=args.hud_font_size, line_colors=line_colors)
         if hud_tex_holder["tex"] is not None:
             hud_tex_holder["tex"].release()
             hud_tex_holder["tex"] = None
         if rgba is None:
             return
-        h, w = rgba.shape[0], rgba.shape[1]
         tex = ctx.texture((w, h), 4, rgba.tobytes())
         tex.filter = (moderngl.NEAREST, moderngl.NEAREST)
         hud_tex_holder["tex"] = tex
         hud_quad_vbo.write(hud_quad_vertex_data(w, h).tobytes())
 
-    # [ADDED Faza 0 refactor] emit_hud_state() and refresh_hud_texture() were
-    # always called as an adjacent pair, in this exact order, at every one of
-    # their four call sites below (end of rebuild_buffer, the scrub-release
-    # auto-resume branch, the Space/R/tempo key handler, and the sequential-
-    # mode ceiling-stop branch) -- one shared name for "the HUD snapshot may
-    # have changed, refresh both its surfaces" instead of repeating the pair.
-    def _refresh_hud():
-        emit_hud_state()
-        refresh_hud_texture()
-
     def rebuild_buffer(n_value, prev_ring_count=None, advancing=False):
-        t0 = time.perf_counter()
-        # [ADDED Faza 9, see PLAN.md] range_mode's ring set is FIXED
-        # (range_primes, set once above) -- it does not grow/shrink with
-        # n_value the way sequential mode's `primes[primes <= n_value]`
-        # does; only each ring's phase/hit status still depends on n_value,
-        # via ring_positions inside build_vertex_data below.
-        active = range_primes if range_mode else primes[primes <= n_value]
-
-        # [ADDED Faza 10, see PLAN.md] Auto-orbit's actual cycling -- only
-        # advances on a FORWARD playback tick (advancing=True), never on a
-        # manual jump/goto, a range-mode reload, or a non-advancing redraw,
-        # exactly mirroring #advanceAutoOrbit only ever being called from
-        # inside #tick (see that method's own call site in
-        # StructuralSieveApp.js). orbit_state["current_prime"] persists the
-        # last-chosen ring across every OTHER rebuild_buffer call so a
-        # manual N jump mid-playback still shows the last-orbited ring
-        # rather than reverting to nothing.
-        # [FIXED 2026-09-10, Artur's report: "pierscienie sa dla sledzonych i
-        # dla auto orbit ale nie ma dla bertranda legendre i dla general
-        # law"] Auto-orbit's cycling is now ALSO gated on `not enabled_ids`,
-        # mirroring the JS's own `if (!anyWindowOn) { this.#advanceAutoOrbit
-        # (...) }` -- a window family being on must fully stop auto-orbit
-        # from advancing in the background, not just from being shown (see
-        # resolve_effective_track_primes's own doc-comment for the full
-        # precedence rule this pairs with).
-        if auto_orbit and not enabled_ids and advancing:
-            new_index, new_counter, chosen = advance_auto_orbit(
-                active, orbit_state["index"], orbit_state["counter"]
-            )
-            orbit_state["index"] = new_index
-            orbit_state["counter"] = new_counter
-            if chosen is not None:
-                orbit_state["current_prime"] = chosen
-        # [FIXED 2026-09-10] window_anchor_primes (ring_geometry.py) supplies
-        # each currently-on window family's own anchor -- see that function's
-        # doc-comment for the exact gap this closes: Bertrand/Legendre/
-        # General Law's highlight COLOR already worked (Faza 1), but their
-        # own anchor ring never got the tracked-set membership that actually
-        # draws the outline circle, because nothing before this fed window
-        # anchors into effective_track_primes the way auto-orbit and
-        # --track-primes already did.
-        # [ADDED 2026-09-11, Artur's report: Legendre/General Law's own
-        # window is only a few dozen points wide near the start of the axis
-        # and narrows further, too narrow for Bertrand's 2x-doubling freeze
-        # condition to give the same "hold still, then jump" effect there --
-        # see cyclic_window_anchor_at's own doc-comment for the replacement
-        # rule.] Bertrand keeps resolving through ANCHOR_FUNCTIONS inside
-        # window_anchor_primes/compute_tracked_colors unchanged (no entry
-        # here) -- only the two families with narrow windows get an
-        # override, and only while actually enabled (no point mutating
-        # cyclic_anchor_state for a family the user has toggled off).
-        cyclic_anchor_overrides = {
-            family_id: cyclic_window_anchor_at(cyclic_anchor_state, family_id, active, n_value, theta, law_mode)
-            for family_id in ("legendre", "generalLaw")
-            if family_id in enabled_ids
-        }
-        window_anchors = window_anchor_primes(
-            active, n_value, enabled_ids, theta, law_mode, cyclic_anchor_overrides
+        """GL-side half of session.rebuild(): uploads its returned vertex
+        data into two fresh VBOs (see split_hit_normal_vertex_data's own
+        doc-comment, in geometry_draw.py, for why there are two) and
+        refreshes the HUD -- ports the pre-Faza-4 rebuild_buffer closure's
+        own final lines exactly; everything else that closure used to do
+        (geometry/color recompute, tracked/LCM HUD block, resonance log,
+        tracked-outline draws, flash triggers) now lives in session.rebuild
+        itself."""
+        data_normal, data_hit, count, count_hit = session.rebuild(
+            n_value, prev_ring_count=prev_ring_count, advancing=advancing, audio=audio
         )
-        # [MOVED 2026-09-11, was computed after build_vertex_data -- now
-        # needed BEFORE it, since build_vertex_data's own `track_primes`
-        # param (below) needs this same set to paint the tracked/anchor
-        # ring's DOT white -- see that param's own doc-comment for why.]
-        effective_track_primes = resolve_effective_track_primes(
-            window_anchors, enabled_ids, auto_orbit, orbit_state["current_prime"], track_primes
-        )
-
-        data, count, pos = build_vertex_data(
-            active, n_value, max_radius, enabled_ids, theta, law_mode, effective_track_primes
-        )
-        t1 = time.perf_counter()
-        print(f"N={n_value:,}  rings={count:,}  rebuild={1000 * (t1 - t0):.1f}ms")
-        # [ADDED Faza 7B, see PLAN.md] tracked_resonance_state does its own
-        # active-filtering internally (ring_geometry.filter_active_tracked,
-        # same function Faza 6 introduced) -- no separate filter step needed
-        # here anymore. auto_orbit=True short-circuits to None inside that
-        # function too (mirrors the JS's own `if (this.#autoOrbit || ...)
-        # return null` guard), so the explicit `if auto_orbit` branch Faza 6
-        # had here is gone; there is nothing left for it to skip.
-        tracked_state = tracked_resonance_state(track_primes, active, n_value, auto_orbit=auto_orbit)
-        emit_audio_tick(audio, active, pos['is_hit'], tracked_state, advancing)
-        current_hud_lines = hud_lines_for_n(active, n_value, pos, enabled_ids, theta, law_mode, tracked_state)
-        for line in current_hud_lines:
-            print(line)
-
-        # [ADDED PLAN.md Faza 11 -- resonance log + surviving-primes panel]
-        # See update_resonance_log's own doc-comment for the jump-vs-tick
-        # distinction this relies on.
-        update_resonance_log(resonance_log_state, active, n_value, range_mode, advancing)
-
-        resonance_count, resonance_text = format_log_panel_text(resonance_log_state["lines"])
-        print(f"Resonance log ({resonance_count}): {resonance_text}")
-        primes_count, primes_text = format_log_panel_text(list(active))
-        print(f"Surviving primes ({primes_count}): {primes_text}")
-
-        # [ADDED Faza 8, extended 2026-09-10] Tracked-ring outline circles --
-        # recomputed here alongside the main buffer, same N-change-only
-        # cadence. Uses effective_track_primes (Faza 10, now also covering
-        # window-family anchors -- see resolve_effective_track_primes's own
-        # doc-comment for the full precedence) rather than track_primes
-        # directly, so auto-orbit mode outlines whichever single ring it is
-        # currently on, and window mode (Bertrand/Legendre/General Law)
-        # outlines each on family's own anchor, instead of every launch-time
-        # --track-primes entry (mirrors DrumRenderer's own outline loop
-        # reading `this.#trackedPrimes`, which IS what both auto-orbit AND
-        # the window-family anchor loop overwrite -- unlike
-        # tracked_resonance_state below, which auto-orbit instead
-        # short-circuits to None entirely, per that function's own
-        # doc-comment).
-        outline_draws_holder["draws"] = build_tracked_outline_draws(
-            active, n_value, enabled_ids, theta, law_mode, effective_track_primes, pos["radius"],
-            cyclic_anchor_overrides
-        )
-
-        # [ADDED Faza 8] Birth/resonance flash triggers -- approximates
-        # DrumRenderer's own triggerBirthFlash()/triggerResonanceFlash()
-        # call sites (StructuralSieveApp's per-tick `step.justBorn` /
-        # `step.resonance.active`, see those call sites' own doc-comments in
-        # StructuralSieveApp.js), adapted to this module's discrete N-jump
-        # model (Up/Down/PageUp/PageDown key presses) rather than the JS's
-        # per-tick playback loop, which doesn't exist here yet (Faza 10).
-        # "Just born" here means "this jump increased the active ring
-        # count" -- exact for a single-step (+n_step) jump, an
-        # over-approximation for a coarse PageUp/PageDown jump that crosses
-        # more than one prime (fires once for the whole jump rather than
-        # once per prime crossed, same simplification a discrete-jump model
-        # has to make regardless of flash granularity) -- and a jump that
-        # DECREASES n (count goes down) never fires it, matching the JS's
-        # own justBorn being a forward-only concept. Resonance uses
-        # resonance_is_active(pos) directly (every active ring's tooth at
-        # phase 0) rather than tracked_state's own to-resonance==0 condition
-        # -- the JS keeps these as two deliberately separate signals (see
-        # StructuralSieveApp.js's own comment on the LCM chime being a
-        # "SEPARATE condition from step.resonance.active"); this port only
-        # has the general one wired to the flash (the tracked-LCM chime has
-        # no visual flash counterpart in DrumRenderer to begin with -- it is
-        # HUD-text-and-audio-only there).
-        if prev_ring_count is not None and count > prev_ring_count:
-            flash_state["prime"] = 1.0
-        if resonance_is_active(pos):
-            flash_state["resonance"] = 1.0
-
-        # [FIXED, see Artur's 2026-09-06 R/reset crash report]
-        # moderngl.Context.buffer() refuses a truly zero-length buffer
-        # ("the buffer cannot be empty") -- previously unreachable in
-        # practice (N always opened well above 0 active rings), but Faza
-        # 10's own R/reset lands N on 1 (0 active rings, since the
-        # smallest prime is 2), and Up/Down/PageDown can reach N=0 the
-        # same way. Falls back to a 1-vertex placeholder reservation
-        # (never actually drawn -- the main loop's own vao.render calls are
-        # told the REAL counts, `count_normal`/`count_hit`, explicitly)
-        # rather than crashing the whole GL subprocess over an empty set.
-        #
-        # [ADDED Faza 11C, see PLAN.md] Split into TWO buffers here -- rings
-        # ON the vertical reference line (pos["is_hit"], real divisors of N)
-        # vs everything else -- so the main loop can draw each with its own
-        # u_point_size uniform (Artur, 2026-09-07: wants hit rings sized
-        # independently of the rest). See split_hit_normal_vertex_data's own
-        # doc-comment for why this is a separate, unit-tested pure function
-        # rather than inlined here.
-        data_normal, data_hit, count_hit = split_hit_normal_vertex_data(data, pos["is_hit"])
-
         normal_bytes = data_normal.tobytes()
         vbo_normal = ctx.buffer(normal_bytes) if normal_bytes else ctx.buffer(reserve=20)
         hit_bytes = data_hit.tobytes()
         vbo_hit = ctx.buffer(hit_bytes) if hit_bytes else ctx.buffer(reserve=20)
-
-        # [ADDED Faza 11, see PLAN.md] Refresh + emit the HUD snapshot every
-        # time this function runs (every N-change, whether from a manual
-        # jump or a playback tick) -- see hud_state's own doc-comment above
-        # for why this exists alongside (not instead of) the plain
-        # print(line) calls above.
-        hud_state["n"] = n_value
-        hud_state["count"] = count
-        hud_state["rebuild_ms"] = round(1000 * (t1 - t0), 1)
-        hud_state["lines"] = current_hud_lines
-        _refresh_hud()
-
+        _apply_hud_refresh()
         return vbo_normal, vbo_hit, count, count_hit
 
-    vbo_normal, vbo_hit, ring_count, ring_count_hit = rebuild_buffer(n)
+    vbo_normal, vbo_hit, ring_count, ring_count_hit = rebuild_buffer(session.n)
     vao_normal = _make_ring_vao(vbo_normal)
     vao_hit = _make_ring_vao(vbo_hit)
 
     def on_scroll(_window, _dx, dy):
         # [FIXED, see Artur's 2026-09-04 bug report and zoom_to_point's own
-        # docstring for the full before/after explanation] Previously this
-        # only multiplied state["zoom"], leaving state["pan"] untouched --
-        # which anchored every zoom on the ring field's own mathematical
-        # center rather than the cursor. zoom_to_point() does the real
-        # zoom-to-cursor math; this closure only converts between
-        # state["pan"] (relative to viewport center) and the EFFECTIVE pan
-        # that function needs (absolute screen position of world (0,0),
-        # matching what the shader's u_pan uniform actually receives below).
-        factor = 1.1 if dy > 0 else (1 / 1.1)
+        # docstring for the full before/after explanation, preserved on
+        # session.on_scroll now] session.cam_last_mouse already IS the
+        # cursor position this needs (session.on_cursor_pos keeps it
+        # updated) -- this callback only supplies the current viewport size,
+        # which session.py has no way to read for itself (no GL/glfw
+        # dependency there by design).
         width, height = glfw.get_framebuffer_size(window)
-        old_pan = (state["pan"][0] + width / 2, state["pan"][1] + height / 2)
-        new_zoom, new_pan = zoom_to_point(state["zoom"], old_pan, state["last_mouse"], (width, height), factor)
-        state["zoom"] = new_zoom
-        state["pan"][0] = new_pan[0] - width / 2
-        state["pan"][1] = new_pan[1] - height / 2
+        session.on_scroll(dy, session.cam_last_mouse, (width, height))
 
     def on_mouse_button(_window, button, action, _mods):
         if button == glfw.MOUSE_BUTTON_LEFT:
-            state["dragging"] = action == glfw.PRESS
+            session.set_dragging(action == glfw.PRESS)
         elif button == glfw.MOUSE_BUTTON_MIDDLE and action == glfw.PRESS:
             # [ADDED, Artur 2026-09-11] "myszką można było wyśrodkować...
-            # szybkie przywrócenie do podglądu pełnej wizualizacji" -- a
-            # one-click way to snap an off-center/zoomed-in view straight
-            # back to "the whole ring field, centered, filling the window",
-            # without having to manually scroll-zoom-out and drag back.
-            # Middle-click was free (left drags, scroll zooms) and is the
-            # conventional "reset camera" gesture in most viewers/3D tools.
+            # szybkie przywrócenie do podglądu pełnej wizualizacji" -- see
+            # session.recenter's own doc-comment (shared with the F11
+            # re-fit branch below, since both did the exact same thing).
             width, height = glfw.get_framebuffer_size(window)
-            state["zoom"] = fit_zoom_for_viewport(max_radius, width, height)
-            state["pan"][0] = 0.0
-            state["pan"][1] = 0.0
+            session.recenter((width, height))
 
     def on_cursor_pos(_window, x, y):
-        lx, ly = state["last_mouse"]
-        if state["dragging"]:
-            state["pan"][0] += x - lx
-            state["pan"][1] += y - ly
-        state["last_mouse"] = (x, y)
-
-    # [ADDED Faza 10] "advancing" and "force_rebuild" are read by the main
-    # loop's own N-change branch below: "advancing" tells rebuild_buffer
-    # this N-change came from a forward playback tick (so auto-orbit should
-    # cycle), and "force_rebuild" forces a rebuild even when n hasn't
-    # actually changed (needed for R/reset landing back on n=1 when n was
-    # ALREADY 1 -- a plain `n != last_n` check would otherwise miss it).
-    n_holder = {"n": n, "advancing": False, "force_rebuild": False}
+        session.on_cursor_pos(x, y)
 
     def extend_buffer_if_needed():
-        """[ADDED, Artur 2026-09-11, see buffer_margin's own comment above
-        for the full quote] Keeps the loaded `primes` array's lookahead
-        margin AHEAD of N as playback/scrubbing advances, instead of the
-        launch-time pad being a ONE-TIME margin that N eventually catches
-        up to and permanently stops at -- clamp_scrub_n/tick_next_n/
-        can_start_playback's own ceiling checks remain the correct SAFETY
-        NET (a real, exhausted magazyn still needs a hard stop somewhere),
-        they just become the rarely-exercised fallback instead of the
-        thing that fires on every normal long playback run.
+        """[ADDED, Artur 2026-09-11] Thin GL-free wrapper around
+        session.extend_buffer_if_needed() -- printing its returned message
+        (if any) is the only thing left for this closure to do."""
+        msg = session.extend_buffer_if_needed()
+        if msg is not None:
+            print(msg)
 
-        Called once per frame from the main loop, before the playback-tick
-        block -- should_extend_buffer is a cheap O(1) check the overwhelming
-        majority of frames (N nowhere near the ceiling yet) and only does
-        real work (a fresh load_magazyn call) on the rare frame where N has
-        actually closed to within buffer_margin of it.
-
-        Deliberately gives up permanently once one real extension attempt
-        comes back with zero new primes (`extend_state["exhausted"]`)
-        rather than re-attempting a full load_magazyn scan every single
-        frame forever while N sits near an exhausted ceiling: that outcome
-        means the magazyn genuinely has no more data past the current
-        ceiling right now, so falling back to the pre-existing hard-stop
-        behavior there is the CORRECT outcome -- Artur's own caveat "o ile
-        magazyn zapewnia dane" (only as long as storage provides data), not
-        a bug to keep working around."""
-        nonlocal ceiling, primes
-        if not can_extend_buffer or extend_state["exhausted"]:
-            return
-        if not should_extend_buffer(n_holder["n"], ceiling, buffer_margin, range_mode, can_extend_buffer):
-            return
-        new_ceiling = next_buffer_ceiling(ceiling, buffer_margin)
-        new_primes = load_magazyn(args.portal_folder, new_ceiling, from_n=ceiling)
-        if len(new_primes) == 0:
-            extend_state["exhausted"] = True
-            print(f"Buffer extend: no more data past {ceiling:,} in the magazyn -- "
-                  f"the loaded ceiling is now the real end of stored data")
-            return
-        primes = np.concatenate([primes, new_primes])
-        ceiling = new_ceiling
-        print(f"Buffer extend: loaded {len(new_primes):,} more primes ahead of N, ceiling now {ceiling:,}")
-
-    # [ADDED, Artur 2026-09-11] LEFT/RIGHT scrub state -- "held" counts
-    # currently-pressed scrub keys (LEFT and RIGHT tracked together, not
-    # separately, so pressing both at once and releasing them in either
-    # order still only resumes once BOTH are up); "was_running" remembers
-    # whether playback was actually running at the moment the first scrub
-    # key of this hold-sequence went down, so a scrub performed while
-    # already stopped never auto-starts playback on release (Artur:
-    # "gdy używamy strzałek na zatrzymanym to przewija ale nie uruchamia
-    # wizualizacji, wciąż jest statyczna").
-    scrub_state = {"held": 0, "was_running": False}
+    # [ADDED, Artur 2026-09-11] LEFT/RIGHT scrub state now lives on
+    # `session` (scrub_held/scrub_was_running) -- see session.scrub_advance/
+    # scrub_release's own doc-comments for the held-count/was-running
+    # bookkeeping this used to need a separate `scrub_state` dict for.
     from primeatlas.ring_viz.window_mode import FullscreenToggle
     fullscreen = FullscreenToggle(glfw, window)
     print('F11: toggle fullscreen (auto-fits zoom to the new window size); '
@@ -1094,14 +788,6 @@ def _run_visualization(args, audio=None):
     command_queue = start_stdin_command_reader() if args.pipe_stdin_commands else None
 
     def on_key(_window, key, _scancode, action, mods):
-        # Declared at the very top of the function (not just before the
-        # Space/R/tempo branch that reassigns range_mode further down) --
-        # Python requires a nonlocal declaration to precede every use of
-        # that name within the function, including reads in the LEFT/RIGHT
-        # branch just below, which only READS range_mode/auto_orbit but
-        # still lives in the same function body as the branch that assigns
-        # them.
-        nonlocal auto_orbit, range_mode, tempo_ms
         if key in (glfw.KEY_LEFT, glfw.KEY_RIGHT):
             # [ADDED, Artur 2026-09-11: "sterowanie w przod i w tyl ...
             # strzalka lewo prawo jesli klikamy na uruchomionym to robi
@@ -1111,58 +797,25 @@ def _run_visualization(args, audio=None):
             # wizualizacji"] Handled BEFORE the PRESS/REPEAT-only filter
             # below (unlike every other key here) because this is the one
             # control that also needs the RELEASE event, to resume playback
-            # once scrubbing stops. See scrub_state's own comment (above,
-            # near n_holder) for the held-count/was-running bookkeeping.
+            # once scrubbing stops -- see session.scrub_advance/
+            # scrub_release's own doc-comments for the full logic, now
+            # unit-tested in test_ring_viz_session.py.
             ctrl_held = bool(mods & glfw.MOD_CONTROL)
-            delta = arrow_scrub_delta(key == glfw.KEY_RIGHT, ctrl_held)
             if action in (glfw.PRESS, glfw.REPEAT):
-                if action == glfw.PRESS:
-                    if scrub_state["held"] == 0 and playback["running"]:
-                        scrub_state["was_running"] = True
-                        playback["running"] = False
-                    scrub_state["held"] += 1
-                # [FIXED, see Artur's 2026-09-11 "zatrzymalo sie bez resetu
-                # nie ma mozliwosci wznowienia" report] clamp_scrub_n caps
-                # this at the loaded ceiling in sequential mode -- see its
-                # own doc-comment for why an unclamped scrub (especially
-                # with OS key-repeat and the Ctrl 10x step both piling up
-                # deltas fast) could run N so far past the ceiling that
-                # nothing -- not even a plain Space press -- could resume
-                # playback afterward.
-                n_holder["n"] = clamp_scrub_n(n_holder["n"] + delta, range_mode, ceiling)
-                # n_holder["n"] changing is what actually refreshes the HUD
-                # (see the main loop's own `n_holder["n"] != last_n` branch,
-                # which calls rebuild_buffer -> _refresh_hud() at its end) --
-                # no explicit _refresh_hud() call needed here, same as the
-                # plain Up/Down/PageUp/PageDown
-                # keys just below.
+                session.scrub_advance(key == glfw.KEY_RIGHT, ctrl_held, is_first_press=(action == glfw.PRESS))
             elif action == glfw.RELEASE:
-                scrub_state["held"] = max(0, scrub_state["held"] - 1)
-                if scrub_state["held"] == 0 and scrub_state["was_running"]:
-                    scrub_state["was_running"] = False
-                    # [FIXED, same 2026-09-11 report] Gate the auto-resume
-                    # through the exact same guard Space uses, instead of
-                    # blindly setting running=True -- even with the
-                    # PRESS/REPEAT-side clamp above, scrubbing can still
-                    # legitimately land exactly ON the ceiling (the same
-                    # "end of loaded data" edge real forward playback
-                    # ticking stops at on its own), which is a real,
-                    # expected "nothing left to advance to" state, not a
-                    # bug -- resuming from there should refuse (with the
-                    # same message Space already prints) rather than
-                    # silently claim playback is running when it can't
-                    # actually advance.
-                    if can_start_playback(n_holder["n"], range_mode, ceiling):
-                        playback["running"] = True
-                    else:
-                        print("Playback: N is already at the loaded ceiling -- nothing left to advance to")
+                msg, needs_refresh = session.scrub_release()
+                if msg is not None:
+                    print(msg)
+                if needs_refresh:
                     # Unlike PRESS/REPEAT above, N does NOT change here, so
                     # the main loop's own N-change branch will never fire on
-                    # its own this frame -- without this explicit refresh, the
-                    # HUD panel's [Stopped]->[Running] text would lag behind
-                    # the actual resume by up to one whole tempo_ms tick
-                    # (same reasoning as the Space/tempo-key case below).
-                    _refresh_hud()
+                    # its own this frame -- without this explicit refresh,
+                    # the HUD panel's [Stopped]->[Running] text would lag
+                    # behind the actual resume by up to one whole tempo_ms
+                    # tick (same reasoning as the Space/tempo-key case
+                    # below).
+                    _apply_hud_refresh()
             return
 
         if key == glfw.KEY_F11:
@@ -1170,21 +823,21 @@ def _run_visualization(args, audio=None):
             # okienkowy wizualizację ustawiało na wartości zoom tak by
             # zajmowało pełną wysokość okna lub szerokość" -- re-fit zoom
             # (and recenter pan) after EITHER direction of the fullscreen
-            # transition, since a viewport-size/aspect-ratio change makes the
-            # OLD zoom value wrong for the NEW window regardless of which way
-            # F11 just went. Measuring the framebuffer size before AND after
-            # the toggle (rather than assuming it always changes) means a
-            # toggle that fails outright (no monitors found -- see
-            # FullscreenToggle.toggle()'s own early-return paths) leaves the
-            # current view untouched instead of unexpectedly resetting it.
+            # transition via the SAME session.recenter() the middle-click
+            # branch above uses, since a viewport-size/aspect-ratio change
+            # makes the OLD zoom value wrong for the NEW window regardless
+            # of which way F11 just went. Measuring the framebuffer size
+            # before AND after the toggle (rather than assuming it always
+            # changes) means a toggle that fails outright (no monitors
+            # found -- see FullscreenToggle.toggle()'s own early-return
+            # paths) leaves the current view untouched instead of
+            # unexpectedly resetting it.
             before = glfw.get_framebuffer_size(window)
             fullscreen.handle_key(key, action)
             if action == glfw.PRESS:
                 after = glfw.get_framebuffer_size(window)
                 if after != before:
-                    state["zoom"] = fit_zoom_for_viewport(max_radius, after[0], after[1])
-                    state["pan"][0] = 0.0
-                    state["pan"][1] = 0.0
+                    session.recenter(after)
             return
         if action not in (glfw.PRESS, glfw.REPEAT):
             return
@@ -1202,7 +855,7 @@ def _run_visualization(args, audio=None):
         elif key == glfw.KEY_PAGE_DOWN:
             delta = -step * 100
         if delta:
-            n_holder["n"] = max(0, n_holder["n"] + delta)
+            session.bump_n(delta)
             return
 
         # [ADDED Faza 10, see PLAN.md] Playback controls -- gated to PRESS
@@ -1213,68 +866,42 @@ def _run_visualization(args, audio=None):
         if action != glfw.PRESS:
             return
         if key == glfw.KEY_SPACE:
-            # Ports #toggleRunning exactly: STOP always succeeds; START is
-            # refused (with a message, mirroring the JS's own
-            # "ss-info-ceiling-reached") once sequential mode has already
-            # reached the loaded ceiling -- see can_start_playback's own
-            # doc-comment.
-            if playback["running"]:
-                playback["running"] = False
-            elif can_start_playback(n_holder["n"], range_mode, ceiling):
-                playback["running"] = True
-            else:
-                print("Playback: N is already at the loaded ceiling -- nothing left to advance to")
+            # Ports #toggleRunning exactly via session.toggle_space(): STOP
+            # always succeeds; START is refused (with a message, mirroring
+            # the JS's own "ss-info-ceiling-reached") once sequential mode
+            # has already reached the loaded ceiling.
+            msg = session.toggle_space()
+            if msg is not None:
+                print(msg)
         elif key == glfw.KEY_R:
-            # Ports #reset exactly (the resetSequential()-calling half --
-            # see this function's own module docstring "Controls:" entry
-            # for R): stop playback, N=1, drop Track P, re-enable
-            # auto-orbit, and fall back to sequential mode even if
-            # --load-range was active at launch.
-            playback["running"] = False
-            track_primes.clear()
-            auto_orbit = True
-            range_mode = False
-            orbit_state["index"] = 0
-            orbit_state["counter"] = 0
-            orbit_state["current_prime"] = None
-            n_holder["n"] = 1
-            n_holder["force_rebuild"] = True
+            # Ports #reset exactly via session.reset() (the
+            # resetSequential()-calling half -- see this function's own
+            # module docstring "Controls:" entry for R).
+            session.reset()
         elif key in (glfw.KEY_RIGHT_BRACKET, glfw.KEY_EQUAL):
-            # [FIXED, see Artur's 2026-09-06 "nie widzę różnicy" report]
-            # Was a flat tempo_ms += 10 -- a barely-there ~8% change at the
-            # 120ms default, and a rounding error at the low end (30ms) or
-            # invisible at the high end (2000ms). Multiplicative scaling
-            # (20% per press) stays proportionally noticeable across the
-            # whole [30,2000] range, and the print gives Artur a way to
-            # CONFIRM the value actually changed independent of whether
-            # the animation itself looks any different to the eye.
             # KEY_EQUAL (the unshifted '=' key, i.e. the '+' position) is
             # accepted as an alias for KEY_RIGHT_BRACKET in case '[' / ']'
             # don't reach this callback at all on a given keyboard layout
             # -- '+' faster / '-' slower is also the more universal
             # media-player convention regardless.
-            tempo_ms = clamp_tempo_ms(round(tempo_ms * 0.8))
-            print(f"Tempo: {tempo_ms}ms/tick (faster)")
+            print(session.tempo_faster())
         elif key in (glfw.KEY_LEFT_BRACKET, glfw.KEY_MINUS):
-            tempo_ms = clamp_tempo_ms(round(tempo_ms / 0.8))
-            print(f"Tempo: {tempo_ms}ms/tick (slower)")
+            print(session.tempo_slower())
 
-        # [ADDED Faza 11, see PLAN.md] Space/tempo changes update
-        # playback["running"]/tempo_ms without necessarily triggering a
-        # rebuild_buffer call this same frame (R's own force_rebuild=True
-        # is the one exception, but re-emitting here too is harmless) --
-        # re-emit right away so the HUD panel's running/tempo fields don't
-        # lag behind a key press by up to one whole tempo_ms tick -- same
-        # reasoning for the on-canvas HUD texture, which _refresh_hud()
-        # refreshes alongside the JSON snapshot in one call.
-        _refresh_hud()
+        # [ADDED Faza 11, see PLAN.md] Space/tempo/R changes update session
+        # state without necessarily triggering a rebuild_buffer call this
+        # same frame -- re-emit right away so the HUD panel's running/tempo
+        # fields don't lag behind a key press by up to one whole tempo_ms
+        # tick (R's own force_rebuild=True is the one exception, but
+        # re-emitting here too is harmless).
+        _apply_hud_refresh()
 
     glfw.set_scroll_callback(window, on_scroll)
     glfw.set_mouse_button_callback(window, on_mouse_button)
     glfw.set_cursor_pos_callback(window, on_cursor_pos)
     glfw.set_key_callback(window, on_key)
 
-    last_n = n
+    last_n = session.n
     frame_count = 0
     fps_t0 = time.perf_counter()
     last_tick_time = time.perf_counter()
@@ -1293,7 +920,7 @@ def _run_visualization(args, audio=None):
         # wait_events_timeout so Windows doesn't mark it "Not Responding",
         # but doing zero rendering/audio work -- until either a "RESUME"
         # line arrives (show the window again, print RESUMED, fall through
-        # to the normal frame below with everything -- n_holder, playback,
+        # to the normal frame below with everything -- session, playback,
         # audio state -- untouched since none of it was ever torn down) or
         # stdin hits EOF (the __STDIN_CLOSED__ sentinel -- the Tkinter side
         # is gone, e.g. an explicit Reset already called proc.terminate(),
@@ -1339,33 +966,31 @@ def _run_visualization(args, audio=None):
         # against wall-clock time (this loop already runs every frame
         # uncapped -- see glfw.swap_interval(0) above -- so there is no
         # separate timer callback to install, just a gate on how often the
-        # N-advance actually fires). tick_next_n's own should_stop covers
-        # sequential mode reaching its ceiling (mirrors #tick's own
-        # ceiling check, which STOPS rather than advancing past it) -- now
-        # the rarely-exercised fallback for a magazyn that has genuinely run
-        # out of data (extend_state["exhausted"]), not the normal outcome of
-        # a long sequential playback run.
-        if playback["running"]:
+        # N-advance actually fires). session.tick()'s own should_stop covers
+        # sequential mode reaching its ceiling (mirrors #tick's own ceiling
+        # check, which STOPS rather than advancing past it) -- now the
+        # rarely-exercised fallback for a magazyn that has genuinely run out
+        # of data (extend_state["exhausted"] in the pre-Faza-4 version, now
+        # session.extend_exhausted), not the normal outcome of a long
+        # sequential playback run.
+        if session.playback_running:
             now_tick = time.perf_counter()
-            if (now_tick - last_tick_time) * 1000.0 >= tempo_ms:
+            if (now_tick - last_tick_time) * 1000.0 >= session.tempo_ms:
                 last_tick_time = now_tick
-                new_n, should_stop = tick_next_n(n_holder["n"], range_mode, ceiling, range_step)
+                should_stop = session.tick()
                 if should_stop:
-                    playback["running"] = False
                     print("Playback stopped: N reached the loaded ceiling")
-                    # [ADDED Faza 11] N itself doesn't change on this branch,
-                    # so no rebuild_buffer call (and thus no emit_hud_state)
-                    # happens this frame -- emit directly so the panel's
-                    # "running" field flips to stopped immediately instead
-                    # of looking stuck on the last real tick's snapshot.
-                    _refresh_hud()
-                else:
-                    n_holder["n"] = new_n
-                    n_holder["advancing"] = True
+                    # [ADDED Faza 11] N itself doesn't change on this
+                    # branch, so no rebuild_buffer call (and thus no HUD
+                    # refresh) happens this frame -- emit directly so the
+                    # panel's "running" field flips to stopped immediately
+                    # instead of looking stuck on the last real tick's
+                    # snapshot.
+                    _apply_hud_refresh()
 
-        if n_holder["n"] != last_n or n_holder["force_rebuild"]:
-            last_n = n_holder["n"]
-            advancing = n_holder["advancing"]
+        if session.n != last_n or session.n_force_rebuild:
+            last_n = session.n
+            advancing = session.n_advancing
             vbo_normal, vbo_hit, new_ring_count, new_ring_count_hit = rebuild_buffer(
                 last_n, prev_ring_count=ring_count, advancing=advancing
             )
@@ -1373,17 +998,17 @@ def _run_visualization(args, audio=None):
             ring_count_hit = new_ring_count_hit
             vao_normal = _make_ring_vao(vbo_normal)
             vao_hit = _make_ring_vao(vbo_hit)
-            n_holder["advancing"] = False
-            n_holder["force_rebuild"] = False
+            session.n_advancing = False
+            session.n_force_rebuild = False
 
         width, height = glfw.get_framebuffer_size(window)
         ctx.viewport = (0, 0, width, height)
         ctx.clear(0.05, 0.05, 0.07)
 
-        pan_x = state["pan"][0] + width / 2
-        pan_y = state["pan"][1] + height / 2
+        pan_x = session.cam_pan[0] + width / 2
+        pan_y = session.cam_pan[1] + height / 2
         prog["u_pan"].value = (pan_x, pan_y)
-        prog["u_zoom"].value = state["zoom"]
+        prog["u_zoom"].value = session.cam_zoom
         prog["u_viewport"].value = (width, height)
 
         # [FIXED, see Faza 10's own empty-buffer note above] vertices=
@@ -1413,11 +1038,11 @@ def _run_visualization(args, audio=None):
         # counts are always small (user-typed or Faza-7-capped), so a few
         # extra draw calls per frame here is negligible next to the single
         # GL_POINTS call above carrying the real ring count.
-        if outline_draws_holder["draws"]:
+        if session.outline_draws:
             prog_outline["u_pan"].value = (pan_x, pan_y)
-            prog_outline["u_zoom"].value = state["zoom"]
+            prog_outline["u_zoom"].value = session.cam_zoom
             prog_outline["u_viewport"].value = (width, height)
-            for radius, color in outline_draws_holder["draws"]:
+            for radius, color in session.outline_draws:
                 prog_outline["u_radius"].value = radius
                 prog_outline["u_color"].value = color
                 unit_circle_vao.render(moderngl.LINE_LOOP)
@@ -1436,30 +1061,31 @@ def _run_visualization(args, audio=None):
 
         # [ADDED Faza 8] Birth/resonance flash overlays -- full-screen washes
         # that decay over subsequent frames after a trigger (see
-        # rebuild_buffer's own Faza-8 comment for the trigger conditions).
-        # Skipped entirely once decayed to 0 (the overwhelming majority of
-        # frames) rather than drawing an alpha-0 quad every frame.
-        if flash_state["resonance"] > 0.0:
-            quad = build_flash_quad_vertex_data(
-                width, height, flash_overlay_rgba(flash_state["resonance"], _FLASH_RESONANCE_RGB)
-            )
+        # session.rebuild's own Faza-8 comment for the trigger conditions).
+        # session.resonance_flash_color()/prime_flash_color() return None
+        # once fully decayed (the overwhelming majority of frames), so this
+        # skips the draw call entirely rather than drawing an alpha-0 quad
+        # every frame -- decay only advances AFTER the draw, same order the
+        # pre-Faza-4 closure used.
+        resonance_color = session.resonance_flash_color()
+        if resonance_color is not None:
+            quad = build_flash_quad_vertex_data(width, height, resonance_color)
             flash_quad_vbo.write(quad.tobytes())
             flash_quad_vao.render(moderngl.TRIANGLE_FAN)
-            flash_state["resonance"] = decay_flash(flash_state["resonance"], 0.65)
-        if flash_state["prime"] > 0.0:
-            quad = build_flash_quad_vertex_data(
-                width, height, flash_overlay_rgba(flash_state["prime"], _FLASH_PRIME_RGB)
-            )
+            session.decay_resonance_flash()
+        prime_color = session.prime_flash_color()
+        if prime_color is not None:
+            quad = build_flash_quad_vertex_data(width, height, prime_color)
             flash_quad_vbo.write(quad.tobytes())
             flash_quad_vao.render(moderngl.TRIANGLE_FAN)
-            flash_state["prime"] = decay_flash(flash_state["prime"], 0.85)
+            session.decay_prime_flash()
 
         # [ADDED Faza 11B, see PLAN.md] On-canvas HUD text quad -- drawn
         # LAST (after rings/outlines/marker/flash, right before the swap)
         # so it always sits on top, same as DrumRenderer's own #drawHud
         # being the final call in its own #renderFrame. hud_tex_holder is
         # only ever non-None when Pillow is installed AND the current HUD
-        # text is non-empty (see refresh_hud_texture's own early-outs).
+        # text is non-empty (see _apply_hud_refresh's own early-outs).
         if hud_tex_holder["tex"] is not None:
             hud_tex_holder["tex"].use(location=0)
             prog_text["u_tex"].value = 0
