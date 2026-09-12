@@ -446,13 +446,20 @@ class RenderSession:
             window_anchors, self.enabled_ids, self.auto_orbit, self.orbit_current_prime, self.track_primes
         )
 
+        tracked_state = tracked_resonance_state(self.track_primes, active, n_value, auto_orbit=self.auto_orbit)
+        resonance_track_primes = (
+            tracked_state["tracked"]
+            if tracked_state and not tracked_state.get("too_large") and tracked_state.get("to_resonance") == 0
+            else ()
+        )
+
         data, count, pos = build_vertex_data(
-            active, n_value, self.max_radius, self.enabled_ids, self.theta, self.law_mode, effective_track_primes
+            active, n_value, self.max_radius, self.enabled_ids, self.theta, self.law_mode, effective_track_primes,
+            resonance_track_primes
         )
         t1 = time.perf_counter()
         print(f"N={n_value:,}  rings={count:,}  rebuild={1000 * (t1 - t0):.1f}ms")
 
-        tracked_state = tracked_resonance_state(self.track_primes, active, n_value, auto_orbit=self.auto_orbit)
         emit_audio_tick(audio, active, pos['is_hit'], tracked_state, advancing)
         current_hud_lines = hud_lines_for_n(active, n_value, pos, self.enabled_ids, self.theta, self.law_mode, tracked_state)
         for line in current_hud_lines:

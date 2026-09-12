@@ -332,6 +332,38 @@ def _test_rebuild_resonance_flash_when_all_hit():
     check(s2.flash_resonance == 0.0, "N=7 divides neither active prime -> no resonance flash")
 
 
+def _test_rebuild_tracked_resonance_orange_dot():
+    """[ADDED 2026-09-12, Artur's report: "przy rezonansie czyli gdy lcm
+    zostal osiagniety... punkty sledzonych liczb pierwszych powinny byc
+    pomaranczowe"] When the manually-tracked set's own LCM is reached
+    (tracked_resonance_state's to_resonance == 0), the tracked rings' dots
+    turn resonance-orange, not just plain white -- verified end-to-end
+    through RenderSession.rebuild(), not just build_vertex_data directly."""
+    from primeatlas.ring_viz.geometry_draw import _FLASH_RESONANCE_RGB
+    expected_rgb = np.array([c / 255.0 for c in _FLASH_RESONANCE_RGB])
+
+    # track_primes=[2, 3] -> LCM=6. auto_orbit=False so the manual list is
+    # what actually drives effective_track_primes (auto_orbit would
+    # otherwise override it with its own current pick).
+    s = _make_session(primes=np.array([2, 3, 5], dtype=np.uint64), n=6,
+                       track_primes=[2, 3], auto_orbit=False)
+    _data_normal, data_hit, count, count_hit = s.rebuild(6)
+    check(count_hit == 2, f"both tracked primes (2,3) divide N=6 -> both hit (got {count_hit})")
+    check(np.allclose(data_hit[:, 2:5], expected_rgb, atol=1e-6),
+          f"at the tracked set's own resonance step, both tracked dots are resonance-orange "
+          f"(got {data_hit[:, 2:5]})")
+
+    # N=7: still tracking [2, 3], both still active, but 7 % 6 != 0 -> not
+    # a resonance step for THIS tracked set -> plain white dots, no orange.
+    s2 = _make_session(primes=np.array([2, 3, 5, 7], dtype=np.uint64), n=7,
+                        track_primes=[2, 3], auto_orbit=False)
+    data_normal2, data_hit2, _count2, _count_hit2 = s2.rebuild(7)
+    all_rows2 = np.vstack([data_normal2, data_hit2]) if len(data_normal2) and len(data_hit2) else (
+        data_hit2 if len(data_hit2) else data_normal2)
+    check(not np.any(np.all(np.isclose(all_rows2[:, 2:5], expected_rgb, atol=1e-6), axis=1)),
+          f"N=7 is not the tracked set's resonance step -> no orange dot anywhere (got {all_rows2[:, 2:5]})")
+
+
 def _test_flash_color_and_decay():
     s = _make_session()
     check(s.resonance_flash_color() is None, "no color while flash_resonance is 0")
@@ -384,6 +416,7 @@ def main():
     _test_rebuild_basic()
     _test_rebuild_prime_flash_on_ring_count_increase()
     _test_rebuild_resonance_flash_when_all_hit()
+    _test_rebuild_tracked_resonance_orange_dot()
     _test_flash_color_and_decay()
     _test_refresh_hud_json_line()
 

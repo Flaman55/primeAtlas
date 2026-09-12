@@ -434,6 +434,56 @@ def _test_build_vertex_data_track_primes_white_dot():
           "did something observable)")
 
 
+def _test_build_vertex_data_resonance_track_primes_orange_dot():
+    """[ADDED 2026-09-12, Artur's report: "przy rezonansie czyli gdy lcm
+    zostal osiagniety... punkty sledzonych liczb pierwszych powinny byc
+    pomaranczowe"] `resonance_track_primes` forces the listed rings' dots
+    to the same orange the full-screen resonance flash uses
+    (_FLASH_RESONANCE_RGB), winning over BOTH the window-highlight color
+    AND the plain white tracked-dot override."""
+    from primeatlas.ring_viz.geometry_draw import build_vertex_data, _FLASH_RESONANCE_RGB
+
+    primes = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37], dtype=np.int64)
+    n = 40
+    max_radius = 100.0
+    expected_rgb = tuple(c / 255.0 for c in _FLASH_RESONANCE_RGB)
+
+    # Wins over a plain (no window) tracked white dot.
+    data, _count, _pos = build_vertex_data(
+        primes, n, max_radius, track_primes=[23], resonance_track_primes=[23])
+    idx23 = int(np.where(primes == 23)[0][0])
+    check(np.allclose(data[idx23, 2:5], expected_rgb, atol=1e-6),
+          f"a resonating tracked ring gets the resonance-orange dot, not plain white "
+          f"(got {data[idx23, 2:5]})")
+
+    # Wins over a window-highlight color too (same n=40/Bertrand fixture as
+    # the white-dot test above, ring 23 is a genuine Bertrand match).
+    data_window, _count2, _pos2 = build_vertex_data(
+        primes, n, max_radius, enabled_ids={"bertrand"}, track_primes=[23], resonance_track_primes=[23])
+    check(np.allclose(data_window[idx23, 2:5], expected_rgb, atol=1e-6),
+          f"resonance-orange wins over the window-highlight color too (got {data_window[idx23, 2:5]})")
+
+    # A ring NOT in resonance_track_primes is unaffected (still plain white,
+    # from track_primes alone) -- only the resonating ring(s) turn orange.
+    data_two, _count3, _pos3 = build_vertex_data(
+        primes, n, max_radius, track_primes=[23, 29], resonance_track_primes=[23])
+    idx29 = int(np.where(primes == 29)[0][0])
+    check(np.allclose(data_two[idx23, 2:5], expected_rgb, atol=1e-6),
+          "ring 23 (in resonance_track_primes) is orange")
+    check(np.allclose(data_two[idx29, 2:5], (1.0, 1.0, 1.0), atol=1e-6),
+          f"ring 29 (tracked but NOT resonating this frame) stays plain white, not orange "
+          f"(got {data_two[idx29, 2:5]})")
+
+    # resonance_track_primes=() (the default) is a no-op -- identical to the
+    # existing white-dot-only behavior.
+    data_none, _count4, _pos4 = build_vertex_data(primes, n, max_radius, track_primes=[23])
+    check(np.array_equal(data_none[:, 2:5], data[:, 2:5]) is False,
+          "sanity: omitting resonance_track_primes differs from passing [23] (orange applied)")
+    check(np.allclose(data_none[idx23, 2:5], (1.0, 1.0, 1.0), atol=1e-6),
+          "with no resonance_track_primes given (the default), the tracked ring just stays "
+          "plain white, no orange anywhere")
+
+
 def _test_split_hit_normal_vertex_data():
     from primeatlas.ring_viz.geometry_draw import build_vertex_data, split_hit_normal_vertex_data
 
@@ -1643,6 +1693,7 @@ def main():
     _test_build_vertex_data_no_windows_matches_old_behavior()
     _test_build_vertex_data_bertrand_highlight()
     _test_build_vertex_data_track_primes_white_dot()
+    _test_build_vertex_data_resonance_track_primes_orange_dot()
     _test_split_hit_normal_vertex_data()
     _test_hud_lines_for_n()
     _test_initial_n_for_source()

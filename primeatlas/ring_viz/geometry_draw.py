@@ -49,7 +49,8 @@ _ORANGE_RGB = (255.0, 87.0, 34.0)    # "#ff5722" -- hit, prime < 11
 _TRACKED_WHITE_RGB = (255.0, 255.0, 255.0)
 
 
-def build_vertex_data(primes, n, max_radius, enabled_ids=(), theta=0.5, mode="stepped", track_primes=()):
+def build_vertex_data(primes, n, max_radius, enabled_ids=(), theta=0.5, mode="stepped", track_primes=(),
+                       resonance_track_primes=()):
     """ring_geometry.ring_positions() -> flat (x,y,r,g,b) float32 array ready
     for a moderngl buffer.
 
@@ -85,7 +86,22 @@ def build_vertex_data(primes, n, max_radius, enabled_ids=(), theta=0.5, mode="st
     surroundings carry. Empty (the default) reproduces the exact prior
     behavior -- tracked_ring_mask (ring_geometry.py) already returns all-
     False for an empty `track_primes`, so this is a no-op then, same
-    convention as `enabled_ids=()` above."""
+    convention as `enabled_ids=()` above.
+
+    [ADDED 2026-09-12, Artur's report: "przy rezonansie czyli gdy lcm
+    zostal osiagniety... punkty sledzonych liczb pierwszych powinny byc
+    pomaranczowe"] `resonance_track_primes` -- the caller's
+    ring_geometry.tracked_resonance_state()["tracked"] list, but ONLY when
+    that state's own `to_resonance == 0` (this exact N IS the tracked set's
+    LCM/resonance step -- every one of them is hit here, all sitting on the
+    same vertical line), empty otherwise. Gets its dot forced to the same
+    orange flash_overlay_rgba already uses for the full-screen resonance
+    flash (_FLASH_RESONANCE_RGB), applied LAST (so it wins over even the
+    plain white tracked dot above) -- the resonance flash already washes
+    the whole screen orange for a few frames, but the flash decays fast and
+    the tracked dots themselves used to stay plain white through it, easy
+    to miss exactly which rings just resonated. Empty (the default) is a
+    no-op, same convention as `track_primes=()` above."""
     pos = ring_positions(primes, n, max_radius)
     count = len(pos["x"])
     hit = pos["is_hit"]
@@ -104,6 +120,9 @@ def build_vertex_data(primes, n, max_radius, enabled_ids=(), theta=0.5, mode="st
 
     if track_primes:
         rgb[tracked_ring_mask(primes_arr, track_primes)] = _TRACKED_WHITE_RGB
+
+    if resonance_track_primes:
+        rgb[tracked_ring_mask(primes_arr, resonance_track_primes)] = _FLASH_RESONANCE_RGB
 
     data = np.empty((count, 5), dtype=np.float32)
     data[:, 0] = pos["x"]
