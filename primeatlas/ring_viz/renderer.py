@@ -520,7 +520,12 @@ void main() {
 }
 """
 
-OUTLINE_FRAGMENT_SHADER = """
+# [DEDUPED Faza 0 refactor] OUTLINE_FRAGMENT_SHADER and SCREEN_FRAGMENT_SHADER
+# used to be two separately-defined but byte-for-byte identical GLSL strings
+# (a flat, unlit vertex-color pass-through) -- one shared constant, aliased
+# under both of this module's existing names so neither call site needs to
+# change.
+FLAT_COLOR_FRAGMENT_SHADER = """
 #version 330
 
 in vec4 v_color;
@@ -530,6 +535,8 @@ void main() {
     f_color = v_color;
 }
 """
+
+OUTLINE_FRAGMENT_SHADER = FLAT_COLOR_FRAGMENT_SHADER
 
 # [ADDED Faza 8] Screen-space shader for the center marker (triangle + line)
 # and the full-screen flash-overlay quad -- both are drawn in absolute PIXEL
@@ -562,16 +569,7 @@ void main() {
 }
 """
 
-SCREEN_FRAGMENT_SHADER = """
-#version 330
-
-in vec4 v_color;
-out vec4 f_color;
-
-void main() {
-    f_color = v_color;
-}
-"""
+SCREEN_FRAGMENT_SHADER = FLAT_COLOR_FRAGMENT_SHADER
 
 # [ADDED Faza 11B, see PLAN.md] On-canvas HUD text quad -- same absolute-
 # pixel-space / y-down convention as SCREEN_VERTEX_SHADER above (so both
@@ -1211,6 +1209,21 @@ _MARKER_TRIANGLE_RGBA = (1.0, 0.067, 0.067, 1.0)      # DrumRenderer's opaque ma
 _MARKER_LINE_RGBA = (1.0, 0.157, 0.157, 0.55)         # DrumRenderer's "rgba(255,40,40,0.55)" glow line
 
 
+def _screen_vertex_data(xy_pairs, rgba):
+    """[ADDED Faza 0 refactor] Shared (N, 6) float32 (pos.xy, color.rgba)
+    stamper for the small, flat-colored screen-space shapes drawn via
+    SCREEN_VERTEX_SHADER -- build_center_marker_vertex_data's triangle/line
+    and build_flash_quad_vertex_data's quad used to each hand-build this same
+    (N, 6) layout separately; every vertex in one call shares the same
+    `rgba`, only its (x, y) position differs."""
+    data = np.empty((len(xy_pairs), 6), dtype=np.float32)
+    for i, (x, y) in enumerate(xy_pairs):
+        data[i, 0] = x
+        data[i, 1] = y
+    data[:, 2:6] = rgba
+    return data
+
+
 def build_center_marker_vertex_data(cx, cy, s):
     """(triangle_data, line_data) -- two small float32 (pos.xy, color.rgba)
     arrays ready for a moderngl buffer via SCREEN_VERTEX_SHADER, at the
@@ -1228,14 +1241,11 @@ def build_center_marker_vertex_data(cx, cy, s):
     change every frame -- there is no fixed buffer to reuse the way the
     tracked-ring outline's shared unit circle is."""
     offsets = center_marker_triangle_offsets(s)
-    triangle = np.empty((3, 6), dtype=np.float32)
-    triangle[:, 0] = cx + offsets[:, 0]
-    triangle[:, 1] = cy + offsets[:, 1]
-    triangle[:, 2:6] = _MARKER_TRIANGLE_RGBA
-
-    line = np.empty((2, 6), dtype=np.float32)
-    line[0] = (cx, cy, *_MARKER_LINE_RGBA)
-    line[1] = (cx, 0.0, *_MARKER_LINE_RGBA)
+    triangle = _screen_vertex_data(
+        [(cx + offsets[i, 0], cy + offsets[i, 1]) for i in range(offsets.shape[0])],
+        _MARKER_TRIANGLE_RGBA,
+    )
+    line = _screen_vertex_data([(cx, cy), (cx, 0.0)], _MARKER_LINE_RGBA)
     return triangle, line
 
 
@@ -1247,11 +1257,7 @@ def build_flash_quad_vertex_data(width, height, rgba):
     same `rgba` (see flash_overlay_rgba for how that's derived from the
     current flash accumulator) since the overlay is a flat wash, not a
     gradient."""
-    quad = np.empty((4, 6), dtype=np.float32)
-    quad[:, 0] = (0.0, width, width, 0.0)
-    quad[:, 1] = (0.0, 0.0, height, height)
-    quad[:, 2:6] = rgba
-    return quad
+    return _screen_vertex_data([(0.0, 0.0), (width, 0.0), (width, height), (0.0, height)], rgba)
 
 
 def zoom_to_point(old_zoom, old_pan, cursor, viewport, factor):
@@ -1728,6 +1734,15 @@ def _run_visualization(args, audio=None):
     prog = ctx.program(vertex_shader=VERTEX_SHADER, fragment_shader=FRAGMENT_SHADER)
     prog["u_point_size"].value = args.point_size
 
+    # [ADDED Faza 0 refactor] The normal/hit VAO pair (see split_hit_normal_
+    # vertex_data's own doc-comment for why there are two) is (re)created
+    # from a fresh VBO twice -- once here at startup, once per N-change in
+    # the main loop below -- identically both times; this one helper is the
+    # single place that vertex-format string ("2f 3f", "in_pos", "in_color")
+    # is written.
+    def _make_ring_vao(vbo):
+        return ctx.vertex_array(prog, [(vbo, "2f 3f", "in_pos", "in_color")])
+
     # [ADDED Faza 11C, see PLAN.md] Independent size for rings ON the
     # vertical reference line (pos["is_hit"] -- real divisors of N) --
     # falls back to args.point_size when --hit-point-size wasn't given, so
@@ -2087,6 +2102,16 @@ def _run_visualization(args, audio=None):
         hud_tex_holder["tex"] = tex
         hud_quad_vbo.write(hud_quad_vertex_data(w, h).tobytes())
 
+    # [ADDED Faza 0 refactor] emit_hud_state() and refresh_hud_texture() were
+    # always called as an adjacent pair, in this exact order, at every one of
+    # their four call sites below (end of rebuild_buffer, the scrub-release
+    # auto-resume branch, the Space/R/tempo key handler, and the sequential-
+    # mode ceiling-stop branch) -- one shared name for "the HUD snapshot may
+    # have changed, refresh both its surfaces" instead of repeating the pair.
+    def _refresh_hud():
+        emit_hud_state()
+        refresh_hud_texture()
+
     def rebuild_buffer(n_value, prev_ring_count=None, advancing=False):
         t0 = time.perf_counter()
         # [ADDED Faza 9, see PLAN.md] range_mode's ring set is FIXED
@@ -2264,14 +2289,13 @@ def _run_visualization(args, audio=None):
         hud_state["count"] = count
         hud_state["rebuild_ms"] = round(1000 * (t1 - t0), 1)
         hud_state["lines"] = current_hud_lines
-        emit_hud_state()
-        refresh_hud_texture()
+        _refresh_hud()
 
         return vbo_normal, vbo_hit, count, count_hit
 
     vbo_normal, vbo_hit, ring_count, ring_count_hit = rebuild_buffer(n)
-    vao_normal = ctx.vertex_array(prog, [(vbo_normal, "2f 3f", "in_pos", "in_color")])
-    vao_hit = ctx.vertex_array(prog, [(vbo_hit, "2f 3f", "in_pos", "in_color")])
+    vao_normal = _make_ring_vao(vbo_normal)
+    vao_hit = _make_ring_vao(vbo_hit)
 
     def on_scroll(_window, _dx, dy):
         # [FIXED, see Artur's 2026-09-04 bug report and zoom_to_point's own
@@ -2425,9 +2449,9 @@ def _run_visualization(args, audio=None):
                 n_holder["n"] = clamp_scrub_n(n_holder["n"] + delta, range_mode, ceiling)
                 # n_holder["n"] changing is what actually refreshes the HUD
                 # (see the main loop's own `n_holder["n"] != last_n` branch,
-                # which calls rebuild_buffer -> emit_hud_state at its end) --
-                # no explicit emit_hud_state()/refresh_hud_texture() call
-                # needed here, same as the plain Up/Down/PageUp/PageDown
+                # which calls rebuild_buffer -> _refresh_hud() at its end) --
+                # no explicit _refresh_hud() call needed here, same as the
+                # plain Up/Down/PageUp/PageDown
                 # keys just below.
             elif action == glfw.RELEASE:
                 scrub_state["held"] = max(0, scrub_state["held"] - 1)
@@ -2451,12 +2475,11 @@ def _run_visualization(args, audio=None):
                         print("Playback: N is already at the loaded ceiling -- nothing left to advance to")
                     # Unlike PRESS/REPEAT above, N does NOT change here, so
                     # the main loop's own N-change branch will never fire on
-                    # its own this frame -- without this explicit pair, the
+                    # its own this frame -- without this explicit refresh, the
                     # HUD panel's [Stopped]->[Running] text would lag behind
                     # the actual resume by up to one whole tempo_ms tick
                     # (same reasoning as the Space/tempo-key case below).
-                    emit_hud_state()
-                    refresh_hud_texture()
+                    _refresh_hud()
             return
 
         if key == glfw.KEY_F11:
@@ -2558,11 +2581,10 @@ def _run_visualization(args, audio=None):
         # rebuild_buffer call this same frame (R's own force_rebuild=True
         # is the one exception, but re-emitting here too is harmless) --
         # re-emit right away so the HUD panel's running/tempo fields don't
-        # lag behind a key press by up to one whole tempo_ms tick. Same
-        # reasoning for refresh_hud_texture() -- the on-canvas HUD's own
-        # running/tempo line would otherwise lag one tick behind too.
-        emit_hud_state()
-        refresh_hud_texture()
+        # lag behind a key press by up to one whole tempo_ms tick -- same
+        # reasoning for the on-canvas HUD texture, which _refresh_hud()
+        # refreshes alongside the JSON snapshot in one call.
+        _refresh_hud()
 
     glfw.set_scroll_callback(window, on_scroll)
     glfw.set_mouse_button_callback(window, on_mouse_button)
@@ -2653,8 +2675,7 @@ def _run_visualization(args, audio=None):
                     # happens this frame -- emit directly so the panel's
                     # "running" field flips to stopped immediately instead
                     # of looking stuck on the last real tick's snapshot.
-                    emit_hud_state()
-                    refresh_hud_texture()
+                    _refresh_hud()
                 else:
                     n_holder["n"] = new_n
                     n_holder["advancing"] = True
@@ -2667,8 +2688,8 @@ def _run_visualization(args, audio=None):
             )
             ring_count = new_ring_count
             ring_count_hit = new_ring_count_hit
-            vao_normal = ctx.vertex_array(prog, [(vbo_normal, "2f 3f", "in_pos", "in_color")])
-            vao_hit = ctx.vertex_array(prog, [(vbo_hit, "2f 3f", "in_pos", "in_color")])
+            vao_normal = _make_ring_vao(vbo_normal)
+            vao_hit = _make_ring_vao(vbo_hit)
             n_holder["advancing"] = False
             n_holder["force_rebuild"] = False
 
