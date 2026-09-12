@@ -700,16 +700,51 @@ primeatlas/                 backend + GUI-tab package, one file (or pure-logic/U
                               kept in its own subpackage since it's a separate OS
                               process, not additional widgets in the main Tk process;
                               see "Ring visualization" above
-    renderer.py                  moderngl/GLFW render loop -- camera, HUD (on-canvas GL
-                              bitmap-font text, no native window-chrome dependency),
-                              audio wiring, CLI entrypoint (invoked via rings_tab.py's
-                              build_renderer_argv())
+    renderer.py                  moderngl/GLFW window/main-loop entrypoint -- CLI
+                              argument parsing, the GLFW callbacks/main loop itself,
+                              and wiring the pieces below together; ~1,100 lines, down
+                              from ~2,900 before the file split below pulled out
+                              everything that isn't GL-loop plumbing
+    gl_setup.py                   GLResources: window/context/shader-program/VAO/VBO
+                              creation -- the one piece of the split below that is NOT
+                              GL-free, since creating a GL context is unavoidably
+                              GL-bound one-time setup work
+    session.py                     RenderSession -- the interactive session's own state
+                              (camera pan/zoom, playback/tempo, auto-orbit, tracked-
+                              ring outlines, buffer extension, HUD snapshot) and the
+                              pure logic that transitions it, consolidated into one
+                              object with methods so renderer.py's GLFW callbacks/main
+                              loop are thin adapters rather than a dozen separate
+                              closures each capturing their own mutable dict
+    geometry_draw.py               pure vertex/color/camera-math helpers with no GL
+                              call anywhere -- per-ring vertex color/position data,
+                              the hit/normal buffer split, tracked-ring outline/center-
+                              marker/flash-quad geometry, zoom-to-cursor and fit-to-
+                              viewport camera math
+    hud.py                         HUD text composition (plain lines and the on-canvas
+                              canvas-header/status wrapper), per-line window-family
+                              coloring, and Pillow-based rasterization of the on-canvas
+                              HUD bitmap -- also owns the guarded (optional) Pillow
+                              import, since nothing else touches Image/ImageDraw/
+                              ImageFont
+    playback.py                    pure playback-timing logic: tempo clamp, LEFT/RIGHT
+                              scrub deltas, sequential-mode ceiling guards, buffer-
+                              lookahead-extension math, the range-mode dynamic step
+                              size, and the resonance-log jump-vs-tick update rule
+    sources.py                     load_synthetic/load_sieve/load_magazyn -- the three
+                              interchangeable ring-array data sources (--source)
+    shaders.py                     the GLSL vertex/fragment shader source strings
+                              (point-sprite rings, tracked-ring outlines, screen-space
+                              shapes, on-canvas HUD text quad)
+    stdin_commands.py              the --pipe-stdin-commands background stdin-reader
+                              thread backing Faza 13's live pause/resume protocol
     audio.py                     standalone tone-synthesis module (sine/triangle/
                               square/sawtooth/bell/choir/mute) for the three
                               independently assignable audio channels (low/prime/lcm)
-    window_mode.py                shared General Law theta/mode CLI parsing, used by
-                              both build_renderer_argv() and renderer.py itself so the
-                              two never drift out of sync
+    window_mode.py                 FullscreenToggle -- GLFW fullscreen toggle that
+                              preserves windowed geometry/GL context across F11 and
+                              releases exclusive monitor ownership before a paused
+                              window is hidden
 
   shared infrastructure (used across many tabs, not feature-specific):
   background.py                run_in_background()/PersistentWorker -- shared
