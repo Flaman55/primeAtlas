@@ -170,7 +170,6 @@ import json
 import os
 import queue
 import sys
-import threading
 import time
 
 import numpy as np
@@ -235,378 +234,36 @@ except ImportError:
 # interchangeable and independent of the rendering path below.
 # ---------------------------------------------------------------------------
 
-def load_synthetic(count, seed=0):
-    """A strictly increasing int64 array of exactly `count` values -- NOT
-    real primes (no primality claim at all), for the purest rendering-only
-    stress test. Gaps drawn from a small positive range so values stay
-    'prime-density-ish' in magnitude without needing to actually sieve
-    anything -- see module docstring point 1."""
-    rng = np.random.default_rng(seed)
-    gaps = rng.integers(1, 40, size=count, dtype=np.int64)
-    return np.cumsum(gaps) + 2
-
-
-def load_sieve(upto):
-    """Real sieve of Eratosthenes up to `upto` (moderate scale only -- this
-    is O(upto) memory as a bytearray, fine into the hundreds of millions, not
-    intended for anything near magazyn scale; use --source magazyn for that).
-    """
-    if upto < 2:
-        return np.empty(0, dtype=np.int64)
-    is_composite = bytearray(upto + 1)
-    primes = []
-    for p in range(2, upto + 1):
-        if not is_composite[p]:
-            primes.append(p)
-            if p * p <= upto:
-                is_composite[p * p:upto + 1:p] = b"\x01" * len(range(p * p, upto + 1, p))
-    return np.array(primes, dtype=np.int64)
-
-
-def load_magazyn(portal_folder, upto, progress_callback=None, batch_files=64, from_n=0,
-                  max_load_count=None):
-    """Reads real primes in (from_n, upto] from an existing PrimeAtlas
-    portal folder, via primeatlas.storage's own file-listing helpers and
-    prime_sieve_v1.read_prime_window for the actual decode.
-
-    [ADDED `max_load_count`, Artur 2026-09-12: "przyjac wartosc startowa i
-    ilosc pierscieni jakie wchodza do zakresu ... od-do i drugi parametr
-    dowolny zakres pierscieni ... jesli ... wiecej niz jakis prog ... zakres
-    od gory jest ciety do ilosci limitu"] Optional hard cap on how many
-    primes this call ever materializes. Enforced as an early stop (mirrors
-    the existing `floor_done` break just below) rather than a post-hoc
-    `result[:max_load_count]` slice, so a huge `(from_n, upto]` span --
-    the whole point of `from_n` jumping straight to a high floor -- never
-    reads a single file more than needed once the cap is hit. Truncation is
-    always from the TOP (the highest values get cut, exactly as Artur
-    asked), a natural consequence of floors/files being walked in ascending
-    order already. `None` (default) reproduces the old unbounded behavior
-    exactly. No fixed number is hardcoded here on purpose -- see this
-    function's own REAL CEILING note below: nobody has benchmarked a safe
-    figure on real magazyn hardware yet, so the caller (rings_tab.py) makes
-    this a plain configurable field instead of a guessed constant.
-
-    [ADDED `from_n`, Artur 2026-09-11: "bufor bedzie podrozowal wraz z n z
-    wyprzedzeniem"] Defaults to 0, i.e. every real prime is >0 so this
-    reproduces the exact old `arr[arr <= upto]` behavior unchanged when the
-    caller doesn't pass it. A non-zero `from_n` lets a caller that already
-    holds every prime up to some point (extend_buffer_if_needed in
-    _run_visualization, below) fetch only the NEW primes past that point
-    instead of re-reading and re-returning the whole [0, upto] range again
-    -- two cheap wins over a naive "just call load_magazyn(new_upto) again"
-    approach: (1) whole floors entirely below `from_n` are skipped without
-    even listing their files (see the floor_hi_exclusive check below), and
-    (2) within the one floor spanning `from_n`, files are still opened (no
-    per-file range metadata to skip them by name alone) but their
-    already-covered primes are trimmed out before being added to the
-    result, so nothing already known gets duplicated into the array.
-
-    HARDENED (Faza 2, see PLAN.md) vs the Faza-0 landing of the original
-    feasibility prototype's loader, in three ways:
-
-    1. Enumerates REAL floors on disk via storage.list_pietra() instead of
-       blindly incrementing floor with only a fixed sanity cap (`floor > 30`)
-       as a guard. A gap in the portal (e.g. floor 5 populated, floor 6 not
-       yet) no longer costs an empty list_source_filenames() call for every
-       skipped floor, and a portal whose highest real floor is well below
-       `upto`'s own floor stops there immediately instead of still counting
-       up toward the old hardcoded 30 regardless.
-    2. Reads window files in BOUNDED BATCHES (`batch_files` at a time,
-       default 64) rather than accumulating one unbounded Python list across
-       an entire floor (or several floors) before ever concatenating -- see
-       this project's own `c_skaner_odczyt_porcjami` history (04_C_skaner
-       once failed the whole sieve, without warning, from a single ~1GB
-       fread instead of reading in ~160MB portions) for the class of failure
-       an unbounded single pass caused elsewhere in this codebase. Each
-       batch is concatenated and appended to the running result list right
-       away, so peak EXTRA memory during the load is bounded by one batch's
-       worth of arrays, not the whole load -- the final full-array
-       concatenate at the end is unavoidable (the renderer needs one
-       contiguous sorted array to hand to ring_geometry), but the batching
-       here at least keeps the INTERMEDIATE working set bounded.
-    3. Accepts an optional `progress_callback(base_exponent, files_read_in_floor,
-       primes_loaded_so_far)`, invoked after every batch, so a caller
-       (primeatlas/rings_tab.py, Faza 3) can drive a real progress bar
-       instead of a frozen GUI during what can be a multi-second load at
-       real magazyn scale. Deliberately NOT trying to make the load itself
-       faster (see this module's own docstring, data-source point 1, for why
-       generation/read throughput is explicitly out of scope for this
-       feature to optimize) -- only making the existing cost observable and
-       boundable instead of an opaque hang.
-
-    REAL CEILING (documented per PLAN.md's Faza 2 ask): NOT benchmarked here
-    -- this sandbox has no real magazyn data or GPU to measure against. The
-    rendering ceiling already confirmed on Artur's real hardware is
-    20,000,000 rings at 50+ fps (see PLAN.md's "Feasibility already
-    confirmed" section); this loader's own cost is dominated by per-file
-    open() latency on the FUSE-mounted storage drive (~5ms/file -- the same
-    figure storage.update_pietro_totals_cache()'s own docstring measured on
-    this exact drive), not the PGS decode work itself. That means the real
-    bottleneck to watch for at very high N is FILE COUNT, not prime count: a
-    floor with many thousands of small window files costs far more
-    wall-clock load time than one with a few large ones holding the same
-    total prime count. Artur should measure the real number on his own
-    hardware once Faza 3's tab exists to launch this against a real
-    magazyn -- this docstring intentionally does not claim a number this
-    sandbox cannot verify.
-
-    `prime_sieve` (this repo's sibling top-level directory to `primeatlas/`)
-    is added to sys.path here because primeatlas.storage itself does a bare
-    `import prime_sieve_v1` / `import window_sharding` (see storage.py's own
-    module docstring for why those two live as separate top-level modules
-    rather than inside this package)."""
-    prime_sieve_dir = os.path.join(_REPO_ROOT, "prime_sieve")
-    if prime_sieve_dir not in sys.path:
-        sys.path.insert(0, prime_sieve_dir)
-    from primeatlas import storage
-    import prime_sieve_v1
-
-    chunks = []
-    total_loaded = 0
-
-    # [ADDED, see `from_n` doc above] Materialized (not a lazy generator)
-    # so a floor's NEXT exponent is available while looking at the current
-    # one -- gives a cheap, exact "is this whole floor already below from_n"
-    # check without opening a single file, for every floor except the one
-    # that actually straddles from_n (at most one wasted full floor-listing
-    # in the worst case, none in the common case of extending near the top).
-    floor_exponents = list(storage.list_pietra(portal_folder))
-    for floor_index, base_exponent in enumerate(floor_exponents):
-        floor_lo = 10 ** base_exponent if base_exponent > 0 else 0
-        if floor_lo > upto:
-            break
-        if floor_index + 1 < len(floor_exponents):
-            floor_hi_exclusive = 10 ** floor_exponents[floor_index + 1]
-            if floor_hi_exclusive <= from_n:
-                continue
-
-        entries = storage.list_source_filenames(portal_folder, base_exponent)
-        if not entries:
-            continue
-
-        files_read_in_floor = 0
-        floor_done = False
-        for batch_start in range(0, len(entries), batch_files):
-            batch = entries[batch_start:batch_start + batch_files]
-            batch_chunks = []
-            for name, path in batch:
-                window_primes = prime_sieve_v1.read_prime_window(path)
-                # [FIXED 2026-09-12, Artur's report: OverflowError loading a
-                # real piętro 25/27 window (~10**25-10**27 magnitude, see
-                # to_prime_array's own doc-comment)] was the old hardcoded
-                # `dtype=np.int64` here -- window files below the uint64
-                # ceiling (the overwhelming majority of a magazyn) still get
-                # the exact same fast native array as before; only a window
-                # whose values actually exceed it pays the `object`-dtype
-                # cost, and only for that one window's own `chunks` entry --
-                # np.concatenate below promotes the WHOLE result to `object`
-                # automatically if and only if at least one chunk needed it
-                # (see numpy's own dtype-promotion rules), so a from_n/upto
-                # query confined to low floors never pays anything extra.
-                arr = to_prime_array(window_primes)
-                files_read_in_floor += 1
-                if arr.size and arr[0] > upto:
-                    floor_done = True
-                    break
-                trimmed = arr[(arr > from_n) & (arr <= upto)]
-                if max_load_count is not None and trimmed.size:
-                    remaining = max_load_count - total_loaded
-                    if remaining <= 0:
-                        trimmed = trimmed[:0]
-                    elif trimmed.size > remaining:
-                        trimmed = trimmed[:remaining]
-                if trimmed.size:
-                    batch_chunks.append(trimmed)
-                    total_loaded += int(trimmed.size)
-                if arr.size and arr[-1] >= upto:
-                    floor_done = True
-                    break
-                if max_load_count is not None and total_loaded >= max_load_count:
-                    floor_done = True
-                    break
-
-            if batch_chunks:
-                chunks.append(batch_chunks[0] if len(batch_chunks) == 1 else np.concatenate(batch_chunks))
-            if progress_callback is not None:
-                progress_callback(base_exponent, files_read_in_floor, total_loaded)
-            if floor_done:
-                break
-        if max_load_count is not None and total_loaded >= max_load_count:
-            break
-
-    if not chunks:
-        return np.empty(0, dtype=np.uint64)
-    result = np.concatenate(chunks)
-    result.sort()
-    return result
+# [MOVED Faza 1 of the renderer.py split, see sources.py's own module
+# docstring] load_synthetic/load_sieve/load_magazyn used to be defined here
+# directly; they have no GL-context dependency (unlike everything below this
+# point in the file), so they moved out alongside the shaders as one of the
+# lowest-risk cuts. Re-imported under their original names so every call
+# site in _run_visualization/main() below is unchanged.
+from primeatlas.ring_viz.sources import load_synthetic, load_sieve, load_magazyn
 
 
 # ---------------------------------------------------------------------------
 # Rendering
 # ---------------------------------------------------------------------------
 
-VERTEX_SHADER = """
-#version 330
-
-in vec2 in_pos;
-in vec3 in_color;
-
-uniform vec2 u_pan;     // screen-space pan offset, pixels
-uniform float u_zoom;   // camera zoom (separate from ring_geometry's own
-                         // max_radius -- this is the CAMERA transform the
-                         // module docstring's architecture note describes,
-                         // applied every frame with NO CPU recompute)
-uniform vec2 u_viewport; // (width, height) in pixels, for aspect + NDC
-uniform float u_point_size;
-
-out vec3 v_color;
-
-void main() {
-    vec2 screen = in_pos * u_zoom + u_pan;
-    vec2 ndc = (screen / u_viewport) * 2.0 - 1.0;
-    ndc.y = -ndc.y;
-    gl_Position = vec4(ndc, 0.0, 1.0);
-    gl_PointSize = u_point_size;
-    v_color = in_color;
-}
-"""
-
-FRAGMENT_SHADER = """
-#version 330
-
-in vec3 v_color;
-out vec4 f_color;
-
-void main() {
-    // Soft circular point sprite: gl_PointCoord is [0,1]^2 across the point
-    // quad; discard outside the inscribed circle, soft-edge the last bit so
-    // millions of points don't look like a jagged square field.
-    vec2 d = gl_PointCoord - vec2(0.5);
-    float r = length(d) * 2.0;
-    if (r > 1.0) discard;
-    float alpha = smoothstep(1.0, 0.85, r);
-    f_color = vec4(v_color, alpha);
-}
-"""
-
-
-# [ADDED Faza 8, see PLAN.md] Tracked-ring outline circles use the SAME
-# world-space transform as VERTEX_SHADER above (world*zoom+pan -> NDC), so a
-# tracked ring's outline circle scales/pans with the camera exactly like its
-# own point does -- but drawn as a GL_LINE_LOOP over a shared unit-circle
-# buffer (see unit_circle_vertices) scaled by a per-draw-call `u_radius`
-# uniform, with a flat (non-point-sprite) fragment shader since there is no
-# gl_PointCoord for a line primitive.
-OUTLINE_VERTEX_SHADER = """
-#version 330
-
-in vec2 in_pos;   // unit-circle point (cos, sin)
-
-uniform float u_radius;
-uniform vec2 u_pan;
-uniform float u_zoom;
-uniform vec2 u_viewport;
-uniform vec4 u_color;
-
-out vec4 v_color;
-
-void main() {
-    vec2 world = in_pos * u_radius;
-    vec2 screen = world * u_zoom + u_pan;
-    vec2 ndc = (screen / u_viewport) * 2.0 - 1.0;
-    ndc.y = -ndc.y;
-    gl_Position = vec4(ndc, 0.0, 1.0);
-    v_color = u_color;
-}
-"""
-
-# [DEDUPED Faza 0 refactor] OUTLINE_FRAGMENT_SHADER and SCREEN_FRAGMENT_SHADER
-# used to be two separately-defined but byte-for-byte identical GLSL strings
-# (a flat, unlit vertex-color pass-through) -- one shared constant, aliased
-# under both of this module's existing names so neither call site needs to
-# change.
-FLAT_COLOR_FRAGMENT_SHADER = """
-#version 330
-
-in vec4 v_color;
-out vec4 f_color;
-
-void main() {
-    f_color = v_color;
-}
-"""
-
-OUTLINE_FRAGMENT_SHADER = FLAT_COLOR_FRAGMENT_SHADER
-
-# [ADDED Faza 8] Screen-space shader for the center marker (triangle + line)
-# and the full-screen flash-overlay quad -- both are drawn in absolute PIXEL
-# space (no u_zoom, no u_pan multiply in the shader itself), matching
-# DrumRenderer's own Canvas 2D calls for these two elements, which draw at
-# literal screen coordinates (`cx, cy` already include pan but are never
-# multiplied by the interactive zoomValue -- see
-# center_marker_triangle_offsets' own doc-comment). Pan/anchor/color are all
-# baked into the vertex data HOST-SIDE instead of passed as uniforms: these
-# shapes are at most a handful of vertices (triangle=3, line=2, quad=4), so
-# rewriting their tiny buffers every frame (needed anyway for the line,
-# whose endpoint depends on the current pan+viewport) costs nothing
-# regardless of ring count, and a single shared vertex format (2f pos, 4f
-# rgba color) keeps run()'s draw calls for all three shapes identical.
-SCREEN_VERTEX_SHADER = """
-#version 330
-
-in vec2 in_pos;    // absolute pixel-space position
-in vec4 in_color;
-
-uniform vec2 u_viewport;
-
-out vec4 v_color;
-
-void main() {
-    vec2 ndc = (in_pos / u_viewport) * 2.0 - 1.0;
-    ndc.y = -ndc.y;
-    gl_Position = vec4(ndc, 0.0, 1.0);
-    v_color = in_color;
-}
-"""
-
-SCREEN_FRAGMENT_SHADER = FLAT_COLOR_FRAGMENT_SHADER
-
-# [ADDED Faza 11B, see PLAN.md] On-canvas HUD text quad -- same absolute-
-# pixel-space / y-down convention as SCREEN_VERTEX_SHADER above (so both
-# share run()'s own u_viewport-from-framebuffer-size wiring), but samples a
-# texture (the Pillow-rasterized HUD bitmap, see rasterize_hud_text) instead
-# of taking a flat vertex color -- text needs per-pixel coverage from the
-# glyph bitmap, which a flat color can't express.
-TEXT_VERTEX_SHADER = """
-#version 330
-
-in vec2 in_pos;    // absolute pixel-space position
-in vec2 in_uv;
-
-uniform vec2 u_viewport;
-
-out vec2 v_uv;
-
-void main() {
-    vec2 ndc = (in_pos / u_viewport) * 2.0 - 1.0;
-    ndc.y = -ndc.y;
-    gl_Position = vec4(ndc, 0.0, 1.0);
-    v_uv = in_uv;
-}
-"""
-
-TEXT_FRAGMENT_SHADER = """
-#version 330
-
-in vec2 v_uv;
-out vec4 f_color;
-
-uniform sampler2D u_tex;
-
-void main() {
-    f_color = texture(u_tex, v_uv);
-}
-"""
+# [MOVED Faza 1 of the renderer.py split, see shaders.py's own module
+# docstring] The GLSL source strings used to be defined here directly; they
+# are pure data with no GL-context dependency, so they moved out first as the
+# lowest-risk possible cut. Re-imported under their original names so every
+# other reference in this file (ctx.program(...) calls in _run_visualization)
+# is unchanged.
+from primeatlas.ring_viz.shaders import (
+    VERTEX_SHADER,
+    FRAGMENT_SHADER,
+    OUTLINE_VERTEX_SHADER,
+    FLAT_COLOR_FRAGMENT_SHADER,
+    OUTLINE_FRAGMENT_SHADER,
+    SCREEN_VERTEX_SHADER,
+    SCREEN_FRAGMENT_SHADER,
+    TEXT_VERTEX_SHADER,
+    TEXT_FRAGMENT_SHADER,
+)
 
 
 # [ADDED Faza 4, see PLAN.md] Colors as plain 0..255 RGB triples so they can
@@ -763,245 +420,30 @@ def load_prime_range_slice(primes, from_n, to_n):
 # #advanceAutoOrbit / (the resetSequential()-calling half of) #reset.
 # ---------------------------------------------------------------------------
 
-_TEMPO_MS_MIN = 30
-_TEMPO_MS_MAX = 2000
-_TEMPO_MS_DEFAULT = 120
-
-
-def clamp_tempo_ms(value):
-    """Ports #setTempo's own clamp exactly: [30, 2000] ms/tick, falling back
-    to the JS's own default (120) for a missing/non-finite value -- see
-    that method's own `Math.min(2000, Math.max(30, ...))` line."""
-    if value is None:
-        value = _TEMPO_MS_DEFAULT
-    return min(_TEMPO_MS_MAX, max(_TEMPO_MS_MIN, int(value)))
-
-
-_ARROW_SCRUB_STEP = 1
-_ARROW_SCRUB_STEP_CTRL = 10
-
-
-def arrow_scrub_delta(is_right, ctrl_held):
-    """[ADDED, Artur 2026-09-11: "sterowanie w przod i w tyl ... strzalka
-    lewo prawo ... o n+1 z wcisnietym ctrl o n+10"] The N delta for one
-    LEFT/RIGHT scrub step: +/-1 normally, +/-10 with Ctrl held. A separate,
-    literal step size from --n-step (which only governs Up/Down/PageUp/
-    PageDown) -- Artur asked for these specific magnitudes regardless of
-    how --n-step happens to be configured for a given run."""
-    magnitude = _ARROW_SCRUB_STEP_CTRL if ctrl_held else _ARROW_SCRUB_STEP
-    return magnitude if is_right else -magnitude
-
-
-def can_start_playback(n, range_mode, ceiling):
-    """Ports #toggleRunning's own pre-start guard: sequential mode refuses to
-    START playback once N has already reached the loaded ceiling (the caller
-    should show the JS's own "ss-info-ceiling-reached" message in that case
-    instead of silently doing nothing) -- range mode has no ceiling at all
-    and can always start (mirrors `this.#model.mode === "sequential" &&
-    this.#n >= ceiling` being the ONLY case that blocks a start)."""
-    return range_mode or n < ceiling
-
-
-def clamp_scrub_n(n, range_mode, ceiling):
-    """[ADDED, fixing a real break Artur hit, 2026-09-11: "na uruchomionym
-    przewijalem do przodu do tylu z ctrl bez i sie zatrzymalo bez resetu nie
-    ma mozliwosci wznowienia"] Bounds for the LEFT/RIGHT scrub keys
-    specifically: never negative, and in SEQUENTIAL mode never past the
-    loaded ceiling.
-
-    Why this exists: unlike a single Up/Down/PageUp/PageDown press, OS key
-    repeat can fire a LEFT/RIGHT scrub's PRESS/REPEAT handler many times per
-    second while a key is held down -- especially with Ctrl held (10 per
-    step instead of 1) -- so a couple of seconds of holding RIGHT can push N
-    far past the ceiling before the key is ever released. Once N is past
-    the ceiling, can_start_playback() permanently refuses to (re)start
-    sequential playback -- exactly the "stuck, no way to resume without R"
-    Artur hit, since the scrub's own auto-resume-on-release (and even a
-    manual Space press afterward) both go through that same guard. Clamping
-    the scrub itself to the ceiling caps it at the same "end of loaded data"
-    edge real forward playback ticking already stops at on its own
-    (tick_next_n) instead of letting it run arbitrarily far past that edge.
-
-    Deliberately scoped to the scrub keys ONLY -- Up/Down/PageUp/PageDown's
-    own pre-existing, unclamped past-ceiling behavior (in place since Faza
-    10, never reported as broken) is left untouched here.
-
-    Range mode has no ceiling at all (mirrors tick_next_n/can_start_playback's
-    own range_mode bypass)."""
-    n = max(0, n)
-    if not range_mode:
-        n = min(n, ceiling)
-    return n
-
-
-def should_extend_buffer(n, ceiling, margin, range_mode, can_extend_source):
-    """[ADDED, Artur 2026-09-11: "wystarczy ze bufor bedzie podrozowal wraz
-    z n z wyprzedzeniem nawet tym jaki jest teraz ustawiony na
-    uruchomieniu, dzieki temu nie da sie dojsc do sciany o ile magazyn
-    zapewnia dane"] Whether N has come close enough to the loaded ceiling
-    (within `margin`) that the buffer should be extended further NOW,
-    before N actually reaches it -- the whole point of a lookahead margin
-    is to finish the (possibly slow, disk-bound) extension load before N's
-    own advance ever catches up to a ceiling that would otherwise stop it.
-
-    `range_mode` and a data source that has nothing more to fetch anyway
-    (`can_extend_source=False` -- see extend_buffer_if_needed's own
-    doc-comment for why only --source magazyn qualifies) both return False
-    unconditionally, same as can_start_playback/tick_next_n's own
-    range_mode bypass: there is no "ceiling" concept worth extending in
-    either case.
-
-    Uses a STRICT `n > ceiling - margin` (not `>=`): the caller
-    (extend_buffer_if_needed) sets `ceiling` to exactly `ceiling + margin`
-    on a successful extension, so at the moment that happens N still sits
-    at (at most) the OLD ceiling -- `n > new_ceiling - margin` reduces to
-    `n > old_ceiling`, which is False right after extending (N cannot
-    exceed old_ceiling in sequential mode -- tick_next_n/clamp_scrub_n both
-    already guarantee that). A non-strict `>=` would immediately re-trigger
-    another extension the very next frame purely from floating/landing
-    exactly on that boundary, before N has advanced by so much as 1."""
-    if range_mode or not can_extend_source or margin <= 0:
-        return False
-    return n > ceiling - margin
-
-
-def next_buffer_ceiling(current_ceiling, margin):
-    """The new ceiling to request after a successful buffer extension --
-    simply one more `margin`'s worth of headroom past the current ceiling,
-    so the buffer keeps carrying the SAME lookahead margin it started with
-    at launch as N keeps moving forward (Artur's own words: "nawet tym
-    jaki jest teraz ustawiony na uruchomieniu" -- even the one already set
-    at launch is fine, no need for a fancier/growing margin)."""
-    return current_ceiling + margin
-
-
-#: [ADDED 2026-09-12, Artur's report: playback at a real magazyn-floor-scale
-#: range (~10**25) looked completely frozen] One full "orbit" (phase 0 back
-#: to 0) of the largest currently-active prime takes this many ticks in
-#: range mode -- see tick_next_n's own 2026-09-12 doc-comment for the derivation
-#: this feeds. Purely a pacing constant (tempo, i.e. ms/tick, is the OTHER,
-#: separate knob -- Artur's own note: "tempo to inna kwestia i to powinno
-#: być też widoczne jako parametr w opcjach ale nie teraz"); not exposed as
-#: its own CLI flag yet for the same "not now" reason.
-_RANGE_STEP_ORBIT_TICKS = 10_000
-
-
-def tick_next_n(n, range_mode, ceiling, range_step=1):
-    """One playback tick's worth of N-advance -- ports #tick's own body:
-    sequential mode STOPS (does not advance, `should_stop=True`) once N has
-    reached the ceiling, and always advances by exactly 1 regardless of
-    `range_step` (unchanged from #tick's own hard-coded `this.#n += 1`, NOT
-    --n-step, which only applies to the manual Up/Down/PageUp/PageDown keys).
-
-    [CHANGED 2026-09-12, Artur's report: with real magazyn-floor-scale primes
-    (~10**25) loaded via --load-range, range mode's own OLD fixed +1 step
-    was imperceptible -- phase = n mod prime needs n to advance by a
-    meaningful FRACTION of the prime's own value before any angular movement
-    is visible at all; +1 out of ~10**25 rounds to nothing for many, many
-    ticks in a row (`~10**25 ticks for one full orbit`), not a bug in the
-    tick loop itself, just a step size that only ever made sense at the
-    small N this feature was originally built for] `range_step` -- the
-    caller's own dynamically-computed step for RANGE MODE ONLY (see
-    _run_visualization's own range_step computation, `max(1, largest_active_
-    prime // _RANGE_STEP_ORBIT_TICKS)` -- naturally settles back down to the
-    exact old `1` at low floors, where a full orbit already fit inside
-    _RANGE_STEP_ORBIT_TICKS ticks, so nothing changes there). Sequential
-    mode's own advance is NEVER affected by this parameter. Defaults to 1
-    (the old, always-correct-for-what-it-was-then behavior) so any caller
-    that omits it (including every existing test) sees no change. Returns
-    (new_n, should_stop)."""
-    if not range_mode and n >= ceiling:
-        return n, True
-    return n + (range_step if range_mode else 1), False
-
-
-def update_resonance_log(state, active, n_value, range_mode, advancing):
-    """[ADDED PLAN.md Faza 11] Ports StructuralSieveApp.js's own
-    #backfillResonanceLog / #logResonance split, mutating `state` in place
-    (`state["lines"]`, `state["last_n"]`, `state["last_range_mode"]` --
-    caller owns and persists this dict across calls, same convention as
-    `flash_state`/`orbit_state` elsewhere in this module).
-
-    A full O(from_n..n_value) recompute via ring_geometry.resonance_log_lines
-    only runs on a JUMP: the first call ever (`state["last_n"] is None`), a
-    sequential<->range mode switch, or any call that isn't a simple forward
-    playback tick -- exactly StructuralSieveApp.js's own #renderFrame
-    jump-detection condition (`this.#n !== this.#lastRenderedN ||
-    this.#model.mode !== this.#lastRenderedMode`, OR'd with "not a +1
-    forward tick"). A full backfill is cheap even here because
-    resonance_log_lines' own resonance_events_in_range is a whole-range
-    vectorized numpy pass, not a python loop -- same cost argument as this
-    module's other jump-time full recomputes (build_vertex_data itself).
-
-    A simple FORWARD tick (`advancing=True`) instead only checks the span
-    actually crossed since the LAST call (`state["last_n"] + 1` .. `n_value`)
-    for new resonance steps: one call into resonance_log_lines bounded by
-    however far this single tick actually moved (cost bound by the active-
-    prime count times that span, not by n_value itself), not a full
-    [original from_n, n_value] rescan on every single tick. This is exactly
-    the performance concern StructuralSieveApp.js's own #logResonance
-    doc-comment calls out ("O(1) per tick ... this full-range recompute only
-    runs for actual jumps") -- skipping it would make playback at a large N
-    rescan the WHOLE history every tick.
-
-    [CHANGED 2026-09-12, alongside tick_next_n's own `range_step` fix]
-    Sequential mode's tick_next_n always advances by exactly +1, so this
-    span is always a single value (n_value..n_value) there, same as before.
-    Range mode's own tick_next_n step can now be > 1 (see that function's
-    own 2026-09-12 doc-comment) -- using `state["last_n"] + 1` as the actual
-    from_n here (instead of the old hardcoded `n_value` for both ends) is
-    what keeps this correct for a multi-step tick: a resonance event that
-    fell strictly BETWEEN two consecutive (now farther-apart) ticks would
-    otherwise never be scanned at all and silently vanish from the log.
-
-    Returns nothing; mutates `state` in place (mirrors the JS's own
-    #resonanceLog being a private instance field mutated by both methods,
-    not returned/reassigned by the caller)."""
-    is_jump = (
-        state["last_n"] is None
-        or state["last_range_mode"] != range_mode
-        or not advancing
-    )
-    if is_jump:
-        resonance_from_n = 0 if range_mode else 1
-        state["lines"] = resonance_log_lines(active, resonance_from_n, n_value)
-    else:
-        new_lines = resonance_log_lines(active, state["last_n"] + 1, n_value)
-        for new_line in new_lines:
-            if not state["lines"] or state["lines"][-1] != new_line:
-                state["lines"].append(new_line)
-    state["last_n"] = n_value
-    state["last_range_mode"] = range_mode
-
-
-def advance_auto_orbit(active_primes, index, counter):
-    """One tick's worth of #advanceAutoOrbit -- ports that method's body
-    exactly: cycles a "which ring is tracked" index forward through
-    `active_primes`, holding each one for a number of ticks proportional to
-    the gap to the next active prime (wrapping to a fixed gap of 10 once it
-    cycles past the last one back to index 0 -- ports the JS's own
-    `nextIndex === 0 ? 10 : ...` line verbatim).
-
-    Returns (new_index, new_counter, chosen_prime_or_None) -- `chosen_prime`
-    is only non-None on the tick where the orbit actually ADVANCES to a new
-    ring (mirrors the JS only reassigning `this.#trackedPrimes` inside the
-    `if (counter >= gap)` branch); the caller is responsible for remembering
-    the LAST chosen prime across ticks where this returns None (see run()'s
-    own `orbit_state["current_prime"]`, which persists across calls the same
-    way the JS's own `this.#trackedPrimes` instance field does).
-
-    `len(active_primes) <= 1` is a no-op (mirrors the JS's own early-return
-    guard: nothing to orbit through) -- returns the index/counter unchanged
-    and None."""
-    n = len(active_primes)
-    if n <= 1:
-        return index, counter, None
-    next_index = (index + 1) % n
-    gap = 10 if next_index == 0 else int(active_primes[next_index]) - int(active_primes[index])
-    counter += 1
-    if counter >= gap:
-        return next_index, 0, int(active_primes[next_index])
-    return index, counter, None
+# [MOVED Faza 1 of the renderer.py split, see playback.py's own module
+# docstring] All of Faza 10/11's pure playback-timing functions used to be
+# defined here directly; none of them touch GL state, so they moved out as
+# one more low-risk cut. Re-imported under their original names (including
+# the "private" constants a handful of tests and _run_visualization's own
+# range_step computation still reference by name) so every call site below
+# is unchanged.
+from primeatlas.ring_viz.playback import (
+    _TEMPO_MS_MIN,
+    _TEMPO_MS_MAX,
+    _TEMPO_MS_DEFAULT,
+    clamp_tempo_ms,
+    _ARROW_SCRUB_STEP,
+    _ARROW_SCRUB_STEP_CTRL,
+    arrow_scrub_delta,
+    can_start_playback,
+    clamp_scrub_n,
+    should_extend_buffer,
+    next_buffer_ceiling,
+    _RANGE_STEP_ORBIT_TICKS,
+    tick_next_n,
+    update_resonance_log,
+    advance_auto_orbit,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -1633,43 +1075,11 @@ def emit_audio_tick(audio, active, hit_mask, tracked_state, advancing):
                                           and tracked_state.get('to_resonance') == 0))
 
 
-def start_stdin_command_reader():
-    """[ADDED Faza 13, see PLAN.md] Background daemon thread that blocks on
-    `sys.stdin.readline()` in a loop, pushing each stripped non-empty line
-    into a thread-safe queue.Queue the main GLFW loop polls NON-blockingly
-    (queue.get_nowait()) once per frame -- same producer/thread-consumer-
-    queue shape as generation.py's own LocalLoggedRunner._read_loop, just
-    the opposite direction (that one reads the subprocess's stdOUT into a
-    queue for Tkinter to drain; this one reads OUR stdIN, fed by
-    LocalLoggedRunner.send_line() on the Tkinter side, into a queue this
-    same process's own main loop drains).
-
-    When stdin hits EOF (the parent process died, or closed the pipe --
-    e.g. Tkinter's own process exiting without an explicit Reset first),
-    the special sentinel "__STDIN_CLOSED__" is pushed exactly once so the
-    main loop can tell "no command right now" (empty queue) apart from
-    "there will never be another command" (must not idle forever).
-
-    Only ever started when --pipe-stdin-commands is passed (see that
-    flag's own doc-comment) -- reading stdin at all when it's just an
-    inherited console (the flag OFF) would block forever on a real
-    terminal with nothing to read, hanging what should be a normal
-    Ctrl-C-able CLI run."""
-    q = queue.Queue()
-
-    def _loop():
-        try:
-            for line in sys.stdin:
-                cmd = line.strip()
-                if cmd:
-                    q.put(cmd)
-        except Exception:  # noqa: BLE001 -- must never crash this thread silently
-            pass
-        q.put("__STDIN_CLOSED__")
-
-    t = threading.Thread(target=_loop, daemon=True)
-    t.start()
-    return q
+# [MOVED Faza 1 of the renderer.py split, see stdin_commands.py's own module
+# docstring] start_stdin_command_reader used to be defined here directly;
+# re-imported under its original name so run()'s own --pipe-stdin-commands
+# call site is unchanged.
+from primeatlas.ring_viz.stdin_commands import start_stdin_command_reader
 
 
 def run(args):

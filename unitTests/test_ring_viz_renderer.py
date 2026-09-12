@@ -61,7 +61,7 @@ def _write_floor(portal_dir, base_exponent, windows):
 
 
 def _test_basic_multi_floor_load():
-    from primeatlas.ring_viz.renderer import load_magazyn
+    from primeatlas.ring_viz.sources import load_magazyn
 
     tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
     try:
@@ -96,7 +96,7 @@ def _test_gap_between_floors():
     correctly, and the new list_pietra()-based enumeration must ALSO handle
     correctly (not just efficiently): floor 0 populated, floor 1 MISSING
     entirely (e.g. never generated), floor 2 populated."""
-    from primeatlas.ring_viz.renderer import load_magazyn
+    from primeatlas.ring_viz.sources import load_magazyn
 
     tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
     try:
@@ -118,7 +118,7 @@ def _test_batching_does_not_change_result():
     change, not a behavior change -- a tiny batch_files=1 (forces one file
     per batch) must return the EXACT SAME array as a large batch_files that
     reads everything in one batch."""
-    from primeatlas.ring_viz.renderer import load_magazyn
+    from primeatlas.ring_viz.sources import load_magazyn
 
     tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
     try:
@@ -139,7 +139,7 @@ def _test_batching_does_not_change_result():
 
 
 def _test_progress_callback_invoked():
-    from primeatlas.ring_viz.renderer import load_magazyn
+    from primeatlas.ring_viz.sources import load_magazyn
 
     tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
     try:
@@ -178,7 +178,7 @@ def _test_load_magazyn_from_n():
     every extension -- covers both halves of that: the whole-floor skip
     (floor 0 here is entirely below from_n) and the within-floor trim
     (floor 1's first window is partially below from_n)."""
-    from primeatlas.ring_viz.renderer import load_magazyn
+    from primeatlas.ring_viz.sources import load_magazyn
 
     tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
     try:
@@ -216,7 +216,7 @@ def _test_load_magazyn_max_load_count():
     truncation landing exactly on a window/floor boundary, a cap bigger than
     the whole result (no-op), and combining with `from_n` (jumping straight
     to a high floor, the actual arbitrary-range-viewing use case)."""
-    from primeatlas.ring_viz.renderer import load_magazyn
+    from primeatlas.ring_viz.sources import load_magazyn
 
     tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
     try:
@@ -267,7 +267,7 @@ def _test_load_magazyn_high_floor_beyond_uint64():
     `object` dtype, exact values, no OverflowError), including when combined
     with a low floor that still fits uint64 (np.concatenate must promote the
     WHOLE result to object, never silently truncate/wrap the high values)."""
-    from primeatlas.ring_viz.renderer import load_magazyn
+    from primeatlas.ring_viz.sources import load_magazyn
 
     tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
     try:
@@ -301,7 +301,7 @@ def _test_load_magazyn_high_floor_beyond_uint64():
 
 
 def _test_empty_portal():
-    from primeatlas.ring_viz.renderer import load_magazyn
+    from primeatlas.ring_viz.sources import load_magazyn
 
     tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
     try:
@@ -1190,7 +1190,7 @@ def _test_load_prime_range_slice():
 
 
 def _test_clamp_tempo_ms():
-    from primeatlas.ring_viz.renderer import clamp_tempo_ms, _TEMPO_MS_DEFAULT, _TEMPO_MS_MIN, _TEMPO_MS_MAX
+    from primeatlas.ring_viz.playback import clamp_tempo_ms, _TEMPO_MS_DEFAULT, _TEMPO_MS_MIN, _TEMPO_MS_MAX
 
     check(clamp_tempo_ms(120) == 120, "a value already inside [30,2000] passes through unchanged")
     check(clamp_tempo_ms(5) == _TEMPO_MS_MIN, f"a too-low value clamps up to the min ({_TEMPO_MS_MIN})")
@@ -1206,7 +1206,7 @@ def _test_arrow_scrub_delta():
     the LEFT/RIGHT scrub keys -- the pause/resume state machine around it
     (scrub_state's held-count bookkeeping in run()) is plain closure state,
     not extracted, same as on_mouse_button's own state["dragging"]."""
-    from primeatlas.ring_viz.renderer import arrow_scrub_delta
+    from primeatlas.ring_viz.playback import arrow_scrub_delta
 
     check(arrow_scrub_delta(is_right=True, ctrl_held=False) == 1,
           "RIGHT without Ctrl steps by +1")
@@ -1224,7 +1224,7 @@ def _test_clamp_scrub_n():
     ma mozliwosci wznowienia"] clamp_scrub_n() is the guard that stops the
     LEFT/RIGHT scrub keys' OS key-repeat from running N so far past the
     loaded ceiling that can_start_playback() could never resume afterward."""
-    from primeatlas.ring_viz.renderer import clamp_scrub_n, can_start_playback
+    from primeatlas.ring_viz.playback import clamp_scrub_n, can_start_playback
 
     check(clamp_scrub_n(50, range_mode=False, ceiling=100) == 50,
           "a value already well within bounds passes through unchanged")
@@ -1255,7 +1255,7 @@ def _test_should_extend_buffer():
     bypasses, and the strict-inequality boundary that stops a runaway
     re-extend-every-frame loop right after a successful extension (see
     that function's own doc-comment for why `>` and not `>=`)."""
-    from primeatlas.ring_viz.renderer import should_extend_buffer
+    from primeatlas.ring_viz.playback import should_extend_buffer
 
     check(should_extend_buffer(n=50, ceiling=1000, margin=100, range_mode=False, can_extend_source=True) is False,
           "far from the ceiling (n well below ceiling-margin): no extension needed yet")
@@ -1281,7 +1281,7 @@ def _test_next_buffer_ceiling():
     margin's worth, reusing the SAME margin figure every time (not a
     growing/shrinking one) -- see extend_buffer_if_needed's own call site
     for where that reused figure (buffer_margin) actually comes from."""
-    from primeatlas.ring_viz.renderer import next_buffer_ceiling
+    from primeatlas.ring_viz.playback import next_buffer_ceiling
 
     check(next_buffer_ceiling(1000, 100) == 1100, "advances by exactly one margin's worth")
     check(next_buffer_ceiling(next_buffer_ceiling(1000, 100), 100) == 1200,
@@ -1289,7 +1289,7 @@ def _test_next_buffer_ceiling():
 
 
 def _test_can_start_playback():
-    from primeatlas.ring_viz.renderer import can_start_playback
+    from primeatlas.ring_viz.playback import can_start_playback
 
     check(can_start_playback(n=50, range_mode=False, ceiling=100) is True,
           "sequential mode below the ceiling can start")
@@ -1304,7 +1304,7 @@ def _test_can_start_playback():
 
 
 def _test_tick_next_n():
-    from primeatlas.ring_viz.renderer import tick_next_n
+    from primeatlas.ring_viz.playback import tick_next_n
 
     new_n, stop = tick_next_n(n=50, range_mode=False, ceiling=100)
     check((new_n, stop) == (51, False), f"sequential mode below ceiling advances by exactly 1 (got {(new_n, stop)!r})")
@@ -1337,7 +1337,7 @@ def _test_tick_next_n():
 
 
 def _test_advance_auto_orbit():
-    from primeatlas.ring_viz.renderer import advance_auto_orbit
+    from primeatlas.ring_viz.playback import advance_auto_orbit
 
     active = np.array([2, 3, 5, 7, 11], dtype=np.int64)
 
@@ -1370,7 +1370,7 @@ def _test_advance_auto_orbit():
 
 
 def _test_update_resonance_log():
-    from primeatlas.ring_viz.renderer import update_resonance_log
+    from primeatlas.ring_viz.playback import update_resonance_log
     from primeatlas.ring_geometry import resonance_log_lines
 
     primes = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47], dtype=np.int64)
