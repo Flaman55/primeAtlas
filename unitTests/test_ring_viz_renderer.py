@@ -328,7 +328,7 @@ def _test_empty_portal():
 # ---------------------------------------------------------------------------
 
 def _test_build_vertex_data_no_windows_matches_old_behavior():
-    from primeatlas.ring_viz.renderer import build_vertex_data
+    from primeatlas.ring_viz.geometry_draw import build_vertex_data
     from primeatlas.ring_geometry import ring_positions
 
     primes = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23], dtype=np.int64)
@@ -360,7 +360,7 @@ def _test_build_vertex_data_no_windows_matches_old_behavior():
 
 
 def _test_build_vertex_data_bertrand_highlight():
-    from primeatlas.ring_viz.renderer import build_vertex_data
+    from primeatlas.ring_viz.geometry_draw import build_vertex_data
     from primeatlas.ring_geometry import compute_highlight_colors
 
     primes = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37], dtype=np.int64)
@@ -393,7 +393,7 @@ def _test_build_vertex_data_track_primes_white_dot():
     tracked_outline_color, unchanged by this) should be plain white so it's
     instantly identifiable regardless of the window color around it. Covers
     the new `track_primes` param build_vertex_data now takes."""
-    from primeatlas.ring_viz.renderer import build_vertex_data
+    from primeatlas.ring_viz.geometry_draw import build_vertex_data
     from primeatlas.ring_geometry import compute_highlight_colors
 
     primes = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37], dtype=np.int64)
@@ -435,7 +435,7 @@ def _test_build_vertex_data_track_primes_white_dot():
 
 
 def _test_split_hit_normal_vertex_data():
-    from primeatlas.ring_viz.renderer import build_vertex_data, split_hit_normal_vertex_data
+    from primeatlas.ring_viz.geometry_draw import build_vertex_data, split_hit_normal_vertex_data
 
     primes = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23], dtype=np.int64)
     n = 20  # hits (divisors of 20): 2, 5 -- everything else is a normal ring
@@ -466,7 +466,8 @@ def _test_split_hit_normal_vertex_data():
 
 
 def _test_hud_lines_for_n():
-    from primeatlas.ring_viz.renderer import hud_lines_for_n, build_vertex_data
+    from primeatlas.ring_viz.hud import hud_lines_for_n
+    from primeatlas.ring_viz.geometry_draw import build_vertex_data
     from primeatlas.ring_geometry import legendre_level_at, general_law_window_bounds
 
     primes = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37], dtype=np.int64)
@@ -541,7 +542,7 @@ def _test_initial_n_for_source():
     view on the N the user actually asked for, not on the last loaded prime.
     Regression test for initial_n_for_source()'s extraction of that fix --
     see that function's own docstring for the full bug description."""
-    from primeatlas.ring_viz.renderer import initial_n_for_source
+    from primeatlas.ring_viz.geometry_draw import initial_n_for_source
 
     primes = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37], dtype=np.int64)
 
@@ -580,7 +581,7 @@ def _test_zoom_to_point():
     adjusted pan, so every zoom anchored on the ring field's mathematical
     center instead of the cursor -- zooming in on a panned-to tail raced
     back toward the center, zooming out flew the view away entirely)."""
-    from primeatlas.ring_viz.renderer import zoom_to_point
+    from primeatlas.ring_viz.geometry_draw import zoom_to_point
 
     # Core invariant: whatever world-space point sits under `cursor` before
     # the zoom must map back to that SAME screen point after the zoom, for
@@ -631,7 +632,7 @@ def _test_fit_zoom_for_viewport():
     wysokość okna lub szerokość jeśli okno będzie węższe od wysokości"] --
     fit_zoom_for_viewport() is the pure computation behind both the F11
     fullscreen<->windowed re-fit and the middle-click recenter action."""
-    from primeatlas.ring_viz.renderer import fit_zoom_for_viewport, _FIT_MARGIN
+    from primeatlas.ring_viz.geometry_draw import fit_zoom_for_viewport, _FIT_MARGIN
 
     max_radius = 900.0  # e.g. min(1920, 1080) * 0.45, a plausible real launch size
 
@@ -730,7 +731,8 @@ def _test_hud_lines_for_n_tracked_state():
     too_large dict produces the single overflow line, and a real state dict
     produces the full tracked/LCM/phase/to-resonance block, using format_big
     for the numeric values."""
-    from primeatlas.ring_viz.renderer import hud_lines_for_n, build_vertex_data
+    from primeatlas.ring_viz.hud import hud_lines_for_n
+    from primeatlas.ring_viz.geometry_draw import build_vertex_data
     from primeatlas.ring_geometry import tracked_resonance_state
 
     primes = np.array([2, 3, 5, 7, 11, 13], dtype=np.int64)
@@ -882,7 +884,7 @@ def _test_tracked_ring_mask():
 def _test_unit_circle_vertices():
     """[ADDED Faza 8] unit_circle_vertices -- every point on the unit circle,
     ascending angle from 0, first point at angle 0 (i.e. (1,0))."""
-    from primeatlas.ring_viz.renderer import unit_circle_vertices
+    from primeatlas.ring_viz.geometry_draw import unit_circle_vertices
 
     verts = unit_circle_vertices(segments=8)
     check(verts.shape == (8, 2), f"returns (segments, 2) shaped array (got shape {verts.shape})")
@@ -902,7 +904,7 @@ def _test_tracked_outline_color():
     gate (see tracked_outline_color's own doc-comment) -- `matched` alone
     now decides the color, `active_window_count` is no longer a parameter
     at all."""
-    from primeatlas.ring_viz.renderer import tracked_outline_color
+    from primeatlas.ring_viz.geometry_draw import tracked_outline_color
 
     gray = tracked_outline_color(False, (255.0, 51.0, 204.0))
     check(gray == (180 / 255.0, 180 / 255.0, 180 / 255.0, 0.5),
@@ -929,7 +931,7 @@ def _test_resolve_effective_track_primes():
     list), else auto-orbit's current pick, else the plain track_primes
     fallback -- exact precedence ported from StructuralSieveApp.js's
     #renderFrame."""
-    from primeatlas.ring_viz.renderer import resolve_effective_track_primes
+    from primeatlas.ring_viz.geometry_draw import resolve_effective_track_primes
 
     # Any window family on -> window_anchors wins, regardless of auto_orbit
     # or track_primes both also being populated.
@@ -986,7 +988,7 @@ def _test_build_tracked_outline_draws():
     own gating rules (matched -> colored, unmatched/no-window -> gray;
     see that function's own doc-comment for the 2026-09-10 change dropping
     the old ">1 window family" requirement)."""
-    from primeatlas.ring_viz.renderer import build_tracked_outline_draws
+    from primeatlas.ring_viz.geometry_draw import build_tracked_outline_draws
     from primeatlas.ring_geometry import ring_positions, bertrand_anchor_at, WINDOW_FAMILY_COLORS
 
     primes = np.array([2, 3, 5, 7, 11], dtype=np.int64)
@@ -1031,7 +1033,7 @@ def _test_center_marker_triangle_offsets():
     """[ADDED Faza 8] center_marker_triangle_offsets -- ports DrumRenderer's
     #drawCenterMarker fixed arrow shape: tip at the anchor itself, two back
     corners at (+-12s, -35s)."""
-    from primeatlas.ring_viz.renderer import center_marker_triangle_offsets
+    from primeatlas.ring_viz.geometry_draw import center_marker_triangle_offsets
 
     offsets = center_marker_triangle_offsets(2.0)
     check(offsets.shape == (3, 2), f"three (dx, dy) offsets (got shape {offsets.shape})")
@@ -1043,7 +1045,7 @@ def _test_center_marker_triangle_offsets():
 def _test_marker_device_scale():
     """[ADDED Faza 8] marker_device_scale -- ports DrumRenderer's
     `s = min(w, h) / REFERENCE_MIN_DIM` (REFERENCE_MIN_DIM = 2160)."""
-    from primeatlas.ring_viz.renderer import marker_device_scale
+    from primeatlas.ring_viz.geometry_draw import marker_device_scale
 
     check(abs(marker_device_scale(3840, 2160) - 1.0) < 1e-9,
           f"the JS's own reference resolution (3840x2160) gives scale 1.0 (got {marker_device_scale(3840, 2160)!r})")
@@ -1055,7 +1057,7 @@ def _test_build_center_marker_vertex_data():
     """[ADDED Faza 8] build_center_marker_vertex_data -- triangle at the
     anchor with the right offsets/color, line from the anchor straight up to
     screen y=0."""
-    from primeatlas.ring_viz.renderer import build_center_marker_vertex_data
+    from primeatlas.ring_viz.geometry_draw import build_center_marker_vertex_data
 
     triangle, line = build_center_marker_vertex_data(cx=400.0, cy=300.0, s=1.0)
     check(triangle.shape == (3, 6) and line.shape == (2, 6),
@@ -1071,7 +1073,7 @@ def _test_build_center_marker_vertex_data():
 def _test_build_flash_quad_vertex_data():
     """[ADDED Faza 8] build_flash_quad_vertex_data -- 4 corners covering the
     full viewport, all sharing the given rgba."""
-    from primeatlas.ring_viz.renderer import build_flash_quad_vertex_data
+    from primeatlas.ring_viz.geometry_draw import build_flash_quad_vertex_data
 
     quad = build_flash_quad_vertex_data(800.0, 600.0, (1.0, 0.5, 0.0, 0.25))
     check(quad.shape == (4, 6), f"4 vertices, (pos.xy, color.rgba) each (got shape {quad.shape})")
@@ -1085,7 +1087,7 @@ def _test_build_flash_quad_vertex_data():
 def _test_decay_flash():
     """[ADDED Faza 8] decay_flash -- ports DrumRenderer's own
     `value *= factor; if (value < 0.01) value = 0;` epsilon-snap exactly."""
-    from primeatlas.ring_viz.renderer import decay_flash
+    from primeatlas.ring_viz.geometry_draw import decay_flash
 
     check(abs(decay_flash(1.0, 0.65) - 0.65) < 1e-9, f"one frame of 0.65 decay from 1.0 (got {decay_flash(1.0, 0.65)!r})")
     check(decay_flash(0.001, 0.65) == 0.0, f"snaps to exactly 0 once below the 0.01 epsilon (got {decay_flash(0.001, 0.65)!r})")
@@ -1105,7 +1107,7 @@ def _test_decay_flash():
 def _test_flash_overlay_rgba():
     """[ADDED Faza 8] flash_overlay_rgba -- ports DrumRenderer's
     #drawFlashOverlay: alpha = flash_value * max_alpha, color unchanged."""
-    from primeatlas.ring_viz.renderer import flash_overlay_rgba, _FLASH_RESONANCE_RGB, _FLASH_PRIME_RGB
+    from primeatlas.ring_viz.geometry_draw import flash_overlay_rgba, _FLASH_RESONANCE_RGB, _FLASH_PRIME_RGB
 
     rgba = flash_overlay_rgba(1.0, _FLASH_RESONANCE_RGB, max_alpha=0.25)
     check(abs(rgba[3] - 0.25) < 1e-9, f"alpha = flash_value(1.0) * max_alpha(0.25) (got {rgba!r})")
@@ -1123,7 +1125,7 @@ def _test_resonance_is_active():
     `resonance.active` (every active ring's tooth at phase 0), with the
     same maxResonance>0 guard against a spurious resonance when there are
     no active rings at all."""
-    from primeatlas.ring_viz.renderer import resonance_is_active
+    from primeatlas.ring_viz.geometry_draw import resonance_is_active
     from primeatlas.ring_geometry import ring_positions
 
     # n=6 divisible by both 2 and 3 -> both active rings hit -> resonance.
@@ -1153,7 +1155,7 @@ def _test_resonance_is_active():
 # ---------------------------------------------------------------------------
 
 def _test_load_prime_range_slice():
-    from primeatlas.ring_viz.renderer import load_prime_range_slice
+    from primeatlas.ring_viz.geometry_draw import load_prime_range_slice
 
     primes = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23, 29], dtype=np.int64)
 
@@ -1453,7 +1455,7 @@ def _test_update_resonance_log():
 
 
 def _test_compose_hud_canvas_lines():
-    from primeatlas.ring_viz.renderer import compose_hud_canvas_lines
+    from primeatlas.ring_viz.hud import compose_hud_canvas_lines
 
     lines = compose_hud_canvas_lines(n=1234567, count=42, lines=["Factors of N: 7, 11"],
                                       running=False, tempo_ms=120)
@@ -1474,7 +1476,7 @@ def _test_hud_line_colors():
     -- Factors-of-N and Tracked-block lines, and the header line
     compose_hud_canvas_lines prepends, all fall through to the flat
     default _HUD_TEXT_RGB."""
-    from primeatlas.ring_viz.renderer import hud_line_colors, _HUD_TEXT_RGB
+    from primeatlas.ring_viz.hud import hud_line_colors, _HUD_TEXT_RGB
     from primeatlas.ring_geometry import window_label_colors
 
     window_colors = window_label_colors({"bertrand", "legendre"}, 141)
@@ -1513,7 +1515,7 @@ def _test_hud_line_colors():
 
 
 def _test_hud_quad_vertex_data():
-    from primeatlas.ring_viz.renderer import hud_quad_vertex_data
+    from primeatlas.ring_viz.hud import hud_quad_vertex_data
 
     verts = hud_quad_vertex_data(100.0, 50.0, x=10.0, y=20.0)
     check(verts.shape == (6, 4), f"two triangles = 6 vertices, each (pos_x, pos_y, uv_x, uv_y) (got shape {verts.shape})")
@@ -1530,7 +1532,7 @@ def _test_hud_quad_vertex_data():
 
 
 def _test_rasterize_hud_text():
-    from primeatlas.ring_viz.renderer import rasterize_hud_text, _PIL_AVAILABLE
+    from primeatlas.ring_viz.hud import rasterize_hud_text, _PIL_AVAILABLE
 
     check(rasterize_hud_text([]) is None, "empty line list rasterizes to None (nothing to draw)")
 
@@ -1582,7 +1584,7 @@ def _test_rasterize_hud_text():
     # No line_colors given (None, the default) keeps the old flat
     # _HUD_TEXT_RGB behavior completely unchanged -- a real regression
     # guard, not just an absence-of-crash check.
-    from primeatlas.ring_viz.renderer import _HUD_TEXT_RGB
+    from primeatlas.ring_viz.hud import _HUD_TEXT_RGB
     default_rgba = rasterize_hud_text(["N = 100"])
     default_opaque = default_rgba[default_rgba[:, :, 3] > 0]
     check(tuple(default_opaque[0][:3]) == _HUD_TEXT_RGB,
