@@ -955,30 +955,41 @@ def _test_tracked_outline_color():
 def _test_resolve_effective_track_primes():
     """[ADDED, see Artur's 2026-09-10 bug report: "pierscienie sa dla
     sledzonych i dla auto orbit ale nie ma dla bertranda legendre i dla
-    general law"] resolve_effective_track_primes's own docstring: window
-    anchors win outright whenever any family is on (even an empty anchor
-    list), else auto-orbit's current pick, else the plain track_primes
-    fallback -- exact precedence ported from StructuralSieveApp.js's
-    #renderFrame."""
+    general law"] [CHANGED 2026-09-12, see Artur's follow-up bug report:
+    "ustawione sa pierscienie jakie maja byc sledzone ale przez to ze
+    wlaczone sa okna jak bertrand legendre to te sledzone nie sa
+    wyswietlone a powinny"] resolve_effective_track_primes's own docstring:
+    window anchors and a manual track_primes list are now shown TOGETHER
+    (union) whenever any family is on, else auto-orbit's current pick, else
+    the plain track_primes fallback."""
     from primeatlas.ring_viz.geometry_draw import resolve_effective_track_primes
 
-    # Any window family on -> window_anchors wins, regardless of auto_orbit
-    # or track_primes both also being populated.
+    # Any window family on -> union of window_anchors and track_primes,
+    # window_anchors first, regardless of auto_orbit also being populated
+    # (auto-orbit itself is gated off elsewhere whenever a family is on).
     result = resolve_effective_track_primes(
         window_anchors=[23, 31], enabled_ids={"bertrand", "legendre"},
         auto_orbit=True, orbit_current_prime=7, track_primes=[2, 3])
-    check(result == [23, 31],
-          f"window anchors take precedence over both auto-orbit and track_primes (got {result!r})")
+    check(result == [23, 31, 2, 3],
+          f"window anchors AND manual track_primes both show, window anchors first (got {result!r})")
 
-    # A window family on but not yet resolved to any anchor -> empty list
-    # wins outright too (matches the JS's unconditional overwrite, not a
-    # "fall through if empty" special case).
+    # A prime that is BOTH a window anchor and manually tracked appears only
+    # once (dedup), keeping window_anchors' own position/order.
+    result_overlap = resolve_effective_track_primes(
+        window_anchors=[23, 31], enabled_ids={"bertrand"},
+        auto_orbit=False, orbit_current_prime=None, track_primes=[31, 5])
+    check(result_overlap == [23, 31, 5],
+          f"an overlapping prime is not duplicated (got {result_overlap!r})")
+
+    # A window family on but not yet resolved to any anchor -> the manual
+    # track_primes list still shows (this is the exact bug Artur reported:
+    # a window being on used to hide manually-tracked rings entirely).
     result_empty_anchor = resolve_effective_track_primes(
         window_anchors=[], enabled_ids={"generalLaw"},
         auto_orbit=True, orbit_current_prime=7, track_primes=[2, 3])
-    check(result_empty_anchor == [],
-          f"an active window family with no resolved anchor yet still wins outright with "
-          f"an empty list, does not fall back to auto-orbit or track_primes (got {result_empty_anchor!r})")
+    check(result_empty_anchor == [2, 3],
+          f"no window anchor resolved yet -> manual track_primes still shows, not hidden "
+          f"(got {result_empty_anchor!r})")
 
     # No window family on, auto-orbit on -> its current pick, as a single-item list.
     result_orbit = resolve_effective_track_primes(

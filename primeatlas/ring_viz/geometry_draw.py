@@ -248,24 +248,37 @@ def tracked_outline_color(matched, tracked_color_rgb):
 
 
 def resolve_effective_track_primes(window_anchors, enabled_ids, auto_orbit, orbit_current_prime, track_primes):
-    """[ADDED 2026-09-10] Pure precedence rule for which primes get an
-    outline ring THIS frame -- ports the combined effect of #renderFrame's
-    `if (anyWindowOn) { this.#trackedPrimes = anchors; }` block together with
-    the pre-existing `this.#trackedPrimes = [autoOrbit's current pick]` /
-    launch-time --track-primes fallback this module already had (Faza 10).
+    """[ADDED 2026-09-10, CHANGED 2026-09-12] Pure precedence rule for which
+    primes get an outline ring THIS frame.
 
-    Precedence, matching the JS exactly: any window family on (`enabled_ids`
-    truthy) wins outright -- `window_anchors` (see
-    ring_geometry.window_anchor_primes) is used even if it happens to be an
-    empty list (no anchor resolved yet), exactly like the JS's own
-    unconditional overwrite. Only when NO window family is on does auto-orbit
-    or a plain --track-primes list apply, same as before this fix -- see
+    [CHANGED 2026-09-12, Artur's bug report: "ustawione są pierścienie jakie
+    mają być śledzone ale przez to że włączone są okna jak bertrand legendre
+    to te śledzone nie są wyświetlone a powinny skoro są wypisane jakie mają
+    być śledzone"] Originally this ported #renderFrame's `if (anyWindowOn) {
+    this.#trackedPrimes = anchors; }` LITERALLY -- any window family on made
+    window_anchors fully REPLACE a manual --track-primes list, so a ring the
+    user explicitly asked to track would vanish the moment any window family
+    was enabled. Now: when any window family is on, the result is the UNION
+    of window_anchors and track_primes (window_anchors first, in their own
+    order, then any track_primes not already in that list, deduplicated) --
+    both are shown together instead of one hiding the other. A ring present
+    in both still renders as its window's own color (compute_tracked_colors
+    matches on window-anchor membership, not on this list), so this only
+    ever ADDS rings that would otherwise have disappeared; it never removes
+    or recolors anything the window-only behavior already showed.
+
+    Only when NO window family is on does auto-orbit or a plain
+    --track-primes list apply on their own, unchanged from before -- see
     rebuild_buffer's own call site for why auto-orbit's cycling itself is
-    ALSO gated on `not enabled_ids` now (a family being on must fully stop
+    ALSO gated on `not enabled_ids` (a family being on must fully stop
     auto-orbit from advancing in the background, not just from being shown,
     mirroring the JS's `if (!anyWindowOn) { this.#advanceAutoOrbit(...) }`)."""
     if enabled_ids:
-        return window_anchors
+        combined = list(window_anchors)
+        for prime in track_primes:
+            if prime not in combined:
+                combined.append(prime)
+        return combined
     if auto_orbit:
         return [orbit_current_prime] if orbit_current_prime is not None else []
     return track_primes
