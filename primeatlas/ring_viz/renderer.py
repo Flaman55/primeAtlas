@@ -206,11 +206,10 @@ from primeatlas.ring_geometry import parse_big_int
 # [MOVED Faza 2 of the renderer.py split, see hud.py's own module docstring]
 # The guarded Pillow import (and rasterize_hud_text, the only function that
 # actually touches Image/ImageDraw/ImageFont) now lives in hud.py, since
-# Pillow is entirely a HUD-text-rendering concern -- _PIL_AVAILABLE is
-# re-imported here too because _run_visualization's own GL setup (below)
-# still needs it to decide whether to allocate the on-canvas HUD texture
-# program/buffers at all.
-from primeatlas.ring_viz.hud import _PIL_AVAILABLE
+# Pillow is entirely a HUD-text-rendering concern. [TRIMMED Faza 5]
+# _PIL_AVAILABLE itself is no longer referenced directly here either --
+# gl_setup.py's own setup_gl_resources() now owns the "allocate the
+# on-canvas HUD texture program/buffers, or don't" decision.
 
 
 # ---------------------------------------------------------------------------
@@ -234,37 +233,27 @@ from primeatlas.ring_viz.sources import load_synthetic, load_sieve, load_magazyn
 # [MOVED Faza 1 of the renderer.py split, see shaders.py's own module
 # docstring] The GLSL source strings used to be defined here directly; they
 # are pure data with no GL-context dependency, so they moved out first as the
-# lowest-risk possible cut. Re-imported under their original names so every
-# other reference in this file (ctx.program(...) calls in _run_visualization)
-# is unchanged.
-from primeatlas.ring_viz.shaders import (
-    VERTEX_SHADER,
-    FRAGMENT_SHADER,
-    OUTLINE_VERTEX_SHADER,
-    OUTLINE_FRAGMENT_SHADER,
-    SCREEN_VERTEX_SHADER,
-    SCREEN_FRAGMENT_SHADER,
-    TEXT_VERTEX_SHADER,
-    TEXT_FRAGMENT_SHADER,
-)
+# lowest-risk possible cut. [TRIMMED Faza 5] Every ctx.program(...) call that
+# used these now lives in gl_setup.py's own setup_gl_resources() -- nothing
+# in this file references the raw shader strings directly anymore.
 
 
 # [MOVED Faza 2 of the renderer.py split, see geometry_draw.py's own module
 # docstring] build_vertex_data through initial_n_for_source used to be
 # defined here directly; none of them touch GL state, so they moved out
-# alongside Faza 1's cuts. [TRIMMED Faza 4] Most of this module's OWN
+# alongside Faza 1's cuts. [TRIMMED Faza 4/5] Most of this module's OWN
 # call sites for these (build_vertex_data, resolve_effective_track_primes,
 # build_tracked_outline_draws, decay_flash, flash_overlay_rgba,
 # resonance_is_active, zoom_to_point, fit_zoom_for_viewport,
 # split_hit_normal_vertex_data, tracked_outline_color, center_marker_
 # triangle_offsets, the _FLASH_*_RGB constants) moved into session.rebuild/
 # session.on_scroll/session.recenter/session.resonance_flash_color/etc
-# (Faza 3/4) -- only the handful still called directly from
+# (Faza 3/4); unit_circle_vertices moved into gl_setup.py's own setup_gl_
+# resources() (Faza 5) -- only the handful still called directly from
 # _run_visualization/main() are re-imported here now; unitTests/
 # test_ring_viz_renderer.py imports the rest directly from geometry_draw.py.
 from primeatlas.ring_viz.geometry_draw import (
     load_prime_range_slice,
-    unit_circle_vertices,
     marker_device_scale,
     build_center_marker_vertex_data,
     build_flash_quad_vertex_data,
@@ -334,6 +323,12 @@ from primeatlas.ring_viz.stdin_commands import start_stdin_command_reader
 # here for real.
 from primeatlas.ring_viz.session import RenderSession
 
+# [ADDED Faza 5 of the renderer.py split, see gl_setup.py's own module
+# docstring] Window/context/shader-program/VAO/VBO creation, previously a
+# ~16-local-variable block inline in _run_visualization, now one
+# GLResources instance built by setup_gl_resources().
+from primeatlas.ring_viz.gl_setup import setup_gl_resources
+
 
 def run(args):
     from primeatlas.ring_viz.audio import Instruments, LiveAudio
@@ -358,128 +353,13 @@ def _run_visualization(args, audio=None):
     import glfw
     import moderngl
 
-    if not glfw.init():
-        raise RuntimeError("glfw.init() failed -- no display available on this machine?")
-
-    glfw.window_hint(glfw.CONTEXT_VERSION_MAJOR, 3)
-    glfw.window_hint(glfw.CONTEXT_VERSION_MINOR, 3)
-    glfw.window_hint(glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE)
-    glfw.window_hint(glfw.OPENGL_FORWARD_COMPAT, True)
-
-    window = glfw.create_window(args.width, args.height, "PrimeAtlas -- Ring visualization", None, None)
-    if not window:
-        glfw.terminate()
-        raise RuntimeError("glfw.create_window() failed")
-    glfw.make_context_current(window)
-    glfw.swap_interval(0)  # uncapped, so the title FPS reflects real cost, not vsync
-
-    ctx = moderngl.create_context()
-    ctx.enable(moderngl.BLEND)
-    ctx.blend_func = moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA
-    # In an OpenGL 3.3 CORE PROFILE context, writing gl_PointSize from the
-    # vertex shader has NO EFFECT at all unless GL_PROGRAM_POINT_SIZE is
-    # explicitly enabled -- otherwise every point renders at a fixed,
-    # driver-controlled size regardless of u_point_size's value. This was
-    # missing from Faza 0's original landing (the fixed-function
-    # glPointSize() path this project never used doesn't need it, which is
-    # presumably why it went unnoticed until Artur tried changing
-    # --point-size for real and saw zero visual change -- see the
-    # "Rendered rings too small at high zoom" report/task #593, 2026-09-04).
-    ctx.enable(moderngl.PROGRAM_POINT_SIZE)
-    # Belt-and-suspenders alongside PROGRAM_POINT_SIZE above: per the GL
-    # spec, once PROGRAM_POINT_SIZE is enabled, the fixed-function
-    # glPointSize() value (ctx.point_size) is SUPPOSED to be ignored
-    # entirely in favor of the shader's own gl_PointSize output -- but
-    # setting it too costs nothing and removes one more variable if a
-    # given driver doesn't honor that part of the spec cleanly.
-    ctx.point_size = args.point_size
-
-    prog = ctx.program(vertex_shader=VERTEX_SHADER, fragment_shader=FRAGMENT_SHADER)
-    prog["u_point_size"].value = args.point_size
-
-    # [ADDED Faza 0 refactor] The normal/hit VAO pair (see split_hit_normal_
-    # vertex_data's own doc-comment for why there are two) is (re)created
-    # from a fresh VBO twice -- once here at startup, once per N-change in
-    # the main loop below -- identically both times; this one helper is the
-    # single place that vertex-format string ("2f 3f", "in_pos", "in_color")
-    # is written.
-    def _make_ring_vao(vbo):
-        return ctx.vertex_array(prog, [(vbo, "2f 3f", "in_pos", "in_color")])
-
-    # [ADDED Faza 11C, see PLAN.md] Independent size for rings ON the
-    # vertical reference line (pos["is_hit"] -- real divisors of N) --
-    # falls back to args.point_size when --hit-point-size wasn't given, so
-    # omitting it reproduces the old single-size behavior exactly. u_point_size
-    # is a single shared uniform (see VERTEX_SHADER), so getting two sizes on
-    # screen means two separate draw calls over two separate vertex buffers
-    # (hit rings vs everything else), not a single draw with per-vertex
-    # size -- see rebuild_buffer's own hit/normal split further down and the
-    # two vao.render() calls in the main loop.
-    hit_point_size = args.hit_point_size if args.hit_point_size is not None else args.point_size
-
-    # [DIAGNOSTIC, added 2026-09-04] Artur reported that --point-size still
-    # produces no visible change at all across a wide range (0.5 to 100)
-    # even after the PROGRAM_POINT_SIZE fix above made points visible in
-    # the first place. Two real possibilities this sandbox (no GPU/display)
-    # cannot test directly: (a) the requested value genuinely isn't
-    # reaching this point (argv/parsing issue), or (b) this specific
-    # GPU/driver clamps the actual renderable point size to a narrow
-    # hardware range regardless of what the shader requests (a real,
-    # documented OpenGL behavior -- GL_POINT_SIZE_RANGE / the analogous key
-    # in ctx.info). Printing both here, unconditionally, so the next real
-    # run's console pane settles which one it is instead of guessing blind.
-    print(f"[diag] requested point size (--point-size): {args.point_size}")
-    try:
-        point_size_info = {k: v for k, v in ctx.info.items() if "POINT" in k.upper()}
-        print(f"[diag] GL point-size-related context info: {point_size_info}")
-    except Exception as e:  # noqa: BLE001 -- diagnostic only, must never crash the run
-        print(f"[diag] could not read ctx.info: {e}")
-
-    # [ADDED Faza 8, see PLAN.md] Tracked-ring outline circles: one shared
-    # unit-circle VBO/VAO reused for every tracked ring's draw call (see
-    # unit_circle_vertices' own doc-comment for why a shared buffer + a
-    # per-draw-call radius/color uniform pair, rather than one buffer per
-    # ring).
-    prog_outline = ctx.program(vertex_shader=OUTLINE_VERTEX_SHADER, fragment_shader=OUTLINE_FRAGMENT_SHADER)
-    unit_circle_vbo = ctx.buffer(unit_circle_vertices().tobytes())
-    unit_circle_vao = ctx.vertex_array(prog_outline, [(unit_circle_vbo, "2f", "in_pos")])
-
-    # [ADDED Faza 8] Screen-space shapes: center marker (triangle + line) and
-    # the birth/resonance flash-overlay quad, all sharing one program and
-    # vertex format (see SCREEN_VERTEX_SHADER's own doc-comment). Each gets
-    # its own small dynamic buffer, rewritten every frame from plain numpy
-    # arrays (build_center_marker_vertex_data / build_flash_quad_vertex_data)
-    # -- cheap regardless of ring count since these are always <= 4 vertices.
-    prog_screen = ctx.program(vertex_shader=SCREEN_VERTEX_SHADER, fragment_shader=SCREEN_FRAGMENT_SHADER)
-    marker_triangle_vbo = ctx.buffer(reserve=3 * 6 * 4)
-    marker_triangle_vao = ctx.vertex_array(prog_screen, [(marker_triangle_vbo, "2f 4f", "in_pos", "in_color")])
-    marker_line_vbo = ctx.buffer(reserve=2 * 6 * 4)
-    marker_line_vao = ctx.vertex_array(prog_screen, [(marker_line_vbo, "2f 4f", "in_pos", "in_color")])
-    flash_quad_vbo = ctx.buffer(reserve=4 * 6 * 4)
-    flash_quad_vao = ctx.vertex_array(prog_screen, [(flash_quad_vbo, "2f 4f", "in_pos", "in_color")])
-
-    # [ADDED Faza 11B, see PLAN.md] On-canvas HUD text -- a textured quad
-    # (hud_quad_vertex_data, "2f 2f" pos+uv) sampling a Pillow-rasterized
-    # bitmap (rasterize_hud_text). Ports DrumRenderer's own #drawHud text
-    # overlay directly into this GL window, replacing "console pane only"
-    # as the HUD's real home (see hud_lines_for_n's own doc-comment for why
-    # that was this module's original, deliberately lower-risk choice, and
-    # Artur's 2026-09-06 "nie widzę informacji hud w oknie wizualizacji"
-    # report for why that turned out not to be enough). hud_tex is
-    # recreated (not just rewritten) each time the text changes, since
-    # moderngl textures are fixed-size -- see refresh_hud_texture below.
-    # Only set up at all if Pillow is actually importable; otherwise the
-    # HUD quad is simply never drawn (main loop's own `if hud_tex_holder`
-    # guard), same graceful-degradation convention as everywhere else this
-    # module treats an optional library as optional.
-    prog_text = ctx.program(vertex_shader=TEXT_VERTEX_SHADER, fragment_shader=TEXT_FRAGMENT_SHADER) if _PIL_AVAILABLE else None
-    hud_quad_vbo = ctx.buffer(reserve=6 * 4 * 4) if _PIL_AVAILABLE else None
-    hud_quad_vao = ctx.vertex_array(prog_text, [(hud_quad_vbo, "2f 2f", "in_pos", "in_uv")]) if _PIL_AVAILABLE else None
-    hud_tex_holder = {"tex": None}
-    if not _PIL_AVAILABLE:
-        print("[hud] Pillow not installed -- on-canvas HUD text disabled "
-              "(run `pip install --user Pillow` to enable it). Everything "
-              "else in this window is unaffected.")
+    # [MOVED Faza 5 of the renderer.py split, see gl_setup.py's own module
+    # docstring] Window/context/every shader program/VAO/VBO creation used
+    # to be ~16 loose local variables built directly in this function's own
+    # body -- now one GLResources instance, `gl`, built by setup_gl_
+    # resources(). Every reference to those objects below is now `gl.xxx`
+    # instead of a bare local name.
+    gl = setup_gl_resources(args)
 
     # [ADDED Faza 10, see PLAN.md] For --source sieve/magazyn, Faza 4 made
     # the view OPEN exactly at N=args.upto (see initial_n_for_source's own
@@ -703,17 +583,17 @@ def _run_visualization(args, audio=None):
         here, since session.py has no GL dependency at all."""
         json_line, rgba, w, h = session.refresh_hud(args.hud_font_size)
         print(json_line)
-        if hud_quad_vao is None:
+        if gl.hud_quad_vao is None:
             return
-        if hud_tex_holder["tex"] is not None:
-            hud_tex_holder["tex"].release()
-            hud_tex_holder["tex"] = None
+        if gl.hud_tex_holder["tex"] is not None:
+            gl.hud_tex_holder["tex"].release()
+            gl.hud_tex_holder["tex"] = None
         if rgba is None:
             return
-        tex = ctx.texture((w, h), 4, rgba.tobytes())
+        tex = gl.ctx.texture((w, h), 4, rgba.tobytes())
         tex.filter = (moderngl.NEAREST, moderngl.NEAREST)
-        hud_tex_holder["tex"] = tex
-        hud_quad_vbo.write(hud_quad_vertex_data(w, h).tobytes())
+        gl.hud_tex_holder["tex"] = tex
+        gl.hud_quad_vbo.write(hud_quad_vertex_data(w, h).tobytes())
 
     def rebuild_buffer(n_value, prev_ring_count=None, advancing=False):
         """GL-side half of session.rebuild(): uploads its returned vertex
@@ -728,15 +608,15 @@ def _run_visualization(args, audio=None):
             n_value, prev_ring_count=prev_ring_count, advancing=advancing, audio=audio
         )
         normal_bytes = data_normal.tobytes()
-        vbo_normal = ctx.buffer(normal_bytes) if normal_bytes else ctx.buffer(reserve=20)
+        vbo_normal = gl.ctx.buffer(normal_bytes) if normal_bytes else gl.ctx.buffer(reserve=20)
         hit_bytes = data_hit.tobytes()
-        vbo_hit = ctx.buffer(hit_bytes) if hit_bytes else ctx.buffer(reserve=20)
+        vbo_hit = gl.ctx.buffer(hit_bytes) if hit_bytes else gl.ctx.buffer(reserve=20)
         _apply_hud_refresh()
         return vbo_normal, vbo_hit, count, count_hit
 
     vbo_normal, vbo_hit, ring_count, ring_count_hit = rebuild_buffer(session.n)
-    vao_normal = _make_ring_vao(vbo_normal)
-    vao_hit = _make_ring_vao(vbo_hit)
+    vao_normal = gl.make_ring_vao(vbo_normal)
+    vao_hit = gl.make_ring_vao(vbo_hit)
 
     def on_scroll(_window, _dx, dy):
         # [FIXED, see Artur's 2026-09-04 bug report and zoom_to_point's own
@@ -746,7 +626,7 @@ def _run_visualization(args, audio=None):
         # updated) -- this callback only supplies the current viewport size,
         # which session.py has no way to read for itself (no GL/glfw
         # dependency there by design).
-        width, height = glfw.get_framebuffer_size(window)
+        width, height = glfw.get_framebuffer_size(gl.window)
         session.on_scroll(dy, session.cam_last_mouse, (width, height))
 
     def on_mouse_button(_window, button, action, _mods):
@@ -757,7 +637,7 @@ def _run_visualization(args, audio=None):
             # szybkie przywrócenie do podglądu pełnej wizualizacji" -- see
             # session.recenter's own doc-comment (shared with the F11
             # re-fit branch below, since both did the exact same thing).
-            width, height = glfw.get_framebuffer_size(window)
+            width, height = glfw.get_framebuffer_size(gl.window)
             session.recenter((width, height))
 
     def on_cursor_pos(_window, x, y):
@@ -776,7 +656,7 @@ def _run_visualization(args, audio=None):
     # scrub_release's own doc-comments for the held-count/was-running
     # bookkeeping this used to need a separate `scrub_state` dict for.
     from primeatlas.ring_viz.window_mode import FullscreenToggle
-    fullscreen = FullscreenToggle(glfw, window)
+    fullscreen = FullscreenToggle(glfw, gl.window)
     print('F11: toggle fullscreen (auto-fits zoom to the new window size); '
           'middle-click: recenter/fit view; Esc: close visualization', flush=True)
 
@@ -832,17 +712,17 @@ def _run_visualization(args, audio=None):
             # found -- see FullscreenToggle.toggle()'s own early-return
             # paths) leaves the current view untouched instead of
             # unexpectedly resetting it.
-            before = glfw.get_framebuffer_size(window)
+            before = glfw.get_framebuffer_size(gl.window)
             fullscreen.handle_key(key, action)
             if action == glfw.PRESS:
-                after = glfw.get_framebuffer_size(window)
+                after = glfw.get_framebuffer_size(gl.window)
                 if after != before:
                     session.recenter(after)
             return
         if action not in (glfw.PRESS, glfw.REPEAT):
             return
         if key == glfw.KEY_ESCAPE:
-            glfw.set_window_should_close(window, True)
+            glfw.set_window_should_close(gl.window, True)
             return
         step = args.n_step
         delta = 0
@@ -896,17 +776,17 @@ def _run_visualization(args, audio=None):
         # re-emitting here too is harmless).
         _apply_hud_refresh()
 
-    glfw.set_scroll_callback(window, on_scroll)
-    glfw.set_mouse_button_callback(window, on_mouse_button)
-    glfw.set_cursor_pos_callback(window, on_cursor_pos)
-    glfw.set_key_callback(window, on_key)
+    glfw.set_scroll_callback(gl.window, on_scroll)
+    glfw.set_mouse_button_callback(gl.window, on_mouse_button)
+    glfw.set_cursor_pos_callback(gl.window, on_cursor_pos)
+    glfw.set_key_callback(gl.window, on_key)
 
     last_n = session.n
     frame_count = 0
     fps_t0 = time.perf_counter()
     last_tick_time = time.perf_counter()
 
-    while not glfw.window_should_close(window):
+    while not glfw.window_should_close(gl.window):
         glfw.poll_events()
 
         # [ADDED Faza 13, see PLAN.md] Live pause/resume -- only reachable
@@ -928,8 +808,8 @@ def _run_visualization(args, audio=None):
         # to send RESUME, so let the real exit happen by leaving
         # window_should_close(window) True and breaking out of this
         # sub-loop; the outer while's own condition then ends the process).
-        if command_queue is not None and glfw.window_should_close(window):
-            glfw.set_window_should_close(window, False)
+        if command_queue is not None and glfw.window_should_close(gl.window):
+            glfw.set_window_should_close(gl.window, False)
             if not fullscreen.hide_for_pause():
                 print("Could not leave fullscreen; window remains visible", flush=True)
                 continue
@@ -943,11 +823,11 @@ def _run_visualization(args, audio=None):
                         if cmd == "RESUME":
                             paused = False
                         elif cmd == "__STDIN_CLOSED__":
-                            glfw.set_window_should_close(window, True)
+                            glfw.set_window_should_close(gl.window, True)
                             paused = False
                 except queue.Empty:
                     pass
-            if glfw.window_should_close(window):
+            if glfw.window_should_close(gl.window):
                 break
             fullscreen.show_after_pause()
             print("RING_VIZ_RESUMED", flush=True)
@@ -996,20 +876,20 @@ def _run_visualization(args, audio=None):
             )
             ring_count = new_ring_count
             ring_count_hit = new_ring_count_hit
-            vao_normal = _make_ring_vao(vbo_normal)
-            vao_hit = _make_ring_vao(vbo_hit)
+            vao_normal = gl.make_ring_vao(vbo_normal)
+            vao_hit = gl.make_ring_vao(vbo_hit)
             session.n_advancing = False
             session.n_force_rebuild = False
 
-        width, height = glfw.get_framebuffer_size(window)
-        ctx.viewport = (0, 0, width, height)
-        ctx.clear(0.05, 0.05, 0.07)
+        width, height = glfw.get_framebuffer_size(gl.window)
+        gl.ctx.viewport = (0, 0, width, height)
+        gl.ctx.clear(0.05, 0.05, 0.07)
 
         pan_x = session.cam_pan[0] + width / 2
         pan_y = session.cam_pan[1] + height / 2
-        prog["u_pan"].value = (pan_x, pan_y)
-        prog["u_zoom"].value = session.cam_zoom
-        prog["u_viewport"].value = (width, height)
+        gl.prog["u_pan"].value = (pan_x, pan_y)
+        gl.prog["u_zoom"].value = session.cam_zoom
+        gl.prog["u_viewport"].value = (width, height)
 
         # [FIXED, see Faza 10's own empty-buffer note above] vertices=
         # ring_count(_hit) explicitly, rather than letting moderngl infer
@@ -1025,9 +905,9 @@ def _run_visualization(args, audio=None):
         # what actually makes --hit-point-size independent of --point-size
         # on screen. Normal rings drawn first, hit rings drawn last so they
         # stay visually on top of anything they'd otherwise overlap.
-        prog["u_point_size"].value = args.point_size
+        gl.prog["u_point_size"].value = args.point_size
         vao_normal.render(moderngl.POINTS, vertices=ring_count - ring_count_hit)
-        prog["u_point_size"].value = hit_point_size
+        gl.prog["u_point_size"].value = gl.hit_point_size
         vao_hit.render(moderngl.POINTS, vertices=ring_count_hit)
 
         # [ADDED Faza 8, see PLAN.md] Tracked-ring outline circles -- one
@@ -1039,13 +919,13 @@ def _run_visualization(args, audio=None):
         # extra draw calls per frame here is negligible next to the single
         # GL_POINTS call above carrying the real ring count.
         if session.outline_draws:
-            prog_outline["u_pan"].value = (pan_x, pan_y)
-            prog_outline["u_zoom"].value = session.cam_zoom
-            prog_outline["u_viewport"].value = (width, height)
+            gl.prog_outline["u_pan"].value = (pan_x, pan_y)
+            gl.prog_outline["u_zoom"].value = session.cam_zoom
+            gl.prog_outline["u_viewport"].value = (width, height)
             for radius, color in session.outline_draws:
-                prog_outline["u_radius"].value = radius
-                prog_outline["u_color"].value = color
-                unit_circle_vao.render(moderngl.LINE_LOOP)
+                gl.prog_outline["u_radius"].value = radius
+                gl.prog_outline["u_color"].value = color
+                gl.unit_circle_vao.render(moderngl.LINE_LOOP)
 
         # [ADDED Faza 8] Center marker -- fixed decorative triangle + glow
         # line at the ring field's own screen-space origin (pan_x, pan_y;
@@ -1053,11 +933,11 @@ def _run_visualization(args, audio=None):
         # is the same point as u_pan above, not further scaled by zoom).
         s = marker_device_scale(width, height)
         triangle_data, line_data = build_center_marker_vertex_data(pan_x, pan_y, s)
-        marker_triangle_vbo.write(triangle_data.tobytes())
-        marker_line_vbo.write(line_data.tobytes())
-        prog_screen["u_viewport"].value = (width, height)
-        marker_triangle_vao.render(moderngl.TRIANGLES)
-        marker_line_vao.render(moderngl.LINES)
+        gl.marker_triangle_vbo.write(triangle_data.tobytes())
+        gl.marker_line_vbo.write(line_data.tobytes())
+        gl.prog_screen["u_viewport"].value = (width, height)
+        gl.marker_triangle_vao.render(moderngl.TRIANGLES)
+        gl.marker_line_vao.render(moderngl.LINES)
 
         # [ADDED Faza 8] Birth/resonance flash overlays -- full-screen washes
         # that decay over subsequent frames after a trigger (see
@@ -1070,14 +950,14 @@ def _run_visualization(args, audio=None):
         resonance_color = session.resonance_flash_color()
         if resonance_color is not None:
             quad = build_flash_quad_vertex_data(width, height, resonance_color)
-            flash_quad_vbo.write(quad.tobytes())
-            flash_quad_vao.render(moderngl.TRIANGLE_FAN)
+            gl.flash_quad_vbo.write(quad.tobytes())
+            gl.flash_quad_vao.render(moderngl.TRIANGLE_FAN)
             session.decay_resonance_flash()
         prime_color = session.prime_flash_color()
         if prime_color is not None:
             quad = build_flash_quad_vertex_data(width, height, prime_color)
-            flash_quad_vbo.write(quad.tobytes())
-            flash_quad_vao.render(moderngl.TRIANGLE_FAN)
+            gl.flash_quad_vbo.write(quad.tobytes())
+            gl.flash_quad_vao.render(moderngl.TRIANGLE_FAN)
             session.decay_prime_flash()
 
         # [ADDED Faza 11B, see PLAN.md] On-canvas HUD text quad -- drawn
@@ -1086,20 +966,20 @@ def _run_visualization(args, audio=None):
         # being the final call in its own #renderFrame. hud_tex_holder is
         # only ever non-None when Pillow is installed AND the current HUD
         # text is non-empty (see _apply_hud_refresh's own early-outs).
-        if hud_tex_holder["tex"] is not None:
-            hud_tex_holder["tex"].use(location=0)
-            prog_text["u_tex"].value = 0
-            prog_text["u_viewport"].value = (width, height)
-            hud_quad_vao.render(moderngl.TRIANGLES)
+        if gl.hud_tex_holder["tex"] is not None:
+            gl.hud_tex_holder["tex"].use(location=0)
+            gl.prog_text["u_tex"].value = 0
+            gl.prog_text["u_viewport"].value = (width, height)
+            gl.hud_quad_vao.render(moderngl.TRIANGLES)
 
-        glfw.swap_buffers(window)
+        glfw.swap_buffers(gl.window)
 
         frame_count += 1
         now = time.perf_counter()
         if now - fps_t0 >= 0.5:
             fps = frame_count / (now - fps_t0)
             glfw.set_window_title(
-                window, f"PrimeAtlas -- Ring visualization  N={last_n:,}  rings={ring_count:,}  fps={fps:.1f}"
+                gl.window, f"PrimeAtlas -- Ring visualization  N={last_n:,}  rings={ring_count:,}  fps={fps:.1f}"
             )
             frame_count = 0
             fps_t0 = now
