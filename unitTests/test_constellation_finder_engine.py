@@ -227,6 +227,133 @@ def main():
               f"(got {hits_after_rescan!r}, expected [200, 500] still, not "
               f"[200, 200, 500, 500])")
 
+        # =====================================================================
+        # max_windows batching (added 2026-09-13, floor-25-scale fix): a floor with 4
+        # windows, processed 2-at-a-time, must resume correctly across calls and only
+        # run the boundary check once truly caught up -- see process_floor()'s own
+        # docstring on why this exists (WSL dying mid-run on a floor with hundreds of
+        # thousands of windows).
+        # =====================================================================
+        _write_window(30, "PRIME_WINDOW_P.bin", [10, 20])
+        _write_window(30, "PRIME_WINDOW_Q.bin", [30, 40])
+        _write_window(30, "PRIME_WINDOW_R.bin", [50, 60])
+        _write_window(30, "PRIME_WINDOW_S.bin", [70, 80])
+
+        remaining_1 = cf.process_floor(30, max_windows=2)
+        check(remaining_1 == 2,
+              f"batch 1/2 (max_windows=2 of 4 total) reports 2 window(s) still "
+              f"remaining (got {remaining_1!r})")
+        check(cf.read_checkpoint(30) == "PRIME_WINDOW_Q.bin",
+              f"batch 1 stops exactly at the 2nd window, not further "
+              f"(got checkpoint={cf.read_checkpoint(30)!r})")
+        check(cf.is_boundary_checked(30) is False,
+              "the floor's own upper-boundary check must NOT run yet -- this batch "
+              "didn't reach the floor's real last window")
+
+        remaining_2 = cf.process_floor(30, max_windows=2)
+        check(remaining_2 == 0,
+              f"batch 2/2 finishes the remaining 2 windows, reporting 0 remaining "
+              f"(got {remaining_2!r})")
+        check(cf.read_checkpoint(30) == "PRIME_WINDOW_S.bin",
+              f"batch 2 reaches the floor's real last window "
+              f"(got checkpoint={cf.read_checkpoint(30)!r})")
+        check(cf.is_boundary_checked(30) is True,
+              "the boundary check DOES run once a batch actually reaches the floor's "
+              "real last window, same as an unbounded (max_windows=None) run would")
+
+        # A THIRD call (floor fully caught up, batched or not) must be a clean no-op,
+        # matching the unbounded (max_windows=None) "Nothing new" behavior.
+        remaining_3 = cf.process_floor(30, max_windows=2)
+        check(remaining_3 == 0,
+              f"a floor already fully caught up reports 0 remaining regardless of "
+              f"max_windows (got {remaining_3!r})")
+
+        # =====================================================================
+        # read_prime_window_last_value() itself -- must agree exactly with plain
+        # read_prime_window() on both a real, already-populated hit file (floor 20's
+        # k=2 file, [200, 500] from earlier in this test) and an empty/nonexistent one.
+        # =====================================================================
+        real_hits = _read_hits(20, 2, 1)
+        lean_last, lean_count = prime_sieve_v1.read_prime_window_last_value(cf.hit_file_path(20, 2, 1))
+        check((lean_last, lean_count) == (real_hits[-1], len(real_hits)),
+              f"read_prime_window_last_value() agrees with a full read_prime_window() "
+              f"decode on a real file (got {(lean_last, lean_count)!r}, expected "
+              f"{(real_hits[-1], len(real_hits))!r})")
+        # =====================================================================
+        # LAST_VALUES.tsv disk cache (added 2026-09-13/14) -- THE regression test for
+        # the actual floor-25 crash root cause: a fresh process_floor() call's
+        # in-memory last_value_cache starts EMPTY every run, so without a PERSISTENT
+        # disk cache, the first hit for any pattern in a fresh run used to force a
+        # decode of that pattern's WHOLE accumulated hit file just to learn its own
+        # last value -- confirmed via a real crash log to be exactly what killed the
+        # WSL process on floor 25's k=2 hit file after 342,001 already-processed
+        # windows. Proves a SECOND, separate process_floor() call (simulating a fresh
+        # WSL process/relaunch) skips that decode entirely, by counting real calls to
+        # prime_sieve_v1.read_prime_window_last_value() (the lean, list-free reader
+        # _resolve_last_value() actually calls -- see that function's own docstring on
+        # why plain read_prime_window() was itself part of the crash, independent of
+        # the caching question) against the HIT FILE path specifically (source window
+        # reads are unaffected and still happen normally, so a blanket call count would
+        # be the wrong signal).
+        # =====================================================================
+        original_read_last_value = prime_sieve_v1.read_prime_window_last_value
+        hit_file_reads = []
+
+        def _counting_read(path):
+            if "HITS_" in path:
+                hit_file_reads.append(path)
+            return original_read_last_value(path)
+
+        prime_sieve_v1.read_prime_window_last_value = _counting_read
+        try:
+            _write_window(40, "PRIME_WINDOW_X.bin", [1000, 1002])  # twin hit at 1000
+            cf.process_floor(40)
+            check(len(hit_file_reads) == 0,
+                  f"a BRAND NEW hit file (never existed before) needs no decode at all "
+                  f"to learn its 'last value' (got {len(hit_file_reads)} hit-file "
+                  f"read(s): {hit_file_reads!r})")
+
+            hit_file_reads.clear()
+            _write_window(40, "PRIME_WINDOW_Y.bin", [2000, 2002])  # twin hit at 2000
+            cf.process_floor(40)  # a SEPARATE call -- simulates a fresh WSL process
+                                   # with an empty in-memory last_value_cache, same as
+                                   # a real relaunch (auto-retry or batch-continuation)
+                                   # would have
+            check(len(hit_file_reads) == 0,
+                  f"a SECOND, separate process_floor() call must find its pattern's "
+                  f"last value via the ON-DISK cache, WITHOUT a full decode of the "
+                  f"(potentially huge) accumulated hit file "
+                  f"(got {len(hit_file_reads)} hit-file read(s): {hit_file_reads!r})")
+
+            hits_k2_f40 = _read_hits(40, 2, 1)
+            check(hits_k2_f40 == [1000, 2000],
+                  f"both hits are correctly recorded across the two separate runs, "
+                  f"proving the cache didn't just skip the decode but also stayed "
+                  f"CORRECT (got {hits_k2_f40!r})")
+
+            # Staleness safety: if the hit file changes WITHOUT the disk cache being
+            # told (simulating an external modification, e.g. a storage merge per
+            # [[primeatlas_storage_merge_federation]]), the cache must be distrusted
+            # and the safe, slow full-decode fallback must still fire -- never silently
+            # trust a stale cached last_value (which could corrupt the file's own
+            # gap-encoding -- see append_prime_window()'s own docstring).
+            hpath = cf.hit_file_path(40, 2, 1)
+            prime_sieve_v1.append_prime_window(hpath, [2500])  # bypasses the cache entirely
+            hit_file_reads.clear()
+            _write_window(40, "PRIME_WINDOW_Z.bin", [3000, 3002])  # twin hit at 3000
+            cf.process_floor(40)
+            check(len(hit_file_reads) == 1,
+                  f"an externally-modified hit file (count no longer matches the disk "
+                  f"cache) correctly falls back to exactly one full decode, not zero "
+                  f"(got {len(hit_file_reads)} hit-file read(s))")
+            hits_k2_f40_final = _read_hits(40, 2, 1)
+            check(hits_k2_f40_final == [1000, 2000, 2500, 3000],
+                  f"the fallback decode still produces the CORRECT result -- no "
+                  f"corruption, no lost/duplicated values "
+                  f"(got {hits_k2_f40_final!r})")
+        finally:
+            prime_sieve_v1.read_prime_window_last_value = original_read_last_value
+
         if failures:
             print(f"\n{len(failures)} FAILURE(S)")
             return 1

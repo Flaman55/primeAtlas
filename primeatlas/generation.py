@@ -1062,22 +1062,58 @@ def build_orchestrator_direct_argv(base_exponent, target_idx_start, window_count
 
 
 
-def build_constellation_finder_argv(base_exponent=None, script_path=None):
+def build_constellation_finder_argv(base_exponent=None, max_windows=None, script_path=None):
     """Returns the LINUX-side argv for constellation_finder_v1.py, whose CLI is
-    `[<base_exponent>]` -- a single OPTIONAL positional arg, omitted entirely (not passed
-    as an empty string) when base_exponent is None/blank, matching that script's own
-    auto-detect-every-populated-floor behavior (list_pietra_with_data()) when it's
-    called with no argument at all. Not yet wrapped in a wsl.exe invocation -- see
-    build_wsl_logged_command(). Uses `-u` (unbuffered stdout) for the same reason
-    build_loop_argv() does -- see that function's docstring; this script's low per-window
-    print volume made it the one where the default full-buffering was actually reported
-    as a problem."""
+    `[<base_exponent>] [--max-windows N]` -- base_exponent is a single OPTIONAL
+    positional arg, omitted entirely (not passed as an empty string) when it's
+    None/blank, matching that script's own auto-detect-every-populated-floor behavior
+    (list_pietra_with_data()) when it's called with no argument at all. Not yet wrapped
+    in a wsl.exe invocation -- see build_wsl_logged_command(). Uses `-u` (unbuffered
+    stdout) for the same reason build_loop_argv() does -- see that function's docstring;
+    this script's low per-window print volume made it the one where the default
+    full-buffering was actually reported as a problem.
+
+    max_windows (added 2026-09-13, see constellation_finder_v1.process_floor()'s own
+    docstring for the full "floor 25 crashes WSL at scale" story this caps): omitted
+    entirely when None, same "don't pass what wasn't explicitly set" shape as
+    base_exponent -- callers use this to bound a single run's own file-open volume,
+    letting generation_tab.py's own batch-continuation logic relaunch a fresh WSL
+    process for each slice instead of one process carrying the whole floor."""
     script = script_path if script_path is not None else CONSTELLATION_FINDER_SCRIPT
     script_wsl = windows_path_to_wsl(script)
     argv = ["python3", "-u", script_wsl]
     if base_exponent not in (None, ""):
         argv.append(str(base_exponent))
+    if max_windows is not None:
+        argv += ["--max-windows", str(max_windows)]
     return argv
+
+
+def read_constellation_checkpoint(portal_folder, base_exponent):
+    """Windows-side read of a floor's own CHECKPOINT.txt (last fully-processed PGS2
+    source window, written by constellation_finder_v1.py's own write_checkpoint()) --
+    same "last_processed_file=" parsing as that script's own read_checkpoint(), kept as
+    a small separate copy here rather than imported cross-language: this runs from the
+    GUI's own Windows-side process (generation_tab.py), never inside WSL, and
+    constellation_finder_v1.py's module-level PORTAL_FOLDER is fixed at import time
+    from CONSTELLATION_PORTAL_DIR -- which, on the Linux side, is a /mnt/-style path,
+    not the Windows-style path this app's own get_portal_folder() returns -- so calling
+    into that module directly would need faking its environment rather than just
+    reading three lines of a text file. Returns None if the floor has no checkpoint
+    yet (never scanned, or scanned floor doesn't exist).
+
+    Added 2026-09-13 for the auto-retry logic in generation_tab.py's own
+    _maybe_auto_retry_constellation() -- comparing this before/after a relaunch is how
+    that method tells "genuine forward progress" apart from "relaunching into the same
+    dead end"."""
+    path = os.path.join(portal_folder, f"10p{base_exponent}", "constellations", "CHECKPOINT.txt")
+    if not os.path.exists(path):
+        return None
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            if line.startswith("last_processed_file="):
+                return line.split("=", 1)[1].strip()
+    return None
 
 
 def build_ktuple_sieve_argv(base_exponent, k, variant_id, n_locations=1000, window_m=10_000_000,

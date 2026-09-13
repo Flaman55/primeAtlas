@@ -42,6 +42,7 @@ three specific methods stay at the app level rather than moving here.
 """
 import datetime
 import queue
+import re
 
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -52,6 +53,35 @@ from .base_tab import BaseTab
 from .hybrid_controls import HybridControls
 from .benchmark import read_benchmark_log
 from .generation_console import GenerationConsole
+
+# constellation_finder_v1.py's own WSL process can die mid-run WITHOUT writing an exit
+# code on a large enough floor (Artur's field report, 2026-09-13: floor 25 at 545,000
+# source windows, "Proces wsl.exe zakonczyl sie bez zapisania kodu wyjscia" -- confirmed
+# on a SECOND run to die with literally zero progress each time, right after the
+# "windows to process" line, ruling out "gradual resource leak over many iterations" as
+# the whole story and pointing at something that goes wrong very early against this
+# floor's own file count) -- most likely the same class of WSL/Windows filesystem-
+# interop scaling issue window_sharding.py's own docstring already documents for this
+# exact floor's directory listing, just showing up further into the pipeline now that
+# listing itself is fixed. See _maybe_auto_retry_constellation()'s own docstring for the
+# full mechanism (checkpoint-verified relaunching) this constant bounds.
+MAX_CONSTELLATION_AUTO_RETRIES = 200
+CONSTELLATION_AUTO_RETRY_DELAY_MS = 2000
+
+# Proactive counterpart to the reactive retry above (Artur's own follow-up request,
+# 2026-09-13: "sprawdź czy faktycznie jest porcjowana ilość danych do przetwarzania...
+# skrypt pośredni w pythonie który zarządza co trafia do wsl by ten nie dźwigał
+# całości") -- rather than only reacting AFTER a crash, every specific-floor run is
+# capped to this many windows per WSL invocation from the start (see
+# build_constellation_finder_argv()'s own max_windows parameter and
+# constellation_finder_v1.process_floor()'s own docstring), with
+# _maybe_continue_constellation_batch() chaining a fresh WSL process for the next slice
+# automatically on a clean exit. Matches window_sharding.SHARD_SIZE (the existing
+# per-directory chunking granularity already established for this same floor-25 scaling
+# problem) rather than inventing an unrelated magnitude.
+CONSTELLATION_BATCH_SIZE = 5000
+_GEN_CONST_BATCH_REMAINING_RE = re.compile(
+    r"\[CONSTELLATIONS v1\] BATCH DONE -- (\d+) window")
 from .storage import bump_pietro_total, digit_count_floor, load_totals_cache, LOW_FLOOR_CUTOFF, save_totals_cache
 from .generation import (
     QUICK_GEN_MAX_WINDOW_WIDTH, compute_totals_bumps_from_new_rows, count_existing_windows,
@@ -64,6 +94,7 @@ from .generation import (
     CUDASIEVE_MIN_PRINTABLE_TOP, CUDASIEVE_MAX_STOP, CUDASIEVE_MAX_WIDTH_MULT,
     build_cudasieve_argv,
     build_orchestrator_direct_argv, build_constellation_finder_argv,
+    read_constellation_checkpoint,
     build_ktuple_sieve_argv, generation_log_paths, build_wsl_logged_command,
     estimate_wsl_available_ram_bytes, recommended_max_windows,
     estimate_wsl_available_cpu_count, recommended_worker_count, WslLoggedRunner,
@@ -560,6 +591,17 @@ class GenerationTab(HybridControls, BaseTab):
 
         self._const_runner = None
         self._const_output_queue = queue.Queue()
+        # Auto-retry state for _maybe_auto_retry_constellation() -- see that method's
+        # own docstring. _const_auto_retry_base_exponent mirrors whatever was in
+        # _const_base_exponent_var at the moment Run was clicked ("" means "every
+        # floor with data", which auto-retry deliberately never engages for).
+        self._const_auto_retry_count = 0
+        self._const_auto_retry_base_exponent = None
+        self._const_last_checkpoint_seen = None
+        # Set by _scan_const_chunk_for_batch_marker() as the current run's output
+        # streams in, consumed (and reset to None) by
+        # _maybe_continue_constellation_batch() once the run's exit sentinel arrives.
+        self._const_batch_remaining = None
 
         # --- Section C: ktuple_sieve_v1.py (targeted k-tuple candidate sieve) -----
         # Complementary to Section B: that one pattern-matches against windows
@@ -2802,7 +2844,7 @@ class GenerationTab(HybridControls, BaseTab):
             bump_pietro_total(cache, base_exponent, delta_count, delta_files, delta_bytes)
         save_totals_cache(portal_folder, cache)
 
-    def _on_loop_finished(self):
+    def _on_loop_finished(self, _returncode=None):
         """_drain_output_queue's on_exit callback for the loop queue -- resets every
         open Quick-gen panel's 'Generate' button back from its temporary 'Stop'
         label now that nothing is running. Deliberately does NOT touch the console's
@@ -2871,7 +2913,41 @@ class GenerationTab(HybridControls, BaseTab):
         self._generation_settings["constellation"] = {"base_exponent": base_exponent}
         save_generation_settings(self._get_portal_folder(), self._generation_settings)
 
-        argv = build_constellation_finder_argv(base_exponent if base_exponent else None)
+        self._const_auto_retry_count = 0
+        self._const_auto_retry_base_exponent = base_exponent
+        self._start_constellation_runner(base_exponent)
+
+    def _start_constellation_runner(self, base_exponent):
+        """Builds and launches the actual constellation_finder_v1.py WSL command --
+        shared by _on_run_constellation() (the Run button), _maybe_auto_retry_
+        constellation() (an automatic relaunch after a crash) and _maybe_continue_
+        constellation_batch() (chaining the next batch after a clean one), so every
+        one of those is byte-for-byte the same command a manual re-click would
+        produce.
+
+        Every SPECIFIC-floor run (base_exponent non-empty) is capped to
+        CONSTELLATION_BATCH_SIZE windows via build_constellation_finder_argv()'s own
+        max_windows -- see that function's and constellation_finder_v1.process_floor()'s
+        own docstrings for why. The "process every floor with data" mode (base_exponent
+        blank) stays uncapped -- there's no single floor/checkpoint for the batch-
+        continuation logic to track progress against there.
+
+        Snapshots this floor's CHECKPOINT.txt (self._const_last_checkpoint_seen)
+        immediately before launching, every time -- not just once at the very first
+        Run click -- so _maybe_auto_retry_constellation()'s "did THIS run make
+        progress" check always compares against the checkpoint as it stood right
+        before THIS SPECIFIC run started, whether that run is the original click, an
+        auto-retry, or a chained batch continuation. Also clears
+        self._const_batch_remaining so a stale marker from a PREVIOUS run's own output
+        can never be mistaken for this run's."""
+        self._const_last_checkpoint_seen = (
+            read_constellation_checkpoint(self._get_portal_folder(), int(base_exponent))
+            if base_exponent else None)
+        self._const_batch_remaining = None
+
+        argv = build_constellation_finder_argv(
+            base_exponent if base_exponent else None,
+            max_windows=CONSTELLATION_BATCH_SIZE if base_exponent else None)
         log_path, exit_path, _run_id = generation_log_paths(self._get_portal_folder(), "constellation")
         cmd = build_wsl_logged_command(argv, log_path, exit_path, self._get_portal_folder())
 
@@ -2888,10 +2964,127 @@ class GenerationTab(HybridControls, BaseTab):
 
     def _on_stop_constellation(self):
         if self._const_runner is not None:
+            # An explicit Stop is a deliberate user action, not a crash -- never
+            # auto-relaunch a run the user just asked to stop.
+            self._const_auto_retry_base_exponent = None
             self._const_runner.stop()
             self.const_status_label.set(self.T("common.stopping"))
 
-    def _on_constellation_finished(self):
+    def _maybe_auto_retry_constellation(self, returncode):
+        """Auto-relaunches constellation_finder_v1.py when its WSL process dies
+        WITHOUT writing an exit code (returncode is None) -- Artur's own field-observed
+        crash on floor 25 at 545,000 source windows (2026-09-13): the WSL wrapper
+        process itself ends silently mid-run (no Python traceback, no exit code -- see
+        WslLoggedRunner's own docstring on this exact failure shape), most likely the
+        same class of WSL/Windows filesystem-interop scaling issue window_sharding.py's
+        own docstring already documents for floor 25's directory listing -- just
+        showing up further into the pipeline now that listing itself is fixed (a fresh
+        run's very first printed line, "N/M windows to process", already proves the
+        listing/index phase completed fine; the crash this guards is later, inside the
+        per-window streaming loop).
+
+        Since process_floor() writes CHECKPOINT.txt after EVERY successfully processed
+        window (constellation_finder_v1.py's own write_checkpoint() call), a bare
+        relaunch of the identical command resumes right where the last one died at
+        essentially zero cost -- turning "run dies partway through a large floor and
+        silently stops, needing Artur to notice and re-click Run by hand, possibly many
+        times over" into "keeps relaunching itself until the floor is actually done",
+        with no change needed to the crashing process itself (whose real root cause --
+        something about WSL/DrvFs degrading under sustained file-open volume against
+        the /mnt/h mount -- is outside this app's control).
+
+        Guards against relaunching forever on a genuinely PERMANENT failure (not a
+        transient scale hiccup) two ways: a hard retry cap
+        (MAX_CONSTELLATION_AUTO_RETRIES) as a backstop against pathological flapping,
+        and -- the real safety net -- comparing each floor's own CHECKPOINT.txt before
+        vs. after a relaunch attempt: if a relaunch made no forward progress at all
+        (e.g. the very first window after the checkpoint is itself poisoned somehow),
+        further identical relaunches would just spin uselessly, so this stops
+        immediately and surfaces the failure instead of retrying blindly.
+
+        Only engages for a run against a SPECIFIC floor (base_exponent field non-empty
+        when Run was clicked) -- the "process every floor with data" mode has no single
+        CHECKPOINT.txt this can watch for progress, and multi-floor runs are rare/
+        manual enough that falling back to the existing manual-restart behavior there
+        is fine. Also never engages after an explicit Stop (_on_stop_constellation
+        clears _const_auto_retry_base_exponent first).
+
+        Returns True if a retry was just scheduled (caller should treat this run as
+        still in-flight -- pending-search state etc. left untouched until the RETRY's
+        own eventual _on_constellation_finished lands), False otherwise (this run is
+        genuinely done, or gave up retrying -- business as usual)."""
+        if returncode is not None:
+            self._const_auto_retry_count = 0
+            return False
+        base_exponent = self._const_auto_retry_base_exponent
+        if not base_exponent:
+            return False
+        checkpoint_now = read_constellation_checkpoint(self._get_portal_folder(), int(base_exponent))
+        if checkpoint_now == self._const_last_checkpoint_seen:
+            self.const_console.append(
+                f"[!] {self.T('gen.const_auto_retry_no_progress')}\n")
+            self._const_auto_retry_base_exponent = None
+            return False
+        if self._const_auto_retry_count >= MAX_CONSTELLATION_AUTO_RETRIES:
+            self.const_console.append(
+                f"[!] {self.T('gen.const_auto_retry_giving_up', count=MAX_CONSTELLATION_AUTO_RETRIES)}\n")
+            self._const_auto_retry_base_exponent = None
+            return False
+        self._const_auto_retry_count += 1
+        self.const_console.append(
+            f"[*] {self.T('gen.const_auto_retry_relaunching', attempt=self._const_auto_retry_count, max=MAX_CONSTELLATION_AUTO_RETRIES)}\n")
+        self.after(CONSTELLATION_AUTO_RETRY_DELAY_MS,
+                   lambda: self._start_constellation_runner(base_exponent))
+        return True
+
+    def _scan_const_chunk_for_batch_marker(self, chunk):
+        """chunk_hook passed to _drain_output_queue() for the constellation queue only
+        -- records the "N window(s) still remain" count from constellation_finder_v1.
+        py's own process_floor() when a --max-windows-capped batch didn't reach the
+        end of the floor's own windows (see that function's and build_constellation_
+        finder_argv()'s own docstrings). _maybe_continue_constellation_batch() reads
+        this once the run's exit sentinel arrives, to decide whether to chain another
+        batch. Deliberately NOT re-derived by re-listing source_primes/ from the
+        Windows side -- that would repeat the exact expensive walk this whole feature
+        exists to avoid paying twice; the script already knows the answer and prints
+        it, this just reads it off the wire."""
+        match = _GEN_CONST_BATCH_REMAINING_RE.search(chunk)
+        if match:
+            self._const_batch_remaining = int(match.group(1))
+
+    def _maybe_continue_constellation_batch(self, returncode):
+        """Chains the NEXT batch when a run finished CLEANLY (returncode == 0) but was
+        itself only a bounded --max-windows slice of the floor with more still to do --
+        see _start_constellation_runner()'s own docstring on why every specific-floor
+        run is capped at CONSTELLATION_BATCH_SIZE windows in the first place. This is
+        the proactive half of the floor-25 fix (Artur's own request, 2026-09-13: feed
+        WSL small pieces instead of the whole floor at once); _maybe_auto_retry_
+        constellation() above remains the reactive half for a batch that itself
+        crashes mid-way.
+
+        Only engages for a specific-floor run (mirrors _maybe_auto_retry_
+        constellation()'s own restriction -- no single floor/checkpoint to chain for
+        the 'every floor with data' mode) and only after _maybe_auto_retry_
+        constellation() has already declined to act (a crash takes the retry path
+        instead, never this one).
+
+        Returns True if a continuation was just launched (caller should treat this run
+        as still in-flight, same contract as _maybe_auto_retry_constellation()),
+        False otherwise (nothing left to chain -- the floor is caught up, or this
+        wasn't a specific-floor run)."""
+        remaining = self._const_batch_remaining
+        self._const_batch_remaining = None
+        if returncode != 0 or not remaining:
+            return False
+        base_exponent = self._const_auto_retry_base_exponent
+        if not base_exponent:
+            return False
+        self.const_console.append(
+            f"[*] {self.T('gen.const_batch_continuing', remaining=remaining)}\n")
+        self._start_constellation_runner(base_exponent)
+        return True
+
+    def _on_constellation_finished(self, returncode):
         """_drain_output_queue's on_exit callback for the constellation queue --
         mirrors _on_loop_finished's reload_primes_tree() call, but for the
         Constellations tab: re-runs reload_constellations_tree() so newly found hits
@@ -2900,6 +3093,13 @@ class GenerationTab(HybridControls, BaseTab):
         the Quick-gen 'Generate'/'Stop' one _on_loop_finished handles), so this is
         otherwise a much shorter version of that method."""
         self.reload_constellations_tree()
+
+        if self._maybe_auto_retry_constellation(returncode):
+            return  # a fresh run was just scheduled -- pending-search state (below)
+                     # stays untouched until THAT run's own exit sentinel lands
+
+        if self._maybe_continue_constellation_batch(returncode):
+            return  # same as above, for a chained batch continuation instead
 
         # Mirrors _on_loop_finished()'s pending-search re-run, for a search-triggered
         # "run constellation_finder for this floor" instead (see
@@ -2914,7 +3114,8 @@ class GenerationTab(HybridControls, BaseTab):
         self._drain_output_queue(self._const_output_queue, self.const_console,
                                   self.const_run_btn, self.const_stop_btn,
                                   self.const_status_label,
-                                  on_exit=self._on_constellation_finished)
+                                  on_exit=self._on_constellation_finished,
+                                  chunk_hook=self._scan_const_chunk_for_batch_marker)
         self.after(150, self._poll_constellation_output)
 
     def _on_ktuple_k_changed(self, _event=None, restore_variant_id=None):
@@ -3102,7 +3303,7 @@ class GenerationTab(HybridControls, BaseTab):
             self._ktuple_runner.stop()
             self.ktuple_status_label.set(self.T("common.stopping"))
 
-    def _on_ktuple_finished(self):
+    def _on_ktuple_finished(self, _returncode=None):
         """Mirrors _on_constellation_finished() -- confirmed hits land in the same
         per-(k,variant) hit files Section B writes to, so the Constellations tab
         needs the same post-run refresh. Also re-enables ktuple_auto_btn --
@@ -3119,7 +3320,8 @@ class GenerationTab(HybridControls, BaseTab):
                                   on_exit=self._on_ktuple_finished)
         self.after(150, self._poll_ktuple_output)
 
-    def _drain_output_queue(self, q, console, run_btn, stop_btn, status_var, on_exit=None):
+    def _drain_output_queue(self, q, console, run_btn, stop_btn, status_var, on_exit=None,
+                             chunk_hook=None):
         """Shared by both Generation sections: drains whatever output
         a WslLoggedRunner has pushed onto `q` since the last poll into
         `console` (a GenerationConsole -- autoscrolling to the bottom is handled by
@@ -3130,11 +3332,22 @@ class GenerationTab(HybridControls, BaseTab):
         reschedule; each caller (_poll_loop_output / _poll_constellation_output) owns
         its own self.after() chain so the two sections' polling stays independent.
 
-        An optional on_exit() callback fires right after the exit-sentinel
-        handling above -- currently only _poll_loop_output uses it (to reset the
-        Quick-gen 'Generate' button's temporary 'Stop' label, see
-        _on_loop_finished); _poll_constellation_output has no equivalent dual-purpose
-        button so it leaves this at its default of None.
+        An optional on_exit(returncode) callback fires right after the exit-sentinel
+        handling above -- _poll_loop_output uses it to reset the Quick-gen 'Generate'
+        button's temporary 'Stop' label (see _on_loop_finished, which ignores the
+        returncode); _poll_constellation_output's own _on_constellation_finished DOES
+        use the returncode, to decide whether to auto-relaunch a crashed run or chain
+        the next batch (see _maybe_auto_retry_constellation()/_maybe_continue_
+        constellation_batch()).
+
+        An optional chunk_hook(chunk) fires for every plain-text chunk, right
+        alongside _update_shared_progress_from_generation_chunk() below -- currently
+        only _poll_constellation_output uses it (_scan_const_chunk_for_batch_marker(),
+        to notice a "BATCH DONE -- N window(s) still remain" marker line as it streams
+        in, ahead of on_exit needing that information once the run actually ends).
+        Kept SEPARATE from _update_shared_progress_from_generation_chunk() rather than
+        adding another regex branch to that already-dense, multi-engine-shared method
+        -- this one is specific to a single section's own feature.
 
         Every plain-text chunk is ALSO fed to _update_shared_progress_from_generation_
         chunk() -- see that method's own docstring -- so the shared bottom bar reflects
@@ -3154,10 +3367,12 @@ class GenerationTab(HybridControls, BaseTab):
                     else:
                         status_var.set(self.T("common.finished_code", code=returncode))
                     if on_exit is not None:
-                        on_exit()
+                        on_exit(returncode)
                     continue
                 console.append(item)
                 self._update_shared_progress_from_generation_chunk(item)
+                if chunk_hook is not None:
+                    chunk_hook(item)
         except queue.Empty:
             pass
 

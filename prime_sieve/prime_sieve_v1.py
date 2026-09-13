@@ -261,6 +261,51 @@ def read_prime_window(path):
     return primes
 
 
+def read_prime_window_last_value(path):
+    """Returns (last_value, count) WITHOUT building the full decoded list in memory --
+    unlike read_prime_window(), which accumulates every value into a list (needed by
+    callers that actually use the whole thing), this only ever needs the FINAL value.
+    Gap-encoding has no random access -- there is no way to reach the last value
+    without walking every gap before it, so this is still O(count) TIME, same as a
+    full decode -- but O(1) MEMORY instead of O(count), since it never keeps more than
+    the current running value instead of appending each one to a growing list.
+
+    Added 2026-09-14 after a real production crash: constellation_finder_v1.py's own
+    _resolve_last_value() only ever needs a hit file's last stored value to know where
+    to resume gap-encoding from on the next append -- but on a floor with hundreds of
+    thousands of processed windows, a dense pattern's cumulative hit file can itself
+    accumulate MILLIONS of entries. Decoding that into a full Python list of big
+    integers (each carrying real per-object overhead on top of its own digits) could
+    easily cost several times the file's own raw byte size in RAM -- large enough, on
+    top of whatever else a long-running process already holds, to OOM-kill the whole
+    WSL VM. Reading the file's raw bytes still costs O(file size) memory (unavoidable
+    without a streaming/chunked read, which would complicate varint-boundary handling
+    for a fix this targeted), but skips the SINGLE biggest cost: never materializing
+    millions of individual Python int objects just to discard all but the last one.
+
+    Returns (None, 0) for an empty/nonexistent-content file (count=0, same as
+    read_prime_window() returning [] in that case)."""
+    with open(path, "rb") as f:
+        data = f.read()
+    if data[:4] != PGS_MAGIC:
+        raise ValueError(f"{path}: not a PGS2 file (bad magic bytes)")
+    pos = 4
+    base_len = data[pos]
+    pos += 1
+    if base_len == 0:
+        return None, 0
+    base = int.from_bytes(data[pos:pos + base_len], "big")
+    pos += base_len
+    count = int.from_bytes(data[pos:pos + 4], "big")
+    pos += 4
+    pos += 4  # generated_at
+    prev = base
+    for _ in range(count - 1):
+        gap, pos = decode_varint(data, pos)
+        prev += gap
+    return prev, count
+
+
 def read_prime_window_head(path, threshold):
     """Reads primes from `path` in order, stopping as soon as a value EXCEEDS `threshold`
     (a value equal to threshold IS included). Used to cheaply "peek" a handful of entries
