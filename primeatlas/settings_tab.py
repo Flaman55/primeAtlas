@@ -1832,6 +1832,88 @@ class SettingsTab(BaseTab):
         self.libs_output.see("end")
         self.libs_output.configure(state="disabled")
 
+    # ---- primecount (optional exact prime-counting library) installer ---------------------
+    #
+    # Flow: [Sprawdz status] -> version query via WSL (background thread, real round-trip,
+    # same reasoning as CUDASieve's own status probe below) -> status label + enable/
+    # disable the install button. [Zainstaluj primecount] -> apt-get install (background
+    # thread, WSL, run as root -- see run_primecount_install_wsl_blocking's own docstring)
+    # -> log output -> re-run the status probe on completion, same "no second manual
+    # click needed" pattern as CUDASieve's own install flow.
+
+    def _primecount_log(self, text):
+        self.primecount_output.configure(state="normal")
+        self.primecount_output.insert("end", text)
+        self.primecount_output.see("end")
+        self.primecount_output.configure(state="disabled")
+
+    def _on_check_primecount_status(self):
+        if self._primecount_status_running:
+            return
+        self._primecount_status_running = True
+        self.primecount_status_var.set(self.T("settings.primecount_status_checking"))
+
+        def worker():
+            # try/except is load-bearing, not defensive boilerplate -- see
+            # _on_check_cudasieve_status's own worker() for why (an uncaught exception
+            # here would silently kill this daemon thread, leaving the guard flag stuck
+            # True and the label on "checking..." forever).
+            try:
+                argv = self.wsl["build_primecount_query_argv"]("version")
+                ok, result = self.wsl["run_primecount_wsl_blocking"](argv, 30)
+            except Exception as e:  # noqa: BLE001 -- must always resolve the guard flag
+                ok, result = False, {"message": f"{type(e).__name__}: {e}", "kind": None}
+            self.after(0, lambda: self._on_primecount_status_result(ok, result))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_primecount_status_result(self, ok, result):
+        self._primecount_status_running = False
+        if ok:
+            self.primecount_status_var.set(
+                self.T("settings.primecount_status_installed", version=result))
+            self.install_primecount_btn.configure(state="disabled")
+            return
+        kind = result.get("kind") if isinstance(result, dict) else None
+        message = result.get("message") if isinstance(result, dict) else str(result)
+        if kind == "not_installed":
+            self.primecount_status_var.set(self.T("settings.primecount_status_missing"))
+        else:
+            self.primecount_status_var.set(
+                self.T("settings.primecount_status_error", error=str(message)[:200]))
+        self.install_primecount_btn.configure(
+            state="disabled" if self._primecount_install_running else "normal")
+
+    def _on_install_primecount_clicked(self):
+        if self._primecount_install_running:
+            return
+        self._primecount_install_running = True
+        self.install_primecount_btn.configure(state="disabled")
+        self._primecount_log(self.T("settings.primecount_installing") + "\n")
+
+        def worker():
+            try:
+                ok, error = self.wsl["run_primecount_install_wsl_blocking"](300)
+            except Exception as e:  # noqa: BLE001 -- must always resolve the guard flag
+                ok, error = False, f"{type(e).__name__}: {e}"
+            self.after(0, lambda: self._on_primecount_install_result(ok, error))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_primecount_install_result(self, ok, error):
+        self._primecount_install_running = False
+        if ok:
+            self._primecount_log(self.T("settings.primecount_install_done") + "\n")
+        else:
+            self._primecount_log(
+                self.T("settings.primecount_install_failed", error=str(error)[:800]) + "\n")
+        # Re-probes status regardless of ok/failure -- same "reflect reality without a
+        # second manual click" pattern as CUDASieve's own _on_check_cudasieve_status()
+        # call at the end of a build; also correctly re-enables install_primecount_btn
+        # on a failed install (via _on_primecount_status_result's own "still missing"
+        # branch), which this method's own try/except never does directly.
+        self._on_check_primecount_status()
+
     # ---- CUDASieve (GPU engine) installer, ported from `cudasieve` branch (task #459) ----
     #
     # Flow: [Sprawdz status] -> quick WSL probe (background thread, since unlike
@@ -2589,6 +2671,41 @@ class SettingsTab(BaseTab):
             libs_frame, height=5, font=("Consolas", 9), state="disabled",
             background="#111318", foreground="#d8d8d8")
         self.libs_output.pack(fill="x", padx=6, pady=(0, 6))
+
+        # primecount (Kim Walisch's exact combinatorial prime-counting library, BSD
+        # license, companion to primesieve -- see prime_sieve/prime_count_primecount.py's
+        # own module docstring) -- on-demand installer for the Badania -> Przyblizenia
+        # pi(x) tab's "primecount" data-source mode. Same simple shape as the sympy
+        # section above (status label + check/install buttons + a log area), not
+        # CUDASieve's own heavier consent-dialog/build flow below -- this is a single
+        # apt-get install of an already-BSD-licensed system package, no license text to
+        # show, no compilation step (see run_primecount_install_wsl_blocking's own
+        # docstring). Unlike sympy's _refresh_libs_status() (a synchronous, in-process
+        # import check, cheap enough to run at __init__ time), the status check here is a
+        # REAL wsl.exe round trip -- starts as "not checked yet" and only ever probes on
+        # an explicit click, same reasoning as CUDASieve's own status var below.
+        primecount_frame = ttk.Labelframe(outer, text=self.T("settings.primecount_frame"))
+        primecount_frame.pack(fill="x", pady=(0, 8))
+        ttk.Label(primecount_frame, text=self.T("settings.primecount_hint"),
+                  wraplength=760, justify="left", foreground="#555").pack(
+            anchor="w", padx=6, pady=(6, 4))
+        primecount_btn_row = ttk.Frame(primecount_frame)
+        primecount_btn_row.pack(fill="x", padx=6, pady=(0, 4))
+        self.primecount_status_var = tk.StringVar(
+            value=self.T("settings.primecount_status_not_checked"))
+        ttk.Label(primecount_btn_row, textvariable=self.primecount_status_var).pack(side="left")
+        ttk.Button(primecount_btn_row, text=self.T("settings.primecount_check_button"),
+                   command=self._on_check_primecount_status).pack(side="left", padx=(10, 0))
+        self.install_primecount_btn = ttk.Button(
+            primecount_btn_row, text=self.T("settings.primecount_install_button"),
+            command=self._on_install_primecount_clicked)
+        self.install_primecount_btn.pack(side="left", padx=(6, 0))
+        self.primecount_output = ScrolledText(
+            primecount_frame, height=5, font=("Consolas", 9), state="disabled",
+            background="#111318", foreground="#d8d8d8")
+        self.primecount_output.pack(fill="x", padx=6, pady=(0, 6))
+        self._primecount_status_running = False
+        self._primecount_install_running = False
 
         # CUDASieve (optional GPU engine) installer -- ported from the `cudasieve` branch
         # (task #459). Separate Labelframe from the sympy one above: different license

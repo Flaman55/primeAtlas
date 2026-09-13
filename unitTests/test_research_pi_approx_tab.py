@@ -21,6 +21,7 @@ import shutil
 import sys
 import tempfile
 import time
+import tkinter as tk
 
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(_SCRIPT_DIR)
@@ -231,6 +232,123 @@ def _run(tmp_portal, prime_sieve_v1, window_sharding):
           f"(got {len(exported_rows) - 1})")
     check(exported_rows[1][0] == "10" and exported_rows[1][1] == "4",
           f"first exported data row matches x=10's own pi(x)=4 (got {exported_rows[1]!r})")
+
+    # --- primecount mode: monkeypatched WSL round trip (no real wsl.exe/libprimecount --
+    # same "fake the module-level WSL call, exercise the worker plumbing" approach as
+    # test_primesieve_calc_worker.py's own docstring explains) --------------------------
+    import primeatlas.research_pi_approx_tab as rpat
+
+    captured_argv = []
+
+    def fake_query_ok(argv, portal_folder, timeout=120):
+        captured_argv.append(argv)
+        # Fake "exact" pi(x) answers, one per checkpoint, in argv's own order
+        # (argv = ["python3", "-u", script, "pi_batch", <x1>, <x2>, ...]). Already
+        # unwrapped from the query script's own {"ok":true,"result":...} envelope --
+        # run_primecount_wsl_blocking's own contract, see its docstring.
+        xs = [int(a) for a in argv[4:]]
+        return True, [x // 2 for x in xs]
+
+    rpat.run_primecount_wsl_blocking = fake_query_ok
+    tab.pi_source_var.set("primecount")
+    _set_entry(tab.pi_x_from_entry, "10")
+    _set_entry(tab.pi_x_to_entry, "100")
+    _set_entry(tab.pi_step_entry, "30")
+    shown.clear()
+    tab._on_pi_run()
+    _pump(app, 2.0)
+    check(shown == [], f"no error dialog for a valid primecount-mode run (got {shown!r})")
+    check(captured_argv and captured_argv[-1][3] == "pi_batch",
+          f"primecount mode calls the pi_batch op (got {captured_argv[-1] if captured_argv else None!r})")
+    check(captured_argv and captured_argv[-1][4:] == ["10", "40", "70", "100"],
+          f"pi_batch is called with ALL checkpoints in one round trip "
+          f"(got {captured_argv[-1][4:] if captured_argv else None!r})")
+    check(tab._pi_last_result is not None and tab._pi_last_result.get("source") == "primecount",
+          "the result records that it came from primecount mode")
+    rows = tab.pi_results_tree.get_children()
+    check(str(tab.pi_results_tree.item(rows[0])["values"][1]) == "5",
+          f"first row's pi(x) is the fake source's own answer (10//2=5) "
+          f"(got {tab.pi_results_tree.item(rows[0])['values'][1]!r})")
+
+    # --- primecount mode: a GENERIC WSL/library failure (kind=None) surfaces as a -----
+    # plain error dialog, same as sieve/storage mode failures ---------------------------
+    def fake_query_generic_fail(argv, portal_folder, timeout=120):
+        return False, {"message": "some other failure (fake, for this test)", "kind": None}
+
+    rpat.run_primecount_wsl_blocking = fake_query_generic_fail
+    shown.clear()
+    tab._on_pi_run()
+    _pump(app, 2.0)
+    check(len(shown) == 1 and shown[0][0] == "error",
+          f"a generic primecount-mode failure shows a plain error dialog "
+          f"(got {shown!r})")
+
+    # --- primecount mode: a "not installed" failure is a DISTINCT _pi_job outcome -----
+    # (kind="primecount_not_installed"), tested by calling _pi_job directly -- same
+    # "test the underlying logic, not a real Tk dialog's button widget" convention
+    # test_cudasieve_integration.py's own suite uses for ITS consent dialog -----------
+    def fake_query_not_installed(argv, portal_folder, timeout=120):
+        return False, {"message": "Could not load libprimecount (fake, for this test)",
+                        "kind": "not_installed"}
+
+    rpat.run_primecount_wsl_blocking = fake_query_not_installed
+    pending_job = {"x_from": 10, "x_to": 100, "step": 30, "source": "primecount", "page": 0}
+    kind, ok, data = tab._pi_job(pending_job, lambda *a: None)
+    check(kind == "primecount_not_installed",
+          f"_pi_job reports the specific 'not installed' kind instead of a generic "
+          f"failure (got {kind!r})")
+    check(not ok, "the 'not installed' result is still reported as a failure")
+    check(data == pending_job,
+          f"the failure carries the EXACT job dict needed to retry after installing "
+          f"(got {data!r})")
+
+    # --- the full round trip through _on_pi_worker_result: a "not installed" result --
+    # must open the install-offer dialog (a Toplevel), NOT a generic error messagebox --
+    shown.clear()
+    tab._on_pi_worker_result(("primecount_not_installed", False, data), None)
+    _pump(app, 0.3)
+    check(shown == [], "a 'not installed' result does NOT show a generic error dialog")
+    install_dialogs = [w for w in tab.winfo_children() if isinstance(w, tk.Toplevel)]
+    check(len(install_dialogs) == 1,
+          f"exactly one install-offer dialog (Toplevel) is shown "
+          f"(got {len(install_dialogs)})")
+    install_dialogs[0].destroy()
+
+    # --- _start_primecount_install: called directly (same convention as _pi_job above,
+    # and as test_cudasieve_integration.py's own direct _start_cudasieve_build() calls).
+    # Both the install call itself AND the retried query are monkeypatched -- this
+    # submits a REAL job to the REAL background worker (unlike the earlier steps that
+    # called _pi_job/_on_pi_worker_result directly), so _pump() below drives it through
+    # exactly as a live install click would, with no manual double-triggering.
+    rpat.run_primecount_install_wsl_blocking = lambda portal_folder, timeout=300: (True, None)
+    rpat.run_primecount_wsl_blocking = fake_query_ok
+    captured_argv.clear()
+    tab.status.set("")
+    tab._start_primecount_install(data)
+    check(tab._pi_pending_retry_job == data,
+          f"_start_primecount_install remembers the exact job to retry after a "
+          f"successful install (got {tab._pi_pending_retry_job!r})")
+    check("primecount" in tab.status.get().lower(),
+          f"starting the install updates the status bar (got {tab.status.get()!r})")
+
+    # --- a successful install auto-retries the pending job, no second manual click ----
+    _pump(app, 3.0)
+    check(tab._pi_pending_retry_job is None,
+          "the pending retry job is cleared once the install succeeds and the retry is submitted")
+    check(captured_argv, "a successful install automatically re-ran the original query")
+    check(tab._pi_last_result is not None and tab._pi_last_result.get("source") == "primecount",
+          "the auto-retried run actually completed and produced a result")
+
+    # --- a failed install shows an error dialog and does NOT consume the pending job --
+    rpat.run_primecount_install_wsl_blocking = (
+        lambda portal_folder, timeout=300: (False, "apt-get install failed (fake, for this test)"))
+    shown.clear()
+    tab._start_primecount_install(data)
+    _pump(app, 2.0)
+    check(len(shown) == 1 and shown[0][0] == "error",
+          f"a failed install shows an error dialog (got {shown!r})")
+    check(tab._pi_pending_retry_job == data,
+          "a failed install does not clear the pending retry job (nothing was retried)")
 
     app.destroy()
 

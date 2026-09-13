@@ -168,6 +168,8 @@ from primeatlas.generation import (  # noqa: E402
     find_continuation_target_idx,
     build_cudasieve_status_argv, build_cudasieve_fetch_license_argv,
     build_cudasieve_build_argv, run_cudasieve_wsl_blocking,
+    build_primecount_query_argv, run_primecount_wsl_blocking,
+    run_primecount_install_wsl_blocking,
 )
 # PRIMESIEVE_QUERY_SCRIPT/windows_path_to_wsl/build_primesieve_query_argv/
 # run_primesieve_query_wsl used to be imported/defined here for the "primesieve"
@@ -1270,6 +1272,24 @@ def _build_gui():
                 "run_cudasieve_wsl_blocking":
                     lambda argv, timeout=120:
                         run_cudasieve_wsl_blocking(argv, PORTAL_FOLDER, timeout),
+                # primecount (Kim Walisch's exact combinatorial prime-counting library,
+                # companion to primesieve above) -- on-demand installer for Settings ->
+                # Aktualizacje's own primecount row, per Artur's own already-recorded
+                # design decision (2026-09-02, see env_setup.py's REQUIRED_APT_PACKAGES
+                # comment) that research-module-specific optional C libraries get an
+                # on-demand button there rather than a blanket first-run install. Also
+                # used by research_pi_approx_tab.py's own "primecount" data-source mode
+                # (imported there directly from primeatlas.generation, not through this
+                # dict -- that tab has no wsl_helpers-style injection of its own, see
+                # that module's own docstring) for the actual pi(x) queries; only the
+                # INSTALL button itself lives in Settings.
+                "build_primecount_query_argv": build_primecount_query_argv,
+                "run_primecount_wsl_blocking":
+                    lambda argv, timeout=120:
+                        run_primecount_wsl_blocking(argv, PORTAL_FOLDER, timeout),
+                "run_primecount_install_wsl_blocking":
+                    lambda timeout=300:
+                        run_primecount_install_wsl_blocking(PORTAL_FOLDER, timeout),
                 # Added so the theme/language auto-restart feature (settings_tab.py's
                 # _has_running_job()) can tell whether a Generation-tab pipeline/
                 # constellation-finder/k-tuple run is currently in flight before

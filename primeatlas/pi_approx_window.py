@@ -36,7 +36,11 @@ Mirrors squares_window.py's own two-entry-point split (check_pi_approx_
 range / check_pi_approx_range_from_source) for the same fresh-sieve-vs-
 magazyn-bridge reason, and its own duplicated sieve_is_prime (see
 research_squares_tab.py's own docstring for why each conjecture/feature
-module in this project stays a self-contained copy).
+module in this project stays a self-contained copy). A THIRD entry point,
+check_pi_approx_range_with_pi_func(), skips the is_prime array entirely --
+it exists for primecount (Kim Walisch's combinatorial prime-counting
+library, see prime_sieve/prime_count_primecount.py), which computes pi(x)
+directly without ever sieving, reaching x far past MAX_SIEVE_BOUND.
 """
 import math
 
@@ -261,3 +265,38 @@ def check_pi_approx_range(x_from, x_to, step, row_cap=None, row_offset=0):
 
     return check_pi_approx_range_from_source(
         x_from, x_to, step, _source, row_cap=row_cap, row_offset=row_offset)
+
+
+def check_pi_approx_range_with_pi_func(x_from, x_to, step, pi_func, row_cap=None, row_offset=0):
+    """Same contract as check_pi_approx_range() above, except pi(x) itself
+    is obtained by calling `pi_func(checkpoints)` -- a plain callable
+    list[int] -> list[int], returning the EXACT count of primes <= x for
+    EVERY checkpoint in one call, same order -- instead of building/
+    scanning an is_prime array at all. Batched (all checkpoints in one
+    call) rather than one call per x deliberately: this is what lets a
+    caller plug in primecount (Kim Walisch's combinatorial prime-counting
+    library, see primeatlas/research_pi_approx_tab.py's own "primecount"
+    data-source mode) via a single WSL round-trip per page instead of one
+    per row -- a real cost when each round trip is a separate wsl.exe
+    process launch.
+
+    Deliberately has NO MAX_SIEVE_BOUND ceiling of its own -- that ceiling
+    is specifically about the cost of building a full is_prime array up to
+    x_to; primecount's own algorithm never builds one at all (see
+    prime_sieve/prime_count_primecount.py's own module docstring for its
+    very different, sub-x time/memory complexity), so it can legitimately
+    answer for x FAR past what this module's own sieve-based paths could
+    ever attempt. Whatever cost/timeout limits apply belong to `pi_func`
+    itself (e.g. a WSL round-trip timeout), not to this shared entry point
+    -- same "the ceiling decision belongs to the source" reasoning as
+    squares_window.check_interval_range_from_source's own docstring."""
+    if x_from < 2 or x_to < x_from:
+        raise ValueError("need 2 <= x_from <= x_to")
+    if step < 1:
+        raise ValueError("step must be >= 1")
+    checkpoints = _build_checkpoints(x_from, x_to, step)
+    pi_values = pi_func(checkpoints)
+    if len(pi_values) != len(checkpoints):
+        raise ValueError(
+            f"pi_func returned {len(pi_values)} values for {len(checkpoints)} checkpoints")
+    return _build_result(checkpoints, pi_values, x_from, x_to, step, row_cap, row_offset)

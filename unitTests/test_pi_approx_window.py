@@ -206,6 +206,53 @@ def _test_check_pi_approx_range_from_source():
         check(True, "an is_prime array too short for x_to raises ValueError")
 
 
+def _test_check_pi_approx_range_with_pi_func():
+    from primeatlas.pi_approx_window import check_pi_approx_range_with_pi_func
+
+    calls = []
+
+    def pi_func(checkpoints):
+        calls.append(list(checkpoints))
+        # A fake "exact" pi(x) source -- real pi(10)=4, pi(40)=12, pi(70)=19,
+        # pi(100)=25 (same known small values test_check_pi_approx_range_
+        # checkpoints_and_endpoint already relies on), but this test only
+        # cares that check_pi_approx_range_with_pi_func wires whatever
+        # pi_func returns straight through, unchanged, into each row.
+        return [1000 + x for x in checkpoints]
+
+    result = check_pi_approx_range_with_pi_func(10, 100, 30, pi_func)
+    check(calls == [[10, 40, 70, 100]],
+          f"pi_func is called exactly once, with ALL checkpoints in one batch "
+          f"(got {calls!r})")
+    check([row["pi_x"] for row in result["rows"]] == [1010, 1040, 1070, 1100],
+          f"each row's pi_x is exactly what pi_func returned for that checkpoint "
+          f"(got {[row['pi_x'] for row in result['rows']]!r})")
+    check("max_li_error" in result and "max_r_error" in result,
+          "the result still carries li(x)/R(x) error stats, computed from pi_func's own count")
+
+    # A pi_func that returns the wrong number of values (a batch call that
+    # silently dropped or duplicated an entry) must be refused, not
+    # zip()-truncated into a wrong-looking but silent result.
+    try:
+        check_pi_approx_range_with_pi_func(10, 100, 30, lambda checkpoints: [1, 2])
+        check(False, "pi_func returning the wrong number of values raises ValueError")
+    except ValueError:
+        check(True, "pi_func returning the wrong number of values raises ValueError")
+
+    # No MAX_SIEVE_BOUND ceiling on this path -- a huge x_to must reach
+    # pi_func directly rather than being refused up front.
+    huge_calls = []
+
+    def huge_pi_func(checkpoints):
+        huge_calls.append(list(checkpoints))
+        return [0 for _ in checkpoints]
+
+    check_pi_approx_range_with_pi_func(10 ** 12, 10 ** 12, 1, huge_pi_func)
+    check(huge_calls == [[10 ** 12]],
+          f"check_pi_approx_range_with_pi_func never applies check_pi_approx_range's own "
+          f"fresh-sieve ceiling, even for x far past MAX_SIEVE_BOUND (got {huge_calls!r})")
+
+
 def _test_check_pi_approx_range_max_sieve_bound_ceiling():
     import primeatlas.pi_approx_window as pi_approx_window
 
@@ -230,6 +277,7 @@ def main():
     _test_check_pi_approx_range_pagination()
     _test_check_pi_approx_range_validation()
     _test_check_pi_approx_range_from_source()
+    _test_check_pi_approx_range_with_pi_func()
     _test_check_pi_approx_range_max_sieve_bound_ceiling()
 
     print()

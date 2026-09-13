@@ -17,7 +17,43 @@ Unlike every other Research sub-tab, there is no conjecture verdict at all
 here (not even Gaps' per-overlay covered/counterexamples for two of its
 three overlays) -- this is purely a measurement/accuracy comparison, so the
 summary reports the largest li(x)/R(x) error seen in the range instead of
-any pass/fail statement (see pi_approx_window.py's own module docstring)."""
+any pass/fail statement (see pi_approx_window.py's own module docstring).
+
+A THIRD data-source mode, "primecount" (Artur, 2026-09-13: "primesieve atlas
+ma juz w srodku, wiec mozemy pojsc dalej i wziac primecount kima walischa w
+calosci, majac go natywnie"), calls Kim Walisch's libprimecount -- a
+companion library to primesieve, already used elsewhere in this project
+(see prime_sieve/prime_sieve_primesieve.py) -- via ctypes, through the exact
+same wsl.exe-subprocess SHAPE primesieve_calc_tab.py's calculator sub-tab
+established (build_primesieve_query_argv/run_primesieve_query_wsl there;
+build_primecount_query_argv/run_primecount_wsl_blocking here, both living in
+primeatlas/generation.py alongside their CUDASieve counterparts -- see that
+module's own docstrings). Unlike the sieve/storage modes, this one needs no
+is_prime array at all -- primecount computes pi(x) directly via a
+combinatorial algorithm (see prime_sieve/prime_count_primecount.py's own
+module docstring), so it reaches x far past MAX_SIEVE_BOUND (verified live:
+pi(10**15) in ~0.1s on a 24-core WSL box). Wired into pi_approx_window.
+check_pi_approx_range_with_pi_func(), the third entry point that skips the
+is_prime array entirely.
+
+Batched ONE wsl.exe round trip per PAGE (primecount_query.py's "pi_batch"
+op, all of that page's checkpoints in one call) rather than one round trip
+per row -- a real cost when each round trip is a separate process launch.
+
+libprimecount is a WSL apt package (primecount, libprimecount8,
+libprimecount-dev, libprimecount-dev-common) NOT part of env_setup.py's
+REQUIRED_APT_PACKAGES -- per Artur's own already-recorded design decision
+there (2026-09-02: research-module-specific optional C libraries get an
+on-demand install mechanism, not a blanket first-run install everyone
+pays for). Artur's own follow-up instruction (2026-09-13, after this tab's
+first cut had its OWN install button next to the source toggle): the
+INSTALL mechanism belongs in Settings -> Aktualizacje (see settings_tab.py's
+own primecount section) alongside every other optional-component installer
+in this app, not duplicated here -- this tab only ever OFFERS to install
+(a small Zainstaluj/Anuluj dialog, triggered the moment a "primecount"-mode
+query actually fails because the library isn't there yet, see
+_offer_install_primecount below), reusing that exact same generation.py
+install function rather than a second copy of it."""
 import csv
 import datetime
 
@@ -26,13 +62,28 @@ from tkinter import ttk, messagebox, filedialog
 
 from . import background
 from .base_tab import BaseTab
-from .pi_approx_window import check_pi_approx_range, check_pi_approx_range_from_source, MAX_SIEVE_BOUND
+from .generation import (
+    build_primecount_query_argv, run_primecount_wsl_blocking,
+    run_primecount_install_wsl_blocking,
+)
+from .pi_approx_window import (
+    check_pi_approx_range, check_pi_approx_range_from_source,
+    check_pi_approx_range_with_pi_func, MAX_SIEVE_BOUND,
+)
 from .research_pi_approx import read_is_prime_from_storage, MissingStorageRangeError
 
 PI_APPROX_ROW_CAP = 200
 """Rows per page in the results Treeview -- same "stats always computed
 over the FULL range, only the display paginates" contract as
 squares_window.check_interval_range's own row_cap/row_offset."""
+
+
+class _PrimecountNotInstalled(Exception):
+    """Raised internally (never crosses out of _pi_job) when a "primecount"-mode
+    query fails specifically because libprimecount itself isn't loadable
+    (run_primecount_wsl_blocking's own {"kind": "not_installed"} contract) --
+    caught separately from every other ValueError so _on_pi_worker_result can
+    offer the install prompt instead of a generic error dialog."""
 
 
 class ResearchPiApproxTab(BaseTab):
@@ -55,6 +106,12 @@ class ResearchPiApproxTab(BaseTab):
             self, self._pi_job, on_result=self._on_pi_worker_result)
         self._pi_last_result = None
         self._pi_page = 0
+        # Set just before submitting an "install_primecount" job triggered from
+        # _offer_install_primecount()'s dialog -- the exact "run" job dict that
+        # failed because primecount wasn't installed, so a successful install can
+        # automatically retry it without a second manual click (see
+        # _on_pi_worker_result's own "install_primecount" branch).
+        self._pi_pending_retry_job = None
 
         self._build_widgets()
 
@@ -85,6 +142,9 @@ class ResearchPiApproxTab(BaseTab):
         ttk.Radiobutton(
             source_row, text=T("research_pi_approx.source_storage"),
             variable=self.pi_source_var, value="storage").pack(side="left", padx=(10, 0))
+        ttk.Radiobutton(
+            source_row, text=T("research_pi_approx.source_primecount"),
+            variable=self.pi_source_var, value="primecount").pack(side="left", padx=(10, 0))
 
         button_row = ttk.Frame(self)
         button_row.pack(fill="x", padx=6, pady=(0, 8))
@@ -195,8 +255,23 @@ class ResearchPiApproxTab(BaseTab):
         """Runs on PersistentWorker's own daemon thread -- see
         ResearchSquaresTab._squares_job's own docstring for the single-
         owner-thread contract this relies on and why job["source"] picking
-        between "sieve"/"storage" applies the SAME MAX_SIEVE_BOUND ceiling
-        either way."""
+        between "sieve"/"storage"/"primecount" applies the SAME
+        MAX_SIEVE_BOUND ceiling to the first two either way ("primecount"
+        has none of its own, see pi_approx_window.check_pi_approx_range_
+        with_pi_func's own docstring). Returns a (kind, ok, data) 3-tuple:
+        "run" for an ordinary checkpoint sweep (data is the same result
+        dict every source has always returned, or an error string on
+        failure), "primecount_not_installed" specifically when a
+        "primecount"-mode query failed because the library isn't there yet
+        (data is a ready-to-resubmit job dict, the exact one that just
+        failed -- see _on_pi_worker_result's own handling), and
+        "install_primecount" for the retry-triggered install itself (data
+        is None on success, an error string otherwise)."""
+        if job.get("kind") == "install_primecount":
+            portal_folder = self._get_portal_folder()
+            ok, err = run_primecount_install_wsl_blocking(portal_folder)
+            return "install_primecount", ok, err
+
         try:
             if job["source"] == "storage":
                 portal_folder = self._get_portal_folder()
@@ -211,19 +286,40 @@ class ResearchPiApproxTab(BaseTab):
                 result = check_pi_approx_range_from_source(
                     job["x_from"], job["x_to"], job["step"], source,
                     row_cap=PI_APPROX_ROW_CAP, row_offset=job["page"] * PI_APPROX_ROW_CAP)
+            elif job["source"] == "primecount":
+                portal_folder = self._get_portal_folder()
+
+                def pi_func(checkpoints, _folder=portal_folder):
+                    argv = build_primecount_query_argv("pi_batch", *checkpoints)
+                    ok, payload = run_primecount_wsl_blocking(argv, _folder, timeout=600)
+                    if not ok:
+                        if isinstance(payload, dict) and payload.get("kind") == "not_installed":
+                            raise _PrimecountNotInstalled(payload.get("message", ""))
+                        message = (payload.get("message") if isinstance(payload, dict)
+                                   else str(payload))
+                        raise ValueError(message)
+                    return payload
+
+                result = check_pi_approx_range_with_pi_func(
+                    job["x_from"], job["x_to"], job["step"], pi_func,
+                    row_cap=PI_APPROX_ROW_CAP, row_offset=job["page"] * PI_APPROX_ROW_CAP)
             else:
                 result = check_pi_approx_range(
                     job["x_from"], job["x_to"], job["step"],
                     row_cap=PI_APPROX_ROW_CAP, row_offset=job["page"] * PI_APPROX_ROW_CAP)
             result["source"] = job["source"]
             result["page"] = job["page"]
-            return True, result
+            return "run", True, result
+        except _PrimecountNotInstalled:
+            return "primecount_not_installed", False, {
+                "x_from": job["x_from"], "x_to": job["x_to"], "step": job["step"],
+                "source": "primecount", "page": job["page"]}
         except MissingStorageRangeError as e:
             T = self.T
-            return False, T("research_pi_approx.error_storage_missing",
-                             floor=e.floor, upto=f"{e.needed_upto:,}")
+            return "run", False, T("research_pi_approx.error_storage_missing",
+                                    floor=e.floor, upto=f"{e.needed_upto:,}")
         except ValueError as e:
-            return False, str(e)
+            return "run", False, str(e)
 
     def _on_pi_worker_result(self, payload, error):
         T = self.T
@@ -232,12 +328,81 @@ class ResearchPiApproxTab(BaseTab):
             messagebox.showerror(T("research_pi_approx.error_dialog_title"), str(error))
             self._pi_refresh_nav_buttons()
             return
-        ok, data = payload
+        kind, ok, data = payload
+        if kind == "primecount_not_installed":
+            self._pi_refresh_nav_buttons()
+            self._offer_install_primecount(data)
+            return
+        if kind == "install_primecount":
+            if ok:
+                self.status.set(T("research_pi_approx.status_primecount_installed"))
+                pending = self._pi_pending_retry_job
+                self._pi_pending_retry_job = None
+                if pending is not None:
+                    self._pi_set_busy(True)
+                    self._pi_worker.submit(pending)
+                    return
+            else:
+                messagebox.showerror(T("research_pi_approx.error_dialog_title"),
+                                      T("research_pi_approx.error_install_failed", detail=str(data)))
+            self._pi_refresh_nav_buttons()
+            return
         if not ok:
             messagebox.showerror(T("research_pi_approx.error_dialog_title"), str(data))
             self._pi_refresh_nav_buttons()
             return
         self._pi_show_result(data)
+
+    def _offer_install_primecount(self, pending_job):
+        """Shown the moment a "primecount"-mode query fails specifically because
+        libprimecount isn't installed yet -- a small Zainstaluj/Anuluj dialog
+        (Artur, 2026-09-13: "jesli nie jest zainstalowany... powinno sie
+        wyswietlic okno informujace o wymaganiu instalacji i czy zainstalowac
+        z dwoma przyciskami instaluj anuluj") instead of a generic error
+        message. A plain tkinter messagebox.askyesno can't carry custom
+        button labels (Tk supplies its own stock Yes/No text), so this is a
+        small dedicated Toplevel, same "own modal dialog for a two-choice
+        prompt" idea as settings_tab.py's CUDASieve license-consent dialog,
+        just without any license text to show. The Install button's own
+        handler is a separate, PLAIN instance method (_start_primecount_
+        install() below), not a closure kept only inside this dialog -- same
+        split as that CUDASieve dialog's on_accept() calling settings_tab.
+        py's own _start_cudasieve_build(), so a test can drive the "user
+        accepted" path directly without needing to find/click a real Tk
+        button buried inside a Toplevel it just created."""
+        T = self.T
+        dialog = tk.Toplevel(self)
+        dialog.title(T("research_pi_approx.install_prompt_title"))
+        dialog.transient(self.winfo_toplevel())
+        dialog.resizable(False, False)
+        dialog.grab_set()
+        ttk.Label(dialog, text=T("research_pi_approx.install_prompt_message"),
+                  wraplength=420, justify="left").pack(anchor="w", padx=16, pady=(16, 12))
+        btn_row = ttk.Frame(dialog)
+        btn_row.pack(fill="x", padx=16, pady=(0, 16))
+
+        def on_install():
+            dialog.destroy()
+            self._start_primecount_install(pending_job)
+
+        def on_cancel():
+            dialog.destroy()
+
+        ttk.Button(btn_row, text=T("research_pi_approx.install_prompt_install_button"),
+                   command=on_install).pack(side="right", padx=(6, 0))
+        ttk.Button(btn_row, text=T("research_pi_approx.install_prompt_cancel_button"),
+                   command=on_cancel).pack(side="right")
+
+    def _start_primecount_install(self, pending_job):
+        """Actually starts the install job -- reuses the SAME generation.py install
+        function Settings -> Aktualizacje's own primecount section calls (see that
+        module's own docstring), remembering `pending_job` (the exact "run" job that
+        just failed) so a successful install can automatically retry it, see
+        _on_pi_worker_result's own "install_primecount" branch."""
+        self._pi_pending_retry_job = pending_job
+        self._pi_set_busy(True)
+        self.status.set(self.T("research_pi_approx.status_installing_primecount"))
+        self._pi_worker.submit({"kind": "install_primecount"})
 
     def _pi_refresh_nav_buttons(self):
         last = self._pi_last_result
