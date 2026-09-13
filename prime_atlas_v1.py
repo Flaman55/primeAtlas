@@ -949,11 +949,9 @@ def _build_gui():
                 if match is not None:
                     hits.jump_to_search_match(base_exponent, calc_pending["pattern"], match)
 
-        # --- Research tab: skeleton only (Faza 0) --------------------------------------
-
-        # --- Research tab: nested notebook, ResearchGoldbachTab + 4 trivial ------------
-        # placeholder sub-tabs (squares/polynomials/gaps/pi_approx -- Faza 0, no logic
-        # yet) -------------------------------------------------------------------------
+        # --- Research tab: nested notebook, ResearchGoldbachTab + ResearchSquaresTab ---
+        # (real logic) + 3 trivial placeholder sub-tabs (polynomials/gaps/pi_approx --
+        # Faza 0, no logic yet) ---------------------------------------------------------
 
         def _build_research_section(self):
             """Same nested-notebook pattern as _build_primes_section() /
@@ -964,10 +962,12 @@ def _build_gui():
             Sub-tabs are grouped by SHARED QUESTION SHAPE, not by conjecture name (Artur's
             own restructuring, 2026-08-17), so one engine/analysis serves several classical
             conjectures via parameter presets instead of duplicating near-identical code:
-              - Square intervals: 'does [a(n), b(n)] contain >=1 prime?' -- Legendre
-                ([n^2, (n+1)^2]), Oppermann ([n^2, n^2+n] and [n^2+n, (n+1)^2]), and Brocard
-                ([p_n^2, p_(n+1)^2], prime-indexed) are the same question with a different
-                boundary formula -- three presets plus a custom formula, ONE tab.
+              - Square intervals: 'does [a(n), b(n)] contain enough primes?' -- Legendre
+                ([n^2, (n+1)^2]) and Oppermann ([n^2, n^2+n] and [n^2+n, (n+1)^2]) ask
+                '>=1'; Brocard ([p_n^2, p_(n+1)^2], prime-indexed) asks '>=4', its actual
+                conjectured threshold -- three presets plus a custom formula, ONE tab
+                (primeatlas/research_squares_tab.py's ResearchSquaresTab, Faza 1,
+                2026-09-13: fresh in-process sieve, no on-disk-magazyn bridge yet).
               - Prime-generating polynomials: 'are there infinitely many primes among
                 f(n)'s values?' -- Landau's n^2+1 is one instance of this, alongside Euler's
                 n^2+n+41 and a custom polynomial (Bunyakovsky conjecture in general).
@@ -990,9 +990,9 @@ def _build_gui():
             prediction) instead of a duplicate engine here. See this project's own task
             list for that follow-up.
 
-            The four non-Goldbach sub-tabs remain SKELETON ONLY, per Artur's own
-            instruction (2026-08-17) -- each is a placeholder label; logic gets filled in
-            incrementally, one sub-tab at a time, in later phases -- see each
+            The three non-Goldbach/non-Squares sub-tabs remain SKELETON ONLY, per Artur's
+            own instruction (2026-08-17) -- each is a placeholder label; logic gets filled
+            in incrementally, one sub-tab at a time, in later phases -- see each
             _build_research_*_tab() method below for where that content will go.
 
             ResearchGoldbachTab is constructed via dependency injection (same pattern as
@@ -1034,9 +1034,19 @@ def _build_gui():
 
         def _build_research_squares_tab(self):
             """Square-interval explorer (Legendre/Oppermann/Brocard presets + custom
-            boundary formula) -- PLACEHOLDER, no logic yet (Faza 0)."""
-            ttk.Label(self.research_squares_tab, text=T("research_squares.placeholder"),
-                      wraplength=700, justify="left").pack(anchor="nw", padx=12, pady=12)
+            boundary formula), via primeatlas/research_squares_tab.py's
+            ResearchSquaresTab -- Faza 1 (Artur, 2026-09-13): fresh in-process sieve
+            only, no on-disk-magazyn bridge and no CSV export yet (see that module's
+            own docstring for why both are deferred rather than needed from day
+            one). Same dependency-injection/local-import convention as
+            ResearchGoldbachTab above."""
+            from primeatlas.research_squares_tab import ResearchSquaresTab
+
+            self.research_squares_tab_widget = ResearchSquaresTab(
+                self.research_squares_tab, translator=TRANSLATOR,
+                totals_progress=self.totals_progress,
+                eval_quick_number=_eval_quick_number)
+            self.research_squares_tab_widget.pack(fill="both", expand=True)
 
         def _build_research_polynomials_tab(self):
             """Prime-generating polynomial explorer (Landau n^2+1, Euler n^2+n+41, custom)
