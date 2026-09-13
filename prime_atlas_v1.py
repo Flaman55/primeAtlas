@@ -168,6 +168,8 @@ from primeatlas.generation import (  # noqa: E402
     find_continuation_target_idx,
     build_cudasieve_status_argv, build_cudasieve_fetch_license_argv,
     build_cudasieve_build_argv, run_cudasieve_wsl_blocking,
+    build_primecount_query_argv, run_primecount_wsl_blocking,
+    run_primecount_install_wsl_blocking,
 )
 # PRIMESIEVE_QUERY_SCRIPT/windows_path_to_wsl/build_primesieve_query_argv/
 # run_primesieve_query_wsl used to be imported/defined here for the "primesieve"
@@ -949,11 +951,8 @@ def _build_gui():
                 if match is not None:
                     hits.jump_to_search_match(base_exponent, calc_pending["pattern"], match)
 
-        # --- Research tab: skeleton only (Faza 0) --------------------------------------
-
-        # --- Research tab: nested notebook, ResearchGoldbachTab + 4 trivial ------------
-        # placeholder sub-tabs (squares/polynomials/gaps/pi_approx -- Faza 0, no logic
-        # yet) -------------------------------------------------------------------------
+        # --- Research tab: nested notebook, all five sub-tabs now have real logic ------
+        # (Goldbach, Squares, Polynomials, Gaps, pi(x) approximations) -------------------
 
         def _build_research_section(self):
             """Same nested-notebook pattern as _build_primes_section() /
@@ -964,13 +963,17 @@ def _build_gui():
             Sub-tabs are grouped by SHARED QUESTION SHAPE, not by conjecture name (Artur's
             own restructuring, 2026-08-17), so one engine/analysis serves several classical
             conjectures via parameter presets instead of duplicating near-identical code:
-              - Square intervals: 'does [a(n), b(n)] contain >=1 prime?' -- Legendre
-                ([n^2, (n+1)^2]), Oppermann ([n^2, n^2+n] and [n^2+n, (n+1)^2]), and Brocard
-                ([p_n^2, p_(n+1)^2], prime-indexed) are the same question with a different
-                boundary formula -- three presets plus a custom formula, ONE tab.
+              - Square intervals: 'does [a(n), b(n)] contain enough primes?' -- Legendre
+                ([n^2, (n+1)^2]) and Oppermann ([n^2, n^2+n] and [n^2+n, (n+1)^2]) ask
+                '>=1'; Brocard ([p_n^2, p_(n+1)^2], prime-indexed) asks '>=4', its actual
+                conjectured threshold -- three presets plus a custom formula, ONE tab
+                (primeatlas/research_squares_tab.py's ResearchSquaresTab, Faza 1,
+                2026-09-13: fresh in-process sieve, no on-disk-magazyn bridge yet).
               - Prime-generating polynomials: 'are there infinitely many primes among
                 f(n)'s values?' -- Landau's n^2+1 is one instance of this, alongside Euler's
-                n^2+n+41 and a custom polynomial (Bunyakovsky conjecture in general).
+                n^2+n+41 and a custom polynomial (Bunyakovsky conjecture in general) --
+                primeatlas/research_polynomials_tab.py's ResearchPolynomialsTab, 2026-09-13,
+                shipped with the same data-source toggle + CSV export as Squares from day one.
               - Goldbach: additive representation (strong: n=p+q even; weak: n=p+q+r odd,
                 proven) -- genuinely a different question shape, stays its own tab; the ONLY
                 one of the five with real logic behind it so far (ResearchGoldbachTab, see
@@ -979,10 +982,19 @@ def _build_gui():
                 are really just different statistics on the same p_n/p_(n+1) sequence
                 (Andrica: sqrt(p_(n+1))-sqrt(p_n)<1; Firoozbakht: p_(n+1)^(1/(n+1)) <
                 p_n^(1/n); Cramer: gap vs (log p)^2 as a theoretical ceiling) -- selectable
-                overlays on ONE tab, not separate tabs.
+                overlays on ONE tab, not separate tabs -- primeatlas/research_gaps_tab.py's
+                ResearchGapsTab, 2026-09-13, shipped with the same data-source toggle +
+                CSV export as Squares/Polynomials from day one; Cramer's overlay reports a
+                plain ratio measurement (max seen in range), not a covered/counterexamples
+                verdict, since it's an asymptotic (limsup) statement, not a per-n
+                inequality -- see gaps_window.py's own module docstring.
               - pi(x) approximations: accuracy of li(x)/R(x) against the real count -- a
                 measurement-quality question, not a yes/no conjecture check, stays its own
-                tab.
+                tab -- primeatlas/research_pi_approx_tab.py's ResearchPiApproxTab,
+                2026-09-13, shipped with the same data-source toggle + CSV export as
+                Squares/Polynomials/Gaps from day one; li(x)/R(x) computed via this
+                project's own pure-Python Ei/Gram-series implementations (no scipy/
+                mpmath dependency) -- see pi_approx_window.py's own module docstring.
             Hardy-Littlewood / twin-prime / Polignac density questions are NOT a sub-tab
             here -- they're the same computation the EXISTING Constellations tab already
             does (pattern hit-counting), so that family becomes a future density-comparison
@@ -990,10 +1002,10 @@ def _build_gui():
             prediction) instead of a duplicate engine here. See this project's own task
             list for that follow-up.
 
-            The four non-Goldbach sub-tabs remain SKELETON ONLY, per Artur's own
-            instruction (2026-08-17) -- each is a placeholder label; logic gets filled in
-            incrementally, one sub-tab at a time, in later phases -- see each
-            _build_research_*_tab() method below for where that content will go.
+            All five sub-tabs now have real logic behind them (Goldbach first, then
+            Squares/Polynomials/Gaps/pi(x) approximations added incrementally, one at a
+            time, per Artur's own original instruction from 2026-08-17 to build this out
+            gradually rather than all at once).
 
             ResearchGoldbachTab is constructed via dependency injection (same pattern as
             every other extracted tab -- see primeatlas/primes_tab.py's own docstring),
@@ -1034,15 +1046,37 @@ def _build_gui():
 
         def _build_research_squares_tab(self):
             """Square-interval explorer (Legendre/Oppermann/Brocard presets + custom
-            boundary formula) -- PLACEHOLDER, no logic yet (Faza 0)."""
-            ttk.Label(self.research_squares_tab, text=T("research_squares.placeholder"),
-                      wraplength=700, justify="left").pack(anchor="nw", padx=12, pady=12)
+            boundary formula), via primeatlas/research_squares_tab.py's
+            ResearchSquaresTab -- Faza 1 (Artur, 2026-09-13) shipped fresh-sieve-
+            only, no CSV; Faza 2 (same day) added a data-source toggle (on-disk-
+            magazyn bridge, primeatlas/research_squares.py) and CSV export -- see
+            that module's own docstring. Same dependency-injection/local-import
+            convention as
+            ResearchGoldbachTab above."""
+            from primeatlas.research_squares_tab import ResearchSquaresTab
+
+            self.research_squares_tab_widget = ResearchSquaresTab(
+                self.research_squares_tab, translator=TRANSLATOR,
+                totals_progress=self.totals_progress,
+                eval_quick_number=_eval_quick_number,
+                get_portal_folder=lambda: PORTAL_FOLDER, status_var=self.status)
+            self.research_squares_tab_widget.pack(fill="both", expand=True)
 
         def _build_research_polynomials_tab(self):
-            """Prime-generating polynomial explorer (Landau n^2+1, Euler n^2+n+41, custom)
-            -- PLACEHOLDER, no logic yet (Faza 0)."""
-            ttk.Label(self.research_polynomials_tab, text=T("research_polynomials.placeholder"),
-                      wraplength=700, justify="left").pack(anchor="nw", padx=12, pady=12)
+            """Prime-generating polynomial explorer (Landau n^2+1, Euler n^2+n+41,
+            custom formula), via primeatlas/research_polynomials_tab.py's
+            ResearchPolynomialsTab -- same shape as _build_research_squares_tab()
+            above (data-source toggle + CSV export from day one, see that
+            module's own docstring), just with one f(n) formula per row instead
+            of an a(n)/b(n) covering interval."""
+            from primeatlas.research_polynomials_tab import ResearchPolynomialsTab
+
+            self.research_polynomials_tab_widget = ResearchPolynomialsTab(
+                self.research_polynomials_tab, translator=TRANSLATOR,
+                totals_progress=self.totals_progress,
+                eval_quick_number=_eval_quick_number,
+                get_portal_folder=lambda: PORTAL_FOLDER, status_var=self.status)
+            self.research_polynomials_tab_widget.pack(fill="both", expand=True)
 
         def _goldbach_offer_generate_missing_range(self, op, payload):
             """One-line delegate to GenerationOfferCoordinator -- see
@@ -1058,16 +1092,39 @@ def _build_gui():
             return self._generation_offer_coord.offer_generate_missing_range(op, payload)
 
         def _build_research_gaps_tab(self):
-            """Prime gap explorer (raw gaps + Andrica/Firoozbakht/Cramer overlays) --
-            PLACEHOLDER, no logic yet (Faza 0)."""
-            ttk.Label(self.research_gaps_tab, text=T("research_gaps.placeholder"),
-                      wraplength=700, justify="left").pack(anchor="nw", padx=12, pady=12)
+            """Prime gap explorer (raw gaps + a selectable Andrica/Firoozbakht/Cramer
+            overlay), via primeatlas/research_gaps_tab.py's ResearchGapsTab -- same
+            shape as _build_research_squares_tab()/_build_research_polynomials_tab()
+            above (data-source toggle + CSV export from day one), just with n
+            indexing prime POSITION (p_n, p_(n+1) pairs) instead of a plain integer
+            range, and no user-typed formula (the overlay is one of a fixed set, see
+            gaps_window.py's own module docstring)."""
+            from primeatlas.research_gaps_tab import ResearchGapsTab
+
+            self.research_gaps_tab_widget = ResearchGapsTab(
+                self.research_gaps_tab, translator=TRANSLATOR,
+                totals_progress=self.totals_progress,
+                eval_quick_number=_eval_quick_number,
+                get_portal_folder=lambda: PORTAL_FOLDER, status_var=self.status)
+            self.research_gaps_tab_widget.pack(fill="both", expand=True)
 
         def _build_research_pi_approx_tab(self):
-            """pi(x) approximation accuracy explorer (li(x), R(x)) -- PLACEHOLDER, no logic
-            yet (Faza 0)."""
-            ttk.Label(self.research_pi_approx_tab, text=T("research_pi_approx.placeholder"),
-                      wraplength=700, justify="left").pack(anchor="nw", padx=12, pady=12)
+            """pi(x) approximation accuracy explorer (li(x), R(x) against the real
+            count), via primeatlas/research_pi_approx_tab.py's ResearchPiApproxTab --
+            same shape as _build_research_squares_tab()/_build_research_polynomials_
+            tab()/_build_research_gaps_tab() above (data-source toggle + CSV export
+            from day one), just checkpointed over [x_from, x_to] by `step` instead of
+            a plain n_from/n_to loop, and with no conjecture verdict at all -- this is
+            a pure measurement/accuracy comparison, see pi_approx_window.py's own
+            module docstring."""
+            from primeatlas.research_pi_approx_tab import ResearchPiApproxTab
+
+            self.research_pi_approx_tab_widget = ResearchPiApproxTab(
+                self.research_pi_approx_tab, translator=TRANSLATOR,
+                totals_progress=self.totals_progress,
+                eval_quick_number=_eval_quick_number,
+                get_portal_folder=lambda: PORTAL_FOLDER, status_var=self.status)
+            self.research_pi_approx_tab_widget.pack(fill="both", expand=True)
 
         # --- Tab 3: Generation (launch orchestrator_loop_v2 / constellation_finder) --
 
@@ -1215,6 +1272,24 @@ def _build_gui():
                 "run_cudasieve_wsl_blocking":
                     lambda argv, timeout=120:
                         run_cudasieve_wsl_blocking(argv, PORTAL_FOLDER, timeout),
+                # primecount (Kim Walisch's exact combinatorial prime-counting library,
+                # companion to primesieve above) -- on-demand installer for Settings ->
+                # Aktualizacje's own primecount row, per Artur's own already-recorded
+                # design decision (2026-09-02, see env_setup.py's REQUIRED_APT_PACKAGES
+                # comment) that research-module-specific optional C libraries get an
+                # on-demand button there rather than a blanket first-run install. Also
+                # used by research_pi_approx_tab.py's own "primecount" data-source mode
+                # (imported there directly from primeatlas.generation, not through this
+                # dict -- that tab has no wsl_helpers-style injection of its own, see
+                # that module's own docstring) for the actual pi(x) queries; only the
+                # INSTALL button itself lives in Settings.
+                "build_primecount_query_argv": build_primecount_query_argv,
+                "run_primecount_wsl_blocking":
+                    lambda argv, timeout=120:
+                        run_primecount_wsl_blocking(argv, PORTAL_FOLDER, timeout),
+                "run_primecount_install_wsl_blocking":
+                    lambda timeout=300:
+                        run_primecount_install_wsl_blocking(PORTAL_FOLDER, timeout),
                 # Added so the theme/language auto-restart feature (settings_tab.py's
                 # _has_running_job()) can tell whether a Generation-tab pipeline/
                 # constellation-finder/k-tuple run is currently in flight before
