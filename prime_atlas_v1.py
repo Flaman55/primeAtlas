@@ -970,7 +970,9 @@ def _build_gui():
                 2026-09-13: fresh in-process sieve, no on-disk-magazyn bridge yet).
               - Prime-generating polynomials: 'are there infinitely many primes among
                 f(n)'s values?' -- Landau's n^2+1 is one instance of this, alongside Euler's
-                n^2+n+41 and a custom polynomial (Bunyakovsky conjecture in general).
+                n^2+n+41 and a custom polynomial (Bunyakovsky conjecture in general) --
+                primeatlas/research_polynomials_tab.py's ResearchPolynomialsTab, 2026-09-13,
+                shipped with the same data-source toggle + CSV export as Squares from day one.
               - Goldbach: additive representation (strong: n=p+q even; weak: n=p+q+r odd,
                 proven) -- genuinely a different question shape, stays its own tab; the ONLY
                 one of the five with real logic behind it so far (ResearchGoldbachTab, see
@@ -990,9 +992,9 @@ def _build_gui():
             prediction) instead of a duplicate engine here. See this project's own task
             list for that follow-up.
 
-            The three non-Goldbach/non-Squares sub-tabs remain SKELETON ONLY, per Artur's
-            own instruction (2026-08-17) -- each is a placeholder label; logic gets filled
-            in incrementally, one sub-tab at a time, in later phases -- see each
+            The two remaining sub-tabs (Gaps, pi(x) approximations) stay SKELETON ONLY,
+            per Artur's own instruction (2026-08-17) -- each is a placeholder label; logic
+            gets filled in incrementally, one sub-tab at a time, in later phases -- see each
             _build_research_*_tab() method below for where that content will go.
 
             ResearchGoldbachTab is constructed via dependency injection (same pattern as
@@ -1051,10 +1053,20 @@ def _build_gui():
             self.research_squares_tab_widget.pack(fill="both", expand=True)
 
         def _build_research_polynomials_tab(self):
-            """Prime-generating polynomial explorer (Landau n^2+1, Euler n^2+n+41, custom)
-            -- PLACEHOLDER, no logic yet (Faza 0)."""
-            ttk.Label(self.research_polynomials_tab, text=T("research_polynomials.placeholder"),
-                      wraplength=700, justify="left").pack(anchor="nw", padx=12, pady=12)
+            """Prime-generating polynomial explorer (Landau n^2+1, Euler n^2+n+41,
+            custom formula), via primeatlas/research_polynomials_tab.py's
+            ResearchPolynomialsTab -- same shape as _build_research_squares_tab()
+            above (data-source toggle + CSV export from day one, see that
+            module's own docstring), just with one f(n) formula per row instead
+            of an a(n)/b(n) covering interval."""
+            from primeatlas.research_polynomials_tab import ResearchPolynomialsTab
+
+            self.research_polynomials_tab_widget = ResearchPolynomialsTab(
+                self.research_polynomials_tab, translator=TRANSLATOR,
+                totals_progress=self.totals_progress,
+                eval_quick_number=_eval_quick_number,
+                get_portal_folder=lambda: PORTAL_FOLDER, status_var=self.status)
+            self.research_polynomials_tab_widget.pack(fill="both", expand=True)
 
         def _goldbach_offer_generate_missing_range(self, op, payload):
             """One-line delegate to GenerationOfferCoordinator -- see
