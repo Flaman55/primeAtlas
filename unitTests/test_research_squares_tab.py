@@ -1,24 +1,31 @@
 """
 test_research_squares_tab.py -- tests for primeatlas/research_squares_tab.py's
-ResearchSquaresTab (Badania -> Przedzialy kwadratowe), the Faza 1 UI wired
-around primeatlas/squares_window.py's pure check_interval_range() (see that
-module's own test file, test_squares_window.py, for the pure-logic checks --
-this file only exercises the tkinter wiring: preset switching, the
-required_count auto-fill, the custom a(n)/b(n) fields, pagination buttons,
-and error dialogs).
+ResearchSquaresTab (Badania -> Przedzialy kwadratowe), the UI wired around
+primeatlas/squares_window.py's pure check_interval_range()/check_interval_
+range_from_source() (see that module's own test file, test_squares_window.py,
+for the pure-logic checks -- this file only exercises the tkinter wiring:
+preset switching, the required_count auto-fill, the custom a(n)/b(n) fields,
+pagination buttons, error dialogs, the storage data-source toggle (Faza 2),
+and CSV export (Faza 2)).
 
 Builds the REAL app (same "no mocked LocalLoggedRunner-style stand-in needed
 here -- there's no subprocess involved at all, just a background.
 PersistentWorker thread in the same process" as e.g. test_gen_progress_bar_
 engine_gating.py) rather than constructing ResearchSquaresTab in isolation,
 so the exact same dependency-injection wiring prime_atlas_v1.py itself uses
-is what gets tested.
+is what gets tested. The storage-mode tests seed a real floor-0 window file
+(primes 2,3,5,7 under 10p0/source_primes/) in a throwaway temp portal folder
+-- same minimal-seed recipe as test_goldbach_worker.py's own module docstring
+explains in detail (PGS1 window, sharded source_primes/ layout).
 
 Usage (Windows, real display):
     python unitTests\\test_research_squares_tab.py
 """
+import csv
 import os
+import shutil
 import sys
+import tempfile
 import time
 
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -57,6 +64,27 @@ def _set_entry(entry, value):
 
 
 def main():
+    import prime_sieve_v1
+    import window_sharding
+
+    tmp_portal = tempfile.mkdtemp(prefix="primeatlas_squares_tab_test_")
+    try:
+        _run(tmp_portal, prime_sieve_v1, window_sharding)
+    finally:
+        shutil.rmtree(tmp_portal, ignore_errors=True)
+
+
+def _run(tmp_portal, prime_sieve_v1, window_sharding):
+    # Floor 0 ([1,10)) seeded with its real primes -- covers every Legendre n
+    # this test's storage-mode checks use (n=1 -> [1,4], n=2 -> [4,9], both
+    # inside floor 0; n=3 -> [9,16] deliberately reaches into floor 1, which
+    # is NOT seeded, to exercise the "missing floor" error path).
+    source_dir = os.path.join(tmp_portal, "10p0", "source_primes")
+    shard_dir = window_sharding.shard_dir(source_dir, 0)
+    os.makedirs(shard_dir, exist_ok=True)
+    prime_sieve_v1.write_prime_window(
+        os.path.join(shard_dir, "PRIME_WINDOW_10p0_off_0.bin"), [2, 3, 5, 7])
+
     import tkinter.messagebox
     shown = []
     tkinter.messagebox.showerror = lambda *a, **k: shown.append(("error", a, k))
@@ -68,6 +96,12 @@ def main():
     app = app_cls()
     app.update()
     tab = app.research_squares_tab_widget
+
+    settings_tab = app.settings_tab
+    _patch_app_settings(settings_tab.app_settings)
+    settings_tab.app_settings.set_storage_path(tmp_portal)
+    settings_tab.wsl["set_portal_folder"](tmp_portal)
+    app.update()
 
     # --- default preset is Legendre, required_count defaults to 1 -------------------
     check(tab._current_preset_id() == "legendre",
@@ -195,15 +229,74 @@ def main():
           f"clicking Prev returns to the original first page "
           f"(got {back_first_n!r}, expected {page0_first_n!r})")
 
+    # --- storage mode: reads real data from the seeded floor 0 -----------------------
+    tab.squares_preset_combo.current(0)  # legendre
+    tab._on_squares_preset_changed()
+    tab.squares_source_var.set("storage")
+    _set_entry(tab.squares_n_from_entry, "1")
+    _set_entry(tab.squares_n_to_entry, "2")
+    shown.clear()
+    tab._on_squares_run()
+    _pump(app, 2.0)
+    check(shown == [], f"no error dialog for a storage-mode run within the seeded floor "
+          f"(got {shown!r})")
+    check(tab._squares_last_result is not None and tab._squares_last_result.get("source") == "storage",
+          "the result records that it came from storage mode")
+    check(len(tab.squares_results_tree.get_children()) == 2,
+          f"Legendre n=1..2 via storage mode produces 2 rows "
+          f"(got {len(tab.squares_results_tree.get_children())})")
+    check(tab._squares_last_result["covered"],
+          "storage-mode result for n=1..2 is covered (floor 0's real primes: 2,3,5,7)")
+
+    # --- storage mode: a range reaching an ungenerated floor shows a clear error ------
+    _set_entry(tab.squares_n_from_entry, "1")
+    _set_entry(tab.squares_n_to_entry, "3")  # n=3 needs b=16, which reaches into floor 1
+    shown.clear()
+    tab._on_squares_run()
+    _pump(app, 2.0)
+    check(len(shown) == 1 and shown[0][0] == "error",
+          f"a storage-mode range reaching an ungenerated floor shows an error dialog "
+          f"(got {shown!r})")
+    expected_message = tab.T("research_squares.error_storage_missing", floor=1, upto=f"{16:,}")
+    got_message = shown[0][1][1] if shown and len(shown[0][1]) > 1 else None
+    check(got_message == expected_message,
+          f"the missing-floor error names the specific short floor (floor 1, needed up to 16) "
+          f"(got {got_message!r}, expected {expected_message!r})")
+
+    # --- CSV export: only enabled once a result with rows exists, writes the page ------
+    tab.squares_source_var.set("sieve")
+    _set_entry(tab.squares_n_from_entry, "1")
+    _set_entry(tab.squares_n_to_entry, "10")
+    shown.clear()
+    tab._on_squares_run()
+    _pump(app, 2.0)
+    check(str(tab.squares_export_button["state"]) == "normal",
+          "Export CSV is enabled once a result with rows is displayed")
+
+    import tkinter.filedialog
+    csv_path = os.path.join(tmp_portal, "squares_export_test.csv")
+    tkinter.filedialog.asksaveasfilename = lambda **k: csv_path
+    tab._on_squares_export_csv()
+    check(os.path.isfile(csv_path), f"CSV export actually wrote a file at {csv_path!r}")
+    with open(csv_path, newline="", encoding="utf-8") as f:
+        exported_rows = list(csv.reader(f))
+    check(exported_rows[0] == ["n", "a", "b", "count", "covered"],
+          f"CSV header matches the Treeview's own columns (got {exported_rows[0]!r})")
+    check(len(exported_rows) - 1 == 10,
+          f"CSV body has exactly one row per displayed n (n=1..10) "
+          f"(got {len(exported_rows) - 1})")
+    check(exported_rows[1] == ["1", "1", "4", "2", "1"],
+          f"first exported data row matches n=1's own displayed values "
+          f"(got {exported_rows[1]!r})")
+
     app.destroy()
 
+
+if __name__ == "__main__":
+    main()
     print()
     if failures:
         print(f"{len(failures)} FAILURE(S)")
         sys.exit(1)
     else:
         print("ALL CHECKS PASSED")
-
-
-if __name__ == "__main__":
-    main()

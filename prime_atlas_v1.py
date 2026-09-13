@@ -1035,17 +1035,19 @@ def _build_gui():
         def _build_research_squares_tab(self):
             """Square-interval explorer (Legendre/Oppermann/Brocard presets + custom
             boundary formula), via primeatlas/research_squares_tab.py's
-            ResearchSquaresTab -- Faza 1 (Artur, 2026-09-13): fresh in-process sieve
-            only, no on-disk-magazyn bridge and no CSV export yet (see that module's
-            own docstring for why both are deferred rather than needed from day
-            one). Same dependency-injection/local-import convention as
+            ResearchSquaresTab -- Faza 1 (Artur, 2026-09-13) shipped fresh-sieve-
+            only, no CSV; Faza 2 (same day) added a data-source toggle (on-disk-
+            magazyn bridge, primeatlas/research_squares.py) and CSV export -- see
+            that module's own docstring. Same dependency-injection/local-import
+            convention as
             ResearchGoldbachTab above."""
             from primeatlas.research_squares_tab import ResearchSquaresTab
 
             self.research_squares_tab_widget = ResearchSquaresTab(
                 self.research_squares_tab, translator=TRANSLATOR,
                 totals_progress=self.totals_progress,
-                eval_quick_number=_eval_quick_number)
+                eval_quick_number=_eval_quick_number,
+                get_portal_folder=lambda: PORTAL_FOLDER, status_var=self.status)
             self.research_squares_tab_widget.pack(fill="both", expand=True)
 
         def _build_research_polynomials_tab(self):

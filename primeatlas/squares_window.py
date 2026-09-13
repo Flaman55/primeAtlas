@@ -139,42 +139,18 @@ def preset_bounds(preset, n):
     raise ValueError(f"unknown preset: {preset!r}")
 
 
-def check_interval_range(preset, n_from, n_to, required_count=None,
-                          bounds_fn=None, row_cap=None, row_offset=0):
-    """Checks, for every n in [n_from, n_to], whether every subinterval
-    `preset` defines for that n contains at least `required_count` primes --
-    the range-level counterpart of goldbach_window.window_rows(), same
-    "verdict/counterexamples always computed over the FULL range, only the
-    displayed `rows` slice is paginated via row_cap/row_offset" contract.
-
-    `preset` is one of PRESETS's keys, or "custom" (in which case `bounds_fn`
-    -- a plain callable n -> [(a, b), ...] -- is required; the caller builds
-    this from whatever formula the user typed, see this module's own
-    docstring on why the eval itself never happens in here). `required_count`
-    defaults to the preset's own PRESETS[preset]["required_count"] when
-    omitted; "custom" has no default and must be given explicitly.
-
-    Refuses (ValueError) whenever the largest interval boundary needed would
-    require a fresh sieve above MAX_SIEVE_BOUND -- see that constant's own
-    docstring.
+def _resolve_get_bounds_and_required_count(preset, n_to, required_count, bounds_fn):
+    """Shared setup for both check_interval_range() and
+    check_interval_range_from_source() below: validates/builds the per-n
+    `get_bounds` callable and resolves `required_count` to a concrete int.
+    Factored out so BOTH entry points share exactly one implementation of
+    "how to interpret preset/bounds_fn/required_count" -- a fresh sieve and
+    a storage-sourced is_prime must never interpret these any differently.
 
     For Brocard specifically, the needed primes (p_1..p_(n_to+1)) are sieved
-    ONCE up front rather than via preset_bounds() per row (which would
-    re-sieve from scratch for every single n in the range) -- the one
-    genuine optimization this function does beyond a plain per-n loop.
-
-    Returns {"preset":, "required_count":, "n_from":, "n_to":, "max_bound":,
-    "covered": bool, "counterexamples": [n, ...], "segment_size": int,
-    "row_offset": int, "rows": [...], "rows_truncated": bool}. Each row is
-    {"n":, "covered": bool, "intervals": [{"a":,"b":,"count":,"primes":
-    [...] or None, "covered": bool}, ...]} -- "primes" is the full witness
-    list only for rows that actually fall inside the returned page (row_cap/
-    row_offset window); for every other row (still needed for the full-range
-    verdict) only its prime COUNT is computed, never the full list, so a
-    huge out-of-page interval doesn't cost more memory than a bool needs."""
-    if n_from < 1 or n_to < n_from:
-        raise ValueError("need 1 <= n_from <= n_to")
-
+    ONCE here rather than via preset_bounds() per row (which would re-sieve
+    from scratch for every single n in the range) -- the one genuine
+    optimization either entry point gets beyond a plain per-n loop."""
     if preset == "custom":
         if bounds_fn is None:
             raise ValueError("preset 'custom' requires bounds_fn")
@@ -200,16 +176,25 @@ def check_interval_range(preset, n_from, n_to, required_count=None,
         required_count = PRESETS[preset]["required_count"]
     if required_count < 1:
         raise ValueError("required_count must be >= 1")
+    return get_bounds, required_count
 
+
+def _bounds_for_range(get_bounds, n_from, n_to):
+    """Every n's subintervals, computed once, plus the largest boundary any
+    of them reaches -- the caller needs that max BEFORE it can decide how to
+    obtain an is_prime array long enough (fresh sieve vs. reading it from
+    somewhere else)."""
     per_n_bounds = [get_bounds(n) for n in range(n_from, n_to + 1)]
     max_bound = max(b for bounds in per_n_bounds for (_a, b) in bounds)
-    if max_bound > MAX_SIEVE_BOUND:
-        raise ValueError(
-            f"the requested range needs a sieve up to {max_bound:,}, above this "
-            f"tool's {MAX_SIEVE_BOUND:,} ceiling for a fresh in-memory sieve -- "
-            f"reduce n_to")
-    is_prime = sieve_is_prime(max_bound)
+    return per_n_bounds, max_bound
 
+
+def _build_result(is_prime, preset, required_count, n_from, n_to, max_bound,
+                   per_n_bounds, row_cap, row_offset):
+    """The actual per-n covered/counterexample scan, given an is_prime array
+    already known to reach max_bound -- shared tail end of both
+    check_interval_range() and check_interval_range_from_source(), so a
+    fresh sieve and a storage-sourced array are scored by IDENTICAL logic."""
     rows = []
     counterexamples = []
     for idx, n in enumerate(range(n_from, n_to + 1)):
@@ -240,3 +225,82 @@ def check_interval_range(preset, n_from, n_to, required_count=None,
         "segment_size": segment_size, "row_offset": row_offset, "rows": rows,
         "rows_truncated": (row_cap is not None and row_offset + len(rows) < segment_size),
     }
+
+
+def check_interval_range_from_source(preset, n_from, n_to, is_prime_source,
+                                      required_count=None, bounds_fn=None,
+                                      row_cap=None, row_offset=0):
+    """Same contract as check_interval_range() below, except the is_prime
+    array is obtained by calling `is_prime_source(max_bound)` -- a plain
+    callable int -> is_prime bytearray/array-like, long enough to index up
+    to max_bound -- instead of always sieving fresh in memory. This is what
+    lets a caller plug in primeatlas/research_squares.py's
+    read_is_prime_from_storage(portal_folder, ...) (Faza 2, 2026-09-13:
+    on-disk-magazyn bridge, mirroring research_goldbach.py's own storage
+    read) as an alternative to a fresh sieve, sharing every other bit of
+    logic (bounds resolution, the covered/counterexample scan) unchanged --
+    see check_interval_range's own docstring for why a fresh sieve stays the
+    default, separate entry point rather than folding MAX_SIEVE_BOUND's
+    check into this one (that ceiling is specifically about the COST of
+    sieving fresh; `is_prime_source` may have already paid a different cost,
+    or none at all, to produce its array -- the ceiling decision belongs to
+    the source, not to this shared scan).
+
+    Raises ValueError if `is_prime_source(max_bound)` returns an array too
+    short to index up to max_bound -- the same "never silently truncate"
+    contract goldbach_window.py's own array-length checks use."""
+    if n_from < 1 or n_to < n_from:
+        raise ValueError("need 1 <= n_from <= n_to")
+    get_bounds, required_count = _resolve_get_bounds_and_required_count(
+        preset, n_to, required_count, bounds_fn)
+    per_n_bounds, max_bound = _bounds_for_range(get_bounds, n_from, n_to)
+    is_prime = is_prime_source(max_bound)
+    if len(is_prime) <= max_bound:
+        raise ValueError(
+            f"is_prime array too short: need index up to {max_bound:,}, got "
+            f"length {len(is_prime):,}")
+    return _build_result(is_prime, preset, required_count, n_from, n_to,
+                          max_bound, per_n_bounds, row_cap, row_offset)
+
+
+def check_interval_range(preset, n_from, n_to, required_count=None,
+                          bounds_fn=None, row_cap=None, row_offset=0):
+    """Checks, for every n in [n_from, n_to], whether every subinterval
+    `preset` defines for that n contains at least `required_count` primes --
+    the range-level counterpart of goldbach_window.window_rows(), same
+    "verdict/counterexamples always computed over the FULL range, only the
+    displayed `rows` slice is paginated via row_cap/row_offset" contract.
+    Always sieves fresh, in memory -- see check_interval_range_from_source()
+    above for the on-disk-magazyn-backed alternative.
+
+    `preset` is one of PRESETS's keys, or "custom" (in which case `bounds_fn`
+    -- a plain callable n -> [(a, b), ...] -- is required; the caller builds
+    this from whatever formula the user typed, see this module's own
+    docstring on why the eval itself never happens in here). `required_count`
+    defaults to the preset's own PRESETS[preset]["required_count"] when
+    omitted; "custom" has no default and must be given explicitly.
+
+    Refuses (ValueError) whenever the largest interval boundary needed would
+    require a fresh sieve above MAX_SIEVE_BOUND -- see that constant's own
+    docstring.
+
+    Returns {"preset":, "required_count":, "n_from":, "n_to":, "max_bound":,
+    "covered": bool, "counterexamples": [n, ...], "segment_size": int,
+    "row_offset": int, "rows": [...], "rows_truncated": bool}. Each row is
+    {"n":, "covered": bool, "intervals": [{"a":,"b":,"count":,"primes":
+    [...] or None, "covered": bool}, ...]} -- "primes" is the full witness
+    list only for rows that actually fall inside the returned page (row_cap/
+    row_offset window); for every other row (still needed for the full-range
+    verdict) only its prime COUNT is computed, never the full list, so a
+    huge out-of-page interval doesn't cost more memory than a bool needs."""
+    def _source(max_bound):
+        if max_bound > MAX_SIEVE_BOUND:
+            raise ValueError(
+                f"the requested range needs a sieve up to {max_bound:,}, above this "
+                f"tool's {MAX_SIEVE_BOUND:,} ceiling for a fresh in-memory sieve -- "
+                f"reduce n_to")
+        return sieve_is_prime(max_bound)
+
+    return check_interval_range_from_source(
+        preset, n_from, n_to, _source, required_count=required_count,
+        bounds_fn=bounds_fn, row_cap=row_cap, row_offset=row_offset)

@@ -224,6 +224,61 @@ def _test_check_interval_range_validation():
         check(True, "bounds_fn is refused for a non-custom preset")
 
 
+def _test_check_interval_range_from_source():
+    from primeatlas.squares_window import check_interval_range_from_source, sieve_is_prime
+
+    calls = []
+
+    def source(max_bound):
+        calls.append(max_bound)
+        return sieve_is_prime(max_bound)
+
+    result = check_interval_range_from_source("legendre", 1, 5, source)
+    check(calls == [36], f"is_prime_source is called exactly once, with the range's own "
+          f"max_bound (Legendre n=5 -> b=36) (got {calls!r})")
+    check(result["covered"], "Legendre n=1..5 is covered via check_interval_range_from_source too")
+    check(result["required_count"] == 1,
+          f"required_count still defaults from PRESETS when omitted (got {result['required_count']!r})")
+
+    # An is_prime source that returns an array too short for the range's own
+    # max_bound must be refused, not silently truncated.
+    try:
+        check_interval_range_from_source("legendre", 1, 5, lambda max_bound: sieve_is_prime(10))
+        check(False, "an is_prime array too short for max_bound raises ValueError")
+    except ValueError:
+        check(True, "an is_prime array too short for max_bound raises ValueError")
+
+    # No MAX_SIEVE_BOUND ceiling here -- that check lives in check_interval_range's
+    # OWN _source closure, not in the shared _from_source entry point. Uses a
+    # lightweight fake "array" (reports a huge len(), answers every index with
+    # "not prime") instead of an actual multi-hundred-MB bytearray -- this test
+    # only needs to prove no ceiling is enforced, not real prime data, and the
+    # scan below only ever indexes within the one small interval being checked.
+    class _FakeHugeIsPrime:
+        def __init__(self, length):
+            self._length = length
+
+        def __len__(self):
+            return self._length
+
+        def __getitem__(self, _i):
+            return 0
+
+    huge_calls = []
+
+    def huge_source(max_bound):
+        huge_calls.append(max_bound)
+        return _FakeHugeIsPrime(max_bound + 1)
+
+    result = check_interval_range_from_source("legendre", 100000, 100000, huge_source)
+    check(huge_calls == [100001 ** 2],
+          f"check_interval_range_from_source never applies check_interval_range's own "
+          f"fresh-sieve ceiling, even for a max_bound far past MAX_SIEVE_BOUND "
+          f"(got {huge_calls!r})")
+    check(not result["covered"],
+          "the fake source reports every index as not-prime, so this row is a counterexample")
+
+
 def _test_check_interval_range_max_sieve_bound_ceiling():
     import primeatlas.squares_window as squares_window
 
@@ -254,6 +309,7 @@ def main():
     _test_check_interval_range_custom_bounds_fn()
     _test_check_interval_range_pagination()
     _test_check_interval_range_validation()
+    _test_check_interval_range_from_source()
     _test_check_interval_range_max_sieve_bound_ceiling()
 
     print()

@@ -3,15 +3,24 @@ research_squares_tab.py -- ResearchSquaresTab, the tkinter widgets for the
 Research tab's Przedzialy kwadratowe (square intervals) sub-tab: Legendre/
 Oppermann/Brocard presets plus a custom a(n)/b(n) formula pair, checked over a
 [n_from, n_to] range via primeatlas/squares_window.py's pure
-check_interval_range().
+check_interval_range()/check_interval_range_from_source().
 
-Faza 1 (Artur, 2026-09-13): always sieves fresh in-process, no on-disk-magazyn
-bridge yet (mirrors research_goldbach.py's read_is_prime_from_storage -- see
-squares_window.py's own MAX_SIEVE_BOUND docstring for exactly why that is
-deferred rather than needed from day one: comfortably enough range for
-interactive exploration without it). No CSV export yet either -- both are
-natural follow-ups, added the same incremental way Goldbach's own tab grew
-sub-feature by sub-feature over several phases.
+Faza 1 (Artur, 2026-09-13) shipped fresh-sieve-only, no CSV. Faza 2 (same
+day, "testowałem, możesz iść dalej" -> most do magazynu + eksport CSV) adds:
+  - a data-source toggle ("Świeże sito" / "Dane z magazynu") -- storage mode
+    reads is_prime from the real on-disk magazyn via
+    primeatlas/research_squares.py's read_is_prime_from_storage (itself a
+    re-export of research_goldbach.py's own reader -- see that module's own
+    docstring for why reuse, not a duplicate copy, is the right call for
+    THIS specific piece, unlike the deliberately-duplicated sieve_is_prime).
+    Still capped by squares_window.MAX_SIEVE_BOUND (same ceiling, applied
+    here at the tab level instead of inside squares_window.py's own
+    check_interval_range -- see _squares_job's own docstring for why: the
+    ceiling is about the size of the in-memory is_prime ARRAY itself, which
+    is identical regardless of whether it was freshly sieved or read from
+    storage, so both paths refuse the same oversized max_bound).
+  - CSV export of the currently-displayed page's rows, same pattern as
+    ResearchGoldbachTab._on_goldbach_export_csv.
 
 squares_window.py is a self-contained pure-math module, not shared with
 goldbach_window.py despite the near-identical sieve_is_prime -- same
@@ -28,12 +37,18 @@ parse a typed formula" reasoning as generation.py's own _eval_quick_number,
 which this module does not reuse directly since that helper has no `n`
 variable to substitute.
 """
+import csv
+import datetime
+
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 
 from . import background
 from .base_tab import BaseTab
-from .squares_window import check_interval_range, PRESETS
+from .squares_window import (
+    check_interval_range, check_interval_range_from_source, MAX_SIEVE_BOUND, PRESETS,
+)
+from .research_squares import read_is_prime_from_storage, MissingStorageRangeError
 
 SQUARES_ROW_CAP = 200
 """Rows per page in the results Treeview -- same "verdict/counterexamples
@@ -63,7 +78,8 @@ def _eval_formula(formula, n):
 
 
 class ResearchSquaresTab(BaseTab):
-    def __init__(self, parent, translator, totals_progress, eval_quick_number):
+    def __init__(self, parent, translator, totals_progress, eval_quick_number,
+                 get_portal_folder, status_var):
         """
         translator/totals_progress: same dependency-injection pattern as every
         other extracted tab -- see primeatlas/primes_tab.py's own docstring.
@@ -71,10 +87,17 @@ class ResearchSquaresTab(BaseTab):
         (generation._eval_quick_number), used for the plain integer n_from/
         n_to/required_count fields -- NOT for the custom a(n)/b(n) formulas,
         which need an `n` variable substituted per-row instead (see
-        _eval_formula above)."""
+        _eval_formula above). get_portal_folder/status_var: same as
+        ResearchGoldbachTab's own (get_portal_folder is read fresh at check
+        time, not captured once, so a Settings-tab storage-path change takes
+        effect on the next check without this tab needing its own change-
+        notification wiring; status_var reports a successful CSV export,
+        same as _on_goldbach_export_csv)."""
         super().__init__(parent, translator)
         self.totals_progress = totals_progress
         self._eval_quick_number = eval_quick_number
+        self._get_portal_folder = get_portal_folder
+        self.status = status_var
 
         # Own PersistentWorker, pure Python, no WSL round trip -- same
         # single-shared-background-thread pattern every job dispatcher in
@@ -133,6 +156,17 @@ class ResearchSquaresTab(BaseTab):
         self.squares_custom_b_entry.pack(side="left", padx=(6, 0))
         self._set_custom_fields_visible(False)
 
+        source_row = ttk.Frame(self)
+        source_row.pack(fill="x", padx=6, pady=(0, 4))
+        ttk.Label(source_row, text=T("research_squares.source_label")).pack(side="left")
+        self.squares_source_var = tk.StringVar(value="sieve")
+        ttk.Radiobutton(
+            source_row, text=T("research_squares.source_sieve"),
+            variable=self.squares_source_var, value="sieve").pack(side="left", padx=(6, 0))
+        ttk.Radiobutton(
+            source_row, text=T("research_squares.source_storage"),
+            variable=self.squares_source_var, value="storage").pack(side="left", padx=(10, 0))
+
         button_row = ttk.Frame(self)
         button_row.pack(fill="x", padx=6, pady=(0, 8))
         self.squares_run_button = ttk.Button(
@@ -146,6 +180,10 @@ class ResearchSquaresTab(BaseTab):
             button_row, text=T("research_squares.next_button"),
             command=self._on_squares_next, state="disabled")
         self.squares_next_button.pack(side="left", padx=(6, 0))
+        self.squares_export_button = ttk.Button(
+            button_row, text=T("research_squares.export_csv_button"),
+            command=self._on_squares_export_csv, state="disabled")
+        self.squares_export_button.pack(side="left", padx=(16, 0))
 
         ttk.Label(self, text=T("research_squares.hint"),
                   wraplength=760, justify="left", foreground="#555").pack(
@@ -229,7 +267,7 @@ class ResearchSquaresTab(BaseTab):
         self._squares_worker.submit({
             "preset": preset, "n_from": n_from, "n_to": n_to,
             "required_count": required_count, "custom_a": custom_a, "custom_b": custom_b,
-            "page": 0,
+            "source": self.squares_source_var.get(), "page": 0,
         })
 
     def _on_squares_prev(self):
@@ -248,7 +286,7 @@ class ResearchSquaresTab(BaseTab):
             "preset": last["preset"], "n_from": last["n_from"], "n_to": last["n_to"],
             "required_count": last["required_count"],
             "custom_a": last.get("custom_a"), "custom_b": last.get("custom_b"),
-            "page": page,
+            "source": last.get("source", "sieve"), "page": page,
         })
 
     def _squares_set_busy(self, busy):
@@ -257,6 +295,7 @@ class ResearchSquaresTab(BaseTab):
         if busy:
             self.squares_prev_button.configure(state="disabled")
             self.squares_next_button.configure(state="disabled")
+            self.squares_export_button.configure(state="disabled")
             self._start_busy_progress()
         else:
             self._stop_busy_progress()
@@ -269,7 +308,18 @@ class ResearchSquaresTab(BaseTab):
         "custom" preset right here rather than on the GUI thread -- ordinary
         Python closures cross a plain thread boundary within the same
         process with no marshalling needed (unlike this app's WSL-subprocess
-        calls elsewhere, which genuinely do need serializable arguments)."""
+        calls elsewhere, which genuinely do need serializable arguments).
+
+        job["source"] picks between the two check_interval_range_from_source
+        is_prime sources -- "sieve" uses check_interval_range() directly
+        (its own internal MAX_SIEVE_BOUND-guarded fresh sieve); "storage"
+        reads from the real on-disk magazyn instead (read_is_prime_from_
+        storage), with the SAME MAX_SIEVE_BOUND ceiling applied explicitly
+        here -- that ceiling bounds the size of the in-memory is_prime
+        ARRAY, which is identical either way, only how it gets filled
+        differs. A MissingStorageRangeError there (this floor isn't
+        generated yet) surfaces as its own translated message rather than a
+        raw exception string."""
         preset = job["preset"]
         if preset == "custom":
             custom_a, custom_b = job["custom_a"], job["custom_b"]
@@ -279,14 +329,34 @@ class ResearchSquaresTab(BaseTab):
         else:
             bounds_fn = None
         try:
-            result = check_interval_range(
-                preset, job["n_from"], job["n_to"],
-                required_count=job["required_count"], bounds_fn=bounds_fn,
-                row_cap=SQUARES_ROW_CAP, row_offset=job["page"] * SQUARES_ROW_CAP)
+            if job["source"] == "storage":
+                portal_folder = self._get_portal_folder()
+
+                def source(max_bound, _folder=portal_folder):
+                    if max_bound > MAX_SIEVE_BOUND:
+                        raise ValueError(
+                            f"the requested range needs data up to {max_bound:,}, above "
+                            f"this tool's {MAX_SIEVE_BOUND:,} ceiling -- reduce n_to")
+                    return read_is_prime_from_storage(_folder, max_bound)
+
+                result = check_interval_range_from_source(
+                    preset, job["n_from"], job["n_to"], source,
+                    required_count=job["required_count"], bounds_fn=bounds_fn,
+                    row_cap=SQUARES_ROW_CAP, row_offset=job["page"] * SQUARES_ROW_CAP)
+            else:
+                result = check_interval_range(
+                    preset, job["n_from"], job["n_to"],
+                    required_count=job["required_count"], bounds_fn=bounds_fn,
+                    row_cap=SQUARES_ROW_CAP, row_offset=job["page"] * SQUARES_ROW_CAP)
             result["custom_a"] = job.get("custom_a")
             result["custom_b"] = job.get("custom_b")
+            result["source"] = job["source"]
             result["page"] = job["page"]
             return True, result
+        except MissingStorageRangeError as e:
+            T = self.T
+            return False, T("research_squares.error_storage_missing",
+                             floor=e.floor, upto=f"{e.needed_upto:,}")
         except ValueError as e:
             return False, str(e)
 
@@ -310,6 +380,39 @@ class ResearchSquaresTab(BaseTab):
             state="normal" if last and self._squares_page > 0 else "disabled")
         self.squares_next_button.configure(
             state="normal" if last and last.get("rows_truncated") else "disabled")
+        self.squares_export_button.configure(
+            state="normal" if last and last.get("rows") else "disabled")
+
+    def _on_squares_export_csv(self):
+        """Exports the CURRENTLY DISPLAYED page's rows only (same "one CSV
+        per already-computed result" scope as ResearchGoldbachTab._on_
+        goldbach_export_csv -- exporting the FULL range would mean silently
+        re-running the whole check again just for the export, potentially
+        against a range that no longer matches what's on screen)."""
+        result = self._squares_last_result
+        if not result or not result.get("rows"):
+            return
+        T = self.T
+        default_name = (
+            f"squares_{result['preset']}_n{result['n_from']}-{result['n_to']}_"
+            f"page{result['page']}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
+        path = filedialog.asksaveasfilename(
+            title=T("research_squares.export_csv_button"),
+            initialdir=self._get_portal_folder(),
+            initialfile=default_name,
+            defaultextension=".csv",
+            filetypes=[("CSV", "*.csv"), (T("common.all_files"), "*.*")])
+        if not path:
+            return
+        with open(path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(["n", "a", "b", "count", "covered"])
+            for row in result["rows"]:
+                for interval in row["intervals"]:
+                    writer.writerow([
+                        row["n"], interval["a"], interval["b"], interval["count"],
+                        "1" if interval["covered"] else "0"])
+        self.status.set(T("research_squares.status_exported", path=path))
 
     def _squares_show_result(self, result):
         T = self.T
