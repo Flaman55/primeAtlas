@@ -184,8 +184,8 @@ interchangeable engine generations, v3/v4/v4.1 -- see "Architecture" below).
   run models the whole pipeline as a sequence of steps (prep, then each sieve batch,
   then done) rather than only moving during the sieve phase and sitting empty through prep.
 - **Research (Badania)** -- an inner notebook of five sub-tabs, grouped by shared
-  question shape rather than by conjecture name; one is implemented so far, the other
-  four are structural placeholders reserved for later phases:
+  question shape rather than by conjecture name; all five now have real computational
+  logic behind them:
   - **Goldbach** -- checks the strong-Goldbach window property for a chosen `n`:
     whether every even number in `[4, Pmax+2]` (`Pmax` = largest prime `<= n`)
     decomposes into two primes both `<= Pmax` -- exactly the window the project's own
@@ -199,10 +199,37 @@ interchangeable engine generations, v3/v4/v4.1 -- see "Architecture" below).
     and inside the Wizualizacja window itself, for fullscreen use), an offer to
     generate any missing storage range on the spot, and a "Rozloz liczbe" exhaustive
     decomposition checker for one specific number against the shown window's base.
-  - Square intervals (Legendre/Oppermann/Brocard), prime-generating polynomials
-    (Landau/Euler/Bunyakovsky), gaps (Andrica/Firoozbakht/Cramer), and pi(x)
-    approximations (li(x)/R(x) accuracy) are tab placeholders -- no computational
-    logic behind them yet.
+  - **Przedzialy kwadratowe (Square intervals)** -- checks whether `[a(n), b(n)]`
+    contains at least a required number of primes, for every `n` in a range: Legendre
+    (`[n^2, (n+1)^2]`) and Oppermann (`[n^2, n^2+n]` and `[n^2+n, (n+1)^2]`, each half
+    checked independently) both default to "at least 1"; Brocard (`[p_n^2, p_(n+1)^2]`,
+    prime-indexed) defaults to "at least 4" -- the conjecture's own real threshold, not
+    merely ">= 1". A fourth, custom preset takes any typed `a(n)`/`b(n)` formula pair.
+  - **Wielomiany pierwszorodne (Prime-generating polynomials)** -- reports how many of
+    `f(n)`'s values are prime over a range, for Landau's `n^2+1` (his still-open 4th
+    problem), Euler's famous `n^2+n+41` (prime for `n=0..39`), or a typed custom
+    formula. Unlike Square intervals' pass/fail verdict, this is a plain prime-count/
+    density measurement -- "infinitely many primes of this form" is a statement about
+    an infinite tail no finite range can confirm or refute.
+  - **Luki (Prime gaps)** -- raw consecutive-prime gaps `g_n = p_(n+1) - p_n`, plus a
+    selectable overlay: Andrica (`sqrt(p_(n+1)) - sqrt(p_n) < 1`) and Firoozbakht
+    (`p_(n+1)^(1/(n+1)) < p_n^(1/n)`) are still-open per-`n` inequalities with their own
+    covered/counterexamples verdict; Cramer (`gap / (ln p_n)^2`) is instead an
+    asymptotic (limsup) statement, so that overlay reports the ratio itself (and its
+    largest value in range) rather than a pass/fail verdict.
+  - **Przyblizenia pi(x) (pi(x) approximations)** -- compares the real prime-counting
+    function against two classical analytic approximations at a set of checkpoints:
+    li(x) (the logarithmic integral, via this project's own pure-Python exponential-
+    integral power series -- no scipy/mpmath dependency) and Riemann's R(x) (a
+    substantially closer approximation, via a convergent Gram series). A purely
+    measurement-quality comparison, with no verdict at all.
+
+  Every sub-tab past Goldbach shares the same data-source toggle -- a fresh in-memory
+  sieve, or a read from the already-generated magazyn (can report a specific missing
+  floor) -- plus pagination and CSV export of the currently displayed page. pi(x)
+  approximations additionally offers a third source, **primecount** (Kim Walisch's
+  independent combinatorial prime-counting library, see "The primecount data source"
+  below) for EXACT counts at x far beyond what any sieve-based source could reach.
 - **Settings** -- laid out as three vertically-scrollable sub-tabs (backup + restore +
   delete together run taller than a non-maximized window, so each sub-tab scrolls
   independently):
@@ -228,8 +255,20 @@ interchangeable engine generations, v3/v4/v4.1 -- see "Architecture" below).
   - **Aktualizacje** -- an optional-library installer (currently `sympy`, used by the
     Primality tests sub-tab's factorization when present) that runs natively on
     Windows via `pip`, not through WSL -- checks whether it is already importable and
-    installs it on request, with the install's own live output shown in place. Also
-    hosts PrimeAtlas's own self-update (`primeatlas/app_update.py`): since the app runs
+    installs it on request, with the install's own live output shown in place. Two
+    further optional-component sections follow the same on-demand-install idea over
+    WSL instead of `pip`: **primecount** (status check + install button + live log,
+    see "The primecount data source" above) and **CUDASieve** (see "The cudasieve
+    mode" below, its own consent-gated clone-and-build flow) -- research-specific or
+    hardware-specific optional dependencies get an on-demand installer here rather
+    than being forced on every install regardless of whether a given user ever touches
+    the feature that needs them. Since none of sympy, primecount, primesieve, or
+    CUDASieve is authored by this project, an "Otworz na GitHub"-style button sits next
+    to each one's own status/install controls, pointing at that library's real upstream
+    repository (primesieve's own attribution button lives on the "Srodowisko WSL"
+    section instead, since it's installed unconditionally as part of the mandatory
+    first-run environment check rather than through its own dedicated section here).
+    Also hosts PrimeAtlas's own self-update (`primeatlas/app_update.py`): since the app runs
     directly out of its own git checkout rather than a packaged install, "check for
     update" resolves `origin`'s branch HEAD via the GitHub REST API first (no local git
     or network fetch needed for the check itself), falling back to a real `git fetch` +
@@ -336,6 +375,38 @@ libprimesieve is an independent, third-party, open-source project by Kim Walisch
 (https://github.com/kimwalisch/primesieve, BSD 2-Clause License) -- see `NOTICE.md` for the
 full attribution. The Quick generation panel shows this attribution directly whenever
 primesieve mode is selected, not just in source comments.
+
+## The primecount data source
+
+The Research tab's **pi(x) approximations** sub-tab can compute the real pi(x) three
+ways: a fresh in-memory sieve, a read from the already-generated magazyn, or
+**primecount** -- Kim Walisch's OTHER independent, third-party, open-source library
+(https://github.com/kimwalisch/primecount, BSD license), a companion to primesieve
+above but solving a different problem: counting primes EXACTLY via combinatorial
+algorithms (Meissel/Lehmer/Gourdon, depending on x) instead of sieving every integer up
+to x. `prime_sieve/prime_count_primecount.py` binds its public C API (`primecount_pi`,
+`primecount_nth_prime`, `primecount_phi`) via ctypes, same shape as
+`prime_sieve_primesieve.py`'s own binding to libprimesieve; `primecount_query.py` is the
+one-shot WSL-side CLI the GUI actually launches (a `pi_batch` op answers for every
+checkpoint in one round trip, not one process launch per row).
+
+The payoff is reach: primecount runs in roughly `O(x^(2/3) / (log x)^2)` time and
+`O(x^(1/3) * (log x)^3)` memory, holding no sieve state at all, so it comfortably answers
+for x in the `10^12`-`10^15+` range (verified live: `pi(10**15)` in about 0.1s on a
+24-core machine) -- far past what a fresh sieve or the on-disk magazyn could ever
+reach for this project's other sources, which are capped at a ~200MB in-memory array
+(`MAX_SIEVE_BOUND`, `primeatlas/pi_approx_window.py`).
+
+Unlike primesieve (installed unconditionally as part of the mandatory first-run
+environment check, see "Requirements" below) and like CUDASieve below, libprimecount is
+an on-demand, opt-in install: Settings > Aktualizacje has its own primecount section
+(status check + install button + live log, `apt install primecount libprimecount8
+libprimecount-dev libprimecount-dev-common` run as root inside WSL) alongside an "Otworz
+na GitHub" attribution button. The pi(x) approximations tab itself has no install button
+of its own -- if "primecount" mode is selected before the library is installed, a small
+Zainstaluj/Anuluj dialog offers to install it right there (reusing that exact same
+Settings-tab install function) and automatically retries the failed query once the
+install succeeds, rather than requiring a second manual click back in Settings.
 
 ## The cudasieve mode (optional GPU engine)
 
@@ -635,6 +706,18 @@ primeatlas/                 backend + GUI-tab package, one file (or pure-logic/U
                               table
   research_goldbach_tab.py    ResearchGoldbachTab -- Research -> Goldbach sub-tab (UI;
                               research_goldbach.py below is the pure-logic backend)
+  research_squares_tab.py     ResearchSquaresTab -- Research -> Przedzialy kwadratowe
+                              (Square intervals) sub-tab (UI; squares_window.py below is
+                              the pure-logic backend)
+  research_polynomials_tab.py ResearchPolynomialsTab -- Research -> Wielomiany
+                              pierwszorodne (Prime-generating polynomials) sub-tab (UI;
+                              polynomials_window.py below is the pure-logic backend)
+  research_gaps_tab.py        ResearchGapsTab -- Research -> Luki (Prime gaps) sub-tab
+                              (UI; gaps_window.py below is the pure-logic backend)
+  research_pi_approx_tab.py   ResearchPiApproxTab -- Research -> Przyblizenia pi(x)
+                              sub-tab (UI, incl. the primecount install-offer dialog;
+                              pi_approx_window.py below is the pure-logic backend --
+                              see "The primecount data source" above)
   generation_tab.py           GenerationTab -- the Generation tab (largest one: Quick-
                               gen panel -- Floor only/Range/Exploration/primesieve/
                               cudasieve/Hybrid modes -- plus the loop/orchestrator-
@@ -654,12 +737,19 @@ primeatlas/                 backend + GUI-tab package, one file (or pure-logic/U
                               benchmark.py below is the pure-logic backend)
   settings_tab.py             SettingsTab -- the Settings tab (Ogolne/Backup/
                               Aktualizacje sub-tabs, each independently scrollable),
-                              incl. the optional-library (sympy) installer
+                              incl. the optional-library (sympy), primecount, and
+                              CUDASieve installers, plus GitHub attribution buttons for
+                              every third-party library this app calls into (sympy,
+                              primecount, primesieve, CUDASieve)
 
   pure-logic backends (no tkinter) for the larger tabs above:
   generation.py                window/floor arithmetic, generation-settings
                               persistence, argv builders for every launch engine,
-                              WslLoggedRunner/LocalLoggedRunner, WSL RAM/CPU probing
+                              WslLoggedRunner/LocalLoggedRunner, WSL RAM/CPU probing,
+                              plus the hang-safe Popen()+poll()-loop WSL callers shared
+                              by CUDASieve's and primecount's own status/install/query
+                              calls (run_cudasieve_wsl_blocking, run_primecount_wsl_
+                              blocking, run_primecount_install_wsl_blocking)
   benchmark.py                 reading/normalizing benchmark_log.csv rows
   constellations.py            constellation (k-tuple) hit storage: listing, search,
                               PDF/CSV export
@@ -669,6 +759,26 @@ primeatlas/                 backend + GUI-tab package, one file (or pure-logic/U
                               arithmetic (see "Features" above) -- reads primes from
                               the on-disk magazyn via the same source_primes format
                               the Prime numbers tab browses
+  research_squares.py, research_polynomials.py, research_gaps.py, research_pi_approx.py
+                              thin storage-bridging re-exports of research_goldbach.py's
+                              own read_is_prime_from_storage/MissingStorageRangeError --
+                              that reader's logic isn't Goldbach-specific, so these four
+                              reuse it rather than duplicating it (unlike each sub-tab's
+                              own deliberately-duplicated sieve_is_prime, see any of
+                              their own module docstrings for why small primitives are
+                              copied per-module here but this ~100-line reader is not)
+  squares_window.py             Square intervals check/custom-formula core arithmetic
+  polynomials_window.py         Prime-generating polynomials prime-count/density core
+                              arithmetic (own pure-Python restricted eval for the
+                              custom-formula preset)
+  gaps_window.py                 Prime gaps + Andrica/Firoozbakht/Cramer overlay core
+                              arithmetic
+  pi_approx_window.py           li(x)/R(x)-vs-real-pi(x) core arithmetic, incl. this
+                              project's own pure-Python exponential-integral (Ei) power
+                              series and Gram-series zeta(s) -- no scipy/mpmath
+                              dependency (see "The primecount data source" above for
+                              the third, sieve-free way this module's own check_pi_
+                              approx_range_with_pi_func() can obtain pi(x))
   primality.py                 Miller-Rabin/Fermat/Solovay-Strassen primality tests
                               plus factorization (trial division + Pollard's rho, or
                               sympy.factorint() if installed) -- pure Python, no WSL
@@ -803,6 +913,13 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               next/prev primes) behind the Prime numbers tab's
                               primesieve calculator sub-tab -- independent of
                               anything already in storage
+  prime_count_primecount.py  ctypes binding to libprimecount (Kim Walisch's OTHER
+                              library, a companion to primesieve -- see "The primecount
+                              data source" above), no custom engine/batching, same
+                              shape as prime_sieve_primesieve.py's own binding
+  primecount_query.py        one-shot standalone libprimecount queries (pi/pi_batch/
+                              nth/version) behind the Research tab's Przyblizenia pi(x)
+                              sub-tab's "primecount" data-source mode
   prime_sieve_engine_v1.c    C sieve core for prime_sieve_v1.py (ctypes)
   prime_sieve_engine_v3.c    C sieve core for prime_sieve_v3.py (ctypes)
   prime_sieve_engine_v4.c    C sieve core for prime_sieve_v4.py/v4_1.py (ctypes)
@@ -859,6 +976,13 @@ only the GUI requirements above):
   `ctypes.util.find_library("primesieve")` (or a plain `libprimesieve.so` on the linker
   search path) can find it at runtime -- the same library the `-lprimesieve` build step
   below links against, just also needed as a runtime `.so`, not only at build time.
+- Optional: `libprimecount` (Kim Walisch's OTHER library, see "The primecount data
+  source" above), for the Research tab's pi(x) approximations sub-tab's "primecount"
+  data source -- exact pi(x) at x far beyond what a sieve-based source can reach. Not
+  required for anything else in the app. Installable from Settings > Aktualizacje's own
+  primecount section (`apt install primecount libprimecount8 libprimecount-dev
+  libprimecount-dev-common` inside WSL, run as root) -- or accept the install prompt
+  the pi(x) tab itself offers the moment "primecount" mode is used without it.
 
 ## Building the sieve engines
 
