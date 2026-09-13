@@ -949,9 +949,8 @@ def _build_gui():
                 if match is not None:
                     hits.jump_to_search_match(base_exponent, calc_pending["pattern"], match)
 
-        # --- Research tab: nested notebook, ResearchGoldbachTab + ResearchSquaresTab ---
-        # (real logic) + 3 trivial placeholder sub-tabs (polynomials/gaps/pi_approx --
-        # Faza 0, no logic yet) ---------------------------------------------------------
+        # --- Research tab: nested notebook, all five sub-tabs now have real logic ------
+        # (Goldbach, Squares, Polynomials, Gaps, pi(x) approximations) -------------------
 
         def _build_research_section(self):
             """Same nested-notebook pattern as _build_primes_section() /
@@ -989,7 +988,11 @@ def _build_gui():
                 inequality -- see gaps_window.py's own module docstring.
               - pi(x) approximations: accuracy of li(x)/R(x) against the real count -- a
                 measurement-quality question, not a yes/no conjecture check, stays its own
-                tab.
+                tab -- primeatlas/research_pi_approx_tab.py's ResearchPiApproxTab,
+                2026-09-13, shipped with the same data-source toggle + CSV export as
+                Squares/Polynomials/Gaps from day one; li(x)/R(x) computed via this
+                project's own pure-Python Ei/Gram-series implementations (no scipy/
+                mpmath dependency) -- see pi_approx_window.py's own module docstring.
             Hardy-Littlewood / twin-prime / Polignac density questions are NOT a sub-tab
             here -- they're the same computation the EXISTING Constellations tab already
             does (pattern hit-counting), so that family becomes a future density-comparison
@@ -997,10 +1000,10 @@ def _build_gui():
             prediction) instead of a duplicate engine here. See this project's own task
             list for that follow-up.
 
-            The one remaining sub-tab (pi(x) approximations) stays SKELETON ONLY, per
-            Artur's own instruction (2026-08-17) -- a placeholder label; logic gets filled
-            in incrementally, one sub-tab at a time, in later phases -- see
-            _build_research_pi_approx_tab() below for where that content will go.
+            All five sub-tabs now have real logic behind them (Goldbach first, then
+            Squares/Polynomials/Gaps/pi(x) approximations added incrementally, one at a
+            time, per Artur's own original instruction from 2026-08-17 to build this out
+            gradually rather than all at once).
 
             ResearchGoldbachTab is constructed via dependency injection (same pattern as
             every other extracted tab -- see primeatlas/primes_tab.py's own docstring),
@@ -1104,10 +1107,22 @@ def _build_gui():
             self.research_gaps_tab_widget.pack(fill="both", expand=True)
 
         def _build_research_pi_approx_tab(self):
-            """pi(x) approximation accuracy explorer (li(x), R(x)) -- PLACEHOLDER, no logic
-            yet (Faza 0)."""
-            ttk.Label(self.research_pi_approx_tab, text=T("research_pi_approx.placeholder"),
-                      wraplength=700, justify="left").pack(anchor="nw", padx=12, pady=12)
+            """pi(x) approximation accuracy explorer (li(x), R(x) against the real
+            count), via primeatlas/research_pi_approx_tab.py's ResearchPiApproxTab --
+            same shape as _build_research_squares_tab()/_build_research_polynomials_
+            tab()/_build_research_gaps_tab() above (data-source toggle + CSV export
+            from day one), just checkpointed over [x_from, x_to] by `step` instead of
+            a plain n_from/n_to loop, and with no conjecture verdict at all -- this is
+            a pure measurement/accuracy comparison, see pi_approx_window.py's own
+            module docstring."""
+            from primeatlas.research_pi_approx_tab import ResearchPiApproxTab
+
+            self.research_pi_approx_tab_widget = ResearchPiApproxTab(
+                self.research_pi_approx_tab, translator=TRANSLATOR,
+                totals_progress=self.totals_progress,
+                eval_quick_number=_eval_quick_number,
+                get_portal_folder=lambda: PORTAL_FOLDER, status_var=self.status)
+            self.research_pi_approx_tab_widget.pack(fill="both", expand=True)
 
         # --- Tab 3: Generation (launch orchestrator_loop_v2 / constellation_finder) --
 
