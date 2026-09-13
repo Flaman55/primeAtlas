@@ -164,7 +164,33 @@ class GenerationTab(HybridControls, BaseTab):
         (bound on <Enter>, unbound on <Leave>) so it doesn't steal wheel events
         from Treeviews or other scrollable widgets on other tabs. <MouseWheel>
         covers Windows/Mac; <Button-4>/<Button-5> cover X11 (Linux) which reports
-        the wheel as button clicks instead of a delta."""
+        the wheel as button clicks instead of a delta.
+
+        [CHANGED 2026-09-13, Artur's own report: "scrolując okno terminala
+        scrolujesz jednocześnie okno zakładki"] Returns `(inner, register_exclude)`
+        instead of just `inner` -- `register_exclude(widget)` marks `widget` (and
+        every descendant of it) as having its OWN independent scrolling (e.g. a
+        GenerationConsole.text.frame, which wraps a ScrolledText with its own
+        native mousewheel handling), so the wheel/button handlers below skip
+        scrolling THIS canvas whenever the event originates inside one of those
+        subtrees -- the Enter/Leave-based bind_all/unbind_all toggling above only
+        scopes scrolling to "pointer somewhere over the tab", it does NOT stop
+        the global handler from ALSO firing (double-scrolling, on top of the
+        console's own scroll) once the pointer is specifically over a nested
+        widget that has its own competing scroll behavior."""
+        exclude_roots = []
+
+        def register_exclude(widget):
+            exclude_roots.append(widget)
+
+        def _event_over_excluded(event):
+            widget = event.widget
+            while widget is not None:
+                if widget in exclude_roots:
+                    return True
+                widget = getattr(widget, "master", None)
+            return False
+
         outer = ttk.Frame(parent)
         outer.pack(fill="both", expand=True)
 
@@ -278,19 +304,19 @@ class GenerationTab(HybridControls, BaseTab):
         canvas.bind("<Configure>", _on_canvas_configure)
 
         def _on_mousewheel(event):
-            if _content_fits():
+            if _event_over_excluded(event) or _content_fits():
                 return
             scroll_state["user_scrolled"] = True
             canvas.yview_scroll(int(-3 * (event.delta / 120)), "units")
 
-        def _on_button4(_event):
-            if _content_fits():
+        def _on_button4(event):
+            if _event_over_excluded(event) or _content_fits():
                 return
             scroll_state["user_scrolled"] = True
             canvas.yview_scroll(-3, "units")
 
-        def _on_button5(_event):
-            if _content_fits():
+        def _on_button5(event):
+            if _event_over_excluded(event) or _content_fits():
                 return
             scroll_state["user_scrolled"] = True
             canvas.yview_scroll(3, "units")
@@ -308,7 +334,7 @@ class GenerationTab(HybridControls, BaseTab):
         canvas.bind("<Enter>", _bind_mousewheel)
         canvas.bind("<Leave>", _unbind_mousewheel)
 
-        return inner
+        return inner, register_exclude
 
     def _build_generation_tab(self):
         """Two independent sections ("Separate calls and parameterization"):
@@ -329,7 +355,7 @@ class GenerationTab(HybridControls, BaseTab):
         # self.generation_tab directly, so the tab as a whole gains a vertical
         # scrollbar/mousewheel once Sections A+B+C together exceed the window's
         # visible height, instead of silently cutting off whatever doesn't fit.
-        generation_body = self._build_scrollable_container(self)
+        generation_body, self._register_scroll_exclude = self._build_scrollable_container(self)
 
         self._init_quick_generation_state()
         quick_outer = ttk.Labelframe(generation_body, text=self.T("quick.section_title"))
@@ -475,6 +501,10 @@ class GenerationTab(HybridControls, BaseTab):
             extra_controls_builder=self._build_detached_quick_panel,
             on_change=self._refresh_generation_pane_minsize)
         self.loop_output = self.loop_console.text
+        # [ADDED 2026-09-13, see _build_scrollable_container's own docstring]
+        # Scrolling this console's own ScrolledText must not ALSO scroll the
+        # whole generation_body underneath it.
+        self._register_scroll_exclude(self.loop_console.text.frame)
 
         self._loop_runner = None
         self._loop_output_queue = queue.Queue()
@@ -526,6 +556,7 @@ class GenerationTab(HybridControls, BaseTab):
             const_outer, self.T, height=20,
             on_change=self._refresh_generation_pane_minsize)
         self.const_output = self.const_console.text
+        self._register_scroll_exclude(self.const_console.text.frame)
 
         self._const_runner = None
         self._const_output_queue = queue.Queue()
@@ -701,6 +732,7 @@ class GenerationTab(HybridControls, BaseTab):
             ktuple_outer, self.T, height=20,
             on_change=self._refresh_generation_pane_minsize)
         self.ktuple_output = self.ktuple_console.text
+        self._register_scroll_exclude(self.ktuple_console.text.frame)
 
         self._ktuple_runner = None
         self._ktuple_output_queue = queue.Queue()

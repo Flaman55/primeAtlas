@@ -257,7 +257,33 @@ class RingsTab(BaseTab):
         (bound on <Enter>, unbound on <Leave>) so it doesn't steal wheel events
         from other scrollable widgets on other tabs. <MouseWheel> covers
         Windows/Mac; <Button-4>/<Button-5> cover X11 (Linux) which reports the
-        wheel as button clicks instead of a delta."""
+        wheel as button clicks instead of a delta.
+
+        [CHANGED 2026-09-13, Artur's own report: "scrolując okno terminala
+        scrolujesz jednocześnie okno zakładki"] Returns `(inner, register_exclude)`
+        instead of just `inner` -- `register_exclude(widget)` marks `widget` (and
+        every descendant of it) as having its OWN independent scrolling (e.g. the
+        HUD console's GenerationConsole.text.frame, which wraps a ScrolledText
+        with its own native mousewheel handling), so the wheel/button handlers
+        below skip scrolling THIS canvas whenever the event originates inside one
+        of those subtrees -- the Enter/Leave-based bind_all/unbind_all toggling
+        above only scopes scrolling to "pointer somewhere over the tab", it does
+        NOT stop the global handler from ALSO firing (double-scrolling, on top of
+        the console's own scroll) once the pointer is specifically over a nested
+        widget that has its own competing scroll behavior."""
+        exclude_roots = []
+
+        def register_exclude(widget):
+            exclude_roots.append(widget)
+
+        def _event_over_excluded(event):
+            widget = event.widget
+            while widget is not None:
+                if widget in exclude_roots:
+                    return True
+                widget = getattr(widget, "master", None)
+            return False
+
         outer = ttk.Frame(parent)
         outer.pack(fill="both", expand=True)
 
@@ -341,19 +367,19 @@ class RingsTab(BaseTab):
         canvas.bind("<Configure>", _on_canvas_configure)
 
         def _on_mousewheel(event):
-            if _content_fits():
+            if _event_over_excluded(event) or _content_fits():
                 return
             scroll_state["user_scrolled"] = True
             canvas.yview_scroll(int(-3 * (event.delta / 120)), "units")
 
-        def _on_button4(_event):
-            if _content_fits():
+        def _on_button4(event):
+            if _event_over_excluded(event) or _content_fits():
                 return
             scroll_state["user_scrolled"] = True
             canvas.yview_scroll(-3, "units")
 
-        def _on_button5(_event):
-            if _content_fits():
+        def _on_button5(event):
+            if _event_over_excluded(event) or _content_fits():
                 return
             scroll_state["user_scrolled"] = True
             canvas.yview_scroll(3, "units")
@@ -371,7 +397,7 @@ class RingsTab(BaseTab):
         canvas.bind("<Enter>", _bind_mousewheel)
         canvas.bind("<Leave>", _unbind_mousewheel)
 
-        return inner
+        return inner, register_exclude
 
     def _build_ui(self):
         # [ADDED 2026-09-11] Every literal fallback below (e.g. "2", "15", "0.5") is
@@ -386,7 +412,7 @@ class RingsTab(BaseTab):
         # scroll_body replaces `self` as container's parent -- container itself
         # keeps its exact original padx/pady pack() call, so nothing below this
         # line needed to change at all.
-        scroll_body = self._build_scrollable_container(self)
+        scroll_body, self._register_scroll_exclude = self._build_scrollable_container(self)
         container = ttk.Frame(scroll_body)
         container.pack(fill="both", expand=True, padx=12, pady=12)
 
@@ -669,6 +695,12 @@ class RingsTab(BaseTab):
 
         self.console = GenerationConsole(container, self.T, height=14,
                                           window_title=self.T("rings.console_title"))
+        # [ADDED 2026-09-13, Artur's own report: scrolling the console pane was
+        # ALSO scrolling the whole tab underneath it] See
+        # _build_scrollable_container's own docstring -- this tells the tab's
+        # outer scroll wrapper to leave mousewheel/button events that land
+        # inside the console's own ScrolledText (and its scrollbar) alone.
+        self._register_scroll_exclude(self.console.text.frame)
 
         # [ADDED 2026-09-10, Faza 13] Every field below is read ONCE, at
         # _on_open's launch-time argv build -- see build_renderer_argv's own
