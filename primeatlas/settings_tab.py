@@ -104,6 +104,19 @@ from .i18n import Translator, SUPPORTED_LANGUAGES
 # below), never fetched by this process itself.
 CUDASIEVE_REPO_URL = "https://github.com/curtisseizert/CUDASieve"
 
+# Same reasoning as CUDASIEVE_REPO_URL above -- neither primecount nor primesieve is
+# authored by this project; both are Kim Walisch's own independent, third-party, open-
+# source libraries (BSD license) that prime_count_primecount.py/prime_sieve_primesieve.py
+# call into via ctypes (see either module's own attribution header). Artur's own
+# instruction (2026-09-13): "nie pamietam jak jest z primesieve bo jego w aktualizacjach
+# nie widze, a w sumie tez powienien byc" -- primesieve had NO attribution link anywhere
+# in Settings (it's installed as part of env_setup.py's generic first-run package set,
+# not its own on-demand installer section like sympy/CUDASieve/primecount each get), so
+# its own "Otworz GitHub" button lives on the generic environment-setup section below
+# instead of a dedicated Labelframe of its own.
+PRIMECOUNT_REPO_URL = "https://github.com/kimwalisch/primecount"
+PRIMESIEVE_REPO_URL = "https://github.com/kimwalisch/primesieve"
+
 
 class SettingsTab(BaseTab):
     MAX_STAGE_RETRIES = 2
@@ -1847,6 +1860,21 @@ class SettingsTab(BaseTab):
         self.primecount_output.see("end")
         self.primecount_output.configure(state="disabled")
 
+    def _on_open_primecount_github_clicked(self):
+        """Opens primecount's real GitHub page -- attribution for Kim Walisch's own
+        independent project (see PRIMECOUNT_REPO_URL's own comment), same reasoning as
+        _on_open_cudasieve_github_clicked above; the install button itself remains
+        fully self-sufficient (a plain apt-get install), this is purely for someone who
+        wants to see the actual source/README/license before trusting it."""
+        webbrowser.open(PRIMECOUNT_REPO_URL)
+
+    def _on_open_primesieve_github_clicked(self):
+        """Same attribution reasoning as _on_open_primecount_github_clicked above, for
+        primesieve -- installed as part of the generic environment check below rather
+        than through its own dedicated installer section, so its GitHub link lives on
+        that section's own button row instead of a Labelframe of its own."""
+        webbrowser.open(PRIMESIEVE_REPO_URL)
+
     def _on_check_primecount_status(self):
         if self._primecount_status_running:
             return
@@ -2696,6 +2724,9 @@ class SettingsTab(BaseTab):
         ttk.Label(primecount_btn_row, textvariable=self.primecount_status_var).pack(side="left")
         ttk.Button(primecount_btn_row, text=self.T("settings.primecount_check_button"),
                    command=self._on_check_primecount_status).pack(side="left", padx=(10, 0))
+        ttk.Button(
+            primecount_btn_row, text=self.T("settings.primecount_open_github_button"),
+            command=self._on_open_primecount_github_clicked).pack(side="left", padx=(6, 0))
         self.install_primecount_btn = ttk.Button(
             primecount_btn_row, text=self.T("settings.primecount_install_button"),
             command=self._on_install_primecount_clicked)
@@ -2754,6 +2785,12 @@ class SettingsTab(BaseTab):
         ttk.Label(env_btn_row, textvariable=self.env_status_var).pack(side="left")
         ttk.Button(env_btn_row, text=self.T("settings.env_recheck_button"),
                    command=self._on_verify_environment_clicked).pack(side="left", padx=(10, 0))
+        # Attribution for libprimesieve, installed as part of this same environment
+        # check (REQUIRED_APT_PACKAGES) rather than through its own dedicated installer
+        # section -- see PRIMESIEVE_REPO_URL's own comment above for why the link lives
+        # here instead of a separate Labelframe.
+        ttk.Button(env_btn_row, text=self.T("settings.env_open_primesieve_github_button"),
+                   command=self._on_open_primesieve_github_clicked).pack(side="left", padx=(6, 0))
         # Seeded immediately (unlike _show_cached_cudasieve_status(), which __init__
         # defers past _build_widgets() to avoid a live WSL round-trip racing mainloop()
         # startup) -- AppSettings.env_status is a plain local JSON read with no subprocess

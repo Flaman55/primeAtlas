@@ -116,6 +116,28 @@ def _test_settings_tab_primecount_status_and_install():
             check(key in settings_tab.wsl and callable(settings_tab.wsl[key]),
                   f"wsl_helpers must expose a callable {key!r}")
 
+        # --- attribution: GitHub links for primecount AND primesieve (neither is --------
+        # authored by this project -- both are Kim Walisch's own independent BSD-
+        # licensed libraries, see settings_tab.py's own PRIMECOUNT_REPO_URL/
+        # PRIMESIEVE_REPO_URL comment) --------------------------------------------------
+        import webbrowser
+        import primeatlas.settings_tab as settings_tab_mod
+        opened_urls = []
+        webbrowser.open = lambda url: opened_urls.append(url)
+
+        settings_tab._on_open_primecount_github_clicked()
+        check(opened_urls == [settings_tab_mod.PRIMECOUNT_REPO_URL],
+              f"the primecount GitHub button opens primecount's own real repo URL "
+              f"(got {opened_urls!r}, expected {[settings_tab_mod.PRIMECOUNT_REPO_URL]!r})")
+
+        opened_urls.clear()
+        settings_tab._on_open_primesieve_github_clicked()
+        check(opened_urls == [settings_tab_mod.PRIMESIEVE_REPO_URL],
+              f"the primesieve GitHub button (on the generic environment-setup section, "
+              f"since primesieve has no dedicated installer section of its own) opens "
+              f"primesieve's own real repo URL (got {opened_urls!r}, expected "
+              f"{[settings_tab_mod.PRIMESIEVE_REPO_URL]!r})")
+
         # --- initial state: not checked yet, install button enabled from the start ----
         check("nie sprawdzono" in settings_tab.primecount_status_var.get()
               or "not checked" in settings_tab.primecount_status_var.get().lower(),
