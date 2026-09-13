@@ -981,7 +981,12 @@ def _build_gui():
                 are really just different statistics on the same p_n/p_(n+1) sequence
                 (Andrica: sqrt(p_(n+1))-sqrt(p_n)<1; Firoozbakht: p_(n+1)^(1/(n+1)) <
                 p_n^(1/n); Cramer: gap vs (log p)^2 as a theoretical ceiling) -- selectable
-                overlays on ONE tab, not separate tabs.
+                overlays on ONE tab, not separate tabs -- primeatlas/research_gaps_tab.py's
+                ResearchGapsTab, 2026-09-13, shipped with the same data-source toggle +
+                CSV export as Squares/Polynomials from day one; Cramer's overlay reports a
+                plain ratio measurement (max seen in range), not a covered/counterexamples
+                verdict, since it's an asymptotic (limsup) statement, not a per-n
+                inequality -- see gaps_window.py's own module docstring.
               - pi(x) approximations: accuracy of li(x)/R(x) against the real count -- a
                 measurement-quality question, not a yes/no conjecture check, stays its own
                 tab.
@@ -992,10 +997,10 @@ def _build_gui():
             prediction) instead of a duplicate engine here. See this project's own task
             list for that follow-up.
 
-            The two remaining sub-tabs (Gaps, pi(x) approximations) stay SKELETON ONLY,
-            per Artur's own instruction (2026-08-17) -- each is a placeholder label; logic
-            gets filled in incrementally, one sub-tab at a time, in later phases -- see each
-            _build_research_*_tab() method below for where that content will go.
+            The one remaining sub-tab (pi(x) approximations) stays SKELETON ONLY, per
+            Artur's own instruction (2026-08-17) -- a placeholder label; logic gets filled
+            in incrementally, one sub-tab at a time, in later phases -- see
+            _build_research_pi_approx_tab() below for where that content will go.
 
             ResearchGoldbachTab is constructed via dependency injection (same pattern as
             every other extracted tab -- see primeatlas/primes_tab.py's own docstring),
@@ -1082,10 +1087,21 @@ def _build_gui():
             return self._generation_offer_coord.offer_generate_missing_range(op, payload)
 
         def _build_research_gaps_tab(self):
-            """Prime gap explorer (raw gaps + Andrica/Firoozbakht/Cramer overlays) --
-            PLACEHOLDER, no logic yet (Faza 0)."""
-            ttk.Label(self.research_gaps_tab, text=T("research_gaps.placeholder"),
-                      wraplength=700, justify="left").pack(anchor="nw", padx=12, pady=12)
+            """Prime gap explorer (raw gaps + a selectable Andrica/Firoozbakht/Cramer
+            overlay), via primeatlas/research_gaps_tab.py's ResearchGapsTab -- same
+            shape as _build_research_squares_tab()/_build_research_polynomials_tab()
+            above (data-source toggle + CSV export from day one), just with n
+            indexing prime POSITION (p_n, p_(n+1) pairs) instead of a plain integer
+            range, and no user-typed formula (the overlay is one of a fixed set, see
+            gaps_window.py's own module docstring)."""
+            from primeatlas.research_gaps_tab import ResearchGapsTab
+
+            self.research_gaps_tab_widget = ResearchGapsTab(
+                self.research_gaps_tab, translator=TRANSLATOR,
+                totals_progress=self.totals_progress,
+                eval_quick_number=_eval_quick_number,
+                get_portal_folder=lambda: PORTAL_FOLDER, status_var=self.status)
+            self.research_gaps_tab_widget.pack(fill="both", expand=True)
 
         def _build_research_pi_approx_tab(self):
             """pi(x) approximation accuracy explorer (li(x), R(x)) -- PLACEHOLDER, no logic
