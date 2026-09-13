@@ -227,6 +227,152 @@ class RingsTab(BaseTab):
         self._paused = False
         self._build_ui()
 
+    def _build_scrollable_container(self, parent):
+        """Wraps `parent` in a vertically-scrollable canvas+frame and returns the
+        inner ttk.Frame -- pack the tab's REAL content into that returned frame
+        instead of into `parent` directly; everything else (canvas, scrollbar,
+        width sync, mousewheel binding) is handled here.
+
+        [ADDED 2026-09-12, Artur's own ask: "przyszedł czas wprowadzenie
+        scrollbara pionowego do okna wizualizacji by to co nie mieści się przez
+        parametry hud można było zobaczyć"] This is the exact same idiom as
+        generation_tab.py's own `_build_scrollable_container` (settings_tab.py's
+        `_make_scrollable_tab` is the same pattern again, one file earlier) --
+        copied rather than shared, matching this codebase's existing convention
+        of each tkinter-importing tab module keeping its own self-contained copy.
+        See [[primeatlas-ring-viz-known-bugs]] bug #2: the HUD panel (and, once
+        Windows & tracking / Appearance / Audio sections plus the console are ALL
+        visible at once, the whole tab) can be taller than the actual window --
+        this wrapper is what makes the overflow reachable via a scrollbar/
+        mousewheel instead of silently clipping it at the window edge.
+
+        Standard canvas-scrollregion idiom: an inner frame is placed on a canvas
+        via create_window; the inner frame's own <Configure> (fires whenever its
+        packed children change its natural size) updates the canvas' scrollregion
+        to match, and the canvas' own <Configure> (fires on window resize) keeps
+        the inner frame exactly as WIDE as the visible canvas so fill="x" widgets
+        inside it still span the full width like they did before this wrapper
+        existed, instead of collapsing to their minimum content width. Mousewheel
+        scrolling is bound only while the pointer is actually over this canvas
+        (bound on <Enter>, unbound on <Leave>) so it doesn't steal wheel events
+        from other scrollable widgets on other tabs. <MouseWheel> covers
+        Windows/Mac; <Button-4>/<Button-5> cover X11 (Linux) which reports the
+        wheel as button clicks instead of a delta."""
+        outer = ttk.Frame(parent)
+        outer.pack(fill="both", expand=True)
+
+        canvas = tk.Canvas(outer, highlightthickness=0)
+        # ROOT CAUSE (found 2026-08-23, see generation_tab.py's own copy of this
+        # comment for the full live-debug story): Tk's Canvas defaults to
+        # yscrollincrement=0, which makes any "scroll N units" call (mousewheel,
+        # scrollbar arrows) jump by ~10% of the canvas's CURRENT VIEWPORT height
+        # instead of a small fixed pixel step, and doesn't clamp the view back to
+        # 0 when content is shorter than the viewport. A small fixed increment
+        # alone doesn't fully fix this, so scrolling is also hard-disabled below
+        # whenever content already fits the viewport (see _content_fits()).
+        canvas.configure(yscrollincrement=20)
+
+        # `scroll_state["user_scrolled"]` starts False and flips to True the first
+        # time the person actually drags the scrollbar or spins the wheel (see the
+        # three handlers below). Until that happens, `_sync_scrollregion()` keeps
+        # re-pinning the view to the top -- see that function's own comment for why
+        # this is needed, not just the scrollregion-size fix below it.
+        scroll_state = {"user_scrolled": False}
+
+        def _content_fits():
+            # Nothing to scroll to -- content already fits inside the visible
+            # canvas. winfo_height() is 0/1 before the widget is first mapped,
+            # so treat that as "doesn't fit yet" rather than "fits".
+            canvas_h = canvas.winfo_height()
+            return canvas_h > 1 and inner.winfo_reqheight() <= canvas_h
+
+        def _on_scrollbar(*args):
+            if _content_fits():
+                return
+            scroll_state["user_scrolled"] = True
+            canvas.yview(*args)
+
+        vsb = ttk.Scrollbar(outer, orient="vertical", command=_on_scrollbar)
+        canvas.configure(yscrollcommand=vsb.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        vsb.pack(side="right", fill="y")
+
+        inner = ttk.Frame(canvas)
+        inner_window = canvas.create_window((0, 0), window=inner, anchor="nw")
+
+        # NOTE (2026-08-23 fix, ported from generation_tab.py/settings_tab.py):
+        # scrollregion is set from inner.winfo_reqwidth()/reqheight() -- NOT
+        # canvas.bbox("all"), which can end up taller than the frame's actual
+        # current content (mid-reflow right after a width change, before layout
+        # has fully settled) and let yview scroll into stale leftover blank
+        # space. Querying the frame's own requested size directly is always in
+        # sync with what's actually packed inside it right now.
+        #
+        # That alone isn't enough either: this tab's content keeps changing
+        # height after it first draws (mode switch greys out/re-enables the
+        # Load Range fields, HUD panel text grows/shrinks per HUD_STATE line,
+        # GenerationConsole's own collapsible pane) and Tk does not guarantee
+        # the view stays pinned to the top pixel across a scrollregion resize.
+        # So: as long as the person hasn't manually scrolled yet -- OR content
+        # fits and there's nothing to scroll to regardless -- force the view
+        # back to the top on every resync.
+        def _sync_scrollregion():
+            canvas.configure(scrollregion=(0, 0, inner.winfo_reqwidth(), inner.winfo_reqheight()))
+            canvas_h = canvas.winfo_height()
+            natural_h = inner.winfo_reqheight()
+            if canvas_h > 1 and natural_h <= canvas_h:
+                canvas.itemconfigure(inner_window, height=canvas_h)
+            elif natural_h > 0:
+                canvas.itemconfigure(inner_window, height=natural_h)
+            if not scroll_state["user_scrolled"] or _content_fits():
+                canvas.yview_moveto(0.0)
+
+        def _on_inner_configure(_event):
+            _sync_scrollregion()
+        inner.bind("<Configure>", _on_inner_configure)
+
+        def _on_canvas_configure(event):
+            canvas.itemconfigure(inner_window, width=event.width)
+            # Width change can immediately change required height (wraplength'd
+            # Labels reflow) -- resync right away instead of waiting on inner's
+            # own <Configure> so a window resize can't leave a stale scrollregion
+            # behind for even one frame.
+            canvas.after_idle(_sync_scrollregion)
+        canvas.bind("<Configure>", _on_canvas_configure)
+
+        def _on_mousewheel(event):
+            if _content_fits():
+                return
+            scroll_state["user_scrolled"] = True
+            canvas.yview_scroll(int(-3 * (event.delta / 120)), "units")
+
+        def _on_button4(_event):
+            if _content_fits():
+                return
+            scroll_state["user_scrolled"] = True
+            canvas.yview_scroll(-3, "units")
+
+        def _on_button5(_event):
+            if _content_fits():
+                return
+            scroll_state["user_scrolled"] = True
+            canvas.yview_scroll(3, "units")
+
+        def _bind_mousewheel(_event):
+            canvas.bind_all("<MouseWheel>", _on_mousewheel)
+            canvas.bind_all("<Button-4>", _on_button4)
+            canvas.bind_all("<Button-5>", _on_button5)
+
+        def _unbind_mousewheel(_event):
+            canvas.unbind_all("<MouseWheel>")
+            canvas.unbind_all("<Button-4>")
+            canvas.unbind_all("<Button-5>")
+
+        canvas.bind("<Enter>", _bind_mousewheel)
+        canvas.bind("<Leave>", _unbind_mousewheel)
+
+        return inner
+
     def _build_ui(self):
         # [ADDED 2026-09-11] Every literal fallback below (e.g. "2", "15", "0.5") is
         # the tab's ORIGINAL hardcoded default -- unchanged, and still what a genuinely
@@ -236,7 +382,12 @@ class RingsTab(BaseTab):
         # ring_viz_params's own doc-comment in app_settings.py).
         saved_params = (self._app_settings.ring_viz_params if self._app_settings else None) or {}
 
-        container = ttk.Frame(self)
+        # [CHANGED 2026-09-12, see _build_scrollable_container's own docstring]
+        # scroll_body replaces `self` as container's parent -- container itself
+        # keeps its exact original padx/pady pack() call, so nothing below this
+        # line needed to change at all.
+        scroll_body = self._build_scrollable_container(self)
+        container = ttk.Frame(scroll_body)
         container.pack(fill="both", expand=True, padx=12, pady=12)
 
         intro = ttk.Label(container, text=self.T("rings.intro"), wraplength=760, justify="left")
