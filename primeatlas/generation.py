@@ -1353,6 +1353,10 @@ def recommended_worker_count(available_cpu_count):
 #     "[*] TOTAL PRIMES FOUND this run: 167,026,529 across 1000 windows"
 #   constellation_finder_v1.py (process_floor's own per-file print):
 #     "[CONSTELLATIONS v1] 12/48: PRIME_WINDOW_10p11_off_50M.bin -- ..."
+#   constellation_finder_v1.py (process_floor, floor-wide progress -- see
+#   _GEN_CONST_FLOOR_PROGRESS_RE's own comment for why this is separate from the
+#   per-file line above):
+#     "[CONSTELLATIONS v1] FLOOR PROGRESS: batch_size=5000 total_windows=545000 already_done_before_batch=340000"
 #   constellation_finder_v1.py (process_floor, run-finished line):
 #     "[CONSTELLATIONS v1] Done. New hits this run, by pattern:"
 #   orchestrator_loop_v2.py (multi-iteration Exploration-mode launches ONLY -- see
@@ -1371,6 +1375,21 @@ _GEN_SIEVE_PROGRESS_RE = re.compile(r"\[\+\] Progress: ([\d.]+)% \((\d+)/(\d+) b
 _GEN_SIEVE_DONE_RE = re.compile(r"\[\*\] TOTAL PRIMES FOUND this run:")
 _GEN_CONST_PROGRESS_RE = re.compile(r"\[CONSTELLATIONS v1\] (\d+)/(\d+): ")
 _GEN_CONST_DONE_RE = re.compile(r"\[CONSTELLATIONS v1\] Done\. New hits this run")
+# constellation_finder_v1.py's own "FLOOR PROGRESS" line (added 2026-09-14, printed once
+# near the start of every process_floor() call, right after the human-readable "N/M
+# windows to process" line): unlike _GEN_CONST_PROGRESS_RE above, whose own (done, total)
+# pair only ever counts this ONE --max-windows-capped batch (resetting to 1 every time
+# generation_tab.py's own _maybe_continue_constellation_batch() chains the next one),
+# this line's three counts are relative to the WHOLE floor, letting the GUI show real
+# progress across a floor's entire remaining backlog instead of the bar/status
+# snapping back to near-zero at every batch boundary. See
+# _update_shared_progress_from_generation_chunk()'s own docstring for how the two lines
+# combine (already_done_before_batch + this batch's own running "i/N" -> a floor-wide
+# done/total pair).
+#   "[CONSTELLATIONS v1] FLOOR PROGRESS: batch_size=5000 total_windows=545000 already_done_before_batch=340000"
+_GEN_CONST_FLOOR_PROGRESS_RE = re.compile(
+    r"\[CONSTELLATIONS v1\] FLOOR PROGRESS: batch_size=(\d+) total_windows=(\d+) "
+    r"already_done_before_batch=(\d+)")
 _GEN_HYBRID_STAGE_RE = re.compile(r"\[HYBRID\] stage (\d+)/(\d+):")
 _GEN_HYBRID_DONE_RE = re.compile(r"\[HYBRID\] done:")
 _LOOP_SESSION_START_RE = re.compile(

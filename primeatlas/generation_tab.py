@@ -41,6 +41,7 @@ _goldbach_offer_generate_missing_range docstrings for the full reasoning on why 
 three specific methods stay at the app level rather than moving here.
 """
 import datetime
+import os
 import queue
 import re
 
@@ -82,6 +83,27 @@ CONSTELLATION_AUTO_RETRY_DELAY_MS = 2000
 CONSTELLATION_BATCH_SIZE = 5000
 _GEN_CONST_BATCH_REMAINING_RE = re.compile(
     r"\[CONSTELLATIONS v1\] BATCH DONE -- (\d+) window")
+
+# Graceful-Stop mechanism (added 2026-09-14, Artur's own proposal after asking whether a
+# manual Stop click resumes cleanly): a plain terminate()+pkill (see WslLoggedRunner.
+# stop()) kills constellation_finder_v1.py wherever it happens to be, including mid-
+# write of a hit file -- append_prime_window() (prime_sieve_v1.py) writes a file's
+# header (new count) BEFORE its own payload bytes, so an ill-timed kill can corrupt that
+# file rather than just lose progress. Fix: _on_stop_constellation() below writes this
+# sentinel file instead of killing immediately; constellation_finder_v1.py's own
+# process_floor() checks for it once per window (see that module's STOP_REQUEST_
+# FILENAME/_stop_requested()) and exits cleanly BETWEEN windows, exactly like an
+# ordinary --max-windows batch boundary. CONSTELLATION_STOP_GRACE_MS bounds how long the
+# GUI waits for that clean exit before falling back to the old hard-kill (matching
+# MAX_CONSTELLATION_AUTO_RETRIES's own "backstop, not the normal path" role above) --
+# needed in case the process is stuck somewhere that never reaches the loop-top check at
+# all (e.g. the WSL/DrvFs degradation this whole floor-25 fix exists to work around).
+# Filename must match constellation_finder_v1.STOP_REQUEST_FILENAME exactly -- kept as a
+# separate literal here (not imported) since this module never imports that script
+# directly, only launches it as a WSL subprocess (same reasoning as read_constellation_
+# checkpoint()'s own separate CHECKPOINT.txt parsing in generation.py).
+CONSTELLATION_STOP_REQUEST_FILENAME = "STOP_REQUEST.txt"
+CONSTELLATION_STOP_GRACE_MS = 10_000
 from .storage import bump_pietro_total, digit_count_floor, load_totals_cache, LOW_FLOOR_CUTOFF, save_totals_cache
 from .generation import (
     QUICK_GEN_MAX_WINDOW_WIDTH, compute_totals_bumps_from_new_rows, count_existing_windows,
@@ -100,7 +122,8 @@ from .generation import (
     estimate_wsl_available_cpu_count, recommended_worker_count, WslLoggedRunner,
     _LOOP_SESSION_DONE_RE, _LOOP_SESSION_START_RE, _LOOP_ITERATION_START_RE,
     _GEN_SIEVE_DONE_RE, _GEN_CONST_DONE_RE, _GEN_SIEVE_PROGRESS_RE,
-    _GEN_CONST_PROGRESS_RE, _GEN_PREP_DONE_RE, _GEN_HYBRID_STAGE_RE, _GEN_HYBRID_DONE_RE,
+    _GEN_CONST_PROGRESS_RE, _GEN_CONST_FLOOR_PROGRESS_RE, _GEN_PREP_DONE_RE,
+    _GEN_HYBRID_STAGE_RE, _GEN_HYBRID_DONE_RE,
 )
 
 
@@ -602,6 +625,20 @@ class GenerationTab(HybridControls, BaseTab):
         # streams in, consumed (and reset to None) by
         # _maybe_continue_constellation_batch() once the run's exit sentinel arrives.
         self._const_batch_remaining = None
+        # Floor-wide progress state, set by _update_shared_progress_from_generation_
+        # chunk() the moment a run's own "FLOOR PROGRESS" line arrives -- see
+        # _GEN_CONST_FLOOR_PROGRESS_RE's own comment in generation.py. None until then
+        # (and reset to None at the start of every fresh launch, in
+        # _start_constellation_runner()) so a stale value from a PREVIOUS run's floor
+        # can never be mistaken for the current one's.
+        self._const_floor_total_windows = None
+        self._const_floor_already_done = None
+        # Grace-period handle for the graceful-Stop mechanism -- see
+        # _on_stop_constellation()'s own docstring. Cancelled (via after_cancel) if the
+        # run's own exit sentinel arrives before the grace period elapses, so a stale
+        # timer from a run that already finished cleanly never fires a pointless
+        # (and harmless, but confusing to watch in the console) hard-stop fallback.
+        self._const_stop_grace_after_id = None
 
         # --- Section C: ktuple_sieve_v1.py (targeted k-tuple candidate sieve) -----
         # Complementary to Section B: that one pattern-matches against windows
@@ -2939,11 +2976,23 @@ class GenerationTab(HybridControls, BaseTab):
         before THIS SPECIFIC run started, whether that run is the original click, an
         auto-retry, or a chained batch continuation. Also clears
         self._const_batch_remaining so a stale marker from a PREVIOUS run's own output
-        can never be mistaken for this run's."""
+        can never be mistaken for this run's -- same reasoning extends to the floor-
+        wide progress state (self._const_floor_total_windows/_const_floor_already_done,
+        see their own __init__ comment) and to a defensive removal of the graceful-Stop
+        sentinel file (CONSTELLATION_STOP_REQUEST_FILENAME): _on_constellation_finished()
+        already removes it on every exit, but a leftover from some earlier, ungraceful
+        termination (e.g. the app itself was closed mid-stop) should never be able to
+        make a brand-new, never-stopped run exit after its very first window."""
         self._const_last_checkpoint_seen = (
             read_constellation_checkpoint(self._get_portal_folder(), int(base_exponent))
             if base_exponent else None)
         self._const_batch_remaining = None
+        self._const_floor_total_windows = None
+        self._const_floor_already_done = None
+        try:
+            os.remove(os.path.join(self._get_portal_folder(), CONSTELLATION_STOP_REQUEST_FILENAME))
+        except OSError:
+            pass
 
         argv = build_constellation_finder_argv(
             base_exponent if base_exponent else None,
@@ -2963,10 +3012,48 @@ class GenerationTab(HybridControls, BaseTab):
         self._show_const_terminal()
 
     def _on_stop_constellation(self):
+        """Stop click: requests a GRACEFUL stop first -- writes CONSTELLATION_STOP_
+        REQUEST_FILENAME, which constellation_finder_v1.py's own process_floor() checks
+        once per window (see that mechanism's own module-level comment above) -- rather
+        than killing the WSL process immediately. A raw terminate()+pkill (the ONLY
+        thing this method did before 2026-09-14) can land mid-window and corrupt a hit
+        file: append_prime_window() (prime_sieve_v1.py) writes a file's header (new
+        count) BEFORE its own payload bytes, so an ill-timed kill leaves the header
+        claiming entries that were never actually written. Schedules _force_stop_
+        constellation_if_still_running() as a bounded backstop after CONSTELLATION_
+        STOP_GRACE_MS, in case the process is stuck somewhere that never reaches the
+        loop-top check at all (e.g. the WSL/DrvFs degradation this whole floor-25 fix
+        exists to work around) -- same "graceful first, hard-kill as a bounded
+        fallback" shape as _maybe_auto_retry_constellation()'s own retry cap.
+
+        An explicit Stop remains a deliberate user action, not a crash -- never auto-
+        relaunch a run the user just asked to stop, exactly as before this change."""
         if self._const_runner is not None:
-            # An explicit Stop is a deliberate user action, not a crash -- never
-            # auto-relaunch a run the user just asked to stop.
             self._const_auto_retry_base_exponent = None
+            try:
+                with open(os.path.join(self._get_portal_folder(),
+                                        CONSTELLATION_STOP_REQUEST_FILENAME),
+                          "w", encoding="utf-8") as f:
+                    f.write("stop requested from GenerationTab's own Stop button\n")
+            except OSError:
+                pass  # best-effort -- the grace-period fallback below still reaches
+                      # the same hard-kill Stop this method always used before this
+            self.const_status_label.set(self.T("gen.const_stopping_graceful"))
+            if self._const_stop_grace_after_id is not None:
+                self.after_cancel(self._const_stop_grace_after_id)
+            self._const_stop_grace_after_id = self.after(
+                CONSTELLATION_STOP_GRACE_MS, self._force_stop_constellation_if_still_running)
+
+    def _force_stop_constellation_if_still_running(self):
+        """Grace-period fallback for _on_stop_constellation() above -- fires
+        CONSTELLATION_STOP_GRACE_MS after a Stop click. If the run already exited
+        cleanly in response to the sentinel file (the common case), _on_constellation_
+        finished() already cancelled this very callback, so in practice this body only
+        ever runs for a process that's genuinely stuck. Falls back to the original hard
+        terminate()+pkill in that case -- same as every Stop click before this
+        feature existed."""
+        self._const_stop_grace_after_id = None
+        if self._const_runner is not None and self._const_runner.is_running():
             self._const_runner.stop()
             self.const_status_label.set(self.T("common.stopping"))
 
@@ -3091,7 +3178,24 @@ class GenerationTab(HybridControls, BaseTab):
         show up there the moment a run finishes, without a manual Refresh click.
         constellation_finder_v1.py has no dual-purpose button label to reset (unlike
         the Quick-gen 'Generate'/'Stop' one _on_loop_finished handles), so this is
-        otherwise a much shorter version of that method."""
+        otherwise a much shorter version of that method.
+
+        Also owns cleanup for the graceful-Stop mechanism (see _on_stop_constellation()'s
+        own docstring), on EVERY exit path -- clean batch/floor completion, a crash, an
+        explicit graceful stop, or the hard-kill fallback -- not just the Stop-triggered
+        one: cancels a still-pending grace-period timer (self._const_stop_grace_after_id)
+        so it can never fire against a LATER, unrelated run started before the old
+        timer's delay elapsed, and removes the sentinel file itself so it can never
+        block the very next launch (the same file is also removed proactively in
+        _start_constellation_runner, as a second, independent safety net -- see that
+        method's own docstring)."""
+        if self._const_stop_grace_after_id is not None:
+            self.after_cancel(self._const_stop_grace_after_id)
+            self._const_stop_grace_after_id = None
+        try:
+            os.remove(os.path.join(self._get_portal_folder(), CONSTELLATION_STOP_REQUEST_FILENAME))
+        except OSError:
+            pass
         self.reload_constellations_tree()
 
         if self._maybe_auto_retry_constellation(returncode):
@@ -3546,13 +3650,45 @@ class GenerationTab(HybridControls, BaseTab):
                                    done=done, total=n_batches))
             return
 
+        floor_progress_match = _GEN_CONST_FLOOR_PROGRESS_RE.search(chunk)
+        if floor_progress_match:
+            # See _GEN_CONST_FLOOR_PROGRESS_RE's own comment in generation.py -- printed
+            # once near the start of every process_floor() call, so this just records
+            # the floor-wide totals; deliberately no `return` here, since the SAME chunk
+            # may also carry this batch's own first per-window line (handled below),
+            # which shouldn't have to wait for the next 150ms poll tick to be reflected.
+            _batch_size_str, total_windows_str, already_done_str = floor_progress_match.groups()
+            self._const_floor_total_windows = int(total_windows_str)
+            self._const_floor_already_done = int(already_done_str)
+
         const_matches = _GEN_CONST_PROGRESS_RE.findall(chunk)
         if const_matches:
             done_str, total_str = const_matches[-1]
             done, total = int(done_str), int(total_str)
             self._gen_step_total = total
-            self._set_gen_progress_bar(mode="determinate", maximum=max(1, total), value=done)
-            self.status.set(self.T("gen.status_progress_const", done=done, total=total))
+            if self._const_floor_total_windows:
+                # Floor-wide progress is known (this batch's own FLOOR PROGRESS line has
+                # already been seen) -- show/animate against the WHOLE floor instead of
+                # just this one --max-windows-capped batch, so the bar doesn't snap back
+                # to near-zero every time _maybe_continue_constellation_batch() chains
+                # the next one. See this attribute's own __init__ comment.
+                floor_total = self._const_floor_total_windows
+                already_done = self._const_floor_already_done or 0
+                floor_done = min(floor_total, already_done + done)
+                batch_count = -(-floor_total // CONSTELLATION_BATCH_SIZE)  # ceil div
+                batch_num = min(batch_count, already_done // CONSTELLATION_BATCH_SIZE + 1)
+                self._set_gen_progress_bar(mode="determinate", maximum=max(1, floor_total),
+                                            value=floor_done)
+                if batch_count > 1:
+                    self.status.set(self.T("gen.status_progress_const_batch",
+                                       done=floor_done, total=floor_total,
+                                       batch_num=batch_num, batch_count=batch_count))
+                else:
+                    self.status.set(self.T("gen.status_progress_const",
+                                       done=floor_done, total=floor_total))
+            else:
+                self._set_gen_progress_bar(mode="determinate", maximum=max(1, total), value=done)
+                self.status.set(self.T("gen.status_progress_const", done=done, total=total))
             return
 
         if _GEN_PREP_DONE_RE.search(chunk):

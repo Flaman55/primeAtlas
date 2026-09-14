@@ -256,6 +256,182 @@ def _test_stop_disables_auto_retry():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def _test_graceful_stop_writes_sentinel_and_cleans_up():
+    """Stop click's FIRST action must be the graceful sentinel file, not an immediate
+    kill -- see _on_stop_constellation()'s own docstring (added 2026-09-14, Artur's own
+    question: does a manual Stop click resume cleanly?) for why: append_prime_window()'s
+    header-before-payload write order means an immediate terminate()+pkill can corrupt a
+    hit file, not just lose progress. The sentinel must disappear again once the run's
+    own exit sentinel arrives -- via _on_constellation_finished(), win or lose -- so it
+    can never block the NEXT launch, and the grace-period fallback timer must be
+    cancelled on that same clean exit so it can never fire against a LATER, unrelated
+    run."""
+    tmp = tempfile.mkdtemp(prefix="primeatlas_const_retry_test_")
+    try:
+        app = _build_app(tmp)
+        tab = app.generation_tab_widget
+        tab._start_constellation_runner = lambda base_exponent: None
+
+        import primeatlas.generation_tab as generation_tab_module
+        stop_path = os.path.join(tmp, generation_tab_module.CONSTELLATION_STOP_REQUEST_FILENAME)
+
+        tab._const_base_exponent_var.set("25")
+        tab._on_run_constellation()
+
+        class _FakeRunner:
+            def __init__(self):
+                self.stopped = False
+
+            def stop(self):
+                self.stopped = True
+
+            def is_running(self):
+                return True
+        fake = _FakeRunner()
+        tab._const_runner = fake
+
+        tab._on_stop_constellation()
+        check(os.path.exists(stop_path),
+              "Stop click writes the graceful-stop sentinel file")
+        check(fake.stopped is False,
+              "the hard kill is NOT called immediately -- graceful stop gets a chance first")
+        check(tab._const_stop_grace_after_id is not None,
+              "a grace-period fallback timer is scheduled")
+
+        # Simulate the run exiting cleanly in response to the sentinel, well before the
+        # grace period would have elapsed.
+        tab._on_constellation_finished(0)
+        check(not os.path.exists(stop_path),
+              "the sentinel is removed once the run's own exit sentinel arrives")
+        check(tab._const_stop_grace_after_id is None,
+              "the pending grace-period timer is cancelled on a clean exit -- must "
+              "never fire against a LATER, unrelated run")
+        app.destroy()
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _test_graceful_stop_falls_back_to_hard_kill_after_grace_period():
+    """If the process is still running once the grace period elapses (stuck somewhere
+    that never reaches process_floor()'s own loop-top stop check -- e.g. the WSL/DrvFs
+    degradation the whole floor-25 fix exists to work around), the ORIGINAL hard
+    terminate()+pkill must still fire: this feature must never turn Stop into a button
+    that can silently do nothing forever."""
+    tmp = tempfile.mkdtemp(prefix="primeatlas_const_retry_test_")
+    try:
+        app = _build_app(tmp)
+        tab = app.generation_tab_widget
+        tab._start_constellation_runner = lambda base_exponent: None
+
+        tab._const_base_exponent_var.set("25")
+        tab._on_run_constellation()
+
+        class _FakeRunner:
+            def __init__(self):
+                self.stopped = False
+
+            def stop(self):
+                self.stopped = True
+
+            def is_running(self):
+                return True
+        fake = _FakeRunner()
+        tab._const_runner = fake
+
+        tab._on_stop_constellation()
+        check(fake.stopped is False, "hard kill not called yet, right after the Stop click")
+
+        # Directly invoke the grace-period callback (same as self.after() firing) rather
+        # than actually sleeping CONSTELLATION_STOP_GRACE_MS in this test.
+        tab._force_stop_constellation_if_still_running()
+        check(fake.stopped is True,
+              "still running once the grace period elapses -> falls back to the hard kill")
+        app.destroy()
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _test_floor_progress_scales_bar_to_whole_floor():
+    """_GEN_CONST_FLOOR_PROGRESS_RE's own line (see generation.py) must make the shared
+    bar/status track the WHOLE floor, not just the current --max-windows batch -- see
+    _update_shared_progress_from_generation_chunk()'s own handling of it. Without this,
+    the bar/status snaps back to near-zero at every chained batch boundary (Artur's own
+    question, 2026-09-14: why does it look like it restarts?)."""
+    tmp = tempfile.mkdtemp(prefix="primeatlas_const_retry_test_")
+    try:
+        app = _build_app(tmp)
+        tab = app.generation_tab_widget
+        bar = tab.totals_progress
+        tab._gen_progress_bar_active = True
+
+        import primeatlas.generation_tab as generation_tab_module
+
+        tab._update_shared_progress_from_generation_chunk(
+            "[CONSTELLATIONS v1] FLOOR PROGRESS: batch_size=5000 total_windows=545000 "
+            "already_done_before_batch=340000\n")
+        check(tab._const_floor_total_windows == 545000, "floor total recorded")
+        check(tab._const_floor_already_done == 340000,
+              "already-done-before-this-batch recorded")
+
+        tab._update_shared_progress_from_generation_chunk(
+            "[CONSTELLATIONS v1] 1234/5000: PRIME_WINDOW_whatever.bin -- primes=1 "
+            "peeked_head=0 new_hits=0 (0.01s)\n")
+        check(int(bar["maximum"]) == 545000,
+              f"bar maximum is the WHOLE floor, not this batch's own 5000 "
+              f"(got {bar['maximum']!r})")
+        check(int(bar["value"]) == 340000 + 1234,
+              f"bar value is already-done-before-this-batch + this batch's own progress "
+              f"(got {bar['value']!r})")
+        expected_batch_count = -(-545000 // generation_tab_module.CONSTELLATION_BATCH_SIZE)
+        expected_batch_num = 340000 // generation_tab_module.CONSTELLATION_BATCH_SIZE + 1
+        check(tab.status.get() == tab.T(
+                  "gen.status_progress_const_batch", done=340000 + 1234, total=545000,
+                  batch_num=expected_batch_num, batch_count=expected_batch_count),
+              f"status text shows floor-wide done/total plus batch X/Y "
+              f"(got {tab.status.get()!r})")
+        app.destroy()
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _test_floor_progress_resets_between_launches():
+    """A fresh _start_constellation_runner() call must clear the floor-progress state --
+    a stale total/already-done count from a PREVIOUS floor must never leak into a new
+    run's own bar/status before that new run prints its own FLOOR PROGRESS line."""
+    tmp = tempfile.mkdtemp(prefix="primeatlas_const_retry_test_")
+    try:
+        app = _build_app(tmp)
+        tab = app.generation_tab_widget
+        tab._const_floor_total_windows = 999
+        tab._const_floor_already_done = 111
+
+        import primeatlas.generation_tab as generation_tab_module
+
+        class _FakeRunner:
+            def __init__(self, *a, **k):
+                pass
+
+            def start(self):
+                pass
+
+            def is_running(self):
+                return False
+        original_runner_cls = generation_tab_module.WslLoggedRunner
+        generation_tab_module.WslLoggedRunner = _FakeRunner
+        try:
+            tab._const_base_exponent_var.set("25")
+            tab._on_run_constellation()
+        finally:
+            generation_tab_module.WslLoggedRunner = original_runner_cls
+        check(tab._const_floor_total_windows is None,
+              "a fresh launch clears the previous floor's total")
+        check(tab._const_floor_already_done is None,
+              "a fresh launch clears the previous floor's already-done count")
+        app.destroy()
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def _test_build_constellation_finder_argv_max_windows():
     from primeatlas.generation import build_constellation_finder_argv
 
@@ -420,6 +596,10 @@ def main():
     _test_auto_retry_resets_on_success()
     _test_auto_retry_stops_at_cap()
     _test_stop_disables_auto_retry()
+    _test_graceful_stop_writes_sentinel_and_cleans_up()
+    _test_graceful_stop_falls_back_to_hard_kill_after_grace_period()
+    _test_floor_progress_scales_bar_to_whole_floor()
+    _test_floor_progress_resets_between_launches()
     _test_build_constellation_finder_argv_max_windows()
     _test_start_constellation_runner_caps_batch_and_snapshots_checkpoint()
     _test_scan_const_chunk_for_batch_marker()

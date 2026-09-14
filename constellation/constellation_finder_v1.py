@@ -101,6 +101,15 @@ PORTAL_FOLDER = os.environ.get("CONSTELLATION_PORTAL_DIR") or os.path.abspath(
 CHECKPOINT_FILENAME = "CHECKPOINT.txt"
 WINDOW_INDEX_FILENAME = "WINDOW_INDEX.tsv"
 LAST_VALUES_FILENAME = "LAST_VALUES.tsv"
+# Portal-ROOT (not per-floor) marker, checked once per window in process_floor()'s own
+# loop below -- see that function's docstring for why a graceful, window-boundary-only
+# stop matters here (append_prime_window()'s header-then-payload write order means a
+# kill mid-window could corrupt a hit file, not just lose progress). One marker for the
+# whole portal is enough since the GUI never runs more than one constellation_finder_
+# v1.py instance at a time (same assumption WslLoggedRunner's own kill_pattern already
+# relies on). Written by generation_tab.py's own _on_stop_constellation(), never by
+# this script -- this side only ever reads it.
+STOP_REQUEST_FILENAME = "STOP_REQUEST.txt"
 
 
 def _proc_diag():
@@ -274,6 +283,17 @@ def list_pietra_with_data():
 def _checkpoint_path(base_exponent):
     folder = os.path.join(PORTAL_FOLDER, f"10p{base_exponent}", "constellations")
     return os.path.join(folder, CHECKPOINT_FILENAME)
+
+
+def _stop_requested():
+    """True once the GUI has asked this run to stop -- see STOP_REQUEST_FILENAME's own
+    module-level comment. Deliberately a plain existence check, not consumed/deleted
+    here: generation_tab.py's own _on_constellation_finished() owns cleanup (removing it
+    once it has confirmed, via the exit sentinel, that the process actually stopped),
+    since that's the one side guaranteed to run exactly once per launch regardless of
+    whether this script noticed the marker itself or was hard-killed before it got the
+    chance -- see that method's own docstring."""
+    return os.path.exists(os.path.join(PORTAL_FOLDER, STOP_REQUEST_FILENAME))
 
 
 def read_checkpoint(base_exponent):
@@ -751,7 +771,18 @@ def process_floor(base_exponent, max_windows=None):
     as of when this call started, are all processed) -- the CLI's own __main__ block
     below turns this into the "BATCH DONE -- N window(s) still remain" marker line
     generation_tab.py's own _scan_const_chunk_for_batch_marker() parses to decide
-    whether to chain another batch."""
+    whether to chain another batch.
+
+    Graceful stop (added 2026-09-14, Artur's own proposal after asking whether a manual
+    Stop click resumes cleanly): checked once per window, at the very TOP of the loop
+    below, via STOP_REQUEST_FILENAME's own module-level comment -- a request never
+    interrupts a window already in progress, only ever stops BETWEEN windows, for the
+    same reason a --max-windows batch boundary is safe but a raw kill isn't: append_
+    prime_window() writes a hit file's header (new count) before its own payload bytes,
+    so a mid-window kill can leave a hit file's header claiming entries that were never
+    actually written. Treated exactly like an ordinary clipped batch afterward (adds the
+    unprocessed tail back into remaining_after, skips the boundary check) -- see the
+    check's own inline comment for the exact mechanics."""
     run_start = time.time()
     windows = list_source_windows(base_exponent)
     if not windows:
@@ -790,6 +821,18 @@ def process_floor(base_exponent, max_windows=None):
     print(f"\n[CONSTELLATIONS v1] 10^{base_exponent}: {len(to_process)}/{len(windows)} "
           f"windows to process{batch_note} | patterns active: {len(active_patterns)} (k>=2) | "
           f"MAX_SPAN={max_span}")
+    # Machine-parseable counterpart to the human-readable line above, added 2026-09-14
+    # so generation_tab.py's own _update_shared_progress_from_generation_chunk() can show
+    # progress against the WHOLE floor instead of just this one --max-windows-capped
+    # batch (each chained batch's own per-window "i/len(to_process)" line -- see the loop
+    # below -- only ever counts up to THIS batch's size, resetting to 1 every time a new
+    # batch is chained). already_done_before_batch = len(windows) - len(to_process_all)
+    # (everything the floor's own checkpoint already covered before this call started);
+    # combined with this batch's own per-window "i/N" line, the GUI can derive
+    # already_done_before_batch + i as a running total out of total_windows.
+    print(f"[CONSTELLATIONS v1] FLOOR PROGRESS: batch_size={len(to_process)} "
+          f"total_windows={len(windows)} "
+          f"already_done_before_batch={len(windows) - len(to_process_all)}")
 
     if not to_process:
         print("[CONSTELLATIONS v1] Nothing new -- checkpoint is up to date.")
@@ -847,6 +890,24 @@ def process_floor(base_exponent, max_windows=None):
             print(line)
 
     for i, (name, path, _base_prime) in enumerate(to_process):
+        # Checked at the very TOP of the loop, before any work on window i starts -- see
+        # STOP_REQUEST_FILENAME's own module-level comment on why this matters at a
+        # window BOUNDARY specifically: append_prime_window() writes a hit file's header
+        # (new count) before its payload bytes, so killing the process mid-window (mid-
+        # append) can corrupt that file, not just lose a bit of progress. Stopping only
+        # ever between windows -- never mid-window -- means a graceful stop is exactly as
+        # safe as a normal --max-windows batch boundary, which this codebase already
+        # relies on constantly. `remaining_after` (fixed before this loop started, at the
+        # --max-windows cap) gets the rest of THIS batch added back in, so the post-loop
+        # code below reports the correct "still pending" count for the floor, same as an
+        # ordinary clipped batch would (and correctly skips the boundary check, which
+        # only makes sense once the floor is genuinely caught up).
+        if _stop_requested():
+            remaining_after += len(to_process) - i
+            print(f"\n[CONSTELLATIONS v1] STOP REQUESTED -- stopping cleanly after {i} "
+                  f"window(s) this run, {remaining_after} window(s) still pending for "
+                  f"10^{base_exponent}.")
+            break
         t0 = time.time()
         detailed = i < DETAILED_DIAG_WINDOWS
         # Printed BEFORE the read itself (not just in the per-window summary line
@@ -983,4 +1044,8 @@ if __name__ == "__main__":
                   f"with data: {', '.join('10^' + str(n) for n in floors)}")
 
     for base_exponent in floors:
+        if _stop_requested():
+            print(f"\n[CONSTELLATIONS v1] STOP REQUESTED -- skipping remaining floor(s) "
+                  f"in this 'every floor with data' run.")
+            break
         process_floor(base_exponent, max_windows=max_windows)

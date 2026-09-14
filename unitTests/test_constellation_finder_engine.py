@@ -269,6 +269,64 @@ def main():
               f"max_windows (got {remaining_3!r})")
 
         # =====================================================================
+        # Graceful stop (added 2026-09-14, Artur's own question: does a manual Stop
+        # click resume cleanly?): STOP_REQUEST.txt, checked once per window at the very
+        # TOP of the loop, must break BETWEEN windows -- never mid-window -- and report
+        # the correct "still remaining" count, same shape as an ordinary --max-windows
+        # clip. Floor 50 gets 4 windows; the marker is dropped in right before the run,
+        # so it must stop after window 1 with 3 remaining, leaving windows 2-4 untouched.
+        # =====================================================================
+        _write_window(50, "PRIME_WINDOW_M.bin", [10, 20])
+        _write_window(50, "PRIME_WINDOW_N.bin", [30, 40])
+        _write_window(50, "PRIME_WINDOW_O.bin", [50, 60])
+        _write_window(50, "PRIME_WINDOW_P.bin", [70, 80])
+        stop_path = os.path.join(tmp_portal, cf.STOP_REQUEST_FILENAME)
+
+        original_stop_requested = cf._stop_requested
+        calls_before_drop = [0]
+
+        def _drop_stop_request_after_first_window(*a, **k):
+            calls_before_drop[0] += 1
+            if calls_before_drop[0] == 2:  # 1st call: loop-top check before window 1
+                                            # (must see nothing yet); 2nd call: loop-top
+                                            # check before window 2 -- drop it exactly
+                                            # here so window 1 is fully committed first.
+                with open(stop_path, "w", encoding="utf-8") as f:
+                    f.write("test\n")
+            return original_stop_requested()
+
+        cf._stop_requested = _drop_stop_request_after_first_window
+        try:
+            remaining_stop = cf.process_floor(50)
+        finally:
+            cf._stop_requested = original_stop_requested
+        check(remaining_stop == 3,
+              f"stopping after window 1 of 4 reports 3 window(s) still remaining "
+              f"(got {remaining_stop!r})")
+        check(cf.read_checkpoint(50) == "PRIME_WINDOW_M.bin",
+              f"checkpoint reflects ONLY the one window fully processed before the stop "
+              f"was honored (got checkpoint={cf.read_checkpoint(50)!r})")
+        check(cf.is_boundary_checked(50) is False,
+              "the floor's own upper-boundary check must NOT run -- the floor is not "
+              "actually caught up, a stop mid-floor is not the same as finishing it")
+        os.remove(stop_path)
+
+        # Resuming afterward (marker gone, exactly what generation_tab.py's own
+        # _on_constellation_finished() guarantees -- see that method's own docstring)
+        # must pick up right where the stop left off, same as any other checkpoint
+        # resume already tested above.
+        remaining_after_resume = cf.process_floor(50)
+        check(remaining_after_resume == 0,
+              f"resuming after the stop-request marker is removed finishes the "
+              f"remaining 3 windows in one call (got {remaining_after_resume!r})")
+        check(cf.read_checkpoint(50) == "PRIME_WINDOW_P.bin",
+              f"checkpoint now reflects the floor's real last window "
+              f"(got checkpoint={cf.read_checkpoint(50)!r})")
+        check(cf.is_boundary_checked(50) is True,
+              "the boundary check runs once the floor is genuinely caught up, same as "
+              "any unbounded run reaching the floor's last window")
+
+        # =====================================================================
         # read_prime_window_last_value() itself -- must agree exactly with plain
         # read_prime_window() on both a real, already-populated hit file (floor 20's
         # k=2 file, [200, 500] from earlier in this test) and an empty/nonexistent one.
