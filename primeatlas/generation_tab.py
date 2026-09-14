@@ -44,6 +44,7 @@ import datetime
 import os
 import queue
 import re
+import time
 
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -104,6 +105,20 @@ _GEN_CONST_BATCH_REMAINING_RE = re.compile(
 # checkpoint()'s own separate CHECKPOINT.txt parsing in generation.py).
 CONSTELLATION_STOP_REQUEST_FILENAME = "STOP_REQUEST.txt"
 CONSTELLATION_STOP_GRACE_MS = 10_000
+
+# Elapsed-time/ETA display (added 2026-09-14, Artur's own follow-up: "skoro znamy czas
+# na plik to może byśmy dołożyli pomiar eta? oraz czas uruchomienia"). Rate is measured
+# on the GUI's own wall clock (elapsed real time / floor-wide windows actually done)
+# rather than parsed from constellation_finder_v1.py's own per-window "(X.XXs)" timing
+# -- a single window's own duration swings wildly (tiny vs. huge windows, occasional
+# WSL/DrvFs slowdowns), while a wall-clock rate averaged over many windows smooths that
+# out AND naturally folds in the real cost of chaining a fresh WSL process for every
+# --max-windows batch, which a single window's own self-reported time never would.
+# CONSTELLATION_ETA_MIN_WINDOWS windows must have been processed in THIS session before
+# an ETA is shown at all -- too few samples right after a (re)start would otherwise
+# swing wildly (e.g. "ETA: 2h" after one lucky-fast window, "ETA: 20min" after the
+# next).
+CONSTELLATION_ETA_MIN_WINDOWS = 3
 from .storage import bump_pietro_total, digit_count_floor, load_totals_cache, LOW_FLOOR_CUTOFF, save_totals_cache
 from .generation import (
     QUICK_GEN_MAX_WINDOW_WIDTH, compute_totals_bumps_from_new_rows, count_existing_windows,
@@ -120,6 +135,7 @@ from .generation import (
     build_ktuple_sieve_argv, generation_log_paths, build_wsl_logged_command,
     estimate_wsl_available_ram_bytes, recommended_max_windows,
     estimate_wsl_available_cpu_count, recommended_worker_count, WslLoggedRunner,
+    format_duration_short,
     _LOOP_SESSION_DONE_RE, _LOOP_SESSION_START_RE, _LOOP_ITERATION_START_RE,
     _GEN_SIEVE_DONE_RE, _GEN_CONST_DONE_RE, _GEN_SIEVE_PROGRESS_RE,
     _GEN_CONST_PROGRESS_RE, _GEN_CONST_FLOOR_PROGRESS_RE, _GEN_PREP_DONE_RE,
@@ -633,6 +649,21 @@ class GenerationTab(HybridControls, BaseTab):
         # can never be mistaken for the current one's.
         self._const_floor_total_windows = None
         self._const_floor_already_done = None
+        # Elapsed-time/ETA state -- see CONSTELLATION_ETA_MIN_WINDOWS's own module-level
+        # comment. _const_session_start_time is set ONLY by _on_run_constellation() (a
+        # fresh Run click) -- NOT by _start_constellation_runner(), so it keeps counting
+        # across auto-retries and chained batch continuations for the SAME floor scan
+        # (exactly what "how long has this floor scan been running" should mean). The
+        # _const_eta_baseline_* trio anchors the RATE measurement instead -- reset
+        # whenever the floor total actually changes (see _update_shared_progress_from_
+        # generation_chunk()'s own handling of the FLOOR PROGRESS line), which covers
+        # both "session just started" (total goes from unknown to known) and "the
+        # 'every floor with data' mode just moved on to a different floor" (total
+        # changes between two already-known values) with the same one check.
+        self._const_session_start_time = None
+        self._const_eta_baseline_time = None
+        self._const_eta_baseline_done = None
+        self._const_eta_baseline_total = None
         # Grace-period handle for the graceful-Stop mechanism -- see
         # _on_stop_constellation()'s own docstring. Cancelled (via after_cancel) if the
         # run's own exit sentinel arrives before the grace period elapses, so a stale
@@ -2952,6 +2983,14 @@ class GenerationTab(HybridControls, BaseTab):
 
         self._const_auto_retry_count = 0
         self._const_auto_retry_base_exponent = base_exponent
+        # A fresh Run click is the one true "session start" -- see _const_session_
+        # start_time's own __init__ comment for why this lives HERE and not in
+        # _start_constellation_runner() (which auto-retry/batch-continuation also call,
+        # and must NOT reset the elapsed clock for those).
+        self._const_session_start_time = time.time()
+        self._const_eta_baseline_time = None
+        self._const_eta_baseline_done = None
+        self._const_eta_baseline_total = None
         self._start_constellation_runner(base_exponent)
 
     def _start_constellation_runner(self, base_exponent):
@@ -3501,6 +3540,29 @@ class GenerationTab(HybridControls, BaseTab):
         self.totals_progress.stop()
         self.totals_progress.configure(**configure_kwargs)
 
+    def _const_elapsed_eta_suffix(self, floor_total, floor_done):
+        """Builds the " | running: Xh..., ETA: Y..." (or ETA-less) tail appended to the
+        constellation search's own status text -- see CONSTELLATION_ETA_MIN_WINDOWS's
+        own module-level comment and _const_session_start_time's own __init__ comment
+        for the two clocks this combines. Returns '' (no suffix at all) if the session
+        clock hasn't started yet -- defensive only, since every caller only ever reaches
+        this once a FLOOR PROGRESS line has already been seen, which itself only ever
+        happens during an actual run."""
+        if self._const_session_start_time is None:
+            return ""
+        elapsed_str = format_duration_short(time.time() - self._const_session_start_time)
+        eta_str = None
+        if self._const_eta_baseline_time is not None:
+            done_since_baseline = floor_done - (self._const_eta_baseline_done or 0)
+            rate_elapsed = time.time() - self._const_eta_baseline_time
+            if done_since_baseline >= CONSTELLATION_ETA_MIN_WINDOWS and rate_elapsed > 0:
+                rate = done_since_baseline / rate_elapsed  # windows/second
+                if rate > 0:
+                    eta_str = format_duration_short((floor_total - floor_done) / rate)
+        if eta_str:
+            return " " + self.T("gen.status_elapsed_eta", elapsed=elapsed_str, eta=eta_str)
+        return " " + self.T("gen.status_elapsed_only", elapsed=elapsed_str)
+
     def _update_shared_progress_from_generation_chunk(self, chunk):
         """Reflects a generation run's live console output onto the shared bottom status
         bar -- the SAME self.status/self.totals_progress the floor-totals scan and the
@@ -3660,6 +3722,18 @@ class GenerationTab(HybridControls, BaseTab):
             _batch_size_str, total_windows_str, already_done_str = floor_progress_match.groups()
             self._const_floor_total_windows = int(total_windows_str)
             self._const_floor_already_done = int(already_done_str)
+            # ETA rate baseline -- reset whenever the floor total actually CHANGES from
+            # whatever it was last anchored against (covers both "first FLOOR PROGRESS
+            # line of this session" -- baseline_total is still None -- and "process
+            # every floor with data" mode moving on to a genuinely different floor).
+            # Deliberately NOT reset on every batch of the SAME floor: an unchanged
+            # total means this is just the next chained batch, and the rate should keep
+            # averaging over the whole floor scan so far, not restart at each batch
+            # boundary -- see CONSTELLATION_ETA_MIN_WINDOWS's own module-level comment.
+            if self._const_eta_baseline_total != self._const_floor_total_windows:
+                self._const_eta_baseline_time = time.time()
+                self._const_eta_baseline_done = self._const_floor_already_done
+                self._const_eta_baseline_total = self._const_floor_total_windows
 
         const_matches = _GEN_CONST_PROGRESS_RE.findall(chunk)
         if const_matches:
@@ -3680,12 +3754,14 @@ class GenerationTab(HybridControls, BaseTab):
                 self._set_gen_progress_bar(mode="determinate", maximum=max(1, floor_total),
                                             value=floor_done)
                 if batch_count > 1:
-                    self.status.set(self.T("gen.status_progress_const_batch",
-                                       done=floor_done, total=floor_total,
-                                       batch_num=batch_num, batch_count=batch_count))
+                    status_text = self.T("gen.status_progress_const_batch",
+                                     done=floor_done, total=floor_total,
+                                     batch_num=batch_num, batch_count=batch_count)
                 else:
-                    self.status.set(self.T("gen.status_progress_const",
-                                       done=floor_done, total=floor_total))
+                    status_text = self.T("gen.status_progress_const",
+                                     done=floor_done, total=floor_total)
+                status_text += self._const_elapsed_eta_suffix(floor_total, floor_done)
+                self.status.set(status_text)
             else:
                 self._set_gen_progress_bar(mode="determinate", maximum=max(1, total), value=done)
                 self.status.set(self.T("gen.status_progress_const", done=done, total=total))

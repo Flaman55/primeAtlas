@@ -432,6 +432,125 @@ def _test_floor_progress_resets_between_launches():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def _test_elapsed_and_eta_in_status():
+    """Elapsed time (since the session's own Run click) and ETA (windows-remaining /
+    wall-clock rate since the floor total was last anchored) both show up in the shared
+    status text -- Artur's own follow-up request, 2026-09-14: "skoro znamy czas na plik
+    to może byśmy dołożyli pomiar eta? oraz czas uruchomienia". Drives a fake clock
+    (replacing the `time` name generation_tab.py itself sees, not the real stdlib
+    module) so the test is fully deterministic instead of racing a real 10/30s sleep."""
+    tmp = tempfile.mkdtemp(prefix="primeatlas_const_retry_test_")
+    try:
+        app = _build_app(tmp)
+        tab = app.generation_tab_widget
+        tab._start_constellation_runner = lambda base_exponent: None
+
+        import primeatlas.generation_tab as generation_tab_module
+
+        class _FakeClock:
+            def __init__(self, start):
+                self.now = start
+
+            def time(self):
+                return self.now
+        fake_clock = _FakeClock(1_000_000.0)
+        original_time_module = generation_tab_module.time
+        generation_tab_module.time = fake_clock
+        try:
+            tab._const_base_exponent_var.set("25")
+            tab._on_run_constellation()  # anchors _const_session_start_time = now
+
+            tab._update_shared_progress_from_generation_chunk(
+                "[CONSTELLATIONS v1] FLOOR PROGRESS: batch_size=5000 total_windows=10000 "
+                "already_done_before_batch=0\n")
+
+            # Too few windows processed so far this session (CONSTELLATION_ETA_MIN_
+            # WINDOWS=3) -> elapsed is shown, but no ETA yet.
+            fake_clock.now += 10.0
+            tab._update_shared_progress_from_generation_chunk(
+                "[CONSTELLATIONS v1] 2/5000: PRIME_WINDOW_a.bin -- primes=1 "
+                "peeked_head=0 new_hits=0 (0.01s)\n")
+            status = tab.status.get()
+            check("ETA" not in status,
+                  f"fewer than CONSTELLATION_ETA_MIN_WINDOWS processed -> no ETA yet "
+                  f"(got {status!r})")
+            check("10s" in status,
+                  f"elapsed time IS shown even before ETA becomes available "
+                  f"(got {status!r})")
+
+            # Now enough windows have been processed (5 >= 3) -> ETA appears, computed
+            # from the wall-clock rate since the baseline (5 windows / 30s elapsed).
+            fake_clock.now += 20.0
+            tab._update_shared_progress_from_generation_chunk(
+                "[CONSTELLATIONS v1] 5/5000: PRIME_WINDOW_b.bin -- primes=1 "
+                "peeked_head=0 new_hits=0 (0.01s)\n")
+            status = tab.status.get()
+            check("ETA" in status, f"enough windows processed -> ETA now shown (got {status!r})")
+            # remaining=10000-5=9995, rate=5/30 windows/s -> eta=9995*30/5=59970s=16h39m
+            check("16h39m" in status,
+                  f"ETA reflects the wall-clock rate since the baseline "
+                  f"(got {status!r})")
+        finally:
+            generation_tab_module.time = original_time_module
+        app.destroy()
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _test_eta_baseline_resets_on_new_run_not_on_chained_batch():
+    """A fresh Run click must reset BOTH the elapsed clock and the ETA baseline (a
+    brand-new session has no history to average over); a CHAINED batch continuation for
+    the SAME floor must reset NEITHER (the whole point of measuring the rate on the
+    GUI's own wall clock is to average over the real cost of the whole floor scan,
+    batch-relaunch overhead included -- see CONSTELLATION_ETA_MIN_WINDOWS's own
+    module-level comment)."""
+    tmp = tempfile.mkdtemp(prefix="primeatlas_const_retry_test_")
+    try:
+        app = _build_app(tmp)
+        tab = app.generation_tab_widget
+        launched = []
+        tab._start_constellation_runner = lambda base_exponent: launched.append(base_exponent)
+
+        tab._const_base_exponent_var.set("25")
+        tab._on_run_constellation()
+        session_start_1 = tab._const_session_start_time
+        check(session_start_1 is not None, "a fresh Run click anchors the session clock")
+
+        tab._update_shared_progress_from_generation_chunk(
+            "[CONSTELLATIONS v1] FLOOR PROGRESS: batch_size=5000 total_windows=10000 "
+            "already_done_before_batch=0\n")
+        baseline_time_1 = tab._const_eta_baseline_time
+        check(baseline_time_1 is not None, "the first FLOOR PROGRESS line anchors the ETA baseline")
+
+        # Chained batch continuation for the SAME floor (same total_windows) -- the
+        # session clock and the ETA baseline must both survive untouched.
+        tab._const_auto_retry_base_exponent = "25"
+        tab._const_batch_remaining = 5000
+        continued = tab._maybe_continue_constellation_batch(0)
+        check(continued is True, "batch continuation is launched (sanity check on the test setup)")
+        check(tab._const_session_start_time == session_start_1,
+              "a chained batch continuation must NOT reset the session's elapsed clock")
+        tab._update_shared_progress_from_generation_chunk(
+            "[CONSTELLATIONS v1] FLOOR PROGRESS: batch_size=5000 total_windows=10000 "
+            "already_done_before_batch=5000\n")
+        check(tab._const_eta_baseline_time == baseline_time_1,
+              "an UNCHANGED floor total (same floor, next chained batch) must NOT "
+              "reset the ETA baseline -- the rate keeps averaging over the whole scan")
+
+        # A genuinely fresh Run click (e.g. a different floor, or the same one restarted
+        # by hand) resets both.
+        tab._const_base_exponent_var.set("26")
+        tab._on_run_constellation()
+        check(tab._const_session_start_time != session_start_1,
+              "a fresh Run click DOES reset the session's elapsed clock")
+        check(tab._const_eta_baseline_time is None,
+              "a fresh Run click clears the ETA baseline too, pending this new "
+              "session's own first FLOOR PROGRESS line")
+        app.destroy()
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def _test_build_constellation_finder_argv_max_windows():
     from primeatlas.generation import build_constellation_finder_argv
 
@@ -600,6 +719,8 @@ def main():
     _test_graceful_stop_falls_back_to_hard_kill_after_grace_period()
     _test_floor_progress_scales_bar_to_whole_floor()
     _test_floor_progress_resets_between_launches()
+    _test_elapsed_and_eta_in_status()
+    _test_eta_baseline_resets_on_new_run_not_on_chained_batch()
     _test_build_constellation_finder_argv_max_windows()
     _test_start_constellation_runner_caps_batch_and_snapshots_checkpoint()
     _test_scan_const_chunk_for_batch_marker()

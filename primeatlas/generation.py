@@ -1330,6 +1330,24 @@ def recommended_worker_count(available_cpu_count):
     return max(1, min(256, int(available_cpu_count)))
 
 
+def format_duration_short(seconds):
+    """Renders a duration (seconds, float or int, may be 0 or slightly negative from
+    clock jitter) as a short human string -- "5h03m", "12m07s", or "42s" depending on
+    magnitude -- for the constellation search's own elapsed-time/ETA display (see
+    generation_tab.py's own _update_shared_progress_from_generation_chunk()). Picks
+    exactly ONE larger unit to pair with the next one down (never seconds AND hours
+    together) so the string stays short enough for the shared status bar alongside the
+    floor/batch counts already shown there."""
+    total = max(0, int(seconds))
+    hours, remainder = divmod(total, 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours:
+        return f"{hours}h{minutes:02d}m"
+    if minutes:
+        return f"{minutes}m{secs:02d}s"
+    return f"{secs}s"
+
+
 # Parsed out of a generation run's live console output by _drain_output_queue() to drive the
 # SHARED bottom status/progress bar (self.status/self.totals_progress -- the same one the
 # floor-totals scan and the Primes/Constellations search box already use) while a run is in

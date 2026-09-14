@@ -444,6 +444,8 @@
   "gen.status_progress_sieve": "[*] Generating: sieve {percent}% ({done}/{total} batches)",
   "gen.status_progress_const": "[*] Constellation search: file {done}/{total}",
   "gen.status_progress_const_batch": "[*] Constellation search: file {done}/{total} (batch {batch_num}/{batch_count})",
+  "gen.status_elapsed_eta": "| running: {elapsed}, ETA: {eta}",
+  "gen.status_elapsed_only": "| running: {elapsed}",
   "gen.status_progress_done": "[*] Generation finished.",
   "gen.status_progress_loop_prep": "[*] Generating: iteration {iteration}/{run_count} -- base sieve prep done, starting sieve...",
   "gen.status_progress_loop_sieve": "[*] Generating: iteration {iteration}/{run_count} -- sieve {percent}% ({done}/{total} batches)",

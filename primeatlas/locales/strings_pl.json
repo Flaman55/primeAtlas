@@ -444,6 +444,8 @@
   "gen.status_progress_sieve": "[*] Generowanie: sito {percent}% ({done}/{total} paczek)",
   "gen.status_progress_const": "[*] Szukanie konstelacji: plik {done}/{total}",
   "gen.status_progress_const_batch": "[*] Szukanie konstelacji: plik {done}/{total} (porcja {batch_num}/{batch_count})",
+  "gen.status_elapsed_eta": "| czas: {elapsed}, ETA: {eta}",
+  "gen.status_elapsed_only": "| czas: {elapsed}",
   "gen.status_progress_done": "[*] Generowanie zakończone.",
   "gen.status_progress_loop_prep": "[*] Generowanie: iteracja {iteration}/{run_count} -- sito bazowe gotowe, start sitowania...",
   "gen.status_progress_loop_sieve": "[*] Generowanie: iteracja {iteration}/{run_count} -- sito {percent}% ({done}/{total} paczek)",
