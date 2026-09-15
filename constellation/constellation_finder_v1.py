@@ -310,11 +310,30 @@ def read_checkpoint(base_exponent):
 
 
 def write_checkpoint(base_exponent, filename):
+    """Atomic tmp-then-replace + fsync (added 2026-09-15, after a real overnight power
+    loss wiped a floor's progress): the previous version opened CHECKPOINT.txt directly
+    with "w", which TRUNCATES it before writing a single byte of the new content. Power
+    loss (or a hard kill) landing between that truncation and the write completing left
+    a 0-byte or partial file on disk; read_checkpoint() then finds no
+    "last_processed_file=" line and silently returns None, which process_floor() treats
+    as "no checkpoint yet" -- reprocessing the WHOLE floor from window 0 (confirmed: a
+    30-hour floor 25 run lost its entire CHECKPOINT.txt overnight this way). Writing to
+    a sibling .tmp file, fsync-ing ITS contents to disk, and only then os.replace()-ing
+    it over the real path guarantees the on-disk file is always either the complete OLD
+    checkpoint or the complete NEW one -- never a truncated in-between state -- even
+    across a literal power cut, not just an orderly process kill. Same atomic pattern
+    already used by _write_window_index() and _write_last_values_disk_cache() below;
+    this is the one call site that most needed it, since losing THIS file is what makes
+    process_floor() throw away an entire floor's worth of already-done work."""
     path = _checkpoint_path(base_exponent)
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
+    tmp_path = path + ".tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
         f.write(f"last_processed_file={filename}\n")
         f.write(f"updated_at={datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}\n")
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp_path, path)
 
 
 BOUNDARY_MARKER_FILENAME = "BOUNDARY_CHECKED.txt"
@@ -337,11 +356,21 @@ def is_boundary_checked(base_exponent):
 
 
 def write_boundary_checked(base_exponent, note):
+    """Same atomic tmp-then-replace + fsync pattern as write_checkpoint() above, and for
+    the same reason: a direct open(path, "w") truncates BOUNDARY_CHECKED.txt before
+    writing its replacement, so a crash/power-loss mid-write can leave a marker file
+    that is_boundary_checked() still finds (os.path.exists() is true for a 0-byte file
+    too) but whose content is garbage -- silently corrupting the "already resolved"
+    signal instead of just losing it outright."""
     path = _boundary_marker_path(base_exponent)
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
+    tmp_path = path + ".tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
         f.write(f"{note}\n")
         f.write(f"checked_at={datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}\n")
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp_path, path)
 
 
 def _last_values_path(base_exponent):
@@ -399,6 +428,8 @@ def _write_last_values_disk_cache(base_exponent, cache):
     with open(tmp_path, "w", encoding="utf-8") as f:
         for (k, vid), (last_value, count) in cache.items():
             f.write(f"{k}\t{vid}\t{last_value}\t{count}\n")
+        f.flush()
+        os.fsync(f.fileno())
     os.replace(tmp_path, path)
 
 
