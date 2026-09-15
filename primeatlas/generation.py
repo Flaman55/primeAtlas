@@ -541,9 +541,9 @@ ORCHESTRATOR_LOOP_SCRIPT = os.path.abspath(
 ORCHESTRATOR_DIRECT_SCRIPT = os.path.abspath(
     os.path.join(_SCRIPT_DIR, "prime_sieve", "orchestrator_v3.py"))
 CONSTELLATION_FINDER_SCRIPT = os.path.abspath(
-    os.path.join(_SCRIPT_DIR, "constellation", "constellation_finder_v1.py"))
+    os.path.join(_SCRIPT_DIR, "constellation", "constellation_finder_v2.py"))
 KTUPLE_SIEVE_SCRIPT = os.path.abspath(
-    os.path.join(_SCRIPT_DIR, "constellation", "ktuple_sieve_v1.py"))
+    os.path.join(_SCRIPT_DIR, "constellation", "ktuple_sieve_v2.py"))
 
 
 def recommended_digit_sweep_n_locations(base_exponent, window_m, target_windows_per_branch=40):
@@ -1063,7 +1063,7 @@ def build_orchestrator_direct_argv(base_exponent, target_idx_start, window_count
 
 
 def build_constellation_finder_argv(base_exponent=None, max_windows=None, script_path=None):
-    """Returns the LINUX-side argv for constellation_finder_v1.py, whose CLI is
+    """Returns the LINUX-side argv for constellation_finder_v2.py, whose CLI is
     `[<base_exponent>] [--max-windows N]` -- base_exponent is a single OPTIONAL
     positional arg, omitted entirely (not passed as an empty string) when it's
     None/blank, matching that script's own auto-detect-every-populated-floor behavior
@@ -1073,7 +1073,7 @@ def build_constellation_finder_argv(base_exponent=None, max_windows=None, script
     this script's low per-window print volume made it the one where the default
     full-buffering was actually reported as a problem.
 
-    max_windows (added 2026-09-13, see constellation_finder_v1.process_floor()'s own
+    max_windows (added 2026-09-13, see constellation_finder_v2.process_floor()'s own
     docstring for the full "floor 25 crashes WSL at scale" story this caps): omitted
     entirely when None, same "don't pass what wasn't explicitly set" shape as
     base_exponent -- callers use this to bound a single run's own file-open volume,
@@ -1091,11 +1091,12 @@ def build_constellation_finder_argv(base_exponent=None, max_windows=None, script
 
 def read_constellation_checkpoint(portal_folder, base_exponent):
     """Windows-side read of a floor's own CHECKPOINT.txt (last fully-processed PGS2
-    source window, written by constellation_finder_v1.py's own write_checkpoint()) --
-    same "last_processed_file=" parsing as that script's own read_checkpoint(), kept as
-    a small separate copy here rather than imported cross-language: this runs from the
-    GUI's own Windows-side process (generation_tab.py), never inside WSL, and
-    constellation_finder_v1.py's module-level PORTAL_FOLDER is fixed at import time
+    source window -- constellation_finder_v2.py's own write_done_ranges() still writes
+    this same "last_processed_file=" line alongside its own done_range= ones, see that
+    function's docstring) -- same parsing as that script's own read_checkpoint(), kept
+    as a small separate copy here rather than imported cross-language: this runs from
+    the GUI's own Windows-side process (generation_tab.py), never inside WSL, and
+    constellation_finder_v2.py's module-level PORTAL_FOLDER is fixed at import time
     from CONSTELLATION_PORTAL_DIR -- which, on the Linux side, is a /mnt/-style path,
     not the Windows-style path this app's own get_portal_folder() returns -- so calling
     into that module directly would need faking its environment rather than just
@@ -1369,14 +1370,14 @@ def format_duration_short(seconds):
 #   prime_sieve_v4.py/prime_sieve_v4_1.py (main_batch_scanner, run-finished line -- printed
 #   for BOTH the low-floor and normal-window code paths, only the tail differs):
 #     "[*] TOTAL PRIMES FOUND this run: 167,026,529 across 1000 windows"
-#   constellation_finder_v1.py (process_floor's own per-file print):
-#     "[CONSTELLATIONS v1] 12/48: PRIME_WINDOW_10p11_off_50M.bin -- ..."
-#   constellation_finder_v1.py (process_floor, floor-wide progress -- see
+#   constellation_finder_v2.py (process_floor's own per-file print):
+#     "[CONSTELLATIONS v2] 12/48: PRIME_WINDOW_10p11_off_50M.bin -- ..."
+#   constellation_finder_v2.py (process_floor, floor-wide progress -- see
 #   _GEN_CONST_FLOOR_PROGRESS_RE's own comment for why this is separate from the
 #   per-file line above):
-#     "[CONSTELLATIONS v1] FLOOR PROGRESS: batch_size=5000 total_windows=545000 already_done_before_batch=340000"
-#   constellation_finder_v1.py (process_floor, run-finished line):
-#     "[CONSTELLATIONS v1] Done. New hits this run, by pattern:"
+#     "[CONSTELLATIONS v2] FLOOR PROGRESS: batch_size=5000 total_windows=545000 already_done_before_batch=340000"
+#   constellation_finder_v2.py (process_floor, run-finished line):
+#     "[CONSTELLATIONS v2] Done. New hits this run, by pattern:"
 #   orchestrator_loop_v2.py (multi-iteration Exploration-mode launches ONLY -- see
 #   _LOOP_SESSION_START_RE/_LOOP_ITERATION_START_RE/_LOOP_SESSION_DONE_RE's own comment
 #   below for why these three matter: without them, _GEN_SIEVE_DONE_RE above fires once
@@ -1391,9 +1392,9 @@ def format_duration_short(seconds):
 _GEN_PREP_DONE_RE = re.compile(r"\[\*\] Active sieving primes (?:used|count) \(pi\(L_final\)\)")
 _GEN_SIEVE_PROGRESS_RE = re.compile(r"\[\+\] Progress: ([\d.]+)% \((\d+)/(\d+) batches\)")
 _GEN_SIEVE_DONE_RE = re.compile(r"\[\*\] TOTAL PRIMES FOUND this run:")
-_GEN_CONST_PROGRESS_RE = re.compile(r"\[CONSTELLATIONS v1\] (\d+)/(\d+): ")
-_GEN_CONST_DONE_RE = re.compile(r"\[CONSTELLATIONS v1\] Done\. New hits this run")
-# constellation_finder_v1.py's own "FLOOR PROGRESS" line (added 2026-09-14, printed once
+_GEN_CONST_PROGRESS_RE = re.compile(r"\[CONSTELLATIONS v2\] (\d+)/(\d+): ")
+_GEN_CONST_DONE_RE = re.compile(r"\[CONSTELLATIONS v2\] Done\. New hits this run")
+# constellation_finder_v2.py's own "FLOOR PROGRESS" line (added 2026-09-14, printed once
 # near the start of every process_floor() call, right after the human-readable "N/M
 # windows to process" line): unlike _GEN_CONST_PROGRESS_RE above, whose own (done, total)
 # pair only ever counts this ONE --max-windows-capped batch (resetting to 1 every time
@@ -1404,9 +1405,9 @@ _GEN_CONST_DONE_RE = re.compile(r"\[CONSTELLATIONS v1\] Done\. New hits this run
 # _update_shared_progress_from_generation_chunk()'s own docstring for how the two lines
 # combine (already_done_before_batch + this batch's own running "i/N" -> a floor-wide
 # done/total pair).
-#   "[CONSTELLATIONS v1] FLOOR PROGRESS: batch_size=5000 total_windows=545000 already_done_before_batch=340000"
+#   "[CONSTELLATIONS v2] FLOOR PROGRESS: batch_size=5000 total_windows=545000 already_done_before_batch=340000"
 _GEN_CONST_FLOOR_PROGRESS_RE = re.compile(
-    r"\[CONSTELLATIONS v1\] FLOOR PROGRESS: batch_size=(\d+) total_windows=(\d+) "
+    r"\[CONSTELLATIONS v2\] FLOOR PROGRESS: batch_size=(\d+) total_windows=(\d+) "
     r"already_done_before_batch=(\d+)")
 _GEN_HYBRID_STAGE_RE = re.compile(r"\[HYBRID\] stage (\d+)/(\d+):")
 _GEN_HYBRID_DONE_RE = re.compile(r"\[HYBRID\] done:")

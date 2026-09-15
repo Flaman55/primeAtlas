@@ -83,7 +83,7 @@ CONSTELLATION_AUTO_RETRY_DELAY_MS = 2000
 # problem) rather than inventing an unrelated magnitude.
 CONSTELLATION_BATCH_SIZE = 5000
 _GEN_CONST_BATCH_REMAINING_RE = re.compile(
-    r"\[CONSTELLATIONS v1\] BATCH DONE -- (\d+) window")
+    r"\[CONSTELLATIONS v2\] BATCH DONE -- (\d+) window")
 
 # Graceful-Stop mechanism (added 2026-09-14, Artur's own proposal after asking whether a
 # manual Stop click resumes cleanly): a plain terminate()+pkill (see WslLoggedRunner.
@@ -3043,7 +3043,7 @@ class GenerationTab(HybridControls, BaseTab):
         self._const_output_queue = queue.Queue()
         self._const_runner = WslLoggedRunner(
             cmd, log_path, exit_path, self._const_output_queue,
-            kill_pattern="constellation_finder_v1.py")
+            kill_pattern="constellation_finder_v2.py")
         self._const_runner.start()
         self.const_run_btn.configure(state="disabled")
         self.const_stop_btn.configure(state="normal")
@@ -3433,7 +3433,7 @@ class GenerationTab(HybridControls, BaseTab):
         self._ktuple_output_queue = queue.Queue()
         self._ktuple_runner = WslLoggedRunner(
             cmd, log_path, exit_path, self._ktuple_output_queue,
-            kill_pattern="ktuple_sieve_v1.py")
+            kill_pattern="ktuple_sieve_v2.py")
         self._ktuple_runner.start()
         self.ktuple_run_btn.configure(state="disabled")
         self.ktuple_auto_btn.configure(state="disabled")

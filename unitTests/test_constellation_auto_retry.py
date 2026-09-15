@@ -367,14 +367,14 @@ def _test_floor_progress_scales_bar_to_whole_floor():
         import primeatlas.generation_tab as generation_tab_module
 
         tab._update_shared_progress_from_generation_chunk(
-            "[CONSTELLATIONS v1] FLOOR PROGRESS: batch_size=5000 total_windows=545000 "
+            "[CONSTELLATIONS v2] FLOOR PROGRESS: batch_size=5000 total_windows=545000 "
             "already_done_before_batch=340000\n")
         check(tab._const_floor_total_windows == 545000, "floor total recorded")
         check(tab._const_floor_already_done == 340000,
               "already-done-before-this-batch recorded")
 
         tab._update_shared_progress_from_generation_chunk(
-            "[CONSTELLATIONS v1] 1234/5000: PRIME_WINDOW_whatever.bin -- primes=1 "
+            "[CONSTELLATIONS v2] 1234/5000: PRIME_WINDOW_whatever.bin -- primes=1 "
             "peeked_head=0 new_hits=0 (0.01s)\n")
         check(int(bar["maximum"]) == 545000,
               f"bar maximum is the WHOLE floor, not this batch's own 5000 "
@@ -461,14 +461,14 @@ def _test_elapsed_and_eta_in_status():
             tab._on_run_constellation()  # anchors _const_session_start_time = now
 
             tab._update_shared_progress_from_generation_chunk(
-                "[CONSTELLATIONS v1] FLOOR PROGRESS: batch_size=5000 total_windows=10000 "
+                "[CONSTELLATIONS v2] FLOOR PROGRESS: batch_size=5000 total_windows=10000 "
                 "already_done_before_batch=0\n")
 
             # Too few windows processed so far this session (CONSTELLATION_ETA_MIN_
             # WINDOWS=3) -> elapsed is shown, but no ETA yet.
             fake_clock.now += 10.0
             tab._update_shared_progress_from_generation_chunk(
-                "[CONSTELLATIONS v1] 2/5000: PRIME_WINDOW_a.bin -- primes=1 "
+                "[CONSTELLATIONS v2] 2/5000: PRIME_WINDOW_a.bin -- primes=1 "
                 "peeked_head=0 new_hits=0 (0.01s)\n")
             status = tab.status.get()
             check("ETA" not in status,
@@ -482,7 +482,7 @@ def _test_elapsed_and_eta_in_status():
             # from the wall-clock rate since the baseline (5 windows / 30s elapsed).
             fake_clock.now += 20.0
             tab._update_shared_progress_from_generation_chunk(
-                "[CONSTELLATIONS v1] 5/5000: PRIME_WINDOW_b.bin -- primes=1 "
+                "[CONSTELLATIONS v2] 5/5000: PRIME_WINDOW_b.bin -- primes=1 "
                 "peeked_head=0 new_hits=0 (0.01s)\n")
             status = tab.status.get()
             check("ETA" in status, f"enough windows processed -> ETA now shown (got {status!r})")
@@ -517,7 +517,7 @@ def _test_eta_baseline_resets_on_new_run_not_on_chained_batch():
         check(session_start_1 is not None, "a fresh Run click anchors the session clock")
 
         tab._update_shared_progress_from_generation_chunk(
-            "[CONSTELLATIONS v1] FLOOR PROGRESS: batch_size=5000 total_windows=10000 "
+            "[CONSTELLATIONS v2] FLOOR PROGRESS: batch_size=5000 total_windows=10000 "
             "already_done_before_batch=0\n")
         baseline_time_1 = tab._const_eta_baseline_time
         check(baseline_time_1 is not None, "the first FLOOR PROGRESS line anchors the ETA baseline")
@@ -531,7 +531,7 @@ def _test_eta_baseline_resets_on_new_run_not_on_chained_batch():
         check(tab._const_session_start_time == session_start_1,
               "a chained batch continuation must NOT reset the session's elapsed clock")
         tab._update_shared_progress_from_generation_chunk(
-            "[CONSTELLATIONS v1] FLOOR PROGRESS: batch_size=5000 total_windows=10000 "
+            "[CONSTELLATIONS v2] FLOOR PROGRESS: batch_size=5000 total_windows=10000 "
             "already_done_before_batch=5000\n")
         check(tab._const_eta_baseline_time == baseline_time_1,
               "an UNCHANGED floor total (same floor, next chained batch) must NOT "
@@ -626,7 +626,7 @@ def _test_scan_const_chunk_for_batch_marker():
         tab._scan_const_chunk_for_batch_marker("some unrelated log text\n")
         check(tab._const_batch_remaining is None, "unrelated text leaves it untouched")
         tab._scan_const_chunk_for_batch_marker(
-            "[CONSTELLATIONS v1] BATCH DONE -- 12345 window(s) still remain for 10^25.\n")
+            "[CONSTELLATIONS v2] BATCH DONE -- 12345 window(s) still remain for 10^25.\n")
         check(tab._const_batch_remaining == 12345,
               f"the BATCH DONE marker's own count is parsed out "
               f"(got {tab._const_batch_remaining!r})")
@@ -695,7 +695,7 @@ def _test_full_batch_chain_through_real_queue():
         tab._poll_constellation_output()  # starts the self.after(150, ...) polling chain
 
         tab._const_output_queue.put(
-            "[CONSTELLATIONS v1] BATCH DONE -- 42 window(s) still remain for 10^25.\n")
+            "[CONSTELLATIONS v2] BATCH DONE -- 42 window(s) still remain for 10^25.\n")
         tab._const_output_queue.put(("__exit__", 0))
         _pump(app, 0.6)
 
