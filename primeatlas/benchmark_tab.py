@@ -6,12 +6,10 @@ paginated, lazily-expandable tree view of the full benchmark_log.csv (written by
 orchestrator_v1.py's print_benchmark_summary()); a "Save PDF" button renders the same
 chart(s) + full table into a standalone PDF report.
 
-Extracted from prime_atlas_v1.py during the refactor branch's Faza 3 (tab-by-tab
-backend/UI split, 2026-08-23) -- the Benchmark tab was the smallest of the five tabs
-still living directly in that file, so it went first (see task history around
-2026-08-23). All the pure-logic reduction/PDF-rendering work lives in
-primeatlas/benchmark.py; this module only owns the widgets and the tkinter-specific
-on-screen chart drawing (_draw_growth_chart below).
+Split out of prime_atlas_v1.py's tab-by-tab backend/UI separation: this module owns
+only the widgets and the tkinter-specific on-screen chart drawing (_draw_growth_chart
+below). All the pure-logic reduction/PDF-rendering work lives in
+primeatlas/benchmark.py.
 
 This is one of only two files in primeatlas/ that import tkinter -- the other is
 settings_tab.py (see that module's own docstring for the general "pure logic
@@ -48,11 +46,11 @@ def _nearest_hover_point(hover_points, x, y, max_distance=14.0):
     """Picks which (if any) of hover_points the cursor at (x, y) is "over" -- the one
     decision _bind_chart_hover's <Motion> handler needs to make, pulled out as a
     plain function with no canvas/tkinter dependency so it's directly unit-testable.
-    (Added 2026-08-26: driving this through a real OS-level synthetic mouse event in
-    a test turned out to behave inconsistently across platforms/Tk versions -- e.g.
-    Windows Python 3.13 delivered <Motion> coordinates that didn't reliably land
-    within max_distance of a dot even when targeted at its exact pixel center --
-    whereas this pure function is deterministic and needs no live display at all.)
+    (Driving this through a real OS-level synthetic mouse event in a test behaves
+    inconsistently across platforms/Tk versions -- e.g. Windows Python 3.13 delivers
+    <Motion> coordinates that don't reliably land within max_distance of a dot even
+    when targeted at its exact pixel center -- whereas this pure function is
+    deterministic and needs no live display at all.)
 
     hover_points: see _bind_chart_hover's own docstring for the tuple shape.
     Returns (px, py, x_val, y_val, fmt, color) for the closest point within
@@ -80,10 +78,9 @@ def _hover_label_position(px, py, text_w, text_h, canvas_width, canvas_height, p
     Returns (tx, ty, anchor) ready for canvas.create_text(). Default placement is to
     the upper-right of the point (anchor="w", text growing rightward); flips to the
     LEFT (anchor="e") if the label wouldn't fit on the right, and flips from above to
-    below the point if it wouldn't fit above -- fixing a real bug report (screenshot,
-    2026-08-27) where the tooltip for a point near the chart's right edge (the highest
-    floor plotted, exactly where a user is most likely to hover) got pushed off the
-    visible canvas and clipped.
+    below the point if it wouldn't fit above -- without this, the tooltip for a point
+    near the chart's right edge (the highest floor plotted, exactly where a user is
+    most likely to hover) gets pushed off the visible canvas and clipped.
 
     Pulled out as a plain function (mirroring _nearest_hover_point above) specifically
     so this decision is directly unit-testable without a real Tk canvas or event loop:
@@ -116,7 +113,7 @@ def _bind_chart_hover(canvas, hover_points, t, fg_color, bg_color, width, height
     """Wires a single-tooltip hover interaction onto `canvas` instead of drawing every
     point's value permanently next to its dot -- with a couple dozen closely-spaced
     floors, the always-on labels used to stack on top of each other into an unreadable
-    smear (real bug report, 2026-08-26 screenshot). Only the point nearest the cursor
+    smear. Only the point nearest the cursor
     (within a small pixel radius) gets a label, drawn fresh on every mouse move and
     cleared on <Leave>, so exactly one value is legible at a time no matter how dense
     the series is.
@@ -127,9 +124,8 @@ def _bind_chart_hover(canvas, hover_points, t, fg_color, bg_color, width, height
     has no notion of axes/scales, just "here are some labeled dots".
 
     width/height: the SAME logical canvas size _draw_growth_chart's caller already
-    computed and used for every other pad_left/plot_w/etc. calculation (added
-    2026-08-27, screenshot bug report) -- used here to keep the tooltip text on-screen
-    instead of querying canvas.winfo_width()/winfo_height(). Those reflect the widget's
+    computed and used for every other pad_left/plot_w/etc. calculation -- used here to
+    keep the tooltip text on-screen instead of querying canvas.winfo_width()/winfo_height(). Those reflect the widget's
     actual REALIZED on-screen geometry, which can be stale or 1x1 whenever the canvas
     hasn't been mapped/redrawn yet at the moment a test (or a very fast resize) fires a
     motion event -- the caller's own width/height are always trustworthy since they're
@@ -233,9 +229,9 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
     docstring on why cross-module globals would be circular here) -- defaults to
     DEFAULT_LANGUAGE if not given, same fallback _pdf_chart_ops() already uses.
 
-    bg_color/fg_color/grid_color (added 2026-08-26, real bug report): lets the caller
-    theme this canvas instead of it staying hardcoded to a light-mode palette regardless
-    of the app's actual theme setting -- BenchmarkTab passes its constructor's
+    bg_color/fg_color/grid_color: lets the caller theme this canvas instead of it
+    staying hardcoded to a light-mode palette regardless of the app's actual theme
+    setting -- BenchmarkTab passes its constructor's
     theme_palette through here (console_bg/console_fg/border, the same keys already used
     for the app's other canvas-like widgets) so the chart's background and text actually
     go dark under the dark theme. Defaults match the ORIGINAL hardcoded colors, so any
@@ -281,10 +277,9 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
 
     # pad_left/pad_right used to be fixed guesses (70px) -- fine for short numbers, but
     # real benchmark throughput easily reaches 9-11 digit n/s figures ("71,556,448"),
-    # which at that width no longer fit and got clipped against the canvas edge (real
-    # bug report, 2026-08-26 screenshot). Measuring the actual tick label strings with
-    # the real font instead of guessing a fixed width fixes that for any data range,
-    # not just the one in the screenshot.
+    # which at that width no longer fit and got clipped against the canvas edge.
+    # Measuring the actual tick label strings with the real font instead of guessing a
+    # fixed width fixes that for any data range.
     tick_font = tkfont.Font(family="Consolas", size=8)
 
     def _max_tick_label_width(y_lo, y_hi, fmt):
@@ -358,9 +353,9 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
 
     # Per-point value labels used to be drawn permanently next to every dot -- with
     # dense series (a couple dozen floors close together) they overlapped into an
-    # unreadable smear (real bug report, 2026-08-26 screenshot). Now only the dots/line
-    # are drawn unconditionally; the actual value is shown on hover via a single
-    # tooltip (see _bind_chart_hover below), so exactly one label is ever visible.
+    # unreadable smear. Now only the dots/line are drawn unconditionally; the actual
+    # value is shown on hover via a single tooltip (see _bind_chart_hover below), so
+    # exactly one label is ever visible.
     hover_points = []
 
     if points:
@@ -427,9 +422,9 @@ class BenchmarkTab(BaseTab):
         chart_frame.pack(fill="x", padx=6, pady=(0, 4))
         # Canvas colors come from the CURRENT theme (console_bg/border -- same keys the
         # app's other canvas-like widgets already use for their own dark/light styling)
-        # instead of being hardcoded to white/light-grey -- real bug report, 2026-08-26:
-        # the "dark" theme left this chart looking unchanged (light chart on an otherwise
-        # dark window). _draw_growth_chart's own bg_color/fg_color/grid_color params
+        # instead of being hardcoded to white/light-grey -- otherwise the dark theme
+        # would leave this chart looking unchanged (light chart on an otherwise dark
+        # window). _draw_growth_chart's own bg_color/fg_color/grid_color params
         # (see _redraw_benchmark_chart/_redraw_benchmark_chart2 below) keep the drawn
         # content -- ticks, axis titles -- readable against whichever background this is.
         p = self._theme_palette
