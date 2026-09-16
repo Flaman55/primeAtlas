@@ -15,6 +15,7 @@ so it and everything it depends on (list_constellation_hits/hit_file_path) are i
 back at that file's top; the records-table builders/PDF renderer are used exclusively
 by primeatlas/constellations_records_tab.py.
 """
+import csv
 import datetime
 import os
 
@@ -279,36 +280,51 @@ def build_constellation_records_table(portal_folder, k, floor_min=None, floor_ma
     return variant_ids, variant_meta, rows
 
 
-def build_constellation_records_detail_rows(portal_folder, k, floor_min=None, floor_max=None):
-    """Full-detail companion to build_constellation_records_table(): instead of just the
-    smallest offset per (floor, variant) cell, returns ONE row per individual hit --
-    every tuple-start value found in every hit file for `k` within the given floor
-    range, not only the record-setting smallest one. Same floor_min/floor_max
-    semantics (inclusive, None = unbounded) as build_constellation_records_table().
+def count_constellation_records_detail_rows(portal_folder, k, floor_min=None, floor_max=None):
+    """Cheap O(1)-per-pattern total of how many rows
+    build_constellation_records_detail_rows()/iter_constellation_records_detail_rows()
+    would produce for this k/floor range -- sums read_hit_pattern_header()'s own
+    `count` per (floor, variant), never touching a single hit VALUE. Added so the
+    records tab's PDF export (which, unlike CSV, needs every row laid out on paginated
+    pages up front -- see render_constellation_records_pdf()) can refuse a range whose
+    row count would make an absurd (or outright OOM-risking) PDF, e.g. floor 25's k=2
+    alone: ~2.16 billion rows, an obviously unusable multi-hundred-million-page PDF
+    even setting memory aside -- BEFORE attempting to build it, rather than after
+    already having decoded everything."""
+    variants = pattern_catalog_v1.patterns_for_k(k)
+    variant_ids = [w["id"] for w in variants]
+    total = 0
+    for base_exponent in list_pietra(portal_folder):
+        if floor_min is not None and base_exponent < floor_min:
+            continue
+        if floor_max is not None and base_exponent > floor_max:
+            continue
+        if not floor_has_constellation_hits(portal_folder, base_exponent):
+            continue
+        for vid in variant_ids:
+            header = read_hit_pattern_header(portal_folder, base_exponent, k, vid)
+            if header is not None:
+                total += header["count"]
+    return total
 
-    Added for the PDF/CSV export buttons specifically (user request: the exported
-    file should contain every hit this project has found for the currently displayed
-    floor range, not just the compact one-cell-per-floor summary) -- the on-screen
-    tree keeps showing the compact view (see build_constellation_records_table()'s own
-    docstring for why that's the right shape for browsing), and the records tab's own
-    cell drill-down gives the same full list on-demand for a single cell inside the
-    GUI itself without needing an export.
 
-    Returns (variant_ids, variant_meta, rows):
-      rows: [{"base_exponent": int, "variant_id": int, "offset": int, "number": int,
-              "position_in_file": int, "count_in_file": int, "is_record_floor": bool},
-             ...] sorted by (base_exponent, variant_id, offset) ascending -- offset
-      ascending is automatic since hit files store values sorted ascending (see
-      constellation_finder_v1.py's own module header) and offset = number - floor's
-      10**base_exponent preserves that ordering.
-
-    Can read a LOT of data for a long-running project (every hit, not just one per
-    cell) -- callers should keep this off the GUI thread, same as
-    build_constellation_records_table()."""
+def iter_constellation_records_detail_rows(portal_folder, k, floor_min=None, floor_max=None):
+    """Streaming sibling of build_constellation_records_detail_rows() below: yields the
+    same per-hit row dicts ONE AT A TIME instead of collecting them into one big list
+    first. Added because build_constellation_records_detail_rows() already reads hit
+    VALUES through paging-transparent, per-page-bounded reads (see
+    read_hit_pattern_page()'s own docstring) -- but it still accumulates every row dict
+    into one Python list before returning, which for a pattern the scale of floor 25's
+    k=2 (~2.16 billion hits) would try to hold billions of dicts in memory at once, an
+    OOM risk on a completely different axis than the per-page DECODE cost that function
+    already addresses. CSV export (see constellations_records_tab.py's _write_detail_csv)
+    is the one consumer large-scale enough for this to matter -- it iterates this
+    directly and writes each row as it arrives, never holding more than one hit-file
+    page's worth of rows in memory at once. Same row shape/ordering as
+    build_constellation_records_detail_rows() -- see its own docstring."""
     variants = pattern_catalog_v1.patterns_for_k(k)
     variant_ids = [w["id"] for w in variants]
     variant_meta = {w["id"]: w for w in variants}
-    rows = []
     for base_exponent in list_pietra(portal_folder):
         if floor_min is not None and base_exponent < floor_min:
             continue
@@ -325,14 +341,6 @@ def build_constellation_records_detail_rows(portal_folder, k, floor_min=None, fl
             record_digits = variant_meta[vid]["record_digits"]
             is_record_floor = (record_digits is not None
                                 and base_exponent == record_digits - 1)
-            # Read PAGE BY PAGE (see read_hit_pattern_page()'s own docstring) rather than
-            # the whole pattern at once -- for a paged pattern (hit_paging.py) this bounds
-            # each individual decode to at most hit_paging.PAGE_SIZE entries regardless of
-            # total_count, the exact fix for the crash this function's own docstring
-            # describes (floor 25's k=2, ~1.5 billion entries, decoded whole just for an
-            # export). position_in_file/count_in_file stay PATTERN-wide (not per-page),
-            # matching this function's pre-paging behavior exactly -- only how the values
-            # are FETCHED changed, not the shape of what callers get back.
             position = 0
             for page_index in range(hit_pattern_page_count(portal_folder, base_exponent, k, vid)):
                 try:
@@ -340,13 +348,136 @@ def build_constellation_records_detail_rows(portal_folder, k, floor_min=None, fl
                 except Exception:
                     values = []
                 for value in values:
-                    rows.append({
+                    yield {
                         "base_exponent": base_exponent, "variant_id": vid,
                         "offset": value - base, "number": value,
                         "position_in_file": position, "count_in_file": total_count,
                         "is_record_floor": is_record_floor,
-                    })
+                    }
                     position += 1
+
+
+def iter_hit_pattern_page_range_rows(portal_folder, base_exponent, k, variant_id, page_from, page_to):
+    """Yields per-hit row dicts (same shape as iter_constellation_records_detail_rows()
+    above) for ONLY hit-file pages [page_from, page_to] (inclusive, 0-based) of ONE
+    (floor, k, variant) pattern -- not the whole pattern, not other floors/variants.
+
+    Added 2026-09-16 for page-scoped export (Magazyn/Tabela rekordow's page navigator
+    gets an "export these pages" action): even a fully-STREAMED export of an entire
+    multi-billion-hit pattern (see iter_constellation_records_detail_rows()'s own
+    docstring for why that streaming exists) still produces a file nobody can
+    realistically use -- floor 25's k=2 alone (~2.16 billion hits) would be tens to
+    hundreds of GB of CSV regardless of how safely it's written. Scoping to an
+    explicit page range the caller actually chose keeps the exported file a sane,
+    bounded size -- one hit_paging page (up to hit_paging.PAGE_SIZE entries) at a time.
+
+    `page_from`/`page_to` are clamped into [0, page_count-1] -- an out-of-range or
+    empty (page_from > page_to after clamping) request yields nothing rather than
+    raising, so a caller doesn't need to pre-validate against a page count that could
+    itself be stale by the time this runs."""
+    total_pages = hit_pattern_page_count(portal_folder, base_exponent, k, variant_id)
+    if total_pages == 0:
+        return
+    page_from = max(0, page_from)
+    page_to = min(total_pages - 1, page_to)
+    if page_from > page_to:
+        return
+    header = read_hit_pattern_header(portal_folder, base_exponent, k, variant_id)
+    if header is None:
+        return
+    total_count = header["count"]
+    pattern = next((w for w in pattern_catalog_v1.patterns_for_k(k) if w["id"] == variant_id), None)
+    record_digits = pattern["record_digits"] if pattern is not None else None
+    is_record_floor = record_digits is not None and base_exponent == record_digits - 1
+    base = 10 ** base_exponent
+    # Every page before the current one is always exactly this PATTERN's OWN page_size
+    # entries -- only the LAST page of a pattern can be partial (see hit_paging.py's
+    # own append_hits_paged()) -- so position_in_file for page_from's first value is
+    # simply page_from*page_size regardless of whether page_from itself is the last,
+    # partial page. Reads the pattern's own metadata for this rather than assuming
+    # hit_paging.PAGE_SIZE (the default for NEWLY migrated patterns, not necessarily
+    # what an already-migrated one was actually written with). An unpaged pattern
+    # never reaches here with page_from > 0 (hit_pattern_page_count() caps it at 1
+    # page), so page_size is irrelevant in that case.
+    vdir = hit_paging.variant_dir(portal_folder, base_exponent, k, variant_id)
+    pattern_meta = hit_paging.read_meta(vdir)
+    page_size = pattern_meta["page_size"] if pattern_meta is not None else hit_paging.PAGE_SIZE
+    position = page_from * page_size
+    for page_index in range(page_from, page_to + 1):
+        try:
+            values = read_hit_pattern_page(portal_folder, base_exponent, k, variant_id, page_index)
+        except Exception:
+            values = []
+        for value in values:
+            yield {
+                "base_exponent": base_exponent, "variant_id": variant_id,
+                "offset": value - base, "number": value,
+                "position_in_file": position, "count_in_file": total_count,
+                "is_record_floor": is_record_floor,
+            }
+            position += 1
+
+
+def write_constellation_detail_rows_csv(path, rows):
+    """Writes per-hit detail rows (the shape iter_constellation_records_detail_rows()/
+    iter_hit_pattern_page_range_rows() yield) to a CSV file at `path`, iterating `rows`
+    exactly once and writing each one as it arrives -- safe to hand either a plain list
+    or a generator, and never holds more than the current row in memory regardless of
+    how many there are. Shared by every CSV export path (Tabela rekordow's whole-range
+    export, and both tabs' page-range export) so the column set/order lives in exactly
+    one place instead of being duplicated per caller."""
+    fieldnames = ["exp", "variant_id", "offset", "number",
+                  "position_in_file", "count_in_file", "is_record_floor"]
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for r in rows:
+            writer.writerow({
+                "exp": f"10p{r['base_exponent']}",
+                "variant_id": r["variant_id"],
+                "offset": r["offset"],
+                "number": r["number"],
+                "position_in_file": r["position_in_file"],
+                "count_in_file": r["count_in_file"],
+                "is_record_floor": r["is_record_floor"],
+            })
+
+
+def build_constellation_records_detail_rows(portal_folder, k, floor_min=None, floor_max=None):
+    """Full-detail companion to build_constellation_records_table(): instead of just the
+    smallest offset per (floor, variant) cell, returns ONE row per individual hit --
+    every tuple-start value found in every hit file for `k` within the given floor
+    range, not only the record-setting smallest one. Same floor_min/floor_max
+    semantics (inclusive, None = unbounded) as build_constellation_records_table().
+
+    Added for the PDF/CSV export buttons specifically (user request: the exported
+    file should contain every hit this project has found for the currently displayed
+    floor range, not just the compact one-cell-per-floor summary) -- the on-screen
+    tree keeps showing the compact view (see build_constellation_records_table()'s own
+    docstring for why that's the right shape for browsing), and the records tab's own
+    cell drill-down gives the same full list on-demand for a single cell inside the
+    GUI itself without needing an export.
+
+    Just materializes iter_constellation_records_detail_rows() (see its own docstring
+    for why that exists as a separate generator) into a list -- kept as a thin wrapper
+    since the on-screen "how many rows would this be" checks and PDF export (which
+    needs the whole laid-out list, unlike streamed CSV) still want a plain list.
+    Large-scale callers (CSV export) should use the generator directly instead; see
+    count_constellation_records_detail_rows() for a PDF-sized guard BEFORE calling this
+    at all for a range that would be excessive either way.
+
+    Returns (variant_ids, variant_meta, rows):
+      rows: [{"base_exponent": int, "variant_id": int, "offset": int, "number": int,
+              "position_in_file": int, "count_in_file": int, "is_record_floor": bool},
+             ...] sorted by (base_exponent, variant_id, offset) ascending -- offset
+      ascending is automatic since hit files store values sorted ascending (see
+      constellation_finder_v1.py's own module header) and offset = number - floor's
+      10**base_exponent preserves that ordering."""
+    variants = pattern_catalog_v1.patterns_for_k(k)
+    variant_ids = [w["id"] for w in variants]
+    variant_meta = {w["id"]: w for w in variants}
+    rows = list(iter_constellation_records_detail_rows(
+        portal_folder, k, floor_min=floor_min, floor_max=floor_max))
     return variant_ids, variant_meta, rows
 
 

@@ -131,11 +131,102 @@ def test_participation_search_finds_paged_hits():
         shutil.rmtree(tmpdir, ignore_errors=True)
 
 
+def test_iter_detail_rows_matches_list_version_and_count():
+    tmpdir = tempfile.mkdtemp(prefix="const_paging_iter_")
+    try:
+        base = 10 ** 3
+        values = [base + 2 * i for i in range(1, 13)]
+        _make_paged_floor(tmpdir, 3, 2, 1, values, page_size=5)
+
+        streamed = list(constellations.iter_constellation_records_detail_rows(tmpdir, 2))
+        _variant_ids, _variant_meta, listed = constellations.build_constellation_records_detail_rows(
+            tmpdir, 2)
+        check(streamed == listed,
+              "iter_constellation_records_detail_rows() yields the exact same rows "
+              "build_constellation_records_detail_rows() returns as a list")
+
+        total = constellations.count_constellation_records_detail_rows(tmpdir, 2)
+        check(total == len(values), f"count_constellation_records_detail_rows() == 12 (got {total})")
+        check(total == len(streamed),
+              "count_constellation_records_detail_rows() matches the actual row count")
+
+        # A generator never materializes -- calling it twice starts a FRESH stream
+        # rather than reusing exhausted state, exactly like build_...()'s own list
+        # would be freshly rebuilt on a second call.
+        streamed_again = list(constellations.iter_constellation_records_detail_rows(tmpdir, 2))
+        check(streamed_again == listed, "a second iteration reproduces the same rows")
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+def test_page_range_export_scopes_to_one_pattern_and_page_window():
+    tmpdir = tempfile.mkdtemp(prefix="const_paging_range_")
+    try:
+        base = 10 ** 3
+        # page_size=5 -> pages [0:0-4] [1:5-9] [2:10-11] (12 values total, 3 pages)
+        values = [base + 2 * i for i in range(1, 13)]
+        _make_paged_floor(tmpdir, 3, 2, 1, values, page_size=5)
+
+        # A second, UNRELATED pattern on the same floor -- proves the range export
+        # stays scoped to (base_exponent, k, variant_id) and never leaks another
+        # pattern's rows in.
+        other_dir = os.path.join(tmpdir, "10p3", "constellations", "k3", "variant1")
+        os.makedirs(other_dir, exist_ok=True)
+        prime_sieve_v1.write_prime_window(
+            os.path.join(other_dir, "HITS_10p3_k3_v1.bin"), [base + 999])
+
+        middle_page = list(constellations.iter_hit_pattern_page_range_rows(tmpdir, 3, 2, 1, 1, 1))
+        check([r["number"] for r in middle_page] == values[5:10],
+              f"page range [1,1] returns exactly page 1's values (got {[r['number'] for r in middle_page]})")
+        check(all(r["variant_id"] == 1 and r["base_exponent"] == 3 for r in middle_page),
+              "every row in the range stays scoped to the requested pattern/floor")
+        check([r["position_in_file"] for r in middle_page] == [5, 6, 7, 8, 9],
+              f"position_in_file continues from where page 1 actually starts (got {[r['position_in_file'] for r in middle_page]})")
+
+        full_range = list(constellations.iter_hit_pattern_page_range_rows(tmpdir, 3, 2, 1, 0, 2))
+        check([r["number"] for r in full_range] == values,
+              "page range [0,2] (every page) returns every value in order")
+
+        clamped = list(constellations.iter_hit_pattern_page_range_rows(tmpdir, 3, 2, 1, -5, 999))
+        check([r["number"] for r in clamped] == values,
+              "an out-of-bounds range is clamped to the real [0, page_count-1] instead of raising")
+
+        empty = list(constellations.iter_hit_pattern_page_range_rows(tmpdir, 3, 2, 1, 5, 2))
+        check(empty == [], f"page_from > page_to (after clamping) yields nothing (got {empty})")
+
+        missing = list(constellations.iter_hit_pattern_page_range_rows(tmpdir, 3, 2, 99, 0, 0))
+        check(missing == [], "a nonexistent variant yields nothing rather than raising")
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+def test_write_constellation_detail_rows_csv():
+    tmpdir = tempfile.mkdtemp(prefix="const_paging_csvwrite_")
+    try:
+        base = 10 ** 3
+        values = [base + 2 * i for i in range(1, 13)]
+        _make_paged_floor(tmpdir, 3, 2, 1, values, page_size=5)
+
+        csv_path = os.path.join(tmpdir, "out.csv")
+        rows = constellations.iter_hit_pattern_page_range_rows(tmpdir, 3, 2, 1, 0, 1)
+        constellations.write_constellation_detail_rows_csv(csv_path, rows)
+        with open(csv_path, encoding="utf-8") as f:
+            lines = f.read().strip().splitlines()
+        check(len(lines) == 1 + 10, f"CSV has a header + 10 rows for pages [0,1] (got {len(lines)})")
+        check(lines[0] == "exp,variant_id,offset,number,position_in_file,count_in_file,is_record_floor",
+              f"CSV header matches the documented column order (got {lines[0]!r})")
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
 def main():
     test_list_constellation_hits_sees_paged_pattern()
     test_records_table_sees_paged_pattern()
     test_detail_rows_span_every_page()
     test_participation_search_finds_paged_hits()
+    test_iter_detail_rows_matches_list_version_and_count()
+    test_page_range_export_scopes_to_one_pattern_and_page_window()
+    test_write_constellation_detail_rows_csv()
 
     print()
     if failures:
