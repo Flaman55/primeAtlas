@@ -191,7 +191,7 @@ def append_hits_paged(a_variant_dir, base_exponent, k, variant_id, new_sorted_va
 
 
 def migrate_hit_file_to_pages(source_path, a_variant_dir, base_exponent, k, variant_id,
-                               page_size=PAGE_SIZE, dry_run=False):
+                               page_size=None, dry_run=False):
     """One-time conversion of an existing single cumulative hit file into paged form --
     analogous to prime_sieve_v1's own migrate_shard_source_primes.py for
     source_primes/, but for constellation hits. Refuses to run if this pattern is
@@ -216,7 +216,17 @@ def migrate_hit_file_to_pages(source_path, a_variant_dir, base_exponent, k, vari
     (a rename on the SAME filesystem is not a substitute for an actual backup if the
     disk itself fails mid-migration).
 
+    `page_size` defaults to the module's current PAGE_SIZE, resolved INSIDE the
+    function body (not as a bare default-argument value) so a caller that never
+    passes it explicitly still picks up any runtime change to hit_paging.PAGE_SIZE --
+    a default-argument value is bound once, at function-DEFINITION time (module
+    import), so `page_size=PAGE_SIZE` directly in the signature would silently keep
+    using whatever PAGE_SIZE was at import time even after a test (or a future
+    config feature) changes the module attribute later.
+
     Returns a dict: {"total_count": int, "page_count": int, "dry_run": bool}."""
+    if page_size is None:
+        page_size = PAGE_SIZE
     if is_paged(a_variant_dir):
         raise ValueError(f"{a_variant_dir}: already paged (refusing to double-migrate)")
     header = prime_sieve_v1.read_prime_window_header(source_path)

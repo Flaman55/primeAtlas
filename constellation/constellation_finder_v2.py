@@ -685,13 +685,45 @@ def append_hits(base_exponent, k, variant_id, new_sorted_starts, known_last_valu
     (k, variant) across one process_floor() run (the common case: k=2..5 hit files pick
     up new entries on almost every window) should track it themselves and pass it,
     instead of letting append_prime_window() re-decode the whole accumulated hit file on
-    every single call."""
+    every single call.
+
+    AUTO-MIGRATES an unpaged pattern to pages the moment this append would push its
+    count past hit_paging.PAGE_SIZE -- added 2026-09-16 (Artur, after manually running
+    migrate_hit_file_to_pages() on several already-huge patterns): without this, EVERY
+    future floor's dense k=2 pattern would eventually hit the exact same "single file
+    too large to browse" problem again, needing another manual migration run each
+    time. Triggering it HERE instead means a pattern only ever crosses the threshold
+    ONCE, at a PREDICTABLE, SMALL size (~PAGE_SIZE entries, a few MB) -- migrating at
+    that size takes seconds (streamed via iter_prime_window_chunks(), same as a manual
+    run -- see migrate_hit_file_to_pages()'s own docstring), nothing like the ~26
+    minutes floor 25's k=2 took after being left to grow to ~2.16 billion entries
+    first. The header-only count check this needs (read_prime_window_header(), O(1)
+    regardless of file size) runs on every append to an unpaged pattern, but is cheap
+    enough (a few hundred bytes) not to matter next to the write itself."""
     vdir = hit_paging.variant_dir(PORTAL_FOLDER, base_exponent, k, variant_id)
     if hit_paging.is_paged(vdir):
         hit_paging.append_hits_paged(vdir, base_exponent, k, variant_id, new_sorted_starts)
         return
     path = hit_file_path(base_exponent, k, variant_id)
     os.makedirs(os.path.dirname(path), exist_ok=True)
+    if os.path.exists(path):
+        try:
+            current_count = prime_sieve_v1.read_prime_window_header(path)["count"]
+        except (OSError, ValueError):
+            current_count = 0
+        if current_count + len(new_sorted_starts) > hit_paging.PAGE_SIZE:
+            _diag_fsync_print(
+                f"[CONSTELLATIONS v2] DIAG: k={k} variant={variant_id} crossing "
+                f"hit_paging.PAGE_SIZE ({current_count:,} + {len(new_sorted_starts):,} "
+                f"> {hit_paging.PAGE_SIZE:,}) -- auto-migrating to pages before this "
+                f"append... | {_proc_diag()}")
+            t_migrate0 = time.time()
+            hit_paging.migrate_hit_file_to_pages(path, vdir, base_exponent, k, variant_id)
+            _diag_fsync_print(
+                f"[CONSTELLATIONS v2] DIAG: k={k} variant={variant_id} auto-migration "
+                f"done in {time.time()-t_migrate0:.2f}s | {_proc_diag()}")
+            hit_paging.append_hits_paged(vdir, base_exponent, k, variant_id, new_sorted_starts)
+            return
     prime_sieve_v1.append_prime_window(path, new_sorted_starts, known_last_value=known_last_value)
 
 
