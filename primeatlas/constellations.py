@@ -143,8 +143,15 @@ def build_constellation_records_table(portal_folder, k, floor_min=None, floor_ma
     Pure function (no tkinter), reusing list_pietra()/floor_has_constellation_hits()/
     hit_file_path() exactly as reload_constellations_tree() already does, so this is
     consistent with (and no more expensive than) the existing storage browser -- the one
-    added cost is prime_sieve_v1.read_prime_window() per (floor, variant) that actually
-    has a hit file, to get that file's first (smallest) stored value."""
+    added cost is prime_sieve_v1.read_prime_window_header() per (floor, variant) that
+    actually has a hit file, a fixed-size (~264 byte) header read that returns both
+    base_prime (the smallest stored value -- hit files are sorted ascending, see
+    constellation_finder_v1.py's own module header) and count directly, without decoding
+    the gap-encoded body. Previously this called read_prime_window() (full decode) just
+    to read values[0] and len(values) -- for k2 on floor 25's 2.9GB/~1.5 billion-entry
+    hit file that meant decoding the entire file to read two numbers already available
+    in the header; see list_constellation_hits() above, which already used the header
+    form for the same reason."""
     variants = pattern_catalog_v1.patterns_for_k(k)
     variant_ids = [w["id"] for w in variants]
     variant_meta = {w["id"]: w for w in variants}
@@ -163,16 +170,16 @@ def build_constellation_records_table(portal_folder, k, floor_min=None, floor_ma
             cell = None
             if os.path.exists(path):
                 try:
-                    values = prime_sieve_v1.read_prime_window(path)
+                    header = prime_sieve_v1.read_prime_window_header(path)
                 except Exception:
-                    values = []
-                if values:
-                    smallest = values[0]
+                    header = None
+                if header is not None and header["count"] > 0:
+                    smallest = header["base_prime"]
                     offset = smallest - 10 ** base_exponent
                     record_digits = variant_meta[vid]["record_digits"]
                     is_record_floor = (record_digits is not None
                                         and base_exponent == record_digits - 1)
-                    cell = {"offset": offset, "count": len(values),
+                    cell = {"offset": offset, "count": header["count"],
                             "is_record_floor": is_record_floor}
                     any_hit = True
             cells[vid] = cell
