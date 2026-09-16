@@ -4,30 +4,26 @@ lazily-paginated floor tree (one node per 10p{N} folder, expanding to a page of 
 floor's PRIME_WINDOW_*.bin files) plus a file-preview pane (paginated decoded prime
 list) and a search box that jumps straight to a specific number.
 
-Extracted from prime_atlas_v1.py during the refactor branch's Faza 3 (tab-by-tab
-backend/UI split, 2026-08-23) -- the second tab extracted after Benchmark (see that
-tab's own commit history), and the first one to need REAL cross-tab shared services
-instead of just one small nav-controls helper: floor/window listing and the totals-cache
-logic live in primeatlas/storage.py (imported from here, no circularity since that
-module has no tkinter dependency), but the SEARCH machinery is a genuinely shared,
-app-level subsystem -- ONE PersistentWorker + ONE status/progress bar used by BOTH this
-tab's search box and the Constellations tab's own (still living directly in
-prime_atlas_v1.py), and the "generate the missing window, then retry" dialog it can
-trigger reaches into the Generation tab's own launch methods and its run-finished
-callback. None of that belongs to "the Prime numbers tab" specifically, so it stays in
-prime_atlas_v1.py and is handed to this class as plain callables at construction time --
-see __init__'s own docstring for exactly which ones and why, same reasoning
-primeatlas/benchmark_tab.py's own docstring gives for its update_nav_controls parameter.
+Floor/window listing and the totals-cache logic live in primeatlas/storage.py (imported
+from here, no circularity since that module has no tkinter dependency), but the SEARCH
+machinery is a genuinely shared, app-level subsystem -- ONE PersistentWorker + ONE
+status/progress bar used by BOTH this tab's search box and the Constellations tab's own
+(still living directly in prime_atlas_v1.py), and the "generate the missing window,
+then retry" dialog it can trigger reaches into the Generation tab's own launch methods
+and its run-finished callback. None of that belongs to "the Prime numbers tab"
+specifically, so it stays in prime_atlas_v1.py and is handed to this class as plain
+callables at construction time -- see __init__'s own docstring for exactly which ones
+and why, same reasoning primeatlas/benchmark_tab.py's own docstring gives for its
+update_nav_controls parameter.
 
 The per-floor "total prime count" background worker (a SECOND PersistentWorker, reading
 every source window's header for a floor -- can take ~78s on a heavily-populated one)
 also stays in prime_atlas_v1.py, for the same "shares the search worker's status/
 progress bar" reason. This tab owns only the DISPLAY side of that worker's results (the
 tree rows, the floor nav's page-total label) via populate_floors()/update_floor_row(),
-called by PrimesTreeCoordinator._on_scan_done (primeatlas/primes_tree_coordinator.py,
-moved out of prime_atlas_v1.py itself during the refactor-phase3 branch, 2026-08-27) and
-TotalsSearchCoordinator._on_pietro_total_ready instead of those handlers reaching into
-this tab's tree/state attributes directly.
+called by PrimesTreeCoordinator._on_scan_done (primeatlas/primes_tree_coordinator.py)
+and TotalsSearchCoordinator._on_pietro_total_ready instead of those handlers reaching
+into this tab's tree/state attributes directly.
 
 This is one of only a few files in primeatlas/ that import tkinter -- see
 settings_tab.py's own docstring for the general "pure logic elsewhere" convention this
@@ -55,15 +51,11 @@ def _cumulative_pietro_totals(pietra, pietro_total_known):
     "how many primes are ON this floor" and "how many primes have been found in total
     through this floor".
 
-    Added 2026-08-27 after Artur compared the Primes tab against Wikipedia's pi(x)
-    table and noticed the numbers didn't line up. An earlier version of this function
-    matched Wikipedia's pi(10**base_exponent) EXACTLY -- i.e. EXCLUDING the floor's own
-    count, since every floor's own stored primes live in the open-left range
-    (10**base_exponent, 10**(base_exponent+1)] (see migrate_shard_source_primes.py's
-    "offset = base_prime - 10**base_exponent" convention) -- but Artur asked for it to
-    follow the app's own floor/file structure instead of Wikipedia's x-column
-    ("zgodnie z plikami a nie z wiki"): the exclusive version put a floor's own count
-    OFF BY ONE from its own cumulative row, which read as confusing next to the
+    This is INCLUSIVE rather than matching pi(10**base_exponent) exactly: every floor's
+    own stored primes live in the open-left range (10**base_exponent,
+    10**(base_exponent+1)] (see migrate_shard_source_primes.py's "offset = base_prime -
+    10**base_exponent" convention), so an EXCLUSIVE running total would put a floor's
+    own count OFF BY ONE from its own cumulative row, reading as confusing next to the
     "Primes" column right beside it. This INCLUSIVE version instead answers "if I
     generated everything up through this floor, how many primes would I have", which
     lines up with the SAME "10pN" label the "Primes" own-count column already uses.
@@ -148,8 +140,8 @@ class PrimesTab(BaseTab):
         (verify_all_totals below) also uses.
 
         verify_all_totals(): TotalsSearchCoordinator.compute_all_pietro_totals(), bound
-        to the new "Zweryfikuj sumy" button (added 2026-08-27, see this class's own
-        _build_widgets() comment and storage.py's own module docstring for the
+        to the "Zweryfikuj sumy" button (see this class's own _build_widgets() comment
+        and storage.py's own module docstring for the
         "persisted totals, updated incrementally instead of by a full rescan" feature
         this button is the manual safety-net verify for). Refresh no longer triggers
         this automatically -- it used to, back when this was the ONLY way any total
@@ -199,13 +191,12 @@ class PrimesTab(BaseTab):
 
         # "Zweryfikuj sumy" (verify_all_totals, added above) used to be redundant with
         # Refresh -- Refresh called compute_all_pietro_totals() (a real per-file
-        # rescan) automatically after every reload. That's no longer true (2026-08-27,
-        # see storage.py's own module docstring): Refresh now shows the grand total
+        # rescan) automatically after every reload. That's no longer true (see
+        # storage.py's own module docstring): Refresh now shows the grand total
         # straight from the persisted totals cache instead, so THIS button is the only
         # remaining way to trigger a real rescan -- kept as a manual safety net for the
         # rare case those persisted totals ever drift (a crash mid-write, or files
-        # touched outside the app), per Artur's explicit choice to keep it rather than
-        # remove the verify path entirely.
+        # touched outside the app).
         paned = ttk.Panedwindow(self, orient="horizontal")
         paned.pack(fill="both", expand=True, padx=6, pady=4)
 
@@ -251,12 +242,12 @@ class PrimesTab(BaseTab):
         # always means a UTC timestamp (blank on floor rows -- no single date is
         # meaningful for a whole floor), "timer" is new: total REAL generation time for
         # that floor (write_files=True runs only, see aggregate_write_seconds_by_pietro()).
-        # "cumulative" (added 2026-08-27, see _cumulative_pietro_totals's own docstring)
-        # is READ-ONLY/derived -- the running total of primes found through this floor
-        # (this floor's own "count" PLUS every lower floor's), computed purely for
-        # display. It sits right after "count" (the floor's own total on its own) so
-        # the two numbers -- "how many primes are ON this floor" vs "how many primes
-        # in total have been found through this floor" -- read side by side.
+        # "cumulative" (see _cumulative_pietro_totals's own docstring) is READ-ONLY/
+        # derived -- the running total of primes found through this floor (this floor's
+        # own "count" PLUS every lower floor's), computed purely for display. It sits
+        # right after "count" (the floor's own total on its own) so the two numbers --
+        # "how many primes are ON this floor" vs "how many primes in total have been
+        # found through this floor" -- read side by side.
         self.tree = ttk.Treeview(
             tree_frame, columns=("count", "cumulative", "files", "size", "generated", "timer"),
             show="tree headings")
@@ -305,11 +296,9 @@ class PrimesTab(BaseTab):
                   anchor="nw", wraplength=560).pack(fill="x", padx=6, pady=6)
 
         # No "Load preview" button -- selecting a file node in the tree on the left
-        # now loads its preview immediately (see _on_tree_select()), matching the same
-        # change made to Magazyn (Constellations tab), 2026-09-16. add_page_nav_row()
+        # loads its preview immediately (see _on_tree_select()). add_page_nav_row()
         # (Prev/Next/label on the left, "Strona:"/entry/Idz flush against the right
-        # edge -- see its own docstring) replaces the old FlowRow-wrapped
-        # add_page_nav_group() for the same reason: a consistent, professional-looking
+        # edge -- see its own docstring) gives a consistent, professional-looking
         # right-aligned jump group instead of one trailing wherever the left cluster's
         # own width happens to end.
         self.preview_page_label = tk.StringVar(value="")
@@ -324,8 +313,7 @@ class PrimesTab(BaseTab):
         # right-flush "Strona:"/entry/Idz jump group starts sliding off the pane's own
         # edge and out of view entirely. Same fix as Magazyn/ConstellationsHitsTab's
         # own preview pane -- see clamp_pane_min_width()'s own docstring for why a
-        # ttk::panedwindow needs this done by hand. Requested via screenshot,
-        # 2026-09-16.
+        # ttk::panedwindow needs this done by hand.
         self.update_idletasks()
         clamp_pane_min_width(paned, detail_frame, preview_nav_row.winfo_reqwidth() + 12)
 
@@ -610,8 +598,7 @@ class PrimesTab(BaseTab):
 
     def _on_tree_select(self, _event):
         """Selecting a leaf file node loads its preview immediately (no separate
-        "Load preview" click any more -- removed 2026-09-16, matching the same change
-        made to Magazyn/ConstellationsHitsTab: the tree selection already identifies
+        "Load preview" click any more -- the tree selection already identifies
         exactly one loadable file)."""
         selection = self.tree.selection()
         if not selection:
