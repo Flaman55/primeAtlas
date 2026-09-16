@@ -1,10 +1,10 @@
 """
-playback.py -- pure playback/timing logic for primeatlas/ring_viz/renderer.py
-(Faza 10/11 of PLAN.md): tempo clamping, LEFT/RIGHT scrub deltas, the
-sequential-mode ceiling guards, buffer-lookahead extension math, the
-range-mode dynamic step size, the resonance log's jump-vs-tick update rule,
-and auto-orbit's cycling. [ADDED Faza 1 of the renderer.py split, see that
-file's own module docstring for the overall refactor plan.]
+playback.py -- pure playback/timing logic for primeatlas/ring_viz/renderer.py:
+tempo clamping, LEFT/RIGHT scrub deltas, the sequential-mode ceiling guards,
+buffer-lookahead extension math, the range-mode dynamic step size, the
+resonance log's jump-vs-tick update rule, and auto-orbit's cycling. Split out
+of renderer.py; see that file's own module docstring for the overall module
+breakdown.
 
 Every function here is plain scalar/dict logic with no GL-context
 dependency (renderer.py's own `_run_visualization` is the only caller that
@@ -52,12 +52,10 @@ _ARROW_SCRUB_STEP_CTRL = 10
 
 
 def arrow_scrub_delta(is_right, ctrl_held):
-    """[ADDED, Artur 2026-09-11: "sterowanie w przod i w tyl ... strzalka
-    lewo prawo ... o n+1 z wcisnietym ctrl o n+10"] The N delta for one
-    LEFT/RIGHT scrub step: +/-1 normally, +/-10 with Ctrl held. A separate,
-    literal step size from --n-step (which only governs Up/Down/PageUp/
-    PageDown) -- Artur asked for these specific magnitudes regardless of
-    how --n-step happens to be configured for a given run."""
+    """The N delta for one LEFT/RIGHT scrub step: +/-1 normally, +/-10 with
+    Ctrl held. Deliberately a separate, fixed step size from --n-step
+    (which only governs Up/Down/PageUp/PageDown), independent of how
+    --n-step happens to be configured for a given run."""
     magnitude = _ARROW_SCRUB_STEP_CTRL if ctrl_held else _ARROW_SCRUB_STEP
     return magnitude if is_right else -magnitude
 
@@ -73,11 +71,8 @@ def can_start_playback(n, range_mode, ceiling):
 
 
 def clamp_scrub_n(n, range_mode, ceiling):
-    """[ADDED, fixing a real break Artur hit, 2026-09-11: "na uruchomionym
-    przewijalem do przodu do tylu z ctrl bez i sie zatrzymalo bez resetu nie
-    ma mozliwosci wznowienia"] Bounds for the LEFT/RIGHT scrub keys
-    specifically: never negative, and in SEQUENTIAL mode never past the
-    loaded ceiling.
+    """Bounds for the LEFT/RIGHT scrub keys specifically: never negative,
+    and in SEQUENTIAL mode never past the loaded ceiling.
 
     Why this exists: unlike a single Up/Down/PageUp/PageDown press, OS key
     repeat can fire a LEFT/RIGHT scrub's PRESS/REPEAT handler many times per
@@ -85,16 +80,16 @@ def clamp_scrub_n(n, range_mode, ceiling):
     step instead of 1) -- so a couple of seconds of holding RIGHT can push N
     far past the ceiling before the key is ever released. Once N is past
     the ceiling, can_start_playback() permanently refuses to (re)start
-    sequential playback -- exactly the "stuck, no way to resume without R"
-    Artur hit, since the scrub's own auto-resume-on-release (and even a
-    manual Space press afterward) both go through that same guard. Clamping
-    the scrub itself to the ceiling caps it at the same "end of loaded data"
-    edge real forward playback ticking already stops at on its own
-    (tick_next_n) instead of letting it run arbitrarily far past that edge.
+    sequential playback, since the scrub's own auto-resume-on-release (and
+    even a manual Space press afterward) both go through that same guard.
+    Clamping the scrub itself to the ceiling caps it at the same "end of
+    loaded data" edge real forward playback ticking already stops at on
+    its own (tick_next_n) instead of letting it run arbitrarily far past
+    that edge.
 
     Deliberately scoped to the scrub keys ONLY -- Up/Down/PageUp/PageDown's
-    own pre-existing, unclamped past-ceiling behavior (in place since Faza
-    10, never reported as broken) is left untouched here.
+    own pre-existing, unclamped past-ceiling behavior is left untouched
+    here.
 
     Range mode has no ceiling at all (mirrors tick_next_n/can_start_playback's
     own range_mode bypass)."""
@@ -105,10 +100,7 @@ def clamp_scrub_n(n, range_mode, ceiling):
 
 
 def should_extend_buffer(n, ceiling, margin, range_mode, can_extend_source):
-    """[ADDED, Artur 2026-09-11: "wystarczy ze bufor bedzie podrozowal wraz
-    z n z wyprzedzeniem nawet tym jaki jest teraz ustawiony na
-    uruchomieniu, dzieki temu nie da sie dojsc do sciany o ile magazyn
-    zapewnia dane"] Whether N has come close enough to the loaded ceiling
+    """Whether N has come close enough to the loaded ceiling
     (within `margin`) that the buffer should be extended further NOW,
     before N actually reaches it -- the whole point of a lookahead margin
     is to finish the (possibly slow, disk-bound) extension load before N's
@@ -139,20 +131,19 @@ def next_buffer_ceiling(current_ceiling, margin):
     """The new ceiling to request after a successful buffer extension --
     simply one more `margin`'s worth of headroom past the current ceiling,
     so the buffer keeps carrying the SAME lookahead margin it started with
-    at launch as N keeps moving forward (Artur's own words: "nawet tym
-    jaki jest teraz ustawiony na uruchomieniu" -- even the one already set
-    at launch is fine, no need for a fancier/growing margin)."""
+    at launch as N keeps moving forward (the margin stays fixed rather
+    than growing over time)."""
     return current_ceiling + margin
 
 
-#: [ADDED 2026-09-12, Artur's report: playback at a real magazyn-floor-scale
-#: range (~10**25) looked completely frozen] One full "orbit" (phase 0 back
-#: to 0) of the largest currently-active prime takes this many ticks in
-#: range mode -- see tick_next_n's own 2026-09-12 doc-comment for the derivation
-#: this feeds. Purely a pacing constant (tempo, i.e. ms/tick, is the OTHER,
-#: separate knob -- Artur's own note: "tempo to inna kwestia i to powinno
-#: być też widoczne jako parametr w opcjach ale nie teraz"); not exposed as
-#: its own CLI flag yet for the same "not now" reason.
+#: One full "orbit" (phase 0 back to 0) of the largest currently-active
+#: prime takes this many ticks in range mode -- see tick_next_n's own
+#: doc-comment for the derivation this feeds. Needed because at
+#: magazyn-floor-scale ranges (~10**25), phase = n mod prime advances by an
+#: imperceptible fraction of the prime per tick unless the step size scales
+#: with the prime's magnitude. Purely a pacing constant -- tempo (ms/tick)
+#: is a separate, independent knob; not currently exposed as its own CLI
+#: flag.
 _RANGE_STEP_ORBIT_TICKS = 10_000
 
 
@@ -163,22 +154,19 @@ def tick_next_n(n, range_mode, ceiling, range_step=1):
     `range_step` (unchanged from #tick's own hard-coded `this.#n += 1`, NOT
     --n-step, which only applies to the manual Up/Down/PageUp/PageDown keys).
 
-    [CHANGED 2026-09-12, Artur's report: with real magazyn-floor-scale primes
-    (~10**25) loaded via --load-range, range mode's own OLD fixed +1 step
-    was imperceptible -- phase = n mod prime needs n to advance by a
-    meaningful FRACTION of the prime's own value before any angular movement
-    is visible at all; +1 out of ~10**25 rounds to nothing for many, many
-    ticks in a row (`~10**25 ticks for one full orbit`), not a bug in the
-    tick loop itself, just a step size that only ever made sense at the
-    small N this feature was originally built for] `range_step` -- the
-    caller's own dynamically-computed step for RANGE MODE ONLY (see
-    _run_visualization's own range_step computation, `max(1, largest_active_
-    prime // _RANGE_STEP_ORBIT_TICKS)` -- naturally settles back down to the
-    exact old `1` at low floors, where a full orbit already fit inside
-    _RANGE_STEP_ORBIT_TICKS ticks, so nothing changes there). Sequential
-    mode's own advance is NEVER affected by this parameter. Defaults to 1
-    (the old, always-correct-for-what-it-was-then behavior) so any caller
-    that omits it (including every existing test) sees no change. Returns
+    `range_step` -- the caller's own dynamically-computed step for RANGE
+    MODE ONLY (see _run_visualization's own range_step computation,
+    `max(1, largest_active_prime // _RANGE_STEP_ORBIT_TICKS)`). A fixed +1
+    step is imperceptible at magazyn-floor-scale primes (~10**25) loaded
+    via --load-range: phase = n mod prime needs n to advance by a
+    meaningful FRACTION of the prime's own value before any angular
+    movement is visible at all, so scaling the step with the largest
+    active prime is required. The computation naturally settles back down
+    to the exact old `1` at low floors, where a full orbit already fit
+    inside _RANGE_STEP_ORBIT_TICKS ticks, so nothing changes there.
+    Sequential mode's own advance is NEVER affected by this parameter.
+    Defaults to 1 (the old, always-correct behavior) so any caller that
+    omits it (including every existing test) sees no change. Returns
     (new_n, should_stop)."""
     if not range_mode and n >= ceiling:
         return n, True
@@ -186,7 +174,7 @@ def tick_next_n(n, range_mode, ceiling, range_step=1):
 
 
 def update_resonance_log(state, active, n_value, range_mode, advancing):
-    """[ADDED PLAN.md Faza 11] Ports StructuralSieveApp.js's own
+    """Ports StructuralSieveApp.js's own
     #backfillResonanceLog / #logResonance split, mutating `state` in place
     (`state["lines"]`, `state["last_n"]`, `state["last_range_mode"]` --
     caller owns and persists this dict across calls, same convention as
@@ -214,12 +202,11 @@ def update_resonance_log(state, active, n_value, range_mode, advancing):
     runs for actual jumps") -- skipping it would make playback at a large N
     rescan the WHOLE history every tick.
 
-    [CHANGED 2026-09-12, alongside tick_next_n's own `range_step` fix]
     Sequential mode's tick_next_n always advances by exactly +1, so this
     span is always a single value (n_value..n_value) there, same as before.
-    Range mode's own tick_next_n step can now be > 1 (see that function's
-    own 2026-09-12 doc-comment) -- using `state["last_n"] + 1` as the actual
-    from_n here (instead of the old hardcoded `n_value` for both ends) is
+    Range mode's own tick_next_n step can be > 1 (see that function's own
+    doc-comment) -- using `state["last_n"] + 1` as the actual from_n here
+    (instead of the old hardcoded `n_value` for both ends) is
     what keeps this correct for a multi-step tick: a resonance event that
     fell strictly BETWEEN two consecutive (now farther-apart) ticks would
     otherwise never be scanned at all and silently vanish from the log.
