@@ -1,71 +1,52 @@
 """
 app_update.py -- checks GitHub for a newer PrimeAtlas version and applies it.
 
-Context (Artur, 2026-09-02): unlike a packaged/installed application, PrimeAtlas IS its
-own git checkout -- the running Python process executes prime_atlas_v1.py directly out of
-the same working tree `git log` shows history for (every fix in this project's whole
-development history reached Artur's machine exactly this way: a `git commit` here, then
-Artur running from that same checkout). So there is no separate release/version-number
-scheme to invent: "check for updates" means "is `origin`'s default branch ahead of my
-current HEAD", and "download" means fetching + fast-forwarding to that branch -- nothing
-more elaborate (no GitHub Releases API, no downloading/unpacking a zip, no replacing an
+Unlike a packaged/installed application, PrimeAtlas IS its own git checkout -- the
+running Python process executes prime_atlas_v1.py directly out of the same working tree
+`git log` shows history for. So there is no separate release/version-number scheme to
+invent: "check for updates" means "is `origin`'s default branch ahead of my current
+HEAD", and "download" means fetching + fast-forwarding to that branch -- nothing more
+elaborate (no GitHub Releases API, no downloading/unpacking a zip, no replacing an
 installed copy of the app).
 
 This also shapes what download_update() refuses to do: it will only ever fast-forward.
-If the local checkout has diverged (uncommitted changes, or local commits `origin` doesn't
-have), it reports why and touches nothing -- never force-resets or merges automatically.
-A user (Artur) mid-edit on these very files, or with local-only commits not yet pushed,
-must not have that work silently clobbered by an "auto-update" feature.
+If the local checkout has diverged (uncommitted changes, or local commits `origin`
+doesn't have), it reports why and touches nothing -- never force-resets or merges
+automatically, since that could silently clobber uncommitted edits or unpushed local
+commits in what is a live development checkout, not a disposable install.
 
-Follow-up (Artur, 2026-09-10, part 1): the Settings > Aktualizacje "Sprawdz teraz" button
-correctly detected an update but then failed to download it, surfacing git's own
-"fatal: Not possible to fast-forward, aborting." verbatim -- a real, if terse, divergence
-error, but one this module can detect proactively (via `git merge-base --is-ancestor`) and
-explain in a way Artur can actually act on instead of a raw git error dump (see the
-merge-base check in download_update() below). Separately -- the "access" half of what
-Artur originally flagged -- this project's git checkouts have repeatedly hit a filesystem
-quirk (TEAM_PLAN.md ground rule #7) where a leftover `.git/index.lock`/`HEAD.lock`/etc.
-from an interrupted git process, or a momentary hold by another concurrent git invocation
-(an IDE's background `git status`, a sync client, ...), makes an otherwise perfectly
-fast-forwardable operation fail with a permission-denied-flavored error that has nothing
-to do with real history divergence.
+Genuine divergence (local HEAD has commits origin/<branch> doesn't) is detected
+proactively via `git merge-base --is-ancestor` in download_update() and reported with an
+actionable message, instead of surfacing git's own terse "fatal: Not possible to
+fast-forward, aborting." verbatim.
 
-Follow-up (Artur, 2026-09-10, part 2): the first fix for that lock problem cleared any
-lock file simply because it was older than two minutes. GPT correctly flagged that an
-age threshold cannot actually tell a crashed/abandoned lock apart from one still
-protecting a real, slow operation -- but GPT's own safer revision then just retried once
-and otherwise left the lock in place and reported an error, which Artur rejected for a
-different reason: that leaves the user stuck with a problem they have no way to resolve
-themselves, and updating the app is not something a user should need to debug by hand.
-_run_git_with_lock_recovery() below is the reconciliation of both concerns: it verifies
-whether a lock is actually still in use the same way the operating system itself would
-(a rename of a file another process still has open fails with a real permission/sharing
-error on both Windows and POSIX -- git never opens its own lock files with
-FILE_SHARE_DELETE, so a *successful* rename is proof the lock was abandoned, not a guess),
-retries automatically for close to half a minute if something keeps refusing to let go,
-and only surfaces an error to the user once that whole budget is spent -- at which point
-something has genuinely held a git lock far longer than any operation in this project's
-own history ever has.
+Separately, git operations here can fail with a permission-denied-flavored error that
+has nothing to do with real history divergence: a leftover `.git/index.lock`/
+`HEAD.lock`/etc. from an interrupted git process, or a momentary hold by another
+concurrent git invocation (an IDE's background `git status`, a sync client, ...), can
+make an otherwise perfectly fast-forwardable operation fail. _run_git_with_lock_recovery()
+handles this without guessing a lock's staleness from its age (which cannot distinguish
+a crashed/abandoned lock from one still protecting a real, slow operation): it verifies
+whether a lock is actually still in use the same way the operating system itself would --
+a rename of a file another process still has open fails with a real permission/sharing
+error on both Windows and POSIX, since git never opens its own lock files with
+FILE_SHARE_DELETE, so a *successful* rename is proof the lock was abandoned, not a guess.
+It retries automatically for close to half a minute if something keeps refusing to let
+go, and only surfaces an error to the user once that whole budget is spent.
 
-Follow-up (Artur, 2026-09-10, part 3): Artur questioned the whole check-side design --
-why route the mere act of checking for an update through git at all, when it is exactly
-the `git fetch` call in check_for_update() (run automatically on every app startup, task
-#524) that has been the single biggest source of the lock contention parts 1/2 above spent
-so much effort recovering from, even though a fetch never touches a single working-tree
-file. The answer isn't "git is the wrong tool" in general -- download_update() deliberately
-STAYS on git (see its own docstring): applying an update means overwriting real files in a
-real git working tree, and git's fetch+merge already gives that step transactional safety
-(nothing changes if it fails) and dirty-tree/divergence protection for free, neither of
-which a raw file/zip download would have without reinventing them, and both of which matter
-because this checkout is Artur's/GPT's actual live development tree, not a disposable
-install. But the CHECK step never needed local git state to begin with -- it only needs to
-know origin's current HEAD commit, which the GitHub REST API can answer directly over HTTP
-without touching `.git` at all. check_for_update() now resolves origin's branch HEAD (and,
-if that differs from local HEAD, how many commits behind) via _check_for_update_via_api()
-first, and only falls back to the original _check_for_update_via_git_fetch() path when the
-API route isn't usable (origin isn't a recognizable github.com remote, or the API request
-itself fails for any reason) -- so a non-GitHub remote or a GitHub outage degrades to
-exactly today's behavior rather than breaking the feature.
+check_for_update() runs automatically on every app startup, so lock contention from its
+`git fetch` call is disruptive even though a fetch never touches a single working-tree
+file. It therefore resolves origin/<branch>'s current HEAD commit (and, if that differs
+from local HEAD, how many commits behind) via _check_for_update_via_api() first --
+using the GitHub REST API directly over HTTP, without touching `.git` beyond a read-only
+remote-URL lookup -- and only falls back to _check_for_update_via_git_fetch() when the
+API route isn't usable (origin isn't a recognizable github.com remote, or the API
+request itself fails for any reason), so a non-GitHub remote or a GitHub outage degrades
+to the git-based check rather than breaking the feature. download_update() deliberately
+stays on git for the actual update step: applying an update means overwriting real files
+in a real git working tree, and git's fetch+merge already gives that step transactional
+safety (nothing changes if it fails) and dirty-tree/divergence protection for free,
+neither of which a raw file/zip download would have without reinventing them.
 
 Pure Python, no tkinter dependency -- exercised directly by unit tests
 (unitTests/test_app_update.py), same "backend has zero UI dependency" split as every other
@@ -219,20 +200,19 @@ _LOCK_PASSIVE_RETRY_DELAYS = (0.5, 1.0, 1.5)
 # Active phase: once the passive retries are exhausted, alternate between attempting an
 # OS-verified release and, if that's refused, waiting before checking again. Total worst
 # case is roughly 3s (passive) + 8 * 3s (active) =~ 27s -- comfortably longer than any
-# fetch/merge this repo has ever taken in this project's history, but still bounded so
-# Settings > Aktualizacje can never hang indefinitely.
+# fetch/merge this repo has ever taken, but still bounded so the update-check UI can
+# never hang indefinitely.
 _LOCK_RELEASE_ROUNDS = 8
 _LOCK_RELEASE_WAIT_SECONDS = 3.0
 
 
 def _run_git_with_lock_recovery(args, cwd, timeout=30):
     """Runs a git command and, if it fails because of a leftover/contended lock file
-    rather than a real git error, keeps retrying instead of immediately handing the user
-    an error they have no way to act on -- see the module docstring's "part 2" follow-up
-    for why this replaced both the earlier blind age-based auto-clear and a later
-    "retry once, then just report it" revision. Returns the same (returncode, stdout,
-    stderr) tuple _run_git() does; a non-lock failure (including a genuine divergence
-    error) is returned immediately on the very first attempt, unchanged."""
+    rather than a real git error, retries using the OS-verified release check in
+    _try_release_lock_file() instead of giving up after the first failure or guessing
+    staleness from the lock file's age. Returns the same (returncode, stdout, stderr)
+    tuple _run_git() does; a non-lock failure (including a genuine divergence error) is
+    returned immediately on the very first attempt, unchanged."""
     rc, out, err = _run_git(args, cwd, timeout=timeout)
     if rc == 0 or not _looks_like_lock_error(err):
         return rc, out, err
@@ -313,9 +293,9 @@ def _github_api_get(path, timeout=10):
 
 
 def _check_for_update_via_api(repo_dir, branch, timeout, local_commit):
-    """The primary check path (see the module docstring's "part 3" follow-up) -- resolves
-    origin/<branch>'s current HEAD commit via the GitHub REST API instead of `git fetch`,
-    touching `.git` only once (the read-only remote-URL lookup in _resolve_github_repo()).
+    """The primary check path -- resolves origin/<branch>'s current HEAD commit via the
+    GitHub REST API instead of `git fetch`, touching `.git` only once (the read-only
+    remote-URL lookup in _resolve_github_repo()).
     Returns the same result dict check_for_update() does on success, or None if the API
     path isn't usable for any reason at all (non-GitHub remote, network failure, malformed
     response, ...) -- callers must treat None as "fall back to the git-fetch path", not as
@@ -348,11 +328,10 @@ def _check_for_update_via_api(repo_dir, branch, timeout, local_commit):
 
 def _check_for_update_via_git_fetch(repo_dir, branch, timeout, local_commit):
     """Fallback check path used when _check_for_update_via_api() reports the API route
-    isn't usable -- this is the original (pre-2026-09-10-part-3) `git fetch`-based check,
-    kept verbatim as a safety net so a non-GitHub remote or a GitHub API outage degrades to
-    exactly the prior behavior instead of breaking the feature. Goes through
-    _run_git_with_lock_recovery() for the fetch, same as before part 3, since this path can
-    still hit the lock contention parts 1/2 addressed."""
+    isn't usable -- the git-fetch-based check, kept as a safety net so a non-GitHub
+    remote or a GitHub API outage degrades to git-based detection instead of breaking the
+    feature. Goes through _run_git_with_lock_recovery() for the fetch, since this path
+    can still hit lock contention from other concurrent git operations."""
     rc, _out, err = _run_git_with_lock_recovery(
         ["fetch", "origin", branch], repo_dir, timeout=timeout)
     if rc != 0:
@@ -387,10 +366,10 @@ def check_for_update(repo_dir, branch="main", timeout=20):
 
     Tries the GitHub-API-based path first (_check_for_update_via_api()) and falls back to
     the git-fetch-based path (_check_for_update_via_git_fetch()) only if that reports the
-    API route isn't usable -- see the module docstring's "part 3" follow-up for why. Either
-    way, this never attempts anything destructive or state-changing to the working tree --
-    see download_update() for the separate, explicitly-invoked step that actually changes
-    files."""
+    API route isn't usable, since the API path needs no local git state beyond the remote
+    URL. Either way, this never attempts anything destructive or state-changing to the
+    working tree -- see download_update() for the separate, explicitly-invoked step that
+    actually changes files."""
     rc, _out, _err = _run_git(["rev-parse", "--is-inside-work-tree"], repo_dir, timeout=5)
     if rc != 0:
         return _no_update_result("not a git checkout")
@@ -414,8 +393,8 @@ def download_update(repo_dir, branch="main", timeout=60):
     steps here so a real divergence can be reported with a clear, actionable message
     instead of git's own terse "fatal: Not possible to fast-forward, aborting."). Every
     git call that could plausibly hit a lock (status, fetch, merge-base, merge) goes
-    through _run_git_with_lock_recovery() -- see that function and the module docstring's
-    "part 2" follow-up. Returns {"ok": bool, "error": str|None}.
+    through _run_git_with_lock_recovery() -- see that function for the retry/recovery
+    details. Returns {"ok": bool, "error": str|None}.
 
     Refuses up front (without ever calling fetch/merge) if the working tree has
     uncommitted changes -- pulling on top of a dirty tree can silently create merge
