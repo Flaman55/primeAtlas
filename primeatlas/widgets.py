@@ -180,3 +180,41 @@ def add_page_nav_row(parent, T, page_label_var, on_prev, on_next, on_goto=None,
         goto_frame.pack(side="right")
 
     return row_frame, prev_btn, next_btn, goto_entry
+
+
+def clamp_pane_min_width(paned, pane_widget, min_width):
+    """Prevents `pane_widget` (one child of the two-pane horizontal `paned`
+    ttk::panedwindow, sash index 0) from ever being dragged narrower than
+    `min_width` pixels -- ttk::panedwindow's own pane() only supports a "weight"
+    option, not minsize (unlike the classic, unthemed tk.PanedWindow), so there is no
+    built-in way to say this directly.
+
+    Used for a detail pane holding an add_page_nav_row() (see its own docstring) --
+    that row never wraps onto extra lines, so past this width its right-flush
+    "Strona:"/entry/Idz jump group starts sliding off the pane's own edge and out of
+    view entirely, not just crowding the left cluster. Reported via screenshot on the
+    Prime numbers tab's own Magazyn preview (after the same fix had already gone into
+    Magazyn/Constellations' own, so this call is the second, not first, use),
+    2026-09-16.
+
+    Whenever `pane_widget`'s own width changes (a sash drag included, since dragging
+    resizes both panes), the sash is clamped back if it would make `pane_widget`
+    narrower than `min_width`. The corrective sashpos() call is deferred via
+    after_idle rather than issued straight from the <Configure> handler -- calling it
+    synchronously, mid-geometry-pass, left sashpos() reporting the corrected value
+    while the pane's actual on-screen width stayed desynced at the too-narrow size
+    until a LATER, unrelated redraw (reproduced while building the first use of this);
+    deferring to a fresh idle turn lets Tk finish the geometry pass in progress first."""
+    def _clamp_sash(max_allowed_sash):
+        paned.sashpos(0, max_allowed_sash)
+
+    def _enforce(_event=None):
+        total = paned.winfo_width()
+        if total <= 1:
+            return
+        max_allowed_sash = max(0, total - min_width)
+        if paned.sashpos(0) > max_allowed_sash:
+            paned.after_idle(_clamp_sash, max_allowed_sash)
+
+    pane_widget.bind("<Configure>", _enforce, add="+")
+    pane_widget.after_idle(_enforce)

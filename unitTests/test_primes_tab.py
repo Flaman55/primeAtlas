@@ -266,12 +266,9 @@ def main():
         widget.tree.selection_set(file_item)
         widget.tree.focus(file_item)
         widget._on_tree_select(None)
-        check(str(widget.load_preview_btn["state"]) == "normal",
-              "selecting a non-empty file row enables Load preview")
-
-        widget._load_preview()
         check(widget._preview_primes == floor0_primes,
-              f"_load_preview() decoded the exact seeded prime list (got {widget._preview_primes})")
+              f"selecting a non-empty file row auto-loads its preview, no separate "
+              f"'Load preview' click needed (got {widget._preview_primes})")
         check(widget._preview_total_pages == 2,
               f"10 primes at PAGE_SIZE=5 gives exactly 2 preview pages (got {widget._preview_total_pages})")
         check(str(widget.next_page_btn["state"]) == "normal", "preview Next enabled on page 1/2")

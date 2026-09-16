@@ -44,7 +44,7 @@ from .constellations import (
     group_constellation_hits_by_k, list_constellation_hits, read_hit_pattern_page,
     hit_pattern_is_paged, hit_pattern_page_count,
 )
-from .widgets import add_page_nav_row
+from .widgets import add_page_nav_row, clamp_pane_min_width
 
 
 class ConstellationsHitsTab(BaseTab):
@@ -213,41 +213,17 @@ class ConstellationsHitsTab(BaseTab):
         # add_page_nav_row() (unlike the FlowRow it replaced here) never wraps onto
         # extra lines -- so the detail pane must never be draggable narrower than both
         # rows' own natural width, or the second row's jump group would crowd against
-        # its left cluster instead of staying flush right. Measured from the actual
-        # built widgets (not a hardcoded guess) so this tracks the real font/theme/DPI
-        # rather than an assumption about them -- requested via screenshot, 2026-09-16
-        # ("ograniczmy to ze wezej sie nie da niz uklad dwoch wierszy").
-        #
-        # ttk::panedwindow's own pane() only supports a "weight" option, not minsize
-        # (unlike the classic, unthemed tk.PanedWindow) -- so the minimum is enforced
-        # by hand: whenever detail_frame's own width changes (a sash drag included,
-        # since dragging resizes both panes), clamp the sash back if it would make
-        # detail_frame narrower than preview_nav_min_width. The corrective sashpos()
-        # call is deferred via after_idle rather than issued straight from the
-        # <Configure> handler -- calling it synchronously, mid-geometry-pass, left
-        # sashpos() reporting the corrected value while the pane's actual on-screen
-        # width stayed desynced at the too-narrow size until a LATER, unrelated redraw
-        # (reproduced in isolation while building this); deferring to a fresh idle
-        # turn lets Tk finish the geometry pass in progress first, so the recheck once
-        # the deferred call resumes sees consistent, already-settled numbers.
+        # its left cluster instead of staying flush right, or slide off the pane's own
+        # edge entirely. Measured from the actual built widgets (not a hardcoded guess)
+        # so this tracks the real font/theme/DPI rather than an assumption about them
+        # -- requested via screenshot, 2026-09-16 ("ograniczmy to ze wezej sie nie da
+        # niz uklad dwoch wierszy"). See clamp_pane_min_width()'s own docstring for how
+        # the minimum is actually enforced (ttk::panedwindow has no minsize option).
         self.update_idletasks()
         preview_nav_min_width = (
             max(btn_row_frame.winfo_reqwidth(), file_page_row_frame.winfo_reqwidth())
             + 10 + self.hits_export_btn.winfo_reqwidth() + 12)
-
-        def _clamp_sash(max_allowed_sash):
-            paned.sashpos(0, max_allowed_sash)
-
-        def _enforce_detail_pane_min_width(_event=None):
-            total = paned.winfo_width()
-            if total <= 1:
-                return
-            max_allowed_sash = max(0, total - preview_nav_min_width)
-            if paned.sashpos(0) > max_allowed_sash:
-                paned.after_idle(_clamp_sash, max_allowed_sash)
-
-        detail_frame.bind("<Configure>", _enforce_detail_pane_min_width, add="+")
-        self.after_idle(_enforce_detail_pane_min_width)
+        clamp_pane_min_width(paned, detail_frame, preview_nav_min_width)
 
         hits_preview_frame = ttk.Frame(detail_frame)
         hits_preview_frame.pack(fill="both", expand=True, padx=6, pady=6)

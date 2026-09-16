@@ -45,7 +45,7 @@ from .storage import (
     digit_count_floor, format_big_int, format_bytes, format_duration,
     list_pietra, list_source_filenames, read_source_file_headers,
 )
-from .widgets import FlowRow, add_page_nav_group
+from .widgets import add_page_nav_row, clamp_pane_min_width
 
 
 def _cumulative_pietro_totals(pietra, pietro_total_known):
@@ -304,21 +304,30 @@ class PrimesTab(BaseTab):
         ttk.Label(detail_frame, textvariable=self.detail_text, justify="left",
                   anchor="nw", wraplength=560).pack(fill="x", padx=6, pady=6)
 
-        # FlowRow (not a plain pack(side="left") row) so these controls wrap onto a
-        # second line instead of running off the window's right edge on a narrow
-        # width/pane -- see that class's own docstring. Prev/label/Next and
-        # "Page:"/entry/Go are each built as one ATOMIC group via add_page_nav_group()
-        # so a wrap can only land BETWEEN the two groups, never split one in half --
-        # see that helper's own docstring for the screenshot that prompted this.
-        btn_row = FlowRow(detail_frame)
-        btn_row.frame.pack(anchor="w", padx=6, fill="x")
-        self.load_preview_btn = ttk.Button(
-            btn_row.frame, text=T("common.load_preview"), command=self._load_preview, state="disabled")
-        btn_row.add(self.load_preview_btn)
+        # No "Load preview" button -- selecting a file node in the tree on the left
+        # now loads its preview immediately (see _on_tree_select()), matching the same
+        # change made to Magazyn (Constellations tab), 2026-09-16. add_page_nav_row()
+        # (Prev/Next/label on the left, "Strona:"/entry/Idz flush against the right
+        # edge -- see its own docstring) replaces the old FlowRow-wrapped
+        # add_page_nav_group() for the same reason: a consistent, professional-looking
+        # right-aligned jump group instead of one trailing wherever the left cluster's
+        # own width happens to end.
         self.preview_page_label = tk.StringVar(value="")
-        self.prev_page_btn, self.next_page_btn, self.preview_goto_entry = add_page_nav_group(
-            btn_row, T, self.preview_page_label,
-            self._prev_preview_page, self._next_preview_page, self._goto_preview_page)
+        preview_nav_row, self.prev_page_btn, self.next_page_btn, self.preview_goto_entry = (
+            add_page_nav_row(
+                detail_frame, T, self.preview_page_label,
+                self._prev_preview_page, self._next_preview_page, self._goto_preview_page))
+        preview_nav_row.pack(anchor="w", padx=6, fill="x")
+
+        # add_page_nav_row() never wraps onto extra lines -- so the detail pane must
+        # never be draggable narrower than this row's own natural width, or its
+        # right-flush "Strona:"/entry/Idz jump group starts sliding off the pane's own
+        # edge and out of view entirely. Same fix as Magazyn/ConstellationsHitsTab's
+        # own preview pane -- see clamp_pane_min_width()'s own docstring for why a
+        # ttk::panedwindow needs this done by hand. Requested via screenshot,
+        # 2026-09-16.
+        self.update_idletasks()
+        clamp_pane_min_width(paned, detail_frame, preview_nav_row.winfo_reqwidth() + 12)
 
         preview_frame = ttk.Frame(detail_frame)
         preview_frame.pack(fill="both", expand=True, padx=6, pady=6)
@@ -600,6 +609,10 @@ class PrimesTab(BaseTab):
             self._show_floor_page(node, int(raw) - 1)
 
     def _on_tree_select(self, _event):
+        """Selecting a leaf file node loads its preview immediately (no separate
+        "Load preview" click any more -- removed 2026-09-16, matching the same change
+        made to Magazyn/ConstellationsHitsTab: the tree selection already identifies
+        exactly one loadable file)."""
         selection = self.tree.selection()
         if not selection:
             return
@@ -612,14 +625,12 @@ class PrimesTab(BaseTab):
             return
         self._reset_preview_state()
         if item not in self._path_by_item:
-            self.load_preview_btn.configure(state="disabled")
             return
         path, header = self._path_by_item[item]
         self._selected_path = path
         T = self.T
         if header is None:
             self.detail_text.set(T("primes.header_error", path=path))
-            self.load_preview_btn.configure(state="disabled")
             return
         self.detail_text.set(
             f"{path}\n\n" +
@@ -628,7 +639,8 @@ class PrimesTab(BaseTab):
               count=f"{header['count']:,}",
               generated=header['generated_at_iso'])
         )
-        self.load_preview_btn.configure(state="normal" if header["count"] > 0 else "disabled")
+        if header["count"] > 0:
+            self._load_preview()
 
     # --- Preview pane ------------------------------------------------------------------------
 
@@ -640,7 +652,6 @@ class PrimesTab(BaseTab):
         self.preview_page_label.set("")
         self.prev_page_btn.configure(state="disabled")
         self.next_page_btn.configure(state="disabled")
-        self.load_preview_btn.configure(state="normal" if self._selected_path else "disabled")
 
     def _load_preview(self):
         """Decodes the selected file ONCE (cached in self._preview_primes) and shows
@@ -655,7 +666,6 @@ class PrimesTab(BaseTab):
                 self._preview_primes = None
                 return
         self._show_preview_page(0)
-        self.load_preview_btn.configure(state="disabled")
 
     def _show_preview_page(self, page):
         if not self._preview_primes:
@@ -760,7 +770,6 @@ class PrimesTab(BaseTab):
             return
         page = index // self._page_size
         self._show_preview_page(page)
-        self.load_preview_btn.configure(state="disabled")
         local = index - self._preview_page * self._page_size
         self.preview_list.selection_clear(0, "end")
         self.preview_list.selection_set(local)
