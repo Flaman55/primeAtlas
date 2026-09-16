@@ -45,7 +45,7 @@ from .storage import (
     digit_count_floor, format_big_int, format_bytes, format_duration,
     list_pietra, list_source_filenames, read_source_file_headers,
 )
-from .widgets import FlowRow
+from .widgets import FlowRow, add_page_nav_group
 
 
 def _cumulative_pietro_totals(pietra, pietro_total_known):
@@ -306,27 +306,19 @@ class PrimesTab(BaseTab):
 
         # FlowRow (not a plain pack(side="left") row) so these controls wrap onto a
         # second line instead of running off the window's right edge on a narrow
-        # width/pane -- see that class's own docstring.
+        # width/pane -- see that class's own docstring. Prev/label/Next and
+        # "Page:"/entry/Go are each built as one ATOMIC group via add_page_nav_group()
+        # so a wrap can only land BETWEEN the two groups, never split one in half --
+        # see that helper's own docstring for the screenshot that prompted this.
         btn_row = FlowRow(detail_frame)
         btn_row.frame.pack(anchor="w", padx=6, fill="x")
         self.load_preview_btn = ttk.Button(
             btn_row.frame, text=T("common.load_preview"), command=self._load_preview, state="disabled")
         btn_row.add(self.load_preview_btn)
-        self.prev_page_btn = ttk.Button(
-            btn_row.frame, text=T("common.prev_page"), command=self._prev_preview_page, state="disabled")
-        btn_row.add(self.prev_page_btn, padx_left=10)
         self.preview_page_label = tk.StringVar(value="")
-        btn_row.add(ttk.Label(btn_row.frame, textvariable=self.preview_page_label,
-                               width=16, anchor="center"))
-        self.next_page_btn = ttk.Button(
-            btn_row.frame, text=T("common.next_page"), command=self._next_preview_page, state="disabled")
-        btn_row.add(self.next_page_btn)
-        btn_row.add(ttk.Label(btn_row.frame, text=T("common.page_prefix")), padx_left=10)
-        self.preview_goto_entry = ttk.Entry(btn_row.frame, width=6)
-        btn_row.add(self.preview_goto_entry, padx_left=4)
-        self.preview_goto_entry.bind("<Return>", lambda _e: self._goto_preview_page())
-        btn_row.add(ttk.Button(btn_row.frame, text=T("common.goto"),
-                                command=self._goto_preview_page), padx_left=4)
+        self.prev_page_btn, self.next_page_btn, self.preview_goto_entry = add_page_nav_group(
+            btn_row, T, self.preview_page_label,
+            self._prev_preview_page, self._next_preview_page, self._goto_preview_page)
 
         preview_frame = ttk.Frame(detail_frame)
         preview_frame.pack(fill="both", expand=True, padx=6, pady=6)

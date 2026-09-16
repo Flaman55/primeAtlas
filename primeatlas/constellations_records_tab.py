@@ -67,7 +67,7 @@ from .constellations import (
 # reasonable viewer; a caller who wants more should use CSV export instead (streamed,
 # no row-count limit -- see _job()'s own comment).
 PDF_EXPORT_ROW_LIMIT = 50_000
-from .widgets import FlowRow
+from .widgets import FlowRow, add_page_nav_group
 
 
 def _iter_with_progress(rows, report_progress, step=100_000):
@@ -214,23 +214,10 @@ class ConstellationsRecordsTab(BaseTab):
 
         detail_nav = FlowRow(detail_frame)
         detail_nav.frame.pack(anchor="w", padx=4, fill="x")
-        self.detail_prev_btn = ttk.Button(
-            detail_nav.frame, text=T("common.prev_page"),
-            command=self._prev_detail_page, state="disabled")
-        detail_nav.add(self.detail_prev_btn)
         self.detail_page_label = tk.StringVar(value="")
-        detail_nav.add(ttk.Label(detail_nav.frame, textvariable=self.detail_page_label,
-                                  width=16, anchor="center"))
-        self.detail_next_btn = ttk.Button(
-            detail_nav.frame, text=T("common.next_page"),
-            command=self._next_detail_page, state="disabled")
-        detail_nav.add(self.detail_next_btn)
-        detail_nav.add(ttk.Label(detail_nav.frame, text=T("common.page_prefix")), padx_left=10)
-        self.detail_goto_entry = ttk.Entry(detail_nav.frame, width=6)
-        detail_nav.add(self.detail_goto_entry, padx_left=4)
-        self.detail_goto_entry.bind("<Return>", lambda _e: self._goto_detail_page())
-        detail_nav.add(ttk.Button(detail_nav.frame, text=T("common.goto"),
-                                   command=self._goto_detail_page), padx_left=4)
+        self.detail_prev_btn, self.detail_next_btn, self.detail_goto_entry = add_page_nav_group(
+            detail_nav, T, self.detail_page_label,
+            self._prev_detail_page, self._next_detail_page, self._goto_detail_page)
 
         # Real hit-file page navigation (up to hit_paging.PAGE_SIZE=1,000,000 hits per
         # page) -- separate from detail_nav above, which only paginates WITHIN
@@ -243,17 +230,12 @@ class ConstellationsRecordsTab(BaseTab):
         # export -- see top_row's own construction comment.
         detail_file_nav = FlowRow(detail_frame)
         detail_file_nav.frame.pack(anchor="w", padx=4, fill="x")
-        self.detail_file_prev_btn = ttk.Button(
-            detail_file_nav.frame, text=T("const_records.file_page_prev"),
-            command=self._prev_detail_file_page, state="disabled")
-        detail_file_nav.add(self.detail_file_prev_btn)
         self.detail_file_page_label = tk.StringVar(value="")
-        detail_file_nav.add(ttk.Label(detail_file_nav.frame, textvariable=self.detail_file_page_label,
-                                       width=20, anchor="center"))
-        self.detail_file_next_btn = ttk.Button(
-            detail_file_nav.frame, text=T("const_records.file_page_next"),
-            command=self._next_detail_file_page, state="disabled")
-        detail_file_nav.add(self.detail_file_next_btn)
+        self.detail_file_prev_btn, self.detail_file_next_btn, self.detail_file_goto_entry = add_page_nav_group(
+            detail_file_nav, T, self.detail_file_page_label,
+            self._prev_detail_file_page, self._next_detail_file_page, self._goto_detail_file_page,
+            label_width=20,
+            prev_key="const_records.file_page_prev", next_key="const_records.file_page_next")
 
         detail_list_frame = ttk.Frame(detail_frame)
         detail_list_frame.pack(fill="both", expand=True, padx=4, pady=(0, 4))
@@ -692,6 +674,15 @@ class ConstellationsRecordsTab(BaseTab):
         self._load_detail_file_page(
             ctx["base_exponent"], ctx["pattern"]["k"], ctx["pattern"]["id"],
             self._detail_file_page_index + 1)
+
+    def _goto_detail_file_page(self):
+        raw = self.detail_file_goto_entry.get().strip()
+        if self._detail_context is None or not raw.isdigit():
+            return
+        ctx = self._detail_context
+        page_index = max(0, min(int(raw) - 1, self._detail_file_page_count - 1))
+        self._load_detail_file_page(
+            ctx["base_exponent"], ctx["pattern"]["k"], ctx["pattern"]["id"], page_index)
 
     def activate_pattern_for_export(self, base_exponent, pattern, page_index):
         """Sets this tab up to browse/export ONE specific pattern's page range, without

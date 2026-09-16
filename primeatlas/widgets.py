@@ -65,3 +65,118 @@ class FlowRow:
             x += padx_left + w
             row_height = max(row_height, h)
         self.frame.configure(height=y + row_height)
+
+
+def add_page_nav_group(flow_row, T, page_label_var, on_prev, on_next, on_goto=None,
+                        label_width=16, group_gap=14,
+                        prev_key="common.prev_page", next_key="common.next_page"):
+    """Adds a standard page-navigation cluster (Prev / page label / Next, optionally
+    followed by a Page: [entry][Go] jump group) to `flow_row` as ATOMIC sub-frames --
+    each inner ttk.Frame packs its own children with plain pack(side="left") and is
+    handed to FlowRow.add() as a single item, so FlowRow's own wrap-on-resize (see its
+    docstring) only ever breaks BETWEEN whole clusters, never in the middle of one.
+
+    Before this helper, every call site added Prev/label/Next/"Page:"/entry/Go as six
+    separate FlowRow items -- on a narrow pane, FlowRow could wrap mid-cluster (e.g.
+    Prev/label/Next on one line, "Page:"/entry/Go stranded alone on the next, with no
+    visual link between them), which read as an accidental layout rather than a
+    deliberate one. Reported via screenshot on the Prime numbers tab's preview-nav row
+    (btn_row), 2026-09-16 -- the same duplicated pattern also existed in
+    constellations_hits_tab.py and constellations_records_tab.py, fixed here once
+    instead of three times.
+
+    prev_key/next_key default to the generic "common.prev_page"/"common.next_page"
+    strings, but callers navigating real hit-FILE pages (as opposed to the small
+    in-memory sub-page within one loaded file page) pass
+    "const_records.file_page_prev"/"file_page_next" instead, so the two different
+    kinds of pagination a pattern can have stay visually distinguishable ("Poprzednia"
+    vs. "Poprz. strona pliku") rather than reading as duplicate controls.
+
+    Returns (prev_btn, next_btn, goto_entry) -- goto_entry is None when on_goto is not
+    given (a file-page nav cluster with no jump-to-page entry, just Prev/Next/label).
+    Callers still own page_label_var, prev_btn.configure(state=...), etc. -- this only
+    replaces how the widgets are BUILT and GROUPED, not who tracks them.
+
+    Layout order is Prev, Next, THEN the label (not Prev/label/Next) -- the two
+    buttons read as one pair, with the "page X / Y" count following them rather than
+    splitting them apart. Requested explicitly (screenshot), 2026-09-16."""
+    nav_frame = ttk.Frame(flow_row.frame)
+    prev_btn = ttk.Button(nav_frame, text=T(prev_key), command=on_prev, state="disabled")
+    prev_btn.pack(side="left")
+    next_btn = ttk.Button(nav_frame, text=T(next_key), command=on_next, state="disabled")
+    next_btn.pack(side="left")
+    ttk.Label(nav_frame, textvariable=page_label_var, width=label_width,
+              anchor="center").pack(side="left")
+    flow_row.add(nav_frame, padx_left=group_gap if flow_row._items else 0)
+
+    goto_entry = None
+    if on_goto is not None:
+        _goto_frame, goto_entry = _build_goto_group(flow_row.frame, T, on_goto)
+        flow_row.add(_goto_frame, padx_left=group_gap)
+
+    return prev_btn, next_btn, goto_entry
+
+
+def _build_goto_group(parent, T, on_goto):
+    """Builds the "Strona:"/entry/Idz jump-to-page cluster shared by add_page_nav_group
+    and add_page_nav_row -- factored out 2026-09-16 when add_page_nav_row was added, so
+    the ipady height-matching fix below (entry vs. button, see its own comment) lives in
+    exactly one place. Returns (goto_frame, goto_entry); the caller packs/adds
+    goto_frame itself, since the two callers place it differently (a FlowRow item vs.
+    flush against a plain row's right edge)."""
+    goto_frame = ttk.Frame(parent)
+    ttk.Label(goto_frame, text=T("common.page_prefix")).pack(side="left")
+    goto_entry = ttk.Entry(goto_frame, width=6)
+    goto_entry.bind("<Return>", lambda _e: on_goto())
+    goto_btn = ttk.Button(goto_frame, text=T("common.goto"), command=on_goto)
+    # The "clam" theme (see prime_atlas_v1.py's _apply_theme) gives TButton more
+    # vertical padding than TEntry, so side by side they used to sit at visibly
+    # different heights (screenshot, 2026-09-16). Pad the entry's own height (ipady)
+    # up to the button's actual requested height instead of hardcoding a pixel guess,
+    # so the two stay level even if the theme/font/DPI scaling changes later.
+    goto_frame.update_idletasks()
+    extra = max(0, goto_btn.winfo_reqheight() - goto_entry.winfo_reqheight())
+    goto_entry.pack(side="left", padx=(4, 4), ipady=extra // 2)
+    goto_btn.pack(side="left")
+    return goto_frame, goto_entry
+
+
+def add_page_nav_row(parent, T, page_label_var, on_prev, on_next, on_goto=None,
+                      label_width=16, prev_key="common.prev_page",
+                      next_key="common.next_page"):
+    """Builds ONE full page-nav row as a plain (non-wrapping) ttk.Frame -- Prev/Next/
+    label packed on the LEFT, an optional "Strona:"/entry/Idz jump group flush against
+    the RIGHT edge -- instead of FlowRow's left-to-right flow-and-wrap.
+
+    Used where two of these rows stack on top of each other next to a shared tall
+    button (Magazyn's hits_export_btn spanning both) and their jump groups need to
+    land at the SAME right edge on both rows for a symmetric look, regardless of how
+    much shorter one row's left cluster is than the other's -- FlowRow's flow model
+    can't express "flush right", and on a narrow pane it would wrap the second row's
+    jump group onto a stray third line, left-anchored under nothing in particular
+    (screenshot, 2026-09-16).
+
+    Unlike FlowRow, this never reflows onto extra lines -- callers rely on their
+    container never getting narrower than both rows' combined natural width (see e.g.
+    constellations_hits_tab.py's own paneconfigure(minsize=...) call, sized from these
+    rows' own winfo_reqwidth() after construction); below that width the jump group
+    just crowds against the left cluster instead of wrapping.
+
+    Returns (row_frame, prev_btn, next_btn, goto_entry) -- row_frame is what the
+    caller packs into its own parent; goto_entry is None when on_goto is not given."""
+    row_frame = ttk.Frame(parent)
+    left = ttk.Frame(row_frame)
+    prev_btn = ttk.Button(left, text=T(prev_key), command=on_prev, state="disabled")
+    prev_btn.pack(side="left")
+    next_btn = ttk.Button(left, text=T(next_key), command=on_next, state="disabled")
+    next_btn.pack(side="left")
+    ttk.Label(left, textvariable=page_label_var, width=label_width,
+              anchor="center").pack(side="left")
+    left.pack(side="left")
+
+    goto_entry = None
+    if on_goto is not None:
+        goto_frame, goto_entry = _build_goto_group(row_frame, T, on_goto)
+        goto_frame.pack(side="right")
+
+    return row_frame, prev_btn, next_btn, goto_entry

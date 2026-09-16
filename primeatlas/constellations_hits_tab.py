@@ -44,7 +44,7 @@ from .constellations import (
     group_constellation_hits_by_k, list_constellation_hits, read_hit_pattern_page,
     hit_pattern_is_paged, hit_pattern_page_count,
 )
-from .widgets import FlowRow
+from .widgets import add_page_nav_row
 
 
 class ConstellationsHitsTab(BaseTab):
@@ -150,56 +150,104 @@ class ConstellationsHitsTab(BaseTab):
         self.search_results_list.bind("<Return>", self._on_search_result_activate)
         self._search_results_data = []  # parallel to search_results_list rows
 
-        # FlowRow, same reasoning as the Prime numbers tab's own preview-nav row -- see
-        # that class's own docstring.
-        btn_row = FlowRow(detail_frame)
-        btn_row.frame.pack(anchor="w", padx=6, fill="x")
-        self.hits_load_preview_btn = ttk.Button(
-            btn_row.frame, text=T("common.load_preview"), command=self.load_preview,
-            state="disabled")
-        btn_row.add(self.hits_load_preview_btn)
-        self.hits_prev_page_btn = ttk.Button(
-            btn_row.frame, text=T("common.prev_page"), command=self._prev_hits_page, state="disabled")
-        btn_row.add(self.hits_prev_page_btn, padx_left=10)
+        # No "Load preview" button any more -- selecting a pattern node in the floor
+        # tree on the left now loads its preview automatically (see _on_tree_select());
+        # a separate click-to-load step was one extra click for no benefit, since the
+        # tree selection already identifies exactly one loadable hit file. Requested
+        # via screenshot, 2026-09-16.
+        #
+        # Two stacked page-nav rows (add_page_nav_row -- Prev/Next/label on the left,
+        # a "Strona:"/entry/Idz jump group flush against the RIGHT edge, see that
+        # helper's own docstring) side by side with "Eksportuj", stretched (fill="y")
+        # to span both rows' combined height instead of sitting only next to the
+        # second one. Both rows' jump groups land at the SAME right edge regardless of
+        # how much shorter btn_row's left cluster is than file_page_row's, for a
+        # symmetric look -- requested via screenshot, 2026-09-16 (a plain FlowRow, used
+        # before this, flowed left-to-right and could strand the second row's jump
+        # group on its own stray third line instead).
+        preview_nav_frame = ttk.Frame(detail_frame)
+        preview_nav_frame.pack(anchor="w", padx=6, fill="x", pady=(0, 4))
+        # nav_rows_frame is deliberately NOT packed yet -- packed last, below, after
+        # hits_export_btn (side="right", claiming its own fixed-width chunk out of the
+        # cavity first) so the flexible frame's own fill="both"/expand=True gets a
+        # deterministic remainder regardless of either widget's own natural size (see
+        # add_page_nav_group's own history for the bug this avoids, 2026-09-16).
+        nav_rows_frame = ttk.Frame(preview_nav_frame)
+
         self.hits_page_label = tk.StringVar(value="")
-        btn_row.add(ttk.Label(btn_row.frame, textvariable=self.hits_page_label,
-                               width=16, anchor="center"))
-        self.hits_next_page_btn = ttk.Button(
-            btn_row.frame, text=T("common.next_page"), command=self._next_hits_page, state="disabled")
-        btn_row.add(self.hits_next_page_btn)
-        btn_row.add(ttk.Label(btn_row.frame, text=T("common.page_prefix")), padx_left=10)
-        self.hits_goto_entry = ttk.Entry(btn_row.frame, width=6)
-        btn_row.add(self.hits_goto_entry, padx_left=4)
-        self.hits_goto_entry.bind("<Return>", lambda _e: self._goto_hits_page())
-        btn_row.add(ttk.Button(btn_row.frame, text=T("common.goto"),
-                                command=self._goto_hits_page), padx_left=4)
+        btn_row_frame, self.hits_prev_page_btn, self.hits_next_page_btn, self.hits_goto_entry = (
+            add_page_nav_row(
+                nav_rows_frame, T, self.hits_page_label,
+                self._prev_hits_page, self._next_hits_page, self._goto_hits_page))
+        btn_row_frame.pack(side="top", fill="x")
 
         # Real hit-file page navigation (up to hit_paging.PAGE_SIZE=1,000,000 hits per
-        # page) -- separate from btn_row above, which only paginates WITHIN whichever
-        # hit-file page is currently loaded into self._hit_values/_hit_rows
+        # page) -- separate from btn_row_frame above, which only paginates WITHIN
+        # whichever hit-file page is currently loaded into self._hit_values/_hit_rows
         # (self._page_size=500-ish rows at a time). Added 2026-09-16 so a pattern too
         # large to ever load in full (floor 25's k=2, ~2.16 billion hits / 2160 pages)
         # can still be browsed page by page instead of being stuck on the first page
-        # forever. "Eksportuj" jumps to the Tabela rekordow tab instead of exporting
-        # locally -- see this tab's own _export_current_page() docstring for why
-        # Magazyn deliberately doesn't duplicate a whole export mechanism of its own.
-        file_page_row = FlowRow(detail_frame)
-        file_page_row.frame.pack(anchor="w", padx=6, fill="x", pady=(0, 4))
-        self.hits_file_prev_btn = ttk.Button(
-            file_page_row.frame, text=T("const_records.file_page_prev"),
-            command=self._prev_hit_file_page, state="disabled")
-        file_page_row.add(self.hits_file_prev_btn)
+        # forever. Its own "Strona:"/entry/Idź jump group (added alongside this
+        # restructure) lets you jump straight to one of a pattern's thousands of hit-
+        # file pages instead of only stepping one at a time -- a SEPARATE entry from
+        # btn_row_frame's own, since these are two different kinds of "page" (hit-file
+        # page vs. the small on-screen sub-page within it).
         self.hits_file_page_label = tk.StringVar(value="")
-        file_page_row.add(ttk.Label(file_page_row.frame, textvariable=self.hits_file_page_label,
-                                     width=20, anchor="center"))
-        self.hits_file_next_btn = ttk.Button(
-            file_page_row.frame, text=T("const_records.file_page_next"),
-            command=self._next_hit_file_page, state="disabled")
-        file_page_row.add(self.hits_file_next_btn)
+        (file_page_row_frame, self.hits_file_prev_btn, self.hits_file_next_btn,
+         self.hits_file_goto_entry) = add_page_nav_row(
+            nav_rows_frame, T, self.hits_file_page_label,
+            self._prev_hit_file_page, self._next_hit_file_page, self._goto_hit_file_page,
+            label_width=20,
+            prev_key="const_records.file_page_prev", next_key="const_records.file_page_next")
+        file_page_row_frame.pack(side="top", fill="x", pady=(4, 0))
+
+        # "Eksportuj" jumps to the Tabela rekordow tab instead of exporting locally --
+        # see this tab's own _export_current_page() docstring for why Magazyn
+        # deliberately doesn't duplicate a whole export mechanism of its own.
         self.hits_export_btn = ttk.Button(
-            file_page_row.frame, text=T("const.export_to_records_button"),
+            preview_nav_frame, text=T("const.export_to_records_button"),
             command=self._export_current_page, state="disabled")
-        file_page_row.add(self.hits_export_btn, padx_left=10)
+        self.hits_export_btn.pack(side="right", fill="y", padx=(10, 0))
+        nav_rows_frame.pack(side="left", fill="both", expand=True)
+
+        # add_page_nav_row() (unlike the FlowRow it replaced here) never wraps onto
+        # extra lines -- so the detail pane must never be draggable narrower than both
+        # rows' own natural width, or the second row's jump group would crowd against
+        # its left cluster instead of staying flush right. Measured from the actual
+        # built widgets (not a hardcoded guess) so this tracks the real font/theme/DPI
+        # rather than an assumption about them -- requested via screenshot, 2026-09-16
+        # ("ograniczmy to ze wezej sie nie da niz uklad dwoch wierszy").
+        #
+        # ttk::panedwindow's own pane() only supports a "weight" option, not minsize
+        # (unlike the classic, unthemed tk.PanedWindow) -- so the minimum is enforced
+        # by hand: whenever detail_frame's own width changes (a sash drag included,
+        # since dragging resizes both panes), clamp the sash back if it would make
+        # detail_frame narrower than preview_nav_min_width. The corrective sashpos()
+        # call is deferred via after_idle rather than issued straight from the
+        # <Configure> handler -- calling it synchronously, mid-geometry-pass, left
+        # sashpos() reporting the corrected value while the pane's actual on-screen
+        # width stayed desynced at the too-narrow size until a LATER, unrelated redraw
+        # (reproduced in isolation while building this); deferring to a fresh idle
+        # turn lets Tk finish the geometry pass in progress first, so the recheck once
+        # the deferred call resumes sees consistent, already-settled numbers.
+        self.update_idletasks()
+        preview_nav_min_width = (
+            max(btn_row_frame.winfo_reqwidth(), file_page_row_frame.winfo_reqwidth())
+            + 10 + self.hits_export_btn.winfo_reqwidth() + 12)
+
+        def _clamp_sash(max_allowed_sash):
+            paned.sashpos(0, max_allowed_sash)
+
+        def _enforce_detail_pane_min_width(_event=None):
+            total = paned.winfo_width()
+            if total <= 1:
+                return
+            max_allowed_sash = max(0, total - preview_nav_min_width)
+            if paned.sashpos(0) > max_allowed_sash:
+                paned.after_idle(_clamp_sash, max_allowed_sash)
+
+        detail_frame.bind("<Configure>", _enforce_detail_pane_min_width, add="+")
+        self.after_idle(_enforce_detail_pane_min_width)
 
         hits_preview_frame = ttk.Frame(detail_frame)
         hits_preview_frame.pack(fill="both", expand=True, padx=6, pady=6)
@@ -316,7 +364,6 @@ class ConstellationsHitsTab(BaseTab):
             self.hits_detail_text.set(
                 T("const.not_found_detail", number=number, base_exponent=base_exponent))
         self._reset_preview_state()
-        self.hits_load_preview_btn.configure(state="disabled")
 
     def show_search_participation(self, base_exponent, number, prime_result, participation):
         """Called by prime_atlas_v1.py's own _on_const_search_result() once a "const"
@@ -360,7 +407,6 @@ class ConstellationsHitsTab(BaseTab):
         self._selected_hit_base_exponent = None
         self._selected_hit_total_count = 0
         self._selected_hit_pattern = None
-        self.hits_load_preview_btn.configure(state="disabled")
         self.status.set(T("const.status_search", number=number, count=len(participation)))
 
     def jump_to_search_match(self, base_exponent, pattern, match):
@@ -420,6 +466,9 @@ class ConstellationsHitsTab(BaseTab):
         self.hits_tree.item(node, values=(f"{grand_total:,}", ""))
 
     def _on_tree_select(self, _event):
+        """Selecting a leaf pattern node loads its preview immediately (no separate
+        "Load preview" click any more -- removed 2026-09-16, since the tree selection
+        already identifies exactly one loadable hit file)."""
         selection = self.hits_tree.selection()
         if not selection:
             return
@@ -427,7 +476,6 @@ class ConstellationsHitsTab(BaseTab):
         T = self.T
         self._reset_preview_state()
         if item not in self._hit_path_by_item:
-            self.hits_load_preview_btn.configure(state="disabled")
             return
         pattern, path, header, base_exponent = self._hit_path_by_item[item]
         self._selected_hit_path = path
@@ -436,7 +484,6 @@ class ConstellationsHitsTab(BaseTab):
         self._selected_hit_pattern = pattern
         if header is None:
             self.hits_detail_text.set(T("primes.header_error", path=path))
-            self.hits_load_preview_btn.configure(state="disabled")
             return
         offsets_str = ", ".join(f"+{d}" for d in pattern["offsets"])
         if pattern["record_digits"] is not None:
@@ -451,7 +498,8 @@ class ConstellationsHitsTab(BaseTab):
               generated=header['generated_at_iso']) +
             f"\n{record_line}"
         )
-        self.hits_load_preview_btn.configure(state="normal" if header["count"] > 0 else "disabled")
+        if header["count"] > 0:
+            self.load_preview()
 
     def _reset_preview_state(self):
         self.hits_preview_list.delete(0, "end")
@@ -468,7 +516,6 @@ class ConstellationsHitsTab(BaseTab):
         self.hits_file_prev_btn.configure(state="disabled")
         self.hits_file_next_btn.configure(state="disabled")
         self.hits_export_btn.configure(state="disabled")
-        self.hits_load_preview_btn.configure(state="normal" if self._selected_hit_path else "disabled")
 
     def _hit_row_formatter(self, row):
         """Each row is (value, hit_base, position, offset) -- ONE tuple element, not
@@ -491,14 +538,15 @@ class ConstellationsHitsTab(BaseTab):
         on a high floor is the real case this matters for) that path either no longer
         exists at all (migrated to pages -- see hit_paging.py) or would decode
         hundreds of millions of entries synchronously on THIS (the GUI) thread, which
-        is exactly what used to freeze the whole app on "Wczytaj podgląd".
+        is exactly what used to freeze the whole app on the old "Wczytaj podgląd"
+        button (removed 2026-09-16 -- _on_tree_select() calls this directly now).
 
         A pattern this large that HASN'T been migrated to pages yet still has its
         whole hit count in ONE file -- reading "page 0" would be a full, unbounded
         decode on THIS (the GUI) thread. Refuse rather than attempt it -- see
         hit_pattern_is_paged()'s own docstring for the real freeze this guards against
-        (k=2 on floor 25, ~2.15 billion hits, hung the whole app on "Wczytaj podgląd"
-        before migration ever ran)."""
+        (k=2 on floor 25, ~2.15 billion hits, hung the whole app before migration ever
+        ran)."""
         if not self._selected_hit_path:
             return
         T = self.T
@@ -550,12 +598,18 @@ class ConstellationsHitsTab(BaseTab):
             state="normal" if page_index < self._hit_file_page_count - 1 else "disabled")
         self.hits_export_btn.configure(state="normal")
         self._show_hits_page(0)
-        self.hits_load_preview_btn.configure(state="disabled")
 
     def _prev_hit_file_page(self):
         if self._hit_file_page_index <= 0:
             return
         self._load_hit_file_page(self._hit_file_page_index - 1)
+
+    def _goto_hit_file_page(self):
+        raw = self.hits_file_goto_entry.get().strip()
+        if not raw.isdigit():
+            return
+        page_index = max(0, min(int(raw) - 1, self._hit_file_page_count - 1))
+        self._load_hit_file_page(page_index)
 
     def _next_hit_file_page(self):
         if self._hit_file_page_index >= self._hit_file_page_count - 1:
@@ -679,7 +733,6 @@ class ConstellationsHitsTab(BaseTab):
             return
         page = target_index // self._page_size
         self._show_hits_page(page)
-        self.hits_load_preview_btn.configure(state="disabled")
         local = target_index - self._hit_page * self._page_size
         self.hits_preview_list.selection_clear(0, "end")
         self.hits_preview_list.selection_set(local)

@@ -173,11 +173,9 @@ def main():
         hits.hits_tree.selection_set(pattern_item)
         hits.hits_tree.focus(pattern_item)
         hits._on_tree_select(None)
-        check(str(hits.hits_load_preview_btn["state"]) == "normal",
-              "selecting the populated pattern node enables Load preview")
-
-        hits.load_preview()
-        check(hits._hit_values == [P], f"load_preview() decoded the exact seeded hit base (got {hits._hit_values})")
+        check(hits._hit_values == [P],
+              f"selecting the populated pattern node auto-loads its preview, no separate "
+              f"'Load preview' click needed (got {hits._hit_values})")
 
         # === 2. Search box: real "const" search round-trips through the shared worker ===
         hits.hits_search_entry.delete(0, "end")

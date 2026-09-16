@@ -392,7 +392,7 @@
   "const.preview_partial": "Showing the first {shown} of {total} hits (pattern is paged -- use the Records tab's CSV/PDF export to see the rest).",
   "const.preview_too_large_title": "Pattern too large to preview",
   "const.preview_too_large": "This pattern has {count} hits and hasn't been migrated to pages yet -- a live preview would decode the whole file and freeze the app. Migrate this pattern to pages (hit_paging) or use the Records tab's CSV/PDF export, which reads the file in a stream.",
-  "const.export_to_records_button": "Export (Records table)",
+  "const.export_to_records_button": "Export",
   "const.status_searching": "[*] Searching for {number} in floor 10p{base_exponent} (constellations)...",
   "const.status_search_progress": "[*] Searching k-tuples: {done}/{total} patterns checked...",
   "const.record_known": "Smallest known example (pzktupel.de): >= {digits} digits, found by {discoverer} ({date})",

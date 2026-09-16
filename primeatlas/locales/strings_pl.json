@@ -392,7 +392,7 @@
   "const.preview_partial": "Pokazano pierwsze {shown} z {total} trafień (wzorzec podzielony na strony -- użyj eksportu CSV/PDF w Tabeli rekordów, by zobaczyć resztę).",
   "const.preview_too_large_title": "Wzorzec za duży na podgląd",
   "const.preview_too_large": "Ten wzorzec ma {count} trafień i nie jest jeszcze podzielony na strony -- podgląd na żywo dekodowałby cały plik i zawiesiłby aplikację. Zmigruj ten wzorzec do stron (hit_paging) albo użyj eksportu CSV/PDF w Tabeli rekordów, który czyta plik strumieniowo.",
-  "const.export_to_records_button": "Eksportuj (Tabela rekordów)",
+  "const.export_to_records_button": "Eksportuj",
   "const.status_searching": "[*] Szukam {number} w piętrze 10p{base_exponent} (konstelacje)...",
   "const.status_search_progress": "[*] Szukam k-tupli: {done}/{total} wzorców przeszukanych...",
   "const.record_known": "Najmniejszy znany przykład (pzktupel.de): >= {digits} cyfr, znaleziony przez {discoverer} ({date})",
