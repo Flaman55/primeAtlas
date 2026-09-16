@@ -344,11 +344,11 @@ def report_both_base_coverage(is_prime, Pmax, Pmin=BOTH_BASE_PMIN):
     pair, so Artur doesn't have to manually inspect the returned dict each time.
     Returns the same dict check_both_base_coverage does."""
     res = check_both_base_coverage(is_prime, Pmax, Pmin=Pmin)
-    print(f"Pmax={Pmax}  Pmin={Pmin}  okno=[4, {res['n_max']}]  wierszy={len(res['rows'])}")
+    print(f"Pmax={Pmax}  Pmin={Pmin}  window=[4, {res['n_max']}]  rows={len(res['rows'])}")
     if res["covered"]:
-        print("  WSZYSTKO POKRYTE -- kazde n w oknie ma pare oba<=Pmax.")
+        print("  FULLY COVERED -- every n in the window has a pair with both <= Pmax.")
     else:
-        print(f"  BRAKI ({len(res['counterexamples'])} z {len(res['rows'])}): "
+        print(f"  GAPS ({len(res['counterexamples'])} of {len(res['rows'])}): "
               f"{res['counterexamples']}")
     return res
 
