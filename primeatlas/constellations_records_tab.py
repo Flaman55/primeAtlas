@@ -7,9 +7,8 @@ Skanuj, see the smallest offset found so far for each floor x variant combinatio
 primeatlas/constellations.py's build_constellation_records_table() for the exact
 semantics, including what the record-floor asterisk does and doesn't claim).
 
-Extracted from prime_atlas_v1.py during the refactor branch's Faza 3 (tab-by-tab
-backend/UI split, 2026-08-23). Unlike its two sibling sub-tabs (Magazyn/Kalkulator),
-this one is fully self-contained -- its own background.PersistentWorker
+Unlike its two sibling sub-tabs (Magazyn/Kalkulator), this one is fully
+self-contained -- its own background.PersistentWorker
 (self._worker), never shared with anything else in the app (the search worker/totals
 worker stay app-level specifically BECAUSE they're shared across tabs; this one never
 was), so the whole worker lives here rather than being injected. Only `totals_progress`
@@ -57,10 +56,10 @@ from .constellations import (
 
 # A PDF, unlike streamed CSV, needs every row laid out on paginated pages up front (see
 # render_constellation_records_pdf()) -- so its row count can't be unbounded the way
-# CSV export now is (see _job()'s own comment). This used to be 1,000,000 (one
-# hit_paging page's worth), but Artur found (2026-09-16) that's still far too many for
-# an actual PDF: render_constellation_records_pdf()'s own row_h=14/A4-landscape layout
-# fits ~37 rows per page, so even ONE full hit_paging page (the smallest a page-range
+# CSV export now is (see _job()'s own comment). 1,000,000 rows (one hit_paging page's
+# worth) is still far too many for an actual PDF: render_constellation_records_pdf()'s
+# own row_h=14/A4-landscape layout fits ~37 rows per page, so even ONE full hit_paging
+# page (the smallest a page-range
 # export can ask for once a pattern's own pages are 1,000,000 each) would render a
 # ~27,000-page PDF -- not just slow, but useless once opened. 50,000 rows (~1,350
 # pages) is still a big PDF but at least one that finishes rendering and opens in a
@@ -74,8 +73,8 @@ def _iter_with_progress(rows, report_progress, step=100_000):
     """Wraps a per-hit row generator to call report_progress(count) every `step` rows
     as they're consumed -- lets a long CSV export drive a real DETERMINATE progress
     bar (see ConstellationsRecordsTab._start_job()'s own docstring for why: an
-    indeterminate spinner for a minutes-long export looked like flickering rather
-    than genuine incremental progress, Artur's report 2026-09-16). step=100,000
+    indeterminate spinner for a minutes-long export looks like flickering rather
+    than genuine incremental progress). step=100,000
     balances UI responsiveness against report_progress()'s cost (each call
     round-trips through PersistentWorker's own queue + the main thread's poll loop,
     see background.py) -- reporting every single row would be needless overhead at
@@ -160,14 +159,10 @@ class ConstellationsRecordsTab(BaseTab):
         # chosen SCREEN pages of that one pattern instead -- SAME numbering as
         # detail_nav's own "Strona X/Y" label below (self._page_size rows each), NOT
         # a whole hit-file page (hit_paging.PAGE_SIZE, up to 1,000,000 entries) -- see
-        # _build_export_rows_from_current_page()'s own docstring for why (Artur,
-        # 2026-09-16, after the first version of this scoped to hit-file pages and a
-        # single "page" turned out to already mean 1,000,000 rows: "eksportuj strony
-        # od do powinny eksportowac tylko i wylacznie strony pliku [on-screen 'Strona
-        # X/Y' pages]"). Previously a separate "Eksportuj CSV (zakres stron)"
-        # button+row down in the detail panel -- Artur pointed out (2026-09-16) that
-        # was a confusing duplicate control AND had no PDF equivalent; merging the
-        # scoping into the existing two buttons fixes both at once.
+        # _build_export_rows_from_current_page()'s own docstring for the on-screen vs
+        # hit-file-page distinction this depends on. Scoping lives on these same two
+        # buttons rather than a separate range-scoped control, so PDF export gets the
+        # same range-scoping option CSV does.
         ttk.Label(top_row, text=T("const_records.export_range_label")).pack(
             side="left", padx=(16, 0))
         self.detail_export_from_entry = ttk.Entry(top_row, width=6)
@@ -222,7 +217,7 @@ class ConstellationsRecordsTab(BaseTab):
         # Real hit-file page navigation (up to hit_paging.PAGE_SIZE=1,000,000 hits per
         # page) -- separate from detail_nav above, which only paginates WITHIN
         # whichever hit-file page is currently loaded into self._detail_rows
-        # (self._page_size=500-ish rows at a time). Added 2026-09-16 so a pattern too
+        # (self._page_size=500-ish rows at a time). Needed so a pattern too
         # large to ever load in full (floor 25's k=2, ~2.16 billion hits / 2160 pages)
         # can still be browsed page by page instead of being stuck on page 1 forever.
         # Page-scoped export itself lives in the top_row's "Eksportuj strony od/do"
@@ -347,10 +342,10 @@ class ConstellationsRecordsTab(BaseTab):
         caller computes BEFORE dispatch, see count_constellation_records_detail_rows()/
         hit_pattern_header-based sums in the export handlers below), switches
         self.totals_progress to a real DETERMINATE bar (0..total_rows) instead of the
-        indeterminate spin _start_busy_progress() gives every other job -- added
-        2026-09-16 after Artur found the indeterminate bar's constant bounce/reset
-        during a real, minutes-long export looked like flickering ("miga") rather than
-        genuine incremental progress. `_job()`'s own report_progress calls (row counts
+        indeterminate spin _start_busy_progress() gives every other job -- the
+        indeterminate bar's constant bounce/reset during a real, minutes-long export
+        reads as flickering rather than genuine incremental progress. `_job()`'s own
+        report_progress calls (row counts
         as export proceeds) drive the bar's value from there via _on_worker_progress().
         Falls back to the indeterminate spin when total_rows is None (the "scan" job,
         which has no cheap way to know its own eventual row count up front)."""
@@ -689,9 +684,7 @@ class ConstellationsRecordsTab(BaseTab):
         needing a prior Skanuj/tree click -- called by prime_atlas_v1.py's app-level
         jump wiring when Magazyn's own "Eksportuj" button (ConstellationsHitsTab, see
         its own docstring) hands off to here instead of duplicating a whole separate
-        export mechanism there (Artur, 2026-09-16: "zamiast przycisku generuj csv [w
-        Magazynie] zrobmy eksport i klikniecie przenosi do zakladki tabela rekordow z
-        ustawionymi stronami od do").
+        export mechanism there.
 
         Sets self._detail_context directly (everything _on_cell_activate() would
         normally derive from a clicked tree cell is already known here -- `pattern`
@@ -703,8 +696,7 @@ class ConstellationsRecordsTab(BaseTab):
         regardless of which hit-file page was loaded; the user can widen the range
         there before clicking Eksportuj PDF/CSV.
 
-        Also pre-fills "Pietro od/do" to this exact floor (Artur, 2026-09-16: "jesli
-        jestem tu z pietra 25 to powinno sie uzupelnic pietro od/do 25") -- these
+        Also pre-fills "Pietro od/do" to this exact floor -- these
         aren't read by the page-range export path itself, but matter the moment the
         user clears "Eksportuj strony od/do" to fall back to a whole-range export
         instead: left blank (the pre-jump default), that fallback would silently mean
@@ -837,13 +829,10 @@ class ConstellationsRecordsTab(BaseTab):
         whole hit-file page (up to hit_paging.PAGE_SIZE, 1,000,000, entries), and NOT
         the whole pattern.
 
-        Changed 2026-09-16 (Artur, after the previous version scoped "Eksportuj strony
-        od/do" to hit-file pages instead): "eksportuj strony od do powinny eksportowac
-        tylko i wylacznie strony pliku [on-screen 'Strona X/Y' pages]... to tylko ta
-        strona powinna zostac eksportowana skoro od do jest 1 i 1" -- what he actually
-        wants scoped is exactly what's rendered on screen a page at a time
-        (self._page_size rows), not the much coarser hit-file page unit that used to
-        back this same field and made even a single-page request 1,000,000 rows.
+        Scoped to on-screen pages (self._page_size rows each) rather than the much
+        coarser hit-file page unit, since the latter would make even a single-page
+        request 1,000,000 rows -- far too coarse for a range meant to select
+        individual screenfuls of rows.
 
         Clamped into [0, len(self._detail_rows)) -- an out-of-range ui_from yields an
         empty list rather than raising."""
@@ -877,10 +866,9 @@ class ConstellationsRecordsTab(BaseTab):
         top_row "Eksportuj strony od/do" fields are blank) or scoped to the on-screen
         list-pages [od, do] of whichever pattern/hit-file-page is currently loaded
         (self._detail_context/self._detail_rows, when those fields are filled -- see
-        _build_export_rows_from_current_page()'s own docstring) -- merged into one
-        method 2026-09-16 after Artur pointed out the previous separate "Eksportuj CSV
-        (zakres stron)" button was a confusing duplicate control with no PDF
-        equivalent."""
+        _build_export_rows_from_current_page()'s own docstring). One method covers
+        both formats and both scopes rather than a separate range-scoped button, so
+        PDF export gets the same range-scoping option CSV does."""
         if self._busy:
             return
         T = self.T
