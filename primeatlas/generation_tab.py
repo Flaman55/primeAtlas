@@ -5,8 +5,8 @@ orchestrator_loop_v2.py pipeline form (Section A), the constellation_finder_v1.p
 form (Section B), and the k-tuple sieve form (Section C) -- plus every launch/poll/finish
 handler behind their Run/Stop buttons and the shared bottom progress bar.
 
-Extracted from prime_atlas_v1.py during the refactor branch's Faza 3 (tab-by-tab
-backend/UI split, 2026-08-23), alongside the tab's own pure-logic split
+Extracted from prime_atlas_v1.py during the refactor branch's tab-by-tab
+backend/UI split, alongside the tab's own pure-logic split
 (see generation.py's own docstring). This is the largest of the five tab extractions
 (~2571 lines) and the one with the most cross-tab coupling -- three separate pieces of
 this tab's own state are shared with code OUTSIDE it:
@@ -57,24 +57,21 @@ from .benchmark import read_benchmark_log
 from .generation_console import GenerationConsole
 
 # constellation_finder_v1.py's own WSL process can die mid-run WITHOUT writing an exit
-# code on a large enough floor (Artur's field report, 2026-09-13: floor 25 at 545,000
-# source windows, "Proces wsl.exe zakonczyl sie bez zapisania kodu wyjscia" -- confirmed
-# on a SECOND run to die with literally zero progress each time, right after the
-# "windows to process" line, ruling out "gradual resource leak over many iterations" as
-# the whole story and pointing at something that goes wrong very early against this
-# floor's own file count) -- most likely the same class of WSL/Windows filesystem-
-# interop scaling issue window_sharding.py's own docstring already documents for this
-# exact floor's directory listing, just showing up further into the pipeline now that
-# listing itself is fixed. See _maybe_auto_retry_constellation()'s own docstring for the
-# full mechanism (checkpoint-verified relaunching) this constant bounds.
+# code on a large enough floor (observed on floor 25 at 545,000 source windows, dying
+# with zero progress each time right after the "windows to process" line -- ruling out
+# "gradual resource leak over many iterations" as the whole story and pointing at
+# something that goes wrong very early against this floor's own file count) -- most
+# likely the same class of WSL/Windows filesystem-interop scaling issue window_sharding.
+# py's own docstring already documents for this exact floor's directory listing, just
+# showing up further into the pipeline now that listing itself is fixed. See
+# _maybe_auto_retry_constellation()'s own docstring for the full mechanism
+# (checkpoint-verified relaunching) this constant bounds.
 MAX_CONSTELLATION_AUTO_RETRIES = 200
 CONSTELLATION_AUTO_RETRY_DELAY_MS = 2000
 
-# Proactive counterpart to the reactive retry above (Artur's own follow-up request,
-# 2026-09-13: "sprawdź czy faktycznie jest porcjowana ilość danych do przetwarzania...
-# skrypt pośredni w pythonie który zarządza co trafia do wsl by ten nie dźwigał
-# całości") -- rather than only reacting AFTER a crash, every specific-floor run is
-# capped to this many windows per WSL invocation from the start (see
+# Proactive counterpart to the reactive retry above -- rather than only reacting AFTER
+# a crash, every specific-floor run is capped to this many windows per WSL invocation
+# from the start (see
 # build_constellation_finder_argv()'s own max_windows parameter and
 # constellation_finder_v1.process_floor()'s own docstring), with
 # _maybe_continue_constellation_batch() chaining a fresh WSL process for the next slice
@@ -85,8 +82,7 @@ CONSTELLATION_BATCH_SIZE = 5000
 _GEN_CONST_BATCH_REMAINING_RE = re.compile(
     r"\[CONSTELLATIONS v2\] BATCH DONE -- (\d+) window")
 
-# Graceful-Stop mechanism (added 2026-09-14, Artur's own proposal after asking whether a
-# manual Stop click resumes cleanly): a plain terminate()+pkill (see WslLoggedRunner.
+# Graceful-Stop mechanism: a plain terminate()+pkill (see WslLoggedRunner.
 # stop()) kills constellation_finder_v1.py wherever it happens to be, including mid-
 # write of a hit file -- append_prime_window() (prime_sieve_v1.py) writes a file's
 # header (new count) BEFORE its own payload bytes, so an ill-timed kill can corrupt that
@@ -106,8 +102,7 @@ _GEN_CONST_BATCH_REMAINING_RE = re.compile(
 CONSTELLATION_STOP_REQUEST_FILENAME = "STOP_REQUEST.txt"
 CONSTELLATION_STOP_GRACE_MS = 10_000
 
-# Elapsed-time/ETA display (added 2026-09-14, Artur's own follow-up: "skoro znamy czas
-# na plik to może byśmy dołożyli pomiar eta? oraz czas uruchomienia"). Rate is measured
+# Elapsed-time/ETA display. Rate is measured
 # on the GUI's own wall clock (elapsed real time / floor-wide windows actually done)
 # rather than parsed from constellation_finder_v1.py's own per-window "(X.XXs)" timing
 # -- a single window's own duration swings wildly (tiny vs. huge windows, occasional
@@ -196,9 +191,8 @@ class GenerationTab(HybridControls, BaseTab):
         # Whether the CURRENTLY RUNNING engine actually prints anything
         # _update_shared_progress_from_generation_chunk() can parse mid-run -- see
         # that method's own _set_gen_progress_bar() helper for the full rationale
-        # (Artur, 2026-08-27: confirmed from a real screenshot that primesieve/
-        # cudasieve mode's own stdout has nothing granular to show, so the bar was
-        # jumping straight from empty to "100% done" with nothing meaningful in
+        # (primesieve/cudasieve mode's own stdout has nothing granular to show, so the
+        # bar was jumping straight from empty to "100% done" with nothing meaningful in
         # between -- worse than just leaving it alone). Defaults True (the old
         # batched engine's behavior, which DOES print granular progress); each
         # _on_run_*() launcher below sets this to match its own engine right before
@@ -211,7 +205,7 @@ class GenerationTab(HybridControls, BaseTab):
         """Wraps `parent` in a vertically-scrollable canvas+frame and returns the
         inner ttk.Frame -- pack the tab's REAL content into that returned frame
         instead of into `parent` directly; everything else (canvas, scrollbar,
-        width sync, mousewheel binding) is handled here. Added 2026-08-19 because
+        width sync, mousewheel binding) is handled here. Needed because
         the Generation tab's three sections (A: pipeline, B: constellation search,
         C: k-tuple search -- each with its own Advanced-fields block and its own
         GenerationConsole terminal) together need more vertical space than the
@@ -236,8 +230,7 @@ class GenerationTab(HybridControls, BaseTab):
         covers Windows/Mac; <Button-4>/<Button-5> cover X11 (Linux) which reports
         the wheel as button clicks instead of a delta.
 
-        [CHANGED 2026-09-13, Artur's own report: "scrolując okno terminala
-        scrolujesz jednocześnie okno zakładki"] Returns `(inner, register_exclude)`
+        Returns `(inner, register_exclude)`
         instead of just `inner` -- `register_exclude(widget)` marks `widget` (and
         every descendant of it) as having its OWN independent scrolling (e.g. a
         GenerationConsole.text.frame, which wraps a ScrolledText with its own
@@ -265,9 +258,8 @@ class GenerationTab(HybridControls, BaseTab):
         outer.pack(fill="both", expand=True)
 
         canvas = tk.Canvas(outer, highlightthickness=0)
-        # ROOT CAUSE (found 2026-08-23 via live debug logging on the cudasieve
-        # branch's forked copy of this exact idiom, prime_atlas_v2.py): Tk's
-        # Canvas defaults to yscrollincrement=0, which makes any "scroll N units"
+        # ROOT CAUSE: Tk's Canvas defaults to yscrollincrement=0, which makes any
+        # "scroll N units"
         # call (mousewheel, scrollbar arrows) jump by ~10% of the canvas's
         # CURRENT VIEWPORT height -- not a small fixed pixel step. When the real
         # content is SHORTER than the viewport (nothing to scroll to at all), Tk
@@ -309,14 +301,14 @@ class GenerationTab(HybridControls, BaseTab):
         inner = ttk.Frame(canvas)
         inner_window = canvas.create_window((0, 0), window=inner, anchor="nw")
 
-        # NOTE (2026-08-23 fix): scrollregion is set from inner.winfo_reqwidth()/
+        # NOTE: scrollregion is set from inner.winfo_reqwidth()/
         # reqheight() -- NOT canvas.bbox("all"). bbox("all") is the bounding box of
         # everything ever drawn on the canvas and can end up taller than the frame's
         # actual current content (e.g. right after a mode switch collapses a section
         # via grid_remove(), or during the width-driven reflow below, before layout
         # has fully settled) -- Tk then happily lets yview scroll into that stale
         # leftover space, which is exactly the "top isn't pinned, you can scroll to
-        # blank space" bug Artur reported. Querying the frame's own requested size
+        # blank space" bug. Querying the frame's own requested size
         # directly is always in sync with what's actually packed inside it right now,
         # so the scrollregion can never exceed real content.
         #
@@ -331,7 +323,7 @@ class GenerationTab(HybridControls, BaseTab):
         # back to the top on every resync.
         def _sync_scrollregion():
             canvas.configure(scrollregion=(0, 0, inner.winfo_reqwidth(), inner.winfo_reqheight()))
-            # STRETCH FIX (2026-08-23): a canvas window item's height is never
+            # STRETCH FIX: a canvas window item's height is never
             # auto-stretched to fill leftover viewport space -- by default it's
             # always exactly inner's natural winfo_reqheight(), even though
             # inner.pack(fill="both", expand=True) suggests otherwise. That was
@@ -342,7 +334,7 @@ class GenerationTab(HybridControls, BaseTab):
             # is itself GIVEN more than its minimum size, which never happened,
             # so a bigger-than-content main window just left blank canvas below
             # the last pane instead of growing the three sections proportionally
-            # (per their existing weight=1 shares -- see Artur's report). When
+            # (per their existing weight=1 shares). When
             # content fits the viewport, explicitly stretch the window item to
             # the full viewport height so expand=True children actually receive
             # that extra space; otherwise set it back to the natural height
@@ -507,7 +499,7 @@ class GenerationTab(HybridControls, BaseTab):
                          variable=self._loop_write_files_var).grid(
             row=4, column=0, columnspan=2, sticky="w", pady=(6, 0))
         # These two checkboxes are mutually exclusive ALTERNATIVES for computing
-        # pi(L_final), not an independent base+modifier pair (Artur, 2026-08-27: picking
+        # pi(L_final), not an independent base+modifier pair (picking
         # one must uncheck the other; both off means "don't compute pi(L_final) at all").
         # Effective compute_sieving_primes_count sent to the scripts is the OR of the two
         # (see _collect_loop_settings_from_form()/_on_run_orchestrator_direct()) --
@@ -571,9 +563,8 @@ class GenerationTab(HybridControls, BaseTab):
             extra_controls_builder=self._build_detached_quick_panel,
             on_change=self._refresh_generation_pane_minsize)
         self.loop_output = self.loop_console.text
-        # [ADDED 2026-09-13, see _build_scrollable_container's own docstring]
-        # Scrolling this console's own ScrolledText must not ALSO scroll the
-        # whole generation_body underneath it.
+        # See _build_scrollable_container's own docstring: scrolling this console's
+        # own ScrolledText must not ALSO scroll the whole generation_body underneath it.
         self._register_scroll_exclude(self.loop_console.text.frame)
 
         self._loop_runner = None
@@ -583,12 +574,11 @@ class GenerationTab(HybridControls, BaseTab):
         # -- set by _on_run_loop()/_on_run_primesieve()/_on_run_orchestrator_direct()
         # right before starting the subprocess, consumed by _on_loop_finished()'s
         # _bump_totals_from_finished_run() to know which rows in the CSV are new since
-        # then. See storage.py's own module docstring for the feature this belongs to
-        # (added 2026-08-27, after Artur pointed out that a full per-floor rescan --
-        # the ONLY way a newly-generated window's prime count used to reach the
-        # persisted totals cache -- was expensive and unnecessary given
+        # then. See storage.py's own module docstring for the feature this belongs to:
+        # a full per-floor rescan -- the ONLY way a newly-generated window's prime count
+        # used to reach the persisted totals cache -- was expensive and unnecessary given
         # benchmark_log.csv already logs each run's own total_primes/windows_written/
-        # bytes_written/write_files).
+        # bytes_written/write_files.
 
         # --- Section B: constellation_finder_v1.py (k-tuple search) --------------
         const_outer = ttk.Labelframe(
@@ -724,7 +714,7 @@ class GenerationTab(HybridControls, BaseTab):
         # Auto button: recommended_digit_sweep_n_locations()'s own suggestion --
         # see _on_ktuple_n_locations_auto_clicked()'s docstring for why this
         # exists (a shared n_locations field left digit_sweep's per-branch depth
-        # much thinner than Artur had pictured). Occupies the free grid slot right
+        # much thinner than intended). Occupies the free grid slot right
         # after n_locations's own entry (columns 2/3), same "Auto button right
         # next to the field it fills" placement as the loop pipeline's own
         # workers Auto button above.
@@ -751,9 +741,8 @@ class GenerationTab(HybridControls, BaseTab):
         # step_for_concentrated()), REQUIRED for manual_step. Visible in the
         # primary form (not tucked behind Advanced) since it's central to how
         # every non-manual_list strategy now behaves -- see the checkpoint/step
-        # design added 2026-08-19 at Artur's request, after his first real run
-        # showed every Run re-scanning the same locations with nothing persisted
-        # in between.
+        # design, which avoids every Run re-scanning the same locations with
+        # nothing persisted in between.
         add_ktuple_field(2, 0, "step", self.T("gen.ktuple_field_step"), width=14)
 
         ktuple_advanced_row = ttk.Frame(ktuple_outer)
@@ -786,14 +775,14 @@ class GenerationTab(HybridControls, BaseTab):
         add_ktuple_advanced_field(1, 0, "deep_prime_limit", self.T("gen.ktuple_field_deep_prime_limit"))
         add_ktuple_advanced_field(1, 1, "mr_rounds", self.T("gen.ktuple_field_mr_rounds"))
         # pass_counter: strategy=digit_sweep only -- the starting pass number (only
-        # used the first time, before any checkpoint exists -- default 0 matches
-        # Artur's own worked example verbatim). Each pass sweeps the whole floor
+        # used the first time, before any checkpoint exists -- default 0). Each pass
+        # sweeps the whole floor
         # once more with every drilled position committing to a DIFFERENT digit
         # than the pass before (a different rate per position, so the explored path
         # looks scrambled/varied rather than a single repeated digit -- see
         # ktuple_sieve_v1.py's digit_sweep_locations() PATH VARIETY note). Kept in
         # Advanced alongside the other rarely-touched fields since the default
-        # already matches his intent.
+        # is already the intended starting value.
         add_ktuple_advanced_field(2, 0, "pass_counter", self.T("gen.ktuple_field_pass_counter"))
         ttk.Label(ktuple_advanced_form, text=self.T("gen.ktuple_field_manual_offsets")).grid(
             row=3, column=0, sticky="w", padx=(0, 4), pady=2)
@@ -847,9 +836,9 @@ class GenerationTab(HybridControls, BaseTab):
         self._ktuple_runner = None
         self._ktuple_output_queue = queue.Queue()
 
-        # ROOT CAUSE (found 2026-08-23, after a first attempt to give each
-        # section its OWN scrollbar was correctly rejected by Artur -- one
-        # scrollable page for the whole tab is the right mental model, not
+        # ROOT CAUSE (a first attempt to give each
+        # section its OWN scrollbar was rejected in favor of one
+        # scrollable page for the whole tab as the right mental model, not
         # nested independent ones): a ttk.Panedwindow does NOT report its own
         # required height as the sum of what its panes actually need. Left
         # alone, it reports something close to just the sash furniture, and
@@ -885,8 +874,7 @@ class GenerationTab(HybridControls, BaseTab):
         self._const_section_outer = const_outer
         self._ktuple_section_outer = ktuple_outer
 
-        # FIFTH PASS (2026-08-23) -- root cause finally found: calling this
-        # synchronously here, still inside __init__/_build_generation_tab(),
+        # Calling this synchronously here, still inside __init__/_build_generation_tab(),
         # runs BEFORE the Atlas window has ever been mapped/shown on screen.
         # At that point ttk.Panedwindow's ACTUAL on-screen size is still
         # whatever tiny placeholder Tk assigns an unmapped widget -- nowhere
@@ -942,8 +930,8 @@ class GenerationTab(HybridControls, BaseTab):
         all three every time, not just the one that grew, since both -height
         and the sash positions are properties of the whole Panedwindow.
 
-        PER-PANE PADDING (found 2026-08-23, third pass): sash thickness and
-        the Panedwindow's own border/relief both eat a few pixels that never
+        PER-PANE PADDING: sash thickness and the Panedwindow's own border/relief
+        both eat a few pixels that never
         show up in any pane's winfo_reqheight() -- and not symmetrically
         (edge panes only border ONE sash and the widget's own outer edge;
         the middle pane borders sashes on both sides; the bottom pane also
@@ -954,12 +942,10 @@ class GenerationTab(HybridControls, BaseTab):
         pane now simply gets its OWN flat safety margin added directly to
         its measured height, regardless of position. A few pixels of extra
         blank space at the bottom of a section is a much smaller problem
-        than clipped content -- see Artur's explicit ask to prioritize
-        "wszystkie się mieszczą w pełni" (all of them fit in full).
+        than clipped content.
 
-        FOURTH PASS (2026-08-23): +15px per pane still left Section C (the
-        LAST one) clipped by roughly one button row, even though the exact
-        same padding was already enough for A and B. Section C is the only
+        Section C (the LAST one) stayed clipped by roughly one button row even with
+        per-pane padding already sufficient for A and B. Section C is the only
         one that also touches the Panedwindow's own OUTER bottom edge/
         border, on top of bordering a sash on its top side -- that outer
         border isn't included in any pane's winfo_reqheight() and isn't
@@ -970,12 +956,11 @@ class GenerationTab(HybridControls, BaseTab):
         insurance against clipping, at the cost of a bit more blank space
         specifically under Section C.
 
-        SIXTH PASS (2026-08-23): opening a section's console (each is ~500px
-        tall once shown -- previously invisible in every screenshot because
-        an unmapped/unpacked Text widget contributes nothing to its parent's
-        winfo_reqheight() at all) showed the SAME stale-clamp bug the fifth
-        pass fixed for the very first, startup-time call, except now it can
-        happen on every later call too: `paned.configure(height=...)` only
+        Opening a section's console (each is ~500px tall once shown -- previously
+        invisible because an unmapped/unpacked Text widget contributes nothing to its
+        parent's winfo_reqheight() at all) triggers the SAME stale-clamp bug the
+        deferred startup-time call above works around, except it can happen on every
+        later call too: `paned.configure(height=...)` only
         changes the widget's OWN reqsize immediately -- the ACTUAL on-screen
         size of `paned` only catches up once that change has propagated all
         the way up through `inner`'s pack manager and back down through the
@@ -1061,8 +1046,8 @@ class GenerationTab(HybridControls, BaseTab):
         # there", see _quick_gen_plan_literal_range's own docstring, unaffected by
         # this toggle either way) and Exploration mode's own Floor field (blank OR
         # typed -- both of Exploration's own starting points can land on a floor
-        # with a gap, see _try_fill_quick_gen_gap()'s own docstring, added there
-        # 2026-08-18 at Artur's request to match Floor mode exactly). Default False
+        # with a gap, see _try_fill_quick_gen_gap()'s own docstring, matching Floor
+        # mode's own behavior exactly). Default False
         # (continue past the highest existing file, today's historical behavior,
         # unchanged) rather than True, so enabling gap-filling is an explicit,
         # conscious choice rather than a surprising default for a person who has
@@ -1358,9 +1343,8 @@ class GenerationTab(HybridControls, BaseTab):
         running the WSL sieve actually has.
 
         Second row: the SAME "fill gaps first" checkbox/variable Floor mode's own
-        blank-starting-point path uses (quick_floor_fill_gaps_var -- added here
-        2026-08-18, at Artur's request, to match Floor mode's behavior exactly: "tak
-        jak tylko piętro"). Relevant to BOTH of this mode's own starting points --
+        blank-starting-point path uses (quick_floor_fill_gaps_var, matching Floor
+        mode's behavior exactly). Relevant to BOTH of this mode's own starting points --
         blank Floor (auto-detects the highest populated floor) and a typed Floor --
         since either one can land on a floor that has a gap (see
         _try_fill_quick_gen_gap()'s own docstring for why a floor Exploration hasn't
@@ -2090,9 +2074,8 @@ class GenerationTab(HybridControls, BaseTab):
     def _try_fill_quick_gen_gap(self, floor_value, existing_count, width_mult):
         """Shared "fill gaps first" check for Floor mode's blank-starting-point path
         AND Exploration mode (see quick_floor_fill_gaps_var's own comment in
-        _init_quick_generation_state -- the SAME toggle/variable drives both; added to
-        Exploration 2026-08-18, at Artur's request, to match Floor mode's own
-        behavior exactly ("tak jak tylko piętro")). Only changes anything when
+        _init_quick_generation_state -- the SAME toggle/variable drives both, matching
+        Floor mode's own behavior exactly). Only changes anything when
         floor_value genuinely HAS a gap: find_first_gap_target_idx() returns the exact
         same value as existing_count (find_continuation_target_idx()) otherwise, so
         the "no gap" case returns False and callers fall straight through to their own
@@ -2227,7 +2210,7 @@ class GenerationTab(HybridControls, BaseTab):
         floor's own boundary -- callers should mention that in their status message
         so a shortened run isn't mistaken for the full request having been honored.
 
-        LAUNCH START (added 2026-08-18, at Artur's request): "target_idx_start" in
+        LAUNCH START: "target_idx_start" in
         the launch-case dict is max(the request's OWN literal target_idx, existing_
         count) -- never less than the literal request (so a starting point picked
         deep into an otherwise-empty floor no longer silently balloons into
@@ -2245,8 +2228,8 @@ class GenerationTab(HybridControls, BaseTab):
         continuation-only wrapper, which has no way to honor a start past wherever
         storage currently ends.
 
-        max_window_count (added 2026-08-18, at Artur's request, after a real floor-25
-        run logged "target_idx X..X+1000 (1001 windows)" for a Width=1000 request):
+        max_window_count (motivated by a real floor-25
+        run that logged "target_idx X..X+1000 (1001 windows)" for a Width=1000 request):
         _round_range_to_window() rounds the START down AND the END up to the nearest
         window boundary -- deliberate for Range mode's own from/to contract ("never
         fall short of what was literally asked for", see that function's docstring),
@@ -2511,7 +2494,7 @@ class GenerationTab(HybridControls, BaseTab):
                     # target_idx-based, uncapped continuation actually applies to -- and
                     # fall through to the SAME launch logic below using the request's
                     # own iterations/width there, instead of just reporting "already in
-                    # storage" and stopping dead. Reported via screenshot: Floor=6
+                    # storage" and stopping dead. Previously, Floor=6
                     # (already complete, picked by the Auto button) kept reporting
                     # nothing to do instead of continuing into floor 7+. The Floor field
                     # itself is updated to show "7" too, so what's displayed matches
@@ -2859,8 +2842,8 @@ class GenerationTab(HybridControls, BaseTab):
         except Exception as e:  # noqa: BLE001 -- a launch failure here used to be
             # silently swallowed by Tk's default callback exception handling (printed
             # to a console window the user usually can't see, GUI otherwise looked
-            # unchanged -- "plan computed, nothing launches, no error" -- reported by
-            # Artur 2026-08-24). Surface it instead of guessing at the cause blind.
+            # unchanged -- "plan computed, nothing launches, no error").
+            # Surface it instead of guessing at the cause blind.
             self._loop_runner = None
             messagebox.showerror(self.T("gen.dialog_title"), self.T(
                 "gen.error_launch_failed", error=str(e)))
@@ -3055,7 +3038,7 @@ class GenerationTab(HybridControls, BaseTab):
         REQUEST_FILENAME, which constellation_finder_v1.py's own process_floor() checks
         once per window (see that mechanism's own module-level comment above) -- rather
         than killing the WSL process immediately. A raw terminate()+pkill (the ONLY
-        thing this method did before 2026-09-14) can land mid-window and corrupt a hit
+        thing this method did previously) can land mid-window and corrupt a hit
         file: append_prime_window() (prime_sieve_v1.py) writes a file's header (new
         count) BEFORE its own payload bytes, so an ill-timed kill leaves the header
         claiming entries that were never actually written. Schedules _force_stop_
@@ -3098,8 +3081,8 @@ class GenerationTab(HybridControls, BaseTab):
 
     def _maybe_auto_retry_constellation(self, returncode):
         """Auto-relaunches constellation_finder_v1.py when its WSL process dies
-        WITHOUT writing an exit code (returncode is None) -- Artur's own field-observed
-        crash on floor 25 at 545,000 source windows (2026-09-13): the WSL wrapper
+        WITHOUT writing an exit code (returncode is None) -- observed on floor 25 at
+        545,000 source windows: the WSL wrapper
         process itself ends silently mid-run (no Python traceback, no exit code -- see
         WslLoggedRunner's own docstring on this exact failure shape), most likely the
         same class of WSL/Windows filesystem-interop scaling issue window_sharding.py's
@@ -3113,8 +3096,8 @@ class GenerationTab(HybridControls, BaseTab):
         window (constellation_finder_v1.py's own write_checkpoint() call), a bare
         relaunch of the identical command resumes right where the last one died at
         essentially zero cost -- turning "run dies partway through a large floor and
-        silently stops, needing Artur to notice and re-click Run by hand, possibly many
-        times over" into "keeps relaunching itself until the floor is actually done",
+        silently stops, needing the user to notice and re-click Run by hand, possibly
+        many times over" into "keeps relaunching itself until the floor is actually done",
         with no change needed to the crashing process itself (whose real root cause --
         something about WSL/DrvFs degrading under sustained file-open volume against
         the /mnt/h mount -- is outside this app's control).
@@ -3183,7 +3166,7 @@ class GenerationTab(HybridControls, BaseTab):
         itself only a bounded --max-windows slice of the floor with more still to do --
         see _start_constellation_runner()'s own docstring on why every specific-floor
         run is capped at CONSTELLATION_BATCH_SIZE windows in the first place. This is
-        the proactive half of the floor-25 fix (Artur's own request, 2026-09-13: feed
+        the proactive half of the floor-25 fix (feeding
         WSL small pieces instead of the whole floor at once); _maybe_auto_retry_
         constellation() above remains the reactive half for a batch that itself
         crashes mid-way.
@@ -3525,11 +3508,11 @@ class GenerationTab(HybridControls, BaseTab):
         __init__ comment. primesieve/cudasieve mode's own stdout never produces
         anything for _update_shared_progress_from_generation_chunk() to parse mid-run
         (both are a single blocking call with no per-batch reporting -- confirmed by
-        reading their actual print() statements, 2026-08-27), so the only line of
+        reading their actual print() statements), so the only line of
         theirs that ever matches anything here is the final "[*] TOTAL PRIMES
         FOUND..." line (_GEN_SIEVE_DONE_RE) -- which, without this guard, would snap
         the bar straight from whatever it was already showing to "100% done", with
-        nothing meaningful in between. Artur's explicit call (2026-08-27): leave the
+        nothing meaningful in between. Leave the
         bar alone entirely for those two engines rather than show a fake step count --
         the status TEXT (self.status.set(...), untouched by this helper) still updates
         normally either way, so the user isn't left with zero feedback, just no bar
