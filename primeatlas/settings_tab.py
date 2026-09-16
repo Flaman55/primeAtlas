@@ -72,8 +72,8 @@ all 5 tabs would be a much larger and riskier change than restarting the whole p
 Both the language AND theme pickers instead trigger an automatic restart (via
 app_restart.py's restart_app(), see _restart_now_or_warn() below) as soon as the change
 is saved -- UNLESS a background job is currently running somewhere in the app, in which
-case the old "restart required" note is shown instead (Artur, 2026-09-02: this used to
-always be a fully manual close-and-reopen).
+case a "restart required" note is shown instead, leaving the close-and-reopen to the
+user rather than killing in-progress work.
 """
 import os
 import queue
@@ -107,13 +107,11 @@ CUDASIEVE_REPO_URL = "https://github.com/curtisseizert/CUDASieve"
 # Same reasoning as CUDASIEVE_REPO_URL above -- neither primecount nor primesieve is
 # authored by this project; both are Kim Walisch's own independent, third-party, open-
 # source libraries (BSD license) that prime_count_primecount.py/prime_sieve_primesieve.py
-# call into via ctypes (see either module's own attribution header). Artur's own
-# instruction (2026-09-13): "nie pamietam jak jest z primesieve bo jego w aktualizacjach
-# nie widze, a w sumie tez powienien byc" -- primesieve had NO attribution link anywhere
-# in Settings (it's installed as part of env_setup.py's generic first-run package set,
-# not its own on-demand installer section like sympy/CUDASieve/primecount each get), so
-# its own "Otworz GitHub" button lives on the generic environment-setup section below
-# instead of a dedicated Labelframe of its own.
+# call into via ctypes (see either module's own attribution header). primesieve is
+# installed as part of env_setup.py's generic first-run package set rather than its own
+# on-demand installer section like sympy/CUDASieve/primecount each get, so its own
+# "Otworz GitHub" button lives on the generic environment-setup section below instead of
+# a dedicated Labelframe of its own.
 PRIMECOUNT_REPO_URL = "https://github.com/kimwalisch/primecount"
 PRIMESIEVE_REPO_URL = "https://github.com/kimwalisch/primesieve"
 
@@ -130,7 +128,7 @@ class SettingsTab(BaseTab):
         self._selected_backup_name = None
         self._diff_cache = None         # last "check differences" result for the selection
         # True only while _on_check_diff()'s background scan is running -- see that
-        # method's own docstring (Faza 1 background-job migration, 2026-08-23).
+        # method's own docstring.
         self._diff_check_running = False
 
         self._active_job = None         # RestoreJob currently driving, or None
@@ -156,7 +154,7 @@ class SettingsTab(BaseTab):
         self._given_up_hits = set()
         self._incomplete_jobs = []
 
-        # Optional-library installer (Faza 2b) -- sympy, used by the Testy pierwszosci
+        # Optional-library installer -- sympy, used by the Testy pierwszosci
         # tab's factorize() for a faster/more complete result when installed (see
         # primeatlas/primality.py's own docstring). _libs_runner/_libs_queue mirror the
         # restore driver's _restore_runner/_restore_queue shape one-for-one, but drive a
@@ -211,9 +209,8 @@ class SettingsTab(BaseTab):
         self._storage_integrate_queue = None
         # True only while the PREVIEW/plan scan itself is running in the background --
         # separate from _storage_integrate_job_running above, which tracks the actual
-        # copy job. See _on_preview_storage_integrate()'s own docstring (Faza 1
-        # background-job migration, 2026-08-23): plan_integration() does a full
-        # dual-tree scan and used to run synchronously on the GUI thread.
+        # copy job. See _on_preview_storage_integrate()'s own docstring: plan_integration()
+        # does a full dual-tree scan and must not run synchronously on the GUI thread.
         self._storage_integrate_preview_running = False
 
         self._build_widgets()
@@ -284,11 +281,10 @@ class SettingsTab(BaseTab):
 
     def _restart_now_or_warn(self, notice_translator):
         """Restarts PrimeAtlas immediately so the theme/language change just saved above
-        actually takes effect (Artur, 2026-09-02: this used to be a fully manual
-        close-and-reopen, with only a "restart required" note shown here) -- UNLESS a
-        background job is currently in flight somewhere in the app, in which case
-        restarting would silently kill it; in that case fall back to the old
-        restart-required note instead of yanking the process out from under a running job.
+        actually takes effect -- UNLESS a background job is currently in flight somewhere
+        in the app, in which case restarting would silently kill it; in that case fall
+        back to a restart-required note instead of yanking the process out from under a
+        running job.
 
         notice_translator is a T(key, **kwargs)-shaped callable -- self.T for the theme
         case, or a throwaway language-specific Translator.t for the language case (see the
@@ -401,7 +397,7 @@ class SettingsTab(BaseTab):
     def _offer_restart_after_update(self):
         """After a successful update (fetch + fast-forward via app_update.download_update()
         -- see that module's docstring for the fetch/merge-base/merge sequence and its
-        2026-09-10 lock-recovery follow-up), the new code is on disk but not yet running --
+        lock-recovery handling), the new code is on disk but not yet running --
         same "process needs replacing" situation _restart_now_or_warn() handles for
         theme/language, so this reuses _has_running_job()/restart_app() directly rather
         than duplicating that safety check. Unlike the theme/language case, this ALWAYS
@@ -468,14 +464,13 @@ class SettingsTab(BaseTab):
         self._refresh_backup_list()
 
     def _refresh_backup_list(self):
-        """Faza 1 background-job migration (2026-08-23, third step -- see
-        _on_check_diff/_on_preview_storage_integrate for the first two): list_backups()
-        is a cheap top-level os.listdir() of _backups/ per backup_store.py's own
-        docstring, but this is backgrounded anyway for architectural consistency with
-        the 'nothing clicked should freeze the window' goal -- this is called from many
-        places, including tab construction itself, so its cost is paid on every app
-        startup regardless of how fast it usually is, and a slow/remote-mounted
-        storage path (e.g. network drive) can make even a top-level listdir slow."""
+        """list_backups() is a cheap top-level os.listdir() of _backups/ per
+        backup_store.py's own docstring, but this is backgrounded anyway for
+        architectural consistency with the 'nothing clicked should freeze the window'
+        goal -- this is called from many places, including tab construction itself, so
+        its cost is paid on every app startup regardless of how fast it usually is, and
+        a slow/remote-mounted storage path (e.g. network drive) can make even a
+        top-level listdir slow."""
         store = self._current_backup_store()
         background.run_in_background(
             self, lambda report_progress: store.list_backups(),
@@ -526,10 +521,8 @@ class SettingsTab(BaseTab):
         thread via primeatlas/background.py's run_in_background(), instead of blocking
         the GUI thread for however long that scan takes.
 
-        Faza 1 background-job migration (2026-08-23, second step -- see
-        _on_preview_storage_integrate for the first): this used to call
-        diff_against_disk() directly, inline, on the GUI thread, freezing the window for
-        the full scan on every click of the "Sprawdz roznice" button."""
+        Calling diff_against_disk() directly, inline, on the GUI thread would freeze the
+        window for the full scan on every click of the "Sprawdz roznice" button."""
         if not self._selected_backup_name:
             messagebox.showinfo(self.T("settings.restore_title"),
                                  self.T("settings.restore_select_backup_first"))
@@ -1174,9 +1167,8 @@ class SettingsTab(BaseTab):
         just-emptied floor should disappear from the list, and one added by a
         Generation run in the meantime should appear).
 
-        Faza 1 background-job migration (2026-08-23, third step): list_floors() is a
-        cheap top-level os.listdir(), backgrounded for the same consistency reasons as
-        _refresh_backup_list right above."""
+        list_floors() is a cheap top-level os.listdir(), backgrounded for the same
+        consistency reasons as _refresh_backup_list right above."""
         wiper = self._current_floor_wiper()
         background.run_in_background(
             self, lambda report_progress: wiper.list_floors(),
@@ -1329,11 +1321,10 @@ class SettingsTab(BaseTab):
         person sees which floors are actually expensive to regenerate rather than
         guessing from the bare floor number (see full_backup.py's own docstring).
 
-        Faza 1 background-job migration (2026-08-23, third step): list_floors() is
-        cheap, but suggest_full_backup_floors() parses the WHOLE benchmark_log.csv
-        (can grow to many thousands of rows over a long project lifetime) -- both are
-        fetched together on one background thread since the listbox render needs both
-        at once anyway."""
+        list_floors() is cheap, but suggest_full_backup_floors() parses the WHOLE
+        benchmark_log.csv (can grow to many thousands of rows over a long project
+        lifetime) -- both are fetched together on one background thread since the
+        listbox render needs both at once anyway."""
         portal_folder = self.wsl["get_portal_folder"]()
         wiper = self._current_floor_wiper()
 
@@ -1372,13 +1363,12 @@ class SettingsTab(BaseTab):
         (e.g. freshly typed, not saved) -- this is a passive refresh, not an action, so
         it shouldn't pop up an error dialog on every keystroke.
 
-        Faza 1 background-job migration (2026-08-23, third step): list_full_backup_floors()
-        reads one JSON meta file per already-backed-up floor from `destination`,
-        which is often an external/removable/network drive by design (see
-        full_backup.py's own docstring) -- exactly the kind of slow-storage scan this
-        migration targets. The listbox is cleared/repopulated entirely inside the
-        done-callback (not here) so two rapid calls can't interleave and leave stale
-        rows mixed with fresh ones."""
+        list_full_backup_floors() reads one JSON meta file per already-backed-up floor
+        from `destination`, which is often an external/removable/network drive by design
+        (see full_backup.py's own docstring) -- exactly the kind of slow-storage scan
+        that justifies running this in the background. The listbox is cleared/repopulated
+        entirely inside the done-callback (not here) so two rapid calls can't interleave
+        and leave stale rows mixed with fresh ones."""
         destination = self._full_backup_destination()
         if not destination or not os.path.isdir(destination):
             self._full_backup_entries = []
@@ -1575,14 +1565,13 @@ class SettingsTab(BaseTab):
 
     # ---- integrate external storage, primeatlas/storage_integrate.py ---------------------
     #
-    # Systemic fix for the scenario Artur hit manually (see [[primeatlas_storage_merge_
-    # federation]]): folding a whole external magazyn (downloaded from GitHub, copied
-    # from another machine) into the current one, WITHOUT the person having to resolve
-    # file-copy conflicts on benchmark_log.csv/.portal_totals_cache.json/
+    # Folds a whole external magazyn (downloaded from GitHub, copied from another
+    # machine) into the current one, WITHOUT the person having to resolve file-copy
+    # conflicts on benchmark_log.csv/.portal_totals_cache.json/
     # .portal_generation_settings.json themselves -- this section never touches any of
     # those three, only floor folders (see storage_integrate.py's own docstring).
-    # Scope decided with Artur 2026-08-19: whole external storage at once (no per-floor
-    # picker, unlike the full-data backup section above), always preview-then-confirm.
+    # Operates on the whole external storage at once (no per-floor picker, unlike the
+    # full-data backup section above), always preview-then-confirm.
 
     def _on_browse_storage_integrate_source(self):
         chosen = filedialog.askdirectory(
@@ -1602,15 +1591,12 @@ class SettingsTab(BaseTab):
         on a background thread via primeatlas/background.py's run_in_background(),
         instead of blocking the GUI thread for however long that scan takes.
 
-        Faza 1 background-job migration (2026-08-23): this used to call
-        si.plan_integration() directly, inline, on the GUI thread -- the exact kind of
-        freeze the properly-threaded copy job right next to it (_on_start_storage_
-        integrate below) never had. It was also called a SECOND time, still
-        synchronously, from _on_storage_integrate_job_finished() to refresh the plan
-        after a copy run completes -- so even after successfully backgrounding the
-        copy itself, the moment it finished the window froze again, silently, for
-        another full dual-tree scan. Backgrounding it here fixes both call sites at
-        once since _on_storage_integrate_job_finished() just calls this same method."""
+        Calling si.plan_integration() directly, inline, on the GUI thread would freeze
+        the window for the full dual-tree scan -- the exact kind of freeze the
+        properly-threaded copy job right next to it (_on_start_storage_integrate below)
+        never had. This method is also called from _on_storage_integrate_job_finished()
+        to refresh the plan after a copy run completes, so backgrounding it here covers
+        both call sites at once."""
         external_path = self.storage_integrate_source_var.get().strip()
         if not external_path or not os.path.isdir(external_path):
             messagebox.showerror(self.T("settings.dialog_title"),
@@ -1781,7 +1767,7 @@ class SettingsTab(BaseTab):
         self.storage_integrate_output.see("end")
         self.storage_integrate_output.configure(state="disabled")
 
-    # ---- optional libraries (sympy installer, Faza 2b) -----------------------------------
+    # ---- optional libraries (sympy installer) ---------------------------------------------
 
     def _refresh_libs_status(self):
         """Re-checks whether sympy is importable RIGHT NOW in this same Python
@@ -1983,8 +1969,7 @@ class SettingsTab(BaseTab):
             # raised inside it (before or during the WSL call) would silently kill this
             # daemon thread -- self.after(...) below would never run, so
             # _cudasieve_status_running would never go back to False and the label would
-            # stay on "sprawdzam..." forever. Confirmed live on the original `cudasieve`
-            # branch (2026-08-23) -- looked exactly like a wsl.exe hang until found.
+            # stay on "sprawdzam..." forever, indistinguishable from a real wsl.exe hang.
             try:
                 argv = self.wsl["build_cudasieve_status_argv"]()
                 ok, payload = self.wsl["run_cudasieve_wsl_blocking"](argv, 30)
@@ -2166,8 +2151,8 @@ class SettingsTab(BaseTab):
         # closed -- by that point the wizard has already called
         # AppSettings.set_env_status() (env_setup_wizard.py's _on_check_done()), so this
         # tab's own label just needs to re-read it, same as _show_cached_env_status()
-        # does at build time (Artur, 2026-09-02: "nawet jesli status jest wszystko
-        # zainstalowane to nie ma tego statusu w oknie atlasa" -- this is what fixes that).
+        # does at build time -- without this call the label would keep showing whatever
+        # status was cached before the wizard ran, even though AppSettings was updated.
         self._show_cached_env_status()
 
     def _show_cached_env_status(self):
@@ -2197,27 +2182,23 @@ class SettingsTab(BaseTab):
     # ---- widget construction ---------------------------------------------------------------
 
     def _build_widgets(self):
-        """Artur, 2026-08-17: everything used to be one long column of Labelframes in
-        a single scroll-less tab -- fine while there were only 3-4 sections, but by
-        the time backup/restore/delete grew alongside language+path+libs, the bottom
-        sections (the whole-database delete button in particular) ran off the bottom
-        of the window with no way to reach them ("nie wszystko sie miesci"). Split
-        into a Notebook with three sub-tabs instead of trying to shrink anything:
-        Ogolne (language + storage path -- the two settings someone touches once and
-        rarely again), Backup (backup/restore/delete, all storage-destructive or
-        storage-preserving operations grouped together), Aktualizacje (currently just
-        the optional-library installer; PrimeAtlas's own self-update is a stated
-        FUTURE addition, not built yet -- see _build_updates_tab's own note).
+        """A single long scroll-less column of Labelframes doesn't scale once
+        backup/restore/delete grow alongside language+path+libs: the bottom sections
+        (the whole-database delete button in particular) run off the bottom of the
+        window with no way to reach them. Split into a Notebook with three sub-tabs
+        instead of trying to shrink anything: Ogolne (language + storage path -- the
+        two settings someone touches once and rarely again), Backup (backup/restore/
+        delete, all storage-destructive or storage-preserving operations grouped
+        together), Aktualizacje (optional-library installer, CUDASieve installer, WSL
+        environment re-check, and PrimeAtlas's own self-update).
 
-        Splitting into sub-tabs alone wasn't enough, though -- Backup on its own
+        Splitting into sub-tabs alone isn't enough, though -- Backup on its own
         (backup list + restore controls/log + per-floor delete + whole-database
-        delete) is still taller than a non-maximized window, per Artur's follow-up
-        report with a screenshot ("musimy jednak dodac pionowy scrollbar bo nie
-        wszystko sie miesci w trybie okienkowym"). Every sub-tab is wrapped in
-        _make_scrollable_tab() -- a Canvas+Scrollbar pair, not a fixed-height
-        Labelframe stack -- so ANY tab that grows past the window's current height
-        gets a scrollbar automatically instead of needing this fixed again the next
-        time a section is added."""
+        delete) can still be taller than a non-maximized window. Every sub-tab is
+        wrapped in _make_scrollable_tab() -- a Canvas+Scrollbar pair, not a
+        fixed-height Labelframe stack -- so ANY tab that grows past the window's
+        current height gets a scrollbar automatically instead of needing this fixed
+        again the next time a section is added."""
         outer = ttk.Frame(self)
         outer.pack(fill="both", expand=True, padx=6, pady=6)
 
@@ -2258,9 +2239,8 @@ class SettingsTab(BaseTab):
         over it, never fighting with e.g. the restore/libs ScrolledText widgets
         packed inside, which have their own independent scrolling."""
         canvas = tk.Canvas(notebook_tab, highlightthickness=0)
-        # ROOT CAUSE (found 2026-08-23 via live debug logging on the cudasieve
-        # branch's forked copy of this exact idiom, settings_tab_v2.py): Tk's Canvas
-        # defaults to yscrollincrement=0, which makes any "scroll N units" call
+        # ROOT CAUSE: Tk's Canvas defaults to yscrollincrement=0, which makes any
+        # "scroll N units" call
         # (mousewheel, scrollbar arrows) jump by ~10% of the canvas's CURRENT
         # VIEWPORT height -- not a small fixed pixel step. When the real content is
         # SHORTER than the viewport (e.g. Ogolne's ~229px inside a ~686px window --
@@ -2302,15 +2282,15 @@ class SettingsTab(BaseTab):
         inner = ttk.Frame(canvas)
         inner_window = canvas.create_window((0, 0), window=inner, anchor="nw")
 
-        # NOTE (2026-08-23 fix): scrollregion is set from inner.winfo_reqwidth()/
-        # reqheight() -- NOT canvas.bbox("all"). bbox("all") is the bounding box of
-        # everything ever drawn on the canvas and can end up taller than the frame's
-        # actual current content (e.g. mid-reflow right after a width change below,
-        # before layout has fully settled) -- Tk then happily lets yview scroll into
-        # that stale leftover space, which is exactly the "top isn't pinned, you can
-        # scroll to blank space" bug Artur reported. Querying the frame's own
-        # requested size directly is always in sync with what's actually packed
-        # inside it right now, so the scrollregion can never exceed real content.
+        # NOTE: scrollregion is set from inner.winfo_reqwidth()/reqheight() -- NOT
+        # canvas.bbox("all"). bbox("all") is the bounding box of everything ever drawn
+        # on the canvas and can end up taller than the frame's actual current content
+        # (e.g. mid-reflow right after a width change below, before layout has fully
+        # settled) -- Tk then happily lets yview scroll into that stale leftover space,
+        # which shows up as the top not staying pinned and blank space becoming
+        # scrollable. Querying the frame's own requested size directly is always in
+        # sync with what's actually packed inside it right now, so the scrollregion
+        # can never exceed real content.
         #
         # That alone wasn't enough: General/Updates keep changing content height
         # AFTER they first draw (async status checks, floor-delete combobox
@@ -2500,9 +2480,9 @@ class SettingsTab(BaseTab):
 
     def _build_storage_integrate_section(self, outer):
         """Integrate-external-storage, primeatlas/storage_integrate.py -- see that
-        module's and this class's own docstrings. Always preview-then-confirm (Artur,
-        2026-08-19): the Integruj button stays disabled until a fresh dry-run has
-        populated self._storage_integrate_plan."""
+        module's and this class's own docstrings. Always preview-then-confirm: the
+        Integruj button stays disabled until a fresh dry-run has populated
+        self._storage_integrate_plan."""
         frame = ttk.Labelframe(outer, text=self.T("settings.storage_integrate_frame"))
         frame.pack(fill="both", expand=True, pady=(0, 8))
         ttk.Label(
@@ -2797,15 +2777,13 @@ class SettingsTab(BaseTab):
         # involved, so there's no such race to avoid here.
         self._show_cached_env_status()
 
-        # PrimeAtlas's own self-update (task #524) -- checks GitHub (via `git fetch`
-        # against this checkout's own `origin` remote) for newer commits on main and, on
-        # request, applies them by fetching and fast-forwarding (`git merge --ff-only`,
-        # with proactive/automatic recovery from leftover git lock files -- see
-        # primeatlas/app_update.py's own module docstring, including its 2026-09-10
-        # follow-ups, for the full fetch/merge-base/merge sequence and why this reuses git
-        # directly instead of a separate release/version-number scheme). Was a stated
-        # future addition (Artur, 2026-08-17: "w przyszlosci aktualizacja atlasu ale nie
-        # teraz") -- built now (2026-09-02).
+        # PrimeAtlas's own self-update -- checks GitHub (via `git fetch` against this
+        # checkout's own `origin` remote) for newer commits on main and, on request,
+        # applies them by fetching and fast-forwarding (`git merge --ff-only`, with
+        # proactive/automatic recovery from leftover git lock files -- see
+        # primeatlas/app_update.py's own module docstring for the full
+        # fetch/merge-base/merge sequence and why this reuses git directly instead of a
+        # separate release/version-number scheme).
         app_update_frame = ttk.Labelframe(outer, text=self.T("settings.app_update_frame"))
         app_update_frame.pack(fill="x", pady=(0, 8))
         ttk.Label(app_update_frame, text=self.T("settings.app_update_hint"),
