@@ -357,75 +357,28 @@ def iter_constellation_records_detail_rows(portal_folder, k, floor_min=None, flo
                     position += 1
 
 
-def iter_hit_pattern_page_range_rows(portal_folder, base_exponent, k, variant_id, page_from, page_to):
-    """Yields per-hit row dicts (same shape as iter_constellation_records_detail_rows()
-    above) for ONLY hit-file pages [page_from, page_to] (inclusive, 0-based) of ONE
-    (floor, k, variant) pattern -- not the whole pattern, not other floors/variants.
-
-    Added 2026-09-16 for page-scoped export (Magazyn/Tabela rekordow's page navigator
-    gets an "export these pages" action): even a fully-STREAMED export of an entire
-    multi-billion-hit pattern (see iter_constellation_records_detail_rows()'s own
-    docstring for why that streaming exists) still produces a file nobody can
-    realistically use -- floor 25's k=2 alone (~2.16 billion hits) would be tens to
-    hundreds of GB of CSV regardless of how safely it's written. Scoping to an
-    explicit page range the caller actually chose keeps the exported file a sane,
-    bounded size -- one hit_paging page (up to hit_paging.PAGE_SIZE entries) at a time.
-
-    `page_from`/`page_to` are clamped into [0, page_count-1] -- an out-of-range or
-    empty (page_from > page_to after clamping) request yields nothing rather than
-    raising, so a caller doesn't need to pre-validate against a page count that could
-    itself be stale by the time this runs."""
-    total_pages = hit_pattern_page_count(portal_folder, base_exponent, k, variant_id)
-    if total_pages == 0:
-        return
-    page_from = max(0, page_from)
-    page_to = min(total_pages - 1, page_to)
-    if page_from > page_to:
-        return
-    header = read_hit_pattern_header(portal_folder, base_exponent, k, variant_id)
-    if header is None:
-        return
-    total_count = header["count"]
-    pattern = next((w for w in pattern_catalog_v1.patterns_for_k(k) if w["id"] == variant_id), None)
-    record_digits = pattern["record_digits"] if pattern is not None else None
-    is_record_floor = record_digits is not None and base_exponent == record_digits - 1
-    base = 10 ** base_exponent
-    # Every page before the current one is always exactly this PATTERN's OWN page_size
-    # entries -- only the LAST page of a pattern can be partial (see hit_paging.py's
-    # own append_hits_paged()) -- so position_in_file for page_from's first value is
-    # simply page_from*page_size regardless of whether page_from itself is the last,
-    # partial page. Reads the pattern's own metadata for this rather than assuming
-    # hit_paging.PAGE_SIZE (the default for NEWLY migrated patterns, not necessarily
-    # what an already-migrated one was actually written with). An unpaged pattern
-    # never reaches here with page_from > 0 (hit_pattern_page_count() caps it at 1
-    # page), so page_size is irrelevant in that case.
+def hit_pattern_actual_page_size(portal_folder, base_exponent, k, variant_id):
+    """Returns the real page_size a paged pattern was migrated with (from its own
+    PAGES_META.json), or hit_paging.PAGE_SIZE as a harmless default for an unpaged
+    pattern -- an unpaged pattern's only "page" is index 0, so whatever multiplier
+    this feeds into (position_in_file math) never actually matters there. Reads the
+    pattern's own metadata rather than assuming hit_paging.PAGE_SIZE applies to every
+    pattern (that's only the default for NEWLY migrated ones, not necessarily what an
+    already-migrated pattern was actually written with)."""
     vdir = hit_paging.variant_dir(portal_folder, base_exponent, k, variant_id)
     pattern_meta = hit_paging.read_meta(vdir)
-    page_size = pattern_meta["page_size"] if pattern_meta is not None else hit_paging.PAGE_SIZE
-    position = page_from * page_size
-    for page_index in range(page_from, page_to + 1):
-        try:
-            values = read_hit_pattern_page(portal_folder, base_exponent, k, variant_id, page_index)
-        except Exception:
-            values = []
-        for value in values:
-            yield {
-                "base_exponent": base_exponent, "variant_id": variant_id,
-                "offset": value - base, "number": value,
-                "position_in_file": position, "count_in_file": total_count,
-                "is_record_floor": is_record_floor,
-            }
-            position += 1
+    return pattern_meta["page_size"] if pattern_meta is not None else hit_paging.PAGE_SIZE
 
 
 def write_constellation_detail_rows_csv(path, rows):
-    """Writes per-hit detail rows (the shape iter_constellation_records_detail_rows()/
-    iter_hit_pattern_page_range_rows() yield) to a CSV file at `path`, iterating `rows`
-    exactly once and writing each one as it arrives -- safe to hand either a plain list
-    or a generator, and never holds more than the current row in memory regardless of
-    how many there are. Shared by every CSV export path (Tabela rekordow's whole-range
-    export, and both tabs' page-range export) so the column set/order lives in exactly
-    one place instead of being duplicated per caller."""
+    """Writes per-hit detail rows (the shape iter_constellation_records_detail_rows()
+    yields, or an equivalent plain list of the same dicts) to a CSV file at `path`,
+    iterating `rows` exactly once and writing each one as it arrives -- safe to hand
+    either a plain list or a generator, and never holds more than the current row in
+    memory regardless of how many there are. Shared by every CSV export path in
+    ConstellationsRecordsTab (whole-range and on-screen-page-scoped alike) so the
+    column set/order lives in exactly one place instead of being duplicated per
+    caller."""
     fieldnames = ["exp", "variant_id", "offset", "number",
                   "position_in_file", "count_in_file", "is_record_floor"]
     with open(path, "w", newline="", encoding="utf-8") as f:

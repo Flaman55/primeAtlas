@@ -32,20 +32,17 @@ primes_tab.py's own docstring for the general "pure logic elsewhere" convention 
 package otherwise follows.
 """
 import bisect
-import datetime
 
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
+from tkinter import ttk, messagebox
 
 import hit_paging
 
-from . import background
 from .base_tab import BaseTab
 from .storage import digit_count_floor, list_pietra
 from .constellations import (
     group_constellation_hits_by_k, list_constellation_hits, read_hit_pattern_page,
     hit_pattern_is_paged, hit_pattern_page_count,
-    iter_hit_pattern_page_range_rows, write_constellation_detail_rows_csv,
 )
 from .widgets import FlowRow
 
@@ -180,12 +177,14 @@ class ConstellationsHitsTab(BaseTab):
         # Real hit-file page navigation (up to hit_paging.PAGE_SIZE=1,000,000 hits per
         # page) -- separate from btn_row above, which only paginates WITHIN whichever
         # hit-file page is currently loaded into self._hit_values/_hit_rows
-        # (self._page_size=500-ish rows at a time). Added 2026-09-16 alongside
-        # page-scoped export (see _export_page_range_csv()) so a pattern too large to
-        # ever load in full (floor 25's k=2, ~2.16 billion hits / 2160 pages) can still
-        # be browsed page by page instead of being stuck on the first page forever.
+        # (self._page_size=500-ish rows at a time). Added 2026-09-16 so a pattern too
+        # large to ever load in full (floor 25's k=2, ~2.16 billion hits / 2160 pages)
+        # can still be browsed page by page instead of being stuck on the first page
+        # forever. "Eksportuj" jumps to the Tabela rekordow tab instead of exporting
+        # locally -- see this tab's own _export_current_page() docstring for why
+        # Magazyn deliberately doesn't duplicate a whole export mechanism of its own.
         file_page_row = FlowRow(detail_frame)
-        file_page_row.frame.pack(anchor="w", padx=6, fill="x")
+        file_page_row.frame.pack(anchor="w", padx=6, fill="x", pady=(0, 4))
         self.hits_file_prev_btn = ttk.Button(
             file_page_row.frame, text=T("const_records.file_page_prev"),
             command=self._prev_hit_file_page, state="disabled")
@@ -197,31 +196,10 @@ class ConstellationsHitsTab(BaseTab):
             file_page_row.frame, text=T("const_records.file_page_next"),
             command=self._next_hit_file_page, state="disabled")
         file_page_row.add(self.hits_file_next_btn)
-
-        # Page-scoped export: exports ONLY hit-file pages [from, to] of the currently
-        # selected pattern, instead of trying to export the whole pattern -- see
-        # iter_hit_pattern_page_range_rows()'s own docstring for why that matters (a
-        # whole-pattern export of floor 25's k=2 would be tens to hundreds of GB
-        # regardless of how safely it's streamed). Runs via background.run_in_background
-        # (a fresh one-off daemon thread, not a persistent worker -- this tab has no
-        # PersistentWorker of its own, and this is an occasional click-triggered action,
-        # exactly background.py's own stated sweet spot for that simpler helper).
-        export_range_row = FlowRow(detail_frame)
-        export_range_row.frame.pack(anchor="w", padx=6, fill="x", pady=(0, 4))
-        export_range_row.add(ttk.Label(
-            export_range_row.frame, text=T("const_records.export_range_label")))
-        self.hits_export_from_entry = ttk.Entry(export_range_row.frame, width=6)
-        self.hits_export_from_entry.insert(0, "1")
-        export_range_row.add(self.hits_export_from_entry, padx_left=4)
-        export_range_row.add(ttk.Label(
-            export_range_row.frame, text=T("const_records.export_range_to")), padx_left=4)
-        self.hits_export_to_entry = ttk.Entry(export_range_row.frame, width=6)
-        self.hits_export_to_entry.insert(0, "1")
-        export_range_row.add(self.hits_export_to_entry, padx_left=4)
-        self.hits_export_range_btn = ttk.Button(
-            export_range_row.frame, text=T("const_records.export_range_button"),
-            command=self._export_page_range_csv, state="disabled")
-        export_range_row.add(self.hits_export_range_btn, padx_left=8)
+        self.hits_export_btn = ttk.Button(
+            file_page_row.frame, text=T("const.export_to_records_button"),
+            command=self._export_current_page, state="disabled")
+        file_page_row.add(self.hits_export_btn, padx_left=10)
 
         hits_preview_frame = ttk.Frame(detail_frame)
         hits_preview_frame.pack(fill="both", expand=True, padx=6, pady=6)
@@ -262,6 +240,7 @@ class ConstellationsHitsTab(BaseTab):
         self._hit_file_page_index = 0  # which hit-file page (0-based) is currently
                                         # loaded into self._hit_values/_hit_rows
         self._hit_file_page_count = 1  # how many hit-file pages this pattern has
+        self._jump_to_records_export = None  # set via bind_export_to_records()
 
     # --- Called by prime_atlas_v1.py's own reload_constellations_tree() machinery,
     # which stays at the app level (see this class's own docstring) -----------------------
@@ -488,7 +467,7 @@ class ConstellationsHitsTab(BaseTab):
         self.hits_file_page_label.set("")
         self.hits_file_prev_btn.configure(state="disabled")
         self.hits_file_next_btn.configure(state="disabled")
-        self.hits_export_range_btn.configure(state="disabled")
+        self.hits_export_btn.configure(state="disabled")
         self.hits_load_preview_btn.configure(state="normal" if self._selected_hit_path else "disabled")
 
     def _hit_row_formatter(self, row):
@@ -569,7 +548,7 @@ class ConstellationsHitsTab(BaseTab):
         self.hits_file_prev_btn.configure(state="normal" if page_index > 0 else "disabled")
         self.hits_file_next_btn.configure(
             state="normal" if page_index < self._hit_file_page_count - 1 else "disabled")
-        self.hits_export_range_btn.configure(state="normal")
+        self.hits_export_btn.configure(state="normal")
         self._show_hits_page(0)
         self.hits_load_preview_btn.configure(state="disabled")
 
@@ -583,65 +562,30 @@ class ConstellationsHitsTab(BaseTab):
             return
         self._load_hit_file_page(self._hit_file_page_index + 1)
 
-    def _export_page_range_csv(self):
-        """"Eksportuj zakres stron" button -- exports ONLY hit-file pages [from, to]
-        of the currently selected pattern, via iter_hit_pattern_page_range_rows() (see
-        its own docstring for why: even a safely-streamed export of an entire
-        multi-billion-hit pattern would still be a file nobody can use). 1-based in
-        the UI (page 1 = the first hit-file page), converted to 0-based for the
-        backend call. Runs via background.run_in_background -- a one-off daemon
-        thread, not blocking the GUI while the export writes (see this button's own
-        construction comment for why that helper specifically, not a PersistentWorker)."""
+    def bind_export_to_records(self, jump_to_records_export):
+        """Registers the callable "Eksportuj" invokes -- injected via a setter rather
+        than the constructor because prime_atlas_v1.py's own _build_constellations_
+        section() constructs this tab BEFORE ConstellationsRecordsTab exists yet (same
+        deferred-wiring need bind_jump_to_hits() covers in the other direction, on
+        ConstellationsRecordsTab itself)."""
+        self._jump_to_records_export = jump_to_records_export
+
+    def _export_current_page(self):
+        """"Eksportuj" button -- jumps to the Tabela rekordow tab with the CURRENTLY
+        LOADED hit-file page pre-filled as its export range, rather than exporting
+        locally. Magazyn deliberately doesn't duplicate a whole export mechanism of
+        its own (Artur, 2026-09-16, after the previous local page-range CSV export
+        here turned out to duplicate Tabela rekordow's own -- and, unlike this one,
+        that tab already had a real progress bar, PDF support, and CSV in one place):
+        "zamiast przycisku generuj csv [w Magazynie] zrobmy eksport i klikniecie
+        przenosi do zakladki tabela rekordow z ustawionymi stronami od do"."""
         if not self._selected_hit_path:
             return
-        T = self.T
-        try:
-            page_from = int(self.hits_export_from_entry.get().strip()) - 1
-            page_to = int(self.hits_export_to_entry.get().strip()) - 1
-        except ValueError:
-            messagebox.showerror(T("const_records.error_dialog_title"),
-                                  T("const_records.export_range_invalid"))
+        jump = getattr(self, "_jump_to_records_export", None)
+        if jump is None:
             return
-        if page_from > page_to:
-            messagebox.showerror(T("const_records.error_dialog_title"),
-                                  T("const_records.export_range_invalid"))
-            return
-        portal_folder = self._get_portal_folder()
-        base_exponent = self._selected_hit_base_exponent
-        pattern = self._selected_hit_pattern
-        default_name = (f"constellation_k{pattern['k']}_v{pattern['id']}_"
-                         f"10p{base_exponent}_pages{page_from + 1}-{page_to + 1}_"
-                         f"{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
-        path = filedialog.asksaveasfilename(
-            title=T("const_records.export_range_button"),
-            initialdir=portal_folder,
-            initialfile=default_name,
-            defaultextension=".csv", filetypes=[("CSV", "*.csv")])
-        if not path:
-            return
-        self.hits_export_range_btn.configure(state="disabled")
-        self.status.set(T("const_records.status_exporting_range"))
-
-        def job(_report_progress):
-            rows = iter_hit_pattern_page_range_rows(
-                portal_folder, base_exponent, pattern["k"], pattern["id"], page_from, page_to)
-            write_constellation_detail_rows_csv(path, rows)
-            return path
-
-        background.run_in_background(self, job, on_done=self._on_export_page_range_done)
-
-    def _on_export_page_range_done(self, result, error):
-        T = self.T
-        self.hits_export_range_btn.configure(
-            state="normal" if self._selected_hit_path else "disabled")
-        if error is not None:
-            self.status.set(T("const_records.status_error"))
-            messagebox.showerror(T("const_records.error_dialog_title"), str(error))
-            return
-        self.status.set(T("bench.status_saved", path=result))
-        messagebox.showinfo(T("const_records.export_range_button"),
-                             T("bench.saved_dialog", path=result))
-        self.hits_load_preview_btn.configure(state="disabled")
+        jump(self._selected_hit_base_exponent, self._selected_hit_pattern,
+             self._hit_file_page_index)
 
     def _show_hits_page(self, page):
         if not self._hit_rows:

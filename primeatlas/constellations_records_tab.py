@@ -49,21 +49,43 @@ import hit_paging
 from .constellations import (
     build_constellation_records_table, build_constellation_records_detail_rows,
     iter_constellation_records_detail_rows, count_constellation_records_detail_rows,
-    iter_hit_pattern_page_range_rows, write_constellation_detail_rows_csv,
+    write_constellation_detail_rows_csv,
     render_constellation_records_pdf,
     read_hit_pattern_header, read_hit_pattern_page, hit_pattern_page_count,
-    hit_pattern_is_paged,
+    hit_pattern_actual_page_size, hit_pattern_is_paged,
 )
 
 # A PDF, unlike streamed CSV, needs every row laid out on paginated pages up front (see
 # render_constellation_records_pdf()) -- so its row count can't be unbounded the way
-# CSV export now is (see _job()'s own comment). 1,000,000 rows reuses the same "one
-# hit_paging page's worth" scale already established elsewhere in this file/module as
-# the line between "fine to hold in memory at once" and "needs streaming instead" --
-# floor 25's k=2 alone (~2.16 billion rows) would be ~2160x over this, both an OOM risk
-# materializing the row list AND an unusable, multi-hundred-thousand-page PDF regardless.
-PDF_EXPORT_ROW_LIMIT = 1_000_000
+# CSV export now is (see _job()'s own comment). This used to be 1,000,000 (one
+# hit_paging page's worth), but Artur found (2026-09-16) that's still far too many for
+# an actual PDF: render_constellation_records_pdf()'s own row_h=14/A4-landscape layout
+# fits ~37 rows per page, so even ONE full hit_paging page (the smallest a page-range
+# export can ask for once a pattern's own pages are 1,000,000 each) would render a
+# ~27,000-page PDF -- not just slow, but useless once opened. 50,000 rows (~1,350
+# pages) is still a big PDF but at least one that finishes rendering and opens in a
+# reasonable viewer; a caller who wants more should use CSV export instead (streamed,
+# no row-count limit -- see _job()'s own comment).
+PDF_EXPORT_ROW_LIMIT = 50_000
 from .widgets import FlowRow
+
+
+def _iter_with_progress(rows, report_progress, step=100_000):
+    """Wraps a per-hit row generator to call report_progress(count) every `step` rows
+    as they're consumed -- lets a long CSV export drive a real DETERMINATE progress
+    bar (see ConstellationsRecordsTab._start_job()'s own docstring for why: an
+    indeterminate spinner for a minutes-long export looked like flickering rather
+    than genuine incremental progress, Artur's report 2026-09-16). step=100,000
+    balances UI responsiveness against report_progress()'s cost (each call
+    round-trips through PersistentWorker's own queue + the main thread's poll loop,
+    see background.py) -- reporting every single row would be needless overhead at
+    the scale (up to ~2.16 billion rows) this is built for."""
+    count = 0
+    for r in rows:
+        yield r
+        count += 1
+        if count % step == 0:
+            report_progress(count)
 
 
 class ConstellationsRecordsTab(BaseTab):
@@ -95,7 +117,8 @@ class ConstellationsRecordsTab(BaseTab):
 
         self._busy = False
         self._worker = background.PersistentWorker(
-            self, self._job, on_result=self._on_worker_result)
+            self, self._job, on_result=self._on_worker_result,
+            on_progress=self._on_worker_progress)
 
         self._build_widgets()
 
@@ -128,6 +151,31 @@ class ConstellationsRecordsTab(BaseTab):
             top_row, text=T("const_records.export_csv_button"),
             command=self._export_csv, state="disabled")
         self.export_csv_button.pack(side="left", padx=(6, 0))
+
+        # Optional on-screen-page-range scoping for BOTH export buttons above -- left
+        # blank, Eksportuj PDF/CSV export the whole currently-displayed floor range
+        # exactly as before; filled in (requires a cell to have been drilled into
+        # first, via double-click below or Magazyn's "Eksportuj" jump -- see
+        # activate_pattern_for_export()), they scope the SAME two buttons to just the
+        # chosen SCREEN pages of that one pattern instead -- SAME numbering as
+        # detail_nav's own "Strona X/Y" label below (self._page_size rows each), NOT
+        # a whole hit-file page (hit_paging.PAGE_SIZE, up to 1,000,000 entries) -- see
+        # _build_export_rows_from_current_page()'s own docstring for why (Artur,
+        # 2026-09-16, after the first version of this scoped to hit-file pages and a
+        # single "page" turned out to already mean 1,000,000 rows: "eksportuj strony
+        # od do powinny eksportowac tylko i wylacznie strony pliku [on-screen 'Strona
+        # X/Y' pages]"). Previously a separate "Eksportuj CSV (zakres stron)"
+        # button+row down in the detail panel -- Artur pointed out (2026-09-16) that
+        # was a confusing duplicate control AND had no PDF equivalent; merging the
+        # scoping into the existing two buttons fixes both at once.
+        ttk.Label(top_row, text=T("const_records.export_range_label")).pack(
+            side="left", padx=(16, 0))
+        self.detail_export_from_entry = ttk.Entry(top_row, width=6)
+        self.detail_export_from_entry.pack(side="left", padx=(4, 0))
+        ttk.Label(top_row, text=T("const_records.export_range_to")).pack(
+            side="left", padx=(4, 0))
+        self.detail_export_to_entry = ttk.Entry(top_row, width=6)
+        self.detail_export_to_entry.pack(side="left", padx=(4, 0))
 
         ttk.Label(container, text=T("const_records.hint"), wraplength=760,
                   justify="left", foreground="#555").pack(anchor="w", pady=(0, 8))
@@ -187,10 +235,12 @@ class ConstellationsRecordsTab(BaseTab):
         # Real hit-file page navigation (up to hit_paging.PAGE_SIZE=1,000,000 hits per
         # page) -- separate from detail_nav above, which only paginates WITHIN
         # whichever hit-file page is currently loaded into self._detail_rows
-        # (self._page_size=500-ish rows at a time). Added 2026-09-16 alongside
-        # page-scoped export (see _export_page_range_csv()) so a pattern too large to
-        # ever load in full (floor 25's k=2, ~2.16 billion hits / 2160 pages) can still
-        # be browsed page by page instead of being stuck on page 1 forever.
+        # (self._page_size=500-ish rows at a time). Added 2026-09-16 so a pattern too
+        # large to ever load in full (floor 25's k=2, ~2.16 billion hits / 2160 pages)
+        # can still be browsed page by page instead of being stuck on page 1 forever.
+        # Page-scoped export itself lives in the top_row's "Eksportuj strony od/do"
+        # fields, feeding the SAME _export_pdf()/_export_csv() buttons as a whole-range
+        # export -- see top_row's own construction comment.
         detail_file_nav = FlowRow(detail_frame)
         detail_file_nav.frame.pack(anchor="w", padx=4, fill="x")
         self.detail_file_prev_btn = ttk.Button(
@@ -204,28 +254,6 @@ class ConstellationsRecordsTab(BaseTab):
             detail_file_nav.frame, text=T("const_records.file_page_next"),
             command=self._next_detail_file_page, state="disabled")
         detail_file_nav.add(self.detail_file_next_btn)
-
-        # Page-scoped export: exports ONLY hit-file pages [from, to] of the pattern
-        # currently drilled into, instead of build_constellation_records_detail_rows()'s
-        # whole-floor-range export -- see iter_hit_pattern_page_range_rows()'s own
-        # docstring for why that matters (a whole-pattern export of floor 25's k=2
-        # would be tens to hundreds of GB regardless of how safely it's streamed).
-        detail_export_range = FlowRow(detail_frame)
-        detail_export_range.frame.pack(anchor="w", padx=4, fill="x", pady=(0, 4))
-        detail_export_range.add(ttk.Label(
-            detail_export_range.frame, text=T("const_records.export_range_label")))
-        self.detail_export_from_entry = ttk.Entry(detail_export_range.frame, width=6)
-        self.detail_export_from_entry.insert(0, "1")
-        detail_export_range.add(self.detail_export_from_entry, padx_left=4)
-        detail_export_range.add(ttk.Label(
-            detail_export_range.frame, text=T("const_records.export_range_to")), padx_left=4)
-        self.detail_export_to_entry = ttk.Entry(detail_export_range.frame, width=6)
-        self.detail_export_to_entry.insert(0, "1")
-        detail_export_range.add(self.detail_export_to_entry, padx_left=4)
-        self.detail_export_range_btn = ttk.Button(
-            detail_export_range.frame, text=T("const_records.export_range_button"),
-            command=self._export_page_range_csv, state="disabled")
-        detail_export_range.add(self.detail_export_range_btn, padx_left=8)
 
         detail_list_frame = ttk.Frame(detail_frame)
         detail_list_frame.pack(fill="both", expand=True, padx=4, pady=(0, 4))
@@ -311,72 +339,126 @@ class ConstellationsRecordsTab(BaseTab):
             {"mode": "scan", "k": k, "floor_min": floor_min, "floor_max": floor_max},
             T("const_records.status_scanning", k=k))
 
-    def _start_job(self, job, status_text):
+    def _refresh_export_buttons_state(self):
+        """Eksportuj PDF/CSV are usable whenever EITHER a completed scan has rows
+        (self._last, for a whole-floor-range export) OR a specific pattern is active
+        (self._detail_context, for a page-range export -- see _export()'s own
+        docstring) -- either alone is enough, since _export() itself decides which
+        mode to use from the top_row "Eksportuj strony od/do" fields at click time,
+        not from which of these two is currently populated. Centralized here (rather
+        than repeating the OR at every call site) since it's re-evaluated after every
+        job result AND every time the drilled-into pattern changes (_load_detail_file_
+        page()/_set_detail_file_nav_disabled())."""
+        has_rows = bool(self._last and self._last[3])
+        has_page_context = self._detail_context is not None
+        enabled = "normal" if (has_rows or has_page_context) else "disabled"
+        self.export_pdf_button.configure(state=enabled)
+        self.export_csv_button.configure(state=enabled)
+
+    def _start_job(self, job, status_text, total_rows=None):
         """Shared dispatch for every job this tab's worker can run (scan/export_pdf/
-        export_csv) -- all three are mutually exclusive (one at a time, same busy
-        flag/progress bar/button-disabling), so this is the one place that logic
-        lives instead of being copy-pasted into each of the three click handlers."""
+        export_csv/export_page_range_csv) -- mutually exclusive (one at a time, same
+        busy flag/progress bar/button-disabling), so this is the one place that logic
+        lives instead of being copy-pasted into each click handler.
+
+        `total_rows`, if given (export jobs only -- a cheap header-only count the
+        caller computes BEFORE dispatch, see count_constellation_records_detail_rows()/
+        hit_pattern_header-based sums in the export handlers below), switches
+        self.totals_progress to a real DETERMINATE bar (0..total_rows) instead of the
+        indeterminate spin _start_busy_progress() gives every other job -- added
+        2026-09-16 after Artur found the indeterminate bar's constant bounce/reset
+        during a real, minutes-long export looked like flickering ("miga") rather than
+        genuine incremental progress. `_job()`'s own report_progress calls (row counts
+        as export proceeds) drive the bar's value from there via _on_worker_progress().
+        Falls back to the indeterminate spin when total_rows is None (the "scan" job,
+        which has no cheap way to know its own eventual row count up front)."""
         self._busy = True
         self.scan_button.configure(state="disabled")
         self.export_pdf_button.configure(state="disabled")
         self.export_csv_button.configure(state="disabled")
-        self.detail_export_range_btn.configure(state="disabled")
-        self._start_busy_progress()
+        if total_rows is not None:
+            self.totals_progress.stop()
+            self.totals_progress.configure(mode="determinate", maximum=max(1, total_rows), value=0)
+        else:
+            self._start_busy_progress()
         self.status.set(status_text)
         self._worker.submit(job)
 
+    def _on_worker_progress(self, payload):
+        """PersistentWorker's on_progress callback -- payload is the row count so far
+        (an int), pushed by _job()'s report_progress() during a streamed CSV/PDF-row
+        export. A no-op if the bar isn't currently in determinate mode (e.g. a stray
+        progress call arriving after _stop_busy_progress() already reset it, or during
+        a "scan" job, which never calls report_progress in the first place)."""
+        if str(self.totals_progress["mode"]) == "determinate":
+            self.totals_progress["value"] = payload
+
     def _job(self, job, report_progress):
-        """Runs on PersistentWorker's own daemon thread. Three job shapes
-        distinguished by "mode": "scan" (build_constellation_records_table -> the main
-        tree), "export_csv" (iter_constellation_records_detail_rows() -> a STREAMED
-        per-hit row generator, written to disk one row at a time via
-        write_constellation_detail_rows_csv() -- unlike a bounded page read, the
-        pre-paging version of this job materialized every row as one big list first,
-        which for a pattern the scale of floor 25's k=2 (~2.16 billion hits) would try
-        to hold billions of dicts in memory at once), "export_pdf" (needs the whole
-        laid-out row list up front for pagination -- see PDF_EXPORT_ROW_LIMIT's own
-        comment for why THAT path stays bounded by refusing an oversized range instead
-        of streaming), "export_page_range_csv" (iter_hit_pattern_page_range_rows() --
-        same streaming write, but scoped to ONE pattern's explicit hit-file page range
-        instead of a whole floor range, so exporting even a small SLICE of an
-        otherwise-unexportable pattern like floor 25's k=2 produces a sane, bounded
-        file -- see that generator's own docstring). Catches its own exceptions so a
-        failure surfaces with the right mode/k context, instead of falling through to
-        PersistentWorker's own last-resort net which has no way to know which request
-        failed."""
+        """Runs on PersistentWorker's own daemon thread. Five job shapes distinguished
+        by "mode": "scan" (build_constellation_records_table -> the main tree);
+        "export_csv"/"export_pdf" (whole-floor-range export, reads from disk via
+        job["floor_min"]/["floor_max"]); "export_page_range_csv"/"export_page_range_pdf"
+        (scoped to the on-screen list-pages of whichever pattern/hit-file-page was
+        loaded when the button was clicked -- job["rows"] is already a fully-built,
+        plain list of row dicts, built on the MAIN thread from self._detail_rows
+        BEFORE dispatch, see _export()'s own docstring for how a caller picks between
+        the two shapes: the top_row "Eksportuj strony od/do" fields being filled or
+        blank -- this mode needs no disk access here at all).
+
+        CSV (either shape) streams -- a generator for the whole-range case
+        (iter_constellation_records_detail_rows()), or the already-small job["rows"]
+        list for the page-scoped case -- written to disk one row at a time via
+        write_constellation_detail_rows_csv(), wrapped in _iter_with_progress() to
+        drive a real determinate progress bar. The whole-range generator matters most
+        here: materializing every row as one big list first (the pre-paging version
+        of this job) would, for a pattern the scale of floor 25's k=2 (~2.16 billion
+        hits), try to hold billions of dicts in memory at once.
+
+        PDF (either shape) needs the whole laid-out row list up front for pagination,
+        so it stays bounded by REFUSING an oversized request (PDF_EXPORT_ROW_LIMIT)
+        instead of streaming.
+
+        Catches its own exceptions so a failure surfaces with the right mode/k
+        context, instead of falling through to PersistentWorker's own last-resort net
+        which has no way to know which request failed."""
         mode = job.get("mode", "scan")
         k = job["k"]
         floor_min = job.get("floor_min")
         floor_max = job.get("floor_max")
         portal_folder = self._get_portal_folder()
+        page_scoped = mode.startswith("export_page_range_")
         try:
             if mode == "scan":
                 variant_ids, variant_meta, rows = build_constellation_records_table(
                     portal_folder, k, floor_min=floor_min, floor_max=floor_max)
                 return mode, k, True, (variant_ids, variant_meta, rows, floor_min, floor_max)
-            elif mode == "export_pdf":
-                total_rows = count_constellation_records_detail_rows(
-                    portal_folder, k, floor_min=floor_min, floor_max=floor_max)
+
+            if mode in ("export_pdf", "export_page_range_pdf"):
+                if page_scoped:
+                    detail_rows = job["rows"]
+                    total_rows = len(detail_rows)
+                else:
+                    total_rows = count_constellation_records_detail_rows(
+                        portal_folder, k, floor_min=floor_min, floor_max=floor_max)
                 if total_rows > PDF_EXPORT_ROW_LIMIT:
                     return mode, k, False, ("pdf_too_large", total_rows)
-                _variant_ids, _variant_meta, detail_rows = build_constellation_records_detail_rows(
-                    portal_folder, k, floor_min=floor_min, floor_max=floor_max)
+                if not page_scoped:
+                    _variant_ids, _variant_meta, detail_rows = build_constellation_records_detail_rows(
+                        portal_folder, k, floor_min=floor_min, floor_max=floor_max)
                 path = job["path"]
                 self._render_detail_pdf(path, k, detail_rows)
                 return mode, k, True, path
-            elif mode == "export_page_range_csv":
-                detail_rows = iter_hit_pattern_page_range_rows(
-                    portal_folder, job["base_exponent"], k, job["variant_id"],
-                    job["page_from"], job["page_to"])
-                path = job["path"]
-                write_constellation_detail_rows_csv(path, detail_rows)
-                return mode, k, True, path
-            else:  # export_csv
+
+            # export_csv / export_page_range_csv
+            if page_scoped:
+                detail_rows = job["rows"]
+            else:
                 detail_rows = iter_constellation_records_detail_rows(
                     portal_folder, k, floor_min=floor_min, floor_max=floor_max)
-                path = job["path"]
-                write_constellation_detail_rows_csv(path, detail_rows)
-                return mode, k, True, path
+            path = job["path"]
+            write_constellation_detail_rows_csv(
+                path, _iter_with_progress(detail_rows, report_progress))
+            return mode, k, True, path
         except Exception as e:  # noqa: BLE001 -- must never kill this thread
             return mode, k, False, str(e)
 
@@ -402,12 +484,8 @@ class ConstellationsRecordsTab(BaseTab):
         self._busy = False
         self.scan_button.configure(state="normal")
         self._stop_busy_progress()
-        has_page_context = self._detail_context is not None
         if error is not None:
-            has_rows = bool(self._last and self._last[3])
-            self.export_pdf_button.configure(state="normal" if has_rows else "disabled")
-            self.export_csv_button.configure(state="normal" if has_rows else "disabled")
-            self.detail_export_range_btn.configure(state="normal" if has_page_context else "disabled")
+            self._refresh_export_buttons_state()
             self.status.set(T("const_records.status_error"))
             messagebox.showerror(T("const_records.error_dialog_title"), str(error))
             return
@@ -417,27 +495,19 @@ class ConstellationsRecordsTab(BaseTab):
                 # Scan failed -- self._last (if any) still holds the last SUCCESSFUL
                 # scan's data untouched, so restore the export buttons to match it
                 # instead of leaving them disabled from _start_job() (which disables
-                # all three buttons up front, since a scan and an export can't
-                # usefully run at the same time).
-                has_rows = bool(self._last and self._last[3])
-                self.export_pdf_button.configure(state="normal" if has_rows else "disabled")
-                self.export_csv_button.configure(state="normal" if has_rows else "disabled")
-                self.detail_export_range_btn.configure(state="normal" if has_page_context else "disabled")
+                # both up front, since a scan and an export can't usefully run at the
+                # same time).
+                self._refresh_export_buttons_state()
                 self.status.set(T("const_records.status_error"))
                 messagebox.showerror(T("const_records.error_dialog_title"), result_payload)
                 return
             variant_ids, variant_meta, rows, floor_min, floor_max = result_payload
             self._show_results(k, variant_ids, variant_meta, rows, floor_min, floor_max)
-        else:  # export_pdf / export_csv / export_page_range_csv
-            has_rows = bool(self._last and self._last[3])
-            self.export_pdf_button.configure(state="normal" if has_rows else "disabled")
-            self.export_csv_button.configure(state="normal" if has_rows else "disabled")
-            self.detail_export_range_btn.configure(state="normal" if has_page_context else "disabled")
-            button_label = T({
-                "export_pdf": "const_records.export_pdf_button",
-                "export_csv": "const_records.export_csv_button",
-                "export_page_range_csv": "const_records.export_range_button",
-            }[mode])
+        else:  # export_pdf / export_csv / export_page_range_pdf / export_page_range_csv
+            self._refresh_export_buttons_state()
+            button_label = T(
+                "const_records.export_pdf_button" if "pdf" in mode
+                else "const_records.export_csv_button")
             if not ok:
                 self.status.set(T("const_records.status_error"))
                 if isinstance(result_payload, tuple) and result_payload[0] == "pdf_too_large":
@@ -563,15 +633,18 @@ class ConstellationsRecordsTab(BaseTab):
         self._load_detail_file_page(base_exponent, k, vid, 0)
 
     def _set_detail_file_nav_disabled(self):
-        """Resets the hit-file page navigator + page-range export controls to their
-        empty/disabled state -- shared by _on_cell_activate()'s empty/too-large early
-        returns above, neither of which has a real pattern to page through."""
+        """Resets the hit-file page navigator to its empty/disabled state -- shared by
+        _on_cell_activate()'s empty/too-large early returns above, neither of which
+        has a real pattern to page through. Callers already set self._detail_context
+        to None before calling this; _refresh_export_buttons_state() re-evaluates the
+        Eksportuj PDF/CSV buttons against that (they stay enabled if a PRIOR scan
+        still has rows, disabled only if neither that nor a pattern is available)."""
         self._detail_file_page_index = 0
         self._detail_file_page_count = 1
         self.detail_file_page_label.set("")
         self.detail_file_prev_btn.configure(state="disabled")
         self.detail_file_next_btn.configure(state="disabled")
-        self.detail_export_range_btn.configure(state="disabled")
+        self._refresh_export_buttons_state()
 
     def _load_detail_file_page(self, base_exponent, k, vid, page_index):
         """Loads hit-file page `page_index` (bounded to hit_paging.PAGE_SIZE entries,
@@ -601,7 +674,7 @@ class ConstellationsRecordsTab(BaseTab):
         self.detail_file_prev_btn.configure(state="normal" if page_index > 0 else "disabled")
         self.detail_file_next_btn.configure(
             state="normal" if page_index < self._detail_file_page_count - 1 else "disabled")
-        self.detail_export_range_btn.configure(state="normal")
+        self._refresh_export_buttons_state()
         self._show_detail_page(0)
 
     def _prev_detail_file_page(self):
@@ -620,45 +693,65 @@ class ConstellationsRecordsTab(BaseTab):
             ctx["base_exponent"], ctx["pattern"]["k"], ctx["pattern"]["id"],
             self._detail_file_page_index + 1)
 
-    def _export_page_range_csv(self):
-        """"Eksportuj zakres stron" button -- exports ONLY hit-file pages [from, to] of
-        the pattern currently drilled into (self._detail_context), via
-        iter_hit_pattern_page_range_rows() (see its own docstring for why this is
-        scoped to one pattern's page range rather than build_constellation_records_
-        detail_rows()'s whole-floor-range export: even a safely-streamed export of an
-        entire multi-billion-hit pattern would still be a file nobody can use).
-        1-based in the UI (page 1 = the first hit-file page), converted to 0-based
-        for the backend call."""
-        if self._detail_context is None or self._busy:
-            return
-        T = self.T
-        try:
-            page_from = int(self.detail_export_from_entry.get().strip()) - 1
-            page_to = int(self.detail_export_to_entry.get().strip()) - 1
-        except ValueError:
-            messagebox.showerror(T("const_records.error_dialog_title"),
-                                  T("const_records.export_range_invalid"))
-            return
-        if page_from > page_to:
-            messagebox.showerror(T("const_records.error_dialog_title"),
-                                  T("const_records.export_range_invalid"))
-            return
-        ctx = self._detail_context
-        default_name = (f"constellation_k{ctx['pattern']['k']}_v{ctx['pattern']['id']}_"
-                         f"10p{ctx['base_exponent']}_pages{page_from + 1}-{page_to + 1}_"
-                         f"{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
-        path = filedialog.asksaveasfilename(
-            title=T("const_records.export_range_button"),
-            initialdir=self._get_portal_folder(),
-            initialfile=default_name,
-            defaultextension=".csv", filetypes=[("CSV", "*.csv")])
-        if not path:
-            return
-        self._start_job({
-            "mode": "export_page_range_csv", "k": ctx["pattern"]["k"],
-            "base_exponent": ctx["base_exponent"], "variant_id": ctx["pattern"]["id"],
-            "page_from": page_from, "page_to": page_to, "path": path,
-        }, T("const_records.status_exporting_range"))
+    def activate_pattern_for_export(self, base_exponent, pattern, page_index):
+        """Sets this tab up to browse/export ONE specific pattern's page range, without
+        needing a prior Skanuj/tree click -- called by prime_atlas_v1.py's app-level
+        jump wiring when Magazyn's own "Eksportuj" button (ConstellationsHitsTab, see
+        its own docstring) hands off to here instead of duplicating a whole separate
+        export mechanism there (Artur, 2026-09-16: "zamiast przycisku generuj csv [w
+        Magazynie] zrobmy eksport i klikniecie przenosi do zakladki tabela rekordow z
+        ustawionymi stronami od do").
+
+        Sets self._detail_context directly (everything _on_cell_activate() would
+        normally derive from a clicked tree cell is already known here -- `pattern`
+        is the full catalog dict, not just an id), loads `page_index` (the hit-file
+        page) via _load_detail_file_page(), and pre-fills the top_row "Eksportuj
+        strony od/do" fields to "1"/"1" -- _load_detail_file_page() always resets the
+        on-screen list pager to its own page 0 on a fresh load (see its own
+        docstring), so "1" (on-screen page 1) is always the right default here
+        regardless of which hit-file page was loaded; the user can widen the range
+        there before clicking Eksportuj PDF/CSV.
+
+        Also pre-fills "Pietro od/do" to this exact floor (Artur, 2026-09-16: "jesli
+        jestem tu z pietra 25 to powinno sie uzupelnic pietro od/do 25") -- these
+        aren't read by the page-range export path itself, but matter the moment the
+        user clears "Eksportuj strony od/do" to fall back to a whole-range export
+        instead: left blank (the pre-jump default), that fallback would silently mean
+        "every floor in the whole magazyn," not "just the floor I jumped from"."""
+        self.k_combo.set(str(pattern["k"]))
+        self.floor_from_entry.delete(0, "end")
+        self.floor_from_entry.insert(0, str(base_exponent))
+        self.floor_to_entry.delete(0, "end")
+        self.floor_to_entry.insert(0, str(base_exponent))
+        self._detail_context = {"base_exponent": base_exponent, "pattern": pattern}
+        self._detail_file_page_count = hit_pattern_page_count(
+            self._get_portal_folder(), base_exponent, pattern["k"], pattern["id"])
+        self._load_detail_file_page(base_exponent, pattern["k"], pattern["id"], page_index)
+        self.detail_export_from_entry.delete(0, "end")
+        self.detail_export_from_entry.insert(0, "1")
+        self.detail_export_to_entry.delete(0, "end")
+        self.detail_export_to_entry.insert(0, "1")
+
+    def _parse_export_page_range(self):
+        """Reads the top_row "Eksportuj strony od/do" entries (see their own
+        construction comment): both blank means "no scoping" (the export buttons fall
+        back to their original whole-floor-range behavior) -- returns None. Both
+        filled, 1-based in the UI -- SAME numbering as detail_nav's "Strona X/Y" label
+        above the drill-down list, i.e. on-screen list-pages of whichever pattern/
+        hit-file-page is currently loaded (see _build_export_rows_from_current_page()'s
+        own docstring for why THAT granularity, not a whole hit-file page) -- returns
+        (ui_from, ui_to) as 0-based ints. Raises ValueError (callers show
+        const_records.export_range_invalid) for anything else: only one filled,
+        non-numeric, or from > to."""
+        from_text = self.detail_export_from_entry.get().strip()
+        to_text = self.detail_export_to_entry.get().strip()
+        if not from_text and not to_text:
+            return None
+        ui_from = int(from_text) - 1
+        ui_to = int(to_text) - 1
+        if ui_from > ui_to:
+            raise ValueError("ui_from > ui_to")
+        return ui_from, ui_to
 
     def bind_jump_to_hits(self, jump_to_hits):
         """Registers the callable used by _on_detail_activate() to jump into the
@@ -741,43 +834,111 @@ class ConstellationsRecordsTab(BaseTab):
         self._copy_to_clipboard(str(self._detail_rows[global_index][0]))
 
     def _export_pdf(self):
-        if not self._last or self._busy:
-            return
-        T = self.T
-        k = self._last[0]
-        default_name = (f"constellation_records_k{k}_"
-                         f"{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf")
-        path = filedialog.asksaveasfilename(
-            title=T("const_records.export_pdf_button"),
-            initialdir=self._get_portal_folder(),
-            initialfile=default_name,
-            defaultextension=".pdf",
-            filetypes=[("PDF", "*.pdf"), (T("common.all_files"), "*.*")])
-        if not path:
-            return
-        floor_min, floor_max = self._last_floor_bounds
-        self._start_job(
-            {"mode": "export_pdf", "k": k, "floor_min": floor_min, "floor_max": floor_max,
-             "path": path},
-            T("const_records.status_exporting", k=k))
+        self._export("pdf")
 
     def _export_csv(self):
-        if not self._last or self._busy:
+        self._export("csv")
+
+    def _build_export_rows_from_current_page(self, ui_from, ui_to):
+        """Builds full CSV/PDF row dicts for ON-SCREEN list-pages [ui_from, ui_to]
+        (0-based, the SAME numbering as detail_nav's "Strona X/Y" label above the
+        list) of the CURRENTLY LOADED hit-file page (self._detail_rows) -- NOT a
+        whole hit-file page (up to hit_paging.PAGE_SIZE, 1,000,000, entries), and NOT
+        the whole pattern.
+
+        Changed 2026-09-16 (Artur, after the previous version scoped "Eksportuj strony
+        od/do" to hit-file pages instead): "eksportuj strony od do powinny eksportowac
+        tylko i wylacznie strony pliku [on-screen 'Strona X/Y' pages]... to tylko ta
+        strona powinna zostac eksportowana skoro od do jest 1 i 1" -- what he actually
+        wants scoped is exactly what's rendered on screen a page at a time
+        (self._page_size rows), not the much coarser hit-file page unit that used to
+        back this same field and made even a single-page request 1,000,000 rows.
+
+        Clamped into [0, len(self._detail_rows)) -- an out-of-range ui_from yields an
+        empty list rather than raising."""
+        ctx = self._detail_context
+        portal_folder = self._get_portal_folder()
+        base_exponent, pattern = ctx["base_exponent"], ctx["pattern"]
+        header = read_hit_pattern_header(portal_folder, base_exponent, pattern["k"], pattern["id"])
+        total_count = header["count"] if header is not None else len(self._detail_rows)
+        record_digits = pattern["record_digits"]
+        is_record_floor = record_digits is not None and base_exponent == record_digits - 1
+        page_size = hit_pattern_actual_page_size(
+            portal_folder, base_exponent, pattern["k"], pattern["id"])
+        file_page_offset = self._detail_file_page_index * page_size
+
+        start = max(0, ui_from * self._page_size)
+        end = min(len(self._detail_rows), (ui_to + 1) * self._page_size)
+        rows = []
+        for local_index in range(start, end):
+            number, offset = self._detail_rows[local_index]
+            rows.append({
+                "base_exponent": base_exponent, "variant_id": pattern["id"],
+                "offset": offset, "number": number,
+                "position_in_file": file_page_offset + local_index,
+                "count_in_file": total_count, "is_record_floor": is_record_floor,
+            })
+        return rows
+
+    def _export(self, fmt):
+        """Shared handler for both "Eksportuj PDF" and "Eksportuj CSV" -- each is
+        either a WHOLE-floor-range export (self._last, the old behavior, when the
+        top_row "Eksportuj strony od/do" fields are blank) or scoped to the on-screen
+        list-pages [od, do] of whichever pattern/hit-file-page is currently loaded
+        (self._detail_context/self._detail_rows, when those fields are filled -- see
+        _build_export_rows_from_current_page()'s own docstring) -- merged into one
+        method 2026-09-16 after Artur pointed out the previous separate "Eksportuj CSV
+        (zakres stron)" button was a confusing duplicate control with no PDF
+        equivalent."""
+        if self._busy:
             return
         T = self.T
-        k = self._last[0]
-        default_name = (f"constellation_records_k{k}_"
-                         f"{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
+        try:
+            page_range = self._parse_export_page_range()
+        except ValueError:
+            messagebox.showerror(T("const_records.error_dialog_title"),
+                                  T("const_records.export_range_invalid"))
+            return
+        if page_range is not None and self._detail_context is None:
+            messagebox.showerror(T("const_records.error_dialog_title"),
+                                  T("const_records.export_range_needs_pattern"))
+            return
+        if page_range is None and not self._last:
+            return
+        portal_folder = self._get_portal_folder()
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        button_key = "const_records.export_pdf_button" if fmt == "pdf" else "const_records.export_csv_button"
+
+        if page_range is not None:
+            ctx = self._detail_context
+            k, vid, base_exponent = ctx["pattern"]["k"], ctx["pattern"]["id"], ctx["base_exponent"]
+            ui_from, ui_to = page_range
+            default_name = (f"constellation_k{k}_v{vid}_10p{base_exponent}_"
+                             f"screenpages{ui_from + 1}-{ui_to + 1}_{timestamp}.{fmt}")
+            rows = self._build_export_rows_from_current_page(ui_from, ui_to)
+            total_rows = len(rows)
+            job = {"mode": f"export_page_range_{fmt}", "k": k, "rows": rows}
+            status_text = T("const_records.status_exporting_range", fmt=fmt.upper())
+        else:
+            k = self._last[0]
+            floor_min, floor_max = self._last_floor_bounds
+            default_name = f"constellation_records_k{k}_{timestamp}.{fmt}"
+            total_rows = count_constellation_records_detail_rows(
+                portal_folder, k, floor_min=floor_min, floor_max=floor_max)
+            job = {"mode": f"export_{fmt}", "k": k, "floor_min": floor_min, "floor_max": floor_max}
+            status_text = T("const_records.status_exporting", k=k)
+
+        filetypes = ([("PDF", "*.pdf")] if fmt == "pdf" else [("CSV", "*.csv")]) + \
+            [(T("common.all_files"), "*.*")]
         path = filedialog.asksaveasfilename(
-            title=T("const_records.export_csv_button"),
-            initialdir=self._get_portal_folder(),
-            initialfile=default_name,
-            defaultextension=".csv",
-            filetypes=[("CSV", "*.csv"), (T("common.all_files"), "*.*")])
+            title=T(button_key), initialdir=portal_folder, initialfile=default_name,
+            defaultextension=f".{fmt}", filetypes=filetypes)
         if not path:
             return
-        floor_min, floor_max = self._last_floor_bounds
-        self._start_job(
-            {"mode": "export_csv", "k": k, "floor_min": floor_min, "floor_max": floor_max,
-             "path": path},
-            T("const_records.status_exporting", k=k))
+        job["path"] = path
+        # PDF (whole-range OR on-screen-page-scoped) still needs the whole row list
+        # laid out up front for pagination -- report_progress() during the write
+        # itself (what total_rows otherwise drives, see _iter_with_progress()) isn't
+        # wired for PDF, so the indeterminate spin (total_rows=None) stays correct
+        # there; only CSV streams and can show a real determinate bar.
+        self._start_job(job, status_text, total_rows=(total_rows if fmt == "csv" else None))

@@ -115,6 +115,40 @@ def main():
         check(any("info" == kind for kind, _a, _k in shown),
               f"a 'saved' confirmation was recorded via messagebox.showinfo (got: {shown})")
 
+        # --- real, determinate progress bar during export (added 2026-09-16, Artur --
+        # the old indeterminate spinner during a real, minutes-long export looked like
+        # flickering ("miga") rather than genuine incremental progress) --------------
+        import primeatlas.constellations_records_tab as const_records_tab_module
+
+        collected = []
+        rows_fixture = list(range(7))
+        streamed = list(const_records_tab_module._iter_with_progress(
+            rows_fixture, collected.append, step=3))
+        check(streamed == rows_fixture, "_iter_with_progress() yields every row unchanged")
+        check(collected == [3, 6], f"_iter_with_progress() reports every `step` rows (got {collected})")
+
+        csv_path2 = os.path.join(tmp_portal, "export_test_progress.csv")
+        records_tab._start_job(
+            {"mode": "export_csv", "k": k, "floor_min": None, "floor_max": None,
+             "path": csv_path2},
+            "exporting (test)", total_rows=12345)
+        check(str(records_tab.totals_progress["mode"]) == "determinate",
+              "a total_rows-bearing job switches the shared progress bar to determinate mode")
+        check(int(float(records_tab.totals_progress["maximum"])) == 12345,
+              f"the determinate bar's maximum is the real row count passed in "
+              f"(got {records_tab.totals_progress['maximum']})")
+        records_tab._on_worker_progress(500)
+        check(int(float(records_tab.totals_progress["value"])) == 500,
+              f"_on_worker_progress() updates the determinate bar's value (got {records_tab.totals_progress['value']})")
+        _pump(app, 3.0)
+        check(not records_tab._busy, "the determinate-progress export job still settles normally")
+        check(str(records_tab.totals_progress["mode"]) == "determinate"
+              and int(float(records_tab.totals_progress["maximum"])) == 1
+              and int(float(records_tab.totals_progress["value"])) == 0,
+              "the progress bar resets to its normal empty resting state once the job is done "
+              f"(got mode={records_tab.totals_progress['mode']!r}, "
+              f"max={records_tab.totals_progress['maximum']}, value={records_tab.totals_progress['value']})")
+
         # --- error path: force ConstellationsRecordsTab._job's own try/except to fire ---
         # Mirrors test_primality_worker.py / test_goldbach_worker.py's forced-
         # exception case: monkeypatching the module-level function _job imports so it

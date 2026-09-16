@@ -141,6 +141,18 @@ def main():
         calc = app.constellations_calc_tab_widget
         records = app.constellations_records_tab_widget
 
+        # === 0. Export od/do filled but no pattern active yet -> a clear error, not
+        # a silently-wrong whole-range export or a crash. ===
+        records.detail_export_from_entry.insert(0, "1")
+        records.detail_export_to_entry.insert(0, "1")
+        shown_before_guard = len(shown)
+        records._export_csv()
+        check(len(shown) == shown_before_guard + 1 and shown[-1][0] == "error",
+              f"od/do filled with no active pattern shows an error, not a silent export (got {shown[-1:]})")
+        check(not records._busy, "the guard refuses before ever dispatching a job")
+        records.detail_export_from_entry.delete(0, "end")
+        records.detail_export_to_entry.delete(0, "end")
+
         # === 1. Magazyn (ConstellationsHitsTab): tree population + pattern preview ===
         top_nodes = hits.hits_tree.get_children("")
         check(len(top_nodes) == 1, f"hits tree has exactly 1 floor node (got {len(top_nodes)})")
@@ -348,18 +360,21 @@ def main():
         finally:
             _records_tab_module.PDF_EXPORT_ROW_LIMIT = original_pdf_limit
 
-        # === 6. Real hit-file page navigation + page-scoped export, against an
-        # ACTUALLY migrated (paged) pattern -- floor 5's k=2/v=1, page_size=3, 10
-        # values -> pages [3,3,3,1]. Proves the records tab can browse a paged
-        # pattern beyond page 1 (not just refuse/show-partial, see section 4 above
-        # for the not-yet-paged refusal case) and that page-range export pulls
-        # exactly the requested pages, nothing more. ===
+        # === 6. Real hit-file page navigation + ON-SCREEN-page-scoped export,
+        # against an ACTUALLY migrated (paged) pattern -- floor 5's k=2/v=1,
+        # hit_paging page_size=60, 130 values -> hit-file pages [60,60,10]. Each
+        # hit-file page is bigger than the UI's own page_size (50, set via
+        # prime_atlas_v1.PAGE_SIZE above) so it spans multiple on-screen "Strona
+        # X/Y" pages -- needed to prove "Eksportuj strony od/do" now scopes to
+        # ON-SCREEN pages (Artur, 2026-09-16: "eksportuj strony od do powinny
+        # eksportowac tylko i wylacznie strony pliku [on-screen pages]"), not the
+        # much coarser hit-file page a single "page" used to mean. ===
         floor5_dir = os.path.join(tmp_portal, "10p5", "constellations", f"k{k}", f"variant{vid}")
         os.makedirs(floor5_dir, exist_ok=True)
-        paged_values = [5000 + 2 * i for i in range(1, 11)]  # 10 values
+        paged_values = [5000 + 2 * i for i in range(1, 131)]  # 130 values
         paged_source = os.path.join(floor5_dir, f"HITS_10p5_k{k}_v{vid}.bin")
         prime_sieve_v1.write_prime_window(paged_source, paged_values)
-        hit_paging.migrate_hit_file_to_pages(paged_source, floor5_dir, 5, k, vid, page_size=3)
+        hit_paging.migrate_hit_file_to_pages(paged_source, floor5_dir, 5, k, vid, page_size=60)
 
         records.floor_from_entry.delete(0, "end")
         records.floor_to_entry.delete(0, "end")
@@ -375,55 +390,96 @@ def main():
         if bbox5:
             x, y, w, h = bbox5
             records._on_cell_activate(_FakeEvent(x + w // 2, y + h // 2))
-            check(records._detail_file_page_count == 4,
-                  f"drill-down sees the real page count for a migrated pattern (got {records._detail_file_page_count})")
-            check(records._detail_file_page_index == 0, "drill-down starts on file page 0 (1 in the UI)")
-            check([v for v, _off in records._detail_rows] == paged_values[0:3],
-                  f"file page 0's rows are exactly that page's values (got {[v for v, _o in records._detail_rows]})")
+            check(records._detail_file_page_count == 3,
+                  f"drill-down sees the real hit-file page count for a migrated pattern (got {records._detail_file_page_count})")
+            check(records._detail_file_page_index == 0, "drill-down starts on hit-file page 0 (1 in the UI)")
+            check([v for v, _off in records._detail_rows] == paged_values[0:60],
+                  f"hit-file page 0's rows are exactly that page's 60 values (got {len(records._detail_rows)} rows)")
             check(str(records.detail_file_prev_btn["state"]) == "disabled",
-                  "prev file-page button is disabled on the first page")
+                  "prev file-page button is disabled on the first hit-file page")
             check(str(records.detail_file_next_btn["state"]) == "normal",
-                  "next file-page button is enabled when more pages exist")
+                  "next file-page button is enabled when more hit-file pages exist")
 
             records._next_detail_file_page()
-            check(records._detail_file_page_index == 1, "next file-page button advances to page 1")
-            check([v for v, _off in records._detail_rows] == paged_values[3:6],
-                  f"file page 1's rows are exactly that page's values (got {[v for v, _o in records._detail_rows]})")
-            check(str(records.detail_file_prev_btn["state"]) == "normal",
-                  "prev file-page button is enabled once past the first page")
+            check(records._detail_file_page_index == 1, "next file-page button advances to hit-file page 1")
+            check([v for v, _off in records._detail_rows] == paged_values[60:120],
+                  f"hit-file page 1's rows are exactly that page's 60 values (got {len(records._detail_rows)} rows)")
 
             records._prev_detail_file_page()
-            check(records._detail_file_page_index == 0, "prev file-page button returns to page 0")
+            check(records._detail_file_page_index == 0, "prev file-page button returns to hit-file page 0")
 
-            # Page-range export: request 1-based UI pages 2-4 (0-based file pages 1-3)
-            # -- should pull exactly paged_values[3:10], not the whole pattern.
+            # On-screen page export: request 1-based screen page 1 (0-based UI page 0)
+            # of the CURRENTLY LOADED hit-file page -- should pull exactly the first
+            # 50 (self._page_size) values, NOT the whole 60-row hit-file page.
             from tkinter import filedialog
             original_asksaveasfilename = filedialog.asksaveasfilename
             range_csv_path = os.path.join(tmp_portal, "range_export_test.csv")
             filedialog.asksaveasfilename = lambda **kwargs: range_csv_path
             try:
                 records.detail_export_from_entry.delete(0, "end")
-                records.detail_export_from_entry.insert(0, "2")
+                records.detail_export_from_entry.insert(0, "1")
                 records.detail_export_to_entry.delete(0, "end")
-                records.detail_export_to_entry.insert(0, "4")
-                records._export_page_range_csv()
-                check(records._busy, "page-range export dispatches a background job (busy set)")
+                records.detail_export_to_entry.insert(0, "1")
+                records._export_csv()  # unified: od/do filled + a pattern active -> on-screen-page mode
+                check(records._busy, "on-screen-page export dispatches a background job (busy set)")
                 _pump(app, 3.0)
-                check(not records._busy, "page-range export job settles")
+                check(not records._busy, "on-screen-page export job settles")
             finally:
                 filedialog.asksaveasfilename = original_asksaveasfilename
 
-            check(os.path.exists(range_csv_path), "page-range export actually wrote a CSV file")
+            check(os.path.exists(range_csv_path), "on-screen-page export actually wrote a CSV file")
             with open(range_csv_path, encoding="utf-8") as f:
                 range_lines = f.read().strip().splitlines()
-            exported_numbers = [int(line.split(",")[3]) for line in range_lines[1:]]
-            check(exported_numbers == paged_values[3:10],
-                  f"page-range export [2,4] (1-based) pulls exactly file pages 1-3's values, "
-                  f"nothing from page 0 (got {exported_numbers})")
+            exported_rows = [line.split(",") for line in range_lines[1:]]
+            exported_numbers = [int(r[3]) for r in exported_rows]
+            check(exported_numbers == paged_values[0:50],
+                  f"screen page [1,1] pulls exactly the first 50 values of hit-file page 0, "
+                  f"NOT the whole 60-row hit-file page (got {len(exported_numbers)} rows)")
+            exported_positions = [int(r[4]) for r in exported_rows]
+            check(exported_positions == list(range(0, 50)),
+                  f"position_in_file is correct for hit-file page 0 (got {exported_positions[:5]}...)")
 
-        # === 7. Same real hit-file page navigation + page-range export, in the
+            # Screen page 2 of the SAME hit-file page -> the remaining 10 rows, not
+            # the next hit-file page's data.
+            filedialog.asksaveasfilename = lambda **kwargs: range_csv_path
+            try:
+                records.detail_export_from_entry.delete(0, "end")
+                records.detail_export_from_entry.insert(0, "2")
+                records.detail_export_to_entry.delete(0, "end")
+                records.detail_export_to_entry.insert(0, "2")
+                records._export_csv()
+                _pump(app, 3.0)
+            finally:
+                filedialog.asksaveasfilename = original_asksaveasfilename
+            with open(range_csv_path, encoding="utf-8") as f:
+                range_lines2 = f.read().strip().splitlines()
+            exported_numbers2 = [int(line.split(",")[3]) for line in range_lines2[1:]]
+            check(exported_numbers2 == paged_values[50:60],
+                  f"screen page [2,2] pulls exactly the remaining 10 rows of hit-file page 0 "
+                  f"(got {exported_numbers2})")
+
+            # Same screen-page-1 range, but "Eksportuj PDF" instead -- exercises the
+            # export_page_range_pdf mode (new, alongside export_page_range_csv above).
+            records.detail_export_from_entry.delete(0, "end")
+            records.detail_export_from_entry.insert(0, "1")
+            records.detail_export_to_entry.delete(0, "end")
+            records.detail_export_to_entry.insert(0, "1")
+            range_pdf_path = os.path.join(tmp_portal, "range_export_test.pdf")
+            filedialog.asksaveasfilename = lambda **kwargs: range_pdf_path
+            try:
+                records._export_pdf()
+                check("PDF" in records.status.get() and "CSV" not in records.status.get(),
+                      f"the status bar says PDF, not CSV, while an on-screen-page PDF export runs "
+                      f"(got {records.status.get()!r})")
+                _pump(app, 3.0)
+            finally:
+                filedialog.asksaveasfilename = original_asksaveasfilename
+            check(os.path.exists(range_pdf_path), "on-screen-page export_pdf actually wrote a PDF file")
+            check(os.path.getsize(range_pdf_path) > 0, "the on-screen-page PDF is non-empty")
+
+        # === 7. Same real hit-file page navigation + jump-to-export, in the
         # Magazyn (ConstellationsHitsTab) tab -- reuses floor 5's already-migrated
-        # k=2/v=1 pattern from section 6 above (4 pages, page_size=3, 10 values). ===
+        # k=2/v=1 pattern from section 6 above (3 hit-file pages [60,60,10]). ===
         hits._reload_constellations_tree()
         _pump(app, 3.0)
         app.update()
@@ -441,44 +497,95 @@ def main():
             hits._on_tree_select(None)
 
             hits.load_preview()
-            check(hits._hit_file_page_count == 4,
-                  f"Magazyn load_preview() sees the real page count (got {hits._hit_file_page_count})")
-            check(hits._hit_values == paged_values[0:3],
-                  f"Magazyn file page 0's values match exactly (got {hits._hit_values})")
+            check(hits._hit_file_page_count == 3,
+                  f"Magazyn load_preview() sees the real hit-file page count (got {hits._hit_file_page_count})")
+            check(hits._hit_values == paged_values[0:60],
+                  f"Magazyn hit-file page 0's values match exactly (got {len(hits._hit_values)} values)")
             check(str(hits.hits_file_prev_btn["state"]) == "disabled",
                   "Magazyn prev file-page button is disabled on the first page")
             check(str(hits.hits_file_next_btn["state"]) == "normal",
                   "Magazyn next file-page button is enabled when more pages exist")
 
             hits._next_hit_file_page()
-            check(hits._hit_file_page_index == 1, "Magazyn next file-page button advances to page 1")
-            check(hits._hit_values == paged_values[3:6],
-                  f"Magazyn file page 1's values match exactly (got {hits._hit_values})")
+            check(hits._hit_file_page_index == 1, "Magazyn next file-page button advances to hit-file page 1")
+            check(hits._hit_values == paged_values[60:120],
+                  f"Magazyn hit-file page 1's values match exactly (got {len(hits._hit_values)} values)")
 
             hits._prev_hit_file_page()
-            check(hits._hit_file_page_index == 0, "Magazyn prev file-page button returns to page 0")
+            check(hits._hit_file_page_index == 0, "Magazyn prev file-page button returns to hit-file page 0")
+            check(str(hits.hits_export_btn["state"]) == "normal",
+                  "Magazyn's Eksportuj button is enabled once a page is loaded")
 
+            # "Eksportuj" no longer exports locally (Artur, 2026-09-16: duplicated
+            # Tabela rekordow's own export) -- it jumps there instead, with THIS
+            # pattern + the currently-loaded hit-file page pre-selected.
+            hits._next_hit_file_page()  # move off page 0 first, so the jump target
+            check(hits._hit_file_page_index == 1, "moved to hit-file page 1 before jumping")
+
+            # Deliberately DIRTY every field the jump is supposed to set, to REAL bogus
+            # values first -- a jump that silently no-ops (Artur's exact suspicion,
+            # 2026-09-16: "pola od do sie nie wypelnily... k dla jakiego ktupla
+            # rowniez powinno sie ustawic") would leave these wrong values sitting
+            # there instead of failing loudly, so the earlier version of this test
+            # (which never dirtied them first) couldn't have caught that.
+            records.k_combo.set("99")
+            records.detail_export_from_entry.delete(0, "end")
+            records.detail_export_from_entry.insert(0, "777")
+            records.detail_export_to_entry.delete(0, "end")
+            records.detail_export_to_entry.insert(0, "888")
+            records.floor_from_entry.delete(0, "end")
+            records.floor_from_entry.insert(0, "111")
+            records.floor_to_entry.delete(0, "end")
+            records.floor_to_entry.insert(0, "222")
+
+            hits._export_current_page()
+            app.update()
+            check(app.constellations_sub_notebook.index(app.constellations_sub_notebook.select())
+                  == app.constellations_sub_notebook.index(app.constellations_records_tab),
+                  "Magazyn's Eksportuj button switches to the Tabela rekordow sub-tab")
+            check(records._detail_context is not None
+                  and records._detail_context["base_exponent"] == 5
+                  and records._detail_context["pattern"]["k"] == k
+                  and records._detail_context["pattern"]["id"] == vid,
+                  f"the jump activates the exact same pattern Magazyn was showing (got {records._detail_context})")
+            check(records.k_combo.get() == str(k),
+                  f"the jump overwrites k_combo's dirty bogus value with the real k "
+                  f"(got {records.k_combo.get()!r}, expected {str(k)!r})")
+            check(records.floor_from_entry.get() == "5" and records.floor_to_entry.get() == "5",
+                  f"the jump overwrites Pietro od/do's dirty bogus values with the real floor "
+                  f"(got {records.floor_from_entry.get()!r}/{records.floor_to_entry.get()!r})")
+            check(records._detail_file_page_index == 1,
+                  f"the jump preloads the SAME hit-file page Magazyn was showing (got {records._detail_file_page_index})")
+            check(records.detail_export_from_entry.get() == "1" and records.detail_export_to_entry.get() == "1",
+                  f"the jump pre-fills the on-screen od/do to screen page 1 (the on-screen pager "
+                  f"always resets to page 0 on a fresh load, regardless of which hit-file page) "
+                  f"(got {records.detail_export_from_entry.get()!r}/{records.detail_export_to_entry.get()!r})")
+            check([v for v, _off in records._detail_rows] == paged_values[60:120],
+                  f"the preloaded hit-file page's rows match exactly what Magazyn had shown "
+                  f"(got {len(records._detail_rows)} rows)")
+
+            # od/do already default to screen page 1 of THIS hit-file page after the
+            # jump -- confirm the now-unified _export_csv() exports exactly that (the
+            # first self._page_size=50 of hit-file page 1's own 60 rows), not the
+            # whole hit-file page and not hit-file page 0's data.
             from tkinter import filedialog as _fd2
             original_asksaveasfilename2 = _fd2.asksaveasfilename
             hits_range_csv_path = os.path.join(tmp_portal, "hits_range_export_test.csv")
             _fd2.asksaveasfilename = lambda **kwargs: hits_range_csv_path
             try:
-                hits.hits_export_from_entry.delete(0, "end")
-                hits.hits_export_from_entry.insert(0, "2")
-                hits.hits_export_to_entry.delete(0, "end")
-                hits.hits_export_to_entry.insert(0, "4")
-                hits._export_page_range_csv()
+                records._export_csv()
                 _pump(app, 3.0)
             finally:
                 _fd2.asksaveasfilename = original_asksaveasfilename2
 
-            check(os.path.exists(hits_range_csv_path), "Magazyn page-range export actually wrote a CSV file")
+            check(os.path.exists(hits_range_csv_path),
+                  "exporting after a Magazyn-jump actually wrote a CSV file")
             with open(hits_range_csv_path, encoding="utf-8") as f:
                 hits_range_lines = f.read().strip().splitlines()
             hits_exported_numbers = [int(line.split(",")[3]) for line in hits_range_lines[1:]]
-            check(hits_exported_numbers == paged_values[3:10],
-                  f"Magazyn page-range export [2,4] pulls exactly file pages 1-3's values "
-                  f"(got {hits_exported_numbers})")
+            check(hits_exported_numbers == paged_values[60:110],
+                  f"the jump's default screen-page-1 export pulls exactly the first 50 of "
+                  f"hit-file page 1's own 60 rows (got {len(hits_exported_numbers)} rows)")
 
         app.destroy()
     finally:

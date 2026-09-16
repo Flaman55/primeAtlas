@@ -849,6 +849,9 @@ def _build_gui():
                 self._jump_records_detail_to_hits)
             self.constellations_records_tab_widget.pack(fill="both", expand=True)
 
+            self.constellations_hits_tab_widget.bind_export_to_records(
+                self._jump_hits_to_records_export)
+
         def _select_constellations_hits_view(self):
             """Switches the main notebook to the Constellations tab AND its own
             sub-notebook to the Magazyn tab -- injected into ConstellationsCalcTab as
@@ -868,6 +871,24 @@ def _build_gui():
             self.constellations_hits_tab_widget.select_pattern_in_tree(base_exponent, pattern)
             self.constellations_hits_tab_widget.load_preview()
             self.constellations_hits_tab_widget.jump_preview_to_row(hit_base, position)
+
+        def _select_constellations_records_view(self):
+            """Switches the main notebook to the Constellations tab AND its own
+            sub-notebook to the Tabela rekordow tab -- mirror of
+            _select_constellations_hits_view() above, for the opposite direction."""
+            self.main_notebook.select(self.constellations_tab)
+            self.constellations_sub_notebook.select(self.constellations_records_tab)
+
+        def _jump_hits_to_records_export(self, base_exponent, pattern, page_index):
+            """Registered with ConstellationsHitsTab.bind_export_to_records() --
+            Magazyn's "Eksportuj" button jumps to the Tabela rekordow tab with this
+            exact pattern's currently-viewed hit-file page pre-loaded as its export
+            range (see ConstellationsRecordsTab.activate_pattern_for_export()'s own
+            docstring for why Magazyn hands off here instead of exporting locally).
+            Thin app-level glue, same shape as _jump_records_detail_to_hits above."""
+            self._select_constellations_records_view()
+            self.constellations_records_tab_widget.activate_pattern_for_export(
+                base_exponent, pattern, page_index)
 
         def reload_constellations_tree(self):
             """Rebuilds the constellation-hits floor list from disk. This tab's own
