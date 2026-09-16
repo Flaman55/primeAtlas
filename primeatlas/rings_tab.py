@@ -1,23 +1,19 @@
 """
-rings_tab.py -- RingsTab(BaseTab), the "Ring visualization" tab (Faza 3, see PLAN.md
-at the repo root for the full phased rollout this belongs to). Launches the Faza 0-2
+rings_tab.py -- RingsTab(BaseTab), the "Ring visualization" tab. Launches the
 GPU renderer (primeatlas/ring_viz/renderer.py) as a separate native Windows subprocess
 against the app's own currently-configured magazyn, given a target N.
 
 WHY A SUBPROCESS, NOT EMBEDDED IN THIS WINDOW: GL's own event loop does not compose
 with Tkinter's mainloop() -- see primeatlas/ring_viz/__init__.py's own docstring for
-the full reasoning; already settled in PLAN.md's "Window embedding" design decision
-before any of this tab's own code was written.
+the full reasoning.
 
 WHY LocalLoggedRunner AND NOT WslLoggedRunner: renderer.py is a plain native Windows
 Python script (moderngl+glfw, no WSL involved anywhere) -- LocalLoggedRunner
 (primeatlas/generation.py) already exists for exactly this "ordinary local subprocess,
 live stdout capture on a background thread" shape (its only prior caller is the sympy
-installer in settings_tab.py). PLAN.md's own point 5 said to reuse "the existing
-WSL/GenerationConsole subprocess-management pattern" -- LocalLoggedRunner turned out to
-be the closer fit once it was clear this specific launch is native, not WSL; GenerationConsole
-(the collapsible live-output pane widget) is still reused as-is for the actual UI, since it
-has no WSL-specific assumption baked in at all.
+installer in settings_tab.py). GenerationConsole (the collapsible live-output pane
+widget) is reused as-is for the actual UI, since it has no WSL-specific assumption
+baked in at all.
 
 renderer.py's own print() calls (loading progress, the per-N-change rebuild line, see
 that module's own docstring) already write to stdout -- LocalLoggedRunner's queue-based
@@ -45,14 +41,14 @@ from .ring_viz.audio import INSTRUMENTS
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 RENDERER_SCRIPT = os.path.join(_THIS_DIR, "ring_viz", "renderer.py")
 
-# [ADDED Faza 11, see PLAN.md] Must match renderer.py's own emit_hud_state()
+# Must match renderer.py's own emit_hud_state()
 # print prefix exactly -- kept as one shared constant name (even though it's
 # only ever referenced in THIS file, renderer.py runs as a separate
 # subprocess and can't import a shared constant from here) so a future
 # rename doesn't silently desync the two string literals.
 _HUD_STATE_PREFIX = "HUD_STATE:"
 
-# [ADDED 2026-09-10, Faza 13] Must match renderer.py's own two plain
+# Must match renderer.py's own two plain
 # print("RING_VIZ_PAUSED"/"RING_VIZ_RESUMED") lines exactly -- these are NOT
 # JSON payloads like _HUD_STATE_PREFIX, just bare sentinel lines, since
 # there's no data to carry, only a state transition to react to.
@@ -81,7 +77,7 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
     too late to help a `-m`/dotted-import invocation, which imports the
     primeatlas package first).
 
-    [ADDED Faza 4, see PLAN.md] `windows` -- an iterable of window family ids
+    `windows` -- an iterable of window family ids
     (any of "bertrand"/"legendre"/"generalLaw") to highlight, chosen once at
     launch time via this tab's checkboxes (there is no live in-GL-window
     toggle -- see renderer.py's own "no live in-window toggle yet" note).
@@ -91,17 +87,16 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
     a shorter argv is easier to read in the console pane's own `$ ...` echo
     line.
 
-    [ADDED as part of Faza 4's point-size investigation, 2026-09-04]
     `point_size` -- None (default) omits --point-size entirely, so
     renderer.py's own argparse default (3.0) applies; a real value is
     forwarded as-is. Exposed here (rather than only via renderer.py's own
     CLI, which needs hand-editing its argparse default to test) specifically
     so a real value change is verifiable from the GUI alone -- see
-    renderer.py's own [diag] startup print for the other half of that
-    investigation (confirming the requested value actually reaches the
-    renderer, vs. a possible GL_POINT_SIZE_RANGE hardware/driver clamp).
+    renderer.py's own [diag] startup print (confirming the requested value
+    actually reaches the renderer, vs. a possible GL_POINT_SIZE_RANGE
+    hardware/driver clamp).
 
-    [ADDED Faza 6, see PLAN.md] `track_primes` -- an iterable of prime
+    `track_primes` -- an iterable of prime
     values (any order/dupes as typed by the user, see ring_geometry.py's
     own filter_active_tracked docstring for why order is preserved) chosen
     once at launch time via the new "Track P" field, forwarded as-is to
@@ -109,7 +104,7 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
     checkbox; same launch-time-only convention as `windows` above -- no
     live in-GL-window toggle for either.
 
-    [ADDED Faza 9, see PLAN.md] `load_range` -- None (default, sequential
+    `load_range` -- None (default, sequential
     mode, unchanged behavior) or a (from, to) pair forwarded as-is to
     renderer.py's --load-range. As with track_primes, the string values are
     NOT int()-cast here -- an empty or malformed field just omits
@@ -117,8 +112,7 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
     renderer.py's own main() does the real format validation (same
     parser.error() convention as --track-primes/--windows).
 
-    [ADDED Faza 11C, 2026-09-06 -- Artur's real-screen report: "hud jest
-    tak mikroskopijny ... że nie jestem wstanie go przeczytać"] `hit_point_size`
+    `hit_point_size`
     -- None (default) omits --hit-point-size entirely, so renderer.py's own
     default (fall back to --point-size) applies; a real value gives rings on
     the vertical reference line (divisors of N) an independent on-screen
@@ -127,7 +121,6 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
     applies; a real value scales the on-canvas HUD text. Same
     omit-if-None convention as `point_size` above.
 
-    [ADDED, Artur 2026-09-12: arbitrary-range viewing at high floors]
     `max_load_count` -- None (default) omits --max-load-count entirely, so
     renderer.py's own argparse default applies; a real value overrides the
     safety cap on how many primes a magazyn `load_range` load may
@@ -137,8 +130,7 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
     like every other optional flag here -- renderer.py itself ignores it
     outside that mode.
 
-    [ADDED 2026-09-12, Artur's own ask: "dołóżmy ten parametr prędkości
-    animacji by można było zmieniać te 120ms/tick"] `tempo_ms` -- None
+    `tempo_ms` -- None
     (default) omits --tempo-ms entirely, so renderer.py's own argparse
     default (120, via clamp_tempo_ms) applies; a real value sets the
     playback tick's own real-time pacing at launch, previously only
@@ -181,7 +173,7 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
     if audio:
         argv += ['--audio', '--sound-low', sound_low, '--sound-prime', sound_prime,
                  '--sound-lcm', sound_lcm]
-    # [ADDED Faza 13, see PLAN.md] Opt-in ONLY when the caller is actually
+    # Opt-in ONLY when the caller is actually
     # going to act on the RING_VIZ_PAUSED/RESUMED lines this makes
     # renderer.py print (see that flag's own doc-comment there) --
     # RingsTab._on_open is the one real caller and always passes True;
@@ -200,7 +192,7 @@ class RingsTab(BaseTab):
         self._get_portal_folder = get_portal_folder
         self.status = status_var
         self.totals_progress = totals_progress
-        # [ADDED 2026-09-11] Backs the "start from where you left off" behavior --
+        # Backs the "start from where you left off" behavior --
         # see _build_ui's own use of ring_viz_params and _on_open's save call below.
         # None in unit tests that construct RingsTab directly without an AppSettings
         # (see test_rings_tab.py) -- every persistence call below is a no-op then, and
@@ -208,16 +200,16 @@ class RingsTab(BaseTab):
         self._app_settings = app_settings
         self._runner = None
         self._queue = None
-        # [ADDED 2026-09-10] Last N seen in a HUD_STATE line from the most
+        # Last N seen in a HUD_STATE line from the most
         # recently running process (see _apply_hud_state/_poll_queue below).
-        # Powers the "Uruchom / Wznów" (Start/Resume) button: when the GL
+        # Powers the Start/Resume button: when the GL
         # window closes on its own (Esc, window-close control, or a crash)
         # rather than via an explicit Reset click, the N field is updated to
         # this value so the next launch reopens right where playback left
         # off, instead of wherever the field happened to still say. Cleared
         # by _on_reset, which is the one path that deliberately discards it.
         self._last_hud_n = None
-        # [ADDED 2026-09-10, Faza 13] True while the running renderer.py
+        # True while the running renderer.py
         # process is alive but hidden/idling, waiting for a RESUME command
         # (see _poll_queue's RING_VIZ_PAUSED/RESUMED handling below and
         # renderer.py's own start_stdin_command_reader doc-comment for the
@@ -233,9 +225,7 @@ class RingsTab(BaseTab):
         instead of into `parent` directly; everything else (canvas, scrollbar,
         width sync, mousewheel binding) is handled here.
 
-        [ADDED 2026-09-12, Artur's own ask: "przyszedł czas wprowadzenie
-        scrollbara pionowego do okna wizualizacji by to co nie mieści się przez
-        parametry hud można było zobaczyć"] This is the exact same idiom as
+        This is the exact same idiom as
         generation_tab.py's own `_build_scrollable_container` (settings_tab.py's
         `_make_scrollable_tab` is the same pattern again, one file earlier) --
         copied rather than shared, matching this codebase's existing convention
@@ -259,8 +249,7 @@ class RingsTab(BaseTab):
         Windows/Mac; <Button-4>/<Button-5> cover X11 (Linux) which reports the
         wheel as button clicks instead of a delta.
 
-        [CHANGED 2026-09-13, Artur's own report: "scrolując okno terminala
-        scrolujesz jednocześnie okno zakładki"] Returns `(inner, register_exclude)`
+        Returns `(inner, register_exclude)`
         instead of just `inner` -- `register_exclude(widget)` marks `widget` (and
         every descendant of it) as having its OWN independent scrolling (e.g. the
         HUD console's GenerationConsole.text.frame, which wraps a ScrolledText
@@ -288,9 +277,8 @@ class RingsTab(BaseTab):
         outer.pack(fill="both", expand=True)
 
         canvas = tk.Canvas(outer, highlightthickness=0)
-        # ROOT CAUSE (found 2026-08-23, see generation_tab.py's own copy of this
-        # comment for the full live-debug story): Tk's Canvas defaults to
-        # yscrollincrement=0, which makes any "scroll N units" call (mousewheel,
+        # ROOT CAUSE (see generation_tab.py's own copy of this comment): Tk's
+        # Canvas defaults to yscrollincrement=0, which makes any "scroll N units" call (mousewheel,
         # scrollbar arrows) jump by ~10% of the canvas's CURRENT VIEWPORT height
         # instead of a small fixed pixel step, and doesn't clamp the view back to
         # 0 when content is shorter than the viewport. A small fixed increment
@@ -326,7 +314,7 @@ class RingsTab(BaseTab):
         inner = ttk.Frame(canvas)
         inner_window = canvas.create_window((0, 0), window=inner, anchor="nw")
 
-        # NOTE (2026-08-23 fix, ported from generation_tab.py/settings_tab.py):
+        # NOTE (ported from generation_tab.py/settings_tab.py):
         # scrollregion is set from inner.winfo_reqwidth()/reqheight() -- NOT
         # canvas.bbox("all"), which can end up taller than the frame's actual
         # current content (mid-reflow right after a width change, before layout
@@ -400,16 +388,16 @@ class RingsTab(BaseTab):
         return inner, register_exclude
 
     def _build_ui(self):
-        # [ADDED 2026-09-11] Every literal fallback below (e.g. "2", "15", "0.5") is
+        # Every literal fallback below (e.g. "2", "15", "0.5") is
         # the tab's ORIGINAL hardcoded default -- unchanged, and still what a genuinely
         # fresh install (no saved_params yet) shows. Once at least one run has launched,
         # saved_params overrides them, so every field after the first-ever run reopens
-        # exactly where the previous one left off (Artur, 2026-09-11 -- see
-        # ring_viz_params's own doc-comment in app_settings.py).
+        # exactly where the previous one left off (see ring_viz_params's own
+        # doc-comment in app_settings.py).
         saved_params = (self._app_settings.ring_viz_params if self._app_settings else None) or {}
 
-        # [CHANGED 2026-09-12, see _build_scrollable_container's own docstring]
-        # scroll_body replaces `self` as container's parent -- container itself
+        # scroll_body replaces `self` as container's parent (see
+        # _build_scrollable_container's own docstring) -- container itself
         # keeps its exact original padx/pady pack() call, so nothing below this
         # line needed to change at all.
         scroll_body, self._register_scroll_exclude = self._build_scrollable_container(self)
@@ -419,9 +407,7 @@ class RingsTab(BaseTab):
         intro = ttk.Label(container, text=self.T("rings.intro"), wraplength=760, justify="left")
         intro.pack(anchor="w", pady=(0, 10))
 
-        # [REORGANIZED 2026-09-12, Artur's own ask: "uporządkuj trochę
-        # rozkład tych parametrów bardziej logicznie bo trochę to
-        # chaotycznie wygląda"] Every field below used to be one flat stack
+        # Every field below used to be one flat stack
         # of same-looking rows; grouped into labeled sections now (Position/
         # mode, Appearance, Audio, Windows & tracking) purely as a visual/
         # layout change -- every widget keeps its exact same attribute name,
@@ -433,15 +419,13 @@ class RingsTab(BaseTab):
         position_frame = ttk.LabelFrame(container, text=self.T("rings.section_position"))
         position_frame.pack(fill="x", pady=(0, 8))
 
-        # [ADDED 2026-09-12, Artur's own ask: "obok n dajmy przełącznik czy
-        # wizualizacja działa na n czy na zakresie od do"] Explicit mode
-        # switch, replacing the old implicit "load_range activates whenever
-        # BOTH From/To happen to be non-empty" rule -- that rule is exactly
-        # what silently activated range mode from a STALE leftover value
-        # once already (Artur's own report, same session: a 26-digit From
-        # left over from a previous test). _on_mode_changed greys out
-        # whichever of N / Load Range this mode doesn't use, so a leftover
-        # value in the inactive field is visibly inert instead of a trap.
+        # Explicit mode switch, replacing the old implicit "load_range
+        # activates whenever BOTH From/To happen to be non-empty" rule --
+        # that rule could silently activate range mode from a stale leftover
+        # value left in one of the fields by a previous test.
+        # _on_mode_changed greys out whichever of N / Load Range this mode
+        # doesn't use, so a leftover value in the inactive field is visibly
+        # inert instead of a trap.
         mode_row = ttk.Frame(position_frame)
         mode_row.pack(fill="x", padx=8, pady=(6, 6))
         ttk.Label(mode_row, text=self.T("rings.mode_label")).pack(side="left")
@@ -459,8 +443,8 @@ class RingsTab(BaseTab):
         field_row.pack(fill="x", padx=8, pady=(0, 6))
         ttk.Label(field_row, text=self.T("rings.field_n")).pack(side="left")
         self.n_entry = ttk.Entry(field_row, width=28)
-        # [CHANGED 2026-09-10] Artur asked for N pre-filled at startup instead
-        # of an empty field, so the field/hint are non-empty on first render.
+        # N is pre-filled at startup instead
+        # of left empty, so the field/hint are non-empty on first render.
         self.n_entry.insert(0, saved_params.get("n", "2"))
         self.n_entry.pack(side="left", padx=(6, 10))
         self.n_hint_var = tk.StringVar(value="")
@@ -468,10 +452,10 @@ class RingsTab(BaseTab):
         self.n_entry.bind("<KeyRelease>", self._on_n_changed)
         self._on_n_changed()
 
-        # [ADDED Faza 9, see PLAN.md] Load Range -- From/To fields, launch-time
+        # Load Range -- From/To fields, launch-time
         # only (same convention as every other field on this tab: read once by
-        # _on_open, no live subprocess IPC). [CHANGED 2026-09-12] Which mode
-        # is active is now decided by mode_var above, not by whether these
+        # _on_open, no live subprocess IPC). Which mode
+        # is active is decided by mode_var above, not by whether these
         # happen to be filled in -- see renderer.py's own --load-range
         # handling in run() for the full behavior, ported from the HTML's
         # #loadPrimeRange/"Load Range" button.
@@ -486,9 +470,7 @@ class RingsTab(BaseTab):
         self.load_range_to_entry.insert(0, saved_params.get("load_range_to", ""))
         self.load_range_to_entry.pack(side="left", padx=(6, 0))
 
-        # [ADDED, Artur 2026-09-12: "przypomniało mi się czego brakuje w
-        # wizualizacji ... na zakresach 30 piętra ... nieosiągalne ze
-        # względu na ilość liczb pierwszych"] Safety cap for a Load Range
+        # Safety cap for a Load Range
         # load, so an arbitrary From/To spanning a huge value gap (the whole
         # point of being able to open at a high floor without loading every
         # floor below it first -- see load_magazyn's own `from_n`/
@@ -504,14 +486,12 @@ class RingsTab(BaseTab):
         self.max_load_count_entry.insert(0, saved_params.get("max_load_count", ""))
         self.max_load_count_entry.pack(side="left", padx=(6, 0))
 
-        # [ADDED 2026-09-12, Artur's own ask: "dołóżmy ten parametr
-        # prędkości animacji by można było zmieniać te 120ms/tick"] Exposes
-        # renderer.py's own --tempo-ms at launch time (previously only
+        # Exposes renderer.py's own --tempo-ms at launch time (previously only
         # reachable live, post-launch, via the ]/[ keys inside the GL
         # window itself -- see clamp_tempo_ms's own [30,2000] range there).
         # Applies to BOTH modes (it is the playback tick's own real-time
         # pacing, independent of tick_next_n's range_step -- see that
-        # function's own 2026-09-12 doc-comment for how those two are
+        # function's own doc-comment for how those two are
         # different knobs: tempo is "how often", range_step is "how far
         # each time"). Empty/invalid falls back to renderer.py's own
         # argparse default (120ms), same omit-if-blank convention as every
@@ -524,16 +504,13 @@ class RingsTab(BaseTab):
         self.tempo_ms_entry.pack(side="left", padx=(6, 0))
 
         # --- Windows & tracking -------------------------------------------
-        # [MOVED 2026-09-12, Artur's own ask: "podświetlenie i śledzenie daj
-        # między pozycja i tryb a wygląd bo to parametry pracy nie
-        # ustawienia wizualne" -- these are WORKING parameters (what the
-        # visualization computes/highlights), not visual/appearance
-        # settings, so they belong right after Position & mode, ahead of
-        # Appearance/Audio.]
+        # These are working parameters (what the visualization
+        # computes/highlights), not visual/appearance settings, so they
+        # belong right after Position & mode, ahead of Appearance/Audio.
         windows_frame = ttk.LabelFrame(container, text=self.T("rings.section_windows"))
         windows_frame.pack(fill="x", pady=(0, 8))
 
-        # [ADDED Faza 4, see PLAN.md] Window-highlight-family checkboxes --
+        # Window-highlight-family checkboxes --
         # chosen once here, at launch time, and passed as --windows to
         # renderer.py (see build_renderer_argv's own doc-comment for why
         # this is launch-time-only rather than a live in-GL-window toggle).
@@ -565,7 +542,7 @@ class RingsTab(BaseTab):
         self.general_law_mode_combo.set(saved_params.get("general_law_mode", "stepped"))
         self.general_law_mode_combo.pack(side="left", padx=(6, 0))
 
-        # [ADDED Faza 6, see PLAN.md] Track P field -- comma-separated prime
+        # Track P field -- comma-separated prime
         # values, forwarded as-is to renderer.py's --track-primes (see
         # build_renderer_argv's own doc-comment). Launch-time-only, same
         # convention as the windows checkboxes above: no live in-GL-window
@@ -573,8 +550,7 @@ class RingsTab(BaseTab):
         # (mutually exclusive in effect with a real Track P list -- see
         # renderer.py's own rebuild_buffer(), which skips the tracked-filter
         # entirely when auto-orbit is on); left as an independent checkbox
-        # here rather than disabling the Track P field, since Faza 10 is
-        # what actually wires auto-orbit's visible behavior.
+        # here rather than disabling the Track P field.
         track_row = ttk.Frame(windows_frame)
         track_row.pack(fill="x", padx=8, pady=(0, 8))
         ttk.Label(track_row, text=self.T("rings.track_primes_label")).pack(side="left")
@@ -590,7 +566,6 @@ class RingsTab(BaseTab):
         appearance_frame = ttk.LabelFrame(container, text=self.T("rings.section_appearance"))
         appearance_frame.pack(fill="x", pady=(0, 8))
 
-        # [ADDED as part of Faza 4's point-size investigation, 2026-09-04]
         # Exposed here (instead of only reachable by hand-editing
         # renderer.py's argparse default) so a real value change is
         # verifiable from the GUI alone -- see build_renderer_argv's own
@@ -599,25 +574,20 @@ class RingsTab(BaseTab):
         point_size_row.pack(fill="x", padx=8, pady=(6, 6))
         ttk.Label(point_size_row, text=self.T("rings.point_size_label")).pack(side="left")
         self.point_size_entry = ttk.Entry(point_size_row, width=8)
-        # [CHANGED 2026-09-10] Artur's own chosen default, raised from 3.0 to 15.
         self.point_size_entry.insert(0, saved_params.get("point_size", "15"))
         self.point_size_entry.pack(side="left", padx=(6, 0))
 
-        # [ADDED Faza 11C, see build_renderer_argv's own doc-comment --
-        # Artur's real-screen report that the HUD was unreadably small and
-        # that hit-rings (on the vertical reference line) needed an
-        # independent size from every other ring.] Pre-filled with Artur's
-        # own chosen defaults (2026-09-09: hit-ring size 40, HUD font 35) --
-        # same convention as point_size_entry's own "3.0" pre-fill above --
-        # so these values are visibly wired in at launch rather than hidden
+        # See build_renderer_argv's own doc-comment: hit-rings (on the
+        # vertical reference line) need an independent size from every other
+        # ring, distinct from the HUD font size. Pre-filled with default
+        # values so these are visibly wired in at launch rather than hidden
         # behind a blank field the user has to know to fill in. Clearing the
         # field still omits the CLI flag entirely (renderer.py's own
-        # argparse defaults, ALSO 40/35 as of this phase, apply then too).
+        # argparse defaults apply then too).
         hit_point_size_row = ttk.Frame(appearance_frame)
         hit_point_size_row.pack(fill="x", padx=8, pady=(0, 6))
         ttk.Label(hit_point_size_row, text=self.T("rings.hit_point_size_label")).pack(side="left")
         self.hit_point_size_entry = ttk.Entry(hit_point_size_row, width=8)
-        # [CHANGED 2026-09-10] Artur's own chosen default, lowered from 40 to 20.
         self.hit_point_size_entry.insert(0, saved_params.get("hit_point_size", "20"))
         self.hit_point_size_entry.pack(side="left", padx=(6, 0))
 
@@ -649,14 +619,14 @@ class RingsTab(BaseTab):
             self.audio_choices[channel] = choice
         ttk.Label(audio_frame, text=self.T('rings.audio_hint')).pack(anchor='w', padx=8, pady=(0, 6))
 
-        # [ADDED 2026-09-12] Applies the mode switch's enabled/disabled
+        # Applies the mode switch's enabled/disabled
         # wiring once, right after every field above has been created --
         # must run after load_range_from/to and max_load_count entries above
         # exist, and after n_entry, since it addresses all of them by
         # attribute.
         self._on_mode_changed()
 
-        # [RELABELED 2026-09-10] These two buttons keep their original
+        # These two buttons keep their original
         # attribute names (open_button/stop_button -- unchanged, so
         # test_rings_tab.py's state checks keep working) and _on_open's own
         # launch logic is untouched, but their labels/semantics now read as
@@ -675,18 +645,15 @@ class RingsTab(BaseTab):
                                        command=self._on_reset, state="disabled")
         self.stop_button.pack(side="left", padx=(6, 0))
 
-        # [ADDED Faza 11, see PLAN.md] Always-current HUD status panel --
+        # Always-current HUD status panel --
         # separate from self.console below on purpose. renderer.py's own
         # human-readable HUD lines (N, factors of N, tracked/LCM state,
-        # etc.) already reached that console pane since Faza 4/7 -- but
-        # during Faza 10 playback they reprint every single tick and
-        # scroll past far too fast to ever read (Artur, 2026-09-06, right
-        # after confirming Faza 10 works: "brak panelu HUD w ogóle" -- the
-        # text existed, there was just no ALWAYS-VISIBLE snapshot of it).
-        # This label's content gets REPLACED wholesale on every
+        # etc.) already reach that console pane too -- but during playback
+        # they reprint every single tick and scroll past far too fast to
+        # ever read, so there was no always-visible snapshot of the current
+        # state. This label's content gets REPLACED wholesale on every
         # "HUD_STATE:" line (see renderer.py's own emit_hud_state()), never
-        # appended -- see _on_console_line's own doc-comment for how those
-        # lines are told apart from ordinary console output.
+        # appended.
         hud_frame = ttk.LabelFrame(container, text=self.T("rings.hud_panel_title"))
         hud_frame.pack(fill="x", pady=(0, 10))
         self.hud_var = tk.StringVar(value=self.T("rings.hud_panel_placeholder"))
@@ -695,24 +662,21 @@ class RingsTab(BaseTab):
 
         self.console = GenerationConsole(container, self.T, height=14,
                                           window_title=self.T("rings.console_title"))
-        # [ADDED 2026-09-13, Artur's own report: scrolling the console pane was
-        # ALSO scrolling the whole tab underneath it] See
-        # _build_scrollable_container's own docstring -- this tells the tab's
+        # See _build_scrollable_container's own docstring -- this tells the tab's
         # outer scroll wrapper to leave mousewheel/button events that land
         # inside the console's own ScrolledText (and its scrollbar) alone.
         self._register_scroll_exclude(self.console.text.frame)
 
-        # [ADDED 2026-09-10, Faza 13] Every field below is read ONCE, at
+        # Every field below is read ONCE, at
         # _on_open's launch-time argv build -- see build_renderer_argv's own
         # doc-comment. While the process is paused-and-resumable
         # (self._paused, see _set_launch_params_readonly's own doc-comment),
         # editing any of them would silently do nothing until the NEXT fresh
-        # launch, which is exactly the kind of "changing this looks like it
-        # should matter" trap Artur flagged. Split into two groups because
-        # ttk widgets don't share one disabled-state spelling: entries/
-        # checkbuttons use "normal"/"disabled", comboboxes use "readonly"
-        # (their own normal state here, since they're never free-text) vs
-        # "disabled".
+        # launch, which would otherwise look like it should matter but
+        # wouldn't. Split into two groups because ttk widgets don't share
+        # one disabled-state spelling: entries/checkbuttons use
+        # "normal"/"disabled", comboboxes use "readonly" (their own normal
+        # state here, since they're never free-text) vs "disabled".
         self._launch_param_entries = [
             self.n_entry, self.point_size_entry, self.hit_point_size_entry,
             self.hud_font_size_entry, self.general_law_theta_entry,
@@ -730,19 +694,17 @@ class RingsTab(BaseTab):
         ]
 
     def _set_launch_params_readonly(self, readonly):
-        """[ADDED 2026-09-10, Faza 13] Toggles every launch-time-only field
+        """Toggles every launch-time-only field
         (N, point sizes, window-highlight checkboxes, Track P, Load Range,
         audio instrument pickers, ...) between editable and read-only.
         Called with readonly=True the moment the process reports itself
         paused (RING_VIZ_PAUSED, see _poll_queue below) -- while paused, the
         Start/Resume button sends RESUME instead of relaunching, so these
         fields would no longer feed anything even though they still LOOK
-        live and editable (Artur, 2026-09-10: "sugeruje że zmiana ich coś
-        zmieni, a to jest używane tylko przy uruchomieniu"). Called with
-        readonly=False on RING_VIZ_RESUMED, on Reset, and on any real
-        process exit, so the fields are always editable again the instant a
-        fresh launch (not a resume) is what the next Start/Resume click
-        will actually do."""
+        live and editable. Called with readonly=False on RING_VIZ_RESUMED,
+        on Reset, and on any real process exit, so the fields are always
+        editable again the instant a fresh launch (not a resume) is what
+        the next Start/Resume click will actually do."""
         entry_state = "disabled" if readonly else "normal"
         for entry in self._launch_param_entries:
             entry.configure(state=entry_state)
@@ -752,7 +714,7 @@ class RingsTab(BaseTab):
         for dropdown in self._launch_param_dropdowns:
             dropdown.configure(state=dropdown_state)
         if not readonly:
-            # [ADDED 2026-09-12] The blanket loop above just re-enabled N
+            # The blanket loop above just re-enabled N
             # AND Load Range/max-load-count together -- re-apply the mode
             # switch's own restriction on top, so unlocking (Reset, a clean
             # exit, RING_VIZ_RESUMED) leaves only whichever pair the
@@ -761,14 +723,12 @@ class RingsTab(BaseTab):
             self._on_mode_changed()
 
     def _on_mode_changed(self, _event=None):
-        """[ADDED 2026-09-12, Artur's own ask: "obok n dajmy przełącznik czy
-        wizualizacja działa na n czy na zakresie od do"] Greys out whichever
-        of N / Load Range's fields the CURRENT mode doesn't use, instead of
-        leaving a stale, easy-to-miss leftover value in the inactive one
-        able to silently change behavior (see _on_open's own load_range
-        gating below, now keyed off mode_var rather than "both fields
-        happen to be non-empty" -- the exact old rule that once let a
-        26-digit leftover From value silently activate range mode).
+        """Greys out whichever of N / Load Range's fields the CURRENT mode
+        doesn't use, instead of leaving a stale, easy-to-miss leftover value
+        in the inactive one able to silently change behavior (see
+        _on_open's own load_range gating below, keyed off mode_var rather
+        than "both fields happen to be non-empty" -- the old rule that could
+        let a 26-digit leftover From value silently activate range mode).
         max_load_count is only ever meaningful together with Load Range, so
         it follows the same enabled state."""
         is_range = self.mode_var.get() == "range"
@@ -795,7 +755,7 @@ class RingsTab(BaseTab):
         self.n_hint_var.set(self.T("rings.hint_floor", floor=floor))
 
     def _on_open(self):
-        # [ADDED 2026-09-10, Faza 13] Live resume path: the process never
+        # Live resume path: the process never
         # actually exited, it's just idling with its window hidden (see
         # renderer.py's own PAUSE/RESUME protocol) -- send it a command
         # instead of launching a brand new one, so N, playback state,
@@ -847,7 +807,7 @@ class RingsTab(BaseTab):
         except ValueError:
             point_size = None
 
-        # [ADDED Faza 11C] Same empty-or-invalid-omits-the-flag convention
+        # Same empty-or-invalid-omits-the-flag convention
         # as point_size above.
         hit_point_size_raw = self.hit_point_size_entry.get().strip()
         try:
@@ -861,7 +821,7 @@ class RingsTab(BaseTab):
         except ValueError:
             hud_font_size = None
 
-        # [ADDED Faza 6, see PLAN.md] Track P -- comma-separated prime values,
+        # Track P -- comma-separated prime values,
         # forwarded as-is (renderer.py's own --track-primes does the
         # digit/validity check, mirroring --windows's own error-reporting
         # convention -- see that module's main() for the parser.error()).
@@ -869,24 +829,20 @@ class RingsTab(BaseTab):
         track_primes = [p.strip() for p in track_primes_raw.split(",") if p.strip()] if track_primes_raw else []
         auto_orbit = self.auto_orbit_var.get()
 
-        # [ADDED Faza 9, see PLAN.md; CHANGED 2026-09-12, Artur's own ask:
-        # "obok n dajmy przełącznik czy wizualizacja działa na n czy na
-        # zakresie od do"] Which mode is active is now decided EXPLICITLY by
+        # Which mode is active is decided EXPLICITLY by
         # mode_var (the radiobuttons next to N), not by whether From/To
-        # happen to both be filled in -- that old implicit rule is exactly
-        # what let a stale leftover From value silently activate range mode
-        # once already (Artur's own report, same session). Range mode with
-        # missing/invalid From or To now fails loudly (an error dialog, same
-        # convention as the N-invalid case above) instead of silently
+        # happen to both be filled in -- that old implicit rule could let a
+        # stale leftover From value silently activate range mode. Range mode
+        # with missing/invalid From or To now fails loudly (an error dialog,
+        # same convention as the N-invalid case above) instead of silently
         # falling back to sequential.
         #
-        # [CHANGED 2026-09-12, Artur's own ask: "pisanie 25 zer nie jest
-        # przyjemne"] Parsing itself goes through the SAME _eval_quick_number
+        # Parsing itself goes through the SAME _eval_quick_number
         # the N field above already uses (plain digits, "10**5"-style
         # expressions, and -- via that function's own parse_big_int fast
         # path -- "a*10^b"/scientific notation too), instead of a bare
         # `.isdigit()` check that rejected anything but plain decimal
-        # digits. A real magazyn floor's own magnitude (piętro 25 alone is
+        # digits. A real magazyn floor's own magnitude (floor 25 alone is
         # 26 digits) is exactly why this matters here.
         range_mode_selected = self.mode_var.get() == "range"
         range_from_raw = self.load_range_from_entry.get().strip()
@@ -900,7 +856,7 @@ class RingsTab(BaseTab):
                 return
             load_range = (range_from, range_to)
 
-        # [ADDED, Artur 2026-09-12] Same empty-or-invalid-omits-the-flag
+        # Same empty-or-invalid-omits-the-flag
         # convention as point_size/hit_point_size/hud_font_size above --
         # renderer.py's own argparse default (2,000,000) applies when this
         # is left blank or unparseable. Same _eval_quick_number convention
@@ -912,8 +868,7 @@ class RingsTab(BaseTab):
         if max_load_count is not None and max_load_count < 0:
             max_load_count = None
 
-        # [ADDED 2026-09-12, Artur's own ask: "dołóżmy ten parametr
-        # prędkości animacji"] Same empty-or-invalid-omits-the-flag
+        # Same empty-or-invalid-omits-the-flag
         # convention as every other numeric field here -- renderer.py's own
         # argparse/clamp_tempo_ms default (120ms, clamped to [30,2000])
         # applies when this is left blank or unparseable.
@@ -934,7 +889,7 @@ class RingsTab(BaseTab):
                                     pipe_stdin_commands=True,
                                     max_load_count=max_load_count,
                                     tempo_ms=tempo_ms)
-        # [ADDED 2026-09-11] Persist every launch-time field as-typed, so the NEXT
+        # Persist every launch-time field as-typed, so the NEXT
         # launch (this session's Reset+Start, or a whole new app restart) reopens
         # with these same values instead of the tab's hardcoded first-run defaults
         # -- see ring_viz_params's own doc-comment in app_settings.py. Raw strings/
@@ -965,7 +920,7 @@ class RingsTab(BaseTab):
                 "max_load_count": max_load_count_raw,
             })
         q = queue.Queue()
-        # [ADDED 2026-09-10, Faza 13] pipe_stdin=True so send_line("RESUME")
+        # pipe_stdin=True so send_line("RESUME")
         # further down (and in _on_open's own live-resume branch above) has
         # an actual pipe to write to -- see LocalLoggedRunner's own
         # doc-comment for why this is opt-in rather than the default.
@@ -975,12 +930,11 @@ class RingsTab(BaseTab):
         self._paused = False
         self.open_button.configure(state="disabled")
         self.stop_button.configure(state="normal")
-        # [CHANGED 2026-09-10] Lock the launch-time-only fields the moment a
-        # process is actually launched, not only once it's paused -- Artur:
-        # "blokada powinna być uruchomiona już po otworciu okna" (the block
-        # should already be active right after opening the window). They now
-        # stay locked through running AND paused AND resumed -- Reset is the
-        # only path that unlocks them again (see _on_reset), aside from the
+        # Lock the launch-time-only fields the moment a
+        # process is actually launched, not only once it's paused -- the
+        # block should already be active right after opening the window.
+        # They stay locked through running AND paused AND resumed -- Reset
+        # is the only path that unlocks them again (see _on_reset), aside from the
         # process dying on its own (see _poll_queue's __exit__ branch, which
         # is the one other case where there's genuinely no live process left
         # to protect these fields' meaning against).
@@ -988,7 +942,7 @@ class RingsTab(BaseTab):
         self.console.show()
         self.console.append(self.T("rings.console_launching", n=f"{n:,}") + "\n")
         self.status.set(self.T("rings.status_launching"))
-        # [ADDED Faza 11] Reset the HUD panel back to its placeholder text
+        # Reset the HUD panel back to its placeholder text
         # on every new launch -- otherwise a stale snapshot from a PREVIOUS
         # run (different N entirely) would sit there until the new
         # process's first rebuild happens to emit its own HUD_STATE line.
@@ -997,7 +951,7 @@ class RingsTab(BaseTab):
         self._poll_queue()
 
     def _on_reset(self):
-        """[RENAMED from _on_stop, 2026-09-10] Closes the GL window's own
+        """Closes the GL window's own
         process, same as before -- and unlocks every launch-time field again
         (see _set_launch_params_readonly), which is what distinguishes an
         explicit Reset click from just closing the GL window yourself (Esc /
@@ -1007,20 +961,17 @@ class RingsTab(BaseTab):
         the Start/Resume button; THIS path discards that live-resume state
         instead (_last_hud_n below).
 
-        [CHANGED 2026-09-11] Used to also force the N field back to the
-        tab's own hardcoded startup default ("2") -- Artur: pressing Reset
-        unlocked the fields as intended, but also silently threw away
-        whatever he'd actually typed, which fought against every field
-        otherwise remembering its last-used value across launches (see
-        ring_viz_params in app_settings.py). Reset no longer touches any
-        field's contents at all -- "start clean" now means unlocked and
-        ready to relaunch with the SAME values, not wiped ones; typing a
-        new value (or the Esc/window-close implicit-resume path above) are
-        the only ways any field's contents actually change now."""
+        Reset does not touch any field's contents, only unlocking them --
+        forcing fields back to hardcoded defaults would fight against every
+        field otherwise remembering its last-used value across launches (see
+        ring_viz_params in app_settings.py). "Start clean" here means
+        unlocked and ready to relaunch with the SAME values, not wiped ones;
+        typing a new value (or the Esc/window-close implicit-resume path
+        above) are the only ways any field's contents actually change."""
         if self._runner is not None:
             self._runner.stop()
         self._last_hud_n = None
-        # [ADDED 2026-09-10, Faza 13] terminate() kills the OS process
+        # terminate() kills the OS process
         # outright regardless of whether it's currently idling in the
         # hidden-window pause loop or actively rendering -- no special-
         # casing needed there -- but the Tkinter-side _paused flag is only
@@ -1041,7 +992,7 @@ class RingsTab(BaseTab):
                 item = self._queue.get_nowait()
                 if isinstance(item, tuple) and item and item[0] == "__exit__":
                     code = item[1]
-                    # [ADDED 2026-09-10, Faza 13] The process is actually
+                    # The process is actually
                     # gone now (proc.wait() returned), whether it was paused
                     # or not -- clear the flag so a later _on_open never
                     # mistakes a brand-new launch for a resume.
@@ -1059,7 +1010,7 @@ class RingsTab(BaseTab):
                     else:
                         self.console.append(self.T("rings.console_closed_error", code=code) + "\n")
                         self.status.set(self.T("rings.status_error"))
-                    # [ADDED 2026-09-10] Implicit-pause resume: this branch
+                    # Implicit-pause resume: this branch
                     # fires whether the process ended by itself (Esc / the
                     # GL window's own close control / a crash) or via the
                     # Reset button (_on_reset) -- but _on_reset already
@@ -1077,7 +1028,7 @@ class RingsTab(BaseTab):
                     self._runner = None
                     self._queue = None
                     return
-                # [ADDED Faza 11, see PLAN.md] renderer.py's own
+                # renderer.py's own
                 # emit_hud_state() prints exactly one such line per HUD
                 # refresh (see that function's own doc-comment) --
                 # LocalLoggedRunner's _read_loop puts one whole stdout
@@ -1088,7 +1039,7 @@ class RingsTab(BaseTab):
                 # the scrolling console -- a raw JSON blob in the log
                 # would just be noise next to the human-readable HUD
                 # lines that already print alongside it.
-                # [ADDED 2026-09-10, Faza 13] The process is idling with its
+                # The process is idling with its
                 # window hidden, not exiting -- so this does NOT go through
                 # the __exit__ branch above (the OS process is still alive,
                 # LocalLoggedRunner's _read_loop only puts __exit__ once
@@ -1102,7 +1053,7 @@ class RingsTab(BaseTab):
                     self.open_button.configure(state="normal")
                     self.status.set(self.T("rings.status_paused"))
                     self.console.append(self.T("rings.console_paused") + "\n")
-                    # [CHANGED 2026-09-10] No _set_launch_params_readonly()
+                    # No _set_launch_params_readonly()
                     # call here anymore -- the fields were already locked
                     # back at _on_open's initial launch (see there), and
                     # pausing doesn't change that.
@@ -1112,10 +1063,10 @@ class RingsTab(BaseTab):
                     self.open_button.configure(state="disabled")
                     self.status.set(self.T("rings.status_running"))
                     self.console.append(self.T("rings.console_resumed") + "\n")
-                    # [CHANGED 2026-09-10] Deliberately NOT re-enabling the
-                    # fields here -- Artur: "odblokowane ustawienia dopiero
-                    # po resecie" (fields unlock only after Reset). Resuming
-                    # is still not a fresh launch, so they stay locked.
+                    # Deliberately NOT re-enabling the
+                    # fields here -- fields unlock only after Reset.
+                    # Resuming is still not a fresh launch, so they stay
+                    # locked.
                     continue
                 if item.startswith(_HUD_STATE_PREFIX):
                     self._apply_hud_state(item[len(_HUD_STATE_PREFIX):])
@@ -1137,7 +1088,7 @@ class RingsTab(BaseTab):
         except (ValueError, TypeError):
             return
         n = data.get("n", 0)
-        # [ADDED 2026-09-10] Track the current N for the Start/Resume button
+        # Track the current N for the Start/Resume button
         # -- see __init__'s own doc-comment on _last_hud_n and _poll_queue's
         # __exit__ branch, which is what actually reads this back into the
         # N field once the process ends.
