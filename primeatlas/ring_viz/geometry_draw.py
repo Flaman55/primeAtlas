@@ -3,9 +3,7 @@ geometry_draw.py -- pure, GL-context-free vertex/color/geometry math for
 primeatlas/ring_viz/renderer.py: per-ring vertex color/position data, the
 hit/normal buffer split, Load Range slicing, tracked-ring outline geometry,
 the center marker and flash-overlay shapes, camera zoom-to-cursor/fit-to-
-viewport math, and initial-N selection. [ADDED Faza 2 of the renderer.py
-split, see renderer.py's own module docstring for the overall refactor
-plan.]
+viewport math, and initial-N selection.
 
 Everything here takes plain arrays/scalars and returns plain arrays/tuples
 -- no moderngl/glfw call anywhere, so every function is unit-testable in a
@@ -54,43 +52,34 @@ def build_vertex_data(primes, n, max_radius, enabled_ids=(), theta=0.5, mode="st
     """ring_geometry.ring_positions() -> flat (x,y,r,g,b) float32 array ready
     for a moderngl buffer.
 
-    [Faza 0] Originally just cyan/gold based on hit status.
-    [Faza 4, see PLAN.md] Now also layers in window-highlight colors via
-    ring_geometry.compute_highlight_colors (already-tested Bertrand pink /
-    Legendre green / General Law violet additive blend, ported in Faza 1) --
-    ports DrumRenderer's own priority chain: base cyan, then hit recolors to
-    gold/orange, then `ring.highlightColor` (if any family matches) OVERRIDES
-    whatever came before, hit or not -- see #drawRingTeeth's own doc-comment
-    ("This file no longer knows Bertrand's pink or Legendre's green as
-    literals... it just paints whatever color... the app already computed").
-    `enabled_ids` empty (the Faza-0/3 default, no window UI wired yet at
-    launch time) reproduces the exact old cyan/gold-only behavior since
-    compute_highlight_colors returns matched=all-False for an empty family
-    set.
+    Colors are layered in priority order: base cyan, then hit rings recolor
+    to gold/orange, then a matched window-highlight color (via
+    ring_geometry.compute_highlight_colors -- Bertrand pink / Legendre green
+    / General Law violet additive blend) OVERRIDES whatever came before, hit
+    or not. `enabled_ids` empty reproduces the plain cyan/gold-only behavior
+    since compute_highlight_colors returns matched=all-False for an empty
+    family set.
 
-    [ADDED 2026-09-11, closes the gap the paragraph above used to flag as
-    deferred] `track_primes` -- the SAME effective-tracked-ring set
+    `track_primes` -- the SAME effective-tracked-ring set
     rebuild_buffer feeds build_tracked_outline_draws (rings.py's
     resolve_effective_track_primes: whichever rings are the currently
     active anchors, from a window family, auto-orbit, or a manual --track-
     primes list) -- gets its own DOT forced to plain white, ONE more link
     in the same override chain, applied AFTER (so it wins over) the window-
-    highlight color above. Artur's own reasoning (2026-09-11): the tracked-
-    ring OUTLINE circle (build_tracked_outline_draws) already carries the
-    active window's own color (green for Legendre, violet for General Law,
-    additively blended when both happen to coincide) -- deliberately
-    UNCHANGED by this -- but the ring's actual POINT used to just blend
-    into every other same-colored member of that window; a plain white dot
-    makes the one ring actually being tracked/anchored instantly
-    identifiable at a glance, regardless of whatever window color its
-    surroundings carry. Empty (the default) reproduces the exact prior
-    behavior -- tracked_ring_mask (ring_geometry.py) already returns all-
-    False for an empty `track_primes`, so this is a no-op then, same
-    convention as `enabled_ids=()` above.
+    highlight color above. The tracked-ring OUTLINE circle
+    (build_tracked_outline_draws) already carries the active window's own
+    color (green for Legendre, violet for General Law, additively blended
+    when both happen to coincide) -- deliberately UNCHANGED by this -- but
+    the ring's actual POINT would otherwise just blend into every other
+    same-colored member of that window; a plain white dot makes the one
+    ring actually being tracked/anchored instantly identifiable at a
+    glance, regardless of whatever window color its surroundings carry.
+    Empty (the default) reproduces the exact prior behavior --
+    tracked_ring_mask (ring_geometry.py) already returns all-False for an
+    empty `track_primes`, so this is a no-op then, same convention as
+    `enabled_ids=()` above.
 
-    [ADDED 2026-09-12, Artur's report: "przy rezonansie czyli gdy lcm
-    zostal osiagniety... punkty sledzonych liczb pierwszych powinny byc
-    pomaranczowe"] `resonance_track_primes` -- the caller's
+    `resonance_track_primes` -- the caller's
     ring_geometry.tracked_resonance_state()["tracked"] list, but ONLY when
     that state's own `to_resonance == 0` (this exact N IS the tracked set's
     LCM/resonance step -- every one of them is hit here, all sitting on the
@@ -99,9 +88,9 @@ def build_vertex_data(primes, n, max_radius, enabled_ids=(), theta=0.5, mode="st
     flash (_FLASH_RESONANCE_RGB), applied LAST (so it wins over even the
     plain white tracked dot above) -- the resonance flash already washes
     the whole screen orange for a few frames, but the flash decays fast and
-    the tracked dots themselves used to stay plain white through it, easy
-    to miss exactly which rings just resonated. Empty (the default) is a
-    no-op, same convention as `track_primes=()` above."""
+    the tracked dots themselves would otherwise stay plain white through
+    it, making it easy to miss exactly which rings just resonated. Empty
+    (the default) is a no-op, same convention as `track_primes=()` above."""
     pos = ring_positions(primes, n, max_radius)
     count = len(pos["x"])
     hit = pos["is_hit"]
@@ -137,17 +126,17 @@ def split_hit_normal_vertex_data(data, hit_mask):
     `data`) -- rings ON the vertical reference line (real divisors of N)
     vs everything else.
 
-    [ADDED Faza 11C, see PLAN.md] Why this exists: Artur, 2026-09-07, wants
-    hit rings sized independently of the rest (--hit-point-size vs
-    --point-size). u_point_size is a single shared shader uniform (see
-    VERTEX_SHADER) -- there is no per-vertex point-size attribute in this
-    pipeline -- so getting two different on-screen sizes means two separate
-    draw calls over two separate vertex buffers, each with its own
-    u_point_size value set immediately before its own render() call (see
-    run()'s own main loop). This function is the CPU-side half of that
-    split (kept pure/GL-free so it's unit-testable without a display); the
-    GL-side half (two ctx.buffer()/vertex_array() pairs, two render calls)
-    lives entirely in run() since it needs a real moderngl context.
+    Why this exists: hit rings can be sized independently of the rest
+    (--hit-point-size vs --point-size). u_point_size is a single shared
+    shader uniform (see VERTEX_SHADER) -- there is no per-vertex point-size
+    attribute in this pipeline -- so getting two different on-screen sizes
+    means two separate draw calls over two separate vertex buffers, each
+    with its own u_point_size value set immediately before its own
+    render() call (see run()'s own main loop). This function is the
+    CPU-side half of that split (kept pure/GL-free so it's unit-testable
+    without a display); the GL-side half (two ctx.buffer()/vertex_array()
+    pairs, two render calls) lives entirely in run() since it needs a real
+    moderngl context.
 
     Returns (data_normal, data_hit, count_hit) -- `data_normal`/`data_hit`
     are plain row-subset views (numpy fancy-indexing copies, not views, but
@@ -164,8 +153,8 @@ def split_hit_normal_vertex_data(data, hit_mask):
 
 
 # ---------------------------------------------------------------------------
-# Faza 9 (see PLAN.md) -- Load Range: switch to a FIXED ring set (a slice of
-# already-loaded primes in [from, to]), independent of N, mirroring
+# Load Range: switch to a FIXED ring set (a slice of already-loaded primes
+# in [from, to]), independent of N, mirroring
 # SieveModel's "range"/slice mode (see that class's own module doc-comment:
 # sequential mode's ring set is primesUpTo(n) and grows with n; range mode's
 # ring set is a fixed array chosen once and never re-filtered by n again --
@@ -200,18 +189,17 @@ def load_prime_range_slice(primes, from_n, to_n):
 
 
 # ---------------------------------------------------------------------------
-# Faza 8 (see PLAN.md) -- tracked-ring outline circles, birth/resonance flash
-# overlays, center marker. Ports DrumRenderer.draw's `if (ring.tracked) {...}`
-# outline-stroke branch, #drawCenterMarker, and the #drawFlashOverlay/
-# triggerBirthFlash/triggerResonanceFlash trio.
+# Tracked-ring outline circles, birth/resonance flash overlays, center
+# marker. Ports DrumRenderer.draw's `if (ring.tracked) {...}` outline-stroke
+# branch, #drawCenterMarker, and the #drawFlashOverlay/triggerBirthFlash/
+# triggerResonanceFlash trio.
 #
 # All of the ANCHOR/COLOR math these draw calls need (compute_tracked_colors)
-# already existed in ring_geometry.py from Faza 1 -- this phase's only new
-# pure-math surface is the small amount below that is
-# specific to the GL layer itself (unit-circle geometry, screen-space marker
-# offsets, flash decay/alpha), everything kept as plain functions so it can
-# be unit-tested without a GPU (see run()'s own GL wiring further down for
-# the untestable-without-a-display half of this phase).
+# already lives in ring_geometry.py -- the only new pure-math surface here is
+# the small amount below that is specific to the GL layer itself (unit-circle
+# geometry, screen-space marker offsets, flash decay/alpha), kept as plain
+# functions so it can be unit-tested without a GPU (see run()'s own GL
+# wiring further down for the untestable-without-a-display half of this).
 # ---------------------------------------------------------------------------
 
 def unit_circle_vertices(segments=64):
@@ -235,19 +223,15 @@ _TRACKED_OUTLINE_ALPHA = 0.5
 def tracked_outline_color(matched, tracked_color_rgb):
     """Per-ring outline stroke (r, g, b, a) in 0..1.
 
-    [CHANGED 2026-09-10, see Artur's report: with only ONE window family
-    enabled, the HUD's own window-range label already shows that family's
-    full solid color (window_label_colors always returns one, regardless
-    of how many families are on -- see that function's own doc-comment),
-    but the matching tracked-ring outline still drew flat gray. Artur's own
-    words: "trzymajmy sie jednej zasady, ze skoro okno w hud ma kolor to
-    pierscien niech go tez ma tak samo" (one consistent rule: whenever a
-    window has a color in the HUD, its ring should carry that same color).
-    Originally this ported DrumRenderer's `ring.tracked` branch literally --
-    `(state.activeWindowCount > 1 && ring.trackedColor) ? ... : gray` --
-    which the ORIGINAL site actually does gate on more than one active
-    family; this is now a deliberate, explicit DEVIATION from that 1:1 port,
-    per Artur's above instruction, not a bug fix in the porting sense.
+    Uses the matched window family's own color whenever any family matches,
+    regardless of how many window families are currently active -- a
+    deliberate deviation from DrumRenderer's original `ring.tracked` branch
+    (`(state.activeWindowCount > 1 && ring.trackedColor) ? ... : gray`),
+    which only used the tracked color once MORE than one family was
+    enabled. This keeps a ring's outline consistent with the HUD's own
+    window-range label, which already shows the active family's full solid
+    color regardless of count (window_label_colors always returns one, see
+    that function's own doc-comment).
 
     `tracked_color_rgb` is a plain 0..255 (r, g, b) triple, already summed by
     ring_geometry.compute_tracked_colors for this ring -- this function only
@@ -267,17 +251,9 @@ def tracked_outline_color(matched, tracked_color_rgb):
 
 
 def resolve_effective_track_primes(window_anchors, enabled_ids, auto_orbit, orbit_current_prime, track_primes):
-    """[ADDED 2026-09-10, CHANGED 2026-09-12] Pure precedence rule for which
-    primes get an outline ring THIS frame.
+    """Pure precedence rule for which primes get an outline ring THIS frame.
 
-    [CHANGED 2026-09-12, Artur's bug report: "ustawione są pierścienie jakie
-    mają być śledzone ale przez to że włączone są okna jak bertrand legendre
-    to te śledzone nie są wyświetlone a powinny skoro są wypisane jakie mają
-    być śledzone"] Originally this ported #renderFrame's `if (anyWindowOn) {
-    this.#trackedPrimes = anchors; }` LITERALLY -- any window family on made
-    window_anchors fully REPLACE a manual --track-primes list, so a ring the
-    user explicitly asked to track would vanish the moment any window family
-    was enabled. Now: when any window family is on, the result is the UNION
+    When any window family is on, the result is the UNION
     of window_anchors and track_primes (window_anchors first, in their own
     order, then any track_primes not already in that list, deduplicated) --
     both are shown together instead of one hiding the other. A ring present
@@ -316,7 +292,7 @@ def build_tracked_outline_draws(primes_active, n, enabled_ids, theta, mode, trac
     `pos["radius"]`; not recomputed here to avoid doing ring_positions' own
     trig twice per N-change.
 
-    `anchor_overrides` -- [ADDED 2026-09-11] forwarded verbatim to
+    `anchor_overrides` -- forwarded verbatim to
     compute_tracked_colors (see that function's own doc-comment) -- lets
     rebuild_buffer's cyclic_window_anchor_at result color the SAME ring
     window_anchor_primes already chose to track, instead of
@@ -418,12 +394,12 @@ _MARKER_LINE_RGBA = (1.0, 0.157, 0.157, 0.55)         # DrumRenderer's "rgba(255
 
 
 def _screen_vertex_data(xy_pairs, rgba):
-    """[ADDED Faza 0 refactor] Shared (N, 6) float32 (pos.xy, color.rgba)
-    stamper for the small, flat-colored screen-space shapes drawn via
-    SCREEN_VERTEX_SHADER -- build_center_marker_vertex_data's triangle/line
-    and build_flash_quad_vertex_data's quad used to each hand-build this same
-    (N, 6) layout separately; every vertex in one call shares the same
-    `rgba`, only its (x, y) position differs."""
+    """Shared (N, 6) float32 (pos.xy, color.rgba) stamper for the small,
+    flat-colored screen-space shapes drawn via SCREEN_VERTEX_SHADER --
+    build_center_marker_vertex_data's triangle/line and
+    build_flash_quad_vertex_data's quad both use this same (N, 6) layout;
+    every vertex in one call shares the same `rgba`, only its (x, y)
+    position differs."""
     data = np.empty((len(xy_pairs), 6), dtype=np.float32)
     for i, (x, y) in enumerate(xy_pairs):
         data[i, 0] = x
@@ -474,7 +450,7 @@ def zoom_to_point(old_zoom, old_pan, cursor, viewport, factor):
     `factor` -- i.e. real "zoom to cursor" (or, called with the viewport's
     own center as `cursor`, "zoom to screen center").
 
-    [FIXED, see Artur's 2026-09-04 bug report] The vertex shader computes
+    The vertex shader computes
     screen = world*zoom + pan (see VERTEX_SHADER's u_pan/u_zoom uniforms),
     where `pan` here is the EFFECTIVE pan already including the viewport-
     center offset (i.e. exactly the u_pan value -- run()'s render loop adds
@@ -524,11 +500,10 @@ def fit_zoom_for_viewport(max_radius, width, height, margin=_FIT_MARGIN):
     """Zoom multiplier that makes a ring field of world-space radius
     `max_radius` fill `margin` of the viewport's SMALLER dimension -- i.e.
     the full window HEIGHT, or the full WIDTH if the window is narrower than
-    it is tall (Artur, 2026-09-11: "zajmowało pełną wysokość okna lub
-    szerokość jeśli okno będzie węższe od wysokości"). Using min(width,
-    height) as the constraint is exactly that rule: whichever dimension is
-    the tighter one is the one the (roughly circular) ring field gets fit
-    against, so it's never clipped on either axis.
+    it is tall. Using min(width, height) as the constraint is exactly that
+    rule: whichever dimension is the tighter one is the one the (roughly
+    circular) ring field gets fit against, so it's never clipped on either
+    axis.
 
     Used for two things that both need the same "make it fit again"
     computation: (1) re-fitting after an F11 fullscreen<->windowed
@@ -552,20 +527,19 @@ def initial_n_for_source(source, upto, primes):
     """Picks the N the ring view should OPEN on, given how the ring array was
     sourced.
 
-    [FIXED, see Artur's 2026-09-04 bug report] For --source sieve/magazyn,
-    the user has a real target N in mind (rings_tab.py's N field, passed
-    through verbatim as --upto) -- the view must open exactly there, not on
-    whatever the last loaded prime happens to be. ring_positions() computes
-    is_hit as n % prime == 0 (real divisors of N), so N is not required to be
-    prime itself; snapping to primes[-1] silently showed the wrong number
-    (e.g. typing 1000 opened on N=997, the largest prime <=1000, with
-    "Factors of N: 997" -- itself, since 997 is prime -- instead of 1000's
-    real factors 2 and 5).
+    For --source sieve/magazyn, the user has a real target N in mind
+    (rings_tab.py's N field, passed through verbatim as --upto) -- the view
+    must open exactly there, not on whatever the last loaded prime happens
+    to be. ring_positions() computes is_hit as n % prime == 0 (real divisors
+    of N), so N is not required to be prime itself; snapping to primes[-1]
+    would silently show the wrong number (e.g. typing 1000 would open on
+    N=997, the largest prime <=1000, with "Factors of N: 997" -- itself,
+    since 997 is prime -- instead of 1000's real factors 2 and 5).
 
     --source synthetic has no user-specified target N at all (only --count,
     an arbitrary ring COUNT -- see load_synthetic's own docstring), so there
     is no "the value the user asked for" to open on; it keeps using the last
-    generated value instead, same as before this fix."""
+    generated value instead."""
     if source == "synthetic":
         return int(primes[-1]) if len(primes) else 0
     return upto
