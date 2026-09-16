@@ -1,7 +1,7 @@
 """
 widgets.py -- small, generic tkinter widget helpers with no application-specific state,
 shared by more than one tab. Extracted from prime_atlas_v1.py during the refactor
-branch's Faza 3 (tab-by-tab backend/UI split, 2026-08-23) when the "Prime numbers" tab
+branch's Faza 3 (tab-by-tab backend/UI split) when the "Prime numbers" tab
 extraction (primeatlas/primes_tab.py) needed FlowRow but the Constellations tab (still
 in prime_atlas_v1.py at the time) also uses it -- moving it here instead of duplicating
 it into primes_tab.py avoids exactly the kind of copy-paste this whole refactor branch
@@ -18,14 +18,14 @@ from tkinter import ttk
 
 class FlowRow:
     """A button-row container that wraps its children onto additional lines instead of
-    running them off the edge of the window. The Prime numbers and Constellations tabs'
-    preview-navigation rows (Load preview / Prev / page label / Next / page-goto entry)
-    used to use a plain ttk.Frame with every child .pack(side="left")'d onto ONE line --
-    on a narrow window (or a narrow detail pane after the split-view divider is dragged),
-    the rightmost controls simply ran past the frame's right edge and became invisible/
-    unreachable, with no way to get to them short of resizing the whole window. Reported
-    via screenshot: page-nav buttons in the Constellations tab cut off outside the app
-    window's right edge.
+    running them off the edge of the window. A plain ttk.Frame with every child
+    .pack(side="left")'d onto ONE line has this failure mode: on a narrow window (or a
+    narrow detail pane after the split-view divider is dragged), the rightmost controls
+    simply run past the frame's right edge and become invisible/unreachable, with no way
+    to get to them short of resizing the whole window -- this is what the Prime numbers
+    and Constellations tabs' preview-navigation rows (Load preview / Prev / page label /
+    Next / page-goto entry) hit, e.g. page-nav buttons in the Constellations tab cut off
+    outside the app window's right edge.
 
     Children are added via .add(widget, padx_left=...) instead of widget.pack(...); this
     class lays them out itself using place() (which, unlike pack/grid, doesn't force a
@@ -80,10 +80,9 @@ def add_page_nav_group(flow_row, T, page_label_var, on_prev, on_next, on_goto=No
     separate FlowRow items -- on a narrow pane, FlowRow could wrap mid-cluster (e.g.
     Prev/label/Next on one line, "Page:"/entry/Go stranded alone on the next, with no
     visual link between them), which read as an accidental layout rather than a
-    deliberate one. Reported via screenshot on the Prime numbers tab's preview-nav row
-    (btn_row), 2026-09-16 -- the same duplicated pattern also existed in
-    constellations_hits_tab.py and constellations_records_tab.py, fixed here once
-    instead of three times.
+    deliberate one -- observed on the Prime numbers tab's preview-nav row (btn_row);
+    the same duplicated pattern also existed in constellations_hits_tab.py and
+    constellations_records_tab.py, fixed here once instead of three times.
 
     prev_key/next_key default to the generic "common.prev_page"/"common.next_page"
     strings, but callers navigating real hit-FILE pages (as opposed to the small
@@ -99,7 +98,7 @@ def add_page_nav_group(flow_row, T, page_label_var, on_prev, on_next, on_goto=No
 
     Layout order is Prev, Next, THEN the label (not Prev/label/Next) -- the two
     buttons read as one pair, with the "page X / Y" count following them rather than
-    splitting them apart. Requested explicitly (screenshot), 2026-09-16."""
+    splitting them apart."""
     nav_frame = ttk.Frame(flow_row.frame)
     prev_btn = ttk.Button(nav_frame, text=T(prev_key), command=on_prev, state="disabled")
     prev_btn.pack(side="left")
@@ -119,7 +118,7 @@ def add_page_nav_group(flow_row, T, page_label_var, on_prev, on_next, on_goto=No
 
 def _build_goto_group(parent, T, on_goto):
     """Builds the "Strona:"/entry/Idz jump-to-page cluster shared by add_page_nav_group
-    and add_page_nav_row -- factored out 2026-09-16 when add_page_nav_row was added, so
+    and add_page_nav_row -- factored out when add_page_nav_row was added, so
     the ipady height-matching fix below (entry vs. button, see its own comment) lives in
     exactly one place. Returns (goto_frame, goto_entry); the caller packs/adds
     goto_frame itself, since the two callers place it differently (a FlowRow item vs.
@@ -130,10 +129,10 @@ def _build_goto_group(parent, T, on_goto):
     goto_entry.bind("<Return>", lambda _e: on_goto())
     goto_btn = ttk.Button(goto_frame, text=T("common.goto"), command=on_goto)
     # The "clam" theme (see prime_atlas_v1.py's _apply_theme) gives TButton more
-    # vertical padding than TEntry, so side by side they used to sit at visibly
-    # different heights (screenshot, 2026-09-16). Pad the entry's own height (ipady)
-    # up to the button's actual requested height instead of hardcoding a pixel guess,
-    # so the two stay level even if the theme/font/DPI scaling changes later.
+    # vertical padding than TEntry, so side by side they sit at visibly
+    # different heights. Pad the entry's own height (ipady) up to the button's
+    # actual requested height instead of hardcoding a pixel guess, so the two
+    # stay level even if the theme/font/DPI scaling changes later.
     goto_frame.update_idletasks()
     extra = max(0, goto_btn.winfo_reqheight() - goto_entry.winfo_reqheight())
     goto_entry.pack(side="left", padx=(4, 4), ipady=extra // 2)
@@ -153,8 +152,7 @@ def add_page_nav_row(parent, T, page_label_var, on_prev, on_next, on_goto=None,
     land at the SAME right edge on both rows for a symmetric look, regardless of how
     much shorter one row's left cluster is than the other's -- FlowRow's flow model
     can't express "flush right", and on a narrow pane it would wrap the second row's
-    jump group onto a stray third line, left-anchored under nothing in particular
-    (screenshot, 2026-09-16).
+    jump group onto a stray third line, left-anchored under nothing in particular.
 
     Unlike FlowRow, this never reflows onto extra lines -- callers rely on their
     container never getting narrower than both rows' combined natural width (see e.g.
@@ -192,10 +190,9 @@ def clamp_pane_min_width(paned, pane_widget, min_width):
     Used for a detail pane holding an add_page_nav_row() (see its own docstring) --
     that row never wraps onto extra lines, so past this width its right-flush
     "Strona:"/entry/Idz jump group starts sliding off the pane's own edge and out of
-    view entirely, not just crowding the left cluster. Reported via screenshot on the
-    Prime numbers tab's own Magazyn preview (after the same fix had already gone into
-    Magazyn/Constellations' own, so this call is the second, not first, use),
-    2026-09-16.
+    view entirely, not just crowding the left cluster. This use is on the Prime
+    numbers tab's own Magazyn preview, added after the same fix had already gone
+    into Magazyn/Constellations' own (so this call is the second, not first, use).
 
     Whenever `pane_widget`'s own width changes (a sash drag included, since dragging
     resizes both panes), the sash is clamped back if it would make `pane_widget`
