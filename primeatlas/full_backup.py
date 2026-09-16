@@ -141,7 +141,11 @@ def list_destination_source_filenames(destination_root, base_exponent):
 def list_destination_hit_filenames(destination_root, base_exponent):
     """Real (non-.gz-suffixed) "k{K}/variant{V}/HITS_....bin" relative paths already
     present at the backup destination for this floor -- destination-side half of
-    ConstellationSnapshot.missing_from()."""
+    ConstellationSnapshot.missing_from(). The "HITS_" prefix check already matches a
+    paged pattern's page files unchanged (e.g. "HITS_..._page00000.bin" starts with
+    "HITS_" same as the original single-file name did); PAGES_META.json.gz is matched
+    separately since it doesn't share that prefix -- see manifest.py's own
+    _PAGES_META_RE/hit_paging.py for why it must travel with a paged pattern's pages."""
     const_dir = _dest_const_dir(destination_root, base_exponent)
     hit_files = []
     if not os.path.isdir(const_dir):
@@ -156,7 +160,9 @@ def list_destination_hit_filenames(destination_root, base_exponent):
                     or not os.path.isdir(variant_path):
                 continue
             for fname in os.listdir(variant_path):
-                if fname.startswith("HITS_") and fname.endswith(".bin" + GZ_SUFFIX):
+                is_hit_file = fname.startswith("HITS_") and fname.endswith(".bin" + GZ_SUFFIX)
+                is_pages_meta = fname == "PAGES_META.json" + GZ_SUFFIX
+                if is_hit_file or is_pages_meta:
                     hit_files.append(f"{k_name}/{variant_name}/{fname[:-len(GZ_SUFFIX)]}")
     return sorted(hit_files)
 

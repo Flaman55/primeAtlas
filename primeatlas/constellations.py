@@ -20,6 +20,7 @@ import os
 
 import pattern_catalog_v1
 import prime_sieve_v1
+import hit_paging
 
 from .storage import list_pietra
 from .pdf_writer import _pdf_ascii_fold, _pdf_rect_op, _pdf_text_op, _write_pdf
@@ -63,19 +64,114 @@ def floor_has_constellation_hits(portal_folder, base_exponent):
     return False
 
 
+def _header_from_paging_meta(meta):
+    """Builds a read_prime_window_header()-shaped dict out of a hit_paging.py metadata
+    dict, so every caller that already knows how to consume a header (count/base_prime)
+    keeps working unchanged whether a pattern is paged or not -- see hit_paging.py's own
+    module docstring for why a paged pattern's original single file stops existing
+    (renamed to "*.pre_page_migration.bak" by migrate_hit_file_to_pages()), so
+    read_prime_window_header() itself can no longer be called on it directly.
+    generated_at/generated_at_iso have no paging equivalent (PAGES_META.json doesn't
+    track it -- see hit_paging.py's own field list) -- left as None/"" rather than
+    guessing at a page file's own timestamp, which would mean something different (last
+    page write time, not the pattern's original creation time)."""
+    return {
+        "base_prime": meta["first_value"],
+        "count": meta["total_count"],
+        "generated_at": None,
+        "generated_at_iso": "",
+    }
+
+
+def read_hit_pattern_header(portal_folder, base_exponent, k, variant_id):
+    """Paging-transparent replacement for a bare `os.path.exists(path) and
+    read_prime_window_header(path)`: tries the single-file path first (the common
+    case -- most patterns never grow large enough to be paged, see hit_paging.py's own
+    "dual-mode by design" docstring), falls back to this pattern's PAGES_META.json if
+    it's been migrated. Returns None if neither exists (no hits recorded for this
+    pattern on this floor at all)."""
+    path = hit_file_path(portal_folder, base_exponent, k, variant_id)
+    if os.path.exists(path):
+        try:
+            return prime_sieve_v1.read_prime_window_header(path)
+        except Exception:
+            return None
+    vdir = hit_paging.variant_dir(portal_folder, base_exponent, k, variant_id)
+    if hit_paging.is_paged(vdir):
+        return _header_from_paging_meta(hit_paging.read_meta(vdir))
+    return None
+
+
+def hit_pattern_page_count(portal_folder, base_exponent, k, variant_id):
+    """How many browsing "pages" this pattern has -- an unpaged pattern is always
+    exactly 1 "page" (its whole file, read in one shot, same as before this whole
+    paging mechanism existed) so every caller can loop `for i in range(page_count):
+    read_hit_pattern_page(..., i)` uniformly regardless of whether the pattern has
+    actually been migrated. Returns 0 if the pattern has no hit file at all (nothing to
+    page through)."""
+    path = hit_file_path(portal_folder, base_exponent, k, variant_id)
+    if os.path.exists(path):
+        return 1
+    vdir = hit_paging.variant_dir(portal_folder, base_exponent, k, variant_id)
+    if hit_paging.is_paged(vdir):
+        return hit_paging.page_count(hit_paging.read_meta(vdir))
+    return 0
+
+
+def hit_pattern_is_paged(portal_folder, base_exponent, k, variant_id):
+    """True once this pattern has been migrated to pages (hit_paging.py) -- the ONE
+    check a GUI-thread caller needs BEFORE attempting an interactive read, to decide
+    whether read_hit_pattern_page() page 0 is safe (bounded to hit_paging.PAGE_SIZE) or
+    would still be a full, unbounded decode of the ORIGINAL single file (true for any
+    pattern that hasn't been migrated yet, no matter how large it's grown -- see
+    read_hit_pattern_page()'s own docstring: for an unpaged pattern page 0 IS the whole
+    file). A caller about to read on the GUI thread specifically (not a background
+    worker) should also check the pattern's header count against hit_paging.PAGE_SIZE
+    when this returns False, and refuse rather than attempt the read -- see
+    constellations_records_tab.py's _on_cell_activate() and
+    constellations_hits_tab.py's load_preview() for that guard, added 2026-09-16 after
+    a real freeze: k=2 on floor 25 (~2.15 billion hits, not yet migrated) hung the whole
+    app's GUI thread decoding on a plain double-click, well before migration ever ran."""
+    vdir = hit_paging.variant_dir(portal_folder, base_exponent, k, variant_id)
+    return hit_paging.is_paged(vdir)
+
+
+def read_hit_pattern_page(portal_folder, base_exponent, k, variant_id, page_index):
+    """Returns the decoded values for browsing page `page_index` (see
+    hit_pattern_page_count() above for the page count to iterate up to) -- for an
+    unpaged pattern this is the WHOLE file (page_index must be 0, same one-shot
+    read_prime_window() cost this whole browsing path always had for a small/medium
+    pattern), for a paged one it's exactly that hit_paging page, bounded to
+    hit_paging.PAGE_SIZE entries regardless of the pattern's total_count. This is the
+    ONE place the records tab drill-down, its PDF/CSV export, and the Magazyn tab's own
+    preview loader should all read hit values through, instead of calling
+    prime_sieve_v1.read_prime_window() on hit_file_path() directly (which silently
+    breaks -- FileNotFoundError -- the instant a pattern is migrated to pages, and
+    which is exactly the unbounded full-file decode that made a dense k=2 floor freeze
+    the GUI thread or OOM-crash a background worker in the first place)."""
+    path = hit_file_path(portal_folder, base_exponent, k, variant_id)
+    if os.path.exists(path):
+        if page_index != 0:
+            raise IndexError(f"unpaged pattern has only page 0, got page_index={page_index}")
+        return prime_sieve_v1.read_prime_window(path)
+    vdir = hit_paging.variant_dir(portal_folder, base_exponent, k, variant_id)
+    return hit_paging.read_page(vdir, base_exponent, k, variant_id, page_index)
+
+
 def list_constellation_hits(portal_folder, base_exponent):
     """Returns [(pattern_dict, path, header_or_None), ...] for every catalog pattern that
     has an existing hit file for this floor (i.e. constellation_finder_v1 has found at
-    least one match), sorted by (k, id)."""
+    least one match), sorted by (k, id). `path` still points at the (possibly no-longer-
+    existing, once migrated -- see hit_paging.py) single-file location: callers display
+    it as a label/tooltip and pass it to hit_file_path()-shaped code elsewhere, but
+    should read actual VALUES via read_hit_pattern_page() instead of this path
+    directly."""
     entries = []
     for pattern in sorted(pattern_catalog_v1.PATTERN_CATALOG, key=lambda w: (w["k"], w["id"])):
         path = hit_file_path(portal_folder, base_exponent, pattern["k"], pattern["id"])
-        if not os.path.exists(path):
+        header = read_hit_pattern_header(portal_folder, base_exponent, pattern["k"], pattern["id"])
+        if header is None:
             continue
-        try:
-            header = prime_sieve_v1.read_prime_window_header(path)
-        except Exception:
-            header = None
         entries.append((pattern, path, header))
     return entries
 
@@ -166,22 +262,17 @@ def build_constellation_records_table(portal_folder, k, floor_min=None, floor_ma
         cells = {}
         any_hit = False
         for vid in variant_ids:
-            path = hit_file_path(portal_folder, base_exponent, k, vid)
             cell = None
-            if os.path.exists(path):
-                try:
-                    header = prime_sieve_v1.read_prime_window_header(path)
-                except Exception:
-                    header = None
-                if header is not None and header["count"] > 0:
-                    smallest = header["base_prime"]
-                    offset = smallest - 10 ** base_exponent
-                    record_digits = variant_meta[vid]["record_digits"]
-                    is_record_floor = (record_digits is not None
-                                        and base_exponent == record_digits - 1)
-                    cell = {"offset": offset, "count": header["count"],
-                            "is_record_floor": is_record_floor}
-                    any_hit = True
+            header = read_hit_pattern_header(portal_folder, base_exponent, k, vid)
+            if header is not None and header["count"] > 0:
+                smallest = header["base_prime"]
+                offset = smallest - 10 ** base_exponent
+                record_digits = variant_meta[vid]["record_digits"]
+                is_record_floor = (record_digits is not None
+                                    and base_exponent == record_digits - 1)
+                cell = {"offset": offset, "count": header["count"],
+                        "is_record_floor": is_record_floor}
+                any_hit = True
             cells[vid] = cell
         if any_hit:
             rows.append({"base_exponent": base_exponent, "cells": cells})
@@ -227,23 +318,35 @@ def build_constellation_records_detail_rows(portal_folder, k, floor_min=None, fl
             continue
         base = 10 ** base_exponent
         for vid in variant_ids:
-            path = hit_file_path(portal_folder, base_exponent, k, vid)
-            if not os.path.exists(path):
+            header = read_hit_pattern_header(portal_folder, base_exponent, k, vid)
+            if header is None:
                 continue
-            try:
-                values = prime_sieve_v1.read_prime_window(path)
-            except Exception:
-                values = []
+            total_count = header["count"]
             record_digits = variant_meta[vid]["record_digits"]
             is_record_floor = (record_digits is not None
                                 and base_exponent == record_digits - 1)
-            for position, value in enumerate(values):
-                rows.append({
-                    "base_exponent": base_exponent, "variant_id": vid,
-                    "offset": value - base, "number": value,
-                    "position_in_file": position, "count_in_file": len(values),
-                    "is_record_floor": is_record_floor,
-                })
+            # Read PAGE BY PAGE (see read_hit_pattern_page()'s own docstring) rather than
+            # the whole pattern at once -- for a paged pattern (hit_paging.py) this bounds
+            # each individual decode to at most hit_paging.PAGE_SIZE entries regardless of
+            # total_count, the exact fix for the crash this function's own docstring
+            # describes (floor 25's k=2, ~1.5 billion entries, decoded whole just for an
+            # export). position_in_file/count_in_file stay PATTERN-wide (not per-page),
+            # matching this function's pre-paging behavior exactly -- only how the values
+            # are FETCHED changed, not the shape of what callers get back.
+            position = 0
+            for page_index in range(hit_pattern_page_count(portal_folder, base_exponent, k, vid)):
+                try:
+                    values = read_hit_pattern_page(portal_folder, base_exponent, k, vid, page_index)
+                except Exception:
+                    values = []
+                for value in values:
+                    rows.append({
+                        "base_exponent": base_exponent, "variant_id": vid,
+                        "offset": value - base, "number": value,
+                        "position_in_file": position, "count_in_file": total_count,
+                        "is_record_floor": is_record_floor,
+                    })
+                    position += 1
     return variant_ids, variant_meta, rows
 
 
@@ -375,7 +478,12 @@ def find_constellation_participation(portal_folder, base_exponent, number, hit_s
         key = (base_exponent, pattern["k"], pattern["id"])
         if key not in hit_set_cache:
             try:
-                hit_set_cache[key] = set(prime_sieve_v1.read_prime_window(path))
+                values = set()
+                for page_index in range(hit_pattern_page_count(
+                        portal_folder, base_exponent, pattern["k"], pattern["id"])):
+                    values.update(read_hit_pattern_page(
+                        portal_folder, base_exponent, pattern["k"], pattern["id"], page_index))
+                hit_set_cache[key] = values
             except Exception:
                 hit_set_cache[key] = set()
         starts = hit_set_cache[key]

@@ -260,6 +260,58 @@ def main():
             check(hits._selected_hit_path is not None and hits._hit_values == [P],
                   "Tabela rekordow's drill-down jump landed back on the exact hit in Magazyn")
 
+        # === 4. Interactive preview/drill-down REFUSES a large, NOT-YET-PAGED pattern
+        # instead of attempting a full decode on the GUI thread -- added 2026-09-16
+        # after a real freeze report: k=2 on floor 25 (~2.15 billion hits, not yet
+        # migrated to pages) hung the whole app on a plain double-click/"Wczytaj
+        # podglad". hit_paging.PAGE_SIZE is monkeypatched down to keep this fast and
+        # deterministic without needing a real oversized fixture file. ===
+        import hit_paging
+        original_page_size = hit_paging.PAGE_SIZE
+        hit_paging.PAGE_SIZE = 3
+        try:
+            floor4_hit_dir = os.path.join(tmp_portal, "10p4", "constellations", f"k{k}", f"variant{vid}")
+            os.makedirs(floor4_hit_dir, exist_ok=True)
+            oversized_values = [4000 + 2 * i for i in range(1, 6)]  # 5 values > patched PAGE_SIZE=3
+            prime_sieve_v1.write_prime_window(
+                os.path.join(floor4_hit_dir, f"HITS_10p4_k{k}_v{vid}.bin"), oversized_values)
+
+            # --- Magazyn (load_preview) ---
+            hits._reset_preview_state()
+            hits._selected_hit_path = os.path.join(floor4_hit_dir, f"HITS_10p4_k{k}_v{vid}.bin")
+            hits._selected_hit_base_exponent = 4
+            hits._selected_hit_pattern = variant
+            hits._selected_hit_total_count = len(oversized_values)
+            shown_before = len(shown)
+            hits.load_preview()
+            check(hits._hit_values is None,
+                  "load_preview() refuses an oversized not-yet-paged pattern (no decode attempted)")
+            check(len(shown) == shown_before + 1 and shown[-1][0] == "error",
+                  f"load_preview() shows an error dialog instead of hanging (got {shown[-1:]})")
+
+            # --- Tabela rekordow (_on_cell_activate) ---
+            records.floor_from_entry.delete(0, "end")
+            records.floor_to_entry.delete(0, "end")
+            records._on_scan_clicked()
+            _pump(app, 3.0)
+            app.update()
+            tree_rows2 = records.tree.get_children("")
+            check("4" in tree_rows2, f"records tree now also includes floor 4 (got {tree_rows2})")
+            records.tree.see("4")
+            app.update()
+            bbox4 = records.tree.bbox("4", f"v{vid}")
+            check(bool(bbox4), f"floor 4's v={vid} cell has real on-screen geometry (got bbox={bbox4})")
+            if bbox4:
+                x, y, w, h = bbox4
+                fake_event4 = _FakeEvent(x + w // 2, y + h // 2)
+                records._on_cell_activate(fake_event4)
+                check(records._detail_rows == [],
+                      f"cell drill-down refuses an oversized not-yet-paged pattern (got {records._detail_rows})")
+                check(records._detail_context is None,
+                      "cell drill-down sets no detail context for a refused pattern")
+        finally:
+            hit_paging.PAGE_SIZE = original_page_size
+
         app.destroy()
     finally:
         shutil.rmtree(tmp_portal, ignore_errors=True)

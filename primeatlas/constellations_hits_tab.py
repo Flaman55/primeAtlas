@@ -36,11 +36,14 @@ import bisect
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-import prime_sieve_v1
+import hit_paging
 
 from .base_tab import BaseTab
 from .storage import digit_count_floor, list_pietra
-from .constellations import group_constellation_hits_by_k, list_constellation_hits
+from .constellations import (
+    group_constellation_hits_by_k, list_constellation_hits, read_hit_pattern_page,
+    hit_pattern_is_paged,
+)
 from .widgets import FlowRow
 
 
@@ -190,6 +193,14 @@ class ConstellationsHitsTab(BaseTab):
 
         self._hit_path_by_item = {}
         self._selected_hit_path = None
+        self._selected_hit_base_exponent = None  # needed (alongside pattern's k/id) to
+                                                  # read via the paging-transparent
+                                                  # constellations.read_hit_pattern_*()
+                                                  # helpers instead of a bare path
+        self._selected_hit_total_count = 0  # this pattern's TOTAL hit count (from its
+                                             # header) -- may exceed what load_preview()
+                                             # actually loads (bounded to one page, see
+                                             # its own docstring), so the UI can say so
         self._selected_hit_pattern = None  # dict from pattern_catalog_v1, needed to
                                             # know each position's offset within a tuple
         self._hit_values = None    # raw decoded starting values for the selected
@@ -315,6 +326,8 @@ class ConstellationsHitsTab(BaseTab):
         self.hits_detail_text.set("\n".join(lines))
         self._reset_preview_state()
         self._selected_hit_path = None
+        self._selected_hit_base_exponent = None
+        self._selected_hit_total_count = 0
         self._selected_hit_pattern = None
         self.hits_load_preview_btn.configure(state="disabled")
         self.status.set(T("const.status_search", number=number, count=len(participation)))
@@ -372,7 +385,7 @@ class ConstellationsHitsTab(BaseTab):
                 child = self.hits_tree.insert(
                     k_node, "end", text=label_text,
                     values=(count_str, gen_str), tags=("pattern",))
-                self._hit_path_by_item[child] = (pattern, path, header)
+                self._hit_path_by_item[child] = (pattern, path, header, base_exponent)
         self.hits_tree.item(node, values=(f"{grand_total:,}", ""))
 
     def _on_tree_select(self, _event):
@@ -385,8 +398,10 @@ class ConstellationsHitsTab(BaseTab):
         if item not in self._hit_path_by_item:
             self.hits_load_preview_btn.configure(state="disabled")
             return
-        pattern, path, header = self._hit_path_by_item[item]
+        pattern, path, header, base_exponent = self._hit_path_by_item[item]
         self._selected_hit_path = path
+        self._selected_hit_base_exponent = base_exponent
+        self._selected_hit_total_count = header["count"] if header is not None else 0
         self._selected_hit_pattern = pattern
         if header is None:
             self.hits_detail_text.set(T("primes.header_error", path=path))
@@ -432,12 +447,38 @@ class ConstellationsHitsTab(BaseTab):
                  offset=offset, hit_base=hit_base)
 
     def load_preview(self):
+        """Loads this pattern's hit values into the preview list -- via
+        constellations.read_hit_pattern_page() (paging-transparent, bounded to at most
+        one hit_paging page, currently 1,000,000 entries) rather than a bare
+        prime_sieve_v1.read_prime_window() on the raw path: for a dense pattern (k=2
+        on a high floor is the real case this matters for) that path either no longer
+        exists at all (migrated to pages -- see hit_paging.py) or would decode
+        hundreds of millions of entries synchronously on THIS (the GUI) thread, which
+        is exactly what used to freeze the whole app on "Wczytaj podgląd". If the
+        pattern has more hits than fit in one page, the status bar says so and points
+        at the records tab's CSV/PDF export (which streams every page) for the rest."""
         if not self._selected_hit_path:
             return
         T = self.T
         if self._hit_values is None:
+            portal_folder = self._get_portal_folder()
+            k = self._selected_hit_pattern["k"]
+            vid = self._selected_hit_pattern["id"]
+            # A pattern this large that HASN'T been migrated to pages yet still has its
+            # whole hit count in ONE file -- reading "page 0" would be a full, unbounded
+            # decode on THIS (the GUI) thread. Refuse rather than attempt it -- see
+            # hit_pattern_is_paged()'s own docstring for the real freeze this guards
+            # against (k=2 on floor 25, ~2.15 billion hits, hung the whole app on
+            # "Wczytaj podgląd" before migration ever ran).
+            if (self._selected_hit_total_count > hit_paging.PAGE_SIZE
+                    and not hit_pattern_is_paged(portal_folder, self._selected_hit_base_exponent, k, vid)):
+                messagebox.showerror(
+                    T("const.preview_too_large_title"),
+                    T("const.preview_too_large", count=f"{self._selected_hit_total_count:,}"))
+                return
             try:
-                self._hit_values = prime_sieve_v1.read_prime_window(self._selected_hit_path)
+                self._hit_values = read_hit_pattern_page(
+                    portal_folder, self._selected_hit_base_exponent, k, vid, 0)
             except Exception as exc:
                 messagebox.showerror(T("primes.load_preview_failed_title"), str(exc))
                 self._hit_values = None
@@ -446,6 +487,10 @@ class ConstellationsHitsTab(BaseTab):
             self._hit_rows = [(hit_base + offset, hit_base, position, offset)
                                for hit_base in self._hit_values
                                for position, offset in enumerate(offsets)]
+            if len(self._hit_values) < self._selected_hit_total_count:
+                self.status.set(T(
+                    "const.preview_partial", shown=f"{len(self._hit_values):,}",
+                    total=f"{self._selected_hit_total_count:,}"))
         self._show_hits_page(0)
         self.hits_load_preview_btn.configure(state="disabled")
 

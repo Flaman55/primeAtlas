@@ -38,13 +38,15 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
 import pattern_catalog_v1
-import prime_sieve_v1
 
 from . import background
 from .base_tab import BaseTab
+import hit_paging
+
 from .constellations import (
     build_constellation_records_table, build_constellation_records_detail_rows,
-    hit_file_path, render_constellation_records_pdf,
+    render_constellation_records_pdf,
+    read_hit_pattern_header, read_hit_pattern_page, hit_pattern_is_paged,
 )
 from .widgets import FlowRow
 
@@ -405,8 +407,24 @@ class ConstellationsRecordsTab(BaseTab):
 
     def _on_cell_activate(self, event):
         """Double-click drill-down: identifies which (floor, variant) cell was clicked
-        and loads the FULL list of hits behind it (not just the smallest offset the
-        tree cell shows) into the paginated detail panel below.
+        and loads the hits behind it (not just the smallest offset the tree cell shows)
+        into the paginated detail panel below.
+
+        Reads via read_hit_pattern_header()/read_hit_pattern_page() (paging-transparent
+        -- see primeatlas/constellations.py's own module-level helpers and
+        prime_sieve/hit_paging.py) instead of a bare prime_sieve_v1.read_prime_window()
+        on hit_file_path(): a pattern this large (dense k=2 on a high floor -- see
+        hit_paging.py's own docstring for the real crash this is about) may have been
+        migrated to pages, in which case the original single file no longer exists at
+        all, AND a full decode of even an unmigrated multi-hundred-million-entry file
+        on THIS (the GUI) thread is exactly what used to freeze the whole app on
+        double-click. Only the FIRST hit-file page (bounded to
+        hit_paging.PAGE_SIZE entries, currently 1,000,000) is ever loaded here -- for
+        the vast majority of patterns (never paged, far fewer hits than that) this is
+        the exact same "whole file" as before; for a paged one, the label makes clear
+        only a first slice is shown and points at CSV/PDF export (which streams every
+        page instead of holding them all in memory -- see build_constellation_records_
+        detail_rows()) for the rest.
 
         Stashes (base_exponent, pattern) in self._detail_context -- not just the raw
         values -- so a later double-click on one of the resulting rows
@@ -431,23 +449,47 @@ class ConstellationsRecordsTab(BaseTab):
             return
         vid = variant_ids[vi]
         pattern = variant_meta[vid]
-        path = hit_file_path(self._get_portal_folder(), base_exponent, k, vid)
-        if not os.path.exists(path):
+        portal_folder = self._get_portal_folder()
+        header = read_hit_pattern_header(portal_folder, base_exponent, k, vid)
+        if header is None or header["count"] == 0:
             self._detail_rows = []
             self._detail_context = None
             self.detail_label_var.set(T("const_records.detail_empty", exp=base_exponent, id=vid))
             self._show_detail_page(0)
             return
+        # A pattern this large that HASN'T been migrated to pages yet still has its
+        # whole hit count in ONE file -- read_hit_pattern_page() page 0 would be a full,
+        # unbounded prime_sieve_v1.read_prime_window() decode on THIS (the GUI) thread
+        # (see hit_pattern_is_paged()'s own docstring for the real freeze this guard is
+        # about: k=2 on floor 25, ~2.15 billion hits, hung the whole app on a plain
+        # double-click). Refuse outright rather than attempt it -- there is no safe
+        # bounded read until prime_sieve/hit_paging.py's migrate_hit_file_to_pages()
+        # has actually run for this pattern.
+        if (header["count"] > hit_paging.PAGE_SIZE
+                and not hit_pattern_is_paged(portal_folder, base_exponent, k, vid)):
+            self._detail_rows = []
+            self._detail_context = None
+            self.detail_label_var.set(T(
+                "const_records.detail_too_large", exp=base_exponent, id=vid,
+                count=f"{header['count']:,}"))
+            self._show_detail_page(0)
+            return
         try:
-            values = prime_sieve_v1.read_prime_window(path)
+            values = read_hit_pattern_page(portal_folder, base_exponent, k, vid, 0)
         except Exception as exc:
             messagebox.showerror(T("const_records.error_dialog_title"), str(exc))
             return
         base = 10 ** base_exponent
         self._detail_rows = [(v, v - base) for v in values]
         self._detail_context = {"base_exponent": base_exponent, "pattern": pattern}
-        self.detail_label_var.set(
-            T("const_records.detail_title", exp=base_exponent, id=vid, count=len(values)))
+        total_count = header["count"]
+        if len(values) < total_count:
+            self.detail_label_var.set(T(
+                "const_records.detail_title_partial", exp=base_exponent, id=vid,
+                shown=f"{len(values):,}", total=f"{total_count:,}"))
+        else:
+            self.detail_label_var.set(
+                T("const_records.detail_title", exp=base_exponent, id=vid, count=len(values)))
         self._show_detail_page(0)
 
     def bind_jump_to_hits(self, jump_to_hits):
@@ -470,9 +512,9 @@ class ConstellationsRecordsTab(BaseTab):
         just triggered from here instead.
 
         Each row here is a hit file's raw stored value, i.e. a tuple's BASE element
-        (position 0 -- see _on_cell_activate's read of prime_sieve_v1.read_prime_window,
-        which returns exactly those base values), so the jump always targets position
-        0, never needing to look up which tuple position this row is."""
+        (position 0 -- see _on_cell_activate's read via read_hit_pattern_page(), which
+        returns exactly those base values), so the jump always targets position 0,
+        never needing to look up which tuple position this row is."""
         sel = self.detail_list.curselection()
         if not sel or not self._detail_rows or self._detail_context is None:
             return
