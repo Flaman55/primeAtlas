@@ -13,7 +13,7 @@ except ImportError:
     resource = None
 
 # ==========================================================================================
-# constellation_finder_v1.py
+# constellation_finder_v2.py
 #
 # Scans PGS2 prime windows for k-tuple patterns ("prime constellations") defined in
 # pattern_catalog_v1.py, and appends newly found matches to per-pattern hit files.
@@ -37,9 +37,10 @@ except ImportError:
 # rather than quadratic in the hit file's size -- important for patterns like k=2/3/4,
 # which accumulate hits fastest.
 #
-# Progress is tracked with a single checkpoint per floor
-# (CONSTELLATION_PORTAL/10p{N}/constellations/CHECKPOINT.txt, storing the last fully-
-# processed PGS2 filename), covering every k.
+# Progress is tracked per floor in CONSTELLATION_PORTAL/10p{N}/constellations/
+# CHECKPOINT.txt, covering every k -- as of v2, a set of already-processed window
+# RANGES (see this file's own "v2 -- gap-aware checkpoint" header section below), not
+# just a single last-processed-filename pointer.
 #
 # Per-(k,variant) hit counts are available cheaply via
 # read_prime_window_header(hit_path)['count'] (no full decode), which is enough to build
@@ -81,6 +82,32 @@ except ImportError:
 # the full story -- every append_hits() call in this file now goes through that wrapper,
 # which silently drops already-known values instead of crashing, making re-scanning an
 # already-covered window safe and effectively idempotent.
+#
+# v2 -- gap-aware checkpoint (added 2026-09-15, at Artur's request after a real field
+# report: an unpredictable PC restart left two constellation_finder processes running
+# for the same floor, and CHECKPOINT.txt -- v1's single "last_processed_file=" pointer,
+# overwritten by whichever process wrote most recently -- ended up pointing at a window
+# far BEHIND where the floor's own magazyn already had hits recorded from the other
+# process. v1's own resume logic (process_floor()'s "everything after last_done" slice)
+# has no way to represent "done, except for this earlier gap" -- it can only resume from
+# ONE position, so after a regression like this it burns hours re-scanning a huge
+# already-covered range instead of just closing the actual gap. Re-scanning itself was
+# already safe (the dedup wrapper above), just wasteful.
+#
+# Fix: CHECKPOINT.txt now stores a set of DONE RANGES ("done_range=<first>|<last>" lines,
+# one per contiguous run of already-processed windows in base_prime order) instead of a
+# single pointer, via read_done_ranges()/write_done_ranges() below. process_floor() diffs
+# the floor's current window list against the union of those ranges to build to_process,
+# so a regressed/overlapping checkpoint only ever costs re-scanning the genuinely-missing
+# windows, never the whole tail again. A `last_processed_file=` line is still written
+# alongside the ranges (the highest-index window covered by any range) purely for
+# backward compatibility with generation.py's own read_constellation_checkpoint() (GUI-
+# side auto-retry "did we make progress" comparison) and v1's own read_checkpoint() --
+# neither needs to know about ranges, both just want "how far has this floor gotten".
+# An old, v1-only CHECKPOINT.txt (no done_range= lines at all) is read as a single range
+# from the floor's very first window through last_processed_file -- exactly what v1
+# itself would have assumed -- so upgrading a floor already in progress from v1 to v2
+# loses no recorded progress.
 # ==========================================================================================
 
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -216,7 +243,7 @@ def list_source_windows(base_exponent):
         return []
     paths_by_name = dict(sharded_files)
     names_on_disk = sorted(paths_by_name.keys())
-    print(f"[CONSTELLATIONS v1] DIAG: shard walk found {len(names_on_disk):,} window(s) "
+    print(f"[CONSTELLATIONS v2] DIAG: shard walk found {len(names_on_disk):,} window(s) "
           f"for 10^{base_exponent} in {time.time()-t0:.2f}s | {_proc_diag()}")
 
     names_on_disk_set = set(names_on_disk)
@@ -229,13 +256,13 @@ def list_source_windows(base_exponent):
             header = prime_sieve_v1.read_prime_window_header(paths_by_name[name])
             index[name] = header["base_prime"]
         _write_window_index(base_exponent, index)
-        print(f"[CONSTELLATIONS v1] DIAG: read {len(new_names):,} fresh header(s) "
+        print(f"[CONSTELLATIONS v2] DIAG: read {len(new_names):,} fresh header(s) "
               f"({len(names_on_disk) - len(new_names):,} served from WINDOW_INDEX.tsv "
               f"cache) in {time.time()-t1:.2f}s | {_proc_diag()}")
 
     entries = [(name, paths_by_name[name], index[name]) for name in names_on_disk]
     entries.sort(key=lambda e: (e[2] is None, e[2] if e[2] is not None else 0, e[0]))
-    print(f"[CONSTELLATIONS v1] DIAG: list_source_windows(10^{base_exponent}) done in "
+    print(f"[CONSTELLATIONS v2] DIAG: list_source_windows(10^{base_exponent}) done in "
           f"{time.time()-t0:.2f}s total | {_proc_diag()}")
     return entries
 
@@ -297,8 +324,13 @@ def _stop_requested():
 
 
 def read_checkpoint(base_exponent):
-    """Returns the filename of the last fully-processed PGS2 window for this floor, or
-    None if there's no checkpoint yet."""
+    """Returns the filename of the furthest-along PGS2 window recorded for this floor
+    (the highest-index window covered by any done_range -- see write_done_ranges()'s own
+    docstring for why this is still written even though process_floor() itself now
+    resumes from read_done_ranges(), not this value), or None if there's no checkpoint
+    yet. Kept for generation.py's own read_constellation_checkpoint() (GUI-side "did we
+    make progress" comparison) and for v1-style callers/tests that only care about "how
+    far has this floor gotten", not the full gap-aware picture."""
     path = _checkpoint_path(base_exponent)
     if not os.path.exists(path):
         return None
@@ -309,28 +341,119 @@ def read_checkpoint(base_exponent):
     return None
 
 
-def write_checkpoint(base_exponent, filename):
-    """Atomic tmp-then-replace + fsync (added 2026-09-15, after a real overnight power
-    loss wiped a floor's progress): the previous version opened CHECKPOINT.txt directly
-    with "w", which TRUNCATES it before writing a single byte of the new content. Power
-    loss (or a hard kill) landing between that truncation and the write completing left
-    a 0-byte or partial file on disk; read_checkpoint() then finds no
-    "last_processed_file=" line and silently returns None, which process_floor() treats
-    as "no checkpoint yet" -- reprocessing the WHOLE floor from window 0 (confirmed: a
-    30-hour floor 25 run lost its entire CHECKPOINT.txt overnight this way). Writing to
-    a sibling .tmp file, fsync-ing ITS contents to disk, and only then os.replace()-ing
-    it over the real path guarantees the on-disk file is always either the complete OLD
-    checkpoint or the complete NEW one -- never a truncated in-between state -- even
-    across a literal power cut, not just an orderly process kill. Same atomic pattern
-    already used by _write_window_index() and _write_last_values_disk_cache() below;
-    this is the one call site that most needed it, since losing THIS file is what makes
-    process_floor() throw away an entire floor's worth of already-done work."""
+def read_done_ranges(base_exponent):
+    """Returns [(first_name, last_name), ...] -- the floor's own set of already-processed
+    window ranges, in the order they were written (not necessarily sorted by position;
+    resolve_done_names() below sorts/merges against the CURRENT window list). Empty list
+    if there's no checkpoint yet.
+
+    v1-checkpoint migration: a CHECKPOINT.txt with a "last_processed_file=" line but no
+    "done_range=" lines at all (i.e. written by v1, or by v2 before this floor's very
+    first done_range existed) is read as ONE range from the start of the floor through
+    that filename -- exactly what v1's own "everything up to and including last_done"
+    assumption already meant, so a floor already in progress under v1 loses nothing by
+    switching to v2 mid-scan."""
+    path = _checkpoint_path(base_exponent)
+    if not os.path.exists(path):
+        return []
+    ranges = []
+    legacy_last = None
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            line = line.rstrip("\n")
+            if line.startswith("done_range="):
+                first, _, last = line.split("=", 1)[1].partition("|")
+                ranges.append((first, last))
+            elif line.startswith("last_processed_file="):
+                legacy_last = line.split("=", 1)[1].strip()
+    if not ranges and legacy_last is not None:
+        # None as the range's own start is a sentinel resolve_done_names() expands to
+        # "the current window list's own first entry" -- deliberately not resolved here,
+        # since this function has no access to the current window list.
+        ranges.append((None, legacy_last))
+    return ranges
+
+
+def resolve_done_names(base_exponent, names):
+    """Turns this floor's persisted done_ranges into an actual set of done window names,
+    validated against `names` (the CURRENT base_prime-sorted window name list -- see
+    list_source_windows()). A range whose boundary name is no longer among `names` is
+    dropped with a warning, same fallback spirit as v1's own "ignoring checkpoint,
+    processing from the start" -- a stale boundary name means that range can no longer be
+    resolved to a position, so it's safer to let those windows be re-scanned (harmless,
+    see _append_hits_deduped()) than to silently trust a boundary that no longer lines up
+    with reality."""
+    if not names:
+        return set()
+    index_of = {name: i for i, name in enumerate(names)}
+    done = set()
+    for first, last in read_done_ranges(base_exponent):
+        resolved_first = names[0] if first is None else first
+        if resolved_first not in index_of or last not in index_of:
+            print(f"[!] Checkpointed range {(first, last)!r} not resolvable among current "
+                  f"windows for 10^{base_exponent} -- ignoring just this range.")
+            continue
+        start_i, end_i = index_of[resolved_first], index_of[last]
+        if start_i > end_i:
+            start_i, end_i = end_i, start_i
+        done.update(names[start_i:end_i + 1])
+    return done
+
+
+def _merge_ranges_by_index(ranges_by_index):
+    """Sorts (first_idx, last_idx) pairs and merges any that touch or overlap
+    (last_idx + 1 >= next first_idx) into one -- keeps the persisted range list from
+    growing without bound across a long floor scan, where the common case (windows
+    processed strictly in order) should always collapse back down to a single range."""
+    merged = []
+    for start, end in sorted(ranges_by_index):
+        if merged and start <= merged[-1][1] + 1:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((start, end))
+    return merged
+
+
+def write_done_ranges(base_exponent, names, done_indices):
+    """Atomic tmp-then-replace + fsync (same pattern as v1's own write_checkpoint(), for
+    the same power-loss reason -- see that docstring), persisting the FULL set of
+    already-processed windows as merged (first_name|last_name) ranges over `names` (the
+    current base_prime-sorted window list) rather than a single pointer.
+
+    `done_indices` -- every index into `names` that is done as of this write (i.e. the
+    caller's own accumulated set, not just what changed since the last write) -- kept
+    simple rather than a delta/patch scheme since a floor's own done-range list stays
+    tiny in practice (processing is normally strictly in order, so it collapses to ONE
+    range; the whole point of this format is staying correct, not necessarily minimal,
+    on the rare occasion it doesn't).
+
+    Still writes `last_processed_file=` (the name at the highest done index) alongside
+    the ranges -- see read_checkpoint()'s own docstring for who still relies on that
+    line."""
     path = _checkpoint_path(base_exponent)
     os.makedirs(os.path.dirname(path), exist_ok=True)
+    sorted_indices = sorted(done_indices)
+    ranges = []
+    run_start = None
+    prev = None
+    for idx in sorted_indices:
+        if run_start is None:
+            run_start = idx
+        elif idx != prev + 1:
+            ranges.append((run_start, prev))
+            run_start = idx
+        prev = idx
+    if run_start is not None:
+        ranges.append((run_start, prev))
+    ranges = _merge_ranges_by_index(ranges)
+
     tmp_path = path + ".tmp"
     with open(tmp_path, "w", encoding="utf-8") as f:
-        f.write(f"last_processed_file={filename}\n")
+        if sorted_indices:
+            f.write(f"last_processed_file={names[sorted_indices[-1]]}\n")
         f.write(f"updated_at={datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}\n")
+        for start, end in ranges:
+            f.write(f"done_range={names[start]}|{names[end]}\n")
         f.flush()
         os.fsync(f.fileno())
     os.replace(tmp_path, path)
@@ -493,7 +616,7 @@ def _resolve_last_value(base_exponent, k, variant_id, disk_cache):
         if real_count == cached_count:
             return cached_last_value, cached_count
         _diag_fsync_print(
-            f"[CONSTELLATIONS v1] DIAG: k={k} variant={variant_id} disk cache count "
+            f"[CONSTELLATIONS v2] DIAG: k={k} variant={variant_id} disk cache count "
             f"({cached_count:,}) does not match the hit file's real count "
             f"({real_count if real_count is not None else 'unreadable'}) -- falling "
             f"back to a full decode (file changed since the cache was last written).")
@@ -506,13 +629,13 @@ def _resolve_last_value(base_exponent, k, variant_id, disk_cache):
     if os.path.exists(hpath):
         size_bytes = os.path.getsize(hpath)
         _diag_fsync_print(
-            f"[CONSTELLATIONS v1] DIAG: k={k} variant={variant_id} resolving last "
+            f"[CONSTELLATIONS v2] DIAG: k={k} variant={variant_id} resolving last "
             f"value for {hpath} ({size_bytes:,} bytes, no cached entry or cache stale) "
             f"-- starting lean decode... | {_proc_diag()}")
         t_decode0 = time.time()
         last_value, count = prime_sieve_v1.read_prime_window_last_value(hpath)
         _diag_fsync_print(
-            f"[CONSTELLATIONS v1] DIAG: k={k} variant={variant_id} lean decode done -- "
+            f"[CONSTELLATIONS v2] DIAG: k={k} variant={variant_id} lean decode done -- "
             f"{count:,} value(s), last={last_value}, in {time.time()-t_decode0:.2f}s "
             f"| {_proc_diag()}")
         return last_value, count
@@ -731,7 +854,7 @@ def check_floor_boundary(base_exponent, windows, active_patterns, max_span, disk
         return
     next_windows = list_source_windows(base_exponent + 1)
     if not next_windows:
-        print(f"[CONSTELLATIONS v1] NOTE: 10^{base_exponent}'s last window ({last_name}) "
+        print(f"[CONSTELLATIONS v2] NOTE: 10^{base_exponent}'s last window ({last_name}) "
               f"reaches within MAX_SPAN={max_span} of the floor boundary "
               f"({floor_boundary}) -- 10^{base_exponent + 1} has no source data yet, so a "
               f"pattern spanning the boundary can't be checked. Generate at least the "
@@ -740,7 +863,7 @@ def check_floor_boundary(base_exponent, windows, active_patterns, max_span, disk
         return
     next_name, next_path, next_base = next_windows[0]
     if next_base is None:
-        print(f"[CONSTELLATIONS v1] NOTE: 10^{base_exponent + 1}'s first window "
+        print(f"[CONSTELLATIONS v2] NOTE: 10^{base_exponent + 1}'s first window "
               f"({next_name}) has no usable header (base_prime missing) -- boundary check "
               f"against 10^{base_exponent} skipped until this is resolved.")
         return
@@ -762,13 +885,13 @@ def check_floor_boundary(base_exponent, windows, active_patterns, max_span, disk
         new_hits_count += appended
         skipped_count += skipped
     if skipped_count:
-        print(f"[CONSTELLATIONS v1] Boundary check: {skipped_count} hit(s) already present "
+        print(f"[CONSTELLATIONS v2] Boundary check: {skipped_count} hit(s) already present "
               f"(skipped as duplicates, not appended again).")
     write_boundary_checked(
         base_exponent,
         f"checked against 10^{base_exponent + 1}'s first window ({next_name}) -- "
         f"{new_hits_count} boundary-spanning hit(s) found")
-    print(f"[CONSTELLATIONS v1] Boundary check 10^{base_exponent} -> 10^{base_exponent + 1}: "
+    print(f"[CONSTELLATIONS v2] Boundary check 10^{base_exponent} -> 10^{base_exponent + 1}: "
           f"{new_hits_count} new hit(s) spanning the floor boundary.")
 
 
@@ -830,16 +953,16 @@ def process_floor(base_exponent, max_windows=None):
     # boundary() call below, written back once before every return point.
     disk_last_values = _read_last_values_disk_cache(base_exponent)
 
-    last_done = read_checkpoint(base_exponent)
     names = [name for name, _, _ in windows]
-    if last_done is not None and last_done in names:
-        start_idx = names.index(last_done) + 1
-        to_process_all = windows[start_idx:]
-    else:
-        if last_done is not None:
-            print(f"[!] Checkpointed file {last_done!r} not found among current windows "
-                  f"-- ignoring checkpoint, processing from the start.")
-        to_process_all = windows
+    index_of = {name: i for i, name in enumerate(names)}
+    done_names = resolve_done_names(base_exponent, names)
+    # done_indices seeds write_done_ranges()'s own running set below -- it has to start
+    # from whatever's ALREADY resolved (not empty), or a run that adds only a handful of
+    # new windows to a floor with a huge pre-existing done set would write those back as
+    # if they were the ONLY thing ever done, discarding everything else on the very next
+    # checkpoint write.
+    done_indices = {i for i, name in enumerate(names) if name in done_names}
+    to_process_all = [w for w in windows if w[0] not in done_names]
 
     if max_windows is not None and len(to_process_all) > max_windows:
         to_process = to_process_all[:max_windows]
@@ -849,7 +972,7 @@ def process_floor(base_exponent, max_windows=None):
         remaining_after = 0
 
     batch_note = f" (batch-limited to {max_windows}, {remaining_after} remain after this run)" if remaining_after else ""
-    print(f"\n[CONSTELLATIONS v1] 10^{base_exponent}: {len(to_process)}/{len(windows)} "
+    print(f"\n[CONSTELLATIONS v2] 10^{base_exponent}: {len(to_process)}/{len(windows)} "
           f"windows to process{batch_note} | patterns active: {len(active_patterns)} (k>=2) | "
           f"MAX_SPAN={max_span}")
     # Machine-parseable counterpart to the human-readable line above, added 2026-09-14
@@ -861,12 +984,12 @@ def process_floor(base_exponent, max_windows=None):
     # (everything the floor's own checkpoint already covered before this call started);
     # combined with this batch's own per-window "i/N" line, the GUI can derive
     # already_done_before_batch + i as a running total out of total_windows.
-    print(f"[CONSTELLATIONS v1] FLOOR PROGRESS: batch_size={len(to_process)} "
+    print(f"[CONSTELLATIONS v2] FLOOR PROGRESS: batch_size={len(to_process)} "
           f"total_windows={len(windows)} "
           f"already_done_before_batch={len(windows) - len(to_process_all)}")
 
     if not to_process:
-        print("[CONSTELLATIONS v1] Nothing new -- checkpoint is up to date.")
+        print("[CONSTELLATIONS v2] Nothing new -- checkpoint is up to date.")
         # Still check the floor's own upper boundary even though there's no NEW window to
         # stream -- a floor fully checkpointed in a PAST run (hence to_process is empty
         # NOW) may only just have gotten its boundary resolvable THIS run, e.g. because
@@ -890,7 +1013,7 @@ def process_floor(base_exponent, max_windows=None):
     # (see _append_hits_deduped()'s own docstring) -- not just a performance cache.
     last_value_cache = {}
 
-    print(f"[CONSTELLATIONS v1] DIAG: entering per-window loop, elapsed={time.time()-run_start:.2f}s "
+    print(f"[CONSTELLATIONS v2] DIAG: entering per-window loop, elapsed={time.time()-run_start:.2f}s "
           f"| {_proc_diag()}")
 
     # How often to print a heartbeat DIAG line and how often to print the lighter
@@ -912,7 +1035,7 @@ def process_floor(base_exponent, max_windows=None):
     DETAILED_DIAG_WINDOWS = 5
 
     def _diag_step(label, detailed):
-        line = f"[CONSTELLATIONS v1] DIAG: {label} | {_proc_diag()}"
+        line = f"[CONSTELLATIONS v2] DIAG: {label} | {_proc_diag()}"
         if detailed:
             _diag_fsync_print(line)  # see HEARTBEAT_EVERY's own comment above, and
                                       # _diag_fsync_print()'s own docstring, on why
@@ -935,7 +1058,7 @@ def process_floor(base_exponent, max_windows=None):
         # only makes sense once the floor is genuinely caught up).
         if _stop_requested():
             remaining_after += len(to_process) - i
-            print(f"\n[CONSTELLATIONS v1] STOP REQUESTED -- stopping cleanly after {i} "
+            print(f"\n[CONSTELLATIONS v2] STOP REQUESTED -- stopping cleanly after {i} "
                   f"window(s) this run, {remaining_after} window(s) still pending for "
                   f"10^{base_exponent}.")
             break
@@ -946,7 +1069,7 @@ def process_floor(base_exponent, max_windows=None):
         # function's own docstring on max_windows -- the log names the EXACT window
         # that was in flight when it happened, instead of dying with zero clue which
         # of the batch's files was involved.
-        print(f"[CONSTELLATIONS v1] reading {i+1}/{len(to_process)}: {name}...")
+        print(f"[CONSTELLATIONS v2] reading {i+1}/{len(to_process)}: {name}...")
         if detailed:
             try:
                 size_bytes = os.path.getsize(path)
@@ -988,26 +1111,27 @@ def process_floor(base_exponent, max_windows=None):
         for (k, vid), matches in results.items():
             starts = sorted(m[0] for m in matches)
             key = (k, vid)
-            # Deduped, not a plain append_hits() call -- CHECKPOINT.txt has no merge
-            # logic of its own (see _append_hits_deduped()'s own docstring): if this
-            # window is being RE-scanned (checkpoint regressed, e.g. a floor's
-            # constellations/ folder was physically copied in from another storage that
-            # had independently scanned some of the same windows, or the checkpoint's
-            # named file just isn't among the current windows -- see the "ignoring
-            # checkpoint, processing from the start" fallback above), the same values
-            # would already be stored, and a plain append_hits() call would crash on
-            # append_prime_window()'s own strict-increase assertion the instant that
-            # happens. This makes re-scanning an already-covered window safe instead.
+            # Deduped, not a plain append_hits() call -- v2's done_range checkpoint (see
+            # this file's own header comment) means resolve_done_names() should already
+            # keep an already-covered window OUT of to_process in the normal case, but a
+            # range whose boundary name resolve_done_names() couldn't find (stale
+            # boundary -- see that function's own docstring) falls back to letting those
+            # windows be re-scanned rather than silently trusting a mismatch. Re-scanning
+            # produces the exact same hit values as before (matching is deterministic),
+            # and without this dedup wrapper, re-appending them would crash on
+            # append_prime_window()'s own strict-increase assertion the instant a
+            # re-scanned window turns up a real hit. Kept as a safety net, same as v1.
             appended, skipped = _append_hits_deduped(
                 base_exponent, k, vid, starts, last_value_cache, disk_cache=disk_last_values)
             total_hits_this_run[key] = total_hits_this_run.get(key, 0) + appended
             new_hits_count += appended
             skipped_hits_count += skipped
 
-        write_checkpoint(base_exponent, name)
+        done_indices.add(index_of[name])
+        write_done_ranges(base_exponent, names, done_indices)
 
         extra = f" skipped_duplicates={skipped_hits_count}" if skipped_hits_count else ""
-        print(f"[CONSTELLATIONS v1] {i+1}/{len(to_process)}: {name} -- "
+        print(f"[CONSTELLATIONS v2] {i+1}/{len(to_process)}: {name} -- "
               f"primes={len(candidates):,} peeked_head={len(head)} "
               f"new_hits={new_hits_count}{extra} ({time.time()-t0:.2f}s)")
 
@@ -1017,19 +1141,19 @@ def process_floor(base_exponent, max_windows=None):
         # windows, as of when this call started, has actually been streamed) is
         # skipped for now; the next batch's own process_floor() call runs it once
         # to_process finally reaches the tail of `windows`.
-        print(f"\n[CONSTELLATIONS v1] BATCH DONE -- {remaining_after} window(s) still "
+        print(f"\n[CONSTELLATIONS v2] BATCH DONE -- {remaining_after} window(s) still "
               f"remain for 10^{base_exponent}.")
     else:
         check_floor_boundary(base_exponent, windows, active_patterns, max_span, disk_cache=disk_last_values)
 
     _write_last_values_disk_cache(base_exponent, disk_last_values)
 
-    print(f"\n[CONSTELLATIONS v1] Done. New hits this run, by pattern:")
+    print(f"\n[CONSTELLATIONS v2] Done. New hits this run, by pattern:")
     if not total_hits_this_run:
         print("    (none)")
     for (k, vid), count in sorted(total_hits_this_run.items()):
         print(f"    k={k:2} variant={vid}: +{count}")
-    print(f"[CONSTELLATIONS v1] DIAG: run finished, elapsed={time.time()-run_start:.2f}s "
+    print(f"[CONSTELLATIONS v2] DIAG: run finished, elapsed={time.time()-run_start:.2f}s "
           f"| {_proc_diag()}")
 
     return remaining_after
@@ -1037,7 +1161,7 @@ def process_floor(base_exponent, max_windows=None):
 
 if __name__ == "__main__":
     print("=" * 70)
-    print("[*] CONSTELLATION FINDER -- v1 (PGS2 streaming + unified k=2..21 + "
+    print("[*] CONSTELLATION FINDER -- v2 (PGS2 streaming + unified k=2..21 + "
           "in-place-append hit files)")
     print("=" * 70)
 
@@ -1076,7 +1200,7 @@ if __name__ == "__main__":
 
     for base_exponent in floors:
         if _stop_requested():
-            print(f"\n[CONSTELLATIONS v1] STOP REQUESTED -- skipping remaining floor(s) "
+            print(f"\n[CONSTELLATIONS v2] STOP REQUESTED -- skipping remaining floor(s) "
                   f"in this 'every floor with data' run.")
             break
         process_floor(base_exponent, max_windows=max_windows)

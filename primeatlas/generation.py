@@ -541,9 +541,9 @@ ORCHESTRATOR_LOOP_SCRIPT = os.path.abspath(
 ORCHESTRATOR_DIRECT_SCRIPT = os.path.abspath(
     os.path.join(_SCRIPT_DIR, "prime_sieve", "orchestrator_v3.py"))
 CONSTELLATION_FINDER_SCRIPT = os.path.abspath(
-    os.path.join(_SCRIPT_DIR, "constellation", "constellation_finder_v1.py"))
+    os.path.join(_SCRIPT_DIR, "constellation", "constellation_finder_v2.py"))
 KTUPLE_SIEVE_SCRIPT = os.path.abspath(
-    os.path.join(_SCRIPT_DIR, "constellation", "ktuple_sieve_v1.py"))
+    os.path.join(_SCRIPT_DIR, "constellation", "ktuple_sieve_v2.py"))
 
 
 def recommended_digit_sweep_n_locations(base_exponent, window_m, target_windows_per_branch=40):
@@ -1062,22 +1062,59 @@ def build_orchestrator_direct_argv(base_exponent, target_idx_start, window_count
 
 
 
-def build_constellation_finder_argv(base_exponent=None, script_path=None):
-    """Returns the LINUX-side argv for constellation_finder_v1.py, whose CLI is
-    `[<base_exponent>]` -- a single OPTIONAL positional arg, omitted entirely (not passed
-    as an empty string) when base_exponent is None/blank, matching that script's own
-    auto-detect-every-populated-floor behavior (list_pietra_with_data()) when it's
-    called with no argument at all. Not yet wrapped in a wsl.exe invocation -- see
-    build_wsl_logged_command(). Uses `-u` (unbuffered stdout) for the same reason
-    build_loop_argv() does -- see that function's docstring; this script's low per-window
-    print volume made it the one where the default full-buffering was actually reported
-    as a problem."""
+def build_constellation_finder_argv(base_exponent=None, max_windows=None, script_path=None):
+    """Returns the LINUX-side argv for constellation_finder_v2.py, whose CLI is
+    `[<base_exponent>] [--max-windows N]` -- base_exponent is a single OPTIONAL
+    positional arg, omitted entirely (not passed as an empty string) when it's
+    None/blank, matching that script's own auto-detect-every-populated-floor behavior
+    (list_pietra_with_data()) when it's called with no argument at all. Not yet wrapped
+    in a wsl.exe invocation -- see build_wsl_logged_command(). Uses `-u` (unbuffered
+    stdout) for the same reason build_loop_argv() does -- see that function's docstring;
+    this script's low per-window print volume made it the one where the default
+    full-buffering was actually reported as a problem.
+
+    max_windows (added 2026-09-13, see constellation_finder_v2.process_floor()'s own
+    docstring for the full "floor 25 crashes WSL at scale" story this caps): omitted
+    entirely when None, same "don't pass what wasn't explicitly set" shape as
+    base_exponent -- callers use this to bound a single run's own file-open volume,
+    letting generation_tab.py's own batch-continuation logic relaunch a fresh WSL
+    process for each slice instead of one process carrying the whole floor."""
     script = script_path if script_path is not None else CONSTELLATION_FINDER_SCRIPT
     script_wsl = windows_path_to_wsl(script)
     argv = ["python3", "-u", script_wsl]
     if base_exponent not in (None, ""):
         argv.append(str(base_exponent))
+    if max_windows is not None:
+        argv += ["--max-windows", str(max_windows)]
     return argv
+
+
+def read_constellation_checkpoint(portal_folder, base_exponent):
+    """Windows-side read of a floor's own CHECKPOINT.txt (last fully-processed PGS2
+    source window -- constellation_finder_v2.py's own write_done_ranges() still writes
+    this same "last_processed_file=" line alongside its own done_range= ones, see that
+    function's docstring) -- same parsing as that script's own read_checkpoint(), kept
+    as a small separate copy here rather than imported cross-language: this runs from
+    the GUI's own Windows-side process (generation_tab.py), never inside WSL, and
+    constellation_finder_v2.py's module-level PORTAL_FOLDER is fixed at import time
+    from CONSTELLATION_PORTAL_DIR -- which, on the Linux side, is a /mnt/-style path,
+    not the Windows-style path this app's own get_portal_folder() returns -- so calling
+    into that module directly would need faking its environment rather than just
+    reading three lines of a text file. Returns None if the floor has no checkpoint
+    yet (never scanned, or scanned floor doesn't exist).
+
+    Added 2026-09-13 for the auto-retry logic in generation_tab.py's own
+    _maybe_auto_retry_constellation() -- comparing this before/after a relaunch is how
+    that method tells "genuine forward progress" apart from "relaunching into the same
+    dead end"."""
+    path = os.path.join(portal_folder, f"10p{base_exponent}", "constellations", "CHECKPOINT.txt")
+    if not os.path.exists(path):
+        return None
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            if line.startswith("last_processed_file="):
+                return line.split("=", 1)[1].strip()
+    return None
 
 
 def build_ktuple_sieve_argv(base_exponent, k, variant_id, n_locations=1000, window_m=10_000_000,
@@ -1294,6 +1331,24 @@ def recommended_worker_count(available_cpu_count):
     return max(1, min(256, int(available_cpu_count)))
 
 
+def format_duration_short(seconds):
+    """Renders a duration (seconds, float or int, may be 0 or slightly negative from
+    clock jitter) as a short human string -- "5h03m", "12m07s", or "42s" depending on
+    magnitude -- for the constellation search's own elapsed-time/ETA display (see
+    generation_tab.py's own _update_shared_progress_from_generation_chunk()). Picks
+    exactly ONE larger unit to pair with the next one down (never seconds AND hours
+    together) so the string stays short enough for the shared status bar alongside the
+    floor/batch counts already shown there."""
+    total = max(0, int(seconds))
+    hours, remainder = divmod(total, 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours:
+        return f"{hours}h{minutes:02d}m"
+    if minutes:
+        return f"{minutes}m{secs:02d}s"
+    return f"{secs}s"
+
+
 # Parsed out of a generation run's live console output by _drain_output_queue() to drive the
 # SHARED bottom status/progress bar (self.status/self.totals_progress -- the same one the
 # floor-totals scan and the Primes/Constellations search box already use) while a run is in
@@ -1315,10 +1370,14 @@ def recommended_worker_count(available_cpu_count):
 #   prime_sieve_v4.py/prime_sieve_v4_1.py (main_batch_scanner, run-finished line -- printed
 #   for BOTH the low-floor and normal-window code paths, only the tail differs):
 #     "[*] TOTAL PRIMES FOUND this run: 167,026,529 across 1000 windows"
-#   constellation_finder_v1.py (process_floor's own per-file print):
-#     "[CONSTELLATIONS v1] 12/48: PRIME_WINDOW_10p11_off_50M.bin -- ..."
-#   constellation_finder_v1.py (process_floor, run-finished line):
-#     "[CONSTELLATIONS v1] Done. New hits this run, by pattern:"
+#   constellation_finder_v2.py (process_floor's own per-file print):
+#     "[CONSTELLATIONS v2] 12/48: PRIME_WINDOW_10p11_off_50M.bin -- ..."
+#   constellation_finder_v2.py (process_floor, floor-wide progress -- see
+#   _GEN_CONST_FLOOR_PROGRESS_RE's own comment for why this is separate from the
+#   per-file line above):
+#     "[CONSTELLATIONS v2] FLOOR PROGRESS: batch_size=5000 total_windows=545000 already_done_before_batch=340000"
+#   constellation_finder_v2.py (process_floor, run-finished line):
+#     "[CONSTELLATIONS v2] Done. New hits this run, by pattern:"
 #   orchestrator_loop_v2.py (multi-iteration Exploration-mode launches ONLY -- see
 #   _LOOP_SESSION_START_RE/_LOOP_ITERATION_START_RE/_LOOP_SESSION_DONE_RE's own comment
 #   below for why these three matter: without them, _GEN_SIEVE_DONE_RE above fires once
@@ -1333,8 +1392,23 @@ def recommended_worker_count(available_cpu_count):
 _GEN_PREP_DONE_RE = re.compile(r"\[\*\] Active sieving primes (?:used|count) \(pi\(L_final\)\)")
 _GEN_SIEVE_PROGRESS_RE = re.compile(r"\[\+\] Progress: ([\d.]+)% \((\d+)/(\d+) batches\)")
 _GEN_SIEVE_DONE_RE = re.compile(r"\[\*\] TOTAL PRIMES FOUND this run:")
-_GEN_CONST_PROGRESS_RE = re.compile(r"\[CONSTELLATIONS v1\] (\d+)/(\d+): ")
-_GEN_CONST_DONE_RE = re.compile(r"\[CONSTELLATIONS v1\] Done\. New hits this run")
+_GEN_CONST_PROGRESS_RE = re.compile(r"\[CONSTELLATIONS v2\] (\d+)/(\d+): ")
+_GEN_CONST_DONE_RE = re.compile(r"\[CONSTELLATIONS v2\] Done\. New hits this run")
+# constellation_finder_v2.py's own "FLOOR PROGRESS" line (added 2026-09-14, printed once
+# near the start of every process_floor() call, right after the human-readable "N/M
+# windows to process" line): unlike _GEN_CONST_PROGRESS_RE above, whose own (done, total)
+# pair only ever counts this ONE --max-windows-capped batch (resetting to 1 every time
+# generation_tab.py's own _maybe_continue_constellation_batch() chains the next one),
+# this line's three counts are relative to the WHOLE floor, letting the GUI show real
+# progress across a floor's entire remaining backlog instead of the bar/status
+# snapping back to near-zero at every batch boundary. See
+# _update_shared_progress_from_generation_chunk()'s own docstring for how the two lines
+# combine (already_done_before_batch + this batch's own running "i/N" -> a floor-wide
+# done/total pair).
+#   "[CONSTELLATIONS v2] FLOOR PROGRESS: batch_size=5000 total_windows=545000 already_done_before_batch=340000"
+_GEN_CONST_FLOOR_PROGRESS_RE = re.compile(
+    r"\[CONSTELLATIONS v2\] FLOOR PROGRESS: batch_size=(\d+) total_windows=(\d+) "
+    r"already_done_before_batch=(\d+)")
 _GEN_HYBRID_STAGE_RE = re.compile(r"\[HYBRID\] stage (\d+)/(\d+):")
 _GEN_HYBRID_DONE_RE = re.compile(r"\[HYBRID\] done:")
 _LOOP_SESSION_START_RE = re.compile(
