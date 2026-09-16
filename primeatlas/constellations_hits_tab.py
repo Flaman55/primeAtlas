@@ -5,8 +5,7 @@ pattern (constellations/k{k}/variant{id}/HITS_*.bin), a paginated hit-value prev
 pane, and the "const" search box that jumps straight to every pattern a searched
 number participates in.
 
-Extracted from prime_atlas_v1.py during the refactor branch's Faza 3 (tab-by-tab
-backend/UI split, 2026-08-23), the third tab extracted after Benchmark and Prime
+Extracted from prime_atlas_v1.py, the third tab split out after Benchmark and Prime
 numbers -- see primeatlas/primes_tab.py's own module docstring for the general
 dependency-injection shape this follows (avoids importing prime_atlas_v1.py directly,
 which would be circular).
@@ -153,25 +152,22 @@ class ConstellationsHitsTab(BaseTab):
         # No "Load preview" button any more -- selecting a pattern node in the floor
         # tree on the left now loads its preview automatically (see _on_tree_select());
         # a separate click-to-load step was one extra click for no benefit, since the
-        # tree selection already identifies exactly one loadable hit file. Requested
-        # via screenshot, 2026-09-16.
+        # tree selection already identifies exactly one loadable hit file.
         #
         # Two stacked page-nav rows (add_page_nav_row -- Prev/Next/label on the left,
         # a "Strona:"/entry/Idz jump group flush against the RIGHT edge, see that
         # helper's own docstring) side by side with "Eksportuj", stretched (fill="y")
         # to span both rows' combined height instead of sitting only next to the
         # second one. Both rows' jump groups land at the SAME right edge regardless of
-        # how much shorter btn_row's left cluster is than file_page_row's, for a
-        # symmetric look -- requested via screenshot, 2026-09-16 (a plain FlowRow, used
-        # before this, flowed left-to-right and could strand the second row's jump
-        # group on its own stray third line instead).
+        # how much shorter btn_row's left cluster is than file_page_row's -- a plain
+        # FlowRow flows left-to-right and could strand the second row's jump group on
+        # its own stray third line instead.
         preview_nav_frame = ttk.Frame(detail_frame)
         preview_nav_frame.pack(anchor="w", padx=6, fill="x", pady=(0, 4))
         # nav_rows_frame is deliberately NOT packed yet -- packed last, below, after
         # hits_export_btn (side="right", claiming its own fixed-width chunk out of the
         # cavity first) so the flexible frame's own fill="both"/expand=True gets a
-        # deterministic remainder regardless of either widget's own natural size (see
-        # add_page_nav_group's own history for the bug this avoids, 2026-09-16).
+        # deterministic remainder regardless of either widget's own natural size.
         nav_rows_frame = ttk.Frame(preview_nav_frame)
 
         self.hits_page_label = tk.StringVar(value="")
@@ -184,12 +180,12 @@ class ConstellationsHitsTab(BaseTab):
         # Real hit-file page navigation (up to hit_paging.PAGE_SIZE=1,000,000 hits per
         # page) -- separate from btn_row_frame above, which only paginates WITHIN
         # whichever hit-file page is currently loaded into self._hit_values/_hit_rows
-        # (self._page_size=500-ish rows at a time). Added 2026-09-16 so a pattern too
-        # large to ever load in full (floor 25's k=2, ~2.16 billion hits / 2160 pages)
-        # can still be browsed page by page instead of being stuck on the first page
-        # forever. Its own "Strona:"/entry/Idź jump group (added alongside this
-        # restructure) lets you jump straight to one of a pattern's thousands of hit-
-        # file pages instead of only stepping one at a time -- a SEPARATE entry from
+        # (self._page_size=500-ish rows at a time). This lets a pattern too large to
+        # ever load in full (floor 25's k=2, ~2.16 billion hits / 2160 pages) still be
+        # browsed page by page instead of being stuck on the first page forever. Its
+        # own "Strona:"/entry/Idź jump group lets you jump straight to one of a
+        # pattern's thousands of hit-file pages instead of only stepping one at a time
+        # -- a SEPARATE entry from
         # btn_row_frame's own, since these are two different kinds of "page" (hit-file
         # page vs. the small on-screen sub-page within it).
         self.hits_file_page_label = tk.StringVar(value="")
@@ -215,10 +211,9 @@ class ConstellationsHitsTab(BaseTab):
         # rows' own natural width, or the second row's jump group would crowd against
         # its left cluster instead of staying flush right, or slide off the pane's own
         # edge entirely. Measured from the actual built widgets (not a hardcoded guess)
-        # so this tracks the real font/theme/DPI rather than an assumption about them
-        # -- requested via screenshot, 2026-09-16 ("ograniczmy to ze wezej sie nie da
-        # niz uklad dwoch wierszy"). See clamp_pane_min_width()'s own docstring for how
-        # the minimum is actually enforced (ttk::panedwindow has no minsize option).
+        # so this tracks the real font/theme/DPI rather than an assumption about them.
+        # See clamp_pane_min_width()'s own docstring for how the minimum is actually
+        # enforced (ttk::panedwindow has no minsize option).
         self.update_idletasks()
         preview_nav_min_width = (
             max(btn_row_frame.winfo_reqwidth(), file_page_row_frame.winfo_reqwidth())
@@ -272,8 +267,7 @@ class ConstellationsHitsTab(BaseTab):
     def populate_floors(self, pietra):
         """Rebuilds the floor tree from scratch -- called by
         ConstellationsTreeCoordinator._on_scan_done
-        (primeatlas/constellations_tree_coordinator.py, moved out of prime_atlas_v1.py
-        itself during the refactor-phase3 branch, 2026-08-27) once
+        (primeatlas/constellations_tree_coordinator.py) once
         reload_constellations_tree()'s background disk scan
         (ConstellationsTreeCoordinator._scan) returns. Also drops the hit-set cache --
         data on disk may have changed since the last refresh, same reasoning as the
@@ -442,9 +436,9 @@ class ConstellationsHitsTab(BaseTab):
         self.hits_tree.item(node, values=(f"{grand_total:,}", ""))
 
     def _on_tree_select(self, _event):
-        """Selecting a leaf pattern node loads its preview immediately (no separate
-        "Load preview" click any more -- removed 2026-09-16, since the tree selection
-        already identifies exactly one loadable hit file)."""
+        """Selecting a leaf pattern node loads its preview immediately -- no separate
+        "Load preview" click, since the tree selection already identifies exactly one
+        loadable hit file."""
         selection = self.hits_tree.selection()
         if not selection:
             return
@@ -515,7 +509,7 @@ class ConstellationsHitsTab(BaseTab):
         exists at all (migrated to pages -- see hit_paging.py) or would decode
         hundreds of millions of entries synchronously on THIS (the GUI) thread, which
         is exactly what used to freeze the whole app on the old "Wczytaj podgląd"
-        button (removed 2026-09-16 -- _on_tree_select() calls this directly now).
+        button -- _on_tree_select() calls this directly now instead.
 
         A pattern this large that HASN'T been migrated to pages yet still has its
         whole hit count in ONE file -- reading "page 0" would be a full, unbounded
@@ -604,11 +598,9 @@ class ConstellationsHitsTab(BaseTab):
         """"Eksportuj" button -- jumps to the Tabela rekordow tab with the CURRENTLY
         LOADED hit-file page pre-filled as its export range, rather than exporting
         locally. Magazyn deliberately doesn't duplicate a whole export mechanism of
-        its own (Artur, 2026-09-16, after the previous local page-range CSV export
-        here turned out to duplicate Tabela rekordow's own -- and, unlike this one,
-        that tab already had a real progress bar, PDF support, and CSV in one place):
-        "zamiast przycisku generuj csv [w Magazynie] zrobmy eksport i klikniecie
-        przenosi do zakladki tabela rekordow z ustawionymi stronami od do"."""
+        its own: the previous local page-range CSV export here duplicated Tabela
+        rekordow's own, which already had a real progress bar, PDF support, and CSV
+        export in one place."""
         if not self._selected_hit_path:
             return
         jump = getattr(self, "_jump_to_records_export", None)
