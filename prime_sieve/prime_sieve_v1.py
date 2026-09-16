@@ -339,6 +339,58 @@ def read_prime_window_head(path, threshold):
     return result
 
 
+def iter_prime_window_chunks(path, chunk_size):
+    """Streaming sibling of read_prime_window()/read_prime_window_last_value(): decodes
+    `path`'s gap stream sequentially (gap-encoding has no random access -- see
+    read_prime_window_last_value()'s own docstring), but yields it as successive lists of
+    at most `chunk_size` primes instead of accumulating the whole file into one list.
+
+    Added for hit_paging.py's migrate_hit_file_to_pages() (task: splitting a huge
+    cumulative hit file -- e.g. floor 25's k=2 twin-primes file, ~1.5 billion entries --
+    into fixed-size page files): reading that file via read_prime_window() would
+    materialize 1.5 billion individual Python int objects at once, which is exactly the
+    OOM crash read_prime_window_last_value() was added to avoid on the READ-for-last-
+    value path (see its own docstring) -- migration needs every value, not just the
+    last one, so that fix doesn't apply here, but streaming in bounded chunks keeps peak
+    added memory at O(chunk_size) ints instead of O(count), the same economy principle.
+
+    Still reads the file's raw bytes into memory up front (O(file size), unavoidable
+    without complicating varint-boundary handling across a chunked file read -- same
+    tradeoff read_prime_window_last_value() already accepts), but never builds a
+    Python list longer than `chunk_size`."""
+    if chunk_size <= 0:
+        raise ValueError(f"chunk_size must be positive, got {chunk_size}")
+    with open(path, "rb") as f:
+        data = f.read()
+    if data[:4] != PGS_MAGIC:
+        raise ValueError(f"{path}: not a PGS2 file (bad magic bytes)")
+    pos = 4
+    base_len = data[pos]
+    pos += 1
+    if base_len == 0:
+        return
+    base = int.from_bytes(data[pos:pos + base_len], "big")
+    pos += base_len
+    count = int.from_bytes(data[pos:pos + 4], "big")
+    pos += 4
+    pos += 4  # generated_at
+    chunk = []
+    prev = base
+    chunk.append(prev)
+    if len(chunk) == chunk_size:
+        yield chunk
+        chunk = []
+    for _ in range(count - 1):
+        gap, pos = decode_varint(data, pos)
+        prev += gap
+        chunk.append(prev)
+        if len(chunk) == chunk_size:
+            yield chunk
+            chunk = []
+    if chunk:
+        yield chunk
+
+
 def append_prime_window(path, new_sorted_values, generated_at=None, known_last_value=None):
     """Appends new values to a growing cumulative hit file (e.g. per-(k,variant) constellation
     hits, which grow by a handful of entries at a time across many runs) without re-decoding

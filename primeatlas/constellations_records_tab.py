@@ -19,18 +19,21 @@ adding a second progress bar just for this tab's scan/export jobs.
 
 Double-clicking a cell drills down into the FULL list of hits behind it (all 2019
 numbers for a "+23,080,007,797 (2019x)" cell, not just the smallest) in the paginated
-detail panel below the tree. Export to PDF/CSV pulls the SAME full-detail data as the
-cell drill-down (one row per individual hit, via build_constellation_records_detail_
-rows()) rather than the compact on-screen summary, always covering the SAME floor
-range as the currently displayed table (self._last_floor_bounds, captured at scan
-time) -- not the live contents of the od/do fields, in case they've been edited since
-the last Skanuj click.
+detail panel below the tree. Export to PDF/CSV covers the same full-detail data as the
+cell drill-down (one row per individual hit) rather than the compact on-screen summary,
+always covering the SAME floor range as the currently displayed table
+(self._last_floor_bounds, captured at scan time) -- not the live contents of the od/do
+fields, in case they've been edited since the last Skanuj click. CSV streams rows one
+at a time (iter_constellation_records_detail_rows()) so a range including a pattern the
+scale of floor 25's k=2 (~2.16 billion hits) doesn't try to hold every row in memory at
+once; PDF still needs the whole row list up front for pagination, so it refuses (with a
+clear error) a range whose row count would exceed PDF_EXPORT_ROW_LIMIT instead -- see
+that constant's own comment.
 
 This is one of a few files in primeatlas/ that import tkinter -- see
 primes_tab.py's own docstring for the general "pure logic elsewhere" convention this
 package otherwise follows.
 """
-import csv
 import datetime
 import os
 
@@ -38,14 +41,28 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
 import pattern_catalog_v1
-import prime_sieve_v1
 
 from . import background
 from .base_tab import BaseTab
+import hit_paging
+
 from .constellations import (
     build_constellation_records_table, build_constellation_records_detail_rows,
-    hit_file_path, render_constellation_records_pdf,
+    iter_constellation_records_detail_rows, count_constellation_records_detail_rows,
+    iter_hit_pattern_page_range_rows, write_constellation_detail_rows_csv,
+    render_constellation_records_pdf,
+    read_hit_pattern_header, read_hit_pattern_page, hit_pattern_page_count,
+    hit_pattern_is_paged,
 )
+
+# A PDF, unlike streamed CSV, needs every row laid out on paginated pages up front (see
+# render_constellation_records_pdf()) -- so its row count can't be unbounded the way
+# CSV export now is (see _job()'s own comment). 1,000,000 rows reuses the same "one
+# hit_paging page's worth" scale already established elsewhere in this file/module as
+# the line between "fine to hold in memory at once" and "needs streaming instead" --
+# floor 25's k=2 alone (~2.16 billion rows) would be ~2160x over this, both an OOM risk
+# materializing the row list AND an unusable, multi-hundred-thousand-page PDF regardless.
+PDF_EXPORT_ROW_LIMIT = 1_000_000
 from .widgets import FlowRow
 
 
@@ -167,6 +184,49 @@ class ConstellationsRecordsTab(BaseTab):
         detail_nav.add(ttk.Button(detail_nav.frame, text=T("common.goto"),
                                    command=self._goto_detail_page), padx_left=4)
 
+        # Real hit-file page navigation (up to hit_paging.PAGE_SIZE=1,000,000 hits per
+        # page) -- separate from detail_nav above, which only paginates WITHIN
+        # whichever hit-file page is currently loaded into self._detail_rows
+        # (self._page_size=500-ish rows at a time). Added 2026-09-16 alongside
+        # page-scoped export (see _export_page_range_csv()) so a pattern too large to
+        # ever load in full (floor 25's k=2, ~2.16 billion hits / 2160 pages) can still
+        # be browsed page by page instead of being stuck on page 1 forever.
+        detail_file_nav = FlowRow(detail_frame)
+        detail_file_nav.frame.pack(anchor="w", padx=4, fill="x")
+        self.detail_file_prev_btn = ttk.Button(
+            detail_file_nav.frame, text=T("const_records.file_page_prev"),
+            command=self._prev_detail_file_page, state="disabled")
+        detail_file_nav.add(self.detail_file_prev_btn)
+        self.detail_file_page_label = tk.StringVar(value="")
+        detail_file_nav.add(ttk.Label(detail_file_nav.frame, textvariable=self.detail_file_page_label,
+                                       width=20, anchor="center"))
+        self.detail_file_next_btn = ttk.Button(
+            detail_file_nav.frame, text=T("const_records.file_page_next"),
+            command=self._next_detail_file_page, state="disabled")
+        detail_file_nav.add(self.detail_file_next_btn)
+
+        # Page-scoped export: exports ONLY hit-file pages [from, to] of the pattern
+        # currently drilled into, instead of build_constellation_records_detail_rows()'s
+        # whole-floor-range export -- see iter_hit_pattern_page_range_rows()'s own
+        # docstring for why that matters (a whole-pattern export of floor 25's k=2
+        # would be tens to hundreds of GB regardless of how safely it's streamed).
+        detail_export_range = FlowRow(detail_frame)
+        detail_export_range.frame.pack(anchor="w", padx=4, fill="x", pady=(0, 4))
+        detail_export_range.add(ttk.Label(
+            detail_export_range.frame, text=T("const_records.export_range_label")))
+        self.detail_export_from_entry = ttk.Entry(detail_export_range.frame, width=6)
+        self.detail_export_from_entry.insert(0, "1")
+        detail_export_range.add(self.detail_export_from_entry, padx_left=4)
+        detail_export_range.add(ttk.Label(
+            detail_export_range.frame, text=T("const_records.export_range_to")), padx_left=4)
+        self.detail_export_to_entry = ttk.Entry(detail_export_range.frame, width=6)
+        self.detail_export_to_entry.insert(0, "1")
+        detail_export_range.add(self.detail_export_to_entry, padx_left=4)
+        self.detail_export_range_btn = ttk.Button(
+            detail_export_range.frame, text=T("const_records.export_range_button"),
+            command=self._export_page_range_csv, state="disabled")
+        detail_export_range.add(self.detail_export_range_btn, padx_left=8)
+
         detail_list_frame = ttk.Frame(detail_frame)
         detail_list_frame.pack(fill="both", expand=True, padx=4, pady=(0, 4))
         self.detail_list = tk.Listbox(detail_list_frame, font=("Consolas", 9))
@@ -189,6 +249,9 @@ class ConstellationsRecordsTab(BaseTab):
                                       # cell -- needed by the jump-to-Magazyn handler
         self._detail_page = 0
         self._detail_total_pages = 1
+        self._detail_file_page_index = 0  # which hit-file page (0-based) is currently
+                                           # loaded into self._detail_rows
+        self._detail_file_page_count = 1  # how many hit-file pages this pattern has
 
         if pattern_catalog_v1.all_k():
             self.k_combo.current(0)
@@ -257,6 +320,7 @@ class ConstellationsRecordsTab(BaseTab):
         self.scan_button.configure(state="disabled")
         self.export_pdf_button.configure(state="disabled")
         self.export_csv_button.configure(state="disabled")
+        self.detail_export_range_btn.configure(state="disabled")
         self._start_busy_progress()
         self.status.set(status_text)
         self._worker.submit(job)
@@ -264,11 +328,22 @@ class ConstellationsRecordsTab(BaseTab):
     def _job(self, job, report_progress):
         """Runs on PersistentWorker's own daemon thread. Three job shapes
         distinguished by "mode": "scan" (build_constellation_records_table -> the main
-        tree), "export_pdf"/"export_csv" (build_constellation_records_detail_rows ->
-        a flat per-hit row list, then handed to the matching renderer below). Catches
-        its own exceptions so a failure surfaces with the right mode/k context,
-        instead of falling through to PersistentWorker's own last-resort net which has
-        no way to know which request failed."""
+        tree), "export_csv" (iter_constellation_records_detail_rows() -> a STREAMED
+        per-hit row generator, written to disk one row at a time via
+        write_constellation_detail_rows_csv() -- unlike a bounded page read, the
+        pre-paging version of this job materialized every row as one big list first,
+        which for a pattern the scale of floor 25's k=2 (~2.16 billion hits) would try
+        to hold billions of dicts in memory at once), "export_pdf" (needs the whole
+        laid-out row list up front for pagination -- see PDF_EXPORT_ROW_LIMIT's own
+        comment for why THAT path stays bounded by refusing an oversized range instead
+        of streaming), "export_page_range_csv" (iter_hit_pattern_page_range_rows() --
+        same streaming write, but scoped to ONE pattern's explicit hit-file page range
+        instead of a whole floor range, so exporting even a small SLICE of an
+        otherwise-unexportable pattern like floor 25's k=2 produces a sane, bounded
+        file -- see that generator's own docstring). Catches its own exceptions so a
+        failure surfaces with the right mode/k context, instead of falling through to
+        PersistentWorker's own last-resort net which has no way to know which request
+        failed."""
         mode = job.get("mode", "scan")
         k = job["k"]
         floor_min = job.get("floor_min")
@@ -279,14 +354,28 @@ class ConstellationsRecordsTab(BaseTab):
                 variant_ids, variant_meta, rows = build_constellation_records_table(
                     portal_folder, k, floor_min=floor_min, floor_max=floor_max)
                 return mode, k, True, (variant_ids, variant_meta, rows, floor_min, floor_max)
-            else:  # export_pdf / export_csv
+            elif mode == "export_pdf":
+                total_rows = count_constellation_records_detail_rows(
+                    portal_folder, k, floor_min=floor_min, floor_max=floor_max)
+                if total_rows > PDF_EXPORT_ROW_LIMIT:
+                    return mode, k, False, ("pdf_too_large", total_rows)
                 _variant_ids, _variant_meta, detail_rows = build_constellation_records_detail_rows(
                     portal_folder, k, floor_min=floor_min, floor_max=floor_max)
                 path = job["path"]
-                if mode == "export_pdf":
-                    self._render_detail_pdf(path, k, detail_rows)
-                else:
-                    self._write_detail_csv(path, detail_rows)
+                self._render_detail_pdf(path, k, detail_rows)
+                return mode, k, True, path
+            elif mode == "export_page_range_csv":
+                detail_rows = iter_hit_pattern_page_range_rows(
+                    portal_folder, job["base_exponent"], k, job["variant_id"],
+                    job["page_from"], job["page_to"])
+                path = job["path"]
+                write_constellation_detail_rows_csv(path, detail_rows)
+                return mode, k, True, path
+            else:  # export_csv
+                detail_rows = iter_constellation_records_detail_rows(
+                    portal_folder, k, floor_min=floor_min, floor_max=floor_max)
+                path = job["path"]
+                write_constellation_detail_rows_csv(path, detail_rows)
                 return mode, k, True, path
         except Exception as e:  # noqa: BLE001 -- must never kill this thread
             return mode, k, False, str(e)
@@ -306,25 +395,6 @@ class ConstellationsRecordsTab(BaseTab):
         } for r in detail_rows]
         render_constellation_records_pdf(path, k, fieldnames, pdf_rows, translator=self.T)
 
-    def _write_detail_csv(self, path, detail_rows):
-        """Runs on the worker thread (called from _job) -- plain csv.DictWriter, one
-        row per individual hit."""
-        fieldnames = ["exp", "variant_id", "offset", "number",
-                      "position_in_file", "count_in_file", "is_record_floor"]
-        with open(path, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
-            writer.writeheader()
-            for r in detail_rows:
-                writer.writerow({
-                    "exp": f"10p{r['base_exponent']}",
-                    "variant_id": r["variant_id"],
-                    "offset": r["offset"],
-                    "number": r["number"],
-                    "position_in_file": r["position_in_file"],
-                    "count_in_file": r["count_in_file"],
-                    "is_record_floor": r["is_record_floor"],
-                })
-
     def _on_worker_result(self, payload, error):
         """Main-thread callback for _job -- `error` is only non-None for a genuine
         PersistentWorker-framework bug (_job already catches its own exceptions)."""
@@ -332,10 +402,12 @@ class ConstellationsRecordsTab(BaseTab):
         self._busy = False
         self.scan_button.configure(state="normal")
         self._stop_busy_progress()
+        has_page_context = self._detail_context is not None
         if error is not None:
             has_rows = bool(self._last and self._last[3])
             self.export_pdf_button.configure(state="normal" if has_rows else "disabled")
             self.export_csv_button.configure(state="normal" if has_rows else "disabled")
+            self.detail_export_range_btn.configure(state="normal" if has_page_context else "disabled")
             self.status.set(T("const_records.status_error"))
             messagebox.showerror(T("const_records.error_dialog_title"), str(error))
             return
@@ -350,20 +422,32 @@ class ConstellationsRecordsTab(BaseTab):
                 has_rows = bool(self._last and self._last[3])
                 self.export_pdf_button.configure(state="normal" if has_rows else "disabled")
                 self.export_csv_button.configure(state="normal" if has_rows else "disabled")
+                self.detail_export_range_btn.configure(state="normal" if has_page_context else "disabled")
                 self.status.set(T("const_records.status_error"))
                 messagebox.showerror(T("const_records.error_dialog_title"), result_payload)
                 return
             variant_ids, variant_meta, rows, floor_min, floor_max = result_payload
             self._show_results(k, variant_ids, variant_meta, rows, floor_min, floor_max)
-        else:  # export_pdf / export_csv
+        else:  # export_pdf / export_csv / export_page_range_csv
             has_rows = bool(self._last and self._last[3])
             self.export_pdf_button.configure(state="normal" if has_rows else "disabled")
             self.export_csv_button.configure(state="normal" if has_rows else "disabled")
-            button_label = T("const_records.export_pdf_button" if mode == "export_pdf"
-                              else "const_records.export_csv_button")
+            self.detail_export_range_btn.configure(state="normal" if has_page_context else "disabled")
+            button_label = T({
+                "export_pdf": "const_records.export_pdf_button",
+                "export_csv": "const_records.export_csv_button",
+                "export_page_range_csv": "const_records.export_range_button",
+            }[mode])
             if not ok:
                 self.status.set(T("const_records.status_error"))
-                messagebox.showerror(T("const_records.error_dialog_title"), result_payload)
+                if isinstance(result_payload, tuple) and result_payload[0] == "pdf_too_large":
+                    _reason, total_rows = result_payload
+                    messagebox.showerror(
+                        T("const_records.error_dialog_title"),
+                        T("const_records.export_pdf_too_large",
+                          count=f"{total_rows:,}", limit=f"{PDF_EXPORT_ROW_LIMIT:,}"))
+                else:
+                    messagebox.showerror(T("const_records.error_dialog_title"), result_payload)
                 return
             path = result_payload
             self.status.set(T("bench.status_saved", path=path))
@@ -405,8 +489,24 @@ class ConstellationsRecordsTab(BaseTab):
 
     def _on_cell_activate(self, event):
         """Double-click drill-down: identifies which (floor, variant) cell was clicked
-        and loads the FULL list of hits behind it (not just the smallest offset the
-        tree cell shows) into the paginated detail panel below.
+        and loads the hits behind it (not just the smallest offset the tree cell shows)
+        into the paginated detail panel below.
+
+        Reads via read_hit_pattern_header()/read_hit_pattern_page() (paging-transparent
+        -- see primeatlas/constellations.py's own module-level helpers and
+        prime_sieve/hit_paging.py) instead of a bare prime_sieve_v1.read_prime_window()
+        on hit_file_path(): a pattern this large (dense k=2 on a high floor -- see
+        hit_paging.py's own docstring for the real crash this is about) may have been
+        migrated to pages, in which case the original single file no longer exists at
+        all, AND a full decode of even an unmigrated multi-hundred-million-entry file
+        on THIS (the GUI) thread is exactly what used to freeze the whole app on
+        double-click. Only the FIRST hit-file page (bounded to
+        hit_paging.PAGE_SIZE entries, currently 1,000,000) is ever loaded here -- for
+        the vast majority of patterns (never paged, far fewer hits than that) this is
+        the exact same "whole file" as before; for a paged one, the label makes clear
+        only a first slice is shown and points at CSV/PDF export (which streams every
+        page instead of holding them all in memory -- see build_constellation_records_
+        detail_rows()) for the rest.
 
         Stashes (base_exponent, pattern) in self._detail_context -- not just the raw
         values -- so a later double-click on one of the resulting rows
@@ -431,24 +531,134 @@ class ConstellationsRecordsTab(BaseTab):
             return
         vid = variant_ids[vi]
         pattern = variant_meta[vid]
-        path = hit_file_path(self._get_portal_folder(), base_exponent, k, vid)
-        if not os.path.exists(path):
+        portal_folder = self._get_portal_folder()
+        header = read_hit_pattern_header(portal_folder, base_exponent, k, vid)
+        if header is None or header["count"] == 0:
             self._detail_rows = []
             self._detail_context = None
+            self._set_detail_file_nav_disabled()
             self.detail_label_var.set(T("const_records.detail_empty", exp=base_exponent, id=vid))
             self._show_detail_page(0)
             return
+        # A pattern this large that HASN'T been migrated to pages yet still has its
+        # whole hit count in ONE file -- read_hit_pattern_page() page 0 would be a full,
+        # unbounded prime_sieve_v1.read_prime_window() decode on THIS (the GUI) thread
+        # (see hit_pattern_is_paged()'s own docstring for the real freeze this guard is
+        # about: k=2 on floor 25, ~2.15 billion hits, hung the whole app on a plain
+        # double-click). Refuse outright rather than attempt it -- there is no safe
+        # bounded read until prime_sieve/hit_paging.py's migrate_hit_file_to_pages()
+        # has actually run for this pattern.
+        if (header["count"] > hit_paging.PAGE_SIZE
+                and not hit_pattern_is_paged(portal_folder, base_exponent, k, vid)):
+            self._detail_rows = []
+            self._detail_context = None
+            self._set_detail_file_nav_disabled()
+            self.detail_label_var.set(T(
+                "const_records.detail_too_large", exp=base_exponent, id=vid,
+                count=f"{header['count']:,}"))
+            self._show_detail_page(0)
+            return
+        self._detail_context = {"base_exponent": base_exponent, "pattern": pattern}
+        self._detail_file_page_count = hit_pattern_page_count(portal_folder, base_exponent, k, vid)
+        self._load_detail_file_page(base_exponent, k, vid, 0)
+
+    def _set_detail_file_nav_disabled(self):
+        """Resets the hit-file page navigator + page-range export controls to their
+        empty/disabled state -- shared by _on_cell_activate()'s empty/too-large early
+        returns above, neither of which has a real pattern to page through."""
+        self._detail_file_page_index = 0
+        self._detail_file_page_count = 1
+        self.detail_file_page_label.set("")
+        self.detail_file_prev_btn.configure(state="disabled")
+        self.detail_file_next_btn.configure(state="disabled")
+        self.detail_export_range_btn.configure(state="disabled")
+
+    def _load_detail_file_page(self, base_exponent, k, vid, page_index):
+        """Loads hit-file page `page_index` (bounded to hit_paging.PAGE_SIZE entries,
+        see read_hit_pattern_page()'s own docstring) into self._detail_rows, resets the
+        small in-memory UI pager (self._page_size-row chunks) back to its own page 0,
+        and refreshes the file-page nav label/buttons + the detail title. Shared by
+        _on_cell_activate() (initial load, always page 0) and
+        _prev_detail_file_page()/_next_detail_file_page() (paging through the real
+        file) so both go through the exact same bounded read + label logic."""
+        T = self.T
+        portal_folder = self._get_portal_folder()
         try:
-            values = prime_sieve_v1.read_prime_window(path)
+            values = read_hit_pattern_page(portal_folder, base_exponent, k, vid, page_index)
         except Exception as exc:
             messagebox.showerror(T("const_records.error_dialog_title"), str(exc))
             return
         base = 10 ** base_exponent
         self._detail_rows = [(v, v - base) for v in values]
-        self._detail_context = {"base_exponent": base_exponent, "pattern": pattern}
-        self.detail_label_var.set(
-            T("const_records.detail_title", exp=base_exponent, id=vid, count=len(values)))
+        self._detail_file_page_index = page_index
+        pattern = self._detail_context["pattern"] if self._detail_context else {"id": vid}
+        self.detail_label_var.set(T(
+            "const_records.detail_title_file_page", exp=base_exponent, id=pattern.get("id", vid),
+            page=page_index + 1, page_total=self._detail_file_page_count,
+            count=f"{len(values):,}"))
+        self.detail_file_page_label.set(T(
+            "const_records.file_page_label", page=page_index + 1, total=self._detail_file_page_count))
+        self.detail_file_prev_btn.configure(state="normal" if page_index > 0 else "disabled")
+        self.detail_file_next_btn.configure(
+            state="normal" if page_index < self._detail_file_page_count - 1 else "disabled")
+        self.detail_export_range_btn.configure(state="normal")
         self._show_detail_page(0)
+
+    def _prev_detail_file_page(self):
+        if self._detail_context is None or self._detail_file_page_index <= 0:
+            return
+        ctx = self._detail_context
+        self._load_detail_file_page(
+            ctx["base_exponent"], ctx["pattern"]["k"], ctx["pattern"]["id"],
+            self._detail_file_page_index - 1)
+
+    def _next_detail_file_page(self):
+        if self._detail_context is None or self._detail_file_page_index >= self._detail_file_page_count - 1:
+            return
+        ctx = self._detail_context
+        self._load_detail_file_page(
+            ctx["base_exponent"], ctx["pattern"]["k"], ctx["pattern"]["id"],
+            self._detail_file_page_index + 1)
+
+    def _export_page_range_csv(self):
+        """"Eksportuj zakres stron" button -- exports ONLY hit-file pages [from, to] of
+        the pattern currently drilled into (self._detail_context), via
+        iter_hit_pattern_page_range_rows() (see its own docstring for why this is
+        scoped to one pattern's page range rather than build_constellation_records_
+        detail_rows()'s whole-floor-range export: even a safely-streamed export of an
+        entire multi-billion-hit pattern would still be a file nobody can use).
+        1-based in the UI (page 1 = the first hit-file page), converted to 0-based
+        for the backend call."""
+        if self._detail_context is None or self._busy:
+            return
+        T = self.T
+        try:
+            page_from = int(self.detail_export_from_entry.get().strip()) - 1
+            page_to = int(self.detail_export_to_entry.get().strip()) - 1
+        except ValueError:
+            messagebox.showerror(T("const_records.error_dialog_title"),
+                                  T("const_records.export_range_invalid"))
+            return
+        if page_from > page_to:
+            messagebox.showerror(T("const_records.error_dialog_title"),
+                                  T("const_records.export_range_invalid"))
+            return
+        ctx = self._detail_context
+        default_name = (f"constellation_k{ctx['pattern']['k']}_v{ctx['pattern']['id']}_"
+                         f"10p{ctx['base_exponent']}_pages{page_from + 1}-{page_to + 1}_"
+                         f"{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
+        path = filedialog.asksaveasfilename(
+            title=T("const_records.export_range_button"),
+            initialdir=self._get_portal_folder(),
+            initialfile=default_name,
+            defaultextension=".csv", filetypes=[("CSV", "*.csv")])
+        if not path:
+            return
+        self._start_job({
+            "mode": "export_page_range_csv", "k": ctx["pattern"]["k"],
+            "base_exponent": ctx["base_exponent"], "variant_id": ctx["pattern"]["id"],
+            "page_from": page_from, "page_to": page_to, "path": path,
+        }, T("const_records.status_exporting_range"))
 
     def bind_jump_to_hits(self, jump_to_hits):
         """Registers the callable used by _on_detail_activate() to jump into the
@@ -470,9 +680,9 @@ class ConstellationsRecordsTab(BaseTab):
         just triggered from here instead.
 
         Each row here is a hit file's raw stored value, i.e. a tuple's BASE element
-        (position 0 -- see _on_cell_activate's read of prime_sieve_v1.read_prime_window,
-        which returns exactly those base values), so the jump always targets position
-        0, never needing to look up which tuple position this row is."""
+        (position 0 -- see _on_cell_activate's read via read_hit_pattern_page(), which
+        returns exactly those base values), so the jump always targets position 0,
+        never needing to look up which tuple position this row is."""
         sel = self.detail_list.curselection()
         if not sel or not self._detail_rows or self._detail_context is None:
             return

@@ -35,7 +35,12 @@ _PIETRO_DIR_RE = re.compile(r"^10p(\d+)$")
 _SOURCE_WINDOW_RE = re.compile(r"^PRIME_WINDOW_10p\d+_off_(\d+)(M)?\.bin$")
 _CONSTELLATION_K_RE = re.compile(r"^k(\d+)$")
 _CONSTELLATION_VARIANT_RE = re.compile(r"^variant(\d+)$")
-_HITS_FILE_RE = re.compile(r"^HITS_10p\d+_k\d+_v\d+\.bin$")
+# Matches both the original single cumulative hit file AND a paged one's page files --
+# see primeatlas/manifest.py's own _HITS_FILE_RE (kept in sync with it) and
+# prime_sieve/hit_paging.py for why. Cosmetic here (only feeds the delete-confirmation
+# count below -- the actual delete is a whole-folder shutil.rmtree(), unaffected by
+# this regex either way), but a stale narrower regex would undercount a paged pattern.
+_HITS_FILE_RE = re.compile(r"^HITS_10p\d+_k\d+_v\d+(_page\d+)?\.bin$")
 
 
 class PortalWiper:

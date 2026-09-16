@@ -33,7 +33,18 @@ _PIETRO_DIR_RE = re.compile(r"^10p(\d+)$")
 _SOURCE_WINDOW_RE = re.compile(r"^PRIME_WINDOW_10p\d+_off_(\d+)(M)?\.bin$")
 _CONSTELLATION_K_RE = re.compile(r"^k(\d+)$")
 _CONSTELLATION_VARIANT_RE = re.compile(r"^variant(\d+)$")
-_HITS_FILE_RE = re.compile(r"^HITS_10p\d+_k\d+_v\d+\.bin$")
+# Matches both the original single cumulative hit file AND a paged one's page files
+# (see prime_sieve/hit_paging.py) -- "_page\d+" is optional so the unpaged case (the
+# vast majority of patterns) keeps matching exactly as before.
+_HITS_FILE_RE = re.compile(r"^HITS_10p\d+_k\d+_v\d+(_page\d+)?\.bin$")
+# hit_paging.py's own per-(floor,k,variant) metadata file -- NOT a hit file, but just as
+# essential to back up/restore: without it, a paged pattern's page files are orphaned
+# (is_paged() would report False, and a future append would start a fresh, wrong,
+# unpaged HITS_....bin instead of continuing the existing pages -- see hit_paging.py's
+# own module docstring). Included in the SAME hit_files list ConstellationSnapshot
+# builds below -- that list is just "relative paths this floor's constellations/ backup
+# needs to contain", indifferent to whether an entry is page data or its metadata.
+_PAGES_META_RE = re.compile(r"^" + re.escape("PAGES_META.json") + r"$")
 
 TOTALS_CACHE_FILENAME = ".portal_totals_cache.json"
 SIEVING_CACHE_FILENAME = "sieving_primes_count_cache.json"
@@ -191,7 +202,7 @@ class ConstellationSnapshot:
                     if not _CONSTELLATION_VARIANT_RE.match(variant_name) or not os.path.isdir(variant_path):
                         continue
                     for fname in os.listdir(variant_path):
-                        if _HITS_FILE_RE.match(fname):
+                        if _HITS_FILE_RE.match(fname) or _PAGES_META_RE.match(fname):
                             hit_files.append(f"{k_name}/{variant_name}/{fname}")
         checkpoint_path = os.path.join(const_dir, "CHECKPOINT.txt")
         checkpoint_text = None

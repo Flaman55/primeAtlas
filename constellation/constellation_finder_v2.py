@@ -116,6 +116,7 @@ _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(_SCRIPT_DIR, "..", "prime_sieve"))
 import prime_sieve_v1  # noqa: E402
 import window_sharding  # noqa: E402
+import hit_paging  # noqa: E402
 
 from pattern_catalog_v1 import PATTERN_CATALOG  # noqa: E402
 
@@ -604,7 +605,21 @@ def _resolve_last_value(base_exponent, k, variant_id, disk_cache):
     RAM, which is exactly what crashed the real WSL process here. The lean version
     walks the same gap stream (same O(count) time -- there's no way around that for a
     sequentially gap-encoded format) but keeps only the running last value, never a
-    growing list."""
+    growing list.
+
+    Checked FIRST, ahead of both caches below: whether this pattern has been migrated to
+    pages (hit_paging.is_paged()) -- once migrated, the original single file no longer
+    grows (see append_hits()'s own docstring) and its LAST_VALUES.tsv disk-cache entry
+    (if any, from before migration) would only ever go stale, never self-correct, since
+    the count-vs-header validation below reads hpath, which migration renames away. A
+    paged pattern's PAGES_META.json is itself always kept in sync on every append (see
+    hit_paging.append_hits_paged()), so it can be trusted directly with no header
+    cross-check needed -- O(1) regardless of total_count, same as the disk-cache fast
+    path aims for, but without that path's staleness risk for a paged pattern."""
+    vdir = hit_paging.variant_dir(PORTAL_FOLDER, base_exponent, k, variant_id)
+    if hit_paging.is_paged(vdir):
+        meta = hit_paging.read_meta(vdir)
+        return meta["last_value"], meta["total_count"]
     hpath = hit_file_path(base_exponent, k, variant_id)
     key = (k, variant_id)
     if disk_cache is not None and key in disk_cache and os.path.exists(hpath):
@@ -655,11 +670,26 @@ def append_hits(base_exponent, k, variant_id, new_sorted_starts, known_last_valu
     on first use, same auto-create-what's-missing approach as the scanner uses for
     source_primes/.
 
-    `known_last_value` is threaded straight through to append_prime_window() -- see its
-    docstring. Callers making many appends to the same (k, variant) across one
-    process_floor() run (the common case: k=2..5 hit files pick up new entries on almost
-    every window) should track it themselves and pass it, instead of letting
-    append_prime_window() re-decode the whole accumulated hit file on every single call."""
+    Paging-aware (see hit_paging.py's own module docstring for why: PGS2's gap-encoding
+    has no random access, so a dense pattern's single cumulative file -- floor 25's k=2,
+    ~1.5 billion entries -- makes any read past the header either OOM-risk a full decode
+    or hang the GUI thread). If this pattern has already been migrated to pages
+    (hit_paging.is_paged() true for its variant{ID}/ folder), the new values go to the
+    currently-open page instead of the original single file, which a migrated pattern no
+    longer grows. Patterns never migrated (the vast majority -- see hit_paging.py's own
+    "dual-mode by design" docstring) keep using the original single-file path completely
+    unchanged, `known_last_value` included.
+
+    `known_last_value` is threaded straight through to append_prime_window() (unpaged
+    path only -- see its own docstring). Callers making many appends to the same
+    (k, variant) across one process_floor() run (the common case: k=2..5 hit files pick
+    up new entries on almost every window) should track it themselves and pass it,
+    instead of letting append_prime_window() re-decode the whole accumulated hit file on
+    every single call."""
+    vdir = hit_paging.variant_dir(PORTAL_FOLDER, base_exponent, k, variant_id)
+    if hit_paging.is_paged(vdir):
+        hit_paging.append_hits_paged(vdir, base_exponent, k, variant_id, new_sorted_starts)
+        return
     path = hit_file_path(base_exponent, k, variant_id)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     prime_sieve_v1.append_prime_window(path, new_sorted_starts, known_last_value=known_last_value)
