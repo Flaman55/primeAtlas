@@ -6,14 +6,14 @@ orchestrator_v3.py direct, constellation_finder_v1.py, ktuple_sieve_v1.py), the 
 runners (WslLoggedRunner/LocalLoggedRunner), and the WSL RAM/CPU-probing helpers used by
 the Quick-gen panel's "Auto" suggestions.
 
-Extracted from prime_atlas_v1.py during the refactor branch's Faza 3 (tab-by-tab
-backend/UI split, 2026-08-23), alongside the tab's own UI split (see generation_tab.py's
-own docstring). This is the single largest of the five tab extractions -- the Generation
-tab launches every generation/search engine in the app and is the one most already
-covered by dedicated regression tests (see unitTests/test_generation_window_arithmetic.py
-and unitTests/test_generation_launch_planning.py, written in this same Faza 3 pass
-specifically to catch the three documented historical bugs living in this arithmetic:
-floor-25 MemoryError, floor-7-130M-numbers boundary bug, 1001-windows-for-1000 off-by-one).
+Extracted from prime_atlas_v1.py during the tab-by-tab backend/UI split, alongside the
+tab's own UI split (see generation_tab.py's own docstring). This is the single largest
+of the five tab extractions -- the Generation tab launches every generation/search
+engine in the app and is the one most already covered by dedicated regression tests
+(see unitTests/test_generation_window_arithmetic.py and
+unitTests/test_generation_launch_planning.py, which cover the three documented
+historical bugs living in this arithmetic: floor-25 MemoryError, floor-7-130M-numbers
+boundary bug, 1001-windows-for-1000 off-by-one).
 
 build_primesieve_query_argv()/run_primesieve_query_wsl() deliberately did NOT move here
 even though they sit in the same original file region -- they belong to the UNRELATED
@@ -75,16 +75,14 @@ QUICK_GEN_MAX_WINDOW_WIDTH = 10_000_000  # window width the (future) range ->
                           # actually has rather than being pinned to one fixed size.
 
 # LOW_FLOOR_CUTOFF/list_pietra/list_source_files/_OFFSET_FROM_NAME_RE/_offset_from_filename/
-# list_source_filenames moved to primeatlas/storage.py during the refactor branch's Faza 3
-# (tab-by-tab backend/UI split, 2026-08-23), alongside the "Prime numbers" tab's own UI split
-# (primeatlas/primes_tab.py) -- see that module's own docstring for why this whole layer
-# moved together rather than only the pieces the Primes tab itself needs. All five names are
-# imported back at this file's top, unchanged, for every other tab that also calls them.
+# list_source_filenames live in primeatlas/storage.py, alongside the "Prime numbers" tab's own
+# UI split (primeatlas/primes_tab.py) -- see that module's own docstring for why this whole
+# layer moved together rather than only the pieces the Primes tab itself needs. All five names
+# are imported back at this file's top, unchanged, for every other tab that also calls them.
 
-# BENCHMARK_TREE_HIDDEN_COLUMNS/BENCHMARK_PAGE_SIZE/_order_benchmark_tree_columns moved to
-# primeatlas/benchmark.py during the refactor branch's Faza 3 (tab-by-tab backend/UI split,
-# 2026-08-23), alongside the rest of the Benchmark tab's pure logic -- see that module's own
-# docstring. Only read_benchmark_log() is still imported back here (below), for
+# BENCHMARK_TREE_HIDDEN_COLUMNS/BENCHMARK_PAGE_SIZE/_order_benchmark_tree_columns live in
+# primeatlas/benchmark.py, alongside the rest of the Benchmark tab's pure logic -- see that
+# module's own docstring. Only read_benchmark_log() is still imported back here (below), for
 # reload_primes_tree()'s own use (the "Prime numbers" tab's generation-time column).
 
 
@@ -93,9 +91,8 @@ QUICK_GEN_MAX_WINDOW_WIDTH = 10_000_000  # window width the (future) range ->
 # be unit-tested on its own, without a display.
 # ------------------------------------------------------------------------------------------
 
-# _safe_prime_gap_margin/MissingStorageRangeError/read_is_prime_from_storage moved to
-# primeatlas/research_goldbach.py during the refactor branch's Faza 3 (tab-by-tab
-# backend/UI split, 2026-08-23), alongside the Goldbach sub-tab's own UI split (see
+# _safe_prime_gap_margin/MissingStorageRangeError/read_is_prime_from_storage live in
+# primeatlas/research_goldbach.py, alongside the Goldbach sub-tab's own UI split (see
 # primeatlas/research_goldbach_tab.py's own docstring) -- neither is used by anything
 # else in this file.
 
@@ -144,14 +141,12 @@ def compute_totals_bumps_from_new_rows(rows, before_count):
 
 def count_existing_windows(portal_folder, base_exponent):
     """Real count of window FILES actually on disk for this floor -- len(list_source_
-    filenames(...)), nothing more. Added 2026-08-18 at Artur's request after a real-world
-    screenshot showed a nonsensical "windows in storage" figure
-    (234,567,890,123,458,790) in the Exploration-mode Quick-gen summary: that number was
-    find_continuation_target_idx()'s CONTINUATION POINT (highest existing target_idx +
-    1), which only equals the real file count on a floor with zero gaps -- once direct-
-    start writes made genuine interior gaps possible (see find_first_gap_target_idx()'s
-    own docstring), the two numbers can diverge arbitrarily, and the continuation point
-    alone is meaningless as a "how much do I actually have" figure for a person to read.
+    filenames(...)), nothing more. Distinct from find_continuation_target_idx()'s
+    CONTINUATION POINT (highest existing target_idx + 1), which only equals the real
+    file count on a floor with zero gaps -- once direct-start writes made genuine
+    interior gaps possible (see find_first_gap_target_idx()'s own docstring), the two
+    numbers can diverge arbitrarily, and the continuation point alone is meaningless as
+    a "how much do I actually have" figure for a person to read.
     This function is for DISPLAY ONLY -- every launch/continuation decision must keep
     using find_continuation_target_idx() (or find_first_gap_target_idx() for the gap-
     fill strategy), since those need the highest-existing-POSITION semantics, not a
@@ -166,8 +161,8 @@ def find_continuation_target_idx(portal_folder, base_exponent, window_m):
     find_auto_start()'s logic, built on list_source_filenames() (already parses each
     PRIME_WINDOW_*.bin's offset straight from its filename, no file opens). Returns the
     target_idx the REAL orchestrator will actually continue from the next time it runs
-    against this floor (0 if nothing exists yet) -- used by the Quick generation
-    panel to preview/validate a requested range against what generation can truthfully
+    against this floor (0 if nothing exists yet) -- used by the Quick generation panel
+    to preview/validate a requested range against what generation can truthfully
     do, WITHOUT importing orchestrator_v2_debug itself: that module's import
     chain ctypes-loads a Linux .so a few hops down (prime_sieve_v2_debug ->
     prime_sieve_engine), which this native-Windows tkinter app must never require just to
@@ -189,10 +184,10 @@ def find_first_gap_target_idx(portal_folder, base_exponent, window_m):
     """Returns the target_idx of the FIRST missing window on this floor (0 if nothing
     exists yet) -- where a 'fill gaps first' continuation strategy should start next, as
     opposed to find_continuation_target_idx()'s own 'extend past the highest existing
-    file' strategy (added 2026-08-18, at Artur's request, once direct-start generation --
-    see _launch_direct_window_range() -- made genuine gaps possible for the first time;
-    before that, every floor was always contiguous from index 0, so the two strategies
-    always agreed). Returns the exact same value as find_continuation_target_idx() when
+    file' strategy. Direct-start generation (see _launch_direct_window_range()) made
+    genuine gaps possible for the first time; before that, every floor was always
+    contiguous from index 0, so the two strategies always agreed. Returns the exact
+    same value as find_continuation_target_idx() when
     the floor genuinely has no gaps (still the common case) -- only differs once one
     exists. list_source_filenames() is already sorted ascending by offset, so this is a
     single linear pass comparing each file's target_idx against the NEXT expected one,
@@ -218,8 +213,8 @@ def _trim_existing_from_target_idx_range(portal_folder, base_exponent, target_id
     ALREADY exists at its own front and back edges -- write_prime_window() (every engine
     in prime_sieve/) always overwrites unconditionally, with no existence check of its
     own, so without this a request that happens to overlap already-generated windows
-    would harmlessly but needlessly re-sieve and rewrite them (added 2026-08-18, at
-    Artur's request). Only trims contiguous existing runs at the two EDGES of the
+    would harmlessly but needlessly re-sieve and rewrite them. Only trims contiguous
+    existing runs at the two EDGES of the
     request, not scattered gaps in its interior -- detecting/skipping an interior gap
     would need one launch per gap instead of one per request; an interior already-existing
     window still gets safely, harmlessly rewritten with identical content, same as before
@@ -266,18 +261,18 @@ def find_highest_populated_floor(portal_folder):
 
 
 # read_source_file_headers/TOTALS_CACHE_FILENAME/_totals_cache_path/load_totals_cache/
-# save_totals_cache/update_pietro_totals_cache moved to primeatlas/storage.py during the
-# refactor branch's Faza 3 (2026-08-23) -- see that module's own docstring. All six names
-# (except the private _totals_cache_path) are imported back at this file's top.
+# save_totals_cache/update_pietro_totals_cache live in primeatlas/storage.py -- see that
+# module's own docstring. All six names (except the private _totals_cache_path) are
+# imported back at this file's top.
 
 
 # hit_file_path/floor_has_constellation_hits/list_constellation_hits/
 # group_constellation_hits_by_k/build_constellation_records_table/
 # build_constellation_records_detail_rows/render_constellation_records_pdf/
-# find_constellation_participation moved to primeatlas/constellations.py during the
-# refactor branch's Faza 3 (2026-08-23), alongside the Constellations tab's own UI split
-# (primeatlas/constellations_hits_tab.py, primeatlas/constellations_calc_tab.py,
-# primeatlas/constellations_records_tab.py) -- see each module's own docstring.
+# find_constellation_participation live in primeatlas/constellations.py, alongside the
+# Constellations tab's own UI split (primeatlas/constellations_hits_tab.py,
+# primeatlas/constellations_calc_tab.py, primeatlas/constellations_records_tab.py) --
+# see each module's own docstring.
 # find_constellation_participation/floor_has_constellation_hits/list_constellation_hits
 # are imported back at this file's top (still used by the shared search worker's
 # _search_job, by _constellations_tree_scan, and by _on_const_search_result, all still
@@ -317,11 +312,10 @@ def _eval_quick_number(raw):
     cleaned = re.sub(r"[\s,]", "", raw)
     if not cleaned:
         return None
-    # [ADDED 2026-09-12, Artur's own ask: "pisanie 25 zer nie jest przyjemne"]
     # Tried FIRST, ahead of the general eval() below: parse_big_int recognizes
     # a plain integer, "a*10**b"/"a*10^b", or scientific notation ("aEb")
-    # using EXACT integer arithmetic only -- never float() -- so a magazyn-
-    # floor-scale value (piętro 25 alone is 26 digits) round-trips exactly no
+    # using EXACT integer arithmetic only -- never float() -- so a storage-
+    # floor-scale value (floor 25 alone is 26 digits) round-trips exactly no
     # matter how large the exponent. The eval() fallback stays exactly as it
     # was for every other input this function has always accepted (general
     # arithmetic expressions like "10**5+3", which parse_big_int intentionally
@@ -553,14 +547,13 @@ def recommended_digit_sweep_n_locations(base_exponent, window_m, target_windows_
     already used elsewhere in this file, e.g. LOW_FLOOR_CUTOFF/QUICK_GEN_MAX_WINDOW_WIDTH
     right below).
 
-    Added 2026-08-19 after Artur pointed out that the shared 1000-window default left
-    each individual digit branch only ~4-5 windows deep (40M numbers) when he'd
-    pictured each branch getting close to the ~40-window (400M number) depth his own
-    "1000 windows / 25 positions = 40 per position" mental model implied per BRANCH,
-    not per POSITION split across its ~10 branches. Rather than silently reinterpret
-    what n_locations means, this just recommends an n_locations big enough that BOTH
-    readings coincide: every position still gets swept in the SAME batch (matching
-    his explicit goal of the whole floor's magnitude range examined at once), and
+    The shared 1000-window default leaves each individual digit branch only ~4-5
+    windows deep (40M numbers) under a per-POSITION reading of n_locations ("1000
+    windows / 25 positions = 40 per position"), versus the ~40-window (400M number)
+    depth the same arithmetic gives under a per-BRANCH reading, split across its ~10
+    branches. Rather than silently pick one interpretation, this recommends an
+    n_locations big enough that BOTH readings coincide: every position still gets
+    swept in the SAME batch (the whole floor's magnitude range examined at once), and
     every digit branch within it gets close to `target_windows_per_branch` windows.
 
     Returns the recommended n_locations (an int) -- a plain suggestion, like every
@@ -610,8 +603,6 @@ PRIMESIEVE_MAX_WIDTH_MULT = PRIMESIEVE_MAX_STOP // QUICK_GEN_MAX_WINDOW_WIDTH + 
 
 # ------------------------------------------------------------------------------------------
 # CUDASieve (optional GPU engine) -- argv builders + blocking WSL status/install calls.
-# Ported from the `cudasieve` branch's prime_atlas_v2.py (forked 2026-08-22, before this
-# refactor's tab-by-tab extraction existed) onto this module, task #459/cudasieve-v2 branch.
 # See prime_sieve/prime_sieve_cudasieve.py's own module header for what --status/
 # --fetch-license/--build each do and why the install consent-gate is split across two of
 # them; this is only the "how do I invoke it from Windows via wsl.exe" layer, same division
@@ -657,8 +648,8 @@ def run_cudasieve_wsl_blocking(argv, portal_folder, timeout=120):
     path, same as it already does for build_wsl_logged_command).
 
     Deliberately does NOT use the simple subprocess.run(cmd, timeout=timeout) pattern
-    run_primesieve_query_wsl() uses (primesieve_calc_tab.py) -- ported forward from a real,
-    confirmed-live bug hit on the `cudasieve` branch (2026-08-23):
+    run_primesieve_query_wsl() uses (primesieve_calc_tab.py) -- a real, confirmed-live
+    bug rules that pattern out here:
 
     1) subprocess.run() against wsl.exe's own stdout pipe hung indefinitely from within
        this windowed/console-less Tk process, even though a bare `wsl.exe -e bash -c
@@ -685,10 +676,10 @@ def run_cudasieve_wsl_blocking(argv, portal_folder, timeout=120):
     fixed here, since that function belongs to an unrelated tab.)
 
     The actual Popen/poll/log-read mechanics live in _run_wsl_blocking_via_logfile() below
-    -- factored out (2026-09-13) so primecount's own blocking WSL calls
-    (run_primecount_wsl_blocking(), added alongside the Badania -> Przyblizenia pi(x) tab's
-    "primecount" data-source mode) reuse this exact same hang-safe pattern instead of the
-    naive subprocess.run(..., timeout=...) run_primesieve_query_wsl() uses -- primecount's
+    -- factored out so primecount's own blocking WSL calls (run_primecount_wsl_blocking(),
+    used by the Badania -> Przyblizenia pi(x) tab's "primecount" data-source mode) reuse
+    this exact same hang-safe pattern instead of the naive subprocess.run(..., timeout=...)
+    run_primesieve_query_wsl() uses -- primecount's
     own calls (an apt-get install, or a pi_batch query against a deliberately huge x) are
     exactly the kind of longer-running WSL call most likely to actually trigger the timeout
     codepath this whole docstring is about, unlike a single sub-second primesieve query."""
@@ -844,9 +835,9 @@ def run_primecount_wsl_blocking(argv, portal_folder, timeout=120):
 def run_primecount_install_wsl_blocking(portal_folder, timeout=300):
     """Idempotent apt install of libprimecount + its dev headers (primecount,
     libprimecount8, libprimecount-dev, libprimecount-dev-common), run as root inside WSL
-    (`wsl.exe -u root` -- verified live, 2026-09-13, that this needs no password at all,
-    regardless of whether the distro's own interactively-configured default user has
-    passwordless sudo or not). Safe to click more than once -- apt-get install on
+    (`wsl.exe -u root` -- needs no password at all, regardless of whether the distro's
+    own interactively-configured default user has passwordless sudo or not). Safe to
+    click more than once -- apt-get install on
     already-installed packages is a fast no-op.
 
     NOT a python3-script invocation (unlike every other WSL call in this module) -- the
@@ -866,10 +857,9 @@ def run_primecount_install_wsl_blocking(portal_folder, timeout=300):
     REQUIRED_APT_PACKAGES flow -- that one handles enabling WSL itself, installing a
     distro, etc. (Administrator-elevated Windows-side steps this on-demand installer has
     no business touching, since by the time ANY tab is usable, WSL and its distro
-    already work) -- per Artur's own already-recorded design decision there (2026-09-02:
-    research-module-specific optional C libraries get an on-demand install button in
-    Settings -> Aktualizacje, next to whichever Badania sub-tab first needs them, not a
-    blanket first-run install everyone pays for)."""
+    already work). Research-module-specific optional C libraries get an on-demand
+    install button in Settings -> Aktualizacje, next to whichever Badania sub-tab first
+    needs them, not a blanket first-run install everyone pays for."""
     log_path, exit_path, _run_id = generation_log_paths(portal_folder, "primecount_install")
     log_wsl = windows_path_to_wsl(log_path)
     exit_wsl = windows_path_to_wsl(exit_path)
@@ -971,7 +961,7 @@ def build_hybrid_argv(base_exponent, iterations, width_windows, filter_prime_cou
     determined by the visible ``filter_prime_count`` (``k_adv``), not by a fixed
     numeric-width multiplier: the runner derives its exact extension bound only after
     it has built that filter-prime prefix.  The base floor selects the existing,
-    continuous magazyn that supplies MAIN; ``iterations`` requests successive hybrid
+    continuous storage that supplies MAIN; ``iterations`` requests successive hybrid
     extensions of that base.
 
     CLI order is fixed now, before the runner exists, so the GUI and runner can be
@@ -1005,9 +995,8 @@ def build_hybrid_narrow_argv(start, end, main_cap, filter_prime_count, write_fil
 CUDASIEVE_MIN_PRINTABLE_TOP = 2 ** 40
 
 # CUDASieve's own --help text documents examples up to 2**64 (e.g. "-b 2**64-2**35-2**30 -t
-# 2**64-2**35"), confirmed on real hardware (RTX 5070, 2026-08-23, `cudasieve` branch) --
-# same uint64_t domain as libprimesieve's own PRIMESIEVE_MAX_STOP, so the same
-# ceiling/truncation-note logic applies.
+# 2**64-2**35") -- same uint64_t domain as libprimesieve's own PRIMESIEVE_MAX_STOP, so the
+# same ceiling/truncation-note logic applies.
 CUDASIEVE_MAX_STOP = 2 ** 64 - 1
 CUDASIEVE_MAX_WIDTH_MULT = CUDASIEVE_MAX_STOP // QUICK_GEN_MAX_WINDOW_WIDTH + 1
 
@@ -1073,8 +1062,8 @@ def build_constellation_finder_argv(base_exponent=None, max_windows=None, script
     this script's low per-window print volume made it the one where the default
     full-buffering was actually reported as a problem.
 
-    max_windows (added 2026-09-13, see constellation_finder_v2.process_floor()'s own
-    docstring for the full "floor 25 crashes WSL at scale" story this caps): omitted
+    max_windows (see constellation_finder_v2.process_floor()'s own docstring for the
+    full "floor 25 crashes WSL at scale" story this caps): omitted
     entirely when None, same "don't pass what wasn't explicitly set" shape as
     base_exponent -- callers use this to bound a single run's own file-open volume,
     letting generation_tab.py's own batch-continuation logic relaunch a fresh WSL
@@ -1103,7 +1092,7 @@ def read_constellation_checkpoint(portal_folder, base_exponent):
     reading three lines of a text file. Returns None if the floor has no checkpoint
     yet (never scanned, or scanned floor doesn't exist).
 
-    Added 2026-09-13 for the auto-retry logic in generation_tab.py's own
+    Used by the auto-retry logic in generation_tab.py's own
     _maybe_auto_retry_constellation() -- comparing this before/after a relaunch is how
     that method tells "genuine forward progress" apart from "relaunching into the same
     dead end"."""
@@ -1201,7 +1190,7 @@ def build_wsl_logged_command(argv, windows_log_path, windows_exit_path, portal_f
     path, passed explicitly by the caller (see this module's own docstring for why -- this
     function no longer reads a bare PORTAL_FOLDER global).
 
-    use_known_pi_seed (default False, Artur's idea, 2026-08-27): sets
+    use_known_pi_seed (default False): sets
     PRIMEATLAS_USE_KNOWN_PI_SEED=1 alongside CONSTELLATION_PORTAL_DIR below, using the exact
     same env-prefix mechanism -- see prime_sieve_v4_1.py's own __main__ block (where it's
     read) and count_sieving_primes_cached()'s docstring for what it does. Every call site
@@ -1394,7 +1383,7 @@ _GEN_SIEVE_PROGRESS_RE = re.compile(r"\[\+\] Progress: ([\d.]+)% \((\d+)/(\d+) b
 _GEN_SIEVE_DONE_RE = re.compile(r"\[\*\] TOTAL PRIMES FOUND this run:")
 _GEN_CONST_PROGRESS_RE = re.compile(r"\[CONSTELLATIONS v2\] (\d+)/(\d+): ")
 _GEN_CONST_DONE_RE = re.compile(r"\[CONSTELLATIONS v2\] Done\. New hits this run")
-# constellation_finder_v2.py's own "FLOOR PROGRESS" line (added 2026-09-14, printed once
+# constellation_finder_v2.py's own "FLOOR PROGRESS" line (printed once
 # near the start of every process_floor() call, right after the human-readable "N/M
 # windows to process" line): unlike _GEN_CONST_PROGRESS_RE above, whose own (done, total)
 # pair only ever counts this ONE --max-windows-capped batch (resetting to 1 every time
@@ -1566,7 +1555,7 @@ def build_pip_install_argv(package, upgrade=False):
     Python environment this GUI process itself runs under (sys.executable, not a bare
     "python"/"python3" on PATH, which could resolve to a different interpreter),
     --user so no admin/venv-write permission is required. Used by the Settings tab's
-    optional-library installer (Faza 2b) -- currently only sympy (see
+    optional-library installer -- currently only sympy (see
     primeatlas/primality.py's try_import_sympy()), kept general in case a future
     optional dependency needs the same treatment."""
     argv = [sys.executable, "-m", "pip", "install", "--user"]
@@ -1601,7 +1590,7 @@ class LocalLoggedRunner:
         self.output_queue = output_queue
         self.proc = None
         self._thread = None
-        # [ADDED 2026-09-10, Faza 13] Opt-in only -- every existing caller
+        # Opt-in only -- every existing caller
         # (e.g. settings_tab.py's sympy installer) keeps stdin inherited/
         # default exactly as before. RingsTab is the first caller that
         # needs a way to send commands INTO the running subprocess (see
@@ -1616,11 +1605,8 @@ class LocalLoggedRunner:
         # right default for WslLoggedRunner/env_setup.py's fire-and-forget callers,
         # which don't want piped output at all) -- this class DOES need piped output,
         # so those two keys must be overridden in the dict rather than also passed as
-        # separate keyword args to Popen(), which raised "got multiple values for
-        # keyword argument 'stdout'" the first time this path was actually exercised
-        # for real (RingsTab's launch, 2026-09-04 -- every earlier caller of this
-        # class, e.g. settings_tab.py's sympy installer, apparently never hit this
-        # live before).
+        # separate keyword args to Popen(), which raises "got multiple values for
+        # keyword argument 'stdout'" if done that way instead.
         kwargs = _popen_kwargs_no_window()
         kwargs["stdout"] = subprocess.PIPE
         kwargs["stderr"] = subprocess.STDOUT
@@ -1636,7 +1622,7 @@ class LocalLoggedRunner:
         self._thread.start()
 
     def send_line(self, text):
-        """[ADDED 2026-09-10, Faza 13] Write one line to the subprocess's
+        """Write one line to the subprocess's
         stdin (only meaningful when started with pipe_stdin=True -- a no-op,
         not an error, otherwise, since a caller checking is_running() first
         has no easy way to know in advance whether stdin was piped). Used by
