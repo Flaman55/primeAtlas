@@ -700,7 +700,7 @@ class ConstellationsRecordsTab(BaseTab):
         aren't read by the page-range export path itself, but matter the moment the
         user clears "Eksportuj strony od/do" to fall back to a whole-range export
         instead: left blank (the pre-jump default), that fallback would silently mean
-        "every floor in the whole magazyn," not "just the floor I jumped from"."""
+        "every floor in the whole archive," not "just the floor I jumped from"."""
         self.k_combo.set(str(pattern["k"]))
         self.floor_from_entry.delete(0, "end")
         self.floor_from_entry.insert(0, str(base_exponent))

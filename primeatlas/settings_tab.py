@@ -85,7 +85,7 @@ from tkinter import ttk, messagebox, filedialog
 from tkinter.scrolledtext import ScrolledText
 
 from .base_tab import BaseTab
-from .manifest import PietroSnapshot, ConstellationSnapshot
+from .manifest import FloorSnapshot, ConstellationSnapshot
 from .backup_store import BackupStore
 from .restore_job import (
     RestoreJob, restore_checkpoint_path, delete_extra_files,
@@ -198,7 +198,7 @@ class SettingsTab(BaseTab):
         self._full_backup_suggested = set()   # base_exponents currently >= threshold
 
         # Integrate-external-storage (primeatlas/storage_integrate.py) -- the systemic
-        # fix for manually merging a whole external magazyn folder-by-folder (see that
+        # fix for manually merging a whole external archive folder-by-folder (see that
         # module's own docstring). _storage_integrate_plan caches the last dry-run
         # preview (plan_integration()'s result) so the Integruj button acts on exactly
         # what was previewed, not a value that may have drifted since; same
@@ -579,16 +579,16 @@ class SettingsTab(BaseTab):
         # backup was made), restoring to that backup will delete the surplus -- that's
         # destructive, so there's a separate, explicit warning BEFORE the general restore
         # confirmation, with a chance to cancel right here.
-        extra_pietra = {
+        extra_floors = {
             be: d for be, d in self._diff_cache.items()
             if d.get("extra_windows") or d.get("extra_hits")
         }
-        if extra_pietra:
+        if extra_floors:
             extra_lines = "".join(
                 self.T("settings.restore_extra_line", base_exponent=be,
                         windows=len(d.get("extra_windows", [])),
                         hits=len(d.get("extra_hits", [])))
-                for be, d in sorted(extra_pietra.items()))
+                for be, d in sorted(extra_floors.items()))
             if not messagebox.askyesno(
                     self.T("settings.restore_title"),
                     self.T("settings.restore_confirm_delete_extra",
@@ -917,7 +917,7 @@ class SettingsTab(BaseTab):
                 continue
             if not other.needs_windows:
                 continue
-            snap = PietroSnapshot.scan(portal_folder, other.base_exponent)
+            snap = FloorSnapshot.scan(portal_folder, other.base_exponent)
             still_missing = sorted(set(other.missing_windows) - set(snap.filenames))
             if still_missing != other.missing_windows:
                 other.missing_windows = still_missing
@@ -974,7 +974,7 @@ class SettingsTab(BaseTab):
             return
         portal_folder = self.wsl["get_portal_folder"]()
         if kind == "loop":
-            current = PietroSnapshot.scan(portal_folder, step.base_exponent)
+            current = FloorSnapshot.scan(portal_folder, step.base_exponent)
             step.missing_windows = sorted(set(step.missing_windows) - set(current.filenames))
             if self._restore_low_floor_batch:
                 self._reconcile_low_floor_siblings(job, step, portal_folder)
@@ -1014,7 +1014,7 @@ class SettingsTab(BaseTab):
         self._update_restore_buttons()
         self._scan_incomplete_restores()
         # reload_primes_tree()/reload_constellations_tree() below now run the leftover-
-        # empty-directory sweep themselves (prune_empty_pietro_dirs(), see that function's
+        # empty-directory sweep themselves (prune_empty_floor_dirs(), see that function's
         # docstring) on EVERY refresh, not just after a restore -- delete_extra_files() can
         # leave behind directories it never itself touched (e.g. a constellations/k{K}/
         # variant{V}/ leaf that had nothing to delete), and restore isn't the only caller
@@ -1085,8 +1085,8 @@ class SettingsTab(BaseTab):
     def _on_delete_clicked(self):
         portal_folder = self.wsl["get_portal_folder"]()
         wiper = PortalWiper(portal_folder)
-        pietra, row_count = wiper.plan()
-        if not pietra and row_count == 0:
+        floors, row_count = wiper.plan()
+        if not floors and row_count == 0:
             messagebox.showinfo(self.T("settings.delete_title"),
                                  self.T("settings.delete_already_empty"))
             return
@@ -1098,7 +1098,7 @@ class SettingsTab(BaseTab):
 
         msg = self.T(
             "settings.delete_confirm_msg",
-            count=len(pietra), names=(", ".join(pietra) if pietra else "-"),
+            count=len(floors), names=(", ".join(floors) if floors else "-"),
             rows=row_count, folder=portal_folder)
         ttk.Label(dialog, text=msg, wraplength=480, justify="left").pack(padx=16, pady=16)
 
@@ -1565,7 +1565,7 @@ class SettingsTab(BaseTab):
 
     # ---- integrate external storage, primeatlas/storage_integrate.py ---------------------
     #
-    # Folds a whole external magazyn (downloaded from GitHub, copied from another
+    # Folds a whole external archive (downloaded from GitHub, copied from another
     # machine) into the current one, WITHOUT the person having to resolve file-copy
     # conflicts on benchmark_log.csv/.portal_totals_cache.json/
     # .portal_generation_settings.json themselves -- this section never touches any of

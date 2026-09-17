@@ -1,6 +1,6 @@
 """
 research_goldbach_tab.py -- ResearchGoldbachTab, the tkinter widgets for the Research
-tab's Goldbach sub-tab: structural-window check ("Sprawdz okno"), the on-disk-magazyn-
+tab's Goldbach sub-tab: structural-window check ("Sprawdz okno"), the on-disk-archive-
 sourced "Wizualizacja" diagram (both-base [4, Pmax+GOLDBACH_BOTH_BASE_PMIN] window,
 per Lean's additiveSelfContained_of_hasGoldbachRep), and the exhaustive "Rozloz liczbe"
 decomposition detail window.
@@ -175,7 +175,7 @@ class ResearchGoldbachTab(BaseTab):
         comparison since it inherits the parity problem). "Wizualizacja" draws the
         SAME [4, 2*Pmax] window (never a separate cascade step -- see
         goldbach_window.window_rows' own docstring), sourced from the on-disk
-        magazyn. Both run on the shared _goldbach_worker (background.PersistentWorker
+        archive. Both run on the shared _goldbach_worker (background.PersistentWorker
         -- see _goldbach_job's own docstring), the same shared-worker-thread pattern
         every job dispatcher in this app uses."""
         T = self.T
@@ -289,7 +289,7 @@ class ResearchGoldbachTab(BaseTab):
         the SAME n as the "Sprawdz okno" field) and draws the window Lean's
         additiveSelfContained_of_hasGoldbachRep proves unconditionally
         (goldbach_window.both_base_window_rows -- see that module's own
-        docstring), sourcing is_prime from the on-disk magazyn
+        docstring), sourcing is_prime from the on-disk archive
         (read_is_prime_from_storage) rather than a fresh sieve. Opens (or reuses,
         if already open) a Toplevel with its OWN od/do range + check button, so
         different n values can be explored there directly without bouncing back to
@@ -910,7 +910,7 @@ class ResearchGoldbachTab(BaseTab):
         reusing check_window()'s existing, already-verified contract unchanged).
 
         "viz" -- resolves Pmax the same way, but from is_prime sourced from the
-        on-disk magazyn (read_is_prime_from_storage, up to 2*n -- a safe upper
+        on-disk archive (read_is_prime_from_storage, up to 2*n -- a safe upper
         bound since Pmax <= n means 2*Pmax <= 2*n); Wizualizacja reads from
         storage rather than recomputing a fresh sieve. Then runs
         goldbach_window.window_rows(is_prime, Pmax, ...) over
@@ -1172,7 +1172,7 @@ class ResearchGoldbachTab(BaseTab):
     def _goldbach_show_window_visualization(self, result):
         """Redraws the "old base vs window" diagram into the PERSISTENT Wizualizacja
         Toplevel/Canvas (see _goldbach_ensure_viz_window) -- built from a REAL
-        window_rows() result sourced from the magazyn
+        window_rows() result sourced from the archive
         (read_is_prime_from_storage), covering EXACTLY the window [4, 2*Pmax] that
         "Sprawdz okno" also checks (never a separate cascade step -- see
         goldbach_window.window_rows' own docstring). The window itself, its n

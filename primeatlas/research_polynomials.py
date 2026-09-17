@@ -1,5 +1,5 @@
 """
-research_polynomials.py -- on-disk-magazyn storage bridge for the Research
+research_polynomials.py -- on-disk-archive storage bridge for the Research
 tab's Wielomiany pierwszorodne (prime-generating polynomials) sub-tab.
 
 Re-exports read_is_prime_from_storage/MissingStorageRangeError from

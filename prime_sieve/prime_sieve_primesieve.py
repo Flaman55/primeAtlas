@@ -188,7 +188,7 @@ def _low_floor_segments(base_power, combined_lo, combined_hi):
 # machinery in between, and that machinery used to be the ONLY thing writing this file.
 # Practical consequence this fixes: the Prime numbers tab's per-floor "generation time"
 # column (sourced entirely from benchmark_log.csv, see prime_atlas_v1.py's own
-# aggregate_write_seconds_by_pietro()) stayed blank for anything generated this way, and a
+# aggregate_write_seconds_by_floor()) stayed blank for anything generated this way, and a
 # backup taken afterward had nothing to preserve for it either (BackupManifest just snapshots
 # benchmark_log.csv's raw text -- see manifest.py's own docstring) -- restoring such a floor
 # via primesieve mode (now the restore driver's own preferred engine for any in-range floor
@@ -235,7 +235,7 @@ def _append_floor_meta_row(portal_folder, base_exponent, row):
     GUI package), same reasoning every other cross-folder duplication in this project
     already follows (see e.g. _ensure_benchmark_log_schema()'s own docstring above).
     Writes 10p{base_exponent}/floor_meta.json so this floor's generation history travels
-    with its own directory if it's ever copied into a different storage (magazyn) -- see
+    with its own directory if it's ever copied into a different storage (archive) -- see
     floor_meta.py's module docstring for the full rationale. Best-effort/non-fatal: any
     failure here must never break benchmark logging itself, which already succeeded by the
     time this is called."""

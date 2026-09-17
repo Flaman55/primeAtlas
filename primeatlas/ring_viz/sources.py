@@ -1,6 +1,6 @@
 """
 sources.py -- ring-array data sources for primeatlas/ring_viz/renderer.py:
-load_synthetic, load_sieve, load_magazyn.
+load_synthetic, load_sieve, load_archive.
 
 Kept independent of moderngl/glfw and of renderer.py's own GL-context state
 -- see renderer.py's own module docstring, data-source point 1, for why
@@ -13,7 +13,7 @@ where it came from.
 Self-contained sys.path bootstrap (mirrors renderer.py's own, see that
 file's module docstring for the full "why plain-script-path" explanation):
 needed so `import prime_sieve_v1` / `from primeatlas import storage` inside
-load_magazyn work whether this module is imported after renderer.py has
+load_archive work whether this module is imported after renderer.py has
 already run its own bootstrap, or on its own (e.g. directly from a test).
 """
 
@@ -47,7 +47,7 @@ def load_synthetic(count, seed=0):
 def load_sieve(upto):
     """Real sieve of Eratosthenes up to `upto` (moderate scale only -- this
     is O(upto) memory as a bytearray, fine into the hundreds of millions, not
-    intended for anything near magazyn scale; use --source magazyn for that).
+    intended for anything near archive scale; use --source archive for that).
     """
     if upto < 2:
         return np.empty(0, dtype=np.int64)
@@ -61,7 +61,7 @@ def load_sieve(upto):
     return np.array(primes, dtype=np.int64)
 
 
-def load_magazyn(portal_folder, upto, progress_callback=None, batch_files=64, from_n=0,
+def load_archive(portal_folder, upto, progress_callback=None, batch_files=64, from_n=0,
                   max_load_count=None):
     """Reads real primes in (from_n, upto] from an existing PrimeAtlas
     portal folder, via primeatlas.storage's own file-listing helpers and
@@ -77,7 +77,7 @@ def load_magazyn(portal_folder, upto, progress_callback=None, batch_files=64, fr
     already. `None` (default) reproduces the old unbounded behavior exactly.
     No fixed number is hardcoded here on purpose -- see this function's own
     REAL CEILING note below: nobody has benchmarked a safe figure on real
-    magazyn hardware yet, so the caller (rings_tab.py) makes this a plain
+    archive hardware yet, so the caller (rings_tab.py) makes this a plain
     configurable field instead of a guessed constant.
 
     Defaults to 0, i.e. every real prime is >0 so this
@@ -86,7 +86,7 @@ def load_magazyn(portal_folder, upto, progress_callback=None, batch_files=64, fr
     holds every prime up to some point (extend_buffer_if_needed in
     _run_visualization, renderer.py) fetch only the NEW primes past that
     point instead of re-reading and re-returning the whole [0, upto] range
-    again -- two cheap wins over a naive "just call load_magazyn(new_upto)
+    again -- two cheap wins over a naive "just call load_archive(new_upto)
     again" approach: (1) whole floors entirely below `from_n` are skipped
     without even listing their files (see the floor_hi_exclusive check
     below), and (2) within the one floor spanning `from_n`, files are still
@@ -97,7 +97,7 @@ def load_magazyn(portal_folder, upto, progress_callback=None, batch_files=64, fr
     This loader is hardened against portal-scale failure modes in three
     ways:
 
-    1. Enumerates REAL floors on disk via storage.list_pietra() instead of
+    1. Enumerates REAL floors on disk via storage.list_floors() instead of
        blindly incrementing floor with only a fixed sanity cap (`floor > 30`)
        as a guard. A gap in the portal (e.g. floor 5 populated, floor 6 not
        yet) no longer costs an empty list_source_filenames() call for every
@@ -121,7 +121,7 @@ def load_magazyn(portal_folder, upto, progress_callback=None, batch_files=64, fr
        primes_loaded_so_far)`, invoked after every batch, so a caller
        (primeatlas/rings_tab.py) can drive a real progress bar
        instead of a frozen GUI during what can be a multi-second load at
-       real magazyn scale. Deliberately NOT trying to make the load itself
+       real archive scale. Deliberately NOT trying to make the load itself
        faster (see this module's own docstring, data-source point 1, for why
        generation/read throughput is explicitly out of scope for this
        feature to optimize) -- only making the existing cost observable and
@@ -129,7 +129,7 @@ def load_magazyn(portal_folder, upto, progress_callback=None, batch_files=64, fr
 
     This loader's own cost is dominated by per-file open() latency on the
     FUSE-mounted storage drive (~5ms/file -- the same figure
-    storage.update_pietro_totals_cache()'s own docstring measured on this
+    storage.update_floor_totals_cache()'s own docstring measured on this
     exact drive), not the PGS decode work itself. That means the real
     bottleneck to watch for at very high N is FILE COUNT, not prime count: a
     floor with many thousands of small window files costs far more
@@ -159,7 +159,7 @@ def load_magazyn(portal_folder, upto, progress_callback=None, batch_files=64, fr
     # single file, for every floor except the one that actually straddles
     # from_n (at most one wasted full floor-listing in the worst case, none
     # in the common case of extending near the top).
-    floor_exponents = list(storage.list_pietra(portal_folder))
+    floor_exponents = list(storage.list_floors(portal_folder))
     for floor_index, base_exponent in enumerate(floor_exponents):
         floor_lo = 10 ** base_exponent if base_exponent > 0 else 0
         if floor_lo > upto:
@@ -181,10 +181,10 @@ def load_magazyn(portal_folder, upto, progress_callback=None, batch_files=64, fr
             for name, path in batch:
                 window_primes = prime_sieve_v1.read_prime_window(path)
                 # A hardcoded `dtype=np.int64` here overflows on a real
-                # pietro 25/27 window (~10**25-10**27 magnitude, see
+                # floor 25/27 window (~10**25-10**27 magnitude, see
                 # to_prime_array's own doc-comment) -- window files below
                 # the uint64 ceiling (the overwhelming majority of a
-                # magazyn) still get the exact same fast native array as
+                # archive) still get the exact same fast native array as
                 # before; only a window whose values actually exceed it
                 # pays the `object`-dtype cost, and only for that one
                 # window's own `chunks` entry --

@@ -3,7 +3,7 @@ test_delete_manager.py -- unit tests for primeatlas/delete_manager.py's totals-c
 hook, which sits alongside storage.py's persisted-totals feature (see that
 module's own docstring): deleting a floor must subtract its last-known total from the
 persisted global sum and drop its own cache entry (FloorWiper.execute_delete_floor(),
-via storage.remove_pietro_total()); wiping the WHOLE storage must remove the totals
+via storage.remove_floor_total()); wiping the WHOLE storage must remove the totals
 cache file outright (PortalWiper.execute()), since every floor it describes is gone at
 once.
 
@@ -63,8 +63,8 @@ def main():
         _write_window(portal, 9, 0, [7, 11])
 
         cache = {}
-        storage.update_pietro_totals_cache(portal, 5, cache)
-        storage.update_pietro_totals_cache(portal, 9, cache)
+        storage.update_floor_totals_cache(portal, 5, cache)
+        storage.update_floor_totals_cache(portal, 9, cache)
         storage.recompute_global_total(cache)
         storage.save_totals_cache(portal, cache)
         check(storage.get_global_total(cache) == (5, 2, cache["10p5"]["total_bytes"] + cache["10p9"]["total_bytes"]),

@@ -107,7 +107,7 @@ def plan_hybrid_extension(
     ``main_primes`` and ``filter_primes`` are trusted prime lists supplied by
     the storage/bootstrap layers; primality is intentionally not recomputed
     here.  Their boundaries are checked rigorously.  The caller must establish
-    that MAIN represents a complete continuous magazyn prefix by passing
+    that MAIN represents a complete continuous archive prefix by passing
     ``base_is_contiguous=True``.  Likewise the bootstrap layer must establish
     that no prime is skipped between MAIN, the filter list and its successor by
     passing ``filter_is_consecutive=True``.

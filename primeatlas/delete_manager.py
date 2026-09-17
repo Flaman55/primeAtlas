@@ -28,9 +28,9 @@ import csv
 
 import window_sharding
 
-from .storage import remove_pietro_total, load_totals_cache, save_totals_cache, TOTALS_CACHE_FILENAME
+from .storage import remove_floor_total, load_totals_cache, save_totals_cache, TOTALS_CACHE_FILENAME
 
-_PIETRO_DIR_RE = re.compile(r"^10p(\d+)$")
+_FLOOR_DIR_RE = re.compile(r"^10p(\d+)$")
 _SOURCE_WINDOW_RE = re.compile(r"^PRIME_WINDOW_10p\d+_off_(\d+)(M)?\.bin$")
 _CONSTELLATION_K_RE = re.compile(r"^k(\d+)$")
 _CONSTELLATION_VARIANT_RE = re.compile(r"^variant(\d+)$")
@@ -48,13 +48,13 @@ class PortalWiper:
 
     def plan(self):
         """Dry-run: what WOULD be deleted, for the confirmation dialog. Returns
-        (pietro_names, benchmark_row_count) without touching anything on disk."""
-        pietra = []
+        (floor_names, benchmark_row_count) without touching anything on disk."""
+        floors = []
         if os.path.isdir(self.storage_path):
             for name in os.listdir(self.storage_path):
-                if _PIETRO_DIR_RE.match(name) and os.path.isdir(os.path.join(self.storage_path, name)):
-                    pietra.append(name)
-        pietra.sort()
+                if _FLOOR_DIR_RE.match(name) and os.path.isdir(os.path.join(self.storage_path, name)):
+                    floors.append(name)
+        floors.sort()
         csv_path = os.path.join(self.storage_path, "benchmark_log.csv")
         row_count = 0
         if os.path.exists(csv_path):
@@ -63,16 +63,16 @@ class PortalWiper:
                     row_count = sum(1 for _ in csv.DictReader(f))
             except OSError:
                 row_count = 0
-        return pietra, row_count
+        return floors, row_count
 
     def execute(self):
-        """Actually deletes. Returns (deleted_pietra, errors) -- best-effort: a single
+        """Actually deletes. Returns (deleted_floors, errors) -- best-effort: a single
         locked/undeletable file shouldn't abort the whole wipe, it just gets reported so
         the caller can show the user what didn't go through."""
-        pietra, _ = self.plan()
+        floors, _ = self.plan()
         deleted = []
         errors = []
-        for name in pietra:
+        for name in floors:
             path = os.path.join(self.storage_path, name)
             try:
                 shutil.rmtree(path)
@@ -96,7 +96,7 @@ class PortalWiper:
         # Every floor this wipe just removed is gone from storage.py's persisted
         # totals cache too -- see storage.py's own module docstring for that feature.
         # A full wipe simply deletes the whole cache FILE outright
-        # rather than calling remove_pietro_total() per floor (see FloorWiper.
+        # rather than calling remove_floor_total() per floor (see FloorWiper.
         # execute_delete_floor() below for that narrower, single-floor version) --
         # every floor is gone at once here, so there is nothing left for the cache to
         # describe; the next floor generated writes a fresh cache from scratch.
@@ -162,7 +162,7 @@ class FloorWiper:
         found = []
         if os.path.isdir(self.storage_path):
             for name in os.listdir(self.storage_path):
-                m = _PIETRO_DIR_RE.match(name)
+                m = _FLOOR_DIR_RE.match(name)
                 if m and os.path.isdir(os.path.join(self.storage_path, name)):
                     found.append(int(m.group(1)))
         return sorted(found)
@@ -192,7 +192,7 @@ class FloorWiper:
 
         Also drops this floor's entry from storage.py's persisted totals cache and
         subtracts its last-known total from the persisted global sum
-        (remove_pietro_total()) -- see storage.py's own module docstring for that
+        (remove_floor_total()) -- see storage.py's own module docstring for that
         feature (one of three write-path hooks: generation, storage merge, and this
         one). Runs AFTER the rmtree succeeds, not before -- a floor whose files failed
         to delete should keep being counted in the totals, since it's still really
@@ -206,7 +206,7 @@ class FloorWiper:
             return False, str(e)
         _prune_benchmark_csv_rows(self.storage_path, base_exponent)
         cache = load_totals_cache(self.storage_path)
-        if remove_pietro_total(cache, base_exponent) is not None:
+        if remove_floor_total(cache, base_exponent) is not None:
             save_totals_cache(self.storage_path, cache)
         return True, None
 

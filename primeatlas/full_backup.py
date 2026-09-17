@@ -15,7 +15,7 @@ docstring only summarizes the DECIDED shape):
   - One PERSISTENT entry per floor at the destination, never a growing pile of
     timestamped snapshots. "Backing up" a floor again after it's grown just copies
     whatever's NEW since last time (via plan_floor_backup_update(), which reuses
-    manifest.py's own PietroSnapshot/ConstellationSnapshot scanning -- the same
+    manifest.py's own FloorSnapshot/ConstellationSnapshot scanning -- the same
     file-existence comparison that already drives the metadata-only restore's diff).
     copy_floor_increment() ONLY EVER ADDS files at the destination, never removes one,
     even if something vanished from the live side (e.g. via FloorWiper) -- a full backup
@@ -52,7 +52,7 @@ import datetime
 
 import window_sharding
 
-from .manifest import PietroSnapshot, ConstellationSnapshot, _save_json_atomic, _load_json_best_effort
+from .manifest import FloorSnapshot, ConstellationSnapshot, _save_json_atomic, _load_json_best_effort
 from .storage import _offset_from_filename
 from . import floor_meta
 
@@ -129,7 +129,7 @@ def _meta_path(destination_root, base_exponent):
 def list_destination_source_filenames(destination_root, base_exponent):
     """Real (non-.gz-suffixed) source-window filenames already present at the backup
     destination for this floor -- the destination-side half of the same comparison
-    PietroSnapshot.missing_from() does on the live-storage side."""
+    FloorSnapshot.missing_from() does on the live-storage side."""
     source_dir = _dest_source_dir(destination_root, base_exponent)
     if not os.path.isdir(source_dir):
         return []
@@ -202,7 +202,7 @@ def plan_floor_backup_update(storage_path, destination_root, base_exponent):
     """Compares the LIVE floor (storage_path) against what's already at the backup
     destination, returning {"missing_windows": [filenames...], "missing_hits": [relative
     paths...]} -- files that exist live but not yet at the destination, i.e. exactly what
-    copy_floor_increment() needs to copy. Reuses manifest.py's own PietroSnapshot/
+    copy_floor_increment() needs to copy. Reuses manifest.py's own FloorSnapshot/
     ConstellationSnapshot for the live side (the SAME scan already driving the
     metadata-only backup/restore's diff), so there's no second, independently-maintained
     notion of "what does this floor's data look like" to keep in sync.
@@ -210,11 +210,11 @@ def plan_floor_backup_update(storage_path, destination_root, base_exponent):
     Empty missing_windows/missing_hits (this floor is already fully backed up here) is a
     perfectly normal result, not an error -- the caller should treat that as "nothing to
     copy" rather than a failure."""
-    live_pietro = PietroSnapshot.scan(storage_path, base_exponent)
+    live_floor = FloorSnapshot.scan(storage_path, base_exponent)
     live_const = ConstellationSnapshot.scan(storage_path, base_exponent)
     dest_windows = set(list_destination_source_filenames(destination_root, base_exponent))
     dest_hits = set(list_destination_hit_filenames(destination_root, base_exponent))
-    missing_windows = sorted(set(live_pietro.filenames) - dest_windows)
+    missing_windows = sorted(set(live_floor.filenames) - dest_windows)
     missing_hits = sorted(set(live_const.hit_files) - dest_hits)
     return {"missing_windows": missing_windows, "missing_hits": missing_hits}
 
@@ -298,7 +298,7 @@ def copy_floor_increment(storage_path, destination_root, base_exponent,
     dest_const_dir = _dest_const_dir(destination_root, base_exponent)
 
     # source_primes/ is sharded into shard_NNNNN subfolders (see window_sharding.py,
-    # task #405) -- a filename alone (as stored in PietroSnapshot.filenames /
+    # task #405) -- a filename alone (as stored in FloorSnapshot.filenames /
     # missing_windows) no longer maps to os.path.join(source_dir, name) directly, so
     # resolve real paths via one list_sharded_files() walk up front rather than per file.
     live_paths_by_name = dict(window_sharding.list_sharded_files(source_dir))
@@ -373,11 +373,11 @@ def plan_floor_restore(storage_path, destination_root, base_exponent):
     restore_floor_from_full_backup() needs to copy back. Returns the same
     {"missing_windows": [...], "missing_hits": [...]} shape (named from the LIVE side's
     point of view, same as the metadata-only restore's diff_against_disk())."""
-    live_pietro = PietroSnapshot.scan(storage_path, base_exponent)
+    live_floor = FloorSnapshot.scan(storage_path, base_exponent)
     live_const = ConstellationSnapshot.scan(storage_path, base_exponent)
     dest_windows = set(list_destination_source_filenames(destination_root, base_exponent))
     dest_hits = set(list_destination_hit_filenames(destination_root, base_exponent))
-    missing_windows = sorted(dest_windows - set(live_pietro.filenames))
+    missing_windows = sorted(dest_windows - set(live_floor.filenames))
     missing_hits = sorted(dest_hits - set(live_const.hit_files))
     return {"missing_windows": missing_windows, "missing_hits": missing_hits}
 
@@ -508,7 +508,7 @@ def _read_benchmark_rows(storage_path):
 def aggregate_generation_seconds_by_floor(rows):
     """Sums total_seconds per floor across every benchmark_log.csv row that actually
     wrote files (write_files=="1") -- same filter and rationale as prime_atlas_v1.py's
-    own aggregate_write_seconds_by_pietro() (kept in sync by hand; see this module's own
+    own aggregate_write_seconds_by_floor() (kept in sync by hand; see this module's own
     docstring for why it isn't imported directly). Returns {base_exponent: total_seconds}."""
     totals = {}
     for row in rows:

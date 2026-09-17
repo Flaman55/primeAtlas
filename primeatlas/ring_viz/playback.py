@@ -108,7 +108,7 @@ def should_extend_buffer(n, ceiling, margin, range_mode, can_extend_source):
 
     `range_mode` and a data source that has nothing more to fetch anyway
     (`can_extend_source=False` -- see extend_buffer_if_needed's own
-    doc-comment for why only --source magazyn qualifies) both return False
+    doc-comment for why only --source archive qualifies) both return False
     unconditionally, same as can_start_playback/tick_next_n's own
     range_mode bypass: there is no "ceiling" concept worth extending in
     either case.
@@ -139,7 +139,7 @@ def next_buffer_ceiling(current_ceiling, margin):
 #: One full "orbit" (phase 0 back to 0) of the largest currently-active
 #: prime takes this many ticks in range mode -- see tick_next_n's own
 #: doc-comment for the derivation this feeds. Needed because at
-#: magazyn-floor-scale ranges (~10**25), phase = n mod prime advances by an
+#: archive-floor-scale ranges (~10**25), phase = n mod prime advances by an
 #: imperceptible fraction of the prime per tick unless the step size scales
 #: with the prime's magnitude. Purely a pacing constant -- tempo (ms/tick)
 #: is a separate, independent knob; not currently exposed as its own CLI
@@ -157,7 +157,7 @@ def tick_next_n(n, range_mode, ceiling, range_step=1):
     `range_step` -- the caller's own dynamically-computed step for RANGE
     MODE ONLY (see _run_visualization's own range_step computation,
     `max(1, largest_active_prime // _RANGE_STEP_ORBIT_TICKS)`). A fixed +1
-    step is imperceptible at magazyn-floor-scale primes (~10**25) loaded
+    step is imperceptible at archive-floor-scale primes (~10**25) loaded
     via --load-range: phase = n mod prime needs n to advance by a
     meaningful FRACTION of the prime's own value before any angular
     movement is visible at all, so scaling the step with the largest

@@ -223,8 +223,8 @@ def delete_extra_files(storage_path, base_exponent, extra_windows, extra_hits):
     "filename: OSError" strings."""
     deleted = 0
     errors = []
-    pietro_dir = os.path.join(storage_path, f"10p{base_exponent}")
-    source_dir = os.path.join(pietro_dir, "source_primes")
+    floor_dir = os.path.join(storage_path, f"10p{base_exponent}")
+    source_dir = os.path.join(floor_dir, "source_primes")
     # source_primes/ is sharded into shard_NNNNN subfolders (see window_sharding.py,
     # task #405) -- a plain filename from extra_windows no longer maps to
     # os.path.join(source_dir, fname) directly, so resolve real paths via one
@@ -244,7 +244,7 @@ def delete_extra_files(storage_path, base_exponent, extra_windows, extra_hits):
             touched_shard_dirs.add(os.path.dirname(path))
         except OSError as e:
             errors.append(f"{fname}: {e}")
-    const_dir = os.path.join(pietro_dir, "constellations")
+    const_dir = os.path.join(floor_dir, "constellations")
     touched_variant_dirs = set()
     for rel_path in extra_hits:
         path = os.path.join(const_dir, rel_path)
@@ -268,12 +268,12 @@ def delete_extra_files(storage_path, base_exponent, extra_windows, extra_hits):
         pruned += 1
     if _prune_if_empty(source_dir):
         pruned += 1
-    if _prune_if_empty(pietro_dir):
+    if _prune_if_empty(floor_dir):
         pruned += 1
     return deleted, pruned, errors
 
 
-def prune_empty_pietro_dirs(storage_path):
+def prune_empty_floor_dirs(storage_path):
     """Full bottom-up sweep over every 10p{N} folder directly under storage_path, removing
     any directory that has become empty -- source_primes/, constellations/k{K}/variant{V}/,
     the k{K} dir, constellations/ itself, and finally the 10p{N} floor dir.
@@ -298,10 +298,10 @@ def prune_empty_pietro_dirs(storage_path):
     for name in os.listdir(storage_path):
         if not (name.startswith("10p") and name[3:].isdigit()):
             continue
-        pietro_dir = os.path.join(storage_path, name)
-        if not os.path.isdir(pietro_dir):
+        floor_dir = os.path.join(storage_path, name)
+        if not os.path.isdir(floor_dir):
             continue
-        for dirpath, _dirnames, _filenames in os.walk(pietro_dir, topdown=False):
+        for dirpath, _dirnames, _filenames in os.walk(floor_dir, topdown=False):
             if _prune_if_empty(dirpath):
                 removed += 1
     return removed

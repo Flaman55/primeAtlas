@@ -8,7 +8,7 @@ recounting every prime -- this suite pins down exactly that, plus the "external 
 know this file's count" fallback (skip it, don't guess/read the file to find out).
 
 Uses real temporary directories on both the "external" and "destination" sides -- unlike
-storage.py's own bump_pietro_total()/remove_pietro_total() (pure, dict-only, see
+storage.py's own bump_floor_total()/remove_floor_total() (pure, dict-only, see
 test_storage.py), integrate_floor() is a real file-copying operation, so this suite
 exercises it end to end the same way test_window_sharding.py does for the sharded
 layout it also depends on.
@@ -76,7 +76,7 @@ def main():
         ext_cache = {}
         # Real scan for name_a/name_b only -- mimics "external side already visited this
         # floor once", then we DELETE name_c's entry to simulate it being unseen there.
-        storage.update_pietro_totals_cache(external, base_exponent, ext_cache)
+        storage.update_floor_totals_cache(external, base_exponent, ext_cache)
         del ext_cache[f"10p{base_exponent}"]["files"][name_c]
         ext_cache[f"10p{base_exponent}"]["total"] -= 5  # keep the entry internally consistent
         ext_cache[f"10p{base_exponent}"]["file_count"] -= 1
@@ -103,7 +103,7 @@ def main():
         # confirm the TRUE total once it actually reads every file's header, including
         # name_c -- proving the bump under-counted safely rather than over-counting.
         real_cache = dict(dest_cache)
-        real_total, real_file_count, _new_read, _bytes = storage.update_pietro_totals_cache(
+        real_total, real_file_count, _new_read, _bytes = storage.update_floor_totals_cache(
             destination, base_exponent, real_cache)
         check((real_total, real_file_count) == (8, 3),
               f"a full verify rescan finds the TRUE total of 8 across all 3 files "
@@ -117,13 +117,13 @@ def main():
         name_d, _ = _write_window(external, base_exponent2, 0, [2, 3])
         name_e, _ = _write_window(external, base_exponent2, 10_000_000, [5])
         ext_cache2 = {}
-        storage.update_pietro_totals_cache(external, base_exponent2, ext_cache2)
+        storage.update_floor_totals_cache(external, base_exponent2, ext_cache2)
         storage.save_totals_cache(external, ext_cache2)
 
         # Destination already has ITS OWN unrelated total for this floor (as if it had
         # generated some of its own primes there before ever merging anything in).
         pre_cache = storage.load_totals_cache(destination)
-        storage.bump_pietro_total(pre_cache, base_exponent2, delta_count=100,
+        storage.bump_floor_total(pre_cache, base_exponent2, delta_count=100,
                                    delta_file_count=1, delta_bytes=800)
         storage.save_totals_cache(destination, pre_cache)
 

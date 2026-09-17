@@ -20,7 +20,7 @@ resulting app.benchmark_tab_widget (the real BenchmarkTab instance) directly:
      actually written and a confirmation is shown.
   4. The "no data yet" and forced-exception paths surface the right dialogs instead of
      silently doing nothing / crashing.
-  5. Dark-theme: the "pietro"/"stat" Treeview row tags pull their background AND
+  5. Dark-theme: the "floor"/"stat" Treeview row tags pull their background AND
      foreground from primeatlas.theme.palette_for(), and both chart canvases' own
      background do too -- not hardcoded light colors regardless of theme.
   6. Chart readability: _draw_growth_chart's dynamic pad_left
@@ -185,10 +185,10 @@ def main():
         check(len(widget._benchmark_rows) == len(rows),
               f"every seeded row made it in (expected {len(rows)}, got "
               f"{len(widget._benchmark_rows)})")
-        check(0 in widget._benchmark_rows_by_pietro and 3 in widget._benchmark_rows_by_pietro,
-              f"both seeded floors are grouped (got keys {sorted(widget._benchmark_rows_by_pietro)})")
-        check(len(widget._benchmark_rows_by_pietro[3]) == 250,
-              f"floor 10p3 kept all 250 rows (got {len(widget._benchmark_rows_by_pietro[3])})")
+        check(0 in widget._benchmark_rows_by_floor and 3 in widget._benchmark_rows_by_floor,
+              f"both seeded floors are grouped (got keys {sorted(widget._benchmark_rows_by_floor)})")
+        check(len(widget._benchmark_rows_by_floor[3]) == 250,
+              f"floor 10p3 kept all 250 rows (got {len(widget._benchmark_rows_by_floor[3])})")
 
         growth = dict(widget._benchmark_growth_points)
         check(growth.get(0) == 1_000_000 + 2,
@@ -221,9 +221,9 @@ def main():
         check(node_for_floor3 is not None, "a floor node whose label starts with '10p3' exists")
 
         # --- pagination: expand floor 10p3 (250 rows -> 2 pages of 200) -------------
-        widget._populate_benchmark_pietro_node(node_for_floor3)
+        widget._populate_benchmark_floor_node(node_for_floor3)
         widget._set_active_benchmark_node(node_for_floor3)
-        state = widget._benchmark_pietro_state[node_for_floor3]
+        state = widget._benchmark_floor_state[node_for_floor3]
         check(state["total_pages"] == 2,
               f"250 rows at BENCHMARK_PAGE_SIZE=200 gives exactly 2 pages (got {state['total_pages']})")
         check(state["page"] == 0, f"floor starts on page 0 (got {state['page']})")
@@ -261,7 +261,7 @@ def main():
         # is set explicitly first to drive it the same way a real collapse click would.
         widget.benchmark_tree.focus(node_for_floor3)
         widget._on_benchmark_tree_close(None)
-        check(node_for_floor3 not in widget._benchmark_pietro_state,
+        check(node_for_floor3 not in widget._benchmark_floor_state,
               "closing the floor node drops its cached page state")
 
         # --- PDF export: bypass the real file dialog, like the other export tests --
@@ -311,7 +311,7 @@ def main():
               f"the actual exception text reaches the error dialog (got: {shown})")
 
         # --- dark-theme: tree tag colors follow the palette, not hardcoded -----------
-        # "pietro"/"stat" row tags must not be hardcoded to light colors with no
+        # "floor"/"stat" row tags must not be hardcoded to light colors with no
         # matching foreground override -- that would be unreadable under the dark
         # theme. See BenchmarkTab.__init__'s own docstring and primeatlas/theme.py's
         # tree_group_bg/tree_stat_bg docstring for the palette contract this relies on.
@@ -322,16 +322,16 @@ def main():
         # (same reason every OTHER tk-value comparison in this file already goes
         # through str(), e.g. the button-state checks above), so compare string forms
         # rather than the raw query result.
-        pietro_bg = str(widget.benchmark_tree.tag_configure("pietro", "background"))
-        pietro_fg = str(widget.benchmark_tree.tag_configure("pietro", "foreground"))
+        floor_bg = str(widget.benchmark_tree.tag_configure("floor", "background"))
+        floor_fg = str(widget.benchmark_tree.tag_configure("floor", "foreground"))
         stat_bg = str(widget.benchmark_tree.tag_configure("stat", "background"))
         stat_fg = str(widget.benchmark_tree.tag_configure("stat", "foreground"))
-        check(pietro_bg == theme_palette["tree_group_bg"],
-              f"'pietro' row tag background comes from the theme palette, not a hardcoded "
-              f"color (got {pietro_bg!r}, expected {theme_palette['tree_group_bg']!r})")
-        check(pietro_fg == theme_palette["fg"],
-              f"'pietro' row tag foreground comes from the theme palette "
-              f"(got {pietro_fg!r}, expected {theme_palette['fg']!r})")
+        check(floor_bg == theme_palette["tree_group_bg"],
+              f"'floor' row tag background comes from the theme palette, not a hardcoded "
+              f"color (got {floor_bg!r}, expected {theme_palette['tree_group_bg']!r})")
+        check(floor_fg == theme_palette["fg"],
+              f"'floor' row tag foreground comes from the theme palette "
+              f"(got {floor_fg!r}, expected {theme_palette['fg']!r})")
         check(stat_bg == theme_palette["tree_stat_bg"],
               f"'stat' row tag background comes from the theme palette "
               f"(got {stat_bg!r}, expected {theme_palette['tree_stat_bg']!r})")

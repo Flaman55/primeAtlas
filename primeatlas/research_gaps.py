@@ -1,5 +1,5 @@
 """
-research_gaps.py -- on-disk-magazyn storage bridge for the Research tab's
+research_gaps.py -- on-disk-archive storage bridge for the Research tab's
 Luki (prime gaps) sub-tab.
 
 Re-exports read_is_prime_from_storage/MissingStorageRangeError from

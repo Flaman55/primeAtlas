@@ -7,13 +7,13 @@ of it. Also find_prime_in_floor(), the binary-search lookup the "Prime numbers" 
 search box and the shared cross-tab search worker both use.
 
 Also the persisted GLOBAL total (GLOBAL_TOTAL_KEY / get_global_total() /
-recompute_global_total()) and the incremental bump_pietro_total()/remove_pietro_total()
-pair: since update_pietro_totals_cache() was previously the ONLY way any total ever got
+recompute_global_total()) and the incremental bump_floor_total()/remove_floor_total()
+pair: since update_floor_totals_cache() was previously the ONLY way any total ever got
 refreshed, a full directory-listing + os.stat()-every-file pass ran for EVERY floor on
 every startup/reload, even when nothing had changed since the last visit -- see those
 functions' own docstrings. The three real write paths that actually change a floor's
 contents (generation finishing a run, storage_integrate.py merging in an external floor,
-delete_manager.py deleting one) now call bump_pietro_total()/remove_pietro_total()
+delete_manager.py deleting one) now call bump_floor_total()/remove_floor_total()
 directly with a known delta instead of relying on the next full rescan to notice; the
 full rescan itself is untouched and still exists as a manual verify action
 (primes_tab.py's full totals recompute) for the rare case these totals ever drift (a
@@ -21,7 +21,7 @@ crash mid-write, or files touched outside the app).
 
 Extracted from prime_atlas_v1.py during a tab-by-tab backend/UI split refactor --
 unlike the Benchmark tab's extraction, these functions were never specific to one tab in
-the first place: list_pietra()/list_source_filenames()/
+the first place: list_floors()/list_source_filenames()/
 format_bytes()/format_duration()/digit_count_floor() etc. are called from the "Prime
 numbers" tab (primeatlas/primes_tab.py), the Constellations tab, the Generation tab's
 quick-gen panel, and the Goldbach research tab, all still living directly in
@@ -52,14 +52,14 @@ LOW_FLOOR_CUTOFF = 7  # duplicated from prime_sieve_v3.py/v4.py's own LOW_FLOOR_
                       # Windows-native module deliberately never imports prime_sieve_v3/v4
                       # (they ctypes-load a Linux .so -- see find_continuation_target_idx's
                       # own docstring, still in prime_atlas_v1.py, for why), so the value is
-                      # kept in sync by hand here. Used by update_pietro_totals_cache() to
+                      # kept in sync by hand here. Used by update_floor_totals_cache() to
                       # decide when its own mtime-based staleness check can't be trusted
                       # (see that function's LOW-FLOOR EXCEPTION docstring paragraph). Also
                       # re-imported back into prime_atlas_v1.py for its OWN
                       # _floor_window_count()'s use (a Generation-tab quick-gen helper).
 
 
-def list_pietra(portal_folder):
+def list_floors(portal_folder):
     """Returns sorted base_exponent ints for every 10p{N} folder found directly under
     portal_folder (regardless of whether it has source_primes/ or constellations/
     populated yet)."""
@@ -200,7 +200,7 @@ def save_totals_cache(portal_folder, cache):
         pass  # best-effort -- a failed cache save just means the next visit re-scans
 
 
-def update_pietro_totals_cache(portal_folder, base_exponent, cache):
+def update_floor_totals_cache(portal_folder, base_exponent, cache):
     """Computes (and caches) the TOTAL prime count across every source window file for one
     floor -- the file list on its own only shows each file's OWN count, never a sum, so
     this fills in the floor row's total. Reading every file's header for a
@@ -300,13 +300,13 @@ def update_pietro_totals_cache(portal_folder, base_exponent, cache):
 
 
 GLOBAL_TOTAL_KEY = "_global"  # deliberately not "10p"-prefixed, so it can never collide
-                              # with a real floor key (see list_pietra()'s "10p{N}" naming)
+                              # with a real floor key (see list_floors()'s "10p{N}" naming)
 
 
 def _global_entry(cache):
     """Returns (creating if absent) the {"sum", "file_count", "bytes"} summary dict that
-    tracks the persisted GLOBAL prime total across every floor -- see bump_pietro_total()/
-    remove_pietro_total()/recompute_global_total() for who keeps it in sync and
+    tracks the persisted GLOBAL prime total across every floor -- see bump_floor_total()/
+    remove_floor_total()/recompute_global_total() for who keeps it in sync and
     get_global_total() for who reads it back."""
     return cache.setdefault(GLOBAL_TOTAL_KEY, {"sum": 0, "file_count": 0, "bytes": 0})
 
@@ -326,12 +326,12 @@ def recompute_global_total(cache):
     """Rebuilds the persisted global summary FROM SCRATCH by summing every floor's own
     already-cached entry["total"]/["file_count"]/["total_bytes"] -- pure in-memory, no
     disk I/O of its own (the expensive part was whatever already populated those per-floor
-    fields, e.g. a full update_pietro_totals_cache() pass over every floor). This is the
+    fields, e.g. a full update_floor_totals_cache() pass over every floor). This is the
     one place that re-derives the global sum independently of the incremental bump/remove
     bookkeeping below, so it's what the manual "Zweryfikuj sumy" verify action (and a
     first-ever run against an old cache with no "_global" key yet) uses to self-heal any
     drift between the two. Floors with no "total" yet (never scanned, e.g. right after
-    bump_pietro_total() created a bare entry with no prior real scan) contribute 0 rather
+    bump_floor_total() created a bare entry with no prior real scan) contribute 0 rather
     than raising. Mutates `cache` in place and returns the new (sum, file_count, bytes)
     tuple for convenience."""
     total_sum = 0
@@ -347,17 +347,17 @@ def recompute_global_total(cache):
     return total_sum, total_files, total_bytes
 
 
-def bump_pietro_total(cache, base_exponent, delta_count, delta_file_count, delta_bytes):
+def bump_floor_total(cache, base_exponent, delta_count, delta_file_count, delta_bytes):
     """Adjusts one floor's cached total (and the persisted global summary alongside it) by
     a DELTA, without touching the per-file "files" map at all and without any disk I/O of
-    its own -- the incremental counterpart to update_pietro_totals_cache()'s full rescan,
+    its own -- the incremental counterpart to update_floor_totals_cache()'s full rescan,
     added so the three write paths that change a floor's contents (generation, storage
     merge, floor delete -- see this module's own docstring for the feature this belongs
     to) can keep the persisted total accurate without ever re-reading a window file's
     header or re-listing a floor's directory.
 
     Deliberately does NOT add anything to entry["files"] (the per-filename mtime/count map
-    update_pietro_totals_cache() uses for its own staleness check): the caller here only
+    update_floor_totals_cache() uses for its own staleness check): the caller here only
     knows an aggregate delta (e.g. benchmark_log.csv's total_primes/windows_written/
     bytes_written for one generation run, or another storage's own already-cached floor
     total during a merge), not each individual new filename/header. This is an accepted
@@ -372,7 +372,7 @@ def bump_pietro_total(cache, base_exponent, delta_count, delta_file_count, delta
     A floor with no prior entry at all (e.g. its very first-ever generation run, before
     anyone has opened this floor in the Primes tab even once) gets a bare
     {"total": 0, "file_count": 0, "total_bytes": 0, "files": {}} entry created here first,
-    same shape update_pietro_totals_cache() would have created, so a later real rescan
+    same shape update_floor_totals_cache() would have created, so a later real rescan
     finds the shape it expects."""
     key = f"10p{base_exponent}"
     entry = cache.setdefault(key, {"files": {}})
@@ -386,8 +386,8 @@ def bump_pietro_total(cache, base_exponent, delta_count, delta_file_count, delta
     global_entry["bytes"] += delta_bytes
 
 
-def remove_pietro_total(cache, base_exponent):
-    """The floor-deletion counterpart to bump_pietro_total(): drops base_exponent's entry
+def remove_floor_total(cache, base_exponent):
+    """The floor-deletion counterpart to bump_floor_total(): drops base_exponent's entry
     from `cache` entirely (a deleted floor has no on-disk files left to stay stale about)
     and subtracts whatever total it last held from the persisted global summary. Returns
     the removed entry's (total, file_count, total_bytes) for a caller that wants to log/
@@ -457,7 +457,7 @@ def format_bytes(n):
     return f"{n / 1024:.1f} TiB"
 
 
-def aggregate_write_seconds_by_pietro(rows):
+def aggregate_write_seconds_by_floor(rows):
     """Sums total_seconds per floor across every benchmark_log.csv row that ACTUALLY wrote
     files (write_files=="1"), skipping write_files=False count-only benchmark rows entirely
     -- otherwise a floor that was also re-benchmarked in count-only mode (same

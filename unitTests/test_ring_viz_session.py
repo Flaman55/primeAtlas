@@ -244,14 +244,14 @@ def _test_reset():
 def _test_extend_buffer_if_needed():
     import primeatlas.ring_viz.session as session_module
 
-    original_loader = session_module.load_magazyn
+    original_loader = session_module.load_archive
     calls = []
 
     def fake_loader(portal_folder, new_ceiling, from_n=None):
         calls.append((portal_folder, new_ceiling, from_n))
         return np.array([31, 37, 41], dtype=np.uint64)
 
-    session_module.load_magazyn = fake_loader
+    session_module.load_archive = fake_loader
     try:
         s = _make_session(n=95, ceiling=100, buffer_margin=10, can_extend_buffer=True, portal_folder="FAKE")
         msg = s.extend_buffer_if_needed()
@@ -268,20 +268,20 @@ def _test_extend_buffer_if_needed():
         msg_disabled = s_disabled.extend_buffer_if_needed()
         check(msg_disabled is None, "does nothing at all when the data source can't be extended (synthetic/sieve)")
     finally:
-        session_module.load_magazyn = original_loader
+        session_module.load_archive = original_loader
 
 
 def _test_extend_buffer_exhaustion_sticks():
     import primeatlas.ring_viz.session as session_module
 
-    original_loader = session_module.load_magazyn
+    original_loader = session_module.load_archive
     call_count = [0]
 
     def empty_loader(portal_folder, new_ceiling, from_n=None):
         call_count[0] += 1
         return np.empty(0, dtype=np.uint64)
 
-    session_module.load_magazyn = empty_loader
+    session_module.load_archive = empty_loader
     try:
         s = _make_session(n=95, ceiling=100, buffer_margin=10, can_extend_buffer=True, portal_folder="FAKE")
         msg = s.extend_buffer_if_needed()
@@ -290,7 +290,7 @@ def _test_extend_buffer_exhaustion_sticks():
         s.extend_buffer_if_needed()
         check(call_count[0] == 1, f"once exhausted, no further load attempts are made (got {call_count[0]} calls)")
     finally:
-        session_module.load_magazyn = original_loader
+        session_module.load_archive = original_loader
 
 
 def _test_rebuild_basic():

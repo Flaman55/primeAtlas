@@ -39,7 +39,7 @@ import sys
 import threading
 import time
 
-from .storage import LOW_FLOOR_CUTOFF, list_pietra, list_source_filenames, _offset_from_filename
+from .storage import LOW_FLOOR_CUTOFF, list_floors, list_source_filenames, _offset_from_filename
 from .ring_geometry import parse_big_int
 
 _SCRIPT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -74,7 +74,7 @@ QUICK_GEN_MAX_WINDOW_WIDTH = 10_000_000  # window width the (future) range ->
                           # per-iteration memory footprint scales with what the machine
                           # actually has rather than being pinned to one fixed size.
 
-# LOW_FLOOR_CUTOFF/list_pietra/list_source_files/_OFFSET_FROM_NAME_RE/_offset_from_filename/
+# LOW_FLOOR_CUTOFF/list_floors/list_source_files/_OFFSET_FROM_NAME_RE/_offset_from_filename/
 # list_source_filenames live in primeatlas/storage.py, alongside the "Prime numbers" tab's own
 # UI split (primeatlas/primes_tab.py) -- see that module's own docstring for why this whole
 # layer moved together rather than only the pieces the Primes tab itself needs. All five names
@@ -120,7 +120,7 @@ def compute_totals_bumps_from_new_rows(rows, before_count):
     row-filtering/parsing logic is unit-testable without constructing a real
     GenerationTab/tkinter widget or a real benchmark_log.csv on disk -- the same
     "extract the decision logic, keep the I/O at the edges" convention this package
-    already uses for primes_tab.py's _cumulative_pietro_totals()/benchmark_tab.py's
+    already uses for primes_tab.py's _cumulative_floor_totals()/benchmark_tab.py's
     _hover_label_position()."""
     bumps = []
     for row in rows[before_count:]:
@@ -251,17 +251,17 @@ def find_highest_populated_floor(portal_folder):
     (or getting stuck re-requesting an already-satisfied range on some floor number they
     typed once and never updated).
 
-    list_pietra() returns folders sorted ascending; checked in reverse so this returns as
+    list_floors() returns folders sorted ascending; checked in reverse so this returns as
     soon as the first (highest) populated one is found, rather than scanning every floor
     unconditionally."""
-    for base_exponent in reversed(list_pietra(portal_folder)):
+    for base_exponent in reversed(list_floors(portal_folder)):
         if list_source_filenames(portal_folder, base_exponent):
             return base_exponent
     return None
 
 
 # read_source_file_headers/TOTALS_CACHE_FILENAME/_totals_cache_path/load_totals_cache/
-# save_totals_cache/update_pietro_totals_cache live in primeatlas/storage.py -- see that
+# save_totals_cache/update_floor_totals_cache live in primeatlas/storage.py -- see that
 # module's own docstring. All six names (except the private _totals_cache_path) are
 # imported back at this file's top.
 
@@ -442,7 +442,7 @@ DEFAULT_GENERATION_SETTINGS = {
     },
     "constellation": {
         "base_exponent": "",  # blank = auto (every floor with source data -- see
-                               # constellation_finder_v1.list_pietra_with_data())
+                               # constellation_finder_v1.list_floors_with_data())
     },
     "ktuple": {
         "base_exponent": "",
@@ -1056,7 +1056,7 @@ def build_constellation_finder_argv(base_exponent=None, max_windows=None, script
     `[<base_exponent>] [--max-windows N]` -- base_exponent is a single OPTIONAL
     positional arg, omitted entirely (not passed as an empty string) when it's
     None/blank, matching that script's own auto-detect-every-populated-floor behavior
-    (list_pietra_with_data()) when it's called with no argument at all. Not yet wrapped
+    (list_floors_with_data()) when it's called with no argument at all. Not yet wrapped
     in a wsl.exe invocation -- see build_wsl_logged_command(). Uses `-u` (unbuffered
     stdout) for the same reason build_loop_argv() does -- see that function's docstring;
     this script's low per-window print volume made it the one where the default

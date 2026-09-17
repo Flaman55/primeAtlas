@@ -134,11 +134,11 @@ def main():
               f"_loading_startup_pending emptied out (got {app._loading_startup_pending!r})")
 
         # --- the seeded floor actually made it into BOTH trees ----------------------
-        check(0 in app.primes_tab_widget._pietro_node_by_exp,
+        check(0 in app.primes_tab_widget._floor_node_by_exp,
               f"seeded floor 10p0 shows up in the Prime numbers tree "
-              f"(got exponents: {list(app.primes_tab_widget._pietro_node_by_exp.keys())})")
+              f"(got exponents: {list(app.primes_tab_widget._floor_node_by_exp.keys())})")
         # PrimesTreeCoordinator._on_scan_done no longer kicks off a real per-floor
-        # rescan (compute_all_pietro_totals()) automatically after startup -- see
+        # rescan (compute_all_floor_totals()) automatically after startup -- see
         # storage.py's own module docstring for the persisted-totals feature. A
         # brand-new portal folder has no .portal_totals_cache.json yet, so nothing has
         # actually READ the seeded floor's header at this point -- show_cached_grand_
@@ -149,10 +149,10 @@ def main():
         # delete, none of which apply to this fixture) or the Primes tab's manual
         # verify-totals button, which this test triggers explicitly below to exercise
         # the SAME real rescan _grand_total_sum used to get for free at startup.
-        app._totals_search.compute_all_pietro_totals()
+        app._totals_search.compute_all_floor_totals()
         _pump(app, 5.0)
         check(app._totals_search._grand_total_sum == 4,
-              f"a manual 'Zweryfikuj sumy' verify (compute_all_pietro_totals()) still "
+              f"a manual 'Zweryfikuj sumy' verify (compute_all_floor_totals()) still "
               f"correctly sums the seeded floor's real prime count "
               f"(got _grand_total_sum={app._totals_search._grand_total_sum!r})")
 
@@ -185,7 +185,7 @@ def main():
               "re-entrant reload sequence settles (busy cleared) without hanging")
         check(not coord._pending,
               "re-entrant reload sequence clears 'pending' once the coalesced rerun finishes")
-        check(0 in app.primes_tab_widget._pietro_node_by_exp,
+        check(0 in app.primes_tab_widget._floor_node_by_exp,
               "tree is still correctly populated after the re-entrant reload sequence")
 
         # --- same re-entrancy check for the OTHER tree's coordinator

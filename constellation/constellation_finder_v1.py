@@ -48,7 +48,7 @@ except ImportError:
 # maintained here.
 #
 # CLI: running with no floor argument auto-detects and processes every floor under the
-# portal that has at least one source window (list_pietra_with_data()); an explicit
+# portal that has at least one source window (list_floors_with_data()); an explicit
 # argument restricts the run to just that one floor.
 #
 # Peek-ahead threshold: uses the NEXT file's header base_prime + MAX_SPAN as the peek
@@ -185,11 +185,11 @@ def list_source_windows(base_exponent):
     SHARD_SIZE entries each) instead of listing source_dir directly.
 
     WINDOW_INDEX.tsv cache: for a floor with a very large source_primes/ folder, every run
-    of this function -- and therefore every run of process_floor()/list_pietra_with_data()
+    of this function -- and therefore every run of process_floor()/list_floors_with_data()
     -- would otherwise open and read the header of ALL files just to learn their base_prime
     for sorting, paid IN FULL on every single invocation regardless of how much of the
     floor CHECKPOINT.txt already covers, and paid TWICE per script run (once here, once
-    more from list_pietra_with_data()'s old call into this same function just to test for
+    more from list_floors_with_data()'s old call into this same function just to test for
     non-emptiness). That's several hundred thousand individual file opens before a single
     window even gets matched against a pattern -- easily long enough to look like a hang on
     a floor this size, even though the actual per-window streaming loop in process_floor()
@@ -234,7 +234,7 @@ def list_source_windows(base_exponent):
     return entries
 
 
-def list_pietra_with_data():
+def list_floors_with_data():
     """Returns sorted base_exponent ints for every 10p{N} folder under PORTAL_FOLDER that
     actually has at least one PGS2 source window. Floor folders can exist as empty
     source_primes/constellations placeholders ahead of the scanner actually reaching
@@ -457,7 +457,7 @@ def _resolve_last_value(base_exponent, k, variant_id, disk_cache):
     doesn't exist, or the counts
     DISAGREE (meaning the file was modified by something other than this same cache
     since it was last written -- e.g. a storage merge physically copying in a
-    constellations/ folder from another magazyn, per [[primeatlas_storage_merge_
+    constellations/ folder from another archive, per [[primeatlas_storage_merge_
     federation]] -- so the cached value can no longer be trusted and must be
     rediscovered the safe way). This count-based validation is what makes the cache
     safe to trust blindly on the fast path while never risking silently corrupting a
@@ -1051,7 +1051,7 @@ if __name__ == "__main__":
         # process_floor() is already a cheap no-op for a floor whose checkpoint is fully
         # caught up, so scanning all of them each run is safe, not just at the moment a
         # new floor's data first appears.
-        floors = list_pietra_with_data()
+        floors = list_floors_with_data()
         if not floors:
             print("[!] No floor folders with source_primes data found under the portal -- nothing to do.")
         else:

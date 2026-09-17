@@ -8,7 +8,7 @@ check_polynomial_range_from_source().
 
 Same shape as ResearchSquaresTab (primeatlas/research_squares_tab.py, see
 that module's own docstring for the full Faza-1/Faza-2 history this mirrors
-from day one): a data-source toggle ("Świeże sito" / "Dane z magazynu",
+from day one): a data-source toggle ("Świeże sito" / "Dane z archive",
 storage mode via primeatlas/research_polynomials.py's
 read_is_prime_from_storage), pagination, and CSV export of the currently-
 displayed page.

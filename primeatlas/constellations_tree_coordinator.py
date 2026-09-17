@@ -33,12 +33,12 @@ already explains stays at the app level.
 """
 from . import background
 from .constellations import floor_has_constellation_hits
-from .storage import list_pietra
+from .storage import list_floors
 
 
 class ConstellationsTreeCoordinator:
     def __init__(self, root, get_portal_folder, status_var, translator,
-                 constellations_hits_tab_widget, prune_empty_pietro_dirs,
+                 constellations_hits_tab_widget, prune_empty_floor_dirs,
                  on_startup_scan_done=None):
         """
         root/get_portal_folder/status_var/translator: same dependency-injection
@@ -48,7 +48,7 @@ class ConstellationsTreeCoordinator:
         because -- by construction order in prime_atlas_v1.py's __init__ -- it already
         exists by the time this class is built.
 
-        prune_empty_pietro_dirs: passed in rather than imported directly here --
+        prune_empty_floor_dirs: passed in rather than imported directly here --
         see PrimesTreeCoordinator's own docstring for why (its real home is
         primeatlas/restore_job.py, re-exported at the primeatlas package's own top
         level).
@@ -61,7 +61,7 @@ class ConstellationsTreeCoordinator:
         self.status = status_var
         self.T = translator.t
         self._constellations_hits_tab_widget = constellations_hits_tab_widget
-        self._prune_empty_pietro_dirs = prune_empty_pietro_dirs
+        self._prune_empty_floor_dirs = prune_empty_floor_dirs
         self._on_startup_scan_done = on_startup_scan_done
 
         self._busy = False
@@ -69,7 +69,7 @@ class ConstellationsTreeCoordinator:
 
     def _scan(self, portal_folder, _report_progress):
         """Runs OFF the GUI thread -- ported unchanged from the original inline
-        _constellations_tree_scan(). Same idempotent prune_empty_pietro_dirs()
+        _constellations_tree_scan(). Same idempotent prune_empty_floor_dirs()
         double-call as PrimesTreeCoordinator's own scan -- now two INDEPENDENT
         background threads may call it back-to-back rather than the same GUI-thread
         call twice in a row, but the function's own try/except around each individual
@@ -77,15 +77,15 @@ class ConstellationsTreeCoordinator:
         finds a given empty subdir already gone and silently skips it.
 
         Only floors that actually HAVE at least one detected constellation hit --
-        list_pietra() alone would include every floor with prime data, regardless of
+        list_floors() alone would include every floor with prime data, regardless of
         whether the constellation finder has ever been run against it (or ran and
         found nothing), cluttering this tree with entries that only ever expand into
         an empty "no hits" placeholder. See floor_has_constellation_hits()'s own
         docstring."""
-        self._prune_empty_pietro_dirs(portal_folder)
-        pietra = [be for be in list_pietra(portal_folder)
+        self._prune_empty_floor_dirs(portal_folder)
+        floors = [be for be in list_floors(portal_folder)
                   if floor_has_constellation_hits(portal_folder, be)]
-        return {"pietra": pietra}
+        return {"floors": floors}
 
     def reload(self):
         """Rebuilds the constellation-hits floor list from disk. Same async
@@ -114,7 +114,7 @@ class ConstellationsTreeCoordinator:
         if error is not None:
             self.status.set(self.T("const.status_reload_error", error=str(error)))
             return
-        self._constellations_hits_tab_widget.populate_floors(result["pietra"])
+        self._constellations_hits_tab_widget.populate_floors(result["floors"])
 
         if self._on_startup_scan_done is not None:
             self._on_startup_scan_done("constellations")

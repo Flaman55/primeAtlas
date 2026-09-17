@@ -38,7 +38,7 @@ MAX_SIEVE_BOUND = 200_000_000
 """Refuses (ValueError) any check whose largest interval boundary would need a
 fresh in-memory sieve bigger than this (~200MB bytearray) -- a safety ceiling
 for this Faza-1 version, which always sieves fresh rather than reading from
-the on-disk magazyn (see this module's own docstring: that bridge, mirroring
+the on-disk archive (see this module's own docstring: that bridge, mirroring
 research_goldbach.py's read_is_prime_from_storage, is planned as a later,
 separate addition once real exploration needs push past what a fresh sieve
 can hold). Legendre/Oppermann reach this only around n ~= 14,000; Brocard
@@ -271,7 +271,7 @@ def check_interval_range(preset, n_from, n_to, required_count=None,
     "verdict/counterexamples always computed over the FULL range, only the
     displayed `rows` slice is paginated via row_cap/row_offset" contract.
     Always sieves fresh, in memory -- see check_interval_range_from_source()
-    above for the on-disk-magazyn-backed alternative.
+    above for the on-disk-archive-backed alternative.
 
     `preset` is one of PRESETS's keys, or "custom" (in which case `bounds_fn`
     -- a plain callable n -> [(a, b), ...] -- is required; the caller builds

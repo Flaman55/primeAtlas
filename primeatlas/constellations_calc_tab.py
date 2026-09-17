@@ -46,7 +46,7 @@ from tkinter import ttk, messagebox
 import pattern_catalog_v1
 
 from .base_tab import BaseTab
-from .storage import digit_count_floor, list_pietra
+from .storage import digit_count_floor, list_floors
 from .constellations import list_constellation_hits
 
 
@@ -249,7 +249,7 @@ class ConstellationsCalcTab(BaseTab):
         self._pending = {"base_exponent": base_exponent, "number": number, "pattern": pattern}
 
         portal_folder = self._get_portal_folder()
-        if base_exponent in list_pietra(portal_folder):
+        if base_exponent in list_floors(portal_folder):
             # Floor exists -- but has constellation_finder_v1.py ever recorded hits
             # for THIS SPECIFIC pattern here? The generic search box's own "offer to
             # generate" check only fires when list_constellation_hits() is empty --

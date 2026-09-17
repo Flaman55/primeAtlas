@@ -16,7 +16,7 @@ a floor-totals batch scan and a search share one status bar, and a stale/slow to
 completion used to be able to overwrite a just-shown search result. That race's
 real-world timing is unreliable to exercise directly (it depends on how fast a real
 background disk scan happens to settle relative to a search -- see that test block's
-own comment), so it monkeypatches update_pietro_totals_cache to force one totals job
+own comment), so it monkeypatches update_floor_totals_cache to force one totals job
 to take ~1.5 real seconds, guaranteeing the exact interleaving the fix targets on
 every run.
 
@@ -179,20 +179,20 @@ def main():
         # window every run (this exact scenario has intermittently failed/passed
         # across otherwise-identical runs). This block forces the totals scan to
         # take ~1.5 REAL seconds (monkeypatching
-        # update_pietro_totals_cache, the slow part of TotalsSearchCoordinator.
+        # update_floor_totals_cache, the slow part of TotalsSearchCoordinator.
         # _totals_job) so it is GUARANTEED to still be in flight when the search
         # below starts and finishes -- deterministically reproducing the exact
         # interleaving the fix targets, independent of real disk/OS timing.
         import primeatlas.totals_search_coordinator as tsc_module
-        _real_update_totals = tsc_module.update_pietro_totals_cache
+        _real_update_totals = tsc_module.update_floor_totals_cache
 
         def _slow_update_totals(*a, **k):
             time.sleep(1.5)
             return _real_update_totals(*a, **k)
 
-        tsc_module.update_pietro_totals_cache = _slow_update_totals
+        tsc_module.update_floor_totals_cache = _slow_update_totals
         try:
-            app.reload_primes_tree()  # triggers compute_all_pietro_totals() -> a
+            app.reload_primes_tree()  # triggers compute_all_floor_totals() -> a
                                        # (now artificially slow) totals job
             _pump(app, 0.6)  # let the (fast) scan itself settle and the slow totals
                               # job actually get submitted/picked up -- NOT a bare
@@ -215,7 +215,7 @@ def main():
                   f"slow totals batch finally completes afterward "
                   f"(got: {app.status.get()!r})")
         finally:
-            tsc_module.update_pietro_totals_cache = _real_update_totals
+            tsc_module.update_floor_totals_cache = _real_update_totals
 
         # --- Regression test: show_cached_grand_total() must reset totals_progress
         # (bug: after a generation run finished, the shared bottom progress bar stayed
@@ -223,7 +223,7 @@ def main():
         # cause: generation's own completion handler (generation_tab.py's
         # _update_shared_progress_from_generation_chunk) deliberately snaps the bar to
         # full and relies on WHATEVER runs next to clear it -- that used to be
-        # compute_all_pietro_totals()'s own automatic post-reload call, which reset
+        # compute_all_floor_totals()'s own automatic post-reload call, which reset
         # the bar as a side effect of a real rescan that ran unconditionally after
         # every reload. Once that automatic call was replaced by the lightweight
         # show_cached_grand_total() (this test's own portal already exercises that
@@ -237,7 +237,7 @@ def main():
         bar.configure(mode="determinate", maximum=5, value=5)
         check(bar["value"] == 5, "test setup: bar starts in the simulated 'just finished' full state")
         app._totals_search.show_cached_grand_total(
-            totals_cache={}, pietro_gen_seconds={}, floor_count=1)
+            totals_cache={}, floor_gen_seconds={}, floor_count=1)
         check(int(bar["maximum"]) == 1 and int(bar["value"]) == 0,
               f"show_cached_grand_total() (the normal floor_count > 0 path) must reset "
               f"totals_progress back to its empty 0/1 resting state, not leave it "
@@ -248,7 +248,7 @@ def main():
         # reset the bar too, not just the normal path above.
         bar.configure(mode="determinate", maximum=7, value=7)
         app._totals_search.show_cached_grand_total(
-            totals_cache={}, pietro_gen_seconds={}, floor_count=0)
+            totals_cache={}, floor_gen_seconds={}, floor_count=0)
         check(int(bar["maximum"]) == 1 and int(bar["value"]) == 0,
               f"show_cached_grand_total()'s floor_count==0 branch must also reset "
               f"totals_progress (got maximum={bar['maximum']!r}, value={bar['value']!r})")

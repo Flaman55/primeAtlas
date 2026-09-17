@@ -38,7 +38,7 @@ from tkinter import ttk, messagebox
 import hit_paging
 
 from .base_tab import BaseTab
-from .storage import digit_count_floor, list_pietra
+from .storage import digit_count_floor, list_floors
 from .constellations import (
     group_constellation_hits_by_k, list_constellation_hits, read_hit_pattern_page,
     hit_pattern_is_paged, hit_pattern_page_count,
@@ -118,7 +118,7 @@ class ConstellationsHitsTab(BaseTab):
         paned.add(tree_frame, weight=1)
 
         self.hits_tree = ttk.Treeview(tree_frame, columns=("count", "generated"), show="tree headings")
-        self.hits_tree.heading("#0", text=T("const.col_pietro"))
+        self.hits_tree.heading("#0", text=T("const.col_floor"))
         self.hits_tree.heading("count", text=T("const.col_count"))
         self.hits_tree.heading("generated", text=T("const.col_generated"))
         self.hits_tree.column("#0", width=280)
@@ -264,7 +264,7 @@ class ConstellationsHitsTab(BaseTab):
     # --- Called by prime_atlas_v1.py's own reload_constellations_tree() machinery,
     # which stays at the app level (see this class's own docstring) -----------------------
 
-    def populate_floors(self, pietra):
+    def populate_floors(self, floors):
         """Rebuilds the floor tree from scratch -- called by
         ConstellationsTreeCoordinator._on_scan_done
         (primeatlas/constellations_tree_coordinator.py) once
@@ -274,9 +274,9 @@ class ConstellationsHitsTab(BaseTab):
         original inline version."""
         T = self.T
         self.hits_tree.delete(*self.hits_tree.get_children())
-        for base_exponent in pietra:
+        for base_exponent in floors:
             node = self.hits_tree.insert("", "end", text=f"10p{base_exponent}",
-                                          values=("", ""), open=False, tags=("pietro",))
+                                          values=("", ""), open=False, tags=("floor",))
             self.hits_tree.insert(node, "end", text=T("common.loading"))
         self.hit_set_cache = {}
 
@@ -296,7 +296,7 @@ class ConstellationsHitsTab(BaseTab):
         if self._is_search_busy():
             messagebox.showinfo(T("common.dialog_search_title"), T("common.search_already_running"))
             return
-        if base_exponent not in list_pietra(self._get_portal_folder()):
+        if base_exponent not in list_floors(self._get_portal_folder()):
             # No floor 10p{base_exponent} at all yet -- see the Prime numbers tab's
             # own search_prime()'s identical branch for the full reasoning; offering
             # "const" here (not "prime") means the prime window gets generated first,
@@ -391,9 +391,9 @@ class ConstellationsHitsTab(BaseTab):
 
     def _on_tree_open(self, _event):
         node = self.hits_tree.focus()
-        self._populate_pietro_node(node)
+        self._populate_floor_node(node)
 
-    def _populate_pietro_node(self, node):
+    def _populate_floor_node(self, node):
         children = self.hits_tree.get_children(node)
         if len(children) != 1:
             return
@@ -647,25 +647,25 @@ class ConstellationsHitsTab(BaseTab):
 
     def select_pattern_in_tree(self, base_exponent, pattern):
         """Same approach as the Prime numbers tab's own select_primes_file_in_tree():
-        expand the pietro node, select the matching k/variant node, and flush the
+        expand the floor node, select the matching k/variant node, and flush the
         queued <<TreeviewSelect>> event with update() so _on_tree_select runs to
         completion (resetting/populating self._selected_hit_* etc.) before the caller
         proceeds to load+jump the preview."""
-        pietro_item = None
+        floor_item = None
         for item in self.hits_tree.get_children(""):
             if self.hits_tree.item(item, "text") == f"10p{base_exponent}":
-                pietro_item = item
+                floor_item = item
                 break
-        if pietro_item is None:
+        if floor_item is None:
             return
-        self.hits_tree.item(pietro_item, open=True)
-        self._populate_pietro_node(pietro_item)
+        self.hits_tree.item(floor_item, open=True)
+        self._populate_floor_node(floor_item)
         # Patterns are nested one level deeper, under a "k={k} (razem: N)" group node
-        # (per-k subtotals -- see _populate_pietro_node) -- find that k-group first,
+        # (per-k subtotals -- see _populate_floor_node) -- find that k-group first,
         # then the v=id leaf underneath it.
         k_prefix = f"k={pattern['k']}  "
         k_node = None
-        for child in self.hits_tree.get_children(pietro_item):
+        for child in self.hits_tree.get_children(floor_item):
             if self.hits_tree.item(child, "text").startswith(k_prefix):
                 k_node = child
                 break

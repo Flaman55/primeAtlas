@@ -9,7 +9,7 @@ approx_range_from_source().
 Same shape as ResearchSquaresTab/ResearchPolynomialsTab/ResearchGapsTab
 (see any of their own docstrings for the full data-source-toggle/CSV-
 export history this mirrors from day one): a data-source toggle ("Świeże
-sito" / "Dane z magazynu", storage mode via
+sito" / "Dane z archive", storage mode via
 primeatlas/research_pi_approx.py's read_is_prime_from_storage), pagination,
 and CSV export of the currently-displayed page.
 

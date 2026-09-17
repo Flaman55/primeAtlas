@@ -6,8 +6,8 @@ Oppermann/Brocard presets plus a custom a(n)/b(n) formula pair, checked over a
 check_interval_range()/check_interval_range_from_source().
 
 Provides:
-  - a data-source toggle ("Świeże sito" / "Dane z magazynu") -- storage mode
-    reads is_prime from the real on-disk magazyn via
+  - a data-source toggle ("Świeże sito" / "Dane z archive") -- storage mode
+    reads is_prime from the real on-disk archive via
     primeatlas/research_squares.py's read_is_prime_from_storage (itself a
     re-export of research_goldbach.py's own reader -- see that module's own
     docstring for why reuse, not a duplicate copy, is the right call for
@@ -312,7 +312,7 @@ class ResearchSquaresTab(BaseTab):
         job["source"] picks between the two check_interval_range_from_source
         is_prime sources -- "sieve" uses check_interval_range() directly
         (its own internal MAX_SIEVE_BOUND-guarded fresh sieve); "storage"
-        reads from the real on-disk magazyn instead (read_is_prime_from_
+        reads from the real on-disk archive instead (read_is_prime_from_
         storage), with the SAME MAX_SIEVE_BOUND ceiling applied explicitly
         here -- that ceiling bounds the size of the in-memory is_prime
         ARRAY, which is identical either way, only how it gets filled

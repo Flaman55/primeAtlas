@@ -114,7 +114,7 @@ CONSTELLATION_STOP_GRACE_MS = 10_000
 # swing wildly (e.g. "ETA: 2h" after one lucky-fast window, "ETA: 20min" after the
 # next).
 CONSTELLATION_ETA_MIN_WINDOWS = 3
-from .storage import bump_pietro_total, digit_count_floor, load_totals_cache, LOW_FLOOR_CUTOFF, save_totals_cache
+from .storage import bump_floor_total, digit_count_floor, load_totals_cache, LOW_FLOOR_CUTOFF, save_totals_cache
 from .generation import (
     QUICK_GEN_MAX_WINDOW_WIDTH, compute_totals_bumps_from_new_rows, count_existing_windows,
     find_continuation_target_idx,
@@ -1386,7 +1386,7 @@ class GenerationTab(HybridControls, BaseTab):
         the deepest populated floor, while the Auto button makes that choice visible.
         Unlike Exploration, a hybrid stage has no fixed-width field.  Its reach comes
         from the explicit filter-prime count ``k_adv`` and must be computed by the
-        hybrid planner after it has validated the current magazyn boundary.
+        hybrid planner after it has validated the current archive boundary.
 
         This first UI phase does not offer the shared "fill gaps first" checkbox:
         hybrid correctness requires a contiguous trusted MAIN base, so Phase 2's
@@ -2873,7 +2873,7 @@ class GenerationTab(HybridControls, BaseTab):
     def _bump_totals_from_finished_run(self):
         """Reads benchmark_log.csv fresh and folds every NEW row written since
         self._benchmark_rows_before_run's snapshot (see that attribute's own comment in
-        __init__) directly into the persisted totals cache via storage.bump_pietro_total(),
+        __init__) directly into the persisted totals cache via storage.bump_floor_total(),
         instead of relying on the next full per-floor rescan to notice the new windows --
         see storage.py's own module docstring for the feature this is one of three write-
         path hooks for (generation here; storage_integrate.py's merge and
@@ -2897,7 +2897,7 @@ class GenerationTab(HybridControls, BaseTab):
             return
         cache = load_totals_cache(portal_folder)
         for base_exponent, delta_count, delta_files, delta_bytes in bumps:
-            bump_pietro_total(cache, base_exponent, delta_count, delta_files, delta_bytes)
+            bump_floor_total(cache, base_exponent, delta_count, delta_files, delta_bytes)
         save_totals_cache(portal_folder, cache)
 
     def _on_loop_finished(self, _returncode=None):

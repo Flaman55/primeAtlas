@@ -35,9 +35,9 @@ import shutil
 
 import window_sharding
 
-from .manifest import PietroSnapshot, ConstellationSnapshot
+from .manifest import FloorSnapshot, ConstellationSnapshot
 from .storage import (
-    _offset_from_filename, bump_pietro_total, load_totals_cache, save_totals_cache,
+    _offset_from_filename, bump_floor_total, load_totals_cache, save_totals_cache,
 )
 from .delete_manager import FloorWiper
 from . import floor_meta
@@ -68,7 +68,7 @@ def _file_size_or_zero(path):
 
 def plan_integration(destination_path, external_path):
     """Dry-run: for every floor present at `external_path`, compares it against
-    `destination_path` (via the same PietroSnapshot/ConstellationSnapshot scanning
+    `destination_path` (via the same FloorSnapshot/ConstellationSnapshot scanning
     full_backup.py's own planning uses) and reports what integrate_floor() would add.
     Floors already fully present at the destination are OMITTED from the result --
     "nothing to do" is not an error, just not worth showing.
@@ -89,8 +89,8 @@ def plan_integration(destination_path, external_path):
     destination_floors = set(FloorWiper(destination_path).list_floors())
     result = []
     for base_exponent in list_external_floors(external_path):
-        live_dest = PietroSnapshot.scan(destination_path, base_exponent)
-        live_ext = PietroSnapshot.scan(external_path, base_exponent)
+        live_dest = FloorSnapshot.scan(destination_path, base_exponent)
+        live_ext = FloorSnapshot.scan(external_path, base_exponent)
         const_dest = ConstellationSnapshot.scan(destination_path, base_exponent)
         const_ext = ConstellationSnapshot.scan(external_path, base_exponent)
 
@@ -180,7 +180,7 @@ def integrate_floor(destination_path, external_path, base_exponent,
     (merge_floor_meta_into_benchmark_log(), already wired -- see this module's own
     docstring for why this file never touches benchmark_log.csv directly itself).
 
-    Also bumps storage.py's persisted totals cache (bump_pietro_total()) for every
+    Also bumps storage.py's persisted totals cache (bump_floor_total()) for every
     copied window whose prime count is already KNOWN from the external side's own
     .portal_totals_cache.json: the destination's total is summed with the external
     side's already-known count for each copied window, instead of recounting every
@@ -193,8 +193,8 @@ def integrate_floor(destination_path, external_path, base_exponent,
     the whole point of this feature by reading every file's header during the merge.
 
     Returns {"copied_windows": n, "copied_hits": n, "cancelled": bool}."""
-    live_dest = PietroSnapshot.scan(destination_path, base_exponent)
-    live_ext = PietroSnapshot.scan(external_path, base_exponent)
+    live_dest = FloorSnapshot.scan(destination_path, base_exponent)
+    live_ext = FloorSnapshot.scan(external_path, base_exponent)
     const_dest = ConstellationSnapshot.scan(destination_path, base_exponent)
     const_ext = ConstellationSnapshot.scan(external_path, base_exponent)
 
@@ -278,7 +278,7 @@ def integrate_floor(destination_path, external_path, base_exponent,
 
     if bumped_file_count > 0:
         dest_cache = load_totals_cache(destination_path)
-        bump_pietro_total(dest_cache, base_exponent, bumped_count, bumped_file_count, bumped_bytes)
+        bump_floor_total(dest_cache, base_exponent, bumped_count, bumped_file_count, bumped_bytes)
         save_totals_cache(destination_path, dest_cache)
 
     return {"copied_windows": copied_windows, "copied_hits": copied_hits, "cancelled": cancelled}

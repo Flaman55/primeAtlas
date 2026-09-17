@@ -7,7 +7,7 @@ pure check_gap_range()/check_gap_range_from_source().
 
 Same shape as ResearchSquaresTab/ResearchPolynomialsTab (see either's own
 docstring for the full data-source-toggle/CSV-export history this mirrors
-from day one): a data-source toggle ("Świeże sito" / "Dane z magazynu",
+from day one): a data-source toggle ("Świeże sito" / "Dane z archive",
 storage mode via primeatlas/research_gaps.py's read_is_prime_from_storage),
 pagination, and CSV export of the currently-displayed page.
 

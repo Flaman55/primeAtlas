@@ -1,6 +1,6 @@
 """
 test_ring_viz_renderer.py -- unit tests for primeatlas/ring_viz/renderer.py's
-load_magazyn(): real floor enumeration via storage.list_pietra(), batched
+load_archive(): real floor enumeration via storage.list_floors(), batched
 reads, optional progress_callback.
 
 Builds a synthetic portal folder with real PGS window files (same fixture
@@ -46,7 +46,7 @@ def _write_floor(portal_dir, base_exponent, windows):
     """windows: list of lists of ints, one shard-0 PRIME_WINDOW_*.bin per
     entry, named so list_source_filenames()'s offset-based sort places them
     in the given order (offsets 0, 1_000_000, 2_000_000, ... -- comfortably
-    apart, real widths don't matter for this test since load_magazyn reads
+    apart, real widths don't matter for this test since load_archive reads
     whatever's actually in each file, not the offset in the filename)."""
     import window_sharding
     import prime_sieve_v1
@@ -60,7 +60,7 @@ def _write_floor(portal_dir, base_exponent, windows):
 
 
 def _test_basic_multi_floor_load():
-    from primeatlas.ring_viz.sources import load_magazyn
+    from primeatlas.ring_viz.sources import load_archive
 
     tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
     try:
@@ -70,20 +70,20 @@ def _test_basic_multi_floor_load():
         # Floor 1: numbers in [10, 100) -- two windows.
         _write_floor(portal_dir, 1, [[11, 13, 17], [19, 23, 29]])
 
-        result = load_magazyn(portal_dir, upto=30)
+        result = load_archive(portal_dir, upto=30)
         check(list(result) == [2, 3, 5, 7, 11, 13, 17, 19, 23, 29],
-              f"load_magazyn(upto=30) across two floors returns every prime "
+              f"load_archive(upto=30) across two floors returns every prime "
               f"<=30 in ascending order (got {list(result)!r})")
         # uint64, not int64 -- see to_prime_array's own doc-comment
         # (ring_geometry.py): the fast path doubled its ceiling from int64's
         # ~9.2e18 to uint64's ~1.8e19 by dropping the sign bit primes never
-        # used, since a real magazyn floor (10p25/10p27) needs every bit of
+        # used, since a real archive floor (10p25/10p27) needs every bit of
         # headroom before falling back to the slow `object` path.
-        check(result.dtype == np.uint64, "load_magazyn result is uint64")
+        check(result.dtype == np.uint64, "load_archive result is uint64")
 
-        result_partial = load_magazyn(portal_dir, upto=20)
+        result_partial = load_archive(portal_dir, upto=20)
         check(list(result_partial) == [2, 3, 5, 7, 11, 13, 17, 19],
-              f"load_magazyn(upto=20) correctly excludes primes above the "
+              f"load_archive(upto=20) correctly excludes primes above the "
               f"cutoff, including trimming WITHIN the second floor-1 window "
               f"(got {list(result_partial)!r})")
     finally:
@@ -92,10 +92,10 @@ def _test_basic_multi_floor_load():
 
 def _test_gap_between_floors():
     """The exact case the old blind floor+=1 loop handled inefficiently but
-    correctly, and the new list_pietra()-based enumeration must ALSO handle
+    correctly, and the new list_floors()-based enumeration must ALSO handle
     correctly (not just efficiently): floor 0 populated, floor 1 MISSING
     entirely (e.g. never generated), floor 2 populated."""
-    from primeatlas.ring_viz.sources import load_magazyn
+    from primeatlas.ring_viz.sources import load_archive
 
     tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
     try:
@@ -104,20 +104,20 @@ def _test_gap_between_floors():
         # floor 1 (10p1) deliberately not created at all.
         _write_floor(portal_dir, 2, [[101, 103, 107]])
 
-        result = load_magazyn(portal_dir, upto=200)
+        result = load_archive(portal_dir, upto=200)
         check(list(result) == [2, 3, 5, 7, 101, 103, 107],
-              f"load_magazyn skips a missing floor cleanly instead of "
+              f"load_archive skips a missing floor cleanly instead of "
               f"stalling or erroring on the gap (got {list(result)!r})")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
 def _test_batching_does_not_change_result():
-    """Batching load_magazyn's reads is an internal memory-shape change, not
+    """Batching load_archive's reads is an internal memory-shape change, not
     a behavior change -- a tiny batch_files=1 (forces one file
     per batch) must return the EXACT SAME array as a large batch_files that
     reads everything in one batch."""
-    from primeatlas.ring_viz.sources import load_magazyn
+    from primeatlas.ring_viz.sources import load_archive
 
     tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
     try:
@@ -125,8 +125,8 @@ def _test_batching_does_not_change_result():
         _write_floor(portal_dir, 0, [[2, 3, 5, 7]])
         _write_floor(portal_dir, 1, [[11, 13], [17, 19], [23, 29], [31, 37]])
 
-        big_batch = load_magazyn(portal_dir, upto=100, batch_files=1000)
-        small_batch = load_magazyn(portal_dir, upto=100, batch_files=1)
+        big_batch = load_archive(portal_dir, upto=100, batch_files=1000)
+        small_batch = load_archive(portal_dir, upto=100, batch_files=1)
         check(list(big_batch) == list(small_batch),
               f"batch_files=1 (one file per batch) and batch_files=1000 (one "
               f"giant batch) return identical results "
@@ -138,7 +138,7 @@ def _test_batching_does_not_change_result():
 
 
 def _test_progress_callback_invoked():
-    from primeatlas.ring_viz.sources import load_magazyn
+    from primeatlas.ring_viz.sources import load_archive
 
     tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
     try:
@@ -151,7 +151,7 @@ def _test_progress_callback_invoked():
         def on_progress(base_exponent, files_read_in_floor, primes_loaded_so_far):
             calls.append((base_exponent, files_read_in_floor, primes_loaded_so_far))
 
-        result = load_magazyn(portal_dir, upto=30, progress_callback=on_progress, batch_files=1)
+        result = load_archive(portal_dir, upto=30, progress_callback=on_progress, batch_files=1)
         check(len(calls) > 0, "progress_callback was invoked at least once")
         check(all(c[0] in (0, 1) for c in calls),
               f"every progress_callback call reports a real base_exponent that was actually "
@@ -169,14 +169,14 @@ def _test_progress_callback_invoked():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-def _test_load_magazyn_from_n():
+def _test_load_archive_from_n():
     """The `from_n` parameter is what lets extend_buffer_if_needed() fetch
     only the NEW primes past what's already loaded instead of
     re-reading/re-returning everything from scratch on every extension --
     covers both halves of that: the whole-floor skip (floor 0 here is
     entirely below from_n) and the within-floor trim (floor 1's first
     window is partially below from_n)."""
-    from primeatlas.ring_viz.sources import load_magazyn
+    from primeatlas.ring_viz.sources import load_archive
 
     tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
     try:
@@ -185,20 +185,20 @@ def _test_load_magazyn_from_n():
         _write_floor(portal_dir, 1, [[11, 13, 17], [19, 23, 29]])
         _write_floor(portal_dir, 2, [[101, 103, 107]])
 
-        result = load_magazyn(portal_dir, upto=200, from_n=17)
+        result = load_archive(portal_dir, upto=200, from_n=17)
         check(list(result) == [19, 23, 29, 101, 103, 107],
               f"from_n=17 skips floor 0 entirely (all <=17) and trims floor "
               f"1's first window down to just 19 (got {list(result)!r})")
 
-        result_zero = load_magazyn(portal_dir, upto=200, from_n=0)
-        result_default = load_magazyn(portal_dir, upto=200)
+        result_zero = load_archive(portal_dir, upto=200, from_n=0)
+        result_default = load_archive(portal_dir, upto=200)
         check(list(result_zero) == list(result_default),
               "from_n=0 (explicit) reproduces the default (omitted) behavior exactly")
         check(list(result_default) == [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 101, 103, 107],
               f"sanity: the from_n=0/default baseline itself is still correct "
               f"(got {list(result_default)!r})")
 
-        result_exhausted = load_magazyn(portal_dir, upto=200, from_n=107)
+        result_exhausted = load_archive(portal_dir, upto=200, from_n=107)
         check(len(result_exhausted) == 0,
               "from_n at the true end of stored data returns an empty array "
               "(the extend_state['exhausted'] case in extend_buffer_if_needed)")
@@ -206,13 +206,13 @@ def _test_load_magazyn_from_n():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-def _test_load_magazyn_max_load_count():
+def _test_load_archive_max_load_count():
     """`max_load_count` truncates a load from the TOP once the cap is hit --
     covers truncation splitting a batch mid-window, truncation landing
     exactly on a window/floor boundary, a cap bigger than the whole result
     (no-op), and combining with `from_n` (jumping straight to a high floor,
     the actual arbitrary-range-viewing use case)."""
-    from primeatlas.ring_viz.sources import load_magazyn
+    from primeatlas.ring_viz.sources import load_archive
 
     tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
     try:
@@ -221,48 +221,48 @@ def _test_load_magazyn_max_load_count():
         _write_floor(portal_dir, 1, [[11, 13, 17], [19, 23, 29]])
         _write_floor(portal_dir, 2, [[101, 103, 107]])
 
-        result_mid_window = load_magazyn(portal_dir, upto=200, max_load_count=5)
+        result_mid_window = load_archive(portal_dir, upto=200, max_load_count=5)
         check(list(result_mid_window) == [2, 3, 5, 7, 11],
               f"max_load_count=5 cuts mid-window, keeping only the first 5 "
               f"primes overall (got {list(result_mid_window)!r})")
 
-        result_on_boundary = load_magazyn(portal_dir, upto=200, max_load_count=4)
+        result_on_boundary = load_archive(portal_dir, upto=200, max_load_count=4)
         check(list(result_on_boundary) == [2, 3, 5, 7],
               "max_load_count landing exactly on a window boundary stops cleanly there")
 
-        result_generous = load_magazyn(portal_dir, upto=200, max_load_count=1000)
-        result_unbounded = load_magazyn(portal_dir, upto=200)
+        result_generous = load_archive(portal_dir, upto=200, max_load_count=1000)
+        result_unbounded = load_archive(portal_dir, upto=200)
         check(list(result_generous) == list(result_unbounded),
               "a cap bigger than the whole available result is a no-op")
 
-        result_none = load_magazyn(portal_dir, upto=200, max_load_count=None)
+        result_none = load_archive(portal_dir, upto=200, max_load_count=None)
         check(list(result_none) == list(result_unbounded),
               "max_load_count=None (explicit) reproduces the default (omitted) behavior exactly")
 
         # The actual feature this backs: jump straight to a high floor
         # (from_n) AND cap how much of it gets materialized, without ever
         # reading floor 0 or 1's files at all.
-        result_combined = load_magazyn(portal_dir, upto=200, from_n=100, max_load_count=2)
+        result_combined = load_archive(portal_dir, upto=200, from_n=100, max_load_count=2)
         check(list(result_combined) == [101, 103],
               f"from_n + max_load_count combine: skip straight to floor 2, "
               f"then cap at 2 primes (got {list(result_combined)!r})")
 
-        result_zero_cap = load_magazyn(portal_dir, upto=200, max_load_count=0)
+        result_zero_cap = load_archive(portal_dir, upto=200, max_load_count=0)
         check(len(result_zero_cap) == 0, "max_load_count=0 returns an empty array without error")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-def _test_load_magazyn_high_floor_beyond_uint64():
-    """A real magazyn has floors far past piętro 18 (real portal data at
+def _test_load_archive_high_floor_beyond_uint64():
+    """A real archive has floors far past piętro 18 (real portal data at
     10p25/10p27 is ~10**25-10**27 magnitude) -- the old hardcoded
-    `dtype=np.int64` cast in load_magazyn's per-file loop overflowed on
+    `dtype=np.int64` cast in load_archive's per-file loop overflowed on
     exactly this, well before max_load_count/from_n even mattered. This pins
     the fix: a floor whose own values exceed uint64 loads correctly (as
     `object` dtype, exact values, no OverflowError), including when combined
     with a low floor that still fits uint64 (np.concatenate must promote the
     WHOLE result to object, never silently truncate/wrap the high values)."""
-    from primeatlas.ring_viz.sources import load_magazyn
+    from primeatlas.ring_viz.sources import load_archive
 
     tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
     try:
@@ -271,24 +271,24 @@ def _test_load_magazyn_high_floor_beyond_uint64():
         high_values = [base, base + 4, base + 6, base + 10]
         _write_floor(portal_dir, 25, [high_values])
 
-        result = load_magazyn(portal_dir, upto=base + 1000, from_n=base - 1)
+        result = load_archive(portal_dir, upto=base + 1000, from_n=base - 1)
         check(list(result) == high_values,
-              f"load_magazyn loads a real piętro-25-scale floor without raising OverflowError "
+              f"load_archive loads a real piętro-25-scale floor without raising OverflowError "
               f"(got {list(result)!r})")
         check(result.dtype == object,
-              "load_magazyn: a floor whose values exceed the uint64 ceiling returns object dtype")
+              "load_archive: a floor whose values exceed the uint64 ceiling returns object dtype")
 
         # Mixed: a low floor (fits uint64) plus the high one above, loaded
         # together in one call (the from_n=0/default sequential path).
         portal_dir2 = os.path.join(tmp, "portal2")
         _write_floor(portal_dir2, 0, [[2, 3, 5, 7]])
         _write_floor(portal_dir2, 25, [high_values])
-        result_mixed = load_magazyn(portal_dir2, upto=base + 1000)
+        result_mixed = load_archive(portal_dir2, upto=base + 1000)
         check(list(result_mixed) == [2, 3, 5, 7] + high_values,
-              f"load_magazyn: a low floor (uint64-safe) plus a high floor (needs object) concatenate "
+              f"load_archive: a low floor (uint64-safe) plus a high floor (needs object) concatenate "
               f"correctly, in ascending order (got {list(result_mixed)!r})")
         check(result_mixed.dtype == object,
-              "load_magazyn: mixing a uint64-safe floor with an object-dtype floor promotes the WHOLE "
+              "load_archive: mixing a uint64-safe floor with an object-dtype floor promotes the WHOLE "
               "result to object (numpy's own concatenate dtype-promotion rule), never silently truncating "
               "the high values down to a fixed-width type")
     finally:
@@ -296,14 +296,14 @@ def _test_load_magazyn_high_floor_beyond_uint64():
 
 
 def _test_empty_portal():
-    from primeatlas.ring_viz.sources import load_magazyn
+    from primeatlas.ring_viz.sources import load_archive
 
     tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
     try:
         portal_dir = os.path.join(tmp, "portal")
         os.makedirs(portal_dir, exist_ok=True)  # exists, but no 10p* floors at all
-        result = load_magazyn(portal_dir, upto=1000)
-        check(len(result) == 0, "load_magazyn on a portal folder with no floors returns an empty array")
+        result = load_archive(portal_dir, upto=1000)
+        check(len(result) == 0, "load_archive on a portal folder with no floors returns an empty array")
         # uint64, not int64 -- see the sibling check in
         # _test_basic_multi_floor_load above for why.
         check(result.dtype == np.uint64, "the empty result is still uint64, not a generic empty array")
@@ -586,19 +586,19 @@ def _test_initial_n_for_source():
 
     primes = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37], dtype=np.int64)
 
-    # sieve/magazyn: real user-specified upto (e.g. 1000, typed in rings_tab's
+    # sieve/archive: real user-specified upto (e.g. 1000, typed in rings_tab's
     # N field) -- must open exactly there, even though 1000 itself isn't
     # prime and the largest actual prime <=1000 among these primes is 37.
-    check(initial_n_for_source("magazyn", 1000, primes) == 1000,
-          "source=magazyn opens on --upto verbatim, not primes[-1] (was the bug: "
+    check(initial_n_for_source("archive", 1000, primes) == 1000,
+          "source=archive opens on --upto verbatim, not primes[-1] (was the bug: "
           "typing 1000 silently opened on 997/whatever the largest loaded prime was)")
     check(initial_n_for_source("sieve", 1000, primes) == 1000,
-          "source=sieve opens on --upto verbatim too (same real-target-N semantics as magazyn)")
+          "source=sieve opens on --upto verbatim too (same real-target-N semantics as archive)")
 
     # An upto that happens to BE prime should still just be itself, not
     # accidentally "work" only by coincidence.
-    check(initial_n_for_source("magazyn", 37, primes) == 37,
-          "source=magazyn with a prime --upto still returns --upto itself, not primes[-1]")
+    check(initial_n_for_source("archive", 37, primes) == 37,
+          "source=archive with a prime --upto still returns --upto itself, not primes[-1]")
 
     # synthetic: no real user-specified N (only --count) -- keeps the old
     # primes[-1] behavior, since there is nothing else meaningful to open on.
@@ -609,8 +609,8 @@ def _test_initial_n_for_source():
     empty = np.empty(0, dtype=np.int64)
     check(initial_n_for_source("synthetic", 1000, empty) == 0,
           "source=synthetic with an empty array falls back to 0, does not crash")
-    check(initial_n_for_source("magazyn", 1000, empty) == 1000,
-          "source=magazyn with an empty array still opens on --upto (an empty ring field "
+    check(initial_n_for_source("archive", 1000, empty) == 1000,
+          "source=archive with an empty array still opens on --upto (an empty ring field "
           "at the requested N, not a crash or a silent fallback to 0)")
 
 
@@ -887,7 +887,7 @@ def _test_format_big():
     formatted_neg = format_big(-big, digit_threshold=15)
     check(formatted_neg.startswith("-1.234"), f"sign preserved past the threshold too (got {formatted_neg!r})")
 
-    # format_big(LCM of ~500 real magazyn-floor-25-scale tracked primes)
+    # format_big(LCM of ~500 real archive-floor-25-scale tracked primes)
     # crashed with "ValueError: Exceeds the limit (4300 digits) for integer
     # string conversion" -- Python 3.11+'s int-to-str safety limit fired
     # inside format_big's OWN str(value) call, before its truncation logic
@@ -1348,7 +1348,7 @@ def _test_next_buffer_ceiling():
     growing/shrinking one) -- see extend_buffer_if_needed's own call site
     for where that reused figure (buffer_margin) actually comes from. This
     is what lets the buffer keep traveling ahead of n indefinitely, as long
-    as the underlying source (magazyn) can still supply data, instead of
+    as the underlying source (archive) can still supply data, instead of
     ever hitting a hard wall."""
     from primeatlas.ring_viz.playback import next_buffer_ceiling
 
@@ -1390,7 +1390,7 @@ def _test_tick_next_n():
     # range_step -- omitted (default 1) reproduces the exact old behavior;
     # a real value is range mode's own per-tick step, but NEVER affects
     # sequential mode regardless. Needed for playback at real
-    # magazyn-floor-scale ranges (~10**25), where stepping by 1 makes
+    # archive-floor-scale ranges (~10**25), where stepping by 1 makes
     # playback appear frozen.
     new_n, stop = tick_next_n(n=999, range_mode=True, ceiling=100, range_step=1)
     check((new_n, stop) == (1000, False),
@@ -1661,9 +1661,9 @@ def main():
     _test_gap_between_floors()
     _test_batching_does_not_change_result()
     _test_progress_callback_invoked()
-    _test_load_magazyn_from_n()
-    _test_load_magazyn_max_load_count()
-    _test_load_magazyn_high_floor_beyond_uint64()
+    _test_load_archive_from_n()
+    _test_load_archive_max_load_count()
+    _test_load_archive_high_floor_beyond_uint64()
     _test_empty_portal()
     _test_build_vertex_data_no_windows_matches_old_behavior()
     _test_build_vertex_data_bertrand_highlight()

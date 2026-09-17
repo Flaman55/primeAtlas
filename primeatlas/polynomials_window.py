@@ -30,7 +30,7 @@ covered/counterexamples verdict.
 Mirrors squares_window.py's own two-entry-point split: a fresh-sieve
 default (check_polynomial_range) and a source-injectable one
 (check_polynomial_range_from_source), so a caller can plug in an on-disk-
-magazyn-backed is_prime reader instead of always sieving fresh -- same
+archive-backed is_prime reader instead of always sieving fresh -- same
 reasoning, duplicated sieve_is_prime rather than importing across
 conjecture-module boundaries (see research_squares_tab.py's own docstring
 for why each conjecture module in this project stays self-contained).
@@ -142,7 +142,7 @@ def check_polynomial_range_from_source(preset, n_from, n_to, is_prime_source,
     callable int -> is_prime bytearray/array-like, long enough to index up
     to max_value -- instead of always sieving fresh in memory. This is what
     lets a caller plug in primeatlas/research_polynomials.py's
-    read_is_prime_from_storage(portal_folder, ...) (on-disk-magazyn bridge,
+    read_is_prime_from_storage(portal_folder, ...) (on-disk-archive bridge,
     mirroring squares_window.py's own check_interval_range_from_source) as
     an alternative to a fresh sieve.
 
@@ -166,7 +166,7 @@ def check_polynomial_range(preset, n_from, n_to, poly_fn=None, row_cap=None, row
     """Checks f(n)'s primality for every n in [n_from, n_to] (n_from may be
     0 -- Euler's own famous run starts there). Always sieves fresh, in
     memory -- see check_polynomial_range_from_source() above for the
-    on-disk-magazyn-backed alternative.
+    on-disk-archive-backed alternative.
 
     `preset` is one of PRESETS ("landau"/"euler"), or "custom" (in which case
     `poly_fn` -- a plain callable n -> int -- is required; the caller builds

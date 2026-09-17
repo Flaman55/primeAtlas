@@ -39,7 +39,7 @@ from .background import PersistentWorker
 from .constellations import find_constellation_participation
 from .storage import (
     find_prime_in_floor, format_bytes, format_duration, get_global_total,
-    load_totals_cache, recompute_global_total, save_totals_cache, update_pietro_totals_cache,
+    load_totals_cache, recompute_global_total, save_totals_cache, update_floor_totals_cache,
 )
 
 
@@ -59,7 +59,7 @@ class TotalsSearchCoordinator:
 
         primes_tab_widget/constellations_hits_tab_widget: direct references (not lazy
         getters) to two tab widgets this coordinator updates directly
-        (update_floor_row/get_gen_seconds/get_pietro_node_keys on the first,
+        (update_floor_row/get_gen_seconds/get_floor_node_keys on the first,
         hits_search_button/on_prime_search_result on... actually on_prime_search_result
         is the Primes tab's own; the hits tab only lends its search button and hit_set_
         cache) -- safe to take directly rather than via a callable because, by
@@ -92,7 +92,7 @@ class TotalsSearchCoordinator:
         self._grand_total_seconds = 0.0
         self._totals_worker = PersistentWorker(
             root, self._totals_job, on_result=self._on_totals_worker_result,
-            on_progress=self._on_pietro_total_start)
+            on_progress=self._on_floor_total_start)
 
         # Status-bar race fix (task #404, real bug -- a floor-totals job submitted
         # BEFORE a search starts can still be sitting in the totals worker's queue
@@ -104,13 +104,13 @@ class TotalsSearchCoordinator:
         # Two independent mechanisms, for two different kinds of totals status write:
         #
         # 1. _totals_batch_suppressed guards the BULK "compute all floors" batch
-        #    (compute_all_pietro_totals(), triggered automatically after every
+        #    (compute_all_floor_totals(), triggered automatically after every
         #    reload/Refresh) -- see that method's own docstring and start_search_job's.
         #    A timestamp-based check here turned out NOT to be reliable in practice:
         #    reload_primes_tree() coalesces re-entrant calls (see its own
         #    docstring in prime_atlas_v1.py) into a chain that can settle at an
         #    unpredictable moment relative to a search that started in the meantime --
-        #    by the time compute_all_pietro_totals() actually SUBMITS its jobs, that
+        #    by the time compute_all_floor_totals() actually SUBMITS its jobs, that
         #    submit time can legitimately land AFTER the search's own start/finish
         #    timestamps even though the whole reload chain was set in motion BEFORE the
         #    search, which a per-job submit-time comparison can't tell apart from a
@@ -143,7 +143,7 @@ class TotalsSearchCoordinator:
 
     def _reload_totals_caches(self):
         """(Re-)loads _totals_cache (the totals worker's OWN incremental-cache copy,
-        see update_pietro_totals_cache()) from the current portal folder's own
+        see update_floor_totals_cache()) from the current portal folder's own
         .portal_totals_cache.json. See this class's own construction-order comment for
         why the app only ever calls this once, at construction time -- a later
         storage-path change self-heals through _on_primes_tree_scan_done's own fresh
@@ -167,7 +167,7 @@ class TotalsSearchCoordinator:
         own docstring), same injection shape it already used when this lived inline on
         PortalBrowserApp. Records the submit time first (see __init__'s own comment on
         _totals_submit_time/_last_search_activity_time -- task #404's status-bar race
-        fix) -- compute_all_pietro_totals() below routes its own per-floor submits
+        fix) -- compute_all_floor_totals() below routes its own per-floor submits
         through here too, rather than calling _totals_worker.submit() a second way, so
         every totals job gets this timestamp regardless of which path triggered it."""
         self._totals_submit_time[base_exponent] = time.monotonic()
@@ -184,11 +184,11 @@ class TotalsSearchCoordinator:
         report_progress(base_exponent)
         portal_folder = self._get_portal_folder()
         try:
-            total, file_count, new_read, total_bytes = update_pietro_totals_cache(
+            total, file_count, new_read, total_bytes = update_floor_totals_cache(
                 portal_folder, base_exponent, self._totals_cache)
             if new_read:
                 save_totals_cache(portal_folder, self._totals_cache)
-            # A floor physically copied in from another storage (magazyn) brings its
+            # A floor physically copied in from another storage (archive) brings its
             # own floor_meta.json along -- see floor_meta.py's module docstring. This
             # imports any rows from it that aren't already in the LOCAL
             # benchmark_log.csv, so the Benchmark tab shows that floor's real
@@ -212,9 +212,9 @@ class TotalsSearchCoordinator:
             self.status.set(self.T("primes.status_error_sum", base_exponent=base_exponent,
                                     error=job_error))
         else:
-            self._on_pietro_total_ready(base_exponent, total, file_count, new_read, total_bytes)
+            self._on_floor_total_ready(base_exponent, total, file_count, new_read, total_bytes)
 
-    def _on_pietro_total_start(self, base_exponent):
+    def _on_floor_total_start(self, base_exponent):
         """Fires the moment the worker PICKS UP a request -- see _totals_job's
         docstring for why this exists separately from the completion handler below.
         Skips the status-bar write (but nothing else -- there IS nothing else here)
@@ -240,8 +240,8 @@ class TotalsSearchCoordinator:
         uses the separate _totals_batch_suppressed flag instead. True unless a search
         has started or finished more recently than this base_exponent's own totals
         job was submitted. Looked up rather than popped here -- the entry itself is
-        only removed once the job actually completes, in _on_pietro_total_ready,
-        since _on_pietro_total_start (this method's only other caller) fires once per
+        only removed once the job actually completes, in _on_floor_total_ready,
+        since _on_floor_total_start (this method's only other caller) fires once per
         job but isn't the last word on it.
 
         The plain `self._search_busy` check closes a narrower version of the same gap
@@ -255,7 +255,7 @@ class TotalsSearchCoordinator:
         submit_time = self._totals_submit_time.get(base_exponent, 0.0)
         return submit_time >= self._last_search_activity_time
 
-    def _on_pietro_total_ready(self, base_exponent, total, file_count, new_read, total_bytes):
+    def _on_floor_total_ready(self, base_exponent, total, file_count, new_read, total_bytes):
         """Main-thread completion handler for the totals worker's result -- the actual
         tree-row update, plus the floor-nav page-total label refresh if this floor
         happens to be the active one, is delegated to PrimesTab.update_floor_row (see
@@ -290,7 +290,7 @@ class TotalsSearchCoordinator:
                 # nothing is running.
                 self.totals_progress.configure(maximum=1, value=0)
                 # This bulk batch (the manual verify-totals action, see
-                # PrimesTab's own button -- compute_all_pietro_totals() is no longer
+                # PrimesTab's own button -- compute_all_floor_totals() is no longer
                 # called automatically after every reload, see storage.py's own module
                 # docstring) just re-read every floor's TRUE total for real -- persist
                 # a freshly self-healed '_global' summary from those real numbers now,
@@ -315,13 +315,13 @@ class TotalsSearchCoordinator:
             if allow_status_write:
                 extra = self.T("primes.status_extra_new_files", count=new_read) if new_read else ""
                 self.status.set(
-                    self.T("primes.status_pietro_total", base_exponent=base_exponent,
+                    self.T("primes.status_floor_total", base_exponent=base_exponent,
                            total=f"{total:,}", files=f"{file_count:,}",
                            size=format_bytes(total_bytes), extra=extra))
 
-    def show_cached_grand_total(self, totals_cache, pietro_gen_seconds, floor_count):
+    def show_cached_grand_total(self, totals_cache, floor_gen_seconds, floor_count):
         """Lightweight, all-in-memory replacement for the automatic post-reload call to
-        compute_all_pietro_totals() that used to run here -- see storage.py's own
+        compute_all_floor_totals() that used to run here -- see storage.py's own
         module docstring for the full "persisted totals, updated incrementally instead
         of by a full rescan" feature. This replaces the old behavior, which submitted
         a real per-file directory-listing + os.stat()-every-file rescan job for EVERY
@@ -338,12 +338,12 @@ class TotalsSearchCoordinator:
         self-heals via recompute_global_total() -- also pure/in-memory, since it only
         sums each floor's already-known cached total, never re-reads a single window
         file -- persisted back to disk so this self-heal only ever needs to happen
-        once. `pietro_gen_seconds` (already computed fresh by PrimesTreeCoordinator._
+        once. `floor_gen_seconds` (already computed fresh by PrimesTreeCoordinator._
         scan() from benchmark_log.csv, no extra cost) supplies the duration figure the
         status message shows, since generation seconds were never part of the totals
         cache itself.
 
-        compute_all_pietro_totals() (the real per-file rescan) still exists exactly as
+        compute_all_floor_totals() (the real per-file rescan) still exists exactly as
         before -- it's reached only via the Primes tab's explicit verify-totals
         button now, instead of running automatically, for the rare case these
         persisted totals ever drift (a crash mid-write, or files touched outside the
@@ -357,13 +357,13 @@ class TotalsSearchCoordinator:
         run snaps totals_progress to fully complete on purpose (see generation_tab.py's
         _update_shared_progress_from_generation_chunk() docstring, "snaps the bar to
         fully complete") and relies on WHATEVER runs next to clear it back to empty --
-        previously that was compute_all_pietro_totals()'s own automatic
-        post-reload call (_on_pietro_total_ready's completion branch resets the bar),
+        previously that was compute_all_floor_totals()'s own automatic
+        post-reload call (_on_floor_total_ready's completion branch resets the bar),
         which ran unconditionally after every reload. Once that automatic call was
         replaced by this lightweight cached-total read (this method), nothing was left
         to perform that reset -- the bar stayed visibly full indefinitely after a
         generation run, reading as "still busy" even though the app was idle. Mirrors
-        the exact same reset call _on_pietro_total_ready's own completion branch and
+        the exact same reset call _on_floor_total_ready's own completion branch and
         _finish_search_job() already use."""
         if floor_count == 0:
             self.status.set(self.T("primes.status_none_to_compute"))
@@ -374,14 +374,14 @@ class TotalsSearchCoordinator:
             known = recompute_global_total(totals_cache)
             save_totals_cache(self._get_portal_folder(), totals_cache)
         total_sum, _file_count, total_bytes = known
-        total_seconds = sum(pietro_gen_seconds.values()) if pietro_gen_seconds else 0.0
+        total_seconds = sum(floor_gen_seconds.values()) if floor_gen_seconds else 0.0
         self.status.set(
             self.T("primes.status_grand_total", count=floor_count,
                    sum=f"{total_sum:,}", duration=format_duration(total_seconds),
                    size=format_bytes(total_bytes)))
         self.totals_progress.configure(maximum=1, value=0)
 
-    def compute_all_pietro_totals(self):
+    def compute_all_floor_totals(self):
         """Kicks off the bulk "every floor's total" batch -- called from the Primes
         tab's explicit verify-totals button (see PrimesTab's own docstring on that
         button) as a manual safety-net verify, no longer automatically after every
@@ -397,20 +397,20 @@ class TotalsSearchCoordinator:
         that. start_search_job() below handles the opposite ordering (a batch already
         running when a NEW search starts) by flipping this same flag retroactively
         (task #404's status-bar race fix, see __init__'s own comment)."""
-        pietra = self._primes_tab_widget.get_pietro_node_keys()
-        if not pietra:
+        floors = self._primes_tab_widget.get_floor_node_keys()
+        if not floors:
             self.status.set(self.T("primes.status_none_to_compute"))
             return
         self._computing_all_totals = True
         self._totals_batch_suppressed = self._search_busy
-        self._totals_batch_size = len(pietra)
+        self._totals_batch_size = len(floors)
         self._grand_total_sum = 0
         self._grand_total_seconds = 0.0
         self._grand_total_bytes = 0
         self._grand_total_seen = set()
-        self.totals_progress.configure(maximum=len(pietra), value=0)
-        self.status.set(self.T("primes.status_batch_start", count=len(pietra)))
-        for base_exponent in pietra:
+        self.totals_progress.configure(maximum=len(floors), value=0)
+        self.status.set(self.T("primes.status_batch_start", count=len(floors)))
+        for base_exponent in floors:
             self.submit_totals_job(base_exponent)
 
     # --- Search worker -- shared by both "Prime numbers" and "Constellations" search
@@ -421,7 +421,7 @@ class TotalsSearchCoordinator:
     def start_search_job(self, kind, base_exponent, number):
         """Hands the actual (potentially slow) file-scanning work off to this
         coordinator's own search worker thread. Only fast/instant validation
-        (isdigit, digit_count_floor, list_pietra's no-I/O floor-existence check)
+        (isdigit, digit_count_floor, list_floors's no-I/O floor-existence check)
         happens on the GUI thread, in the caller, before this is ever reached.
 
         Bumps _last_search_activity_time first, and -- if the bulk "compute all"
@@ -528,7 +528,7 @@ class TotalsSearchCoordinator:
         self._primes_tab_widget.search_button.configure(state="normal")
         self._constellations_hits_tab_widget.hits_search_button.configure(state="normal")
         self.totals_progress.stop()
-        # Same "reset back to the empty 0/1 state" reasoning as _on_pietro_total_
-        # ready's grand-total completion branch -- a bar left sitting full/mid-way
+        # Same "reset back to the empty 0/1 state" reasoning as
+        # _on_floor_total_ready's grand-total completion branch -- a bar left sitting full/mid-way
         # reads as "still busy" even though nothing is running.
         self.totals_progress.configure(mode="determinate", maximum=1, value=0)

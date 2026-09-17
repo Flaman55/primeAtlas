@@ -35,14 +35,14 @@ own on_const_search_result constructor parameter.
 from . import background
 from .benchmark import read_benchmark_log
 from .storage import (
-    aggregate_write_seconds_by_pietro, list_pietra, list_source_filenames,
+    aggregate_write_seconds_by_floor, list_floors, list_source_filenames,
     load_totals_cache,
 )
 
 
 class PrimesTreeCoordinator:
     def __init__(self, root, get_portal_folder, status_var, translator,
-                 primes_tab_widget, totals_search, prune_empty_pietro_dirs,
+                 primes_tab_widget, totals_search, prune_empty_floor_dirs,
                  on_startup_scan_done=None):
         """
         root: the live Tk widget background.run_in_background() schedules its .after()
@@ -57,7 +57,7 @@ class PrimesTreeCoordinator:
         TotalsSearchCoordinator's own docstring relies on for its own two tab-widget
         constructor arguments).
 
-        prune_empty_pietro_dirs: passed in rather than imported directly here because
+        prune_empty_floor_dirs: passed in rather than imported directly here because
         its real home is primeatlas/restore_job.py (re-exported at the primeatlas
         package's own top level) -- passing it through avoids this module needing to
         know that historical detail, matching how prime_atlas_v1.py itself imports it.
@@ -77,7 +77,7 @@ class PrimesTreeCoordinator:
         self.T = translator.t
         self._primes_tab_widget = primes_tab_widget
         self._totals_search = totals_search
-        self._prune_empty_pietro_dirs = prune_empty_pietro_dirs
+        self._prune_empty_floor_dirs = prune_empty_floor_dirs
         self._on_startup_scan_done = on_startup_scan_done
 
         self._busy = False
@@ -92,27 +92,27 @@ class PrimesTreeCoordinator:
         storage-path change that happens WHILE this scan is running can never make it
         silently scan the wrong (newly-current) location.
 
-        prune_empty_pietro_dirs() runs unconditionally on every reload, floors with no
+        prune_empty_floor_dirs() runs unconditionally on every reload, floors with no
         PRIME_WINDOW_*.bin files are filtered out, and the totals caches are reloaded
         fresh from disk every time rather than only once at startup -- see the
         original method's own (now relocated) docstring for the full rationale."""
-        self._prune_empty_pietro_dirs(portal_folder)
-        pietro_total_known = {}
+        self._prune_empty_floor_dirs(portal_folder)
+        floor_total_known = {}
         for _key, _entry in load_totals_cache(portal_folder).items():
             if _key.startswith("10p") and _key[3:].isdigit():
-                pietro_total_known[int(_key[3:])] = (
+                floor_total_known[int(_key[3:])] = (
                     _entry.get("total", 0), _entry.get("file_count", 0),
                     _entry.get("total_bytes", 0))
         totals_cache = load_totals_cache(portal_folder)  # worker-owned copy
-        pietro_gen_seconds = aggregate_write_seconds_by_pietro(
+        floor_gen_seconds = aggregate_write_seconds_by_floor(
             read_benchmark_log(portal_folder)[1])
-        pietra = [be for be in list_pietra(portal_folder)
+        floors = [be for be in list_floors(portal_folder)
                   if list_source_filenames(portal_folder, be)]
         return {
-            "pietro_total_known": pietro_total_known,
+            "floor_total_known": floor_total_known,
             "totals_cache": totals_cache,
-            "pietro_gen_seconds": pietro_gen_seconds,
-            "pietra": pietra,
+            "floor_gen_seconds": floor_gen_seconds,
+            "floors": floors,
         }
 
     def reload(self):
@@ -121,7 +121,7 @@ class PrimesTreeCoordinator:
         (see _on_scan_done()'s own comment -- no per-file rescan runs here anymore,
         see storage.py's own module docstring). Each floor's own total is read
         straight from that same persisted cache too (see
-        update_pietro_totals_cache()'s own docstring for how it's kept accurate), so
+        update_floor_totals_cache()'s own docstring for how it's kept accurate), so
         pressing Refresh after generating new windows shows up-to-date totals with no
         disk-scanning cost beyond the cheap floor-list/benchmark_log.csv read _scan()
         already does.
@@ -158,7 +158,7 @@ class PrimesTreeCoordinator:
             self.status.set(self.T("primes.status_reload_error", error=str(error)))
             return
         self._totals_search.replace_totals_cache(result["totals_cache"])
-        pietra = result["pietra"]
+        floors = result["floors"]
         # The actual tree rebuild (rows, per-floor known totals/gen-seconds display
         # state) is owned by PrimesTab -- see populate_floors()'s own docstring. This
         # coordinator keeps only the totals_cache resync (owned by
@@ -166,19 +166,19 @@ class PrimesTreeCoordinator:
         # text, kicking off the background totals scan, and reporting startup
         # completion.
         self._primes_tab_widget.populate_floors(
-            pietra, result["pietro_total_known"], result["pietro_gen_seconds"])
+            floors, result["floor_total_known"], result["floor_gen_seconds"])
         self.status.set(self.T("app.status_portal_with_count", folder=portal_folder,
-                                count=len(pietra)))
+                                count=len(floors)))
         # This uses an all-in-memory read of the persisted totals cache this scan
         # already loaded (via result["totals_cache"] above) instead of
-        # compute_all_pietro_totals() -- a real per-file rescan submitted for every
+        # compute_all_floor_totals() -- a real per-file rescan submitted for every
         # floor -- which used to run unconditionally on every reload/startup even
         # when nothing had changed; see storage.py's own module docstring and
         # TotalsSearchCoordinator.show_cached_grand_total()'s docstring. The real
         # rescan still exists, just moved behind the Primes tab's explicit
         # "Zweryfikuj sumy" button (PrimesTab._verify_all_totals).
         self._totals_search.show_cached_grand_total(
-            result["totals_cache"], result["pietro_gen_seconds"], len(pietra))
+            result["totals_cache"], result["floor_gen_seconds"], len(floors))
 
         if self._on_startup_scan_done is not None:
             self._on_startup_scan_done("primes")

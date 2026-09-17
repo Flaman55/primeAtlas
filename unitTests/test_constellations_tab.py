@@ -161,7 +161,7 @@ def main():
               f"the seeded floor shows up by name (got {hits.hits_tree.item(node3, 'text')!r})")
 
         hits.hits_tree.focus(node3)
-        hits._populate_pietro_node(node3)
+        hits._populate_floor_node(node3)
         k_nodes = hits.hits_tree.get_children(node3)
         check(len(k_nodes) == 1, f"floor node has exactly 1 k-group (got {len(k_nodes)})")
         variant_nodes = hits.hits_tree.get_children(k_nodes[0])
@@ -485,7 +485,7 @@ def main():
         check(floor5_node is not None, f"Magazyn tree now shows floor 5 (got {floor_nodes})")
         if floor5_node is not None:
             hits.hits_tree.focus(floor5_node)
-            hits._populate_pietro_node(floor5_node)
+            hits._populate_floor_node(floor5_node)
             k5_nodes = hits.hits_tree.get_children(floor5_node)
             v5_node = hits.hits_tree.get_children(k5_nodes[0])[0]
             hits.hits_tree.selection_set(v5_node)

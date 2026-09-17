@@ -58,8 +58,8 @@ def _test_build_renderer_argv():
           f"argv[1] is the renderer script's PLAIN PATH, not a -m module spec "
           f"(got {argv[1]!r}) -- see renderer.py's own docstring for why -m breaks "
           f"its internal sys.path fix")
-    check("--source" in argv and argv[argv.index("--source") + 1] == "magazyn",
-          "argv includes --source magazyn")
+    check("--source" in argv and argv[argv.index("--source") + 1] == "archive",
+          "argv includes --source archive")
     check("--portal-folder" in argv and argv[argv.index("--portal-folder") + 1] == "/some/portal",
           "argv includes --portal-folder with the given folder")
     check("--upto" in argv and argv[argv.index("--upto") + 1] == "12345",
@@ -183,7 +183,7 @@ def _write_fake_renderer(exit_code):
     with os.fdopen(fd, "w") as f:
         f.write(
             "import sys\n"
-            "print('fake renderer: loading magazyn...')\n"
+            "print('fake renderer: loading archive...')\n"
             "print('fake renderer: ready')\n"
             f"sys.exit({exit_code})\n"
         )
@@ -486,7 +486,7 @@ def main():
     with os.fdopen(fd, "w") as f:
         f.write(
             "import sys\n"
-            "print('fake renderer: loading magazyn...')\n"
+            "print('fake renderer: loading archive...')\n"
             "print('HUD_STATE:{\"n\": 42, \"count\": 3, \"rebuild_ms\": 1.2, "
             "\"lines\": [\"N = 42\"], \"running\": false, \"tempo_ms\": 120}')\n"
             "sys.exit(0)\n"
@@ -504,7 +504,7 @@ def main():
     check("HUD_STATE:" not in console_text2,
           f"HUD_STATE lines are routed to the panel, never appended to the scrolling console pane "
           f"(got console text: {console_text2!r})")
-    check("fake renderer: loading magazyn..." in console_text2,
+    check("fake renderer: loading archive..." in console_text2,
           f"ordinary (non-HUD_STATE) lines from the same process still reach the console normally "
           f"(got console text: {console_text2!r})")
     os.remove(fake_hud_script)

@@ -1,5 +1,5 @@
 """
-research_squares.py -- on-disk-magazyn storage bridge for the Research tab's
+research_squares.py -- on-disk-archive storage bridge for the Research tab's
 Przedzialy kwadratowe (square intervals) sub-tab.
 
 Re-exports read_is_prime_from_storage/MissingStorageRangeError from

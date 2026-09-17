@@ -22,7 +22,7 @@ import pattern_catalog_v1
 import prime_sieve_v1
 import hit_paging
 
-from .storage import list_pietra
+from .storage import list_floors
 from .pdf_writer import _pdf_ascii_fold, _pdf_rect_op, _pdf_text_op, _write_pdf
 from .i18n import Translator, DEFAULT_LANGUAGE
 
@@ -236,7 +236,7 @@ def build_constellation_records_table(portal_folder, k, floor_min=None, floor_ma
             cell_or_None is None when this floor has no hit file for that particular
             variant, else {"offset": int, "count": int, "is_record_floor": bool}.
 
-    Pure function (no tkinter), reusing list_pietra()/floor_has_constellation_hits()/
+    Pure function (no tkinter), reusing list_floors()/floor_has_constellation_hits()/
     hit_file_path() exactly as reload_constellations_tree() already does, so this is
     consistent with (and no more expensive than) the existing storage browser -- the one
     added cost is prime_sieve_v1.read_prime_window_header() per (floor, variant) that
@@ -252,7 +252,7 @@ def build_constellation_records_table(portal_folder, k, floor_min=None, floor_ma
     variant_ids = [w["id"] for w in variants]
     variant_meta = {w["id"]: w for w in variants}
     rows = []
-    for base_exponent in list_pietra(portal_folder):
+    for base_exponent in list_floors(portal_folder):
         if floor_min is not None and base_exponent < floor_min:
             continue
         if floor_max is not None and base_exponent > floor_max:
@@ -293,7 +293,7 @@ def count_constellation_records_detail_rows(portal_folder, k, floor_min=None, fl
     variants = pattern_catalog_v1.patterns_for_k(k)
     variant_ids = [w["id"] for w in variants]
     total = 0
-    for base_exponent in list_pietra(portal_folder):
+    for base_exponent in list_floors(portal_folder):
         if floor_min is not None and base_exponent < floor_min:
             continue
         if floor_max is not None and base_exponent > floor_max:
@@ -324,7 +324,7 @@ def iter_constellation_records_detail_rows(portal_folder, k, floor_min=None, flo
     variants = pattern_catalog_v1.patterns_for_k(k)
     variant_ids = [w["id"] for w in variants]
     variant_meta = {w["id"]: w for w in variants}
-    for base_exponent in list_pietra(portal_folder):
+    for base_exponent in list_floors(portal_folder):
         if floor_min is not None and base_exponent < floor_min:
             continue
         if floor_max is not None and base_exponent > floor_max:

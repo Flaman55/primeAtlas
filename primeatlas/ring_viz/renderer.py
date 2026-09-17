@@ -11,7 +11,7 @@ practical ring-count ceiling bounded by what one JS thread can redraw at
 interactive frame rates, plus what a browser tab can hold in memory -- see
 StructuralSieveApp.js's own "hardware-calibrated auto-track-range" feature,
 added specifically because that ceiling is real. PrimeAtlas already has
-(a) a magazyn of pre-generated primes far beyond what any in-browser sieve
+(a) an archive of pre-generated primes far beyond what any in-browser sieve
 would attempt, and (b) real GPU hardware, already exercised for actual
 sieve marking (see this project's cudasieve/marking_*_poc history).
 
@@ -20,7 +20,7 @@ rebuild ~1.3s, pan/zoom held 50+ fps even with a fast scroll wheel at the
 full 20M-ring view. This module is a ported prototype rather than a
 rewrite -- the only differences from the standalone prototype version are
 import paths (`primeatlas.ring_geometry` instead of a bare
-`ring_geometry`) and `load_magazyn`'s repo-root autodetection (derived
+`ring_geometry`) and `load_archive`'s repo-root autodetection (derived
 from this file's own location instead of a `--primeatlas-root` CLI flag,
 since the file lives inside the repo it needs to reach into).
 
@@ -35,18 +35,18 @@ Deliberately decoupled from two things this module is NOT responsible for:
          how expensive real primes would be to produce at that count.
        - sieve: a real (small-to-moderate scale) sieve of Eratosthenes up to
          --upto, for a real-looking demo.
-       - magazyn: reads real floors from an existing PrimeAtlas portal folder
+       - archive: reads real floors from an existing PrimeAtlas portal folder
          via primeatlas/storage.py + prime_sieve_v1.read_prime_window, up to
-         --upto: real floor enumeration via storage.list_pietra(), reads
+         --upto: real floor enumeration via storage.list_floors(), reads
          batched (not one unbounded pass), with an optional progress_callback
          -- the real per-load wall-clock ceiling at extreme N is still
-         unmeasured against a real magazyn, see load_magazyn's own docstring
+         unmeasured against a real archive, see load_archive's own docstring
          for what to expect. The loaded buffer also TRAVELS with N during
          playback/scrubbing (extend_buffer_if_needed, called once per frame
          from run()): once N closes to within one launch-time margin's worth
          of the loaded ceiling, another chunk is fetched automatically, so
          the sequential-mode "ceiling wall" only actually stops anything
-         once the magazyn itself has no more data past that point -- not
+         once the archive itself has no more data past that point -- not
          merely because the ORIGINAL --upto load happened to stop somewhere
          short of it.
 
@@ -83,7 +83,7 @@ Usage -- run as a PLAIN SCRIPT PATH, not `python -m primeatlas.ring_viz.renderer
                           # it, see _PIL_AVAILABLE.
     python primeatlas/ring_viz/renderer.py --source synthetic --count 20000000
     python primeatlas/ring_viz/renderer.py --source sieve --upto 5000000
-    python primeatlas/ring_viz/renderer.py --source magazyn \
+    python primeatlas/ring_viz/renderer.py --source archive \
         --portal-folder "D:\\...\\PORTAL" --upto 50000000000
 
     Why plain-script-path and not `-m`: `python -m primeatlas.ring_viz.renderer`
@@ -170,7 +170,7 @@ if _REPO_ROOT not in sys.path:
 # `import window_sharding` (see storage.py's own module docstring for why
 # prime_sieve_v1.py/window_sharding.py live outside this package as separate
 # top-level modules) -- so `prime_sieve` must be on sys.path before ANY
-# `primeatlas.*` import below, not just inside load_magazyn() where the
+# `primeatlas.*` import below, not just inside load_archive() where the
 # actual prime_sieve_v1 usage lives: a bare `from primeatlas.ring_geometry
 # import ...` fails without this, even though ring_geometry.py itself has
 # no such dependency.
@@ -201,11 +201,11 @@ from primeatlas.ring_geometry import parse_big_int
 # interchangeable and independent of the rendering path below.
 # ---------------------------------------------------------------------------
 
-# load_synthetic/load_sieve/load_magazyn live in sources.py; they have no
+# load_synthetic/load_sieve/load_archive live in sources.py; they have no
 # GL-context dependency (unlike everything below this point in the file).
 # Re-imported under their original names so every call site in
 # _run_visualization/main() below is unchanged.
-from primeatlas.ring_viz.sources import load_synthetic, load_sieve, load_magazyn
+from primeatlas.ring_viz.sources import load_synthetic, load_sieve, load_archive
 
 
 # ---------------------------------------------------------------------------
@@ -321,7 +321,7 @@ def _run_visualization(args, audio=None):
     # those objects below is `gl.xxx`.
     gl = setup_gl_resources(args)
 
-    # For --source sieve/magazyn, the view OPENS exactly at N=args.upto (see
+    # For --source sieve/archive, the view OPENS exactly at N=args.upto (see
     # initial_n_for_source's own docstring) -- but sequential playback needs
     # somewhere to advance TO, and loading only up to that exact N leaves
     # zero headroom: N would already equal the load ceiling on frame one, so
@@ -332,25 +332,25 @@ def _run_visualization(args, audio=None):
     # args.upto below (n = initial_n_for_source(..., args.upto, ...), not
     # load_upto) -- only the loaded prime array itself is padded.
     load_upto = args.upto
-    if args.source in ("sieve", "magazyn"):
+    if args.source in ("sieve", "archive"):
         load_upto = args.upto + max(1000, args.upto // 20)
 
-    # For --source magazyn with an explicit --load-range, loading [0,
+    # For --source archive with an explicit --load-range, loading [0,
     # load_upto] in full before load_range's post-hoc slice runs is
     # infeasible once the requested range sits at a high floor, since every
     # floor below it
     # would be read first for nothing. Loading directly via `from_n=FROM`
-    # instead reuses load_magazyn's own already-existing cheap floor-skip
+    # instead reuses load_archive's own already-existing cheap floor-skip
     # (see that function's own `from_n` doc-comment) to jump straight to the
     # requested floor, capped by --max-load-count so an accidentally huge
     # span still can't stall the whole load (truncated from the top -- see
-    # load_magazyn's own doc-comment on that point). `primes` IS the range
+    # load_archive's own doc-comment on that point). `primes` IS the range
     # here already, so the load_range block further below (which still
     # handles synthetic/sieve the old, unbounded way) is told to skip its
-    # own redundant re-slice via `magazyn_range_preload`.
-    magazyn_range_preload = None
-    if args.source == "magazyn" and args.load_range:
-        magazyn_range_preload = tuple(parse_big_int(p) for p in args.load_range.split(","))
+    # own redundant re-slice via `archive_range_preload`.
+    archive_range_preload = None
+    if args.source == "archive" and args.load_range:
+        archive_range_preload = tuple(parse_big_int(p) for p in args.load_range.split(","))
 
     print(f"Loading primes via --source={args.source} ...")
     t0 = time.perf_counter()
@@ -358,13 +358,13 @@ def _run_visualization(args, audio=None):
         primes = load_synthetic(args.count)
     elif args.source == "sieve":
         primes = load_sieve(load_upto)
-    elif args.source == "magazyn":
-        if magazyn_range_preload is not None:
-            preload_from, preload_to = magazyn_range_preload
-            primes = load_magazyn(args.portal_folder, preload_to, from_n=preload_from,
+    elif args.source == "archive":
+        if archive_range_preload is not None:
+            preload_from, preload_to = archive_range_preload
+            primes = load_archive(args.portal_folder, preload_to, from_n=preload_from,
                                    max_load_count=args.max_load_count)
         else:
-            primes = load_magazyn(args.portal_folder, load_upto)
+            primes = load_archive(args.portal_folder, load_upto)
     else:
         raise ValueError(f"unknown --source {args.source!r}")
     t1 = time.perf_counter()
@@ -409,20 +409,20 @@ def _run_visualization(args, audio=None):
     # would wrongly refuse 3 perfectly safe ticks). Using load_upto also
     # gives the load-time headroom padding above something real to advance
     # into instead of refusing on frame one.
-    ceiling = load_upto if args.source in ("sieve", "magazyn") else (int(primes[-1]) if len(primes) else -1)
+    ceiling = load_upto if args.source in ("sieve", "archive") else (int(primes[-1]) if len(primes) else -1)
 
     # Reuses the same margin figure as load_upto's own launch-time pad just
     # above, instead of inventing a second, different margin concept.
     #
-    # Scoped to --source magazyn only: synthetic/sieve are both bounded by
+    # Scoped to --source archive only: synthetic/sieve are both bounded by
     # their own launch-time argument with nothing further to ever fetch
-    # (see load_magazyn's own module-level docstring point 1) -- magazyn is
+    # (see load_archive's own module-level docstring point 1) -- archive is
     # the one real, always-possibly-larger data source this module has (a
     # disk portal that can simply have more window files than were loaded
     # at launch). See extend_buffer_if_needed (below, near n_holder) for
     # the actual extension call.
     buffer_margin = max(1000, args.upto // 20)
-    can_extend_buffer = args.source == "magazyn" and bool(args.portal_folder)
+    can_extend_buffer = args.source == "archive" and bool(args.portal_folder)
     # `extend_state["exhausted"]`, `tempo_ms`/`playback["running"]`,
     # `orbit_state`, and `cyclic_anchor_state` are RenderSession's own
     # fields (self.extend_exhausted, self.tempo_ms/playback_running,
@@ -452,7 +452,7 @@ def _run_visualization(args, audio=None):
     if args.load_range:
         load_from, load_to = (parse_big_int(p) for p in args.load_range.split(","))
         try:
-            if magazyn_range_preload is not None:
+            if archive_range_preload is not None:
                 # `primes` was already loaded directly as this exact (possibly
                 # --max-load-count-truncated) range above -- re-slicing it
                 # here would be redundant, and load_prime_range_slice's own
@@ -466,7 +466,7 @@ def _run_visualization(args, audio=None):
             n = 0  # mirrors the JS's own `this.#n = 0` on a successful range load
             range_count = len(range_primes)
             # Without this, playback would look frozen at a real
-            # magazyn-floor-scale range, since a fixed step of 1 is
+            # archive-floor-scale range, since a fixed step of 1 is
             # imperceptible against prime gaps of that size. See
             # tick_next_n's own doc-comment -- naturally settles back to `1`
             # at low floors (where a full orbit already fits inside
@@ -762,7 +762,7 @@ def _run_visualization(args, audio=None):
         # Checked BEFORE the playback-tick block below, every frame: if N
         # has closed to within buffer_margin of the loaded ceiling, extend
         # the buffer now so tick_next_n's own ceiling check (right below)
-        # essentially never actually fires for a magazyn that still has
+        # essentially never actually fires for an archive that still has
         # more data to give.
         extend_buffer_if_needed()
 
@@ -774,7 +774,7 @@ def _run_visualization(args, audio=None):
         # actually fires). session.tick()'s own should_stop covers
         # sequential mode reaching its ceiling (mirrors #tick's own ceiling
         # check, which STOPS rather than advancing past it) -- now the
-        # rarely-exercised fallback for a magazyn that has genuinely run
+        # rarely-exercised fallback for an archive that has genuinely run
         # out of data (session.extend_exhausted), not the normal outcome of
         # a long sequential playback run.
         if session.playback_running:
@@ -915,16 +915,16 @@ def main():
     parser.add_argument('--sound-low', choices=INSTRUMENTS, default='sine')
     parser.add_argument('--sound-prime', choices=INSTRUMENTS, default='triangle')
     parser.add_argument('--sound-lcm', choices=INSTRUMENTS, default='choir')
-    parser.add_argument("--source", choices=["synthetic", "sieve", "magazyn"], default="synthetic")
+    parser.add_argument("--source", choices=["synthetic", "sieve", "archive"], default="synthetic")
     parser.add_argument("--count", type=int, default=1_000_000, help="ring count for --source synthetic")
     # Accepts parse_big_int's flexible forms (plain digits, a*10**b, a*10^b,
     # aEb) in addition to a bare int -- see that function's own doc-comment.
-    # A real magazyn floor's own magnitude (floor 25 alone is 26 digits) is
+    # A real archive floor's own magnitude (floor 25 alone is 26 digits) is
     # exactly why this exists.
     parser.add_argument("--upto", type=parse_big_int, default=1_000_000,
-                         help="upper bound for --source sieve/magazyn -- accepts plain digits, "
+                         help="upper bound for --source sieve/archive -- accepts plain digits, "
                               "a*10**b, a*10^b, or scientific notation (aEb)")
-    parser.add_argument("--portal-folder", type=str, default=None, help="PrimeAtlas portal folder for --source magazyn")
+    parser.add_argument("--portal-folder", type=str, default=None, help="PrimeAtlas portal folder for --source archive")
     parser.add_argument("--width", type=int, default=1600)
     parser.add_argument("--height", type=int, default=1000)
     parser.add_argument("--point-size", type=float, default=3.0)
@@ -971,12 +971,12 @@ def main():
                               "or aEb -- see --upto) -- switch to a fixed range mode showing exactly "
                               "the primes in [FROM,TO], auto-tracking all of them if there aren't too many")
     # Viewing a high floor (e.g. 30) must not require loading every floor
-    # below it first. For --source magazyn with --load-range, this caps how
-    # many primes actually get materialized -- see load_magazyn's own
+    # below it first. For --source archive with --load-range, this caps how
+    # many primes actually get materialized -- see load_archive's own
     # `max_load_count` doc-comment for why it's a plain configurable number
     # here, not a hardcoded guess.
     parser.add_argument("--max-load-count", type=parse_big_int, default=2_000_000,
-                         help="safety cap on primes materialized for a magazyn --load-range load; "
+                         help="safety cap on primes materialized for an archive --load-range load; "
                               "the range is truncated from the top if it holds more than this "
                               "(accepts plain digits, a*10**b, a*10^b, or aEb -- see --upto)")
     # Playback speed -- ports #tempoMs's own default (120ms/tick) and
@@ -1001,8 +1001,8 @@ def main():
                               "this file directly from a terminal)")
     args = parser.parse_args()
 
-    if args.source == "magazyn" and not args.portal_folder:
-        parser.error("--source magazyn requires --portal-folder")
+    if args.source == "archive" and not args.portal_folder:
+        parser.error("--source archive requires --portal-folder")
 
     valid_families = {"bertrand", "legendre", "generalLaw"}
     requested_families = {f.strip() for f in args.windows.split(",") if f.strip()}

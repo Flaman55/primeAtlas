@@ -29,7 +29,7 @@ import window_sharding
 
 from . import floor_meta
 
-_PIETRO_DIR_RE = re.compile(r"^10p(\d+)$")
+_FLOOR_DIR_RE = re.compile(r"^10p(\d+)$")
 _SOURCE_WINDOW_RE = re.compile(r"^PRIME_WINDOW_10p\d+_off_(\d+)(M)?\.bin$")
 _CONSTELLATION_K_RE = re.compile(r"^k(\d+)$")
 _CONSTELLATION_VARIANT_RE = re.compile(r"^variant(\d+)$")
@@ -77,7 +77,7 @@ def _save_json_atomic(path, data):
         return False
 
 
-def _pietra_on_disk(storage_path):
+def _floors_on_disk(storage_path):
     """Every base_exponent with a 10p{N} folder actually present on disk right now --
     shared by build_from_disk() (what to snapshot) and diff_against_disk() (which also
     needs this to notice a floor that exists on disk but was never in the backup at
@@ -85,13 +85,13 @@ def _pietra_on_disk(storage_path):
     found = set()
     if os.path.isdir(storage_path):
         for name in os.listdir(storage_path):
-            m = _PIETRO_DIR_RE.match(name)
+            m = _FLOOR_DIR_RE.match(name)
             if m and os.path.isdir(os.path.join(storage_path, name)):
                 found.add(int(m.group(1)))
     return found
 
 
-class PietroSnapshot:
+class FloorSnapshot:
     """What one floor (10p{N}/source_primes/) looked like on disk at backup time: just
     filenames, not contents -- the filename alone encodes the offset (see
     _SOURCE_WINDOW_RE), and reading every window's header just to build a backup would be
@@ -219,15 +219,15 @@ class ConstellationSnapshot:
 
 
 class BackupManifest:
-    """Full snapshot: every floor's PietroSnapshot + ConstellationSnapshot, plus a copy of
+    """Full snapshot: every floor's FloorSnapshot + ConstellationSnapshot, plus a copy of
     benchmark_log.csv's raw text (small -- a few hundred rows even after months of use --
     safe to embed directly in the manifest JSON rather than as a separate file to keep
     track of)."""
 
-    def __init__(self, timestamp_utc, storage_path, pietra, constellations, benchmark_csv_text):
+    def __init__(self, timestamp_utc, storage_path, floors, constellations, benchmark_csv_text):
         self.timestamp_utc = timestamp_utc
         self.storage_path = storage_path
-        self.pietra = {p.base_exponent: p for p in pietra}
+        self.floors = {p.base_exponent: p for p in floors}
         self.constellations = {c.base_exponent: c for c in constellations}
         self.benchmark_csv_text = benchmark_csv_text
 
@@ -239,7 +239,7 @@ class BackupManifest:
         return {
             "timestamp_utc": self.timestamp_utc,
             "storage_path": self.storage_path,
-            "pietra": [p.to_dict() for p in self.pietra.values()],
+            "floors": [p.to_dict() for p in self.floors.values()],
             "constellations": [c.to_dict() for c in self.constellations.values()],
             "benchmark_csv_text": self.benchmark_csv_text,
         }
@@ -248,7 +248,7 @@ class BackupManifest:
     def from_dict(cls, data):
         return cls(
             data["timestamp_utc"], data.get("storage_path", ""),
-            [PietroSnapshot.from_dict(p) for p in data.get("pietra", [])],
+            [FloorSnapshot.from_dict(p) for p in data.get("floors", [])],
             [ConstellationSnapshot.from_dict(c) for c in data.get("constellations", [])],
             data.get("benchmark_csv_text", ""),
         )
@@ -261,16 +261,16 @@ class BackupManifest:
         which needs actual prime counts -- a backup only needs to know WHICH files
         exist)."""
         timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        # Loaded ONCE here rather than per-floor inside PietroSnapshot.scan() -- it's one
+        # Loaded ONCE here rather than per-floor inside FloorSnapshot.scan() -- it's one
         # root-level file shared by every floor, so re-reading it per floor would be pure
-        # waste (same reasoning update_pietro_totals_cache's caller only loads it once per
+        # waste (same reasoning update_floor_totals_cache's caller only loads it once per
         # app session, see prime_atlas_v1.py's _reload_totals_caches()).
         totals_cache = _load_json_best_effort(
             os.path.join(storage_path, TOTALS_CACHE_FILENAME)) or {}
-        pietra = []
+        floors = []
         constellations = []
-        for base_exponent in sorted(_pietra_on_disk(storage_path)):
-            pietra.append(PietroSnapshot.scan(storage_path, base_exponent, totals_cache))
+        for base_exponent in sorted(_floors_on_disk(storage_path)):
+            floors.append(FloorSnapshot.scan(storage_path, base_exponent, totals_cache))
             constellations.append(ConstellationSnapshot.scan(storage_path, base_exponent))
         csv_path = os.path.join(storage_path, "benchmark_log.csv")
         csv_text = ""
@@ -280,7 +280,7 @@ class BackupManifest:
                     csv_text = f.read()
             except OSError:
                 csv_text = ""
-        return cls(timestamp, storage_path, pietra, constellations, csv_text)
+        return cls(timestamp, storage_path, floors, constellations, csv_text)
 
     def restore_floor_metadata(self, storage_path):
         """Writes back floor_meta.json rows (merged, not overwritten -- see
@@ -292,7 +292,7 @@ class BackupManifest:
 
         These three are pure speed-of-display caches, not data -- a totals_cache_entry
         that's briefly stale relative to files not yet regenerated self-heals the next
-        time that floor is visited (update_pietro_totals_cache re-validates every
+        time that floor is visited (update_floor_totals_cache re-validates every
         filename's mtime against current disk state regardless of what this wrote), so
         this is safe to run BEFORE window regeneration rather than needing to wait for it.
         Best-effort per floor: one floor's write failing doesn't stop the others.
@@ -301,7 +301,7 @@ class BackupManifest:
         root_totals_cache = _load_json_best_effort(
             os.path.join(storage_path, TOTALS_CACHE_FILENAME)) or {}
         touched = 0
-        for base_exponent, snap in self.pietra.items():
+        for base_exponent, snap in self.floors.items():
             wrote_any = False
             if snap.meta_rows:
                 if floor_meta.merge_rows_into_floor_meta(
@@ -329,8 +329,8 @@ class BackupManifest:
         same reasoning as the benchmark aggregation elsewhere in this project: only
         including floors that actually have data.
 
-        The comparison unions self.pietra's keys with EVERY floor folder actually on
-        disk right now (_pietra_on_disk()), and computes BOTH directions for each:
+        The comparison unions self.floors's keys with EVERY floor folder actually on
+        disk right now (_floors_on_disk()), and computes BOTH directions for each:
         missing_from() (the backup has it, disk doesn't -- restore_job.py's
         regenerate-it path) and its mirror, current.missing_from(snap) (disk has it,
         backup doesn't -- the extra_windows/extra_hits fields, which the caller can
@@ -338,14 +338,14 @@ class BackupManifest:
         restore_job.py's delete_extra_files() and settings_tab.py's
         _on_start_restore()). This also covers a floor entirely absent from the
         backup (e.g. one added to the storage after the backup was taken, with no
-        entry in self.pietra at all): its snapshot is treated as empty, so ALL of its
+        entry in self.floors at all): its snapshot is treated as empty, so ALL of its
         files come back as extra_windows/extra_hits rather than being silently
         invisible to the diff."""
         result = {}
-        all_base_exponents = set(self.pietra.keys()) | _pietra_on_disk(storage_path)
+        all_base_exponents = set(self.floors.keys()) | _floors_on_disk(storage_path)
         for base_exponent in all_base_exponents:
-            snap = self.pietra.get(base_exponent)
-            current = PietroSnapshot.scan(storage_path, base_exponent)
+            snap = self.floors.get(base_exponent)
+            current = FloorSnapshot.scan(storage_path, base_exponent)
             if snap is not None:
                 missing_windows = snap.missing_from(current)
                 extra_windows = current.missing_from(snap)

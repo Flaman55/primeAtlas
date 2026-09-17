@@ -250,7 +250,7 @@ def _append_floor_meta_row(portal_folder, base_exponent, row):
     GUI package), same reasoning every other cross-folder duplication in this project
     already follows (see e.g. _ensure_benchmark_log_schema()'s own docstring). Writes
     10p{base_exponent}/floor_meta.json so this floor's generation history travels with its
-    own directory if it's ever copied into a different storage (magazyn) -- see
+    own directory if it's ever copied into a different storage (archive) -- see
     floor_meta.py's module docstring for the full rationale. Best-effort/non-fatal: any
     failure here must never break benchmark logging itself, which already succeeded by the
     time this is called."""

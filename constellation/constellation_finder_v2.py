@@ -48,7 +48,7 @@ except ImportError:
 # maintained here.
 #
 # CLI: running with no floor argument auto-detects and processes every floor under the
-# portal that has at least one source window (list_pietra_with_data()); an explicit
+# portal that has at least one source window (list_floors_with_data()); an explicit
 # argument restricts the run to just that one floor.
 #
 # Peek-ahead threshold: uses the NEXT file's header base_prime + MAX_SPAN as the peek
@@ -70,7 +70,7 @@ except ImportError:
 #
 # CHECKPOINT.txt regression safety: CHECKPOINT.txt and BOUNDARY_CHECKED.txt are both
 # plain files with no merge logic of their own -- if a floor's constellations/ folder is
-# physically copied in from another storage (magazyn) that had independently scanned
+# physically copied in from another storage (archive) that had independently scanned
 # some of the same windows, or CHECKPOINT.txt simply names a window no longer present
 # among the current ones (the existing "ignoring checkpoint, processing from the start"
 # fallback below), some already-processed windows get RE-scanned. Re-scanning is
@@ -210,7 +210,7 @@ def list_source_windows(base_exponent):
 
     WINDOW_INDEX.tsv cache: a floor with hundreds of thousands of source windows would
     otherwise make every run of this function -- and therefore every run of
-    process_floor()/list_pietra_with_data() -- open and read the header of ALL of them
+    process_floor()/list_floors_with_data() -- open and read the header of ALL of them
     just to learn their base_prime for sorting, paid IN FULL on every single invocation
     regardless of how much of the floor CHECKPOINT.txt already covers. That's a huge
     number of individual file opens before a single window even gets matched against a
@@ -256,7 +256,7 @@ def list_source_windows(base_exponent):
     return entries
 
 
-def list_pietra_with_data():
+def list_floors_with_data():
     """Returns sorted base_exponent ints for every 10p{N} folder under PORTAL_FOLDER that
     actually has at least one PGS2 source window. Floor folders can exist as empty
     source_primes/constellations placeholders ahead of the scanner actually reaching
@@ -576,7 +576,7 @@ def _resolve_last_value(base_exponent, k, variant_id, disk_cache):
     successful one), the hit file doesn't exist, or the counts
     DISAGREE (meaning the file was modified by something other than this same cache
     since it was last written -- e.g. a storage merge physically copying in a
-    constellations/ folder from another magazyn, per [[primeatlas_storage_merge_
+    constellations/ folder from another archive, per [[primeatlas_storage_merge_
     federation]] -- so the cached value can no longer be trusted and must be
     rediscovered the safe way). This count-based validation is what makes the cache
     safe to trust blindly on the fast path while never risking silently corrupting a
@@ -722,7 +722,7 @@ def _append_hits_deduped(base_exponent, k, variant_id, new_sorted_starts, last_v
     Why this exists (see [[primeatlas_storage_merge_federation]]): CHECKPOINT.txt is a
     single plain file with no merge logic of its own -- if a floor's constellations/
     folder gets physically
-    copied in from another storage (magazyn) that had independently scanned some of the
+    copied in from another storage (archive) that had independently scanned some of the
     SAME windows, or if CHECKPOINT.txt simply names a window no longer present among the
     CURRENT windows (process_floor()'s own existing fallback: "ignoring checkpoint,
     processing from the start"), some already-processed windows get RE-scanned. Those
@@ -1229,7 +1229,7 @@ if __name__ == "__main__":
         # process_floor() is already a cheap no-op for a floor whose checkpoint is fully
         # caught up, so scanning all of them each run is safe, not just at the moment a
         # new floor's data first appears.
-        floors = list_pietra_with_data()
+        floors = list_floors_with_data()
         if not floors:
             print("[!] No floor folders with source_primes data found under the portal -- nothing to do.")
         else:

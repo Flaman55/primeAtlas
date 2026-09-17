@@ -17,7 +17,7 @@ renderer.py with zero pre-existing unit test coverage (the GLFW/moderngl
 main loop, untestable in a headless sandbox) ever comes to depend on it.
 _run_visualization keeps its own current closures/dicts unchanged for now;
 Faza 4 is the actual rewire, done key-by-key/closure-by-closure with a
-real run against a real magazyn after each step, per PLAN.md.
+real run against a real archive after each step, per PLAN.md.
 
 Scope boundary: RenderSession owns everything from the point
 _run_visualization has ALREADY resolved --source/--load-range into a
@@ -98,7 +98,7 @@ from primeatlas.ring_viz.hud import (
     rasterize_hud_text,
     emit_audio_tick,
 )
-from primeatlas.ring_viz.sources import load_magazyn
+from primeatlas.ring_viz.sources import load_archive
 
 
 class RenderSession:
@@ -357,10 +357,10 @@ class RenderSession:
         if not should_extend_buffer(self.n, self.ceiling, self.buffer_margin, self.range_mode, self.can_extend_buffer):
             return None
         new_ceiling = next_buffer_ceiling(self.ceiling, self.buffer_margin)
-        new_primes = load_magazyn(self.portal_folder, new_ceiling, from_n=self.ceiling)
+        new_primes = load_archive(self.portal_folder, new_ceiling, from_n=self.ceiling)
         if len(new_primes) == 0:
             self.extend_exhausted = True
-            return (f"Buffer extend: no more data past {self.ceiling:,} in the magazyn -- "
+            return (f"Buffer extend: no more data past {self.ceiling:,} in the archive -- "
                     f"the loaded ceiling is now the real end of stored data")
         self.primes = np.concatenate([self.primes, new_primes])
         self.ceiling = new_ceiling

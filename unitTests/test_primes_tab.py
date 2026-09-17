@@ -81,8 +81,8 @@ def _primes_upto(n):
     return [p for p in range(2, n) if all(p % d for d in range(2, int(p ** 0.5) + 1))]
 
 
-def _test_cumulative_pietro_totals():
-    """Direct unit test of primeatlas.primes_tab._cumulative_pietro_totals -- a plain
+def _test_cumulative_floor_totals():
+    """Direct unit test of primeatlas.primes_tab._cumulative_floor_totals -- a plain
     function with no tkinter dependency (mirrors the existing convention of testing
     such extracted pure functions directly, e.g. benchmark_tab.py's
     _nearest_hover_point/_hover_label_position) -- so this runs even without Xvfb/a
@@ -95,14 +95,14 @@ def _test_cumulative_pietro_totals():
     than an external reference definition. This INCLUSIVE version instead answers
     "how many primes in total through this floor" -- see that function's own
     docstring for the full reasoning."""
-    from primeatlas.primes_tab import _cumulative_pietro_totals
+    from primeatlas.primes_tab import _cumulative_floor_totals
 
     # Fully known, contiguous floors 0..3 -- each floor's OWN count folded in, so the
     # numbers land one row "later" than Wikipedia's pi(10**N) would (that's the point):
     # floor 0 (own=4) reads 4, floor 1 (own=21) reads 4+21=25, floor 2 (own=143) reads
     # 25+143=168, matching pi(10)=4, pi(100)=25, pi(1000)=168 respectively.
     known = {0: (4, 1, 100), 1: (21, 1, 100), 2: (143, 1, 100), 3: (1061, 1, 100)}
-    result = _cumulative_pietro_totals([0, 1, 2, 3], known)
+    result = _cumulative_floor_totals([0, 1, 2, 3], known)
     check(result == {0: 4, 1: 25, 2: 168, 3: 1229},
           f"contiguous fully-known floors give an inclusive running total, own count "
           f"included (got {result})")
@@ -110,7 +110,7 @@ def _test_cumulative_pietro_totals():
     # A GAP IN THE FLOOR SEQUENCE ITSELF (0 and 3 exist on disk, 1/2 were never
     # generated at all) -- floor 3's cumulative can't be trusted (missing floors 1/2's
     # contribution entirely), so it must come back None, not a falsely-small number.
-    result = _cumulative_pietro_totals([0, 3], {0: (4, 1, 100), 3: (1061, 1, 100)})
+    result = _cumulative_floor_totals([0, 3], {0: (4, 1, 100), 3: (1061, 1, 100)})
     check(result == {0: 4, 3: None},
           f"a gap in the floor SEQUENCE (1/2 missing) poisons floor 3's cumulative "
           f"(got {result})")
@@ -118,24 +118,24 @@ def _test_cumulative_pietro_totals():
     # A gap in KNOWN TOTALS (floor 1 exists on disk but its total hasn't been
     # (re-)computed yet) poisons its OWN cumulative too now (inclusive means floor 1's
     # cumulative needs floor 1's own count, unlike the earlier exclusive version).
-    result = _cumulative_pietro_totals([0, 1, 2], {0: (4, 1, 100), 2: (143, 1, 100)})
+    result = _cumulative_floor_totals([0, 1, 2], {0: (4, 1, 100), 2: (143, 1, 100)})
     check(result == {0: 4, 1: None, 2: None},
           f"an unknown TOTAL (floor 1's count not yet known) poisons floor 1's own "
           f"cumulative and every floor above it (got {result})")
 
     # Once poisoned, stays poisoned for every higher floor, even ones individually known.
-    result = _cumulative_pietro_totals(
+    result = _cumulative_floor_totals(
         [0, 1, 2, 3], {0: (4, 1, 100), 2: (143, 1, 100), 3: (1061, 1, 100)})
     check(result == {0: 4, 1: None, 2: None, 3: None},
           f"a gap stays poisoned for every floor above it, even a later known one "
           f"(got {result})")
 
-    check(_cumulative_pietro_totals([], {}) == {},
+    check(_cumulative_floor_totals([], {}) == {},
           "an empty floor list returns an empty dict, no crash")
 
 
 def main():
-    _test_cumulative_pietro_totals()
+    _test_cumulative_floor_totals()
 
     import prime_sieve_v1
     import window_sharding
@@ -201,10 +201,10 @@ def main():
         node3 = node_by_text["10p3"]
 
         # --- cumulative running-total column ------------------------------------------
-        # Startup no longer auto-triggers a real per-floor rescan (compute_all_pietro_
-        # totals()) -- see storage.py's own module docstring for the persisted-totals
+        # Startup no longer auto-triggers a real per-floor rescan
+        # (compute_all_floor_totals()) -- see storage.py's own module docstring for the persisted-totals
         # feature: a fresh portal folder's .portal_totals_cache.json doesn't exist yet,
-        # so pietro_total_known is genuinely empty right after startup, and the
+        # so floor_total_known is genuinely empty right after startup, and the
         # cumulative column is correctly blank for BOTH floors at this point (nothing
         # to assert here beyond that; asserted implicitly by the totals verify below
         # actually changing things). Explicitly invoking the manual verify-totals
@@ -218,7 +218,7 @@ def main():
         # finished computing it (the second 5s pump waits for that). Floor 3's
         # cumulative can NEVER be shown here: floors 1 and 2 were never seeded/
         # generated at all (a real gap in the floor SEQUENCE, not just an unknown
-        # total -- see _cumulative_pietro_totals's own docstring), so it must stay
+        # total -- see _cumulative_floor_totals's own docstring), so it must stay
         # blank rather than silently showing floor0's count alone as if that were the
         # true running total through floor 3.
         check(widget.tree.set(node0, "cumulative") == "10",
@@ -230,9 +230,9 @@ def main():
 
         # --- floor pagination: expand 10p3 (7 files / FLOOR_PAGE_SIZE=3 -> 3 pages) --
         widget.tree.focus(node3)
-        widget._populate_pietro_node(node3)
+        widget._populate_floor_node(node3)
         widget._set_active_floor_node(node3)
-        state = widget._pietro_state[node3]
+        state = widget._floor_state[node3]
         check(state["total_pages"] == 3,
               f"7 files at FLOOR_PAGE_SIZE=3 gives exactly 3 pages (got {state['total_pages']})")
         check(state["page"] == 0, f"floor starts on page 0 (got {state['page']})")
@@ -257,11 +257,11 @@ def main():
         # Collapsing drops the cached page state.
         widget.tree.focus(node3)
         widget._on_tree_close(None)
-        check(node3 not in widget._pietro_state, "closing the floor node drops its cached page state")
+        check(node3 not in widget._floor_state, "closing the floor node drops its cached page state")
 
         # --- selecting a file row + loading the preview -----------------------------
         widget.tree.item(node0, open=True)
-        widget._populate_pietro_node(node0)
+        widget._populate_floor_node(node0)
         file_item = widget.tree.get_children(node0)[0]
         widget.tree.selection_set(file_item)
         widget.tree.focus(file_item)

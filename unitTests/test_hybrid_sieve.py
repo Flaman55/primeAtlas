@@ -94,7 +94,7 @@ def main():
             floor0 = hybrid_sieve._window_path(hybrid_sieve.Path(portal), 0, 0, 10)
             floor1 = hybrid_sieve._window_path(hybrid_sieve.Path(portal), 1, 0, 10)
             passed &= check(floor0.is_file() and floor1.is_file(),
-                            "empty magazyn generates and routes floor-0/floor-1 output separately")
+                            "empty archive generates and routes floor-0/floor-1 output separately")
             # Floors below LOW_FLOOR_CUTOFF each have one whole-floor PGS2
             # window, even when this test deliberately uses window_m=10.
             all_paths = [
@@ -109,7 +109,7 @@ def main():
             missing.unlink()
             hybrid_sieve.run_hybrid_sieve(0, 1, 10, 1, True, portal, window_m=10)
             passed &= check(missing.is_file() and missing.read_bytes() == preserved[missing],
-                            "a gapped magazyn regenerates only the missing standard window")
+                            "a gapped archive regenerates only the missing standard window")
             passed &= check(all(path == missing or path.read_bytes() == data
                                 for path, data in preserved.items()),
                             "filling a gap leaves every other output window unchanged")

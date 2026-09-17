@@ -37,7 +37,7 @@ from .benchmark import (
     _order_benchmark_tree_columns, aggregate_benchmark_fair_spw,
     aggregate_benchmark_growth, aggregate_benchmark_sieve_nps,
     aggregate_benchmark_write_mbps, benchmark_row_stats, benchmark_metric_engines,
-    group_benchmark_rows_by_pietro, read_benchmark_log, render_benchmark_pdf,
+    group_benchmark_rows_by_floor, read_benchmark_log, render_benchmark_pdf,
 )
 from .i18n import Translator, DEFAULT_LANGUAGE
 
@@ -152,7 +152,7 @@ def _bind_chart_hover(canvas, hover_points, t, fg_color, bg_color, width, height
         if best is None:
             return
         px, py, x_val, y_val, fmt, color = best
-        text = f"{t('bench.axis_pietro')} {x_val}: {fmt.format(y_val)}"
+        text = f"{t('bench.axis_floor')} {x_val}: {fmt.format(y_val)}"
         canvas.create_oval(px - 6, py - 6, px + 6, py + 6, outline=color, width=2,
                             tags="hover_tip")
 
@@ -338,7 +338,7 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
         canvas.create_text(x_px, pad_top + plot_h + 8, text=str(x_val), anchor="n",
                             font=("Consolas", 8), fill=fg_color)
 
-    canvas.create_text(pad_left + plot_w / 2, height - 8, text=t("bench.axis_pietro"),
+    canvas.create_text(pad_left + plot_w / 2, height - 8, text=t("bench.axis_floor"),
                         font=("Consolas", 8, "bold"), fill=fg_color)
     # Sits in the padding strip ABOVE the plot area (not overlapping any tick label, which
     # all live at y >= pad_top) -- anchored "sw" so its BOTTOM edge, not its top, is what's
@@ -395,7 +395,7 @@ class BenchmarkTab(BaseTab):
         return value, e.g. {"fg": ..., "tree_group_bg": ..., "tree_stat_bg": ..., ...}),
         passed in explicitly rather than read from a bare global -- same dependency-
         injection reasoning as every other constructor parameter here. Needed because
-        this tab's own tree "pietro"/"stat" row-highlight tags (see _build_widgets'
+        this tab's own tree "floor"/"stat" row-highlight tags (see _build_widgets'
         own tag_configure calls) are a per-item ttk.Treeview override that
         PortalBrowserApp._apply_theme()'s ttk.Style() calls can never reach -- see
         primeatlas/theme.py's own docstring on tree_group_bg/tree_stat_bg for the bug
@@ -480,7 +480,7 @@ class BenchmarkTab(BaseTab):
             side="left", padx=(4, 0))
 
         self.benchmark_tree = ttk.Treeview(tree_frame, show="tree headings")
-        self.benchmark_tree.heading("#0", text=T("bench.col_pietro"))
+        self.benchmark_tree.heading("#0", text=T("bench.col_floor"))
         self.benchmark_tree.column("#0", width=170, stretch=False)
         # Horizontal scrollbar -- with 11 data columns + #0, the row is wider than the
         # tab, and without this the only way to see the columns off the right edge was
@@ -501,7 +501,7 @@ class BenchmarkTab(BaseTab):
         # would keep the (light) style-level foreground on top of these
         # theme-appropriate backgrounds and still be unreadable.
         p = self._theme_palette
-        self.benchmark_tree.tag_configure("pietro", background=p["tree_group_bg"], foreground=p["fg"])
+        self.benchmark_tree.tag_configure("floor", background=p["tree_group_bg"], foreground=p["fg"])
         self.benchmark_tree.tag_configure("stat", background=p["tree_stat_bg"], foreground=p["fg"])
 
         self.benchmark_tree.bind("<<TreeviewOpen>>", self._on_benchmark_tree_open)
@@ -522,14 +522,14 @@ class BenchmarkTab(BaseTab):
                                           # ungrouped data) instead of re-parsing the CSV,
                                           # so the PDF always exports everything, even
                                           # rows not currently paged into view.
-        self._benchmark_rows_by_pietro = {}   # base_exponent -> [rows...], built by
+        self._benchmark_rows_by_floor = {}   # base_exponent -> [rows...], built by
                                                # reload_benchmark_log() via
-                                               # group_benchmark_rows_by_pietro()
-        self._benchmark_pietro_state = {}     # tree item id -> {base_exponent, rows,
+                                               # group_benchmark_rows_by_floor()
+        self._benchmark_floor_state = {}     # tree item id -> {base_exponent, rows,
                                                # stats, page, total_pages} -- lazily
                                                # populated on <<TreeviewOpen>>, dropped on
                                                # <<TreeviewClose>>, same lifecycle as the
-                                               # primes tab's _pietro_state.
+                                               # primes tab's _floor_state.
         self._active_benchmark_node = None    # which floor's page the nav buttons above
                                                # currently operate on
 
@@ -579,7 +579,7 @@ class BenchmarkTab(BaseTab):
                                                    # still use every column, unaffected
                                                    # by what the tree itself displays
         self._benchmark_rows = rows
-        self._benchmark_rows_by_pietro = group_benchmark_rows_by_pietro(rows)
+        self._benchmark_rows_by_floor = group_benchmark_rows_by_floor(rows)
         self._benchmark_tree_fieldnames = _order_benchmark_tree_columns(
             [c for c in fieldnames if c not in BENCHMARK_TREE_HIDDEN_COLUMNS])
 
@@ -592,7 +592,7 @@ class BenchmarkTab(BaseTab):
         self._redraw_benchmark_chart2()
 
         self.benchmark_tree.delete(*self.benchmark_tree.get_children())
-        self._benchmark_pietro_state = {}
+        self._benchmark_floor_state = {}
         self._active_benchmark_node = None
         self._refresh_benchmark_nav_controls()
 
@@ -602,20 +602,20 @@ class BenchmarkTab(BaseTab):
             self.benchmark_tree.heading(col, text=col)
             self.benchmark_tree.column(col, width=120, anchor="center", stretch=False)
 
-        if not fieldnames or not self._benchmark_rows_by_pietro:
+        if not fieldnames or not self._benchmark_rows_by_floor:
             self.benchmark_tree.insert("", "end", text=T("bench.no_data_row"))
             return
 
-        for base_exponent in sorted(self._benchmark_rows_by_pietro):
-            count = len(self._benchmark_rows_by_pietro[base_exponent])
+        for base_exponent in sorted(self._benchmark_rows_by_floor):
+            count = len(self._benchmark_rows_by_floor[base_exponent])
             node = self.benchmark_tree.insert(
-                "", "end", text=T("bench.pietro_measurements", base_exponent=base_exponent, count=count),
-                values=["" for _ in tree_fieldnames], open=False, tags=("pietro",))
+                "", "end", text=T("bench.floor_measurements", base_exponent=base_exponent, count=count),
+                values=["" for _ in tree_fieldnames], open=False, tags=("floor",))
             self.benchmark_tree.insert(node, "end", text=T("common.loading"))
 
     def _on_benchmark_tree_open(self, _event):
         node = self.benchmark_tree.focus()
-        self._populate_benchmark_pietro_node(node)
+        self._populate_benchmark_floor_node(node)
         self._set_active_benchmark_node(node)
 
     def _on_benchmark_tree_close(self, _event):
@@ -624,9 +624,9 @@ class BenchmarkTab(BaseTab):
         that's never re-expanded doesn't hold onto its (already in-memory, but still
         worth not duplicating into tree-item state) rows indefinitely."""
         node = self.benchmark_tree.focus()
-        if node not in self._benchmark_pietro_state:
+        if node not in self._benchmark_floor_state:
             return
-        del self._benchmark_pietro_state[node]
+        del self._benchmark_floor_state[node]
         self.benchmark_tree.delete(*self.benchmark_tree.get_children(node))
         self.benchmark_tree.insert(node, "end", text=self.T("common.loading"))
         if self._active_benchmark_node == node:
@@ -641,11 +641,11 @@ class BenchmarkTab(BaseTab):
         if not selection:
             return
         item = selection[0]
-        if "pietro" in self.benchmark_tree.item(item, "tags"):
+        if "floor" in self.benchmark_tree.item(item, "tags"):
             self._set_active_benchmark_node(item)
 
-    def _populate_benchmark_pietro_node(self, node):
-        if node in self._benchmark_pietro_state:
+    def _populate_benchmark_floor_node(self, node):
+        if node in self._benchmark_floor_state:
             return  # already prepared this session -- nothing to redo
         children = self.benchmark_tree.get_children(node)
         if len(children) == 1 and self.benchmark_tree.item(children[0], "text") == self.T("common.loading"):
@@ -653,10 +653,10 @@ class BenchmarkTab(BaseTab):
 
         text = self.benchmark_tree.item(node, "text")  # "10p{N} (M measurement(s))"
         base_exponent = int(text[3:].split(" ", 1)[0])
-        rows = self._benchmark_rows_by_pietro.get(base_exponent, [])
+        rows = self._benchmark_rows_by_floor.get(base_exponent, [])
         stats = benchmark_row_stats(rows)
         total_pages = max(1, (len(rows) + BENCHMARK_PAGE_SIZE - 1) // BENCHMARK_PAGE_SIZE)
-        self._benchmark_pietro_state[node] = {
+        self._benchmark_floor_state[node] = {
             "base_exponent": base_exponent,
             "rows": rows,
             "stats": stats,
@@ -671,7 +671,7 @@ class BenchmarkTab(BaseTab):
         that floor's rows, not just the current page -- re-inserted on every page turn,
         which costs nothing since it's a single row) -- see benchmark_row_stats()."""
         T = self.T
-        state = self._benchmark_pietro_state.get(node)
+        state = self._benchmark_floor_state.get(node)
         if not state:
             return
         total_pages = state["total_pages"]
@@ -716,7 +716,7 @@ class BenchmarkTab(BaseTab):
 
     def _refresh_benchmark_nav_controls(self):
         node = self._active_benchmark_node
-        state = self._benchmark_pietro_state.get(node) if node is not None else None
+        state = self._benchmark_floor_state.get(node) if node is not None else None
         if not state:
             self.benchmark_page_label.set("")
             self.benchmark_prev_btn.configure(state="disabled")
@@ -727,20 +727,20 @@ class BenchmarkTab(BaseTab):
 
     def _prev_benchmark_page(self):
         node = self._active_benchmark_node
-        if node is not None and self._benchmark_pietro_state.get(node):
-            self._show_benchmark_page(node, self._benchmark_pietro_state[node]["page"] - 1)
+        if node is not None and self._benchmark_floor_state.get(node):
+            self._show_benchmark_page(node, self._benchmark_floor_state[node]["page"] - 1)
 
     def _next_benchmark_page(self):
         node = self._active_benchmark_node
-        if node is not None and self._benchmark_pietro_state.get(node):
-            self._show_benchmark_page(node, self._benchmark_pietro_state[node]["page"] + 1)
+        if node is not None and self._benchmark_floor_state.get(node):
+            self._show_benchmark_page(node, self._benchmark_floor_state[node]["page"] + 1)
 
     def _goto_benchmark_page(self):
         raw = self.benchmark_goto_entry.get().strip()
         if not raw.isdigit():
             return
         node = self._active_benchmark_node
-        if node is not None and self._benchmark_pietro_state.get(node):
+        if node is not None and self._benchmark_floor_state.get(node):
             self._show_benchmark_page(node, int(raw) - 1)
 
     def _export_benchmark_pdf(self):

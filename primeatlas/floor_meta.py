@@ -5,7 +5,7 @@ wired into the GUI/backup layers by prime_atlas_v1.py / manifest.py / backup_sto
 
 Why this exists: benchmark_log.csv lives at the STORAGE ROOT, not inside any one floor's
 own 10p{N}/ folder -- so a floor's generation history has no independent existence of its
-own. Physically copying a 10p{N} directory out of one storage (magazyn) into another (the
+own. Physically copying a 10p{N} directory out of one storage (archive) into another (the
 common case: building a fresh storage but bringing some already-generated floors along)
 leaves that floor's timing/benchmark rows behind in the OLD root's CSV -- from the new
 storage's point of view the floor's data exists but its history is gone. floor_meta.json

@@ -57,7 +57,7 @@ class BackupStore:
         GUI's backup list as if it were its own backup, and selecting it would crash
         with KeyError: 'timestamp_utc' inside BackupManifest.from_dict(), since a
         restore checkpoint's JSON shape (backup_name/status/steps) has nothing to do with
-        a manifest's (timestamp_utc/storage_path/pietra/...). Excluding ".restore.json"
+        a manifest's (timestamp_utc/storage_path/floors/...). Excluding ".restore.json"
         specifically (rather than tightening to a strict backup_<timestamp>.json regex)
         keeps this simple and matches restore_checkpoint_path()'s own naming exactly."""
         if not os.path.isdir(self.backups_dir):

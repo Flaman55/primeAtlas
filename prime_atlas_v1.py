@@ -44,7 +44,7 @@ import os
 #                                                  path, persisted OUTSIDE the portal folder
 #                                                  itself (see that module's docstring for
 #                                                  why)
-#        - BackupManifest/PietroSnapshot/
+#        - BackupManifest/FloorSnapshot/
 #          ConstellationSnapshot                 (manifest.py)  -- a lightweight JSON
 #                                                  SNAPSHOT of what floors/constellations/
 #                                                  benchmark log exist -- NOT a copy of the
@@ -90,7 +90,7 @@ _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(_SCRIPT_DIR, "prime_sieve"))
 sys.path.insert(0, os.path.join(_SCRIPT_DIR, "constellation"))
 from primeatlas import (  # noqa: E402
-    AppSettings, Translator, prune_empty_pietro_dirs,
+    AppSettings, Translator, prune_empty_floor_dirs,
     try_import_sympy as primality_try_import_sympy,
 )
 # primality_try_import_sympy is the one name from primeatlas.primality still imported
@@ -245,8 +245,8 @@ def _build_gui():
             # (not just when it finishes), makes the in-progress state visibly obvious.
             # Always packed (not shown/hidden dynamically)
             # so its position never jumps around -- sits at 0/0 (empty) until the first batch
-            # starts, see TotalsSearchCoordinator.compute_all_pietro_totals()/
-            # _on_pietro_total_start() (primeatlas/totals_search_coordinator.py).
+            # starts, see TotalsSearchCoordinator.compute_all_floor_totals()/
+            # _on_floor_total_start() (primeatlas/totals_search_coordinator.py).
             self.totals_progress = ttk.Progressbar(status_frame, orient="horizontal",
                                                      mode="determinate", maximum=1, value=0)
             self.totals_progress.pack(fill="x", side="top")
@@ -343,13 +343,13 @@ def _build_gui():
                 self, get_portal_folder=lambda: PORTAL_FOLDER, status_var=self.status,
                 translator=TRANSLATOR, primes_tab_widget=self.primes_tab_widget,
                 totals_search=self._totals_search,
-                prune_empty_pietro_dirs=prune_empty_pietro_dirs,
+                prune_empty_floor_dirs=prune_empty_floor_dirs,
                 on_startup_scan_done=self._on_tree_startup_scan_done)
             self._constellations_tree_coord = ConstellationsTreeCoordinator(
                 self, get_portal_folder=lambda: PORTAL_FOLDER, status_var=self.status,
                 translator=TRANSLATOR,
                 constellations_hits_tab_widget=self.constellations_hits_tab_widget,
-                prune_empty_pietro_dirs=prune_empty_pietro_dirs,
+                prune_empty_floor_dirs=prune_empty_floor_dirs,
                 on_startup_scan_done=self._on_tree_startup_scan_done)
 
             # The three "offer to generate this missing fragment" bridge methods
@@ -635,7 +635,7 @@ def _build_gui():
                 offer_generate_missing_prime_window=lambda be, num:
                     self._offer_generate_missing_prime_window("prime", be, num),
                 submit_totals_job=lambda be: self._totals_search.submit_totals_job(be),
-                verify_all_totals=lambda: self._totals_search.compute_all_pietro_totals())
+                verify_all_totals=lambda: self._totals_search.compute_all_floor_totals())
             self.primes_tab_widget.pack(fill="both", expand=True)
 
         def reload_primes_tree(self):
@@ -959,7 +959,7 @@ def _build_gui():
         def _build_research_squares_tab(self):
             """Square-interval explorer (Legendre/Oppermann/Brocard presets + custom
             boundary formula), via primeatlas/research_squares_tab.py's
-            ResearchSquaresTab, with a data-source toggle (on-disk-magazyn bridge,
+            ResearchSquaresTab, with a data-source toggle (on-disk-archive bridge,
             primeatlas/research_squares.py) and CSV export -- see that module's own
             docstring. Same dependency-injection/local-import convention as
             ResearchGoldbachTab above."""

@@ -1,7 +1,7 @@
 """
 rings_tab.py -- RingsTab(BaseTab), the "Ring visualization" tab. Launches the
 GPU renderer (primeatlas/ring_viz/renderer.py) as a separate native Windows subprocess
-against the app's own currently-configured magazyn, given a target N.
+against the app's own currently-configured archive, given a target N.
 
 WHY A SUBPROCESS, NOT EMBEDDED IN THIS WINDOW: GL's own event loop does not compose
 with Tkinter's mainloop() -- see primeatlas/ring_viz/__init__.py's own docstring for
@@ -62,7 +62,7 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
                          hit_point_size=None, hud_font_size=None, audio=False,
                          sound_low='sine', sound_prime='triangle', sound_lcm='choir',
                          pipe_stdin_commands=False, max_load_count=None, tempo_ms=None):
-    """Builds the argv for launching renderer.py against a real magazyn.
+    """Builds the argv for launching renderer.py against a real archive.
 
     Uses `python_executable` (defaults to sys.executable -- THIS SAME Python
     interpreter PrimeAtlas itself is currently running under) rather than a
@@ -123,8 +123,8 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
 
     `max_load_count` -- None (default) omits --max-load-count entirely, so
     renderer.py's own argparse default applies; a real value overrides the
-    safety cap on how many primes a magazyn `load_range` load may
-    materialize (see load_magazyn's own `max_load_count` doc-comment for why
+    safety cap on how many primes an archive `load_range` load may
+    materialize (see load_archive's own `max_load_count` doc-comment for why
     this is a plain configurable number, not a hardcoded constant). Only
     meaningful together with `load_range`, but forwarded unconditionally
     like every other optional flag here -- renderer.py itself ignores it
@@ -137,7 +137,7 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
     reachable live (post-launch, via the ]/[ keys inside the GL window).
     Same omit-if-None convention as `point_size` above."""
     exe = python_executable or sys.executable
-    argv = [exe, RENDERER_SCRIPT, "--source", "magazyn",
+    argv = [exe, RENDERER_SCRIPT, "--source", "archive",
             "--portal-folder", portal_folder, "--upto", str(upto)]
     windows = list(windows)
     if windows:
@@ -473,9 +473,9 @@ class RingsTab(BaseTab):
         # Safety cap for a Load Range
         # load, so an arbitrary From/To spanning a huge value gap (the whole
         # point of being able to open at a high floor without loading every
-        # floor below it first -- see load_magazyn's own `from_n`/
+        # floor below it first -- see load_archive's own `from_n`/
         # `max_load_count` doc-comments) can't stall the launch. No safe
-        # number has been benchmarked on real magazyn hardware yet, so this
+        # number has been benchmarked on real archive hardware yet, so this
         # is a plain editable field (persisted like every other field here)
         # rather than a hardcoded constant -- left empty falls back to
         # renderer.py's own argparse default.
@@ -842,7 +842,7 @@ class RingsTab(BaseTab):
         # expressions, and -- via that function's own parse_big_int fast
         # path -- "a*10^b"/scientific notation too), instead of a bare
         # `.isdigit()` check that rejected anything but plain decimal
-        # digits. A real magazyn floor's own magnitude (floor 25 alone is
+        # digits. A real archive floor's own magnitude (floor 25 alone is
         # 26 digits) is exactly why this matters here.
         range_mode_selected = self.mode_var.get() == "range"
         range_from_raw = self.load_range_from_entry.get().strip()

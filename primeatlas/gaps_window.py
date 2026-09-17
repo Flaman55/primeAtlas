@@ -32,7 +32,7 @@ Mirrors squares_window.py's own shape (sieve_is_prime, duplicated rather
 than imported -- see research_squares_tab.py's own docstring for why each
 conjecture module in this project stays a self-contained copy) and its
 two-entry-point split (check_gap_range / check_gap_range_from_source) for
-the same fresh-sieve-vs-magazyn-bridge reason. Unlike squares_window.py's
+the same fresh-sieve-vs-archive-bridge reason. Unlike squares_window.py's
 first_n_primes (which always sieves fresh, no ceiling of its own until the
 caller's outer check), the "find enough primes" logic here
 (_first_n_primes_from_source) applies its source's own ceiling on EVERY
@@ -168,7 +168,7 @@ def check_gap_range_from_source(n_from, n_to, is_prime_source, overlay="none",
     obtained via `is_prime_source(bound)` -- a plain callable int -> is_prime
     bytearray/array-like -- instead of always sieving fresh in memory. This
     is what lets a caller plug in primeatlas/research_gaps.py's
-    read_is_prime_from_storage(portal_folder, ...) (on-disk-magazyn bridge,
+    read_is_prime_from_storage(portal_folder, ...) (on-disk-archive bridge,
     mirroring squares_window.py's own check_interval_range_from_source) as
     an alternative to a fresh sieve.
 
@@ -189,7 +189,7 @@ def check_gap_range(n_from, n_to, overlay="none", row_cap=None, row_offset=0):
     """Checks the gap g_n = p_(n+1)-p_n, plus an optional overlay
     (Andrica/Firoozbakht/Cramer), for every n in [n_from, n_to]
     (n_from >= 1, p_1 = 2). Always sieves fresh, in memory -- see
-    check_gap_range_from_source() above for the on-disk-magazyn-backed
+    check_gap_range_from_source() above for the on-disk-archive-backed
     alternative.
 
     Refuses (ValueError) whenever the largest prime search needed would

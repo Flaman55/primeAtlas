@@ -527,7 +527,7 @@ def initial_n_for_source(source, upto, primes):
     """Picks the N the ring view should OPEN on, given how the ring array was
     sourced.
 
-    For --source sieve/magazyn, the user has a real target N in mind
+    For --source sieve/archive, the user has a real target N in mind
     (rings_tab.py's N field, passed through verbatim as --upto) -- the view
     must open exactly there, not on whatever the last loaded prime happens
     to be. ring_positions() computes is_hit as n % prime == 0 (real divisors

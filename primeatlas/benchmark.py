@@ -267,7 +267,7 @@ def aggregate_benchmark_write_mbps(rows):
     return sorted(latest.items())
 
 
-def group_benchmark_rows_by_pietro(rows):
+def group_benchmark_rows_by_floor(rows):
     """Splits benchmark_log.csv rows into {base_exponent: [rows...]}, preserving each
     floor's rows in their original (chronological, CSV-append) order. Rows with a missing
     or unparseable base_exponent are skipped -- same defensive approach as
@@ -313,20 +313,20 @@ def benchmark_row_stats(rows):
 def _pdf_chart_ops(points, x0, y0, w, h, points2=None, translator=None,
                     label_key1="bench.axis_nps", label_key2="bench.axis_spw",
                     fmt1="{:,.0f}", fmt2="{:,.3f}", engines=None):
-    """Returns PDF content-stream ops drawing a (pietro, primary-series) growth chart as
+    """Returns PDF content-stream ops drawing a (floor, primary-series) growth chart as
     benchmark_tab.py's own _draw_growth_chart() (same axis/tick/point layout logic),
     inside the box [x0, x0+w] x [y0, y0+h] in PDF's bottom-left-origin point space --
     kept as a SEPARATE function rather than sharing code with the canvas version, since
     tkinter's Canvas anchors ("e", "sw", ...) and y-down coordinate system have no PDF
     equivalent.
 
-    points2 (optional): a SECOND series sharing the x-axis (pietro) -- by default the 'fair'
+    points2 (optional): a SECOND series sharing the x-axis (floor) -- by default the 'fair'
     loop_seconds_per_window figure shown alongside n/s, but label_key2/fmt2 (see below) let
     a caller reuse this for a different pair, e.g. sieve-numbers/s + write-MB/s. Drawn as a
     red line with its OWN right-hand y-axis and its own independent scale (values are a
     different order of magnitude from the primary series, so sharing one axis would flatten
     one of the two lines into a straight line at the bottom). The x-tick set is the UNION of
-    both series' base_exponent values, so a pietro present in only one series still gets an
+    both series' base_exponent values, so a floor present in only one series still gets an
     x-tick.
 
     label_key1/label_key2: i18n keys for the primary/secondary axis titles (see
@@ -340,7 +340,7 @@ def _pdf_chart_ops(points, x0, y0, w, h, points2=None, translator=None,
     precision that doesn't fit its numbers.
 
     translator (optional): a primeatlas.i18n.Translator instance -- axis labels reuse the
-    SAME on-screen chart's i18n keys (bench.axis_pietro/no_data_chart plus whichever
+    SAME on-screen chart's i18n keys (bench.axis_floor/no_data_chart plus whichever
     label_key1/label_key2 resolve to, see _draw_growth_chart()) instead of separate
     hardcoded PDF text, then ASCII-fold the result (see _pdf_ascii_fold()), so every axis
     label tracks the app's actual language selection instead of a fixed one. Defaults to
@@ -428,7 +428,7 @@ def _pdf_chart_ops(points, x0, y0, w, h, points2=None, translator=None,
         ops.append(_pdf_text_op(x_px - 8, plot_y0 - 14, 7, "Courier", str(x_val)))
 
     ops.append(_pdf_text_op(plot_x0 + plot_w / 2 - 30, y0 + 4, 8, "Helvetica-Bold",
-                             _pdf_ascii_fold(t("bench.axis_pietro"))))
+                             _pdf_ascii_fold(t("bench.axis_floor"))))
     if points:
         ops.append(_pdf_text_op(x0 + 2, y0 + h - 10, 8, "Helvetica-Bold",
                                  _pdf_ascii_fold(t(label_key1))))

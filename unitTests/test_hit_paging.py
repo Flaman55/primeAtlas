@@ -1,6 +1,6 @@
 """
 test_hit_paging.py -- unit tests for prime_sieve/hit_paging.py (constellation hit-file
-paging for magazyn/records-table browsing) and its
+paging for archive/records-table browsing) and its
 prime_sieve_v1.iter_prime_window_chunks() streaming-decode dependency.
 
 Usage:

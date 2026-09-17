@@ -41,7 +41,7 @@ def check(condition, message):
 def _make_paged_floor(portal_folder, base_exponent, k, variant_id, values, page_size):
     """Seeds a floor's k/variant hit file the normal way (write_prime_window), then
     migrates it to pages -- so this test exercises the exact same migration path a
-    real magazyn would go through, not a hand-built PAGES_META.json."""
+    real archive would go through, not a hand-built PAGES_META.json."""
     vdir = os.path.join(portal_folder, f"10p{base_exponent}", "constellations",
                          f"k{k}", f"variant{variant_id}")
     os.makedirs(vdir, exist_ok=True)

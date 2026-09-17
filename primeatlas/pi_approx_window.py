@@ -4,7 +4,7 @@ pi(x)-approximation-accuracy checks for the Badania -> Przyblizenia pi(x)
 sub-tab.
 
 Compares the REAL count of primes <= x (computed via a fresh sieve or read
-from the on-disk magazyn) against two classical analytic approximations, at
+from the on-disk archive) against two classical analytic approximations, at
 a set of checkpoints x = x_from, x_from+step, ..., x_to:
 
   - li(x): the logarithmic integral, li(x) = Ei(ln x) for x > 1 (the
@@ -34,7 +34,7 @@ same measurement-only shape as polynomials_window.py's prime_count/density
 
 Mirrors squares_window.py's own two-entry-point split (check_pi_approx_
 range / check_pi_approx_range_from_source) for the same fresh-sieve-vs-
-magazyn-bridge reason, and its own duplicated sieve_is_prime (see
+archive-bridge reason, and its own duplicated sieve_is_prime (see
 research_squares_tab.py's own docstring for why each conjecture/feature
 module in this project stays a self-contained copy). A THIRD entry point,
 check_pi_approx_range_with_pi_func(), skips the is_prime array entirely --
@@ -220,7 +220,7 @@ def check_pi_approx_range_from_source(x_from, x_to, step, is_prime_source,
     callable int -> is_prime bytearray/array-like, long enough to index up
     to x_to -- instead of always sieving fresh in memory. This is what lets
     a caller plug in primeatlas/research_pi_approx.py's read_is_prime_
-    from_storage(portal_folder, ...) (on-disk-magazyn bridge, mirroring
+    from_storage(portal_folder, ...) (on-disk-archive bridge, mirroring
     squares_window.py's own check_interval_range_from_source) as an
     alternative to a fresh sieve.
 
@@ -245,7 +245,7 @@ def check_pi_approx_range(x_from, x_to, step, row_cap=None, row_offset=0):
     """Checks li(x)/R(x) against the real pi(x) for every checkpoint
     x = x_from, x_from+step, ..., x_to (x_from >= 2). Always sieves fresh,
     in memory -- see check_pi_approx_range_from_source() above for the
-    on-disk-magazyn-backed alternative.
+    on-disk-archive-backed alternative.
 
     Refuses (ValueError) whenever x_to would require a fresh sieve above
     MAX_SIEVE_BOUND -- see that constant's own docstring.

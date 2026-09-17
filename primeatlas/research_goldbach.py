@@ -58,7 +58,7 @@ def read_is_prime_from_storage(portal_folder, limit):
     floor storage (10p{N}/source_primes/PRIME_WINDOW_*.bin, PGS2 format -- see
     prime_sieve_v1.py's own format header) instead of running a fresh sieve. Used by
     the Goldbach tab's Wizualizacja feature (see research_goldbach_tab.py's
-    _on_goldbach_visualize), which reads from the magazyn rather than recomputing --
+    _on_goldbach_visualize), which reads from the archive rather than recomputing --
     the per-n witness search itself still runs the exact same algorithm as
     goldbach_window.py's window_rows(), only the SOURCE of is_prime changes.
 
