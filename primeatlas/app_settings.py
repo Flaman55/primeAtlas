@@ -90,10 +90,8 @@ class AppSettings:
         cover, as the raw strings/bools the widgets themselves held. None on a fresh
         install (no run has ever launched) -- RingsTab falls back to its own hardcoded
         first-run defaults in that case; every launch after the first one instead
-        restores exactly where the previous session left off (Artur, 2026-09-11:
-        "ustawienia domyslne dla pierwszego uruchomienia... kazde kolejne to przyjmuje
-        ostatnie wpisane wartosci"). Same "remembered purely as a UI convenience"
-        reasoning as full_backup_destination above."""
+        restores exactly where the previous session left off. Same "remembered
+        purely as a UI convenience" reasoning as full_backup_destination above."""
         return self._data.get("ring_viz_params") or None
 
     def set_ring_viz_params(self, params):
@@ -141,12 +139,11 @@ class AppSettings:
         (see settings_tab.py's _on_check_cudasieve_status()) -- {"ok": bool,
         "payload": dict-or-error-string}, or None if never checked on this install.
 
-        Deliberately NOT re-probed automatically at app startup (Artur, 2026-08-23,
-        ported from the original `cudasieve` branch): an earlier version called the WSL
-        status check directly from the Settings tab's __init__, which (a) paid a WSL
-        round-trip on every single launch for a GPU-only, opt-in engine most sessions
-        never touch, and (b) raced the app's own mainloop() startup (RuntimeError: main
-        thread is not in main loop, confirmed live) since cmd_status() answers fast
+        Deliberately NOT re-probed automatically at app startup: an earlier version
+        called the WSL status check directly from the Settings tab's __init__, which (a)
+        paid a WSL round-trip on every single launch for a GPU-only, opt-in engine most
+        sessions never touch, and (b) raced the app's own mainloop() startup
+        (RuntimeError: main thread is not in main loop) since cmd_status() answers fast
         enough to finish before mainloop() even starts. Caching here fixes the slowdown
         at its root instead of just the crash: this value is shown as-is on every
         startup; a fresh WSL probe only happens when the user explicitly clicks
@@ -191,9 +188,9 @@ class AppSettings:
         (settings_tab.py) needs to keep showing a real status line (not just revert to
         a blank/neutral one) after its wizard Toplevel closes, same "persist the last
         real result instead of re-probing on every render" reasoning as cudasieve_status
-        above (Artur, 2026-09-02: the on-demand wizard window closes/flashes by too fast
-        to read when everything is already fine, so the result needs to live on
-        somewhere the user CAN actually read it)."""
+        above -- the on-demand wizard window closes/flashes too fast to read when
+        everything is already fine, so the result needs to live on somewhere the user
+        can actually read it."""
         return self._data.get("env_status") or None
 
     def set_env_status(self, report):
