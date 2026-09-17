@@ -11,13 +11,13 @@ manifest against the CURRENT disk state and, if anything is missing, optionally
 regenerating it via the existing orchestrator_loop_v2.py / constellation_finder_v1.py
 pipelines -- see restore_job.py for the checkpointed/pausable job that drives that.
 
-Also snapshotted per floor (added 2026-08-18, at Artur's request): the two on-disk caches
-that exist purely to speed up prime-count display (.portal_totals_cache.json at the
-storage root, 10p{N}/sieving_primes_count_cache.json per floor) and floor_meta.json's
-benchmark-row history (see floor_meta.py) -- none of these are DATA (nothing is lost if
-they're missing, they just get recomputed/rescanned), but restoring them saves that
-recompute cost and, for floor_meta.json specifically, restores generation-history rows
-that might otherwise only exist in this exact backup. See backup_store.py's
+Also snapshotted per floor: the two on-disk caches that exist purely to speed up
+prime-count display (.portal_totals_cache.json at the storage root,
+10p{N}/sieving_primes_count_cache.json per floor) and floor_meta.json's benchmark-row
+history (see floor_meta.py) -- none of these are DATA (nothing is lost if they're
+missing, they just get recomputed/rescanned), but restoring them saves that recompute
+cost and, for floor_meta.json specifically, restores generation-history rows that might
+otherwise only exist in this exact backup. See backup_store.py's
 restore_floor_metadata() for the write-back side.
 """
 import os
@@ -100,7 +100,7 @@ class PietroSnapshot:
     know WHICH files exist -- restoring means regenerating missing ones from scratch, not
     restoring bytes.
 
-    meta_rows/totals_cache_entry/sieving_cache (added 2026-08-18) are the exception to
+    meta_rows/totals_cache_entry/sieving_cache are the exception to
     "just filenames, not contents": these three are small, cheap-to-embed JSON blobs (a
     floor's benchmark-row history, its totals-cache sub-object, its sieving-prime-count
     cache) that exist purely to avoid recomputation, not to describe what needs
