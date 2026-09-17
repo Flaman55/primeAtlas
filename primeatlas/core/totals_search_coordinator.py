@@ -36,6 +36,7 @@ from tkinter import messagebox
 
 from ..settings import floor_meta
 from .background import PersistentWorker
+from .progress_bar_owner import claim_progress_bar, owns_progress_bar, release_progress_bar
 from ..constellations.constellations import find_constellation_participation
 from .storage import (
     find_prime_in_floor, format_bytes, format_duration, get_global_total,
@@ -86,6 +87,18 @@ class TotalsSearchCoordinator:
         self._reload_totals_caches()
         self._computing_all_totals = False
         self._totals_batch_size = 0
+        # Two DISTINCT progress_bar_owner.py tokens, not `self` -- this class drives
+        # two genuinely independent, concurrently-runnable jobs (the bulk floor-totals
+        # batch scan AND the prime/constellation search -- see start_search_job()'s own
+        # comment: a totals job can legitimately still be in flight when a search
+        # starts, and vice versa, task #404's status-bar race fix exists BECAUSE that
+        # overlap is real). Using `self` as the owner for both would make claim_
+        # progress_bar() trivially succeed for whichever one calls it last regardless
+        # of which is actually mid-job, reintroducing the exact same "whoever writes
+        # last wins" clobbering progress_bar_owner.py exists to prevent, just between
+        # this class's own two jobs instead of across different tabs.
+        self._totals_progress_owner = object()
+        self._search_progress_owner = object()
         self._grand_total_sum = 0
         self._grand_total_bytes = 0
         self._grand_total_seen = set()
@@ -281,14 +294,27 @@ class TotalsSearchCoordinator:
                 self._grand_total_bytes += total_bytes or 0
             done = len(self._grand_total_seen)
             expected = self._totals_batch_size
-            self.totals_progress.configure(value=done)
+            # Re-asserts mode/maximum on EVERY successful claim, not just value --
+            # if compute_all_floor_totals()'s own initial claim below lost the race
+            # (some other owner held the bar when the batch started), this was the
+            # only other write in this job's whole run that could still establish the
+            # bar's maximum; writing `value` alone against whatever maximum some OTHER
+            # owner last left behind (often 1, from a just-finished search/generation
+            # run) made the bar visually snap to "full" after the very first floor.
+            if claim_progress_bar(self.totals_progress, self._totals_progress_owner):
+                self.totals_progress.configure(mode="determinate", maximum=expected, value=done)
             if done >= expected:
                 self._computing_all_totals = False
                 # Reset back to the same empty (0/1) state totals_progress starts in --
                 # left at full/expected otherwise, a completed scan would leave the bar
                 # sitting permanently full, which reads as "still busy" even though
-                # nothing is running.
-                self.totals_progress.configure(maximum=1, value=0)
+                # nothing is running. Then releases this batch's claim (see
+                # progress_bar_owner.py) -- otherwise whatever runs next (another
+                # coordinator's own job, a Generation run) would keep finding the bar
+                # already claimed and silently skip its own updates forever.
+                if owns_progress_bar(self.totals_progress, self._totals_progress_owner):
+                    self.totals_progress.configure(maximum=1, value=0)
+                release_progress_bar(self.totals_progress, self._totals_progress_owner)
                 # This bulk batch (the manual verify-totals action, see
                 # PrimesTab's own button -- compute_all_floor_totals() is no longer
                 # called automatically after every reload, see storage.py's own module
@@ -365,9 +391,19 @@ class TotalsSearchCoordinator:
         generation run, reading as "still busy" even though the app was idle. Mirrors
         the exact same reset call _on_floor_total_ready's own completion branch and
         _finish_search_job() already use."""
+        # Claim-write-release in one shot (see progress_bar_owner.py) rather than
+        # sustained ownership -- this is a one-off cleanup reset, not an in-progress
+        # job. If claim_progress_bar() fails, some OTHER owner (most commonly a
+        # Generation run that hasn't released its own claim yet -- see
+        # generation_tab.py's _on_loop_finished()) is actively using the bar right
+        # now, so this reset is correctly skipped rather than stomping on it; that
+        # owner's own eventual release lets the NEXT reload's call here (or whatever
+        # else needs the bar) reset it instead.
         if floor_count == 0:
             self.status.set(self.T("primes.status_none_to_compute"))
-            self.totals_progress.configure(maximum=1, value=0)
+            if claim_progress_bar(self.totals_progress, self._totals_progress_owner):
+                self.totals_progress.configure(maximum=1, value=0)
+                release_progress_bar(self.totals_progress, self._totals_progress_owner)
             return
         known = get_global_total(totals_cache)
         if known is None:
@@ -379,7 +415,9 @@ class TotalsSearchCoordinator:
             self.T("primes.status_grand_total", count=floor_count,
                    sum=f"{total_sum:,}", duration=format_duration(total_seconds),
                    size=format_bytes(total_bytes)))
-        self.totals_progress.configure(maximum=1, value=0)
+        if claim_progress_bar(self.totals_progress, self._totals_progress_owner):
+            self.totals_progress.configure(maximum=1, value=0)
+            release_progress_bar(self.totals_progress, self._totals_progress_owner)
 
     def compute_all_floor_totals(self):
         """Kicks off the bulk "every floor's total" batch -- called from the Primes
@@ -408,7 +446,13 @@ class TotalsSearchCoordinator:
         self._grand_total_seconds = 0.0
         self._grand_total_bytes = 0
         self._grand_total_seen = set()
-        self.totals_progress.configure(maximum=len(floors), value=0)
+        # Claims the shared bar (see progress_bar_owner.py) -- a no-op if some other
+        # owner (e.g. an in-flight Generation run) currently has it; this batch's own
+        # per-floor totals keep accumulating in the background regardless (see
+        # _on_floor_total_ready), it just isn't painted onto the bar until whichever
+        # owner has it releases.
+        if claim_progress_bar(self.totals_progress, self._totals_progress_owner):
+            self.totals_progress.configure(maximum=len(floors), value=0)
         self.status.set(self.T("primes.status_batch_start", count=len(floors)))
         for base_exponent in floors:
             self.submit_totals_job(base_exponent)
@@ -437,9 +481,15 @@ class TotalsSearchCoordinator:
         self._search_busy = True
         self._primes_tab_widget.search_button.configure(state="disabled")
         self._constellations_hits_tab_widget.hits_search_button.configure(state="disabled")
-        self.totals_progress.stop()
-        self.totals_progress.configure(mode="indeterminate")
-        self.totals_progress.start(80)
+        # Claims the shared bar (see progress_bar_owner.py); a no-op if some other
+        # owner has it right now -- the search itself still runs and its result
+        # still lands normally either way, it just won't animate the bar until
+        # whichever owner has it releases (the status TEXT above is unaffected,
+        # that's governed by the separate task #404 suppression flags).
+        if claim_progress_bar(self.totals_progress, self._search_progress_owner):
+            self.totals_progress.stop()
+            self.totals_progress.configure(mode="indeterminate")
+            self.totals_progress.start(80)
         if kind == "prime":
             self.status.set(self.T("primes.status_searching", number=number,
                                     base_exponent=base_exponent))
@@ -486,9 +536,10 @@ class TotalsSearchCoordinator:
         kind = payload[0]
         if kind == "const_progress":
             _kind, done, total = payload
-            self.totals_progress.stop()
-            self.totals_progress.configure(
-                mode="determinate", maximum=max(1, total), value=done)
+            if claim_progress_bar(self.totals_progress, self._search_progress_owner):
+                self.totals_progress.stop()
+                self.totals_progress.configure(
+                    mode="determinate", maximum=max(1, total), value=done)
             self.status.set(self.T("const.status_search_progress", done=done, total=total))
 
     def _on_search_worker_result(self, payload, error):
@@ -527,8 +578,14 @@ class TotalsSearchCoordinator:
         self._search_busy = False
         self._primes_tab_widget.search_button.configure(state="normal")
         self._constellations_hits_tab_widget.hits_search_button.configure(state="normal")
-        self.totals_progress.stop()
         # Same "reset back to the empty 0/1 state" reasoning as
         # _on_floor_total_ready's grand-total completion branch -- a bar left sitting full/mid-way
-        # reads as "still busy" even though nothing is running.
-        self.totals_progress.configure(mode="determinate", maximum=1, value=0)
+        # reads as "still busy" even though nothing is running. Only if this search
+        # still owns the bar (see progress_bar_owner.py) -- if it never got to claim
+        # it (some other owner had it throughout), resetting here would stomp on
+        # whatever that owner is currently showing. release_progress_bar() below is
+        # unconditional either way, so a claim we never actually got can't linger.
+        if owns_progress_bar(self.totals_progress, self._search_progress_owner):
+            self.totals_progress.stop()
+            self.totals_progress.configure(mode="determinate", maximum=1, value=0)
+        release_progress_bar(self.totals_progress, self._search_progress_owner)

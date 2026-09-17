@@ -347,19 +347,32 @@ def _test_graceful_stop_falls_back_to_hard_kill_after_grace_period():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-def _test_floor_progress_scales_bar_to_whole_floor():
+def _test_floor_progress_scales_bar_to_run_relative_progress():
     """_GEN_CONST_FLOOR_PROGRESS_RE's own line (see generation.py) must make the shared
-    bar/status track the WHOLE floor, not just the current --max-windows batch -- see
-    _update_shared_progress_from_generation_chunk()'s own handling of it. Without this,
-    the bar/status snaps back to near-zero at every chained batch boundary."""
+    bar/status track THIS RUN's own start-to-finish progress -- not the floor's whole
+    checkpoint history -- so a floor resumed from a much earlier session (already
+    99%+ done) doesn't make the bar snap straight to "full" the moment the first FLOOR
+    PROGRESS line of a brand-new Run click arrives. Also covers that a chained batch for
+    the SAME floor keeps accumulating against that same run-start baseline instead of
+    resetting it (the bar/status must not snap back to near-zero at a batch boundary,
+    same as the floor-wide accumulation it's built on top of)."""
     tmp = tempfile.mkdtemp(prefix="primeatlas_const_retry_test_")
     try:
         app = _build_app(tmp)
         tab = app.generation_tab_widget
         bar = tab.totals_progress
         tab._gen_progress_bar_active = True
+        tab._start_constellation_runner = lambda base_exponent: None
 
         import primeatlas.generation.generation_tab as generation_tab_module
+
+        # A fresh Run click against a floor that's ALREADY 340000/545000 done from a
+        # much earlier session -- the run-relative baseline anchors to that 340000.
+        tab._const_base_exponent_var.set("25")
+        tab._on_run_constellation()
+        check(tab._const_run_start_already_done is None,
+              "a fresh Run click clears the run-relative baseline, pending this run's "
+              "own first FLOOR PROGRESS line")
 
         tab._update_shared_progress_from_generation_chunk(
             "[CONSTELLATIONS v2] FLOOR PROGRESS: batch_size=5000 total_windows=545000 "
@@ -367,23 +380,46 @@ def _test_floor_progress_scales_bar_to_whole_floor():
         check(tab._const_floor_total_windows == 545000, "floor total recorded")
         check(tab._const_floor_already_done == 340000,
               "already-done-before-this-batch recorded")
+        check(tab._const_run_start_already_done == 340000,
+              "the run-relative baseline anchors to this run's own first "
+              "already-done-before-batch count")
 
         tab._update_shared_progress_from_generation_chunk(
             "[CONSTELLATIONS v2] 1234/5000: PRIME_WINDOW_whatever.bin -- primes=1 "
             "peeked_head=0 new_hits=0 (0.01s)\n")
-        check(int(bar["maximum"]) == 545000,
-              f"bar maximum is the WHOLE floor, not this batch's own 5000 "
-              f"(got {bar['maximum']!r})")
-        check(int(bar["value"]) == 340000 + 1234,
-              f"bar value is already-done-before-this-batch + this batch's own progress "
-              f"(got {bar['value']!r})")
-        expected_batch_count = -(-545000 // generation_tab_module.CONSTELLATION_BATCH_SIZE)
-        expected_batch_num = 340000 // generation_tab_module.CONSTELLATION_BATCH_SIZE + 1
-        check(tab.status.get() == tab.T(
-                  "gen.status_progress_const_batch", done=340000 + 1234, total=545000,
-                  batch_num=expected_batch_num, batch_count=expected_batch_count),
-              f"status text shows floor-wide done/total plus batch X/Y "
-              f"(got {tab.status.get()!r})")
+        run_total = 545000 - 340000
+        check(int(bar["maximum"]) == run_total,
+              f"bar maximum is THIS RUN's own remaining backlog (545000-340000), "
+              f"not the whole floor (got {bar['maximum']!r})")
+        check(int(bar["value"]) == 1234,
+              f"bar value is this run's own progress since its start baseline, "
+              f"not the floor-wide total (got {bar['value']!r})")
+        expected_batch_count = -(-run_total // generation_tab_module.CONSTELLATION_BATCH_SIZE)
+        expected_batch_num = 1234 // generation_tab_module.CONSTELLATION_BATCH_SIZE + 1
+        expected_prefix = tab.T(
+            "gen.status_progress_const_batch", done=1234, total=run_total,
+            batch_num=expected_batch_num, batch_count=expected_batch_count)
+        check(tab.status.get().startswith(expected_prefix),
+              f"status text shows run-relative done/total plus batch X/Y, elapsed/ETA "
+              f"suffix aside (got {tab.status.get()!r}, expected prefix {expected_prefix!r})")
+
+        # A chained batch continuation for the SAME floor (next 5000-window slice) must
+        # keep accumulating against the SAME run-start baseline, not reset it.
+        tab._update_shared_progress_from_generation_chunk(
+            "[CONSTELLATIONS v2] FLOOR PROGRESS: batch_size=5000 total_windows=545000 "
+            "already_done_before_batch=345000\n")
+        check(tab._const_run_start_already_done == 340000,
+              "a chained batch for the SAME floor must NOT re-anchor the run-relative "
+              "baseline")
+        tab._update_shared_progress_from_generation_chunk(
+            "[CONSTELLATIONS v2] 10/5000: PRIME_WINDOW_whatever.bin -- primes=1 "
+            "peeked_head=0 new_hits=0 (0.01s)\n")
+        check(int(bar["maximum"]) == run_total,
+              "the chained batch's bar maximum is still this run's own original "
+              "remaining backlog")
+        check(int(bar["value"]) == 5010,
+              f"the chained batch's bar value keeps accumulating from this run's own "
+              f"start (345000+10-340000=5010) (got {bar['value']!r})")
         app.destroy()
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -399,6 +435,7 @@ def _test_floor_progress_resets_between_launches():
         tab = app.generation_tab_widget
         tab._const_floor_total_windows = 999
         tab._const_floor_already_done = 111
+        tab._const_run_start_already_done = 111
 
         import primeatlas.generation.generation_tab as generation_tab_module
 
@@ -422,6 +459,8 @@ def _test_floor_progress_resets_between_launches():
               "a fresh launch clears the previous floor's total")
         check(tab._const_floor_already_done is None,
               "a fresh launch clears the previous floor's already-done count")
+        check(tab._const_run_start_already_done is None,
+              "a fresh launch clears the previous run's run-relative baseline too")
         app.destroy()
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -711,7 +750,7 @@ def main():
     _test_stop_disables_auto_retry()
     _test_graceful_stop_writes_sentinel_and_cleans_up()
     _test_graceful_stop_falls_back_to_hard_kill_after_grace_period()
-    _test_floor_progress_scales_bar_to_whole_floor()
+    _test_floor_progress_scales_bar_to_run_relative_progress()
     _test_floor_progress_resets_between_launches()
     _test_elapsed_and_eta_in_status()
     _test_eta_baseline_resets_on_new_run_not_on_chained_batch()

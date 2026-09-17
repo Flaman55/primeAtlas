@@ -52,6 +52,7 @@ from tkinter import ttk, messagebox
 import pattern_catalog_v1
 
 from ..core.base_tab import BaseTab
+from ..core.progress_bar_owner import claim_progress_bar, release_progress_bar
 from .hybrid_controls import HybridControls
 from ..benchmark.benchmark import read_benchmark_log
 from .generation_console import GenerationConsole
@@ -132,7 +133,7 @@ from .generation import (
     estimate_wsl_available_cpu_count, recommended_worker_count, WslLoggedRunner,
     format_duration_short,
     _LOOP_SESSION_DONE_RE, _LOOP_SESSION_START_RE, _LOOP_ITERATION_START_RE,
-    _GEN_SIEVE_DONE_RE, _GEN_CONST_DONE_RE, _GEN_SIEVE_PROGRESS_RE,
+    _GEN_SIEVE_DONE_RE, _GEN_SIEVE_PROGRESS_RE,
     _GEN_CONST_PROGRESS_RE, _GEN_CONST_FLOOR_PROGRESS_RE, _GEN_PREP_DONE_RE,
     _GEN_HYBRID_STAGE_RE, _GEN_HYBRID_DONE_RE,
 )
@@ -639,6 +640,16 @@ class GenerationTab(HybridControls, BaseTab):
         # can never be mistaken for the current one's.
         self._const_floor_total_windows = None
         self._const_floor_already_done = None
+        # How many windows this floor already had checkpointed as done BEFORE the
+        # current Run click's own first batch -- i.e. the baseline the bar/status text
+        # subtract from _const_floor_total_windows/_const_floor_already_done so the bar
+        # tracks THIS RUN's own start-to-finish progress instead of the floor's whole
+        # checkpoint history (a floor resumed from a much earlier session can already be
+        # 99%+ done, which used to make the bar jump straight to "full" -- see
+        # _on_run_constellation()'s own reset and the FLOOR PROGRESS handling in
+        # _update_shared_progress_from_generation_chunk() for where this gets
+        # (re-)anchored). None until the first FLOOR PROGRESS line of a run arrives.
+        self._const_run_start_already_done = None
         # Elapsed-time/ETA state -- see CONSTELLATION_ETA_MIN_WINDOWS's own module-level
         # comment. _const_session_start_time is set ONLY by _on_run_constellation() (a
         # fresh Run click) -- NOT by _start_constellation_runner(), so it keeps counting
@@ -2919,6 +2930,13 @@ class GenerationTab(HybridControls, BaseTab):
         for panel in self._quick_panels:
             panel["generate_btn"].configure(text=self.T("quick.generate_button"))
         self._bump_totals_from_finished_run()
+        # Releases this run's claim on the shared totals_progress bar (see
+        # progress_bar_owner.py) BEFORE reload_primes_tree() below -- that call
+        # chains into TotalsSearchCoordinator.show_cached_grand_total(), whose own
+        # reset-to-empty write needs the bar free to actually take effect instead of
+        # silently no-op'ing against a run that (as far as ownership is concerned)
+        # hasn't relinquished it yet.
+        release_progress_bar(self.totals_progress, self)
         self.reload_primes_tree()
 
         # A search-triggered "generate the missing window" run (see
@@ -2986,6 +3004,12 @@ class GenerationTab(HybridControls, BaseTab):
         self._const_eta_baseline_time = None
         self._const_eta_baseline_done = None
         self._const_eta_baseline_total = None
+        # A fresh Run click also re-anchors the run-relative bar baseline (see its own
+        # __init__ comment) -- NOT done in _start_constellation_runner(), same reasoning
+        # as _const_session_start_time above: that method also runs for auto-retries and
+        # chained-batch continuations, which must keep accumulating against THIS run's
+        # original baseline, not reset it.
+        self._const_run_start_already_done = None
         self._start_constellation_runner(base_exponent)
 
     def _start_constellation_runner(self, base_exponent):
@@ -3238,6 +3262,15 @@ class GenerationTab(HybridControls, BaseTab):
 
         if self._maybe_continue_constellation_batch(returncode):
             return  # same as above, for a chained batch continuation instead
+
+        # Genuinely finished (no chained retry/batch scheduled) -- unlike the loop
+        # path, nothing downstream of reload_constellations_tree() resets the shared
+        # totals_progress bar (reload_primes_tree()'s own show_cached_grand_total()
+        # does that for loop/hybrid/etc. runs; the constellations tree reload has no
+        # equivalent), so this run resets it back to its own empty resting state
+        # itself before releasing its claim -- see progress_bar_owner.py.
+        self._set_gen_progress_bar(mode="determinate", maximum=1, value=0)
+        release_progress_bar(self.totals_progress, self)
 
         # Mirrors _on_loop_finished()'s pending-search re-run, for a search-triggered
         # "run constellation_finder for this floor" instead (see
@@ -3532,6 +3565,15 @@ class GenerationTab(HybridControls, BaseTab):
         per-prime progress to its terminal, Atlas just doesn't parse it yet."""
         if not self._gen_progress_bar_active:
             return
+        # Claims the shared bar (see progress_bar_owner.py) -- a no-op if some OTHER
+        # tab/coordinator currently owns it (e.g. a floor-totals scan or a Prime/
+        # Constellations search), so this run's own progress just doesn't get painted
+        # for that tick rather than stomping on whatever the user is actually
+        # watching. The run's own state (self._gen_step_total etc.) keeps tracking
+        # normally regardless -- this run's OWN next poll tick will reclaim the bar
+        # the moment the other owner releases it.
+        if not claim_progress_bar(self.totals_progress, self):
+            return
         self.totals_progress.stop()
         self.totals_progress.configure(**configure_kwargs)
 
@@ -3578,11 +3620,15 @@ class GenerationTab(HybridControls, BaseTab):
         blob straight from WslLoggedRunner's log-tailing -- may hold zero, one, or
         several lines, and may occasionally split one line across two chunks; a missed
         match here just means the bar catches up on the next chunk a moment later,
-        harmless for a live display) for whichever of the five line shapes documented on
-        _GEN_PREP_DONE_RE/_GEN_SIEVE_PROGRESS_RE/_GEN_SIEVE_DONE_RE/_GEN_CONST_PROGRESS_RE/
-        _GEN_CONST_DONE_RE's own module-level comment is present, checked in the order a
-        real run actually prints them (prep -> batches -> done; the constellation path has
-        no separate prep step of its own, just per-file progress -> done).
+        harmless for a live display) for whichever of the line shapes documented on
+        _GEN_PREP_DONE_RE/_GEN_SIEVE_PROGRESS_RE/_GEN_SIEVE_DONE_RE/_GEN_CONST_
+        FLOOR_PROGRESS_RE/_GEN_CONST_PROGRESS_RE's own module-level comment is
+        present, checked in the order a real run actually prints them (prep ->
+        batches -> done; the constellation path has no separate prep step of its
+        own, just floor-wide totals -> per-file progress). _GEN_CONST_DONE_RE is
+        deliberately NOT among these -- see the inline comment right before the
+        _GEN_SIEVE_DONE_RE check below for why a constellation batch's own "Done"
+        line must NOT be treated the same as the sieve pipeline's.
 
         Sieve-pipeline step model (self._gen_step_total, reset to None between runs):
         step 0 is the pi(L_final) prep phase (which can itself run into minutes at
@@ -3676,7 +3722,24 @@ class GenerationTab(HybridControls, BaseTab):
             self._gen_step_total = None  # fresh subprocess -- real total not known
                                           # until its own first batch-progress line
 
-        if _GEN_SIEVE_DONE_RE.search(chunk) or _GEN_CONST_DONE_RE.search(chunk):
+        # _GEN_CONST_DONE_RE deliberately does NOT join the check below anymore --
+        # constellation_finder_v2.py's own process_floor() prints its "Done. New
+        # hits this run" line at the end of EVERY batch (a fresh WSL subprocess per
+        # --max-windows-capped batch, see build_constellation_finder_argv()'s own
+        # docstring), not just once the whole floor is actually finished. Treating
+        # it as equivalent to _GEN_SIEVE_DONE_RE ("the run is done") snapped the bar
+        # to 100% using THIS BATCH's own small step_total at every batch boundary,
+        # then let it restart near-empty as the next chained batch's own early
+        # per-window lines came in -- batches ended up driving the bar instead of
+        # the floor-wide file count. The floor-wide branch further below (fed by
+        # _GEN_CONST_FLOOR_PROGRESS_RE + _GEN_CONST_PROGRESS_RE) already tracks and
+        # displays real progress smoothly across every chained batch on its own;
+        # _on_constellation_finished()'s own tail resets the bar once the floor is
+        # GENUINELY complete (no further batch scheduled). So a const-done match is
+        # simply ignored here -- no `if`, no `return` -- letting this same chunk's
+        # own per-window line, if present, fall through to update the bar/status via
+        # the normal floor-wide path below instead.
+        if _GEN_SIEVE_DONE_RE.search(chunk):
             if self._gen_loop_run_count is not None:
                 # One iteration of a multi-iteration run just finished -- NOT the whole
                 # session. Only _LOOP_SESSION_DONE_RE (checked above) snaps the bar to
@@ -3740,6 +3803,11 @@ class GenerationTab(HybridControls, BaseTab):
                 self._const_eta_baseline_time = time.time()
                 self._const_eta_baseline_done = self._const_floor_already_done
                 self._const_eta_baseline_total = self._const_floor_total_windows
+                # Same "total actually changed" trigger re-anchors the run-relative bar
+                # baseline too -- covers "every floor with data" mode moving on to a
+                # genuinely different floor mid-run, on top of _on_run_constellation()'s
+                # own reset for an ordinary fresh Run click.
+                self._const_run_start_already_done = self._const_floor_already_done
 
         const_matches = _GEN_CONST_PROGRESS_RE.findall(chunk)
         if const_matches:
@@ -3755,17 +3823,31 @@ class GenerationTab(HybridControls, BaseTab):
                 floor_total = self._const_floor_total_windows
                 already_done = self._const_floor_already_done or 0
                 floor_done = min(floor_total, already_done + done)
-                batch_count = -(-floor_total // CONSTELLATION_BATCH_SIZE)  # ceil div
-                batch_num = min(batch_count, already_done // CONSTELLATION_BATCH_SIZE + 1)
-                self._set_gen_progress_bar(mode="determinate", maximum=max(1, floor_total),
-                                            value=floor_done)
+                # Bar/status track THIS RUN's own start-to-finish progress, not the
+                # floor's whole checkpoint history -- see _const_run_start_already_done's
+                # own __init__ comment for why (a resumed floor can already be 99%+ done
+                # from a much earlier session, which used to snap the bar straight to
+                # "full" the moment the first FLOOR PROGRESS line arrived).
+                run_start_already_done = self._const_run_start_already_done or 0
+                run_total = max(1, floor_total - run_start_already_done)
+                run_done = max(0, min(run_total, floor_done - run_start_already_done))
+                batch_count = -(-run_total // CONSTELLATION_BATCH_SIZE)  # ceil div
+                batch_num = min(batch_count, run_done // CONSTELLATION_BATCH_SIZE + 1)
+                self._set_gen_progress_bar(mode="determinate", maximum=run_total,
+                                            value=run_done)
                 if batch_count > 1:
                     status_text = self.T("gen.status_progress_const_batch",
-                                     done=floor_done, total=floor_total,
+                                     done=run_done, total=run_total,
                                      batch_num=batch_num, batch_count=batch_count)
                 else:
                     status_text = self.T("gen.status_progress_const",
-                                     done=floor_done, total=floor_total)
+                                     done=run_done, total=run_total)
+                # Remaining work is identical whether computed from floor-wide or
+                # run-relative terms (both differ from the other only by the constant
+                # run_start_already_done offset), and the ETA rate baseline is itself
+                # anchored in floor-wide terms -- see its own reset above -- so this
+                # deliberately keeps passing the floor-wide numbers here rather than
+                # run_total/run_done.
                 status_text += self._const_elapsed_eta_suffix(floor_total, floor_done)
                 self.status.set(status_text)
             else:

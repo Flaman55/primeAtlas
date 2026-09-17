@@ -28,6 +28,8 @@ setting self.status themselves right where they already did.
 """
 from tkinter import ttk
 
+from .progress_bar_owner import claim_progress_bar, owns_progress_bar, release_progress_bar
+
 
 class BaseTab(ttk.Frame):
     def __init__(self, parent, translator):
@@ -46,7 +48,13 @@ class BaseTab(ttk.Frame):
     def _start_busy_progress(self):
         """Switches self.totals_progress to indeterminate spin mode, for a tab's own
         single-shot compute job while it's in flight. Pair with
-        _stop_busy_progress() once the job's result callback fires."""
+        _stop_busy_progress() once the job's result callback fires.
+
+        Claims the shared bar first (see progress_bar_owner.py) -- a no-op if some
+        OTHER tab/coordinator is currently using it, so this job's own state still
+        tracks normally but doesn't stomp on whatever is actually being shown."""
+        if not claim_progress_bar(self.totals_progress, self):
+            return
         self.totals_progress.stop()
         self.totals_progress.configure(mode="indeterminate")
         self.totals_progress.start(80)
@@ -54,6 +62,13 @@ class BaseTab(ttk.Frame):
     def _stop_busy_progress(self):
         """Resets self.totals_progress back to its normal determinate resting state
         (maximum=1, value=0 -- an empty bar, matching every duplicated call site's
-        own resting state)."""
-        self.totals_progress.stop()
-        self.totals_progress.configure(mode="determinate", maximum=1, value=0)
+        own resting state), then releases this tab's claim on it.
+
+        Only actually writes the reset if this tab still owns the bar -- if
+        _start_busy_progress() above never got to claim it (some other owner had
+        it), this tab never painted anything, so resetting here would incorrectly
+        wipe out whatever THAT owner is currently showing."""
+        if owns_progress_bar(self.totals_progress, self):
+            self.totals_progress.stop()
+            self.totals_progress.configure(mode="determinate", maximum=1, value=0)
+        release_progress_bar(self.totals_progress, self)

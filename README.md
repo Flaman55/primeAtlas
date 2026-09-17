@@ -715,6 +715,12 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
   pdf_writer.py                 a minimal, dependency-free PDF writer (text, lines,
                               filled rects, basic pagination) shared by the Benchmark
                               tab's export and the Constellations Records table's export
+  progress_bar_owner.py         claim_progress_bar()/owns_progress_bar()/
+                              release_progress_bar() -- arbitrates writes to the one
+                              shared totals_progress bar across every tab/coordinator
+                              that drives it, so independent writers (a floor-totals
+                              scan, a search box, a Generation run, ...) never silently
+                              overwrite each other's display
   storage.py                    the core prime-window storage layer (listing floors/
                               files, totals caches, format_duration/format_bytes)
                               shared by several tabs, not specific to any one

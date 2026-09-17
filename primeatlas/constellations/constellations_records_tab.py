@@ -43,6 +43,7 @@ import pattern_catalog_v1
 
 from ..core import background
 from ..core.base_tab import BaseTab
+from ..core.progress_bar_owner import claim_progress_bar
 import hit_paging
 
 from .constellations import (
@@ -115,6 +116,15 @@ class ConstellationsRecordsTab(BaseTab):
         self.totals_progress = totals_progress
 
         self._busy = False
+        # Remembered here (rather than only passed as _start_job()'s own local
+        # `total_rows` parameter) so _on_worker_progress() can fully re-assert
+        # mode="determinate"/maximum on EVERY successful claim, not just read the
+        # bar's CURRENT mode -- see that method's own docstring for the bug this
+        # fixes: if _start_job()'s own initial claim lost the race (some other
+        # owner held the bar when this job started), the bar would otherwise never
+        # get switched into determinate mode for this job's entire run, even well
+        # after that other owner released it.
+        self._progress_total_rows = None
         self._worker = background.PersistentWorker(
             self, self._job, on_result=self._on_worker_result,
             on_progress=self._on_worker_progress)
@@ -353,9 +363,19 @@ class ConstellationsRecordsTab(BaseTab):
         self.scan_button.configure(state="disabled")
         self.export_pdf_button.configure(state="disabled")
         self.export_csv_button.configure(state="disabled")
+        # Remembered for _on_worker_progress() -- see that attribute's own __init__
+        # comment. Set for every job shape (None for "scan", same as the parameter
+        # default) so a stale value from a PREVIOUS export job can never leak into
+        # this one.
+        self._progress_total_rows = total_rows
         if total_rows is not None:
-            self.totals_progress.stop()
-            self.totals_progress.configure(mode="determinate", maximum=max(1, total_rows), value=0)
+            # Claims the shared bar (see progress_bar_owner.py) -- _stop_busy_
+            # progress() (used by every other job shape via the else branch below)
+            # already handles this on its own; this determinate branch bypasses that
+            # inherited helper, so it claims for itself here instead.
+            if claim_progress_bar(self.totals_progress, self):
+                self.totals_progress.stop()
+                self.totals_progress.configure(mode="determinate", maximum=max(1, total_rows), value=0)
         else:
             self._start_busy_progress()
         self.status.set(status_text)
@@ -364,11 +384,22 @@ class ConstellationsRecordsTab(BaseTab):
     def _on_worker_progress(self, payload):
         """PersistentWorker's on_progress callback -- payload is the row count so far
         (an int), pushed by _job()'s report_progress() during a streamed CSV/PDF-row
-        export. A no-op if the bar isn't currently in determinate mode (e.g. a stray
+        export. A no-op if this isn't a determinate export job that's still actually
+        running (self._busy False, or self._progress_total_rows None -- a stray
         progress call arriving after _stop_busy_progress() already reset it, or during
-        a "scan" job, which never calls report_progress in the first place)."""
-        if str(self.totals_progress["mode"]) == "determinate":
-            self.totals_progress["value"] = payload
+        a "scan" job, which never calls report_progress in the first place).
+
+        Re-asserts mode="determinate"/maximum on EVERY successful claim here, not just
+        the bar's VALUE -- checking the bar's current mode instead (as this used to)
+        meant that if _start_job()'s own initial claim lost the race (some other owner
+        held the bar when this job started), the bar would never actually get switched
+        into determinate mode for this job's entire run, even long after that other
+        owner released it -- see self._progress_total_rows's own __init__ comment."""
+        if (self._busy and self._progress_total_rows is not None
+                and claim_progress_bar(self.totals_progress, self)):
+            self.totals_progress.stop()
+            self.totals_progress.configure(
+                mode="determinate", maximum=max(1, self._progress_total_rows), value=payload)
 
     def _job(self, job, report_progress):
         """Runs on PersistentWorker's own daemon thread. Five job shapes distinguished
