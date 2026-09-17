@@ -1,8 +1,6 @@
 """
 gl_setup.py -- window/context/shader-program/VAO/VBO creation for
-primeatlas/ring_viz/renderer.py's `_run_visualization`. [ADDED Faza 5 of
-the renderer.py split, see renderer.py's own module docstring for the
-overall refactor plan this continues.]
+primeatlas/ring_viz/renderer.py's `_run_visualization`.
 
 This is the one piece of the split that genuinely CANNOT be made GL-free
 (unlike geometry_draw.py/hud.py/playback.py/session.py) -- creating a
@@ -64,14 +62,12 @@ class GLResources:
         self.prog_text = prog_text
         self.hud_quad_vbo = hud_quad_vbo
         self.hud_quad_vao = hud_quad_vao
-        # [ADDED Faza 11B, see PLAN.md] Holds the current on-canvas HUD
-        # texture (None until the first refresh, and whenever Pillow isn't
-        # installed or there's nothing to draw) -- a plain dict (not a bare
-        # attribute) purely by inherited convention from the pre-Faza-5
-        # `hud_tex_holder = {"tex": None}` local, which existed as a dict
-        # in the first place only so closures could mutate it without a
-        # `nonlocal` declaration; keeping the same shape here avoids
-        # touching every call site an extra time for no behavioral gain.
+        # Holds the current on-canvas HUD texture (None until the first
+        # refresh, and whenever Pillow isn't installed or there's nothing to
+        # draw). Kept as a plain dict (not a bare attribute) since callers
+        # rely on sharing this same mutable dict handle across closures
+        # without a `nonlocal` declaration; changing the shape would require
+        # touching every call site for no behavioral gain.
         self.hud_tex_holder = {"tex": None}
 
     def make_ring_vao(self, vbo):
@@ -86,11 +82,11 @@ class GLResources:
 def setup_gl_resources(args):
     """Creates the GLFW window, the moderngl context, and every shader
     program/VAO/VBO _run_visualization's main loop and callbacks need.
-    Ports that function's own startup block exactly (see git history for
-    the pre-Faza-5 version, if the original per-line comments are ever
-    needed again) -- ordering and every GL call are unchanged, only the
-    ~16 result variables are now attributes on one returned GLResources
-    instead of that many loose locals."""
+    Ports that function's own startup block exactly (see git history if the
+    original per-line comments are ever needed again) -- ordering and every
+    GL call are unchanged, only the ~16 result variables are now attributes
+    on one returned GLResources instance instead of that many loose
+    locals."""
     import glfw
     import moderngl
 
@@ -115,12 +111,10 @@ def setup_gl_resources(args):
     # In an OpenGL 3.3 CORE PROFILE context, writing gl_PointSize from the
     # vertex shader has NO EFFECT at all unless GL_PROGRAM_POINT_SIZE is
     # explicitly enabled -- otherwise every point renders at a fixed,
-    # driver-controlled size regardless of u_point_size's value. This was
-    # missing from Faza 0's original landing (the fixed-function
-    # glPointSize() path this project never used doesn't need it, which is
-    # presumably why it went unnoticed until Artur tried changing
-    # --point-size for real and saw zero visual change -- see the
-    # "Rendered rings too small at high zoom" report/task #593, 2026-09-04).
+    # driver-controlled size regardless of u_point_size's value. The
+    # fixed-function glPointSize() path (which doesn't need this flag) is
+    # not used anywhere in this project, so this must stay enabled whenever
+    # points are rendered.
     ctx.enable(moderngl.PROGRAM_POINT_SIZE)
     # Belt-and-suspenders alongside PROGRAM_POINT_SIZE above: per the GL
     # spec, once PROGRAM_POINT_SIZE is enabled, the fixed-function
@@ -133,28 +127,26 @@ def setup_gl_resources(args):
     prog = ctx.program(vertex_shader=VERTEX_SHADER, fragment_shader=FRAGMENT_SHADER)
     prog["u_point_size"].value = args.point_size
 
-    # [ADDED Faza 11C, see PLAN.md] Independent size for rings ON the
-    # vertical reference line (pos["is_hit"] -- real divisors of N) --
-    # falls back to args.point_size when --hit-point-size wasn't given, so
-    # omitting it reproduces the old single-size behavior exactly. u_point_size
-    # is a single shared uniform (see VERTEX_SHADER), so getting two sizes on
-    # screen means two separate draw calls over two separate vertex buffers
-    # (hit rings vs everything else), not a single draw with per-vertex
-    # size -- see rebuild_buffer's own hit/normal split further down and the
-    # two vao.render() calls in the main loop.
+    # Independent size for rings ON the vertical reference line
+    # (pos["is_hit"] -- real divisors of N) -- falls back to args.point_size
+    # when --hit-point-size wasn't given, so omitting it reproduces the
+    # single-size behavior exactly. u_point_size is a single shared uniform
+    # (see VERTEX_SHADER), so getting two sizes on screen means two separate
+    # draw calls over two separate vertex buffers (hit rings vs everything
+    # else), not a single draw with per-vertex size -- see rebuild_buffer's
+    # own hit/normal split further down and the two vao.render() calls in
+    # the main loop.
     hit_point_size = args.hit_point_size if args.hit_point_size is not None else args.point_size
 
-    # [DIAGNOSTIC, added 2026-09-04] Artur reported that --point-size still
-    # produces no visible change at all across a wide range (0.5 to 100)
-    # even after the PROGRAM_POINT_SIZE fix above made points visible in
-    # the first place. Two real possibilities this sandbox (no GPU/display)
-    # cannot test directly: (a) the requested value genuinely isn't
-    # reaching this point (argv/parsing issue), or (b) this specific
-    # GPU/driver clamps the actual renderable point size to a narrow
-    # hardware range regardless of what the shader requests (a real,
-    # documented OpenGL behavior -- GL_POINT_SIZE_RANGE / the analogous key
-    # in ctx.info). Printing both here, unconditionally, so the next real
-    # run's console pane settles which one it is instead of guessing blind.
+    # Diagnostic: --point-size can still produce no visible change across a
+    # wide range of values even with PROGRAM_POINT_SIZE enabled above. Two
+    # possible causes that are hard to distinguish without a live
+    # GPU/display: (a) the requested value isn't actually reaching this
+    # point (argv/parsing issue), or (b) the GPU/driver clamps the
+    # renderable point size to a narrow hardware range regardless of what
+    # the shader requests (a real, documented OpenGL behavior --
+    # GL_POINT_SIZE_RANGE / the analogous key in ctx.info). Print both
+    # unconditionally so the console output settles which one it is.
     print(f"[diag] requested point size (--point-size): {args.point_size}")
     try:
         point_size_info = {k: v for k, v in ctx.info.items() if "POINT" in k.upper()}
@@ -162,17 +154,16 @@ def setup_gl_resources(args):
     except Exception as e:  # noqa: BLE001 -- diagnostic only, must never crash the run
         print(f"[diag] could not read ctx.info: {e}")
 
-    # [ADDED Faza 8, see PLAN.md] Tracked-ring outline circles: one shared
-    # unit-circle VBO/VAO reused for every tracked ring's draw call (see
-    # unit_circle_vertices' own doc-comment for why a shared buffer + a
-    # per-draw-call radius/color uniform pair, rather than one buffer per
-    # ring).
+    # Tracked-ring outline circles: one shared unit-circle VBO/VAO reused
+    # for every tracked ring's draw call (see unit_circle_vertices' own
+    # doc-comment for why a shared buffer + a per-draw-call radius/color
+    # uniform pair, rather than one buffer per ring).
     prog_outline = ctx.program(vertex_shader=OUTLINE_VERTEX_SHADER, fragment_shader=OUTLINE_FRAGMENT_SHADER)
     unit_circle_vbo = ctx.buffer(unit_circle_vertices().tobytes())
     unit_circle_vao = ctx.vertex_array(prog_outline, [(unit_circle_vbo, "2f", "in_pos")])
 
-    # [ADDED Faza 8] Screen-space shapes: center marker (triangle + line) and
-    # the birth/resonance flash-overlay quad, all sharing one program and
+    # Screen-space shapes: center marker (triangle + line) and the
+    # birth/resonance flash-overlay quad, all sharing one program and
     # vertex format (see SCREEN_VERTEX_SHADER's own doc-comment). Each gets
     # its own small dynamic buffer, rewritten every frame from plain numpy
     # arrays (build_center_marker_vertex_data / build_flash_quad_vertex_data)
@@ -185,21 +176,19 @@ def setup_gl_resources(args):
     flash_quad_vbo = ctx.buffer(reserve=4 * 6 * 4)
     flash_quad_vao = ctx.vertex_array(prog_screen, [(flash_quad_vbo, "2f 4f", "in_pos", "in_color")])
 
-    # [ADDED Faza 11B, see PLAN.md] On-canvas HUD text -- a textured quad
-    # (hud_quad_vertex_data, "2f 2f" pos+uv) sampling a Pillow-rasterized
-    # bitmap (rasterize_hud_text). Ports DrumRenderer's own #drawHud text
-    # overlay directly into this GL window, replacing "console pane only"
-    # as the HUD's real home (see hud_lines_for_n's own doc-comment for why
-    # that was this module's original, deliberately lower-risk choice, and
-    # Artur's 2026-09-06 "nie widzę informacji hud w oknie wizualizacji"
-    # report for why that turned out not to be enough). hud_tex is
-    # recreated (not just rewritten) each time the text changes, since
-    # moderngl textures are fixed-size -- see RenderSession.refresh_hud /
-    # _run_visualization's own _apply_hud_refresh for the GL upload.
-    # Only set up at all if Pillow is actually importable; otherwise the
-    # HUD quad is simply never drawn (main loop's own `if hud_tex_holder`
-    # guard), same graceful-degradation convention as everywhere else this
-    # module treats an optional library as optional.
+    # On-canvas HUD text -- a textured quad (hud_quad_vertex_data, "2f 2f"
+    # pos+uv) sampling a Pillow-rasterized bitmap (rasterize_hud_text),
+    # mirroring DrumRenderer's own #drawHud text overlay directly in this GL
+    # window rather than leaving HUD state visible only in the console pane
+    # (see hud_lines_for_n's own doc-comment for the plain-text form this is
+    # rendered from). hud_tex is recreated (not just rewritten) each time
+    # the text changes, since moderngl textures are fixed-size -- see
+    # RenderSession.refresh_hud / _run_visualization's own
+    # _apply_hud_refresh for the GL upload. Only set up at all if Pillow is
+    # actually importable; otherwise the HUD quad is simply never drawn
+    # (main loop's own `if hud_tex_holder` guard), same
+    # graceful-degradation convention as everywhere else this module treats
+    # an optional library as optional.
     prog_text = ctx.program(vertex_shader=TEXT_VERTEX_SHADER, fragment_shader=TEXT_FRAGMENT_SHADER) if _PIL_AVAILABLE else None
     hud_quad_vbo = ctx.buffer(reserve=6 * 4 * 4) if _PIL_AVAILABLE else None
     hud_quad_vao = ctx.vertex_array(prog_text, [(hud_quad_vbo, "2f 2f", "in_pos", "in_uv")]) if _PIL_AVAILABLE else None
