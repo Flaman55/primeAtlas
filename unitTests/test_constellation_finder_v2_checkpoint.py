@@ -10,8 +10,8 @@ format and process_floor()'s window-selection logic changed) -- this file covers
 what v2 adds: resuming from a set of DONE RANGES instead of a single last-processed
 pointer.
 
-Targets the real field report this exists to fix (2026-09-15, Artur): an unpredictable
-PC restart left two constellation_finder processes running for the same floor, and
+Targets the field report this exists to fix: an unpredictable PC restart left two
+constellation_finder processes running for the same floor, and
 CHECKPOINT.txt's single "last_processed_file=" pointer -- overwritten by whichever
 process wrote most recently -- ended up naming a window far AHEAD of one that had
 genuinely never been scanned, leaving a "hole" behind it. v1's own resume logic

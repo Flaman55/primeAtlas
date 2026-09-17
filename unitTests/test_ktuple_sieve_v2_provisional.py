@@ -3,7 +3,7 @@ test_ktuple_sieve_v2_provisional.py -- integration tests for ktuple_sieve_v2.py'
 gap-safe hit routing, using REAL temporary storage and REAL PGS2 window files (via
 prime_sieve_v1.write_prime_window), no mocking of either module.
 
-Targets the real field report this exists to fix (2026-09-15, Artur): ktuple_sieve_v1.py
+Targets the field report this exists to fix: ktuple_sieve_v1.py
 wrote every confirmed hit straight into the SAME cumulative hit file
 constellation_finder_v1.py's own exhaustive scan uses, via the shared
 _append_hits_deduped() -- which decides "already known" purely by comparing a new value

@@ -4,7 +4,7 @@ three sub-tabs (primeatlas/constellations_hits_tab.py's ConstellationsHitsTab,
 constellations_calc_tab.py's ConstellationsCalcTab, constellations_records_tab.py's
 ConstellationsRecordsTab, plus their shared pure-logic backend in
 primeatlas/constellations.py), extracted from prime_atlas_v1.py during the refactor
-branch's Faza 3 (tab-by-tab backend/UI split, 2026-08-23; task #388). Unlike the Primes
+branch's tab-by-tab backend/UI split. Unlike the Primes
 tab, this tab has TWO extra wrinkles this test specifically exercises:
 
   1. A genuine three-way coupling for a "const" search's completion (search worker +
@@ -271,10 +271,10 @@ def main():
                   "Tabela rekordow's drill-down jump landed back on the exact hit in Magazyn")
 
         # === 4. Interactive preview/drill-down REFUSES a large, NOT-YET-PAGED pattern
-        # instead of attempting a full decode on the GUI thread -- added 2026-09-16
-        # after a real freeze report: k=2 on floor 25 (~2.15 billion hits, not yet
-        # migrated to pages) hung the whole app on a plain double-click/"Wczytaj
-        # podglad". hit_paging.PAGE_SIZE is monkeypatched down to keep this fast and
+        # instead of attempting a full decode on the GUI thread. Guards against the
+        # GUI hanging when a huge, not-yet-migrated-to-pages hit file (e.g. billions
+        # of hits) is opened via a plain double-click preview load.
+        # hit_paging.PAGE_SIZE is monkeypatched down to keep this fast and
         # deterministic without needing a real oversized fixture file. ===
         import hit_paging
         original_page_size = hit_paging.PAGE_SIZE
@@ -362,11 +362,9 @@ def main():
         # against an ACTUALLY migrated (paged) pattern -- floor 5's k=2/v=1,
         # hit_paging page_size=60, 130 values -> hit-file pages [60,60,10]. Each
         # hit-file page is bigger than the UI's own page_size (50, set via
-        # prime_atlas_v1.PAGE_SIZE above) so it spans multiple on-screen "Strona
-        # X/Y" pages -- needed to prove "Eksportuj strony od/do" now scopes to
-        # ON-SCREEN pages (Artur, 2026-09-16: "eksportuj strony od do powinny
-        # eksportowac tylko i wylacznie strony pliku [on-screen pages]"), not the
-        # much coarser hit-file page a single "page" used to mean. ===
+        # prime_atlas_v1.PAGE_SIZE above) so it spans multiple on-screen pages --
+        # needed to prove that "export pages from/to" scopes to ON-SCREEN pages,
+        # not the much coarser hit-file page a single "page" used to mean. ===
         floor5_dir = os.path.join(tmp_portal, "10p5", "constellations", f"k{k}", f"variant{vid}")
         os.makedirs(floor5_dir, exist_ok=True)
         paged_values = [5000 + 2 * i for i in range(1, 131)]  # 130 values
@@ -514,18 +512,17 @@ def main():
             check(str(hits.hits_export_btn["state"]) == "normal",
                   "Magazyn's Eksportuj button is enabled once a page is loaded")
 
-            # "Eksportuj" no longer exports locally (Artur, 2026-09-16: duplicated
+            # The Magazyn export button no longer exports locally (that duplicated
             # Tabela rekordow's own export) -- it jumps there instead, with THIS
             # pattern + the currently-loaded hit-file page pre-selected.
             hits._next_hit_file_page()  # move off page 0 first, so the jump target
             check(hits._hit_file_page_index == 1, "moved to hit-file page 1 before jumping")
 
             # Deliberately DIRTY every field the jump is supposed to set, to REAL bogus
-            # values first -- a jump that silently no-ops (Artur's exact suspicion,
-            # 2026-09-16: "pola od do sie nie wypelnily... k dla jakiego ktupla
-            # rowniez powinno sie ustawic") would leave these wrong values sitting
-            # there instead of failing loudly, so the earlier version of this test
-            # (which never dirtied them first) couldn't have caught that.
+            # values first -- a jump that silently no-ops (leaving the from/to and k
+            # fields unset) would leave these wrong values sitting there instead of
+            # failing loudly, so a test that never dirtied them first couldn't have
+            # caught that.
             records.k_combo.set("99")
             records.detail_export_from_entry.delete(0, "end")
             records.detail_export_from_entry.insert(0, "777")
