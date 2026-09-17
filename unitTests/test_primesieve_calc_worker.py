@@ -1,14 +1,12 @@
 """
 test_primesieve_calc_worker.py -- functional regression test for the primesieve
-calculator worker, migrated onto primeatlas/background.py's PersistentWorker during the
-refactor branch's Faza 1 (background-job consolidation, 2026-08-23).
+calculator worker, which runs on primeatlas/background.py's PersistentWorker.
 
-Updated during the primesieve-calculator sub-tab's own extraction (Faza 4, 2026-08-24):
-the worker, its state, and run_primesieve_query_wsl/build_primesieve_query_argv all
-moved from prime_atlas_v1.py into primeatlas/primesieve_calc_tab.py's PrimesieveCalcTab
--- this suite now drives it via app.primesieve_calc_tab_widget.X and monkeypatches
-primeatlas.primesieve_calc_tab.run_primesieve_query_wsl instead (see that module's own
-docstring for the full extraction design).
+The worker, its state, and run_primesieve_query_wsl/build_primesieve_query_argv
+live in primeatlas/primesieve_calc_tab.py's PrimesieveCalcTab -- this suite
+drives it via app.primesieve_calc_tab_widget.X and monkeypatches
+primeatlas.primesieve_calc_tab.run_primesieve_query_wsl (see that module's own
+docstring for the full design).
 
 run_primesieve_query_wsl() shells out to wsl.exe, which doesn't exist in this sandbox
 (or on a CI box in general) -- this test monkeypatches the module-level

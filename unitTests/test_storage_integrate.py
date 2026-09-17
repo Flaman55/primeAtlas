@@ -1,8 +1,8 @@
 """
 test_storage_integrate.py -- unit tests for primeatlas/storage_integrate.py's
-integrate_floor(), focused specifically on the totals-cache bump added 2026-08-27 (see
+integrate_floor(), focused specifically on the totals-cache bump (see
 storage.py's own module docstring for the full "persisted totals, updated incrementally
-instead of by a full rescan" feature). Artur's explicit request for the merge case was:
+instead of by a full rescan" feature). The merge case must
 sum the destination's and the external storage's already-KNOWN totals instead of
 recounting every prime -- this suite pins down exactly that, plus the "external doesn't
 know this file's count" fallback (skip it, don't guess/read the file to find out).

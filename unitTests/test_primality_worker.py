@@ -1,14 +1,11 @@
 """
 test_primality_worker.py -- functional regression test for the primality-testing
-worker (Liczby pierwsze -> Testy pierwszosci sub-tab), migrated onto
-primeatlas/background.py's PersistentWorker during the refactor branch's Faza 1
-(background-job consolidation, 2026-08-23).
-
-Updated during this sub-tab's own extraction (Faza 4, 2026-08-24): the worker and its
-state moved from prime_atlas_v1.py into primeatlas/primality_tab.py's PrimalityTab --
-this suite now drives it via app.primality_tab_widget.X and monkeypatches
-primeatlas.primality_tab.primality_run_all_tests instead (see that module's own
-docstring for the full extraction design).
+worker (Liczby pierwsze -> Testy pierwszosci sub-tab), which runs on
+primeatlas/background.py's PersistentWorker. The worker and its state live in
+primeatlas/primality_tab.py's PrimalityTab -- this suite drives it via
+app.primality_tab_widget.X and monkeypatches
+primeatlas.primality_tab.primality_run_all_tests (see that module's own
+docstring for the full design).
 
 Unlike the primesieve_calc worker, this one never shells out to WSL -- it calls
 primeatlas.primality.run_all_tests/factorize directly, in-process, on the

@@ -1,17 +1,13 @@
 """
-test_print_benchmark_summary.py -- regression test for a real production bug found
-2026-08-27: orchestrator_v3.py's print_benchmark_summary() (write_files=True branch)
-re-derives windows_found/total_primes by checking os.path.exists() for each expected
-window's filename, built from a FLAT "source_dir/PRIME_WINDOW_....bin" path. Task #405
-sharded source_primes/ into shard_NNNNN subfolders, but this ONE function was missed in
-that sweep (every other reader in the codebase was fixed) -- so every real, correctly
-written, sharded generation run since then logged windows_written=0 / total_primes=0 to
-benchmark_log.csv, even though the actual PGS2 files on disk were completely correct.
-
-Caught by Artur running a real 1000-window generation on 10^13 against live H:/Goldbach
-storage: prime_sieve_v4_1.py's own console output correctly printed "TOTAL PRIMES FOUND
-this run: 334,053,075 across 1000 windows", but the very next benchmark summary line
-printed "0 windows written" / "0 primes found" -- exactly this bug.
+test_print_benchmark_summary.py -- regression test for a production bug in
+orchestrator_v3.py's print_benchmark_summary() (write_files=True branch): it
+re-derives windows_found/total_primes by checking os.path.exists() for each
+expected window's filename, built from a FLAT "source_dir/PRIME_WINDOW_....bin"
+path. Task #405 sharded source_primes/ into shard_NNNNN subfolders, but this
+ONE function was missed in that sweep (every other reader in the codebase was
+fixed) -- so every real, correctly written, sharded generation run since then
+logged windows_written=0 / total_primes=0 to benchmark_log.csv, even though the
+actual PGS2 files on disk were completely correct.
 
 Pure logic, no tkinter, no real prime data needed beyond a couple of tiny PGS2 fixture
 windows written via prime_sieve_v1.write_prime_window() into the CORRECT sharded location

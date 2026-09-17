@@ -19,15 +19,13 @@ themselves, including the three documented historical incidents each was written
 engine-selection logic in _launch_direct_window_range (primesieve vs. orchestrator-direct,
 by PRIMESIEVE_MAX_STOP).
 
-Every check() states the specific expected vs. actual value, per Artur's explicit request
-that this suite "wyłapały i wyświetliły co faktycznie powoduje błąd" -- catch failures AND
+Every check() states the specific expected vs. actual value, to catch failures and
 show their actual cause, not just red/green.
 
-Updated during the Generation-tab extraction itself (Faza 3, 2026-08-23): all three
-methods under test, plus the Quick-gen panel's own StringVar/BooleanVar state, moved from
-PortalBrowserApp into GenerationTab (primeatlas/generation_tab.py) -- this suite now
-drives them via app.generation_tab_widget.X instead of app.X directly (see that module's
-own docstring for the full extraction design).
+The three methods under test, plus the Quick-gen panel's own StringVar/BooleanVar state,
+live on GenerationTab (primeatlas/generation_tab.py) rather than on the app class
+directly -- this suite drives them via app.generation_tab_widget.X instead of app.X
+(see that module's own docstring for the extraction design).
 
 Usage (Windows, real display):
     python unitTests\\test_generation_launch_planning.py

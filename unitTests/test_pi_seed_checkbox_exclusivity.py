@@ -1,8 +1,8 @@
 """
 test_pi_seed_checkbox_exclusivity.py -- GUI regression test for the mutual-exclusion fix
-between the Generation tab's two "how to compute pi(L_final)" checkboxes (Artur, 2026-08-27,
-same day as the pi-seed feature itself): "Licz pi(L_final) od zera" (self._loop_count_sieving_
-var) and "Zasiew z Wikipedii" (self._loop_use_pi_seed_var) are ALTERNATIVES, not an independent
+between the Generation tab's two "how to compute pi(L_final)" checkboxes:
+self._loop_count_sieving_var (sieve pi(L_final) from zero) and self._loop_use_pi_seed_var
+(seed from a known value) are ALTERNATIVES, not an independent
 base+modifier pair -- checking one must uncheck the other, and having both off is the only way
 to skip computing pi(L_final) entirely. See generation_tab.py's own comment above the two
 Checkbuttons in _build_generation_tab for the full reasoning, and
