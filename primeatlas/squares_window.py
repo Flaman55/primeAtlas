@@ -235,9 +235,9 @@ def check_interval_range_from_source(preset, n_from, n_to, is_prime_source,
     callable int -> is_prime bytearray/array-like, long enough to index up
     to max_bound -- instead of always sieving fresh in memory. This is what
     lets a caller plug in primeatlas/research_squares.py's
-    read_is_prime_from_storage(portal_folder, ...) (Faza 2, 2026-09-13:
-    on-disk-magazyn bridge, mirroring research_goldbach.py's own storage
-    read) as an alternative to a fresh sieve, sharing every other bit of
+    read_is_prime_from_storage(portal_folder, ...) (mirroring
+    research_goldbach.py's own storage read) as an alternative to a fresh sieve,
+    sharing every other bit of
     logic (bounds resolution, the covered/counterexample scan) unchanged --
     see check_interval_range's own docstring for why a fresh sieve stays the
     default, separate entry point rather than folding MAX_SIEVE_BOUND's

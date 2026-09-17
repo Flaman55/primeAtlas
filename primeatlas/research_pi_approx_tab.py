@@ -19,9 +19,7 @@ three overlays) -- this is purely a measurement/accuracy comparison, so the
 summary reports the largest li(x)/R(x) error seen in the range instead of
 any pass/fail statement (see pi_approx_window.py's own module docstring).
 
-A THIRD data-source mode, "primecount" (Artur, 2026-09-13: "primesieve atlas
-ma juz w srodku, wiec mozemy pojsc dalej i wziac primecount kima walischa w
-calosci, majac go natywnie"), calls Kim Walisch's libprimecount -- a
+A THIRD data-source mode, "primecount", calls Kim Walisch's libprimecount -- a
 companion library to primesieve, already used elsewhere in this project
 (see prime_sieve/prime_sieve_primesieve.py) -- via ctypes, through the exact
 same wsl.exe-subprocess SHAPE primesieve_calc_tab.py's calculator sub-tab
@@ -42,12 +40,9 @@ per row -- a real cost when each round trip is a separate process launch.
 
 libprimecount is a WSL apt package (primecount, libprimecount8,
 libprimecount-dev, libprimecount-dev-common) NOT part of env_setup.py's
-REQUIRED_APT_PACKAGES -- per Artur's own already-recorded design decision
-there (2026-09-02: research-module-specific optional C libraries get an
-on-demand install mechanism, not a blanket first-run install everyone
-pays for). Artur's own follow-up instruction (2026-09-13, after this tab's
-first cut had its OWN install button next to the source toggle): the
-INSTALL mechanism belongs in Settings -> Aktualizacje (see settings_tab.py's
+REQUIRED_APT_PACKAGES -- research-module-specific optional C libraries get an
+on-demand install mechanism instead of a blanket first-run install everyone
+pays for. The INSTALL mechanism belongs in Settings -> Aktualizacje (see settings_tab.py's
 own primecount section) alongside every other optional-component installer
 in this app, not duplicated here -- this tab only ever OFFERS to install
 (a small Zainstaluj/Anuluj dialog, triggered the moment a "primecount"-mode
@@ -356,10 +351,7 @@ class ResearchPiApproxTab(BaseTab):
     def _offer_install_primecount(self, pending_job):
         """Shown the moment a "primecount"-mode query fails specifically because
         libprimecount isn't installed yet -- a small Zainstaluj/Anuluj dialog
-        (Artur, 2026-09-13: "jesli nie jest zainstalowany... powinno sie
-        wyswietlic okno informujace o wymaganiu instalacji i czy zainstalowac
-        z dwoma przyciskami instaluj anuluj") instead of a generic error
-        message. A plain tkinter messagebox.askyesno can't carry custom
+        instead of a generic error message. A plain tkinter messagebox.askyesno can't carry custom
         button labels (Tk supplies its own stock Yes/No text), so this is a
         small dedicated Toplevel, same "own modal dialog for a two-choice
         prompt" idea as settings_tab.py's CUDASieve license-consent dialog,

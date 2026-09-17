@@ -1,6 +1,6 @@
 """
 research_squares.py -- on-disk-magazyn storage bridge for the Research tab's
-Przedzialy kwadratowe (square intervals) sub-tab (Faza 2, 2026-09-13).
+Przedzialy kwadratowe (square intervals) sub-tab.
 
 Re-exports read_is_prime_from_storage/MissingStorageRangeError from
 research_goldbach.py rather than duplicating them -- despite that module's

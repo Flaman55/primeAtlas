@@ -1,8 +1,7 @@
 """
 research_goldbach.py -- pure-logic (no tkinter) storage-bridging layer for the
-Research tab's Goldbach sub-tab, extracted from prime_atlas_v1.py during the refactor
-branch's Faza 3 (tab-by-tab backend/UI split, 2026-08-23), alongside the tab's own UI
-split (see research_goldbach_tab.py's own docstring).
+Research tab's Goldbach sub-tab, extracted from prime_atlas_v1.py as part of the
+tab-by-tab backend/UI split (see research_goldbach_tab.py's own docstring).
 
 This module holds ONLY the piece that turns on-disk floor storage into an is_prime
 array for goldbach_window.py's pure math functions to consume -- goldbach_window.py
@@ -59,23 +58,21 @@ def read_is_prime_from_storage(portal_folder, limit):
     floor storage (10p{N}/source_primes/PRIME_WINDOW_*.bin, PGS2 format -- see
     prime_sieve_v1.py's own format header) instead of running a fresh sieve. Used by
     the Goldbach tab's Wizualizacja feature (see research_goldbach_tab.py's
-    _on_goldbach_visualize), per Artur's explicit instruction that this computation
-    should read from the magazyn rather than recompute -- the per-n witness search
-    itself still runs the exact same algorithm as goldbach_window.py's window_rows(),
-    only the SOURCE of is_prime changes.
+    _on_goldbach_visualize), which reads from the magazyn rather than recomputing --
+    the per-n witness search itself still runs the exact same algorithm as
+    goldbach_window.py's window_rows(), only the SOURCE of is_prime changes.
 
     Floors are NOT one continuous span starting at floor 0 -- each floor N covers only
     its own natural range [10**N, 10**(N+1)) (width 9*10**N), the same boundary
     enforced elsewhere by _floor_window_count()/the range-clamping logic around
     "floor_boundary = 10 ** (floor_lo + 1)", and by prime_sieve_v4_1._low_floor_
     segments(). floor 0 = [1,10) (4 primes: 2,3,5,7), floor 1 = [10,100) (21 primes),
-    floor 2 = [100,1000) (143 primes), and so on -- this matches the real counts
-    Artur's own storage reports. An EARLIER version of this function wrongly treated
-    floor 0 alone as extending indefinitely in QUICK_GEN_MAX_WINDOW_WIDTH-wide chunks
-    (i.e. as if floor 0 covered [1,10_000_001)), so e.g. limit=200 was checked
-    entirely against floor 0's single tiny file and failed even though floors 0-2 were
-    each genuinely complete -- Artur caught this ("piętro zero nigdy nie będzie miało
-    100... wartość 100 jest na piętrze 2"). This version instead walks floor 0, 1, 2,
+    floor 2 = [100,1000) (143 primes), and so on. An EARLIER version of this
+    function wrongly treated floor 0 alone as extending indefinitely in
+    QUICK_GEN_MAX_WINDOW_WIDTH-wide chunks (i.e. as if floor 0 covered
+    [1,10_000_001)), so e.g. limit=200 was checked entirely against floor 0's
+    single tiny file and failed even though floors 0-2 were each genuinely
+    complete. This version instead walks floor 0, 1, 2,
     ... up to whichever floor's base exceeds limit, reading each floor's OWN files
     (possibly split into QUICK_GEN_MAX_WINDOW_WIDTH-wide window files only when a
     floor's natural width exceeds that, per prime_sieve_v1.main_batch_scanner()) and
@@ -83,11 +80,10 @@ def read_is_prime_from_storage(portal_folder, limit):
 
     A window FILE existing on disk at the right offset does not by itself prove it
     actually covers the range needed -- a partial/test/interrupted-generation file can
-    sit at offset 0 with only a handful of primes in it (this happened: Artur's
-    storage_path at the time had exactly such a file, and an earlier version of this
+    sit at offset 0 with only a handful of primes in it. An earlier version of this
     function trusted its mere existence, silently building an is_prime array that read
     as "mostly composite" above the file's real content and rendered a Wizualizacja
-    diagram full of "?" instead of an honest error). So for every window needed, this
+    diagram full of "?" instead of an honest error. So for every window needed, this
     also checks that the MAXIMUM prime actually found in that file reaches within
     _safe_prime_gap_margin() of the range it's relied on for -- short of that, the
     window is treated as not-yet-generated, same as if the file were simply missing.

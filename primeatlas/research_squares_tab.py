@@ -5,8 +5,7 @@ Oppermann/Brocard presets plus a custom a(n)/b(n) formula pair, checked over a
 [n_from, n_to] range via primeatlas/squares_window.py's pure
 check_interval_range()/check_interval_range_from_source().
 
-Faza 1 (Artur, 2026-09-13) shipped fresh-sieve-only, no CSV. Faza 2 (same
-day, "testowałem, możesz iść dalej" -> most do magazynu + eksport CSV) adds:
+Provides:
   - a data-source toggle ("Świeże sito" / "Dane z magazynu") -- storage mode
     reads is_prime from the real on-disk magazyn via
     primeatlas/research_squares.py's read_is_prime_from_storage (itself a
