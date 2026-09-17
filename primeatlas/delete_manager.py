@@ -4,12 +4,11 @@ delete_manager.py -- PortalWiper, deletes an ENTIRE portal storage location: eve
 back to just its header. Deliberately does NOT touch _backups/ -- backups are the whole
 point of offering this button safely at all.
 
-Also FloorWiper, for two narrower, per-floor variants of the same idea -- Artur,
-2026-08-17, asked for the Settings tab's delete section to offer these alongside the
-whole-storage wipe, since sometimes only ONE floor needs clearing (to force a clean
-re-generation) or only that floor's constellation hits need clearing (to re-run
-constellation_finder_v1.py against an unchanged pattern catalog, or a changed one,
-without touching the -- expensive to regenerate -- prime data underneath it):
+Also FloorWiper, for two narrower, per-floor variants of the same idea, since sometimes
+only ONE floor needs clearing (to force a clean re-generation) or only that floor's
+constellation hits need clearing (to re-run constellation_finder_v1.py against an
+unchanged pattern catalog, or a changed one, without touching the -- expensive to
+regenerate -- prime data underneath it):
   - delete_floor(): removes the WHOLE 10p{N} folder (source_primes AND constellations
     together, since they live under the same directory) plus that floor's own rows
     from benchmark_log.csv.
@@ -95,8 +94,8 @@ class PortalWiper:
                 errors.append(f"benchmark_log.csv: {e}")
 
         # Every floor this wipe just removed is gone from storage.py's persisted
-        # totals cache too -- see storage.py's own module docstring for that feature
-        # (added 2026-08-27). A full wipe simply deletes the whole cache FILE outright
+        # totals cache too -- see storage.py's own module docstring for that feature.
+        # A full wipe simply deletes the whole cache FILE outright
         # rather than calling remove_pietro_total() per floor (see FloorWiper.
         # execute_delete_floor() below for that narrower, single-floor version) --
         # every floor is gone at once here, so there is nothing left for the cache to
@@ -194,10 +193,10 @@ class FloorWiper:
         Also drops this floor's entry from storage.py's persisted totals cache and
         subtracts its last-known total from the persisted global sum
         (remove_pietro_total()) -- see storage.py's own module docstring for that
-        feature (added 2026-08-27, one of the three write-path hooks Artur asked for:
-        generation, storage merge, and this one). Runs AFTER the rmtree succeeds, not
-        before -- a floor whose files failed to delete should keep being counted in
-        the totals, since it's still really there on disk."""
+        feature (one of three write-path hooks: generation, storage merge, and this
+        one). Runs AFTER the rmtree succeeds, not before -- a floor whose files failed
+        to delete should keep being counted in the totals, since it's still really
+        there on disk."""
         floor_dir = os.path.join(self.storage_path, f"10p{base_exponent}")
         if not os.path.isdir(floor_dir):
             return False, None
