@@ -1,10 +1,10 @@
 """
 test_benchmark_tab.py -- functional regression test for BenchmarkTab (primeatlas/
-benchmark_tab.py + primeatlas/benchmark.py), extracted from prime_atlas_v1.py during
-the refactor branch's Faza 3 (tab-by-tab backend/UI split, 2026-08-23; task #382-385).
-The Benchmark tab was the smallest of the five tabs still living directly in
-prime_atlas_v1.py, so it was the first one migrated to the SettingsTab-style
-BenchmarkTab(ttk.Frame) + primeatlas/benchmark.py pure-logic split.
+benchmark_tab.py + primeatlas/benchmark.py), extracted from prime_atlas_v1.py as
+part of the tab-by-tab backend/UI split. The Benchmark tab was the smallest of the
+five tabs still living directly in prime_atlas_v1.py, so it was the first one
+migrated to the SettingsTab-style BenchmarkTab(ttk.Frame) + primeatlas/benchmark.py
+pure-logic split.
 
 This test builds the real PortalBrowserApp() end to end (not a mock) against a real
 on-disk portal folder seeded with a hand-written benchmark_log.csv, then exercises the
@@ -20,10 +20,10 @@ resulting app.benchmark_tab_widget (the real BenchmarkTab instance) directly:
      actually written and a confirmation is shown.
   4. The "no data yet" and forced-exception paths surface the right dialogs instead of
      silently doing nothing / crashing.
-  5. Dark-theme fix (#407, 2026-08-26): the "pietro"/"stat" Treeview row tags pull their
-     background AND foreground from primeatlas.theme.palette_for(), and both chart
-     canvases' own background do too -- not hardcoded light colors regardless of theme.
-  6. Chart readability fix (#408, 2026-08-26): _draw_growth_chart's dynamic pad_left
+  5. Dark-theme: the "pietro"/"stat" Treeview row tags pull their background AND
+     foreground from primeatlas.theme.palette_for(), and both chart canvases' own
+     background do too -- not hardcoded light colors regardless of theme.
+  6. Chart readability: _draw_growth_chart's dynamic pad_left
      stops wide numbers ("71,556,448") from clipping off the canvas edge -- exercised
      directly against _draw_growth_chart with a synthetic canvas, not through the CSV
      fixture above (which doesn't need such large numbers to be realistic). The
@@ -310,11 +310,11 @@ def main():
         check(any("fake failure for this test" in str(call) for call in shown),
               f"the actual exception text reaches the error dialog (got: {shown})")
 
-        # --- dark-theme fix: tree tag colors follow the palette, not hardcoded (#407) --
-        # "pietro"/"stat" row tags used to be hardcoded to light colors with no matching
-        # foreground override -- unreadable under the dark theme. See BenchmarkTab.
-        # __init__'s own docstring and primeatlas/theme.py's tree_group_bg/tree_stat_bg
-        # docstring for the bug this fixes.
+        # --- dark-theme: tree tag colors follow the palette, not hardcoded -----------
+        # "pietro"/"stat" row tags must not be hardcoded to light colors with no
+        # matching foreground override -- that would be unreadable under the dark
+        # theme. See BenchmarkTab.__init__'s own docstring and primeatlas/theme.py's
+        # tree_group_bg/tree_stat_bg docstring for the palette contract this relies on.
         from primeatlas.theme import palette_for
         theme_palette = palette_for(prime_atlas_v1.APP_SETTINGS.theme)
         # str(...) -- tag_configure's single-option query form can hand back a Tcl
@@ -339,7 +339,7 @@ def main():
               f"'stat' row tag foreground comes from the theme palette "
               f"(got {stat_fg!r}, expected {theme_palette['fg']!r})")
 
-        # --- dark-theme fix: chart canvas background follows the palette too (#408) ----
+        # --- dark-theme: chart canvas background follows the palette too -------------
         chart_bg = widget.benchmark_chart.cget("background")
         chart2_bg = widget.benchmark_chart2.cget("background")
         check(chart_bg == theme_palette["console_bg"],
@@ -349,9 +349,9 @@ def main():
               f"phase-chart canvas background comes from the theme palette "
               f"(got {chart2_bg!r}, expected {theme_palette['console_bg']!r})")
 
-        # --- chart readability fix: dynamic left padding stops big numbers clipping ----
-        # (#408, 2026-08-26 screenshot) -- a 9-11 digit n/s figure like "71,556,448" used
-        # to sit under a fixed 70px pad_left and get cut off against the canvas edge.
+        # --- chart readability: dynamic left padding stops big numbers clipping -------
+        # A 9-11 digit n/s figure like "71,556,448" would otherwise sit under a fixed
+        # 70px pad_left and get cut off against the canvas edge.
         # _draw_growth_chart now measures the actual tick label strings with the real
         # font and widens pad_left to fit -- reproduce that exact scenario directly
         # (no need to go through the whole app/CSV path) and check no tick-label text
@@ -373,25 +373,25 @@ def main():
               f"no tick-label text is clipped off the left edge of the canvas "
               f"(leftmost text bbox edge was {min_left_edge}, expected >= -1)")
 
-        # --- chart readability fix: hover tooltip replaces always-on point labels ------
-        # (#408) -- per-point value labels used to be drawn permanently next to every dot
-        # and overlapped into an unreadable smear on dense series; now nothing is shown
-        # until the mouse is near a point, then exactly one tooltip (tagged "hover_tip")
-        # appears. Reuses the probe_canvas/big_points draw from the padding check above,
-        # so hover_points (closed over by _bind_chart_hover) matches what's on screen.
+        # --- chart readability: hover tooltip replaces always-on point labels ---------
+        # Per-point value labels drawn permanently next to every dot overlap into an
+        # unreadable smear on dense series; nothing is shown until the mouse is near a
+        # point, then exactly one tooltip (tagged "hover_tip") appears. Reuses the
+        # probe_canvas/big_points draw from the padding check above, so hover_points
+        # (closed over by _bind_chart_hover) matches what's on screen.
         check(len(probe_canvas.find_withtag("hover_tip")) == 0,
               "no hover tooltip is shown before the mouse moves near any point")
         # The "which point (if any) is the cursor over" decision is tested directly
         # via _nearest_hover_point -- a plain function with no canvas/tkinter
         # dependency (extracted from _bind_chart_hover's own <Motion> handler
         # specifically so this is possible) -- rather than through a real OS-level
-        # synthetic mouse event. A synthetic <Motion>/<Leave> pair turned out to
-        # behave inconsistently across platforms during testing (2026-08-26): on one
-        # Windows/Tk combination, <Motion> didn't reliably land within the trigger
-        # radius even when targeted at a dot's exact pixel center, and <Leave>
-        # rejected the -warp option outright. _nearest_hover_point is deterministic
-        # and needs no live display, so it tests the actual logic bug reports were
-        # about (dense/overlapping labels) without inheriting that platform noise.
+        # synthetic mouse event. A synthetic <Motion>/<Leave> pair behaves
+        # inconsistently across platforms: on one Windows/Tk combination, <Motion>
+        # didn't reliably land within the trigger radius even when targeted at a
+        # dot's exact pixel center, and <Leave> rejected the -warp option outright.
+        # _nearest_hover_point is deterministic and needs no live display, so it
+        # tests the actual logic (dense/overlapping labels) without inheriting that
+        # platform noise.
         from primeatlas.benchmark_tab import _nearest_hover_point
         dot_center = None
         for item_id in probe_canvas.find_all():
@@ -416,11 +416,11 @@ def main():
               f"a cursor position exactly on a dot matches that dot's own x_val/y_val "
               f"(got {exact_hit!r})")
 
-        # --- hover tooltip label placement stays within canvas bounds (screenshot bug,
-        # 2026-08-27) -- the tooltip text used to be drawn at a fixed px+12 offset with
-        # no boundary check, so hovering the RIGHTMOST point (the highest floor
-        # plotted, exactly where a user is most likely to hover) pushed its own value
-        # text off the visible canvas and got clipped. That anchor/position decision
+        # --- hover tooltip label placement stays within canvas bounds ----------------
+        # A tooltip drawn at a fixed px+12 offset with no boundary check would let
+        # hovering the RIGHTMOST point (the highest floor plotted, exactly where a
+        # user is most likely to hover) push its own value text off the visible
+        # canvas and get clipped. That anchor/position decision
         # was pulled out into _hover_label_position(), a plain function with no
         # canvas/tkinter dependency (mirroring _nearest_hover_point's own extraction
         # above, and for the identical reason -- see that function's own comment):

@@ -1,8 +1,8 @@
 """
-test_loading_screen.py -- functional regression test for the Faza 2 startup loading
-screen + async tree-scan split in prime_atlas_v1.py (refactor branch, 2026-08-23).
+test_loading_screen.py -- functional regression test for the startup loading
+screen + async tree-scan split in prime_atlas_v1.py.
 
-Faza 2 changed __init__ to: (1) show a loading_frame (title + caption + indeterminate
+This change altered __init__ to: (1) show a loading_frame (title + caption + indeterminate
 progress bar) BEFORE building any of the six tabs, updating its caption as each tab is
 built; (2) leave status_frame/main_notebook unpacked until BOTH startup tree scans
 (reload_primes_tree() and reload_constellations_tree()) have completed; (3) split those
@@ -21,8 +21,8 @@ against a real on-disk portal folder with one seeded floor, and checks:
      scan, and settles cleanly once the in-flight one finishes (the busy/pending
      re-entrancy guard actually works, not just compiles) -- exercised for BOTH trees'
      own coordinator (PrimesTreeCoordinator/ConstellationsTreeCoordinator, moved out of
-     PortalBrowserApp itself during the refactor-phase3 branch, 2026-08-27 -- see
-     either module's own docstring), since each owns an independent busy/pending pair.
+     PortalBrowserApp itself -- see either module's own docstring), since each owns an
+     independent busy/pending pair.
 
 See test_goldbach_worker.py's own module docstring for the PGS1 filename convention
 this test's seeded window file must follow, and test_search_worker.py's for why
@@ -139,17 +139,16 @@ def main():
               f"(got exponents: {list(app.primes_tab_widget._pietro_node_by_exp.keys())})")
         # PrimesTreeCoordinator._on_scan_done no longer kicks off a real per-floor
         # rescan (compute_all_pietro_totals()) automatically after startup -- see
-        # storage.py's own module docstring for the persisted-totals feature added
-        # 2026-08-27. A brand-new portal folder has no .portal_totals_cache.json yet,
-        # so nothing has actually READ the seeded floor's header at this point --
-        # show_cached_grand_total()'s self-heal (recompute_global_total()) only sums
-        # whatever per-floor totals are ALREADY cached, and there are none yet, so it
-        # correctly reports 0 here, not 4. That's the intended behavior, not a bug:
-        # the real read only happens once something asks for it -- either a real
-        # write (generation/merge/delete, none of which apply to this fixture) or the
-        # Primes tab's manual "Zweryfikuj sumy" button, which this test triggers
-        # explicitly below to exercise the SAME real rescan _grand_total_sum used to
-        # get for free at startup.
+        # storage.py's own module docstring for the persisted-totals feature. A
+        # brand-new portal folder has no .portal_totals_cache.json yet, so nothing has
+        # actually READ the seeded floor's header at this point -- show_cached_grand_
+        # total()'s self-heal (recompute_global_total()) only sums whatever per-floor
+        # totals are ALREADY cached, and there are none yet, so it correctly reports 0
+        # here, not 4. That's the intended behavior, not a bug: the real read only
+        # happens once something asks for it -- either a real write (generation/merge/
+        # delete, none of which apply to this fixture) or the Primes tab's manual
+        # verify-totals button, which this test triggers explicitly below to exercise
+        # the SAME real rescan _grand_total_sum used to get for free at startup.
         app._totals_search.compute_all_pietro_totals()
         _pump(app, 5.0)
         check(app._totals_search._grand_total_sum == 4,
@@ -161,11 +160,11 @@ def main():
         # into a single pending rerun, not a second overlapping scan thread.
         #
         # _scan/_busy/_pending now live on app._primes_tree_coord (a
-        # PrimesTreeCoordinator instance), not on app itself -- moved there by task
-        # #421's coordinator extraction (2026-08-27, refactor-phase3, the same
-        # "God object" reduction task #410 started for the totals/search worker
-        # mechanism); app.reload_primes_tree() itself is still the right thing to call
-        # (a one-line delegate, see prime_atlas_v1.py's own docstring for that method).
+        # PrimesTreeCoordinator instance), not on app itself -- extracted out of
+        # PortalBrowserApp as part of the same "God object" reduction the totals/
+        # search worker mechanism went through; app.reload_primes_tree() itself is
+        # still the right thing to call (a one-line delegate, see prime_atlas_v1.py's
+        # own docstring for that method).
         coord = app._primes_tree_coord
         original_scan = coord._scan
 

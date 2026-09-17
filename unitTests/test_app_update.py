@@ -1,9 +1,9 @@
 """
 test_app_update.py -- covers primeatlas/app_update.py, the self-update checker/downloader
-wired into Settings > Aktualizacje and prime_atlas_v1.py's startup hook (task #521, refined
-2026-09-10 across three follow-ups -- lock/access-recovery, OS-verified lock recovery, and
+wired into Settings > Aktualizacje and prime_atlas_v1.py's startup hook. It has gone
+through three follow-up rounds -- lock/access-recovery, OS-verified lock recovery, and
 the GitHub-API-based check path -- see app_update.py's own module docstring for the full
-story of each).
+story of each.
 
 No real git repo, network, or GitHub remote anywhere in this sandbox -- every subprocess
 boundary is stubbed by monkeypatching the module's own _run_git(), same "thin, separately
@@ -741,7 +741,7 @@ def section_c():
               f"must NOT classify as a lock error: {text!r}")
     check(not au._looks_like_lock_error("fatal: Not possible to fast-forward, aborting."),
           "the real divergence message must never be mistaken for a lock error -- this is "
-          "the exact message Artur's machine hit on 2026-09-10, and misclassifying it would "
+          "an actual message observed on real hardware, and misclassifying it would "
           "make download_update() retry a genuine divergence instead of reporting it")
 
     # --- _try_release_lock_file() against a real temp file ---

@@ -1,8 +1,8 @@
 """
 test_primes_tab.py -- functional regression test for PrimesTab (primeatlas/
-primes_tab.py + primeatlas/storage.py), extracted from prime_atlas_v1.py during the
-refactor branch's Faza 3 (tab-by-tab backend/UI split, 2026-08-23; task #387). This was
-the second tab extracted after Benchmark, and the first one where the search
+primes_tab.py + primeatlas/storage.py), extracted from prime_atlas_v1.py as part of
+the tab-by-tab backend/UI split. This was the second tab extracted after Benchmark,
+and the first one where the search
 machinery had to stay app-level (see primes_tab.py's own module docstring) -- so this
 test exercises BOTH the tab's self-contained floor/preview UI AND the injected-callable
 seam into prime_atlas_v1.py's shared search worker.
@@ -86,13 +86,13 @@ def _test_cumulative_pietro_totals():
     function with no tkinter dependency (mirrors the existing convention of testing
     such extracted pure functions directly, e.g. benchmark_tab.py's
     _nearest_hover_point/_hover_label_position) -- so this runs even without Xvfb/a
-    real display. Added 2026-08-27 alongside the new "cumulative" tree column.
+    real display. Added alongside the "cumulative" tree column.
 
     An EARLIER version of this function excluded a floor's own count (matching
-    Wikipedia's pi(10**N) exactly), but Artur asked for it to follow the app's own
-    floor/file structure instead ("zgodnie z plikami a nie z wiki") -- putting a
-    floor's own count off by one from its own cumulative row read as confusing next
-    to the "Primes" column right beside it. This INCLUSIVE version instead answers
+    Wikipedia's pi(10**N) exactly), but that put a floor's own count off by one from
+    its own cumulative row, which read as confusing next to the "Primes" column right
+    beside it. The design instead follows the app's own floor/file structure rather
+    than an external reference definition. This INCLUSIVE version instead answers
     "how many primes in total through this floor" -- see that function's own
     docstring for the full reasoning."""
     from primeatlas.primes_tab import _cumulative_pietro_totals
@@ -200,16 +200,16 @@ def main():
         node0 = node_by_text["10p0"]
         node3 = node_by_text["10p3"]
 
-        # --- cumulative running-total column (added 2026-08-27) ---------------------
+        # --- cumulative running-total column ------------------------------------------
         # Startup no longer auto-triggers a real per-floor rescan (compute_all_pietro_
         # totals()) -- see storage.py's own module docstring for the persisted-totals
-        # feature added the same day: a fresh portal folder's .portal_totals_cache.json
-        # doesn't exist yet, so pietro_total_known is genuinely empty right after
-        # startup, and the cumulative column is correctly blank for BOTH floors at this
-        # point (nothing to assert here beyond that; asserted implicitly by the totals
-        # verify below actually changing things). Explicitly clicking "Zweryfikuj sumy"
-        # (widget._verify_all_totals, the manual safety-net verify that replaced the
-        # old automatic behavior) is what makes floor 0's real total known.
+        # feature: a fresh portal folder's .portal_totals_cache.json doesn't exist yet,
+        # so pietro_total_known is genuinely empty right after startup, and the
+        # cumulative column is correctly blank for BOTH floors at this point (nothing
+        # to assert here beyond that; asserted implicitly by the totals verify below
+        # actually changing things). Explicitly invoking the manual verify-totals
+        # button (widget._verify_all_totals, the manual safety-net verify that replaced
+        # the old automatic behavior) is what makes floor 0's real total known.
         widget._verify_all_totals()
         _pump(app, 5.0)
 

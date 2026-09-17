@@ -2,9 +2,9 @@
 test_primecount_settings_integration.py -- covers Settings -> Aktualizacje's primecount
 installer section (settings_tab.py) and the generation.py plumbing it's built on
 (build_primecount_query_argv, run_primecount_wsl_blocking, run_primecount_install_wsl_
-blocking) -- added 2026-09-13 after Artur moved the "primecount" data-source mode's
-install mechanism out of the Badania -> Przyblizenia pi(x) tab and into Settings, where
-every other optional-component installer (sympy, CUDASieve) already lives.
+blocking). The "primecount" data-source mode's install mechanism lives in Settings,
+alongside every other optional-component installer (sympy, CUDASieve), rather than on
+the Badania -> Przyblizenia pi(x) tab where the mode itself is used.
 
 Same "test the SYNCHRONOUS result-handler methods directly, never the real
 threading.Thread()+self.after() round trip" convention as test_cudasieve_integration.py's
@@ -13,7 +13,7 @@ background thread needs a REAL Tk mainloop() to work; this test suite (like ever
 one in this project) drives the Tk event loop via manual app.update() polling instead,
 which does NOT count as "in mainloop" and makes a background thread's self.after() call
 raise "main thread is not in main loop" -- a well-understood Tkinter testing limitation,
-not a bug in the code under test (confirmed live, 2026-09-13: the exact same real WSL
+not a bug in the code under test (confirmed live: the exact same real WSL
 round-trip works correctly when driven through the tab's own worker-thread-based
 PersistentWorker machinery in test_research_pi_approx_tab.py, and works live in the real
 app under a real mainloop() -- only the settings_tab.py bare threading.Thread(daemon=

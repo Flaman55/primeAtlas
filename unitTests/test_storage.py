@@ -1,8 +1,8 @@
 """
-test_storage.py -- unit tests for primeatlas/storage.py's persisted-totals feature added
-2026-08-27: the incremental bump_pietro_total()/remove_pietro_total() pair and the
-persisted GLOBAL total (get_global_total()/recompute_global_total()), added after Artur
-pointed out that update_pietro_totals_cache() (the full per-floor directory-listing +
+test_storage.py -- unit tests for primeatlas/storage.py's persisted-totals feature: the
+incremental bump_pietro_total()/remove_pietro_total() pair and the
+persisted GLOBAL total (get_global_total()/recompute_global_total()), added because
+update_pietro_totals_cache() (the full per-floor directory-listing +
 os.stat()-every-file rescan) being the ONLY way any total ever got refreshed meant that
 cost ran for EVERY floor on every startup/reload, even when nothing had changed. See
 storage.py's own module docstring for the full feature rationale.
@@ -137,7 +137,7 @@ def _test_round_trip_bump_matches_full_rescan():
     known delta must land on the EXACT SAME total a full update_pietro_totals_cache()
     rescan would have found by actually reading every file's header -- otherwise the fast
     incremental path and the manual verify path would disagree, which is exactly the kind
-    of silent drift Artur's "Zweryfikuj sumy" safety net exists to catch, not something
+    of silent drift the manual verify-totals safety net exists to catch, not something
     this feature should be introducing on its own on the very first day."""
     from primeatlas import storage
     import prime_sieve_v1

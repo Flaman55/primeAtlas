@@ -1,8 +1,8 @@
 """
 test_generation_window_arithmetic.py -- characterization tests for the pure floor/window
 arithmetic that plans WHERE on disk a generation run writes, WITHOUT launching any real
-sieve/WSL subprocess. Written for the refactor branch's Faza 3 Generation-tab extraction
-(task #390): before touching that tab's ~2650 lines of UI code, this suite pins down the
+sieve/WSL subprocess. Written for the Generation-tab extraction:
+before touching that tab's ~2650 lines of UI code, this suite pins down the
 exact behavior of the functions responsible for its three worst historical production
 incidents (see each test's own docstring for the specific bug it targets):
 
@@ -29,11 +29,9 @@ to every function tested here).
 
 Every check() call states the SPECIFIC expected vs. actual value in its message, not just
 pass/fail, so a future regression points straight at what went wrong instead of just
-"something in Generation broke" (this was Artur's explicit request when asking for this
-suite: tests must "wyłapały i wyświetliły co faktycznie powoduje błąd" -- catch it AND
-show what actually caused it).
+"something in Generation broke".
 
-Updated during the Generation-tab extraction itself (Faza 3, 2026-08-23): these functions
+Updated during the Generation-tab extraction itself: these functions
 moved from prime_atlas_v1.py into primeatlas/generation.py (see that module's own
 docstring) -- this suite now imports from there directly instead of through
 prime_atlas_v1, and no longer needs tkinter/Xvfb at all (generation.py has no GUI
@@ -89,7 +87,7 @@ def _touch_window(portal, floor, target_idx, window_m=10_000_000):
 
 def _test_compute_totals_bumps_from_new_rows():
     """compute_totals_bumps_from_new_rows() -- the pure row-filtering logic behind
-    GenerationTab._bump_totals_from_finished_run() (added 2026-08-27, see storage.py's
+    GenerationTab._bump_totals_from_finished_run() (see storage.py's
     own module docstring for the persisted-totals feature this belongs to). No temp
     directory needed -- this function only ever looks at plain row dicts, the exact
     shape read_benchmark_log()/csv.DictReader hands back, never touching disk itself."""
