@@ -4,11 +4,10 @@ floor-list scan/reload logic for the Constellations tab's own "Magazyn" hits tre
 that used to live directly on PortalBrowserApp itself in prime_atlas_v1.py
 (_constellations_tree_scan/reload_constellations_tree/_on_hits_tree_scan_done).
 
-Extracted on the refactor-phase3 branch (2026-08-27), the direct sibling of
-primeatlas/primes_tree_coordinator.py's own PrimesTreeCoordinator (see that module's
-docstring for the full "God object" reduction lineage -- TotalsSearchCoordinator on
-refactor-phase2, task #410, 2026-08-26). Same shape, same reasoning, just for the
-OTHER tree: this tab's own Refresh button can run without reload_primes_tree() ever
+Direct sibling of primeatlas/primes_tree_coordinator.py's own PrimesTreeCoordinator
+(see that module's docstring for the full "God object" reduction lineage). Same
+shape, same reasoning, just for the OTHER tree: this tab's own Refresh button can run
+without reload_primes_tree() ever
 running in the same gesture (e.g. right after constellation-finding finishes), so its
 own prune/scan is dispatched independently rather than piggy-backing on the other
 tree's refresh.

@@ -1,8 +1,7 @@
 """
 base_tab.py -- BaseTab(ttk.Frame), the common base class for every GUI tab class in
-this package (refactor-phase2 branch, 2026-08-24: the OOP-cleanup follow-up to the
-refactor branch's Faza 1-4 tab-by-tab extraction -- see README.md's "GUI module
-conventions" section for the full history and the "Known gaps" this addresses).
+this package (see README.md's "GUI module conventions" section for the full history
+and the "Known gaps" this addresses).
 
 Before this, each of the 9 tab classes (PrimesTab, PrimesieveCalcTab, PrimalityTab,
 ConstellationsHitsTab, ConstellationsCalcTab, ConstellationsRecordsTab,

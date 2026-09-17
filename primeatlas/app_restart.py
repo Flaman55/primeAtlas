@@ -1,14 +1,12 @@
 """
 app_restart.py -- relaunches the running PrimeAtlas process in place.
 
-Context (Artur, 2026-09-02): changing the language or theme in Settings only writes the
-new choice to AppSettings (see app_settings.py's `language`/`theme` docstrings) -- neither
-rebuilds the already-constructed widgets, since a live relabel/retheme of every widget in
-all 5 tabs would be a much larger and riskier change than just restarting. Previously this
-meant the user had to manually close and reopen PrimeAtlas for the change to take effect
-(settings_tab.py just showed a "restart required" note). This module makes that automatic:
-after saving the change, settings_tab.py calls restart_app() itself instead of just telling
-the user to do it by hand.
+Changing the language or theme in Settings only writes the new choice to AppSettings
+(see app_settings.py's `language`/`theme` docstrings) -- neither rebuilds the
+already-constructed widgets, since a live relabel/retheme of every widget in all 5 tabs
+would be a much larger and riskier change than just restarting. settings_tab.py calls
+restart_app() itself after saving the change, so the new language/theme takes effect
+without the user having to manually close and reopen PrimeAtlas.
 
 Uses os.execv() (replace this process image in place), NOT subprocess.Popen(...) +
 sys.exit() -- execv means there is exactly one PrimeAtlas process at any instant (the old
@@ -44,13 +42,12 @@ def _build_execv_args():
     that -- it computes an absolute path itself regardless of the current working
     directory at restart time).
 
-    Confirmed bug (Artur, 2026-09-11): on Windows, os.execv() builds the new process's
-    command line by naively space-joining argv -- unlike subprocess.Popen, it does NOT
-    quote elements containing spaces. Any checkout path with a space in it (e.g. this
-    OneDrive clone's "...\\AI Agent Ollama\\..." ancestor) then gets split at that space
-    by the relaunched process, which fails to find itself and exits immediately -- since
-    this already replaced the original process, the user just sees PrimeAtlas close
-    without reopening, with no visible error (it's a GUI app). Wrapping any argv element
+    On Windows, os.execv() builds the new process's command line by naively space-joining
+    argv -- unlike subprocess.Popen, it does NOT quote elements containing spaces. Any
+    checkout path with a space in it then gets split at that space by the relaunched
+    process, which fails to find itself and exits immediately -- since this already
+    replaced the original process, the user just sees PrimeAtlas close without reopening,
+    with no visible error (it's a GUI app). Wrapping any argv element
     that contains a space in double quotes (Windows' own quoting convention, which
     CommandLineToArgvW -- and therefore the relaunched Python's own argv parsing --
     strips back off) fixes it. The `python` value returned alongside argv is passed to

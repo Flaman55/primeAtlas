@@ -5,11 +5,9 @@ methods that used to live directly on PortalBrowserApp itself in prime_atlas_v1.
 _offer_generate_missing_prime_window, _offer_generate_missing_constellation, and
 _goldbach_offer_generate_missing_range.
 
-Extracted on the refactor-phase3 branch (2026-08-27), continuing the same "God
-object" reduction TotalsSearchCoordinator started on refactor-phase2 (task #410,
-2026-08-26) and PrimesTreeCoordinator/ConstellationsTreeCoordinator continued
-immediately before this (same branch) -- see either module's own docstring and
-README.md's "GUI module conventions" -> "Known gaps" section.
+Continues the same "God object" reduction PrimesTreeCoordinator/
+ConstellationsTreeCoordinator already went through -- see either module's own
+docstring and README.md's "GUI module conventions" -> "Known gaps" section.
 
 Unlike the two tree coordinators, this class needs only ONE piece of app state at
 call time -- self.generation_tab_widget (GenerationTab, primeatlas/generation_tab.py)

@@ -4,8 +4,7 @@ locating/reading HITS_*.bin files, grouping them for the tree UI, building the
 pzktupel.de-style records table + its full-detail export rows, rendering that table
 to PDF, and checking whether a searched number participates in any recorded hit.
 
-Extracted from prime_atlas_v1.py during the refactor branch's Faza 3 (tab-by-tab
-backend/UI split, 2026-08-23), alongside the Constellations tab's own UI split into
+Split out of prime_atlas_v1.py alongside the Constellations tab's own UI split into
 primeatlas/constellations_hits_tab.py / constellations_calc_tab.py /
 constellations_records_tab.py -- these functions have no tkinter dependency and are
 exercisable without a display, same reasoning as primeatlas/storage.py's own split for
@@ -130,9 +129,9 @@ def hit_pattern_is_paged(portal_folder, base_exponent, k, variant_id):
     worker) should also check the pattern's header count against hit_paging.PAGE_SIZE
     when this returns False, and refuse rather than attempt the read -- see
     constellations_records_tab.py's _on_cell_activate() and
-    constellations_hits_tab.py's load_preview() for that guard, added 2026-09-16 after
-    a real freeze: k=2 on floor 25 (~2.15 billion hits, not yet migrated) hung the whole
-    app's GUI thread decoding on a plain double-click, well before migration ever ran."""
+    constellations_hits_tab.py's load_preview() for that guard: without it, k=2 on
+    floor 25 (~2.15 billion hits, not yet migrated) hangs the whole app's GUI thread
+    decoding on a plain double-click."""
     vdir = hit_paging.variant_dir(portal_folder, base_exponent, k, variant_id)
     return hit_paging.is_paged(vdir)
 

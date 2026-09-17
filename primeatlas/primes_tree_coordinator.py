@@ -4,10 +4,9 @@ reload logic for the "Prime numbers" tab's own tree, that used to live directly 
 PortalBrowserApp itself in prime_atlas_v1.py (_primes_tree_scan/reload_primes_tree/
 _on_primes_tree_scan_done).
 
-Extracted on the refactor-phase3 branch (2026-08-27), continuing the same "God object"
-reduction TotalsSearchCoordinator started on refactor-phase2 (task #410, 2026-08-26;
-see that module's own docstring and README.md's "GUI module conventions" -> "Known
-gaps" section) -- these three methods were pure cross-cutting orchestration
+Continues the same "God object" reduction TotalsSearchCoordinator already went
+through (see that module's own docstring and README.md's "GUI module conventions" ->
+"Known gaps" section) -- these three methods were pure cross-cutting orchestration
 (background disk scan + tree/cache resync), not tab composition, so they move out the
 same way the two PersistentWorkers already did.
 
@@ -170,13 +169,13 @@ class PrimesTreeCoordinator:
             pietra, result["pietro_total_known"], result["pietro_gen_seconds"])
         self.status.set(self.T("app.status_portal_with_count", folder=portal_folder,
                                 count=len(pietra)))
-        # Was compute_all_pietro_totals() (a real per-file rescan submitted for EVERY
-        # floor) until 2026-08-27 -- see storage.py's own module docstring for why that
-        # ran unconditionally after every single reload/startup even when nothing had
-        # changed, and TotalsSearchCoordinator.show_cached_grand_total()'s own
-        # docstring for what replaced it (an all-in-memory read of the persisted
-        # totals cache this scan already loaded, via result["totals_cache"] above).
-        # The real rescan still exists, just moved behind the Primes tab's explicit
+        # This uses an all-in-memory read of the persisted totals cache this scan
+        # already loaded (via result["totals_cache"] above) instead of
+        # compute_all_pietro_totals() -- a real per-file rescan submitted for every
+        # floor -- which used to run unconditionally on every reload/startup even
+        # when nothing had changed; see storage.py's own module docstring and
+        # TotalsSearchCoordinator.show_cached_grand_total()'s docstring. The real
+        # rescan still exists, just moved behind the Primes tab's explicit
         # "Zweryfikuj sumy" button (PrimesTab._verify_all_totals).
         self._totals_search.show_cached_grand_total(
             result["totals_cache"], result["pietro_gen_seconds"], len(pietra))

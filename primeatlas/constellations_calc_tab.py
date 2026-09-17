@@ -7,8 +7,7 @@ N = 10**exp + Offset plus every N + offset_i for the pattern -- shown in a resul
 table (not yet checked for primality; this is pure arithmetic, no file I/O, so it's
 instant even for a large exp).
 
-Extracted from prime_atlas_v1.py during the refactor branch's Faza 3 (tab-by-tab
-backend/UI split, 2026-08-23). Unlike the Prime numbers tab, this one doesn't dispatch
+Unlike the Prime numbers tab, this one doesn't dispatch
 searches itself -- the Search button reuses the SIBLING Magazyn tab's own search box
 (ConstellationsHitsTab.search_constellation(), see that method's own docstring)
 against whichever row is currently selected, since that search already covers BOTH

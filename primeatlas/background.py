@@ -3,16 +3,15 @@ background.py -- one small, reusable way to run a slow function off the Tk main 
 and get its result (or an error) back safely, instead of hand-rolling a fresh
 thread+queue+self.after()-poll block per feature.
 
-Why this exists (refactor branch, Faza 1, 2026-08-23): an audit of prime_atlas_v1.py and
-primeatlas/settings_tab.py found SIX independently-duplicated persistent worker-thread
-patterns (totals/search/primesieve_calc/primality/goldbach/const_records -- one
-threading.Thread + two queue.Queue + one self.after(150, poll) block each, all doing the
-same thing with different payload shapes) plus several settings_tab.py functions that
-did comparably slow full-storage-tree scans SYNCHRONOUSLY on the GUI thread with no
-threading at all (_on_check_diff, _on_preview_storage_integrate, and the refresh
-functions for the backup/full-backup/floor-delete lists) -- freezing the whole window
-for however long those scans took, inconsistently with the properly-backgrounded
-actions right next to them. See task history around 2026-08-23 for the full audit.
+prime_atlas_v1.py and primeatlas/settings_tab.py previously had SIX independently-
+duplicated persistent worker-thread patterns (totals/search/primesieve_calc/
+primality/goldbach/const_records -- one threading.Thread + two queue.Queue + one
+self.after(150, poll) block each, all doing the same thing with different payload
+shapes) plus several settings_tab.py functions that did comparably slow full-storage-
+tree scans SYNCHRONOUSLY on the GUI thread with no threading at all (_on_check_diff,
+_on_preview_storage_integrate, and the refresh functions for the backup/full-backup/
+floor-delete lists) -- freezing the whole window for however long those scans took,
+inconsistently with the properly-backgrounded actions right next to them.
 
 Design: exactly one moving part, run_in_background(). No class to instantiate, no
 worker thread kept alive across calls -- a fresh daemon thread per call is simpler to
@@ -105,8 +104,7 @@ class PersistentWorker:
     submitted every time a tree node is expanded or a batch scan runs), as opposed to
     run_in_background()'s one-shot-per-call shape above.
 
-    Why this exists (refactor branch, Faza 1, second half, 2026-08-23): prime_atlas_v1.py
-    had SIX independently hand-rolled copies of the exact same shape -- one
+    prime_atlas_v1.py had SIX independently hand-rolled copies of the exact same shape -- one
     threading.Thread(target=self._xxx_worker_loop, daemon=True) running a `while True:
     request = work_queue.get(); ...; result_queue.put(result)` loop, one
     self.after(150, self._poll_xxx_results) draining that result queue on the main

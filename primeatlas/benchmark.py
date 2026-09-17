@@ -5,11 +5,8 @@ rendering the standalone PDF report. No tkinter dependency -- exercisable/unit-t
 without a display, same convention as every other module in this package except
 settings_tab.py/benchmark_tab.py (see this package's __init__.py's docstring).
 
-Extracted from prime_atlas_v1.py during the refactor branch's Faza 3 (tab-by-tab
-backend/UI split, 2026-08-23) -- the Benchmark tab was the smallest of the five tabs
-still living directly in that file (~350 lines vs. 1300-2400+ for the other four), so
-it went first. primeatlas/benchmark_tab.py (the UI half, built on top of this module)
-is the ONLY caller of everything below except read_benchmark_log(), which
+primeatlas/benchmark_tab.py (the UI half, built on top of this module) is the ONLY
+caller of everything below except read_benchmark_log(), which
 prime_atlas_v1.py's own reload_primes_tree()/_primes_tree_scan() also calls directly
 (for the "Prime numbers" tab's own generation-time column) -- see that function's own
 docstring.
