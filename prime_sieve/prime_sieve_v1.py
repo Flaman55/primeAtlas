@@ -270,7 +270,7 @@ def read_prime_window_last_value(path):
     full decode -- but O(1) MEMORY instead of O(count), since it never keeps more than
     the current running value instead of appending each one to a growing list.
 
-    Added 2026-09-14 after a real production crash: constellation_finder_v1.py's own
+    constellation_finder_v1.py's own
     _resolve_last_value() only ever needs a hit file's last stored value to know where
     to resume gap-encoding from on the next append -- but on a floor with hundreds of
     thousands of processed windows, a dense pattern's cumulative hit file can itself

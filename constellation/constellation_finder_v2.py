@@ -38,9 +38,8 @@ except ImportError:
 # which accumulate hits fastest.
 #
 # Progress is tracked per floor in CONSTELLATION_PORTAL/10p{N}/constellations/
-# CHECKPOINT.txt, covering every k -- as of v2, a set of already-processed window
-# RANGES (see this file's own "v2 -- gap-aware checkpoint" header section below), not
-# just a single last-processed-filename pointer.
+# CHECKPOINT.txt, covering every k, as a set of already-processed window RANGES (see
+# "gap-aware checkpoint" below), not just a single last-processed-filename pointer.
 #
 # Per-(k,variant) hit counts are available cheaply via
 # read_prime_window_header(hit_path)['count'] (no full decode), which is enough to build
@@ -49,7 +48,7 @@ except ImportError:
 # maintained here.
 #
 # CLI: running with no floor argument auto-detects and processes every floor under the
-# portal that has at least one source window (list_pietra_with_data()); an explicit
+# portal that has at least one source window (list_floors_with_data()); an explicit
 # argument restricts the run to just that one floor.
 #
 # Peek-ahead threshold: uses the NEXT file's header base_prime + MAX_SPAN as the peek
@@ -58,43 +57,42 @@ except ImportError:
 # a window's nominal start to its first actual prime -- a handful of units, well within
 # MAX_SPAN's margin (84 at the widest catalog entry, k=21) -- so this is safe and simpler.
 #
-# FLOOR-BOUNDARY crossings (added 2026-08-18, at Artur's request): the peek-ahead above
-# only ever looks at the next window WITHIN THE SAME FLOOR -- the floor's own LAST window
-# has no such next window to peek into, so a pattern whose base sits near the very top of
-# one floor with its tail spilling into the next floor's numbers was never checked at all.
-# Every catalog pattern's offsets are non-negative, so a boundary-straddling
-# constellation's base is always on the LOWER of the two floors -- see
-# check_floor_boundary()'s own docstring for how this is closed, without touching the
-# per-window CHECKPOINT.txt above at all: a separate, tiny BOUNDARY_CHECKED.txt marker per
-# floor, and a clear informational print when the check can't be completed yet because the
-# next floor has no data.
+# FLOOR-BOUNDARY crossings: the peek-ahead above only ever looks at the next window
+# WITHIN THE SAME FLOOR -- the floor's own LAST window has no such next window to peek
+# into, so a pattern whose base sits near the very top of one floor with its tail
+# spilling into the next floor's numbers would otherwise never be checked at all. Every
+# catalog pattern's offsets are non-negative, so a boundary-straddling constellation's
+# base is always on the LOWER of the two floors -- see check_floor_boundary()'s own
+# docstring for how this is closed, without touching the per-window CHECKPOINT.txt above
+# at all: a separate, tiny BOUNDARY_CHECKED.txt marker per floor, and a clear
+# informational print when the check can't be completed yet because the next floor has
+# no data.
 #
-# CHECKPOINT.txt regression safety (added 2026-08-19, at Artur's request): CHECKPOINT.txt
-# and BOUNDARY_CHECKED.txt are both plain files with no merge logic of their own -- if a
-# floor's constellations/ folder is physically copied in from another storage (magazyn)
-# that had independently scanned some of the same windows, or CHECKPOINT.txt simply names
-# a window no longer present among the current ones (the existing "ignoring checkpoint,
-# processing from the start" fallback below), some already-processed windows get
-# RE-scanned. Re-scanning is normally harmless on its own, but re-appending the SAME hit
-# values a second time used to crash (append_prime_window()'s own strict-increase
-# assertion) the instant a re-scanned window turned up a real hit. See
-# _append_hits_deduped()'s own docstring and [[primeatlas_storage_merge_federation]] for
-# the full story -- every append_hits() call in this file now goes through that wrapper,
-# which silently drops already-known values instead of crashing, making re-scanning an
-# already-covered window safe and effectively idempotent.
+# CHECKPOINT.txt regression safety: CHECKPOINT.txt and BOUNDARY_CHECKED.txt are both
+# plain files with no merge logic of their own -- if a floor's constellations/ folder is
+# physically copied in from another storage (archive) that had independently scanned
+# some of the same windows, or CHECKPOINT.txt simply names a window no longer present
+# among the current ones (the existing "ignoring checkpoint, processing from the start"
+# fallback below), some already-processed windows get RE-scanned. Re-scanning is
+# normally harmless on its own, but re-appending the SAME hit values a second time used
+# to crash (append_prime_window()'s own strict-increase assertion) the instant a
+# re-scanned window turned up a real hit. See _append_hits_deduped()'s own docstring and
+# [[primeatlas_storage_merge_federation]] for the full story -- every append_hits() call
+# in this file now goes through that wrapper, which silently drops already-known values
+# instead of crashing, making re-scanning an already-covered window safe and effectively
+# idempotent.
 #
-# v2 -- gap-aware checkpoint (added 2026-09-15, at Artur's request after a real field
-# report: an unpredictable PC restart left two constellation_finder processes running
-# for the same floor, and CHECKPOINT.txt -- v1's single "last_processed_file=" pointer,
-# overwritten by whichever process wrote most recently -- ended up pointing at a window
-# far BEHIND where the floor's own magazyn already had hits recorded from the other
-# process. v1's own resume logic (process_floor()'s "everything after last_done" slice)
-# has no way to represent "done, except for this earlier gap" -- it can only resume from
-# ONE position, so after a regression like this it burns hours re-scanning a huge
-# already-covered range instead of just closing the actual gap. Re-scanning itself was
-# already safe (the dedup wrapper above), just wasteful.
+# Gap-aware checkpoint: a single "last_processed_file=" pointer cannot represent "done,
+# except for this earlier gap" -- if two constellation_finder processes ever end up
+# scanning the same floor concurrently (e.g. after an unplanned restart leaves a stale
+# process still running) and each writes CHECKPOINT.txt independently, whichever writes
+# last can leave the pointer behind windows the other process already recorded hits for.
+# v1's own resume logic (process_floor()'s "everything after last_done" slice) can only
+# resume from ONE position, so after a regression like this it burns time re-scanning a
+# huge already-covered range instead of just closing the actual gap. Re-scanning itself
+# was already safe (the dedup wrapper above), just wasteful.
 #
-# Fix: CHECKPOINT.txt now stores a set of DONE RANGES ("done_range=<first>|<last>" lines,
+# Fix: CHECKPOINT.txt stores a set of DONE RANGES ("done_range=<first>|<last>" lines,
 # one per contiguous run of already-processed windows in base_prime order) instead of a
 # single pointer, via read_done_ranges()/write_done_ranges() below. process_floor() diffs
 # the floor's current window list against the union of those ranges to build to_process,
@@ -142,19 +140,12 @@ STOP_REQUEST_FILENAME = "STOP_REQUEST.txt"
 
 def _proc_diag():
     """Cheap process-level diagnostics -- peak RSS memory and open file-descriptor
-    count -- printed at key checkpoints throughout process_floor() (added 2026-09-13,
-    at Artur's explicit request after floor 25 kept killing the whole WSL process
-    silently, no Python traceback, and Artur himself had already ruled out file
-    corruption by hand-checking the source_primes/ files: this really does look like a
-    pure scale/volume problem specific to this one floor -- by far the largest
-    source_primes/ folder in any of his storages -- not a poisoned file).
-
-    Without this, a crash log shows nothing but the LAST line printed before the WSL
-    wrapper process itself died -- a complete black box as to whether memory was
-    climbing, file descriptors were leaking, or neither (pointing instead at something
-    outside this process's own visibility, e.g. the WSL VM or its 9P filesystem driver
-    hitting a wall on its own). Real numbers up to the moment of death narrow that down
-    enormously the next time this happens.
+    count -- printed at key checkpoints throughout process_floor(). A WSL process that
+    dies from resource exhaustion (memory growth, a file-descriptor leak, or the WSL
+    VM's own 9P filesystem driver hitting a wall) exits silently with no Python
+    traceback -- the crash log otherwise shows nothing but the LAST line printed before
+    the process died, a complete black box as to which of those causes was responsible.
+    Real numbers up to the moment of death narrow that down.
 
     RSS via `resource.getrusage` (POSIX-only, see the top-of-file import guard --
     resource is None on Windows, only relevant to unitTests/test_constellation_finder_
@@ -209,32 +200,29 @@ def list_source_windows(base_exponent):
     10p{base_exponent}/source_primes/, ordered ascending by base_prime (from each file's
     header -- robust regardless of filename shorthand).
 
-    SHARDING (added 2026-08-27, task #405): source_primes/ is sharded into shard_NNNNN
-    subfolders (see window_sharding.py) -- this is the exact function whose flat
-    os.listdir() previously implicated a real crash: floor 25's 542,001-file flat
-    directory made WSL's own process die silently mid-scan (no Python traceback) at
-    200000/542001 windows in, root-caused to WSL/Windows filesystem interop degrading at
-    100k+ entries in one directory. window_sharding.list_sharded_files() walks each
-    shard subfolder (never more than SHARD_SIZE entries each) instead of listing
-    source_dir directly.
+    SHARDING: source_primes/ is sharded into shard_NNNNN subfolders (see
+    window_sharding.py) -- a flat directory holding hundreds of thousands of files makes
+    WSL's filesystem interop with the Windows-side mount degrade badly (observed: the
+    process dying silently mid-scan, no Python traceback, once a directory crosses
+    roughly 100k entries). window_sharding.list_sharded_files() walks each shard
+    subfolder (never more than SHARD_SIZE entries each) instead of listing source_dir
+    directly.
 
-    WINDOW_INDEX.tsv cache (added 2026-08-23, at Artur's request -- floor 25's 542k-file
-    source_primes/ was making every run of this function, and therefore every run of
-    process_floor()/list_pietra_with_data(), open and read the header of ALL 542k files
-    just to learn their base_prime for sorting -- paid IN FULL on every single invocation
-    regardless of how much of the floor CHECKPOINT.txt already covers, and paid TWICE per
-    script run (once here, once more from list_pietra_with_data()'s old call into this
-    same function just to test for non-emptiness). That's several hundred thousand
-    individual file opens before a single window even gets matched against a pattern --
-    easily long enough to look like a hang on a floor this size, even though the actual
-    per-window streaming loop in process_floor() was always incremental and checkpointed.
-    Source windows are written once by the generator and never rewritten in place (unlike
-    hit files, which grow via append_prime_window()), so a filename's base_prime is safe
-    to cache indefinitely once read: a repeat run only needs to read the header of
-    filenames that are NEW since the last time this floor's index was written, dropping
-    entries whose file no longer exists. This turns the per-run header-read cost from
-    O(all files on the floor) into O(files added since last run) -- for a floor that's
-    already fully scanned, that's typically zero."""
+    WINDOW_INDEX.tsv cache: a floor with hundreds of thousands of source windows would
+    otherwise make every run of this function -- and therefore every run of
+    process_floor()/list_floors_with_data() -- open and read the header of ALL of them
+    just to learn their base_prime for sorting, paid IN FULL on every single invocation
+    regardless of how much of the floor CHECKPOINT.txt already covers. That's a huge
+    number of individual file opens before a single window even gets matched against a
+    pattern -- easily long enough to look like a hang on a floor this size, even though
+    the actual per-window streaming loop in process_floor() was always incremental and
+    checkpointed. Source windows are written once by the generator and never rewritten
+    in place (unlike hit files, which grow via append_prime_window()), so a filename's
+    base_prime is safe to cache indefinitely once read: a repeat run only needs to read
+    the header of filenames that are NEW since the last time this floor's index was
+    written, dropping entries whose file no longer exists. This turns the per-run
+    header-read cost from O(all files on the floor) into O(files added since last run)
+    -- for a floor that's already fully scanned, that's typically zero."""
     t0 = time.time()
     source_dir = os.path.join(PORTAL_FOLDER, f"10p{base_exponent}", "source_primes")
     sharded_files = window_sharding.list_sharded_files(
@@ -268,7 +256,7 @@ def list_source_windows(base_exponent):
     return entries
 
 
-def list_pietra_with_data():
+def list_floors_with_data():
     """Returns sorted base_exponent ints for every 10p{N} folder under PORTAL_FOLDER that
     actually has at least one PGS2 source window. Floor folders can exist as empty
     source_primes/constellations placeholders ahead of the scanner actually reaching
@@ -504,17 +492,14 @@ def _last_values_path(base_exponent):
 
 def _read_last_values_disk_cache(base_exponent):
     """Returns {(k, variant_id): (last_value, count)} from this floor's own persistent
-    last-value cache -- see _resolve_last_value()'s own docstring for the THE ACTUAL
-    CRASH this exists to fix (confirmed via a real crash log, 2026-09-13): a fresh
-    process_floor() call's in-memory last_value_cache starts EMPTY every single run, so
-    the FIRST window in a run that has a hit for a given (k, variant_id) pattern used
-    to trigger a FULL decode of that pattern's WHOLE accumulated hit file (via
-    prime_sieve_v1.read_prime_window()) just to learn its own last stored value.
-    Floor 25's k=2 (twin primes) hit file, after 342,001 already-processed windows of
-    a very dense floor, is large enough that this one decode alone was enough to crash
-    the whole WSL process -- exactly matching the observed symptom (zero checkpoint
-    progress, died right after the "pattern matching done" DIAG line, before the
-    per-window summary print).
+    last-value cache -- see _resolve_last_value()'s own docstring for the crash this
+    exists to fix: a fresh process_floor() call's in-memory last_value_cache starts
+    EMPTY every single run, so the FIRST window in a run that has a hit for a given
+    (k, variant_id) pattern used to trigger a FULL decode of that pattern's WHOLE
+    accumulated hit file (via prime_sieve_v1.read_prime_window()) just to learn its own
+    last stored value. For a very dense pattern's hit file (e.g. a k=2 twin-primes file
+    after hundreds of thousands of already-processed windows), that one decode alone can
+    be enough to exhaust memory and crash the whole WSL process.
 
     Returns {} if no cache file exists yet (matches _read_window_index()'s own
     "nothing cached yet" contract)."""
@@ -585,13 +570,13 @@ def _resolve_last_value(base_exponent, k, variant_id, disk_cache):
     cached last_value is trustworthy and the expensive decode below is skipped entirely.
     Only ever falls back to decoding when the disk cache has no entry for this pattern
     yet (including THE VERY FIRST TIME this cache is ever populated for a given floor --
-    a real crash log, 2026-09-14, showed this exact bootstrap decode itself killing the
-    WSL process on floor 25's k=2 hit file after 342,001 windows, BEFORE the cache ever
-    got a chance to be written -- the disk cache alone cannot help the first time, only
-    every relaunch AFTER a successful one), the hit file doesn't exist, or the counts
+    this bootstrap decode can itself be large enough to exhaust memory on a dense
+    pattern's already-huge hit file, before the cache ever gets a chance to be written --
+    the disk cache alone cannot help the first time, only every relaunch AFTER a
+    successful one), the hit file doesn't exist, or the counts
     DISAGREE (meaning the file was modified by something other than this same cache
     since it was last written -- e.g. a storage merge physically copying in a
-    constellations/ folder from another magazyn, per [[primeatlas_storage_merge_
+    constellations/ folder from another archive, per [[primeatlas_storage_merge_
     federation]] -- so the cached value can no longer be trusted and must be
     rediscovered the safe way). This count-based validation is what makes the cache
     safe to trust blindly on the fast path while never risking silently corrupting a
@@ -602,7 +587,7 @@ def _resolve_last_value(base_exponent, k, variant_id, disk_cache):
     read_prime_window() -- see that function's own docstring: decoding a
     several-hundred-thousand-window floor's dense pattern into a full Python list of
     millions of big integers can itself cost several times the file's raw byte size in
-    RAM, which is exactly what crashed the real WSL process here. The lean version
+    RAM, enough to exhaust memory on a large accumulated hit file. The lean version
     walks the same gap stream (same O(count) time -- there's no way around that for a
     sequentially gap-encoded format) but keeps only the running last value, never a
     growing list.
@@ -688,18 +673,17 @@ def append_hits(base_exponent, k, variant_id, new_sorted_starts, known_last_valu
     every single call.
 
     AUTO-MIGRATES an unpaged pattern to pages the moment this append would push its
-    count past hit_paging.PAGE_SIZE -- added 2026-09-16 (Artur, after manually running
-    migrate_hit_file_to_pages() on several already-huge patterns): without this, EVERY
-    future floor's dense k=2 pattern would eventually hit the exact same "single file
-    too large to browse" problem again, needing another manual migration run each
-    time. Triggering it HERE instead means a pattern only ever crosses the threshold
-    ONCE, at a PREDICTABLE, SMALL size (~PAGE_SIZE entries, a few MB) -- migrating at
-    that size takes seconds (streamed via iter_prime_window_chunks(), same as a manual
-    run -- see migrate_hit_file_to_pages()'s own docstring), nothing like the ~26
-    minutes floor 25's k=2 took after being left to grow to ~2.16 billion entries
-    first. The header-only count check this needs (read_prime_window_header(), O(1)
-    regardless of file size) runs on every append to an unpaged pattern, but is cheap
-    enough (a few hundred bytes) not to matter next to the write itself."""
+    count past hit_paging.PAGE_SIZE: without this, EVERY future floor's dense k=2
+    pattern would eventually hit the same "single file too large to browse" problem
+    again, needing another manual migration run each time. Triggering it HERE instead
+    means a pattern only ever crosses the threshold ONCE, at a PREDICTABLE, SMALL size
+    (~PAGE_SIZE entries, a few MB) -- migrating at that size takes seconds (streamed via
+    iter_prime_window_chunks(), same as a manual run -- see
+    migrate_hit_file_to_pages()'s own docstring), nothing like the much longer migration
+    a multi-billion-entry file requires if left to grow unbounded first. The header-only
+    count check this needs (read_prime_window_header(), O(1) regardless of file size)
+    runs on every append to an unpaged pattern, but is cheap enough (a few hundred
+    bytes) not to matter next to the write itself."""
     vdir = hit_paging.variant_dir(PORTAL_FOLDER, base_exponent, k, variant_id)
     if hit_paging.is_paged(vdir):
         hit_paging.append_hits_paged(vdir, base_exponent, k, variant_id, new_sorted_starts)
@@ -735,10 +719,10 @@ def _append_hits_deduped(base_exponent, k, variant_id, new_sorted_starts, last_v
     ValueError on exactly that condition -- see its own docstring: "must be strictly
     greater than the file's current last value").
 
-    Why this exists (added 2026-08-18, at Artur's request, closing the gap noted in
-    [[primeatlas_storage_merge_federation]]): CHECKPOINT.txt is a single plain file with
-    no merge logic of its own -- if a floor's constellations/ folder gets physically
-    copied in from another storage (magazyn) that had independently scanned some of the
+    Why this exists (see [[primeatlas_storage_merge_federation]]): CHECKPOINT.txt is a
+    single plain file with no merge logic of its own -- if a floor's constellations/
+    folder gets physically
+    copied in from another storage (archive) that had independently scanned some of the
     SAME windows, or if CHECKPOINT.txt simply names a window no longer present among the
     CURRENT windows (process_floor()'s own existing fallback: "ignoring checkpoint,
     processing from the start"), some already-processed windows get RE-scanned. Those
@@ -867,11 +851,8 @@ def check_floor_boundary(base_exponent, windows, active_patterns, max_span, disk
     on the LOWER of the two floors involved -- meaning this only ever needs to look
     FORWARD, from this floor's own last window into the next floor's own first window,
     never backward. Any hit found here is recorded under THIS floor (base_exponent), same
-    as process_floor()'s own hits -- exactly matching how a person would expect a
-    constellation to show up under whichever floor its base (its smallest, defining
-    element) actually belongs to (added 2026-08-18, at Artur's explicit request: "jeśli
-    choć jeden element jest z piętra niżej a reszta wyżej, to wciąż powinna być widoczna
-    jak aktualne piętro").
+    as process_floor()'s own hits -- matching how a constellation is expected to show up
+    under whichever floor its base (its smallest, defining element) actually belongs to.
 
     Idempotent via a small per-floor marker file (is_boundary_checked() /
     write_boundary_checked(), BOUNDARY_CHECKED.txt) instead of re-running this on every
@@ -886,11 +867,9 @@ def check_floor_boundary(base_exponent, windows, active_patterns, max_span, disk
     10p{base_exponent+1} has no source data on disk yet -- prints an informational note
     EVERY run instead of silently doing nothing, so a person scanning a leading-edge
     floor finds out they need to generate at least the first window of the next floor to
-    fully close off this floor's own constellation search (Artur's own answer to how this
-    case should be handled, in preference to a heavier automatic-retry mechanism).
-    Automatically re-checked (and closed) the next time constellation_finder runs on this
-    floor, once that next-floor data exists -- no separate action needed beyond
-    generating it."""
+    fully close off this floor's own constellation search. Automatically re-checked (and
+    closed) the next time constellation_finder runs on this floor, once that next-floor
+    data exists -- no separate action needed beyond generating it."""
     if is_boundary_checked(base_exponent):
         return
     if not windows:
@@ -963,13 +942,12 @@ def process_floor(base_exponent, max_windows=None):
     checks (once, then never again -- see check_floor_boundary()'s own docstring) whether
     a pattern spans this floor's own upper boundary into 10p{base_exponent+1}.
 
-    `max_windows` (added 2026-09-13, at Artur's explicit request after floor 25's WSL
-    process kept dying mid-run at 545,000 source windows -- see WslLoggedRunner's own
-    docstring on the exact failure shape, "Proces wsl.exe zakonczyl sie bez zapisania
-    kodu wyjscia", and generation_tab.py's own _maybe_auto_retry_constellation()/
-    _maybe_continue_constellation_batch() for the Windows-side half of this fix):
-    caps how many windows a SINGLE call processes before returning, regardless of how
-    many are actually pending. None (the historical default) processes everything in
+    `max_windows` caps how many windows a SINGLE call processes before returning,
+    regardless of how many are actually pending -- see WslLoggedRunner's own docstring
+    on the failure shape this guards against (the wrapped wsl.exe process exiting
+    without ever reporting a captured exit code) and generation_tab.py's own
+    _maybe_auto_retry_constellation()/_maybe_continue_constellation_batch() for the
+    Windows-side half of this fix. None (the historical default) processes everything in
     one call, same as before this parameter existed.
 
     Why this exists at all: a floor this size makes a single process_floor() call hold
@@ -989,9 +967,8 @@ def process_floor(base_exponent, max_windows=None):
     generation_tab.py's own _scan_const_chunk_for_batch_marker() parses to decide
     whether to chain another batch.
 
-    Graceful stop (added 2026-09-14, Artur's own proposal after asking whether a manual
-    Stop click resumes cleanly): checked once per window, at the very TOP of the loop
-    below, via STOP_REQUEST_FILENAME's own module-level comment -- a request never
+    Graceful stop: checked once per window, at the very TOP of the loop below, via
+    STOP_REQUEST_FILENAME's own module-level comment -- a request never
     interrupts a window already in progress, only ever stops BETWEEN windows, for the
     same reason a --max-windows batch boundary is safe but a raw kill isn't: append_
     prime_window() writes a hit file's header (new count) before its own payload bytes,
@@ -1037,8 +1014,8 @@ def process_floor(base_exponent, max_windows=None):
     print(f"\n[CONSTELLATIONS v2] 10^{base_exponent}: {len(to_process)}/{len(windows)} "
           f"windows to process{batch_note} | patterns active: {len(active_patterns)} (k>=2) | "
           f"MAX_SPAN={max_span}")
-    # Machine-parseable counterpart to the human-readable line above, added 2026-09-14
-    # so generation_tab.py's own _update_shared_progress_from_generation_chunk() can show
+    # Machine-parseable counterpart to the human-readable line above, so
+    # generation_tab.py's own _update_shared_progress_from_generation_chunk() can show
     # progress against the WHOLE floor instead of just this one --max-windows-capped
     # batch (each chained batch's own per-window "i/len(to_process)" line -- see the loop
     # below -- only ever counts up to THIS batch's size, resetting to 1 every time a new
@@ -1084,16 +1061,15 @@ def process_floor(base_exponent, max_windows=None):
     # enough not to meaningfully slow down a 5000-window batch.
     HEARTBEAT_EVERY = 100
     # The first few windows of EVERY batch get much finer-grained diagnostics (one
-    # print + explicit fsync after EACH sub-step: read, peek, match, checkpoint) --
-    # added 2026-09-13 after a real crash log showed the process dying between the
-    # "reading window 1" line and its own per-window SUMMARY line, with nothing in
-    # between to say which of those sub-steps (the read itself, the next-window peek,
-    # pattern matching, or the checkpoint write) it actually died inside. Not applied
-    # to every window in the batch -- fsync-ing after every sub-step of all 5000
-    # windows would add real overhead -- but the observed crash has been on window 1
-    # of a batch both times so far, so the first few windows are exactly where this
-    # detail earns its cost; _diag_step() below is the shared helper both this
-    # detailed path and the lighter one call into.
+    # print + explicit fsync after EACH sub-step: read, peek, match, checkpoint), so a
+    # crash between the "reading window N" line and its own per-window SUMMARY line
+    # still narrows down which sub-step (the read itself, the next-window peek, pattern
+    # matching, or the checkpoint write) it actually died inside. Not applied to every
+    # window in the batch -- fsync-ing after every sub-step of a large batch would add
+    # real overhead -- but observed crashes have consistently landed on the first window
+    # of a batch, so the first few windows are exactly where this detail earns its cost;
+    # _diag_step() below is the shared helper both this detailed path and the lighter
+    # one call into.
     DETAILED_DIAG_WINDOWS = 5
 
     def _diag_step(label, detailed):
@@ -1253,7 +1229,7 @@ if __name__ == "__main__":
         # process_floor() is already a cheap no-op for a floor whose checkpoint is fully
         # caught up, so scanning all of them each run is safe, not just at the moment a
         # new floor's data first appears.
-        floors = list_pietra_with_data()
+        floors = list_floors_with_data()
         if not floors:
             print("[!] No floor folders with source_primes data found under the portal -- nothing to do.")
         else:

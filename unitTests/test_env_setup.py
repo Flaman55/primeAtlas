@@ -1,6 +1,6 @@
 """
-test_env_setup.py -- covers primeatlas/env_setup.py, the first-run WSL/Ubuntu/python3/
-numpy/libprimesieve check+install backend (task #512, branch env-setup-wizard).
+test_env_setup.py -- covers primeatlas/settings/env_setup.py, the first-run WSL/Ubuntu/python3/
+numpy/libprimesieve check+install backend.
 
 No real Windows/WSL anywhere in this sandbox (Linux-only) -- every subprocess boundary is
 stubbed with a recorder/fake, same approach test_cudasieve_integration.py's Section B uses
@@ -52,7 +52,7 @@ def check(condition, message):
 
 def section_a():
     print("\n--- Section A: pure logic (path mapping, ps1 text, constants) ---")
-    from primeatlas import env_setup as es
+    from primeatlas.settings import env_setup as es
 
     _mapped = es._windows_path_to_wsl(r"D:\storage\portal")
     check(_mapped == "/mnt/d/storage/portal",
@@ -68,8 +68,8 @@ def section_a():
           f"(got {es.REQUIRED_WINDOWS_FEATURES!r})")
     check("libgmp-dev" not in es.REQUIRED_APT_PACKAGES
           and "libmpfr-dev" not in es.REQUIRED_APT_PACKAGES,
-          "GMP/MPFR must NOT be in the upfront-install set -- confirmed with Artur "
-          "(2026-09-02) as an on-demand, module-specific extra, not part of the forced "
+          "GMP/MPFR must NOT be in the upfront-install set -- they are an on-demand, "
+          "module-specific extra, not part of the forced "
           f"first-run install (got {es.REQUIRED_APT_PACKAGES!r})")
     check("python3-numpy" in es.REQUIRED_APT_PACKAGES
           and "libprimesieve12" in es.REQUIRED_APT_PACKAGES
@@ -171,7 +171,7 @@ def section_a():
 
 def section_b():
     print("\n--- Section B: check_environment() ---")
-    from primeatlas import env_setup as es
+    from primeatlas.settings import env_setup as es
 
     orig_run_windows = es._run_windows
     orig_run_wsl = es._run_inside_wsl_blocking
@@ -269,7 +269,7 @@ def section_b():
 
 def section_c():
     print("\n--- Section C: run_install() ---")
-    from primeatlas import env_setup as es
+    from primeatlas.settings import env_setup as es
 
     orig_elevated = es._run_elevated_ps1
     work_dir = tempfile.mkdtemp(prefix="env_setup_install_test_")
@@ -296,7 +296,7 @@ def section_c():
     #     model) -- Start-Process silently writes a non-terminating error and returns $null
     #     instead of throwing, so $p.ExitCode used to read as empty and _run_elevated_ps1
     #     misreported this as "elevation declined" even though no UAC prompt was ever shown.
-    #     Caught by Artur on real hardware (2026-09-02): the install failed instantly, far
+    #     Observed on real hardware: the install failed instantly, far
     #     too fast for a real UAC decision. An interim fix piped the ELEVATED process's own
     #     output into Out-File -Encoding utf8 to also fix a second real bug from the same
     #     session (Windows PowerShell 5.1's default redirection encoding is UTF-16LE, not
@@ -514,7 +514,7 @@ class _FakePopen:
 
 def section_d():
     print("\n--- Section D: _run_inside_wsl_blocking() Popen()+poll() loop ---")
-    from primeatlas import env_setup as es
+    from primeatlas.settings import env_setup as es
 
     orig_popen = es.subprocess.Popen
     orig_tempdir = es.tempfile.gettempdir
@@ -616,28 +616,27 @@ def section_d():
 
 
 # ============================================================================================
-# Section E -- AppSettings.env_status / set_env_status (task #517, on-demand status readback)
+# Section E -- AppSettings.env_status / set_env_status (on-demand status readback)
 # ============================================================================================
 #
 # Not exercised by env_setup.py itself -- this is the persistence layer settings_tab.py's
-# on-demand "Zweryfikuj srodowisko" status label and env_setup_wizard.py's _on_check_done()
-# both depend on (Artur, 2026-09-02: the wizard closed too fast to read and Settings had no
-# status of its own). Mirrors cudasieve_status's own untested-in-isolation precedent for
-# every OTHER property in app_settings.py -- this one gets its own coverage specifically
-# because it's brand new this session, not because the module as a whole is usually tested
-# here (it normally isn't; see test_env_setup.py's own module docstring for the four
-# sections that ARE this file's usual scope).
+# on-demand environment-status label and env_setup_wizard.py's _on_check_done() both depend
+# on: the wizard window can close before its own check result is read, so the last known
+# status must be persisted rather than kept only in the wizard's transient state. Mirrors
+# cudasieve_status's own untested-in-isolation precedent for every OTHER property in
+# app_settings.py; see test_env_setup.py's own module docstring for the four sections that
+# are this file's usual scope.
 
 def section_e():
     print("\n--- Section E: AppSettings.env_status / set_env_status ---")
-    import primeatlas.app_settings as app_settings_module
-    from primeatlas.app_settings import AppSettings
+    import primeatlas.core.app_settings as app_settings_module
+    from primeatlas.core.app_settings import AppSettings
 
     # AppSettings does NOT actually scope its JSON file to the script_dir constructor arg
     # -- self._path is always os.path.join(LOCALES_DIR, SETTINGS_FILENAME), a single
     # shared per-install location (see the module's own docstring: "every small
     # per-install runtime setting lives in ONE place"). So the only way to sandbox this
-    # test away from Artur's REAL app_settings.json (which may already have a real
+    # test away from the real, non-test app_settings.json (which may already have a real
     # env_status from an actual wizard run) is to monkeypatch the module-level
     # LOCALES_DIR itself before constructing AppSettings, same "patch the module global,
     # not the instance" approach this file already uses for es.tempfile.gettempdir

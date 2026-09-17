@@ -1,5 +1,5 @@
 """
-test_polynomials_window.py -- tests for primeatlas/polynomials_window.py, the
+test_polynomials_window.py -- tests for primeatlas/research/polynomials_window.py, the
 pure-Python prime-among-polynomial-values engine for the Badania -> Wielomiany
 pierwszorodne sub-tab (Landau/Euler presets + custom formula). No tkinter, no
 display needed -- run directly:
@@ -13,7 +13,7 @@ _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(_SCRIPT_DIR)
 sys.path.insert(0, _REPO_ROOT)
 # primeatlas/__init__.py imports manifest.py, which imports window_sharding --
-# needed even just to import primeatlas.polynomials_window (same fix as every
+# needed even just to import primeatlas.research.polynomials_window (same fix as every
 # other test file in this folder, see e.g. test_squares_window.py's own copy).
 sys.path.insert(0, os.path.join(_REPO_ROOT, "prime_sieve"))
 
@@ -29,7 +29,7 @@ def check(condition, message):
 
 
 def _test_sieve_is_prime():
-    from primeatlas.polynomials_window import sieve_is_prime
+    from primeatlas.research.polynomials_window import sieve_is_prime
 
     is_prime = sieve_is_prime(20)
     primes = [i for i in range(21) if is_prime[i]]
@@ -40,7 +40,7 @@ def _test_sieve_is_prime():
 
 
 def _test_preset_value():
-    from primeatlas.polynomials_window import preset_value
+    from primeatlas.research.polynomials_window import preset_value
 
     check(preset_value("landau", 0) == 1, "Landau f(0) = 0^2+1 = 1")
     check(preset_value("landau", 3) == 10, "Landau f(3) = 3^2+1 = 10")
@@ -56,7 +56,7 @@ def _test_preset_value():
 
 
 def _test_check_polynomial_range_euler_famous_run():
-    from primeatlas.polynomials_window import check_polynomial_range
+    from primeatlas.research.polynomials_window import check_polynomial_range
 
     # Euler's own famous property: f(n) = n^2+n+41 is prime for every n = 0..39.
     result = check_polynomial_range("euler", 0, 39)
@@ -74,7 +74,7 @@ def _test_check_polynomial_range_euler_famous_run():
 
 
 def _test_check_polynomial_range_landau():
-    from primeatlas.polynomials_window import check_polynomial_range
+    from primeatlas.research.polynomials_window import check_polynomial_range
 
     result = check_polynomial_range("landau", 1, 5)
     values = {row["n"]: row["value"] for row in result["rows"]}
@@ -86,7 +86,7 @@ def _test_check_polynomial_range_landau():
 
 
 def _test_check_polynomial_range_custom_poly_fn():
-    from primeatlas.polynomials_window import check_polynomial_range
+    from primeatlas.research.polynomials_window import check_polynomial_range
 
     # A trivial custom polynomial: f(n) = 2n+1 (odd numbers).
     result = check_polynomial_range("custom", 1, 10, poly_fn=lambda n: 2 * n + 1)
@@ -108,7 +108,7 @@ def _test_check_polynomial_range_custom_poly_fn():
 
 
 def _test_check_polynomial_range_negative_value_rejected():
-    from primeatlas.polynomials_window import check_polynomial_range
+    from primeatlas.research.polynomials_window import check_polynomial_range
 
     try:
         check_polynomial_range("custom", 1, 5, poly_fn=lambda n: 3 - n)
@@ -118,7 +118,7 @@ def _test_check_polynomial_range_negative_value_rejected():
 
 
 def _test_check_polynomial_range_pagination():
-    from primeatlas.polynomials_window import check_polynomial_range
+    from primeatlas.research.polynomials_window import check_polynomial_range
 
     result = check_polynomial_range("landau", 1, 10, row_cap=3, row_offset=2)
     check(len(result["rows"]) == 3, f"row_cap=3 returns exactly 3 rows (got {len(result['rows'])})")
@@ -139,7 +139,7 @@ def _test_check_polynomial_range_pagination():
 
 
 def _test_check_polynomial_range_validation():
-    from primeatlas.polynomials_window import check_polynomial_range
+    from primeatlas.research.polynomials_window import check_polynomial_range
 
     try:
         check_polynomial_range("landau", 5, 1)
@@ -164,7 +164,7 @@ def _test_check_polynomial_range_validation():
 
 
 def _test_check_polynomial_range_from_source():
-    from primeatlas.polynomials_window import check_polynomial_range_from_source, sieve_is_prime
+    from primeatlas.research.polynomials_window import check_polynomial_range_from_source, sieve_is_prime
 
     calls = []
 
@@ -216,7 +216,7 @@ def _test_check_polynomial_range_from_source():
 
 
 def _test_check_polynomial_range_max_sieve_bound_ceiling():
-    import primeatlas.polynomials_window as polynomials_window
+    import primeatlas.research.polynomials_window as polynomials_window
 
     # Rather than actually sieving hundreds of millions of ints just to prove
     # the refusal path, temporarily lower the ceiling to something Euler's own

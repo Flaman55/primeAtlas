@@ -1,8 +1,8 @@
 """
 test_const_records_worker.py -- functional regression test for the constellation-
 records-table worker (Constellations -> Tabela rekordow sub-tab, Faza 4) in
-prime_atlas_v1.py, migrated onto primeatlas/background.py's PersistentWorker during
-the refactor branch's Faza 1 (background-job consolidation, 2026-08-23). This is the
+prime_atlas_v1.py, migrated onto primeatlas/core/background.py's PersistentWorker during
+the refactor branch's background-job consolidation. This is the
 SIXTH and LAST of the six originally hand-rolled worker-thread patterns to be
 migrated -- see primeatlas_refactor_branch memory / commit history for the other
 five (totals, search, primesieve_calc, primality, goldbach).
@@ -115,10 +115,10 @@ def main():
         check(any("info" == kind for kind, _a, _k in shown),
               f"a 'saved' confirmation was recorded via messagebox.showinfo (got: {shown})")
 
-        # --- real, determinate progress bar during export (added 2026-09-16, Artur --
-        # the old indeterminate spinner during a real, minutes-long export looked like
-        # flickering ("miga") rather than genuine incremental progress) --------------
-        import primeatlas.constellations_records_tab as const_records_tab_module
+        # --- real, determinate progress bar during export: replaces the old
+        # indeterminate spinner, which gave no genuine incremental progress feedback
+        # during a real, minutes-long export ---------------------------------------
+        import primeatlas.constellations.constellations_records_tab as const_records_tab_module
 
         collected = []
         rows_fixture = list(range(7))
@@ -155,7 +155,7 @@ def main():
         # raises exercises the exact path _job's docstring documents (catches its own
         # exception, returns (mode, k, False, str(e)) instead of relying on
         # PersistentWorker's last-resort net).
-        import primeatlas.constellations_records_tab as const_records_tab_module
+        import primeatlas.constellations.constellations_records_tab as const_records_tab_module
         original_build_table = const_records_tab_module.build_constellation_records_table
 
         def fake_raise(portal_folder, k, floor_min=None, floor_max=None):

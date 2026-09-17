@@ -4,16 +4,15 @@ original orchestrator (v1, pre-PrimeAtlas) used for window storage, dropped when
 PrimeAtlas's current flat-per-floor layout (every PRIME_WINDOW_*.bin directly under
 10p{N}/source_primes/) was introduced.
 
-Why this exists (task #405): a single flat source_primes/ folder degrades badly at
-scale -- floor 25 alone reached 542,001 files in one directory. Artur's field-observed
-crash: constellation_finder_v1.py's WSL process died silently mid-scan on floor 25
-(200000/542001 windows in, "Proces wsl.exe zakonczyl sie bez zapisania kodu wyjscia" --
-no Python traceback, the WSL process itself died), with generation (writing files) at
-that same scale confirmed fine -- only large-scale directory listing/lookup was
-affected. Root cause hypothesis (Artur, confirmed as the fix direction): WSL/Windows
-filesystem interop (9P protocol crossing the H:\\ mount) degrades badly on directory
-listing/lookup at 100k+ entries in one folder, plausibly timing out or exhausting a
-resource in a way that kills the WSL process without a clean Python exception.
+Why this exists: a single flat source_primes/ folder degrades badly at scale -- floor
+25 alone reached 542,001 files in one directory. Observed failure:
+constellation_finder_v1.py's WSL process died silently mid-scan on floor 25
+(200000/542001 windows in, no Python traceback -- the WSL process itself died), while
+generation (writing files) at that same scale was confirmed fine -- only large-scale
+directory listing/lookup was affected. Root cause: WSL/Windows filesystem interop (9P
+protocol crossing the H:\\ mount) degrades badly on directory listing/lookup at 100k+
+entries in one folder, plausibly timing out or exhausting a resource in a way that
+kills the WSL process without a clean Python exception.
 
 Deliberately ONE small, shared, pure-Python module (plain int arithmetic + os.path
 only -- no ctypes/mmap/multiprocessing) rather than duplicated per file, unlike this
@@ -35,10 +34,10 @@ sys.path.insert(0, "../prime_sieve") to reach prime_sieve_v1, so this rides alon
 free.
 
 Backward compatibility with pre-existing UNSHARDED floors is explicitly NOT handled
-here -- Artur confirmed (2026-08-24) that migrating already-generated floors to this
-layout is a separate, fully external script, outside primeAtlas entirely. Every reader
-in this codebase can therefore assume ALL floors are sharded going forward; there is no
-dual-layout-support code path.
+here -- migrating already-generated floors to this layout is a separate, fully
+external script, outside primeAtlas entirely. Every reader in this codebase can
+therefore assume ALL floors are sharded going forward; there is no dual-layout-support
+code path.
 
 Scope: ONLY source_primes/ windows (the ones that reach hundreds of thousands of files
 per floor at scale). Constellation HIT files

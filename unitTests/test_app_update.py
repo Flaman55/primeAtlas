@@ -1,9 +1,9 @@
 """
-test_app_update.py -- covers primeatlas/app_update.py, the self-update checker/downloader
-wired into Settings > Aktualizacje and prime_atlas_v1.py's startup hook (task #521, refined
-2026-09-10 across three follow-ups -- lock/access-recovery, OS-verified lock recovery, and
+test_app_update.py -- covers primeatlas/settings/app_update.py, the self-update checker/downloader
+wired into Settings > Aktualizacje and prime_atlas_v1.py's startup hook. It has gone
+through three follow-up rounds -- lock/access-recovery, OS-verified lock recovery, and
 the GitHub-API-based check path -- see app_update.py's own module docstring for the full
-story of each).
+story of each.
 
 No real git repo, network, or GitHub remote anywhere in this sandbox -- every subprocess
 boundary is stubbed by monkeypatching the module's own _run_git(), same "thin, separately
@@ -98,7 +98,7 @@ def make_stub(rules):
 
 def section_a():
     print("\n--- Section A: check_for_update() ---")
-    from primeatlas import app_update as au
+    from primeatlas.settings import app_update as au
 
     orig_run_git = au._run_git
     orig_sleep = au._sleep
@@ -261,7 +261,7 @@ def section_a():
 
 def section_a2():
     print("\n--- Section A2: check_for_update() GitHub-API path ---")
-    from primeatlas import app_update as au
+    from primeatlas.settings import app_update as au
 
     # --- _parse_github_owner_repo(): every common remote URL form, plus non-matches ---
     github_forms = [
@@ -532,7 +532,7 @@ def section_a2():
 
 def section_b():
     print("\n--- Section B: download_update() ---")
-    from primeatlas import app_update as au
+    from primeatlas.settings import app_update as au
 
     orig_run_git = au._run_git
     orig_sleep = au._sleep
@@ -557,7 +557,7 @@ def section_b():
 
     # --- dirty working tree -- must refuse WITHOUT ever calling fetch/merge ---
     au._run_git = make_stub([
-        (lambda a: a[0] == "status", (0, " M primeatlas/settings_tab.py\n", "")),
+        (lambda a: a[0] == "status", (0, " M primeatlas/settings/settings_tab.py\n", "")),
         (lambda a: a[0] in ("fetch", "merge", "merge-base"),
          lambda: (_ for _ in ()).throw(AssertionError("must never touch fetch/merge on a dirty tree"))),
     ])
@@ -717,7 +717,7 @@ def section_b():
 
 def section_c():
     print("\n--- Section C: lock-recovery mechanics ---")
-    from primeatlas import app_update as au
+    from primeatlas.settings import app_update as au
 
     # --- _looks_like_lock_error() classification ---
     lock_texts = [
@@ -741,7 +741,7 @@ def section_c():
               f"must NOT classify as a lock error: {text!r}")
     check(not au._looks_like_lock_error("fatal: Not possible to fast-forward, aborting."),
           "the real divergence message must never be mistaken for a lock error -- this is "
-          "the exact message Artur's machine hit on 2026-09-10, and misclassifying it would "
+          "an actual message observed on real hardware, and misclassifying it would "
           "make download_update() retry a genuine divergence instead of reporting it")
 
     # --- _try_release_lock_file() against a real temp file ---

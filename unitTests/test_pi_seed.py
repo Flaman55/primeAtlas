@@ -1,6 +1,6 @@
 """
-test_pi_seed.py -- unit tests for the "seed pi(L_final) from a known Wikipedia value" feature
-(Artur's idea, 2026-08-27): instead of count_sieving_primes_cached()'s cold/shrink paths always
+test_pi_seed.py -- unit tests for the "seed pi(L_final) from a known Wikipedia value" feature:
+instead of count_sieving_primes_cached()'s cold/shrink paths always
 recounting pi(L_final) from 0 via primesieve, optionally seed from the largest known pi(10^n)
 at or below L_final (KNOWN_PI_10N, prime_sieve_v4_1.py) and only count the remaining sliver via
 count_sieving_primes_range(). See that file's own module comment above KNOWN_PI_10N for the
@@ -16,7 +16,7 @@ Covers:
      byte the old "cold"/"shrink" behavior). count_sieving_primes/count_sieving_primes_range
      are monkeypatched at module level for this since the real ones need libprimesieve.
   3. The cache file records seeded_from (power_of_ten/value/source) only when a seed was
-     actually used -- Artur's own transparency requirement for this feature.
+     actually used, so a cached count's provenance is always inspectable.
   4. build_wsl_logged_command() (generation.py) -- use_known_pi_seed=True adds
      PRIMEATLAS_USE_KNOWN_PI_SEED=1 to the env prefix; False (default) leaves it out entirely,
      unchanged from before this feature existed.
@@ -199,7 +199,7 @@ def test_count_sieving_primes_cached_seeding(tmp_portal):
 
 
 def test_build_wsl_logged_command_env_var():
-    import primeatlas.generation as gen
+    import primeatlas.generation.generation as gen
 
     argv = ["python3", "orchestrator_v3.py", "20", "5"]
     with tempfile.TemporaryDirectory() as tmp:

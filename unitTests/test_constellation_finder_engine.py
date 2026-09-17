@@ -16,15 +16,15 @@ Targets three specific, documented historical fixes (see each section's own comm
      window's own values into the NEXT window (same floor) is only found because
      process_floor() peeks a bounded number of values from the head of the next window.
 
-  2. FLOOR-boundary crossing (added 2026-08-18, at Artur's explicit request -- "jeśli choć
-     jeden element jest z piętra niżej a reszta wyżej, to wciąż powinna być widoczna jak
-     aktualne piętro"): a pattern whose base sits near the very TOP of one floor with its
-     tail spilling into the NEXT FLOOR's numbers was never checked at all before
+  2. FLOOR-boundary crossing: a pattern whose base sits near the very TOP of one floor
+     with its tail spilling into the NEXT FLOOR's numbers was never checked at all before
      check_floor_boundary() was added -- the within-floor peek only ever looks at the next
      window inside the SAME floor, and a floor's own last window has no such next window.
+     A hit whose base value belongs to the lower floor must be recorded under that lower
+     floor even when its tail value falls in the floor above.
 
-  3. Re-scan safety (added 2026-08-19, at Artur's request): re-appending the same hit
-     values a second time (e.g. because CHECKPOINT.txt was reset, or a floor's
+  3. Re-scan safety: re-appending the same hit values a second time (e.g. because
+     CHECKPOINT.txt was reset, or a floor's
      constellations/ folder was physically copied in from another storage that had
      independently scanned some of the same windows) used to crash on
      append_prime_window()'s own strict-increase assertion the instant a re-scanned window
@@ -143,7 +143,7 @@ def main():
               f"disturbing it (got hits={hits_k2_f20_third!r}, expected [200, 500])")
 
         # =====================================================================
-        # BUG-TARGET #2 -- the floor-boundary-crossing fix (2026-08-18). Floor 3
+        # BUG-TARGET #2 -- the floor-boundary-crossing fix. Floor 3
         # ([1000, 10000)) gets one window whose last value (9998) is close enough to the
         # floor boundary (10000) that a k=2 pattern's tail (9998+2=10000) could only be
         # found by looking into floor 4's own first window -- something ONLY
@@ -171,9 +171,8 @@ def main():
               f"THE historical bug this exists to fix: a k=2 pattern based at 9998 "
               f"(floor 3's own last value) whose +2 partner (10000) lives in FLOOR 4 "
               f"must be recorded under FLOOR 3 (the lower floor, i.e. the base's own "
-              f"floor) -- Artur's own words: 'jeśli choć jeden element jest z piętra "
-              f"niżej a reszta wyżej, to wciąż powinna być widoczna jak aktualne "
-              f"piętro' (got hits={hits_k2_f3!r}, expected [9998])")
+              f"floor), not silently dropped or misfiled under the higher floor "
+              f"(got hits={hits_k2_f3!r}, expected [9998])")
         check(_read_hits(4, 2, 1) == [],
               "the boundary-spanning hit must be recorded ONLY under floor 3 (its "
               "base's own floor), never duplicated under floor 4 as well")
@@ -203,7 +202,7 @@ def main():
               "no boundary-spanning hit is possible here, so none should be recorded")
 
         # =====================================================================
-        # BUG-TARGET #3 -- re-scan safety (2026-08-19): resetting floor 20's checkpoint
+        # BUG-TARGET #3 -- re-scan safety: resetting floor 20's checkpoint
         # to force a full re-scan of already-processed windows (simulating a regressed/
         # copied-in checkpoint) must NOT crash on append_prime_window()'s strict-
         # increase assertion, and must NOT double the recorded hit count.
@@ -228,7 +227,7 @@ def main():
               f"[200, 200, 500, 500])")
 
         # =====================================================================
-        # max_windows batching (added 2026-09-13, floor-25-scale fix): a floor with 4
+        # max_windows batching (floor-25-scale fix): a floor with 4
         # windows, processed 2-at-a-time, must resume correctly across calls and only
         # run the boundary check once truly caught up -- see process_floor()'s own
         # docstring on why this exists (WSL dying mid-run on a floor with hundreds of
@@ -269,8 +268,7 @@ def main():
               f"max_windows (got {remaining_3!r})")
 
         # =====================================================================
-        # Graceful stop (added 2026-09-14, Artur's own question: does a manual Stop
-        # click resume cleanly?): STOP_REQUEST.txt, checked once per window at the very
+        # Graceful stop: STOP_REQUEST.txt, checked once per window at the very
         # TOP of the loop, must break BETWEEN windows -- never mid-window -- and report
         # the correct "still remaining" count, same shape as an ordinary --max-windows
         # clip. Floor 50 gets 4 windows; the marker is dropped in right before the run,
@@ -338,7 +336,7 @@ def main():
               f"decode on a real file (got {(lean_last, lean_count)!r}, expected "
               f"{(real_hits[-1], len(real_hits))!r})")
         # =====================================================================
-        # LAST_VALUES.tsv disk cache (added 2026-09-13/14) -- THE regression test for
+        # LAST_VALUES.tsv disk cache -- THE regression test for
         # the actual floor-25 crash root cause: a fresh process_floor() call's
         # in-memory last_value_cache starts EMPTY every run, so without a PERSISTENT
         # disk cache, the first hit for any pattern in a fresh run used to force a

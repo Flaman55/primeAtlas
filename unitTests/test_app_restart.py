@@ -1,5 +1,5 @@
 """
-test_app_restart.py -- covers primeatlas/app_restart.py, the os.execv()-based in-place
+test_app_restart.py -- covers primeatlas/settings/app_restart.py, the os.execv()-based in-place
 relaunch used by settings_tab.py's automatic restart-after-theme/language-change feature
 (task #518).
 
@@ -44,7 +44,7 @@ def check(condition, message):
 
 def section_a():
     print("\n--- Section A: _build_execv_args() ---")
-    from primeatlas import app_restart as ar
+    from primeatlas.settings import app_restart as ar
 
     orig_argv = sys.argv
     sys.argv = ["/some/relative/../path/prime_atlas_v1.py"]
@@ -80,7 +80,7 @@ def section_a():
     # on Windows, os.path.abspath("/already/absolute/...") prepends the current drive letter
     # (e.g. "F:\already\absolute\..."), so comparing against the un-prefixed POSIX literal
     # directly would always fail there even though _build_execv_args() did nothing wrong
-    # (bug confirmed 2026-09-11: this assertion was failing on Windows before this fix, for
+    # (this assertion was failing on Windows before this fix, for
     # a reason unrelated to the space-quoting bug this file otherwise covers).
     check(argv2[1] == os.path.abspath("/already/absolute/prime_atlas_v1.py"),
           f"an already-absolute path must not be altered beyond normalization "
@@ -90,9 +90,9 @@ def section_a():
     #     "...\\AI Agent Ollama\\..." ancestor folder) must come back quoted on Windows,
     #     since os.execv() there -- unlike subprocess.Popen -- does NOT quote argv itself:
     #     an unquoted space gets split into two arguments by the relaunched process, which
-    #     then can't find itself and exits immediately (bug confirmed 2026-09-11: this is
-    #     exactly why the auto-restart-after-theme/language-change silently failed to
-    #     reopen PrimeAtlas from this specific checkout location). ---
+    #     then can't find itself and exits immediately -- this is
+    #     exactly why the auto-restart-after-theme/language-change could silently fail to
+    #     reopen PrimeAtlas from a checkout location containing a space. ---
     orig_argv = sys.argv
     sys.argv = ["/some/dir with space/prime_atlas_v1.py"]
     try:
@@ -121,7 +121,7 @@ def section_a():
 
 def section_b():
     print("\n--- Section B: restart_app() ---")
-    from primeatlas import app_restart as ar
+    from primeatlas.settings import app_restart as ar
 
     orig_execv = os.execv
     captured = []

@@ -1,19 +1,18 @@
 """
-test_gen_progress_bar_engine_gating.py -- regression test for the 2026-08-27 fix
-disabling the shared bottom progress bar for engines that don't print granular
-progress to stdout (primesieve/cudasieve mode).
+test_gen_progress_bar_engine_gating.py -- regression test for disabling the shared
+bottom progress bar for engines that don't print granular progress to stdout
+(primesieve/cudasieve mode).
 
 Background: primesieve mode (prime_sieve_primesieve.py) and cudasieve mode
 (prime_sieve_cudasieve.py) both do ONE blocking call with no per-batch reporting --
 confirmed by reading their actual print() statements -- so the only line of theirs
 that ever matches anything in _update_shared_progress_from_generation_chunk() is the
-final "[*] TOTAL PRIMES FOUND..." line. Before this fix, that line unconditionally
-snapped totals_progress to "100% done", which combined with the earlier "stuck full
-after generation" bug (see test_search_worker.py's own regression block) made the bar
+final "[*] TOTAL PRIMES FOUND..." line. If that line unconditionally snapped
+totals_progress to "100% done", combined with the earlier "stuck full after
+generation" bug (see test_search_worker.py's own regression block), the bar would
 look like it was tracking progress when it was really just jumping from whatever it
-already showed straight to full at the very end -- Artur's own observation ("widzę
-dwa stany pasek pusty i pasek pełny brak wartości pomiędzy"). Artur's explicit
-decision (2026-08-27): leave totals_progress alone entirely for those two engines
+already showed straight to full at the very end, with no visible state in between.
+The fix: leave totals_progress alone entirely for those two engines
 (self._gen_progress_bar_active=False) rather than fake a step count; the status TEXT
 still updates normally either way. The old batched engine (orchestrator_v3.py /
 orchestrator_loop_v2.py) keeps its existing live bar behavior
@@ -129,7 +128,7 @@ def main():
         # Launcher wiring: each _on_run_*() sets the flag to match its own engine.
         # Stubs WslLoggedRunner to avoid any real subprocess/WSL dependency.
         # =====================================================================
-        import primeatlas.generation_tab as generation_tab_mod
+        import primeatlas.generation.generation_tab as generation_tab_mod
 
         class _FakeRunner:
             def __init__(self, *a, **k):

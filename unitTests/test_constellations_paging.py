@@ -1,5 +1,5 @@
 """
-test_constellations_paging.py -- proves primeatlas/constellations.py's records-table/
+test_constellations_paging.py -- proves primeatlas/constellations/constellations.py's records-table/
 detail-rows/participation-search backend stays CORRECT once a pattern's hit file has
 been migrated to pages (prime_sieve/hit_paging.py), not just that it doesn't crash.
 Complements unitTests/test_hit_paging.py (pure hit_paging.py mechanics, no
@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.join(_REPO_ROOT, "constellation"))
 
 import prime_sieve_v1
 import hit_paging
-from primeatlas import constellations
+from primeatlas.constellations import constellations
 
 failures = []
 
@@ -41,7 +41,7 @@ def check(condition, message):
 def _make_paged_floor(portal_folder, base_exponent, k, variant_id, values, page_size):
     """Seeds a floor's k/variant hit file the normal way (write_prime_window), then
     migrates it to pages -- so this test exercises the exact same migration path a
-    real magazyn would go through, not a hand-built PAGES_META.json."""
+    real archive would go through, not a hand-built PAGES_META.json."""
     vdir = os.path.join(portal_folder, f"10p{base_exponent}", "constellations",
                          f"k{k}", f"variant{variant_id}")
     os.makedirs(vdir, exist_ok=True)

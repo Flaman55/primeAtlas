@@ -16,10 +16,10 @@ peek into a neighboring window. Two outcomes:
     window's actual content -- constellation_finder_v1.py's own DIAG lines already
     showed a real ~200MB jump during exactly that phase on floor 25).
 
-Added 2026-09-13 after a real crash log pinpointed the death to somewhere between
-"reading window 1" and that window's own per-step summary -- this script is the fast,
-surgical follow-up: rather than waiting through another full 5000-window batch just to
-retest the SAME single file, it tests just that file, in a few seconds.
+Useful once a crash log has pinpointed the death to somewhere between "reading window 1"
+and that window's own per-step summary -- this script is the fast, surgical follow-up:
+rather than waiting through another full 5000-window batch just to retest the SAME single
+file, it tests just that file, in a few seconds.
 
 Usage (run directly inside WSL):
     python3 debug_single_window.py <portal_folder> <base_exponent> <filename>

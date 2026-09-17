@@ -75,7 +75,7 @@ def check(condition, message):
 
 def section_a():
     print("\n--- Section A: generation.py argv builders + constants ---")
-    from primeatlas import generation as gen_mod
+    from primeatlas.generation import generation as gen_mod
 
     check(gen_mod.CUDASIEVE_MIN_PRINTABLE_TOP == 2 ** 40,
           f"CUDASIEVE_MIN_PRINTABLE_TOP must be exactly 2**40 (CUDASieve's own documented "
@@ -163,7 +163,7 @@ class _FakePopen:
 
 def section_b():
     print("\n--- Section B: run_cudasieve_wsl_blocking Popen()+poll() loop ---")
-    from primeatlas import generation as gen_mod
+    from primeatlas.generation import generation as gen_mod
 
     portal = tempfile.mkdtemp(prefix="cudasieve_wslblock_test_")
     try:
@@ -264,7 +264,7 @@ def section_b():
 
 def section_c():
     print("\n--- Section C: AppSettings.cudasieve_status persistence ---")
-    from primeatlas import app_settings as app_settings_mod
+    from primeatlas.core import app_settings as app_settings_mod
 
     tmp_locales = tempfile.mkdtemp(prefix="cudasieve_appsettings_test_")
     orig_locales_dir = app_settings_mod.LOCALES_DIR
@@ -507,8 +507,8 @@ def section_e():
     messagebox.showerror = lambda *a, **k: None
 
     import prime_atlas_v1
-    import primeatlas.generation_tab as generation_tab_mod
-    from primeatlas.generation import CUDASIEVE_MIN_PRINTABLE_TOP
+    import primeatlas.generation.generation_tab as generation_tab_mod
+    from primeatlas.generation.generation import CUDASIEVE_MIN_PRINTABLE_TOP
 
     error_calls = []
     messagebox.showerror = lambda title, msg, *a, **k: error_calls.append((title, msg))
@@ -582,7 +582,7 @@ def section_e():
               f"(got {len(error_calls)} calls: {error_calls!r})")
 
         # --- Dispatch: beyond-ceiling request (start > CUDASIEVE_MAX_STOP) is rejected. ---
-        from primeatlas.generation import CUDASIEVE_MAX_STOP
+        from primeatlas.generation.generation import CUDASIEVE_MAX_STOP
         recorder_calls.clear()
         error_calls.clear()
         gen.quick_cudasieve_from_var.set(str(CUDASIEVE_MAX_STOP + 1))
@@ -663,7 +663,7 @@ def section_f():
     webbrowser.open = lambda url: opened_urls.append(url)
 
     import prime_atlas_v1
-    import primeatlas.settings_tab as settings_tab_mod
+    import primeatlas.settings.settings_tab as settings_tab_mod
 
     portal = tempfile.mkdtemp(prefix="cudasieve_settingstab_test_")
     try:

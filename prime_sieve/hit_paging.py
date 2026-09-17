@@ -7,7 +7,7 @@ lets a reader learn total_count/first_value/last_value in O(1) without opening a
 at all, same idea prime_sieve_v1.read_prime_window_header() already applies to a single
 PGS2 file's own header.
 
-Why this exists (Problem B of the 2026-09-15 magazyn/records-table browsing fix, see
+Why this exists (Problem B of the archive/records-table browsing fix, see
 primeAtlas/constellations.py's build_constellation_records_table() -- Problem A of that
 same fix -- for the read-only half of this story): PGS2 is gap-encoded, so reading
 "entry N" means sequentially decoding all N-1 entries before it -- there is no random
@@ -113,10 +113,9 @@ def write_meta(a_variant_dir, meta):
 
 
 def page_count(meta):
-    """Deliberately NOT stored in the metadata itself (see this module's own
-    docstring's "Mały plik metadanych" plan) -- always derivable from total_count and
-    page_size, so there is one less field that could ever drift out of sync with the
-    pages actually on disk."""
+    """Deliberately NOT stored in the metadata itself -- always derivable from
+    total_count and page_size, so there is one less field that could ever drift out of
+    sync with the pages actually on disk."""
     if meta["total_count"] == 0:
         return 0
     return math.ceil(meta["total_count"] / meta["page_size"])

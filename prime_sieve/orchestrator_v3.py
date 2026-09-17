@@ -250,7 +250,7 @@ def _append_floor_meta_row(portal_folder, base_exponent, row):
     GUI package), same reasoning every other cross-folder duplication in this project
     already follows (see e.g. _ensure_benchmark_log_schema()'s own docstring). Writes
     10p{base_exponent}/floor_meta.json so this floor's generation history travels with its
-    own directory if it's ever copied into a different storage (magazyn) -- see
+    own directory if it's ever copied into a different storage (archive) -- see
     floor_meta.py's module docstring for the full rationale. Best-effort/non-fatal: any
     failure here must never break benchmark logging itself, which already succeeded by the
     time this is called."""
@@ -305,10 +305,9 @@ def print_benchmark_summary(base_exponent, start_idx, end_idx, total_seconds, po
         # post-sharding, silently zeroing out total_primes/windows_found (and therefore
         # this run's whole benchmark_log.csv row) even though the files were written
         # correctly. Missed in the original task #405 sweep because this function re-derives
-        # counts from disk instead of trusting write_scan_metrics_handoff()'s numbers --
-        # caught 2026-08-27 from a real generation run on 10^13 reporting "0 windows
-        # written" despite prime_sieve_v4_1.py's own console output showing 1000 windows/
-        # 334M primes written correctly.
+        # counts from disk instead of trusting write_scan_metrics_handoff()'s numbers, so
+        # a generation run can report "0 windows written" here despite the underlying
+        # sieve's own console output showing windows/primes written correctly.
         source_dir = os.path.join(portal_folder, f"10p{base_exponent}", "source_primes")
         for target_idx in range(start_idx, end_idx):
             offset = target_idx * window_m

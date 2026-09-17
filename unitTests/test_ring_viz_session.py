@@ -1,13 +1,13 @@
 """
-test_ring_viz_session.py -- unit tests for primeatlas/ring_viz/session.py's
-RenderSession (Faza 3 of the ring_viz/renderer.py split -- see that
-module's own docstring for the full refactor plan and scope boundary).
+test_ring_viz_session.py -- unit tests for primeatlas/rings/ring_viz/session.py's
+RenderSession (see ring_viz/renderer.py's own docstring for the module split
+and scope boundary between the GL entrypoint and this pure-logic class).
 
 Deliberately does NOT import moderngl/glfw -- RenderSession has no GL
-dependency at all (that's the whole point of Faza 3: design and test this
-class in isolation before Faza 4 wires it into the real GLFW/moderngl main
-loop) -- so this test runs fine in a headless sandbox with no GPU/display,
-same as every other pure-logic test in this package.
+dependency at all, so it can be designed and tested in isolation from the
+GLFW/moderngl main loop that wires it up at runtime -- this test runs fine
+in a headless sandbox with no GPU/display, same as every other pure-logic
+test in this package.
 
 Usage (Windows, real Python):
     python unitTests\\test_ring_viz_session.py
@@ -43,7 +43,7 @@ def _make_session(**overrides):
     """A RenderSession with sane, small defaults -- every test overrides
     only the fields it actually cares about, matching this file's own
     convention of keeping each test's intent visible at the call site."""
-    from primeatlas.ring_viz.session import RenderSession
+    from primeatlas.rings.ring_viz.session import RenderSession
 
     kwargs = dict(
         primes=_SMALL_PRIMES,
@@ -242,16 +242,16 @@ def _test_reset():
 
 
 def _test_extend_buffer_if_needed():
-    import primeatlas.ring_viz.session as session_module
+    import primeatlas.rings.ring_viz.session as session_module
 
-    original_loader = session_module.load_magazyn
+    original_loader = session_module.load_archive
     calls = []
 
     def fake_loader(portal_folder, new_ceiling, from_n=None):
         calls.append((portal_folder, new_ceiling, from_n))
         return np.array([31, 37, 41], dtype=np.uint64)
 
-    session_module.load_magazyn = fake_loader
+    session_module.load_archive = fake_loader
     try:
         s = _make_session(n=95, ceiling=100, buffer_margin=10, can_extend_buffer=True, portal_folder="FAKE")
         msg = s.extend_buffer_if_needed()
@@ -268,20 +268,20 @@ def _test_extend_buffer_if_needed():
         msg_disabled = s_disabled.extend_buffer_if_needed()
         check(msg_disabled is None, "does nothing at all when the data source can't be extended (synthetic/sieve)")
     finally:
-        session_module.load_magazyn = original_loader
+        session_module.load_archive = original_loader
 
 
 def _test_extend_buffer_exhaustion_sticks():
-    import primeatlas.ring_viz.session as session_module
+    import primeatlas.rings.ring_viz.session as session_module
 
-    original_loader = session_module.load_magazyn
+    original_loader = session_module.load_archive
     call_count = [0]
 
     def empty_loader(portal_folder, new_ceiling, from_n=None):
         call_count[0] += 1
         return np.empty(0, dtype=np.uint64)
 
-    session_module.load_magazyn = empty_loader
+    session_module.load_archive = empty_loader
     try:
         s = _make_session(n=95, ceiling=100, buffer_margin=10, can_extend_buffer=True, portal_folder="FAKE")
         msg = s.extend_buffer_if_needed()
@@ -290,7 +290,7 @@ def _test_extend_buffer_exhaustion_sticks():
         s.extend_buffer_if_needed()
         check(call_count[0] == 1, f"once exhausted, no further load attempts are made (got {call_count[0]} calls)")
     finally:
-        session_module.load_magazyn = original_loader
+        session_module.load_archive = original_loader
 
 
 def _test_rebuild_basic():
@@ -333,13 +333,11 @@ def _test_rebuild_resonance_flash_when_all_hit():
 
 
 def _test_rebuild_tracked_resonance_orange_dot():
-    """[ADDED 2026-09-12, Artur's report: "przy rezonansie czyli gdy lcm
-    zostal osiagniety... punkty sledzonych liczb pierwszych powinny byc
-    pomaranczowe"] When the manually-tracked set's own LCM is reached
+    """When the manually-tracked set's own LCM is reached
     (tracked_resonance_state's to_resonance == 0), the tracked rings' dots
     turn resonance-orange, not just plain white -- verified end-to-end
     through RenderSession.rebuild(), not just build_vertex_data directly."""
-    from primeatlas.ring_viz.geometry_draw import _FLASH_RESONANCE_RGB
+    from primeatlas.rings.ring_viz.geometry_draw import _FLASH_RESONANCE_RGB
     expected_rgb = np.array([c / 255.0 for c in _FLASH_RESONANCE_RGB])
 
     # track_primes=[2, 3] -> LCM=6. auto_orbit=False so the manual list is

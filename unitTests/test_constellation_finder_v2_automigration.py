@@ -2,9 +2,9 @@
 test_constellation_finder_v2_automigration.py -- integration tests for
 constellation_finder_v2.py's append_hits() AUTO-MIGRATING an unpaged pattern to pages
 (prime_sieve/hit_paging.py) the moment an append would push its count past
-hit_paging.PAGE_SIZE, added 2026-09-16 so a future floor's dense k=2 pattern never
-needs the same manual migrate_hit_file_to_pages() run Artur had to do by hand for
-floor 25's k=2 (~2.16 billion hits) and several other already-huge patterns.
+hit_paging.PAGE_SIZE, so a future floor's dense k=2 pattern never needs the same
+manual migrate_hit_file_to_pages() run previously required by hand for floor 25's
+k=2 (~2.16 billion hits) and several other already-huge patterns.
 
 hit_paging.PAGE_SIZE is monkeypatched down to a small number for these tests so the
 crossing can be exercised in a handful of small appends -- the actual migration codepath

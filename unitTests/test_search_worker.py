@@ -1,33 +1,30 @@
 """
 test_search_worker.py -- functional regression test for the "prime"/"const" search
-worker, migrated onto primeatlas/background.py's PersistentWorker during the refactor
-branch's Faza 1 (background-job consolidation, 2026-08-23), then moved off
-PortalBrowserApp entirely into primeatlas/totals_search_coordinator.py's
-TotalsSearchCoordinator during the refactor-phase2 branch's "God object" reduction
-(2026-08-26) -- app._start_search_job/_search_busy are now
-app._totals_search.start_search_job/.search_busy.
+worker exposed by primeatlas/core/totals_search_coordinator.py's TotalsSearchCoordinator,
+reached via app._totals_search.start_search_job/.search_busy and backed by
+primeatlas/core/background.py's PersistentWorker.
 
 Builds the REAL PortalBrowserApp (same as tests/smoke_test.py) against a throwaway
 portal folder seeded with a real PGS1 prime window, then drives
-app._totals_search.start_search_job() directly -- exactly what clicking the "Szukaj"
-button in the Liczby pierwsze / Konstelacje tabs does -- and asserts the result lands
-back on the UI (search buttons re-enabled, status text set, preview populated) via the
+app._totals_search.start_search_job() directly -- exactly what clicking the search
+button on the primes/constellations tabs does -- and asserts the result lands back on
+the UI (search buttons re-enabled, status text set, preview populated) via the
 PersistentWorker-based path.
 
-Also includes a DETERMINISTIC regression test for the status-bar race (task #404,
-fixed 2026-08-26 in TotalsSearchCoordinator): a floor-totals batch scan and a search
-share one status bar, and a stale/slow totals completion used to be able to overwrite
-a just-shown search result. That race's real-world timing is unreliable to exercise
-directly (it depends on how fast a real background disk scan happens to settle
-relative to a search -- see that test block's own comment), so it monkeypatches
-update_pietro_totals_cache to force one totals job to take ~1.5 real seconds,
-guaranteeing the exact interleaving the fix targets on every run.
+Also includes a DETERMINISTIC regression test for the status-bar race (task #404):
+a floor-totals batch scan and a search share one status bar, and a stale/slow totals
+completion used to be able to overwrite a just-shown search result. That race's
+real-world timing is unreliable to exercise directly (it depends on how fast a real
+background disk scan happens to settle relative to a search -- see that test block's
+own comment), so it monkeypatches update_floor_totals_cache to force one totals job
+to take ~1.5 real seconds, guaranteeing the exact interleaving the fix targets on
+every run.
 
 IMPORTANT -- do not call app_settings.set_storage_path() directly on a live app's
 AppSettings instance: AppSettings.save() persists unconditionally to the REAL
 primeatlas/locales/app_settings.json shipped in this repo, which would silently
-overwrite Artur's actual configured storage path with this test's throwaway temp
-folder. This test monkeypatches .save() to a no-op first -- see _patch_app_settings()
+overwrite the real configured storage path with this test's throwaway temp folder.
+This test monkeypatches .save() to a no-op first -- see _patch_app_settings()
 below -- so only the in-memory storage_path changes, never the file on disk.
 
 Usage (Windows, real display, real tkinter -- no Xvfb/PYTHONPATH tricks needed there):
@@ -115,21 +112,19 @@ def main():
         # reason (see that test's own comment): the constructor's own startup
         # reload_primes_tree()/reload_constellations_tree() calls read the module
         # global at dispatch time, so redirecting only AFTER construction leaves that
-        # very first scan pointed at whatever real storage path Artur's own
-        # app_settings.json currently has. That real folder has grown to 600k+ files
-        # across dozens of floors since task #417's sharding migration, so that
-        # startup scan can now take long enough to still be in flight when this
-        # test's own app.reload_primes_tree() call (further below) fires -- the
-        # busy/pending coalescing (PrimesTreeCoordinator.reload(), see that module's
-        # own docstring) handles this correctly by re-scanning tmp_portal once the
-        # stale real-folder scan finally settles, but that correction can land its own
-        # "grand total" status message AFTER a search result written in the meantime,
-        # intermittently stomping the "Znaleziono ..." text this test checks for below
-        # (observed 2026-08-27, unrelated to the refactor-phase3 coordinator
-        # extraction itself -- same race existed before it, just needed a large enough
-        # real folder to actually manifest). Redirecting before construction means the
-        # very first scan already targets tmp_portal, so this race can't occur here at
-        # all, independent of how large Artur's real storage happens to be.
+        # very first scan pointed at whatever real storage path is currently
+        # configured. A real storage folder can grow to hundreds of thousands of files
+        # across many floors after the sharding migration (task #417), so that startup
+        # scan can take long enough to still be in flight when this test's own
+        # app.reload_primes_tree() call (further below) fires -- the busy/pending
+        # coalescing (PrimesTreeCoordinator.reload(), see that module's own docstring)
+        # handles this correctly by re-scanning tmp_portal once the stale real-folder
+        # scan finally settles, but that correction can land its own "grand total"
+        # status message AFTER a search result written in the meantime, intermittently
+        # stomping the found-prime status text this test checks for below. Redirecting
+        # before construction means the very first scan already targets tmp_portal, so
+        # this race can't occur here at all, independent of how large the real storage
+        # folder happens to be.
         _patch_app_settings(prime_atlas_v1.APP_SETTINGS)
         prime_atlas_v1.APP_SETTINGS.set_storage_path(tmp_portal)
         prime_atlas_v1.PORTAL_FOLDER = tmp_portal
@@ -181,23 +176,23 @@ def main():
         # machine the totals job can finish BEFORE the search even starts, and on a
         # slow one (real disk I/O + antivirus scanning of a fresh temp folder) it can
         # finish well AFTER, neither of which reliably exercises the actual race
-        # window every run (confirmed in practice, 2026-08-26: this exact scenario
-        # intermittently failed/passed across otherwise-identical runs). This block
-        # forces the totals scan to take ~1.5 REAL seconds (monkeypatching
-        # update_pietro_totals_cache, the slow part of TotalsSearchCoordinator.
+        # window every run (this exact scenario has intermittently failed/passed
+        # across otherwise-identical runs). This block forces the totals scan to
+        # take ~1.5 REAL seconds (monkeypatching
+        # update_floor_totals_cache, the slow part of TotalsSearchCoordinator.
         # _totals_job) so it is GUARANTEED to still be in flight when the search
         # below starts and finishes -- deterministically reproducing the exact
         # interleaving the fix targets, independent of real disk/OS timing.
-        import primeatlas.totals_search_coordinator as tsc_module
-        _real_update_totals = tsc_module.update_pietro_totals_cache
+        import primeatlas.core.totals_search_coordinator as tsc_module
+        _real_update_totals = tsc_module.update_floor_totals_cache
 
         def _slow_update_totals(*a, **k):
             time.sleep(1.5)
             return _real_update_totals(*a, **k)
 
-        tsc_module.update_pietro_totals_cache = _slow_update_totals
+        tsc_module.update_floor_totals_cache = _slow_update_totals
         try:
-            app.reload_primes_tree()  # triggers compute_all_pietro_totals() -> a
+            app.reload_primes_tree()  # triggers compute_all_floor_totals() -> a
                                        # (now artificially slow) totals job
             _pump(app, 0.6)  # let the (fast) scan itself settle and the slow totals
                               # job actually get submitted/picked up -- NOT a bare
@@ -220,16 +215,15 @@ def main():
                   f"slow totals batch finally completes afterward "
                   f"(got: {app.status.get()!r})")
         finally:
-            tsc_module.update_pietro_totals_cache = _real_update_totals
+            tsc_module.update_floor_totals_cache = _real_update_totals
 
         # --- Regression test: show_cached_grand_total() must reset totals_progress
-        # (2026-08-27 bug fix, confirmed with Artur from a real screenshot: after a
-        # generation run finished, the shared bottom progress bar stayed visibly full
-        # forever, reading as "still busy" while the app sat idle). Root cause:
-        # generation's own completion handler (generation_tab.py's
+        # (bug: after a generation run finished, the shared bottom progress bar stayed
+        # visibly full forever, reading as still busy while the app sat idle). Root
+        # cause: generation's own completion handler (generation_tab.py's
         # _update_shared_progress_from_generation_chunk) deliberately snaps the bar to
-        # full and relies on WHATEVER runs next to clear it -- before 2026-08-27 that
-        # was compute_all_pietro_totals()'s own automatic post-reload call, which reset
+        # full and relies on WHATEVER runs next to clear it -- that used to be
+        # compute_all_floor_totals()'s own automatic post-reload call, which reset
         # the bar as a side effect of a real rescan that ran unconditionally after
         # every reload. Once that automatic call was replaced by the lightweight
         # show_cached_grand_total() (this test's own portal already exercises that
@@ -243,7 +237,7 @@ def main():
         bar.configure(mode="determinate", maximum=5, value=5)
         check(bar["value"] == 5, "test setup: bar starts in the simulated 'just finished' full state")
         app._totals_search.show_cached_grand_total(
-            totals_cache={}, pietro_gen_seconds={}, floor_count=1)
+            totals_cache={}, floor_gen_seconds={}, floor_count=1)
         check(int(bar["maximum"]) == 1 and int(bar["value"]) == 0,
               f"show_cached_grand_total() (the normal floor_count > 0 path) must reset "
               f"totals_progress back to its empty 0/1 resting state, not leave it "
@@ -254,7 +248,7 @@ def main():
         # reset the bar too, not just the normal path above.
         bar.configure(mode="determinate", maximum=7, value=7)
         app._totals_search.show_cached_grand_total(
-            totals_cache={}, pietro_gen_seconds={}, floor_count=0)
+            totals_cache={}, floor_gen_seconds={}, floor_count=0)
         check(int(bar["maximum"]) == 1 and int(bar["value"]) == 0,
               f"show_cached_grand_total()'s floor_count==0 branch must also reset "
               f"totals_progress (got maximum={bar['maximum']!r}, value={bar['value']!r})")

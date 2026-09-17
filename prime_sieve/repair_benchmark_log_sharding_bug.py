@@ -1,6 +1,6 @@
 """
-repair_benchmark_log_sharding_bug.py -- one-off repair for a real bug found 2026-08-27:
-orchestrator_v3.py's print_benchmark_summary() (write_files=True branch) re-derived
+repair_benchmark_log_sharding_bug.py -- one-off repair for a bug in
+orchestrator_v3.py's print_benchmark_summary() (write_files=True branch), which re-derived
 windows_written/total_primes by checking a FLAT "source_dir/PRIME_WINDOW_....bin" path
 with os.path.exists() -- task #405 sharded source_primes/ into shard_NNNNN subfolders,
 and this ONE function (unlike every other reader) was missed in that sweep. Every real,

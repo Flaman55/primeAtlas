@@ -1,10 +1,10 @@
 """
 test_benchmark_tab.py -- functional regression test for BenchmarkTab (primeatlas/
-benchmark_tab.py + primeatlas/benchmark.py), extracted from prime_atlas_v1.py during
-the refactor branch's Faza 3 (tab-by-tab backend/UI split, 2026-08-23; task #382-385).
-The Benchmark tab was the smallest of the five tabs still living directly in
-prime_atlas_v1.py, so it was the first one migrated to the SettingsTab-style
-BenchmarkTab(ttk.Frame) + primeatlas/benchmark.py pure-logic split.
+benchmark_tab.py + primeatlas/benchmark/benchmark.py), extracted from prime_atlas_v1.py as
+part of the tab-by-tab backend/UI split. The Benchmark tab was the smallest of the
+five tabs still living directly in prime_atlas_v1.py, so it was the first one
+migrated to the SettingsTab-style BenchmarkTab(ttk.Frame) + primeatlas/benchmark/benchmark.py
+pure-logic split.
 
 This test builds the real PortalBrowserApp() end to end (not a mock) against a real
 on-disk portal folder seeded with a hand-written benchmark_log.csv, then exercises the
@@ -20,10 +20,10 @@ resulting app.benchmark_tab_widget (the real BenchmarkTab instance) directly:
      actually written and a confirmation is shown.
   4. The "no data yet" and forced-exception paths surface the right dialogs instead of
      silently doing nothing / crashing.
-  5. Dark-theme fix (#407, 2026-08-26): the "pietro"/"stat" Treeview row tags pull their
-     background AND foreground from primeatlas.theme.palette_for(), and both chart
-     canvases' own background do too -- not hardcoded light colors regardless of theme.
-  6. Chart readability fix (#408, 2026-08-26): _draw_growth_chart's dynamic pad_left
+  5. Dark-theme: the "floor"/"stat" Treeview row tags pull their background AND
+     foreground from primeatlas.core.theme.palette_for(), and both chart canvases' own
+     background do too -- not hardcoded light colors regardless of theme.
+  6. Chart readability: _draw_growth_chart's dynamic pad_left
      stops wide numbers ("71,556,448") from clipping off the canvas edge -- exercised
      directly against _draw_growth_chart with a synthetic canvas, not through the CSV
      fixture above (which doesn't need such large numbers to be realistic). The
@@ -90,7 +90,7 @@ def _pump(app, seconds):
         time.sleep(0.02)
 
 
-# Same canonical column set as primeatlas/floor_meta.py's CANONICAL_BENCHMARK_FIELDNAMES
+# Same canonical column set as primeatlas/settings/floor_meta.py's CANONICAL_BENCHMARK_FIELDNAMES
 # -- a realistic superset across every generator engine this project has had, so the
 # seeded CSV exercises every aggregate_benchmark_*()/benchmark_row_stats() column at
 # once instead of a stripped-down fixture that would miss a column-name typo.
@@ -185,10 +185,10 @@ def main():
         check(len(widget._benchmark_rows) == len(rows),
               f"every seeded row made it in (expected {len(rows)}, got "
               f"{len(widget._benchmark_rows)})")
-        check(0 in widget._benchmark_rows_by_pietro and 3 in widget._benchmark_rows_by_pietro,
-              f"both seeded floors are grouped (got keys {sorted(widget._benchmark_rows_by_pietro)})")
-        check(len(widget._benchmark_rows_by_pietro[3]) == 250,
-              f"floor 10p3 kept all 250 rows (got {len(widget._benchmark_rows_by_pietro[3])})")
+        check(0 in widget._benchmark_rows_by_floor and 3 in widget._benchmark_rows_by_floor,
+              f"both seeded floors are grouped (got keys {sorted(widget._benchmark_rows_by_floor)})")
+        check(len(widget._benchmark_rows_by_floor[3]) == 250,
+              f"floor 10p3 kept all 250 rows (got {len(widget._benchmark_rows_by_floor[3])})")
 
         growth = dict(widget._benchmark_growth_points)
         check(growth.get(0) == 1_000_000 + 2,
@@ -221,9 +221,9 @@ def main():
         check(node_for_floor3 is not None, "a floor node whose label starts with '10p3' exists")
 
         # --- pagination: expand floor 10p3 (250 rows -> 2 pages of 200) -------------
-        widget._populate_benchmark_pietro_node(node_for_floor3)
+        widget._populate_benchmark_floor_node(node_for_floor3)
         widget._set_active_benchmark_node(node_for_floor3)
-        state = widget._benchmark_pietro_state[node_for_floor3]
+        state = widget._benchmark_floor_state[node_for_floor3]
         check(state["total_pages"] == 2,
               f"250 rows at BENCHMARK_PAGE_SIZE=200 gives exactly 2 pages (got {state['total_pages']})")
         check(state["page"] == 0, f"floor starts on page 0 (got {state['page']})")
@@ -261,7 +261,7 @@ def main():
         # is set explicitly first to drive it the same way a real collapse click would.
         widget.benchmark_tree.focus(node_for_floor3)
         widget._on_benchmark_tree_close(None)
-        check(node_for_floor3 not in widget._benchmark_pietro_state,
+        check(node_for_floor3 not in widget._benchmark_floor_state,
               "closing the floor node drops its cached page state")
 
         # --- PDF export: bypass the real file dialog, like the other export tests --
@@ -292,7 +292,7 @@ def main():
               f"the 'no data yet' dialog was shown instead of opening a file dialog (got: {shown})")
 
         # --- PDF export: a raising renderer surfaces messagebox.showerror ----------
-        import primeatlas.benchmark_tab as benchmark_tab_module
+        import primeatlas.benchmark.benchmark_tab as benchmark_tab_module
         original_render = benchmark_tab_module.render_benchmark_pdf
 
         def _fake_raise(*a, **k):
@@ -310,28 +310,28 @@ def main():
         check(any("fake failure for this test" in str(call) for call in shown),
               f"the actual exception text reaches the error dialog (got: {shown})")
 
-        # --- dark-theme fix: tree tag colors follow the palette, not hardcoded (#407) --
-        # "pietro"/"stat" row tags used to be hardcoded to light colors with no matching
-        # foreground override -- unreadable under the dark theme. See BenchmarkTab.
-        # __init__'s own docstring and primeatlas/theme.py's tree_group_bg/tree_stat_bg
-        # docstring for the bug this fixes.
-        from primeatlas.theme import palette_for
+        # --- dark-theme: tree tag colors follow the palette, not hardcoded -----------
+        # "floor"/"stat" row tags must not be hardcoded to light colors with no
+        # matching foreground override -- that would be unreadable under the dark
+        # theme. See BenchmarkTab.__init__'s own docstring and primeatlas/core/theme.py's
+        # tree_group_bg/tree_stat_bg docstring for the palette contract this relies on.
+        from primeatlas.core.theme import palette_for
         theme_palette = palette_for(prime_atlas_v1.APP_SETTINGS.theme)
         # str(...) -- tag_configure's single-option query form can hand back a Tcl
         # color/font object rather than a plain str depending on the Tcl/Tk version
         # (same reason every OTHER tk-value comparison in this file already goes
         # through str(), e.g. the button-state checks above), so compare string forms
         # rather than the raw query result.
-        pietro_bg = str(widget.benchmark_tree.tag_configure("pietro", "background"))
-        pietro_fg = str(widget.benchmark_tree.tag_configure("pietro", "foreground"))
+        floor_bg = str(widget.benchmark_tree.tag_configure("floor", "background"))
+        floor_fg = str(widget.benchmark_tree.tag_configure("floor", "foreground"))
         stat_bg = str(widget.benchmark_tree.tag_configure("stat", "background"))
         stat_fg = str(widget.benchmark_tree.tag_configure("stat", "foreground"))
-        check(pietro_bg == theme_palette["tree_group_bg"],
-              f"'pietro' row tag background comes from the theme palette, not a hardcoded "
-              f"color (got {pietro_bg!r}, expected {theme_palette['tree_group_bg']!r})")
-        check(pietro_fg == theme_palette["fg"],
-              f"'pietro' row tag foreground comes from the theme palette "
-              f"(got {pietro_fg!r}, expected {theme_palette['fg']!r})")
+        check(floor_bg == theme_palette["tree_group_bg"],
+              f"'floor' row tag background comes from the theme palette, not a hardcoded "
+              f"color (got {floor_bg!r}, expected {theme_palette['tree_group_bg']!r})")
+        check(floor_fg == theme_palette["fg"],
+              f"'floor' row tag foreground comes from the theme palette "
+              f"(got {floor_fg!r}, expected {theme_palette['fg']!r})")
         check(stat_bg == theme_palette["tree_stat_bg"],
               f"'stat' row tag background comes from the theme palette "
               f"(got {stat_bg!r}, expected {theme_palette['tree_stat_bg']!r})")
@@ -339,7 +339,7 @@ def main():
               f"'stat' row tag foreground comes from the theme palette "
               f"(got {stat_fg!r}, expected {theme_palette['fg']!r})")
 
-        # --- dark-theme fix: chart canvas background follows the palette too (#408) ----
+        # --- dark-theme: chart canvas background follows the palette too -------------
         chart_bg = widget.benchmark_chart.cget("background")
         chart2_bg = widget.benchmark_chart2.cget("background")
         check(chart_bg == theme_palette["console_bg"],
@@ -349,14 +349,14 @@ def main():
               f"phase-chart canvas background comes from the theme palette "
               f"(got {chart2_bg!r}, expected {theme_palette['console_bg']!r})")
 
-        # --- chart readability fix: dynamic left padding stops big numbers clipping ----
-        # (#408, 2026-08-26 screenshot) -- a 9-11 digit n/s figure like "71,556,448" used
-        # to sit under a fixed 70px pad_left and get cut off against the canvas edge.
+        # --- chart readability: dynamic left padding stops big numbers clipping -------
+        # A 9-11 digit n/s figure like "71,556,448" would otherwise sit under a fixed
+        # 70px pad_left and get cut off against the canvas edge.
         # _draw_growth_chart now measures the actual tick label strings with the real
         # font and widens pad_left to fit -- reproduce that exact scenario directly
         # (no need to go through the whole app/CSV path) and check no tick-label text
         # item is left with a negative left edge (i.e. clipped off-canvas).
-        from primeatlas.benchmark_tab import _draw_growth_chart
+        from primeatlas.benchmark.benchmark_tab import _draw_growth_chart
         probe_canvas = tk.Canvas(app, width=900, height=220)
         probe_canvas.pack()
         app.update()
@@ -373,26 +373,26 @@ def main():
               f"no tick-label text is clipped off the left edge of the canvas "
               f"(leftmost text bbox edge was {min_left_edge}, expected >= -1)")
 
-        # --- chart readability fix: hover tooltip replaces always-on point labels ------
-        # (#408) -- per-point value labels used to be drawn permanently next to every dot
-        # and overlapped into an unreadable smear on dense series; now nothing is shown
-        # until the mouse is near a point, then exactly one tooltip (tagged "hover_tip")
-        # appears. Reuses the probe_canvas/big_points draw from the padding check above,
-        # so hover_points (closed over by _bind_chart_hover) matches what's on screen.
+        # --- chart readability: hover tooltip replaces always-on point labels ---------
+        # Per-point value labels drawn permanently next to every dot overlap into an
+        # unreadable smear on dense series; nothing is shown until the mouse is near a
+        # point, then exactly one tooltip (tagged "hover_tip") appears. Reuses the
+        # probe_canvas/big_points draw from the padding check above, so hover_points
+        # (closed over by _bind_chart_hover) matches what's on screen.
         check(len(probe_canvas.find_withtag("hover_tip")) == 0,
               "no hover tooltip is shown before the mouse moves near any point")
         # The "which point (if any) is the cursor over" decision is tested directly
         # via _nearest_hover_point -- a plain function with no canvas/tkinter
         # dependency (extracted from _bind_chart_hover's own <Motion> handler
         # specifically so this is possible) -- rather than through a real OS-level
-        # synthetic mouse event. A synthetic <Motion>/<Leave> pair turned out to
-        # behave inconsistently across platforms during testing (2026-08-26): on one
-        # Windows/Tk combination, <Motion> didn't reliably land within the trigger
-        # radius even when targeted at a dot's exact pixel center, and <Leave>
-        # rejected the -warp option outright. _nearest_hover_point is deterministic
-        # and needs no live display, so it tests the actual logic bug reports were
-        # about (dense/overlapping labels) without inheriting that platform noise.
-        from primeatlas.benchmark_tab import _nearest_hover_point
+        # synthetic mouse event. A synthetic <Motion>/<Leave> pair behaves
+        # inconsistently across platforms: on one Windows/Tk combination, <Motion>
+        # didn't reliably land within the trigger radius even when targeted at a
+        # dot's exact pixel center, and <Leave> rejected the -warp option outright.
+        # _nearest_hover_point is deterministic and needs no live display, so it
+        # tests the actual logic (dense/overlapping labels) without inheriting that
+        # platform noise.
+        from primeatlas.benchmark.benchmark_tab import _nearest_hover_point
         dot_center = None
         for item_id in probe_canvas.find_all():
             if probe_canvas.type(item_id) == "oval":
@@ -416,11 +416,11 @@ def main():
               f"a cursor position exactly on a dot matches that dot's own x_val/y_val "
               f"(got {exact_hit!r})")
 
-        # --- hover tooltip label placement stays within canvas bounds (screenshot bug,
-        # 2026-08-27) -- the tooltip text used to be drawn at a fixed px+12 offset with
-        # no boundary check, so hovering the RIGHTMOST point (the highest floor
-        # plotted, exactly where a user is most likely to hover) pushed its own value
-        # text off the visible canvas and got clipped. That anchor/position decision
+        # --- hover tooltip label placement stays within canvas bounds ----------------
+        # A tooltip drawn at a fixed px+12 offset with no boundary check would let
+        # hovering the RIGHTMOST point (the highest floor plotted, exactly where a
+        # user is most likely to hover) push its own value text off the visible
+        # canvas and get clipped. That anchor/position decision
         # was pulled out into _hover_label_position(), a plain function with no
         # canvas/tkinter dependency (mirroring _nearest_hover_point's own extraction
         # above, and for the identical reason -- see that function's own comment):
@@ -431,7 +431,7 @@ def main():
         # Tk does not deliver pointer events to an unmapped widget -- exactly the
         # platform-dependent flakiness _nearest_hover_point's docstring already
         # describes for real OS-level mouse events.
-        from primeatlas.benchmark_tab import _hover_label_position
+        from primeatlas.benchmark.benchmark_tab import _hover_label_position
 
         # A point near the RIGHT edge: default placement (px+12) would overflow, so
         # this must flip to anchor="e" (label grows LEFTWARD from tx) and stay on-screen.

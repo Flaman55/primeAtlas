@@ -16,9 +16,8 @@ to it; it has no opinion on primality, so a synthetic "candidate=100, local_set=
 is exactly as valid a test of the k=2 (twin) pattern as two real primes 10 apart would be,
 and far easier to reason about by hand.
 
-Every check() states the specific expected vs. actual value, per Artur's explicit request
-for this suite ("wyłapały i wyświetliły co faktycznie powoduje błąd" -- catch it AND show
-what actually caused it).
+Every check() states the specific expected vs. actual value, so a failure shows exactly
+what actually caused it rather than just that something failed.
 
 Usage (Windows, real Python -- pure function + numpy, no Tk/display dependency at all):
     python unitTests\\test_constellation_matching.py

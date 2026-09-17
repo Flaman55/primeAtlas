@@ -44,7 +44,7 @@ import os
 #                                                  path, persisted OUTSIDE the portal folder
 #                                                  itself (see that module's docstring for
 #                                                  why)
-#        - BackupManifest/PietroSnapshot/
+#        - BackupManifest/FloorSnapshot/
 #          ConstellationSnapshot                 (manifest.py)  -- a lightweight JSON
 #                                                  SNAPSHOT of what floors/constellations/
 #                                                  benchmark log exist -- NOT a copy of the
@@ -82,85 +82,36 @@ import os
 # ==========================================================================================
 
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-# prime_sieve_v1/pattern_catalog_v1 are not imported into THIS file's own namespace
-# anymore -- every direct user of either moved into extracted primeatlas/*.py tab
-# modules during the refactor branch's Faza 3 (2026-08-23). The sys.path.insert() calls
-# below still matter: every primeatlas/*.py module that imports prime_sieve_v1/
-# pattern_catalog_v1 itself relies on THIS app process having already added these two
-# directories, since none of those modules re-add them.
+# prime_sieve_v1/pattern_catalog_v1 are not imported into THIS file's own namespace --
+# every direct user of either lives in primeatlas/*.py tab modules. The
+# sys.path.insert() calls below still matter: every primeatlas/*.py module that
+# imports prime_sieve_v1/pattern_catalog_v1 itself relies on THIS app process having
+# already added these two directories, since none of those modules re-add them.
 sys.path.insert(0, os.path.join(_SCRIPT_DIR, "prime_sieve"))
 sys.path.insert(0, os.path.join(_SCRIPT_DIR, "constellation"))
 from primeatlas import (  # noqa: E402
-    AppSettings, Translator, prune_empty_pietro_dirs,
+    AppSettings, Translator, prune_empty_floor_dirs,
     try_import_sympy as primality_try_import_sympy,
 )
-# run_all_tests/factorize (as primality_run_all_tests/primality_factorize) used to be
-# imported here for the primality-testing sub-tab's own worker job -- moved to
-# primeatlas/primality_tab.py during the refactor branch's Faza 4 (2026-08-24), which
-# imports them directly from primeatlas.primality itself. primality_try_import_sympy
-# stays -- it's still called directly by _build_settings_tab's wsl_helpers dict
-# (dependency installer), unrelated to the primality-testing sub-tab itself.
-# goldbach_check_window/goldbach_cascade_step/goldbach_window_rows/
-# goldbach_all_decompositions/goldbach_both_base_window_rows/
-# GOLDBACH_BOTH_BASE_PMAX_CEILING/GOLDBACH_BOTH_BASE_PMIN/goldbach_largest_prime_le/
-# goldbach_sieve_is_prime used to be imported here -- moved to primeatlas/
-# research_goldbach_tab.py during the refactor branch's Faza 3 (tab-by-tab backend/UI
-# split, 2026-08-23), which now imports them directly from primeatlas.goldbach_window
-# itself (see that module's own docstring) -- nothing in this file calls them anymore.
-# floor_meta (merge_floor_meta_into_benchmark_log) used to be imported here for the
-# totals worker's own job -- moved to primeatlas/totals_search_coordinator.py during
-# the refactor-phase2 branch's "God object" reduction (2026-08-26, see that module's
-# own docstring), alongside the rest of the totals/search PersistentWorker mechanism.
-# background.run_in_background()/read_benchmark_log used to be imported here for
-# _primes_tree_scan/_constellations_tree_scan -- moved out with those two methods
-# themselves to primeatlas/primes_tree_coordinator.py/constellations_tree_coordinator.py
-# during the refactor-phase3 branch's continuation of the same "God object" reduction
-# (2026-08-27, see either module's own docstring); nothing in this file needs either
-# import directly anymore.
-# pdf_writer/benchmark: extracted during the refactor branch's Faza 3 (tab-by-tab
-# backend/UI split, 2026-08-23) -- see those modules' own docstrings. Now that
-# render_constellation_records_pdf has ALSO moved out (to primeatlas/constellations.py,
-# alongside the rest of the Constellations tab's backend), nothing in this file calls
-# the pdf_writer helpers directly anymore -- everything the (now separate) Benchmark and
-# Constellations tabs need lives in primeatlas/benchmark_tab.py and
-# primeatlas/constellations_records_tab.py respectively, imported lazily/locally from
-# inside their own build methods (see _build_gui()'s own lazy-tkinter-import convention).
-# constellations: extracted during the refactor branch's Faza 3 (2026-08-23), alongside
-# the Constellations tab's own UI split (primeatlas/constellations_hits_tab.py,
-# constellations_calc_tab.py, constellations_records_tab.py) -- see that module's own
-# docstring. find_constellation_participation moved out with the search worker itself
-# (primeatlas/totals_search_coordinator.py, refactor-phase2's "God object" reduction,
-# 2026-08-26); floor_has_constellation_hits moved out with _constellations_tree_scan
-# itself (refactor-phase3, 2026-08-27, see constellations_tree_coordinator.py's own
-# docstring). list_constellation_hits is the one name still called directly here, by
-# _on_const_search_result below.
-from primeatlas.constellations import list_constellation_hits  # noqa: E402
-# storage: extracted during the refactor branch's Faza 3 (2026-08-23), alongside the
-# "Prime numbers" tab's UI split (primeatlas/primes_tab.py) -- see that module's own
-# docstring. update_pietro_totals_cache/save_totals_cache/format_duration/format_bytes/
-# find_prime_in_floor moved out with the totals/search worker mechanism
-# (primeatlas/totals_search_coordinator.py, refactor-phase2's "God object" reduction,
-# 2026-08-26). list_pietra/list_source_filenames/load_totals_cache/
-# aggregate_write_seconds_by_pietro moved out with _primes_tree_scan/
-# _constellations_tree_scan themselves (refactor-phase3, 2026-08-27, see
-# primes_tree_coordinator.py/constellations_tree_coordinator.py's own docstrings).
-# LOW_FLOOR_CUTOFF stays -- _build_settings_tab's wsl_helpers dict below still needs
-# it directly. list_source_files/read_source_file_headers/format_big_int/
-# digit_count_floor/_offset_from_filename/FlowRow are no longer called directly
-# here -- their last remaining call sites moved out with the Generation tab
-# (primeatlas/generation.py/generation_tab.py, Faza 3, 2026-08-23) -- every extracted
-# tab module that needs them imports its own copy directly from primeatlas.storage/
-# primeatlas.widgets now.
-from primeatlas.storage import LOW_FLOOR_CUTOFF  # noqa: E402
-# generation: extracted during the refactor branch's Faza 3 (tab-by-tab backend/UI
-# split, 2026-08-23), alongside the Generation tab's own UI split
-# (primeatlas/generation_tab.py) -- see that module's own docstring. Only the names
-# _offer_generate_missing_prime_window/_offer_generate_missing_constellation/
+# primality_try_import_sympy is the one name from primeatlas.primality.primality still imported
+# directly here -- it's called by _build_settings_tab's wsl_helpers dict (dependency
+# installer), unrelated to the primality-testing sub-tab itself, which imports
+# run_all_tests/factorize on its own inside primeatlas/primality/primality_tab.py.
+# list_constellation_hits is the only name from primeatlas.constellations.constellations still called
+# directly in this file, by _on_const_search_result below; everything else that
+# module's tab UI needs (constellations_hits_tab.py/constellations_calc_tab.py/
+# constellations_records_tab.py) imports on its own.
+from primeatlas.constellations.constellations import list_constellation_hits  # noqa: E402
+# LOW_FLOOR_CUTOFF is the only name from primeatlas.core.storage still imported directly
+# here -- _build_settings_tab's wsl_helpers dict below needs it. Everything else tab
+# modules need from primeatlas.core.storage/primeatlas.core.widgets, they import themselves.
+from primeatlas.core.storage import LOW_FLOOR_CUTOFF  # noqa: E402
+# Only the names _offer_generate_missing_prime_window/_offer_generate_missing_constellation/
 # ConstellationsCalcTab/ConstellationsRecordsTab construction (_eval_quick_number) and
-# _build_settings_tab's wsl_helpers dict still call directly are imported here;
-# everything else the Generation tab itself needs is imported locally inside
-# primeatlas/generation_tab.py.
-from primeatlas.generation import (  # noqa: E402
+# _build_settings_tab's wsl_helpers dict call directly are imported from
+# primeatlas.generation.generation here; everything else the Generation tab itself needs is
+# imported locally inside primeatlas/generation/generation_tab.py.
+from primeatlas.generation.generation import (  # noqa: E402
     QUICK_GEN_MAX_WINDOW_WIDTH, PRIMESIEVE_MAX_STOP, _eval_quick_number,
     build_loop_argv, build_constellation_finder_argv, build_wsl_logged_command,
     build_primesieve_argv, generation_log_paths, WslLoggedRunner, LocalLoggedRunner,
@@ -171,11 +122,6 @@ from primeatlas.generation import (  # noqa: E402
     build_primecount_query_argv, run_primecount_wsl_blocking,
     run_primecount_install_wsl_blocking,
 )
-# PRIMESIEVE_QUERY_SCRIPT/windows_path_to_wsl/build_primesieve_query_argv/
-# run_primesieve_query_wsl used to be imported/defined here for the "primesieve"
-# calculator sub-tab -- moved FULLY into primeatlas/primesieve_calc_tab.py during the
-# refactor branch's Faza 4 (2026-08-24), alongside that sub-tab's own UI split, since
-# nothing else in this file calls any of the four.
 
 # AppSettings persists the chosen storage path OUTSIDE the portal folder itself (see
 # app_settings.py's docstring for the chicken-and-egg reason). Loaded once here, at module
@@ -193,7 +139,7 @@ PORTAL_FOLDER = APP_SETTINGS.storage_path
 _APP_UPDATE_STARTUP_CHECK_DELAY_MS = 5000
 
 # Every user-visible string in the GUI classes below goes through T("some.key", **kwargs)
-# instead of a hardcoded literal -- see primeatlas/i18n.py's docstring for the full
+# instead of a hardcoded literal -- see primeatlas/core/i18n.py's docstring for the full
 # rationale (a language switch requires a RESTART, not a live re-render, since this app's
 # widgets are built once at startup). Built from AppSettings.language the same way
 # PORTAL_FOLDER is built from AppSettings.storage_path -- loaded once here, at module
@@ -209,13 +155,6 @@ FLOOR_PAGE_SIZE = 200  # PRIME_WINDOW_*.bin files shown per page when a floor no
                         # thousands of windows (10p15 alone passed 2,600+ and is still
                         # growing) -- reading every file's header AND inserting every file
                         # as a tree row on a single expand is what used to freeze the GUI.
-
-# GOLDBACH_VIZ_ROWS_PER_COL/GOLDBACH_VIZ_MAX_COLS/GOLDBACH_CASCADE_ROW_CAP/
-# GOLDBACH_VIZ_CHIP_ROWS_PER_PAGE/GOLDBACH_DECOMPOSE_ROW_CAP/GOLDBACH_LEAN_REPO_URL moved
-# to primeatlas/research_goldbach_tab.py during the refactor branch's Faza 3 (tab-by-tab
-# backend/UI split, 2026-08-23), alongside the rest of the Goldbach sub-tab's own UI
-# split -- see that module's own docstring.
-
 
 
 # ------------------------------------------------------------------------------------------
@@ -247,20 +186,6 @@ def _update_nav_controls(page_label_var, page, total_pages, prev_btn, next_btn):
     next_btn.configure(state="normal" if page < total_pages - 1 else "disabled")
 
 
-# _FlowRow moved to primeatlas/widgets.py (renamed FlowRow) during the refactor branch's
-# Faza 3 (2026-08-23), alongside the "Prime numbers" tab's own UI split -- see that
-# module's own docstring. Imported back at this file's top as `FlowRow as _FlowRow`, so
-# every existing call site below (still used directly by the Constellations tab's own
-# preview panes) is unchanged.
-
-
-# _draw_growth_chart moved to primeatlas/benchmark_tab.py during the refactor branch's
-# Faza 3 (2026-08-23), alongside the rest of the Benchmark tab's widgets -- see that
-# module's own docstring. Adapted there to accept an explicit translator= parameter
-# instead of reading this file's module-level T() global (unavailable from primeatlas/,
-# see that module's own comment on why).
-
-
 def _build_gui():
     import tkinter as tk
     from tkinter import ttk
@@ -271,12 +196,12 @@ def _build_gui():
     # same reason tkinter itself is: it keeps this module's top-level prefix (everything
     # above _build_gui) importable/testable without tkinter installed. GenerationConsole
     # is no longer imported here -- its only user (the Generation tab) now imports it
-    # directly inside primeatlas/generation_tab.py.
-    from primeatlas.settings_tab import SettingsTab
-    from primeatlas.totals_search_coordinator import TotalsSearchCoordinator
-    from primeatlas.primes_tree_coordinator import PrimesTreeCoordinator
-    from primeatlas.constellations_tree_coordinator import ConstellationsTreeCoordinator
-    from primeatlas.generation_offer_coordinator import GenerationOfferCoordinator
+    # directly inside primeatlas/generation/generation_tab.py.
+    from primeatlas.settings.settings_tab import SettingsTab
+    from primeatlas.core.totals_search_coordinator import TotalsSearchCoordinator
+    from primeatlas.primes.primes_tree_coordinator import PrimesTreeCoordinator
+    from primeatlas.constellations.constellations_tree_coordinator import ConstellationsTreeCoordinator
+    from primeatlas.generation.generation_offer_coordinator import GenerationOfferCoordinator
 
     class PortalBrowserApp(tk.Tk):
         def __init__(self):
@@ -287,13 +212,13 @@ def _build_gui():
 
             # status_frame/notebook are BUILT here but deliberately left UNPACKED until
             # _finish_loading_screen() reveals them -- see the loading_frame block just
-            # below for why (Faza 2 of the refactor branch, 2026-08-23: previously the
-            # notebook was packed immediately and the six _build_*_section/_build_*_tab
-            # calls plus the three post-build reload_*_tree()/reload_benchmark_log() calls
-            # all ran synchronously against an already-visible (but empty/half-built)
-            # window, which is what made every one of those steps look like a freeze
-            # rather than a load). ttk widgets can be constructed and have children added
-            # while unpacked -- only the geometry manager step (.pack itself) is deferred.
+            # below for why: packing the notebook immediately and running the six
+            # _build_*_section/_build_*_tab calls plus the three post-build
+            # reload_*_tree()/reload_benchmark_log() calls synchronously against an
+            # already-visible (but empty/half-built) window makes every one of those
+            # steps look like a freeze rather than a load. ttk widgets can be
+            # constructed and have children added while unpacked -- only the geometry
+            # manager step (.pack itself) is deferred.
             #
             # status_frame is packed BEFORE the notebook, not after, once both are
             # revealed. tkinter's pack() geometry manager carves up the toplevel's cavity
@@ -320,20 +245,18 @@ def _build_gui():
             # (not just when it finishes), makes the in-progress state visibly obvious.
             # Always packed (not shown/hidden dynamically)
             # so its position never jumps around -- sits at 0/0 (empty) until the first batch
-            # starts, see TotalsSearchCoordinator.compute_all_pietro_totals()/
-            # _on_pietro_total_start() (primeatlas/totals_search_coordinator.py).
+            # starts, see TotalsSearchCoordinator.compute_all_floor_totals()/
+            # _on_floor_total_start() (primeatlas/core/totals_search_coordinator.py).
             self.totals_progress = ttk.Progressbar(status_frame, orient="horizontal",
                                                      mode="determinate", maximum=1, value=0)
             self.totals_progress.pack(fill="x", side="top")
 
             notebook = ttk.Notebook(self)
 
-            # Loading screen (Faza 2, 2026-08-23) -- ported from the cudasieve branch's own
-            # startup loading bar (commit a4df0fd) and extended to also cover the async
-            # tree scans below, not just the six tab-build calls. Packed and painted
-            # (self.update()) BEFORE any tab is built, so the window shows something
-            # immediately instead of sitting blank while ttk.Notebook/Treeview widgets for
-            # six tabs are constructed.
+            # Loading screen -- covers both the six tab-build calls and the async tree
+            # scans below. Packed and painted (self.update()) BEFORE any tab is built,
+            # so the window shows something immediately instead of sitting blank while
+            # ttk.Notebook/Treeview widgets for six tabs are constructed.
             loading_frame = ttk.Frame(self)
             loading_frame.pack(fill="both", expand=True)
             loading_center = ttk.Frame(loading_frame)
@@ -349,10 +272,11 @@ def _build_gui():
             self._loading_frame = loading_frame
             self.update()
 
-            # Saved so other tabs can programmatically switch to "Prime numbers" (see
-            # _on_const_calc_search_selected(), Faza 3's constellation calculator) --
-            # every prior use of this notebook was purely declarative (add tabs, never
-            # navigate between them from code), so nothing kept a reference until now.
+            # Saved so other tabs/sub-tab modules can programmatically switch the main
+            # notebook (e.g. jumping to the Constellations tab, see
+            # _select_constellations_hits_view() below) -- every prior use of this
+            # notebook was purely declarative (add tabs, never navigate between them
+            # from code), so nothing kept a reference until now.
             self.main_notebook = notebook
 
             self.primes_tab = ttk.Frame(notebook)
@@ -384,14 +308,11 @@ def _build_gui():
                 self.update()
                 step_fn()
 
-            # Floor-totals + prime/constellation search: TWO PersistentWorkers that
-            # used to live directly on this class (hand-rolled thread/queue pairs
-            # before Faza 1, then inline PersistentWorker instances) -- moved into
-            # their own primeatlas/totals_search_coordinator.py during the
-            # refactor-phase2 branch's "God object" reduction (2026-08-26, see that
-            # module's own docstring for the full rationale and README.md's "Known
-            # gaps" for why this was the chosen next step). Constructed here, AFTER
-            # every tab widget above already exists, because it reaches directly into
+            # Floor-totals + prime/constellation search: two PersistentWorkers, wrapped
+            # by TotalsSearchCoordinator (primeatlas/core/totals_search_coordinator.py; see
+            # that module's own docstring and README.md's "Known gaps" for the design
+            # rationale). Constructed here, AFTER every tab widget above already exists,
+            # because it reaches directly into
             # primes_tab_widget/constellations_hits_tab_widget (same construction-
             # order requirement the original inline code already had). on_const_
             # search_result stays a method on THIS class (self._on_const_search_result
@@ -405,14 +326,10 @@ def _build_gui():
                 constellations_hits_tab_widget=self.constellations_hits_tab_widget,
                 on_const_search_result=self._on_const_search_result)
 
-            # Primes-tree/Constellations-tree background scan+reload: two more
-            # methods that used to live directly on this class (_primes_tree_scan/
-            # reload_primes_tree/_on_primes_tree_scan_done and their constellations
-            # counterparts) -- moved into their own primeatlas/primes_tree_coordinator.py
-            # and primeatlas/constellations_tree_coordinator.py during the
-            # refactor-phase3 branch's continuation of the same "God object" reduction
-            # TotalsSearchCoordinator started above (see either module's own docstring).
-            # Constructed here for the same construction-order reason as
+            # Primes-tree/Constellations-tree background scan+reload live in their own
+            # primeatlas/primes/primes_tree_coordinator.py and
+            # primeatlas/constellations/constellations_tree_coordinator.py (see either module's own
+            # docstring). Constructed here for the same construction-order reason as
             # TotalsSearchCoordinator: _on_scan_done reaches directly into
             # primes_tab_widget/constellations_hits_tab_widget, both of which already
             # exist by this point. reload_primes_tree()/reload_constellations_tree()
@@ -426,20 +343,19 @@ def _build_gui():
                 self, get_portal_folder=lambda: PORTAL_FOLDER, status_var=self.status,
                 translator=TRANSLATOR, primes_tab_widget=self.primes_tab_widget,
                 totals_search=self._totals_search,
-                prune_empty_pietro_dirs=prune_empty_pietro_dirs,
+                prune_empty_floor_dirs=prune_empty_floor_dirs,
                 on_startup_scan_done=self._on_tree_startup_scan_done)
             self._constellations_tree_coord = ConstellationsTreeCoordinator(
                 self, get_portal_folder=lambda: PORTAL_FOLDER, status_var=self.status,
                 translator=TRANSLATOR,
                 constellations_hits_tab_widget=self.constellations_hits_tab_widget,
-                prune_empty_pietro_dirs=prune_empty_pietro_dirs,
+                prune_empty_floor_dirs=prune_empty_floor_dirs,
                 on_startup_scan_done=self._on_tree_startup_scan_done)
 
             # The three "offer to generate this missing fragment" bridge methods
             # (_offer_generate_missing_prime_window/_offer_generate_missing_constellation/
-            # _goldbach_offer_generate_missing_range) used to live directly on this class
-            # -- moved into their own primeatlas/generation_offer_coordinator.py during
-            # this same refactor-phase3 branch (2026-08-27, see that module's own
+            # _goldbach_offer_generate_missing_range) live in
+            # primeatlas/generation/generation_offer_coordinator.py (see that module's own
             # docstring). Uses a LAZY get_generation_tab_widget callable (unlike the two
             # tree coordinators' direct tab-widget references above) since
             # generation_tab_widget doesn't exist yet at this point in __init__ (the
@@ -452,38 +368,32 @@ def _build_gui():
                 quick_gen_max_window_width=QUICK_GEN_MAX_WINDOW_WIDTH,
                 primesieve_max_stop=PRIMESIEVE_MAX_STOP)
 
-            # primesieve calculator worker (Liczby pierwsze -> primesieve sub-tab) and
-            # primality-testing worker (Liczby pierwsze -> Testy pierwszosci sub-tab)
-            # used to live here as two more hand-attached PersistentWorker instances --
-            # moved FULLY into their own PrimesieveCalcTab/PrimalityTab classes during
-            # the refactor branch's Faza 4 (2026-08-24, the phase that shrinks the app
-            # shell further after every tab was already split out during Faza 3), since
-            # each worker is confirmed exclusive to its own one sub-tab (unlike the
-            # shared search/totals workers above, which stay here) -- see
-            # primeatlas/primesieve_calc_tab.py and primeatlas/primality_tab.py's own
+            # The primesieve calculator worker (Liczby pierwsze -> primesieve sub-tab)
+            # and primality-testing worker (Liczby pierwsze -> Testy pierwszosci
+            # sub-tab) live entirely inside their own PrimesieveCalcTab/PrimalityTab
+            # classes -- each is confirmed exclusive to its own one sub-tab, unlike the
+            # shared search/totals workers above, which stay here -- see
+            # primeatlas/primality/primesieve_calc_tab.py and primeatlas/primality/primality_tab.py's own
             # docstrings.
 
-            # Goldbach structural-window worker (Badania -> Goldbach sub-tab), its
-            # Wizualizacja/decompose Toplevel state, and all their pagination fields used
-            # to live here -- moved FULLY into ResearchGoldbachTab during the refactor
-            # branch's Faza 3 (2026-08-23), since it's confirmed exclusive to that one
-            # sub-tab (unlike the shared search/totals workers below, which stay here) --
-            # see primeatlas/research_goldbach_tab.py's own docstring.
+            # The Goldbach structural-window worker (Badania -> Goldbach sub-tab), its
+            # Wizualizacja/decompose Toplevel state, and all their pagination fields
+            # live entirely inside ResearchGoldbachTab -- it's confirmed exclusive to
+            # that one sub-tab, unlike the shared search/totals workers below, which
+            # stay here -- see primeatlas/research/research_goldbach_tab.py's own docstring.
 
-            # Constellation-records-table scan worker (Constellations -> Tabela rekordow
-            # sub-tab) used to live here as its own PersistentWorker -- moved FULLY into
-            # ConstellationsRecordsTab itself during the refactor branch's Faza 3
-            # (2026-08-23), since it's confirmed exclusive to that one sub-tab (unlike the
-            # shared search/totals workers below, which stay here) -- see
-            # primeatlas/constellations_records_tab.py's own docstring.
+            # The constellation-records-table scan worker (Constellations -> Tabela
+            # rekordow sub-tab) lives entirely inside ConstellationsRecordsTab -- it's
+            # confirmed exclusive to that one sub-tab, unlike the shared search/totals
+            # workers below, which stay here -- see
+            # primeatlas/constellations/constellations_records_tab.py's own docstring.
 
             # "Generate missing fragment, then re-search" state (_pending_search_after_
             # prime_gen/_pending_search_after_const_gen/_pending_goldbach_retry_op) and
             # the shared-progress-bar step counters (_gen_step_total/_gen_loop_run_count/
-            # _gen_loop_iteration) used to live here -- moved into GenerationTab's own
-            # __init__ during the refactor branch's Faza 3 (2026-08-23), since they're
-            # exclusively read/written by Generation-tab methods now (see
-            # primeatlas/generation_tab.py's own docstring). App-level code that sets the
+            # _gen_loop_iteration) live in GenerationTab's own __init__ -- they're
+            # exclusively read/written by Generation-tab methods (see
+            # primeatlas/generation/generation_tab.py's own docstring). App-level code that sets the
             # first three from OUTSIDE the tab (_offer_generate_missing_prime_window/
             # _offer_generate_missing_constellation/_goldbach_offer_generate_missing_range,
             # all below) reaches in via self.generation_tab_widget.X instead.
@@ -493,8 +403,8 @@ def _build_gui():
             # cost distinction) -- so it's cheap enough to keep on the GUI thread even
             # during the loading screen.
             self.benchmark_tab_widget.reload_benchmark_log()
-            # reload_primes_tree()/reload_constellations_tree() are BOTH asynchronous as
-            # of Faza 2 (see their own docstrings) -- each dispatches its disk scan onto
+            # reload_primes_tree()/reload_constellations_tree() are BOTH asynchronous
+            # (see their own docstrings) -- each dispatches its disk scan onto
             # background.run_in_background() and returns immediately. _loading_startup_
             # pending tracks which of the two startup scans are still outstanding;
             # _on_primes_tree_scan_done/_on_hits_tree_scan_done each discard their own
@@ -550,14 +460,12 @@ def _build_gui():
                 if not pending:
                     self._finish_loading_screen()
 
-        # Floor-total background worker, prime/constellation search worker: moved to
-        # primeatlas/totals_search_coordinator.py's TotalsSearchCoordinator during the
-        # refactor-phase2 branch's "God object" reduction (2026-08-26) -- see that
-        # module's own docstring and this file's __init__ (self._totals_search) for
-        # where the two PersistentWorkers this used to own directly now live.
+        # Floor-total background worker, prime/constellation search worker: live in
+        # primeatlas/core/totals_search_coordinator.py's TotalsSearchCoordinator -- see that
+        # module's own docstring and this file's __init__ (self._totals_search).
 
         def _apply_theme(self, theme_name):
-            """Applies primeatlas.theme's color palette to every widget class this app
+            """Applies primeatlas.core.theme's color palette to every widget class this app
             actually uses -- called once, in __init__, BEFORE any child widget is
             created, so everything built afterward picks up the new colors through
             normal ttk style inheritance / Tk option-database lookup instead of
@@ -593,7 +501,7 @@ def _build_gui():
             common widgets -- a well-known tkinter limitation) -- without this, a
             dark palette would visually do nothing on Windows, which is where this
             app actually runs."""
-            from primeatlas.theme import palette_for
+            from primeatlas.core.theme import palette_for
             p = palette_for(theme_name)
 
             style = ttk.Style(self)
@@ -679,17 +587,15 @@ def _build_gui():
             identical structure between the two so the app has one consistent way of
             giving a top-level section its own sub-tabs, not two diverging ones.
 
-            All three sub-tabs are now thin wrappers around their own primeatlas/*.py
-            classes (PrimesTab / PrimesieveCalcTab / PrimalityTab) -- the last two were
-            extracted during the refactor branch's Faza 4 (2026-08-24), the phase after
-            Faza 3 that shrinks the app shell further; see those two modules' own
-            docstrings for why status_var/translator/totals_progress are the only three
-            things injected into each."""
+            All three sub-tabs are thin wrappers around their own primeatlas/*.py
+            classes (PrimesTab / PrimesieveCalcTab / PrimalityTab) -- see those two
+            modules' own docstrings for why status_var/translator/totals_progress are
+            the only three things injected into each."""
             sub = ttk.Notebook(self.primes_tab)
             sub.pack(fill="both", expand=True)
             # Saved for the same reason as self.main_notebook above -- the constellation
-            # calculator's Search button (Faza 3) needs to switch to this sub-notebook's
-            # own Magazyn tab, not just the top-level Prime numbers tab.
+            # calculator's Search button needs to switch to this sub-notebook's own
+            # Magazyn tab, not just the top-level Prime numbers tab.
             self.primes_sub_notebook = sub
             self.primes_storage_tab = ttk.Frame(sub)
             self.primes_primesieve_tab = ttk.Frame(sub)
@@ -699,13 +605,13 @@ def _build_gui():
             sub.add(self.primes_primality_tab, text=T("tabs.primes_primality"))
             self._build_primes_tab()
 
-            from primeatlas.primesieve_calc_tab import PrimesieveCalcTab
+            from primeatlas.primality.primesieve_calc_tab import PrimesieveCalcTab
             self.primesieve_calc_tab_widget = PrimesieveCalcTab(
                 self.primes_primesieve_tab, status_var=self.status, translator=TRANSLATOR,
                 totals_progress=self.totals_progress)
             self.primesieve_calc_tab_widget.pack(fill="both", expand=True)
 
-            from primeatlas.primality_tab import PrimalityTab
+            from primeatlas.primality.primality_tab import PrimalityTab
             self.primality_tab_widget = PrimalityTab(
                 self.primes_primality_tab, status_var=self.status, translator=TRANSLATOR,
                 totals_progress=self.totals_progress)
@@ -713,12 +619,11 @@ def _build_gui():
 
         def _build_primes_tab(self):
             """Thin wrapper -- all of the Primes tab's actual widgets/logic live in
-            primeatlas/primes_tab.py's PrimesTab class (Faza 3 of the refactor branch,
-            tab-by-tab backend/UI split, 2026-08-23; see that module's own docstring).
-            Local import, not module-level, for the same lazy-tkinter-import reason
-            SettingsTab/BenchmarkTab are imported inside _build_gui() rather than at this
-            file's top."""
-            from primeatlas.primes_tab import PrimesTab
+            primeatlas/primes/primes_tab.py's PrimesTab class (see that module's own
+            docstring). Local import, not module-level, for the same lazy-tkinter-import
+            reason SettingsTab/BenchmarkTab are imported inside _build_gui() rather than
+            at this file's top."""
+            from primeatlas.primes.primes_tab import PrimesTab
             self.primes_tab_widget = PrimesTab(
                 self.primes_storage_tab, get_portal_folder=lambda: PORTAL_FOLDER,
                 status_var=self.status, translator=TRANSLATOR,
@@ -730,7 +635,7 @@ def _build_gui():
                 offer_generate_missing_prime_window=lambda be, num:
                     self._offer_generate_missing_prime_window("prime", be, num),
                 submit_totals_job=lambda be: self._totals_search.submit_totals_job(be),
-                verify_all_totals=lambda: self._totals_search.compute_all_pietro_totals())
+                verify_all_totals=lambda: self._totals_search.compute_all_floor_totals())
             self.primes_tab_widget.pack(fill="both", expand=True)
 
         def reload_primes_tree(self):
@@ -739,42 +644,38 @@ def _build_gui():
             after generating new windows is enough to see updated totals, no separate
             button needed.
 
-            One-line delegate to primeatlas/primes_tree_coordinator.py's
-            PrimesTreeCoordinator (moved out during the refactor-phase3 branch's
-            continuation of TotalsSearchCoordinator's own "God object" reduction,
-            2026-08-27 -- see that module's own docstring for the full scan/reload/
-            caching/coalescing/staleness design). Kept as a plain class METHOD (not an
-            instance attribute reassigned in __init__) so every existing caller that
-            already holds a self.reload_primes_tree reference (PrimesTab, GenerationTab,
-            _set_portal_folder, the startup kickoff in __init__) keeps working unchanged,
-            late-bound at call time -- self._primes_tree_coord only needs to exist by the
-            time this is actually CALLED, not by the time some other constructor captures
-            this method as a callable."""
+            One-line delegate to primeatlas/primes/primes_tree_coordinator.py's
+            PrimesTreeCoordinator (see that module's own docstring for the full
+            scan/reload/caching/coalescing/staleness design). Kept as a plain class
+            METHOD (not an instance attribute reassigned in __init__) so every existing
+            caller that already holds a self.reload_primes_tree reference (PrimesTab,
+            GenerationTab, _set_portal_folder, the startup kickoff in __init__) keeps
+            working unchanged, late-bound at call time -- self._primes_tree_coord only
+            needs to exist by the time this is actually CALLED, not by the time some
+            other constructor captures this method as a callable."""
             self._primes_tree_coord.reload()
-        # --- Search worker -- moved to primeatlas/totals_search_coordinator.py's
+        # --- Search worker: lives in primeatlas/core/totals_search_coordinator.py's
         # TotalsSearchCoordinator alongside the totals worker (see this file's own
-        # __init__ / that module's docstring for the refactor-phase2 "God object"
-        # reduction, 2026-08-26). self._on_const_search_result below is the one
-        # deliberate seam left here -- see TotalsSearchCoordinator's own docstring on
+        # __init__ / that module's docstring). self._on_const_search_result below is the
+        # one deliberate seam left here -- see TotalsSearchCoordinator's own docstring on
         # its on_const_search_result constructor parameter for why that specific
         # completion handler stays app-level. ------------------------------------
 
         def _offer_generate_missing_prime_window(self, kind, base_exponent, number):
-            """One-line delegate to primeatlas/generation_offer_coordinator.py's
-            GenerationOfferCoordinator (moved out during the refactor-phase3 branch,
-            2026-08-27 -- see that module's own docstring for the full "offer to
-            generate this missing fragment, then re-check" design and the 3-way
-            "launched"/"composite"/"skipped" return contract). Kept as a plain class
-            METHOD (not an instance attribute) for the same late-binding reason
+            """One-line delegate to primeatlas/generation/generation_offer_coordinator.py's
+            GenerationOfferCoordinator (see that module's own docstring for the full
+            "offer to generate this missing fragment, then re-check" design and the
+            3-way "launched"/"composite"/"skipped" return contract). Kept as a plain
+            class METHOD (not an instance attribute) for the same late-binding reason
             reload_primes_tree()/reload_constellations_tree() are -- see
-            primeatlas/primes_tree_coordinator.py's own docstring."""
+            primeatlas/primes/primes_tree_coordinator.py's own docstring."""
             return self._generation_offer_coord.offer_generate_missing_prime_window(
                 kind, base_exponent, number)
 
         def _offer_generate_missing_constellation(self, base_exponent, number):
             """One-line delegate to GenerationOfferCoordinator -- see
             _offer_generate_missing_prime_window()'s own docstring just above and
-            primeatlas/generation_offer_coordinator.py's module docstring."""
+            primeatlas/generation/generation_offer_coordinator.py's module docstring."""
             return self._generation_offer_coord.offer_generate_missing_constellation(
                 base_exponent, number)
 
@@ -782,26 +683,25 @@ def _build_gui():
 
         def _build_constellations_section(self):
             """Thin wrapper -- all three of the Constellations tab's actual widgets/logic
-            live in primeatlas/constellations_hits_tab.py (ConstellationsHitsTab, the
-            "Magazyn" sub-tab), primeatlas/constellations_calc_tab.py
+            live in primeatlas/constellations/constellations_hits_tab.py (ConstellationsHitsTab, the
+            "Magazyn" sub-tab), primeatlas/constellations/constellations_calc_tab.py
             (ConstellationsCalcTab, "Kalkulator konstelacji"), and
-            primeatlas/constellations_records_tab.py (ConstellationsRecordsTab, "Tabela
-            rekordow") -- Faza 3 of the refactor branch, tab-by-tab backend/UI split,
-            2026-08-23; see each module's own docstring. Local imports, not module-level,
-            for the same lazy-tkinter-import reason SettingsTab/BenchmarkTab/PrimesTab are
-            imported inside their own _build_*_tab() methods rather than at this file's
-            top.
+            primeatlas/constellations/constellations_records_tab.py (ConstellationsRecordsTab, "Tabela
+            rekordow") -- see each module's own docstring. Local imports, not
+            module-level, for the same lazy-tkinter-import reason
+            SettingsTab/BenchmarkTab/PrimesTab are imported inside their own
+            _build_*_tab() methods rather than at this file's top.
 
             Construction order below doesn't matter for any of the deferred-lambda
             callables passed in -- none of them are resolved until actually CALLED, so
             it's safe for the calculator/records tabs to reference
             self.constellations_hits_tab_widget even though it's constructed first, and
             safe for anything to reference either sibling regardless of build order (see
-            primeatlas/primes_tab.py's own docstring for the general construction-order
+            primeatlas/primes/primes_tab.py's own docstring for the general construction-order
             hazard this avoids)."""
-            from primeatlas.constellations_hits_tab import ConstellationsHitsTab
-            from primeatlas.constellations_calc_tab import ConstellationsCalcTab
-            from primeatlas.constellations_records_tab import ConstellationsRecordsTab
+            from primeatlas.constellations.constellations_hits_tab import ConstellationsHitsTab
+            from primeatlas.constellations.constellations_calc_tab import ConstellationsCalcTab
+            from primeatlas.constellations.constellations_records_tab import ConstellationsRecordsTab
 
             sub = ttk.Notebook(self.constellations_tab)
             sub.pack(fill="both", expand=True)
@@ -897,11 +797,9 @@ def _build_gui():
             own prune/scan is dispatched independently rather than relying on the OTHER
             tree's refresh to have already covered it.
 
-            One-line delegate to primeatlas/constellations_tree_coordinator.py's
-            ConstellationsTreeCoordinator (moved out during the refactor-phase3 branch's
-            continuation of TotalsSearchCoordinator's own "God object" reduction,
-            2026-08-27 -- see that module's own docstring, and
-            primeatlas/primes_tree_coordinator.py's own docstring for why this stays a
+            One-line delegate to primeatlas/constellations/constellations_tree_coordinator.py's
+            ConstellationsTreeCoordinator (see that module's own docstring, and
+            primeatlas/primes/primes_tree_coordinator.py's own docstring for why this stays a
             plain class METHOD rather than an instance attribute)."""
             self._constellations_tree_coord.reload()
 
@@ -981,41 +879,39 @@ def _build_gui():
             rationale) -- a new top-level 'Research' tab, positioned between
             Constellations and Generation.
 
-            Sub-tabs are grouped by SHARED QUESTION SHAPE, not by conjecture name (Artur's
-            own restructuring, 2026-08-17), so one engine/analysis serves several classical
-            conjectures via parameter presets instead of duplicating near-identical code:
+            Sub-tabs are grouped by SHARED QUESTION SHAPE, not by conjecture name, so one
+            engine/analysis serves several classical conjectures via parameter presets
+            instead of duplicating near-identical code:
               - Square intervals: 'does [a(n), b(n)] contain enough primes?' -- Legendre
                 ([n^2, (n+1)^2]) and Oppermann ([n^2, n^2+n] and [n^2+n, (n+1)^2]) ask
                 '>=1'; Brocard ([p_n^2, p_(n+1)^2], prime-indexed) asks '>=4', its actual
                 conjectured threshold -- three presets plus a custom formula, ONE tab
-                (primeatlas/research_squares_tab.py's ResearchSquaresTab, Faza 1,
-                2026-09-13: fresh in-process sieve, no on-disk-magazyn bridge yet).
+                (primeatlas/research/research_squares_tab.py's ResearchSquaresTab).
               - Prime-generating polynomials: 'are there infinitely many primes among
                 f(n)'s values?' -- Landau's n^2+1 is one instance of this, alongside Euler's
                 n^2+n+41 and a custom polynomial (Bunyakovsky conjecture in general) --
-                primeatlas/research_polynomials_tab.py's ResearchPolynomialsTab, 2026-09-13,
-                shipped with the same data-source toggle + CSV export as Squares from day one.
+                primeatlas/research/research_polynomials_tab.py's ResearchPolynomialsTab, with the
+                same data-source toggle + CSV export as Squares.
               - Goldbach: additive representation (strong: n=p+q even; weak: n=p+q+r odd,
-                proven) -- genuinely a different question shape, stays its own tab; the ONLY
-                one of the five with real logic behind it so far (ResearchGoldbachTab, see
-                primeatlas/research_goldbach_tab.py).
+                proven) -- genuinely a different question shape, stays its own tab
+                (ResearchGoldbachTab, see primeatlas/research/research_goldbach_tab.py).
               - Gaps: consecutive-prime growth family -- raw gaps PLUS the inequalities that
                 are really just different statistics on the same p_n/p_(n+1) sequence
                 (Andrica: sqrt(p_(n+1))-sqrt(p_n)<1; Firoozbakht: p_(n+1)^(1/(n+1)) <
                 p_n^(1/n); Cramer: gap vs (log p)^2 as a theoretical ceiling) -- selectable
-                overlays on ONE tab, not separate tabs -- primeatlas/research_gaps_tab.py's
-                ResearchGapsTab, 2026-09-13, shipped with the same data-source toggle +
-                CSV export as Squares/Polynomials from day one; Cramer's overlay reports a
-                plain ratio measurement (max seen in range), not a covered/counterexamples
-                verdict, since it's an asymptotic (limsup) statement, not a per-n
-                inequality -- see gaps_window.py's own module docstring.
+                overlays on ONE tab, not separate tabs -- primeatlas/research/research_gaps_tab.py's
+                ResearchGapsTab, with the same data-source toggle + CSV export as
+                Squares/Polynomials; Cramer's overlay reports a plain ratio measurement
+                (max seen in range), not a covered/counterexamples verdict, since it's an
+                asymptotic (limsup) statement, not a per-n inequality -- see
+                gaps_window.py's own module docstring.
               - pi(x) approximations: accuracy of li(x)/R(x) against the real count -- a
                 measurement-quality question, not a yes/no conjecture check, stays its own
-                tab -- primeatlas/research_pi_approx_tab.py's ResearchPiApproxTab,
-                2026-09-13, shipped with the same data-source toggle + CSV export as
-                Squares/Polynomials/Gaps from day one; li(x)/R(x) computed via this
-                project's own pure-Python Ei/Gram-series implementations (no scipy/
-                mpmath dependency) -- see pi_approx_window.py's own module docstring.
+                tab -- primeatlas/research/research_pi_approx_tab.py's ResearchPiApproxTab, with the
+                same data-source toggle + CSV export as Squares/Polynomials/Gaps; li(x)/R(x)
+                computed via this project's own pure-Python Ei/Gram-series implementations
+                (no scipy/mpmath dependency) -- see pi_approx_window.py's own module
+                docstring.
             Hardy-Littlewood / twin-prime / Polignac density questions are NOT a sub-tab
             here -- they're the same computation the EXISTING Constellations tab already
             does (pattern hit-counting), so that family becomes a future density-comparison
@@ -1023,19 +919,14 @@ def _build_gui():
             prediction) instead of a duplicate engine here. See this project's own task
             list for that follow-up.
 
-            All five sub-tabs now have real logic behind them (Goldbach first, then
-            Squares/Polynomials/Gaps/pi(x) approximations added incrementally, one at a
-            time, per Artur's own original instruction from 2026-08-17 to build this out
-            gradually rather than all at once).
-
             ResearchGoldbachTab is constructed via dependency injection (same pattern as
-            every other extracted tab -- see primeatlas/primes_tab.py's own docstring),
+            every other extracted tab -- see primeatlas/primes/primes_tab.py's own docstring),
             local import for the same lazy-tkinter-import reason SettingsTab/BenchmarkTab/
             PrimesTab are imported inside their own _build_*_tab() methods rather than at
             this file's top. offer_generate_missing_range is the ONE callback that stays
             app-level -- see _goldbach_offer_generate_missing_range's own docstring and
-            primeatlas/research_goldbach_tab.py's module docstring for why."""
-            from primeatlas.research_goldbach_tab import ResearchGoldbachTab
+            primeatlas/research/research_goldbach_tab.py's module docstring for why."""
+            from primeatlas.research.research_goldbach_tab import ResearchGoldbachTab
 
             sub = ttk.Notebook(self.research_tab)
             sub.pack(fill="both", expand=True)
@@ -1067,14 +958,12 @@ def _build_gui():
 
         def _build_research_squares_tab(self):
             """Square-interval explorer (Legendre/Oppermann/Brocard presets + custom
-            boundary formula), via primeatlas/research_squares_tab.py's
-            ResearchSquaresTab -- Faza 1 (Artur, 2026-09-13) shipped fresh-sieve-
-            only, no CSV; Faza 2 (same day) added a data-source toggle (on-disk-
-            magazyn bridge, primeatlas/research_squares.py) and CSV export -- see
-            that module's own docstring. Same dependency-injection/local-import
-            convention as
+            boundary formula), via primeatlas/research/research_squares_tab.py's
+            ResearchSquaresTab, with a data-source toggle (on-disk-archive bridge,
+            primeatlas/research/research_squares.py) and CSV export -- see that module's own
+            docstring. Same dependency-injection/local-import convention as
             ResearchGoldbachTab above."""
-            from primeatlas.research_squares_tab import ResearchSquaresTab
+            from primeatlas.research.research_squares_tab import ResearchSquaresTab
 
             self.research_squares_tab_widget = ResearchSquaresTab(
                 self.research_squares_tab, translator=TRANSLATOR,
@@ -1085,12 +974,12 @@ def _build_gui():
 
         def _build_research_polynomials_tab(self):
             """Prime-generating polynomial explorer (Landau n^2+1, Euler n^2+n+41,
-            custom formula), via primeatlas/research_polynomials_tab.py's
+            custom formula), via primeatlas/research/research_polynomials_tab.py's
             ResearchPolynomialsTab -- same shape as _build_research_squares_tab()
             above (data-source toggle + CSV export from day one, see that
             module's own docstring), just with one f(n) formula per row instead
             of an a(n)/b(n) covering interval."""
-            from primeatlas.research_polynomials_tab import ResearchPolynomialsTab
+            from primeatlas.research.research_polynomials_tab import ResearchPolynomialsTab
 
             self.research_polynomials_tab_widget = ResearchPolynomialsTab(
                 self.research_polynomials_tab, translator=TRANSLATOR,
@@ -1102,25 +991,24 @@ def _build_gui():
         def _goldbach_offer_generate_missing_range(self, op, payload):
             """One-line delegate to GenerationOfferCoordinator -- see
             _offer_generate_missing_prime_window()'s own docstring and
-            primeatlas/generation_offer_coordinator.py's module docstring. Still the
+            primeatlas/generation/generation_offer_coordinator.py's module docstring. Still the
             ONE piece of the Goldbach sub-tab's own logic injected from outside
-            primeatlas/research_goldbach_tab.py's ResearchGoldbachTab (extracted during
-            the refactor branch's Faza 3, 2026-08-23) -- ResearchGoldbachTab receives
-            this exact bound method as its own `offer_generate_missing_range(op,
-            payload)` callable (see that class's own docstring) and has no idea (nor
-            needs to) that the actual logic now lives in a coordinator class rather
-            than directly on PortalBrowserApp."""
+            primeatlas/research/research_goldbach_tab.py's ResearchGoldbachTab --
+            ResearchGoldbachTab receives this exact bound method as its own
+            `offer_generate_missing_range(op, payload)` callable (see that class's own
+            docstring) and has no idea (nor needs to) that the actual logic lives in a
+            coordinator class rather than directly on PortalBrowserApp."""
             return self._generation_offer_coord.offer_generate_missing_range(op, payload)
 
         def _build_research_gaps_tab(self):
             """Prime gap explorer (raw gaps + a selectable Andrica/Firoozbakht/Cramer
-            overlay), via primeatlas/research_gaps_tab.py's ResearchGapsTab -- same
+            overlay), via primeatlas/research/research_gaps_tab.py's ResearchGapsTab -- same
             shape as _build_research_squares_tab()/_build_research_polynomials_tab()
             above (data-source toggle + CSV export from day one), just with n
             indexing prime POSITION (p_n, p_(n+1) pairs) instead of a plain integer
             range, and no user-typed formula (the overlay is one of a fixed set, see
             gaps_window.py's own module docstring)."""
-            from primeatlas.research_gaps_tab import ResearchGapsTab
+            from primeatlas.research.research_gaps_tab import ResearchGapsTab
 
             self.research_gaps_tab_widget = ResearchGapsTab(
                 self.research_gaps_tab, translator=TRANSLATOR,
@@ -1131,14 +1019,14 @@ def _build_gui():
 
         def _build_research_pi_approx_tab(self):
             """pi(x) approximation accuracy explorer (li(x), R(x) against the real
-            count), via primeatlas/research_pi_approx_tab.py's ResearchPiApproxTab --
+            count), via primeatlas/research/research_pi_approx_tab.py's ResearchPiApproxTab --
             same shape as _build_research_squares_tab()/_build_research_polynomials_
             tab()/_build_research_gaps_tab() above (data-source toggle + CSV export
             from day one), just checkpointed over [x_from, x_to] by `step` instead of
             a plain n_from/n_to loop, and with no conjecture verdict at all -- this is
             a pure measurement/accuracy comparison, see pi_approx_window.py's own
             module docstring."""
-            from primeatlas.research_pi_approx_tab import ResearchPiApproxTab
+            from primeatlas.research.research_pi_approx_tab import ResearchPiApproxTab
 
             self.research_pi_approx_tab_widget = ResearchPiApproxTab(
                 self.research_pi_approx_tab, translator=TRANSLATOR,
@@ -1151,16 +1039,15 @@ def _build_gui():
 
         def _build_generation_tab(self):
             """Thin wrapper -- the whole tab (Quick-gen panel, Section A/B/C forms,
-            launch/poll/finish handlers) lives in primeatlas/generation_tab.py's
-            GenerationTab now, extracted during the refactor branch's Faza 3
-            (tab-by-tab backend/UI split, 2026-08-23) -- see that module's own
-            docstring for the full design, including why research_goldbach_tab_widget
+            launch/poll/finish handlers) lives in primeatlas/generation/generation_tab.py's
+            GenerationTab -- see that module's own docstring for the full design,
+            including why research_goldbach_tab_widget
             is injected directly (Research tab is built before this one, see this
             file's own __init__ tab-build order) and which three pieces of cross-tab
             state (_pending_search_after_prime_gen/_pending_search_after_const_gen/
             _pending_goldbach_retry_op, plus the quick-gen launch methods) app-level
             code below reaches into via self.generation_tab_widget.X instead."""
-            from primeatlas.generation_tab import GenerationTab
+            from primeatlas.generation.generation_tab import GenerationTab
 
             self.generation_tab_widget = GenerationTab(
                 self.generation_tab, get_portal_folder=lambda: PORTAL_FOLDER,
@@ -1174,14 +1061,14 @@ def _build_gui():
         # --- Tab 5: Ring visualization ---------------------------------------------
 
         def _build_rings_tab(self):
-            """Thin wrapper -- the whole tab lives in primeatlas/rings_tab.py's
-            RingsTab (Faza 3, see PLAN.md at the repo root for the phased rollout),
-            same construction pattern as _build_generation_tab above. get_portal_folder
+            """Thin wrapper -- the whole tab lives in primeatlas/rings/rings_tab.py's
+            RingsTab (see PLAN.md at the repo root for the rollout plan), same
+            construction pattern as _build_generation_tab above. get_portal_folder
             is a deferred lambda (not the resolved PORTAL_FOLDER value) so a later
             Settings-tab storage-path change is picked up on the NEXT launch without
             this tab needing its own change-notification wiring, same reasoning as
             every other tab's own get_portal_folder injection."""
-            from primeatlas.rings_tab import RingsTab
+            from primeatlas.rings.rings_tab import RingsTab
 
             self.rings_tab_widget = RingsTab(
                 self.rings_tab, get_portal_folder=lambda: PORTAL_FOLDER,
@@ -1218,7 +1105,7 @@ def _build_gui():
                 self.reload_constellations_tree()
 
         def _build_settings_tab(self, settings_tab_cls):
-            """Wires SettingsTab (primeatlas/settings_tab.py) into the 5th notebook tab.
+            """Wires SettingsTab (primeatlas/settings/settings_tab.py) into the 5th notebook tab.
             SettingsTab doesn't know how to launch WSL subprocesses itself -- it reuses
             THIS file's existing Generation-tab machinery (build_loop_argv,
             build_constellation_finder_argv, build_wsl_logged_command, WslLoggedRunner,
@@ -1226,11 +1113,11 @@ def _build_gui():
             reimplementing a second copy inside primeatlas/ or creating a circular import
             back into this module. get_loop_defaults() reads
             self.generation_tab_widget._generation_settings, populated by GenerationTab's
-            own construction (primeatlas/generation_tab.py, called just before this
+            own construction (primeatlas/generation/generation_tab.py, called just before this
             method) from .portal_generation_settings.json.
 
             build_wsl_logged_command here is wrapped in a lambda supplying the current
-            PORTAL_FOLDER explicitly -- primeatlas/generation.py's own copy of this
+            PORTAL_FOLDER explicitly -- primeatlas/generation/generation.py's own copy of this
             function takes portal_folder as an explicit argument instead of reading a
             bare module global (see that module's own docstring for why), but
             settings_tab.py still calls this entry with the original 3-arg shape
@@ -1272,21 +1159,20 @@ def _build_gui():
                 # emptied/regenerated floors stayed invisible until a manual Refresh click.
                 "reload_primes_tree": self.reload_primes_tree,
                 "reload_constellations_tree": self.reload_constellations_tree,
-                # Faza 2b -- optional-library installer (currently just sympy, see
-                # primeatlas/primality.py). LocalLoggedRunner/build_pip_install_argv are
+                # Optional-library installer (currently just sympy, see
+                # primeatlas/primality/primality.py). LocalLoggedRunner/build_pip_install_argv are
                 # plain local (non-WSL) subprocess helpers -- see their own docstrings
                 # for why they don't need WslLoggedRunner's file-tailing machinery.
                 "try_import_sympy": primality_try_import_sympy,
                 "build_pip_install_argv": build_pip_install_argv,
                 "LocalLoggedRunner": LocalLoggedRunner,
-                # CUDASieve (optional GPU engine) installer, ported from the `cudasieve`
-                # branch onto cudasieve-v2 -- see primeatlas/generation.py's own
-                # run_cudasieve_wsl_blocking() docstring for why it's NOT the plain
-                # subprocess.run(timeout=...) shape run_primesieve_query_wsl() uses.
-                # Wrapped in a lambda supplying the current PORTAL_FOLDER, same as
-                # build_wsl_logged_command above, since generation.py's own copy takes
-                # portal_folder as an explicit argument rather than reading a bare
-                # module global.
+                # CUDASieve (optional GPU engine) installer -- see
+                # primeatlas/generation/generation.py's own run_cudasieve_wsl_blocking() docstring
+                # for why it's NOT the plain subprocess.run(timeout=...) shape
+                # run_primesieve_query_wsl() uses. Wrapped in a lambda supplying the
+                # current PORTAL_FOLDER, same as build_wsl_logged_command above, since
+                # generation.py's own copy takes portal_folder as an explicit argument
+                # rather than reading a bare module global.
                 "build_cudasieve_status_argv": build_cudasieve_status_argv,
                 "build_cudasieve_fetch_license_argv": build_cudasieve_fetch_license_argv,
                 "build_cudasieve_build_argv": build_cudasieve_build_argv,
@@ -1295,12 +1181,12 @@ def _build_gui():
                         run_cudasieve_wsl_blocking(argv, PORTAL_FOLDER, timeout),
                 # primecount (Kim Walisch's exact combinatorial prime-counting library,
                 # companion to primesieve above) -- on-demand installer for Settings ->
-                # Aktualizacje's own primecount row, per Artur's own already-recorded
-                # design decision (2026-09-02, see env_setup.py's REQUIRED_APT_PACKAGES
-                # comment) that research-module-specific optional C libraries get an
-                # on-demand button there rather than a blanket first-run install. Also
+                # Aktualizacje's own primecount row (see env_setup.py's
+                # REQUIRED_APT_PACKAGES comment): research-module-specific optional C
+                # libraries get an on-demand button there rather than a blanket
+                # first-run install. Also
                 # used by research_pi_approx_tab.py's own "primecount" data-source mode
-                # (imported there directly from primeatlas.generation, not through this
+                # (imported there directly from primeatlas.generation.generation, not through this
                 # dict -- that tab has no wsl_helpers-style injection of its own, see
                 # that module's own docstring) for the actual pi(x) queries; only the
                 # INSTALL button itself lives in Settings.
@@ -1323,7 +1209,7 @@ def _build_gui():
                         self.generation_tab_widget._loop_runner,
                         self.generation_tab_widget._const_runner,
                         self.generation_tab_widget._ktuple_runner)),
-                # repo_dir for the app-update checker (primeatlas/app_update.py) -- the
+                # repo_dir for the app-update checker (primeatlas/settings/app_update.py) -- the
                 # git checkout root this running process is executing out of, same value
                 # AppSettings(_SCRIPT_DIR) above was constructed with.
                 "repo_dir": _SCRIPT_DIR,
@@ -1336,19 +1222,18 @@ def _build_gui():
 
         def _build_benchmark_tab(self):
             """Thin wrapper -- all of the Benchmark tab's actual widgets/logic live in
-            primeatlas/benchmark_tab.py's BenchmarkTab class (Faza 3 of the refactor
-            branch, tab-by-tab backend/UI split, 2026-08-23; see that module's own
+            primeatlas/benchmark/benchmark_tab.py's BenchmarkTab class (see that module's own
             docstring). Local import, not module-level, for the same lazy-tkinter-import
             reason SettingsTab/GenerationConsole are imported inside _build_gui() rather
             than at this file's top.
 
             update_nav_controls is passed in explicitly rather than BenchmarkTab
             importing it back from this file -- that would be circular (this file
-            imports BenchmarkTab from primeatlas.benchmark_tab) -- see BenchmarkTab's
+            imports BenchmarkTab from primeatlas.benchmark.benchmark_tab) -- see BenchmarkTab's
             own docstring for why this ONE shared helper stays here instead of moving
             into primeatlas/ alongside everything else this tab needed."""
-            from primeatlas.benchmark_tab import BenchmarkTab
-            from primeatlas.theme import palette_for
+            from primeatlas.benchmark.benchmark_tab import BenchmarkTab
+            from primeatlas.core.theme import palette_for
             self.benchmark_tab_widget = BenchmarkTab(
                 self.benchmark_tab, get_portal_folder=lambda: PORTAL_FOLDER,
                 status_var=self.status, translator=TRANSLATOR,
@@ -1365,11 +1250,11 @@ def main():
     # the loading_frame steps below: enabling the WSL Windows features can require a full
     # REBOOT before anything else in this app can usefully run (WSL itself, hence every
     # generation/constellation script this app launches, would not work yet) -- see
-    # primeatlas/env_setup.py's own module docstring for the full reasoning. Gated on
-    # AppSettings.setup_completed (primeatlas/app_settings.py), so an already-set-up
+    # primeatlas/settings/env_setup.py's own module docstring for the full reasoning. Gated on
+    # AppSettings.setup_completed (primeatlas/core/app_settings.py), so an already-set-up
     # install skips straight past this with only a near-instant background check, not a
     # visible dialog.
-    from primeatlas.env_setup_wizard import maybe_run_first_run_wizard
+    from primeatlas.settings.env_setup_wizard import maybe_run_first_run_wizard
     if not maybe_run_first_run_wizard(APP_SETTINGS, TRANSLATOR):
         return
 

@@ -1,7 +1,7 @@
 """
-test_research_squares_tab.py -- tests for primeatlas/research_squares_tab.py's
+test_research_squares_tab.py -- tests for primeatlas/research/research_squares_tab.py's
 ResearchSquaresTab (Badania -> Przedzialy kwadratowe), the UI wired around
-primeatlas/squares_window.py's pure check_interval_range()/check_interval_
+primeatlas/research/squares_window.py's pure check_interval_range()/check_interval_
 range_from_source() (see that module's own test file, test_squares_window.py,
 for the pure-logic checks -- this file only exercises the tkinter wiring:
 preset switching, the required_count auto-fill, the custom a(n)/b(n) fields,

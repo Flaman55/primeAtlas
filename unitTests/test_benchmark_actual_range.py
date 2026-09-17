@@ -8,7 +8,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / "prime_sieve")]
 
-from primeatlas.benchmark import aggregate_benchmark_sieve_nps
+from primeatlas.benchmark.benchmark import aggregate_benchmark_sieve_nps
 from hybrid_sieve import write_hybrid_benchmark_row
 
 

@@ -1,7 +1,7 @@
 """
 test_research_pi_approx_tab.py -- tests for
-primeatlas/research_pi_approx_tab.py's ResearchPiApproxTab (Badania ->
-Przyblizenia pi(x)), the UI wired around primeatlas/pi_approx_window.py's
+primeatlas/research/research_pi_approx_tab.py's ResearchPiApproxTab (Badania ->
+Przyblizenia pi(x)), the UI wired around primeatlas/research/pi_approx_window.py's
 pure check_pi_approx_range()/check_pi_approx_range_from_source() (see that
 module's own test file, test_pi_approx_window.py, for the pure-logic
 checks -- this file only exercises the tkinter wiring: running a range,
@@ -236,7 +236,7 @@ def _run(tmp_portal, prime_sieve_v1, window_sharding):
     # --- primecount mode: monkeypatched WSL round trip (no real wsl.exe/libprimecount --
     # same "fake the module-level WSL call, exercise the worker plumbing" approach as
     # test_primesieve_calc_worker.py's own docstring explains) --------------------------
-    import primeatlas.research_pi_approx_tab as rpat
+    import primeatlas.research.research_pi_approx_tab as rpat
 
     captured_argv = []
 

@@ -1,5 +1,5 @@
 """
-test_gaps_window.py -- tests for primeatlas/gaps_window.py, the pure-Python
+test_gaps_window.py -- tests for primeatlas/research/gaps_window.py, the pure-Python
 consecutive-prime-gap engine for the Badania -> Luki sub-tab (raw gaps +
 Andrica/Firoozbakht/Cramer overlays). No tkinter, no display needed -- run
 directly:
@@ -14,7 +14,7 @@ _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(_SCRIPT_DIR)
 sys.path.insert(0, _REPO_ROOT)
 # primeatlas/__init__.py imports manifest.py, which imports window_sharding --
-# needed even just to import primeatlas.gaps_window (same fix as every other
+# needed even just to import primeatlas.research.gaps_window (same fix as every other
 # test file in this folder, see e.g. test_squares_window.py's own copy).
 sys.path.insert(0, os.path.join(_REPO_ROOT, "prime_sieve"))
 
@@ -30,7 +30,7 @@ def check(condition, message):
 
 
 def _test_sieve_is_prime():
-    from primeatlas.gaps_window import sieve_is_prime
+    from primeatlas.research.gaps_window import sieve_is_prime
 
     is_prime = sieve_is_prime(20)
     primes = [i for i in range(21) if is_prime[i]]
@@ -39,7 +39,7 @@ def _test_sieve_is_prime():
 
 
 def _test_check_gap_range_none_overlay():
-    from primeatlas.gaps_window import check_gap_range
+    from primeatlas.research.gaps_window import check_gap_range
 
     # p_1..p_6 = 2,3,5,7,11,13 -> gaps: 1,2,2,4,2
     result = check_gap_range(1, 5, overlay="none")
@@ -52,7 +52,7 @@ def _test_check_gap_range_none_overlay():
 
 
 def _test_check_gap_range_andrica():
-    from primeatlas.gaps_window import check_gap_range
+    from primeatlas.research.gaps_window import check_gap_range
 
     result = check_gap_range(1, 10, overlay="andrica")
     row1 = result["rows"][0]
@@ -66,7 +66,7 @@ def _test_check_gap_range_andrica():
 
 
 def _test_check_gap_range_firoozbakht():
-    from primeatlas.gaps_window import check_gap_range
+    from primeatlas.research.gaps_window import check_gap_range
 
     result = check_gap_range(1, 10, overlay="firoozbakht")
     row1 = result["rows"][0]
@@ -79,7 +79,7 @@ def _test_check_gap_range_firoozbakht():
 
 
 def _test_check_gap_range_cramer():
-    from primeatlas.gaps_window import check_gap_range
+    from primeatlas.research.gaps_window import check_gap_range
 
     result = check_gap_range(1, 10, overlay="cramer")
     row1 = result["rows"][0]
@@ -95,7 +95,7 @@ def _test_check_gap_range_cramer():
 
 
 def _test_check_gap_range_pagination():
-    from primeatlas.gaps_window import check_gap_range
+    from primeatlas.research.gaps_window import check_gap_range
 
     result = check_gap_range(1, 10, overlay="none", row_cap=3, row_offset=2)
     check(len(result["rows"]) == 3, f"row_cap=3 returns exactly 3 rows (got {len(result['rows'])})")
@@ -119,7 +119,7 @@ def _test_check_gap_range_pagination():
 
 
 def _test_check_gap_range_validation():
-    from primeatlas.gaps_window import check_gap_range
+    from primeatlas.research.gaps_window import check_gap_range
 
     try:
         check_gap_range(5, 1)
@@ -141,7 +141,7 @@ def _test_check_gap_range_validation():
 
 
 def _test_check_gap_range_from_source():
-    from primeatlas.gaps_window import check_gap_range_from_source, sieve_is_prime
+    from primeatlas.research.gaps_window import check_gap_range_from_source, sieve_is_prime
 
     calls = []
 
@@ -180,7 +180,7 @@ def _test_check_gap_range_from_source():
 
 
 def _test_check_gap_range_max_sieve_bound_ceiling():
-    import primeatlas.gaps_window as gaps_window
+    import primeatlas.research.gaps_window as gaps_window
 
     # Rather than actually sieving hundreds of millions of ints just to prove
     # the refusal path, temporarily lower the ceiling to something trivially

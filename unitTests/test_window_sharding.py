@@ -5,7 +5,7 @@ silently mid-scan on floor 25's 542,001-file flat source_primes/ directory).
 
 Pure logic, no tkinter, no real prime data needed -- exercises the module's own functions
 directly against a real (but tiny) temp-directory tree, plus a couple of integration
-checks against prime_sieve_v1.write_prime_window()/primeatlas.storage.list_source_files()
+checks against prime_sieve_v1.write_prime_window()/primeatlas.core.storage.list_source_files()
 to confirm the write-then-read round trip actually works end to end, not just that the
 pure functions individually do the right arithmetic.
 
@@ -119,10 +119,10 @@ def main():
 
         # === Round-trip: storage.list_source_files finds files across BOTH shards =======
         # storage.py lives in the primeatlas/ package (imported elsewhere in this repo as
-        # primeatlas.storage / "from .storage import ..."), not a bare top-level module --
+        # primeatlas.core.storage / "from .storage import ..."), not a bare top-level module --
         # add repo root (already on sys.path above) is enough since it's a real package
         # (primeatlas/__init__.py exists).
-        from primeatlas import storage as storage_module
+        from primeatlas.core import storage as storage_module
 
         # list_source_files/list_source_filenames expect a portal-folder layout
         # ("<portal>/10p{N}/source_primes/..."), not a bare source_primes/ dir -- reuse

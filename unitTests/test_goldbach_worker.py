@@ -1,11 +1,10 @@
 """
 test_goldbach_worker.py -- functional regression test for the Goldbach
-structural-window worker (Badania -> Goldbach sub-tab), migrated onto
-primeatlas/background.py's PersistentWorker during the refactor branch's Faza 1
-(background-job consolidation, 2026-08-23), then extracted wholesale into
-primeatlas/research_goldbach_tab.py's ResearchGoldbachTab during Faza 3 (tab-by-tab
-backend/UI split, 2026-08-23) -- all app.goldbach_*/app._goldbach_* references below
-now go through app.research_goldbach_tab_widget instead (see that module's own
+structural-window worker (Badania -> Goldbach sub-tab), which runs on
+primeatlas/core/background.py's PersistentWorker and lives in
+primeatlas/research/research_goldbach_tab.py's ResearchGoldbachTab -- all
+app.goldbach_*/app._goldbach_* references below go through
+app.research_goldbach_tab_widget instead (see that module's own
 docstring for why the tab is fully self-contained, own worker included).
 
 Drives the REAL UI entrypoints (_on_goldbach_run, _on_goldbach_visualize,
@@ -154,10 +153,9 @@ def main():
         # module-level function so it raises exercises the exact path _goldbach_job's
         # docstring documents (catches its own exception, returns (op, False, str(e))
         # instead of relying on PersistentWorker's last-resort net). Patched on
-        # primeatlas.research_goldbach_tab (where _goldbach_job now lives and imports
-        # goldbach_sieve_is_prime from), not prime_atlas_v1 -- see this file's own
-        # module docstring for the Faza 3 extraction that moved it there.
-        import primeatlas.research_goldbach_tab as research_goldbach_tab_module
+        # primeatlas.research.research_goldbach_tab, where _goldbach_job lives and imports
+        # goldbach_sieve_is_prime from.
+        import primeatlas.research.research_goldbach_tab as research_goldbach_tab_module
         original_sieve_is_prime = research_goldbach_tab_module.goldbach_sieve_is_prime
 
         def fake_raise(n):

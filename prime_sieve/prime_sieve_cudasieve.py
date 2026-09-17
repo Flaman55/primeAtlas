@@ -60,14 +60,11 @@ VERSION = "v0.1"
 # individual primes, not just a count -- so MIN_PRINTABLE_TOP below refuses anything
 # under that documented ceiling with a clear error pointing at primesieve/CPU mode
 # instead, rather than silently returning an empty or wrong result.
-#   VERIFIED on real hardware (RTX 5070 + WSL2, 2026-08-27, see
-#   verify_cudasieve_hardware.py in this same folder): the exact boundary behavior AT
-#   2**40, the stdout line format `-p -s` produces, and the documented ~1-in-20000
-#   count-off-by-one risk under concurrent GPU load (CUDASieve's own README,
-#   "Correctness" section) were all checked against primesieve's own output for
-#   [2**40, 2**40+10**6) and a second, unrelated sample at 10**13+10**6 -- exact set
-#   match (not just count) on both ranges, zero dropped stdout lines. Re-run
-#   verify_cudasieve_hardware.py after any future change to this file's stdout parsing.
+#   CUDASieve's README documents a ~1-in-20000 chance of an off-by-one prime count under
+#   concurrent GPU load (its "Correctness" section) -- see generate_primes_in_range()'s own
+#   strictly-increasing sanity check below, which can't detect that specific failure mode
+#   but does catch a truncated/misparsed stdout stream. Re-run verify_cudasieve_hardware.py
+#   in this folder after any change to this file's stdout parsing.
 # ==========================================================================================
 
 
@@ -382,9 +379,7 @@ def generate_primes_in_range(lo, hi, gpu_index=None):
     close as its CLI allows to) prime-list-only; -p asks it to print each prime it finds.
     Every non-blank stdout line that is NOT a bare run of digits is treated as diagnostic
     noise that slipped through -s rather than a parse error, and is dropped with a
-    printed warning -- VERIFIED on real hardware (RTX 5070 + WSL2, 2026-08-27,
-    verify_cudasieve_hardware.py): -s does suppress everything else CUDASieve prints in
-    -p mode -- zero dropped-line warnings across both real-hardware test ranges."""
+    printed warning."""
     if hi <= lo:
         return []
     if hi - 1 < MIN_PRINTABLE_TOP:
@@ -539,17 +534,6 @@ def generate_floor_windows(base_power, target_idx_start, target_idx_count, windo
 # from the just-cloned repo, not a copy embedded in this project) and get the user's
 # explicit consent BEFORE the longer `make` build step ever runs -- see settings_tab_v2.py's
 # own installer section for that consent-gate flow.
-#
-# PARTIALLY VERIFIED on real hardware (RTX 5070 + WSL2): _detect_cuda_dir()/
-# _detect_gpu_arch()/_ensure_rdc_flag() each encode a specific failure fixed by hand on
-# that machine on 2026-08-23 (see each function's own docstring for the exact error each
-# one addresses) -- that manual run is what this automated cmd_build() reproduces. What
-# has NOT yet been exercised is cmd_build() itself, as automated code, against a
-# completely fresh clone (run_cudasieve_hardware_check.sh, 2026-08-27, found a binary
-# already built from that manual run and skipped straight to verification -- see that
-# script's own step [1/5]/[2/5]). To close this out for real: `rm -rf
-# ~/.primeatlas/cudasieve` then re-run run_cudasieve_hardware_check.sh so steps 2-3
-# (clone + build) actually execute.
 # ------------------------------------------------------------------------------------------
 
 def cmd_status(install_dir):
@@ -616,12 +600,12 @@ def _detect_cuda_dir():
     """Locates the CUDA Toolkit's install root. CUDA_DIR env var wins if set (same override
     convention as every other path-guessing in this project). Otherwise asks `nvcc` itself
     where it lives (nvcc is at <CUDA_DIR>/bin/nvcc) rather than guessing blind, then falls
-    back to the handful of locations NVIDIA's own installers actually use. Confirmed on real
-    hardware (2026-08-23) that CUDA_DIR must be passed on the `make` command line, NOT as an
-    environment variable -- CUDASieve's own makefile has a plain `CUDA_DIR = /opt/cuda`
-    assignment, which (per GNU Make's variable-precedence rules) overrides any exported
-    environment variable of the same name but is itself overridden by a command-line
-    `make CUDA_DIR=...` argument. See cmd_build() below for where this return value is used."""
+    back to the handful of locations NVIDIA's own installers actually use. CUDA_DIR must be
+    passed on the `make` command line, NOT as an environment variable -- CUDASieve's own
+    makefile has a plain `CUDA_DIR = /opt/cuda` assignment, which (per GNU Make's
+    variable-precedence rules) overrides any exported environment variable of the same name
+    but is itself overridden by a command-line `make CUDA_DIR=...` argument. See cmd_build()
+    below for where this return value is used."""
     override = os.environ.get("CUDA_DIR")
     if override and os.path.isdir(override):
         return override
@@ -642,10 +626,10 @@ def _detect_gpu_arch():
     """Asks nvidia-smi for THIS machine's own GPU compute capability (e.g. "12.0" for
     Blackwell/RTX 50-series) instead of trusting CUDASieve's own makefile default
     (GPU_ARCH=compute_52/GPU_CODE=sm_52,..., hardcoded for Maxwell-era cards circa 2014).
-    Confirmed on real hardware (RTX 5070, 2026-08-23) that the hardcoded default fails
-    outright on a modern GPU + modern nvcc: "nvcc fatal : Value 'sm_52' is not defined for
-    option 'gpu-code'". Returns (gpu_arch, gpu_code) as the two `make`-command-line values
-    CUDASieve's makefile expects, or (None, None) if detection isn't possible (caller then
+    The hardcoded default fails outright on a modern GPU + modern nvcc: "nvcc fatal :
+    Value 'sm_52' is not defined for option 'gpu-code'". Returns (gpu_arch, gpu_code) as
+    the two `make`-command-line values CUDASieve's makefile expects, or (None, None) if
+    detection isn't possible (caller then
     falls back to CUDASieve's own makefile default and warns, rather than blocking outright
     -- an older GPU might still legitimately need that old default).
 
@@ -676,11 +660,11 @@ _NVCC_FLAGS_RE = re.compile(r"NVCC_FLAGS\s*=(?:[^\n]*\\\n)*[^\n]*")
 
 
 def _ensure_rdc_flag(install_dir):
-    """Patches CUDASieve's own makefile to add -rdc=true to NVCC_FLAGS. Confirmed necessary
-    on real hardware (2026-08-23): modern nvcc (13.x) refuses to link a __global__ function
-    template instantiated in one translation unit and called from another under CUDASieve's
-    default whole-program compilation mode (link fails with "undefined reference to
-    device::makePrimeList_PLout<...>"); -rdc=true (separable compilation) fixes it. Idempotent
+    """Patches CUDASieve's own makefile to add -rdc=true to NVCC_FLAGS. Modern nvcc (13.x)
+    refuses to link a __global__ function template instantiated in one translation unit and
+    called from another under CUDASieve's default whole-program compilation mode (link fails
+    with "undefined reference to device::makePrimeList_PLout<...>"); -rdc=true (separable
+    compilation) fixes it. Idempotent
     -- checks for the flag before adding it, so repeated --build calls never append it twice.
     Best-effort: if the makefile's NVCC_FLAGS assignment doesn't match the expected shape,
     leaves the file untouched and lets `make` fail with its own error, rather than risk
@@ -708,11 +692,10 @@ def _ensure_rdc_flag(install_dir):
 
 def _clean_stale_build_artifacts(install_dir, obj_dir):
     """Removes previously-built .o files, the static lib, and the binary before every build.
-    Needed because _ensure_rdc_flag() can change NVCC_FLAGS between runs (e.g. the very first
-    --build after this function was added) -- object files compiled under the OLD flags
-    linked against ones compiled under the NEW flags is exactly the failure mode hit manually
-    on real hardware (2026-08-23) before this cleanup step existed. Cheap (a handful of
-    files), so it always runs rather than trying to detect whether flags actually changed."""
+    Needed because _ensure_rdc_flag() can change NVCC_FLAGS between runs -- object files
+    compiled under old flags linked against ones compiled under new flags is a real failure
+    mode. Cheap (a handful of files), so it always runs rather than trying to detect whether
+    flags actually changed."""
     for stale_name in ("libcudasieve.a", "cudasieve"):
         stale_path = os.path.join(install_dir, stale_name)
         if os.path.isfile(stale_path):
@@ -729,11 +712,11 @@ def cmd_build(install_dir):
     WslLoggedRunner (prime_atlas_v2.py) the same way any other long-running Generation-tab
     job is, not captured as one blocking call like --status/--fetch-license.
 
-    Every step below (obj/ directory, CUDA_DIR, GPU_ARCH/GPU_CODE, -rdc=true) mirrors a real
-    failure hit and fixed manually, one at a time, on an actual RTX 5070 + WSL2 machine on
-    2026-08-23 -- see this function's helpers' own docstrings for the specific error each one
-    fixes. Different GPUs will detect different GPU_ARCH/GPU_CODE values; CUDA_DIR is
-    autodetected rather than hardcoded so this isn't tied to one machine's install layout."""
+    Every step below (obj/ directory, CUDA_DIR, GPU_ARCH/GPU_CODE, -rdc=true) addresses a
+    specific build failure -- see this function's helpers' own docstrings for the exact
+    error each one fixes. Different GPUs will detect different GPU_ARCH/GPU_CODE values;
+    CUDA_DIR is autodetected rather than hardcoded so this isn't tied to one machine's
+    install layout."""
     print(f"[*] Building CUDASieve in {install_dir} ...")
     if not os.path.isdir(install_dir):
         print("[!] ERROR: install_dir does not exist -- run --fetch-license first (it "

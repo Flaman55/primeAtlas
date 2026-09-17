@@ -1,8 +1,8 @@
 """
 test_generation_window_arithmetic.py -- characterization tests for the pure floor/window
 arithmetic that plans WHERE on disk a generation run writes, WITHOUT launching any real
-sieve/WSL subprocess. Written for the refactor branch's Faza 3 Generation-tab extraction
-(task #390): before touching that tab's ~2650 lines of UI code, this suite pins down the
+sieve/WSL subprocess. Written for the Generation-tab extraction:
+before touching that tab's ~2650 lines of UI code, this suite pins down the
 exact behavior of the functions responsible for its three worst historical production
 incidents (see each test's own docstring for the specific bug it targets):
 
@@ -16,25 +16,23 @@ incidents (see each test's own docstring for the specific bug it targets):
      non-window-aligned starting point outward (instead of only the far end) silently
      added one extra window beyond what a width BUDGET asked for.
 
-These target primeatlas/generation.py, not the compiled C sieve engine itself -- see this
+These target primeatlas/generation/generation.py, not the compiled C sieve engine itself -- see this
 file's own module docstring reasoning for why: the engine (prime_sieve_engine_v*.so,
 ctypes-loaded, linked against libprimesieve.so.12) cannot run in a plain Linux sandbox
 without that exact shared library, which is not installable here without root.
 This suite instead targets the layer that decides what to hand the engine -- which is
 exactly where all three bugs above actually lived -- using real temporary directories
 seeded with EMPTY, correctly-named PRIME_WINDOW_*.bin files (list_source_filenames() only
-ever reads a file's NAME via a regex, never its contents -- see primeatlas/storage.py's
+ever reads a file's NAME via a regex, never its contents -- see primeatlas/core/storage.py's
 own docstring -- so an empty file at the right name is indistinguishable from a real one
 to every function tested here).
 
 Every check() call states the SPECIFIC expected vs. actual value in its message, not just
 pass/fail, so a future regression points straight at what went wrong instead of just
-"something in Generation broke" (this was Artur's explicit request when asking for this
-suite: tests must "wyłapały i wyświetliły co faktycznie powoduje błąd" -- catch it AND
-show what actually caused it).
+"something in Generation broke".
 
-Updated during the Generation-tab extraction itself (Faza 3, 2026-08-23): these functions
-moved from prime_atlas_v1.py into primeatlas/generation.py (see that module's own
+Updated during the Generation-tab extraction itself: these functions
+moved from prime_atlas_v1.py into primeatlas/generation/generation.py (see that module's own
 docstring) -- this suite now imports from there directly instead of through
 prime_atlas_v1, and no longer needs tkinter/Xvfb at all (generation.py has no GUI
 dependency of its own).
@@ -89,11 +87,11 @@ def _touch_window(portal, floor, target_idx, window_m=10_000_000):
 
 def _test_compute_totals_bumps_from_new_rows():
     """compute_totals_bumps_from_new_rows() -- the pure row-filtering logic behind
-    GenerationTab._bump_totals_from_finished_run() (added 2026-08-27, see storage.py's
+    GenerationTab._bump_totals_from_finished_run() (see storage.py's
     own module docstring for the persisted-totals feature this belongs to). No temp
     directory needed -- this function only ever looks at plain row dicts, the exact
     shape read_benchmark_log()/csv.DictReader hands back, never touching disk itself."""
-    import primeatlas.generation as m
+    import primeatlas.generation.generation as m
 
     rows = [
         {"base_exponent": "5", "total_primes": "100", "windows_written": "1",
@@ -134,8 +132,8 @@ def _test_compute_totals_bumps_from_new_rows():
 
 
 def main():
-    import primeatlas.generation as m
-    from primeatlas.storage import digit_count_floor
+    import primeatlas.generation.generation as m
+    from primeatlas.core.storage import digit_count_floor
 
     _test_compute_totals_bumps_from_new_rows()
 
@@ -244,7 +242,7 @@ def main():
               f"an empty floor trims nothing (got start={trimmed_start3}, "
               f"count={trimmed_count3}, expected start=5, count=3 unchanged)")
 
-        # === digit_count_floor: power-of-10 boundaries (primeatlas.storage, unchanged by
+        # === digit_count_floor: power-of-10 boundaries (primeatlas.core.storage, unchanged by
         # the Generation-tab extraction -- imported separately here) ====================
         check(digit_count_floor(1) == 0, "digit_count_floor(1) == floor 0")
         check(digit_count_floor(9) == 0, "digit_count_floor(9) == floor 0 (still 1 digit)")
