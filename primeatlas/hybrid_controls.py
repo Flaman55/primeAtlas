@@ -42,9 +42,9 @@ class HybridControls:
             main = int(self.quick_hybrid_main_cap_var.get())
             count = int(self.quick_hybrid_filter_prime_count_var.get())
         except ValueError:
-            self.quick_hybrid_range_var.set('Wprowadź całkowite wartości MAIN i filtra.')
+            self.quick_hybrid_range_var.set(self.T("quick.hybrid_error_enter_valid_numbers"))
             return
-        self.quick_hybrid_range_var.set('Obliczanie zasięgu…')
+        self.quick_hybrid_range_var.set(self.T("quick.hybrid_range_calculating"))
 
         def done(result, error):
             if version != self._hybrid_preview_version:
@@ -52,13 +52,13 @@ class HybridControls:
             if error:
                 self.quick_hybrid_range_var.set(error)
                 return
-            text = (f"Zasięg: do {result['limit']:,} | MAIN ≤ {result['main_max']:,} "
-                    f"dla tego filtra | limit Hybrydy: {MAX_TARGET:,}")
+            text = self.T("quick.hybrid_range_summary", limit=result['limit'],
+                           main_max=result['main_max'], max_target=MAX_TARGET)
             try:
                 _, end = self._hybrid_selected_range()
-                text += ' | Przy starcie: minimalny MAIN, potem najmniejszy wystarczający filtr'
+                text += self.T("quick.hybrid_range_start_hint")
                 if end - 1 > MAX_TARGET:
-                    text = text.rsplit(' | ', 1)[0] + ' | Cel wymaga primesieve'
+                    text = text.rsplit(' | ', 1)[0] + self.T("quick.hybrid_range_needs_primesieve")
             except (ValueError, TypeError):
                 pass
             self.quick_hybrid_range_var.set(text)
@@ -73,27 +73,27 @@ class HybridControls:
             return
         self._hybrid_preparing = True
         snapshot = self._hybrid_input_snapshot()
-        self.quick_status_var.set('Sprawdzanie i dopasowywanie parametrów Hybrydy…')
+        self.quick_status_var.set(self.T("quick.hybrid_status_checking"))
 
         def done(result, error):
             self._hybrid_preparing = False
             if snapshot != self._hybrid_input_snapshot():
-                self.quick_status_var.set('Ustawienia zmieniono. Naciśnij Generuj ponownie.')
+                self.quick_status_var.set(self.T("quick.hybrid_status_settings_changed"))
                 return
             if error:
-                self.quick_status_var.set('Nie udało się przygotować Hybrydy.')
-                messagebox.showerror('Hybryda', error + '\nPopraw parametry lub wybierz primesieve.')
+                self.quick_status_var.set(self.T("quick.hybrid_status_prepare_failed"))
+                messagebox.showerror(self.T("quick.hybrid_error_title"),
+                                      error + self.T("quick.hybrid_error_fix_hint"))
                 return
             self.quick_hybrid_main_cap_var.set(str(result['main']))
             self.quick_hybrid_filter_prime_count_var.set(str(result['count']))
             if (main, count) != (result['main'], result['count']):
-                message = (f"Dopasowano MAIN: {main:,} → {result['main']:,}; "
-                           f"filtr: {count:,} → {result['count']:,}. "
-                           f"Zasięg do {result['limit']:,} obejmuje wybrane okno.")
+                message = self.T("quick.hybrid_status_adjusted", main=main, new_main=result['main'],
+                                  count=count, new_count=result['count'], limit=result['limit'])
                 self.quick_status_var.set(message)
                 self.loop_console.append(message + '\n')
             else:
-                self.quick_status_var.set('Parametry Hybrydy obejmują wybrane okno.')
+                self.quick_status_var.set(self.T("quick.hybrid_status_covers_window"))
             self._on_run_hybrid_narrow(start, end, result['main'], result['count'])
 
         self._hybrid_async(lambda: parameters(main, count, end), done)
@@ -105,10 +105,9 @@ class HybridControls:
             self.quick_hybrid_filter_prime_count_var, self._loop_write_files_var))
 
     def _offer_hybrid_primesieve(self, start, end):
-        if not messagebox.askyesno('Limit Hybrydy',
-                f'Okno [{start:,}, {end:,}) przekracza limit Hybrydy {MAX_TARGET:,}.\n'
-                'Czy przełączyć na primesieve i rozpocząć obliczenia dla tego zakresu?'):
-            self.quick_status_var.set('Nie uruchomiono obliczeń. Pozostajesz w trybie Hybrydy.')
+        if not messagebox.askyesno(self.T("quick.hybrid_limit_title"),
+                self.T("quick.hybrid_limit_confirm_switch", start=start, end=end, max_target=MAX_TARGET)):
+            self.quick_status_var.set(self.T("quick.hybrid_status_not_started"))
             return
         self.quick_primesieve_from_var.set(str(start))
         self.quick_primesieve_floor_var.set(str(len(str(start)) - 1))

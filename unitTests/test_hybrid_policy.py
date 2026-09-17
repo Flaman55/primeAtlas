@@ -7,6 +7,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'prime_sieve'))
 from prime_sieve.hybrid_policy import parameters, MAX_TARGET, MAX_FILTER, check_target
 from primeatlas.hybrid_controls import HybridControls
+from primeatlas.i18n import Translator
+
+_translator = Translator("en")
 
 
 class Var:
@@ -19,6 +22,8 @@ class Var:
 
 
 class Controls(HybridControls):
+    T = staticmethod(_translator)
+
     def __init__(self):
         for name in ('quick_status_var', 'quick_primesieve_from_var',
                      'quick_primesieve_floor_var', 'quick_primesieve_width_var'):

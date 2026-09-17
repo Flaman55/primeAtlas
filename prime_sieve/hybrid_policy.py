@@ -33,7 +33,7 @@ def _table():
 
 def check_target(end):
     if end - 1 > MAX_TARGET:
-        raise ValueError(f"Koniec okna {end - 1:,} przekracza limit Hybrydy {MAX_TARGET:,}. Użyj primesieve.")
+        raise ValueError(f"Window end {end - 1:,} exceeds the Hybrid limit {MAX_TARGET:,}. Use primesieve.")
 
 
 def _limit(primes, index, count):
@@ -58,12 +58,12 @@ def parameters(main, count, end=None):
     the selected filter. A larger MAIN cannot extend the permitted range.
     """
     if not isinstance(main, int) or main < 2:
-        raise ValueError("MAIN musi być liczbą całkowitą co najmniej 2.")
+        raise ValueError("MAIN must be an integer of at least 2.")
     if not isinstance(count, int) or not 1 <= count <= MAX_FILTER:
-        raise ValueError(f"Filtr musi zawierać od 1 do {MAX_FILTER:,} liczb pierwszych.")
+        raise ValueError(f"Filter must contain between 1 and {MAX_FILTER:,} primes.")
     if end is not None:
         if end < 2:
-            raise ValueError("Zakres musi być dodatni.")
+            raise ValueError("Range must be positive.")
         check_target(end)
     primes = _table()
     cap_index = _first_main(primes, count, MAX_TARGET)
