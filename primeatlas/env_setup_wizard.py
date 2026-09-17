@@ -19,8 +19,8 @@ another background thread, then re-checks automatically.
 
 Same UI shown twice: once automatically on a fresh/incomplete install (gated on
 AppSettings.setup_completed, as a standalone tk.Tk() root -- see _EnvSetupWizardRoot), and
-again on demand from Settings > Aktualizacje's own 'Zweryfikuj srodowisko' button
-(settings_tab.py), which runs it as a tk.Toplevel of the ALREADY-alive app instead (see
+again on demand from Settings' own environment-verification button (settings_tab.py),
+which runs it as a tk.Toplevel of the ALREADY-alive app instead (see
 _EnvSetupWizardToplevel) -- creating a second, independent tk.Tk() root while one is
 already running is unreliable across platforms (window-manager focus, event-loop
 interaction), so the on-demand path reuses the existing root's real Tcl interpreter rather
@@ -28,8 +28,7 @@ than spinning up a second one. Both share every bit of actual logic via
 _EnvSetupWizardMixin -- one implementation, not two that could drift apart.
 
 NOT YET RUN on a real machine with WSL fully absent (this sandbox has no Windows/WSL) --
-same caveat as env_setup.py's own module docstring. Hand off to Artur for a real
-end-to-end test (task #515) before this gates every future PrimeAtlas install.
+same caveat as env_setup.py's own module docstring.
 """
 import threading
 import tkinter as tk
@@ -111,10 +110,9 @@ class _EnvSetupWizardMixin:
         renders fully empty. ttk.Progressbar.stop() alone is not enough: an indeterminate
         bar that is merely stopped keeps showing whatever small colored block happened to
         be mid-sweep when stop() was called, sitting there motionless. A user glancing at
-        that (Artur, 2026-09-02, live test on real hardware) cannot tell it apart from a
-        stuck/hung install -- there is no visual difference between "idle, waiting for you
-        to click a button" and "frozen". An empty determinate bar reads unambiguously as
-        idle instead."""
+        that cannot tell it apart from a stuck/hung install -- there is no visual
+        difference between "idle, waiting for you to click a button" and "frozen". An
+        empty determinate bar reads unambiguously as idle instead."""
         self.progress.stop()
         self.progress.configure(mode="determinate")
         self.progress["value"] = 0
@@ -130,11 +128,10 @@ class _EnvSetupWizardMixin:
         here (no other way to select/copy multi-line text out of a ttk-themed window on
         every platform, and this window has no menu bar or right-click context menu) can
         paste the real error text elsewhere -- e.g. back to whoever is helping them debug
-        it, exactly the gap Artur hit on real hardware (2026-09-02) trying to report the
-        "elevation was declined" bug. self.update() right after clipboard_append() is the
-        standard Tk idiom for making the clipboard content actually stick around after this
-        window closes (X11 in particular only owns the clipboard while the owning window is
-        alive unless something forces a flush)."""
+        it. self.update() right after clipboard_append() is the standard Tk idiom for
+        making the clipboard content actually stick around after this window closes (X11
+        in particular only owns the clipboard while the owning window is alive unless
+        something forces a flush)."""
         text = self.log_widget.get("1.0", "end-1c")
         self.clipboard_clear()
         self.clipboard_append(text)
@@ -186,9 +183,7 @@ class _EnvSetupWizardMixin:
         # Persisted on EVERY check (ready or missing), not just the ready branch below --
         # settings_tab.py's on-demand button reads this back once this window closes, so
         # it can keep showing a real status line instead of nothing (see AppSettings.
-        # env_status's own docstring: this is exactly what Artur hit, 2026-09-02 -- the
-        # on-demand wizard flashed "ready" and closed too fast to read, and Settings itself
-        # had nowhere to show the result afterward).
+        # env_status's own docstring).
         self.app_settings.set_env_status(report)
         self._render_checklist(report)
         self.recheck_btn.configure(state="normal")
@@ -200,11 +195,10 @@ class _EnvSetupWizardMixin:
             if self._auto_close_when_ready:
                 self.after(600, self.destroy)
             else:
-                # On-demand (Settings button) check: relabel the skip button to "Zamknij"
-                # (Close) instead of auto-vanishing -- the whole point of clicking this
-                # button was to READ a result, so it must stay on screen until the user
-                # dismisses it themselves (Artur, 2026-09-02: the 600ms auto-close made it
-                # impossible to read even a successful result on demand).
+                # On-demand (Settings button) check: relabel the skip button to "Close"
+                # instead of auto-vanishing -- the whole point of clicking this button was
+                # to READ a result, so it must stay on screen until the user dismisses it
+                # themselves.
                 self.skip_btn.configure(text=self.T("wizard.close_button"))
         else:
             self.status_var.set(self.T("wizard.status_missing"))
@@ -276,16 +270,15 @@ class _EnvSetupWizardRoot(tk.Tk, _EnvSetupWizardMixin):
 
 
 class _EnvSetupWizardToplevel(tk.Toplevel, _EnvSetupWizardMixin):
-    """Modal child of the ALREADY-running PortalBrowserApp -- used by Settings >
-    Aktualizacje's on-demand re-check (see this module's own docstring for why this is a
-    Toplevel of the existing root rather than a second tk.Tk())."""
+    """Modal child of the ALREADY-running PortalBrowserApp -- used by Settings' own
+    on-demand re-check (see this module's own docstring for why this is a Toplevel of the
+    existing root rather than a second tk.Tk())."""
 
     # The automatic startup wizard (_EnvSetupWizardRoot) SHOULD auto-close fast when
     # everything is already fine -- a working machine should barely see it flash by. But
-    # this Toplevel is only ever opened because the user explicitly clicked "Zweryfikuj
-    # srodowisko" wanting to READ a result, so it must stay open until they dismiss it
-    # themselves (Artur, 2026-09-02: the 600ms auto-close made even a successful on-demand
-    # check unreadable).
+    # this Toplevel is only ever opened because the user explicitly clicked the
+    # environment-verification button in Settings wanting to READ a result, so it must
+    # stay open until they dismiss it themselves.
     _auto_close_when_ready = False
 
     def __init__(self, master, app_settings, T, distro=env_setup.DEFAULT_WSL_DISTRO):
@@ -307,9 +300,9 @@ def maybe_run_first_run_wizard(app_settings, translator, distro=env_setup.DEFAUL
     that restart, no separate 'which step was I on' state needed).
 
     force=True re-shows the wizard even when AppSettings.setup_completed is already True
-    -- used by Settings > Aktualizacje's 'Zweryfikuj srodowisko' button (settings_tab.py),
-    which also passes master=<the already-running PortalBrowserApp instance> so this runs
-    as a Toplevel of the live app instead of spinning up a second tk.Tk() root (see
+    -- used by Settings' environment-verification button (settings_tab.py), which also
+    passes master=<the already-running PortalBrowserApp instance> so this runs as a
+    Toplevel of the live app instead of spinning up a second tk.Tk() root (see
     _EnvSetupWizardToplevel) -- one implementation either way, not a second, divergent one
     living in settings_tab.py itself."""
     if not force and app_settings.setup_completed:
