@@ -35,9 +35,9 @@ class GenerationConsole:
         # helpers. Packing/unpacking self.text changes this section's natural
         # height by ~500px either way, and the Generation tab's Panedwindow
         # needs to be told to re-measure and re-pin its sashes every time that
-        # happens, regardless of which path triggered it (found 2026-08-23:
-        # manual toggle-button clicks were bypassing the resize fix entirely
-        # since only the programmatic call sites were wired to it).
+        # happens, regardless of which path triggered it -- manual toggle-button
+        # clicks must be wired to this callback too, not just programmatic
+        # call sites, or the resize fix silently misses that path.
         self._on_change = on_change
 
         self.toggle_row = ttk.Frame(parent)

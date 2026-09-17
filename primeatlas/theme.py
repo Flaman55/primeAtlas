@@ -19,7 +19,7 @@ tree_group_bg/tree_stat_bg: per-row highlight colors for a Treeview's own
 tag_configure() calls (NOT covered by ttk.Style() -- a tag's background overrides the
 base "Treeview" style per-row, see _apply_theme()'s own docstring for the ttk-vs-tk
 split, this is a THIRD case: a ttk widget's per-item override that also bypasses
-Style()). Added 2026-08-26 after a real bug report: the Benchmark tab's own floor-
+Style()). The Benchmark tab's own floor-
 grouping/stats-row highlights (primeatlas/benchmark_tab.py's "pietro"/"stat" tags)
 used to be hardcoded to these same two light colors regardless of theme, with no
 matching foreground override -- in dark mode that meant light Treeview text on a

@@ -1,8 +1,8 @@
 """
 primesieve_calc_tab.py -- standalone libprimesieve calculator sub-tab (Liczby pierwsze
--> primesieve), extracted from prime_atlas_v1.py during the refactor branch's Faza 4
-(2026-08-24) -- the phase that shrinks the app shell further, after every OTHER tab was
-already split out during Faza 3. Count primes in a range, nth prime, next/prev prime --
+-> primesieve), extracted from prime_atlas_v1.py during the refactor branch's tab-by-tab
+split, after every OTHER tab was already split out. Count primes in a range, nth prime,
+next/prev prime --
 entirely independent of anything already in storage (no floor, no PORTAL_FOLDER,
 nothing written to disk); the only I/O is a single blocking wsl.exe round trip per
 click, via primesieve_query.py (prime_sieve/ folder) -- see build_primesieve_query_argv/

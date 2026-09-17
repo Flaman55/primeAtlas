@@ -305,10 +305,9 @@ def print_benchmark_summary(base_exponent, start_idx, end_idx, total_seconds, po
         # post-sharding, silently zeroing out total_primes/windows_found (and therefore
         # this run's whole benchmark_log.csv row) even though the files were written
         # correctly. Missed in the original task #405 sweep because this function re-derives
-        # counts from disk instead of trusting write_scan_metrics_handoff()'s numbers --
-        # caught 2026-08-27 from a real generation run on 10^13 reporting "0 windows
-        # written" despite prime_sieve_v4_1.py's own console output showing 1000 windows/
-        # 334M primes written correctly.
+        # counts from disk instead of trusting write_scan_metrics_handoff()'s numbers, so
+        # a generation run can report "0 windows written" here despite the underlying
+        # sieve's own console output showing windows/primes written correctly.
         source_dir = os.path.join(portal_folder, f"10p{base_exponent}", "source_primes")
         for target_idx in range(start_idx, end_idx):
             offset = target_idx * window_m

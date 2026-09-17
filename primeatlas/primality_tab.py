@@ -1,10 +1,10 @@
 """
 primality_tab.py -- probabilistic primality testing + factorization sub-tab (Liczby
 pierwsze -> Testy pierwszosci), extracted from prime_atlas_v1.py during the refactor
-branch's Faza 4 (2026-08-24), the same phase that extracted the primesieve calculator
+branch's tab-by-tab split, the same pass that extracted the primesieve calculator
 sub-tab alongside it (primeatlas/primesieve_calc_tab.py) -- these two were the last
 remaining un-extracted sub-tabs left inline in the app shell after every OTHER tab was
-already split out during Faza 3.
+already split out.
 
 Backend logic (primeatlas.primality: run_all_tests/factorize/try_import_sympy) was
 ALREADY its own module before this extraction -- this file only ever held the UI +

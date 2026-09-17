@@ -3,9 +3,9 @@ pdf_writer.py -- a minimal, dependency-free PDF writer: just enough (text, lines
 shapes, multiple pages) to render this app's reports (the Benchmark tab's growth chart +
 full data table, the Constellations tab's records table) into standalone PDF files.
 
-Extracted from prime_atlas_v1.py during the refactor branch's Faza 3 (tab-by-tab backend/
-UI split, 2026-08-23) -- this toolkit was already shared by TWO independent renderers
-before the split (render_constellation_records_pdf, still in prime_atlas_v1.py, and
+Extracted from prime_atlas_v1.py during the tab-by-tab backend/UI split -- this toolkit
+was already shared by TWO independent renderers before the split
+(render_constellation_records_pdf, still in prime_atlas_v1.py, and
 render_benchmark_pdf, moved to primeatlas/benchmark.py alongside it), so it gets its own
 module instead of living inside either one specifically -- neither renderer "owns" it, and
 duplicating it into both would recreate the exact kind of copy-paste this whole refactor
