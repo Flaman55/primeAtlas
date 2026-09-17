@@ -1862,7 +1862,7 @@ class GenerationTab(HybridControls, BaseTab):
         if self._loop_runner is not None and self._loop_runner.is_running():
             messagebox.showerror(self.T("quick.dialog_title"), self.T("quick.error_already_running"))
             return
-        self._gen_progress_bar_active = True
+        self._reset_gen_progress_bar_for_new_run()
         self._gen_loop_run_count = iterations
         self._gen_loop_iteration = None
         self._gen_step_total = None
@@ -1923,7 +1923,7 @@ class GenerationTab(HybridControls, BaseTab):
         if self._loop_runner is not None and self._loop_runner.is_running():
             messagebox.showerror(self.T("quick.dialog_title"), self.T("quick.error_already_running"))
             return
-        self._gen_progress_bar_active = True
+        self._reset_gen_progress_bar_for_new_run()
         self._gen_loop_run_count = 1
         self._gen_loop_iteration = None
         self._gen_step_total = None
@@ -2028,9 +2028,9 @@ class GenerationTab(HybridControls, BaseTab):
             return
         # orchestrator_v3.py run directly still calls prime_sieve_v3/v4/v4_1's own
         # generate_floor_windows(), same granular "[+] Progress: ..." lines as the
-        # loop path -- re-enable the shared bar, same reasoning as _on_run_loop()'s
-        # own comment.
-        self._gen_progress_bar_active = True
+        # loop path -- re-enable and reset the shared bar, same reasoning as
+        # _on_run_loop()'s own comment.
+        self._reset_gen_progress_bar_for_new_run()
         write_files = self._loop_write_files_var.get()
         use_pi_seed = self._loop_use_pi_seed_var.get()
         # Effective flag: either checkbox on means "compute pi(L_final)" -- see the
@@ -2802,10 +2802,11 @@ class GenerationTab(HybridControls, BaseTab):
             messagebox.showerror(self.T("quick.dialog_title"), self.T("quick.error_already_running"))
             return
         # The old batched engine (orchestrator_v3.py via orchestrator_loop_v2.py)
-        # DOES print granular "[+] Progress: ..." lines -- re-enable the shared bar
-        # in case a previous run left it off (primesieve/cudasieve mode, see
-        # _set_gen_progress_bar()'s own docstring).
-        self._gen_progress_bar_active = True
+        # DOES print granular "[+] Progress: ..." lines -- re-enable and reset the
+        # shared bar in case a previous run left it off (primesieve/cudasieve mode,
+        # see _set_gen_progress_bar()'s own docstring) or left it full (a previous
+        # run's own 100%-done state).
+        self._reset_gen_progress_bar_for_new_run()
         parsed = self._collect_loop_settings_from_form()
         if parsed is None:
             return
@@ -2969,6 +2970,12 @@ class GenerationTab(HybridControls, BaseTab):
         self._generation_settings["constellation"] = {"base_exponent": base_exponent}
         save_generation_settings(self._get_portal_folder(), self._generation_settings)
 
+        # constellation_finder_v1.py DOES print granular per-file progress lines --
+        # see _reset_gen_progress_bar_for_new_run()'s own docstring: without this, a
+        # previous run's leftover bar state (e.g. a prime-generation run that just
+        # finished at 100%) stays on screen until the first FLOOR PROGRESS line
+        # arrives, which is not immediate.
+        self._reset_gen_progress_bar_for_new_run()
         self._const_auto_retry_count = 0
         self._const_auto_retry_base_exponent = base_exponent
         # A fresh Run click is the one true "session start" -- see _const_session_
@@ -3527,6 +3534,18 @@ class GenerationTab(HybridControls, BaseTab):
             return
         self.totals_progress.stop()
         self.totals_progress.configure(**configure_kwargs)
+
+    def _reset_gen_progress_bar_for_new_run(self):
+        """Called at the start of every Generation run-launch path that drives the
+        shared totals_progress bar (loop/hybrid/hybrid-narrow/orchestrator-direct/
+        constellation) -- (re-)activates it and resets it to an empty 0/1 determinate
+        state. Without this, a value left over from whatever last used this SHARED bar
+        (the totals scan, a Primes/Constellations search, or a previous run that
+        finished at 100%) stays on screen until this run's own first real progress
+        line arrives, which can be a visible delay for engines whose first progress
+        report doesn't come immediately (e.g. constellation search's per-file lines)."""
+        self._gen_progress_bar_active = True
+        self._set_gen_progress_bar(mode="determinate", maximum=1, value=0)
 
     def _const_elapsed_eta_suffix(self, floor_total, floor_done):
         """Builds the " | running: Xh..., ETA: Y..." (or ETA-less) tail appended to the

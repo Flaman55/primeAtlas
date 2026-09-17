@@ -137,6 +137,17 @@ LAST_VALUES_FILENAME = "LAST_VALUES.tsv"
 # this script -- this side only ever reads it.
 STOP_REQUEST_FILENAME = "STOP_REQUEST.txt"
 
+# Crash-diagnosis instrumentation for process_floor()'s own per-window loop below
+# (heartbeat line every HEARTBEAT_EVERY windows, plus fsync'd step-by-step detail for
+# the first DETAILED_DIAG_WINDOWS windows of EVERY batch) -- added after observed WSL
+# crashes consistently landed on a batch's first window, to narrow down which sub-step
+# (read/peek/match/checkpoint) a silent death happened in. Off by default now that
+# this run pattern has been stable in practice -- flip to True only while actively
+# chasing a crash. Checked once per relevant branch below (not wrapped around an
+# already-built print()), so disabling it skips the diagnostic string-building/timing
+# work itself, not just the terminal output.
+CONSTELLATION_DIAG_ENABLED = False
+
 
 def _proc_diag():
     """Cheap process-level diagnostics -- peak RSS memory and open file-descriptor
@@ -232,8 +243,9 @@ def list_source_windows(base_exponent):
         return []
     paths_by_name = dict(sharded_files)
     names_on_disk = sorted(paths_by_name.keys())
-    print(f"[CONSTELLATIONS v2] DIAG: shard walk found {len(names_on_disk):,} window(s) "
-          f"for 10^{base_exponent} in {time.time()-t0:.2f}s | {_proc_diag()}")
+    if CONSTELLATION_DIAG_ENABLED:
+        print(f"[CONSTELLATIONS v2] DIAG: shard walk found {len(names_on_disk):,} window(s) "
+              f"for 10^{base_exponent} in {time.time()-t0:.2f}s | {_proc_diag()}")
 
     names_on_disk_set = set(names_on_disk)
     index = {name: base_prime for name, base_prime in _read_window_index(base_exponent).items()
@@ -245,14 +257,16 @@ def list_source_windows(base_exponent):
             header = prime_sieve_v1.read_prime_window_header(paths_by_name[name])
             index[name] = header["base_prime"]
         _write_window_index(base_exponent, index)
-        print(f"[CONSTELLATIONS v2] DIAG: read {len(new_names):,} fresh header(s) "
-              f"({len(names_on_disk) - len(new_names):,} served from WINDOW_INDEX.tsv "
-              f"cache) in {time.time()-t1:.2f}s | {_proc_diag()}")
+        if CONSTELLATION_DIAG_ENABLED:
+            print(f"[CONSTELLATIONS v2] DIAG: read {len(new_names):,} fresh header(s) "
+                  f"({len(names_on_disk) - len(new_names):,} served from WINDOW_INDEX.tsv "
+                  f"cache) in {time.time()-t1:.2f}s | {_proc_diag()}")
 
     entries = [(name, paths_by_name[name], index[name]) for name in names_on_disk]
     entries.sort(key=lambda e: (e[2] is None, e[2] if e[2] is not None else 0, e[0]))
-    print(f"[CONSTELLATIONS v2] DIAG: list_source_windows(10^{base_exponent}) done in "
-          f"{time.time()-t0:.2f}s total | {_proc_diag()}")
+    if CONSTELLATION_DIAG_ENABLED:
+        print(f"[CONSTELLATIONS v2] DIAG: list_source_windows(10^{base_exponent}) done in "
+              f"{time.time()-t0:.2f}s total | {_proc_diag()}")
     return entries
 
 
@@ -1052,8 +1066,9 @@ def process_floor(base_exponent, max_windows=None):
     # (see _append_hits_deduped()'s own docstring) -- not just a performance cache.
     last_value_cache = {}
 
-    print(f"[CONSTELLATIONS v2] DIAG: entering per-window loop, elapsed={time.time()-run_start:.2f}s "
-          f"| {_proc_diag()}")
+    if CONSTELLATION_DIAG_ENABLED:
+        print(f"[CONSTELLATIONS v2] DIAG: entering per-window loop, elapsed={time.time()-run_start:.2f}s "
+              f"| {_proc_diag()}")
 
     # How often to print a heartbeat DIAG line and how often to print the lighter
     # per-window reading/summary lines below. Chosen small enough that a crash between
@@ -1101,7 +1116,7 @@ def process_floor(base_exponent, max_windows=None):
                   f"10^{base_exponent}.")
             break
         t0 = time.time()
-        detailed = i < DETAILED_DIAG_WINDOWS
+        detailed = CONSTELLATION_DIAG_ENABLED and i < DETAILED_DIAG_WINDOWS
         # Printed BEFORE the read itself (not just in the per-window summary line
         # after it finishes) so that if the WSL process dies mid-read -- see this
         # function's own docstring on max_windows -- the log names the EXACT window
@@ -1116,7 +1131,7 @@ def process_floor(base_exponent, max_windows=None):
                            f"header count={header['count']:,}", detailed=True)
             except OSError as e:
                 _diag_step(f"window {i+1} -- could not stat/read header: {e}", detailed=True)
-        elif i % HEARTBEAT_EVERY == 0:
+        elif CONSTELLATION_DIAG_ENABLED and i % HEARTBEAT_EVERY == 0:
             _diag_step(f"heartbeat at window {i+1}/{len(to_process)}, "
                        f"elapsed={time.time()-run_start:.2f}s", detailed=True)
 
@@ -1191,8 +1206,9 @@ def process_floor(base_exponent, max_windows=None):
         print("    (none)")
     for (k, vid), count in sorted(total_hits_this_run.items()):
         print(f"    k={k:2} variant={vid}: +{count}")
-    print(f"[CONSTELLATIONS v2] DIAG: run finished, elapsed={time.time()-run_start:.2f}s "
-          f"| {_proc_diag()}")
+    if CONSTELLATION_DIAG_ENABLED:
+        print(f"[CONSTELLATIONS v2] DIAG: run finished, elapsed={time.time()-run_start:.2f}s "
+              f"| {_proc_diag()}")
 
     return remaining_after
 
