@@ -1,5 +1,5 @@
 """
-test_storage.py -- unit tests for primeatlas/storage.py's persisted-totals feature: the
+test_storage.py -- unit tests for primeatlas/core/storage.py's persisted-totals feature: the
 incremental bump_floor_total()/remove_floor_total() pair and the
 persisted GLOBAL total (get_global_total()/recompute_global_total()), added because
 update_floor_totals_cache() (the full per-floor directory-listing +
@@ -39,7 +39,7 @@ def check(condition, message):
 
 
 def _test_bump_and_global():
-    from primeatlas import storage
+    from primeatlas.core import storage
 
     cache = {}
     storage.bump_floor_total(cache, 5, delta_count=100, delta_file_count=1, delta_bytes=800)
@@ -78,7 +78,7 @@ def _test_bump_and_global():
 
 
 def _test_get_global_total_missing():
-    from primeatlas import storage
+    from primeatlas.core import storage
 
     check(storage.get_global_total({}) is None,
           "get_global_total on a cache with no '_global' key yet returns None -- "
@@ -91,7 +91,7 @@ def _test_get_global_total_missing():
 
 
 def _test_recompute_global_total():
-    from primeatlas import storage
+    from primeatlas.core import storage
 
     cache = {
         "10p0": {"total": 4, "file_count": 1, "total_bytes": 40},
@@ -120,7 +120,7 @@ def _test_recompute_global_total():
 
 
 def _test_global_key_never_collides_with_a_real_floor():
-    from primeatlas import storage
+    from primeatlas.core import storage
 
     check(storage.GLOBAL_TOTAL_KEY == "_global",
           "GLOBAL_TOTAL_KEY is a fixed, non-'10p'-prefixed string, so it can never be "
@@ -139,7 +139,7 @@ def _test_round_trip_bump_matches_full_rescan():
     incremental path and the manual verify path would disagree, which is exactly the kind
     of silent drift the manual verify-totals safety net exists to catch, not something
     this feature should be introducing on its own on the very first day."""
-    from primeatlas import storage
+    from primeatlas.core import storage
     import prime_sieve_v1
     import window_sharding
 

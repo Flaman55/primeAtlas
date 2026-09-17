@@ -1,8 +1,8 @@
 """
 test_search_worker.py -- functional regression test for the "prime"/"const" search
-worker exposed by primeatlas/totals_search_coordinator.py's TotalsSearchCoordinator,
+worker exposed by primeatlas/core/totals_search_coordinator.py's TotalsSearchCoordinator,
 reached via app._totals_search.start_search_job/.search_busy and backed by
-primeatlas/background.py's PersistentWorker.
+primeatlas/core/background.py's PersistentWorker.
 
 Builds the REAL PortalBrowserApp (same as tests/smoke_test.py) against a throwaway
 portal folder seeded with a real PGS1 prime window, then drives
@@ -183,7 +183,7 @@ def main():
         # _totals_job) so it is GUARANTEED to still be in flight when the search
         # below starts and finishes -- deterministically reproducing the exact
         # interleaving the fix targets, independent of real disk/OS timing.
-        import primeatlas.totals_search_coordinator as tsc_module
+        import primeatlas.core.totals_search_coordinator as tsc_module
         _real_update_totals = tsc_module.update_floor_totals_cache
 
         def _slow_update_totals(*a, **k):

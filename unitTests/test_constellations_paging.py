@@ -1,5 +1,5 @@
 """
-test_constellations_paging.py -- proves primeatlas/constellations.py's records-table/
+test_constellations_paging.py -- proves primeatlas/constellations/constellations.py's records-table/
 detail-rows/participation-search backend stays CORRECT once a pattern's hit file has
 been migrated to pages (prime_sieve/hit_paging.py), not just that it doesn't crash.
 Complements unitTests/test_hit_paging.py (pure hit_paging.py mechanics, no
@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.join(_REPO_ROOT, "constellation"))
 
 import prime_sieve_v1
 import hit_paging
-from primeatlas import constellations
+from primeatlas.constellations import constellations
 
 failures = []
 

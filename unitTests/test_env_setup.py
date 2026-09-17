@@ -1,5 +1,5 @@
 """
-test_env_setup.py -- covers primeatlas/env_setup.py, the first-run WSL/Ubuntu/python3/
+test_env_setup.py -- covers primeatlas/settings/env_setup.py, the first-run WSL/Ubuntu/python3/
 numpy/libprimesieve check+install backend.
 
 No real Windows/WSL anywhere in this sandbox (Linux-only) -- every subprocess boundary is
@@ -52,7 +52,7 @@ def check(condition, message):
 
 def section_a():
     print("\n--- Section A: pure logic (path mapping, ps1 text, constants) ---")
-    from primeatlas import env_setup as es
+    from primeatlas.settings import env_setup as es
 
     _mapped = es._windows_path_to_wsl(r"D:\storage\portal")
     check(_mapped == "/mnt/d/storage/portal",
@@ -171,7 +171,7 @@ def section_a():
 
 def section_b():
     print("\n--- Section B: check_environment() ---")
-    from primeatlas import env_setup as es
+    from primeatlas.settings import env_setup as es
 
     orig_run_windows = es._run_windows
     orig_run_wsl = es._run_inside_wsl_blocking
@@ -269,7 +269,7 @@ def section_b():
 
 def section_c():
     print("\n--- Section C: run_install() ---")
-    from primeatlas import env_setup as es
+    from primeatlas.settings import env_setup as es
 
     orig_elevated = es._run_elevated_ps1
     work_dir = tempfile.mkdtemp(prefix="env_setup_install_test_")
@@ -514,7 +514,7 @@ class _FakePopen:
 
 def section_d():
     print("\n--- Section D: _run_inside_wsl_blocking() Popen()+poll() loop ---")
-    from primeatlas import env_setup as es
+    from primeatlas.settings import env_setup as es
 
     orig_popen = es.subprocess.Popen
     orig_tempdir = es.tempfile.gettempdir
@@ -629,8 +629,8 @@ def section_d():
 
 def section_e():
     print("\n--- Section E: AppSettings.env_status / set_env_status ---")
-    import primeatlas.app_settings as app_settings_module
-    from primeatlas.app_settings import AppSettings
+    import primeatlas.core.app_settings as app_settings_module
+    from primeatlas.core.app_settings import AppSettings
 
     # AppSettings does NOT actually scope its JSON file to the script_dir constructor arg
     # -- self._path is always os.path.join(LOCALES_DIR, SETTINGS_FILENAME), a single

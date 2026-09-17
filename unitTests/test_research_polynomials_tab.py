@@ -1,8 +1,8 @@
 """
 test_research_polynomials_tab.py -- tests for
-primeatlas/research_polynomials_tab.py's ResearchPolynomialsTab (Badania ->
+primeatlas/research/research_polynomials_tab.py's ResearchPolynomialsTab (Badania ->
 Wielomiany pierwszorodne), the UI wired around
-primeatlas/polynomials_window.py's pure check_polynomial_range()/check_
+primeatlas/research/polynomials_window.py's pure check_polynomial_range()/check_
 polynomial_range_from_source() (see that module's own test file,
 test_polynomials_window.py, for the pure-logic checks -- this file only
 exercises the tkinter wiring: preset switching, the custom f(n) field,

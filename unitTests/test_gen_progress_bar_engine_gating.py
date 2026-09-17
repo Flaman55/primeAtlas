@@ -128,7 +128,7 @@ def main():
         # Launcher wiring: each _on_run_*() sets the flag to match its own engine.
         # Stubs WslLoggedRunner to avoid any real subprocess/WSL dependency.
         # =====================================================================
-        import primeatlas.generation_tab as generation_tab_mod
+        import primeatlas.generation.generation_tab as generation_tab_mod
 
         class _FakeRunner:
             def __init__(self, *a, **k):

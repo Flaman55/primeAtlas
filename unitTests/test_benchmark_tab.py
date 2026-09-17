@@ -1,9 +1,9 @@
 """
 test_benchmark_tab.py -- functional regression test for BenchmarkTab (primeatlas/
-benchmark_tab.py + primeatlas/benchmark.py), extracted from prime_atlas_v1.py as
+benchmark_tab.py + primeatlas/benchmark/benchmark.py), extracted from prime_atlas_v1.py as
 part of the tab-by-tab backend/UI split. The Benchmark tab was the smallest of the
 five tabs still living directly in prime_atlas_v1.py, so it was the first one
-migrated to the SettingsTab-style BenchmarkTab(ttk.Frame) + primeatlas/benchmark.py
+migrated to the SettingsTab-style BenchmarkTab(ttk.Frame) + primeatlas/benchmark/benchmark.py
 pure-logic split.
 
 This test builds the real PortalBrowserApp() end to end (not a mock) against a real
@@ -21,7 +21,7 @@ resulting app.benchmark_tab_widget (the real BenchmarkTab instance) directly:
   4. The "no data yet" and forced-exception paths surface the right dialogs instead of
      silently doing nothing / crashing.
   5. Dark-theme: the "floor"/"stat" Treeview row tags pull their background AND
-     foreground from primeatlas.theme.palette_for(), and both chart canvases' own
+     foreground from primeatlas.core.theme.palette_for(), and both chart canvases' own
      background do too -- not hardcoded light colors regardless of theme.
   6. Chart readability: _draw_growth_chart's dynamic pad_left
      stops wide numbers ("71,556,448") from clipping off the canvas edge -- exercised
@@ -90,7 +90,7 @@ def _pump(app, seconds):
         time.sleep(0.02)
 
 
-# Same canonical column set as primeatlas/floor_meta.py's CANONICAL_BENCHMARK_FIELDNAMES
+# Same canonical column set as primeatlas/settings/floor_meta.py's CANONICAL_BENCHMARK_FIELDNAMES
 # -- a realistic superset across every generator engine this project has had, so the
 # seeded CSV exercises every aggregate_benchmark_*()/benchmark_row_stats() column at
 # once instead of a stripped-down fixture that would miss a column-name typo.
@@ -292,7 +292,7 @@ def main():
               f"the 'no data yet' dialog was shown instead of opening a file dialog (got: {shown})")
 
         # --- PDF export: a raising renderer surfaces messagebox.showerror ----------
-        import primeatlas.benchmark_tab as benchmark_tab_module
+        import primeatlas.benchmark.benchmark_tab as benchmark_tab_module
         original_render = benchmark_tab_module.render_benchmark_pdf
 
         def _fake_raise(*a, **k):
@@ -313,9 +313,9 @@ def main():
         # --- dark-theme: tree tag colors follow the palette, not hardcoded -----------
         # "floor"/"stat" row tags must not be hardcoded to light colors with no
         # matching foreground override -- that would be unreadable under the dark
-        # theme. See BenchmarkTab.__init__'s own docstring and primeatlas/theme.py's
+        # theme. See BenchmarkTab.__init__'s own docstring and primeatlas/core/theme.py's
         # tree_group_bg/tree_stat_bg docstring for the palette contract this relies on.
-        from primeatlas.theme import palette_for
+        from primeatlas.core.theme import palette_for
         theme_palette = palette_for(prime_atlas_v1.APP_SETTINGS.theme)
         # str(...) -- tag_configure's single-option query form can hand back a Tcl
         # color/font object rather than a plain str depending on the Tcl/Tk version
@@ -356,7 +356,7 @@ def main():
         # font and widens pad_left to fit -- reproduce that exact scenario directly
         # (no need to go through the whole app/CSV path) and check no tick-label text
         # item is left with a negative left edge (i.e. clipped off-canvas).
-        from primeatlas.benchmark_tab import _draw_growth_chart
+        from primeatlas.benchmark.benchmark_tab import _draw_growth_chart
         probe_canvas = tk.Canvas(app, width=900, height=220)
         probe_canvas.pack()
         app.update()
@@ -392,7 +392,7 @@ def main():
         # _nearest_hover_point is deterministic and needs no live display, so it
         # tests the actual logic (dense/overlapping labels) without inheriting that
         # platform noise.
-        from primeatlas.benchmark_tab import _nearest_hover_point
+        from primeatlas.benchmark.benchmark_tab import _nearest_hover_point
         dot_center = None
         for item_id in probe_canvas.find_all():
             if probe_canvas.type(item_id) == "oval":
@@ -431,7 +431,7 @@ def main():
         # Tk does not deliver pointer events to an unmapped widget -- exactly the
         # platform-dependent flakiness _nearest_hover_point's docstring already
         # describes for real OS-level mouse events.
-        from primeatlas.benchmark_tab import _hover_label_position
+        from primeatlas.benchmark.benchmark_tab import _hover_label_position
 
         # A point near the RIGHT edge: default placement (px+12) would overflow, so
         # this must flip to anchor="e" (label grows LEFTWARD from tx) and stay on-screen.

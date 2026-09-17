@@ -1,5 +1,5 @@
 """
-test_storage_integrate.py -- unit tests for primeatlas/storage_integrate.py's
+test_storage_integrate.py -- unit tests for primeatlas/settings/storage_integrate.py's
 integrate_floor(), focused specifically on the totals-cache bump (see
 storage.py's own module docstring for the full "persisted totals, updated incrementally
 instead of by a full rescan" feature). The merge case must
@@ -55,7 +55,8 @@ def _write_window(portal, base_exponent, offset, primes, window_m=10_000_000):
 
 
 def main():
-    from primeatlas import storage, storage_integrate
+    from primeatlas.core import storage
+    from primeatlas.settings import storage_integrate
 
     tmp = tempfile.mkdtemp(prefix="primeatlas_storage_integrate_test_")
     try:

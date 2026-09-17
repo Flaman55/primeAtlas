@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import unittest
 import sys
 
-path=Path(__file__).resolve().parents[1]/'primeatlas/ring_viz/window_mode.py'
+path=Path(__file__).resolve().parents[1]/'primeatlas/rings/ring_viz/window_mode.py'
 spec=importlib.util.spec_from_file_location('window_mode',path)
 module=importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)

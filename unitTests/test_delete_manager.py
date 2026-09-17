@@ -1,5 +1,5 @@
 """
-test_delete_manager.py -- unit tests for primeatlas/delete_manager.py's totals-cache
+test_delete_manager.py -- unit tests for primeatlas/settings/delete_manager.py's totals-cache
 hook, which sits alongside storage.py's persisted-totals feature (see that
 module's own docstring): deleting a floor must subtract its last-known total from the
 persisted global sum and drop its own cache entry (FloorWiper.execute_delete_floor(),
@@ -50,8 +50,8 @@ def _write_window(portal, base_exponent, offset, primes, window_m=10_000_000):
 
 
 def main():
-    from primeatlas import storage
-    from primeatlas.delete_manager import FloorWiper, PortalWiper
+    from primeatlas.core import storage
+    from primeatlas.settings.delete_manager import FloorWiper, PortalWiper
 
     tmp = tempfile.mkdtemp(prefix="primeatlas_delete_manager_test_")
     try:

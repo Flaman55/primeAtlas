@@ -47,7 +47,7 @@ def check(condition, message):
 
 
 def _test_build_primecount_query_argv():
-    from primeatlas.generation import build_primecount_query_argv
+    from primeatlas.generation.generation import build_primecount_query_argv
 
     argv = build_primecount_query_argv("pi_batch", 1000, 1000000)
     check(argv[0] == "python3" and argv[1] == "-u",
@@ -62,7 +62,7 @@ def _test_run_primecount_wsl_blocking_contract():
     test_cudasieve_integration.py's own Section B) -- no real wsl.exe involved, a fake
     Popen stands in, proving the timeout branch returns the documented {"message",
     "kind": None} shape rather than hanging or crashing."""
-    import primeatlas.generation as gen
+    import primeatlas.generation.generation as gen
 
     class _FakeNeverEndingProc:
         def poll(self):
@@ -121,7 +121,7 @@ def _test_settings_tab_primecount_status_and_install():
         # licensed libraries, see settings_tab.py's own PRIMECOUNT_REPO_URL/
         # PRIMESIEVE_REPO_URL comment) --------------------------------------------------
         import webbrowser
-        import primeatlas.settings_tab as settings_tab_mod
+        import primeatlas.settings.settings_tab as settings_tab_mod
         opened_urls = []
         webbrowser.open = lambda url: opened_urls.append(url)
 

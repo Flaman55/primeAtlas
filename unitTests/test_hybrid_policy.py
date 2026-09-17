@@ -6,8 +6,8 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'prime_sieve'))
 from prime_sieve.hybrid_policy import parameters, MAX_TARGET, MAX_FILTER, check_target
-from primeatlas.hybrid_controls import HybridControls
-from primeatlas.i18n import Translator
+from primeatlas.generation.hybrid_controls import HybridControls
+from primeatlas.core.i18n import Translator
 
 _translator = Translator("en")
 
@@ -138,7 +138,7 @@ class PolicyTests(unittest.TestCase):
     def test_handoff_requires_consent_and_preserves_range(self):
         for consent in (False, True):
             ui = Controls()
-            with patch('primeatlas.hybrid_controls.messagebox.askyesno', return_value=consent):
+            with patch('primeatlas.generation.hybrid_controls.messagebox.askyesno', return_value=consent):
                 ui._offer_hybrid_primesieve(10**11, 10**11 + 10_000_000)
             self.assertEqual(ui.launched, consent)
             self.assertEqual(ui.quick_mode_var.get(), 'primesieve' if consent else 'hybrid')

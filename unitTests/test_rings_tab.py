@@ -1,5 +1,5 @@
 """
-test_rings_tab.py -- tests for primeatlas/rings_tab.py's RingsTab.
+test_rings_tab.py -- tests for primeatlas/rings/rings_tab.py's RingsTab.
 
 Two layers, same split as most tab test files in this folder:
 
@@ -7,9 +7,9 @@ Two layers, same split as most tab test files in this folder:
    no app/display needed at all.
 
 2. The RingsTab widget itself is exercised against a REAL local subprocess, not a
-   mocked LocalLoggedRunner -- monkeypatching primeatlas.rings_tab.RENDERER_SCRIPT to
+   mocked LocalLoggedRunner -- monkeypatching primeatlas.rings.rings_tab.RENDERER_SCRIPT to
    point at a tiny fixture script (written to a temp file) that just prints a couple
-   of lines and exits 0 or 1, instead of the real primeatlas/ring_viz/renderer.py
+   of lines and exits 0 or 1, instead of the real primeatlas/rings/ring_viz/renderer.py
    (which imports moderngl/glfw and needs a real GPU/display -- neither exists in
    this sandbox, and isn't the point of this test anyway). This exercises the actual
    LocalLoggedRunner subprocess-launch + queue-drain + __exit__ handling end-to-end,
@@ -34,7 +34,7 @@ _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(_SCRIPT_DIR)
 sys.path.insert(0, _REPO_ROOT)
 # primeatlas/__init__.py imports manifest.py, which imports window_sharding --
-# needed even just to import primeatlas.rings_tab for _test_build_renderer_argv
+# needed even just to import primeatlas.rings.rings_tab for _test_build_renderer_argv
 # below, same reason test_ring_viz_renderer.py adds this (see that file).
 sys.path.insert(0, os.path.join(_REPO_ROOT, "prime_sieve"))
 
@@ -50,7 +50,7 @@ def check(condition, message):
 
 
 def _test_build_renderer_argv():
-    from primeatlas.rings_tab import build_renderer_argv, RENDERER_SCRIPT
+    from primeatlas.rings.rings_tab import build_renderer_argv, RENDERER_SCRIPT
 
     argv = build_renderer_argv("/some/portal", 12345, python_executable="FAKE_PY")
     check(argv[0] == "FAKE_PY", f"argv[0] is the given python_executable (got {argv[0]!r})")
@@ -174,7 +174,7 @@ def _patch_app_settings(app_settings):
 
 
 def _write_fake_renderer(exit_code):
-    """A stand-in for primeatlas/ring_viz/renderer.py that never touches moderngl/glfw
+    """A stand-in for primeatlas/rings/ring_viz/renderer.py that never touches moderngl/glfw
     -- just proves the real subprocess round trip (launch, live stdout lines, exit
     code) works, independent of anything GPU/display-related. Ignores its argv
     entirely (real renderer.py's own argv contract is covered separately by
@@ -206,7 +206,7 @@ def main():
 
     sys.argv = ["prime_atlas_v1.py"]
     import prime_atlas_v1
-    import primeatlas.rings_tab as rings_tab_module
+    import primeatlas.rings.rings_tab as rings_tab_module
     _patch_app_settings(prime_atlas_v1.APP_SETTINGS)
     app_cls = prime_atlas_v1._build_gui()
     app = app_cls()

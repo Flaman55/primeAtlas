@@ -1,16 +1,16 @@
 """
 test_primesieve_calc_worker.py -- functional regression test for the primesieve
-calculator worker, which runs on primeatlas/background.py's PersistentWorker.
+calculator worker, which runs on primeatlas/core/background.py's PersistentWorker.
 
 The worker, its state, and run_primesieve_query_wsl/build_primesieve_query_argv
-live in primeatlas/primesieve_calc_tab.py's PrimesieveCalcTab -- this suite
+live in primeatlas/primality/primesieve_calc_tab.py's PrimesieveCalcTab -- this suite
 drives it via app.primesieve_calc_tab_widget.X and monkeypatches
-primeatlas.primesieve_calc_tab.run_primesieve_query_wsl (see that module's own
+primeatlas.primality.primesieve_calc_tab.run_primesieve_query_wsl (see that module's own
 docstring for the full design).
 
 run_primesieve_query_wsl() shells out to wsl.exe, which doesn't exist in this sandbox
 (or on a CI box in general) -- this test monkeypatches the module-level
-primeatlas.primesieve_calc_tab.run_primesieve_query_wsl with a deterministic fake, so
+primeatlas.primality.primesieve_calc_tab.run_primesieve_query_wsl with a deterministic fake, so
 it's exercising the WORKER PLUMBING (dispatch -> PersistentWorker -> result callback ->
 UI state), not the real WSL round trip. build_primesieve_query_argv() itself needs no
 faking -- it's pure argv construction.
@@ -67,7 +67,7 @@ def main():
 
     sys.argv = ["prime_atlas_v1.py"]
     import prime_atlas_v1
-    import primeatlas.primesieve_calc_tab as psc
+    import primeatlas.primality.primesieve_calc_tab as psc
     app_cls = prime_atlas_v1._build_gui()
     app = app_cls()
     app.update()

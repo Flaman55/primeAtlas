@@ -15,7 +15,7 @@ import orchestrator_v3
 import orchestrator_loop_helpers
 import prime_sieve_primesieve
 import prime_sieve_cudasieve
-from primeatlas.benchmark import read_benchmark_log, aggregate_benchmark_sieve_nps
+from primeatlas.benchmark.benchmark import read_benchmark_log, aggregate_benchmark_sieve_nps
 
 FIELDS = hybrid_sieve.BENCHMARK_FIELDNAMES[:-2]  # main schema, before engine/count
 

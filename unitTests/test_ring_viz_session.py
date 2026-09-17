@@ -1,5 +1,5 @@
 """
-test_ring_viz_session.py -- unit tests for primeatlas/ring_viz/session.py's
+test_ring_viz_session.py -- unit tests for primeatlas/rings/ring_viz/session.py's
 RenderSession (see ring_viz/renderer.py's own docstring for the module split
 and scope boundary between the GL entrypoint and this pure-logic class).
 
@@ -43,7 +43,7 @@ def _make_session(**overrides):
     """A RenderSession with sane, small defaults -- every test overrides
     only the fields it actually cares about, matching this file's own
     convention of keeping each test's intent visible at the call site."""
-    from primeatlas.ring_viz.session import RenderSession
+    from primeatlas.rings.ring_viz.session import RenderSession
 
     kwargs = dict(
         primes=_SMALL_PRIMES,
@@ -242,7 +242,7 @@ def _test_reset():
 
 
 def _test_extend_buffer_if_needed():
-    import primeatlas.ring_viz.session as session_module
+    import primeatlas.rings.ring_viz.session as session_module
 
     original_loader = session_module.load_archive
     calls = []
@@ -272,7 +272,7 @@ def _test_extend_buffer_if_needed():
 
 
 def _test_extend_buffer_exhaustion_sticks():
-    import primeatlas.ring_viz.session as session_module
+    import primeatlas.rings.ring_viz.session as session_module
 
     original_loader = session_module.load_archive
     call_count = [0]
@@ -337,7 +337,7 @@ def _test_rebuild_tracked_resonance_orange_dot():
     (tracked_resonance_state's to_resonance == 0), the tracked rings' dots
     turn resonance-orange, not just plain white -- verified end-to-end
     through RenderSession.rebuild(), not just build_vertex_data directly."""
-    from primeatlas.ring_viz.geometry_draw import _FLASH_RESONANCE_RGB
+    from primeatlas.rings.ring_viz.geometry_draw import _FLASH_RESONANCE_RGB
     expected_rgb = np.array([c / 255.0 for c in _FLASH_RESONANCE_RGB])
 
     # track_primes=[2, 3] -> LCM=6. auto_orbit=False so the manual list is

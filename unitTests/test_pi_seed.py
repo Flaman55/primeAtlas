@@ -199,7 +199,7 @@ def test_count_sieving_primes_cached_seeding(tmp_portal):
 
 
 def test_build_wsl_logged_command_env_var():
-    import primeatlas.generation as gen
+    import primeatlas.generation.generation as gen
 
     argv = ["python3", "orchestrator_v3.py", "20", "5"]
     with tempfile.TemporaryDirectory() as tmp:

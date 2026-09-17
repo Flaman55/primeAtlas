@@ -1,6 +1,6 @@
 """
-test_full_backup_hit_paging.py -- proves primeatlas/manifest.py's ConstellationSnapshot
-and primeatlas/full_backup.py's copy_floor_increment()/restore_floor_from_full_backup()
+test_full_backup_hit_paging.py -- proves primeatlas/settings/manifest.py's ConstellationSnapshot
+and primeatlas/settings/full_backup.py's copy_floor_increment()/restore_floor_from_full_backup()
 correctly see and round-trip a PAGED constellation pattern (prime_sieve/hit_paging.py),
 not just the original single-cumulative-file case every existing full_backup.py user
 already relied on.
@@ -32,8 +32,8 @@ sys.path.insert(0, os.path.join(_REPO_ROOT, "prime_sieve"))
 
 import prime_sieve_v1
 import hit_paging
-from primeatlas.manifest import ConstellationSnapshot
-from primeatlas import full_backup
+from primeatlas.settings.manifest import ConstellationSnapshot
+from primeatlas.settings import full_backup
 
 failures = []
 

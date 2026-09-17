@@ -23,7 +23,7 @@ Every check() states the specific expected vs. actual value, to catch failures a
 show their actual cause, not just red/green.
 
 The three methods under test, plus the Quick-gen panel's own StringVar/BooleanVar state,
-live on GenerationTab (primeatlas/generation_tab.py) rather than on the app class
+live on GenerationTab (primeatlas/generation/generation_tab.py) rather than on the app class
 directly -- this suite drives them via app.generation_tab_widget.X instead of app.X
 (see that module's own docstring for the extraction design).
 
@@ -94,7 +94,7 @@ class _LaunchRecorder:
 
 def main():
     import prime_atlas_v1
-    from primeatlas.generation import _floor_window_count
+    from primeatlas.generation.generation import _floor_window_count
 
     W = 10_000_000
     portal = tempfile.mkdtemp(prefix="primeatlas_gen_launch_test_")

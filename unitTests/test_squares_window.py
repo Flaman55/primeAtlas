@@ -1,5 +1,5 @@
 """
-test_squares_window.py -- tests for primeatlas/squares_window.py, the pure-Python
+test_squares_window.py -- tests for primeatlas/research/squares_window.py, the pure-Python
 interval-contains-enough-primes engine for the Badania -> Przedzialy kwadratowe
 sub-tab (Legendre/Oppermann/Brocard presets + custom formula). No tkinter, no
 display needed -- run directly:
@@ -13,7 +13,7 @@ _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(_SCRIPT_DIR)
 sys.path.insert(0, _REPO_ROOT)
 # primeatlas/__init__.py imports manifest.py, which imports window_sharding --
-# needed even just to import primeatlas.squares_window (same fix as every
+# needed even just to import primeatlas.research.squares_window (same fix as every
 # other test file in this folder, see e.g. test_ring_geometry.py's own copy).
 sys.path.insert(0, os.path.join(_REPO_ROOT, "prime_sieve"))
 
@@ -29,7 +29,7 @@ def check(condition, message):
 
 
 def _test_sieve_is_prime():
-    from primeatlas.squares_window import sieve_is_prime
+    from primeatlas.research.squares_window import sieve_is_prime
 
     is_prime = sieve_is_prime(20)
     primes = [i for i in range(21) if is_prime[i]]
@@ -40,7 +40,7 @@ def _test_sieve_is_prime():
 
 
 def _test_first_n_primes():
-    from primeatlas.squares_window import first_n_primes
+    from primeatlas.research.squares_window import first_n_primes
 
     check(first_n_primes(1) == [2], "first_n_primes(1) == [2]")
     check(first_n_primes(5) == [2, 3, 5, 7, 11],
@@ -56,7 +56,7 @@ def _test_first_n_primes():
 
 
 def _test_preset_bounds():
-    from primeatlas.squares_window import preset_bounds
+    from primeatlas.research.squares_window import preset_bounds
 
     check(preset_bounds("legendre", 3) == [(9, 16)],
           f"Legendre bounds for n=3 are [3^2, 4^2] = [9, 16] (got {preset_bounds('legendre', 3)!r})")
@@ -80,7 +80,7 @@ def _test_preset_bounds():
 
 
 def _test_check_interval_range_legendre():
-    from primeatlas.squares_window import check_interval_range
+    from primeatlas.research.squares_window import check_interval_range
 
     result = check_interval_range("legendre", 1, 5)
     check(result["covered"], "Legendre holds (no counterexamples) for n=1..5 "
@@ -94,7 +94,7 @@ def _test_check_interval_range_legendre():
 
 
 def _test_check_interval_range_oppermann_two_subintervals():
-    from primeatlas.squares_window import check_interval_range
+    from primeatlas.research.squares_window import check_interval_range
 
     result = check_interval_range("oppermann", 3, 3)
     row = result["rows"][0]
@@ -108,7 +108,7 @@ def _test_check_interval_range_oppermann_two_subintervals():
 
 
 def _test_check_interval_range_brocard_required_count_four():
-    from primeatlas.squares_window import check_interval_range
+    from primeatlas.research.squares_window import check_interval_range
 
     result = check_interval_range("brocard", 2, 2)
     check(result["required_count"] == 4,
@@ -125,7 +125,7 @@ def _test_check_interval_range_brocard_required_count_four():
 
 
 def _test_check_interval_range_counterexample_detection():
-    from primeatlas.squares_window import check_interval_range
+    from primeatlas.research.squares_window import check_interval_range
 
     # A required_count deliberately higher than any of these small intervals can
     # satisfy, so every row is a manufactured counterexample -- exercises the
@@ -139,7 +139,7 @@ def _test_check_interval_range_counterexample_detection():
 
 
 def _test_check_interval_range_custom_bounds_fn():
-    from primeatlas.squares_window import check_interval_range
+    from primeatlas.research.squares_window import check_interval_range
 
     # Custom: a(n)=10n, b(n)=10n+1 -- a razor-thin two-integer window, only
     # "covered" when 10n or 10n+1 happens to be prime.
@@ -169,7 +169,7 @@ def _test_check_interval_range_custom_bounds_fn():
 
 
 def _test_check_interval_range_pagination():
-    from primeatlas.squares_window import check_interval_range
+    from primeatlas.research.squares_window import check_interval_range
 
     result = check_interval_range("legendre", 1, 10, row_cap=3, row_offset=2)
     check(len(result["rows"]) == 3, f"row_cap=3 returns exactly 3 rows (got {len(result['rows'])})")
@@ -191,7 +191,7 @@ def _test_check_interval_range_pagination():
 
 
 def _test_check_interval_range_validation():
-    from primeatlas.squares_window import check_interval_range
+    from primeatlas.research.squares_window import check_interval_range
 
     try:
         check_interval_range("legendre", 5, 1)
@@ -225,7 +225,7 @@ def _test_check_interval_range_validation():
 
 
 def _test_check_interval_range_from_source():
-    from primeatlas.squares_window import check_interval_range_from_source, sieve_is_prime
+    from primeatlas.research.squares_window import check_interval_range_from_source, sieve_is_prime
 
     calls = []
 
@@ -280,7 +280,7 @@ def _test_check_interval_range_from_source():
 
 
 def _test_check_interval_range_max_sieve_bound_ceiling():
-    import primeatlas.squares_window as squares_window
+    import primeatlas.research.squares_window as squares_window
 
     # Rather than actually sieving hundreds of millions of ints just to prove
     # the refusal path (slow, memory-heavy for a unit test), temporarily lower

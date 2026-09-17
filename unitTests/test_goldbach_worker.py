@@ -1,8 +1,8 @@
 """
 test_goldbach_worker.py -- functional regression test for the Goldbach
 structural-window worker (Badania -> Goldbach sub-tab), which runs on
-primeatlas/background.py's PersistentWorker and lives in
-primeatlas/research_goldbach_tab.py's ResearchGoldbachTab -- all
+primeatlas/core/background.py's PersistentWorker and lives in
+primeatlas/research/research_goldbach_tab.py's ResearchGoldbachTab -- all
 app.goldbach_*/app._goldbach_* references below go through
 app.research_goldbach_tab_widget instead (see that module's own
 docstring for why the tab is fully self-contained, own worker included).
@@ -153,9 +153,9 @@ def main():
         # module-level function so it raises exercises the exact path _goldbach_job's
         # docstring documents (catches its own exception, returns (op, False, str(e))
         # instead of relying on PersistentWorker's last-resort net). Patched on
-        # primeatlas.research_goldbach_tab, where _goldbach_job lives and imports
+        # primeatlas.research.research_goldbach_tab, where _goldbach_job lives and imports
         # goldbach_sieve_is_prime from.
-        import primeatlas.research_goldbach_tab as research_goldbach_tab_module
+        import primeatlas.research.research_goldbach_tab as research_goldbach_tab_module
         original_sieve_is_prime = research_goldbach_tab_module.goldbach_sieve_is_prime
 
         def fake_raise(n):

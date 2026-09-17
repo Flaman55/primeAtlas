@@ -1,6 +1,6 @@
 """
 test_primes_tab.py -- functional regression test for PrimesTab (primeatlas/
-primes_tab.py + primeatlas/storage.py), extracted from prime_atlas_v1.py as part of
+primes_tab.py + primeatlas/core/storage.py), extracted from prime_atlas_v1.py as part of
 the tab-by-tab backend/UI split. This was the second tab extracted after Benchmark,
 and the first one where the search
 machinery had to stay app-level (see primes_tab.py's own module docstring) -- so this
@@ -82,7 +82,7 @@ def _primes_upto(n):
 
 
 def _test_cumulative_floor_totals():
-    """Direct unit test of primeatlas.primes_tab._cumulative_floor_totals -- a plain
+    """Direct unit test of primeatlas.primes.primes_tab._cumulative_floor_totals -- a plain
     function with no tkinter dependency (mirrors the existing convention of testing
     such extracted pure functions directly, e.g. benchmark_tab.py's
     _nearest_hover_point/_hover_label_position) -- so this runs even without Xvfb/a
@@ -95,7 +95,7 @@ def _test_cumulative_floor_totals():
     than an external reference definition. This INCLUSIVE version instead answers
     "how many primes in total through this floor" -- see that function's own
     docstring for the full reasoning."""
-    from primeatlas.primes_tab import _cumulative_floor_totals
+    from primeatlas.primes.primes_tab import _cumulative_floor_totals
 
     # Fully known, contiguous floors 0..3 -- each floor's OWN count folded in, so the
     # numbers land one row "later" than Wikipedia's pi(10**N) would (that's the point):

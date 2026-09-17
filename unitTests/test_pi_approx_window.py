@@ -1,5 +1,5 @@
 """
-test_pi_approx_window.py -- tests for primeatlas/pi_approx_window.py, the
+test_pi_approx_window.py -- tests for primeatlas/research/pi_approx_window.py, the
 pure-Python pi(x)-approximation-accuracy engine for the Badania ->
 Przyblizenia pi(x) sub-tab (li(x), Riemann's R(x), against the real count).
 No tkinter, no display needed -- run directly:
@@ -21,7 +21,7 @@ _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(_SCRIPT_DIR)
 sys.path.insert(0, _REPO_ROOT)
 # primeatlas/__init__.py imports manifest.py, which imports window_sharding --
-# needed even just to import primeatlas.pi_approx_window (same fix as every
+# needed even just to import primeatlas.research.pi_approx_window (same fix as every
 # other test file in this folder, see e.g. test_squares_window.py's own copy).
 sys.path.insert(0, os.path.join(_REPO_ROOT, "prime_sieve"))
 
@@ -37,7 +37,7 @@ def check(condition, message):
 
 
 def _test_sieve_is_prime():
-    from primeatlas.pi_approx_window import sieve_is_prime
+    from primeatlas.research.pi_approx_window import sieve_is_prime
 
     is_prime = sieve_is_prime(20)
     primes = [i for i in range(21) if is_prime[i]]
@@ -46,7 +46,7 @@ def _test_sieve_is_prime():
 
 
 def _test_zeta_known_closed_forms():
-    from primeatlas.pi_approx_window import _zeta
+    from primeatlas.research.pi_approx_window import _zeta
 
     check(abs(_zeta(2) - (math.pi ** 2 / 6)) < 1e-6,
           f"zeta(2) matches the closed form pi^2/6 (got {_zeta(2)!r}, "
@@ -60,7 +60,7 @@ def _test_zeta_known_closed_forms():
 
 
 def _test_li_monotonic_and_derivative():
-    from primeatlas.pi_approx_window import li
+    from primeatlas.research.pi_approx_window import li
 
     check(li(10) < li(100) < li(1000) < li(10000),
           "li(x) is strictly increasing across a wide range of x")
@@ -85,7 +85,7 @@ def _test_li_monotonic_and_derivative():
 
 
 def _test_riemann_r_monotonic_and_close_to_li():
-    from primeatlas.pi_approx_window import li, riemann_r
+    from primeatlas.research.pi_approx_window import li, riemann_r
 
     check(riemann_r(10) < riemann_r(100) < riemann_r(1000) < riemann_r(10000),
           "R(x) is strictly increasing across a wide range of x")
@@ -105,7 +105,7 @@ def _test_riemann_r_monotonic_and_close_to_li():
 
 
 def _test_check_pi_approx_range_r_beats_li():
-    from primeatlas.pi_approx_window import check_pi_approx_range
+    from primeatlas.research.pi_approx_window import check_pi_approx_range
 
     # The well-known, NOT-a-conjecture fact this whole tab exists to show:
     # Riemann's R(x) is a substantially better approximation to the real
@@ -126,7 +126,7 @@ def _test_check_pi_approx_range_r_beats_li():
 
 
 def _test_check_pi_approx_range_checkpoints_and_endpoint():
-    from primeatlas.pi_approx_window import check_pi_approx_range
+    from primeatlas.research.pi_approx_window import check_pi_approx_range
 
     # step doesn't evenly divide (x_to - x_from) -- x_to must still show up
     # as its own checkpoint, not get silently rounded away.
@@ -143,7 +143,7 @@ def _test_check_pi_approx_range_checkpoints_and_endpoint():
 
 
 def _test_check_pi_approx_range_pagination():
-    from primeatlas.pi_approx_window import check_pi_approx_range
+    from primeatlas.research.pi_approx_window import check_pi_approx_range
 
     result = check_pi_approx_range(10, 1000, 10, row_cap=3, row_offset=2)
     check(len(result["rows"]) == 3, f"row_cap=3 returns exactly 3 rows (got {len(result['rows'])})")
@@ -162,7 +162,7 @@ def _test_check_pi_approx_range_pagination():
 
 
 def _test_check_pi_approx_range_validation():
-    from primeatlas.pi_approx_window import check_pi_approx_range
+    from primeatlas.research.pi_approx_window import check_pi_approx_range
 
     try:
         check_pi_approx_range(100, 10, 1)
@@ -184,7 +184,7 @@ def _test_check_pi_approx_range_validation():
 
 
 def _test_check_pi_approx_range_from_source():
-    from primeatlas.pi_approx_window import check_pi_approx_range_from_source, sieve_is_prime
+    from primeatlas.research.pi_approx_window import check_pi_approx_range_from_source, sieve_is_prime
 
     calls = []
 
@@ -207,7 +207,7 @@ def _test_check_pi_approx_range_from_source():
 
 
 def _test_check_pi_approx_range_with_pi_func():
-    from primeatlas.pi_approx_window import check_pi_approx_range_with_pi_func
+    from primeatlas.research.pi_approx_window import check_pi_approx_range_with_pi_func
 
     calls = []
 
@@ -254,7 +254,7 @@ def _test_check_pi_approx_range_with_pi_func():
 
 
 def _test_check_pi_approx_range_max_sieve_bound_ceiling():
-    import primeatlas.pi_approx_window as pi_approx_window
+    import primeatlas.research.pi_approx_window as pi_approx_window
 
     original_ceiling = pi_approx_window.MAX_SIEVE_BOUND
     pi_approx_window.MAX_SIEVE_BOUND = 50

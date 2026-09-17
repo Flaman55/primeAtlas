@@ -689,123 +689,136 @@ prime_atlas_v1.py           thin composition root (tkinter); builds the main win
                               scans; the three "generate missing data, then retry"
                               methods), and otherwise just instantiates and wires each
                               tab class below
-primeatlas/                 backend + GUI-tab package, one file (or pure-logic/UI pair
-                              of files) per feature
-  GUI tab classes (ttk.Frame subclasses, one file each unless noted):
-  primes_tab.py               PrimesTab -- Prime numbers -> Storage sub-tab
-  primesieve_calc_tab.py      PrimesieveCalcTab -- Prime numbers -> primesieve
-                              calculator sub-tab (also holds
-                              build_primesieve_query_argv/run_primesieve_query_wsl,
-                              its only callers)
-  primality_tab.py            PrimalityTab -- Prime numbers -> Primality tests sub-tab
-                              (UI only; primality.py below is the pure-logic backend)
-  constellations_hits_tab.py  ConstellationsHitsTab -- Constellations -> Storage
-  constellations_calc_tab.py  ConstellationsCalcTab -- Constellations -> Constellation
+primeatlas/                 backend + GUI-tab package, split into one subdirectory per
+                              functional block (each with its own `__init__.py`); the
+                              package's own `primeatlas/__init__.py` stays at the top
+                              level and re-exports the pure-logic pieces originally
+                              built for the Settings tab, plus primality testing and
+                              the Goldbach structural-window backend -- see that file's
+                              own docstring
+
+  primeatlas/core/             shared infrastructure used across most other blocks
+  base_tab.py                   BaseTab(ttk.Frame) -- common base class for every GUI
+                              tab class in this package (shared self.T assignment,
+                              totals_progress spinner toggle, clipboard-copy helper)
+  widgets.py                    small generic tkinter helpers (e.g. FlowRow) with no
+                              application-specific state
+  theme.py                      light/dark palette DATA only -- the actual
+                              ttk.Style()/option_add() application lives in
+                              PortalBrowserApp._apply_theme(), which needs a live Tk
+                              root this module deliberately never touches
+  i18n.py                       Translator: loads one of two static locale files
+  background.py                run_in_background()/PersistentWorker -- shared
+                              background-job helpers used by any tab that launches a
+                              one-shot call or a queue of same-kind jobs off the Tk
+                              main thread
+  pdf_writer.py                 a minimal, dependency-free PDF writer (text, lines,
+                              filled rects, basic pagination) shared by the Benchmark
+                              tab's export and the Constellations Records table's export
+  storage.py                    the core prime-window storage layer (listing floors/
+                              files, totals caches, format_duration/format_bytes)
+                              shared by several tabs, not specific to any one
+  app_settings.py               AppSettings -- configurable storage path, persisted
+                              OUTSIDE the portal folder itself (see that module's
+                              docstring for why)
+  totals_search_coordinator.py TotalsSearchCoordinator -- the two PersistentWorkers
+                              (floor-totals scanning, prime/constellation search) that
+                              used to live directly on PortalBrowserApp itself in
+                              prime_atlas_v1.py; shared by the Prime numbers tab's tree,
+                              the Benchmark tab's grand-total line, and the Prime
+                              numbers/Constellations search boxes
+  locales/                      strings_en.json, strings_pl.json, app_settings.json
+
+  primeatlas/primes/            "Prime numbers" tab's own Storage sub-tab
+  primes_tab.py                 PrimesTab -- Prime numbers -> Storage sub-tab
+  primes_tree_coordinator.py    PrimesTreeCoordinator -- background floor-list
+                              scan/reload logic for this tab's own tree, that used to
+                              live directly on PortalBrowserApp itself
+
+  primeatlas/constellations/    "Constellations" tab
+  constellations_hits_tab.py    ConstellationsHitsTab -- Constellations -> Storage
+  constellations_calc_tab.py    ConstellationsCalcTab -- Constellations -> Constellation
                               calculator
   constellations_records_tab.py ConstellationsRecordsTab -- Constellations -> Records
                               table
-  research_goldbach_tab.py    ResearchGoldbachTab -- Research -> Goldbach sub-tab (UI;
-                              research_goldbach.py below is the pure-logic backend)
-  research_squares_tab.py     ResearchSquaresTab -- Research -> Przedzialy kwadratowe
-                              (Square intervals) sub-tab (UI; squares_window.py below is
-                              the pure-logic backend)
-  research_polynomials_tab.py ResearchPolynomialsTab -- Research -> Wielomiany
-                              pierwszorodne (Prime-generating polynomials) sub-tab (UI;
-                              polynomials_window.py below is the pure-logic backend)
-  research_gaps_tab.py        ResearchGapsTab -- Research -> Luki (Prime gaps) sub-tab
-                              (UI; gaps_window.py below is the pure-logic backend)
-  research_pi_approx_tab.py   ResearchPiApproxTab -- Research -> Przyblizenia pi(x)
-                              sub-tab (UI, incl. the primecount install-offer dialog;
-                              pi_approx_window.py below is the pure-logic backend --
-                              see "The primecount data source" above)
-  generation_tab.py           GenerationTab -- the Generation tab (largest one: Quick-
+  constellations.py             constellation (k-tuple) hit storage: listing, search,
+                              PDF/CSV export
+  constellations_tree_coordinator.py ConstellationsTreeCoordinator -- background
+                              floor-list scan/reload logic for this tab's own hits
+                              tree, direct sibling of primes/primes_tree_coordinator.py
+
+  primeatlas/research/          "Research" tab's five sub-tabs (UI/pure-logic pairs)
+  research_goldbach_tab.py, research_goldbach.py
+                              ResearchGoldbachTab (UI) / storage-bridging layer over
+                              goldbach_window.py's pure arithmetic -- Research -> Goldbach
+  goldbach_window.py            Goldbach strong-window check/visualization core
+                              arithmetic (see "Features" above) -- reads primes from
+                              the on-disk archive via the same source_primes format
+                              the Prime numbers tab browses
+  research_squares_tab.py, research_squares.py, squares_window.py
+                              ResearchSquaresTab (UI) / storage-bridging layer /
+                              Square intervals check+custom-formula core arithmetic --
+                              Research -> Przedzialy kwadratowe
+  research_polynomials_tab.py, research_polynomials.py, polynomials_window.py
+                              ResearchPolynomialsTab (UI) / storage-bridging layer /
+                              Prime-generating polynomials prime-count/density core
+                              arithmetic (own pure-Python restricted eval for the
+                              custom-formula preset) -- Research -> Wielomiany pierwszorodne
+  research_gaps_tab.py, research_gaps.py, gaps_window.py
+                              ResearchGapsTab (UI) / storage-bridging layer / Prime gaps
+                              + Andrica/Firoozbakht/Cramer overlay core arithmetic --
+                              Research -> Luki
+  research_pi_approx_tab.py, research_pi_approx.py, pi_approx_window.py
+                              ResearchPiApproxTab (UI, incl. the primecount install-
+                              offer dialog) / storage-bridging layer / li(x)/R(x)-vs-
+                              real-pi(x) core arithmetic, incl. this project's own
+                              pure-Python exponential-integral (Ei) power series and
+                              Gram-series zeta(s) -- no scipy/mpmath dependency (see
+                              "The primecount data source" above) -- Research ->
+                              Przyblizenia pi(x)
+                              (research_squares.py/research_polynomials.py/research_
+                              gaps.py/research_pi_approx.py are thin storage-bridging
+                              re-exports of research_goldbach.py's own read_is_prime_
+                              from_storage/MissingStorageRangeError -- that reader's
+                              logic isn't Goldbach-specific, so these four reuse it
+                              rather than duplicating it, unlike each sub-tab's own
+                              deliberately-duplicated sieve_is_prime)
+
+  primeatlas/generation/        "Generation" tab
+  generation_tab.py             GenerationTab -- the Generation tab (largest one: Quick-
                               gen panel -- Floor only/Range/Exploration/primesieve/
                               cudasieve/Hybrid modes -- plus the loop/orchestrator-
                               direct/primesieve/k-tuple-sieve launch forms;
-                              generation.py below is the pure-logic backend;
-                              hybrid_controls.py holds the Hybrid mode's own debounced
-                              reach-preview/auto-fit UI logic, kept in its own file
-                              since it runs its preview calculation off the Tk main
-                              thread)
-  rings_tab.py                RingsTab -- the Ring visualization tab: launches
-                              ring_viz/renderer.py (moderngl/GLFW) as a separate native
-                              Windows subprocess, and exchanges state with it over
-                              stdin/stdout (HUD JSON, pause/resume commands) rather than
-                              building any of the visualization itself as tkinter
-                              widgets; see "Ring visualization" above
-  benchmark_tab.py            BenchmarkTab -- the Benchmark tab (charts + PDF export;
-                              benchmark.py below is the pure-logic backend)
-  settings_tab.py             SettingsTab -- the Settings tab (Ogolne/Backup/
-                              Aktualizacje sub-tabs, each independently scrollable),
-                              incl. the optional-library (sympy), primecount, and
-                              CUDASieve installers, plus GitHub attribution buttons for
-                              every third-party library this app calls into (sympy,
-                              primecount, primesieve, CUDASieve)
-
-  pure-logic backends (no tkinter) for the larger tabs above:
-  generation.py                window/floor arithmetic, generation-settings
+                              generation.py below is the pure-logic backend)
+  generation.py                 window/floor arithmetic, generation-settings
                               persistence, argv builders for every launch engine,
                               WslLoggedRunner/LocalLoggedRunner, WSL RAM/CPU probing,
                               plus the hang-safe Popen()+poll()-loop WSL callers shared
                               by CUDASieve's and primecount's own status/install/query
                               calls (run_cudasieve_wsl_blocking, run_primecount_wsl_
                               blocking, run_primecount_install_wsl_blocking)
-  benchmark.py                 reading/normalizing benchmark_log.csv rows
-  constellations.py            constellation (k-tuple) hit storage: listing, search,
-                              PDF/CSV export
-  research_goldbach.py         storage-bridging layer between goldbach_window.py's
-                              pure arithmetic and ResearchGoldbachTab's UI
-  goldbach_window.py           Goldbach strong-window check/visualization core
-                              arithmetic (see "Features" above) -- reads primes from
-                              the on-disk magazyn via the same source_primes format
-                              the Prime numbers tab browses
-  research_squares.py, research_polynomials.py, research_gaps.py, research_pi_approx.py
-                              thin storage-bridging re-exports of research_goldbach.py's
-                              own read_is_prime_from_storage/MissingStorageRangeError --
-                              that reader's logic isn't Goldbach-specific, so these four
-                              reuse it rather than duplicating it (unlike each sub-tab's
-                              own deliberately-duplicated sieve_is_prime, see any of
-                              their own module docstrings for why small primitives are
-                              copied per-module here but this ~100-line reader is not)
-  squares_window.py             Square intervals check/custom-formula core arithmetic
-  polynomials_window.py         Prime-generating polynomials prime-count/density core
-                              arithmetic (own pure-Python restricted eval for the
-                              custom-formula preset)
-  gaps_window.py                 Prime gaps + Andrica/Firoozbakht/Cramer overlay core
-                              arithmetic
-  pi_approx_window.py           li(x)/R(x)-vs-real-pi(x) core arithmetic, incl. this
-                              project's own pure-Python exponential-integral (Ei) power
-                              series and Gram-series zeta(s) -- no scipy/mpmath
-                              dependency (see "The primecount data source" above for
-                              the third, sieve-free way this module's own check_pi_
-                              approx_range_with_pi_func() can obtain pi(x))
-  primality.py                 Miller-Rabin/Fermat/Solovay-Strassen primality tests
-                              plus factorization (trial division + Pollard's rho, or
-                              sympy.factorint() if installed) -- pure Python, no WSL
+  generation_console.py        stacked/detachable live-output console used by the
+                              Generation tab's loop/constellation/k-tuple sections
+  generation_offer_coordinator.py GenerationOfferCoordinator -- the three "offer to
+                              generate this missing fragment, then let the caller
+                              re-check" bridge methods that used to live directly on
+                              PortalBrowserApp itself
+  hybrid_controls.py            Hybrid mode's own debounced reach-preview/auto-fit UI
+                              logic, kept in its own file since it runs its preview
+                              calculation off the Tk main thread
+
+  primeatlas/rings/              "Ring visualization" tab
+  rings_tab.py                 RingsTab -- launches ring_viz/renderer.py (moderngl/
+                              GLFW) as a separate native Windows subprocess, and
+                              exchanges state with it over stdin/stdout (HUD JSON,
+                              pause/resume commands) rather than building any of the
+                              visualization itself as tkinter widgets; see "Ring
+                              visualization" above
   ring_geometry.py              ring/drum placement math, plus Bertrand/Legendre/
                               General Law highlight-window membership and blended
                               colors -- ported from the standalone Structural Sieve
                               HTML tool's own SieveModel.js; pure functions, no OpenGL
                               or subprocess code (that lives in ring_viz/, below)
-  storage.py                    the core prime-window storage layer (listing floors/
-                              files, totals caches, format_duration/format_bytes)
-                              shared by several tabs above, not specific to any one
-
-  Settings-tab-only backend pieces (originally the whole point of this package, before
-  it grew into every other tab too -- see this package's own __init__.py docstring):
-  app_settings.py, manifest.py, backup_store.py, restore_job.py, floor_meta.py,
-  full_backup.py, storage_integrate.py, delete_manager.py -- see "Backup manifest
-  contents" / "Moving floor data between storages" / "Full-data backup" /
-  "Integrating an external storage" below for what each backs
-  app_restart.py                execv()-based in-place relaunch, used by the
-                              theme/language auto-restart and the self-update
-                              restart-after-download prompt (Settings > Ogolne /
-                              Aktualizacje)
-  app_update.py                 GitHub-API/git-fetch based self-update check + fetch-
-                              and-fast-forward download, with OS-verified git-lock
-                              recovery (Settings > Aktualizacje) -- pure Python, no
-                              tkinter
-
   ring_viz/                      the GPU renderer subprocess launched by rings_tab.py --
                               kept in its own subpackage since it's a separate OS
                               process, not additional widgets in the main Tk process;
@@ -841,7 +854,7 @@ primeatlas/                 backend + GUI-tab package, one file (or pure-logic/U
                               scrub deltas, sequential-mode ceiling guards, buffer-
                               lookahead-extension math, the range-mode dynamic step
                               size, and the resonance-log jump-vs-tick update rule
-    sources.py                     load_synthetic/load_sieve/load_magazyn -- the three
+    sources.py                     load_synthetic/load_sieve/load_archive -- the three
                               interchangeable ring-array data sources (--source)
     shaders.py                     the GLSL vertex/fragment shader source strings
                               (point-sprite rings, tracked-ring outlines, screen-space
@@ -856,24 +869,53 @@ primeatlas/                 backend + GUI-tab package, one file (or pure-logic/U
                               releases exclusive monitor ownership before a paused
                               window is hidden
 
-  shared infrastructure (used across many tabs, not feature-specific):
-  background.py                run_in_background()/PersistentWorker -- shared
-                              background-job helpers used by any tab that launches a
-                              one-shot call or a queue of same-kind jobs off the Tk
-                              main thread
-  pdf_writer.py                 a minimal, dependency-free PDF writer (text, lines,
-                              filled rects, basic pagination) shared by the Benchmark
-                              tab's export and the Constellations Records table's export
-  generation_console.py        stacked/detachable live-output console used by the
-                              Generation tab's loop/constellation/k-tuple sections
-  widgets.py                    small generic tkinter helpers (e.g. FlowRow) with no
-                              application-specific state
-  theme.py                      light/dark palette DATA only -- the actual
-                              ttk.Style()/option_add() application lives in
-                              PortalBrowserApp._apply_theme(), which needs a live Tk
-                              root this module deliberately never touches
-  i18n.py                       Translator: loads one of two static locale files
-  locales/                      strings_en.json, strings_pl.json, app_settings.json
+  primeatlas/benchmark/         "Benchmark" tab
+  benchmark_tab.py             BenchmarkTab -- the Benchmark tab (charts + PDF export;
+                              benchmark.py below is the pure-logic backend)
+  benchmark.py                  reading/normalizing benchmark_log.csv rows
+
+  primeatlas/primality/         "Prime numbers" tab's primesieve-calculator and
+                              primality-test sub-tabs
+  primesieve_calc_tab.py      PrimesieveCalcTab -- Prime numbers -> primesieve
+                              calculator sub-tab (also holds
+                              build_primesieve_query_argv/run_primesieve_query_wsl,
+                              its only callers)
+  primality_tab.py            PrimalityTab -- Prime numbers -> Primality tests sub-tab
+                              (UI only; primality.py below is the pure-logic backend)
+  primality.py                 Miller-Rabin/Fermat/Solovay-Strassen primality tests
+                              plus factorization (trial division + Pollard's rho, or
+                              sympy.factorint() if installed) -- pure Python, no WSL
+
+  primeatlas/settings/          "Settings" tab (originally the whole point of this
+                              package, before it grew into every other tab too -- see
+                              this package's own __init__.py docstring)
+  settings_tab.py             SettingsTab -- the Settings tab (Ogolne/Backup/
+                              Aktualizacje sub-tabs, each independently scrollable),
+                              incl. the optional-library (sympy), primecount, and
+                              CUDASieve installers, plus GitHub attribution buttons for
+                              every third-party library this app calls into (sympy,
+                              primecount, primesieve, CUDASieve)
+  manifest.py, backup_store.py, restore_job.py, floor_meta.py, full_backup.py,
+  storage_integrate.py, delete_manager.py -- see "Backup manifest contents" /
+  "Moving floor data between storages" / "Full-data backup" / "Integrating an
+  external storage" below for what each backs
+  app_restart.py                execv()-based in-place relaunch, used by the
+                              theme/language auto-restart and the self-update
+                              restart-after-download prompt (Settings > Ogolne /
+                              Aktualizacje)
+  app_update.py                 GitHub-API/git-fetch based self-update check + fetch-
+                              and-fast-forward download, with OS-verified git-lock
+                              recovery (Settings > Aktualizacje) -- pure Python, no
+                              tkinter
+  env_setup.py                 first-run environment check/installer: discovers and
+                              repairs a fresh machine's WSL/Ubuntu/apt-package setup
+                              (see INSTALL_WSL_PRIMEATLAS.md), gated on user
+                              confirmation
+  env_setup_wizard.py           first-run environment check/install wizard UI, shown
+                              from prime_atlas_v1.py's main() BEFORE PortalBrowserApp
+                              is constructed (enabling WSL Windows features can
+                              require a reboot, so nothing downstream should try to
+                              run first)
 prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
   prime_sieve_v1.py          PGS1 output format, process-pool orchestration
   prime_sieve_v3.py          PGS2 output format, shared-memory mmap orchestration;

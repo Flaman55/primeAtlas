@@ -1,5 +1,5 @@
 """
-test_app_restart.py -- covers primeatlas/app_restart.py, the os.execv()-based in-place
+test_app_restart.py -- covers primeatlas/settings/app_restart.py, the os.execv()-based in-place
 relaunch used by settings_tab.py's automatic restart-after-theme/language-change feature
 (task #518).
 
@@ -44,7 +44,7 @@ def check(condition, message):
 
 def section_a():
     print("\n--- Section A: _build_execv_args() ---")
-    from primeatlas import app_restart as ar
+    from primeatlas.settings import app_restart as ar
 
     orig_argv = sys.argv
     sys.argv = ["/some/relative/../path/prime_atlas_v1.py"]
@@ -121,7 +121,7 @@ def section_a():
 
 def section_b():
     print("\n--- Section B: restart_app() ---")
-    from primeatlas import app_restart as ar
+    from primeatlas.settings import app_restart as ar
 
     orig_execv = os.execv
     captured = []

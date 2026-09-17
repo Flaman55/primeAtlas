@@ -189,7 +189,7 @@ def main():
               "tree is still correctly populated after the re-entrant reload sequence")
 
         # --- same re-entrancy check for the OTHER tree's coordinator
-        # (ConstellationsTreeCoordinator, primeatlas/constellations_tree_coordinator.py)
+        # (ConstellationsTreeCoordinator, primeatlas/constellations/constellations_tree_coordinator.py)
         # -- its own busy/pending pair is entirely independent of PrimesTreeCoordinator's,
         # so this is its own regression coverage, not just a duplicate of the block above.
         const_coord = app._constellations_tree_coord

@@ -1,5 +1,5 @@
 """
-test_app_update.py -- covers primeatlas/app_update.py, the self-update checker/downloader
+test_app_update.py -- covers primeatlas/settings/app_update.py, the self-update checker/downloader
 wired into Settings > Aktualizacje and prime_atlas_v1.py's startup hook. It has gone
 through three follow-up rounds -- lock/access-recovery, OS-verified lock recovery, and
 the GitHub-API-based check path -- see app_update.py's own module docstring for the full
@@ -98,7 +98,7 @@ def make_stub(rules):
 
 def section_a():
     print("\n--- Section A: check_for_update() ---")
-    from primeatlas import app_update as au
+    from primeatlas.settings import app_update as au
 
     orig_run_git = au._run_git
     orig_sleep = au._sleep
@@ -261,7 +261,7 @@ def section_a():
 
 def section_a2():
     print("\n--- Section A2: check_for_update() GitHub-API path ---")
-    from primeatlas import app_update as au
+    from primeatlas.settings import app_update as au
 
     # --- _parse_github_owner_repo(): every common remote URL form, plus non-matches ---
     github_forms = [
@@ -532,7 +532,7 @@ def section_a2():
 
 def section_b():
     print("\n--- Section B: download_update() ---")
-    from primeatlas import app_update as au
+    from primeatlas.settings import app_update as au
 
     orig_run_git = au._run_git
     orig_sleep = au._sleep
@@ -557,7 +557,7 @@ def section_b():
 
     # --- dirty working tree -- must refuse WITHOUT ever calling fetch/merge ---
     au._run_git = make_stub([
-        (lambda a: a[0] == "status", (0, " M primeatlas/settings_tab.py\n", "")),
+        (lambda a: a[0] == "status", (0, " M primeatlas/settings/settings_tab.py\n", "")),
         (lambda a: a[0] in ("fetch", "merge", "merge-base"),
          lambda: (_ for _ in ()).throw(AssertionError("must never touch fetch/merge on a dirty tree"))),
     ])
@@ -717,7 +717,7 @@ def section_b():
 
 def section_c():
     print("\n--- Section C: lock-recovery mechanics ---")
-    from primeatlas import app_update as au
+    from primeatlas.settings import app_update as au
 
     # --- _looks_like_lock_error() classification ---
     lock_texts = [

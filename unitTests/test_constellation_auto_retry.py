@@ -1,7 +1,7 @@
 """
 test_constellation_auto_retry.py -- tests for the floor-25-scale fix, spread across
-primeatlas/generation.py (read_constellation_checkpoint, build_constellation_finder_
-argv's own max_windows) and primeatlas/generation_tab.py (GenerationTab._maybe_auto_
+primeatlas/generation/generation.py (read_constellation_checkpoint, build_constellation_finder_
+argv's own max_windows) and primeatlas/generation/generation_tab.py (GenerationTab._maybe_auto_
 retry_constellation, _maybe_continue_constellation_batch, _scan_const_chunk_for_batch_
 marker). Pure-logic batching of constellation_finder_v1.process_floor() itself
 (max_windows/remaining-count/BATCH DONE marker) is covered separately, in
@@ -74,7 +74,7 @@ def _write_checkpoint(portal, base_exponent, filename):
 
 
 def _test_read_constellation_checkpoint():
-    from primeatlas.generation import read_constellation_checkpoint
+    from primeatlas.generation.generation import read_constellation_checkpoint
 
     tmp = tempfile.mkdtemp(prefix="primeatlas_const_checkpoint_test_")
     try:
@@ -151,7 +151,7 @@ def _test_auto_retry_relaunches_on_real_progress():
         # Simulate process_floor() having advanced the checkpoint before dying.
         _write_checkpoint(tmp, 25, "PRIME_WINDOW_10p25_off_999.bin")
 
-        import primeatlas.generation_tab as generation_tab_module
+        import primeatlas.generation.generation_tab as generation_tab_module
         original_delay = generation_tab_module.CONSTELLATION_AUTO_RETRY_DELAY_MS
         generation_tab_module.CONSTELLATION_AUTO_RETRY_DELAY_MS = 20
         try:
@@ -196,7 +196,7 @@ def _test_auto_retry_stops_at_cap():
         tab = app.generation_tab_widget
         tab._start_constellation_runner = lambda base_exponent: None
 
-        import primeatlas.generation_tab as generation_tab_module
+        import primeatlas.generation.generation_tab as generation_tab_module
         original_cap = generation_tab_module.MAX_CONSTELLATION_AUTO_RETRIES
         original_delay = generation_tab_module.CONSTELLATION_AUTO_RETRY_DELAY_MS
         generation_tab_module.MAX_CONSTELLATION_AUTO_RETRIES = 3
@@ -268,7 +268,7 @@ def _test_graceful_stop_writes_sentinel_and_cleans_up():
         tab = app.generation_tab_widget
         tab._start_constellation_runner = lambda base_exponent: None
 
-        import primeatlas.generation_tab as generation_tab_module
+        import primeatlas.generation.generation_tab as generation_tab_module
         stop_path = os.path.join(tmp, generation_tab_module.CONSTELLATION_STOP_REQUEST_FILENAME)
 
         tab._const_base_exponent_var.set("25")
@@ -359,7 +359,7 @@ def _test_floor_progress_scales_bar_to_whole_floor():
         bar = tab.totals_progress
         tab._gen_progress_bar_active = True
 
-        import primeatlas.generation_tab as generation_tab_module
+        import primeatlas.generation.generation_tab as generation_tab_module
 
         tab._update_shared_progress_from_generation_chunk(
             "[CONSTELLATIONS v2] FLOOR PROGRESS: batch_size=5000 total_windows=545000 "
@@ -400,7 +400,7 @@ def _test_floor_progress_resets_between_launches():
         tab._const_floor_total_windows = 999
         tab._const_floor_already_done = 111
 
-        import primeatlas.generation_tab as generation_tab_module
+        import primeatlas.generation.generation_tab as generation_tab_module
 
         class _FakeRunner:
             def __init__(self, *a, **k):
@@ -439,7 +439,7 @@ def _test_elapsed_and_eta_in_status():
         tab = app.generation_tab_widget
         tab._start_constellation_runner = lambda base_exponent: None
 
-        import primeatlas.generation_tab as generation_tab_module
+        import primeatlas.generation.generation_tab as generation_tab_module
 
         class _FakeClock:
             def __init__(self, start):
@@ -546,7 +546,7 @@ def _test_eta_baseline_resets_on_new_run_not_on_chained_batch():
 
 
 def _test_build_constellation_finder_argv_max_windows():
-    from primeatlas.generation import build_constellation_finder_argv
+    from primeatlas.generation.generation import build_constellation_finder_argv
 
     argv_plain = build_constellation_finder_argv("25")
     check("--max-windows" not in argv_plain,
@@ -576,7 +576,7 @@ def _test_start_constellation_runner_caps_batch_and_snapshots_checkpoint():
 
         _write_checkpoint(tmp, 25, "PRIME_WINDOW_10p25_off_777.bin")
 
-        import primeatlas.generation_tab as generation_tab_module
+        import primeatlas.generation.generation_tab as generation_tab_module
         recorded_cmds = []
 
         class _FakeRunner:

@@ -17,17 +17,17 @@ benchmark.py/benchmark_tab.py, constellations.py/constellations_*_tab.py,
 research_goldbach.py/research_goldbach_tab.py) -- see each module's own docstring for
 details, and README.md for the overall picture.
 """
-from .app_settings import AppSettings
-from .theme import THEMES, DEFAULT_THEME, palette_for
-from .manifest import FloorSnapshot, ConstellationSnapshot, BackupManifest
-from .backup_store import BackupStore
-from .restore_job import (
+from .core.app_settings import AppSettings
+from .core.theme import THEMES, DEFAULT_THEME, palette_for
+from .settings.manifest import FloorSnapshot, ConstellationSnapshot, BackupManifest
+from .settings.backup_store import BackupStore
+from .settings.restore_job import (
     RestoreJob, RestoreStep, restore_checkpoint_path, prune_empty_floor_dirs,
 )
-from .delete_manager import PortalWiper
-from .i18n import Translator, SUPPORTED_LANGUAGES, DEFAULT_LANGUAGE, LANGUAGE_NAMES
-from .primality import run_all_tests, factorize, try_import_sympy
-from .goldbach_window import (
+from .settings.delete_manager import PortalWiper
+from .core.i18n import Translator, SUPPORTED_LANGUAGES, DEFAULT_LANGUAGE, LANGUAGE_NAMES
+from .primality.primality import run_all_tests, factorize, try_import_sympy
+from .research.goldbach_window import (
     check_window as goldbach_check_window,
     cascade_step as goldbach_cascade_step,
     next_anchor as goldbach_next_anchor,

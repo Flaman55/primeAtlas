@@ -1,9 +1,9 @@
 """
 test_constellations_tab.py -- functional regression test for the Constellations tab's
-three sub-tabs (primeatlas/constellations_hits_tab.py's ConstellationsHitsTab,
+three sub-tabs (primeatlas/constellations/constellations_hits_tab.py's ConstellationsHitsTab,
 constellations_calc_tab.py's ConstellationsCalcTab, constellations_records_tab.py's
 ConstellationsRecordsTab, plus their shared pure-logic backend in
-primeatlas/constellations.py), extracted from prime_atlas_v1.py during the refactor
+primeatlas/constellations/constellations.py), extracted from prime_atlas_v1.py during the refactor
 branch's tab-by-tab backend/UI split. Unlike the Primes
 tab, this tab has TWO extra wrinkles this test specifically exercises:
 
@@ -331,7 +331,7 @@ def main():
         # (1 from floor 3's original fixture + 5 from floor 4's oversized-guard
         # fixture above) -- monkeypatching the PDF row limit down to 3 makes that
         # combined range exceed it without needing a real huge fixture. ===
-        import primeatlas.constellations_records_tab as _records_tab_module
+        import primeatlas.constellations.constellations_records_tab as _records_tab_module
         original_pdf_limit = _records_tab_module.PDF_EXPORT_ROW_LIMIT
 
         csv_path = os.path.join(tmp_portal, "export_test.csv")
