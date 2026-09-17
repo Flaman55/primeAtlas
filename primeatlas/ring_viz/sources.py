@@ -1,7 +1,6 @@
 """
 sources.py -- ring-array data sources for primeatlas/ring_viz/renderer.py:
-load_synthetic, load_sieve, load_magazyn. [ADDED Faza 1 of the renderer.py
-split, see that file's own module docstring for the overall refactor plan.]
+load_synthetic, load_sieve, load_magazyn.
 
 Kept independent of moderngl/glfw and of renderer.py's own GL-context state
 -- see renderer.py's own module docstring, data-source point 1, for why
@@ -68,25 +67,20 @@ def load_magazyn(portal_folder, upto, progress_callback=None, batch_files=64, fr
     portal folder, via primeatlas.storage's own file-listing helpers and
     prime_sieve_v1.read_prime_window for the actual decode.
 
-    [ADDED `max_load_count`, Artur 2026-09-12: "przyjac wartosc startowa i
-    ilosc pierscieni jakie wchodza do zakresu ... od-do i drugi parametr
-    dowolny zakres pierscieni ... jesli ... wiecej niz jakis prog ... zakres
-    od gory jest ciety do ilosci limitu"] Optional hard cap on how many
-    primes this call ever materializes. Enforced as an early stop (mirrors
-    the existing `floor_done` break just below) rather than a post-hoc
-    `result[:max_load_count]` slice, so a huge `(from_n, upto]` span --
-    the whole point of `from_n` jumping straight to a high floor -- never
-    reads a single file more than needed once the cap is hit. Truncation is
-    always from the TOP (the highest values get cut, exactly as Artur
-    asked), a natural consequence of floors/files being walked in ascending
-    order already. `None` (default) reproduces the old unbounded behavior
-    exactly. No fixed number is hardcoded here on purpose -- see this
-    function's own REAL CEILING note below: nobody has benchmarked a safe
-    figure on real magazyn hardware yet, so the caller (rings_tab.py) makes
-    this a plain configurable field instead of a guessed constant.
+    Optional hard cap on how many primes this call ever materializes.
+    Enforced as an early stop (mirrors the existing `floor_done` break just
+    below) rather than a post-hoc `result[:max_load_count]` slice, so a huge
+    `(from_n, upto]` span -- the whole point of `from_n` jumping straight to
+    a high floor -- never reads a single file more than needed once the cap
+    is hit. Truncation is always from the TOP (the highest values get cut),
+    a natural consequence of floors/files being walked in ascending order
+    already. `None` (default) reproduces the old unbounded behavior exactly.
+    No fixed number is hardcoded here on purpose -- see this function's own
+    REAL CEILING note below: nobody has benchmarked a safe figure on real
+    magazyn hardware yet, so the caller (rings_tab.py) makes this a plain
+    configurable field instead of a guessed constant.
 
-    [ADDED `from_n`, Artur 2026-09-11: "bufor bedzie podrozowal wraz z n z
-    wyprzedzeniem"] Defaults to 0, i.e. every real prime is >0 so this
+    Defaults to 0, i.e. every real prime is >0 so this
     reproduces the exact old `arr[arr <= upto]` behavior unchanged when the
     caller doesn't pass it. A non-zero `from_n` lets a caller that already
     holds every prime up to some point (extend_buffer_if_needed in
@@ -100,8 +94,8 @@ def load_magazyn(portal_folder, upto, progress_callback=None, batch_files=64, fr
     their already-covered primes are trimmed out before being added to the
     result, so nothing already known gets duplicated into the array.
 
-    HARDENED (Faza 2, see PLAN.md) vs the Faza-0 landing of the original
-    feasibility prototype's loader, in three ways:
+    This loader is hardened against portal-scale failure modes in three
+    ways:
 
     1. Enumerates REAL floors on disk via storage.list_pietra() instead of
        blindly incrementing floor with only a fixed sanity cap (`floor > 30`)
@@ -125,7 +119,7 @@ def load_magazyn(portal_folder, upto, progress_callback=None, batch_files=64, fr
        here at least keeps the INTERMEDIATE working set bounded.
     3. Accepts an optional `progress_callback(base_exponent, files_read_in_floor,
        primes_loaded_so_far)`, invoked after every batch, so a caller
-       (primeatlas/rings_tab.py, Faza 3) can drive a real progress bar
+       (primeatlas/rings_tab.py) can drive a real progress bar
        instead of a frozen GUI during what can be a multi-second load at
        real magazyn scale. Deliberately NOT trying to make the load itself
        faster (see this module's own docstring, data-source point 1, for why
@@ -133,21 +127,17 @@ def load_magazyn(portal_folder, upto, progress_callback=None, batch_files=64, fr
        feature to optimize) -- only making the existing cost observable and
        boundable instead of an opaque hang.
 
-    REAL CEILING (documented per PLAN.md's Faza 2 ask): NOT benchmarked here
-    -- this sandbox has no real magazyn data or GPU to measure against. The
-    rendering ceiling already confirmed on Artur's real hardware is
-    20,000,000 rings at 50+ fps (see PLAN.md's "Feasibility already
-    confirmed" section); this loader's own cost is dominated by per-file
-    open() latency on the FUSE-mounted storage drive (~5ms/file -- the same
-    figure storage.update_pietro_totals_cache()'s own docstring measured on
-    this exact drive), not the PGS decode work itself. That means the real
+    This loader's own cost is dominated by per-file open() latency on the
+    FUSE-mounted storage drive (~5ms/file -- the same figure
+    storage.update_pietro_totals_cache()'s own docstring measured on this
+    exact drive), not the PGS decode work itself. That means the real
     bottleneck to watch for at very high N is FILE COUNT, not prime count: a
     floor with many thousands of small window files costs far more
     wall-clock load time than one with a few large ones holding the same
-    total prime count. Artur should measure the real number on his own
-    hardware once Faza 3's tab exists to launch this against a real
-    magazyn -- this docstring intentionally does not claim a number this
-    sandbox cannot verify.
+    total prime count. (Separately, the GPU rendering ceiling confirmed for
+    this renderer is 20,000,000 rings at 50+ fps -- see PLAN.md's
+    "Feasibility already confirmed" section -- but that measures the
+    renderer, not this loader's own I/O cost.)
 
     `prime_sieve` (this repo's sibling top-level directory to `primeatlas/`)
     is added to sys.path here because primeatlas.storage itself does a bare
@@ -163,12 +153,12 @@ def load_magazyn(portal_folder, upto, progress_callback=None, batch_files=64, fr
     chunks = []
     total_loaded = 0
 
-    # [ADDED, see `from_n` doc above] Materialized (not a lazy generator)
-    # so a floor's NEXT exponent is available while looking at the current
-    # one -- gives a cheap, exact "is this whole floor already below from_n"
-    # check without opening a single file, for every floor except the one
-    # that actually straddles from_n (at most one wasted full floor-listing
-    # in the worst case, none in the common case of extending near the top).
+    # Materialized (not a lazy generator) so a floor's NEXT exponent is
+    # available while looking at the current one -- gives a cheap, exact
+    # "is this whole floor already below from_n" check without opening a
+    # single file, for every floor except the one that actually straddles
+    # from_n (at most one wasted full floor-listing in the worst case, none
+    # in the common case of extending near the top).
     floor_exponents = list(storage.list_pietra(portal_folder))
     for floor_index, base_exponent in enumerate(floor_exponents):
         floor_lo = 10 ** base_exponent if base_exponent > 0 else 0
@@ -190,14 +180,14 @@ def load_magazyn(portal_folder, upto, progress_callback=None, batch_files=64, fr
             batch_chunks = []
             for name, path in batch:
                 window_primes = prime_sieve_v1.read_prime_window(path)
-                # [FIXED 2026-09-12, Artur's report: OverflowError loading a
-                # real piętro 25/27 window (~10**25-10**27 magnitude, see
-                # to_prime_array's own doc-comment)] was the old hardcoded
-                # `dtype=np.int64` here -- window files below the uint64
-                # ceiling (the overwhelming majority of a magazyn) still get
-                # the exact same fast native array as before; only a window
-                # whose values actually exceed it pays the `object`-dtype
-                # cost, and only for that one window's own `chunks` entry --
+                # A hardcoded `dtype=np.int64` here overflows on a real
+                # pietro 25/27 window (~10**25-10**27 magnitude, see
+                # to_prime_array's own doc-comment) -- window files below
+                # the uint64 ceiling (the overwhelming majority of a
+                # magazyn) still get the exact same fast native array as
+                # before; only a window whose values actually exceed it
+                # pays the `object`-dtype cost, and only for that one
+                # window's own `chunks` entry --
                 # np.concatenate below promotes the WHOLE result to `object`
                 # automatically if and only if at least one chunk needed it
                 # (see numpy's own dtype-promotion rules), so a from_n/upto
