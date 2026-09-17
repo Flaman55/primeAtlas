@@ -3,9 +3,9 @@ totals_search_coordinator.py -- TotalsSearchCoordinator, the two PersistentWorke
 (floor-totals scanning, prime/constellation search) that used to live directly on
 PortalBrowserApp itself in prime_atlas_v1.py.
 
-Extracted on the refactor-phase2 branch (2026-08-26, the "God object" reduction named
-as a "Known gap" in README.md's own "GUI module conventions" section) -- Faza 3
-(2026-08-23) had already pulled every TAB's own widgets/logic out of
+Extracted from PortalBrowserApp as part of the "God object" reduction named
+as a "Known gap" in README.md's own "GUI module conventions" section -- an earlier
+extraction phase had already pulled every TAB's own widgets/logic out of
 PortalBrowserApp, but PortalBrowserApp itself was still left owning two genuinely
 CROSS-tab background workers directly: the floor-totals cache (shared by the Prime
 numbers tab's tree AND the Benchmark tab's grand-total line) and the prime/
@@ -106,8 +106,8 @@ class TotalsSearchCoordinator:
         # 1. _totals_batch_suppressed guards the BULK "compute all floors" batch
         #    (compute_all_pietro_totals(), triggered automatically after every
         #    reload/Refresh) -- see that method's own docstring and start_search_job's.
-        #    A timestamp-based check here turned out NOT to be reliable in practice
-        #    (2026-08-26): reload_primes_tree() coalesces re-entrant calls (see its own
+        #    A timestamp-based check here turned out NOT to be reliable in practice:
+        #    reload_primes_tree() coalesces re-entrant calls (see its own
         #    docstring in prime_atlas_v1.py) into a chain that can settle at an
         #    unpredictable moment relative to a search that started in the meantime --
         #    by the time compute_all_pietro_totals() actually SUBMITS its jobs, that
@@ -289,7 +289,7 @@ class TotalsSearchCoordinator:
                 # sitting permanently full, which reads as "still busy" even though
                 # nothing is running.
                 self.totals_progress.configure(maximum=1, value=0)
-                # This bulk batch (the manual "Zweryfikuj sumy" verify action, see
+                # This bulk batch (the manual verify-totals action, see
                 # PrimesTab's own button -- compute_all_pietro_totals() is no longer
                 # called automatically after every reload, see storage.py's own module
                 # docstring) just re-read every floor's TRUE total for real -- persist
@@ -323,10 +323,10 @@ class TotalsSearchCoordinator:
         """Lightweight, all-in-memory replacement for the automatic post-reload call to
         compute_all_pietro_totals() that used to run here -- see storage.py's own
         module docstring for the full "persisted totals, updated incrementally instead
-        of by a full rescan" feature (added 2026-08-27, at Artur's explicit request:
-        the old behavior submitted a real per-file directory-listing + os.stat()-every-
-        file rescan job for EVERY floor after every single reload/startup, even when
-        nothing had changed since the last visit -- exactly the cost this replaces).
+        of by a full rescan" feature. This replaces the old behavior, which submitted
+        a real per-file directory-listing + os.stat()-every-file rescan job for EVERY
+        floor after every single reload/startup, even when nothing had changed since
+        the last visit -- exactly the cost this replaces.
 
         `totals_cache` already reflects every floor's own persisted total (kept
         accurate by the three incremental write-path hooks -- generation finishing a
@@ -344,20 +344,20 @@ class TotalsSearchCoordinator:
         cache itself.
 
         compute_all_pietro_totals() (the real per-file rescan) still exists exactly as
-        before -- it's reached only via the Primes tab's explicit 'Zweryfikuj sumy'
+        before -- it's reached only via the Primes tab's explicit verify-totals
         button now, instead of running automatically, for the rare case these
         persisted totals ever drift (a crash mid-write, or files touched outside the
         app).
 
-        Also resets self.totals_progress back to its empty 0/1 resting state (bug fix,
-        2026-08-27, confirmed with Artur): this is called on EVERY reload_primes_tree()
-        -- including the one GenerationTab triggers right after a run finishes (see
-        _on_loop_finished()'s own reload_primes_tree() call) -- but before this fix it
-        never touched totals_progress at all, only self.status. A finished generation
+        Also resets self.totals_progress back to its empty 0/1 resting state: this is
+        called on EVERY reload_primes_tree() -- including the one GenerationTab
+        triggers right after a run finishes (see _on_loop_finished()'s own
+        reload_primes_tree() call) -- but before this fix it never touched
+        totals_progress at all, only self.status. A finished generation
         run snaps totals_progress to fully complete on purpose (see generation_tab.py's
         _update_shared_progress_from_generation_chunk() docstring, "snaps the bar to
         fully complete") and relies on WHATEVER runs next to clear it back to empty --
-        before 2026-08-27 that was compute_all_pietro_totals()'s own automatic
+        previously that was compute_all_pietro_totals()'s own automatic
         post-reload call (_on_pietro_total_ready's completion branch resets the bar),
         which ran unconditionally after every reload. Once that automatic call was
         replaced by this lightweight cached-total read (this method), nothing was left
@@ -383,7 +383,7 @@ class TotalsSearchCoordinator:
 
     def compute_all_pietro_totals(self):
         """Kicks off the bulk "every floor's total" batch -- called from the Primes
-        tab's explicit "Zweryfikuj sumy" button (see PrimesTab's own docstring on that
+        tab's explicit verify-totals button (see PrimesTab's own docstring on that
         button) as a manual safety-net verify, no longer automatically after every
         reload_primes_tree()/Refresh (see show_cached_grand_total() above for what
         replaced the automatic call, and storage.py's own module docstring for why).
