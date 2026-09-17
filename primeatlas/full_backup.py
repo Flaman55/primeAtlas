@@ -5,12 +5,12 @@ constellation hit files), gzip-compressed, kept at a location OUTSIDE the live s
 path. Restoring from this copies bytes back; it never needs to re-sieve or re-scan for
 constellations the way the metadata-only mode's restore does.
 
-Design (settled with Artur 2026-08-18/19, see [[primeatlas_full_data_backup_design]] for
-the full discussion -- this docstring only summarizes the DECIDED shape):
+Design (see [[primeatlas_full_data_backup_design]] for the full discussion -- this
+docstring only summarizes the DECIDED shape):
 
   - Per-FLOOR, not whole-storage: the person picks which floors get a full-data backup
     (typically the deep, expensive-to-regenerate ones -- see suggest_full_backup_floors()
-    below), not an all-or-nothing dump of the whole magazyn.
+    below), not an all-or-nothing dump of the whole storage.
 
   - One PERSISTENT entry per floor at the destination, never a growing pile of
     timestamped snapshots. "Backing up" a floor again after it's grown just copies
@@ -527,13 +527,13 @@ def aggregate_generation_seconds_by_floor(rows):
 
 def suggest_full_backup_floors(storage_path, threshold_seconds=3600):
     """Floors whose MEASURED total generation time (summed across every real, file-
-    writing benchmark_log.csv run for that floor) exceeds `threshold_seconds` -- Artur's
-    own proposed default is one hour, per [[primeatlas_full_data_backup_design]]: "a
-    floor costs more than an hour to regenerate" is worth trading disk space for restore
-    speed, rather than guessing from the floor's bare number the way an earlier version
-    of this design considered and rejected. Returns a sorted list of base_exponent ints
-    -- the caller (settings_tab.py) uses this to pre-check/highlight those floors in the
-    per-floor picker, not to force anything -- the person can still pick differently."""
+    writing benchmark_log.csv run for that floor) exceeds `threshold_seconds` (default
+    one hour, per [[primeatlas_full_data_backup_design]]): a floor costing more than an
+    hour to regenerate is worth trading disk space for restore speed, rather than
+    guessing from the floor's bare exponent the way an earlier version of this design
+    considered and rejected. Returns a sorted list of base_exponent ints -- the caller
+    (settings_tab.py) uses this to pre-check/highlight those floors in the per-floor
+    picker, not to force anything -- the person can still pick differently."""
     rows = _read_benchmark_rows(storage_path)
     totals = aggregate_generation_seconds_by_floor(rows)
     return sorted(be for be, seconds in totals.items() if seconds >= threshold_seconds)
