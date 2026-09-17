@@ -795,7 +795,17 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               gen panel -- Floor only/Range/Exploration/primesieve/
                               cudasieve/Hybrid modes -- plus the loop/orchestrator-
                               direct/primesieve/k-tuple-sieve launch forms;
-                              generation.py below is the pure-logic backend)
+                              generation.py below is the pure-logic backend). The three
+                              independent engines (loop/quick-gen family, constellation
+                              search, k-tuple sieve) share one totals_progress bar and
+                              one output-parsing pipeline
+                              (_update_shared_progress_from_generation_chunk), so only
+                              one may run at a time: starting any engine hard-locks
+                              every other engine's Run/Generate buttons (including the
+                              Quick-gen panels' own "Generuj" buttons, not just the
+                              lower-level loop_run_btn) via _lock_other_run_buttons/
+                              _unlock_other_run_buttons, rather than isolating their
+                              state.
   generation.py                 window/floor arithmetic, generation-settings
                               persistence, argv builders for every launch engine,
                               WslLoggedRunner/LocalLoggedRunner, WSL RAM/CPU probing,
