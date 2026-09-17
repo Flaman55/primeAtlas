@@ -8,20 +8,20 @@ search box and the shared cross-tab search worker both use.
 
 Also the persisted GLOBAL total (GLOBAL_TOTAL_KEY / get_global_total() /
 recompute_global_total()) and the incremental bump_pietro_total()/remove_pietro_total()
-pair, added 2026-08-27 after Artur pointed out that update_pietro_totals_cache() being
-the ONLY way any total ever gets refreshed meant a full directory-listing + os.stat()-
-every-file pass ran for EVERY floor on every startup/reload, even when nothing had
-changed since the last visit -- see those functions' own docstrings. The three real
-write paths that actually change a floor's contents (generation finishing a run,
-storage_integrate.py merging in an external floor, delete_manager.py deleting one) now
-call bump_pietro_total()/remove_pietro_total() directly with a known delta instead of
-relying on the next full rescan to notice; the full rescan itself is untouched and still
-exists as a manual "Zweryfikuj sumy" verify action (primes_tab.py) for the rare case
-these totals ever drift (a crash mid-write, or files touched outside the app).
+pair: since update_pietro_totals_cache() was previously the ONLY way any total ever got
+refreshed, a full directory-listing + os.stat()-every-file pass ran for EVERY floor on
+every startup/reload, even when nothing had changed since the last visit -- see those
+functions' own docstrings. The three real write paths that actually change a floor's
+contents (generation finishing a run, storage_integrate.py merging in an external floor,
+delete_manager.py deleting one) now call bump_pietro_total()/remove_pietro_total()
+directly with a known delta instead of relying on the next full rescan to notice; the
+full rescan itself is untouched and still exists as a manual verify action
+(primes_tab.py's full totals recompute) for the rare case these totals ever drift (a
+crash mid-write, or files touched outside the app).
 
-Extracted from prime_atlas_v1.py during the refactor branch's Faza 3 (tab-by-tab
-backend/UI split, 2026-08-23) -- unlike the Benchmark tab's extraction, these functions
-were never specific to one tab in the first place: list_pietra()/list_source_filenames()/
+Extracted from prime_atlas_v1.py during a tab-by-tab backend/UI split refactor --
+unlike the Benchmark tab's extraction, these functions were never specific to one tab in
+the first place: list_pietra()/list_source_filenames()/
 format_bytes()/format_duration()/digit_count_floor() etc. are called from the "Prime
 numbers" tab (primeatlas/primes_tab.py), the Constellations tab, the Generation tab's
 quick-gen panel, and the Goldbach research tab, all still living directly in
@@ -351,10 +351,10 @@ def bump_pietro_total(cache, base_exponent, delta_count, delta_file_count, delta
     """Adjusts one floor's cached total (and the persisted global summary alongside it) by
     a DELTA, without touching the per-file "files" map at all and without any disk I/O of
     its own -- the incremental counterpart to update_pietro_totals_cache()'s full rescan,
-    added so the three write paths Artur named (generation, storage merge, floor delete --
-    see this module's own docstring for the feature this belongs to) can keep the
-    persisted total accurate without ever re-reading a window file's header or re-listing
-    a floor's directory.
+    added so the three write paths that change a floor's contents (generation, storage
+    merge, floor delete -- see this module's own docstring for the feature this belongs
+    to) can keep the persisted total accurate without ever re-reading a window file's
+    header or re-listing a floor's directory.
 
     Deliberately does NOT add anything to entry["files"] (the per-filename mtime/count map
     update_pietro_totals_cache() uses for its own staleness check): the caller here only
