@@ -1825,7 +1825,8 @@ class GenerationTab(HybridControls, BaseTab):
         console/Stop control/tree-refresh-on-finish behavior are all engine-agnostic --
         duplicating that machinery for one more script would only add a second place
         every future change to it has to be made twice."""
-        if self._loop_runner is not None and self._loop_runner.is_running():
+        if (self._loop_runner is not None and self._loop_runner.is_running()
+                or self._other_engine_is_running("loop")):
             messagebox.showerror(self.T("quick.dialog_title"), self.T("quick.error_already_running"))
             return
         # primesieve mode's own stdout never prints granular progress (a single
@@ -1858,6 +1859,7 @@ class GenerationTab(HybridControls, BaseTab):
             return
         self.loop_run_btn.configure(state="disabled")
         self.loop_stop_btn.configure(state="normal")
+        self._lock_other_run_buttons("loop")
         self.loop_status_label.set(self.T("common.running"))
         for panel in self._quick_panels:
             panel["generate_btn"].configure(text=self.T("common.stop"))
@@ -1870,7 +1872,8 @@ class GenerationTab(HybridControls, BaseTab):
         with every other engine.  It never routes through v4: the child process first
         verifies that storage really supplies a continuous MAIN prefix.
         """
-        if self._loop_runner is not None and self._loop_runner.is_running():
+        if (self._loop_runner is not None and self._loop_runner.is_running()
+                or self._other_engine_is_running("loop")):
             messagebox.showerror(self.T("quick.dialog_title"), self.T("quick.error_already_running"))
             return
         self._reset_gen_progress_bar_for_new_run()
@@ -1897,6 +1900,7 @@ class GenerationTab(HybridControls, BaseTab):
             return
         self.loop_run_btn.configure(state="disabled")
         self.loop_stop_btn.configure(state="normal")
+        self._lock_other_run_buttons("loop")
         self.loop_status_label.set(self.T("common.running"))
         for panel in self._quick_panels:
             panel["generate_btn"].configure(text=self.T("common.stop"))
@@ -1931,7 +1935,8 @@ class GenerationTab(HybridControls, BaseTab):
 
     def _on_run_hybrid_narrow(self, start, end, main_cap, filter_prime_count):
         """Launch the explicit one-window Hybrid experiment through the usual console."""
-        if self._loop_runner is not None and self._loop_runner.is_running():
+        if (self._loop_runner is not None and self._loop_runner.is_running()
+                or self._other_engine_is_running("loop")):
             messagebox.showerror(self.T("quick.dialog_title"), self.T("quick.error_already_running"))
             return
         self._reset_gen_progress_bar_for_new_run()
@@ -1955,6 +1960,7 @@ class GenerationTab(HybridControls, BaseTab):
             return
         self.loop_run_btn.configure(state="disabled")
         self.loop_stop_btn.configure(state="normal")
+        self._lock_other_run_buttons("loop")
         self.loop_status_label.set(self.T("common.running"))
         for panel in self._quick_panels:
             panel["generate_btn"].configure(text=self.T("common.stop"))
@@ -1975,7 +1981,8 @@ class GenerationTab(HybridControls, BaseTab):
         self.loop_stop_btn/self.loop_status_label/_poll_loop_output/_on_loop_finished
         plumbing _on_run_primesieve() uses -- see that method's own docstring for why
         (only one Generation run can be in flight at a time regardless of engine)."""
-        if self._loop_runner is not None and self._loop_runner.is_running():
+        if (self._loop_runner is not None and self._loop_runner.is_running()
+                or self._other_engine_is_running("loop")):
             messagebox.showerror(self.T("quick.dialog_title"), self.T("quick.error_already_running"))
             return
         # cudasieve mode's own stdout has no per-batch progress lines Atlas parses
@@ -2007,6 +2014,7 @@ class GenerationTab(HybridControls, BaseTab):
             return
         self.loop_run_btn.configure(state="disabled")
         self.loop_stop_btn.configure(state="normal")
+        self._lock_other_run_buttons("loop")
         self.loop_status_label.set(self.T("common.running"))
         for panel in self._quick_panels:
             panel["generate_btn"].configure(text=self.T("common.stop"))
@@ -2034,7 +2042,8 @@ class GenerationTab(HybridControls, BaseTab):
         self._loop_runner/self._loop_output_queue/self.loop_console/... plumbing
         _on_run_loop()/_on_run_primesieve() both already use, for the same
         one-runner-at-a-time reasoning _on_run_primesieve()'s own docstring gives."""
-        if self._loop_runner is not None and self._loop_runner.is_running():
+        if (self._loop_runner is not None and self._loop_runner.is_running()
+                or self._other_engine_is_running("loop")):
             messagebox.showerror(self.T("quick.dialog_title"), self.T("quick.error_already_running"))
             return
         # orchestrator_v3.py run directly still calls prime_sieve_v3/v4/v4_1's own
@@ -2081,6 +2090,7 @@ class GenerationTab(HybridControls, BaseTab):
             return
         self.loop_run_btn.configure(state="disabled")
         self.loop_stop_btn.configure(state="normal")
+        self._lock_other_run_buttons("loop")
         self.loop_status_label.set(self.T("common.running"))
         for panel in self._quick_panels:
             panel["generate_btn"].configure(text=self.T("common.stop"))
@@ -2809,7 +2819,8 @@ class GenerationTab(HybridControls, BaseTab):
         return parsed
 
     def _on_run_loop(self):
-        if self._loop_runner is not None and self._loop_runner.is_running():
+        if (self._loop_runner is not None and self._loop_runner.is_running()
+                or self._other_engine_is_running("loop")):
             messagebox.showerror(self.T("quick.dialog_title"), self.T("quick.error_already_running"))
             return
         # The old batched engine (orchestrator_v3.py via orchestrator_loop_v2.py)
@@ -2867,6 +2878,7 @@ class GenerationTab(HybridControls, BaseTab):
             return
         self.loop_run_btn.configure(state="disabled")
         self.loop_stop_btn.configure(state="normal")
+        self._lock_other_run_buttons("loop")
         self.loop_status_label.set(self.T("common.running"))
         # Generate doubles as Stop while this runs (see
         # _on_quick_generate_or_stop_clicked), and the terminal auto-expands the
@@ -2929,6 +2941,12 @@ class GenerationTab(HybridControls, BaseTab):
         change."""
         for panel in self._quick_panels:
             panel["generate_btn"].configure(text=self.T("quick.generate_button"))
+        # Loop/hybrid/orchestrator's own subprocess encompasses its whole
+        # multi-iteration run internally -- unlike constellation's batch chaining,
+        # _on_loop_finished ALWAYS means this session is genuinely over, so it's
+        # always safe to re-enable the other two engines here -- see
+        # _lock_other_run_buttons()'s own docstring.
+        self._unlock_other_run_buttons()
         self._bump_totals_from_finished_run()
         # Releases this run's claim on the shared totals_progress bar (see
         # progress_bar_owner.py) BEFORE reload_primes_tree() below -- that call
@@ -2978,6 +2996,13 @@ class GenerationTab(HybridControls, BaseTab):
 
     def _on_run_constellation(self):
         if self._const_runner is not None and self._const_runner.is_running():
+            return
+        # See _other_engine_is_running()'s own docstring -- loop/hybrid/orchestrator
+        # and the ktuple sieve both share this tab's mutable progress-parsing state
+        # with the constellation search, so running one of them alongside this is
+        # unsafe. A normal click can't reach here while another engine is running
+        # (see _lock_other_run_buttons()) -- this is the non-button-click backstop.
+        if self._other_engine_is_running("const"):
             return
         base_exponent = self._const_base_exponent_var.get().strip()
         if base_exponent and not base_exponent.isdigit():
@@ -3066,6 +3091,7 @@ class GenerationTab(HybridControls, BaseTab):
         self._const_runner.start()
         self.const_run_btn.configure(state="disabled")
         self.const_stop_btn.configure(state="normal")
+        self._lock_other_run_buttons("const")
         self.const_status_label.set(self.T("common.running"))
         self._show_const_terminal()
 
@@ -3271,6 +3297,10 @@ class GenerationTab(HybridControls, BaseTab):
         # itself before releasing its claim -- see progress_bar_owner.py.
         self._set_gen_progress_bar(mode="determinate", maximum=1, value=0)
         release_progress_bar(self.totals_progress, self)
+        # See _lock_other_run_buttons()'s own docstring -- this point (past both
+        # early-return chaining checks above) is the only place this run is
+        # genuinely, not just this-batch, over.
+        self._unlock_other_run_buttons()
 
         # Mirrors _on_loop_finished()'s pending-search re-run, for a search-triggered
         # "run constellation_finder for this floor" instead (see
@@ -3384,6 +3414,10 @@ class GenerationTab(HybridControls, BaseTab):
         auto-specific argv flag is identical between the two."""
         if self._ktuple_runner is not None and self._ktuple_runner.is_running():
             return
+        # See _other_engine_is_running()'s own docstring -- backstop for a
+        # non-button call path, same reasoning as _on_run_constellation()'s own.
+        if self._other_engine_is_running("ktuple"):
+            return
         base_exponent = self._ktuple_vars["base_exponent"].get().strip()
         if not base_exponent.isdigit():
             messagebox.showerror(self.T("gen.dialog_title"), self.T("gen.error_base_exponent_int"))
@@ -3466,6 +3500,7 @@ class GenerationTab(HybridControls, BaseTab):
         self.ktuple_run_btn.configure(state="disabled")
         self.ktuple_auto_btn.configure(state="disabled")
         self.ktuple_stop_btn.configure(state="normal")
+        self._lock_other_run_buttons("ktuple")
         self.ktuple_status_label.set(self.T("common.running"))
         self._show_ktuple_terminal()
 
@@ -3477,12 +3512,16 @@ class GenerationTab(HybridControls, BaseTab):
     def _on_ktuple_finished(self, _returncode=None):
         """Mirrors _on_constellation_finished() -- confirmed hits land in the same
         per-(k,variant) hit files Section B writes to, so the Constellations tab
-        needs the same post-run refresh. Also re-enables ktuple_auto_btn --
-        _drain_output_queue() only knows about the plain run_btn/stop_btn pair
-        shared with every other section, not this section's own extra Auto
-        button, so that one is reset here instead."""
+        needs the same post-run refresh. _drain_output_queue() only knows about
+        the plain run_btn/stop_btn pair shared with every other section, not this
+        section's own extra Auto button or the other two engines' own Run
+        buttons, so _unlock_other_run_buttons() below resets all of those instead
+        (auto=True's own internal batch-after-batch looping happens inside this
+        ONE WSL process -- see _launch_ktuple()'s own docstring -- so this exit
+        always means the whole ktuple session is genuinely over, same reasoning
+        as _on_loop_finished's own unconditional unlock)."""
         self.reload_constellations_tree()
-        self.ktuple_auto_btn.configure(state="normal")
+        self._unlock_other_run_buttons()
 
     def _poll_ktuple_output(self):
         self._drain_output_queue(self._ktuple_output_queue, self.ktuple_console,
@@ -3576,6 +3615,78 @@ class GenerationTab(HybridControls, BaseTab):
             return
         self.totals_progress.stop()
         self.totals_progress.configure(**configure_kwargs)
+
+    def _other_engine_is_running(self, engine):
+        """True if some engine OTHER than `engine` ('loop'/'const'/'ktuple') is
+        currently mid-run. self._loop_runner (every Quick-gen/loop/hybrid/
+        orchestrator-direct launch path), self._const_runner (Constellations
+        search) and self._ktuple_runner (targeted k-tuple sieve) all funnel their
+        live output through the SAME _update_shared_progress_from_generation_
+        chunk(), which keeps its parsing state (self._gen_step_total, self._const_
+        floor_total_windows, etc.) in plain instance attributes with no per-engine
+        namespacing -- two of these running at once would silently corrupt each
+        other's bar/status state. Used both as a belt-and-suspenders guard at each
+        launch path's own entry point (see _lock_other_run_buttons()'s own
+        docstring for why the button graying alone isn't sufficient) and to avoid
+        needing it at all in the common case."""
+        if engine != "loop" and self._loop_runner is not None and self._loop_runner.is_running():
+            return True
+        if engine != "const" and self._const_runner is not None and self._const_runner.is_running():
+            return True
+        if engine != "ktuple" and self._ktuple_runner is not None and self._ktuple_runner.is_running():
+            return True
+        return False
+
+    def _lock_other_run_buttons(self, active_engine):
+        """Disables the OTHER two engines' own Run buttons while `active_engine`
+        ('loop'/'const'/'ktuple') is running -- see _other_engine_is_running()'s
+        own docstring for why running two of these three at once is unsafe. Some
+        non-button call paths (e.g. a search box's "generate missing window"
+        auto-offer) invoke a launch method directly rather than through its own
+        button, so _other_engine_is_running() is still checked at each launch
+        path's own entry point too -- this graying is the visible half, not the
+        only guard. Paired with _unlock_other_run_buttons(), called from each
+        engine's own GENUINELY-finished handler (_on_loop_finished/_on_
+        constellation_finished's own completion tail/_on_ktuple_finished) --
+        never from a chained-batch/iteration continuation, which must keep the
+        other two engines locked out for the whole session, not just one batch.
+
+        The loop engine has TWO kinds of user-facing Run control -- the low-level
+        Loop/Exploration section's own self.loop_run_btn, AND every open Quick-gen
+        panel's own "Generate" button (self._quick_panels[i]["generate_btn"]),
+        which all six loop-family launch paths (_on_run_loop/_on_run_primesieve/
+        _on_run_hybrid/_on_run_hybrid_narrow/_on_run_cudasieve/_on_run_
+        orchestrator_direct) share -- so locking OUT the loop engine (active_
+        engine is 'const' or 'ktuple') must gray out both, not just the low-level
+        one. While the loop engine is ITSELF the one running (active_engine ==
+        'loop'), its own launch path already re-labels generate_btn to "Stop"
+        (Generate doubles as Stop while it runs) and leaves it enabled -- this
+        method must NOT touch it in that case, which is exactly what `!= 'loop'`
+        already guards against below."""
+        if active_engine != "loop":
+            self.loop_run_btn.configure(state="disabled")
+            for panel in self._quick_panels:
+                panel["generate_btn"].configure(state="disabled")
+        if active_engine != "const":
+            self.const_run_btn.configure(state="disabled")
+        if active_engine != "ktuple":
+            self.ktuple_run_btn.configure(state="disabled")
+            self.ktuple_auto_btn.configure(state="disabled")
+
+    def _unlock_other_run_buttons(self):
+        """Re-enables every engine's own Run button (see _lock_other_run_buttons()'s
+        own docstring for why that includes every Quick-gen panel's "Generate"
+        button, not just self.loop_run_btn). Safe to call unconditionally --
+        _lock_other_run_buttons() only ever disabled the two engines that weren't
+        the one launched, and this is only ever called once THAT one has
+        genuinely finished (see its own callers), at which point none of the
+        three can still be running."""
+        self.loop_run_btn.configure(state="normal")
+        for panel in self._quick_panels:
+            panel["generate_btn"].configure(state="normal")
+        self.const_run_btn.configure(state="normal")
+        self.ktuple_run_btn.configure(state="normal")
+        self.ktuple_auto_btn.configure(state="normal")
 
     def _reset_gen_progress_bar_for_new_run(self):
         """Called at the start of every Generation run-launch path that drives the
