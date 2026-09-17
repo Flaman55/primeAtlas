@@ -166,24 +166,23 @@ def count_sieving_primes_range(start, stop):
 
 SIEVING_PRIMES_COUNT_CACHE_FILENAME = "sieving_primes_count_cache.json"
 
-# KNOWN_PI_10N -- exact pi(10^n) values for n=1..29, transcribed 2026-08-27 from the "x,
-# pi(x)" table on Wikipedia's Prime-counting function page (see KNOWN_PI_SOURCE_URL). That
-# page in turn cites the primary sources for each value (Meissel/Lehmer-method computations
-# by Buethe/Franke/Jost/Kleinjung and Platt up to 10^24-25, Staple for 10^26, and Baugh/
-# Walisch for 10^27-29 -- see the Wikipedia article's own footnotes for full citations).
+# KNOWN_PI_10N -- exact pi(10^n) values for n=1..29, taken from the "x, pi(x)" table on
+# Wikipedia's Prime-counting function page (see KNOWN_PI_SOURCE_URL). That page in turn
+# cites the primary sources for each value (Meissel/Lehmer-method computations by Buethe/
+# Franke/Jost/Kleinjung and Platt up to 10^24-25, Staple for 10^26, and Baugh/Walisch for
+# 10^27-29 -- see the Wikipedia article's own footnotes for full citations).
 #
-# Motivation (Artur, 2026-08-27): count_sieving_primes_cached() below already avoids
-# recounting a floor's ENTIRE [0, L_final] range on every call once a cache exists for that
-# floor (see that function's own docstring) -- but the very FIRST call on a floor still pays
-# the full count_sieving_primes(0, L_final) cost from scratch, which is exactly the
-# "bardzo drogi" case Artur flagged: at floor-scale L_final (order 10^13+) that alone can take
-# minutes. Since L_final = isqrt(combined_hi) is itself only ~half as many digits as the
-# floor it belongs to, a floor most people would ever reach (order 10^58 or below) has an
-# L_final at or below 10^29 -- squarely inside this table's range. Seeding the cold-start
-# count from the largest known pi(10^n) <= L_final and counting only the remaining sliver
-# via count_sieving_primes_range() turns that first-ever call into the same cheap
-# "incremental" shape every SUBSEQUENT call on that floor already gets, instead of a full
-# from-zero recount.
+# count_sieving_primes_cached() below already avoids recounting a floor's ENTIRE
+# [0, L_final] range on every call once a cache exists for that floor (see that function's
+# own docstring) -- but the very FIRST call on a floor still pays the full
+# count_sieving_primes(0, L_final) cost from scratch: at floor-scale L_final (order 10^13+)
+# that alone can take minutes. Since L_final = isqrt(combined_hi) is itself only ~half as
+# many digits as the floor it belongs to, a floor most people would ever reach (order 10^58
+# or below) has an L_final at or below 10^29 -- squarely inside this table's range. Seeding
+# the cold-start count from the largest known pi(10^n) <= L_final and counting only the
+# remaining sliver via count_sieving_primes_range() turns that first-ever call into the
+# same cheap "incremental" shape every SUBSEQUENT call on that floor already gets, instead
+# of a full from-zero recount.
 #
 # This table is used ONLY when use_known_pi_seed=True is explicitly passed through (default
 # False everywhere -- see COMPUTE_SIEVING_PRIMES_COUNT's own comment for the sibling "off by
@@ -265,16 +264,15 @@ def count_sieving_primes_cached(portal_folder, base_power, limit, use_known_pi_s
                                                        to its largest L, not a queryable prefix
                                                        count at arbitrary smaller points.
 
-    use_known_pi_seed (default False, Artur's idea, 2026-08-27): when the "no cache yet"/
-    "smaller limit" cases above would otherwise fall back to a full count_sieving_primes(0,
-    limit) recount, try _seed_from_known_pi(limit) first -- if it finds a known pi(10^n) at or
-    below limit (see KNOWN_PI_10N above), seed from THAT instead of 0 and only actually count
-    the sliver from there up to limit via count_sieving_primes_range(). Turns what would
-    otherwise be the single most expensive call this function ever makes into the same cheap
-    shape as every later "incremental" call. When a seed is used, the cache also records which
-    one (seeded_from: {power_of_ten, value, source}) so the number's provenance stays visible
-    to anyone inspecting the cache file directly -- Artur's own transparency requirement for
-    this feature.
+    use_known_pi_seed (default False): when the "no cache yet"/"smaller limit" cases above
+    would otherwise fall back to a full count_sieving_primes(0, limit) recount, try
+    _seed_from_known_pi(limit) first -- if it finds a known pi(10^n) at or below limit (see
+    KNOWN_PI_10N above), seed from THAT instead of 0 and only actually count the sliver from
+    there up to limit via count_sieving_primes_range(). Turns what would otherwise be the
+    single most expensive call this function ever makes into the same cheap shape as every
+    later "incremental" call. When a seed is used, the cache also records which one
+    (seeded_from: {power_of_ten, value, source}) so the number's provenance stays visible to
+    anyone inspecting the cache file directly.
 
     Returns (count, mode) where mode is one of "cold" / "cache_hit" / "incremental" / "shrink"
     / "seeded" -- purely informational, used by main_batch_scanner()'s timing print so a
