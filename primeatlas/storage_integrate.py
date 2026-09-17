@@ -1,9 +1,9 @@
 """
-storage_integrate.py -- the systemic fix for the scenario Artur hit manually (see
-[[primeatlas_storage_merge_federation]]): someone downloads PrimeAtlas from GitHub, gets
-a copy of someone else's magazyn (or one from another machine), and wants to fold it
-into their own -- growing the local storage the way GIMPS folds in partial results from
-many contributors.
+storage_integrate.py -- the systemic fix for the scenario where someone downloads
+PrimeAtlas from GitHub, gets a copy of someone else's storage (or one from another
+machine), and wants to fold it into their own -- growing the local storage the way GIMPS
+folds in partial results from many contributors (see
+[[primeatlas_storage_merge_federation]]).
 
 Doing this with a generic file-copy tool forces the person to resolve a conflict dialog
 for files that were never meant to be merged that way: `.portal_totals_cache.json` and
@@ -174,7 +174,7 @@ def integrate_floor(destination_path, external_path, base_exponent,
 
     floor_meta.json rows are merged in additively (both directions are never touched:
     this only ever imports external's rows INTO destination's file, never the
-    reverse), so this floor's generation history from the external magazyn becomes
+    reverse), so this floor's generation history from the external storage becomes
     available locally too -- and, the next time prime_atlas_v1.py's totals worker
     visits this floor, those rows flow into the LOCAL benchmark_log.csv automatically
     (merge_floor_meta_into_benchmark_log(), already wired -- see this module's own
@@ -182,15 +182,14 @@ def integrate_floor(destination_path, external_path, base_exponent,
 
     Also bumps storage.py's persisted totals cache (bump_pietro_total()) for every
     copied window whose prime count is already KNOWN from the external side's own
-    .portal_totals_cache.json -- added 2026-08-27 at Artur's explicit request ("sumuje
-    się wartość z magazynu docelowego z importowanym magazynem zamiast zliczać każdą
-    sztukę", i.e. sum the two sides' already-known totals instead of recounting every
-    prime -- see storage.py's own module docstring for the full feature). Deliberately
-    does NOT open/read any window file to learn its count if the external cache
-    doesn't already know it (e.g. that floor was never opened in PrimeAtlas on the
+    .portal_totals_cache.json: the destination's total is summed with the external
+    side's already-known count for each copied window, instead of recounting every
+    prime from scratch -- see storage.py's own module docstring for the full feature.
+    Deliberately does NOT open/read any window file to learn its count if the external
+    cache doesn't already know it (e.g. that floor was never opened in PrimeAtlas on the
     external side at all) -- a copied window this can't account for here just leaves
     the destination cache exactly as stale as it already was before this merge, to be
-    caught later by the manual "Zweryfikuj sumy" verify action, rather than defeating
+    caught later by the manual full-rescan verify action, rather than defeating
     the whole point of this feature by reading every file's header during the merge.
 
     Returns {"copied_windows": n, "copied_hits": n, "cancelled": bool}."""
