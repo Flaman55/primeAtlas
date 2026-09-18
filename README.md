@@ -701,6 +701,22 @@ MATCH! when checked, or specifically for the next NON-match wheel candidate (ski
 matches on the way) when unchecked -- turning a manual step-by-step browse into either a
 one-keypress jump to the next genuine occurrence, or to the next miss.
 
+Line mode's coordinate mapping self-adjusts for real archive-scale windows
+(`ring_geometry.line_view_bounds`): a loaded span under ~20,000 maps straight to the whole
+window (unchanged from the mode's original behavior), but a real archive-scale span (a
+--load-range many orders of magnitude wider than a single k-tuple's own internal spacing)
+switches to a small, FIXED-width viewport camera-anchored on the current pattern anchor N
+instead -- the same "stay bounded regardless of how huge N itself is" idea ring mode's own
+phase (`n % p`) already relies on, just applied to a local neighborhood instead of a
+modulus. This exists because the whole-window mapping, once cast to the GPU's float32
+vertex buffer, silently loses a k-tuple's own small internal offsets at real archive scale
+(confirmed live, 2026-09-18: a k=4 pattern's genuinely uneven `[0,2,6,8]` spacing rendered
+as evenly-spaced-looking dots) -- the local viewport keeps the mapped span small enough for
+float32 to resolve correctly, and as a side effect only renders the (few hundred) background
+dots actually inside that viewport rather than the entire loaded array, which also cut a
+real 2,000,000-prime archive load's own per-frame rebuild time from ~410ms to under 1ms.
+The HUD's `Pattern:` line shows `[view: local]` whenever this fallback is active.
+
 ## Architecture
 
 ```
@@ -879,7 +895,12 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               the first phase-compatible wheel candidate at the window's own
                               lower edge otherwise (so a small pattern seed like 7 or 11 still
                               works correctly against a real archive-scale --load-range far
-                              above it, e.g. a 22-digit to 23-digit window)
+                              above it, e.g. a 22-digit to 23-digit window), and
+                              line_view_bounds/line_positions_windowed pick a local,
+                              anchor-centered viewport instead of the whole loaded window
+                              once that window's own span would lose a k-tuple's small
+                              internal offsets to the GPU's float32 vertex-buffer precision
+                              limit (see "Ring visualization" above)
   ring_viz/                      the GPU renderer subprocess launched by rings_tab.py --
                               kept in its own subpackage since it's a separate OS
                               process, not additional widgets in the main Tk process;
@@ -912,7 +933,13 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               viewport camera math. build_line_vertex_data is "line"
                               viz-mode's own counterpart to build_vertex_data, reusing
                               the same (count,5) [x,y,r,g,b] layout and hit/normal split
-                              so the GL draw calls need no mode-specific code at all
+                              so the GL draw calls need no mode-specific code at all;
+                              it defers to ring_geometry.line_view_bounds each call to
+                              decide whether to map the whole loaded window or a local,
+                              anchor-centered viewport (see "Ring visualization" above),
+                              and accepts an optional pre-built primes_set so a caller
+                              holding range_primes fixed across many calls (RenderSession)
+                              isn't forced to rebuild the same set from scratch every frame
     hud.py                         HUD text composition (plain lines and the on-canvas
                               canvas-header/status wrapper), per-line window-family
                               coloring, and Pillow-based rasterization of the on-canvas

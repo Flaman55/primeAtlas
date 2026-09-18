@@ -139,7 +139,7 @@ def hud_lines_for_n(primes_active, n, pos, enabled_ids, theta, mode, tracked_sta
 
 
 def pattern_hud_line(n, offsets, all_match, wheel_modulus=None, wheel_residue_count=None,
-                      step_mode="manual", stop_on_match=False):
+                      step_mode="manual", stop_on_match=False, view_mode=None):
     """The single HUD text line for "line" viz-mode's k-tuple pattern
     status: the anchor N, its offsets, whether every member currently
     lands on a real prime, (when a wheel is active, see
@@ -152,7 +152,17 @@ def pattern_hud_line(n, offsets, all_match, wheel_modulus=None, wheel_residue_co
     for a non-match when unchecked). Returned as a plain string so the
     caller (RenderSession.rebuild_line) can drop it straight into
     `self.hud_lines` -- compose_hud_canvas_lines below already just
-    appends whatever strings that list holds."""
+    appends whatever strings that list holds.
+
+    `view_mode` -- ring_geometry.line_view_bounds' own "full"/"local" flag
+    (build_line_vertex_data's return value, forwarded verbatim by
+    RenderSession.rebuild_line) -- printed only when "local", so Artur can
+    tell at a glance the renderer switched to the anchor-centered
+    viewport (float32-precision fallback for a real archive-scale window,
+    see line_view_bounds' own doc-comment) instead of showing the whole
+    loaded range at once; None or "full" adds nothing, matching this
+    line's own pre-existing text for every case before this fallback
+    existed."""
     suffix = "  MATCH!" if all_match else ""
     wheel_text = ""
     if wheel_modulus is not None and wheel_modulus > 1:
@@ -164,7 +174,8 @@ def pattern_hud_line(n, offsets, all_match, wheel_modulus=None, wheel_residue_co
         mode_text = "  [auto: seek MATCH!]" if stop_on_match else "  [auto: seek non-match]"
     else:
         mode_text = "  [manual]"
-    return f"Pattern: n={n:,} offsets={list(offsets)}{suffix}{wheel_text}{mode_text}"
+    view_text = "  [view: local]" if view_mode == "local" else ""
+    return f"Pattern: n={n:,} offsets={list(offsets)}{suffix}{wheel_text}{mode_text}{view_text}"
 
 
 # ---------------------------------------------------------------------------

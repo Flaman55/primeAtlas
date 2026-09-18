@@ -1223,6 +1223,120 @@ def value_to_line_x(value, lo, span, world_width=1600.0):
     return (value - lo) / span * world_width - world_width / 2.0
 
 
+#: Above this loaded-window span (in absolute prime VALUE units, not
+#: pixels), line_positions' whole-window linear map is no longer safe once
+#: cast to the GPU's own float32 vertex buffer -- see line_view_bounds'
+#: own doc-comment for the exact float32 mechanism this guards against.
+#: Chosen with a large safety margin: at this span, a k-tuple's smallest
+#: realistic offset gap (2, the twin-prime case) still maps to a world-x
+#: delta roughly 3 orders of magnitude bigger than float32's own ULP at
+#: world_width/2 -- see that doc-comment for the arithmetic.
+LINE_PRECISION_SAFE_SPAN = 20_000
+
+#: Half-width (in absolute VALUE units) of the local, anchor-centered
+#: viewport line_view_bounds falls back to once the loaded window's own
+#: span exceeds LINE_PRECISION_SAFE_SPAN -- see that function's own
+#: doc-comment. 5,000 gives ample float32 headroom (a delta of 2 maps to
+#: ~0.32 world-x units at world_width=1600, ~3,000x float32's own ULP
+#: there) while still showing hundreds of real primes of context even at
+#: real archive density (~1 prime per ln(N) integers).
+LINE_LOCAL_VIEW_RADIUS = 5_000
+
+
+def line_view_bounds(range_lo, range_hi, anchor, offsets=()):
+    """Decides which (lo, span) line_positions_windowed/value_to_line_x
+    should map "line" viz-mode's world-x coordinates through THIS frame:
+    either the whole loaded window's own [range_lo, range_hi] (small
+    enough that float32 can resolve every point distinctly), or a FIXED-
+    width slice camera-anchored on the current pattern anchor `anchor` --
+    Artur's own "wrap the axis into a phase/ring coordinate" fix
+    (2026-09-18) for a float32 GPU-vertex-buffer precision ceiling found
+    live at real archive scale.
+
+    The bug this fixes is DIFFERENT from (and downstream of) the float64
+    precision bug line_positions' own doc-comment already covers: even
+    after computing `(value - lo)` in exact integer arithmetic, casting
+    the RESULT to float32 for the GPU vertex buffer (build_line_vertex_
+    data's own (count, 5) float32 array) loses precision whenever the
+    mapped world-x magnitude (~world_width/2, e.g. 800) is large relative
+    to the smallest MEANINGFUL delta a k-tuple pattern's own offsets need
+    resolved (e.g. 2, 4, 6 for k=4). float32 has ~24 bits of mantissa, so
+    its ULP near x=800 is ~800 * 2**-23 ~= 9.5e-5; once the loaded
+    window's span is astronomically wider than a single k-tuple's own
+    internal spread (real archive scale: span ~1e8+, offsets in the low
+    tens), a value-delta of 2 maps to a world-x delta of
+    `2 / span * world_width`, which underflows that ULP and several
+    offsets silently collapse onto the SAME float32 x -- confirmed live,
+    2026-09-18, against a real 26-digit --load-range: a k=4 pattern's 4
+    members rendered as evenly-spaced-looking dots that did not match its
+    own genuinely uneven [0,2,6,8] offsets.
+
+    Local mode re-centers the very same linear map on the anchor instead
+    of the loaded window's own edges: lo = anchor -
+    LINE_LOCAL_VIEW_RADIUS, span = 2 * LINE_LOCAL_VIEW_RADIUS -- always a
+    SMALL, FIXED span regardless of how astronomically large `anchor`
+    itself is, exactly mirroring how ring mode's own phase (n % p) stays
+    bounded regardless of n's magnitude: there, the huge quotient n // p
+    is thrown away and only the small remainder kept; here, the huge "how
+    far into the whole loaded window am I" is thrown away and only the
+    small "how far from the anchor am I" kept. A caller filters which
+    loaded primes fall inside [lo, lo+span] separately (see
+    line_positions_windowed) -- this function only decides the coordinate
+    mapping itself, so it stays a plain O(1) pure function regardless of
+    how large the loaded array is.
+
+    `offsets` -- the active pattern's own offsets (empty/default for "no
+    pattern set yet"), used only to make sure the local viewport is wide
+    enough to hold the WHOLE pattern comfortably (4x its own diameter, so
+    the pattern is never clipped by an accidentally-too-narrow local
+    window) -- LINE_LOCAL_VIEW_RADIUS already covers every realistic
+    k-tuple by a wide margin, this is just a safety floor for an
+    unusually wide one.
+
+    Returns (mode, lo, span) -- mode is "full" or "local", purely for a
+    caller/HUD to report which one is active; lo/span are always valid
+    inputs to line_positions_windowed/value_to_line_x's own math either
+    way."""
+    full_span = max(range_hi - range_lo, 1)
+    if full_span <= LINE_PRECISION_SAFE_SPAN:
+        return "full", range_lo, full_span
+    diameter = offsets[-1] if offsets else 0
+    radius = max(LINE_LOCAL_VIEW_RADIUS, diameter * 4)
+    return "local", anchor - radius, 2 * radius
+
+
+def line_positions_windowed(primes, lo, span, world_width=1600.0):
+    """Same output shape as line_positions (x, y, lo, span), but FILTERS
+    `primes` (ascending, any dtype to_prime_array accepts) down to only
+    the values inside [lo, lo+span] first, and maps them using the
+    CALLER-SUPPLIED lo/span instead of deriving it from the array's own
+    min/max -- see line_view_bounds for why a caller sometimes wants a
+    coordinate mapping anchored elsewhere than "the whole array's own
+    extent" (line viz-mode's local, anchor-centered viewport at real
+    archive scale).
+
+    The two window edges are found via np.searchsorted (binary search),
+    not a full scan or Python-level filter, so this stays cheap even when
+    `primes` is the ENTIRE loaded --load-range array (potentially millions
+    of entries at real archive scale) and only a small local slice of it
+    actually falls inside [lo, lo+span] -- exactly the case this function
+    exists for (called once per N-change from build_line_vertex_data).
+
+    Same exact-integer-subtraction-before-cast precision discipline as
+    line_positions (see that function's own doc-comment) -- `windowed -
+    lo` stays exact (object-dtype minus a Python int, or same-dtype minus
+    a scalar that fits) and is bounded by `span` (always small by
+    construction here), so only THEN is it safe to cast to float64."""
+    primes_arr = to_prime_array(primes)
+    hi = lo + span
+    start = int(np.searchsorted(primes_arr, lo, side="left"))
+    end = int(np.searchsorted(primes_arr, hi, side="right"))
+    windowed = primes_arr[start:end]
+    x = (windowed - lo).astype(np.float64) / span * world_width - world_width / 2.0
+    y = np.zeros(len(windowed), dtype=np.float64)
+    return {"x": x, "y": y, "lo": lo, "span": span}
+
+
 def pattern_positions_and_match(n, offsets, primes_window_set):
     """positions = [n+o for o in offsets]; hit_flags[i] = positions[i] is a
     member of `primes_window_set`; all_match = every offset hit (False,

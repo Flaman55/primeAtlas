@@ -183,6 +183,7 @@ class RenderSession:
         self.viz_mode = viz_mode
         self.pattern_offsets = list(pattern_offsets) if pattern_offsets else None
         self.pattern_match = False
+        self.pattern_view_mode = None
         self.flash_pattern = 0.0
         # Wheel-skip: which n (mod some small-prime-derived period) can
         # EVER match, computed once up front from the pattern's own
@@ -587,6 +588,7 @@ class RenderSession:
         self.viz_mode = "rings"
         self.pattern_offsets = None
         self.pattern_match = False
+        self.pattern_view_mode = None
         self.pattern_wheel_modulus = None
         self.pattern_wheel_residues = None
         self._pattern_primes_set = None
@@ -764,13 +766,14 @@ class RenderSession:
         rebuild() returns, so the caller's own two ctx.buffer() uploads and
         the main render loop's draw calls stay identical between modes."""
         t0 = time.perf_counter()
-        data, count, hit_mask, all_match = build_line_vertex_data(
-            self.range_primes, n_value, self.pattern_offsets or ()
+        data, count, hit_mask, all_match, view_mode = build_line_vertex_data(
+            self.range_primes, n_value, self.pattern_offsets or (), primes_set=self._pattern_primes_set
         )
         t1 = time.perf_counter()
-        print(f"N={n_value:,}  line dots={count:,}  rebuild={1000 * (t1 - t0):.1f}ms")
+        print(f"N={n_value:,}  line dots={count:,}  view={view_mode}  rebuild={1000 * (t1 - t0):.1f}ms")
 
         self.pattern_match = all_match
+        self.pattern_view_mode = view_mode
         if all_match:
             self.flash_pattern = 1.0
 
@@ -785,6 +788,7 @@ class RenderSession:
                 wheel_modulus=self.pattern_wheel_modulus,
                 wheel_residue_count=len(self.pattern_wheel_residues) if self.pattern_wheel_residues else 0,
                 step_mode=self.pattern_step_mode, stop_on_match=self.pattern_stop_on_match,
+                view_mode=view_mode,
             )]
             if self.pattern_offsets else []
         )

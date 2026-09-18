@@ -369,20 +369,180 @@ def _test_build_line_vertex_data():
 
     range_primes = np.array([11, 13, 17, 19, 23, 29, 31, 37], dtype=np.int64)
 
-    data, count, hit_mask, all_match = build_line_vertex_data(range_primes, 11, [0, 2, 6, 8, 12, 18, 20])
+    data, count, hit_mask, all_match, view_mode = build_line_vertex_data(range_primes, 11, [0, 2, 6, 8, 12, 18, 20])
     check(count == len(range_primes) + 7,
           f"vertex data has one row per background prime plus one per pattern member (got {count})")
     check(hit_mask.sum() == 7, "hit_mask marks exactly the pattern-member rows, not the background dots")
     check(all_match is True, "build_line_vertex_data reports all_match for a real occurrence")
     check(data.shape == (count, 5), "vertex data is the standard (count, 5) [x,y,r,g,b] layout")
+    check(view_mode == "full", "a small loaded window stays in 'full' view mode (span well under the precision threshold)")
 
-    data2, count2, hit_mask2, all_match2 = build_line_vertex_data(range_primes, 12, [0, 2, 6])
+    data2, count2, hit_mask2, all_match2, view_mode2 = build_line_vertex_data(range_primes, 12, [0, 2, 6])
     check(count2 == len(range_primes) + 3, "background dots are unaffected by a non-matching anchor")
     check(all_match2 is False, "all_match False when the anchored pattern doesn't land on real primes")
 
-    data3, count3, hit_mask3, all_match3 = build_line_vertex_data(range_primes, 11, [])
+    data3, count3, hit_mask3, all_match3, view_mode3 = build_line_vertex_data(range_primes, 11, [])
     check(count3 == len(range_primes), "no pattern offsets -> only the background dot row, no extra markers")
     check(all_match3 is False, "all_match False with no pattern active")
+
+    # primes_set override: passing a pre-built set must give the exact same
+    # match result as letting the function build it from range_primes itself.
+    primes_set = set(int(v) for v in range_primes)
+    data4, count4, hit_mask4, all_match4, view_mode4 = build_line_vertex_data(
+        range_primes, 11, [0, 2, 6, 8, 12, 18, 20], primes_set=primes_set
+    )
+    check(all_match4 is True, "an explicit primes_set override gives the same match result as the default")
+
+
+def _test_line_view_bounds():
+    """Spec for ring_geometry.line_view_bounds (2026-09-18, Artur's own
+    "wrap the axis into a phase/ring coordinate" fix for the float32
+    GPU-vertex-buffer precision ceiling): stay in 'full' whole-window mode
+    below LINE_PRECISION_SAFE_SPAN, switch to a 'local', anchor-centered,
+    FIXED-width slice above it -- and that local slice must always be wide
+    enough to hold the active pattern's own full diameter."""
+    from primeatlas.rings.ring_geometry import (
+        line_view_bounds, LINE_PRECISION_SAFE_SPAN, LINE_LOCAL_VIEW_RADIUS,
+    )
+
+    mode, lo, span = line_view_bounds(1000, 1000 + LINE_PRECISION_SAFE_SPAN, 5000)
+    check(mode == "full", "a span exactly at the safe threshold stays in 'full' mode")
+    check((lo, span) == (1000, LINE_PRECISION_SAFE_SPAN), "'full' mode maps lo/span straight from range_lo/range_hi")
+
+    range_lo = 10 ** 25
+    range_hi = range_lo + 10 ** 8
+    anchor = range_lo + 12345
+    mode2, lo2, span2 = line_view_bounds(range_lo, range_hi, anchor)
+    check(mode2 == "local", "a real archive-scale span (1e8) switches to 'local' mode")
+    check(span2 == 2 * LINE_LOCAL_VIEW_RADIUS, "'local' mode's span is the fixed default radius, doubled")
+    check(lo2 == anchor - LINE_LOCAL_VIEW_RADIUS, "'local' mode is centered exactly on the anchor")
+
+    # An unusually wide pattern (diameter*4 > the default radius) must
+    # still fit entirely inside the local viewport, not get clipped.
+    wide_offsets = [0, 30_000]
+    mode3, lo3, span3 = line_view_bounds(range_lo, range_hi, anchor, wide_offsets)
+    check(span3 >= wide_offsets[-1] * 4,
+          f"local viewport widens to hold an unusually wide pattern's own diameter (span={span3})")
+    check(anchor - lo3 == span3 / 2, "the widened viewport is still centered exactly on the anchor")
+
+
+def _test_line_positions_windowed():
+    """Spec for ring_geometry.line_positions_windowed: filters an ascending
+    array down to [lo, lo+span] via binary search and maps ONLY that
+    slice, using the caller-supplied lo/span rather than the array's own
+    min/max -- the piece line_view_bounds' local mode actually needs to
+    render just the anchor-centered neighborhood instead of the whole
+    loaded array."""
+    from primeatlas.rings.ring_geometry import line_positions_windowed, value_to_line_x
+    import numpy as np
+
+    primes = np.array([5, 11, 13, 17, 19, 23, 29, 1000], dtype=np.int64)
+    win = line_positions_windowed(primes, lo=10, span=20, world_width=1000.0)
+    # [10, 30] inclusive on both ends: 11, 13, 17, 19, 23, 29 -- six values.
+    check(len(win["x"]) == 6, f"only the 6 values genuinely inside [10, 30] are kept (got {len(win['x'])})")
+    check(win["lo"] == 10 and win["span"] == 20, "line_positions_windowed reports back the CALLER's own lo/span")
+
+    expected_first_x = value_to_line_x(11, 10, 20, 1000.0)
+    check(abs(win["x"][0] - expected_first_x) < 1e-6,
+          "line_positions_windowed's own mapping matches value_to_line_x for the same lo/span")
+
+    empty = line_positions_windowed(primes, lo=10_000, span=5, world_width=1000.0)
+    check(len(empty["x"]) == 0, "a window with no primes inside it returns an empty (not crashing) result")
+
+
+def _test_line_positions_windowed_archive_scale_precision():
+    """The actual regression this whole feature exists to fix (2026-09-18,
+    Artur's own real report against a real 26-digit --load-range, k=4:
+    "again one point short... and the spacing between them doesn't match
+    the pattern, since the pattern isn't spaced that evenly"). Unlike
+    _test_line_positions_archive_scale_precision (which only proved the
+    float64 math inside line_positions itself was exact), THIS test casts
+    the result to float32 -- exactly like build_line_vertex_data's own
+    GPU vertex buffer does -- and checks the pattern's own UNEVEN internal
+    spacing ([0,2,6,8]: gaps 2,4,2) survives that cast distinctly, which a
+    naive whole-window linear map (span ~1e8) provably cannot do at
+    world_width/2 magnitude (~800): a value-delta of 2 there maps to a
+    world-x delta far below float32's own ULP and several members collapse
+    onto the same float32 x -- this is the failure line_view_bounds' local,
+    anchor-centered viewport (this function's own `lo`/`span` inputs) is
+    meant to avoid entirely, by keeping the mapped span small (a few
+    thousand) regardless of the loaded window's real, huge span."""
+    from primeatlas.rings.ring_geometry import (
+        line_positions_windowed, value_to_line_x, line_view_bounds,
+    )
+    import numpy as np
+
+    range_lo = 10 ** 26
+    range_hi = range_lo + 10 ** 9
+    offsets = [0, 2, 6, 8]
+    anchor = range_lo + 55_555_555
+
+    mode, lo, span = line_view_bounds(range_lo, range_hi, anchor, offsets)
+    check(mode == "local", "a real 1e9-wide archive window triggers the local viewport")
+
+    xs_f32 = np.array(
+        [value_to_line_x(anchor + o, lo, span, 1600.0) for o in offsets], dtype=np.float32
+    )
+    check(len(set(xs_f32.tolist())) == 4,
+          f"all 4 pattern-member x positions stay DISTINCT even after casting to float32 (got {xs_f32})")
+
+    gap1 = xs_f32[1] - xs_f32[0]  # offset delta 2
+    gap2 = xs_f32[2] - xs_f32[1]  # offset delta 4
+    gap3 = xs_f32[3] - xs_f32[2]  # offset delta 2
+    check(abs(gap1 - gap3) < 1e-4,
+          f"the two offset-delta-2 gaps render as equal to each other (got {gap1} vs {gap3})")
+    check(abs(gap2 - 2 * gap1) < 1e-4,
+          f"the offset-delta-4 gap renders as exactly double an offset-delta-2 gap, "
+          f"preserving the pattern's own UNEVEN spacing instead of looking evenly spaced (got gap2={gap2}, gap1={gap1})")
+
+    # Also confirm the naive WHOLE-window mapping (the pre-fix behavior)
+    # really does collapse these same 4 positions at this scale, so this
+    # test is provably exercising the bug it claims to fix.
+    naive_xs_f32 = np.array(
+        [value_to_line_x(anchor + o, range_lo, range_hi - range_lo, 1600.0) for o in offsets], dtype=np.float32
+    )
+    check(len(set(naive_xs_f32.tolist())) < 4,
+          f"sanity check: the OLD whole-window mapping at this scale really does collapse "
+          f"some of these 4 positions together (got {naive_xs_f32}) -- confirms the local "
+          f"viewport is fixing a real, reproducible failure, not a hypothetical one")
+
+
+def _test_build_line_vertex_data_local_view_integration():
+    """End-to-end version of the archive-scale precision test above,
+    through the ACTUAL build_line_vertex_data entry point (not just
+    line_view_bounds/value_to_line_x directly): a real archive-scale
+    `range_primes` array (span 1e6, well past LINE_PRECISION_SAFE_SPAN)
+    must render in 'local' view mode, drawing only the background dots
+    inside the local viewport (not the full loaded array), while the
+    pattern's own 4 members still land on 4 distinct float32 x positions
+    in the actual GPU vertex buffer `data`."""
+    from primeatlas.rings.ring_viz.geometry_draw import build_line_vertex_data
+    from primeatlas.rings.ring_geometry import LINE_LOCAL_VIEW_RADIUS
+    import numpy as np
+
+    range_lo = 10 ** 26
+    span = 1_000_000
+    step = 100
+    offsets = [0, 2, 6, 8]
+    anchor = range_lo + span // 2
+    values = {range_lo + i * step for i in range(span // step)}
+    values |= {anchor + o for o in offsets}  # the pattern's own occurrence must be real data
+    range_primes = np.array(sorted(values), dtype=object)
+
+    data, count, hit_mask, all_match, view_mode = build_line_vertex_data(range_primes, anchor, offsets)
+    check(view_mode == "local", "an archive-scale loaded window (span 1e6) renders in local view mode")
+    check(all_match is True, "the inserted pattern positions are genuine matches")
+
+    bg_count = int(count - hit_mask.sum())
+    check(bg_count < len(range_primes),
+          f"local mode renders only the background dots inside the local viewport, "
+          f"not the whole loaded array ({bg_count} of {len(range_primes)})")
+    check(bg_count <= (2 * LINE_LOCAL_VIEW_RADIUS) // step + 10,
+          f"background dot count roughly matches the local viewport's own width / spacing (got {bg_count})")
+
+    xs = data[hit_mask][:, 0]
+    check(len(set(xs.tolist())) == 4,
+          f"the 4 pattern-member x positions in the actual float32 GPU buffer are distinct (got {xs})")
 
 
 def _test_render_session_line_mode():
@@ -504,6 +664,10 @@ def main():
     _test_render_session_anchor_always_reachable()
     _test_resolve_pattern_anchor()
     _test_build_line_vertex_data()
+    _test_line_view_bounds()
+    _test_line_positions_windowed()
+    _test_line_positions_windowed_archive_scale_precision()
+    _test_build_line_vertex_data_local_view_integration()
     _test_render_session_line_mode()
     _test_render_session_wheel_scrub()
 

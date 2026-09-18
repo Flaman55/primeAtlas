@@ -39,6 +39,8 @@ from primeatlas.rings.ring_geometry import (
     tracked_ring_mask,
     to_prime_array,
     line_positions,
+    line_view_bounds,
+    line_positions_windowed,
     value_to_line_x,
     pattern_positions_and_match,
 )
@@ -160,7 +162,7 @@ def split_hit_normal_vertex_data(data, hit_mask):
     return data[~hit_mask], data[hit_mask], count_hit
 
 
-def build_line_vertex_data(range_primes, n, offsets, world_width=1600.0):
+def build_line_vertex_data(range_primes, n, offsets, world_width=1600.0, primes_set=None):
     """"line" viz-mode counterpart of build_vertex_data: a fixed horizontal
     row of point-sprites, one per real prime in `range_primes` (the base
     cyan dots), plus -- when `offsets` is non-empty -- the sliding
@@ -169,18 +171,41 @@ def build_line_vertex_data(range_primes, n, offsets, world_width=1600.0):
     no real-prime dot to recolor in the first place), green where that
     position is a real prime and red where it isn't.
 
-    Returns (data, count, hit_mask, all_match): `data`/`count` are
-    build_vertex_data's own flat (count, 5) float32 [x,y,r,g,b] layout and
-    row count, `hit_mask` is a bool ndarray marking the pattern-member rows
-    (True for every one of them, matched or not -- this is what buys them
-    the independent --hit-point-size sizing via the same
+    The coordinate mapping itself comes from line_view_bounds (see that
+    function's own doc-comment for the float32-precision reasoning): the
+    WHOLE loaded window when its span is small enough for float32 to
+    resolve every point distinctly, or else a small, FIXED-width slice
+    camera-anchored on `n` -- in the local case, ONLY the background dots
+    actually inside that slice are drawn (line_positions_windowed's own
+    filter), never the full `range_primes` array's every row, since
+    anything outside the slice would round to the exact same handful of
+    float32 x positions anyway.
+
+    `primes_set` -- optional pre-built `set(int(v) for v in range_primes)`
+    for the match check below; a caller holding `range_primes` fixed
+    across many calls (RenderSession, whose own `_pattern_primes_set` is
+    already built once at construction for the wheel/founding-coincidence
+    logic) should pass it through here too, instead of this function
+    silently rebuilding the same set from scratch on every single N-change
+    -- a real cost once `range_primes` is a real archive-scale array.
+    Built fresh (the original behavior) when omitted.
+
+    Returns (data, count, hit_mask, all_match, view_mode): `data`/`count`
+    are build_vertex_data's own flat (count, 5) float32 [x,y,r,g,b] layout
+    and row count, `hit_mask` is a bool ndarray marking the pattern-member
+    rows (True for every one of them, matched or not -- this is what buys
+    them the independent --hit-point-size sizing via the same
     split_hit_normal_vertex_data/u_point_size mechanism ring mode's own hit
     rings already use, so no new GL uniform is needed), `all_match` is
     pattern_positions_and_match's own flag (False, not an error, when
-    `offsets` is empty)."""
-    line = line_positions(range_primes, world_width)
+    `offsets` is empty), `view_mode` is line_view_bounds' own "full"/
+    "local" flag (for the HUD to report which one is active)."""
     primes_arr = to_prime_array(range_primes)
-    bg_count = len(primes_arr)
+    range_lo = int(primes_arr[0]) if len(primes_arr) else 0
+    range_hi = int(primes_arr[-1]) if len(primes_arr) else 0
+    view_mode, lo, span = line_view_bounds(range_lo, range_hi, n, offsets)
+    line = line_positions_windowed(primes_arr, lo, span, world_width)
+    bg_count = len(line["x"])
 
     bg_data = np.empty((bg_count, 5), dtype=np.float32)
     bg_data[:, 0] = line["x"]
@@ -189,9 +214,10 @@ def build_line_vertex_data(range_primes, n, offsets, world_width=1600.0):
     bg_hit_mask = np.zeros(bg_count, dtype=bool)
 
     if not offsets:
-        return bg_data, bg_count, bg_hit_mask, False
+        return bg_data, bg_count, bg_hit_mask, False, view_mode
 
-    primes_set = set(int(v) for v in primes_arr)
+    if primes_set is None:
+        primes_set = set(int(v) for v in primes_arr)
     positions, hit_flags, all_match = pattern_positions_and_match(n, offsets, primes_set)
 
     pat_count = len(positions)
@@ -204,7 +230,7 @@ def build_line_vertex_data(range_primes, n, offsets, world_width=1600.0):
 
     data = np.concatenate([bg_data, pat_data], axis=0)
     hit_mask = np.concatenate([bg_hit_mask, pat_hit_mask])
-    return data, bg_count + pat_count, hit_mask, all_match
+    return data, bg_count + pat_count, hit_mask, all_match, view_mode
 
 
 # ---------------------------------------------------------------------------
