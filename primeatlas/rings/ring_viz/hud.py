@@ -138,6 +138,17 @@ def hud_lines_for_n(primes_active, n, pos, enabled_ids, theta, mode, tracked_sta
     return lines
 
 
+def pattern_hud_line(n, offsets, all_match):
+    """The single HUD text line for "line" viz-mode's k-tuple pattern
+    status: the anchor N, its offsets, and whether every member currently
+    lands on a real prime. Returned as a plain string so the caller
+    (RenderSession.rebuild_line) can drop it straight into `self.hud_lines`
+    -- compose_hud_canvas_lines below already just appends whatever
+    strings that list holds."""
+    suffix = "  MATCH!" if all_match else ""
+    return f"Pattern: n={n:,} offsets={list(offsets)}{suffix}"
+
+
 # ---------------------------------------------------------------------------
 # On-canvas GL HUD text. Ports the actual DrumRenderer.#drawHud text overlay
 # itself (the part hud_lines_for_n above deliberately did NOT port -- see

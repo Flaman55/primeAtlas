@@ -1106,3 +1106,125 @@ def format_big(value, digit_threshold=15):
     mantissa = f"{s[0]}.{s[1:5]}"
     exponent = digit_count - 1
     return ("-" if negative else "") + f"{mantissa}×10^{exponent} ({digit_count} digits)"
+
+
+# ----------------------------------------------------------------------
+# "line" viz-mode: a fixed horizontal row of real primes (--load-range)
+# with an optional k-tuple pattern slid along it by N -- see
+# primeatlas/rings/ring_viz/renderer.py's --viz-mode/--pattern-seed-*
+# flags and RenderSession.rebuild_line. Unrelated to the ring/gear math
+# above (every "ring" there is a modulus p, phase = n % p) -- this is
+# instead a literal number-line plot of prime VALUES as points, with a
+# movable offset-pattern overlay, so keep no assumptions from the ring
+# functions above.
+# ----------------------------------------------------------------------
+
+def _is_prime_trial_division(x):
+    """Plain trial division -- fine at the moderate magnitudes the manual
+    Pattern-seed GUI field takes (an exploratory input, not an
+    archive-scale primality tool; see prime_sieve/ for that)."""
+    if x < 2:
+        return False
+    if x < 4:
+        return True
+    if x % 2 == 0:
+        return False
+    i = 3
+    while i * i <= x:
+        if x % i == 0:
+            return False
+        i += 2
+    return True
+
+
+def next_prime_at_or_above(x):
+    """Smallest real prime >= x."""
+    x = max(int(x), 2)
+    while not _is_prime_trial_division(x):
+        x += 1
+    return x
+
+
+def pattern_offsets_from_seed(k, p0):
+    """Offsets (ascending, first always 0) for the k-tuple pattern literally
+    realized by the first k real primes >= p0 -- e.g.
+    pattern_offsets_from_seed(7, 11) == [0, 2, 6, 8, 12, 18, 20], the exact
+    shape of constellation/pattern_catalog_v1.py's k=7 id=1 entry, because
+    that catalog pattern's own smallest realization IS the run
+    11,13,17,19,23,29,31.
+
+    Any pattern built this way is automatically admissible (never forced to
+    zero by covering all residues mod some small prime p): it already
+    occurred once as real primes, which is only possible if it wasn't
+    forced composite at every n -- see the shift-correlation experiment
+    (constellation/shift_correlation_experiment_v1.py) this is a direct
+    extension of.
+
+    `p0` need not itself be prime -- treated as a lower bound. Requires
+    `p0 > 2` (a pattern seeded at 2 always degenerates to the trivial
+    parity case: every other member has a different parity from 2, so at
+    most one further member can ever be prime) and `k >= 2` (a "pattern" of
+    one point is meaningless here)."""
+    if k < 2:
+        raise ValueError(f"pattern_offsets_from_seed: k must be >= 2, got {k}")
+    if p0 <= 2:
+        raise ValueError(f"pattern_offsets_from_seed: p0 must be > 2, got {p0}")
+    primes = []
+    candidate = p0
+    while len(primes) < k:
+        candidate = next_prime_at_or_above(candidate)
+        primes.append(candidate)
+        candidate += 1
+    first = primes[0]
+    return [p - first for p in primes]
+
+
+def line_positions(primes, world_width=1600.0):
+    """Maps a sorted array of real primes onto a horizontal line in world
+    space: x linearly spans [-world_width/2, world_width/2] from the
+    smallest to the largest value, y=0 for every point. Pure numpy, mirrors
+    ring_positions' contract shape (a dict of parallel arrays) but for
+    line mode's linear layout instead of that function's polar one.
+
+    Returns {"x": ndarray, "y": ndarray, "lo": int, "span": int} -- `lo`/
+    `span` are exposed so a caller can map an arbitrary OTHER value (e.g. a
+    pattern-member position that isn't itself in `primes`) through the
+    exact same scale via value_to_line_x, without re-deriving it."""
+    primes_arr = to_prime_array(primes)
+    lo = int(primes_arr[0])
+    hi = int(primes_arr[-1])
+    span = max(hi - lo, 1)
+    x = (primes_arr.astype(np.float64) - lo) / span * world_width - world_width / 2.0
+    y = np.zeros(len(primes_arr), dtype=np.float64)
+    return {"x": x, "y": y, "lo": lo, "span": span}
+
+
+def value_to_line_x(value, lo, span, world_width=1600.0):
+    """Same linear map line_positions uses internally, for a single scalar
+    value not necessarily present in the array line_positions was called
+    with (e.g. one pattern-member position)."""
+    return (value - lo) / span * world_width - world_width / 2.0
+
+
+def pattern_positions_and_match(n, offsets, primes_window_set):
+    """positions = [n+o for o in offsets]; hit_flags[i] = positions[i] is a
+    member of `primes_window_set`; all_match = every offset hit (False,
+    not vacuously True, when `offsets` is empty -- there is no pattern to
+    have matched)."""
+    positions = [n + o for o in offsets]
+    hit_flags = [p in primes_window_set for p in positions]
+    all_match = bool(hit_flags) and all(hit_flags)
+    return positions, hit_flags, all_match
+
+
+def clamp_pattern_anchor(n, range_from, range_to, offsets):
+    """Keeps the pattern's anchor `n` inside [range_from, range_to -
+    offsets[-1]] so the pattern's own last member never scrubs past the
+    loaded line-mode window -- there is no real prime data beyond it to
+    check against, so a position out there would otherwise render as a
+    fabricated miss. No-op (returns `n` unchanged) when `offsets` is
+    empty -- there is no diameter to keep inside the window."""
+    if not offsets:
+        return n
+    hi = range_to - offsets[-1]
+    return max(range_from, min(n, hi))

@@ -66,9 +66,11 @@ from primeatlas.rings.ring_geometry import (
     cyclic_window_anchor_at,
     format_log_panel_text,
     window_label_colors,
+    clamp_pattern_anchor,
 )
 from primeatlas.rings.ring_viz.geometry_draw import (
     build_vertex_data,
+    build_line_vertex_data,
     split_hit_normal_vertex_data,
     resolve_effective_track_primes,
     build_tracked_outline_draws,
@@ -76,6 +78,7 @@ from primeatlas.rings.ring_viz.geometry_draw import (
     flash_overlay_rgba,
     _FLASH_RESONANCE_RGB,
     _FLASH_PRIME_RGB,
+    _FLASH_PATTERN_RGB,
     resonance_is_active,
     zoom_to_point,
     fit_zoom_for_viewport,
@@ -97,6 +100,7 @@ from primeatlas.rings.ring_viz.hud import (
     hud_line_colors,
     rasterize_hud_text,
     emit_audio_tick,
+    pattern_hud_line,
 )
 from primeatlas.rings.ring_viz.sources import load_archive
 
@@ -119,7 +123,8 @@ class RenderSession:
 
     def __init__(self, *, primes, n, ceiling, range_mode, range_primes, range_step,
                  track_primes, auto_orbit, enabled_ids, theta, law_mode, max_radius,
-                 tempo_ms, buffer_margin, can_extend_buffer, portal_folder):
+                 tempo_ms, buffer_margin, can_extend_buffer, portal_folder,
+                 viz_mode="rings", pattern_offsets=None):
         # Ring data / sequencing (was: bare `primes`/`ceiling`/`range_mode`/
         # `range_primes`/`range_step` locals in _run_visualization, some
         # mutated via `nonlocal`).
@@ -164,6 +169,17 @@ class RenderSession:
         self.flash_prime = 0.0
         self.flash_resonance = 0.0
         self.outline_draws = []
+
+        # "line" viz-mode: k-tuple pattern-slide state (see
+        # ring_geometry.py's own "line viz-mode" section and
+        # rebuild_line/pattern_flash_color below). `viz_mode` stays
+        # "rings" and `pattern_offsets` stays None for every existing
+        # caller that never passes these two kwargs, so ring mode's own
+        # behavior is completely unchanged.
+        self.viz_mode = viz_mode
+        self.pattern_offsets = list(pattern_offsets) if pattern_offsets else None
+        self.pattern_match = False
+        self.flash_pattern = 0.0
 
         # Resonance log (was: `resonance_log_state` dict).
         self.resonance_log_state = {"lines": [], "last_n": None, "last_range_mode": None}
@@ -266,13 +282,33 @@ class RenderSession:
         self.tempo_ms = clamp_tempo_ms(round(self.tempo_ms / 0.8))
         return f"Tempo: {self.tempo_ms}ms/tick (slower)"
 
+    def _clamp_pattern_n(self, n):
+        """Line-mode-with-pattern-only clamp: keeps the pattern's last
+        member from scrubbing past the loaded range window (see
+        clamp_pattern_anchor's own doc-comment for why). A no-op for every
+        other mode/state (ring mode, or line mode with no pattern set),
+        so this is safe to call unconditionally from every N-changing
+        method below without altering their existing, tested behavior."""
+        if self.viz_mode == "line" and self.pattern_offsets and len(self.range_primes):
+            return clamp_pattern_anchor(
+                n, int(self.range_primes[0]), int(self.range_primes[-1]), self.pattern_offsets
+            )
+        return n
+
     def tick(self):
         """One playback tick, called once the main loop's own tempo_ms
         elapsed-time gate fires -- ports tick_next_n's call site exactly.
-        Returns True if playback just stopped (N reached the ceiling),
-        False if `self.n` advanced (and `self.n_advancing` was set for the
-        caller's own N-change/rebuild branch to see)."""
+        Returns True if playback just stopped (N reached the ceiling, or --
+        line mode only -- the pattern's own last member reached the loaded
+        window's edge), False if `self.n` advanced (and `self.n_advancing`
+        was set for the caller's own N-change/rebuild branch to see)."""
         new_n, should_stop = tick_next_n(self.n, self.range_mode, self.ceiling, self.range_step)
+        if not should_stop:
+            clamped = self._clamp_pattern_n(new_n)
+            if clamped == self.n:
+                should_stop = True
+            else:
+                new_n = clamped
         if should_stop:
             self.playback_running = False
             return True
@@ -291,6 +327,7 @@ class RenderSession:
         clamp_scrub_n's own doc-comment for why only the scrub keys are
         capped, not these)."""
         self.n = max(0, self.n + delta)
+        self.n = self._clamp_pattern_n(self.n)
 
     def scrub_advance(self, is_right, ctrl_held, is_first_press):
         """Ports the LEFT/RIGHT PRESS/REPEAT branch: on the FIRST press of
@@ -306,6 +343,7 @@ class RenderSession:
             self.scrub_held += 1
         delta = arrow_scrub_delta(is_right, ctrl_held)
         self.n = clamp_scrub_n(self.n + delta, self.range_mode, self.ceiling)
+        self.n = self._clamp_pattern_n(self.n)
 
     def scrub_release(self):
         """Ports the LEFT/RIGHT RELEASE branch: once every held scrub key
@@ -341,6 +379,9 @@ class RenderSession:
         self.orbit_current_prime = None
         self.n = 1
         self.n_force_rebuild = True
+        self.viz_mode = "rings"
+        self.pattern_offsets = None
+        self.pattern_match = False
 
     # ------------------------------------------------------------------
     # Buffer extension -- was extend_buffer_if_needed's own closure body.
@@ -393,6 +434,17 @@ class RenderSession:
 
     def decay_prime_flash(self):
         self.flash_prime = decay_flash(self.flash_prime, 0.85)
+
+    def pattern_flash_color(self):
+        """Current pattern-full-match flash overlay (r, g, b, a) in 0..1,
+        or None if fully decayed. "line" viz-mode only -- flash_pattern
+        only ever gets set to 1.0 from rebuild_line."""
+        if self.flash_pattern <= 0.0:
+            return None
+        return flash_overlay_rgba(self.flash_pattern, _FLASH_PATTERN_RGB)
+
+    def decay_pattern_flash(self):
+        self.flash_pattern = decay_flash(self.flash_pattern, 0.65)
 
     # ------------------------------------------------------------------
     # Rebuild -- was rebuild_buffer's own closure body, minus its final
@@ -487,6 +539,39 @@ class RenderSession:
         self.hud_count = count
         self.hud_rebuild_ms = round(1000 * (t1 - t0), 1)
         self.hud_lines = current_hud_lines
+
+        return data_normal, data_hit, count, count_hit
+
+    def rebuild_line(self, n_value, advancing=False):
+        """"line" viz-mode counterpart of rebuild(): the fixed dot-row for
+        `self.range_primes` plus the sliding pattern's own positions/match
+        state, via build_line_vertex_data. Deliberately independent of
+        rebuild()'s ring/resonance/window/HUD-factors machinery above --
+        line mode has none of that (no rings, no "factors of N", no
+        resonance log); its only per-frame state is the pattern match.
+
+        Returns (data_normal, data_hit, count, count_hit), the same shape
+        rebuild() returns, so the caller's own two ctx.buffer() uploads and
+        the main render loop's draw calls stay identical between modes."""
+        t0 = time.perf_counter()
+        data, count, hit_mask, all_match = build_line_vertex_data(
+            self.range_primes, n_value, self.pattern_offsets or ()
+        )
+        t1 = time.perf_counter()
+        print(f"N={n_value:,}  line dots={count:,}  rebuild={1000 * (t1 - t0):.1f}ms")
+
+        self.pattern_match = all_match
+        if all_match:
+            self.flash_pattern = 1.0
+
+        data_normal, data_hit, count_hit = split_hit_normal_vertex_data(data, hit_mask)
+
+        self.hud_n = n_value
+        self.hud_count = count
+        self.hud_rebuild_ms = round(1000 * (t1 - t0), 1)
+        self.hud_lines = [pattern_hud_line(n_value, self.pattern_offsets, all_match)] if self.pattern_offsets else []
+        for line in self.hud_lines:
+            print(line)
 
         return data_normal, data_hit, count, count_hit
 

@@ -672,6 +672,19 @@ restoring the window's prior geometry on exit (and releasing the fullscreen moni
 before the process is allowed to pause, so a paused, hidden process never leaves a
 monitor stuck in exclusive-fullscreen mode).
 
+A second, independent drawing mode (`--viz-mode line`, a "Line mode" checkbox next to
+Load Range in the tab) replaces the ring-per-modulus display with a literal number-line:
+a fixed horizontal row of real primes from the chosen Load Range, plus an optional
+sliding k-tuple pattern -- enter a pattern size `k` and a starting prime `p0` (> 2) and
+the pattern's offsets are derived from `k` real consecutive primes >= `p0`
+(`ring_geometry.pattern_offsets_from_seed`, always admissible since it's read off a real
+occurrence). N becomes the pattern's anchor, moved with the exact same playback/scrub
+controls as ring mode; every member (`n + offset`) is drawn as an oversized marker
+(reusing the existing hit-point-size mechanism), green when it lands on a real prime and
+red when it doesn't, with a full-screen flash and an on-canvas HUD line when every member
+matches at once. Unrelated to the ring/gear math above -- see ring_geometry.py's own
+"line viz-mode" section and `RenderSession.rebuild_line` for the separate code path.
+
 ## Architecture
 
 ```
@@ -834,7 +847,14 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               General Law highlight-window membership and blended
                               colors -- ported from the standalone Structural Sieve
                               HTML tool's own SieveModel.js; pure functions, no OpenGL
-                              or subprocess code (that lives in ring_viz/, below)
+                              or subprocess code (that lives in ring_viz/, below). Also
+                              owns the unrelated "line" viz-mode section (see "Ring
+                              visualization" above): next_prime_at_or_above/
+                              pattern_offsets_from_seed derive a k-tuple pattern from
+                              real primes, line_positions/value_to_line_x place them on
+                              a horizontal line instead of the ring/gear polar layout,
+                              pattern_positions_and_match/clamp_pattern_anchor drive the
+                              sliding-pattern match check and its scrub clamp
   ring_viz/                      the GPU renderer subprocess launched by rings_tab.py --
                               kept in its own subpackage since it's a separate OS
                               process, not additional widgets in the main Tk process;
@@ -854,12 +874,20 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               pure logic that transitions it, consolidated into one
                               object with methods so renderer.py's GLFW callbacks/main
                               loop are thin adapters rather than a dozen separate
-                              closures each capturing their own mutable dict
+                              closures each capturing their own mutable dict. Also owns
+                              "line" viz-mode's own state (viz_mode/pattern_offsets/
+                              pattern_match/flash_pattern) and rebuild_line -- a
+                              deliberately separate method from rebuild() (ring mode),
+                              not a branch inside it, since line mode has none of ring
+                              mode's resonance/window/HUD-factors machinery
     geometry_draw.py               pure vertex/color/camera-math helpers with no GL
                               call anywhere -- per-ring vertex color/position data,
                               the hit/normal buffer split, tracked-ring outline/center-
                               marker/flash-quad geometry, zoom-to-cursor and fit-to-
-                              viewport camera math
+                              viewport camera math. build_line_vertex_data is "line"
+                              viz-mode's own counterpart to build_vertex_data, reusing
+                              the same (count,5) [x,y,r,g,b] layout and hit/normal split
+                              so the GL draw calls need no mode-specific code at all
     hud.py                         HUD text composition (plain lines and the on-canvas
                               canvas-header/status wrapper), per-line window-family
                               coloring, and Pillow-based rasterization of the on-canvas
