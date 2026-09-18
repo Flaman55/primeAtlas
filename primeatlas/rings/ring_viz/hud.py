@@ -138,15 +138,24 @@ def hud_lines_for_n(primes_active, n, pos, enabled_ids, theta, mode, tracked_sta
     return lines
 
 
-def pattern_hud_line(n, offsets, all_match):
+def pattern_hud_line(n, offsets, all_match, wheel_modulus=None, wheel_residue_count=None):
     """The single HUD text line for "line" viz-mode's k-tuple pattern
-    status: the anchor N, its offsets, and whether every member currently
-    lands on a real prime. Returned as a plain string so the caller
-    (RenderSession.rebuild_line) can drop it straight into `self.hud_lines`
-    -- compose_hud_canvas_lines below already just appends whatever
-    strings that list holds."""
+    status: the anchor N, its offsets, whether every member currently
+    lands on a real prime, and (when a wheel is active, see
+    ring_geometry.pattern_wheel_residues) the candidate density the wheel
+    skip is scanning at -- `wheel_residue_count=0` prints the "can never
+    repeat" case rather than a silent 0/M. Returned as a plain string so
+    the caller (RenderSession.rebuild_line) can drop it straight into
+    `self.hud_lines` -- compose_hud_canvas_lines below already just
+    appends whatever strings that list holds."""
     suffix = "  MATCH!" if all_match else ""
-    return f"Pattern: n={n:,} offsets={list(offsets)}{suffix}"
+    wheel_text = ""
+    if wheel_modulus is not None and wheel_modulus > 1:
+        if wheel_residue_count:
+            wheel_text = f"  wheel={wheel_modulus} ({wheel_residue_count}/{wheel_modulus} candidates/period)"
+        else:
+            wheel_text = f"  wheel={wheel_modulus} (0/{wheel_modulus} -- this pattern can never repeat)"
+    return f"Pattern: n={n:,} offsets={list(offsets)}{suffix}{wheel_text}"
 
 
 # ---------------------------------------------------------------------------

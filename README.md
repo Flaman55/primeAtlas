@@ -685,6 +685,15 @@ red when it doesn't, with a full-screen flash and an on-canvas HUD line when eve
 matches at once. Unrelated to the ring/gear math above -- see ring_geometry.py's own
 "line viz-mode" section and `RenderSession.rebuild_line` for the separate code path.
 
+Scrubbing/playback in line mode skip straight to the next position that can EVER match --
+a "wheel" (`ring_geometry.pattern_wheel_residues`, CRT over small primes) rules out every N
+a small-prime divisibility check alone already forces composite, so a LEFT/RIGHT press or a
+playback tick jumps whole periods ahead instead of testing every integer one at a time; the
+HUD line shows the resulting candidate density (e.g. `wheel=30030 (24/30030 candidates/
+period)`). A pattern whose wheel comes back empty can never repeat past its own founding
+coincidence (e.g. `{0,2,4}` from 3,5,7 -- always blocked mod 3 elsewhere) -- the HUD says so
+instead of scrubbing forever with nothing left to find.
+
 ## Architecture
 
 ```
@@ -854,7 +863,10 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               real primes, line_positions/value_to_line_x place them on
                               a horizontal line instead of the ring/gear polar layout,
                               pattern_positions_and_match/clamp_pattern_anchor drive the
-                              sliding-pattern match check and its scrub clamp
+                              sliding-pattern match check and its scrub clamp, and
+                              pattern_wheel_residues/next_wheel_n implement the wheel-skip
+                              (CRT over small primes) that lets scrub/playback jump straight
+                              to the next N that can ever match instead of testing every one
   ring_viz/                      the GPU renderer subprocess launched by rings_tab.py --
                               kept in its own subpackage since it's a separate OS
                               process, not additional widgets in the main Tk process;

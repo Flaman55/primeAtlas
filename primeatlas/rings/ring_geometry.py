@@ -1217,6 +1217,88 @@ def pattern_positions_and_match(n, offsets, primes_window_set):
     return positions, hit_flags, all_match
 
 
+def pattern_wheel_residues(offsets, wheel_primes=(2, 3, 5, 7, 11, 13)):
+    """The residue-class "wheel" for a k-tuple pattern: which values of
+    n mod M (M = product of the wheel primes that actually exclude
+    something) can EVER produce a match, purely from small-prime
+    divisibility -- no primality test involved. For each prime p in
+    `wheel_primes`, a residue r is excluded if any offset lands on a
+    multiple of p (n+offset ≡ 0 mod p, hence composite for any n past p
+    itself); primes that exclude nothing are dropped from the wheel
+    entirely (they'd only inflate M for no filtering benefit).
+
+    Returns (modulus, sorted_residues). `sorted_residues` can be EMPTY --
+    that is not a bug, it means every residue mod some wheel prime is
+    forced composite, i.e. this exact offset pattern can never repeat
+    again past its own founding coincidence (see
+    pattern_offsets_from_seed(3, 3)'s own [0, 2, 4] case: 3,5,7 works
+    once only, because 3 itself is the forced multiple of 3 -- prime, not
+    composite -- an exception pure residue arithmetic can't see). A
+    pattern built by pattern_offsets_from_seed is otherwise guaranteed at
+    least one surviving residue per prime (it already occurred once for
+    real), and CRT guarantees a nonempty COMBINED residue set whenever
+    every individual prime has at least one -- see this function's own
+    call site in RenderSession for how a caller distinguishes "empty on
+    purpose" (this docstring's exception) from "no filtering possible"
+    (modulus == 1, nothing in `wheel_primes` excluded anything)."""
+    used_primes = []
+    per_prime_allowed = []
+    for p in wheel_primes:
+        allowed = [r for r in range(p) if not any((r + o) % p == 0 for o in offsets)]
+        if len(allowed) < p:
+            used_primes.append(p)
+            per_prime_allowed.append(allowed)
+    if not used_primes:
+        return 1, [0]
+    modulus = 1
+    for p in used_primes:
+        modulus *= p
+    residues = [
+        r for r in range(modulus)
+        if all(r % p in allowed for p, allowed in zip(used_primes, per_prime_allowed))
+    ]
+    return modulus, residues
+
+
+def next_wheel_n(n, is_right, modulus, residues, lo, hi):
+    """The next wheel-compatible position strictly beyond `n` -- smallest
+    such position if `is_right`, largest if not -- clamped to [lo, hi].
+    "Wheel-compatible" means `position % modulus` is one of `residues`
+    (pattern_wheel_residues' own output, sorted ascending).
+
+    `lo`/`hi` are ONLY the search window's bounds, never a phase
+    reference: `residues` are ABSOLUTE `n mod p` conditions (a member is
+    forced divisible by p because of n's own real value, nothing to do
+    with wherever the loaded window happens to start), so checking
+    `(n - lo) % modulus` instead of plain `n % modulus` would silently
+    shift the whole candidate sequence by `lo` -- wrong the moment `lo`
+    isn't itself a multiple of `modulus` (which it essentially never is
+    in practice, e.g. `lo=2` from a Load Range starting at 1). Confirmed
+    against a real report (2026-09-18): a k=2 pattern's scrub landed on
+    values that didn't match hand-derived CRT arithmetic (the classic
+    twin-prime "n == 5 mod 6") until this was fixed to use absolute `n
+    mod modulus` throughout.
+
+    Returns `n` UNCHANGED (never raises) when there is no such position:
+    either the window edge was reached, or `residues` is empty -- the
+    pattern's own wheel proved it can never repeat at all (see
+    pattern_wheel_residues' own doc-comment) -- in which case every call
+    ever returns `n` unchanged, same as being permanently at the edge."""
+    if not residues:
+        return n
+    period_pos = n % modulus
+    base = n - period_pos
+    if is_right:
+        nxt = next((r for r in residues if r > period_pos), None)
+        candidate = base + nxt if nxt is not None else base + modulus + residues[0]
+    else:
+        nxt = next((r for r in reversed(residues) if r < period_pos), None)
+        candidate = base + nxt if nxt is not None else base - modulus + residues[-1]
+    if candidate < lo or candidate > hi:
+        return n
+    return candidate
+
+
 def clamp_pattern_anchor(n, range_from, range_to, offsets):
     """Keeps the pattern's anchor `n` inside [range_from, range_to -
     offsets[-1]] so the pattern's own last member never scrubs past the

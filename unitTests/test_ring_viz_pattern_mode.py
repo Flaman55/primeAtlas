@@ -113,6 +113,92 @@ def _test_clamp_pattern_anchor():
           "clamp_pattern_anchor is a no-op with no pattern offsets")
 
 
+def _test_pattern_wheel_residues():
+    from primeatlas.rings.ring_geometry import pattern_wheel_residues
+
+    # {0,2} (twin primes): classic "n == 5 mod 6" result -- every twin
+    # prime pair above (3,5) has the smaller member of that exact form.
+    modulus, residues = pattern_wheel_residues([0, 2], wheel_primes=(2, 3))
+    check(modulus == 6, f"pattern_wheel_residues([0,2], (2,3)) modulus == 6 (got {modulus})")
+    check(residues == [5], f"pattern_wheel_residues([0,2], (2,3)) residues == [5] (got {residues})")
+
+    # {0,2,6} (catalog k=3): same 5-mod-6 result -- both 5,7,11 and
+    # 11,13,17 (n=5 and n=11, one full period apart) are real occurrences.
+    modulus2, residues2 = pattern_wheel_residues([0, 2, 6], wheel_primes=(2, 3))
+    check(residues2 == [5], f"pattern_wheel_residues([0,2,6], (2,3)) residues == [5] (got {residues2})")
+
+    # {0,2,4} (3,5,7's own pattern): mod 3, offsets cover ALL THREE
+    # residues (0,2,4 mod 3 == 0,2,1) -- this pattern can NEVER repeat
+    # past its own founding coincidence at n=3 (see shift_correlation_
+    # experiment_v1.py's own empirical finding of the exact same fact).
+    modulus3, residues3 = pattern_wheel_residues([0, 2, 4], wheel_primes=(2, 3))
+    check(residues3 == [], f"pattern_wheel_residues([0,2,4], (2,3)) residues == [] -- dead pattern (got {residues3})")
+
+    # A prime that excludes nothing is dropped from the wheel entirely
+    # rather than needlessly inflating the modulus.
+    modulus4, residues4 = pattern_wheel_residues([0, 2], wheel_primes=(2,))
+    check(modulus4 == 2, f"pattern_wheel_residues([0,2], (2,)) modulus == 2 (got {modulus4})")
+
+
+def _test_next_wheel_n():
+    from primeatlas.rings.ring_geometry import next_wheel_n
+
+    # Wheel from {0,2,6}: residues=[5], modulus=6 -- exactly one
+    # candidate per period of 6.
+    check(next_wheel_n(5, True, 6, [5], 0, 100) == 11,
+          "next_wheel_n jumps a full period forward (5 -> 11), skipping 6..10 entirely")
+    check(next_wheel_n(11, False, 6, [5], 0, 100) == 5,
+          "next_wheel_n jumps a full period backward (11 -> 5)")
+    check(next_wheel_n(5, True, 6, [5], 0, 10) == 5,
+          "next_wheel_n returns n unchanged when the next candidate would exceed hi")
+    check(next_wheel_n(5, True, 6, [], 0, 100) == 5,
+          "next_wheel_n always returns n unchanged for an empty (dead-pattern) residue set")
+
+    # Regression (2026-09-18, Artur's own real report: "the jump in the
+    # period is shifted"): residues are ABSOLUTE n-mod-modulus conditions,
+    # so `lo` must be a pure window bound, never a phase reference -- the
+    # candidate sequence for {0,2} (residues=[5], modulus=6, i.e. the
+    # classic twin-prime "n == 5 mod 6") must come out the same
+    # regardless of where the search window happens to start.
+    check(next_wheel_n(3, True, 6, [5], 0, 100) == 5,
+          "next_wheel_n(3, lo=0) finds the real next twin-prime candidate, n=5")
+    check(next_wheel_n(3, True, 6, [5], 2, 100) == 5,
+          "next_wheel_n(3, lo=2 -- NOT a multiple of 6) still finds n=5, not shifted by lo")
+    check(next_wheel_n(29, True, 6, [5], 2, 100) == 35,
+          "next_wheel_n continues the SAME 5,11,17,23,29,35,... sequence regardless of lo")
+
+
+def _test_render_session_anchor_always_reachable():
+    """Regression (2026-09-18, Artur's own real report: "I can't get back
+    to the value I started from"): the k=2 twin-prime pattern seeded at
+    p0=3 anchors at n=3 -- but 3 is itself one of the wheel's own primes
+    (a "founding coincidence", see pattern_wheel_residues' own
+    doc-comment), so pure residue arithmetic excludes n=3's own residue
+    class, making it unreachable once you scrub away from it. The
+    session must patch its own launch anchor back into the wheel."""
+    from primeatlas.rings.ring_viz.session import RenderSession
+    import numpy as np
+
+    range_primes = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61],
+                             dtype=np.int64)
+    session = RenderSession(
+        primes=range_primes, n=3, ceiling=100, range_mode=True,
+        range_primes=range_primes, range_step=1,
+        track_primes=[], auto_orbit=False, enabled_ids=set(), theta=0.5, law_mode="stepped",
+        max_radius=800.0, tempo_ms=120, buffer_margin=0, can_extend_buffer=False,
+        portal_folder=None, viz_mode="line", pattern_offsets=[0, 2],
+    )
+    check(3 % session.pattern_wheel_modulus in session.pattern_wheel_residues,
+          "the launch anchor's own residue (n=3) is patched into the wheel's residue set")
+
+    session.scrub_advance(is_right=True, ctrl_held=False, is_first_press=True)
+    n_after_forward = session.n
+    check(n_after_forward != 3, f"scrub forward actually left the anchor (got {n_after_forward})")
+
+    session.scrub_advance(is_right=False, ctrl_held=False, is_first_press=True)
+    check(session.n == 3, f"scrub backward from the very next candidate returns exactly to the launch anchor (got {session.n})")
+
+
 def _test_build_line_vertex_data():
     from primeatlas.rings.ring_viz.geometry_draw import build_line_vertex_data
     import numpy as np
@@ -165,6 +251,79 @@ def _test_render_session_line_mode():
     session.reset()
     check(session.viz_mode == "rings", "reset() falls back to rings mode")
     check(session.pattern_offsets is None, "reset() clears the active pattern")
+    check(session.pattern_wheel_modulus is None, "reset() clears the wheel modulus")
+    check(session.pattern_wheel_residues is None, "reset() clears the wheel residues")
+
+
+def _test_render_session_wheel_scrub():
+    """Session-level check that scrub_advance/tick actually WIRE into
+    next_wheel_n correctly (right modulus/residues/bounds at the right
+    moment) -- the wheel math itself is already covered directly by
+    _test_pattern_wheel_residues/_test_next_wheel_n above, so this compares
+    session's own outcome against calling that same pure function
+    independently, rather than hand-computing an expected n (the DEFAULT
+    wheel_primes pull in 5/7/11/13 too, not just 2/3, so the real modulus
+    for a real pattern is generally much larger than a small hand example
+    -- see pattern_wheel_residues' own doc-comment on primes coinciding
+    with an actual member for why small test primes like 5,7,11 would be
+    the wrong choice here)."""
+    from primeatlas.rings.ring_viz.session import RenderSession
+    from primeatlas.rings.ring_geometry import next_wheel_n
+    import numpy as np
+
+    range_primes = np.array([101, 103, 107, 109, 113, 127, 131, 137, 139], dtype=np.int64)
+    session = RenderSession(
+        primes=range_primes, n=101, ceiling=100000, range_mode=True,
+        range_primes=range_primes, range_step=1,
+        track_primes=[], auto_orbit=False, enabled_ids=set(), theta=0.5, law_mode="stepped",
+        max_radius=800.0, tempo_ms=120, buffer_margin=0, can_extend_buffer=False,
+        portal_folder=None, viz_mode="line", pattern_offsets=[0, 2, 6],
+    )
+    check(session.pattern_wheel_modulus > 1, "session computed a meaningful wheel modulus at construction")
+    check(session._has_pattern_wheel() is True, "session recognizes a meaningful wheel is active")
+
+    lo = int(range_primes[0])
+    hi = int(range_primes[-1]) - 6
+    modulus, residues = session.pattern_wheel_modulus, session.pattern_wheel_residues
+
+    expected_forward = next_wheel_n(101, True, modulus, residues, lo, hi)
+    session.scrub_advance(is_right=True, ctrl_held=False, is_first_press=True)
+    check(session.n == expected_forward,
+          f"scrub_advance forward matches next_wheel_n's own computation (expected {expected_forward}, got {session.n})")
+
+    expected_backward = next_wheel_n(session.n, False, modulus, residues, lo, hi)
+    session.scrub_advance(is_right=False, ctrl_held=False, is_first_press=True)
+    check(session.n == expected_backward,
+          f"scrub_advance backward matches next_wheel_n's own computation (expected {expected_backward}, got {session.n})")
+
+    # Regression: Up/Down/PageUp/PageDown (bump_n) used to add its raw
+    # n_step delta (e.g. 1000) unconditionally, landing on an arbitrary
+    # position the wheel would never have picked -- looked like "the
+    # period jump is shifted" (Artur's own real bug report, 2026-09-18).
+    # bump_n must now take exactly one wheel step, ignoring delta's
+    # magnitude, same as scrub_advance.
+    session.n = 101
+    expected_bump_forward = next_wheel_n(101, True, modulus, residues, lo, hi)
+    session.bump_n(1000)
+    check(session.n == expected_bump_forward,
+          f"bump_n with a large positive delta (n_step) still takes exactly one wheel step forward, "
+          f"ignoring the delta's own magnitude (expected {expected_bump_forward}, got {session.n})")
+    expected_bump_backward = next_wheel_n(session.n, False, modulus, residues, lo, hi)
+    session.bump_n(-1000)
+    check(session.n == expected_bump_backward,
+          f"bump_n with a large negative delta still takes exactly one wheel step backward "
+          f"(expected {expected_bump_backward}, got {session.n})")
+
+    session.n = hi
+    expected_tick_n = next_wheel_n(hi, True, modulus, residues, lo, hi)
+    should_stop_expected = (expected_tick_n == hi)
+    session.playback_running = True
+    stopped = session.tick()
+    check(stopped == should_stop_expected,
+          f"tick()'s stop/continue decision from the window edge matches next_wheel_n's own computation "
+          f"(expected stop={should_stop_expected}, got {stopped})")
+    check(session.n == expected_tick_n,
+          f"tick() lands exactly where next_wheel_n says it should (expected {expected_tick_n}, got {session.n})")
 
 
 def main():
@@ -173,8 +332,12 @@ def main():
     _test_line_positions_and_value_to_line_x()
     _test_pattern_positions_and_match()
     _test_clamp_pattern_anchor()
+    _test_pattern_wheel_residues()
+    _test_next_wheel_n()
+    _test_render_session_anchor_always_reachable()
     _test_build_line_vertex_data()
     _test_render_session_line_mode()
+    _test_render_session_wheel_scrub()
 
     if failures:
         print(f"\n{len(failures)} FAILURE(S)")

@@ -186,7 +186,9 @@ if _PRIME_SIEVE_DIR not in sys.path:
 # through geometry_draw.py/hud.py/session.py instead of directly here --
 # only parse_big_int (--upto/--load-range/main()'s own CLI parsing) is
 # still used directly in this file.
-from primeatlas.rings.ring_geometry import parse_big_int, pattern_offsets_from_seed, clamp_pattern_anchor
+from primeatlas.rings.ring_geometry import (
+    parse_big_int, pattern_offsets_from_seed, clamp_pattern_anchor, next_prime_at_or_above,
+)
 
 # The guarded Pillow import (and rasterize_hud_text, the only function that
 # actually touches Image/ImageDraw/ImageFont) lives in hud.py, since Pillow
@@ -495,23 +497,44 @@ def _run_visualization(args, audio=None):
         except ValueError as e:
             print(f"Load Range failed: {e}")
 
+    # --viz-mode line draws range_primes directly (see rebuild_line) and has
+    # no fallback "primes[primes <= n]" path the way ring mode does -- a
+    # --load-range that failed to actually populate range_primes (the
+    # "Load Range failed" message just above, or a --max-load-count of 0)
+    # would otherwise crash deep inside build_line_vertex_data instead of
+    # surfacing the real cause. main()'s own argparse validation can only
+    # check that --load-range was GIVEN, not that it actually loaded
+    # (load_prime_range_slice needs the real `primes` array to know that),
+    # so this is the earliest point that can catch it.
+    if args.viz_mode == "line" and not range_mode:
+        print("--viz-mode line requires --load-range to load successfully -- see the "
+              "'Load Range failed' message above. Exiting without opening a window.")
+        return
+
     # k-tuple pattern-slide seed ("line" viz-mode only) -- derived from real
     # consecutive primes >= --pattern-seed-start, see
     # pattern_offsets_from_seed's own doc-comment for why this always yields
     # an admissible pattern. main()'s own argparse validation already
     # guarantees --pattern-seed-k/--pattern-seed-start only appear together
     # and only with --viz-mode line + --load-range, so no further gating is
-    # needed here. The pattern's anchor starts at the loaded window's own
-    # lower edge (clamp_pattern_anchor pulls range mode's own `n = 0` up
-    # into range) rather than wherever range mode's own default n landed,
-    # so the pattern is immediately visible instead of requiring a manual
-    # scrub from N=0 first.
+    # needed here. The pattern's anchor starts at its OWN resolved seed
+    # prime (next_prime_at_or_above(--pattern-seed-start) -- the exact
+    # value pattern_offsets_from_seed itself anchored the offsets to, so
+    # this reproduces its own founding occurrence immediately) rather than
+    # the loaded window's lower edge -- range mode's own default n=0 (set
+    # above on a successful range load) is NOT reused here at all: it would
+    # otherwise land the pattern at the window's FIRST loaded prime (e.g. 2
+    # for a Load Range starting at 1), not at the seed the user actually
+    # typed. clamp_pattern_anchor only pulls it back into bounds if the
+    # seed itself somehow fell outside the loaded window.
     pattern_offsets = None
     if args.pattern_seed_k is not None:
         pattern_offsets = pattern_offsets_from_seed(args.pattern_seed_k, args.pattern_seed_start)
-        print(f"Pattern seed: k={args.pattern_seed_k} start={args.pattern_seed_start:,} -> offsets={pattern_offsets}")
+        seed_prime = next_prime_at_or_above(args.pattern_seed_start)
+        print(f"Pattern seed: k={args.pattern_seed_k} start={args.pattern_seed_start:,} -> "
+              f"offsets={pattern_offsets} (first realized at n={seed_prime:,})")
         if range_mode and len(range_primes):
-            n = clamp_pattern_anchor(n, int(range_primes[0]), int(range_primes[-1]), pattern_offsets)
+            n = clamp_pattern_anchor(seed_prime, int(range_primes[0]), int(range_primes[-1]), pattern_offsets)
 
     # Everything from here down operates on one RenderSession object instead
     # of a dozen separate closure-captured dicts (state/pan-zoom, playback,
