@@ -186,7 +186,10 @@ if _PRIME_SIEVE_DIR not in sys.path:
 # through geometry_draw.py/hud.py/session.py instead of directly here --
 # only parse_big_int (--upto/--load-range/main()'s own CLI parsing) is
 # still used directly in this file.
-from primeatlas.rings.ring_geometry import parse_big_int
+from primeatlas.rings.ring_geometry import (
+    parse_big_int, pattern_offsets_from_seed, next_prime_at_or_above,
+    resolve_pattern_anchor,
+)
 
 # The guarded Pillow import (and rasterize_hud_text, the only function that
 # actually touches Image/ImageDraw/ImageFont) lives in hud.py, since Pillow
@@ -495,6 +498,57 @@ def _run_visualization(args, audio=None):
         except ValueError as e:
             print(f"Load Range failed: {e}")
 
+    # --viz-mode line draws range_primes directly (see rebuild_line) and has
+    # no fallback "primes[primes <= n]" path the way ring mode does -- a
+    # --load-range that failed to actually populate range_primes (the
+    # "Load Range failed" message just above, or a --max-load-count of 0)
+    # would otherwise crash deep inside build_line_vertex_data instead of
+    # surfacing the real cause. main()'s own argparse validation can only
+    # check that --load-range was GIVEN, not that it actually loaded
+    # (load_prime_range_slice needs the real `primes` array to know that),
+    # so this is the earliest point that can catch it.
+    if args.viz_mode == "line" and not range_mode:
+        print("--viz-mode line requires --load-range to load successfully -- see the "
+              "'Load Range failed' message above. Exiting without opening a window.")
+        return
+
+    # k-tuple pattern-slide seed ("line" viz-mode only) -- derived from real
+    # consecutive primes >= --pattern-seed-start, see
+    # pattern_offsets_from_seed's own doc-comment for why this always yields
+    # an admissible pattern. main()'s own argparse validation already
+    # guarantees --pattern-seed-k/--pattern-seed-start only appear together
+    # and only with --viz-mode line + --load-range, so no further gating is
+    # needed here.
+    #
+    # --pattern-seed-start only picks the pattern's SHAPE (which of the
+    # catalog's v1..v4-style offset variants) -- a small seed like 7 or 11
+    # works exactly the same way whether --load-range is [1, 1000] or a
+    # real archive-scale [10**22, 10**23]. The pattern's OWN anchor
+    # (`n`) is a completely separate concern: if the seed's own resolved
+    # occurrence actually falls inside the loaded window, start there (an
+    # immediate, guaranteed real MATCH! -- see pattern_offsets_from_seed's
+    # own doc-comment for why). Otherwise (the archive-scale case: the
+    # window is nowhere near the small seed used only to pick the shape)
+    # DON'T just clamp to the window's raw lower edge -- that's an
+    # arbitrary value with no guarantee of even being wheel-compatible.
+    # Compute the phase (pattern_wheel_residues, same math session.py's
+    # own RenderSession uses) and jump straight to the first genuinely
+    # wheel-compatible candidate at or past the window's lower edge, so
+    # scrubbing from there on is correctly phase-aligned from frame one.
+    pattern_offsets = None
+    if args.pattern_seed_k is not None:
+        pattern_offsets = pattern_offsets_from_seed(args.pattern_seed_k, args.pattern_seed_start)
+        seed_prime = next_prime_at_or_above(args.pattern_seed_start)
+        print(f"Pattern seed: k={args.pattern_seed_k} start={args.pattern_seed_start:,} -> "
+              f"offsets={pattern_offsets} (first realized at n={seed_prime:,})")
+        if range_mode and len(range_primes):
+            lo = int(range_primes[0])
+            hi = int(range_primes[-1]) - pattern_offsets[-1]
+            n = resolve_pattern_anchor(seed_prime, pattern_offsets, lo, hi)
+            if n != seed_prime:
+                print(f"Pattern seed's own occurrence (n={seed_prime:,}) is outside the loaded "
+                      f"window -- starting instead at the first phase-compatible candidate: n={n:,}")
+
     # Everything from here down operates on one RenderSession object instead
     # of a dozen separate closure-captured dicts (state/pan-zoom, playback,
     # orbit_state, cyclic_anchor_state, flash_state, outline_draws_holder,
@@ -513,6 +567,8 @@ def _run_visualization(args, audio=None):
         max_radius=max_radius, tempo_ms=args.tempo_ms,
         buffer_margin=buffer_margin, can_extend_buffer=can_extend_buffer,
         portal_folder=args.portal_folder,
+        viz_mode=args.viz_mode, pattern_offsets=pattern_offsets,
+        pattern_step_mode=args.pattern_step_mode, pattern_stop_on_match=args.pattern_stop_on_match,
     )
 
     def _apply_hud_refresh():
@@ -541,10 +597,15 @@ def _run_visualization(args, audio=None):
         doc-comment, in geometry_draw.py, for why there are two) and
         refreshes the HUD. Geometry/color recompute, the tracked/LCM HUD
         block, resonance log, tracked-outline draws, and flash triggers all
-        live in session.rebuild itself."""
-        data_normal, data_hit, count, count_hit = session.rebuild(
-            n_value, prev_ring_count=prev_ring_count, advancing=advancing, audio=audio
-        )
+        live in session.rebuild itself. "line" viz-mode calls session.
+        rebuild_line instead -- see that method's own doc-comment for why
+        it's a separate, independent code path from ring mode's rebuild."""
+        if session.viz_mode == "line":
+            data_normal, data_hit, count, count_hit = session.rebuild_line(n_value, advancing=advancing)
+        else:
+            data_normal, data_hit, count, count_hit = session.rebuild(
+                n_value, prev_ring_count=prev_ring_count, advancing=advancing, audio=audio
+            )
         normal_bytes = data_normal.tobytes()
         vbo_normal = gl.ctx.buffer(normal_bytes) if normal_bytes else gl.ctx.buffer(reserve=20)
         hit_bytes = data_hit.tobytes()
@@ -880,6 +941,12 @@ def _run_visualization(args, audio=None):
             gl.flash_quad_vbo.write(quad.tobytes())
             gl.flash_quad_vao.render(moderngl.TRIANGLE_FAN)
             session.decay_prime_flash()
+        pattern_color = session.pattern_flash_color()
+        if pattern_color is not None:
+            quad = build_flash_quad_vertex_data(width, height, pattern_color)
+            gl.flash_quad_vbo.write(quad.tobytes())
+            gl.flash_quad_vao.render(moderngl.TRIANGLE_FAN)
+            session.decay_pattern_flash()
 
         # On-canvas HUD text quad -- drawn LAST (after
         # rings/outlines/marker/flash, right before the swap) so it always
@@ -993,6 +1060,37 @@ def main():
     # LocalLoggedRunner.send_line()) and can actually act on the PAUSED/
     # RESUMED lines this prints -- see start_stdin_command_reader's own
     # doc-comment for the full protocol.
+    # "line" viz-mode: a fixed horizontal row of real primes (--load-range)
+    # with an optional k-tuple pattern slid along it by N, instead of the
+    # default ring/gear-per-modulus display -- see ring_geometry.py's own
+    # "line viz-mode" section and RenderSession.rebuild_line. Requires
+    # --load-range (validated below); --pattern-seed-k/--pattern-seed-start
+    # are optional within it (no pattern -> just the dot row + a lone N
+    # marker, see build_line_vertex_data's own empty-offsets case).
+    parser.add_argument("--viz-mode", choices=["rings", "line"], default="rings",
+                         help="rings (default): one ring per active small prime, phase = n%%p. "
+                              "line: a fixed row of real primes from --load-range, with an optional "
+                              "--pattern-seed-k/--pattern-seed-start k-tuple pattern slid along it by N")
+    parser.add_argument("--pattern-seed-k", type=int, default=None,
+                         help="line mode only: take this many real consecutive primes >= "
+                              "--pattern-seed-start as the sliding k-tuple pattern's offsets")
+    parser.add_argument("--pattern-seed-start", type=parse_big_int, default=None,
+                         help="line mode only: starting prime (must be > 2) for --pattern-seed-k")
+    # Manual/Auto step-mode radio + "MATCH!" checkbox (Artur's own spec,
+    # 2026-09-18): "manual" (default) always takes a single wheel step per
+    # LEFT/RIGHT/Up/Down/Space, showing every wheel candidate in turn
+    # whether it's a real match or not; "auto" always SEEKS instead --
+    # for the next real MATCH! when the checkbox is given, or specifically
+    # for the next NON-match wheel candidate when it isn't. See
+    # RenderSession._pattern_uses_seek's own doc-comment for the exact rule.
+    parser.add_argument("--pattern-step-mode", choices=["manual", "auto"], default="manual",
+                         help="line mode pattern only: 'manual' (default) always takes a single wheel "
+                              "step per navigation key; 'auto' always seeks instead (see "
+                              "--pattern-stop-on-match for which kind)")
+    parser.add_argument("--pattern-stop-on-match", action="store_true",
+                         help="line mode pattern only, and only with --pattern-step-mode auto: seek "
+                              "the next real MATCH! when given, or specifically the next NON-match "
+                              "wheel candidate when not given")
     parser.add_argument("--pipe-stdin-commands", action="store_true",
                          help="read RESUME commands from stdin and, instead of "
                               "exiting on window-close, hide the window and idle "
@@ -1043,6 +1141,18 @@ def main():
             parser.error(f"--load-range FROM/TO must be non-negative, got {args.load_range!r}")
         if load_from > load_to:
             parser.error(f"--load-range FROM must be <= TO, got {args.load_range!r}")
+
+    if args.viz_mode == "line" and not args.load_range:
+        parser.error("--viz-mode line requires --load-range")
+    if (args.pattern_seed_k is None) != (args.pattern_seed_start is None):
+        parser.error("--pattern-seed-k and --pattern-seed-start must be given together")
+    if args.pattern_seed_k is not None:
+        if args.viz_mode != "line":
+            parser.error("--pattern-seed-k/--pattern-seed-start require --viz-mode line")
+        if args.pattern_seed_k < 2:
+            parser.error(f"--pattern-seed-k must be >= 2, got {args.pattern_seed_k}")
+        if args.pattern_seed_start <= 2:
+            parser.error(f"--pattern-seed-start must be > 2, got {args.pattern_seed_start}")
 
     run(args)
 

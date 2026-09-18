@@ -47,6 +47,7 @@ of millions) -- a Python-level loop per ring would defeat the entire point of
 the GPU-scale ring count already proven feasible.
 """
 
+import bisect
 import math
 import re
 
@@ -1106,3 +1107,378 @@ def format_big(value, digit_threshold=15):
     mantissa = f"{s[0]}.{s[1:5]}"
     exponent = digit_count - 1
     return ("-" if negative else "") + f"{mantissa}×10^{exponent} ({digit_count} digits)"
+
+
+# ----------------------------------------------------------------------
+# "line" viz-mode: a fixed horizontal row of real primes (--load-range)
+# with an optional k-tuple pattern slid along it by N -- see
+# primeatlas/rings/ring_viz/renderer.py's --viz-mode/--pattern-seed-*
+# flags and RenderSession.rebuild_line. Unrelated to the ring/gear math
+# above (every "ring" there is a modulus p, phase = n % p) -- this is
+# instead a literal number-line plot of prime VALUES as points, with a
+# movable offset-pattern overlay, so keep no assumptions from the ring
+# functions above.
+# ----------------------------------------------------------------------
+
+def _is_prime_trial_division(x):
+    """Plain trial division -- fine at the moderate magnitudes the manual
+    Pattern-seed GUI field takes (an exploratory input, not an
+    archive-scale primality tool; see prime_sieve/ for that)."""
+    if x < 2:
+        return False
+    if x < 4:
+        return True
+    if x % 2 == 0:
+        return False
+    i = 3
+    while i * i <= x:
+        if x % i == 0:
+            return False
+        i += 2
+    return True
+
+
+def next_prime_at_or_above(x):
+    """Smallest real prime >= x."""
+    x = max(int(x), 2)
+    while not _is_prime_trial_division(x):
+        x += 1
+    return x
+
+
+def pattern_offsets_from_seed(k, p0):
+    """Offsets (ascending, first always 0) for the k-tuple pattern literally
+    realized by the first k real primes >= p0 -- e.g.
+    pattern_offsets_from_seed(7, 11) == [0, 2, 6, 8, 12, 18, 20], the exact
+    shape of constellation/pattern_catalog_v1.py's k=7 id=1 entry, because
+    that catalog pattern's own smallest realization IS the run
+    11,13,17,19,23,29,31.
+
+    Any pattern built this way is automatically admissible (never forced to
+    zero by covering all residues mod some small prime p): it already
+    occurred once as real primes, which is only possible if it wasn't
+    forced composite at every n -- see the shift-correlation experiment
+    (constellation/shift_correlation_experiment_v1.py) this is a direct
+    extension of.
+
+    `p0` need not itself be prime -- treated as a lower bound. Requires
+    `p0 > 2` (a pattern seeded at 2 always degenerates to the trivial
+    parity case: every other member has a different parity from 2, so at
+    most one further member can ever be prime) and `k >= 2` (a "pattern" of
+    one point is meaningless here)."""
+    if k < 2:
+        raise ValueError(f"pattern_offsets_from_seed: k must be >= 2, got {k}")
+    if p0 <= 2:
+        raise ValueError(f"pattern_offsets_from_seed: p0 must be > 2, got {p0}")
+    primes = []
+    candidate = p0
+    while len(primes) < k:
+        candidate = next_prime_at_or_above(candidate)
+        primes.append(candidate)
+        candidate += 1
+    first = primes[0]
+    return [p - first for p in primes]
+
+
+def line_positions(primes, world_width=1600.0):
+    """Maps a sorted array of real primes onto a horizontal line in world
+    space: x linearly spans [-world_width/2, world_width/2] from the
+    smallest to the largest value, y=0 for every point. Pure numpy, mirrors
+    ring_positions' contract shape (a dict of parallel arrays) but for
+    line mode's linear layout instead of that function's polar one.
+
+    Returns {"x": ndarray, "y": ndarray, "lo": int, "span": int} -- `lo`/
+    `span` are exposed so a caller can map an arbitrary OTHER value (e.g. a
+    pattern-member position that isn't itself in `primes`) through the
+    exact same scale via value_to_line_x, without re-deriving it.
+
+    Subtracts `lo` BEFORE ever converting to float -- doing it the other
+    way around (cast to float64 first, subtract after) loses catastrophic
+    precision once values exceed float64's ~15-17 significant digits,
+    e.g. real floor-25+ archive primes (~26 digits): each individual
+    value's own float64 rounding error (up to ~value * 2**-52) can be far
+    bigger than the WHOLE loaded window's span, collapsing every point to
+    the same handful of pixels -- confirmed live, 2026-09-18, against a
+    real 26-digit --load-range ("nie ma nic na przestrzeni jest pusta...
+    podróżuje tylko dwa punkty a nie trzy dla k3" -- a k=3 pattern's 3
+    members visually collapsing to 2). `primes_arr - lo` stays EXACT
+    (object-dtype minus a Python int is exact Python bigint arithmetic;
+    uint64/int64 minus a scalar that still fits the same dtype is exact
+    too) -- the resulting delta is bounded by `span`, which is never
+    astronomically large in practice, so only THEN is it safe to cast to
+    float64."""
+    primes_arr = to_prime_array(primes)
+    lo = int(primes_arr[0])
+    hi = int(primes_arr[-1])
+    span = max(hi - lo, 1)
+    x = (primes_arr - lo).astype(np.float64) / span * world_width - world_width / 2.0
+    y = np.zeros(len(primes_arr), dtype=np.float64)
+    return {"x": x, "y": y, "lo": lo, "span": span}
+
+
+def value_to_line_x(value, lo, span, world_width=1600.0):
+    """Same linear map line_positions uses internally, for a single scalar
+    value not necessarily present in the array line_positions was called
+    with (e.g. one pattern-member position)."""
+    return (value - lo) / span * world_width - world_width / 2.0
+
+
+#: Above this loaded-window span (in absolute prime VALUE units, not
+#: pixels), line_positions' whole-window linear map is no longer safe once
+#: cast to the GPU's own float32 vertex buffer -- see line_view_bounds'
+#: own doc-comment for the exact float32 mechanism this guards against.
+#: Chosen with a large safety margin: at this span, a k-tuple's smallest
+#: realistic offset gap (2, the twin-prime case) still maps to a world-x
+#: delta roughly 3 orders of magnitude bigger than float32's own ULP at
+#: world_width/2 -- see that doc-comment for the arithmetic.
+LINE_PRECISION_SAFE_SPAN = 20_000
+
+#: Half-width (in absolute VALUE units) of the local, anchor-centered
+#: viewport line_view_bounds falls back to once the loaded window's own
+#: span exceeds LINE_PRECISION_SAFE_SPAN -- see that function's own
+#: doc-comment. 5,000 gives ample float32 headroom (a delta of 2 maps to
+#: ~0.32 world-x units at world_width=1600, ~3,000x float32's own ULP
+#: there) while still showing hundreds of real primes of context even at
+#: real archive density (~1 prime per ln(N) integers).
+LINE_LOCAL_VIEW_RADIUS = 5_000
+
+
+def line_view_bounds(range_lo, range_hi, anchor, offsets=()):
+    """Decides which (lo, span) line_positions_windowed/value_to_line_x
+    should map "line" viz-mode's world-x coordinates through THIS frame:
+    either the whole loaded window's own [range_lo, range_hi] (small
+    enough that float32 can resolve every point distinctly), or a FIXED-
+    width slice camera-anchored on the current pattern anchor `anchor` --
+    Artur's own "wrap the axis into a phase/ring coordinate" fix
+    (2026-09-18) for a float32 GPU-vertex-buffer precision ceiling found
+    live at real archive scale.
+
+    The bug this fixes is DIFFERENT from (and downstream of) the float64
+    precision bug line_positions' own doc-comment already covers: even
+    after computing `(value - lo)` in exact integer arithmetic, casting
+    the RESULT to float32 for the GPU vertex buffer (build_line_vertex_
+    data's own (count, 5) float32 array) loses precision whenever the
+    mapped world-x magnitude (~world_width/2, e.g. 800) is large relative
+    to the smallest MEANINGFUL delta a k-tuple pattern's own offsets need
+    resolved (e.g. 2, 4, 6 for k=4). float32 has ~24 bits of mantissa, so
+    its ULP near x=800 is ~800 * 2**-23 ~= 9.5e-5; once the loaded
+    window's span is astronomically wider than a single k-tuple's own
+    internal spread (real archive scale: span ~1e8+, offsets in the low
+    tens), a value-delta of 2 maps to a world-x delta of
+    `2 / span * world_width`, which underflows that ULP and several
+    offsets silently collapse onto the SAME float32 x -- confirmed live,
+    2026-09-18, against a real 26-digit --load-range: a k=4 pattern's 4
+    members rendered as evenly-spaced-looking dots that did not match its
+    own genuinely uneven [0,2,6,8] offsets.
+
+    Local mode re-centers the very same linear map on the anchor instead
+    of the loaded window's own edges: lo = anchor -
+    LINE_LOCAL_VIEW_RADIUS, span = 2 * LINE_LOCAL_VIEW_RADIUS -- always a
+    SMALL, FIXED span regardless of how astronomically large `anchor`
+    itself is, exactly mirroring how ring mode's own phase (n % p) stays
+    bounded regardless of n's magnitude: there, the huge quotient n // p
+    is thrown away and only the small remainder kept; here, the huge "how
+    far into the whole loaded window am I" is thrown away and only the
+    small "how far from the anchor am I" kept. A caller filters which
+    loaded primes fall inside [lo, lo+span] separately (see
+    line_positions_windowed) -- this function only decides the coordinate
+    mapping itself, so it stays a plain O(1) pure function regardless of
+    how large the loaded array is.
+
+    `offsets` -- the active pattern's own offsets (empty/default for "no
+    pattern set yet"), used only to make sure the local viewport is wide
+    enough to hold the WHOLE pattern comfortably (4x its own diameter, so
+    the pattern is never clipped by an accidentally-too-narrow local
+    window) -- LINE_LOCAL_VIEW_RADIUS already covers every realistic
+    k-tuple by a wide margin, this is just a safety floor for an
+    unusually wide one.
+
+    Returns (mode, lo, span) -- mode is "full" or "local", purely for a
+    caller/HUD to report which one is active; lo/span are always valid
+    inputs to line_positions_windowed/value_to_line_x's own math either
+    way."""
+    full_span = max(range_hi - range_lo, 1)
+    if full_span <= LINE_PRECISION_SAFE_SPAN:
+        return "full", range_lo, full_span
+    diameter = offsets[-1] if offsets else 0
+    radius = max(LINE_LOCAL_VIEW_RADIUS, diameter * 4)
+    return "local", anchor - radius, 2 * radius
+
+
+def line_positions_windowed(primes, lo, span, world_width=1600.0):
+    """Same output shape as line_positions (x, y, lo, span), but FILTERS
+    `primes` (ascending, any dtype to_prime_array accepts) down to only
+    the values inside [lo, lo+span] first, and maps them using the
+    CALLER-SUPPLIED lo/span instead of deriving it from the array's own
+    min/max -- see line_view_bounds for why a caller sometimes wants a
+    coordinate mapping anchored elsewhere than "the whole array's own
+    extent" (line viz-mode's local, anchor-centered viewport at real
+    archive scale).
+
+    The two window edges are found via np.searchsorted (binary search),
+    not a full scan or Python-level filter, so this stays cheap even when
+    `primes` is the ENTIRE loaded --load-range array (potentially millions
+    of entries at real archive scale) and only a small local slice of it
+    actually falls inside [lo, lo+span] -- exactly the case this function
+    exists for (called once per N-change from build_line_vertex_data).
+
+    Same exact-integer-subtraction-before-cast precision discipline as
+    line_positions (see that function's own doc-comment) -- `windowed -
+    lo` stays exact (object-dtype minus a Python int, or same-dtype minus
+    a scalar that fits) and is bounded by `span` (always small by
+    construction here), so only THEN is it safe to cast to float64."""
+    primes_arr = to_prime_array(primes)
+    hi = lo + span
+    start = int(np.searchsorted(primes_arr, lo, side="left"))
+    end = int(np.searchsorted(primes_arr, hi, side="right"))
+    windowed = primes_arr[start:end]
+    x = (windowed - lo).astype(np.float64) / span * world_width - world_width / 2.0
+    y = np.zeros(len(windowed), dtype=np.float64)
+    return {"x": x, "y": y, "lo": lo, "span": span}
+
+
+def pattern_positions_and_match(n, offsets, primes_window_set):
+    """positions = [n+o for o in offsets]; hit_flags[i] = positions[i] is a
+    member of `primes_window_set`; all_match = every offset hit (False,
+    not vacuously True, when `offsets` is empty -- there is no pattern to
+    have matched)."""
+    positions = [n + o for o in offsets]
+    hit_flags = [p in primes_window_set for p in positions]
+    all_match = bool(hit_flags) and all(hit_flags)
+    return positions, hit_flags, all_match
+
+
+#: Shared with session.py's own founding-coincidence patch (checking
+#: whether one of these small primes is ITSELF a genuine real match this
+#: wheel would otherwise silently exclude) -- one definition so the two
+#: never drift apart.
+DEFAULT_WHEEL_PRIMES = (2, 3, 5, 7, 11, 13)
+
+
+def pattern_wheel_residues(offsets, wheel_primes=DEFAULT_WHEEL_PRIMES):
+    """The residue-class "wheel" for a k-tuple pattern: which values of
+    n mod M (M = product of the wheel primes that actually exclude
+    something) can EVER produce a match, purely from small-prime
+    divisibility -- no primality test involved. For each prime p in
+    `wheel_primes`, a residue r is excluded if any offset lands on a
+    multiple of p (n+offset ≡ 0 mod p, hence composite for any n past p
+    itself); primes that exclude nothing are dropped from the wheel
+    entirely (they'd only inflate M for no filtering benefit).
+
+    Returns (modulus, sorted_residues). `sorted_residues` can be EMPTY --
+    that is not a bug, it means every residue mod some wheel prime is
+    forced composite, i.e. this exact offset pattern can never repeat
+    again past its own founding coincidence (see
+    pattern_offsets_from_seed(3, 3)'s own [0, 2, 4] case: 3,5,7 works
+    once only, because 3 itself is the forced multiple of 3 -- prime, not
+    composite -- an exception pure residue arithmetic can't see). A
+    pattern built by pattern_offsets_from_seed is otherwise guaranteed at
+    least one surviving residue per prime (it already occurred once for
+    real), and CRT guarantees a nonempty COMBINED residue set whenever
+    every individual prime has at least one -- see this function's own
+    call site in RenderSession for how a caller distinguishes "empty on
+    purpose" (this docstring's exception) from "no filtering possible"
+    (modulus == 1, nothing in `wheel_primes` excluded anything)."""
+    used_primes = []
+    per_prime_allowed = []
+    for p in wheel_primes:
+        allowed = [r for r in range(p) if not any((r + o) % p == 0 for o in offsets)]
+        if len(allowed) < p:
+            used_primes.append(p)
+            per_prime_allowed.append(allowed)
+    if not used_primes:
+        return 1, [0]
+    modulus = 1
+    for p in used_primes:
+        modulus *= p
+    residues = [
+        r for r in range(modulus)
+        if all(r % p in allowed for p, allowed in zip(used_primes, per_prime_allowed))
+    ]
+    return modulus, residues
+
+
+def next_wheel_n(n, is_right, modulus, residues, lo, hi):
+    """The next wheel-compatible position strictly beyond `n` -- smallest
+    such position if `is_right`, largest if not -- clamped to [lo, hi].
+    "Wheel-compatible" means `position % modulus` is one of `residues`
+    (pattern_wheel_residues' own output, sorted ascending).
+
+    `lo`/`hi` are ONLY the search window's bounds, never a phase
+    reference: `residues` are ABSOLUTE `n mod p` conditions (a member is
+    forced divisible by p because of n's own real value, nothing to do
+    with wherever the loaded window happens to start), so checking
+    `(n - lo) % modulus` instead of plain `n % modulus` would silently
+    shift the whole candidate sequence by `lo` -- wrong the moment `lo`
+    isn't itself a multiple of `modulus` (which it essentially never is
+    in practice, e.g. `lo=2` from a Load Range starting at 1). Confirmed
+    against a real report (2026-09-18): a k=2 pattern's scrub landed on
+    values that didn't match hand-derived CRT arithmetic (the classic
+    twin-prime "n == 5 mod 6") until this was fixed to use absolute `n
+    mod modulus` throughout.
+
+    Returns `n` UNCHANGED (never raises) when there is no such position:
+    either the window edge was reached, or `residues` is empty -- the
+    pattern's own wheel proved it can never repeat at all (see
+    pattern_wheel_residues' own doc-comment) -- in which case every call
+    ever returns `n` unchanged, same as being permanently at the edge.
+
+    O(log len(residues)) via bisect (`residues` is already sorted) rather
+    than a linear scan -- RenderSession's own seek feature (_pattern_seek)
+    can call this many times in a single frame hunting for the next real
+    MATCH! or non-match, so the per-call cost matters here in a way it
+    didn't for a single scrub/tick step alone."""
+    if not residues:
+        return n
+    period_pos = n % modulus
+    base = n - period_pos
+    if is_right:
+        idx = bisect.bisect_right(residues, period_pos)
+        candidate = base + residues[idx] if idx < len(residues) else base + modulus + residues[0]
+    else:
+        idx = bisect.bisect_left(residues, period_pos)
+        candidate = base + residues[idx - 1] if idx > 0 else base - modulus + residues[-1]
+    if candidate < lo or candidate > hi:
+        return n
+    return candidate
+
+
+def resolve_pattern_anchor(seed_prime, offsets, lo, hi):
+    """Where "line" viz-mode's pattern anchor should start, given
+    `--pattern-seed-start`'s resolved occurrence (`seed_prime`, from
+    next_prime_at_or_above) and the loaded window's own bounds
+    (`lo`/`hi` -- range_primes[0] and range_primes[-1] - offsets[-1]).
+
+    `--pattern-seed-start` only picks the pattern's SHAPE (which offset
+    variant) -- a small seed like 7 or 11 works identically whether
+    `--load-range` is a tiny local span or a real archive-scale window
+    (e.g. [10**22, 10**23]) nowhere near it. If the seed's own occurrence
+    genuinely falls inside [lo, hi], start there -- an immediate,
+    guaranteed real MATCH! (pattern_offsets_from_seed built the offsets
+    FROM this exact occurrence). Otherwise, DON'T just clamp to `lo` --
+    that is an arbitrary value with no guarantee of being wheel-
+    compatible at all. Compute the phase (pattern_wheel_residues) and
+    jump straight to the first genuinely wheel-compatible candidate at or
+    past `lo`, via next_wheel_n, so scrubbing from there on is correctly
+    phase-aligned from frame one -- exactly the "it calculates the phase
+    for the starting number to properly align itself" behavior asked for
+    (2026-09-18)."""
+    if lo <= seed_prime <= hi:
+        return seed_prime
+    modulus, residues = pattern_wheel_residues(offsets)
+    if modulus <= 1:
+        return lo
+    return next_wheel_n(lo - 1, True, modulus, residues, lo, hi)
+
+
+def clamp_pattern_anchor(n, range_from, range_to, offsets):
+    """Keeps the pattern's anchor `n` inside [range_from, range_to -
+    offsets[-1]] so the pattern's own last member never scrubs past the
+    loaded line-mode window -- there is no real prime data beyond it to
+    check against, so a position out there would otherwise render as a
+    fabricated miss. No-op (returns `n` unchanged) when `offsets` is
+    empty -- there is no diameter to keep inside the window."""
+    if not offsets:
+        return n
+    hi = range_to - offsets[-1]
+    return max(range_from, min(n, hi))

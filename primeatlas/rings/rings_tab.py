@@ -61,7 +61,9 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
                          point_size=None, track_primes=(), auto_orbit=False, load_range=None,
                          hit_point_size=None, hud_font_size=None, audio=False,
                          sound_low='sine', sound_prime='triangle', sound_lcm='choir',
-                         pipe_stdin_commands=False, max_load_count=None, tempo_ms=None):
+                         pipe_stdin_commands=False, max_load_count=None, tempo_ms=None,
+                         viz_mode="rings", pattern_seed_k=None, pattern_seed_start=None,
+                         pattern_step_mode="manual", pattern_stop_on_match=False):
     """Builds the argv for launching renderer.py against a real archive.
 
     Uses `python_executable` (defaults to sys.executable -- THIS SAME Python
@@ -135,7 +137,26 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
     default (120, via clamp_tempo_ms) applies; a real value sets the
     playback tick's own real-time pacing at launch, previously only
     reachable live (post-launch, via the ]/[ keys inside the GL window).
-    Same omit-if-None convention as `point_size` above."""
+    Same omit-if-None convention as `point_size` above.
+
+    `viz_mode` -- "rings" (default, omits --viz-mode entirely so
+    renderer.py's own argparse default applies) or "line" (a fixed
+    horizontal row of real primes from `load_range`, see renderer.py's own
+    --viz-mode doc-comment). `pattern_seed_k`/`pattern_seed_start` -- both
+    None (default) omits --pattern-seed-k/--pattern-seed-start entirely;
+    given together, they derive the "line" mode's optional sliding k-tuple
+    pattern (see ring_geometry.pattern_offsets_from_seed). Not int()-cast
+    here for the same reason track_primes isn't above -- renderer.py's own
+    argparse does the real validation.
+
+    `pattern_step_mode` -- "manual" (default, omits --pattern-step-mode
+    entirely) always takes a single wheel step per navigation key,
+    showing every candidate whether it's a real match or not; "auto"
+    always seeks instead, per `pattern_stop_on_match`. `pattern_stop_
+    on_match` -- False (default) omits --pattern-stop-on-match entirely,
+    seeking the next NON-match wheel candidate (in "auto" mode only);
+    True seeks the next real MATCH! instead -- see RenderSession.
+    _pattern_uses_seek's own doc-comment for the exact combined rule."""
     exe = python_executable or sys.executable
     argv = [exe, RENDERER_SCRIPT, "--source", "archive",
             "--portal-folder", portal_folder, "--upto", str(upto)]
@@ -170,6 +191,16 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
         argv += ["--max-load-count", str(max_load_count)]
     if tempo_ms is not None:
         argv += ["--tempo-ms", str(tempo_ms)]
+    if viz_mode != "rings":
+        argv += ["--viz-mode", str(viz_mode)]
+    if pattern_seed_k is not None:
+        argv += ["--pattern-seed-k", str(pattern_seed_k)]
+    if pattern_seed_start is not None:
+        argv += ["--pattern-seed-start", str(pattern_seed_start)]
+    if pattern_step_mode != "manual":
+        argv += ["--pattern-step-mode", str(pattern_step_mode)]
+    if pattern_stop_on_match:
+        argv += ["--pattern-stop-on-match"]
     if audio:
         argv += ['--audio', '--sound-low', sound_low, '--sound-prime', sound_prime,
                  '--sound-lcm', sound_lcm]
@@ -503,6 +534,55 @@ class RingsTab(BaseTab):
         self.tempo_ms_entry.insert(0, saved_params.get("tempo_ms", "120"))
         self.tempo_ms_entry.pack(side="left", padx=(6, 0))
 
+        # "line" viz-mode: an experimental second drawing mode -- a fixed
+        # horizontal row of real primes (from Load Range above, which this
+        # requires) instead of the default ring-per-modulus display, with an
+        # optional k-tuple pattern slid along it by N (see renderer.py's own
+        # --viz-mode/--pattern-seed-* flags and ring_geometry.py's "line
+        # viz-mode" section for the full design). k/p0 derive the pattern's
+        # offsets from k real consecutive primes >= p0 -- see
+        # pattern_offsets_from_seed's own doc-comment for why that's always
+        # an admissible pattern.
+        line_mode_row = ttk.Frame(position_frame)
+        line_mode_row.pack(fill="x", padx=8, pady=(0, 8))
+        self.line_mode_var = tk.BooleanVar(value=saved_params.get("line_mode", False))
+        self._line_mode_check = ttk.Checkbutton(line_mode_row, text=self.T("rings.line_mode_label"),
+                                                  variable=self.line_mode_var)
+        self._line_mode_check.pack(side="left")
+        ttk.Label(line_mode_row, text=self.T("rings.pattern_k_label")).pack(side="left", padx=(16, 0))
+        self.pattern_k_entry = ttk.Entry(line_mode_row, width=6)
+        self.pattern_k_entry.insert(0, saved_params.get("pattern_k", ""))
+        self.pattern_k_entry.pack(side="left", padx=(6, 16))
+        ttk.Label(line_mode_row, text=self.T("rings.pattern_p0_label")).pack(side="left")
+        self.pattern_p0_entry = ttk.Entry(line_mode_row, width=16)
+        self.pattern_p0_entry.insert(0, saved_params.get("pattern_p0", ""))
+        self.pattern_p0_entry.pack(side="left", padx=(6, 0))
+
+        # Manual/Auto step-mode radio + "MATCH!" checkbox (Artur's own
+        # spec, 2026-09-18): Manual (default) always takes a single wheel
+        # step per LEFT/RIGHT/Up/Down/Space, showing every candidate
+        # whether it's a real match or not; Auto always seeks instead
+        # (RenderSession._pattern_seek) -- for the next real MATCH! when
+        # checked, or specifically the next NON-match when unchecked. See
+        # renderer.py's own --pattern-step-mode/--pattern-stop-on-match
+        # doc-comments.
+        pattern_step_row = ttk.Frame(position_frame)
+        pattern_step_row.pack(fill="x", padx=8, pady=(0, 8))
+        self.pattern_step_mode_var = tk.StringVar(value=saved_params.get("pattern_step_mode", "manual"))
+        self._pattern_manual_radio = ttk.Radiobutton(
+            pattern_step_row, text=self.T("rings.pattern_step_manual_label"),
+            variable=self.pattern_step_mode_var, value="manual")
+        self._pattern_manual_radio.pack(side="left")
+        self._pattern_auto_radio = ttk.Radiobutton(
+            pattern_step_row, text=self.T("rings.pattern_step_auto_label"),
+            variable=self.pattern_step_mode_var, value="auto")
+        self._pattern_auto_radio.pack(side="left", padx=(6, 16))
+        self.pattern_stop_on_match_var = tk.BooleanVar(value=saved_params.get("pattern_stop_on_match", False))
+        self._pattern_stop_on_match_check = ttk.Checkbutton(
+            pattern_step_row, text=self.T("rings.pattern_stop_on_match_label"),
+            variable=self.pattern_stop_on_match_var)
+        self._pattern_stop_on_match_check.pack(side="left")
+
         # --- Windows & tracking -------------------------------------------
         # These are working parameters (what the visualization
         # computes/highlights), not visual/appearance settings, so they
@@ -682,11 +762,13 @@ class RingsTab(BaseTab):
             self.hud_font_size_entry, self.general_law_theta_entry,
             self.track_primes_entry, self.load_range_from_entry, self.load_range_to_entry,
             self.max_load_count_entry, self.tempo_ms_entry,
+            self.pattern_k_entry, self.pattern_p0_entry,
         ]
         self._launch_param_checkbuttons = [
             self._audio_enable_check, self._bertrand_check, self._legendre_check,
             self._general_law_check, self._auto_orbit_check,
-            self._mode_sequential_radio, self._mode_range_radio,
+            self._mode_sequential_radio, self._mode_range_radio, self._line_mode_check,
+            self._pattern_manual_radio, self._pattern_auto_radio, self._pattern_stop_on_match_check,
         ]
         self._launch_param_dropdowns = [
             self.general_law_mode_combo,
@@ -875,6 +957,34 @@ class RingsTab(BaseTab):
         tempo_ms_raw = self.tempo_ms_entry.get().strip()
         tempo_ms = _eval_quick_number(tempo_ms_raw) if tempo_ms_raw else None
 
+        # Line mode requires a valid Load Range (it draws THAT fixed set of
+        # real primes as its dot row -- see renderer.py's own --viz-mode
+        # line validation, mirrored here so the error surfaces in this
+        # dialog instead of the subprocess's own parser.error() exit).
+        # The pattern (k/p0) itself is optional within line mode -- see
+        # build_line_vertex_data's own empty-offsets case -- but if either
+        # field was filled in, both must parse and satisfy the same k>=2/
+        # p0>2 rule renderer.py's own argparse enforces, so a half-typed
+        # pattern fails loudly here rather than as a confusing subprocess
+        # launch error.
+        line_mode = self.line_mode_var.get()
+        pattern_k_raw = self.pattern_k_entry.get().strip()
+        pattern_p0_raw = self.pattern_p0_entry.get().strip()
+        pattern_k = None
+        pattern_p0 = None
+        if line_mode:
+            if load_range is None:
+                messagebox.showerror(self.T("rings.error_dialog_title"),
+                                      self.T("rings.error_line_mode_needs_range"))
+                return
+            pattern_k = _eval_quick_number(pattern_k_raw) if pattern_k_raw else None
+            pattern_p0 = _eval_quick_number(pattern_p0_raw) if pattern_p0_raw else None
+            if (pattern_k_raw or pattern_p0_raw) and (
+                pattern_k is None or pattern_p0 is None or pattern_k < 2 or pattern_p0 <= 2
+            ):
+                messagebox.showerror(self.T("rings.error_dialog_title"), self.T("rings.error_pattern_invalid"))
+                return
+
         argv = build_renderer_argv(portal_folder, n, windows=windows,
                                     general_law_theta=theta, general_law_mode=mode,
                                     point_size=point_size,
@@ -888,7 +998,12 @@ class RingsTab(BaseTab):
                                     sound_lcm=INSTRUMENTS[self.audio_choices['lcm'].current()],
                                     pipe_stdin_commands=True,
                                     max_load_count=max_load_count,
-                                    tempo_ms=tempo_ms)
+                                    tempo_ms=tempo_ms,
+                                    viz_mode="line" if line_mode else "rings",
+                                    pattern_seed_k=pattern_k,
+                                    pattern_seed_start=pattern_p0,
+                                    pattern_step_mode=self.pattern_step_mode_var.get(),
+                                    pattern_stop_on_match=self.pattern_stop_on_match_var.get())
         # Persist every launch-time field as-typed, so the NEXT
         # launch (this session's Reset+Start, or a whole new app restart) reopens
         # with these same values instead of the tab's hardcoded first-run defaults
@@ -918,6 +1033,11 @@ class RingsTab(BaseTab):
                 "load_range_from": range_from_raw,
                 "load_range_to": range_to_raw,
                 "max_load_count": max_load_count_raw,
+                "line_mode": line_mode,
+                "pattern_k": pattern_k_raw,
+                "pattern_p0": pattern_p0_raw,
+                "pattern_step_mode": self.pattern_step_mode_var.get(),
+                "pattern_stop_on_match": self.pattern_stop_on_match_var.get(),
             })
         q = queue.Queue()
         # pipe_stdin=True so send_line("RESUME")

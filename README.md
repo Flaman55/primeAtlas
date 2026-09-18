@@ -672,6 +672,51 @@ restoring the window's prior geometry on exit (and releasing the fullscreen moni
 before the process is allowed to pause, so a paused, hidden process never leaves a
 monitor stuck in exclusive-fullscreen mode).
 
+A second, independent drawing mode (`--viz-mode line`, a "Line mode" checkbox next to
+Load Range in the tab) replaces the ring-per-modulus display with a literal number-line:
+a fixed horizontal row of real primes from the chosen Load Range, plus an optional
+sliding k-tuple pattern -- enter a pattern size `k` and a starting prime `p0` (> 2) and
+the pattern's offsets are derived from `k` real consecutive primes >= `p0`
+(`ring_geometry.pattern_offsets_from_seed`, always admissible since it's read off a real
+occurrence). N becomes the pattern's anchor, moved with the exact same playback/scrub
+controls as ring mode; every member (`n + offset`) is drawn as an oversized marker
+(reusing the existing hit-point-size mechanism), green when it lands on a real prime and
+red when it doesn't, with a full-screen flash and an on-canvas HUD line when every member
+matches at once. Unrelated to the ring/gear math above -- see ring_geometry.py's own
+"line viz-mode" section and `RenderSession.rebuild_line` for the separate code path.
+
+Scrubbing/playback in line mode skip straight to the next position that can EVER match --
+a "wheel" (`ring_geometry.pattern_wheel_residues`, CRT over small primes) rules out every N
+a small-prime divisibility check alone already forces composite, so a LEFT/RIGHT press or a
+playback tick jumps whole periods ahead instead of testing every integer one at a time; the
+HUD line shows the resulting candidate density (e.g. `wheel=30030 (24/30030 candidates/
+period)`). A pattern whose wheel comes back empty can never repeat past its own founding
+coincidence (e.g. `{0,2,4}` from 3,5,7 -- always blocked mod 3 elsewhere) -- the HUD says so
+instead of scrubbing forever with nothing left to find.
+
+A Manual/Auto radio plus a "MATCH!" checkbox pick what one navigation action (LEFT/RIGHT,
+Up/Down, Space) lands on: Manual always takes a single wheel step, showing every candidate
+in turn whether it's a real match or not; Auto always seeks instead -- for the next real
+MATCH! when checked, or specifically for the next NON-match wheel candidate (skipping real
+matches on the way) when unchecked -- turning a manual step-by-step browse into either a
+one-keypress jump to the next genuine occurrence, or to the next miss.
+
+Line mode's coordinate mapping self-adjusts for real archive-scale windows
+(`ring_geometry.line_view_bounds`): a loaded span under ~20,000 maps straight to the whole
+window (unchanged from the mode's original behavior), but a real archive-scale span (a
+--load-range many orders of magnitude wider than a single k-tuple's own internal spacing)
+switches to a small, FIXED-width viewport camera-anchored on the current pattern anchor N
+instead -- the same "stay bounded regardless of how huge N itself is" idea ring mode's own
+phase (`n % p`) already relies on, just applied to a local neighborhood instead of a
+modulus. This exists because the whole-window mapping, once cast to the GPU's float32
+vertex buffer, silently loses a k-tuple's own small internal offsets at real archive scale
+(confirmed live, 2026-09-18: a k=4 pattern's genuinely uneven `[0,2,6,8]` spacing rendered
+as evenly-spaced-looking dots) -- the local viewport keeps the mapped span small enough for
+float32 to resolve correctly, and as a side effect only renders the (few hundred) background
+dots actually inside that viewport rather than the entire loaded array, which also cut a
+real 2,000,000-prime archive load's own per-frame rebuild time from ~410ms to under 1ms.
+The HUD's `Pattern:` line shows `[view: local]` whenever this fallback is active.
+
 ## Architecture
 
 ```
@@ -834,7 +879,28 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               General Law highlight-window membership and blended
                               colors -- ported from the standalone Structural Sieve
                               HTML tool's own SieveModel.js; pure functions, no OpenGL
-                              or subprocess code (that lives in ring_viz/, below)
+                              or subprocess code (that lives in ring_viz/, below). Also
+                              owns the unrelated "line" viz-mode section (see "Ring
+                              visualization" above): next_prime_at_or_above/
+                              pattern_offsets_from_seed derive a k-tuple pattern from
+                              real primes, line_positions/value_to_line_x place them on
+                              a horizontal line instead of the ring/gear polar layout,
+                              pattern_positions_and_match/clamp_pattern_anchor drive the
+                              sliding-pattern match check and its scrub clamp, and
+                              pattern_wheel_residues/next_wheel_n implement the wheel-skip
+                              (CRT over small primes) that lets scrub/playback jump straight
+                              to the next N that can ever match instead of testing every one,
+                              and resolve_pattern_anchor picks the launch anchor itself --
+                              the seed's own occurrence if the loaded window contains it, or
+                              the first phase-compatible wheel candidate at the window's own
+                              lower edge otherwise (so a small pattern seed like 7 or 11 still
+                              works correctly against a real archive-scale --load-range far
+                              above it, e.g. a 22-digit to 23-digit window), and
+                              line_view_bounds/line_positions_windowed pick a local,
+                              anchor-centered viewport instead of the whole loaded window
+                              once that window's own span would lose a k-tuple's small
+                              internal offsets to the GPU's float32 vertex-buffer precision
+                              limit (see "Ring visualization" above)
   ring_viz/                      the GPU renderer subprocess launched by rings_tab.py --
                               kept in its own subpackage since it's a separate OS
                               process, not additional widgets in the main Tk process;
@@ -854,12 +920,26 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               pure logic that transitions it, consolidated into one
                               object with methods so renderer.py's GLFW callbacks/main
                               loop are thin adapters rather than a dozen separate
-                              closures each capturing their own mutable dict
+                              closures each capturing their own mutable dict. Also owns
+                              "line" viz-mode's own state (viz_mode/pattern_offsets/
+                              pattern_match/flash_pattern) and rebuild_line -- a
+                              deliberately separate method from rebuild() (ring mode),
+                              not a branch inside it, since line mode has none of ring
+                              mode's resonance/window/HUD-factors machinery
     geometry_draw.py               pure vertex/color/camera-math helpers with no GL
                               call anywhere -- per-ring vertex color/position data,
                               the hit/normal buffer split, tracked-ring outline/center-
                               marker/flash-quad geometry, zoom-to-cursor and fit-to-
-                              viewport camera math
+                              viewport camera math. build_line_vertex_data is "line"
+                              viz-mode's own counterpart to build_vertex_data, reusing
+                              the same (count,5) [x,y,r,g,b] layout and hit/normal split
+                              so the GL draw calls need no mode-specific code at all;
+                              it defers to ring_geometry.line_view_bounds each call to
+                              decide whether to map the whole loaded window or a local,
+                              anchor-centered viewport (see "Ring visualization" above),
+                              and accepts an optional pre-built primes_set so a caller
+                              holding range_primes fixed across many calls (RenderSession)
+                              isn't forced to rebuild the same set from scratch every frame
     hud.py                         HUD text composition (plain lines and the on-canvas
                               canvas-header/status wrapper), per-line window-family
                               coloring, and Pillow-based rasterization of the on-canvas

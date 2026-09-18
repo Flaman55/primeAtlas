@@ -38,6 +38,11 @@ from primeatlas.rings.ring_geometry import (
     compute_tracked_colors,
     tracked_ring_mask,
     to_prime_array,
+    line_positions,
+    line_view_bounds,
+    line_positions_windowed,
+    value_to_line_x,
+    pattern_positions_and_match,
 )
 
 
@@ -45,6 +50,11 @@ _CYAN_RGB = (0.0, 188.0, 212.0)      # "#00bcd4"
 _GOLD_RGB = (255.0, 215.0, 0.0)      # "#ffd700" -- hit, prime >= 11
 _ORANGE_RGB = (255.0, 87.0, 34.0)    # "#ff5722" -- hit, prime < 11
 _TRACKED_WHITE_RGB = (255.0, 255.0, 255.0)
+
+# "line" viz-mode colors -- see build_line_vertex_data below.
+_LINE_BASE_RGB = (0.0, 188.0, 212.0)  # background dot row, same cyan as ring mode's base
+_LINE_MATCH_RGB = (0.0, 230.0, 118.0)  # "#00e676" -- pattern member IS a real prime
+_LINE_MISS_RGB = (255.0, 23.0, 68.0)   # "#ff1744" -- pattern member is NOT prime here
 
 
 def build_vertex_data(primes, n, max_radius, enabled_ids=(), theta=0.5, mode="stepped", track_primes=(),
@@ -150,6 +160,77 @@ def split_hit_normal_vertex_data(data, hit_mask):
         return data, data[:0], 0
     count_hit = int(np.count_nonzero(hit_mask))
     return data[~hit_mask], data[hit_mask], count_hit
+
+
+def build_line_vertex_data(range_primes, n, offsets, world_width=1600.0, primes_set=None):
+    """"line" viz-mode counterpart of build_vertex_data: a fixed horizontal
+    row of point-sprites, one per real prime in `range_primes` (the base
+    cyan dots), plus -- when `offsets` is non-empty -- the sliding
+    pattern's own `n, n+offsets[1], ...` member positions appended as
+    EXTRA rows (not recoloring an existing dot: a non-matching member has
+    no real-prime dot to recolor in the first place), green where that
+    position is a real prime and red where it isn't.
+
+    The coordinate mapping itself comes from line_view_bounds (see that
+    function's own doc-comment for the float32-precision reasoning): the
+    WHOLE loaded window when its span is small enough for float32 to
+    resolve every point distinctly, or else a small, FIXED-width slice
+    camera-anchored on `n` -- in the local case, ONLY the background dots
+    actually inside that slice are drawn (line_positions_windowed's own
+    filter), never the full `range_primes` array's every row, since
+    anything outside the slice would round to the exact same handful of
+    float32 x positions anyway.
+
+    `primes_set` -- optional pre-built `set(int(v) for v in range_primes)`
+    for the match check below; a caller holding `range_primes` fixed
+    across many calls (RenderSession, whose own `_pattern_primes_set` is
+    already built once at construction for the wheel/founding-coincidence
+    logic) should pass it through here too, instead of this function
+    silently rebuilding the same set from scratch on every single N-change
+    -- a real cost once `range_primes` is a real archive-scale array.
+    Built fresh (the original behavior) when omitted.
+
+    Returns (data, count, hit_mask, all_match, view_mode): `data`/`count`
+    are build_vertex_data's own flat (count, 5) float32 [x,y,r,g,b] layout
+    and row count, `hit_mask` is a bool ndarray marking the pattern-member
+    rows (True for every one of them, matched or not -- this is what buys
+    them the independent --hit-point-size sizing via the same
+    split_hit_normal_vertex_data/u_point_size mechanism ring mode's own hit
+    rings already use, so no new GL uniform is needed), `all_match` is
+    pattern_positions_and_match's own flag (False, not an error, when
+    `offsets` is empty), `view_mode` is line_view_bounds' own "full"/
+    "local" flag (for the HUD to report which one is active)."""
+    primes_arr = to_prime_array(range_primes)
+    range_lo = int(primes_arr[0]) if len(primes_arr) else 0
+    range_hi = int(primes_arr[-1]) if len(primes_arr) else 0
+    view_mode, lo, span = line_view_bounds(range_lo, range_hi, n, offsets)
+    line = line_positions_windowed(primes_arr, lo, span, world_width)
+    bg_count = len(line["x"])
+
+    bg_data = np.empty((bg_count, 5), dtype=np.float32)
+    bg_data[:, 0] = line["x"]
+    bg_data[:, 1] = line["y"]
+    bg_data[:, 2:5] = np.array(_LINE_BASE_RGB, dtype=np.float64) / 255.0
+    bg_hit_mask = np.zeros(bg_count, dtype=bool)
+
+    if not offsets:
+        return bg_data, bg_count, bg_hit_mask, False, view_mode
+
+    if primes_set is None:
+        primes_set = set(int(v) for v in primes_arr)
+    positions, hit_flags, all_match = pattern_positions_and_match(n, offsets, primes_set)
+
+    pat_count = len(positions)
+    pat_data = np.empty((pat_count, 5), dtype=np.float32)
+    for i, (value, is_hit) in enumerate(zip(positions, hit_flags)):
+        pat_data[i, 0] = value_to_line_x(value, line["lo"], line["span"], world_width)
+        pat_data[i, 1] = 0.0
+        pat_data[i, 2:5] = np.array(_LINE_MATCH_RGB if is_hit else _LINE_MISS_RGB, dtype=np.float64) / 255.0
+    pat_hit_mask = np.ones(pat_count, dtype=bool)
+
+    data = np.concatenate([bg_data, pat_data], axis=0)
+    hit_mask = np.concatenate([bg_hit_mask, pat_hit_mask])
+    return data, bg_count + pat_count, hit_mask, all_match, view_mode
 
 
 # ---------------------------------------------------------------------------
@@ -347,6 +428,7 @@ def decay_flash(value, factor):
 
 _FLASH_RESONANCE_RGB = (255.0, 140.0, 0.0)  # "rgba(255,140,0,{a})" -- orange, resonance
 _FLASH_PRIME_RGB = (60.0, 60.0, 60.0)       # "rgba(60,60,60,{a})" -- dark gray, prime birth
+_FLASH_PATTERN_RGB = (0.0, 230.0, 118.0)    # same green as _LINE_MATCH_RGB -- line mode, full pattern match
 _FLASH_MAX_ALPHA = 0.25
 
 

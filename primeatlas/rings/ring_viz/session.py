@@ -66,9 +66,14 @@ from primeatlas.rings.ring_geometry import (
     cyclic_window_anchor_at,
     format_log_panel_text,
     window_label_colors,
+    pattern_wheel_residues,
+    next_wheel_n,
+    pattern_positions_and_match,
+    DEFAULT_WHEEL_PRIMES,
 )
 from primeatlas.rings.ring_viz.geometry_draw import (
     build_vertex_data,
+    build_line_vertex_data,
     split_hit_normal_vertex_data,
     resolve_effective_track_primes,
     build_tracked_outline_draws,
@@ -76,6 +81,7 @@ from primeatlas.rings.ring_viz.geometry_draw import (
     flash_overlay_rgba,
     _FLASH_RESONANCE_RGB,
     _FLASH_PRIME_RGB,
+    _FLASH_PATTERN_RGB,
     resonance_is_active,
     zoom_to_point,
     fit_zoom_for_viewport,
@@ -97,6 +103,7 @@ from primeatlas.rings.ring_viz.hud import (
     hud_line_colors,
     rasterize_hud_text,
     emit_audio_tick,
+    pattern_hud_line,
 )
 from primeatlas.rings.ring_viz.sources import load_archive
 
@@ -119,7 +126,9 @@ class RenderSession:
 
     def __init__(self, *, primes, n, ceiling, range_mode, range_primes, range_step,
                  track_primes, auto_orbit, enabled_ids, theta, law_mode, max_radius,
-                 tempo_ms, buffer_margin, can_extend_buffer, portal_folder):
+                 tempo_ms, buffer_margin, can_extend_buffer, portal_folder,
+                 viz_mode="rings", pattern_offsets=None,
+                 pattern_step_mode="manual", pattern_stop_on_match=False):
         # Ring data / sequencing (was: bare `primes`/`ceiling`/`range_mode`/
         # `range_primes`/`range_step` locals in _run_visualization, some
         # mutated via `nonlocal`).
@@ -164,6 +173,83 @@ class RenderSession:
         self.flash_prime = 0.0
         self.flash_resonance = 0.0
         self.outline_draws = []
+
+        # "line" viz-mode: k-tuple pattern-slide state (see
+        # ring_geometry.py's own "line viz-mode" section and
+        # rebuild_line/pattern_flash_color below). `viz_mode` stays
+        # "rings" and `pattern_offsets` stays None for every existing
+        # caller that never passes these two kwargs, so ring mode's own
+        # behavior is completely unchanged.
+        self.viz_mode = viz_mode
+        self.pattern_offsets = list(pattern_offsets) if pattern_offsets else None
+        self.pattern_match = False
+        self.pattern_view_mode = None
+        self.flash_pattern = 0.0
+        # Wheel-skip: which n (mod some small-prime-derived period) can
+        # EVER match, computed once up front from the pattern's own
+        # offsets -- see pattern_wheel_residues' own doc-comment. Only
+        # meaningful (modulus > 1) once a pattern is actually set;
+        # scrub_advance/tick fall back to their old plain +1/+step
+        # behavior whenever it isn't (modulus is None or 1).
+        if self.pattern_offsets:
+            self.pattern_wheel_modulus, self.pattern_wheel_residues = pattern_wheel_residues(self.pattern_offsets)
+            # Cached ONCE (range_primes is fixed for the life of line mode --
+            # there is no buffer-extension concept there, see
+            # should_extend_buffer's own range_mode bypass) so both the
+            # founding-coincidence patch just below and _pattern_seek's own
+            # repeated match checks don't rebuild this from a numpy array
+            # on every single candidate.
+            self._pattern_primes_set = set(int(v) for v in self.range_primes) if len(self.range_primes) else set()
+            # Any real occurrence of this pattern whose OWN anchor value
+            # coincides with one of the wheel's own small primes is a
+            # "founding coincidence" (pattern_wheel_residues' own
+            # doc-comment) -- pure residue arithmetic excludes it
+            # (n mod p == 0 looks like "forced composite", even though n
+            # itself is prime, not composite), making it UNREACHABLE by
+            # scrubbing/seeking otherwise. Two real reports, both
+            # 2026-09-18: the launch anchor itself (seed 3 for a {0,2}
+            # pattern -- "I can't get back to the value I started from"),
+            # and a genuine match buried mid-range (n=11 for a k=5
+            # pattern -- silently skipped by --pattern-stop-on-match's own
+            # search, which never even considered it a candidate). Patch
+            # BOTH kinds back into the residue set -- the launch anchor
+            # itself AND any of DEFAULT_WHEEL_PRIMES -- but ONLY once each
+            # is VERIFIED as a real match against `_pattern_primes_set`,
+            # never trusted unconditionally: renderer.py's own seed-vs-
+            # window placement (see its "Pattern seed's own occurrence is
+            # outside the loaded window" branch) can hand this class a
+            # launch anchor that's just the phase-correct first candidate
+            # in an archive-scale window nowhere near the small seed, NOT
+            # a guaranteed real occurrence -- forcing an unverified
+            # residue in would pollute the wheel with a mostly-composite
+            # class for the WHOLE window, not just at the anchor. Doesn't
+            # touch the "can never repeat at all" signal (residues == [])
+            # -- an entirely dead pattern still correctly has nowhere else
+            # to go either way.
+            if self.pattern_wheel_modulus > 1 and self.pattern_wheel_residues:
+                extra_residues = set()
+                for candidate in (self.n, *DEFAULT_WHEEL_PRIMES):
+                    if candidate in self._pattern_primes_set and pattern_positions_and_match(
+                        candidate, self.pattern_offsets, self._pattern_primes_set
+                    )[2]:
+                        extra_residues.add(candidate % self.pattern_wheel_modulus)
+                missing = extra_residues - set(self.pattern_wheel_residues)
+                if missing:
+                    self.pattern_wheel_residues = sorted(self.pattern_wheel_residues + list(missing))
+        else:
+            self.pattern_wheel_modulus, self.pattern_wheel_residues = None, None
+            self._pattern_primes_set = None
+
+        # Manual/Auto radio + "MATCH!" checkbox (see _pattern_uses_seek's
+        # own doc-comment for the exact combined semantics Artur
+        # specified, 2026-09-18): "manual" always takes a single wheel
+        # step, showing every candidate whether it's a real match or not
+        # ("w trybie manual ... idę kolejno niezaleznie na jaki
+        # wyladuje"); "auto" always SEEKS -- for a MATCH! when checked,
+        # or specifically for a non-match when unchecked ("po wszystkich
+        # poprawnych ma być match! a odznaczone po niepoprawnych").
+        self.pattern_step_mode = pattern_step_mode
+        self.pattern_stop_on_match = pattern_stop_on_match
 
         # Resonance log (was: `resonance_log_state` dict).
         self.resonance_log_state = {"lines": [], "last_n": None, "last_range_mode": None}
@@ -266,13 +352,134 @@ class RenderSession:
         self.tempo_ms = clamp_tempo_ms(round(self.tempo_ms / 0.8))
         return f"Tempo: {self.tempo_ms}ms/tick (slower)"
 
+    def _pattern_window_bounds(self):
+        """(lo, hi) the current line-mode pattern's anchor must stay
+        inside -- lo is the loaded range's own lower edge, hi is reduced
+        by the pattern's diameter so its last member never scrubs past
+        the loaded window's upper edge (see clamp_pattern_anchor's own
+        doc-comment). None when no pattern is active (ring mode, or line
+        mode with no pattern set)."""
+        if self.viz_mode == "line" and self.pattern_offsets and len(self.range_primes):
+            return int(self.range_primes[0]), int(self.range_primes[-1]) - self.pattern_offsets[-1]
+        return None
+
+    def _clamp_pattern_n(self, n):
+        """A no-op for every mode/state other than an active line-mode
+        pattern, so this is safe to call unconditionally from every
+        N-changing method below without altering their existing, tested
+        behavior. Used only where a plain step (bump_n, or scrub/tick's
+        own fallback when the wheel offers no filtering -- see
+        _pattern_wheel_step below) needs the window clamp on its own;
+        scrub_advance/tick's main path uses the wheel jump instead, which
+        already respects this same window."""
+        bounds = self._pattern_window_bounds()
+        if bounds is None:
+            return n
+        lo, hi = bounds
+        return max(lo, min(n, hi))
+
+    def _pattern_wheel_step(self, n, is_right):
+        """One wheel-aware jump (see ring_geometry.next_wheel_n) toward
+        the next position that can EVER match this pattern, skipping
+        every n forced composite by small-prime divisibility alone.
+        Returns `n` unchanged when there is no further such position --
+        the window edge, or (self.pattern_wheel_residues == []) the
+        pattern's own wheel proving it can never repeat at all."""
+        bounds = self._pattern_window_bounds()
+        if bounds is None:
+            return n
+        lo, hi = bounds
+        return next_wheel_n(n, is_right, self.pattern_wheel_modulus, self.pattern_wheel_residues, lo, hi)
+
+    def _has_pattern_wheel(self):
+        """Whether scrub_advance/tick should use the wheel-jump path at
+        all -- False falls back to their old plain +1/+step behavior,
+        which is the correct thing to do both outside line mode/pattern
+        and in the rare case the wheel found nothing to filter at all
+        (modulus == 1 -- see pattern_wheel_residues' own doc-comment)."""
+        return (
+            self.viz_mode == "line" and self.pattern_offsets
+            and self.pattern_wheel_modulus is not None and self.pattern_wheel_modulus > 1
+        )
+
+    #: Safety bound for _pattern_seek's own search loop -- with
+    #: next_wheel_n's bisect lookup (O(log residues)) this is generous
+    #: overkill against any realistic loaded window, not a real limit;
+    #: it only guards a single frame from stalling forever on a pattern
+    #: whose desired kind (match, or non-match) never recurs in the
+    #: loaded range.
+    _PATTERN_SEEK_MAX_STEPS = 50_000
+
+    def _pattern_uses_seek(self):
+        """Whether an advance action should keep taking wheel steps (see
+        _pattern_seek) instead of a single wheel step -- exactly Artur's
+        own 2026-09-18 spec: the Manual/Auto radio (`pattern_step_mode`)
+        is the master switch -- "manual" ALWAYS takes a single step,
+        showing every wheel candidate in turn regardless of whether it's
+        a match or not ("idę kolejno niezaleznie na jaki wyladuje"); only
+        "auto" ever seeks. Used identically by scrub_advance, bump_n, and
+        tick, so arrows/Up-Down/Space all agree on which regime is
+        active."""
+        return self.pattern_step_mode == "auto"
+
+    def _pattern_seek(self, n, is_right):
+        """Repeats _pattern_wheel_step in one direction until landing on a
+        wheel candidate of the kind `self.pattern_stop_on_match` asks
+        for -- a genuine MATCH! when the checkbox is checked, or a
+        non-match (a real wheel candidate that ISN'T a real occurrence)
+        when it's unchecked (both checked via the cached
+        `_pattern_primes_set`) -- or there's nowhere further to go
+        (window edge, or the wheel proved this pattern can never repeat
+        at all). "Auto" mode always seeks one of these two kinds; it
+        never takes a bare, unfiltered wheel step -- see
+        _pattern_uses_seek's own doc-comment for why "manual" is the only
+        mode that does. Returns (final_n, found) -- `found` is False when
+        the search gave up at the edge without ever landing on the
+        desired kind, same "stuck" signal _pattern_wheel_step's own
+        n-unchanged convention gives its callers."""
+        current = n
+        want_match = self.pattern_stop_on_match
+        for _ in range(self._PATTERN_SEEK_MAX_STEPS):
+            nxt = self._pattern_wheel_step(current, is_right)
+            if nxt == current:
+                return current, False
+            current = nxt
+            is_match = pattern_positions_and_match(current, self.pattern_offsets, self._pattern_primes_set)[2]
+            if is_match == want_match:
+                return current, True
+        return current, False
+
     def tick(self):
         """One playback tick, called once the main loop's own tempo_ms
-        elapsed-time gate fires -- ports tick_next_n's call site exactly.
-        Returns True if playback just stopped (N reached the ceiling),
-        False if `self.n` advanced (and `self.n_advancing` was set for the
-        caller's own N-change/rebuild branch to see)."""
+        elapsed-time gate fires. In line mode with a meaningful pattern
+        wheel, advances straight to the next wheel-compatible n (see
+        _pattern_wheel_step) instead of ticking by 1/range_step -- this is
+        the whole point of the wheel: skip every n the small-prime
+        divisibility check alone already rules out. Otherwise ports
+        tick_next_n's call site exactly, same as before. Returns True if
+        playback just stopped (N reached the ceiling, the pattern's last
+        member reached the loaded window's edge, or the wheel found no
+        further compatible position), False if `self.n` advanced (and
+        `self.n_advancing` was set for the caller's own N-change/rebuild
+        branch to see)."""
+        if self._has_pattern_wheel():
+            if self._pattern_uses_seek():
+                new_n, _found = self._pattern_seek(self.n, True)
+            else:
+                new_n = self._pattern_wheel_step(self.n, True)
+            if new_n == self.n:
+                self.playback_running = False
+                return True
+            self.n = new_n
+            self.n_advancing = True
+            return False
         new_n, should_stop = tick_next_n(self.n, self.range_mode, self.ceiling, self.range_step)
+        if not should_stop:
+            clamped = self._clamp_pattern_n(new_n)
+            if clamped == self.n:
+                should_stop = True
+            else:
+                new_n = clamped
         if should_stop:
             self.playback_running = False
             return True
@@ -289,23 +496,60 @@ class RenderSession:
         """Ports the Up/Down/PageUp/PageDown branch: `self.n + delta`,
         floored at 0, UNCLAMPED at the ceiling (deliberately -- see
         clamp_scrub_n's own doc-comment for why only the scrub keys are
-        capped, not these)."""
+        capped, not these).
+
+        In line mode with a meaningful pattern wheel, `delta`'s raw
+        magnitude (n_step, 1000 by default) is meaningless once most
+        integers can never match at all -- landing on an arbitrary +1000
+        offset looks like the wheel jump is "shifted" when it's really
+        just a different, wheel-UNAWARE code path. Up/Down/PageUp/
+        PageDown jump ONE wheel step instead, in `delta`'s own sign
+        direction, so every navigation key in this mode -- not just
+        scrub/playback -- only ever lands on a position the pattern could
+        actually match (same reasoning as scrub_advance's own wheel
+        branch)."""
+        if self._has_pattern_wheel():
+            if self._pattern_uses_seek():
+                self.n, _found = self._pattern_seek(self.n, delta >= 0)
+            else:
+                self.n = self._pattern_wheel_step(self.n, delta >= 0)
+            return
         self.n = max(0, self.n + delta)
+        self.n = self._clamp_pattern_n(self.n)
 
     def scrub_advance(self, is_right, ctrl_held, is_first_press):
         """Ports the LEFT/RIGHT PRESS/REPEAT branch: on the FIRST press of
         a hold-sequence (`is_first_press=True`), pauses playback if it was
-        running and remembers to resume it later; every press/repeat then
+        running and remembers to resume it later.
+
+        In line mode with a meaningful pattern wheel, every press/repeat
+        jumps straight to the next wheel-compatible n in that direction
+        (Ctrl repeats the jump 10 times instead of 1, mirroring
+        arrow_scrub_delta's own x10 -- see _pattern_wheel_step), stopping
+        early without error if the window edge (or an empty wheel -- the
+        pattern can never repeat) is reached partway through. Otherwise,
         moves `self.n` by arrow_scrub_delta's step, clamped to the ceiling
         in sequential mode (clamp_scrub_n) so a long hold can never run N
-        so far past it that nothing can resume playback afterward."""
+        so far past it that nothing can resume playback afterward -- same
+        as before the wheel existed."""
         if is_first_press:
             if self.scrub_held == 0 and self.playback_running:
                 self.scrub_was_running = True
                 self.playback_running = False
             self.scrub_held += 1
+        if self._has_pattern_wheel():
+            if self._pattern_uses_seek():
+                self.n, _found = self._pattern_seek(self.n, is_right)
+                return
+            for _ in range(10 if ctrl_held else 1):
+                new_n = self._pattern_wheel_step(self.n, is_right)
+                if new_n == self.n:
+                    break
+                self.n = new_n
+            return
         delta = arrow_scrub_delta(is_right, ctrl_held)
         self.n = clamp_scrub_n(self.n + delta, self.range_mode, self.ceiling)
+        self.n = self._clamp_pattern_n(self.n)
 
     def scrub_release(self):
         """Ports the LEFT/RIGHT RELEASE branch: once every held scrub key
@@ -341,6 +585,15 @@ class RenderSession:
         self.orbit_current_prime = None
         self.n = 1
         self.n_force_rebuild = True
+        self.viz_mode = "rings"
+        self.pattern_offsets = None
+        self.pattern_match = False
+        self.pattern_view_mode = None
+        self.pattern_wheel_modulus = None
+        self.pattern_wheel_residues = None
+        self._pattern_primes_set = None
+        self.pattern_step_mode = "manual"
+        self.pattern_stop_on_match = False
 
     # ------------------------------------------------------------------
     # Buffer extension -- was extend_buffer_if_needed's own closure body.
@@ -393,6 +646,17 @@ class RenderSession:
 
     def decay_prime_flash(self):
         self.flash_prime = decay_flash(self.flash_prime, 0.85)
+
+    def pattern_flash_color(self):
+        """Current pattern-full-match flash overlay (r, g, b, a) in 0..1,
+        or None if fully decayed. "line" viz-mode only -- flash_pattern
+        only ever gets set to 1.0 from rebuild_line."""
+        if self.flash_pattern <= 0.0:
+            return None
+        return flash_overlay_rgba(self.flash_pattern, _FLASH_PATTERN_RGB)
+
+    def decay_pattern_flash(self):
+        self.flash_pattern = decay_flash(self.flash_pattern, 0.65)
 
     # ------------------------------------------------------------------
     # Rebuild -- was rebuild_buffer's own closure body, minus its final
@@ -487,6 +751,49 @@ class RenderSession:
         self.hud_count = count
         self.hud_rebuild_ms = round(1000 * (t1 - t0), 1)
         self.hud_lines = current_hud_lines
+
+        return data_normal, data_hit, count, count_hit
+
+    def rebuild_line(self, n_value, advancing=False):
+        """"line" viz-mode counterpart of rebuild(): the fixed dot-row for
+        `self.range_primes` plus the sliding pattern's own positions/match
+        state, via build_line_vertex_data. Deliberately independent of
+        rebuild()'s ring/resonance/window/HUD-factors machinery above --
+        line mode has none of that (no rings, no "factors of N", no
+        resonance log); its only per-frame state is the pattern match.
+
+        Returns (data_normal, data_hit, count, count_hit), the same shape
+        rebuild() returns, so the caller's own two ctx.buffer() uploads and
+        the main render loop's draw calls stay identical between modes."""
+        t0 = time.perf_counter()
+        data, count, hit_mask, all_match, view_mode = build_line_vertex_data(
+            self.range_primes, n_value, self.pattern_offsets or (), primes_set=self._pattern_primes_set
+        )
+        t1 = time.perf_counter()
+        print(f"N={n_value:,}  line dots={count:,}  view={view_mode}  rebuild={1000 * (t1 - t0):.1f}ms")
+
+        self.pattern_match = all_match
+        self.pattern_view_mode = view_mode
+        if all_match:
+            self.flash_pattern = 1.0
+
+        data_normal, data_hit, count_hit = split_hit_normal_vertex_data(data, hit_mask)
+
+        self.hud_n = n_value
+        self.hud_count = count
+        self.hud_rebuild_ms = round(1000 * (t1 - t0), 1)
+        self.hud_lines = (
+            [pattern_hud_line(
+                n_value, self.pattern_offsets, all_match,
+                wheel_modulus=self.pattern_wheel_modulus,
+                wheel_residue_count=len(self.pattern_wheel_residues) if self.pattern_wheel_residues else 0,
+                step_mode=self.pattern_step_mode, stop_on_match=self.pattern_stop_on_match,
+                view_mode=view_mode,
+            )]
+            if self.pattern_offsets else []
+        )
+        for line in self.hud_lines:
+            print(line)
 
         return data_normal, data_hit, count, count_hit
 
