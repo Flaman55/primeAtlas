@@ -68,6 +68,8 @@ from primeatlas.rings.ring_geometry import (
     window_label_colors,
     pattern_wheel_residues,
     next_wheel_n,
+    pattern_positions_and_match,
+    DEFAULT_WHEEL_PRIMES,
 )
 from primeatlas.rings.ring_viz.geometry_draw import (
     build_vertex_data,
@@ -125,7 +127,8 @@ class RenderSession:
     def __init__(self, *, primes, n, ceiling, range_mode, range_primes, range_step,
                  track_primes, auto_orbit, enabled_ids, theta, law_mode, max_radius,
                  tempo_ms, buffer_margin, can_extend_buffer, portal_folder,
-                 viz_mode="rings", pattern_offsets=None):
+                 viz_mode="rings", pattern_offsets=None,
+                 pattern_step_mode="manual", pattern_stop_on_match=False):
         # Ring data / sequencing (was: bare `primes`/`ceiling`/`range_mode`/
         # `range_primes`/`range_step` locals in _run_visualization, some
         # mutated via `nonlocal`).
@@ -189,26 +192,56 @@ class RenderSession:
         # behavior whenever it isn't (modulus is None or 1).
         if self.pattern_offsets:
             self.pattern_wheel_modulus, self.pattern_wheel_residues = pattern_wheel_residues(self.pattern_offsets)
-            # The launch anchor (`n`, the pattern's own resolved seed
-            # prime -- see renderer.py's own pattern-derivation block) is
-            # ALWAYS a real match: pattern_offsets_from_seed built the
-            # offsets FROM this exact occurrence. Pure residue arithmetic
-            # can still exclude its residue class -- the "founding
-            # coincidence" case (pattern_wheel_residues' own doc-comment;
-            # e.g. n=3 for offsets [0,2], since 3 itself is one of the
-            # wheel's own primes) -- which otherwise makes the seed
-            # UNREACHABLE by scrubbing back to it once you leave it
-            # (confirmed by a real report, 2026-09-18: "I can't get back
-            # to the value I started from"). Adding its own residue back
-            # in fixes exactly that, without touching the "can never
-            # repeat at all" signal (residues == []) -- an entirely dead
-            # pattern still correctly has nowhere else to go either way.
+            # Cached ONCE (range_primes is fixed for the life of line mode --
+            # there is no buffer-extension concept there, see
+            # should_extend_buffer's own range_mode bypass) so both the
+            # founding-coincidence patch just below and _pattern_seek's own
+            # repeated match checks don't rebuild this from a numpy array
+            # on every single candidate.
+            self._pattern_primes_set = set(int(v) for v in self.range_primes) if len(self.range_primes) else set()
+            # Any real occurrence of this pattern whose OWN anchor value
+            # coincides with one of the wheel's own small primes is a
+            # "founding coincidence" (pattern_wheel_residues' own
+            # doc-comment) -- pure residue arithmetic excludes it
+            # (n mod p == 0 looks like "forced composite", even though n
+            # itself is prime, not composite), making it UNREACHABLE by
+            # scrubbing/seeking otherwise. Two real reports, both
+            # 2026-09-18: the launch anchor itself (seed 3 for a {0,2}
+            # pattern -- "I can't get back to the value I started from"),
+            # and a genuine match buried mid-range (n=11 for a k=5
+            # pattern -- silently skipped by --pattern-stop-on-match's own
+            # search, which never even considered it a candidate). Patch
+            # BOTH kinds back into the residue set: the launch anchor
+            # itself (always real by construction -- pattern_offsets_
+            # from_seed built the offsets FROM this exact occurrence), and
+            # any of DEFAULT_WHEEL_PRIMES that independently checks out as
+            # a real match. Doesn't touch the "can never repeat at all"
+            # signal (residues == []) -- an entirely dead pattern still
+            # correctly has nowhere else to go either way.
             if self.pattern_wheel_modulus > 1 and self.pattern_wheel_residues:
-                anchor_residue = self.n % self.pattern_wheel_modulus
-                if anchor_residue not in self.pattern_wheel_residues:
-                    self.pattern_wheel_residues = sorted(self.pattern_wheel_residues + [anchor_residue])
+                extra_residues = {self.n % self.pattern_wheel_modulus}
+                for p in DEFAULT_WHEEL_PRIMES:
+                    if p in self._pattern_primes_set and pattern_positions_and_match(
+                        p, self.pattern_offsets, self._pattern_primes_set
+                    )[2]:
+                        extra_residues.add(p % self.pattern_wheel_modulus)
+                missing = extra_residues - set(self.pattern_wheel_residues)
+                if missing:
+                    self.pattern_wheel_residues = sorted(self.pattern_wheel_residues + list(missing))
         else:
             self.pattern_wheel_modulus, self.pattern_wheel_residues = None, None
+            self._pattern_primes_set = None
+
+        # Manual/Auto radio + "MATCH!" checkbox (see _pattern_uses_seek's
+        # own doc-comment for the exact combined semantics Artur
+        # specified, 2026-09-18): "manual" always takes a single wheel
+        # step, showing every candidate whether it's a real match or not
+        # ("w trybie manual ... idę kolejno niezaleznie na jaki
+        # wyladuje"); "auto" always SEEKS -- for a MATCH! when checked,
+        # or specifically for a non-match when unchecked ("po wszystkich
+        # poprawnych ma być match! a odznaczone po niepoprawnych").
+        self.pattern_step_mode = pattern_step_mode
+        self.pattern_stop_on_match = pattern_stop_on_match
 
         # Resonance log (was: `resonance_log_state` dict).
         self.resonance_log_state = {"lines": [], "last_n": None, "last_range_mode": None}
@@ -361,6 +394,53 @@ class RenderSession:
             and self.pattern_wheel_modulus is not None and self.pattern_wheel_modulus > 1
         )
 
+    #: Safety bound for _pattern_seek's own search loop -- with
+    #: next_wheel_n's bisect lookup (O(log residues)) this is generous
+    #: overkill against any realistic loaded window, not a real limit;
+    #: it only guards a single frame from stalling forever on a pattern
+    #: whose desired kind (match, or non-match) never recurs in the
+    #: loaded range.
+    _PATTERN_SEEK_MAX_STEPS = 50_000
+
+    def _pattern_uses_seek(self):
+        """Whether an advance action should keep taking wheel steps (see
+        _pattern_seek) instead of a single wheel step -- exactly Artur's
+        own 2026-09-18 spec: the Manual/Auto radio (`pattern_step_mode`)
+        is the master switch -- "manual" ALWAYS takes a single step,
+        showing every wheel candidate in turn regardless of whether it's
+        a match or not ("idę kolejno niezaleznie na jaki wyladuje"); only
+        "auto" ever seeks. Used identically by scrub_advance, bump_n, and
+        tick, so arrows/Up-Down/Space all agree on which regime is
+        active."""
+        return self.pattern_step_mode == "auto"
+
+    def _pattern_seek(self, n, is_right):
+        """Repeats _pattern_wheel_step in one direction until landing on a
+        wheel candidate of the kind `self.pattern_stop_on_match` asks
+        for -- a genuine MATCH! when the checkbox is checked, or a
+        non-match (a real wheel candidate that ISN'T a real occurrence)
+        when it's unchecked (both checked via the cached
+        `_pattern_primes_set`) -- or there's nowhere further to go
+        (window edge, or the wheel proved this pattern can never repeat
+        at all). "Auto" mode always seeks one of these two kinds; it
+        never takes a bare, unfiltered wheel step -- see
+        _pattern_uses_seek's own doc-comment for why "manual" is the only
+        mode that does. Returns (final_n, found) -- `found` is False when
+        the search gave up at the edge without ever landing on the
+        desired kind, same "stuck" signal _pattern_wheel_step's own
+        n-unchanged convention gives its callers."""
+        current = n
+        want_match = self.pattern_stop_on_match
+        for _ in range(self._PATTERN_SEEK_MAX_STEPS):
+            nxt = self._pattern_wheel_step(current, is_right)
+            if nxt == current:
+                return current, False
+            current = nxt
+            is_match = pattern_positions_and_match(current, self.pattern_offsets, self._pattern_primes_set)[2]
+            if is_match == want_match:
+                return current, True
+        return current, False
+
     def tick(self):
         """One playback tick, called once the main loop's own tempo_ms
         elapsed-time gate fires. In line mode with a meaningful pattern
@@ -375,7 +455,10 @@ class RenderSession:
         `self.n_advancing` was set for the caller's own N-change/rebuild
         branch to see)."""
         if self._has_pattern_wheel():
-            new_n = self._pattern_wheel_step(self.n, True)
+            if self._pattern_uses_seek():
+                new_n, _found = self._pattern_seek(self.n, True)
+            else:
+                new_n = self._pattern_wheel_step(self.n, True)
             if new_n == self.n:
                 self.playback_running = False
                 return True
@@ -418,7 +501,10 @@ class RenderSession:
         actually match (same reasoning as scrub_advance's own wheel
         branch)."""
         if self._has_pattern_wheel():
-            self.n = self._pattern_wheel_step(self.n, delta >= 0)
+            if self._pattern_uses_seek():
+                self.n, _found = self._pattern_seek(self.n, delta >= 0)
+            else:
+                self.n = self._pattern_wheel_step(self.n, delta >= 0)
             return
         self.n = max(0, self.n + delta)
         self.n = self._clamp_pattern_n(self.n)
@@ -444,6 +530,9 @@ class RenderSession:
                 self.playback_running = False
             self.scrub_held += 1
         if self._has_pattern_wheel():
+            if self._pattern_uses_seek():
+                self.n, _found = self._pattern_seek(self.n, is_right)
+                return
             for _ in range(10 if ctrl_held else 1):
                 new_n = self._pattern_wheel_step(self.n, is_right)
                 if new_n == self.n:
@@ -493,6 +582,9 @@ class RenderSession:
         self.pattern_match = False
         self.pattern_wheel_modulus = None
         self.pattern_wheel_residues = None
+        self._pattern_primes_set = None
+        self.pattern_step_mode = "manual"
+        self.pattern_stop_on_match = False
 
     # ------------------------------------------------------------------
     # Buffer extension -- was extend_buffer_if_needed's own closure body.
@@ -685,6 +777,7 @@ class RenderSession:
                 n_value, self.pattern_offsets, all_match,
                 wheel_modulus=self.pattern_wheel_modulus,
                 wheel_residue_count=len(self.pattern_wheel_residues) if self.pattern_wheel_residues else 0,
+                step_mode=self.pattern_step_mode, stop_on_match=self.pattern_stop_on_match,
             )]
             if self.pattern_offsets else []
         )

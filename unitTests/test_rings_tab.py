@@ -162,6 +162,19 @@ def _test_build_renderer_argv():
           pattern_argv[pattern_argv.index("--pattern-seed-start") + 1] == "11",
           f"--pattern-seed-start forwards a real value as-is (got {pattern_argv!r})")
 
+    # Manual/Auto step-mode + MATCH! argv wiring.
+    check("--pattern-step-mode" not in default_argv and "--pattern-stop-on-match" not in default_argv,
+          f"no --pattern-step-mode/--pattern-stop-on-match args at all with the defaults "
+          f"(manual, unchecked) (got {default_argv!r})")
+    auto_argv = build_renderer_argv("/x", 1, load_range=(100, 500), viz_mode="line",
+                                     pattern_step_mode="auto")
+    check("--pattern-step-mode" in auto_argv and auto_argv[auto_argv.index("--pattern-step-mode") + 1] == "auto",
+          f"--pattern-step-mode auto is included when requested (got {auto_argv!r})")
+    stop_on_match_argv = build_renderer_argv("/x", 1, load_range=(100, 500), viz_mode="line",
+                                              pattern_step_mode="auto", pattern_stop_on_match=True)
+    check("--pattern-stop-on-match" in stop_on_match_argv,
+          f"--pattern-stop-on-match flag is included when checked (got {stop_on_match_argv!r})")
+
     # hit_point_size/hud_font_size argv wiring, mirroring point_size's own
     # omit-if-None convention exactly. renderer.py's own argparse defaults
     # are 40.0 / 35 (previously None-falls-back-to-point-size / 16px) --

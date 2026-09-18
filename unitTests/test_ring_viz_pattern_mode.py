@@ -168,6 +168,113 @@ def _test_next_wheel_n():
           "next_wheel_n continues the SAME 5,11,17,23,29,35,... sequence regardless of lo")
 
 
+def _sieve_primes_upto(n):
+    is_composite = bytearray(n + 1)
+    primes = []
+    for p in range(2, n + 1):
+        if not is_composite[p]:
+            primes.append(p)
+            if p * p <= n:
+                is_composite[p * p:n + 1:p] = b"\x01" * len(range(p * p, n + 1, p))
+    return primes
+
+
+def _test_pattern_step_mode_and_stop_on_match():
+    """Artur's own 2026-09-18 spec (corrected after a real report -- his
+    first phrasing of this was mis-implemented as "auto+unchecked = single
+    step", not seek-for-non-match; his own real k=6 sequence 7 -> 97 -> 1357
+    (7 and 97 are both real matches, 1357 isn't) is what exposed it): a
+    Manual/Auto radio (`pattern_step_mode`) plus a "MATCH!" checkbox
+    (`pattern_stop_on_match`) -- "manual" ALWAYS takes a single wheel step,
+    showing every candidate whether it's a match or not, regardless of the
+    checkbox; "auto" ALWAYS seeks -- for the next real MATCH! when checked,
+    or specifically for the next NON-match when unchecked (skipping real
+    matches on the way, e.g. 97 here). k=6 offsets [0,4,6,10,12,16] seeded
+    at p0=7 is Artur's own real example, verified here against a real
+    sieve rather than just re-asserting whatever _pattern_seek itself would
+    compute."""
+    from primeatlas.rings.ring_viz.session import RenderSession
+    import numpy as np
+
+    range_primes = np.array(_sieve_primes_upto(1400), dtype=np.int64)
+
+    def make_session(step_mode, stop_on_match):
+        return RenderSession(
+            primes=range_primes, n=7, ceiling=10000, range_mode=True,
+            range_primes=range_primes, range_step=1,
+            track_primes=[], auto_orbit=False, enabled_ids=set(), theta=0.5, law_mode="stepped",
+            max_radius=800.0, tempo_ms=120, buffer_margin=0, can_extend_buffer=False,
+            portal_folder=None, viz_mode="line", pattern_offsets=[0, 4, 6, 10, 12, 16],
+            pattern_step_mode=step_mode, pattern_stop_on_match=stop_on_match,
+        )
+
+    manual_off = make_session("manual", False)
+    check(manual_off._pattern_uses_seek() is False, "manual mode never seeks, regardless of the checkbox")
+    manual_off.scrub_advance(is_right=True, ctrl_held=False, is_first_press=True)
+    check(manual_off.n == 97, f"manual + unchecked takes a single wheel step, 7 -> 97 (got {manual_off.n})")
+
+    manual_on = make_session("manual", True)
+    check(manual_on._pattern_uses_seek() is False,
+          "manual mode ALSO never seeks with the checkbox CHECKED -- the radio is the master switch")
+    manual_on.scrub_advance(is_right=True, ctrl_held=False, is_first_press=True)
+    check(manual_on.n == 97, f"manual + checked still takes a single wheel step, 7 -> 97 (got {manual_on.n})")
+
+    auto_on = make_session("auto", True)
+    check(auto_on._pattern_uses_seek() is True, "auto mode always seeks")
+    auto_on.scrub_advance(is_right=True, ctrl_held=False, is_first_press=True)
+    check(auto_on.n == 97, f"auto + checked seeks the next real MATCH!, which is 97 -- the very first "
+                           f"wheel candidate already qualifies (got {auto_on.n})")
+
+    auto_off = make_session("auto", False)
+    check(auto_off._pattern_uses_seek() is True, "auto mode always seeks, checkbox unchecked too")
+    auto_off.scrub_advance(is_right=True, ctrl_held=False, is_first_press=True)
+    check(auto_off.n == 1357,
+          f"auto + unchecked seeks the next NON-match, skipping straight OVER the real match at 97 "
+          f"(a wheel candidate, but not what was asked for) to land on 1357 (got {auto_off.n})")
+
+    # tick() and bump_n must agree with scrub_advance on the same regime.
+    auto_off_tick = make_session("auto", False)
+    auto_off_tick.playback_running = True
+    stopped = auto_off_tick.tick()
+    check(stopped is False, "tick() in seek-non-match mode doesn't stop playback just because it skipped a match")
+    check(auto_off_tick.n == 1357, f"tick() in seek-non-match mode also skips 97, landing on 1357 (got {auto_off_tick.n})")
+
+    auto_off_bump = make_session("auto", False)
+    auto_off_bump.bump_n(1000)
+    check(auto_off_bump.n == 1357,
+          f"bump_n in seek-non-match mode also skips 97, ignoring its own delta magnitude (got {auto_off_bump.n})")
+
+
+def _test_render_session_wheel_prime_matches_not_skipped():
+    """Regression (2026-09-18, Artur's own real report): a k=5 pattern
+    seeded at p0=5 (offsets [0,2,6,8,12]) has a REAL match at n=11 (11,13,
+    17,19,23 all prime) -- but 11 is itself one of the wheel's own small
+    primes, so pure residue arithmetic excludes it (the same "founding
+    coincidence" class as the launch-anchor fix above), and
+    --pattern-stop-on-match's own seek silently skipped straight from 5 to
+    101 without ever considering it. The wheel must patch in ANY of
+    DEFAULT_WHEEL_PRIMES that independently checks out as a real match,
+    not just the launch anchor itself."""
+    from primeatlas.rings.ring_viz.session import RenderSession
+    import numpy as np
+
+    range_primes = np.array(_sieve_primes_upto(200), dtype=np.int64)
+    session = RenderSession(
+        primes=range_primes, n=5, ceiling=1000, range_mode=True,
+        range_primes=range_primes, range_step=1,
+        track_primes=[], auto_orbit=False, enabled_ids=set(), theta=0.5, law_mode="stepped",
+        max_radius=800.0, tempo_ms=120, buffer_margin=0, can_extend_buffer=False,
+        portal_folder=None, viz_mode="line", pattern_offsets=[0, 2, 6, 8, 12],
+        pattern_step_mode="auto", pattern_stop_on_match=True,
+    )
+    check(11 % session.pattern_wheel_modulus in session.pattern_wheel_residues,
+          "n=11's own residue is patched into the wheel because it's independently a real match")
+
+    session.scrub_advance(is_right=True, ctrl_held=False, is_first_press=True)
+    check(session.n == 11, f"seeking forward from the anchor (5) now lands on the real match at 11, "
+                            f"not skipping straight past it (got {session.n})")
+
+
 def _test_render_session_anchor_always_reachable():
     """Regression (2026-09-18, Artur's own real report: "I can't get back
     to the value I started from"): the k=2 twin-prime pattern seeded at
@@ -334,6 +441,8 @@ def main():
     _test_clamp_pattern_anchor()
     _test_pattern_wheel_residues()
     _test_next_wheel_n()
+    _test_pattern_step_mode_and_stop_on_match()
+    _test_render_session_wheel_prime_matches_not_skipped()
     _test_render_session_anchor_always_reachable()
     _test_build_line_vertex_data()
     _test_render_session_line_mode()

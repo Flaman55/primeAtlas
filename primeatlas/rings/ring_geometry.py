@@ -47,6 +47,7 @@ of millions) -- a Python-level loop per ring would defeat the entire point of
 the GPU-scale ring count already proven feasible.
 """
 
+import bisect
 import math
 import re
 
@@ -1217,7 +1218,14 @@ def pattern_positions_and_match(n, offsets, primes_window_set):
     return positions, hit_flags, all_match
 
 
-def pattern_wheel_residues(offsets, wheel_primes=(2, 3, 5, 7, 11, 13)):
+#: Shared with session.py's own founding-coincidence patch (checking
+#: whether one of these small primes is ITSELF a genuine real match this
+#: wheel would otherwise silently exclude) -- one definition so the two
+#: never drift apart.
+DEFAULT_WHEEL_PRIMES = (2, 3, 5, 7, 11, 13)
+
+
+def pattern_wheel_residues(offsets, wheel_primes=DEFAULT_WHEEL_PRIMES):
     """The residue-class "wheel" for a k-tuple pattern: which values of
     n mod M (M = product of the wheel primes that actually exclude
     something) can EVER produce a match, purely from small-prime
@@ -1283,17 +1291,23 @@ def next_wheel_n(n, is_right, modulus, residues, lo, hi):
     either the window edge was reached, or `residues` is empty -- the
     pattern's own wheel proved it can never repeat at all (see
     pattern_wheel_residues' own doc-comment) -- in which case every call
-    ever returns `n` unchanged, same as being permanently at the edge."""
+    ever returns `n` unchanged, same as being permanently at the edge.
+
+    O(log len(residues)) via bisect (`residues` is already sorted) rather
+    than a linear scan -- RenderSession's own match-search feature
+    (_pattern_seek_match) can call this many times in a single frame
+    hunting for the next real MATCH!, so the per-call cost matters here
+    in a way it didn't for a single scrub/tick step alone."""
     if not residues:
         return n
     period_pos = n % modulus
     base = n - period_pos
     if is_right:
-        nxt = next((r for r in residues if r > period_pos), None)
-        candidate = base + nxt if nxt is not None else base + modulus + residues[0]
+        idx = bisect.bisect_right(residues, period_pos)
+        candidate = base + residues[idx] if idx < len(residues) else base + modulus + residues[0]
     else:
-        nxt = next((r for r in reversed(residues) if r < period_pos), None)
-        candidate = base + nxt if nxt is not None else base - modulus + residues[-1]
+        idx = bisect.bisect_left(residues, period_pos)
+        candidate = base + residues[idx - 1] if idx > 0 else base - modulus + residues[-1]
     if candidate < lo or candidate > hi:
         return n
     return candidate

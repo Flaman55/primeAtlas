@@ -62,7 +62,8 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
                          hit_point_size=None, hud_font_size=None, audio=False,
                          sound_low='sine', sound_prime='triangle', sound_lcm='choir',
                          pipe_stdin_commands=False, max_load_count=None, tempo_ms=None,
-                         viz_mode="rings", pattern_seed_k=None, pattern_seed_start=None):
+                         viz_mode="rings", pattern_seed_k=None, pattern_seed_start=None,
+                         pattern_step_mode="manual", pattern_stop_on_match=False):
     """Builds the argv for launching renderer.py against a real archive.
 
     Uses `python_executable` (defaults to sys.executable -- THIS SAME Python
@@ -146,7 +147,16 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
     given together, they derive the "line" mode's optional sliding k-tuple
     pattern (see ring_geometry.pattern_offsets_from_seed). Not int()-cast
     here for the same reason track_primes isn't above -- renderer.py's own
-    argparse does the real validation."""
+    argparse does the real validation.
+
+    `pattern_step_mode` -- "manual" (default, omits --pattern-step-mode
+    entirely) always takes a single wheel step per navigation key,
+    showing every candidate whether it's a real match or not; "auto"
+    always seeks instead, per `pattern_stop_on_match`. `pattern_stop_
+    on_match` -- False (default) omits --pattern-stop-on-match entirely,
+    seeking the next NON-match wheel candidate (in "auto" mode only);
+    True seeks the next real MATCH! instead -- see RenderSession.
+    _pattern_uses_seek's own doc-comment for the exact combined rule."""
     exe = python_executable or sys.executable
     argv = [exe, RENDERER_SCRIPT, "--source", "archive",
             "--portal-folder", portal_folder, "--upto", str(upto)]
@@ -187,6 +197,10 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
         argv += ["--pattern-seed-k", str(pattern_seed_k)]
     if pattern_seed_start is not None:
         argv += ["--pattern-seed-start", str(pattern_seed_start)]
+    if pattern_step_mode != "manual":
+        argv += ["--pattern-step-mode", str(pattern_step_mode)]
+    if pattern_stop_on_match:
+        argv += ["--pattern-stop-on-match"]
     if audio:
         argv += ['--audio', '--sound-low', sound_low, '--sound-prime', sound_prime,
                  '--sound-lcm', sound_lcm]
@@ -544,6 +558,31 @@ class RingsTab(BaseTab):
         self.pattern_p0_entry.insert(0, saved_params.get("pattern_p0", ""))
         self.pattern_p0_entry.pack(side="left", padx=(6, 0))
 
+        # Manual/Auto step-mode radio + "MATCH!" checkbox (Artur's own
+        # spec, 2026-09-18): Manual (default) always takes a single wheel
+        # step per LEFT/RIGHT/Up/Down/Space, showing every candidate
+        # whether it's a real match or not; Auto always seeks instead
+        # (RenderSession._pattern_seek) -- for the next real MATCH! when
+        # checked, or specifically the next NON-match when unchecked. See
+        # renderer.py's own --pattern-step-mode/--pattern-stop-on-match
+        # doc-comments.
+        pattern_step_row = ttk.Frame(position_frame)
+        pattern_step_row.pack(fill="x", padx=8, pady=(0, 8))
+        self.pattern_step_mode_var = tk.StringVar(value=saved_params.get("pattern_step_mode", "manual"))
+        self._pattern_manual_radio = ttk.Radiobutton(
+            pattern_step_row, text=self.T("rings.pattern_step_manual_label"),
+            variable=self.pattern_step_mode_var, value="manual")
+        self._pattern_manual_radio.pack(side="left")
+        self._pattern_auto_radio = ttk.Radiobutton(
+            pattern_step_row, text=self.T("rings.pattern_step_auto_label"),
+            variable=self.pattern_step_mode_var, value="auto")
+        self._pattern_auto_radio.pack(side="left", padx=(6, 16))
+        self.pattern_stop_on_match_var = tk.BooleanVar(value=saved_params.get("pattern_stop_on_match", False))
+        self._pattern_stop_on_match_check = ttk.Checkbutton(
+            pattern_step_row, text=self.T("rings.pattern_stop_on_match_label"),
+            variable=self.pattern_stop_on_match_var)
+        self._pattern_stop_on_match_check.pack(side="left")
+
         # --- Windows & tracking -------------------------------------------
         # These are working parameters (what the visualization
         # computes/highlights), not visual/appearance settings, so they
@@ -729,6 +768,7 @@ class RingsTab(BaseTab):
             self._audio_enable_check, self._bertrand_check, self._legendre_check,
             self._general_law_check, self._auto_orbit_check,
             self._mode_sequential_radio, self._mode_range_radio, self._line_mode_check,
+            self._pattern_manual_radio, self._pattern_auto_radio, self._pattern_stop_on_match_check,
         ]
         self._launch_param_dropdowns = [
             self.general_law_mode_combo,
@@ -961,7 +1001,9 @@ class RingsTab(BaseTab):
                                     tempo_ms=tempo_ms,
                                     viz_mode="line" if line_mode else "rings",
                                     pattern_seed_k=pattern_k,
-                                    pattern_seed_start=pattern_p0)
+                                    pattern_seed_start=pattern_p0,
+                                    pattern_step_mode=self.pattern_step_mode_var.get(),
+                                    pattern_stop_on_match=self.pattern_stop_on_match_var.get())
         # Persist every launch-time field as-typed, so the NEXT
         # launch (this session's Reset+Start, or a whole new app restart) reopens
         # with these same values instead of the tab's hardcoded first-run defaults
@@ -994,6 +1036,8 @@ class RingsTab(BaseTab):
                 "line_mode": line_mode,
                 "pattern_k": pattern_k_raw,
                 "pattern_p0": pattern_p0_raw,
+                "pattern_step_mode": self.pattern_step_mode_var.get(),
+                "pattern_stop_on_match": self.pattern_stop_on_match_var.get(),
             })
         q = queue.Queue()
         # pipe_stdin=True so send_line("RESUME")

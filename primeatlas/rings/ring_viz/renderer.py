@@ -555,6 +555,7 @@ def _run_visualization(args, audio=None):
         buffer_margin=buffer_margin, can_extend_buffer=can_extend_buffer,
         portal_folder=args.portal_folder,
         viz_mode=args.viz_mode, pattern_offsets=pattern_offsets,
+        pattern_step_mode=args.pattern_step_mode, pattern_stop_on_match=args.pattern_stop_on_match,
     )
 
     def _apply_hud_refresh():
@@ -1062,6 +1063,21 @@ def main():
                               "--pattern-seed-start as the sliding k-tuple pattern's offsets")
     parser.add_argument("--pattern-seed-start", type=parse_big_int, default=None,
                          help="line mode only: starting prime (must be > 2) for --pattern-seed-k")
+    # Manual/Auto step-mode radio + "MATCH!" checkbox (Artur's own spec,
+    # 2026-09-18): "manual" (default) always takes a single wheel step per
+    # LEFT/RIGHT/Up/Down/Space, showing every wheel candidate in turn
+    # whether it's a real match or not; "auto" always SEEKS instead --
+    # for the next real MATCH! when the checkbox is given, or specifically
+    # for the next NON-match wheel candidate when it isn't. See
+    # RenderSession._pattern_uses_seek's own doc-comment for the exact rule.
+    parser.add_argument("--pattern-step-mode", choices=["manual", "auto"], default="manual",
+                         help="line mode pattern only: 'manual' (default) always takes a single wheel "
+                              "step per navigation key; 'auto' always seeks instead (see "
+                              "--pattern-stop-on-match for which kind)")
+    parser.add_argument("--pattern-stop-on-match", action="store_true",
+                         help="line mode pattern only, and only with --pattern-step-mode auto: seek "
+                              "the next real MATCH! when given, or specifically the next NON-match "
+                              "wheel candidate when not given")
     parser.add_argument("--pipe-stdin-commands", action="store_true",
                          help="read RESUME commands from stdin and, instead of "
                               "exiting on window-close, hide the window and idle "

@@ -694,6 +694,13 @@ period)`). A pattern whose wheel comes back empty can never repeat past its own 
 coincidence (e.g. `{0,2,4}` from 3,5,7 -- always blocked mod 3 elsewhere) -- the HUD says so
 instead of scrubbing forever with nothing left to find.
 
+A Manual/Auto radio plus a "MATCH!" checkbox pick what one navigation action (LEFT/RIGHT,
+Up/Down, Space) lands on: Manual always takes a single wheel step, showing every candidate
+in turn whether it's a real match or not; Auto always seeks instead -- for the next real
+MATCH! when checked, or specifically for the next NON-match wheel candidate (skipping real
+matches on the way) when unchecked -- turning a manual step-by-step browse into either a
+one-keypress jump to the next genuine occurrence, or to the next miss.
+
 ## Architecture
 
 ```
