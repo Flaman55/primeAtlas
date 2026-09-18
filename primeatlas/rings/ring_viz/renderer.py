@@ -569,6 +569,7 @@ def _run_visualization(args, audio=None):
         portal_folder=args.portal_folder,
         viz_mode=args.viz_mode, pattern_offsets=pattern_offsets,
         pattern_step_mode=args.pattern_step_mode, pattern_stop_on_match=args.pattern_stop_on_match,
+        line_axis_curved=args.line_axis_curved,
     )
 
     def _apply_hud_refresh():
@@ -910,6 +911,25 @@ def _run_visualization(args, audio=None):
                 gl.prog_outline["u_color"].value = color
                 gl.unit_circle_vao.render(moderngl.LINE_LOOP)
 
+        # "line" viz-mode's curved-axis boundary marker -- a single red
+        # LINE from the circle's own center out to its "12 o'clock" edge,
+        # over the SAME prog_outline program/uniforms as the tracked-ring
+        # outlines just above (see axis_boundary_marker_vertices' own
+        # doc-comment for why this needs marking at all: the loaded
+        # window's own start and end coincide on screen once bent into a
+        # circle, but are NOT actually the same value the way a real
+        # periodic wraparound would be). world_width/2 matches the exact
+        # radius build_line_vertex_data itself used (see that function's
+        # own `radius = world_width / 2.0`) so the marker sits exactly on
+        # the same circle the dots/pattern markers are drawn on.
+        if session.viz_mode == "line" and session.line_axis_curved:
+            gl.prog_outline["u_pan"].value = (pan_x, pan_y)
+            gl.prog_outline["u_zoom"].value = session.cam_zoom
+            gl.prog_outline["u_viewport"].value = (width, height)
+            gl.prog_outline["u_radius"].value = 800.0
+            gl.prog_outline["u_color"].value = (1.0, 0.0, 0.0, 1.0)
+            gl.axis_boundary_vao.render(moderngl.LINES)
+
         # Center marker -- fixed decorative triangle + glow line at the
         # ring field's own screen-space origin (pan_x, pan_y; see
         # build_center_marker_vertex_data's own doc-comment for why this is
@@ -1091,6 +1111,16 @@ def main():
                          help="line mode pattern only, and only with --pattern-step-mode auto: seek "
                               "the next real MATCH! when given, or specifically the next NON-match "
                               "wheel candidate when not given")
+    # Purely cosmetic (Artur's own spec, 2026-09-18): bend the axis into a
+    # circle instead of a straight line -- see geometry_draw.
+    # build_line_vertex_data's own `curved` doc-comment. Does not change
+    # navigation, matching, or the wheel/seek logic at all, only where a
+    # position renders on screen -- see RenderSession.line_axis_curved.
+    parser.add_argument("--line-axis-curved", action="store_true",
+                         help="line mode only: draw the axis bent into a circle instead of a "
+                              "straight line (purely visual -- the loaded window's own start/end "
+                              "coincide on screen, marked with a red boundary line, since they are "
+                              "NOT actually the same value the way a real periodic wraparound would be)")
     parser.add_argument("--pipe-stdin-commands", action="store_true",
                          help="read RESUME commands from stdin and, instead of "
                               "exiting on window-close, hide the window and idle "

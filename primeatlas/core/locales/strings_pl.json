@@ -876,6 +876,7 @@
   "rings.pattern_step_manual_label": "Ręcznie",
   "rings.pattern_step_auto_label": "Automatycznie",
   "rings.pattern_stop_on_match_label": "MATCH! (tylko Auto: szukaj trafień gdy zaznaczone, pominięć gdy nie)",
+  "rings.line_axis_curved_label": "Zakrzywiona oś (tylko wizualnie)",
   "rings.hud_panel_title": "HUD",
   "rings.hud_panel_placeholder": "(otwórz wizualizację, aby zobaczyć tu bieżący status)",
   "rings.hud_status_running": "odtwarzanie, {tempo}ms/takt",

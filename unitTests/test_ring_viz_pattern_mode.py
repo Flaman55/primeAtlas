@@ -106,6 +106,74 @@ def _test_line_positions_archive_scale_precision():
     check(abs(pos["x"][-1] - 800.0) < 1e-6, "the largest value still maps to the right edge exactly")
 
 
+def _test_value_to_ring_axis_xy():
+    """Spec for ring_geometry.value_to_ring_axis_xy (2026-09-18, Artur's
+    own follow-up: "wizualne zwinięcie w pierścień ... początkiem i
+    końcem będzie pionowa linia czerwona" -- a purely visual curved-axis
+    layout, values keep their exact linear order, only the on-screen
+    shape bends into a circle). t=0 (value==lo) and t=1 (value==lo+span)
+    must coincide at the exact same point -- the seam a real, non-cyclic
+    loaded range needs a boundary marker for."""
+    from primeatlas.rings.ring_geometry import value_to_ring_axis_xy
+    import math
+
+    lo, span, radius = 1000, 2000, 800.0
+
+    x0, y0 = value_to_ring_axis_xy(lo, lo, span, radius)
+    check(abs(x0 - 0.0) < 1e-9, f"t=0 sits at x=0 (12 o'clock), got x={x0}")
+    check(abs(y0 - (-radius)) < 1e-9, f"t=0 sits at y=-radius (12 o'clock), got y={y0}")
+
+    x1, y1 = value_to_ring_axis_xy(lo + span, lo, span, radius)
+    check(abs(x1 - x0) < 1e-9 and abs(y1 - y0) < 1e-9,
+          f"t=1 (value=lo+span) coincides EXACTLY with t=0 -- the seam (got ({x1},{y1}) vs ({x0},{y0}))")
+
+    xh, yh = value_to_ring_axis_xy(lo + span / 2, lo, span, radius)
+    check(abs(xh - 0.0) < 1e-9 and abs(yh - radius) < 1e-9,
+          f"t=0.5 sits diametrically opposite the seam, at (0, +radius) (got ({xh},{yh}))")
+
+    for t in (0.1, 0.3, 0.7, 0.9):
+        value = lo + t * span
+        x, y = value_to_ring_axis_xy(value, lo, span, radius)
+        dist = math.hypot(x, y)
+        check(abs(dist - radius) < 1e-6, f"every mapped point lies exactly on the circle of radius {radius} (t={t}, got dist={dist})")
+
+
+def _test_line_positions_windowed_ring():
+    """Spec for ring_geometry.line_positions_windowed_ring: same [lo, lo+span]
+    binary-search filter as line_positions_windowed, but each surviving
+    value is placed via value_to_ring_axis_xy's circular math instead of a
+    straight y=0 row."""
+    from primeatlas.rings.ring_geometry import line_positions_windowed_ring, value_to_ring_axis_xy
+    import numpy as np
+    import math
+
+    primes = np.array([5, 11, 13, 17, 19, 23, 29, 1000], dtype=np.int64)
+    win = line_positions_windowed_ring(primes, lo=10, span=20, radius=800.0)
+    check(len(win["x"]) == 6, f"same filtering as the straight variant: 6 values inside [10, 30] (got {len(win['x'])})")
+    check(win["lo"] == 10 and win["span"] == 20, "line_positions_windowed_ring reports back the CALLER's own lo/span")
+    check(any(abs(y) > 1e-6 for y in win["y"]),
+          f"the curved layout genuinely uses non-zero y (unlike the straight layout) (got y={win['y']})")
+
+    for x, y in zip(win["x"], win["y"]):
+        dist = math.hypot(x, y)
+        check(abs(dist - 800.0) < 1e-6, f"every background dot lies exactly on the circle (got dist={dist})")
+
+    expected_x, expected_y = value_to_ring_axis_xy(11, 10, 20, 800.0)
+    check(abs(win["x"][0] - expected_x) < 1e-6 and abs(win["y"][0] - expected_y) < 1e-6,
+          "line_positions_windowed_ring's own mapping matches value_to_ring_axis_xy for the same lo/span")
+
+
+def _test_axis_boundary_marker_vertices():
+    from primeatlas.rings.ring_viz.geometry_draw import axis_boundary_marker_vertices
+    import numpy as np
+
+    verts = axis_boundary_marker_vertices()
+    check(verts.shape == (2, 2), f"boundary marker is a 2-vertex (center, edge) segment (got shape {verts.shape})")
+    check(verts.dtype == np.float32, f"boundary marker vertices are float32, ready for a GL buffer (got {verts.dtype})")
+    check(tuple(verts[0]) == (0.0, 0.0), f"first vertex is the circle's own center (got {tuple(verts[0])})")
+    check(tuple(verts[1]) == (0.0, -1.0), f"second vertex is the unit-radius '12 o'clock' edge point (got {tuple(verts[1])})")
+
+
 def _test_pattern_positions_and_match():
     from primeatlas.rings.ring_geometry import pattern_positions_and_match
 
@@ -394,6 +462,39 @@ def _test_build_line_vertex_data():
     check(all_match4 is True, "an explicit primes_set override gives the same match result as the default")
 
 
+def _test_build_line_vertex_data_curved():
+    """Spec for build_line_vertex_data's `curved` parameter (2026-09-18,
+    Artur's own spec: "w samym działaniu nic się nie zmieni poza samą
+    wizualizacją osi" -- nothing changes in the actual behavior, only the
+    axis's own visualization). Compares curved=True directly against
+    curved=False for the IDENTICAL inputs: match results, hit_mask, and
+    row counts must be byte-for-byte identical; only the (x,y) positions
+    themselves may differ."""
+    from primeatlas.rings.ring_viz.geometry_draw import build_line_vertex_data
+    import numpy as np
+    import math
+
+    range_primes = np.array([11, 13, 17, 19, 23, 29, 31, 37], dtype=np.int64)
+    offsets = [0, 2, 6, 8, 12, 18, 20]
+
+    data_s, count_s, hit_s, match_s, view_s = build_line_vertex_data(range_primes, 11, offsets, curved=False)
+    data_c, count_c, hit_c, match_c, view_c = build_line_vertex_data(range_primes, 11, offsets, curved=True)
+
+    check(count_s == count_c, f"curved vs straight produce the same row count (got {count_s} vs {count_c})")
+    check(bool((hit_s == hit_c).all()), "curved vs straight mark exactly the same rows as pattern members")
+    check(match_s == match_c == True, "curved vs straight report the identical all_match result")  # noqa: E712
+    check(view_s == view_c, "curved vs straight pick the identical view_mode (this flag is orthogonal to it)")
+    check(bool((data_s[:, 2:5] == data_c[:, 2:5]).all()), "curved vs straight assign the identical colors per row")
+
+    # Straight layout: every y is exactly 0. Curved layout: not all y are 0,
+    # and every (x,y) pair lies on the circle of radius world_width/2=800.
+    check(bool((data_s[:, 1] == 0.0).all()), "the straight (default) layout keeps every y at exactly 0")
+    check(not bool((data_c[:, 1] == 0.0).all()), "the curved layout genuinely uses non-zero y for at least some rows")
+    for x, y in zip(data_c[:, 0], data_c[:, 1]):
+        dist = math.hypot(float(x), float(y))
+        check(abs(dist - 800.0) < 1e-3, f"every curved-layout point lies on the circle of radius 800 (got dist={dist})")
+
+
 def _test_line_view_bounds():
     """Spec for ring_geometry.line_view_bounds (2026-09-18, Artur's own
     "wrap the axis into a phase/ring coordinate" fix for the float32
@@ -579,6 +680,41 @@ def _test_render_session_line_mode():
     check(session.pattern_wheel_residues is None, "reset() clears the wheel residues")
 
 
+def _test_render_session_line_axis_curved():
+    """Spec: RenderSession.line_axis_curved is a purely cosmetic, launch-
+    time toggle -- constructing two otherwise-identical sessions (one
+    curved, one not) and rebuilding at the same N must produce IDENTICAL
+    pattern_match/count_hit (i.e. the SAME set of matches/misses), only
+    differing in the actual (x,y) positions rendered. reset() must clear
+    it back to False, same "clean baseline" contract as every other line-
+    mode launch parameter."""
+    from primeatlas.rings.ring_viz.session import RenderSession
+    import numpy as np
+
+    range_primes = np.array([11, 13, 17, 19, 23, 29, 31, 37, 41, 43], dtype=np.int64)
+    kwargs = dict(
+        primes=range_primes, n=11, ceiling=100, range_mode=True,
+        range_primes=range_primes, range_step=1,
+        track_primes=[], auto_orbit=False, enabled_ids=set(), theta=0.5, law_mode="stepped",
+        max_radius=800.0, tempo_ms=120, buffer_margin=0, can_extend_buffer=False,
+        portal_folder=None, viz_mode="line", pattern_offsets=[0, 2, 6, 8, 12, 18, 20],
+    )
+    session_straight = RenderSession(**kwargs, line_axis_curved=False)
+    session_curved = RenderSession(**kwargs, line_axis_curved=True)
+
+    check(session_straight.line_axis_curved is False, "line_axis_curved defaults to/honors False")
+    check(session_curved.line_axis_curved is True, "line_axis_curved honors True when passed at construction")
+
+    _dn_s, _dh_s, _count_s, count_hit_s = session_straight.rebuild_line(11)
+    _dn_c, _dh_c, _count_c, count_hit_c = session_curved.rebuild_line(11)
+    check(count_hit_s == count_hit_c == 7, "curved vs straight sessions carry the identical hit-row count")
+    check(session_straight.pattern_match == session_curved.pattern_match == True,  # noqa: E712
+          "curved vs straight sessions report the identical pattern_match result")
+
+    session_curved.reset()
+    check(session_curved.line_axis_curved is False, "reset() clears line_axis_curved back to False")
+
+
 def _test_render_session_wheel_scrub():
     """Session-level check that scrub_advance/tick actually WIRE into
     next_wheel_n correctly (right modulus/residues/bounds at the right
@@ -655,6 +791,9 @@ def main():
     _test_pattern_offsets_from_seed()
     _test_line_positions_and_value_to_line_x()
     _test_line_positions_archive_scale_precision()
+    _test_value_to_ring_axis_xy()
+    _test_line_positions_windowed_ring()
+    _test_axis_boundary_marker_vertices()
     _test_pattern_positions_and_match()
     _test_clamp_pattern_anchor()
     _test_pattern_wheel_residues()
@@ -664,11 +803,13 @@ def main():
     _test_render_session_anchor_always_reachable()
     _test_resolve_pattern_anchor()
     _test_build_line_vertex_data()
+    _test_build_line_vertex_data_curved()
     _test_line_view_bounds()
     _test_line_positions_windowed()
     _test_line_positions_windowed_archive_scale_precision()
     _test_build_line_vertex_data_local_view_integration()
     _test_render_session_line_mode()
+    _test_render_session_line_axis_curved()
     _test_render_session_wheel_scrub()
 
     if failures:

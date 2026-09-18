@@ -1337,6 +1337,65 @@ def line_positions_windowed(primes, lo, span, world_width=1600.0):
     return {"x": x, "y": y, "lo": lo, "span": span}
 
 
+def value_to_ring_axis_xy(value, lo, span, radius=800.0, cx=0.0, cy=0.0):
+    """Maps a single scalar value the same way value_to_line_x does (a
+    linear position `t = (value - lo) / span` in [0, 1] along the loaded
+    window), but places it on a CIRCLE instead of a straight line --
+    Artur's own follow-up request (2026-09-18) once the float32-precision
+    fallback (line_view_bounds/line_positions_windowed) landed: a purely
+    VISUAL change to how "line" viz-mode's already-correct, already-
+    ordered axis is drawn, explicitly NOT a change to which values map
+    where in sequence ("w samym działaniu nic się nie zmieni poza samą
+    wizualizacją osi" -- nothing changes in the actual behavior, only the
+    axis's own visualization). Values still keep their exact linear
+    ORDER around the circle; only the on-screen SHAPE bends from a
+    straight row into a ring.
+
+    Same angle convention ring_geometry.ring_positions already uses
+    (`angle = phase * 2*pi/prime - pi/2`, DrumRenderer's own convention):
+    t=0 (the window's own `lo`) sits at angle -pi/2 -- "12 o'clock",
+    directly above the center for the y-axis convention this whole module
+    already uses (y increases downward on screen, see VERTEX_SHADER's own
+    `ndc.y = -ndc.y` flip; sin(-pi/2) = -1 there ends up rendering at the
+    TOP). t=1 (the window's own `lo+span`, one full turn later) maps to
+    angle -pi/2 + 2*pi, which is the exact same angle as -pi/2 (sin/cos
+    are 2*pi-periodic) -- i.e. the window's start and end coincide at the
+    SAME point on the circle. That coincidence is the seam a real,
+    non-cyclic loaded range needs marked, since (unlike ring mode's own
+    n % p, which is genuinely periodic) `lo` and `lo+span` are NOT the
+    same value -- see the boundary marker line
+    (geometry_draw.axis_boundary_marker_vertices) drawn through this exact
+    point, in red, so the seam is never mistaken for a real wraparound."""
+    t = (value - lo) / span
+    angle = -math.pi / 2.0 + t * 2.0 * math.pi
+    x = cx + radius * math.cos(angle)
+    y = cy + radius * math.sin(angle)
+    return x, y
+
+
+def line_positions_windowed_ring(primes, lo, span, radius=800.0, cx=0.0, cy=0.0):
+    """Circular-layout counterpart of line_positions_windowed: same
+    binary-search filter down to [lo, lo+span], but each surviving value
+    is placed via value_to_ring_axis_xy's own angle math instead of a
+    straight line's y=0 row -- see that function's own doc-comment for the
+    full rationale (a purely visual "curved axis" mode, values keep their
+    exact linear order, only the on-screen shape changes).
+
+    Returns the same {"x", "y", "lo", "span"} shape line_positions_windowed
+    does, so a caller (build_line_vertex_data) can switch between the two
+    layouts without touching anything else about how the result is used."""
+    primes_arr = to_prime_array(primes)
+    hi = lo + span
+    start = int(np.searchsorted(primes_arr, lo, side="left"))
+    end = int(np.searchsorted(primes_arr, hi, side="right"))
+    windowed = primes_arr[start:end]
+    t = (windowed - lo).astype(np.float64) / span
+    angle = -np.pi / 2.0 + t * 2.0 * np.pi
+    x = cx + radius * np.cos(angle)
+    y = cy + radius * np.sin(angle)
+    return {"x": x, "y": y, "lo": lo, "span": span}
+
+
 def pattern_positions_and_match(n, offsets, primes_window_set):
     """positions = [n+o for o in offsets]; hit_flags[i] = positions[i] is a
     member of `primes_window_set`; all_match = every offset hit (False,

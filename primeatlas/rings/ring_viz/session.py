@@ -128,7 +128,8 @@ class RenderSession:
                  track_primes, auto_orbit, enabled_ids, theta, law_mode, max_radius,
                  tempo_ms, buffer_margin, can_extend_buffer, portal_folder,
                  viz_mode="rings", pattern_offsets=None,
-                 pattern_step_mode="manual", pattern_stop_on_match=False):
+                 pattern_step_mode="manual", pattern_stop_on_match=False,
+                 line_axis_curved=False):
         # Ring data / sequencing (was: bare `primes`/`ceiling`/`range_mode`/
         # `range_primes`/`range_step` locals in _run_visualization, some
         # mutated via `nonlocal`).
@@ -184,6 +185,13 @@ class RenderSession:
         self.pattern_offsets = list(pattern_offsets) if pattern_offsets else None
         self.pattern_match = False
         self.pattern_view_mode = None
+        # Purely cosmetic, launch-time-only choice (Artur's own spec,
+        # 2026-09-18): draw the axis as a straight line (default,
+        # unchanged) or bent into a circle -- see geometry_draw.
+        # build_line_vertex_data's own `curved` doc-comment for why this
+        # never touches matching/navigation/wheel logic, only which (x,y)
+        # a position renders at.
+        self.line_axis_curved = bool(line_axis_curved)
         self.flash_pattern = 0.0
         # Wheel-skip: which n (mod some small-prime-derived period) can
         # EVER match, computed once up front from the pattern's own
@@ -594,6 +602,7 @@ class RenderSession:
         self._pattern_primes_set = None
         self.pattern_step_mode = "manual"
         self.pattern_stop_on_match = False
+        self.line_axis_curved = False
 
     # ------------------------------------------------------------------
     # Buffer extension -- was extend_buffer_if_needed's own closure body.
@@ -767,7 +776,8 @@ class RenderSession:
         the main render loop's draw calls stay identical between modes."""
         t0 = time.perf_counter()
         data, count, hit_mask, all_match, view_mode = build_line_vertex_data(
-            self.range_primes, n_value, self.pattern_offsets or (), primes_set=self._pattern_primes_set
+            self.range_primes, n_value, self.pattern_offsets or (), primes_set=self._pattern_primes_set,
+            curved=self.line_axis_curved,
         )
         t1 = time.perf_counter()
         print(f"N={n_value:,}  line dots={count:,}  view={view_mode}  rebuild={1000 * (t1 - t0):.1f}ms")

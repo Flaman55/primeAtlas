@@ -717,6 +717,17 @@ dots actually inside that viewport rather than the entire loaded array, which al
 real 2,000,000-prime archive load's own per-frame rebuild time from ~410ms to under 1ms.
 The HUD's `Pattern:` line shows `[view: local]` whenever this fallback is active.
 
+An optional "Curved axis" checkbox (`--line-axis-curved`) bends line mode's straight dot-row
+into a circle instead -- a PURELY visual choice (`ring_geometry.value_to_ring_axis_xy`/
+`line_positions_windowed_ring`, `geometry_draw.build_line_vertex_data`'s own `curved`
+parameter): every value keeps its exact linear position/order, only the on-screen shape
+changes, and nothing about matching, navigation, or the wheel/seek logic is affected. Since
+the loaded window's own start and end are NOT actually the same value (unlike ring mode's
+genuinely periodic `n % p`), bending them onto the same point on the circle would otherwise
+look like a real wraparound that isn't there -- a red boundary line (drawn through
+`geometry_draw.axis_boundary_marker_vertices`, reusing the tracked-ring outline's own
+`OUTLINE_VERTEX_SHADER`/`prog_outline`) marks that seam explicitly.
+
 ## Architecture
 
 ```
@@ -900,7 +911,10 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               anchor-centered viewport instead of the whole loaded window
                               once that window's own span would lose a k-tuple's small
                               internal offsets to the GPU's float32 vertex-buffer precision
-                              limit (see "Ring visualization" above)
+                              limit, and value_to_ring_axis_xy/line_positions_windowed_ring
+                              provide the optional curved-axis layout -- same lo/span
+                              mapping, bent onto a circle instead of a straight line, purely
+                              visual (see "Ring visualization" above for both)
   ring_viz/                      the GPU renderer subprocess launched by rings_tab.py --
                               kept in its own subpackage since it's a separate OS
                               process, not additional widgets in the main Tk process;
@@ -913,7 +927,10 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
     gl_setup.py                   GLResources: window/context/shader-program/VAO/VBO
                               creation -- the one piece of the split below that is NOT
                               GL-free, since creating a GL context is unavoidably
-                              GL-bound one-time setup work
+                              GL-bound one-time setup work. axis_boundary_vao reuses the
+                              tracked-ring outline's own OUTLINE_VERTEX_SHADER/prog_outline
+                              (a per-draw-call u_radius/u_color pair) over a fixed 2-vertex
+                              buffer to draw line mode's curved-axis boundary marker
     session.py                     RenderSession -- the interactive session's own state
                               (camera pan/zoom, playback/tempo, auto-orbit, tracked-
                               ring outlines, buffer extension, HUD snapshot) and the
@@ -922,7 +939,7 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               loop are thin adapters rather than a dozen separate
                               closures each capturing their own mutable dict. Also owns
                               "line" viz-mode's own state (viz_mode/pattern_offsets/
-                              pattern_match/flash_pattern) and rebuild_line -- a
+                              pattern_match/flash_pattern/line_axis_curved) and rebuild_line -- a
                               deliberately separate method from rebuild() (ring mode),
                               not a branch inside it, since line mode has none of ring
                               mode's resonance/window/HUD-factors machinery
@@ -939,7 +956,9 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               anchor-centered viewport (see "Ring visualization" above),
                               and accepts an optional pre-built primes_set so a caller
                               holding range_primes fixed across many calls (RenderSession)
-                              isn't forced to rebuild the same set from scratch every frame
+                              isn't forced to rebuild the same set from scratch every frame.
+                              axis_boundary_marker_vertices is the 2-vertex (center, edge)
+                              buffer for the curved-axis boundary marker (see gl_setup.py)
     hud.py                         HUD text composition (plain lines and the on-canvas
                               canvas-header/status wrapper), per-line window-family
                               coloring, and Pillow-based rasterization of the on-canvas

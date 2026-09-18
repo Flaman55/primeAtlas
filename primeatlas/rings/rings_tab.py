@@ -63,7 +63,8 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
                          sound_low='sine', sound_prime='triangle', sound_lcm='choir',
                          pipe_stdin_commands=False, max_load_count=None, tempo_ms=None,
                          viz_mode="rings", pattern_seed_k=None, pattern_seed_start=None,
-                         pattern_step_mode="manual", pattern_stop_on_match=False):
+                         pattern_step_mode="manual", pattern_stop_on_match=False,
+                         line_axis_curved=False):
     """Builds the argv for launching renderer.py against a real archive.
 
     Uses `python_executable` (defaults to sys.executable -- THIS SAME Python
@@ -156,7 +157,12 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
     on_match` -- False (default) omits --pattern-stop-on-match entirely,
     seeking the next NON-match wheel candidate (in "auto" mode only);
     True seeks the next real MATCH! instead -- see RenderSession.
-    _pattern_uses_seek's own doc-comment for the exact combined rule."""
+    _pattern_uses_seek's own doc-comment for the exact combined rule.
+
+    `line_axis_curved` -- False (default) omits --line-axis-curved
+    entirely (the straight-line axis, unchanged); True bends line mode's
+    axis into a circle instead -- purely visual, see RenderSession.
+    line_axis_curved's own doc-comment."""
     exe = python_executable or sys.executable
     argv = [exe, RENDERER_SCRIPT, "--source", "archive",
             "--portal-folder", portal_folder, "--upto", str(upto)]
@@ -201,6 +207,8 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
         argv += ["--pattern-step-mode", str(pattern_step_mode)]
     if pattern_stop_on_match:
         argv += ["--pattern-stop-on-match"]
+    if line_axis_curved:
+        argv += ["--line-axis-curved"]
     if audio:
         argv += ['--audio', '--sound-low', sound_low, '--sound-prime', sound_prime,
                  '--sound-lcm', sound_lcm]
@@ -583,6 +591,20 @@ class RingsTab(BaseTab):
             variable=self.pattern_stop_on_match_var)
         self._pattern_stop_on_match_check.pack(side="left")
 
+        # Curved axis (Artur's own spec, 2026-09-18): purely visual --
+        # bends line mode's straight dot-row into a circle instead, with a
+        # red boundary line marking where the loaded window's own start
+        # and end coincide on screen (they are NOT the same value, unlike
+        # a real periodic wraparound -- see geometry_draw.
+        # axis_boundary_marker_vertices' own doc-comment). Does not touch
+        # navigation/matching/wheel logic at all -- see RenderSession.
+        # line_axis_curved.
+        self.line_axis_curved_var = tk.BooleanVar(value=saved_params.get("line_axis_curved", False))
+        self._line_axis_curved_check = ttk.Checkbutton(
+            pattern_step_row, text=self.T("rings.line_axis_curved_label"),
+            variable=self.line_axis_curved_var)
+        self._line_axis_curved_check.pack(side="left", padx=(16, 0))
+
         # --- Windows & tracking -------------------------------------------
         # These are working parameters (what the visualization
         # computes/highlights), not visual/appearance settings, so they
@@ -769,6 +791,7 @@ class RingsTab(BaseTab):
             self._general_law_check, self._auto_orbit_check,
             self._mode_sequential_radio, self._mode_range_radio, self._line_mode_check,
             self._pattern_manual_radio, self._pattern_auto_radio, self._pattern_stop_on_match_check,
+            self._line_axis_curved_check,
         ]
         self._launch_param_dropdowns = [
             self.general_law_mode_combo,
@@ -1003,7 +1026,8 @@ class RingsTab(BaseTab):
                                     pattern_seed_k=pattern_k,
                                     pattern_seed_start=pattern_p0,
                                     pattern_step_mode=self.pattern_step_mode_var.get(),
-                                    pattern_stop_on_match=self.pattern_stop_on_match_var.get())
+                                    pattern_stop_on_match=self.pattern_stop_on_match_var.get(),
+                                    line_axis_curved=self.line_axis_curved_var.get())
         # Persist every launch-time field as-typed, so the NEXT
         # launch (this session's Reset+Start, or a whole new app restart) reopens
         # with these same values instead of the tab's hardcoded first-run defaults
@@ -1038,6 +1062,7 @@ class RingsTab(BaseTab):
                 "pattern_p0": pattern_p0_raw,
                 "pattern_step_mode": self.pattern_step_mode_var.get(),
                 "pattern_stop_on_match": self.pattern_stop_on_match_var.get(),
+                "line_axis_curved": self.line_axis_curved_var.get(),
             })
         q = queue.Queue()
         # pipe_stdin=True so send_line("RESUME")

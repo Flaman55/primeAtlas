@@ -41,7 +41,9 @@ from primeatlas.rings.ring_geometry import (
     line_positions,
     line_view_bounds,
     line_positions_windowed,
+    line_positions_windowed_ring,
     value_to_line_x,
+    value_to_ring_axis_xy,
     pattern_positions_and_match,
 )
 
@@ -55,6 +57,29 @@ _TRACKED_WHITE_RGB = (255.0, 255.0, 255.0)
 _LINE_BASE_RGB = (0.0, 188.0, 212.0)  # background dot row, same cyan as ring mode's base
 _LINE_MATCH_RGB = (0.0, 230.0, 118.0)  # "#00e676" -- pattern member IS a real prime
 _LINE_MISS_RGB = (255.0, 23.0, 68.0)   # "#ff1744" -- pattern member is NOT prime here
+
+#: Curved-axis boundary marker -- opaque red, see axis_boundary_marker_vertices.
+_AXIS_BOUNDARY_RGBA = (1.0, 0.0, 0.0, 1.0)
+
+
+def axis_boundary_marker_vertices():
+    """(2, 2) float32 unit-space array for "line" viz-mode's curved-axis
+    boundary marker: a straight line from the circle's own center (0,0)
+    out to its "12 o'clock" edge point (0,-1), in the SAME unit-vector
+    convention unit_circle_vertices already uses for the tracked-ring
+    outline (both are scaled by a per-draw-call `u_radius` uniform in
+    OUTLINE_VERTEX_SHADER, drawn through the SAME prog_outline program --
+    this marker just uses moderngl.LINES instead of LINE_LOOP as its draw
+    mode, and a single shared 2-vertex buffer instead of unit_circle_
+    vertices' `segments`-point one).
+
+    (0,-1) is exactly where value_to_ring_axis_xy places t=0 AND t=1 alike
+    (angle -pi/2, "12 o'clock") -- see that function's own doc-comment for
+    why a real, non-cyclic loaded range needs this seam marked at all:
+    unlike ring mode's genuinely periodic n % p, a line-mode window's own
+    `lo` and `lo+span` are NOT the same value, just drawn at the same
+    point once the axis is bent into a circle."""
+    return np.array([[0.0, 0.0], [0.0, -1.0]], dtype=np.float32)
 
 
 def build_vertex_data(primes, n, max_radius, enabled_ids=(), theta=0.5, mode="stepped", track_primes=(),
@@ -162,7 +187,7 @@ def split_hit_normal_vertex_data(data, hit_mask):
     return data[~hit_mask], data[hit_mask], count_hit
 
 
-def build_line_vertex_data(range_primes, n, offsets, world_width=1600.0, primes_set=None):
+def build_line_vertex_data(range_primes, n, offsets, world_width=1600.0, primes_set=None, curved=False):
     """"line" viz-mode counterpart of build_vertex_data: a fixed horizontal
     row of point-sprites, one per real prime in `range_primes` (the base
     cyan dots), plus -- when `offsets` is non-empty -- the sliding
@@ -180,6 +205,17 @@ def build_line_vertex_data(range_primes, n, offsets, world_width=1600.0, primes_
     filter), never the full `range_primes` array's every row, since
     anything outside the slice would round to the exact same handful of
     float32 x positions anyway.
+
+    `curved` -- Artur's own follow-up request (2026-09-18): a PURELY
+    visual choice between laying the very same lo/span-mapped positions
+    out on a straight line (y=0, the default, unchanged) or bent into a
+    circle (line_positions_windowed_ring/value_to_ring_axis_xy) -- see
+    those functions' own doc-comments. Does not touch which positions are
+    computed, which ones count as a match, or ANY navigation/wheel/seek
+    logic -- those all operate on the same `n`/`offsets`/`primes_set`
+    either way, exactly Artur's own spec ("w samym działaniu nic się nie
+    zmieni poza samą wizualizacją osi" -- nothing changes in the actual
+    behavior, only the axis's own visualization).
 
     `primes_set` -- optional pre-built `set(int(v) for v in range_primes)`
     for the match check below; a caller holding `range_primes` fixed
@@ -204,7 +240,11 @@ def build_line_vertex_data(range_primes, n, offsets, world_width=1600.0, primes_
     range_lo = int(primes_arr[0]) if len(primes_arr) else 0
     range_hi = int(primes_arr[-1]) if len(primes_arr) else 0
     view_mode, lo, span = line_view_bounds(range_lo, range_hi, n, offsets)
-    line = line_positions_windowed(primes_arr, lo, span, world_width)
+    radius = world_width / 2.0
+    if curved:
+        line = line_positions_windowed_ring(primes_arr, lo, span, radius)
+    else:
+        line = line_positions_windowed(primes_arr, lo, span, world_width)
     bg_count = len(line["x"])
 
     bg_data = np.empty((bg_count, 5), dtype=np.float32)
@@ -223,8 +263,11 @@ def build_line_vertex_data(range_primes, n, offsets, world_width=1600.0, primes_
     pat_count = len(positions)
     pat_data = np.empty((pat_count, 5), dtype=np.float32)
     for i, (value, is_hit) in enumerate(zip(positions, hit_flags)):
-        pat_data[i, 0] = value_to_line_x(value, line["lo"], line["span"], world_width)
-        pat_data[i, 1] = 0.0
+        if curved:
+            pat_data[i, 0], pat_data[i, 1] = value_to_ring_axis_xy(value, line["lo"], line["span"], radius)
+        else:
+            pat_data[i, 0] = value_to_line_x(value, line["lo"], line["span"], world_width)
+            pat_data[i, 1] = 0.0
         pat_data[i, 2:5] = np.array(_LINE_MATCH_RGB if is_hit else _LINE_MISS_RGB, dtype=np.float64) / 255.0
     pat_hit_mask = np.ones(pat_count, dtype=bool)
 

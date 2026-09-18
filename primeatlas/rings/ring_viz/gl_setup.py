@@ -30,7 +30,7 @@ from primeatlas.rings.ring_viz.shaders import (
     TEXT_VERTEX_SHADER,
     TEXT_FRAGMENT_SHADER,
 )
-from primeatlas.rings.ring_viz.geometry_draw import unit_circle_vertices
+from primeatlas.rings.ring_viz.geometry_draw import unit_circle_vertices, axis_boundary_marker_vertices
 from primeatlas.rings.ring_viz.hud import _PIL_AVAILABLE
 
 
@@ -42,7 +42,7 @@ class GLResources:
     function)."""
 
     def __init__(self, window, ctx, prog, hit_point_size, prog_outline,
-                 unit_circle_vao, prog_screen, marker_triangle_vbo,
+                 unit_circle_vao, axis_boundary_vao, prog_screen, marker_triangle_vbo,
                  marker_triangle_vao, marker_line_vbo, marker_line_vao,
                  flash_quad_vbo, flash_quad_vao, prog_text, hud_quad_vbo,
                  hud_quad_vao):
@@ -52,6 +52,7 @@ class GLResources:
         self.hit_point_size = hit_point_size
         self.prog_outline = prog_outline
         self.unit_circle_vao = unit_circle_vao
+        self.axis_boundary_vao = axis_boundary_vao
         self.prog_screen = prog_screen
         self.marker_triangle_vbo = marker_triangle_vbo
         self.marker_triangle_vao = marker_triangle_vao
@@ -162,6 +163,17 @@ def setup_gl_resources(args):
     unit_circle_vbo = ctx.buffer(unit_circle_vertices().tobytes())
     unit_circle_vao = ctx.vertex_array(prog_outline, [(unit_circle_vbo, "2f", "in_pos")])
 
+    # "line" viz-mode's curved-axis boundary marker -- a single red LINE
+    # (not LINE_LOOP) over the SAME prog_outline program, so it scales/pans
+    # with the camera exactly like the tracked-ring outlines above, and a
+    # per-draw-call u_radius/u_color pair sizes/colors it the same way (see
+    # axis_boundary_marker_vertices' own doc-comment for what it marks and
+    # why). A fixed 2-vertex buffer -- never rewritten, unlike the
+    # per-N-change ring vertex buffers below -- since it's the same two
+    # unit-space points (center, "12 o'clock" edge) for the whole session.
+    axis_boundary_vbo = ctx.buffer(axis_boundary_marker_vertices().tobytes())
+    axis_boundary_vao = ctx.vertex_array(prog_outline, [(axis_boundary_vbo, "2f", "in_pos")])
+
     # Screen-space shapes: center marker (triangle + line) and the
     # birth/resonance flash-overlay quad, all sharing one program and
     # vertex format (see SCREEN_VERTEX_SHADER's own doc-comment). Each gets
@@ -200,6 +212,7 @@ def setup_gl_resources(args):
     return GLResources(
         window=window, ctx=ctx, prog=prog, hit_point_size=hit_point_size,
         prog_outline=prog_outline, unit_circle_vao=unit_circle_vao,
+        axis_boundary_vao=axis_boundary_vao,
         prog_screen=prog_screen, marker_triangle_vbo=marker_triangle_vbo,
         marker_triangle_vao=marker_triangle_vao, marker_line_vbo=marker_line_vbo,
         marker_line_vao=marker_line_vao, flash_quad_vbo=flash_quad_vbo,

@@ -876,6 +876,7 @@
   "rings.pattern_step_manual_label": "Manual",
   "rings.pattern_step_auto_label": "Auto",
   "rings.pattern_stop_on_match_label": "MATCH! (Auto only: seek matches when checked, non-matches when not)",
+  "rings.line_axis_curved_label": "Curved axis (visual only)",
   "rings.hud_panel_title": "HUD",
   "rings.hud_panel_placeholder": "(open a visualization to see live status here)",
   "rings.hud_status_running": "running, {tempo}ms/tick",
