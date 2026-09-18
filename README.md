@@ -873,7 +873,13 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               sliding-pattern match check and its scrub clamp, and
                               pattern_wheel_residues/next_wheel_n implement the wheel-skip
                               (CRT over small primes) that lets scrub/playback jump straight
-                              to the next N that can ever match instead of testing every one
+                              to the next N that can ever match instead of testing every one,
+                              and resolve_pattern_anchor picks the launch anchor itself --
+                              the seed's own occurrence if the loaded window contains it, or
+                              the first phase-compatible wheel candidate at the window's own
+                              lower edge otherwise (so a small pattern seed like 7 or 11 still
+                              works correctly against a real archive-scale --load-range far
+                              above it, e.g. a 22-digit to 23-digit window)
   ring_viz/                      the GPU renderer subprocess launched by rings_tab.py --
                               kept in its own subpackage since it's a separate OS
                               process, not additional widgets in the main Tk process;

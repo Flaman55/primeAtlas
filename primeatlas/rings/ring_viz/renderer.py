@@ -187,7 +187,8 @@ if _PRIME_SIEVE_DIR not in sys.path:
 # only parse_big_int (--upto/--load-range/main()'s own CLI parsing) is
 # still used directly in this file.
 from primeatlas.rings.ring_geometry import (
-    parse_big_int, pattern_offsets_from_seed, clamp_pattern_anchor, next_prime_at_or_above,
+    parse_big_int, pattern_offsets_from_seed, next_prime_at_or_above,
+    resolve_pattern_anchor,
 )
 
 # The guarded Pillow import (and rasterize_hud_text, the only function that
@@ -517,16 +518,23 @@ def _run_visualization(args, audio=None):
     # an admissible pattern. main()'s own argparse validation already
     # guarantees --pattern-seed-k/--pattern-seed-start only appear together
     # and only with --viz-mode line + --load-range, so no further gating is
-    # needed here. The pattern's anchor starts at its OWN resolved seed
-    # prime (next_prime_at_or_above(--pattern-seed-start) -- the exact
-    # value pattern_offsets_from_seed itself anchored the offsets to, so
-    # this reproduces its own founding occurrence immediately) rather than
-    # the loaded window's lower edge -- range mode's own default n=0 (set
-    # above on a successful range load) is NOT reused here at all: it would
-    # otherwise land the pattern at the window's FIRST loaded prime (e.g. 2
-    # for a Load Range starting at 1), not at the seed the user actually
-    # typed. clamp_pattern_anchor only pulls it back into bounds if the
-    # seed itself somehow fell outside the loaded window.
+    # needed here.
+    #
+    # --pattern-seed-start only picks the pattern's SHAPE (which of the
+    # catalog's v1..v4-style offset variants) -- a small seed like 7 or 11
+    # works exactly the same way whether --load-range is [1, 1000] or a
+    # real archive-scale [10**22, 10**23]. The pattern's OWN anchor
+    # (`n`) is a completely separate concern: if the seed's own resolved
+    # occurrence actually falls inside the loaded window, start there (an
+    # immediate, guaranteed real MATCH! -- see pattern_offsets_from_seed's
+    # own doc-comment for why). Otherwise (the archive-scale case: the
+    # window is nowhere near the small seed used only to pick the shape)
+    # DON'T just clamp to the window's raw lower edge -- that's an
+    # arbitrary value with no guarantee of even being wheel-compatible.
+    # Compute the phase (pattern_wheel_residues, same math session.py's
+    # own RenderSession uses) and jump straight to the first genuinely
+    # wheel-compatible candidate at or past the window's lower edge, so
+    # scrubbing from there on is correctly phase-aligned from frame one.
     pattern_offsets = None
     if args.pattern_seed_k is not None:
         pattern_offsets = pattern_offsets_from_seed(args.pattern_seed_k, args.pattern_seed_start)
@@ -534,7 +542,12 @@ def _run_visualization(args, audio=None):
         print(f"Pattern seed: k={args.pattern_seed_k} start={args.pattern_seed_start:,} -> "
               f"offsets={pattern_offsets} (first realized at n={seed_prime:,})")
         if range_mode and len(range_primes):
-            n = clamp_pattern_anchor(seed_prime, int(range_primes[0]), int(range_primes[-1]), pattern_offsets)
+            lo = int(range_primes[0])
+            hi = int(range_primes[-1]) - pattern_offsets[-1]
+            n = resolve_pattern_anchor(seed_prime, pattern_offsets, lo, hi)
+            if n != seed_prime:
+                print(f"Pattern seed's own occurrence (n={seed_prime:,}) is outside the loaded "
+                      f"window -- starting instead at the first phase-compatible candidate: n={n:,}")
 
     # Everything from here down operates on one RenderSession object instead
     # of a dozen separate closure-captured dicts (state/pan-zoom, playback,

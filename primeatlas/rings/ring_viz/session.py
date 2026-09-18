@@ -211,20 +211,27 @@ class RenderSession:
             # and a genuine match buried mid-range (n=11 for a k=5
             # pattern -- silently skipped by --pattern-stop-on-match's own
             # search, which never even considered it a candidate). Patch
-            # BOTH kinds back into the residue set: the launch anchor
-            # itself (always real by construction -- pattern_offsets_
-            # from_seed built the offsets FROM this exact occurrence), and
-            # any of DEFAULT_WHEEL_PRIMES that independently checks out as
-            # a real match. Doesn't touch the "can never repeat at all"
-            # signal (residues == []) -- an entirely dead pattern still
-            # correctly has nowhere else to go either way.
+            # BOTH kinds back into the residue set -- the launch anchor
+            # itself AND any of DEFAULT_WHEEL_PRIMES -- but ONLY once each
+            # is VERIFIED as a real match against `_pattern_primes_set`,
+            # never trusted unconditionally: renderer.py's own seed-vs-
+            # window placement (see its "Pattern seed's own occurrence is
+            # outside the loaded window" branch) can hand this class a
+            # launch anchor that's just the phase-correct first candidate
+            # in an archive-scale window nowhere near the small seed, NOT
+            # a guaranteed real occurrence -- forcing an unverified
+            # residue in would pollute the wheel with a mostly-composite
+            # class for the WHOLE window, not just at the anchor. Doesn't
+            # touch the "can never repeat at all" signal (residues == [])
+            # -- an entirely dead pattern still correctly has nowhere else
+            # to go either way.
             if self.pattern_wheel_modulus > 1 and self.pattern_wheel_residues:
-                extra_residues = {self.n % self.pattern_wheel_modulus}
-                for p in DEFAULT_WHEEL_PRIMES:
-                    if p in self._pattern_primes_set and pattern_positions_and_match(
-                        p, self.pattern_offsets, self._pattern_primes_set
+                extra_residues = set()
+                for candidate in (self.n, *DEFAULT_WHEEL_PRIMES):
+                    if candidate in self._pattern_primes_set and pattern_positions_and_match(
+                        candidate, self.pattern_offsets, self._pattern_primes_set
                     )[2]:
-                        extra_residues.add(p % self.pattern_wheel_modulus)
+                        extra_residues.add(candidate % self.pattern_wheel_modulus)
                 missing = extra_residues - set(self.pattern_wheel_residues)
                 if missing:
                     self.pattern_wheel_residues = sorted(self.pattern_wheel_residues + list(missing))

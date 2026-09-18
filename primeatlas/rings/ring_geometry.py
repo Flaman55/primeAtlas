@@ -1190,12 +1190,28 @@ def line_positions(primes, world_width=1600.0):
     Returns {"x": ndarray, "y": ndarray, "lo": int, "span": int} -- `lo`/
     `span` are exposed so a caller can map an arbitrary OTHER value (e.g. a
     pattern-member position that isn't itself in `primes`) through the
-    exact same scale via value_to_line_x, without re-deriving it."""
+    exact same scale via value_to_line_x, without re-deriving it.
+
+    Subtracts `lo` BEFORE ever converting to float -- doing it the other
+    way around (cast to float64 first, subtract after) loses catastrophic
+    precision once values exceed float64's ~15-17 significant digits,
+    e.g. real floor-25+ archive primes (~26 digits): each individual
+    value's own float64 rounding error (up to ~value * 2**-52) can be far
+    bigger than the WHOLE loaded window's span, collapsing every point to
+    the same handful of pixels -- confirmed live, 2026-09-18, against a
+    real 26-digit --load-range ("nie ma nic na przestrzeni jest pusta...
+    podróżuje tylko dwa punkty a nie trzy dla k3" -- a k=3 pattern's 3
+    members visually collapsing to 2). `primes_arr - lo` stays EXACT
+    (object-dtype minus a Python int is exact Python bigint arithmetic;
+    uint64/int64 minus a scalar that still fits the same dtype is exact
+    too) -- the resulting delta is bounded by `span`, which is never
+    astronomically large in practice, so only THEN is it safe to cast to
+    float64."""
     primes_arr = to_prime_array(primes)
     lo = int(primes_arr[0])
     hi = int(primes_arr[-1])
     span = max(hi - lo, 1)
-    x = (primes_arr.astype(np.float64) - lo) / span * world_width - world_width / 2.0
+    x = (primes_arr - lo).astype(np.float64) / span * world_width - world_width / 2.0
     y = np.zeros(len(primes_arr), dtype=np.float64)
     return {"x": x, "y": y, "lo": lo, "span": span}
 
@@ -1294,10 +1310,10 @@ def next_wheel_n(n, is_right, modulus, residues, lo, hi):
     ever returns `n` unchanged, same as being permanently at the edge.
 
     O(log len(residues)) via bisect (`residues` is already sorted) rather
-    than a linear scan -- RenderSession's own match-search feature
-    (_pattern_seek_match) can call this many times in a single frame
-    hunting for the next real MATCH!, so the per-call cost matters here
-    in a way it didn't for a single scrub/tick step alone."""
+    than a linear scan -- RenderSession's own seek feature (_pattern_seek)
+    can call this many times in a single frame hunting for the next real
+    MATCH! or non-match, so the per-call cost matters here in a way it
+    didn't for a single scrub/tick step alone."""
     if not residues:
         return n
     period_pos = n % modulus
@@ -1311,6 +1327,34 @@ def next_wheel_n(n, is_right, modulus, residues, lo, hi):
     if candidate < lo or candidate > hi:
         return n
     return candidate
+
+
+def resolve_pattern_anchor(seed_prime, offsets, lo, hi):
+    """Where "line" viz-mode's pattern anchor should start, given
+    `--pattern-seed-start`'s resolved occurrence (`seed_prime`, from
+    next_prime_at_or_above) and the loaded window's own bounds
+    (`lo`/`hi` -- range_primes[0] and range_primes[-1] - offsets[-1]).
+
+    `--pattern-seed-start` only picks the pattern's SHAPE (which offset
+    variant) -- a small seed like 7 or 11 works identically whether
+    `--load-range` is a tiny local span or a real archive-scale window
+    (e.g. [10**22, 10**23]) nowhere near it. If the seed's own occurrence
+    genuinely falls inside [lo, hi], start there -- an immediate,
+    guaranteed real MATCH! (pattern_offsets_from_seed built the offsets
+    FROM this exact occurrence). Otherwise, DON'T just clamp to `lo` --
+    that is an arbitrary value with no guarantee of being wheel-
+    compatible at all. Compute the phase (pattern_wheel_residues) and
+    jump straight to the first genuinely wheel-compatible candidate at or
+    past `lo`, via next_wheel_n, so scrubbing from there on is correctly
+    phase-aligned from frame one -- exactly the "it calculates the phase
+    for the starting number to properly align itself" behavior asked for
+    (2026-09-18)."""
+    if lo <= seed_prime <= hi:
+        return seed_prime
+    modulus, residues = pattern_wheel_residues(offsets)
+    if modulus <= 1:
+        return lo
+    return next_wheel_n(lo - 1, True, modulus, residues, lo, hi)
 
 
 def clamp_pattern_anchor(n, range_from, range_to, offsets):

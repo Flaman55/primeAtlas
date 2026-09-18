@@ -83,6 +83,29 @@ def _test_line_positions_and_value_to_line_x():
           "value_to_line_x reproduces line_positions' own mapping for a value already in the array")
 
 
+def _test_line_positions_archive_scale_precision():
+    """Regression (2026-09-18, Artur's own real report against a real
+    26-digit --load-range: "the space is empty ... only two points
+    travel, not three, for the chosen k3"): line_positions used to cast
+    to float64 BEFORE subtracting `lo`, so at real floor-25+ archive
+    scale (~26-digit values), each value's own float64 rounding error
+    (up to ~value * 2**-52, here ~2.7e9) dwarfed the whole loaded
+    window's actual span (~1.15e8), collapsing every point -- including
+    a k-tuple pattern's own few-unit-wide members -- onto the same pixel.
+    Fixed to subtract in exact integer arithmetic first."""
+    from primeatlas.rings.ring_geometry import line_positions
+    import numpy as np
+
+    base = 12345678901234567890000023
+    primes = np.array([base + i for i in (0, 5507, 100000, 115514730)], dtype=object)
+    pos = line_positions(primes, world_width=1600.0)
+    check(len(set(pos["x"])) == 4,
+          f"four values spanning a real 26-digit archive window each map to a DISTINCT x position, "
+          f"not collapsed by float64 precision loss (got {pos['x']})")
+    check(abs(pos["x"][0] - (-800.0)) < 1e-6, "the smallest value still maps to the left edge exactly")
+    check(abs(pos["x"][-1] - 800.0) < 1e-6, "the largest value still maps to the right edge exactly")
+
+
 def _test_pattern_positions_and_match():
     from primeatlas.rings.ring_geometry import pattern_positions_and_match
 
@@ -306,6 +329,40 @@ def _test_render_session_anchor_always_reachable():
     check(session.n == 3, f"scrub backward from the very next candidate returns exactly to the launch anchor (got {session.n})")
 
 
+def _test_resolve_pattern_anchor():
+    """2026-09-18: Artur asked whether this works for an arbitrary
+    --load-range at real archive scale (e.g. a 22-digit to 23-digit
+    window) while the pattern seed stays a small number like 7 or 11 --
+    the seed only picks the pattern's SHAPE, so it should compute the
+    phase and land on the first genuinely wheel-compatible candidate
+    inside that huge, disjoint window instead of naively clamping to the
+    window's raw lower edge (which has no guarantee of being wheel-
+    compatible at all)."""
+    from primeatlas.rings.ring_geometry import (
+        resolve_pattern_anchor, pattern_offsets_from_seed, next_prime_at_or_above,
+        pattern_wheel_residues,
+    )
+
+    offsets = pattern_offsets_from_seed(3, 5)  # [0, 2, 6], seed_prime=5
+    seed_prime = next_prime_at_or_above(5)
+
+    check(resolve_pattern_anchor(seed_prime, offsets, 2, 1000) == 5,
+          "seed's own occurrence is used directly when the window actually contains it")
+
+    # A real archive-scale window nowhere near the small seed.
+    lo, hi = 10 ** 22, 10 ** 22 + 10 ** 6
+    anchor = resolve_pattern_anchor(seed_prime, offsets, lo, hi)
+    check(anchor != seed_prime, f"the tiny seed occurrence (5) is NOT reused when it's nowhere near the "
+                                 f"window (got {anchor})")
+    check(lo <= anchor <= hi, f"the computed anchor stays inside the requested window (got {anchor})")
+    modulus, residues = pattern_wheel_residues(offsets)
+    check(anchor % modulus in residues,
+          f"the computed anchor is genuinely phase-compatible with the pattern's own wheel, not just "
+          f"the window's raw lower edge (got {anchor}, residue {anchor % modulus})")
+    check(all(x % modulus not in residues for x in range(lo, anchor)),
+          f"anchor is the FIRST compatible candidate at/after lo, not some arbitrarily later one (got {anchor})")
+
+
 def _test_build_line_vertex_data():
     from primeatlas.rings.ring_viz.geometry_draw import build_line_vertex_data
     import numpy as np
@@ -437,6 +494,7 @@ def main():
     _test_next_prime_at_or_above()
     _test_pattern_offsets_from_seed()
     _test_line_positions_and_value_to_line_x()
+    _test_line_positions_archive_scale_precision()
     _test_pattern_positions_and_match()
     _test_clamp_pattern_anchor()
     _test_pattern_wheel_residues()
@@ -444,6 +502,7 @@ def main():
     _test_pattern_step_mode_and_stop_on_match()
     _test_render_session_wheel_prime_matches_not_skipped()
     _test_render_session_anchor_always_reachable()
+    _test_resolve_pattern_anchor()
     _test_build_line_vertex_data()
     _test_render_session_line_mode()
     _test_render_session_wheel_scrub()
