@@ -108,6 +108,20 @@ from primeatlas.rings.ring_viz.hud import (
 )
 from primeatlas.rings.ring_viz.sources import load_archive, load_archive_before
 
+# Internal-only search stride for a background pattern seek (see
+# _start_pattern_seek/_effective_chunk_size's own doc-comments, 2026-09-25
+# follow-up -- Artur's own proposal: "a gdyby przeszukiwanie dzialalo na
+# tych domyslnych 2 milionach ale samo renderowanie bylo dla wyznaczonej
+# liczby" -- what if the SEARCH worked on the default 2 million while the
+# RENDERING stayed at the configured (possibly much smaller) chunk_size).
+# Deliberately just the app's own existing --max-load-count default
+# (renderer.py), not reinvented -- and deliberately NOT a new user-facing
+# knob (see feedback_configurable_perf_params.md's own 2026-09-25
+# refinement: don't split one conceptual knob into two GUI-visible
+# fields), since it only ever affects how many real chunks a seek's OWN
+# internal crawl needs, never what actually gets rendered.
+_SEEK_STRIDE_CHUNK_SIZE = 2_000_000
+
 
 class RenderSession:
     """Owns every piece of state _run_visualization's interactive part
@@ -351,6 +365,25 @@ class RenderSession:
         # after the first time.
         self._forward_edge_reported = False
         self._back_edge_reported = False
+        # Background-thread seek (2026-09-25 follow-up, Artur's own real
+        # report: chunk_size=500 + a sparse k=5 pattern can need MANY
+        # chunk crossings to reach the next real MATCH!, each one a real
+        # blocking disk load once the crawl outruns the single-chunk-deep
+        # prefetch above -- freezing the GLFW window for however long that
+        # whole chain takes, since _pattern_seek used to run synchronously
+        # on the main thread. See _start_pattern_seek's own doc-comment for
+        # the full design (single in-flight seek at a time, no true
+        # cancellation in v1, _seek_epoch guards a late finisher against a
+        # reset() that already moved the session on). None = idle.
+        self._seek_thread = None
+        self._seek_epoch = 0
+        # Search-stride override for the CURRENT background seek (see
+        # _effective_chunk_size/_recenter_render_chunks's own doc-comments,
+        # 2026-09-25 follow-up) -- None outside of an active seek, meaning
+        # every neighbor load (construction included) uses the user's own
+        # chunk_size exactly as before this follow-up existed.
+        self._seek_stride = None
+        self._seek_used_stride = False
         if self.sliding_enabled:
             # Construction itself blocks on both neighbors (there is
             # nothing on screen yet to hide this behind -- same cost as
@@ -379,6 +412,71 @@ class RenderSession:
     @range_primes.setter
     def range_primes(self, value):
         self.chunk_current = value
+
+    def _effective_chunk_size(self):
+        """The chunk size to use for the NEXT neighbor load -- normally
+        the user's own configured `chunk_size` (the render budget), but
+        temporarily overridden to `_SEEK_STRIDE_CHUNK_SIZE` while a
+        background pattern seek (`_start_pattern_seek`) is actively
+        crawling: Artur's own proposal, 2026-09-25 ("a gdyby
+        przeszukiwanie dzialalo na tych domyslnych 2 milionach ale samo
+        renderowanie bylo dla wyznaczonej liczby" -- what if the SEARCH
+        worked on the default 2 million while the RENDERING stayed at the
+        configured number) -- a small chunk_size (e.g. 500) means a
+        sparse pattern's seek needs proportionally more real chunk
+        crossings to reach its next match; searching with a much bigger
+        stride instead cuts that crossing count down, at the cost of
+        chunk_current temporarily holding far more than the user's own
+        render budget WHILE the search is still running (never rendered
+        mid-search -- see rebuild_line's own "Searching..." HUD line,
+        which is all that's shown then). `_recenter_render_chunks` reloads
+        back down to the real `chunk_size` around the match once one is
+        actually found, so what finally gets RENDERED still respects it.
+
+        Records the override into `_seek_used_stride` the moment it's
+        actually read (not just requested) -- `_start_pattern_seek`'s own
+        worker only pays for the recenter reload when this was genuinely
+        used at least once, since a fast match found entirely within the
+        already-loaded chunk_current never calls this at all."""
+        if self._seek_stride is not None:
+            self._seek_used_stride = True
+            return self._seek_stride
+        return self.chunk_size
+
+    def _recenter_render_chunks(self, target_n):
+        """Reloads chunk_back/chunk_current/chunk_forward at the user's
+        own real `chunk_size` around `target_n`, undoing whatever bigger
+        `_SEEK_STRIDE_CHUNK_SIZE` chunks the search that just found it
+        grew to along the way (see _effective_chunk_size's own
+        doc-comment) -- called ONLY when `_seek_used_stride` is True, right
+        before a background seek commits a found match. `target_n` becomes
+        chunk_current's own first element, same convention an ordinary
+        _slide_forward/_slide_backward landing already establishes (see
+        the sliding-window tests' own "chunk_current[0] == target"
+        assertions) -- not centered, just consistent with what a real
+        user's own next slide would have produced anyway, so nothing
+        downstream needs to treat a stride-search landing any differently
+        from an ordinary one.
+
+        Runs synchronously (unlike _ensure_forward_chunk/_ensure_back_chunk's
+        own background threads) -- this already executes ON a background
+        seek thread, not the GLFW main thread, so blocking it further here
+        costs nothing the search's own crawl wasn't already paying."""
+        self.chunk_current = load_archive(
+            self.portal_folder, self.range_load_to, from_n=target_n - 1, max_load_count=self.chunk_size,
+        )
+        lower_bound = self.range_load_from if self.range_load_from is not None else 0
+        self.chunk_back = load_archive_before(
+            self.portal_folder, target_n, self.chunk_size, not_below=lower_bound,
+        )
+        current_top = int(self.chunk_current[-1]) if len(self.chunk_current) else target_n
+        if current_top >= self.range_load_to:
+            self.chunk_forward = np.empty(0, dtype=np.uint64)
+        else:
+            self.chunk_forward = load_archive(
+                self.portal_folder, self.range_load_to, from_n=current_top, max_load_count=self.chunk_size,
+            )
+        self._rebuild_pattern_primes_set()
 
     def _ensure_forward_chunk(self):
         """Kicks off loading `chunk_forward` IN THE BACKGROUND (a daemon
@@ -415,11 +513,12 @@ class RenderSession:
         if current_top >= self.range_load_to:
             self.chunk_forward = np.empty(0, dtype=np.uint64)
             return
+        load_count = self._effective_chunk_size()
 
         def _worker():
             result = load_archive(
                 self.portal_folder, self.range_load_to, from_n=current_top,
-                max_load_count=self.chunk_size,
+                max_load_count=load_count,
             )
             self.chunk_forward = result
             self._forward_load_thread = None
@@ -441,10 +540,11 @@ class RenderSession:
         if current_bottom <= lower_bound:
             self.chunk_back = np.empty(0, dtype=np.uint64)
             return
+        load_count = self._effective_chunk_size()
 
         def _worker():
             result = load_archive_before(
-                self.portal_folder, current_bottom, self.chunk_size, not_below=lower_bound,
+                self.portal_folder, current_bottom, load_count, not_below=lower_bound,
             )
             self.chunk_back = result
             self._back_load_thread = None
@@ -805,6 +905,110 @@ class RenderSession:
             if is_match == want_match:
                 return current, True
 
+    def _start_pattern_seek(self, is_right, is_tick):
+        """Runs _pattern_seek(self.n, is_right) on a background thread
+        instead of blocking the GLFW main thread -- see this __init__'s
+        own doc-comment on `_seek_thread`/`_seek_epoch` for why: with
+        sliding enabled, _pattern_seek has no artificial step cap (see its
+        own doc-comment) and a small `chunk_size` against a sparse pattern
+        can need many real chunk crossings, each a real disk load, to
+        reach the next MATCH! -- Artur's own real report, 2026-09-25:
+        chunk_size=500 + k=5 made the window "zawiesza się" (hangs) for
+        exactly this reason. Only called from tick()/bump_n()/
+        scrub_advance() when `self.sliding_enabled` -- WITHOUT sliding,
+        _pattern_wheel_step can't loop at all (see its own doc-comment:
+        `if not self.sliding_enabled: return n` fires on the very first
+        failed candidate), so every pre-existing, non-sliding call site
+        keeps calling _pattern_seek synchronously, completely unchanged.
+
+        No-ops if a seek is already in flight (`self._seek_thread is not
+        None`) -- ANY navigation input arriving while one is running is
+        simply ignored until it resolves, rather than starting a second,
+        concurrent one: chunk_back/chunk_current/chunk_forward and their
+        own _ensure_forward_chunk/_ensure_back_chunk background-load
+        threads assume a SINGLE caller/owner at a time (no locking of
+        their own, same assumption every other method in this class
+        already relies on) -- two _pattern_seek calls racing through
+        _slide_forward/_slide_backward at once could corrupt that shared
+        state. Known v1 simplification this implies: reversing direction
+        mid-search does nothing until the in-flight search resolves,
+        rather than cancelling it -- acceptable since _pattern_seek is
+        guaranteed to terminate (see its own doc-comment) and the common
+        case (a match within a handful of chunks) resolves fast enough not
+        to be felt; true cancellation would need a cooperative abort check
+        threaded through _pattern_wheel_step's own loop, not attempted
+        here since Artur didn't ask for it.
+
+        `is_tick` selects tick()'s own extra not-found behavior (stop
+        playback + print, previously handled by the main loop's own
+        `if should_stop: print(...)` branch reacting to tick()'s
+        synchronous return value -- now impossible, since tick() itself
+        must return immediately once the search moves to a thread) versus
+        bump_n/scrub_advance's silent no-op-on-miss. Both share the exact
+        same found-gated commit rule (self.n = new_n only when found) that
+        already existed before this became threaded -- see tick/bump_n/
+        scrub_advance's own doc-comments.
+
+        `self._seek_epoch` is captured at kickoff and re-checked right
+        before the worker commits anything: reset() bumps this counter, so
+        a seek that finishes AFTER a reset() happened silently discards
+        its now-stale result instead of clobbering the fresh session state
+        reset() already moved on to."""
+        if self._seek_thread is not None:
+            return
+        start_n = self.n
+        epoch = self._seek_epoch
+        self.n_force_rebuild = True  # shows the "Searching..." HUD line this frame
+
+        def _worker():
+            # try/except/finally around the WHOLE body -- regression fix,
+            # 2026-09-25 (Artur's own real report: one step landed on a
+            # non-match and navigation was then stuck in BOTH directions).
+            # `self._seek_thread = None` used to sit only at the very end
+            # of this function -- any exception anywhere in _pattern_seek's
+            # own crawl (a real disk load, load_archive/load_archive_before,
+            # _slide_forward/_slide_backward, ...) would kill this thread
+            # WITHOUT ever reaching that line, leaving _seek_thread
+            # permanently non-None -- and since _start_pattern_seek's own
+            # guard treats any non-None value as "a seek is already
+            # running," every future tick/bump_n/scrub_advance call would
+            # silently no-op forever, in EITHER direction, with no error
+            # ever surfaced. `finally` guarantees the slot is freed
+            # regardless of how this exits; the traceback print at least
+            # makes a future occurrence diagnosable instead of a silent
+            # permanent freeze.
+            self._seek_stride = max(self.chunk_size, _SEEK_STRIDE_CHUNK_SIZE)
+            self._seek_used_stride = False
+            try:
+                new_n, found = self._pattern_seek(start_n, is_right)
+                if self._seek_epoch == epoch:
+                    if found:
+                        if self._seek_used_stride:
+                            # The search grew chunk_current/back/forward
+                            # past the user's own chunk_size along the way
+                            # (see _effective_chunk_size's own doc-comment)
+                            # -- shrink back down to it now that a real
+                            # match is actually being committed, so what
+                            # gets RENDERED still respects that budget.
+                            self._recenter_render_chunks(new_n)
+                        self.n = new_n
+                        self.n_advancing = True
+                    elif is_tick:
+                        self.playback_running = False
+                        print("Playback stopped: pattern search reached the loaded range's own edge")
+                    self.n_force_rebuild = True
+            except Exception:
+                import traceback
+                print("Pattern search failed with an unexpected error (navigation is still usable -- "
+                      "see the traceback below):")
+                traceback.print_exc()
+            finally:
+                self._seek_stride = None
+                self._seek_thread = None
+
+        self._seek_thread = threading.Thread(target=_worker, daemon=True)
+        self._seek_thread.start()
+
     def tick(self):
         """One playback tick, called once the main loop's own tempo_ms
         elapsed-time gate fires. In line mode with a meaningful pattern
@@ -820,6 +1024,18 @@ class RenderSession:
         branch to see)."""
         if self._has_pattern_wheel():
             if self._pattern_uses_seek():
+                if self.sliding_enabled:
+                    # With sliding enabled, a seek that needs to cross
+                    # chunks runs in the BACKGROUND (see
+                    # _start_pattern_seek's own doc-comment) -- this kicks
+                    # it off (or no-ops if one is already running) and
+                    # returns False immediately; playback keeps "running"
+                    # while the search is in flight, and the worker itself
+                    # flips playback_running False once it resolves
+                    # without a further match, same end state as the old
+                    # synchronous stop, just reached a frame or more later.
+                    self._start_pattern_seek(True, is_tick=True)
+                    return False
                 new_n, found = self._pattern_seek(self.n, True)
                 # found=False here can now ONLY mean the genuine loaded-window
                 # edge was reached without ever landing on the desired kind
@@ -880,6 +1096,12 @@ class RenderSession:
         branch)."""
         if self._has_pattern_wheel():
             if self._pattern_uses_seek():
+                if self.sliding_enabled:
+                    # See tick()'s own doc-comment on why a sliding seek
+                    # runs in the background -- same reasoning, same
+                    # no-op-if-already-running/found-gated commit here.
+                    self._start_pattern_seek(delta >= 0, is_tick=False)
+                    return
                 # Only commit the seek's own landing spot when it actually found
                 # the desired kind -- see tick()'s own comment on `found` for why
                 # (the genuine window edge, now the ONLY way this is False,
@@ -915,6 +1137,11 @@ class RenderSession:
             self.scrub_held += 1
         if self._has_pattern_wheel():
             if self._pattern_uses_seek():
+                if self.sliding_enabled:
+                    # See tick()'s own doc-comment on why a sliding seek
+                    # runs in the background.
+                    self._start_pattern_seek(is_right, is_tick=False)
+                    return
                 # Same "only commit on an actual found match" guard as bump_n's
                 # own -- see tick()'s comment for why.
                 new_n, found = self._pattern_seek(self.n, is_right)
@@ -955,7 +1182,15 @@ class RenderSession:
         """Ports the KEY_R branch exactly: stop playback, N=1, drop Track
         P, re-enable auto-orbit, and fall back to sequential mode even if
         --load-range was active at launch (mirrors the HTML's own
-        resetSequential())."""
+        resetSequential()).
+
+        Bumps `_seek_epoch` so a background pattern seek (see
+        _start_pattern_seek's own doc-comment) still in flight from
+        BEFORE this reset() call discards its result instead of
+        clobbering self.n/playback_running with a stale answer to a
+        question this reset already moved past -- the seek thread itself
+        isn't cancelled (still v1, see that same doc-comment), it just
+        becomes a no-op once it finishes."""
         self.playback_running = False
         self.track_primes.clear()
         self.auto_orbit = True
@@ -966,6 +1201,7 @@ class RenderSession:
         self.n = 1
         self.n_force_rebuild = True
         self.viz_mode = "rings"
+        self._seek_epoch += 1
         self.pattern_offsets = None
         self.pattern_match = False
         self.pattern_view_mode = None
@@ -1175,6 +1411,13 @@ class RenderSession:
         # the SAME dedup flags those methods already set/clear so this
         # line appears and disappears in lockstep with the console message.
         edge_lines = []
+        if self._seek_thread is not None:
+            # Background pattern seek in flight (see _start_pattern_seek's
+            # own doc-comment) -- N itself hasn't moved yet, so without
+            # this the GUI would look identical to before the key was
+            # pressed for however long the search takes; this line is the
+            # window's own confirmation "yes, it's working."
+            edge_lines.append("Searching for the next pattern match...")
         if self._forward_edge_reported:
             edge_lines.append(f"At range TO edge ({self.range_load_to:,}) -- cannot go further forward")
         if self._back_edge_reported:

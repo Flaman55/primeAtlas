@@ -831,6 +831,51 @@ away from wherever the message was about, so `_pattern_wheel_step` itself (the s
 point every navigation path already funnels through) clears both flags the moment it finds ANY
 next candidate, regardless of direction.
 
+With sliding enabled, `_pattern_seek`'s own uncapped crawl (see above) can need to cross MANY
+chunks before reaching a sparse pattern's next real MATCH! -- Artur's own real report,
+2026-09-25: a small `--max-load-count`/chunk size (e.g. 500) against a k=5 pattern made the
+window "zawiesza się" (hangs), since each crossing beyond the single-chunk-deep prefetch is a
+real blocking disk load and `_pattern_seek` used to run synchronously on the GLFW main thread.
+Rather than a mathematical shortcut (a density estimate, or reusing the separately-computed
+constellation "magazyn" of already-found hits -- both considered and dropped: the magazyn's own
+per-floor `CHECKPOINT.txt`/done-range bookkeeping only proves a sub-span was actually searched
+for constellations, not merely that prime data exists there, so trusting "no stored hit" as
+"no real hit" would risk a false negative in whatever sub-range the finder hasn't reached yet),
+`RenderSession._start_pattern_seek` simply moves the WHOLE `_pattern_seek` call onto a
+background daemon thread when `sliding_enabled` -- `tick`/`bump_n`/`scrub_advance` kick it off
+(or no-op if one is already running) and return immediately; the worker commits `self.n` (found)
+or stops playback with a printed message (`tick`, not found) once the search actually resolves,
+guarded by a `_seek_epoch` counter `reset()` bumps so a late finisher from BEFORE a reset can
+never clobber state reset() already moved past. `rebuild_line` surfaces a "Searching for the
+next pattern match..." HUD line for as long as `_seek_thread` is alive, so the window visibly
+shows it's working instead of looking frozen. Only ONE seek runs at a time by design (chunk_back/
+chunk_current/chunk_forward and their own background-load threads assume a single owner, no
+locking of their own) -- v1 has no true cancellation, so reversing direction mid-search is
+simply ignored until the in-flight one resolves; this is scoped to `sliding_enabled` sessions
+only, since without sliding `_pattern_wheel_step` can't loop across chunks at all (every
+pre-existing, non-sliding call site keeps calling `_pattern_seek` synchronously, unchanged). The
+worker's whole body runs inside try/except/finally (regression fix, 2026-09-25: an unhandled
+exception used to leave `_seek_thread` permanently non-None, silently wedging ALL future
+navigation in both directions, since every no-op guard treats any non-None value as "already
+running" whether the thread is genuinely still working or simply died) -- `finally` always frees
+the slot, and any real exception prints its traceback instead of freezing the window with no
+explanation at all.
+
+Even backgrounded, a small `chunk_size` still means many real chunk crossings for a sparse
+pattern -- so the crawl ITSELF now searches with a bigger internal stride
+(`_SEEK_STRIDE_CHUNK_SIZE`, the app's own existing 2,000,000 `--max-load-count` default, never
+smaller than the user's real `chunk_size`) via `RenderSession._effective_chunk_size`, and only
+shrinks back down to the user's own configured `chunk_size` once a match is actually found
+(`_recenter_render_chunks`, a fresh small `load_archive`/`load_archive_before` pair centered on
+the match) -- Artur's own proposal, 2026-09-25: "a gdyby przeszukiwanie działało na tych
+domyślnych 2 milionach ale samo renderowanie było dla wyznaczonej liczby" (what if the SEARCH
+worked on the default 2 million while the RENDERING stayed at the configured number). This is
+purely internal -- `_SEEK_STRIDE_CHUNK_SIZE` is never a second GUI/CLI field a user has to keep
+in sync (see [[feedback_configurable_perf_params]]'s own refinement on not splitting one knob
+into two) -- and skipped entirely when a match resolves within the already-loaded `chunk_current`
+(no real crossing needed, the common case), so the recenter reload is only ever paid when it was
+actually earned.
+
 ## Architecture
 
 ```
@@ -1070,7 +1115,18 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               default (sliding_enabled) -- degrades gracefully to today's
                               fixed-slice behavior whenever portal_folder/chunk_size/
                               range_load_to aren't all supplied, so every pre-sliding
-                              caller/test is unaffected
+                              caller/test is unaffected. _start_pattern_seek moves a
+                              multi-chunk _pattern_seek crawl onto its own background
+                              daemon thread when sliding_enabled (see "Ring visualization"
+                              above) -- _seek_thread/_seek_epoch are its only state,
+                              reset() bumping the epoch so a late finisher from before a
+                              reset can't clobber it; the whole worker runs inside
+                              try/except/finally so an exception can never leave
+                              _seek_thread wedged non-None forever. _effective_chunk_size/
+                              _recenter_render_chunks let that same crawl search with a
+                              bigger internal stride (module-level _SEEK_STRIDE_CHUNK_SIZE)
+                              than the user's own chunk_size, shrinking back down to it
+                              once a match is actually found
     geometry_draw.py               pure vertex/color/camera-math helpers with no GL
                               call anywhere -- per-ring vertex color/position data,
                               the hit/normal buffer split, tracked-ring outline/center-
