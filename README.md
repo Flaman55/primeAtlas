@@ -728,6 +728,33 @@ look like a real wraparound that isn't there -- a red boundary line (drawn throu
 `geometry_draw.axis_boundary_marker_vertices`, reusing the tracked-ring outline's own
 `OUTLINE_VERTEX_SHADER`/`prog_outline`) marks that seam explicitly.
 
+Once a real pattern (with a genuine wheel, `pattern_wheel_modulus > 1`) is active, the same
+"Curved axis" checkbox automatically promotes the single circle into a SPIRAL instead
+(`ring_geometry.value_to_spiral_xy`/`line_positions_windowed_spiral`/`spiral_outer_radius`,
+`build_line_vertex_data`'s own `wheel_modulus` parameter): every full wheel-period-sized chunk
+of the loaded window gets its own lap, at a bigger radius than the last, so a window spanning
+several wheel periods shows that structure directly (a window narrower than one period still
+renders as a single partial arc, unchanged) -- Artur's own follow-up, 2026-09-19: "jesli
+zakres starcza na niepelny okrag ... mamy niepelny okrag, jesli periodyk powoduje spirale o
+kilku stopniach zagniezdzenia to tak to bedzie wygladac." Every lap's own phase-zero point
+(`value - lo` a multiple of the wheel period) lands at the SAME angle regardless of which lap,
+so a single straight radial red line (the same boundary marker, now reaching out to
+`spiral_outer_radius`'s bigger radius instead of a fixed one) crosses every lap's own
+phase-zero point at once, with no separate per-lap marker needed. The radial distance between
+successive laps is a purely arbitrary visual choice: for a fixed wheel period, the ratio of a
+k-tuple's smallest meaningful value-delta's own world-space arc length to float32's own
+precision limit is CONSTANT at every lap, independent of that lap's own radius (both the
+circumference and the float32 rounding step scale together with radius) -- verified
+numerically (~3,500x safety margin at a real k=4 pattern's period, at any lap) before this was
+implemented, not assumed. Because that precision guarantee doesn't depend on the loaded
+window's own span at all, the spiral layout maps the WHOLE loaded window directly, bypassing
+`line_view_bounds`' own local-anchor-centered-viewport fallback entirely (that fallback exists
+only to protect the plain straight/single-circle layouts, whose own precision DOES degrade
+with span) -- a real archive-scale window with millions of loaded primes can therefore cost as
+much to lay out this way as it did before that fallback existed (see this section's own
+`~410ms -> under 1ms` note above), a known, deliberate tradeoff for showing the window's true
+multi-period structure rather than a small recentering slice.
+
 ## Architecture
 
 ```
@@ -911,10 +938,15 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               anchor-centered viewport instead of the whole loaded window
                               once that window's own span would lose a k-tuple's small
                               internal offsets to the GPU's float32 vertex-buffer precision
-                              limit, and value_to_ring_axis_xy/line_positions_windowed_ring
+                              limit, value_to_ring_axis_xy/line_positions_windowed_ring
                               provide the optional curved-axis layout -- same lo/span
                               mapping, bent onto a circle instead of a straight line, purely
-                              visual (see "Ring visualization" above for both)
+                              visual, and value_to_spiral_xy/line_positions_windowed_spiral/
+                              spiral_outer_radius promote that circle into a multi-lap
+                              spiral once a real pattern wheel is active, mapping the WHOLE
+                              loaded window directly rather than through line_view_bounds'
+                              own local-viewport fallback (see "Ring visualization" above
+                              for all of these)
   ring_viz/                      the GPU renderer subprocess launched by rings_tab.py --
                               kept in its own subpackage since it's a separate OS
                               process, not additional widgets in the main Tk process;
@@ -939,7 +971,8 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               loop are thin adapters rather than a dozen separate
                               closures each capturing their own mutable dict. Also owns
                               "line" viz-mode's own state (viz_mode/pattern_offsets/
-                              pattern_match/flash_pattern/line_axis_curved) and rebuild_line -- a
+                              pattern_match/flash_pattern/line_axis_curved/
+                              pattern_axis_boundary_radius) and rebuild_line -- a
                               deliberately separate method from rebuild() (ring mode),
                               not a branch inside it, since line mode has none of ring
                               mode's resonance/window/HUD-factors machinery
@@ -956,9 +989,13 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               anchor-centered viewport (see "Ring visualization" above),
                               and accepts an optional pre-built primes_set so a caller
                               holding range_primes fixed across many calls (RenderSession)
-                              isn't forced to rebuild the same set from scratch every frame.
-                              axis_boundary_marker_vertices is the 2-vertex (center, edge)
-                              buffer for the curved-axis boundary marker (see gl_setup.py)
+                              isn't forced to rebuild the same set from scratch every frame,
+                              and (given a real wheel_modulus) promotes the curved layout from
+                              a single circle to a multi-lap spiral, returning the boundary
+                              marker's own radius (boundary_radius) either way so renderer.py
+                              never hardcodes it. axis_boundary_marker_vertices is the
+                              2-vertex (center, edge) buffer for the curved-axis boundary
+                              marker (see gl_setup.py)
     hud.py                         HUD text composition (plain lines and the on-canvas
                               canvas-header/status wrapper), per-line window-family
                               coloring, and Pillow-based rasterization of the on-canvas

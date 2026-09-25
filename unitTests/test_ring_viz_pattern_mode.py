@@ -163,6 +163,122 @@ def _test_line_positions_windowed_ring():
           "line_positions_windowed_ring's own mapping matches value_to_ring_axis_xy for the same lo/span")
 
 
+def _test_value_to_spiral_xy():
+    """Spec for ring_geometry.value_to_spiral_xy (2026-09-19, Artur's own
+    spiral follow-up): each `period`-sized chunk of the axis gets its own
+    lap at a bigger radius; every lap's own phase-zero point (value ≡ lo
+    mod period) lands at the SAME angle (-pi/2) regardless of which lap,
+    only the radius differs -- this is what lets a single straight radial
+    line mark phase-zero on every lap at once."""
+    from primeatlas.rings.ring_geometry import value_to_spiral_xy
+    import math
+
+    lo, period, base_radius, pitch = 1000, 100, 800.0, 800.0
+
+    x0, y0 = value_to_spiral_xy(lo, lo, period, base_radius, pitch)
+    check(abs(x0 - 0.0) < 1e-9 and abs(y0 - (-base_radius)) < 1e-9,
+          f"lap 0, phase 0 sits at (0, -base_radius) (got ({x0},{y0}))")
+
+    x1, y1 = value_to_spiral_xy(lo + period, lo, period, base_radius, pitch)
+    check(abs(x1 - 0.0) < 1e-9 and abs(y1 - (-(base_radius + pitch))) < 1e-9,
+          f"lap 1, phase 0 sits at the SAME angle, one pitch further out (got ({x1},{y1}))")
+
+    x2, y2 = value_to_spiral_xy(lo + 2 * period, lo, period, base_radius, pitch)
+    check(abs(x2 - 0.0) < 1e-9 and abs(y2 - (-(base_radius + 2 * pitch))) < 1e-9,
+          f"lap 2, phase 0 sits at the SAME angle again, two pitches further out (got ({x2},{y2}))")
+
+    # A value halfway through lap 1's own period sits diametrically
+    # opposite lap 1's own phase-zero point, at lap 1's own radius.
+    xh, yh = value_to_spiral_xy(lo + period + period // 2, lo, period, base_radius, pitch)
+    check(abs(xh - 0.0) < 1e-6 and abs(yh - (base_radius + pitch)) < 1e-6,
+          f"lap 1's own halfway point sits at (0, +radius_of_lap_1) (got ({xh},{yh}))")
+
+    for value, expected_lap in ((lo + 5, 0), (lo + period + 5, 1), (lo + 4 * period + 5, 4)):
+        x, y = value_to_spiral_xy(value, lo, period, base_radius, pitch)
+        dist = math.hypot(x, y)
+        expected_radius = base_radius + expected_lap * pitch
+        check(abs(dist - expected_radius) < 1e-6,
+              f"value in lap {expected_lap} lands at that lap's own radius (got dist={dist}, expected={expected_radius})")
+
+
+def _test_line_positions_windowed_spiral():
+    from primeatlas.rings.ring_geometry import line_positions_windowed_spiral, value_to_spiral_xy
+    import numpy as np
+    import math
+
+    primes = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47], dtype=np.int64)
+    period, base_radius, pitch = 10, 800.0, 800.0
+    win = line_positions_windowed_spiral(primes, lo=2, span=45, period=period, base_radius=base_radius, pitch=pitch)
+    check(len(win["x"]) == len(primes), "every value in [2, 47] is kept (span exactly covers the whole array)")
+
+    radii = [math.hypot(x, y) for x, y in zip(win["x"], win["y"])]
+    distinct_radii = sorted(set(round(r, 6) for r in radii))
+    check(len(distinct_radii) > 1,
+          f"a window spanning multiple periods produces MULTIPLE distinct lap radii, not just one circle (got {distinct_radii})")
+    check(min(distinct_radii) == base_radius,
+          f"the innermost lap sits at exactly base_radius (got {min(distinct_radii)})")
+
+    expected_x, expected_y = value_to_spiral_xy(37, 2, period, base_radius, pitch)
+    idx = list(primes).index(37)
+    check(abs(win["x"][idx] - expected_x) < 1e-6 and abs(win["y"][idx] - expected_y) < 1e-6,
+          "line_positions_windowed_spiral's own mapping matches value_to_spiral_xy for the same lo/period")
+
+
+def _test_spiral_outer_radius():
+    from primeatlas.rings.ring_geometry import spiral_outer_radius
+
+    check(spiral_outer_radius(span=5, period=10, base_radius=800.0, pitch=800.0) == 800.0,
+          "a span smaller than one period stays at the innermost (lap 0) radius")
+    check(spiral_outer_radius(span=10, period=10, base_radius=800.0, pitch=800.0) == 1600.0,
+          "a span exactly one period reaches lap 1's own radius")
+    check(spiral_outer_radius(span=35, period=10, base_radius=800.0, pitch=800.0) == 800.0 + 3 * 800.0,
+          "a span of 3.5 periods reaches lap 3's own radius (floor division)")
+    check(spiral_outer_radius(span=0, period=10, base_radius=800.0, pitch=800.0) == 800.0,
+          "a degenerate zero span still returns the innermost radius, not a crash")
+
+
+def _test_build_line_vertex_data_spiral():
+    """Spec for build_line_vertex_data's `wheel_modulus` parameter: once a
+    real wheel is given (modulus > 1) AND curved=True, the layout promotes
+    from a single circle to a spiral -- multiple distinct lap radii for a
+    window spanning multiple periods, and the boundary_radius reaching the
+    outermost lap actually drawn (spiral_outer_radius's own value, not the
+    plain world_width/2)."""
+    from primeatlas.rings.ring_viz.geometry_draw import build_line_vertex_data
+    from primeatlas.rings.ring_geometry import spiral_outer_radius
+    import numpy as np
+    import math
+
+    # A synthetic "range_primes" spanning 4+ periods of a small, ARBITRARY
+    # test modulus (10) -- doesn't need to be a real wheel value, since
+    # build_line_vertex_data trusts whatever wheel_modulus its caller
+    # (RenderSession) already computed, same as it already trusts a
+    # caller-supplied primes_set.
+    range_primes = np.array([2 + i for i in range(0, 45, 3)], dtype=np.int64)  # 2..44 step 3
+    modulus = 10
+
+    data, count, hit_mask, all_match, view_mode, boundary_radius = build_line_vertex_data(
+        range_primes, 2, [], curved=True, wheel_modulus=modulus
+    )
+    radii = [math.hypot(float(x), float(y)) for x, y in zip(data[:, 0], data[:, 1])]
+    distinct_radii = sorted(set(round(r, 6) for r in radii))
+    check(len(distinct_radii) > 1,
+          f"a real wheel_modulus promotes the layout to a spiral: multiple lap radii, not one circle (got {distinct_radii})")
+
+    span = int(range_primes[-1]) - int(range_primes[0])
+    expected_outer = spiral_outer_radius(span, modulus, 800.0, 800.0)
+    check(boundary_radius == expected_outer,
+          f"boundary_radius matches spiral_outer_radius's own computation for this window (got {boundary_radius}, expected {expected_outer})")
+    check(boundary_radius > 800.0, "the spiral's outer radius reaches further out than a plain single circle would")
+
+    # wheel_modulus <= 1 (no real wheel, e.g. an unset/dead pattern) must
+    # fall back to the plain single-circle layout, unchanged.
+    _d, _c, _h, _m, _v, boundary_radius_flat = build_line_vertex_data(
+        range_primes, 2, [], curved=True, wheel_modulus=1
+    )
+    check(boundary_radius_flat == 800.0, "wheel_modulus<=1 falls back to the plain-circle boundary radius")
+
+
 def _test_axis_boundary_marker_vertices():
     from primeatlas.rings.ring_viz.geometry_draw import axis_boundary_marker_vertices
     import numpy as np
@@ -437,26 +553,29 @@ def _test_build_line_vertex_data():
 
     range_primes = np.array([11, 13, 17, 19, 23, 29, 31, 37], dtype=np.int64)
 
-    data, count, hit_mask, all_match, view_mode = build_line_vertex_data(range_primes, 11, [0, 2, 6, 8, 12, 18, 20])
+    data, count, hit_mask, all_match, view_mode, boundary_radius = build_line_vertex_data(
+        range_primes, 11, [0, 2, 6, 8, 12, 18, 20]
+    )
     check(count == len(range_primes) + 7,
           f"vertex data has one row per background prime plus one per pattern member (got {count})")
     check(hit_mask.sum() == 7, "hit_mask marks exactly the pattern-member rows, not the background dots")
     check(all_match is True, "build_line_vertex_data reports all_match for a real occurrence")
     check(data.shape == (count, 5), "vertex data is the standard (count, 5) [x,y,r,g,b] layout")
     check(view_mode == "full", "a small loaded window stays in 'full' view mode (span well under the precision threshold)")
+    check(boundary_radius is None, "boundary_radius is None when curved is False (nothing to draw)")
 
-    data2, count2, hit_mask2, all_match2, view_mode2 = build_line_vertex_data(range_primes, 12, [0, 2, 6])
+    data2, count2, hit_mask2, all_match2, view_mode2, _br2 = build_line_vertex_data(range_primes, 12, [0, 2, 6])
     check(count2 == len(range_primes) + 3, "background dots are unaffected by a non-matching anchor")
     check(all_match2 is False, "all_match False when the anchored pattern doesn't land on real primes")
 
-    data3, count3, hit_mask3, all_match3, view_mode3 = build_line_vertex_data(range_primes, 11, [])
+    data3, count3, hit_mask3, all_match3, view_mode3, _br3 = build_line_vertex_data(range_primes, 11, [])
     check(count3 == len(range_primes), "no pattern offsets -> only the background dot row, no extra markers")
     check(all_match3 is False, "all_match False with no pattern active")
 
     # primes_set override: passing a pre-built set must give the exact same
     # match result as letting the function build it from range_primes itself.
     primes_set = set(int(v) for v in range_primes)
-    data4, count4, hit_mask4, all_match4, view_mode4 = build_line_vertex_data(
+    data4, count4, hit_mask4, all_match4, view_mode4, _br4 = build_line_vertex_data(
         range_primes, 11, [0, 2, 6, 8, 12, 18, 20], primes_set=primes_set
     )
     check(all_match4 is True, "an explicit primes_set override gives the same match result as the default")
@@ -477,14 +596,16 @@ def _test_build_line_vertex_data_curved():
     range_primes = np.array([11, 13, 17, 19, 23, 29, 31, 37], dtype=np.int64)
     offsets = [0, 2, 6, 8, 12, 18, 20]
 
-    data_s, count_s, hit_s, match_s, view_s = build_line_vertex_data(range_primes, 11, offsets, curved=False)
-    data_c, count_c, hit_c, match_c, view_c = build_line_vertex_data(range_primes, 11, offsets, curved=True)
+    data_s, count_s, hit_s, match_s, view_s, br_s = build_line_vertex_data(range_primes, 11, offsets, curved=False)
+    data_c, count_c, hit_c, match_c, view_c, br_c = build_line_vertex_data(range_primes, 11, offsets, curved=True)
 
     check(count_s == count_c, f"curved vs straight produce the same row count (got {count_s} vs {count_c})")
     check(bool((hit_s == hit_c).all()), "curved vs straight mark exactly the same rows as pattern members")
     check(match_s == match_c == True, "curved vs straight report the identical all_match result")  # noqa: E712
     check(view_s == view_c, "curved vs straight pick the identical view_mode (this flag is orthogonal to it)")
     check(bool((data_s[:, 2:5] == data_c[:, 2:5]).all()), "curved vs straight assign the identical colors per row")
+    check(br_s is None, "boundary_radius is None for the straight layout")
+    check(br_c == 800.0, f"boundary_radius is world_width/2 for the plain-circle case (no wheel_modulus given) (got {br_c})")
 
     # Straight layout: every y is exactly 0. Curved layout: not all y are 0,
     # and every (x,y) pair lies on the circle of radius world_width/2=800.
@@ -630,7 +751,7 @@ def _test_build_line_vertex_data_local_view_integration():
     values |= {anchor + o for o in offsets}  # the pattern's own occurrence must be real data
     range_primes = np.array(sorted(values), dtype=object)
 
-    data, count, hit_mask, all_match, view_mode = build_line_vertex_data(range_primes, anchor, offsets)
+    data, count, hit_mask, all_match, view_mode, _boundary_radius = build_line_vertex_data(range_primes, anchor, offsets)
     check(view_mode == "local", "an archive-scale loaded window (span 1e6) renders in local view mode")
     check(all_match is True, "the inserted pattern positions are genuine matches")
 
@@ -715,6 +836,50 @@ def _test_render_session_line_axis_curved():
     check(session_curved.line_axis_curved is False, "reset() clears line_axis_curved back to False")
 
 
+def _test_render_session_spiral_axis():
+    """Session-level check that a REAL pattern's own wheel modulus
+    (computed once at construction, see RenderSession.__init__) actually
+    drives the spiral layout end to end through rebuild_line -- not just
+    the pure geometry_draw-level test above with an arbitrary test
+    modulus. Uses a synthetic range spanning multiple real wheel periods
+    (30,030 for this k=2 pattern) so the spiral genuinely has more than
+    one lap to show."""
+    from primeatlas.rings.ring_viz.session import RenderSession
+    from primeatlas.rings.ring_geometry import pattern_offsets_from_seed, pattern_wheel_residues
+    import numpy as np
+    import math
+
+    offsets = pattern_offsets_from_seed(2, 5)  # [0, 2] -- twin-prime shape
+    modulus, _residues = pattern_wheel_residues(offsets)
+    check(modulus > 0, "sanity: a real k=2 pattern has a nonzero wheel modulus")
+
+    # Synthetic ascending "primes" spanning just over 2 real wheel periods
+    # -- not actually prime, but this is pure geometry/state wiring, same
+    # convention as this file's other synthetic-array tests.
+    lo = 1_000_000
+    span = int(2.5 * modulus)
+    range_primes = np.array(sorted({lo, lo + span} | {lo + i * 977 for i in range(span // 977)}), dtype=np.int64)
+
+    session = RenderSession(
+        primes=range_primes, n=int(range_primes[0]), ceiling=int(range_primes[-1]), range_mode=True,
+        range_primes=range_primes, range_step=1,
+        track_primes=[], auto_orbit=False, enabled_ids=set(), theta=0.5, law_mode="stepped",
+        max_radius=800.0, tempo_ms=120, buffer_margin=0, can_extend_buffer=False,
+        portal_folder=None, viz_mode="line", pattern_offsets=offsets, line_axis_curved=True,
+    )
+    session.rebuild_line(int(range_primes[0]))
+
+    check(session.pattern_axis_boundary_radius is not None, "spiral mode sets a real boundary_radius")
+    check(session.pattern_axis_boundary_radius > 800.0,
+          f"a window spanning multiple real wheel periods produces a spiral reaching past the innermost lap "
+          f"(got {session.pattern_axis_boundary_radius})")
+    check(any("[axis: spiral]" in line for line in session.hud_lines),
+          f"the HUD reports the spiral axis explicitly (got {session.hud_lines})")
+
+    session.reset()
+    check(session.pattern_axis_boundary_radius is None, "reset() clears the boundary radius back to None")
+
+
 def _test_render_session_wheel_scrub():
     """Session-level check that scrub_advance/tick actually WIRE into
     next_wheel_n correctly (right modulus/residues/bounds at the right
@@ -793,6 +958,9 @@ def main():
     _test_line_positions_archive_scale_precision()
     _test_value_to_ring_axis_xy()
     _test_line_positions_windowed_ring()
+    _test_value_to_spiral_xy()
+    _test_line_positions_windowed_spiral()
+    _test_spiral_outer_radius()
     _test_axis_boundary_marker_vertices()
     _test_pattern_positions_and_match()
     _test_clamp_pattern_anchor()
@@ -804,12 +972,14 @@ def main():
     _test_resolve_pattern_anchor()
     _test_build_line_vertex_data()
     _test_build_line_vertex_data_curved()
+    _test_build_line_vertex_data_spiral()
     _test_line_view_bounds()
     _test_line_positions_windowed()
     _test_line_positions_windowed_archive_scale_precision()
     _test_build_line_vertex_data_local_view_integration()
     _test_render_session_line_mode()
     _test_render_session_line_axis_curved()
+    _test_render_session_spiral_axis()
     _test_render_session_wheel_scrub()
 
     if failures:

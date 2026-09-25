@@ -918,15 +918,21 @@ def _run_visualization(args, audio=None):
         # doc-comment for why this needs marking at all: the loaded
         # window's own start and end coincide on screen once bent into a
         # circle, but are NOT actually the same value the way a real
-        # periodic wraparound would be). world_width/2 matches the exact
-        # radius build_line_vertex_data itself used (see that function's
-        # own `radius = world_width / 2.0`) so the marker sits exactly on
-        # the same circle the dots/pattern markers are drawn on.
-        if session.viz_mode == "line" and session.line_axis_curved:
+        # periodic wraparound would be). `pattern_axis_boundary_radius` is
+        # exactly the radius build_line_vertex_data itself used for this
+        # frame's own layout -- world_width/2 for a plain circle, or the
+        # spiral's own bigger outer-lap radius once a real wheel promotes
+        # it to a spiral (see that function's own `boundary_radius`
+        # doc-comment) -- so this single line always reaches all the way
+        # out to the LAST lap actually drawn, crossing every lap's own
+        # phase-zero point along the way (value_to_spiral_xy's own
+        # doc-comment explains why one straight radial line does that for
+        # every lap at once, with no separate per-lap marker needed).
+        if session.viz_mode == "line" and session.line_axis_curved and session.pattern_axis_boundary_radius:
             gl.prog_outline["u_pan"].value = (pan_x, pan_y)
             gl.prog_outline["u_zoom"].value = session.cam_zoom
             gl.prog_outline["u_viewport"].value = (width, height)
-            gl.prog_outline["u_radius"].value = 800.0
+            gl.prog_outline["u_radius"].value = session.pattern_axis_boundary_radius
             gl.prog_outline["u_color"].value = (1.0, 0.0, 0.0, 1.0)
             gl.axis_boundary_vao.render(moderngl.LINES)
 

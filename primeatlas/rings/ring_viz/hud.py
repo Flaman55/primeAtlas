@@ -139,7 +139,7 @@ def hud_lines_for_n(primes_active, n, pos, enabled_ids, theta, mode, tracked_sta
 
 
 def pattern_hud_line(n, offsets, all_match, wheel_modulus=None, wheel_residue_count=None,
-                      step_mode="manual", stop_on_match=False, view_mode=None):
+                      step_mode="manual", stop_on_match=False, view_mode=None, line_axis_curved=False):
     """The single HUD text line for "line" viz-mode's k-tuple pattern
     status: the anchor N, its offsets, whether every member currently
     lands on a real prime, (when a wheel is active, see
@@ -162,7 +162,17 @@ def pattern_hud_line(n, offsets, all_match, wheel_modulus=None, wheel_residue_co
     see line_view_bounds' own doc-comment) instead of showing the whole
     loaded range at once; None or "full" adds nothing, matching this
     line's own pre-existing text for every case before this fallback
-    existed."""
+    existed.
+
+    `line_axis_curved` -- RenderSession.line_axis_curved's own value
+    (2026-09-18/19 follow-up): when True, reports which curved layout is
+    actually active this frame -- "[axis: spiral]" once a real wheel
+    (`wheel_modulus > 1`) promotes it from a single circle to a spiral
+    (see build_line_vertex_data's own `wheel_modulus` doc-comment), or
+    "[axis: ring]" for the plain single-circle case (no pattern, or a
+    pattern whose wheel excludes nothing). False (default, unchanged)
+    adds nothing, matching every straight-axis HUD line before this
+    feature existed."""
     suffix = "  MATCH!" if all_match else ""
     wheel_text = ""
     if wheel_modulus is not None and wheel_modulus > 1:
@@ -175,7 +185,11 @@ def pattern_hud_line(n, offsets, all_match, wheel_modulus=None, wheel_residue_co
     else:
         mode_text = "  [manual]"
     view_text = "  [view: local]" if view_mode == "local" else ""
-    return f"Pattern: n={n:,} offsets={list(offsets)}{suffix}{wheel_text}{mode_text}{view_text}"
+    if line_axis_curved:
+        axis_text = "  [axis: spiral]" if (wheel_modulus is not None and wheel_modulus > 1) else "  [axis: ring]"
+    else:
+        axis_text = ""
+    return f"Pattern: n={n:,} offsets={list(offsets)}{suffix}{wheel_text}{mode_text}{view_text}{axis_text}"
 
 
 # ---------------------------------------------------------------------------

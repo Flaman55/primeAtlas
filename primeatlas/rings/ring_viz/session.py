@@ -192,6 +192,15 @@ class RenderSession:
         # never touches matching/navigation/wheel logic, only which (x,y)
         # a position renders at.
         self.line_axis_curved = bool(line_axis_curved)
+        # The curved-axis boundary marker's own radius for THIS frame --
+        # world_width/2 for a plain circle, or spiral_outer_radius's
+        # bigger value once a real wheel promotes the layout to a spiral
+        # (see build_line_vertex_data's own `boundary_radius` return) --
+        # None whenever line_axis_curved is False (nothing to draw).
+        # renderer.py's main loop reads this directly instead of
+        # hardcoding a fixed radius, so the marker always reaches exactly
+        # as far out as the outermost lap actually drawn this frame.
+        self.pattern_axis_boundary_radius = None
         self.flash_pattern = 0.0
         # Wheel-skip: which n (mod some small-prime-derived period) can
         # EVER match, computed once up front from the pattern's own
@@ -603,6 +612,7 @@ class RenderSession:
         self.pattern_step_mode = "manual"
         self.pattern_stop_on_match = False
         self.line_axis_curved = False
+        self.pattern_axis_boundary_radius = None
 
     # ------------------------------------------------------------------
     # Buffer extension -- was extend_buffer_if_needed's own closure body.
@@ -775,10 +785,11 @@ class RenderSession:
         rebuild() returns, so the caller's own two ctx.buffer() uploads and
         the main render loop's draw calls stay identical between modes."""
         t0 = time.perf_counter()
-        data, count, hit_mask, all_match, view_mode = build_line_vertex_data(
+        data, count, hit_mask, all_match, view_mode, boundary_radius = build_line_vertex_data(
             self.range_primes, n_value, self.pattern_offsets or (), primes_set=self._pattern_primes_set,
-            curved=self.line_axis_curved,
+            curved=self.line_axis_curved, wheel_modulus=self.pattern_wheel_modulus,
         )
+        self.pattern_axis_boundary_radius = boundary_radius
         t1 = time.perf_counter()
         print(f"N={n_value:,}  line dots={count:,}  view={view_mode}  rebuild={1000 * (t1 - t0):.1f}ms")
 
@@ -798,7 +809,7 @@ class RenderSession:
                 wheel_modulus=self.pattern_wheel_modulus,
                 wheel_residue_count=len(self.pattern_wheel_residues) if self.pattern_wheel_residues else 0,
                 step_mode=self.pattern_step_mode, stop_on_match=self.pattern_stop_on_match,
-                view_mode=view_mode,
+                view_mode=view_mode, line_axis_curved=self.line_axis_curved,
             )]
             if self.pattern_offsets else []
         )
