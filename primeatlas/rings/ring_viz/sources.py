@@ -230,7 +230,7 @@ def load_archive(portal_folder, upto, progress_callback=None, batch_files=64, fr
     return result
 
 
-def load_archive_before(portal_folder, before_n, count):
+def load_archive_before(portal_folder, before_n, count, not_below=None):
     """Backward-walking counterpart to load_archive(): the `count` largest
     real primes strictly LESS than `before_n` (ascending order), or fewer if
     the portal's own data runs out first. Added for the ring_viz sliding/
@@ -243,6 +243,30 @@ def load_archive_before(portal_folder, before_n, count):
     exclusivity (`arr > from_n`) -- so a chunk_back ending here and a
     chunk_current starting at the same `before_n` boundary never duplicate
     or gap a value at the seam.
+
+    `not_below` -- None (default) reproduces the original unbounded
+    behavior (walk all the way back to the true start of the PORTAL's own
+    data, i.e. down toward 2 if nothing else stops it first). Regression
+    fix, 2026-09-25 (Artur's own real report: going back past the very
+    START of his own --load-range, the renderer hung -- "ignorujac zakres
+    od jakiego startuje, a przeciez od powinno byc twarda granica" --
+    ignoring the range's own FROM, when FROM should be a hard boundary):
+    the caller (RenderSession._ensure_back_chunk) only ever needs primes
+    within its OWN logical `range_load_from`, but this function previously
+    had no way to know that boundary existed at all -- it kept walking
+    into EARLIER floors as long as the PORTAL had more real data there
+    (which a real archive almost always does, all the way down to 2,3,5,7),
+    completely ignoring the user's own requested range. A real
+    --load-range starting deep in a high floor (e.g. floor 24) with floors
+    0-23 also populated could walk dozens of floors -- and, once each
+    chunk swap's own load runs on the background thread this session's
+    other regression fix already added, PILE UP one real disk load after
+    another on every one of those slides, looking exactly like a hang.
+    Passing `not_below=range_load_from` makes FROM a genuine hard floor:
+    the function stops (never returns a value `<= not_below`) the moment
+    it reaches the floor containing `not_below`, exactly mirroring how the
+    very first chunk's own initial load already treats FROM as a hard,
+    non-negotiable edge (see renderer.py's own `from_n=preload_from`).
 
     Gap-encoded PGS2 windows have no random access (same limitation
     hit_paging.py's own docstring and load_archive's own module docstring
@@ -310,41 +334,51 @@ def load_archive_before(portal_folder, before_n, count):
     idx = floor_index
     while idx >= 0 and total < count:
         base_exponent = floor_exponents[idx]
+        # `not_below`'s own hard-boundary check: once THIS floor's own
+        # lower edge is already at or below it, there is nothing left
+        # worth looking at past this floor -- see this function's own
+        # doc-comment for why walking further was the actual bug.
+        floor_lo = 10 ** base_exponent if base_exponent > 0 else 0
+        floor_is_last = not_below is not None and floor_lo <= not_below
+
         entries = storage.list_source_filenames(portal_folder, base_exponent)
-        if not entries:
-            idx -= 1
-            continue
-
-        if idx == floor_index:
-            lo, hi = 0, len(entries) - 1
-            best = -1
-            while lo <= hi:
-                mid = (lo + hi) // 2
-                bp = _safe_base_prime(entries[mid][1])
-                if bp is None and mid + 1 <= hi:
-                    mid += 1
+        if entries:
+            if idx == floor_index:
+                lo, hi = 0, len(entries) - 1
+                best = -1
+                while lo <= hi:
+                    mid = (lo + hi) // 2
                     bp = _safe_base_prime(entries[mid][1])
-                if bp is None:
-                    hi = mid - 1
-                    continue
-                if bp < before_n:
-                    best = mid
-                    lo = mid + 1
-                else:
-                    hi = mid - 1
-            start_file_index = best
-        else:
-            start_file_index = len(entries) - 1
+                    if bp is None and mid + 1 <= hi:
+                        mid += 1
+                        bp = _safe_base_prime(entries[mid][1])
+                    if bp is None:
+                        hi = mid - 1
+                        continue
+                    if bp < before_n:
+                        best = mid
+                        lo = mid + 1
+                    else:
+                        hi = mid - 1
+                start_file_index = best
+            else:
+                start_file_index = len(entries) - 1
 
-        file_index = start_file_index
-        while file_index >= 0 and total < count:
-            _, path = entries[file_index]
-            arr = to_prime_array(prime_sieve_v1.read_prime_window(path))
-            trimmed = arr[arr < before_n]
-            if trimmed.size:
-                collected.append(trimmed)
-                total += int(trimmed.size)
-            file_index -= 1
+            file_index = start_file_index
+            while file_index >= 0 and total < count:
+                _, path = entries[file_index]
+                arr = to_prime_array(prime_sieve_v1.read_prime_window(path))
+                if not_below is not None:
+                    trimmed = arr[(arr < before_n) & (arr > not_below)]
+                else:
+                    trimmed = arr[arr < before_n]
+                if trimmed.size:
+                    collected.append(trimmed)
+                    total += int(trimmed.size)
+                file_index -= 1
+
+        if floor_is_last:
+            break
         idx -= 1
 
     if not collected:

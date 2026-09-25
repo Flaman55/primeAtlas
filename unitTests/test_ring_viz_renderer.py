@@ -311,6 +311,78 @@ def _test_empty_portal():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def _test_slide_chunk_size_defaults_to_max_load_count():
+    """Regression (2026-09-25, Artur's own real report: "limit wczytanych
+    ... nie jest parametrem globalnym a lokalnym poczatkowym potem wraca do
+    domyslnego 2 miliony" -- the loaded-count limit isn't a global
+    parameter, it's a local/initial one, then it reverts to the default 2
+    million): --slide-chunk-size used to carry its own separate hardcoded
+    2,000,000 default, independent of --max-load-count -- a user who only
+    ever set --max-load-count (or the GUI's "Max loaded rings" field) got
+    THAT value for the very first chunk, then every chunk loaded afterward
+    via sliding silently fell back to 2,000,000 regardless. Fixed:
+    --slide-chunk-size now defaults to None at the argparse level and gets
+    resolved to args.max_load_count's own value right after parsing, unless
+    an explicit --slide-chunk-size overrides it.
+
+    Exercises main()'s real argparse parsing/validation path (not just
+    build_renderer_argv's argv construction) by monkeypatching renderer.run
+    to a no-op that just records the resolved `args`, and sys.argv to a
+    fake invocation -- main() never reaches any GL/moderngl code before
+    calling run(args), so this is safe in this headless sandbox (same
+    "no GL/glfw import until run()" guarantee this whole test file's own
+    docstring already relies on)."""
+    from primeatlas.rings.ring_viz import renderer
+
+    tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
+    try:
+        portal_dir = os.path.join(tmp, "portal")
+        os.makedirs(portal_dir, exist_ok=True)
+
+        captured = {}
+
+        def fake_run(args):
+            captured["args"] = args
+
+        real_run = renderer.run
+        real_argv = sys.argv
+        renderer.run = fake_run
+        try:
+            # No explicit --slide-chunk-size -- must inherit --max-load-count.
+            sys.argv = ["renderer.py", "--source", "archive", "--portal-folder", portal_dir,
+                        "--load-range", "10,1000", "--slide-load-range", "--max-load-count", "12345"]
+            renderer.main()
+            check(captured["args"].slide_chunk_size == 12345,
+                  f"--slide-chunk-size with no explicit value inherits --max-load-count's own "
+                  f"value (12345), not a separate hardcoded 2,000,000 default "
+                  f"(got {captured['args'].slide_chunk_size})")
+
+            # An explicit --slide-chunk-size still overrides the inherited default.
+            captured.clear()
+            sys.argv = ["renderer.py", "--source", "archive", "--portal-folder", portal_dir,
+                        "--load-range", "10,1000", "--slide-load-range", "--max-load-count", "12345",
+                        "--slide-chunk-size", "999"]
+            renderer.main()
+            check(captured["args"].slide_chunk_size == 999,
+                  f"an explicit --slide-chunk-size still overrides the inherited default "
+                  f"(got {captured['args'].slide_chunk_size})")
+
+            # Neither given -- both fall back to argparse's own shared 2,000,000.
+            captured.clear()
+            sys.argv = ["renderer.py", "--source", "archive", "--portal-folder", portal_dir,
+                        "--load-range", "10,1000", "--slide-load-range"]
+            renderer.main()
+            check(captured["args"].slide_chunk_size == 2_000_000,
+                  f"with neither flag given, --slide-chunk-size still resolves to "
+                  f"--max-load-count's own argparse default (2,000,000) "
+                  f"(got {captured['args'].slide_chunk_size})")
+        finally:
+            renderer.run = real_run
+            sys.argv = real_argv
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 # ---------------------------------------------------------------------------
 # load_archive_before(): the backward-walking counterpart to load_archive(),
 # added for the ring_viz sliding/traveling-window feature (see memory file
@@ -381,6 +453,52 @@ def _test_load_archive_before_floor_boundary():
         check(list(result) == [2, 3, 5, 7],
               f"before_n exactly on floor 1's own lower bound (10) pulls "
               f"only from floor 0 (got {list(result)!r})")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _test_load_archive_before_not_below_is_a_hard_boundary():
+    """Regression (2026-09-25, Artur's own real report: scrubbing backward
+    past the very START of his own --load-range hung the renderer --
+    "ignorujac zakres od jakiego startuje, a przeciez od powinno byc twarda
+    granica" -- ignoring the range's own FROM, when FROM should be a hard
+    boundary). Before this fix, `not_below` didn't exist at all --
+    load_archive_before kept walking into EARLIER floors as long as the
+    PORTAL had more real data there, completely ignoring the caller's own
+    logical range boundary. Portal here has real data in floor 0
+    (1..97, deliberately MUCH earlier/more than a naive reader might
+    expect) plus floor 1 (101..) -- `not_below` pinned to a value INSIDE
+    floor 1 must never let ANY floor-0 value leak into the result, no
+    matter how large `count` is."""
+    from primeatlas.rings.ring_viz.sources import load_archive_before
+
+    tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
+    try:
+        portal_dir = os.path.join(tmp, "portal")
+        floor1_values = [11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97]
+        _write_floor(portal_dir, 0, [[2, 3, 5, 7]])
+        _write_floor(portal_dir, 1, [floor1_values])
+        _write_floor(portal_dir, 2, [[101, 103, 107, 109, 113]])
+
+        # not_below=90 sits INSIDE floor 1 itself -- floor 2 contributes in
+        # full (all below before_n=113), floor 1 contributes only its own
+        # values > 90 (just 97), and floor 0 (single-digit primes) is NEVER
+        # reached at all, even though it holds plenty of real data and
+        # count is nowhere near satisfied by floors 1+2 alone.
+        result = load_archive_before(portal_dir, before_n=113, count=1000, not_below=90)
+        check(list(result) == [97, 101, 103, 107, 109],
+              f"not_below=90 stops the walk inside floor 1, correctly excluding every floor-1 "
+              f"value <=90 AND every floor-0 value entirely (got {list(result)!r})")
+        check(all(v > 90 for v in result), "no returned value is at or below not_below")
+        check(2 not in result and 3 not in result and 5 not in result and 7 not in result,
+              "not a single floor-0 value leaked through")
+
+        # count is generously large but not_below is the thing that actually
+        # stops the search -- never an infinite/unbounded walk to the portal's
+        # true start (2/3) when not_below is set.
+        result2 = load_archive_before(portal_dir, before_n=113, count=10**9, not_below=90)
+        check(list(result2) == [97, 101, 103, 107, 109],
+              "an enormous count does not override not_below's own hard stop")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -1814,9 +1932,11 @@ def main():
     _test_load_archive_max_load_count()
     _test_load_archive_high_floor_beyond_uint64()
     _test_empty_portal()
+    _test_slide_chunk_size_defaults_to_max_load_count()
     _test_load_archive_before_basic()
     _test_load_archive_before_gap_between_floors()
     _test_load_archive_before_floor_boundary()
+    _test_load_archive_before_not_below_is_a_hard_boundary()
     _test_load_archive_before_walks_off_the_start()
     _test_load_archive_before_empty_portal()
     _test_load_archive_before_window_boundary_exact()

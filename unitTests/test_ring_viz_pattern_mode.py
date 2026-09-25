@@ -695,7 +695,12 @@ def _test_sliding_backward_swap_mirror():
             max_radius=800.0, tempo_ms=120, buffer_margin=0, can_extend_buffer=True,
             portal_folder=portal_dir, viz_mode="line", pattern_offsets=[0, 2],
             pattern_step_mode="auto", pattern_stop_on_match=False,
-            range_load_from=1, range_load_to=1000, chunk_size=chunk_size, sliding_enabled=True,
+            # range_load_from=0, not 1: `not_below` is EXCLUSIVE (mirrors
+            # load_archive's own `from_n` convention) -- 0 sits safely below
+            # every real all_values entry (which start at 1) so it never
+            # collides with a real loaded value the way range_load_from=1
+            # would (all_values[0] is exactly 1).
+            range_load_from=0, range_load_to=1000, chunk_size=chunk_size, sliding_enabled=True,
         )
         check(list(session.chunk_current) == all_values[10:20], "chunk_current starts as the second chunk")
         check(list(session.chunk_back) == all_values[0:10],
@@ -711,6 +716,13 @@ def _test_sliding_backward_swap_mirror():
               "chunk_back was promoted into chunk_current")
         check(list(session.chunk_forward) == all_values[10:20],
               "the old chunk_current was demoted into chunk_forward (swap, not reload)")
+        # The fresh chunk_back kicked off right after the swap runs in the
+        # BACKGROUND (see _ensure_back_chunk's own doc-comment) -- _slide_
+        # backward itself doesn't wait for it, by design, so explicitly
+        # wait here before checking its final contents (mirrors how a
+        # REAL caller eventually resolves it via another _slide_backward/
+        # _wait_for_back_chunk call).
+        session._wait_for_back_chunk()
         check(session.chunk_back is not None and len(session.chunk_back) == 0,
               "a fresh chunk_back was loaded right after the swap and correctly found the true "
               "start of range_load_from (nothing before value 1)")
@@ -720,6 +732,76 @@ def _test_sliding_backward_swap_mirror():
               "a further _slide_backward at the true start of range_load_from correctly reports no-op")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _test_sliding_neighbor_chunk_loads_in_background_not_blocking():
+    """Regression (2026-09-25, Artur's own real report AFTER the sliding
+    feature above was already committed: "przelaczenie miedzy nimi trwa
+    dosc dlugo" -- switching between them takes quite a while): the FIRST
+    version of _ensure_forward_chunk/_ensure_back_chunk did a plain
+    synchronous load_archive/load_archive_before call, which -- since the
+    real renderer's GLFW loop is single-threaded -- blocked the entire
+    window for however long that disk read took, on EVERY swap, even
+    though the swap itself used already-ready data. Fixed to run the
+    neighbor load on a background daemon thread instead.
+
+    Proves the actual async contract directly (not just that the final
+    DATA ends up correct, which the other sliding tests above already
+    cover): monkeypatches session.load_archive with an artificially slow
+    stand-in, and checks that _ensure_forward_chunk returns almost
+    instantly regardless (the whole point), that chunk_forward is
+    genuinely still None with a real thread running immediately
+    afterward (not silently already finished), and that
+    _wait_for_forward_chunk both waits for and returns the real result."""
+    from primeatlas.rings.ring_viz import session as session_module
+    from primeatlas.rings.ring_viz.session import RenderSession
+    import numpy as np
+    import time
+
+    range_primes = np.array([11, 13, 17, 19, 23], dtype=np.int64)
+    session = RenderSession(
+        primes=range_primes, n=11, ceiling=100000, range_mode=True,
+        range_primes=range_primes, range_step=1,
+        track_primes=[], auto_orbit=False, enabled_ids=set(), theta=0.5, law_mode="stepped",
+        max_radius=800.0, tempo_ms=120, buffer_margin=0, can_extend_buffer=False,
+        portal_folder="/fake/portal", viz_mode="line", pattern_offsets=[0, 2],
+        pattern_step_mode="auto", pattern_stop_on_match=True,
+        range_load_from=1, range_load_to=1000, chunk_size=10, sliding_enabled=False,
+    )
+    # sliding_enabled is False here (portal_folder is fake, no real disk to
+    # read) -- flip it on by hand purely to drive _ensure_forward_chunk
+    # directly without needing a real portal on disk for this specific test.
+    session.sliding_enabled = True
+
+    real_load_archive = session_module.load_archive
+    slow_load_delay = 0.3
+
+    def _slow_load_archive(*args, **kwargs):
+        time.sleep(slow_load_delay)
+        return np.array([29, 31, 37], dtype=np.uint64)
+
+    session_module.load_archive = _slow_load_archive
+    try:
+        t0 = time.perf_counter()
+        session._ensure_forward_chunk()
+        elapsed = time.perf_counter() - t0
+        check(elapsed < slow_load_delay / 2,
+              f"_ensure_forward_chunk returns almost instantly, NOT blocking for the load's own "
+              f"{slow_load_delay}s duration (got {elapsed:.3f}s)")
+        check(session.chunk_forward is None,
+              "chunk_forward is genuinely still None right after kickoff -- the slow load hasn't "
+              "actually finished yet, this isn't a race that happened to complete instantly")
+        check(session._forward_load_thread is not None,
+              "a real background thread handle is set while the load is in flight")
+
+        session._wait_for_forward_chunk()
+        check(list(session.chunk_forward) == [29, 31, 37],
+              f"_wait_for_forward_chunk blocks until the background load actually finishes and "
+              f"the real result is available (got {list(session.chunk_forward) if session.chunk_forward is not None else None!r})")
+        check(session._forward_load_thread is None,
+              "the thread handle is cleared again once the load completes")
+    finally:
+        session_module.load_archive = real_load_archive
 
 
 def _test_sliding_disabled_by_default_without_full_wiring():
@@ -796,6 +878,310 @@ def _test_sliding_found_false_means_true_range_edge_not_chunk_edge():
         check(session.chunk_forward is not None and len(session.chunk_forward) == 0,
               "gives up only once chunk_forward is confirmed genuinely empty -- the TRUE range_load_to "
               "edge, not just wherever the initially-loaded chunk happened to end")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _test_sliding_forward_respects_range_load_to_hard_boundary():
+    """Symmetric counterpart to the backward not_below fix (Artur's own
+    follow-up, 2026-09-25: "to samo ograniczenie powinno byc do wartosci do
+    by znow nie pojsc dalej niz ustawiony zakres" -- the same restriction
+    should apply to the TO value too, so it again doesn't go further than
+    the set range). Unlike backward (which needed a brand-new loader with
+    no boundary awareness at all until that fix), forward sliding reuses
+    load_archive(upto=range_load_to) exactly as-is, and that function has
+    ALWAYS hard-bounded by `upto` (`arr <= upto`, plus a floor-level
+    `floor_lo > upto: break`) -- this test exists to PROVE that already-
+    correct behavior at the RenderSession/sliding level with the same
+    rigor as the backward regression test, not because a bug was found
+    here: floor 1 holds real data FAR beyond range_load_to, and sliding
+    forward must never reach it."""
+    from primeatlas.rings.ring_viz.session import RenderSession
+    from primeatlas.rings.ring_viz.sources import load_archive
+
+    tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
+    try:
+        portal_dir = os.path.join(tmp, "portal")
+        floor0_values = [6 * k + 1 for k in range(0, 30)]  # 1..175
+        _write_floor(portal_dir, 0, [floor0_values])
+        _write_floor(portal_dir, 1, [[181, 187, 193, 199, 211]])  # real data well past range_load_to
+
+        chunk_size = 5
+        range_load_to = 49  # strictly inside floor 0's own span
+        initial_chunk = load_archive(portal_dir, upto=range_load_to, max_load_count=chunk_size)
+        check(list(initial_chunk) == floor0_values[:5],
+              f"test setup: the initial chunk is the first 5 values (got {list(initial_chunk)!r})")
+
+        session = RenderSession(
+            primes=initial_chunk, n=1, ceiling=100000, range_mode=True,
+            range_primes=initial_chunk, range_step=1,
+            track_primes=[], auto_orbit=False, enabled_ids=set(), theta=0.5, law_mode="stepped",
+            max_radius=800.0, tempo_ms=120, buffer_margin=0, can_extend_buffer=True,
+            portal_folder=portal_dir, viz_mode="line", pattern_offsets=[0, 2],
+            pattern_step_mode="auto", pattern_stop_on_match=True,
+            range_load_from=0, range_load_to=range_load_to, chunk_size=chunk_size, sliding_enabled=True,
+        )
+        # Slide forward as many times as it'll allow -- must stop cleanly,
+        # never returning a chunk containing anything > range_load_to, and
+        # NEVER anything from floor 1 (181+) leaking in no matter how many
+        # times we try.
+        for _ in range(10):
+            session._slide_forward()
+        check(all(int(v) <= range_load_to for v in session.chunk_current),
+              f"chunk_current never holds a value past range_load_to={range_load_to} "
+              f"(got {list(session.chunk_current)!r})")
+        check(all(int(v) < 181 for v in session.chunk_current),
+              "not a single floor-1 value (>=181) ever leaked into chunk_current")
+        check(session.chunk_forward is not None and len(session.chunk_forward) == 0,
+              "chunk_forward is confirmed genuinely empty at the true range_load_to edge")
+
+        final_n, found = session._pattern_seek(1, True)
+        check(found is False, "no real match exists in this synthetic data")
+        check(all(int(v) <= range_load_to for v in session.chunk_current),
+              "a full seek to the genuine forward edge still never exceeds range_load_to")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _test_sliding_edge_reached_prints_explicit_message():
+    """Artur's own explicit request, 2026-09-25: "jawna informacja jesli
+    nie da sie isc dalej bo to przekroczy wartosc od albo do" -- explicit
+    information when a move is refused because it would exceed FROM or TO.
+    Console-output test (this module's own convention elsewhere, e.g.
+    HUD/rebuild lines, already prints rather than returning strings) --
+    captures stdout around a call that's already AT the genuine edge in
+    each direction and checks the exact boundary value appears."""
+    import contextlib
+    import io
+    from primeatlas.rings.ring_viz.session import RenderSession
+    from primeatlas.rings.ring_viz.sources import load_archive
+
+    tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
+    try:
+        portal_dir = os.path.join(tmp, "portal")
+        all_values = [6 * k + 1 for k in range(0, 10)]  # 1..55
+        _write_floor(portal_dir, 0, [all_values])
+
+        chunk_size = 100  # bigger than the whole dataset -- one chunk covers everything
+        initial_chunk = load_archive(portal_dir, upto=1000, max_load_count=chunk_size)
+
+        session = RenderSession(
+            primes=initial_chunk, n=1, ceiling=100000, range_mode=True,
+            range_primes=initial_chunk, range_step=1,
+            track_primes=[], auto_orbit=False, enabled_ids=set(), theta=0.5, law_mode="stepped",
+            max_radius=800.0, tempo_ms=120, buffer_margin=0, can_extend_buffer=True,
+            portal_folder=portal_dir, viz_mode="line", pattern_offsets=[0, 2],
+            pattern_step_mode="auto", pattern_stop_on_match=True,
+            range_load_from=0, range_load_to=1000, chunk_size=chunk_size, sliding_enabled=True,
+        )
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            slid_fwd = session._slide_forward()
+            slid_fwd_again = session._slide_forward()
+        check(slid_fwd is False and slid_fwd_again is False, "test setup: already at the true forward edge")
+        out = buf.getvalue()
+        check("TO edge" in out and "1,000" in out,
+              f"the forward edge message names the real TO value (got {out!r})")
+        check(out.count("TO edge") == 1,
+              f"the message is printed exactly ONCE, not once per repeated call at the same edge "
+              f"(deduped) (got {out.count('TO edge')} times in {out!r})")
+
+        buf2 = io.StringIO()
+        with contextlib.redirect_stdout(buf2):
+            slid_back = session._slide_backward()
+            slid_back_again = session._slide_backward()
+        check(slid_back is False and slid_back_again is False, "test setup: already at the true backward edge")
+        out2 = buf2.getvalue()
+        check("FROM edge" in out2 and "(0)" in out2,
+              f"the backward edge message names the real FROM value (got {out2!r})")
+        check(out2.count("FROM edge") == 1,
+              f"the backward message is also deduped to exactly once (got {out2.count('FROM edge')} "
+              f"times in {out2!r})")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _test_sliding_edge_reached_shows_in_hud_not_just_console():
+    """Artur's own direct follow-up to the console-message fix above,
+    2026-09-25: "jedynie w oknie gui nic sie nie pojawia ze wstecz nie da
+    sie isc dalej" -- only in the GUI window nothing appears that you
+    can't go further backward. The console print alone was never enough:
+    he's watching the actual GL window, not tailing console text. N
+    staying unchanged at a genuine edge means renderer.py's own main-loop
+    rebuild gate (`session.n != last_n`) never fires by itself, so without
+    `n_force_rebuild` being set, rebuild_line (the only place that
+    refreshes `hud_lines`) would never even run. Proves both halves:
+    n_force_rebuild becomes True, and calling rebuild_line (as the main
+    loop would) actually surfaces an edge line in hud_lines."""
+    from primeatlas.rings.ring_viz.session import RenderSession
+    from primeatlas.rings.ring_viz.sources import load_archive
+
+    tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
+    try:
+        portal_dir = os.path.join(tmp, "portal")
+        # 12 values, chunk_size=3: enough room for a REAL forward slide to
+        # actually swap (not just hit its own edge too) -- needed so the
+        # test's own final "moved away, HUD line disappears" check
+        # exercises a genuine swap, not another edge-hit.
+        all_values = [6 * k + 1 for k in range(0, 12)]  # 1..67
+        _write_floor(portal_dir, 0, [all_values])
+
+        chunk_size = 3
+        initial_chunk = load_archive(portal_dir, upto=1000, max_load_count=chunk_size)
+        check(list(initial_chunk) == all_values[:3], "test setup: initial chunk is the first 3 values")
+
+        session = RenderSession(
+            primes=initial_chunk, n=1, ceiling=100000, range_mode=True,
+            range_primes=initial_chunk, range_step=1,
+            track_primes=[], auto_orbit=False, enabled_ids=set(), theta=0.5, law_mode="stepped",
+            max_radius=800.0, tempo_ms=120, buffer_margin=0, can_extend_buffer=True,
+            portal_folder=portal_dir, viz_mode="line", pattern_offsets=[0, 2],
+            pattern_step_mode="auto", pattern_stop_on_match=True,
+            range_load_from=0, range_load_to=1000, chunk_size=chunk_size, sliding_enabled=True,
+        )
+        session.n_force_rebuild = False  # construction may have left leftover state -- start clean
+
+        session._slide_backward()
+        check(session.n_force_rebuild is True,
+              "n_force_rebuild is set the first time a genuine edge is newly reached, so "
+              "renderer.py's own main loop refreshes the HUD even though N itself didn't move")
+
+        session.rebuild_line(session.n)
+        check(any("FROM edge" in line for line in session.hud_lines),
+              f"rebuild_line's own hud_lines includes the FROM-edge indicator once the flag "
+              f"is set, not just the console print (got {session.hud_lines!r})")
+
+        # Sliding away from the edge clears both the flag and, on the NEXT
+        # rebuild, the HUD line -- it must not linger forever once the
+        # user has moved on.
+        session._slide_forward()
+        session.rebuild_line(session.n)
+        check(not any("FROM edge" in line for line in session.hud_lines),
+              f"the edge HUD line disappears again once the session has moved away from it "
+              f"(got {session.hud_lines!r})")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _test_sliding_edge_message_clears_on_in_chunk_step_no_slide_needed():
+    """Regression (2026-09-25, Artur's own real report, follow-up to the
+    HUD-visibility fix): "po wykonaniu kroku w przeciwnym kierunku komunikat
+    powinien zniknac ... a komunikat zostaje zamrozony" -- after a step in
+    the OPPOSITE direction the message should disappear, but it stays
+    frozen. The previous fix only cleared the edge flags/HUD line inside
+    _slide_forward/_slide_backward's own SUCCESS path -- a step that stays
+    within the ALREADY-loaded chunk_current (no chunk crossing needed at
+    all, the common case for a small step right after bouncing off an
+    edge) never called either method, so the flag/message never cleared.
+
+    Forces a small, dense wheel (modulus=6, residues=[1]) directly onto a
+    real session so multiple wheel-compatible positions exist WITHIN one
+    small chunk -- proving the fix covers the in-chunk case specifically,
+    not just a chunk-crossing move (the OTHER sliding tests above already
+    cover that half)."""
+    from primeatlas.rings.ring_viz.session import RenderSession
+    from primeatlas.rings.ring_viz.sources import load_archive
+
+    tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
+    try:
+        portal_dir = os.path.join(tmp, "portal")
+        all_values = [6 * k + 1 for k in range(0, 12)]  # 1..67, all ≡1 mod 6
+        _write_floor(portal_dir, 0, [all_values])
+
+        chunk_size = 3
+        initial_chunk = load_archive(portal_dir, upto=1000, from_n=all_values[2], max_load_count=chunk_size)
+        check(list(initial_chunk) == all_values[3:6], "test setup: initial chunk is values[3:6] ([19,25,31])")
+
+        session = RenderSession(
+            primes=initial_chunk, n=int(initial_chunk[0]), ceiling=100000, range_mode=True,
+            range_primes=initial_chunk, range_step=1,
+            track_primes=[], auto_orbit=False, enabled_ids=set(), theta=0.5, law_mode="stepped",
+            max_radius=800.0, tempo_ms=120, buffer_margin=0, can_extend_buffer=True,
+            portal_folder=portal_dir, viz_mode="line", pattern_offsets=[0, 2],
+            pattern_step_mode="auto", pattern_stop_on_match=False,
+            range_load_from=0, range_load_to=1000, chunk_size=chunk_size, sliding_enabled=True,
+        )
+        # Force a small, dense wheel so a step within a single chunk (no
+        # slide) is actually possible -- every all_values entry (all ≡1
+        # mod 6) is itself wheel-compatible under this forced wheel.
+        session.pattern_wheel_modulus = 6
+        session.pattern_wheel_residues = [1]
+
+        # Reach the TRUE FROM edge: first slide is a real chunk crossing
+        # (values[0:3]=[1,7,13] is real data), second slide hits the
+        # genuine start.
+        session._slide_backward()
+        check(session._back_edge_reported is False, "test setup: one real back chunk still remained")
+        session._slide_backward()
+        check(session._back_edge_reported is True, "test setup: now genuinely at the true FROM edge")
+        check(list(session.chunk_current) == [1, 7, 13], "test setup: chunk_current is now the true-first chunk")
+        session.n = int(session.chunk_current[0])  # keep n in sync -- _slide_backward itself never touches it
+
+        # One step FORWARD, opposite direction -- with chunk_current
+        # holding THREE wheel-compatible entries, this must resolve
+        # entirely WITHIN it, no slide needed at all.
+        new_n = session._pattern_wheel_step(session.n, True)
+        check(new_n == 7, f"the forward step found the next in-chunk candidate, no slide needed (got {new_n})")
+        check(list(session.chunk_current) == [1, 7, 13],
+              "sanity: chunk_current itself did NOT change -- this really was an in-chunk step")
+        check(session._back_edge_reported is False,
+              "the stale FROM-edge flag is cleared by an in-chunk step too, not just a real slide")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _test_sliding_to_edge_message_clears_on_in_chunk_step_no_slide_needed():
+    """Symmetric counterpart to the FROM-edge in-chunk test above (Artur's
+    own explicit follow-up, 2026-09-25: "i analogicznie jest dla at range
+    to?" -- and is it analogous for 'at range TO'?) -- same fix
+    (_pattern_wheel_step clears BOTH edge flags on any genuine move,
+    regardless of direction), same in-chunk-step scenario, mirrored for
+    the TO/forward edge instead."""
+    from primeatlas.rings.ring_viz.session import RenderSession
+    from primeatlas.rings.ring_viz.sources import load_archive
+
+    tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
+    try:
+        portal_dir = os.path.join(tmp, "portal")
+        all_values = [6 * k + 1 for k in range(0, 12)]  # 1..67, all ≡1 mod 6
+        _write_floor(portal_dir, 0, [all_values])
+
+        chunk_size = 3
+        range_load_to = 45  # strictly between values[6]=37 and values[7]=43 -- true forward edge inside floor 0
+        initial_chunk = load_archive(portal_dir, upto=range_load_to, from_n=all_values[2], max_load_count=chunk_size)
+        check(list(initial_chunk) == all_values[3:6], "test setup: initial chunk is values[3:6] ([19,25,31])")
+
+        session = RenderSession(
+            primes=initial_chunk, n=int(initial_chunk[0]), ceiling=100000, range_mode=True,
+            range_primes=initial_chunk, range_step=1,
+            track_primes=[], auto_orbit=False, enabled_ids=set(), theta=0.5, law_mode="stepped",
+            max_radius=800.0, tempo_ms=120, buffer_margin=0, can_extend_buffer=True,
+            portal_folder=portal_dir, viz_mode="line", pattern_offsets=[0, 2],
+            pattern_step_mode="auto", pattern_stop_on_match=False,
+            range_load_from=0, range_load_to=range_load_to, chunk_size=chunk_size, sliding_enabled=True,
+        )
+        session.pattern_wheel_modulus = 6
+        session.pattern_wheel_residues = [1]
+
+        # Reach the TRUE TO edge: first slide is real (values[6:9] =
+        # [37,43], both <= range_load_to=45), second slide hits the
+        # genuine end (nothing left <= 45 past that).
+        session._slide_forward()
+        check(session._forward_edge_reported is False, "test setup: one real forward chunk still remained")
+        session._slide_forward()
+        check(session._forward_edge_reported is True, "test setup: now genuinely at the true TO edge")
+        check(list(session.chunk_current) == [37, 43], "test setup: chunk_current is now the true-last chunk")
+        session.n = int(session.chunk_current[-1])  # keep n in sync -- _slide_forward itself never touches it
+
+        # One step BACKWARD, opposite direction -- chunk_current holds TWO
+        # wheel-compatible entries, so this resolves entirely within it.
+        new_n = session._pattern_wheel_step(session.n, False)
+        check(new_n == 37, f"the backward step found the next in-chunk candidate, no slide needed (got {new_n})")
+        check(list(session.chunk_current) == [37, 43],
+              "sanity: chunk_current itself did NOT change -- this really was an in-chunk step")
+        check(session._forward_edge_reported is False,
+              "the stale TO-edge flag is cleared by an in-chunk step too, not just a real slide")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -1319,8 +1705,14 @@ def main():
     _test_pattern_seek_stays_on_last_real_match_at_genuine_window_edge()
     _test_sliding_forward_multi_chunk_seek_finds_distant_match()
     _test_sliding_backward_swap_mirror()
+    _test_sliding_neighbor_chunk_loads_in_background_not_blocking()
     _test_sliding_disabled_by_default_without_full_wiring()
     _test_sliding_found_false_means_true_range_edge_not_chunk_edge()
+    _test_sliding_forward_respects_range_load_to_hard_boundary()
+    _test_sliding_edge_reached_prints_explicit_message()
+    _test_sliding_edge_reached_shows_in_hud_not_just_console()
+    _test_sliding_edge_message_clears_on_in_chunk_step_no_slide_needed()
+    _test_sliding_to_edge_message_clears_on_in_chunk_step_no_slide_needed()
     _test_render_session_wheel_prime_matches_not_skipped()
     _test_render_session_anchor_always_reachable()
     _test_resolve_pattern_anchor()

@@ -780,19 +780,52 @@ fixed slice with a bidirectional TRAVELING window instead: `RenderSession` keeps
 chunks (`chunk_back`/`chunk_current`/`chunk_forward`, each sized by its own separate
 `--slide-chunk-size` field, not silently reusing `--max-load-count`'s value), only the
 middle one ever rendered. Crossing the visible chunk's own edge swaps it, not reloads it --
-the already-preloaded neighbor becomes the new visible chunk and a fresh one is loaded right
-behind it (`sources.load_archive_before`, a new backward-walking counterpart to the existing
-forward-only `load_archive`, via the same cheap "list filenames, binary-search headers,
-decode only what's needed" pattern `storage.find_prime_in_floor` and the constellation-search
-fix above already use) -- so scrubbing/seeking/playback can now traverse the WHOLE logical
-`--load-range` span a chunk at a time instead of getting stuck wherever the first chunk
-happened to land. `_pattern_primes_set` is rebuilt as the union of all three currently-loaded
+the already-preloaded neighbor becomes the new visible chunk instantly, and a fresh one is
+loaded right behind it (`sources.load_archive_before`, a new backward-walking counterpart to
+the existing forward-only `load_archive`, via the same cheap "list filenames, binary-search
+headers, decode only what's needed" pattern `storage.find_prime_in_floor` and the
+constellation-search fix above already use) -- so scrubbing/seeking/playback can now traverse
+the WHOLE logical `--load-range` span a chunk at a time instead of getting stuck wherever the
+first chunk happened to land. That fresh-neighbor load runs on a background daemon thread
+(`RenderSession._ensure_forward_chunk`/`_ensure_back_chunk`), not the GLFW main thread --
+Artur's own real report, 2026-09-25: "przełączenie między nimi trwa dość długo" (switching
+between them takes quite a while) -- an earlier synchronous version of this loaded the fresh
+neighbor right inside the swap itself, blocking the whole single-threaded render loop (no
+frame draw, no input) for however long that disk read took, on EVERY swap, defeating the
+whole point of having a "ready" neighbor at all. `_wait_for_forward_chunk`/
+`_wait_for_back_chunk` still block when a swap genuinely races ahead of its own background
+prefetch (construction itself, or a fast multi-chunk seek) -- never worse than the old fully
+synchronous behavior, just no longer paid on every ordinary swap. `_pattern_primes_set` is
+rebuilt as the union of all three currently-loaded
 chunks on every swap (a k-tuple's own offsets could otherwise straddle a chunk seam), while
 the pattern cursor's own valid bounds (`_pattern_window_bounds`) stay scoped to the visible
 chunk alone -- two deliberately different ranges. All of the sliding logic lives in one place
 (`RenderSession._pattern_wheel_step`), so `tick`/`bump_n`/`scrub_advance`/`_pattern_seek`
 needed no changes at all to benefit from it, including a single seek call crossing several
 chunk boundaries before landing on a real match.
+
+Both `range_load_from` and `range_load_to` are HARD boundaries a slide can never cross, in
+either direction -- `sources.load_archive_before`'s own new `not_below` parameter (regression
+fix, 2026-09-25: Artur's own real report that scrubbing backward past his range's own FROM
+hung the renderer -- the function previously had no way to know that boundary existed at all,
+and kept walking into earlier floors as long as the PORTAL had more real data there, which a
+real archive almost always does all the way down to 2,3,5,7) stops the backward walk the
+moment it reaches the floor containing `range_load_from`, mirroring how the forward direction's
+`load_archive(upto=range_load_to)` has always hard-bounded by `upto`. `_slide_forward`/
+`_slide_backward` print an explicit, deduped console message (Artur's own explicit request)
+the first time a move is refused specifically because it would exceed `range_load_to`/
+`range_load_from` -- silent again once movement resumes, so it never spams a held key at the
+edge, but reports again if the user leaves and later returns to that same edge. The same
+message also appears as an on-canvas HUD line (`rebuild_line`'s own `edge_lines`, forcing one
+extra rebuild via `n_force_rebuild` since N staying unchanged at a genuine edge would otherwise
+never trigger the main loop's own refresh at all) -- a console-only message wasn't enough since
+Artur is watching the GL window itself, not tailing console text. Both the console dedup flags
+and the HUD line clear on ANY genuine move away from the edge, not only a real chunk-crossing
+slide -- a plain step that resolves entirely within the already-loaded `chunk_current` (no
+slide needed at all, the common case right after bouncing off an edge) is still real movement
+away from wherever the message was about, so `_pattern_wheel_step` itself (the single choke
+point every navigation path already funnels through) clears both flags the moment it finds ANY
+next candidate, regardless of direction.
 
 ## Architecture
 
@@ -1020,11 +1053,16 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               chunk_back/chunk_current/chunk_forward (range_primes is now
                               a property aliasing chunk_current, never a second plain
                               attribute that could drift out of sync), _ensure_back_chunk/
-                              _ensure_forward_chunk (lazy loads, None vs. a confirmed-empty
+                              _ensure_forward_chunk (kick off a BACKGROUND daemon-thread load,
+                              never blocking the GLFW main loop -- None vs. a confirmed-empty
                               array distinguishing "not attempted" from "true edge of
-                              range_load_from/range_load_to reached"), _slide_forward/
-                              _slide_backward (the swap-not-reload itself), and
-                              _rebuild_pattern_primes_set (the three-chunk union). Off by
+                              range_load_from/range_load_to reached"), _wait_for_back_chunk/
+                              _wait_for_forward_chunk (start the background load if needed,
+                              then join() it -- the only place that can still stall, and only
+                              for whatever's left of the load once a swap genuinely races
+                              ahead of its own prefetch), _slide_forward/_slide_backward (the
+                              swap-not-reload itself), and _rebuild_pattern_primes_set (the
+                              three-chunk union). Off by
                               default (sliding_enabled) -- degrades gracefully to today's
                               fixed-slice behavior whenever portal_folder/chunk_size/
                               range_load_to aren't all supplied, so every pre-sliding

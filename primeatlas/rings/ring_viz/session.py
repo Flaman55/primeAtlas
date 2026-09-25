@@ -48,6 +48,7 @@ own (e.g. directly from a test).
 import json
 import os
 import sys
+import threading
 import time
 
 import numpy as np
@@ -335,9 +336,30 @@ class RenderSession:
         # own doc-comments for why this three-way state matters.
         self.chunk_back = None
         self.chunk_forward = None
+        # Background-thread handles for an in-flight neighbor-chunk load
+        # (see _ensure_forward_chunk/_ensure_back_chunk's own doc-comments,
+        # 2026-09-25 follow-up): None means no load is currently running.
+        self._forward_load_thread = None
+        self._back_load_thread = None
+        # Dedup flags for the "already at the range's own hard edge"
+        # console message (see _slide_forward/_slide_backward's own
+        # doc-comments, 2026-09-25 follow-up: Artur's own explicit request
+        # for visible feedback when a move is refused specifically because
+        # it would exceed range_load_from/range_load_to) -- reset the
+        # moment either direction actually moves, so returning to an edge
+        # after leaving it reports again instead of staying silent forever
+        # after the first time.
+        self._forward_edge_reported = False
+        self._back_edge_reported = False
         if self.sliding_enabled:
-            self._ensure_back_chunk()
-            self._ensure_forward_chunk()
+            # Construction itself blocks on both neighbors (there is
+            # nothing on screen yet to hide this behind -- same cost as
+            # today's plain initial load), via the SAME wait helpers a
+            # later swap uses when it genuinely races ahead of its own
+            # background prefetch (see _wait_for_back_chunk/
+            # _wait_for_forward_chunk).
+            self._wait_for_back_chunk()
+            self._wait_for_forward_chunk()
             self._rebuild_pattern_primes_set()
 
     # ------------------------------------------------------------------
@@ -359,14 +381,33 @@ class RenderSession:
         self.chunk_current = value
 
     def _ensure_forward_chunk(self):
-        """Lazily loads `chunk_forward` if it hasn't been attempted yet,
-        reusing `load_archive(from_n=...)` exactly as-is (see this
-        session's own sliding-window plan -- forward loading already had a
-        cheap, proven primitive; only backward needed new code). Sets it to
-        a real empty array (not left as None) once `range_load_to` is
-        confirmed reached, so callers can tell "no more data ahead" apart
-        from "haven't checked yet" -- see __init__'s own doc-comment."""
-        if not self.sliding_enabled or self.chunk_forward is not None:
+        """Kicks off loading `chunk_forward` IN THE BACKGROUND (a daemon
+        thread) if it hasn't been attempted yet and no load is already in
+        flight -- does NOT block. Regression fix, 2026-09-25 (Artur's own
+        real report: "przełączenie między nimi trwa dość długo" -- switching
+        between them takes quite a while): the renderer's GLFW main loop is
+        single-threaded, so the FIRST version of this method -- a plain
+        synchronous `load_archive` call sitting right inside `_slide_forward`
+        -- blocked the entire window (no frame draw, no input) for however
+        long that disk read took (multi-second at a real archive-scale
+        `--slide-chunk-size`), on EVERY swap, even though the swap itself
+        (using the ALREADY-loaded `chunk_forward`) was instant. The data
+        Artur expected to already be "waiting in memory" by the time it's
+        needed now genuinely is, in the common case: the background thread
+        this kicks off has the entire time the user spends traversing the
+        chunk that was JUST swapped in to finish, before the NEXT swap would
+        need it. See _wait_for_forward_chunk below for what happens on the
+        rarer "raced ahead of the prefetch" case (a fast multi-chunk seek,
+        or construction itself) -- never worse than the old fully-
+        synchronous behavior, just no longer paid on every ordinary swap.
+
+        Sets `chunk_forward` to a real empty array (not left as None) once
+        `range_load_to` is confirmed reached -- that check is cheap
+        (no I/O), so it stays synchronous -- so callers can tell "no more
+        data ahead" apart from "still loading" (`_forward_load_thread is
+        not None`) and "haven't even started yet" (both None) -- see
+        __init__'s own doc-comment on the three-way chunk state."""
+        if not self.sliding_enabled or self.chunk_forward is not None or self._forward_load_thread is not None:
             return
         if self.chunk_current is None or len(self.chunk_current) == 0:
             return
@@ -374,16 +415,24 @@ class RenderSession:
         if current_top >= self.range_load_to:
             self.chunk_forward = np.empty(0, dtype=np.uint64)
             return
-        self.chunk_forward = load_archive(
-            self.portal_folder, self.range_load_to, from_n=current_top,
-            max_load_count=self.chunk_size,
-        )
+
+        def _worker():
+            result = load_archive(
+                self.portal_folder, self.range_load_to, from_n=current_top,
+                max_load_count=self.chunk_size,
+            )
+            self.chunk_forward = result
+            self._forward_load_thread = None
+
+        self._forward_load_thread = threading.Thread(target=_worker, daemon=True)
+        self._forward_load_thread.start()
 
     def _ensure_back_chunk(self):
-        """Lazily loads `chunk_back` if it hasn't been attempted yet, via
-        the new load_archive_before() -- symmetric counterpart to
-        _ensure_forward_chunk above."""
-        if not self.sliding_enabled or self.chunk_back is not None:
+        """Background-thread counterpart to _ensure_forward_chunk above, via
+        the new load_archive_before() -- see that method's own doc-comment
+        for the full "why background, not synchronous" rationale, which
+        applies identically here."""
+        if not self.sliding_enabled or self.chunk_back is not None or self._back_load_thread is not None:
             return
         if self.chunk_current is None or len(self.chunk_current) == 0:
             return
@@ -392,43 +441,124 @@ class RenderSession:
         if current_bottom <= lower_bound:
             self.chunk_back = np.empty(0, dtype=np.uint64)
             return
-        self.chunk_back = load_archive_before(self.portal_folder, current_bottom, self.chunk_size)
+
+        def _worker():
+            result = load_archive_before(
+                self.portal_folder, current_bottom, self.chunk_size, not_below=lower_bound,
+            )
+            self.chunk_back = result
+            self._back_load_thread = None
+
+        self._back_load_thread = threading.Thread(target=_worker, daemon=True)
+        self._back_load_thread.start()
+
+    def _wait_for_forward_chunk(self):
+        """Ensures `chunk_forward` is actually READY (not just "a load was
+        kicked off") before returning -- starts the background load if one
+        hasn't even begun yet, then blocks on it if one is still running.
+        This is the ONLY place that can still stall the main thread, and
+        only for whatever's left of the load's own duration at the moment
+        it's called -- zero wait in the common case where the background
+        thread already finished during the time the user spent traversing
+        the chunk that's about to be swapped out.
+
+        Prints a line whenever it actually had to wait (2026-09-25, Artur's
+        own real report -- a long backward traversal that outruns the
+        one-chunk-deep background prefetch, e.g. a fast multi-chunk seek or
+        Ctrl-scrub back toward range_load_from, needs a real blocking load
+        on EVERY one of those swaps; without this, that looked exactly like
+        the renderer had hung, with zero feedback that it was still working
+        and how far along it was) -- silent (no print) in the common,
+        already-prefetched case, so ordinary single-chunk swaps stay quiet."""
+        self._ensure_forward_chunk()
+        thread = self._forward_load_thread
+        if thread is not None:
+            t0 = time.perf_counter()
+            thread.join()
+            print(f"Sliding window: waited {time.perf_counter() - t0:.2f}s for the next chunk "
+                  f"forward (moving faster than the background prefetch can keep up)")
+
+    def _wait_for_back_chunk(self):
+        """Mirror of _wait_for_forward_chunk above."""
+        self._ensure_back_chunk()
+        thread = self._back_load_thread
+        if thread is not None:
+            t0 = time.perf_counter()
+            thread.join()
+            print(f"Sliding window: waited {time.perf_counter() - t0:.2f}s for the next chunk "
+                  f"back (moving faster than the background prefetch can keep up)")
 
     def _slide_forward(self):
         """Crosses `chunk_current`'s own upper edge: the visible chunk
-        becomes `chunk_back`, the already-preloaded `chunk_forward` becomes
-        the new visible `chunk_current`, and a fresh `chunk_forward` is
-        loaded right after (Artur's own swap-not-reload spec, 2026-09-25 --
-        see the plan's own "Design" section). Returns False (no-op) when
-        there's genuinely nothing further ahead (`range_load_to` already
-        reached) or sliding isn't enabled -- the caller's own edge-reached
-        handling (next_wheel_n's `n`-unchanged convention) is unaffected
-        either way."""
+        becomes `chunk_back`, the (normally already-preloaded, see
+        _wait_for_forward_chunk above) `chunk_forward` becomes the new
+        visible `chunk_current`, and a fresh `chunk_forward` load is kicked
+        off in the background right after (Artur's own swap-not-reload
+        spec, 2026-09-25 -- see the plan's own "Design" section). Returns
+        False (no-op) when there's genuinely nothing further ahead
+        (`range_load_to` already reached) or sliding isn't enabled -- the
+        caller's own edge-reached handling (next_wheel_n's `n`-unchanged
+        convention) is unaffected either way.
+
+        Prints an explicit message the first time it refuses to move
+        because `range_load_to` is genuinely reached (Artur's own request,
+        2026-09-25: "jawna informacja jesli nie da sie isc dalej bo to
+        przekroczy wartosc od albo do" -- explicit information when a move
+        is refused because it would exceed FROM or TO) -- deduped via
+        `_forward_edge_reported` so holding a key at the edge doesn't spam
+        the console once per frame; reset the moment EITHER direction
+        actually moves, so leaving and later returning to an edge reports
+        again. Also sets `n_force_rebuild` the first time this fires --
+        Artur's own follow-up, 2026-09-25: the console message alone wasn't
+        enough ("jedynie w oknie gui nic sie nie pojawia" -- only in the
+        GUI window nothing appears), since N staying unchanged at a
+        genuine edge means the main loop's own `session.n != last_n`
+        rebuild gate (renderer.py) never fires on its own -- rebuild_line
+        is the only place that refreshes `hud_lines` (see its own
+        edge_lines addition), so without this, the on-screen HUD line
+        would never actually appear even though this console message did."""
         if not self.sliding_enabled:
             return False
-        self._ensure_forward_chunk()
+        self._wait_for_forward_chunk()
         if self.chunk_forward is None or len(self.chunk_forward) == 0:
+            if not self._forward_edge_reported:
+                print(f"Sliding window: already at the range's own TO edge "
+                      f"({self.range_load_to:,}) -- cannot go further forward without "
+                      f"exceeding --load-range")
+                self._forward_edge_reported = True
+                self.n_force_rebuild = True
             return False
         self.chunk_back = self.chunk_current
         self.chunk_current = self.chunk_forward
         self.chunk_forward = None
         self._ensure_forward_chunk()
         self._rebuild_pattern_primes_set()
+        self._forward_edge_reported = False
+        self._back_edge_reported = False
         return True
 
     def _slide_backward(self):
         """Mirror image of _slide_forward -- crosses `chunk_current`'s own
-        lower edge."""
+        lower edge. See that method's own doc-comment for the edge-message
+        dedup rationale (identical here, just for `range_load_from`)."""
         if not self.sliding_enabled:
             return False
-        self._ensure_back_chunk()
+        self._wait_for_back_chunk()
         if self.chunk_back is None or len(self.chunk_back) == 0:
+            if not self._back_edge_reported:
+                print(f"Sliding window: already at the range's own FROM edge "
+                      f"({self.range_load_from:,}) -- cannot go further backward without "
+                      f"exceeding --load-range")
+                self._back_edge_reported = True
+                self.n_force_rebuild = True
             return False
         self.chunk_forward = self.chunk_current
         self.chunk_current = self.chunk_back
         self.chunk_back = None
         self._ensure_back_chunk()
         self._rebuild_pattern_primes_set()
+        self._forward_edge_reported = False
+        self._back_edge_reported = False
         return True
 
     def _rebuild_pattern_primes_set(self):
@@ -574,7 +704,17 @@ class RenderSession:
         (self.pattern_wheel_residues == []) the pattern's own wheel proves
         it can never repeat at all. This preserves the exact "n unchanged
         == stuck" contract _pattern_seek/tick/bump_n/scrub_advance already
-        rely on -- none of those needed to change for sliding to work."""
+        rely on -- none of those needed to change for sliding to work.
+
+        Clears both edge-reported flags (and their HUD line, see
+        rebuild_line's own edge_lines) on ANY genuine move, not just a
+        chunk-crossing one -- regression fix, 2026-09-25 (Artur's own real
+        report: after bouncing off one edge, a step in the OPPOSITE
+        direction that stayed within the ALREADY-loaded chunk_current --
+        no slide needed at all -- left the stale edge message frozen on
+        screen, since only a successful _slide_forward/_slide_backward
+        used to clear it. A move that doesn't need a slide is still a
+        real move away from wherever the edge message was about)."""
         bounds = self._pattern_window_bounds()
         if bounds is None:
             return n
@@ -583,6 +723,10 @@ class RenderSession:
         while True:
             nxt = next_wheel_n(current, is_right, self.pattern_wheel_modulus, self.pattern_wheel_residues, lo, hi)
             if nxt != current:
+                if self._forward_edge_reported or self._back_edge_reported:
+                    self._forward_edge_reported = False
+                    self._back_edge_reported = False
+                    self.n_force_rebuild = True
                 return nxt
             if not self.sliding_enabled:
                 return n
@@ -1022,6 +1166,19 @@ class RenderSession:
         self.hud_n = n_value
         self.hud_count = count
         self.hud_rebuild_ms = round(1000 * (t1 - t0), 1)
+        # Sliding-window "hard edge reached" indicator (Artur's own real
+        # report, 2026-09-25: the console already prints this -- see
+        # _slide_forward/_slide_backward's own doc-comments -- but he's
+        # watching the GL window itself, not tailing console text, so
+        # "nic nie pojawia sie w oknie GUI" (nothing appears in the GUI
+        # window) that it can't go further -- surfaced here too, reusing
+        # the SAME dedup flags those methods already set/clear so this
+        # line appears and disappears in lockstep with the console message.
+        edge_lines = []
+        if self._forward_edge_reported:
+            edge_lines.append(f"At range TO edge ({self.range_load_to:,}) -- cannot go further forward")
+        if self._back_edge_reported:
+            edge_lines.append(f"At range FROM edge ({self.range_load_from:,}) -- cannot go further backward")
         self.hud_lines = (
             [pattern_hud_line(
                 n_value, self.pattern_offsets, all_match,
@@ -1029,7 +1186,7 @@ class RenderSession:
                 wheel_residue_count=len(self.pattern_wheel_residues) if self.pattern_wheel_residues else 0,
                 step_mode=self.pattern_step_mode, stop_on_match=self.pattern_stop_on_match,
                 view_mode=view_mode, line_axis_curved=self.line_axis_curved,
-            )]
+            )] + edge_lines
             if self.pattern_offsets else []
         )
         for line in self.hud_lines:

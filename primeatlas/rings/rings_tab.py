@@ -175,12 +175,14 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
     consciously turned on) -- since the extra disk I/O on each chunk
     swap may not suit every machine. `slide_chunk_size` -- None
     (default) omits --slide-chunk-size entirely, so renderer.py's own
-    argparse default applies; a real value overrides how many primes
-    each back/current/forward chunk holds. Its OWN field, independent
-    of `max_load_count` even though they share the same starting
-    default number -- see this project's own configurable-perf-params
-    rule (never silently reuse one tunable's value for a different
-    one)."""
+    argparse falls back to `max_load_count`'s own value (real regression
+    fix, 2026-09-25 -- an earlier version gave this a separate hardcoded
+    2,000,000 default, so a user who only ever touched Max load count
+    got THAT value for the first chunk, then silently reverted to
+    2,000,000 for every chunk loaded afterward via sliding; inheriting
+    keeps ONE coherent "how much is loaded" number unless deliberately
+    diverged); a real value here overrides that inherited default with
+    a genuinely different chunk size."""
     exe = python_executable or sys.executable
     argv = [exe, RENDERER_SCRIPT, "--source", "archive",
             "--portal-folder", portal_folder, "--upto", str(upto)]

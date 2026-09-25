@@ -1081,13 +1081,7 @@ def main():
     # by trzeba bylo to swiadomie wlaczyc" -- default off, must be
     # consciously turned on), so a plain --load-range keeps today's exact
     # fixed-slice behavior (stuck wherever --max-load-count landed) unless
-    # this is passed too. `--slide-chunk-size` is a SEPARATE field from
-    # --max-load-count on purpose -- see this project's own
-    # configurable-perf-params rule (never silently reuse one tunable's
-    # value for a different one just because they start out equal) -- an
-    # admittedly arbitrary starting default (reusing --max-load-count's own
-    # default number is only a starting-point convenience, not a claim
-    # they should stay tied together).
+    # this is passed too.
     parser.add_argument("--slide-load-range", action="store_true",
                          help="--load-range only: instead of a fixed slice stuck wherever "
                               "--max-load-count first landed, keep a bounded chunk that SLIDES "
@@ -1095,11 +1089,31 @@ def main():
                               "--load-range span becomes reachable a chunk at a time. Off by "
                               "default -- turn on deliberately, since the extra disk I/O on each "
                               "chunk swap may not suit every machine")
-    parser.add_argument("--slide-chunk-size", type=parse_big_int, default=2_000_000,
+    # `--slide-chunk-size` is left as None here (rather than its own
+    # hardcoded default) and resolved to --max-load-count's own value
+    # below, right after argument parsing -- an EXPLICIT --slide-chunk-size
+    # still overrides that. Regression fix, 2026-09-25 (Artur's own real
+    # report: "limit wczytanych ... nie jest parametrem globalnym a
+    # lokalnym poczatkowym potem wraca do domyslnego 2 miliony" -- the
+    # loaded-count limit isn't a global parameter, it's a local/initial
+    # one, then it reverts to the default 2 million): an EARLIER version
+    # gave this its own separate hardcoded 2,000,000 default, so a user who
+    # only ever touched --max-load-count (or the GUI's "Max loaded rings"
+    # field) got that value for the FIRST chunk, then silently fell back to
+    # 2,000,000 for every chunk loaded afterward via sliding -- surprising,
+    # and (see the neighboring bug report the same message raised) a real
+    # contributor to backward traversal feeling like it hangs, since a
+    # bigger-than-intended chunk means a bigger, slower blocking load on
+    # every swap that outruns the background prefetch. Inheriting from
+    # --max-load-count by default keeps ONE coherent "how much is loaded at
+    # once" number unless the user deliberately diverges them.
+    parser.add_argument("--slide-chunk-size", type=parse_big_int, default=None,
                          help="--slide-load-range only: how many primes each of the back/current/"
-                              "forward chunks holds -- its OWN field, independent of "
-                              "--max-load-count even though they share the same starting default "
-                              "(accepts plain digits, a*10**b, a*10^b, or aEb -- see --upto)")
+                              "forward chunks holds -- defaults to --max-load-count's own value "
+                              "when not given, so leaving this blank keeps ONE consistent load size; "
+                              "give a real value here to deliberately use a DIFFERENT size while "
+                              "sliding than the initial load (accepts plain digits, a*10**b, a*10^b, "
+                              "or aEb -- see --upto)")
     # Playback speed -- ports #tempoMs's own default (120ms/tick) and
     # clamp range ([30,2000], see clamp_tempo_ms's own doc-comment); Space
     # starts/stops playback at this rate, ]/[ adjust it live by +/-10ms per
@@ -1208,13 +1222,21 @@ def main():
 
     if args.viz_mode == "line" and not args.load_range:
         parser.error("--viz-mode line requires --load-range")
+    # Resolve --slide-chunk-size's own inherit-from-max-load-count default
+    # (see that argument's own doc-comment above) once, right after
+    # parsing -- args.slide_chunk_size is reassigned here so every reader
+    # further down (including RenderSession's own construction) sees the
+    # already-resolved real number, never has to re-derive the fallback.
+    if args.slide_chunk_size is None:
+        args.slide_chunk_size = args.max_load_count
     if args.slide_load_range:
         if not args.load_range:
             parser.error("--slide-load-range requires --load-range")
         if args.source != "archive":
             parser.error("--slide-load-range requires --source archive (needs real disk I/O to load neighbor chunks)")
-        if args.slide_chunk_size <= 0:
-            parser.error(f"--slide-chunk-size must be > 0, got {args.slide_chunk_size}")
+        if not args.slide_chunk_size or args.slide_chunk_size <= 0:
+            parser.error(f"--slide-chunk-size (or --max-load-count, its own default source) must be "
+                         f"> 0, got {args.slide_chunk_size}")
     if (args.pattern_seed_k is None) != (args.pattern_seed_start is None):
         parser.error("--pattern-seed-k and --pattern-seed-start must be given together")
     if args.pattern_seed_k is not None:
