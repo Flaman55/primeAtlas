@@ -777,9 +777,13 @@ optional "Slide the loaded window" checkbox (`--slide-load-range`, off by defaul
 own explicit call, 2026-09-25, so a machine that doesn't suit the extra disk I/O keeps
 today's exact fixed-slice behavior unless this is deliberately turned on) replaces that
 fixed slice with a bidirectional TRAVELING window instead: `RenderSession` keeps three
-chunks (`chunk_back`/`chunk_current`/`chunk_forward`, each sized by its own separate
-`--slide-chunk-size` field, not silently reusing `--max-load-count`'s value), only the
-middle one ever rendered. Crossing the visible chunk's own edge swaps it, not reloads it --
+chunks (`chunk_back`/`chunk_current`/`chunk_forward`), only the middle one ever rendered, each
+sized to `--max-load-count`'s own value -- `renderer.py` also has an independent
+`--slide-chunk-size` CLI flag for a direct/advanced invocation to size them differently, but
+the GUI deliberately never exposes it as a separate field (Artur's own follow-up call,
+2026-09-25: too many parameters hurts the app's own intuitiveness -- one number, "how much is
+loaded," rather than a second one only power users would ever want to diverge from it).
+Crossing the visible chunk's own edge swaps it, not reloads it --
 the already-preloaded neighbor becomes the new visible chunk instantly, and a fresh one is
 loaded right behind it (`sources.load_archive_before`, a new backward-walking counterpart to
 the existing forward-only `load_archive`, via the same cheap "list filenames, binary-search

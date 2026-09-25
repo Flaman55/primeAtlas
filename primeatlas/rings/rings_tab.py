@@ -553,22 +553,21 @@ class RingsTab(BaseTab):
         # file primeatlas-ring-viz-sliding-range-window-plan.md) -- OFF by
         # default (Artur's own explicit call, 2026-09-25: default off, must
         # be consciously turned on), so a plain Load Range keeps today's
-        # fixed-slice behavior unless this is checked. `slide_chunk_size` is
-        # its OWN field, independent of Max load count above even though
-        # they share the same starting default number -- see this project's
-        # own configurable-perf-params rule (never silently reuse one
-        # tunable's value for a different one just because they start out
-        # equal).
+        # fixed-slice behavior unless this is checked. Deliberately NO
+        # separate chunk-size field here (Artur's own follow-up call,
+        # 2026-09-25: "zbyt duzo parametrow niszczy intuicje korzystania z
+        # apki" -- too many parameters ruins the app's intuitiveness) --
+        # each slid-in chunk always reuses Max load count's own value
+        # (build_renderer_argv is simply never given a slide_chunk_size
+        # here, so renderer.py's own inherit-from-max-load-count fallback
+        # always applies). renderer.py's own --slide-chunk-size CLI flag
+        # still exists for a direct/advanced invocation outside this GUI.
         slide_row = ttk.Frame(position_frame)
         slide_row.pack(fill="x", padx=8, pady=(0, 6))
         self.slide_load_range_var = tk.BooleanVar(value=saved_params.get("slide_load_range", False))
         self._slide_load_range_check = ttk.Checkbutton(
             slide_row, text=self.T("rings.slide_load_range_label"), variable=self.slide_load_range_var)
         self._slide_load_range_check.pack(side="left")
-        ttk.Label(slide_row, text=self.T("rings.slide_chunk_size_label")).pack(side="left", padx=(16, 0))
-        self.slide_chunk_size_entry = ttk.Entry(slide_row, width=16)
-        self.slide_chunk_size_entry.insert(0, saved_params.get("slide_chunk_size", ""))
-        self.slide_chunk_size_entry.pack(side="left", padx=(6, 0))
 
         # Exposes renderer.py's own --tempo-ms at launch time (previously only
         # reachable live, post-launch, via the ]/[ keys inside the GL
@@ -829,7 +828,7 @@ class RingsTab(BaseTab):
             self.hud_font_size_entry, self.general_law_theta_entry,
             self.track_primes_entry, self.load_range_from_entry, self.load_range_to_entry,
             self.max_load_count_entry, self.tempo_ms_entry,
-            self.pattern_k_entry, self.pattern_p0_entry, self.slide_chunk_size_entry,
+            self.pattern_k_entry, self.pattern_p0_entry,
         ]
         self._launch_param_checkbuttons = [
             self._audio_enable_check, self._bertrand_check, self._legendre_check,
@@ -881,7 +880,7 @@ class RingsTab(BaseTab):
         let a 26-digit leftover From value silently activate range mode).
         max_load_count is only ever meaningful together with Load Range, so
         it follows the same enabled state. Same for the sliding-window
-        checkbox/chunk-size field."""
+        checkbox."""
         is_range = self.mode_var.get() == "range"
         self.n_entry.configure(state="disabled" if is_range else "normal")
         range_state = "normal" if is_range else "disabled"
@@ -889,7 +888,6 @@ class RingsTab(BaseTab):
         self.load_range_to_entry.configure(state=range_state)
         self.max_load_count_entry.configure(state=range_state)
         self._slide_load_range_check.configure(state=range_state)
-        self.slide_chunk_size_entry.configure(state=range_state)
 
     def _on_n_changed(self, _event=None):
         """Live floor hint next to the N field -- purely informational (which
@@ -1022,14 +1020,10 @@ class RingsTab(BaseTab):
             max_load_count = None
 
         # Sliding/traveling window -- default OFF (see the checkbox's own
-        # doc-comment above). slide_chunk_size follows the same empty-or-
-        # invalid-omits-the-flag convention as max_load_count -- its OWN
-        # field, never silently defaulting to max_load_count's own value.
+        # doc-comment above). No chunk-size field here on purpose -- every
+        # slid-in chunk simply reuses max_load_count's own value (passed
+        # to build_renderer_argv below), never a separately-typed number.
         slide_load_range = self.slide_load_range_var.get()
-        slide_chunk_size_raw = self.slide_chunk_size_entry.get().strip()
-        slide_chunk_size = _eval_quick_number(slide_chunk_size_raw) if slide_chunk_size_raw else None
-        if slide_chunk_size is not None and slide_chunk_size <= 0:
-            slide_chunk_size = None
 
         # Same empty-or-invalid-omits-the-flag
         # convention as every other numeric field here -- renderer.py's own
@@ -1086,8 +1080,7 @@ class RingsTab(BaseTab):
                                     pattern_step_mode=self.pattern_step_mode_var.get(),
                                     pattern_stop_on_match=self.pattern_stop_on_match_var.get(),
                                     line_axis_curved=self.line_axis_curved_var.get(),
-                                    slide_load_range=slide_load_range,
-                                    slide_chunk_size=slide_chunk_size)
+                                    slide_load_range=slide_load_range)
         # Persist every launch-time field as-typed, so the NEXT
         # launch (this session's Reset+Start, or a whole new app restart) reopens
         # with these same values instead of the tab's hardcoded first-run defaults
@@ -1118,7 +1111,6 @@ class RingsTab(BaseTab):
                 "load_range_to": range_to_raw,
                 "max_load_count": max_load_count_raw,
                 "slide_load_range": slide_load_range,
-                "slide_chunk_size": slide_chunk_size_raw,
                 "line_mode": line_mode,
                 "pattern_k": pattern_k_raw,
                 "pattern_p0": pattern_p0_raw,

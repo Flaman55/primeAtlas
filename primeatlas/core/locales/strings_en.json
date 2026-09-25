@@ -869,7 +869,6 @@
   "rings.load_range_to_label": "to:",
   "rings.max_load_count_label": "Max loaded rings (default 2,000,000):",
   "rings.slide_load_range_label": "Slide the loaded window (traverse the whole range)",
-  "rings.slide_chunk_size_label": "Slide chunk size (blank = same as Max loaded rings):",
   "rings.line_mode_label": "Line mode: slide a k-tuple pattern",
   "rings.pattern_k_label": "Pattern size (k):",
   "rings.pattern_p0_label": "Pattern start prime (p0, must be > 2):",
