@@ -316,6 +316,18 @@ thousands-grouped input -- spaces or commas, e.g. `23 081 664 151` or
 `23,081,664,151` -- as well as plain integers or simple expressions like `10**5+3`,
 making it easy to paste a number copied from another source.
 
+Both halves of a search are bounded, not linear in how much is stored: the prime lookup
+(`storage.py`'s `find_prime_in_floor`) binary-searches window headers rather than reading
+every window, and constellation participation (`constellations.py`'s
+`find_constellation_participation`) binary-searches a paged pattern's page HEADERS (cheap,
+no full decode) to find the one page a value could be on, then decodes only that page --
+instead of decoding every page of every populated pattern into one in-memory set first.
+That full-materialization approach was the actual "search grinds to a halt" bottleneck at
+archive scale (floor 25's k=2 alone: ~2 billion hits across ~2,000 pages) -- a dense
+pattern only ends up paged in the first place once it crosses `hit_paging.PAGE_SIZE`
+(constellation_finder_v2.py auto-migrates it there during generation), so an unpaged
+pattern is small by construction and still gets decoded+cached whole, same as before.
+
 ## Floor semantics
 
 A "floor" is a digit-count range: floor `N` covers `[10^N, 10^(N+1))`. Generation works

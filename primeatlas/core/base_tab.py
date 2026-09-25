@@ -28,7 +28,10 @@ setting self.status themselves right where they already did.
 """
 from tkinter import ttk
 
-from .progress_bar_owner import claim_progress_bar, owns_progress_bar, release_progress_bar
+from .progress_bar_owner import (
+    claim_progress_bar, owns_progress_bar, release_progress_bar,
+    pump_indeterminate, stop_indeterminate_pump,
+)
 
 
 class BaseTab(ttk.Frame):
@@ -55,9 +58,12 @@ class BaseTab(ttk.Frame):
         tracks normally but doesn't stomp on whatever is actually being shown."""
         if not claim_progress_bar(self.totals_progress, self):
             return
-        self.totals_progress.stop()
-        self.totals_progress.configure(mode="indeterminate")
-        self.totals_progress.start(80)
+        # See progress_bar_owner.py's own pump_indeterminate() docstring -- this
+        # widget is reused by many independent call sites over a long session
+        # (this one included), which made plain .stop()/.start() snap between the
+        # bar's two extreme ends instead of gliding once it was actually observed
+        # closely (found via the search path; fixed here too for the same reason).
+        pump_indeterminate(self.totals_progress, 120)
 
     def _stop_busy_progress(self):
         """Resets self.totals_progress back to its normal determinate resting state
@@ -69,6 +75,6 @@ class BaseTab(ttk.Frame):
         it), this tab never painted anything, so resetting here would incorrectly
         wipe out whatever THAT owner is currently showing."""
         if owns_progress_bar(self.totals_progress, self):
-            self.totals_progress.stop()
+            stop_indeterminate_pump(self.totals_progress)
             self.totals_progress.configure(mode="determinate", maximum=1, value=0)
         release_progress_bar(self.totals_progress, self)

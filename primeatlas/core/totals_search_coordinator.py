@@ -36,7 +36,10 @@ from tkinter import messagebox
 
 from ..settings import floor_meta
 from .background import PersistentWorker
-from .progress_bar_owner import claim_progress_bar, owns_progress_bar, release_progress_bar
+from .progress_bar_owner import (
+    claim_progress_bar, owns_progress_bar, release_progress_bar,
+    pump_indeterminate, stop_indeterminate_pump,
+)
 from ..constellations.constellations import find_constellation_participation
 from .storage import (
     find_prime_in_floor, format_bytes, format_duration, get_global_total,
@@ -487,9 +490,11 @@ class TotalsSearchCoordinator:
         # whichever owner has it releases (the status TEXT above is unaffected,
         # that's governed by the separate task #404 suppression flags).
         if claim_progress_bar(self.totals_progress, self._search_progress_owner):
-            self.totals_progress.stop()
-            self.totals_progress.configure(mode="indeterminate")
-            self.totals_progress.start(80)
+            # See progress_bar_owner.py's own pump_indeterminate() docstring for why
+            # this replaced a plain .stop()/.configure(mode=...)/.start(120) sequence
+            # -- that still snapped between the bar's two extreme ends instead of
+            # gliding, even after ruling out the interval as the cause.
+            pump_indeterminate(self.totals_progress, 120)
         if kind == "prime":
             self.status.set(self.T("primes.status_searching", number=number,
                                     base_exponent=base_exponent))
@@ -537,7 +542,7 @@ class TotalsSearchCoordinator:
         if kind == "const_progress":
             _kind, done, total = payload
             if claim_progress_bar(self.totals_progress, self._search_progress_owner):
-                self.totals_progress.stop()
+                stop_indeterminate_pump(self.totals_progress)
                 self.totals_progress.configure(
                     mode="determinate", maximum=max(1, total), value=done)
             self.status.set(self.T("const.status_search_progress", done=done, total=total))
@@ -586,6 +591,6 @@ class TotalsSearchCoordinator:
         # whatever that owner is currently showing. release_progress_bar() below is
         # unconditional either way, so a claim we never actually got can't linger.
         if owns_progress_bar(self.totals_progress, self._search_progress_owner):
-            self.totals_progress.stop()
+            stop_indeterminate_pump(self.totals_progress)
             self.totals_progress.configure(mode="determinate", maximum=1, value=0)
         release_progress_bar(self.totals_progress, self._search_progress_owner)
