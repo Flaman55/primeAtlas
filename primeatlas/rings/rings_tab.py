@@ -63,7 +63,8 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
                          sound_low='sine', sound_prime='triangle', sound_lcm='choir',
                          pipe_stdin_commands=False, max_load_count=None, tempo_ms=None,
                          viz_mode="rings", pattern_seed_k=None, pattern_seed_start=None,
-                         pattern_step_mode="manual", pattern_stop_on_match=False):
+                         pattern_step_mode="manual", pattern_stop_on_match=False,
+                         line_axis_curved=False, slide_load_range=False, slide_chunk_size=None):
     """Builds the argv for launching renderer.py against a real archive.
 
     Uses `python_executable` (defaults to sys.executable -- THIS SAME Python
@@ -156,7 +157,32 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
     on_match` -- False (default) omits --pattern-stop-on-match entirely,
     seeking the next NON-match wheel candidate (in "auto" mode only);
     True seeks the next real MATCH! instead -- see RenderSession.
-    _pattern_uses_seek's own doc-comment for the exact combined rule."""
+    _pattern_uses_seek's own doc-comment for the exact combined rule.
+
+    `line_axis_curved` -- False (default) omits --line-axis-curved
+    entirely (the straight-line axis, unchanged); True bends line mode's
+    axis into a circle instead -- purely visual, see RenderSession.
+    line_axis_curved's own doc-comment.
+
+    `slide_load_range` -- False (default, omits --slide-load-range
+    entirely) keeps today's exact fixed-slice `load_range` behavior
+    (stuck wherever `max_load_count` first landed); True turns on the
+    bidirectional sliding/traveling window (see memory file
+    primeatlas-ring-viz-sliding-range-window-plan.md) so the WHOLE
+    load_range span becomes reachable a chunk at a time. Deliberately
+    off by default -- Artur's own explicit call, 2026-09-25: "domyslnie
+    wylaczone by trzeba bylo to swiadomie wlaczyc" (default off, must be
+    consciously turned on) -- since the extra disk I/O on each chunk
+    swap may not suit every machine. `slide_chunk_size` -- None
+    (default) omits --slide-chunk-size entirely, so renderer.py's own
+    argparse falls back to `max_load_count`'s own value (real regression
+    fix, 2026-09-25 -- an earlier version gave this a separate hardcoded
+    2,000,000 default, so a user who only ever touched Max load count
+    got THAT value for the first chunk, then silently reverted to
+    2,000,000 for every chunk loaded afterward via sliding; inheriting
+    keeps ONE coherent "how much is loaded" number unless deliberately
+    diverged); a real value here overrides that inherited default with
+    a genuinely different chunk size."""
     exe = python_executable or sys.executable
     argv = [exe, RENDERER_SCRIPT, "--source", "archive",
             "--portal-folder", portal_folder, "--upto", str(upto)]
@@ -201,6 +227,12 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
         argv += ["--pattern-step-mode", str(pattern_step_mode)]
     if pattern_stop_on_match:
         argv += ["--pattern-stop-on-match"]
+    if line_axis_curved:
+        argv += ["--line-axis-curved"]
+    if slide_load_range:
+        argv += ["--slide-load-range"]
+    if slide_chunk_size is not None:
+        argv += ["--slide-chunk-size", str(slide_chunk_size)]
     if audio:
         argv += ['--audio', '--sound-low', sound_low, '--sound-prime', sound_prime,
                  '--sound-lcm', sound_lcm]
@@ -517,6 +549,26 @@ class RingsTab(BaseTab):
         self.max_load_count_entry.insert(0, saved_params.get("max_load_count", ""))
         self.max_load_count_entry.pack(side="left", padx=(6, 0))
 
+        # Bidirectional sliding/traveling window over Load Range (see memory
+        # file primeatlas-ring-viz-sliding-range-window-plan.md) -- OFF by
+        # default (Artur's own explicit call, 2026-09-25: default off, must
+        # be consciously turned on), so a plain Load Range keeps today's
+        # fixed-slice behavior unless this is checked. Deliberately NO
+        # separate chunk-size field here (Artur's own follow-up call,
+        # 2026-09-25: "zbyt duzo parametrow niszczy intuicje korzystania z
+        # apki" -- too many parameters ruins the app's intuitiveness) --
+        # each slid-in chunk always reuses Max load count's own value
+        # (build_renderer_argv is simply never given a slide_chunk_size
+        # here, so renderer.py's own inherit-from-max-load-count fallback
+        # always applies). renderer.py's own --slide-chunk-size CLI flag
+        # still exists for a direct/advanced invocation outside this GUI.
+        slide_row = ttk.Frame(position_frame)
+        slide_row.pack(fill="x", padx=8, pady=(0, 6))
+        self.slide_load_range_var = tk.BooleanVar(value=saved_params.get("slide_load_range", False))
+        self._slide_load_range_check = ttk.Checkbutton(
+            slide_row, text=self.T("rings.slide_load_range_label"), variable=self.slide_load_range_var)
+        self._slide_load_range_check.pack(side="left")
+
         # Exposes renderer.py's own --tempo-ms at launch time (previously only
         # reachable live, post-launch, via the ]/[ keys inside the GL
         # window itself -- see clamp_tempo_ms's own [30,2000] range there).
@@ -582,6 +634,20 @@ class RingsTab(BaseTab):
             pattern_step_row, text=self.T("rings.pattern_stop_on_match_label"),
             variable=self.pattern_stop_on_match_var)
         self._pattern_stop_on_match_check.pack(side="left")
+
+        # Curved axis (Artur's own spec, 2026-09-18): purely visual --
+        # bends line mode's straight dot-row into a circle instead, with a
+        # red boundary line marking where the loaded window's own start
+        # and end coincide on screen (they are NOT the same value, unlike
+        # a real periodic wraparound -- see geometry_draw.
+        # axis_boundary_marker_vertices' own doc-comment). Does not touch
+        # navigation/matching/wheel logic at all -- see RenderSession.
+        # line_axis_curved.
+        self.line_axis_curved_var = tk.BooleanVar(value=saved_params.get("line_axis_curved", False))
+        self._line_axis_curved_check = ttk.Checkbutton(
+            pattern_step_row, text=self.T("rings.line_axis_curved_label"),
+            variable=self.line_axis_curved_var)
+        self._line_axis_curved_check.pack(side="left", padx=(16, 0))
 
         # --- Windows & tracking -------------------------------------------
         # These are working parameters (what the visualization
@@ -769,6 +835,7 @@ class RingsTab(BaseTab):
             self._general_law_check, self._auto_orbit_check,
             self._mode_sequential_radio, self._mode_range_radio, self._line_mode_check,
             self._pattern_manual_radio, self._pattern_auto_radio, self._pattern_stop_on_match_check,
+            self._line_axis_curved_check, self._slide_load_range_check,
         ]
         self._launch_param_dropdowns = [
             self.general_law_mode_combo,
@@ -812,13 +879,15 @@ class RingsTab(BaseTab):
         than "both fields happen to be non-empty" -- the old rule that could
         let a 26-digit leftover From value silently activate range mode).
         max_load_count is only ever meaningful together with Load Range, so
-        it follows the same enabled state."""
+        it follows the same enabled state. Same for the sliding-window
+        checkbox."""
         is_range = self.mode_var.get() == "range"
         self.n_entry.configure(state="disabled" if is_range else "normal")
         range_state = "normal" if is_range else "disabled"
         self.load_range_from_entry.configure(state=range_state)
         self.load_range_to_entry.configure(state=range_state)
         self.max_load_count_entry.configure(state=range_state)
+        self._slide_load_range_check.configure(state=range_state)
 
     def _on_n_changed(self, _event=None):
         """Live floor hint next to the N field -- purely informational (which
@@ -950,6 +1019,12 @@ class RingsTab(BaseTab):
         if max_load_count is not None and max_load_count < 0:
             max_load_count = None
 
+        # Sliding/traveling window -- default OFF (see the checkbox's own
+        # doc-comment above). No chunk-size field here on purpose -- every
+        # slid-in chunk simply reuses max_load_count's own value (passed
+        # to build_renderer_argv below), never a separately-typed number.
+        slide_load_range = self.slide_load_range_var.get()
+
         # Same empty-or-invalid-omits-the-flag
         # convention as every other numeric field here -- renderer.py's own
         # argparse/clamp_tempo_ms default (120ms, clamped to [30,2000])
@@ -1003,7 +1078,9 @@ class RingsTab(BaseTab):
                                     pattern_seed_k=pattern_k,
                                     pattern_seed_start=pattern_p0,
                                     pattern_step_mode=self.pattern_step_mode_var.get(),
-                                    pattern_stop_on_match=self.pattern_stop_on_match_var.get())
+                                    pattern_stop_on_match=self.pattern_stop_on_match_var.get(),
+                                    line_axis_curved=self.line_axis_curved_var.get(),
+                                    slide_load_range=slide_load_range)
         # Persist every launch-time field as-typed, so the NEXT
         # launch (this session's Reset+Start, or a whole new app restart) reopens
         # with these same values instead of the tab's hardcoded first-run defaults
@@ -1033,11 +1110,13 @@ class RingsTab(BaseTab):
                 "load_range_from": range_from_raw,
                 "load_range_to": range_to_raw,
                 "max_load_count": max_load_count_raw,
+                "slide_load_range": slide_load_range,
                 "line_mode": line_mode,
                 "pattern_k": pattern_k_raw,
                 "pattern_p0": pattern_p0_raw,
                 "pattern_step_mode": self.pattern_step_mode_var.get(),
                 "pattern_stop_on_match": self.pattern_stop_on_match_var.get(),
+                "line_axis_curved": self.line_axis_curved_var.get(),
             })
         q = queue.Queue()
         # pipe_stdin=True so send_line("RESUME")

@@ -228,3 +228,163 @@ def load_archive(portal_folder, upto, progress_callback=None, batch_files=64, fr
     result = np.concatenate(chunks)
     result.sort()
     return result
+
+
+def load_archive_before(portal_folder, before_n, count, not_below=None):
+    """Backward-walking counterpart to load_archive(): the `count` largest
+    real primes strictly LESS than `before_n` (ascending order), or fewer if
+    the portal's own data runs out first. Added for the ring_viz sliding/
+    traveling-window feature (chunk_back's own loader -- see memory file
+    primeatlas-ring-viz-sliding-range-window-plan.md, Faza 1): forward
+    sliding already reuses load_archive(from_n=...) as-is, but there was no
+    "give me the last N primes below X" primitive until now.
+
+    `before_n` is EXCLUSIVE, mirroring load_archive's own `from_n`
+    exclusivity (`arr > from_n`) -- so a chunk_back ending here and a
+    chunk_current starting at the same `before_n` boundary never duplicate
+    or gap a value at the seam.
+
+    `not_below` -- None (default) reproduces the original unbounded
+    behavior (walk all the way back to the true start of the PORTAL's own
+    data, i.e. down toward 2 if nothing else stops it first). Regression
+    fix, 2026-09-25 (Artur's own real report: going back past the very
+    START of his own --load-range, the renderer hung -- "ignorujac zakres
+    od jakiego startuje, a przeciez od powinno byc twarda granica" --
+    ignoring the range's own FROM, when FROM should be a hard boundary):
+    the caller (RenderSession._ensure_back_chunk) only ever needs primes
+    within its OWN logical `range_load_from`, but this function previously
+    had no way to know that boundary existed at all -- it kept walking
+    into EARLIER floors as long as the PORTAL had more real data there
+    (which a real archive almost always does, all the way down to 2,3,5,7),
+    completely ignoring the user's own requested range. A real
+    --load-range starting deep in a high floor (e.g. floor 24) with floors
+    0-23 also populated could walk dozens of floors -- and, once each
+    chunk swap's own load runs on the background thread this session's
+    other regression fix already added, PILE UP one real disk load after
+    another on every one of those slides, looking exactly like a hang.
+    Passing `not_below=range_load_from` makes FROM a genuine hard floor:
+    the function stops (never returns a value `<= not_below`) the moment
+    it reaches the floor containing `not_below`, exactly mirroring how the
+    very first chunk's own initial load already treats FROM as a hard,
+    non-negotiable edge (see renderer.py's own `from_n=preload_from`).
+
+    Gap-encoded PGS2 windows have no random access (same limitation
+    hit_paging.py's own docstring and load_archive's own module docstring
+    already document elsewhere), so getting the LAST `count` values below a
+    boundary still means fully decoding whole window files -- but only the
+    ones actually needed, walked from the boundary backward, using the same
+    cheap "list filenames (no I/O), binary-search headers (small I/O),
+    decode only what's needed" pattern storage.find_prime_in_floor and this
+    session's own constellation-paging search fix already use:
+
+    1. storage.list_floors() to find which floor `before_n` falls in (or
+       the nearest floor below it, if `before_n` lands exactly on a floor's
+       own lower bound -- that floor itself can then contribute nothing).
+    2. Within that one floor, storage.list_source_filenames() (cheap, no
+       I/O) + a binary search over prime_sieve_v1.read_prime_window_header's
+       base_prime (cheap header peek, not a full decode) to find the
+       rightmost window whose base_prime is still < before_n -- every
+       window after it has base_prime >= before_n, hence EVERY value in it
+       is >= before_n too (windows are non-overlapping and base_prime is
+       each window's own minimum), so those can be skipped without opening
+       them at all.
+    3. Full-decode (prime_sieve_v1.read_prime_window) windows one at a time,
+       walking backward, masking each to `< before_n` (a no-op for every
+       window except the one straddling the boundary), until `count` values
+       are collected or the floor's own first window is exhausted.
+    4. If `count` still isn't reached, cross into the PREVIOUS floor
+       (storage.list_floors() again) and continue -- exact mirror of how
+       load_archive crosses floors forward.
+
+    Deliberately no `batch_files`-style batched intermediate accumulation
+    like load_archive's own (that exists there because a single forward
+    call can span an effectively unbounded number of files across a huge
+    upto-from_n span) -- a backward call is inherently bounded by `count`
+    itself (the loop stops the moment enough values are collected), so the
+    number of files ever opened here is already bounded the same way
+    load_archive's own final partial-window read is: by need, one file at a
+    time, no wasted over-read past what `count` actually requires."""
+    if count <= 0 or before_n <= 0:
+        return np.empty(0, dtype=np.uint64)
+    prime_sieve_dir = os.path.join(_REPO_ROOT, "prime_sieve")
+    if prime_sieve_dir not in sys.path:
+        sys.path.insert(0, prime_sieve_dir)
+    from primeatlas.core import storage
+    import prime_sieve_v1
+
+    def _safe_base_prime(path):
+        try:
+            return prime_sieve_v1.read_prime_window_header(path)["base_prime"]
+        except Exception:
+            return None
+
+    floor_exponents = list(storage.list_floors(portal_folder))
+    floor_index = -1
+    for i, base_exponent in enumerate(floor_exponents):
+        floor_lo = 10 ** base_exponent if base_exponent > 0 else 0
+        if floor_lo < before_n:
+            floor_index = i
+        else:
+            break
+    if floor_index == -1:
+        return np.empty(0, dtype=np.uint64)
+
+    collected = []
+    total = 0
+    idx = floor_index
+    while idx >= 0 and total < count:
+        base_exponent = floor_exponents[idx]
+        # `not_below`'s own hard-boundary check: once THIS floor's own
+        # lower edge is already at or below it, there is nothing left
+        # worth looking at past this floor -- see this function's own
+        # doc-comment for why walking further was the actual bug.
+        floor_lo = 10 ** base_exponent if base_exponent > 0 else 0
+        floor_is_last = not_below is not None and floor_lo <= not_below
+
+        entries = storage.list_source_filenames(portal_folder, base_exponent)
+        if entries:
+            if idx == floor_index:
+                lo, hi = 0, len(entries) - 1
+                best = -1
+                while lo <= hi:
+                    mid = (lo + hi) // 2
+                    bp = _safe_base_prime(entries[mid][1])
+                    if bp is None and mid + 1 <= hi:
+                        mid += 1
+                        bp = _safe_base_prime(entries[mid][1])
+                    if bp is None:
+                        hi = mid - 1
+                        continue
+                    if bp < before_n:
+                        best = mid
+                        lo = mid + 1
+                    else:
+                        hi = mid - 1
+                start_file_index = best
+            else:
+                start_file_index = len(entries) - 1
+
+            file_index = start_file_index
+            while file_index >= 0 and total < count:
+                _, path = entries[file_index]
+                arr = to_prime_array(prime_sieve_v1.read_prime_window(path))
+                if not_below is not None:
+                    trimmed = arr[(arr < before_n) & (arr > not_below)]
+                else:
+                    trimmed = arr[arr < before_n]
+                if trimmed.size:
+                    collected.append(trimmed)
+                    total += int(trimmed.size)
+                file_index -= 1
+
+        if floor_is_last:
+            break
+        idx -= 1
+
+    if not collected:
+        return np.empty(0, dtype=np.uint64)
+    result = np.concatenate(list(reversed(collected)))
+    result.sort()
+    if result.size > count:
+        result = result[-count:]
+    return result

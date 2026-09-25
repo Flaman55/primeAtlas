@@ -569,6 +569,10 @@ def _run_visualization(args, audio=None):
         portal_folder=args.portal_folder,
         viz_mode=args.viz_mode, pattern_offsets=pattern_offsets,
         pattern_step_mode=args.pattern_step_mode, pattern_stop_on_match=args.pattern_stop_on_match,
+        line_axis_curved=args.line_axis_curved,
+        range_load_from=load_from if range_mode else None,
+        range_load_to=load_to if range_mode else None,
+        chunk_size=args.slide_chunk_size, sliding_enabled=args.slide_load_range,
     )
 
     def _apply_hud_refresh():
@@ -910,6 +914,31 @@ def _run_visualization(args, audio=None):
                 gl.prog_outline["u_color"].value = color
                 gl.unit_circle_vao.render(moderngl.LINE_LOOP)
 
+        # "line" viz-mode's curved-axis boundary marker -- a single red
+        # LINE from the circle's own center out to its "12 o'clock" edge,
+        # over the SAME prog_outline program/uniforms as the tracked-ring
+        # outlines just above (see axis_boundary_marker_vertices' own
+        # doc-comment for why this needs marking at all: the loaded
+        # window's own start and end coincide on screen once bent into a
+        # circle, but are NOT actually the same value the way a real
+        # periodic wraparound would be). `pattern_axis_boundary_radius` is
+        # exactly the radius build_line_vertex_data itself used for this
+        # frame's own layout -- world_width/2 for a plain circle, or the
+        # spiral's own bigger outer-lap radius once a real wheel promotes
+        # it to a spiral (see that function's own `boundary_radius`
+        # doc-comment) -- so this single line always reaches all the way
+        # out to the LAST lap actually drawn, crossing every lap's own
+        # phase-zero point along the way (value_to_spiral_xy's own
+        # doc-comment explains why one straight radial line does that for
+        # every lap at once, with no separate per-lap marker needed).
+        if session.viz_mode == "line" and session.line_axis_curved and session.pattern_axis_boundary_radius:
+            gl.prog_outline["u_pan"].value = (pan_x, pan_y)
+            gl.prog_outline["u_zoom"].value = session.cam_zoom
+            gl.prog_outline["u_viewport"].value = (width, height)
+            gl.prog_outline["u_radius"].value = session.pattern_axis_boundary_radius
+            gl.prog_outline["u_color"].value = (1.0, 0.0, 0.0, 1.0)
+            gl.axis_boundary_vao.render(moderngl.LINES)
+
         # Center marker -- fixed decorative triangle + glow line at the
         # ring field's own screen-space origin (pan_x, pan_y; see
         # build_center_marker_vertex_data's own doc-comment for why this is
@@ -1046,6 +1075,45 @@ def main():
                          help="safety cap on primes materialized for an archive --load-range load; "
                               "the range is truncated from the top if it holds more than this "
                               "(accepts plain digits, a*10**b, a*10^b, or aEb -- see --upto)")
+    # Bidirectional sliding/traveling window over --load-range (see memory
+    # file primeatlas-ring-viz-sliding-range-window-plan.md) -- OFF by
+    # default (Artur's own explicit call, 2026-09-25: "domyslnie wylaczone
+    # by trzeba bylo to swiadomie wlaczyc" -- default off, must be
+    # consciously turned on), so a plain --load-range keeps today's exact
+    # fixed-slice behavior (stuck wherever --max-load-count landed) unless
+    # this is passed too.
+    parser.add_argument("--slide-load-range", action="store_true",
+                         help="--load-range only: instead of a fixed slice stuck wherever "
+                              "--max-load-count first landed, keep a bounded chunk that SLIDES "
+                              "(both directions) as N/the pattern cursor moves, so the whole "
+                              "--load-range span becomes reachable a chunk at a time. Off by "
+                              "default -- turn on deliberately, since the extra disk I/O on each "
+                              "chunk swap may not suit every machine")
+    # `--slide-chunk-size` is left as None here (rather than its own
+    # hardcoded default) and resolved to --max-load-count's own value
+    # below, right after argument parsing -- an EXPLICIT --slide-chunk-size
+    # still overrides that. Regression fix, 2026-09-25 (Artur's own real
+    # report: "limit wczytanych ... nie jest parametrem globalnym a
+    # lokalnym poczatkowym potem wraca do domyslnego 2 miliony" -- the
+    # loaded-count limit isn't a global parameter, it's a local/initial
+    # one, then it reverts to the default 2 million): an EARLIER version
+    # gave this its own separate hardcoded 2,000,000 default, so a user who
+    # only ever touched --max-load-count (or the GUI's "Max loaded rings"
+    # field) got that value for the FIRST chunk, then silently fell back to
+    # 2,000,000 for every chunk loaded afterward via sliding -- surprising,
+    # and (see the neighboring bug report the same message raised) a real
+    # contributor to backward traversal feeling like it hangs, since a
+    # bigger-than-intended chunk means a bigger, slower blocking load on
+    # every swap that outruns the background prefetch. Inheriting from
+    # --max-load-count by default keeps ONE coherent "how much is loaded at
+    # once" number unless the user deliberately diverges them.
+    parser.add_argument("--slide-chunk-size", type=parse_big_int, default=None,
+                         help="--slide-load-range only: how many primes each of the back/current/"
+                              "forward chunks holds -- defaults to --max-load-count's own value "
+                              "when not given, so leaving this blank keeps ONE consistent load size; "
+                              "give a real value here to deliberately use a DIFFERENT size while "
+                              "sliding than the initial load (accepts plain digits, a*10**b, a*10^b, "
+                              "or aEb -- see --upto)")
     # Playback speed -- ports #tempoMs's own default (120ms/tick) and
     # clamp range ([30,2000], see clamp_tempo_ms's own doc-comment); Space
     # starts/stops playback at this rate, ]/[ adjust it live by +/-10ms per
@@ -1091,6 +1159,16 @@ def main():
                          help="line mode pattern only, and only with --pattern-step-mode auto: seek "
                               "the next real MATCH! when given, or specifically the next NON-match "
                               "wheel candidate when not given")
+    # Purely cosmetic (Artur's own spec, 2026-09-18): bend the axis into a
+    # circle instead of a straight line -- see geometry_draw.
+    # build_line_vertex_data's own `curved` doc-comment. Does not change
+    # navigation, matching, or the wheel/seek logic at all, only where a
+    # position renders on screen -- see RenderSession.line_axis_curved.
+    parser.add_argument("--line-axis-curved", action="store_true",
+                         help="line mode only: draw the axis bent into a circle instead of a "
+                              "straight line (purely visual -- the loaded window's own start/end "
+                              "coincide on screen, marked with a red boundary line, since they are "
+                              "NOT actually the same value the way a real periodic wraparound would be)")
     parser.add_argument("--pipe-stdin-commands", action="store_true",
                          help="read RESUME commands from stdin and, instead of "
                               "exiting on window-close, hide the window and idle "
@@ -1144,6 +1222,21 @@ def main():
 
     if args.viz_mode == "line" and not args.load_range:
         parser.error("--viz-mode line requires --load-range")
+    # Resolve --slide-chunk-size's own inherit-from-max-load-count default
+    # (see that argument's own doc-comment above) once, right after
+    # parsing -- args.slide_chunk_size is reassigned here so every reader
+    # further down (including RenderSession's own construction) sees the
+    # already-resolved real number, never has to re-derive the fallback.
+    if args.slide_chunk_size is None:
+        args.slide_chunk_size = args.max_load_count
+    if args.slide_load_range:
+        if not args.load_range:
+            parser.error("--slide-load-range requires --load-range")
+        if args.source != "archive":
+            parser.error("--slide-load-range requires --source archive (needs real disk I/O to load neighbor chunks)")
+        if not args.slide_chunk_size or args.slide_chunk_size <= 0:
+            parser.error(f"--slide-chunk-size (or --max-load-count, its own default source) must be "
+                         f"> 0, got {args.slide_chunk_size}")
     if (args.pattern_seed_k is None) != (args.pattern_seed_start is None):
         parser.error("--pattern-seed-k and --pattern-seed-start must be given together")
     if args.pattern_seed_k is not None:

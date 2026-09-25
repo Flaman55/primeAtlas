@@ -1337,6 +1337,172 @@ def line_positions_windowed(primes, lo, span, world_width=1600.0):
     return {"x": x, "y": y, "lo": lo, "span": span}
 
 
+def value_to_ring_axis_xy(value, lo, span, radius=800.0, cx=0.0, cy=0.0):
+    """Maps a single scalar value the same way value_to_line_x does (a
+    linear position `t = (value - lo) / span` in [0, 1] along the loaded
+    window), but places it on a CIRCLE instead of a straight line --
+    Artur's own follow-up request (2026-09-18) once the float32-precision
+    fallback (line_view_bounds/line_positions_windowed) landed: a purely
+    VISUAL change to how "line" viz-mode's already-correct, already-
+    ordered axis is drawn, explicitly NOT a change to which values map
+    where in sequence ("w samym działaniu nic się nie zmieni poza samą
+    wizualizacją osi" -- nothing changes in the actual behavior, only the
+    axis's own visualization). Values still keep their exact linear
+    ORDER around the circle; only the on-screen SHAPE bends from a
+    straight row into a ring.
+
+    Same angle convention ring_geometry.ring_positions already uses
+    (`angle = phase * 2*pi/prime - pi/2`, DrumRenderer's own convention):
+    t=0 (the window's own `lo`) sits at angle -pi/2 -- "12 o'clock",
+    directly above the center for the y-axis convention this whole module
+    already uses (y increases downward on screen, see VERTEX_SHADER's own
+    `ndc.y = -ndc.y` flip; sin(-pi/2) = -1 there ends up rendering at the
+    TOP). t=1 (the window's own `lo+span`, one full turn later) maps to
+    angle -pi/2 + 2*pi, which is the exact same angle as -pi/2 (sin/cos
+    are 2*pi-periodic) -- i.e. the window's start and end coincide at the
+    SAME point on the circle. That coincidence is the seam a real,
+    non-cyclic loaded range needs marked, since (unlike ring mode's own
+    n % p, which is genuinely periodic) `lo` and `lo+span` are NOT the
+    same value -- see the boundary marker line
+    (geometry_draw.axis_boundary_marker_vertices) drawn through this exact
+    point, in red, so the seam is never mistaken for a real wraparound."""
+    t = (value - lo) / span
+    angle = -math.pi / 2.0 + t * 2.0 * math.pi
+    x = cx + radius * math.cos(angle)
+    y = cy + radius * math.sin(angle)
+    return x, y
+
+
+def line_positions_windowed_ring(primes, lo, span, radius=800.0, cx=0.0, cy=0.0):
+    """Circular-layout counterpart of line_positions_windowed: same
+    binary-search filter down to [lo, lo+span], but each surviving value
+    is placed via value_to_ring_axis_xy's own angle math instead of a
+    straight line's y=0 row -- see that function's own doc-comment for the
+    full rationale (a purely visual "curved axis" mode, values keep their
+    exact linear order, only the on-screen shape changes).
+
+    Returns the same {"x", "y", "lo", "span"} shape line_positions_windowed
+    does, so a caller (build_line_vertex_data) can switch between the two
+    layouts without touching anything else about how the result is used."""
+    primes_arr = to_prime_array(primes)
+    hi = lo + span
+    start = int(np.searchsorted(primes_arr, lo, side="left"))
+    end = int(np.searchsorted(primes_arr, hi, side="right"))
+    windowed = primes_arr[start:end]
+    t = (windowed - lo).astype(np.float64) / span
+    angle = -np.pi / 2.0 + t * 2.0 * np.pi
+    x = cx + radius * np.cos(angle)
+    y = cy + radius * np.sin(angle)
+    return {"x": x, "y": y, "lo": lo, "span": span}
+
+
+def value_to_spiral_xy(value, lo, period, base_radius=800.0, pitch=800.0, cx=0.0, cy=0.0):
+    """Spiral-layout counterpart of value_to_ring_axis_xy (Artur's own
+    follow-up, 2026-09-18/19): instead of normalizing the WHOLE loaded
+    window onto one circle (which forces `lo` and `lo+span` to coincide
+    at the seam regardless of how many real "wheel periods" the window
+    actually spans), each `period`-sized chunk of the axis (`period` =
+    the pattern's own CRT wheel modulus, pattern_wheel_residues' own
+    return value -- the smallest genuine repeat cycle of which residues
+    can ever match) gets its OWN full lap of the circle, at a bigger
+    radius than the previous one: "od wartości początkowej wychodzimy
+    jako ze środka a do wartości końcowej wychodzimy na zewnątrz, z
+    zachowaniem periodyków" -- from the starting value we go out as if
+    from the center, toward the end value we go outward, preserving the
+    periodicity.
+
+    `lap = (value - lo) // period` (0 for the first period past `lo`, 1
+    for the next, ...); `phase = (value - lo) % period` places the value
+    within its own lap exactly like value_to_ring_axis_xy places a value
+    within the whole window (t = phase/period, same -pi/2-based angle
+    convention) -- so EVERY lap's own phase-zero point (value ≡ lo mod
+    period) lands at the identical angle -pi/2, just at that lap's own,
+    bigger radius: "to co ma trafiać na czerwoną pionową linię jest w
+    swojej fazie równej zero" -- what's supposed to land on the red
+    vertical line is at phase zero -- is satisfied by construction, for
+    every lap at once, by a single straight radial line (see
+    spiral_outer_radius/geometry_draw.axis_boundary_marker_vertices)
+    rather than needing a separate per-lap marker.
+
+    `pitch` -- the EXTRA radius each successive lap adds; confirmed by
+    Artur (2026-09-19) to be a purely arbitrary VISUAL choice with NO
+    effect on precision: for a fixed `period`, the ratio of the smallest
+    meaningful value-delta's own world-space arc length to float32's own
+    ULP at any given lap's radius is `(value_delta / period) * 2*pi /
+    FLOAT32_EPS` -- both the arc length and the ULP scale linearly with
+    radius, so radius itself cancels out of that ratio entirely. A real
+    example (k=4 pattern, period=30,030, value_delta=2, the twin-prime-
+    style smallest realistic gap) gives a ~3,500x safety margin at EVERY
+    lap, from the innermost to the outermost, regardless of `pitch` or
+    how many laps exist -- verified numerically before this was
+    implemented, not assumed.
+
+    `period<=0` degenerates the same way an empty pattern_wheel_residues
+    modulus would -- callers (build_line_vertex_data) only take this path
+    when a real wheel (`modulus > 1`) is active, so this is not expected
+    to be hit in practice, but division by a non-positive period would
+    otherwise raise/misbehave silently; no special-casing is added here
+    since the contract is "only call this with a real period" (same
+    convention next_wheel_n's own callers already follow for `modulus`)."""
+    lap = (value - lo) // period
+    phase = (value - lo) % period
+    t = phase / period
+    angle = -math.pi / 2.0 + t * 2.0 * math.pi
+    radius = base_radius + lap * pitch
+    x = cx + radius * math.cos(angle)
+    y = cy + radius * math.sin(angle)
+    return x, y
+
+
+def line_positions_windowed_spiral(primes, lo, span, period, base_radius=800.0, pitch=800.0, cx=0.0, cy=0.0):
+    """Spiral-layout counterpart of line_positions_windowed_ring: same
+    binary-search filter down to [lo, lo+span], but each surviving value
+    is placed via value_to_spiral_xy's own lap+phase math instead of a
+    single circle's plain span-normalized angle -- see that function's
+    own doc-comment for the full rationale. Vectorized floordiv/mod on
+    the (possibly object-dtype, real-archive-scale) filtered array, same
+    "exact integer arithmetic first, cast to float64 only for the small
+    per-lap phase/lap values" discipline line_positions itself uses.
+
+    Returns the same {"x", "y", "lo", "span"} shape the other line_
+    positions_windowed_* variants do."""
+    primes_arr = to_prime_array(primes)
+    hi = lo + span
+    start = int(np.searchsorted(primes_arr, lo, side="left"))
+    end = int(np.searchsorted(primes_arr, hi, side="right"))
+    windowed = primes_arr[start:end]
+    delta = windowed - lo
+    lap = delta // period
+    phase = delta % period
+    t = phase.astype(np.float64) / period
+    angle = -np.pi / 2.0 + t * 2.0 * np.pi
+    radius = base_radius + lap.astype(np.float64) * pitch
+    x = cx + radius * np.cos(angle)
+    y = cy + radius * np.sin(angle)
+    return {"x": x, "y": y, "lo": lo, "span": span}
+
+
+def spiral_outer_radius(span, period, base_radius=800.0, pitch=800.0):
+    """The radius of the OUTERMOST lap a window of `span` (range_hi -
+    range_lo, or the currently rendered slice's own span) reaches under
+    value_to_spiral_xy/line_positions_windowed_spiral's own lap math --
+    `span // period` is the highest lap index any value in [lo, lo+span]
+    can land on (mirrors that function's own `lap = (value - lo) //
+    period`, evaluated at the window's own far edge). Used to size the
+    curved-axis boundary marker (geometry_draw.axis_boundary_marker_
+    vertices) so the single red radial line reaches all the way out to
+    the last lap actually drawn -- see value_to_spiral_xy's own doc-
+    comment for why one straight line at a fixed angle already crosses
+    every lap's own phase-zero point, without a separate marker per lap.
+
+    `span <= 0` (a degenerate/empty window) returns `base_radius` alone
+    (lap 0, the innermost/only circle) rather than raising."""
+    if span <= 0:
+        return base_radius
+    max_lap = span // period
+    return base_radius + max_lap * pitch
+
+
 def pattern_positions_and_match(n, offsets, primes_window_set):
     """positions = [n+o for o in offsets]; hit_flags[i] = positions[i] is a
     member of `primes_window_set`; all_match = every offset hit (False,

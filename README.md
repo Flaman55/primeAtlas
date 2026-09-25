@@ -729,6 +729,153 @@ dots actually inside that viewport rather than the entire loaded array, which al
 real 2,000,000-prime archive load's own per-frame rebuild time from ~410ms to under 1ms.
 The HUD's `Pattern:` line shows `[view: local]` whenever this fallback is active.
 
+An optional "Curved axis" checkbox (`--line-axis-curved`) bends line mode's straight dot-row
+into a circle instead -- a PURELY visual choice (`ring_geometry.value_to_ring_axis_xy`/
+`line_positions_windowed_ring`, `geometry_draw.build_line_vertex_data`'s own `curved`
+parameter): every value keeps its exact linear position/order, only the on-screen shape
+changes, and nothing about matching, navigation, or the wheel/seek logic is affected. Since
+the loaded window's own start and end are NOT actually the same value (unlike ring mode's
+genuinely periodic `n % p`), bending them onto the same point on the circle would otherwise
+look like a real wraparound that isn't there -- a red boundary line (drawn through
+`geometry_draw.axis_boundary_marker_vertices`, reusing the tracked-ring outline's own
+`OUTLINE_VERTEX_SHADER`/`prog_outline`) marks that seam explicitly.
+
+Once a real pattern (with a genuine wheel, `pattern_wheel_modulus > 1`) is active, the same
+"Curved axis" checkbox automatically promotes the single circle into a SPIRAL instead
+(`ring_geometry.value_to_spiral_xy`/`line_positions_windowed_spiral`/`spiral_outer_radius`,
+`build_line_vertex_data`'s own `wheel_modulus` parameter): every full wheel-period-sized chunk
+of the loaded window gets its own lap, at a bigger radius than the last, so a window spanning
+several wheel periods shows that structure directly (a window narrower than one period still
+renders as a single partial arc, unchanged) -- Artur's own follow-up, 2026-09-19: "jesli
+zakres starcza na niepelny okrag ... mamy niepelny okrag, jesli periodyk powoduje spirale o
+kilku stopniach zagniezdzenia to tak to bedzie wygladac." Every lap's own phase-zero point
+(`value - lo` a multiple of the wheel period) lands at the SAME angle regardless of which lap,
+so a single straight radial red line (the same boundary marker, now reaching out to
+`spiral_outer_radius`'s bigger radius instead of a fixed one) crosses every lap's own
+phase-zero point at once, with no separate per-lap marker needed. The radial distance between
+successive laps is a purely arbitrary visual choice: for a fixed wheel period, the ratio of a
+k-tuple's smallest meaningful value-delta's own world-space arc length to float32's own
+precision limit is CONSTANT at every lap, independent of that lap's own radius (both the
+circumference and the float32 rounding step scale together with radius) -- verified
+numerically (~3,500x safety margin at a real k=4 pattern's period, at any lap) before this was
+implemented, not assumed. Because that precision guarantee doesn't depend on the loaded
+window's own span at all, the spiral layout maps the WHOLE loaded window directly, bypassing
+`line_view_bounds`' own local-anchor-centered-viewport fallback entirely (that fallback exists
+only to protect the plain straight/single-circle layouts, whose own precision DOES degrade
+with span) -- a real archive-scale window with millions of loaded primes can therefore cost as
+much to lay out this way as it did before that fallback existed (see this section's own
+`~410ms -> under 1ms` note above), a known, deliberate tradeoff for showing the window's true
+multi-period structure rather than a small recentering slice.
+
+By default, `--load-range` loads a single FIXED slice from FROM ascending, capped at
+`--max-load-count` (2,000,000 by default) -- at real archive-floor scale a huge requested
+range (e.g. essentially all of floor 25) can leave that slice covering only a razor-thin
+sliver of what was actually asked for (confirmed live, 2026-09-25: a ~2.22e25-wide range
+loaded only ~1.15e8 worth, i.e. ~5.2e-18 of it), so most of the range -- and most of a
+sparse k-tuple pattern's real occurrences in it -- stays permanently out of reach. An
+optional "Slide the loaded window" checkbox (`--slide-load-range`, off by default -- Artur's
+own explicit call, 2026-09-25, so a machine that doesn't suit the extra disk I/O keeps
+today's exact fixed-slice behavior unless this is deliberately turned on) replaces that
+fixed slice with a bidirectional TRAVELING window instead: `RenderSession` keeps three
+chunks (`chunk_back`/`chunk_current`/`chunk_forward`), only the middle one ever rendered, each
+sized to `--max-load-count`'s own value -- `renderer.py` also has an independent
+`--slide-chunk-size` CLI flag for a direct/advanced invocation to size them differently, but
+the GUI deliberately never exposes it as a separate field (Artur's own follow-up call,
+2026-09-25: too many parameters hurts the app's own intuitiveness -- one number, "how much is
+loaded," rather than a second one only power users would ever want to diverge from it).
+Crossing the visible chunk's own edge swaps it, not reloads it --
+the already-preloaded neighbor becomes the new visible chunk instantly, and a fresh one is
+loaded right behind it (`sources.load_archive_before`, a new backward-walking counterpart to
+the existing forward-only `load_archive`, via the same cheap "list filenames, binary-search
+headers, decode only what's needed" pattern `storage.find_prime_in_floor` and the
+constellation-search fix above already use) -- so scrubbing/seeking/playback can now traverse
+the WHOLE logical `--load-range` span a chunk at a time instead of getting stuck wherever the
+first chunk happened to land. That fresh-neighbor load runs on a background daemon thread
+(`RenderSession._ensure_forward_chunk`/`_ensure_back_chunk`), not the GLFW main thread --
+Artur's own real report, 2026-09-25: "przełączenie między nimi trwa dość długo" (switching
+between them takes quite a while) -- an earlier synchronous version of this loaded the fresh
+neighbor right inside the swap itself, blocking the whole single-threaded render loop (no
+frame draw, no input) for however long that disk read took, on EVERY swap, defeating the
+whole point of having a "ready" neighbor at all. `_wait_for_forward_chunk`/
+`_wait_for_back_chunk` still block when a swap genuinely races ahead of its own background
+prefetch (construction itself, or a fast multi-chunk seek) -- never worse than the old fully
+synchronous behavior, just no longer paid on every ordinary swap. `_pattern_primes_set` is
+rebuilt as the union of all three currently-loaded
+chunks on every swap (a k-tuple's own offsets could otherwise straddle a chunk seam), while
+the pattern cursor's own valid bounds (`_pattern_window_bounds`) stay scoped to the visible
+chunk alone -- two deliberately different ranges. All of the sliding logic lives in one place
+(`RenderSession._pattern_wheel_step`), so `tick`/`bump_n`/`scrub_advance`/`_pattern_seek`
+needed no changes at all to benefit from it, including a single seek call crossing several
+chunk boundaries before landing on a real match.
+
+Both `range_load_from` and `range_load_to` are HARD boundaries a slide can never cross, in
+either direction -- `sources.load_archive_before`'s own new `not_below` parameter (regression
+fix, 2026-09-25: Artur's own real report that scrubbing backward past his range's own FROM
+hung the renderer -- the function previously had no way to know that boundary existed at all,
+and kept walking into earlier floors as long as the PORTAL had more real data there, which a
+real archive almost always does all the way down to 2,3,5,7) stops the backward walk the
+moment it reaches the floor containing `range_load_from`, mirroring how the forward direction's
+`load_archive(upto=range_load_to)` has always hard-bounded by `upto`. `_slide_forward`/
+`_slide_backward` print an explicit, deduped console message (Artur's own explicit request)
+the first time a move is refused specifically because it would exceed `range_load_to`/
+`range_load_from` -- silent again once movement resumes, so it never spams a held key at the
+edge, but reports again if the user leaves and later returns to that same edge. The same
+message also appears as an on-canvas HUD line (`rebuild_line`'s own `edge_lines`, forcing one
+extra rebuild via `n_force_rebuild` since N staying unchanged at a genuine edge would otherwise
+never trigger the main loop's own refresh at all) -- a console-only message wasn't enough since
+Artur is watching the GL window itself, not tailing console text. Both the console dedup flags
+and the HUD line clear on ANY genuine move away from the edge, not only a real chunk-crossing
+slide -- a plain step that resolves entirely within the already-loaded `chunk_current` (no
+slide needed at all, the common case right after bouncing off an edge) is still real movement
+away from wherever the message was about, so `_pattern_wheel_step` itself (the single choke
+point every navigation path already funnels through) clears both flags the moment it finds ANY
+next candidate, regardless of direction.
+
+With sliding enabled, `_pattern_seek`'s own uncapped crawl (see above) can need to cross MANY
+chunks before reaching a sparse pattern's next real MATCH! -- Artur's own real report,
+2026-09-25: a small `--max-load-count`/chunk size (e.g. 500) against a k=5 pattern made the
+window "zawiesza się" (hangs), since each crossing beyond the single-chunk-deep prefetch is a
+real blocking disk load and `_pattern_seek` used to run synchronously on the GLFW main thread.
+Rather than a mathematical shortcut (a density estimate, or reusing the separately-computed
+constellation "magazyn" of already-found hits -- both considered and dropped: the magazyn's own
+per-floor `CHECKPOINT.txt`/done-range bookkeeping only proves a sub-span was actually searched
+for constellations, not merely that prime data exists there, so trusting "no stored hit" as
+"no real hit" would risk a false negative in whatever sub-range the finder hasn't reached yet),
+`RenderSession._start_pattern_seek` simply moves the WHOLE `_pattern_seek` call onto a
+background daemon thread when `sliding_enabled` -- `tick`/`bump_n`/`scrub_advance` kick it off
+(or no-op if one is already running) and return immediately; the worker commits `self.n` (found)
+or stops playback with a printed message (`tick`, not found) once the search actually resolves,
+guarded by a `_seek_epoch` counter `reset()` bumps so a late finisher from BEFORE a reset can
+never clobber state reset() already moved past. `rebuild_line` surfaces a "Searching for the
+next pattern match..." HUD line for as long as `_seek_thread` is alive, so the window visibly
+shows it's working instead of looking frozen. Only ONE seek runs at a time by design (chunk_back/
+chunk_current/chunk_forward and their own background-load threads assume a single owner, no
+locking of their own) -- v1 has no true cancellation, so reversing direction mid-search is
+simply ignored until the in-flight one resolves; this is scoped to `sliding_enabled` sessions
+only, since without sliding `_pattern_wheel_step` can't loop across chunks at all (every
+pre-existing, non-sliding call site keeps calling `_pattern_seek` synchronously, unchanged). The
+worker's whole body runs inside try/except/finally (regression fix, 2026-09-25: an unhandled
+exception used to leave `_seek_thread` permanently non-None, silently wedging ALL future
+navigation in both directions, since every no-op guard treats any non-None value as "already
+running" whether the thread is genuinely still working or simply died) -- `finally` always frees
+the slot, and any real exception prints its traceback instead of freezing the window with no
+explanation at all.
+
+Even backgrounded, a small `chunk_size` still means many real chunk crossings for a sparse
+pattern -- so the crawl ITSELF now searches with a bigger internal stride
+(`_SEEK_STRIDE_CHUNK_SIZE`, the app's own existing 2,000,000 `--max-load-count` default, never
+smaller than the user's real `chunk_size`) via `RenderSession._effective_chunk_size`, and only
+shrinks back down to the user's own configured `chunk_size` once a match is actually found
+(`_recenter_render_chunks`, a fresh small `load_archive`/`load_archive_before` pair centered on
+the match) -- Artur's own proposal, 2026-09-25: "a gdyby przeszukiwanie działało na tych
+domyślnych 2 milionach ale samo renderowanie było dla wyznaczonej liczby" (what if the SEARCH
+worked on the default 2 million while the RENDERING stayed at the configured number). This is
+purely internal -- `_SEEK_STRIDE_CHUNK_SIZE` is never a second GUI/CLI field a user has to keep
+in sync (see [[feedback_configurable_perf_params]]'s own refinement on not splitting one knob
+into two) -- and skipped entirely when a match resolves within the already-loaded `chunk_current`
+(no real crossing needed, the common case), so the recenter reload is only ever paid when it was
+actually earned.
+
 ## Architecture
 
 ```
@@ -912,7 +1059,15 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               anchor-centered viewport instead of the whole loaded window
                               once that window's own span would lose a k-tuple's small
                               internal offsets to the GPU's float32 vertex-buffer precision
-                              limit (see "Ring visualization" above)
+                              limit, value_to_ring_axis_xy/line_positions_windowed_ring
+                              provide the optional curved-axis layout -- same lo/span
+                              mapping, bent onto a circle instead of a straight line, purely
+                              visual, and value_to_spiral_xy/line_positions_windowed_spiral/
+                              spiral_outer_radius promote that circle into a multi-lap
+                              spiral once a real pattern wheel is active, mapping the WHOLE
+                              loaded window directly rather than through line_view_bounds'
+                              own local-viewport fallback (see "Ring visualization" above
+                              for all of these)
   ring_viz/                      the GPU renderer subprocess launched by rings_tab.py --
                               kept in its own subpackage since it's a separate OS
                               process, not additional widgets in the main Tk process;
@@ -925,7 +1080,10 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
     gl_setup.py                   GLResources: window/context/shader-program/VAO/VBO
                               creation -- the one piece of the split below that is NOT
                               GL-free, since creating a GL context is unavoidably
-                              GL-bound one-time setup work
+                              GL-bound one-time setup work. axis_boundary_vao reuses the
+                              tracked-ring outline's own OUTLINE_VERTEX_SHADER/prog_outline
+                              (a per-draw-call u_radius/u_color pair) over a fixed 2-vertex
+                              buffer to draw line mode's curved-axis boundary marker
     session.py                     RenderSession -- the interactive session's own state
                               (camera pan/zoom, playback/tempo, auto-orbit, tracked-
                               ring outlines, buffer extension, HUD snapshot) and the
@@ -934,10 +1092,41 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               loop are thin adapters rather than a dozen separate
                               closures each capturing their own mutable dict. Also owns
                               "line" viz-mode's own state (viz_mode/pattern_offsets/
-                              pattern_match/flash_pattern) and rebuild_line -- a
+                              pattern_match/flash_pattern/line_axis_curved/
+                              pattern_axis_boundary_radius) and rebuild_line -- a
                               deliberately separate method from rebuild() (ring mode),
                               not a branch inside it, since line mode has none of ring
-                              mode's resonance/window/HUD-factors machinery
+                              mode's resonance/window/HUD-factors machinery. Also owns
+                              the optional bidirectional sliding/traveling window over
+                              --load-range (see "Ring visualization" above):
+                              chunk_back/chunk_current/chunk_forward (range_primes is now
+                              a property aliasing chunk_current, never a second plain
+                              attribute that could drift out of sync), _ensure_back_chunk/
+                              _ensure_forward_chunk (kick off a BACKGROUND daemon-thread load,
+                              never blocking the GLFW main loop -- None vs. a confirmed-empty
+                              array distinguishing "not attempted" from "true edge of
+                              range_load_from/range_load_to reached"), _wait_for_back_chunk/
+                              _wait_for_forward_chunk (start the background load if needed,
+                              then join() it -- the only place that can still stall, and only
+                              for whatever's left of the load once a swap genuinely races
+                              ahead of its own prefetch), _slide_forward/_slide_backward (the
+                              swap-not-reload itself), and _rebuild_pattern_primes_set (the
+                              three-chunk union). Off by
+                              default (sliding_enabled) -- degrades gracefully to today's
+                              fixed-slice behavior whenever portal_folder/chunk_size/
+                              range_load_to aren't all supplied, so every pre-sliding
+                              caller/test is unaffected. _start_pattern_seek moves a
+                              multi-chunk _pattern_seek crawl onto its own background
+                              daemon thread when sliding_enabled (see "Ring visualization"
+                              above) -- _seek_thread/_seek_epoch are its only state,
+                              reset() bumping the epoch so a late finisher from before a
+                              reset can't clobber it; the whole worker runs inside
+                              try/except/finally so an exception can never leave
+                              _seek_thread wedged non-None forever. _effective_chunk_size/
+                              _recenter_render_chunks let that same crawl search with a
+                              bigger internal stride (module-level _SEEK_STRIDE_CHUNK_SIZE)
+                              than the user's own chunk_size, shrinking back down to it
+                              once a match is actually found
     geometry_draw.py               pure vertex/color/camera-math helpers with no GL
                               call anywhere -- per-ring vertex color/position data,
                               the hit/normal buffer split, tracked-ring outline/center-
@@ -951,7 +1140,13 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               anchor-centered viewport (see "Ring visualization" above),
                               and accepts an optional pre-built primes_set so a caller
                               holding range_primes fixed across many calls (RenderSession)
-                              isn't forced to rebuild the same set from scratch every frame
+                              isn't forced to rebuild the same set from scratch every frame,
+                              and (given a real wheel_modulus) promotes the curved layout from
+                              a single circle to a multi-lap spiral, returning the boundary
+                              marker's own radius (boundary_radius) either way so renderer.py
+                              never hardcodes it. axis_boundary_marker_vertices is the
+                              2-vertex (center, edge) buffer for the curved-axis boundary
+                              marker (see gl_setup.py)
     hud.py                         HUD text composition (plain lines and the on-canvas
                               canvas-header/status wrapper), per-line window-family
                               coloring, and Pillow-based rasterization of the on-canvas
@@ -963,7 +1158,14 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               lookahead-extension math, the range-mode dynamic step
                               size, and the resonance-log jump-vs-tick update rule
     sources.py                     load_synthetic/load_sieve/load_archive -- the three
-                              interchangeable ring-array data sources (--source)
+                              interchangeable ring-array data sources (--source), plus
+                              load_archive_before -- the backward-walking counterpart to
+                              load_archive added for the sliding-window feature (see
+                              "Ring visualization" above): the `count` largest real primes
+                              strictly below a boundary (EXCLUSIVE, mirroring load_archive's
+                              own from_n), via the same cheap "list filenames, binary-search
+                              headers, decode only what's needed" pattern load_archive/
+                              storage.find_prime_in_floor already use
     shaders.py                     the GLSL vertex/fragment shader source strings
                               (point-sprite rings, tracked-ring outlines, screen-space
                               shapes, on-canvas HUD text quad)

@@ -311,6 +311,273 @@ def _test_empty_portal():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def _test_slide_chunk_size_defaults_to_max_load_count():
+    """Regression (2026-09-25, Artur's own real report: "limit wczytanych
+    ... nie jest parametrem globalnym a lokalnym poczatkowym potem wraca do
+    domyslnego 2 miliony" -- the loaded-count limit isn't a global
+    parameter, it's a local/initial one, then it reverts to the default 2
+    million): --slide-chunk-size used to carry its own separate hardcoded
+    2,000,000 default, independent of --max-load-count -- a user who only
+    ever set --max-load-count (or the GUI's "Max loaded rings" field) got
+    THAT value for the very first chunk, then every chunk loaded afterward
+    via sliding silently fell back to 2,000,000 regardless. Fixed:
+    --slide-chunk-size now defaults to None at the argparse level and gets
+    resolved to args.max_load_count's own value right after parsing, unless
+    an explicit --slide-chunk-size overrides it.
+
+    Exercises main()'s real argparse parsing/validation path (not just
+    build_renderer_argv's argv construction) by monkeypatching renderer.run
+    to a no-op that just records the resolved `args`, and sys.argv to a
+    fake invocation -- main() never reaches any GL/moderngl code before
+    calling run(args), so this is safe in this headless sandbox (same
+    "no GL/glfw import until run()" guarantee this whole test file's own
+    docstring already relies on)."""
+    from primeatlas.rings.ring_viz import renderer
+
+    tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
+    try:
+        portal_dir = os.path.join(tmp, "portal")
+        os.makedirs(portal_dir, exist_ok=True)
+
+        captured = {}
+
+        def fake_run(args):
+            captured["args"] = args
+
+        real_run = renderer.run
+        real_argv = sys.argv
+        renderer.run = fake_run
+        try:
+            # No explicit --slide-chunk-size -- must inherit --max-load-count.
+            sys.argv = ["renderer.py", "--source", "archive", "--portal-folder", portal_dir,
+                        "--load-range", "10,1000", "--slide-load-range", "--max-load-count", "12345"]
+            renderer.main()
+            check(captured["args"].slide_chunk_size == 12345,
+                  f"--slide-chunk-size with no explicit value inherits --max-load-count's own "
+                  f"value (12345), not a separate hardcoded 2,000,000 default "
+                  f"(got {captured['args'].slide_chunk_size})")
+
+            # An explicit --slide-chunk-size still overrides the inherited default.
+            captured.clear()
+            sys.argv = ["renderer.py", "--source", "archive", "--portal-folder", portal_dir,
+                        "--load-range", "10,1000", "--slide-load-range", "--max-load-count", "12345",
+                        "--slide-chunk-size", "999"]
+            renderer.main()
+            check(captured["args"].slide_chunk_size == 999,
+                  f"an explicit --slide-chunk-size still overrides the inherited default "
+                  f"(got {captured['args'].slide_chunk_size})")
+
+            # Neither given -- both fall back to argparse's own shared 2,000,000.
+            captured.clear()
+            sys.argv = ["renderer.py", "--source", "archive", "--portal-folder", portal_dir,
+                        "--load-range", "10,1000", "--slide-load-range"]
+            renderer.main()
+            check(captured["args"].slide_chunk_size == 2_000_000,
+                  f"with neither flag given, --slide-chunk-size still resolves to "
+                  f"--max-load-count's own argparse default (2,000,000) "
+                  f"(got {captured['args'].slide_chunk_size})")
+        finally:
+            renderer.run = real_run
+            sys.argv = real_argv
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+# ---------------------------------------------------------------------------
+# load_archive_before(): the backward-walking counterpart to load_archive(),
+# added for the ring_viz sliding/traveling-window feature (see memory file
+# primeatlas-ring-viz-sliding-range-window-plan.md -- Faza 1). Symmetric
+# fixture convention to load_archive's own tests above; `before_n` is
+# EXCLUSIVE (mirrors load_archive's own `from_n` exclusivity), so a
+# chunk_back ending at some value X and a chunk_current starting at
+# before_n=X never duplicate or gap at the seam.
+# ---------------------------------------------------------------------------
+
+def _test_load_archive_before_basic():
+    from primeatlas.rings.ring_viz.sources import load_archive_before
+
+    tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
+    try:
+        portal_dir = os.path.join(tmp, "portal")
+        _write_floor(portal_dir, 0, [[2, 3, 5, 7]])
+        _write_floor(portal_dir, 1, [[11, 13, 17], [19, 23, 29]])
+
+        result = load_archive_before(portal_dir, before_n=23, count=3)
+        check(list(result) == [13, 17, 19],
+              f"load_archive_before(before_n=23, count=3) returns the 3 largest "
+              f"primes strictly below 23, ascending (got {list(result)!r})")
+
+        result_exclusive = load_archive_before(portal_dir, before_n=19, count=100)
+        check(19 not in list(result_exclusive),
+              "before_n itself is EXCLUSIVE -- a real stored prime exactly at "
+              "before_n is never included (mirrors load_archive's own from_n exclusivity)")
+        check(list(result_exclusive) == [2, 3, 5, 7, 11, 13, 17],
+              f"count larger than what's available below before_n returns "
+              f"everything that qualifies, not an error (got {list(result_exclusive)!r})")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _test_load_archive_before_gap_between_floors():
+    from primeatlas.rings.ring_viz.sources import load_archive_before
+
+    tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
+    try:
+        portal_dir = os.path.join(tmp, "portal")
+        _write_floor(portal_dir, 0, [[2, 3, 5, 7]])
+        # floor 1 (10p1) deliberately not created at all.
+        _write_floor(portal_dir, 2, [[101, 103, 107]])
+
+        result = load_archive_before(portal_dir, before_n=107, count=10)
+        check(list(result) == [2, 3, 5, 7, 101, 103],
+              f"load_archive_before skips a missing floor cleanly walking "
+              f"backward too, not just forward (got {list(result)!r})")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _test_load_archive_before_floor_boundary():
+    """before_n landing EXACTLY on a floor's own lower bound (10**base_exponent)
+    must fall through to the PREVIOUS floor entirely -- nothing in the
+    boundary floor itself can be < before_n when before_n IS that floor's
+    own lower bound."""
+    from primeatlas.rings.ring_viz.sources import load_archive_before
+
+    tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
+    try:
+        portal_dir = os.path.join(tmp, "portal")
+        _write_floor(portal_dir, 0, [[2, 3, 5, 7]])
+        _write_floor(portal_dir, 1, [[11, 13, 17]])
+
+        result = load_archive_before(portal_dir, before_n=10, count=10)
+        check(list(result) == [2, 3, 5, 7],
+              f"before_n exactly on floor 1's own lower bound (10) pulls "
+              f"only from floor 0 (got {list(result)!r})")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _test_load_archive_before_not_below_is_a_hard_boundary():
+    """Regression (2026-09-25, Artur's own real report: scrubbing backward
+    past the very START of his own --load-range hung the renderer --
+    "ignorujac zakres od jakiego startuje, a przeciez od powinno byc twarda
+    granica" -- ignoring the range's own FROM, when FROM should be a hard
+    boundary). Before this fix, `not_below` didn't exist at all --
+    load_archive_before kept walking into EARLIER floors as long as the
+    PORTAL had more real data there, completely ignoring the caller's own
+    logical range boundary. Portal here has real data in floor 0
+    (1..97, deliberately MUCH earlier/more than a naive reader might
+    expect) plus floor 1 (101..) -- `not_below` pinned to a value INSIDE
+    floor 1 must never let ANY floor-0 value leak into the result, no
+    matter how large `count` is."""
+    from primeatlas.rings.ring_viz.sources import load_archive_before
+
+    tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
+    try:
+        portal_dir = os.path.join(tmp, "portal")
+        floor1_values = [11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97]
+        _write_floor(portal_dir, 0, [[2, 3, 5, 7]])
+        _write_floor(portal_dir, 1, [floor1_values])
+        _write_floor(portal_dir, 2, [[101, 103, 107, 109, 113]])
+
+        # not_below=90 sits INSIDE floor 1 itself -- floor 2 contributes in
+        # full (all below before_n=113), floor 1 contributes only its own
+        # values > 90 (just 97), and floor 0 (single-digit primes) is NEVER
+        # reached at all, even though it holds plenty of real data and
+        # count is nowhere near satisfied by floors 1+2 alone.
+        result = load_archive_before(portal_dir, before_n=113, count=1000, not_below=90)
+        check(list(result) == [97, 101, 103, 107, 109],
+              f"not_below=90 stops the walk inside floor 1, correctly excluding every floor-1 "
+              f"value <=90 AND every floor-0 value entirely (got {list(result)!r})")
+        check(all(v > 90 for v in result), "no returned value is at or below not_below")
+        check(2 not in result and 3 not in result and 5 not in result and 7 not in result,
+              "not a single floor-0 value leaked through")
+
+        # count is generously large but not_below is the thing that actually
+        # stops the search -- never an infinite/unbounded walk to the portal's
+        # true start (2/3) when not_below is set.
+        result2 = load_archive_before(portal_dir, before_n=113, count=10**9, not_below=90)
+        check(list(result2) == [97, 101, 103, 107, 109],
+              "an enormous count does not override not_below's own hard stop")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _test_load_archive_before_walks_off_the_start():
+    """before_n at or below the true start of the portal's own data --
+    returns whatever's available (possibly empty), never errors or loops
+    forever."""
+    from primeatlas.rings.ring_viz.sources import load_archive_before
+
+    tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
+    try:
+        portal_dir = os.path.join(tmp, "portal")
+        _write_floor(portal_dir, 0, [[2, 3, 5, 7]])
+
+        result = load_archive_before(portal_dir, before_n=2, count=10)
+        check(len(result) == 0,
+              "before_n at the true first stored value returns an empty array, not an error")
+
+        result_far_below = load_archive_before(portal_dir, before_n=1, count=10)
+        check(len(result_far_below) == 0,
+              "before_n below every stored value returns an empty array, not an error")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _test_load_archive_before_empty_portal():
+    from primeatlas.rings.ring_viz.sources import load_archive_before
+
+    tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
+    try:
+        portal_dir = os.path.join(tmp, "portal")
+        os.makedirs(portal_dir, exist_ok=True)
+        result = load_archive_before(portal_dir, before_n=1000, count=10)
+        check(len(result) == 0, "load_archive_before on a portal with no floors returns an empty array")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _test_load_archive_before_window_boundary_exact():
+    """count landing exactly on a window-file boundary stops cleanly there
+    (no off-by-one pulling in one extra/missing value)."""
+    from primeatlas.rings.ring_viz.sources import load_archive_before
+
+    tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
+    try:
+        portal_dir = os.path.join(tmp, "portal")
+        _write_floor(portal_dir, 1, [[11, 13, 17], [19, 23, 29]])
+
+        result = load_archive_before(portal_dir, before_n=19, count=3)
+        check(list(result) == [11, 13, 17],
+              f"before_n exactly at the second window's own base_prime pulls "
+              f"exactly the first window's contents, no off-by-one across the "
+              f"boundary (got {list(result)!r})")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _test_load_archive_before_high_floor_beyond_uint64():
+    """Real floor-25/27-scale magnitude (see load_archive's own sibling test)
+    -- must not overflow, correct object dtype, exact values, walking
+    backward within a single high floor."""
+    from primeatlas.rings.ring_viz.sources import load_archive_before
+
+    tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
+    try:
+        portal_dir = os.path.join(tmp, "portal")
+        base = 10 ** 25
+        high_values = [base, base + 4, base + 6, base + 10]
+        _write_floor(portal_dir, 25, [high_values])
+
+        result = load_archive_before(portal_dir, before_n=base + 10, count=2)
+        check(list(result) == [base + 4, base + 6],
+              f"load_archive_before at real floor-25 magnitude returns the correct "
+              f"exact-value slice without overflow (got {list(result)!r})")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 # ---------------------------------------------------------------------------
 # build_vertex_data's window-highlight-color blending and hud_lines_for_n's
 # HUD text -- both pure numpy/Python, no moderngl/glfw
@@ -1665,6 +1932,15 @@ def main():
     _test_load_archive_max_load_count()
     _test_load_archive_high_floor_beyond_uint64()
     _test_empty_portal()
+    _test_slide_chunk_size_defaults_to_max_load_count()
+    _test_load_archive_before_basic()
+    _test_load_archive_before_gap_between_floors()
+    _test_load_archive_before_floor_boundary()
+    _test_load_archive_before_not_below_is_a_hard_boundary()
+    _test_load_archive_before_walks_off_the_start()
+    _test_load_archive_before_empty_portal()
+    _test_load_archive_before_window_boundary_exact()
+    _test_load_archive_before_high_floor_beyond_uint64()
     _test_build_vertex_data_no_windows_matches_old_behavior()
     _test_build_vertex_data_bertrand_highlight()
     _test_build_vertex_data_track_primes_white_dot()

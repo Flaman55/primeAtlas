@@ -175,6 +175,32 @@ def _test_build_renderer_argv():
     check("--pattern-stop-on-match" in stop_on_match_argv,
           f"--pattern-stop-on-match flag is included when checked (got {stop_on_match_argv!r})")
 
+    # Curved-axis argv wiring -- purely visual, same omit-if-False convention.
+    check("--line-axis-curved" not in default_argv,
+          f"no --line-axis-curved arg at all when unchecked (default) (got {default_argv!r})")
+    curved_argv = build_renderer_argv("/x", 1, load_range=(100, 500), viz_mode="line",
+                                       line_axis_curved=True)
+    check("--line-axis-curved" in curved_argv,
+          f"--line-axis-curved flag is included when checked (got {curved_argv!r})")
+
+    # Sliding/traveling-window argv wiring -- default OFF (Artur's own
+    # explicit call, 2026-09-25), same omit-if-default convention as
+    # line_axis_curved above.
+    check("--slide-load-range" not in default_argv,
+          f"no --slide-load-range arg at all when unchecked (default) (got {default_argv!r})")
+    slide_argv = build_renderer_argv("/x", 1, load_range=(100, 500), slide_load_range=True)
+    check("--slide-load-range" in slide_argv,
+          f"--slide-load-range flag is included when checked (got {slide_argv!r})")
+    check("--slide-chunk-size" not in default_argv and "--slide-chunk-size" not in slide_argv,
+          f"no --slide-chunk-size arg at all when slide_chunk_size=None, even with sliding "
+          f"itself turned on (renderer.py's own argparse default then applies) "
+          f"(got {slide_argv!r})")
+    slide_chunk_argv = build_renderer_argv("/x", 1, load_range=(100, 500), slide_load_range=True,
+                                            slide_chunk_size=50000)
+    check("--slide-chunk-size" in slide_chunk_argv and
+          slide_chunk_argv[slide_chunk_argv.index("--slide-chunk-size") + 1] == "50000",
+          f"--slide-chunk-size forwards a real value as-is (got {slide_chunk_argv!r})")
+
     # hit_point_size/hud_font_size argv wiring, mirroring point_size's own
     # omit-if-None convention exactly. renderer.py's own argparse defaults
     # are 40.0 / 35 (previously None-falls-back-to-point-size / 16px) --
