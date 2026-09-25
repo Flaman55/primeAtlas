@@ -570,6 +570,9 @@ def _run_visualization(args, audio=None):
         viz_mode=args.viz_mode, pattern_offsets=pattern_offsets,
         pattern_step_mode=args.pattern_step_mode, pattern_stop_on_match=args.pattern_stop_on_match,
         line_axis_curved=args.line_axis_curved,
+        range_load_from=load_from if range_mode else None,
+        range_load_to=load_to if range_mode else None,
+        chunk_size=args.slide_chunk_size, sliding_enabled=args.slide_load_range,
     )
 
     def _apply_hud_refresh():
@@ -1072,6 +1075,31 @@ def main():
                          help="safety cap on primes materialized for an archive --load-range load; "
                               "the range is truncated from the top if it holds more than this "
                               "(accepts plain digits, a*10**b, a*10^b, or aEb -- see --upto)")
+    # Bidirectional sliding/traveling window over --load-range (see memory
+    # file primeatlas-ring-viz-sliding-range-window-plan.md) -- OFF by
+    # default (Artur's own explicit call, 2026-09-25: "domyslnie wylaczone
+    # by trzeba bylo to swiadomie wlaczyc" -- default off, must be
+    # consciously turned on), so a plain --load-range keeps today's exact
+    # fixed-slice behavior (stuck wherever --max-load-count landed) unless
+    # this is passed too. `--slide-chunk-size` is a SEPARATE field from
+    # --max-load-count on purpose -- see this project's own
+    # configurable-perf-params rule (never silently reuse one tunable's
+    # value for a different one just because they start out equal) -- an
+    # admittedly arbitrary starting default (reusing --max-load-count's own
+    # default number is only a starting-point convenience, not a claim
+    # they should stay tied together).
+    parser.add_argument("--slide-load-range", action="store_true",
+                         help="--load-range only: instead of a fixed slice stuck wherever "
+                              "--max-load-count first landed, keep a bounded chunk that SLIDES "
+                              "(both directions) as N/the pattern cursor moves, so the whole "
+                              "--load-range span becomes reachable a chunk at a time. Off by "
+                              "default -- turn on deliberately, since the extra disk I/O on each "
+                              "chunk swap may not suit every machine")
+    parser.add_argument("--slide-chunk-size", type=parse_big_int, default=2_000_000,
+                         help="--slide-load-range only: how many primes each of the back/current/"
+                              "forward chunks holds -- its OWN field, independent of "
+                              "--max-load-count even though they share the same starting default "
+                              "(accepts plain digits, a*10**b, a*10^b, or aEb -- see --upto)")
     # Playback speed -- ports #tempoMs's own default (120ms/tick) and
     # clamp range ([30,2000], see clamp_tempo_ms's own doc-comment); Space
     # starts/stops playback at this rate, ]/[ adjust it live by +/-10ms per
@@ -1180,6 +1208,13 @@ def main():
 
     if args.viz_mode == "line" and not args.load_range:
         parser.error("--viz-mode line requires --load-range")
+    if args.slide_load_range:
+        if not args.load_range:
+            parser.error("--slide-load-range requires --load-range")
+        if args.source != "archive":
+            parser.error("--slide-load-range requires --source archive (needs real disk I/O to load neighbor chunks)")
+        if args.slide_chunk_size <= 0:
+            parser.error(f"--slide-chunk-size must be > 0, got {args.slide_chunk_size}")
     if (args.pattern_seed_k is None) != (args.pattern_seed_start is None):
         parser.error("--pattern-seed-k and --pattern-seed-start must be given together")
     if args.pattern_seed_k is not None:

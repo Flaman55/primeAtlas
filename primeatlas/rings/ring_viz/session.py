@@ -105,7 +105,7 @@ from primeatlas.rings.ring_viz.hud import (
     emit_audio_tick,
     pattern_hud_line,
 )
-from primeatlas.rings.ring_viz.sources import load_archive
+from primeatlas.rings.ring_viz.sources import load_archive, load_archive_before
 
 
 class RenderSession:
@@ -129,7 +129,8 @@ class RenderSession:
                  tempo_ms, buffer_margin, can_extend_buffer, portal_folder,
                  viz_mode="rings", pattern_offsets=None,
                  pattern_step_mode="manual", pattern_stop_on_match=False,
-                 line_axis_curved=False):
+                 line_axis_curved=False, range_load_from=None, range_load_to=None,
+                 chunk_size=None, sliding_enabled=False):
         # Ring data / sequencing (was: bare `primes`/`ceiling`/`range_mode`/
         # `range_primes`/`range_step` locals in _run_visualization, some
         # mutated via `nonlocal`).
@@ -137,7 +138,17 @@ class RenderSession:
         self.n = n
         self.ceiling = ceiling
         self.range_mode = range_mode
-        self.range_primes = range_primes
+        # `range_primes` is now a thin property (see below, right after
+        # __init__) backed by `chunk_current` -- the triple-buffer sliding
+        # window's own middle/visible chunk (see chunk_back/chunk_current/
+        # chunk_forward below). A property, not a second plain attribute
+        # kept manually in sync, so every existing read site
+        # (_pattern_window_bounds, rebuild(), rebuild_line(), etc.) that
+        # already says `self.range_primes` keeps working completely
+        # unchanged and can NEVER silently drift out of sync with a slide
+        # -- see memory file primeatlas-ring-viz-sliding-range-window-plan.md,
+        # Faza 1, for why this was chosen over a duplicated attribute.
+        self.chunk_current = range_primes
         self.range_step = range_step
 
         # Window/tracking launch-time config (was: bare `enabled_ids`/
@@ -294,6 +305,150 @@ class RenderSession:
         self.portal_folder = portal_folder
         self.extend_exhausted = False
 
+        # Bidirectional sliding/traveling window over a --load-range
+        # (memory file primeatlas-ring-viz-sliding-range-window-plan.md,
+        # Faza 1) -- lets line/range mode traverse the FULL logical
+        # [range_load_from, range_load_to) span a chunk at a time instead
+        # of being stuck wherever the first `max_load_count` primes
+        # landed. `chunk_size` is deliberately the caller's own field, per
+        # this project's own configurable-perf-params rule -- never
+        # silently reused from `max_load_count` or hardcoded here (see
+        # that same memory file's Faza 4 section).
+        #
+        # sliding_enabled requires portal_folder (need real disk I/O to
+        # load a neighbor chunk) AND a real chunk_size AND a real
+        # range_load_to -- missing any of those means the caller didn't
+        # actually wire this up (e.g. an existing caller/test that omits
+        # the new kwargs entirely), so this degrades to False rather than
+        # raising, reproducing today's fixed-slice behavior exactly.
+        self.range_load_from = range_load_from
+        self.range_load_to = range_load_to
+        self.chunk_size = chunk_size
+        self.sliding_enabled = bool(
+            sliding_enabled and self.range_mode and portal_folder
+            and chunk_size and range_load_to is not None
+        )
+        # None = "not attempted yet" (still needs a lazy load); an empty
+        # array = "attempted, confirmed nothing there" (the TRUE edge of
+        # range_load_from/range_load_to was reached, not just this
+        # chunk's own edge) -- see _ensure_back_chunk/_ensure_forward_chunk's
+        # own doc-comments for why this three-way state matters.
+        self.chunk_back = None
+        self.chunk_forward = None
+        if self.sliding_enabled:
+            self._ensure_back_chunk()
+            self._ensure_forward_chunk()
+            self._rebuild_pattern_primes_set()
+
+    # ------------------------------------------------------------------
+    # Bidirectional sliding window -- triple-buffer (chunk_back/
+    # chunk_current/chunk_forward) over a --load-range, see this
+    # __init__'s own doc-comment just above and
+    # primeatlas-ring-viz-sliding-range-window-plan.md's own Faza 1/2.
+    # ------------------------------------------------------------------
+
+    @property
+    def range_primes(self):
+        """Compatibility alias for `chunk_current` -- see __init__'s own
+        doc-comment on `self.chunk_current` for why this is a live property
+        rather than a second plain attribute."""
+        return self.chunk_current
+
+    @range_primes.setter
+    def range_primes(self, value):
+        self.chunk_current = value
+
+    def _ensure_forward_chunk(self):
+        """Lazily loads `chunk_forward` if it hasn't been attempted yet,
+        reusing `load_archive(from_n=...)` exactly as-is (see this
+        session's own sliding-window plan -- forward loading already had a
+        cheap, proven primitive; only backward needed new code). Sets it to
+        a real empty array (not left as None) once `range_load_to` is
+        confirmed reached, so callers can tell "no more data ahead" apart
+        from "haven't checked yet" -- see __init__'s own doc-comment."""
+        if not self.sliding_enabled or self.chunk_forward is not None:
+            return
+        if self.chunk_current is None or len(self.chunk_current) == 0:
+            return
+        current_top = int(self.chunk_current[-1])
+        if current_top >= self.range_load_to:
+            self.chunk_forward = np.empty(0, dtype=np.uint64)
+            return
+        self.chunk_forward = load_archive(
+            self.portal_folder, self.range_load_to, from_n=current_top,
+            max_load_count=self.chunk_size,
+        )
+
+    def _ensure_back_chunk(self):
+        """Lazily loads `chunk_back` if it hasn't been attempted yet, via
+        the new load_archive_before() -- symmetric counterpart to
+        _ensure_forward_chunk above."""
+        if not self.sliding_enabled or self.chunk_back is not None:
+            return
+        if self.chunk_current is None or len(self.chunk_current) == 0:
+            return
+        current_bottom = int(self.chunk_current[0])
+        lower_bound = self.range_load_from if self.range_load_from is not None else 0
+        if current_bottom <= lower_bound:
+            self.chunk_back = np.empty(0, dtype=np.uint64)
+            return
+        self.chunk_back = load_archive_before(self.portal_folder, current_bottom, self.chunk_size)
+
+    def _slide_forward(self):
+        """Crosses `chunk_current`'s own upper edge: the visible chunk
+        becomes `chunk_back`, the already-preloaded `chunk_forward` becomes
+        the new visible `chunk_current`, and a fresh `chunk_forward` is
+        loaded right after (Artur's own swap-not-reload spec, 2026-09-25 --
+        see the plan's own "Design" section). Returns False (no-op) when
+        there's genuinely nothing further ahead (`range_load_to` already
+        reached) or sliding isn't enabled -- the caller's own edge-reached
+        handling (next_wheel_n's `n`-unchanged convention) is unaffected
+        either way."""
+        if not self.sliding_enabled:
+            return False
+        self._ensure_forward_chunk()
+        if self.chunk_forward is None or len(self.chunk_forward) == 0:
+            return False
+        self.chunk_back = self.chunk_current
+        self.chunk_current = self.chunk_forward
+        self.chunk_forward = None
+        self._ensure_forward_chunk()
+        self._rebuild_pattern_primes_set()
+        return True
+
+    def _slide_backward(self):
+        """Mirror image of _slide_forward -- crosses `chunk_current`'s own
+        lower edge."""
+        if not self.sliding_enabled:
+            return False
+        self._ensure_back_chunk()
+        if self.chunk_back is None or len(self.chunk_back) == 0:
+            return False
+        self.chunk_forward = self.chunk_current
+        self.chunk_current = self.chunk_back
+        self.chunk_back = None
+        self._ensure_back_chunk()
+        self._rebuild_pattern_primes_set()
+        return True
+
+    def _rebuild_pattern_primes_set(self):
+        """Rebuilds `_pattern_primes_set` as the UNION of every currently-
+        loaded chunk (back + current + forward), not `chunk_current` alone
+        -- a k-tuple's own offsets can straddle a chunk seam, and all three
+        chunks are already resident in memory so this costs nothing extra.
+        `_pattern_window_bounds()` (where the cursor itself is allowed to
+        sit) deliberately stays scoped to `chunk_current` only -- these are
+        genuinely two different ranges, see the sliding-window plan's own
+        "Pattern-match correctness at chunk seams" section. No-op when no
+        pattern is active (ring mode, or line mode with no pattern set)."""
+        if self.pattern_offsets is None:
+            return
+        self._pattern_primes_set = set(int(v) for v in self.chunk_current) if len(self.chunk_current) else set()
+        if self.chunk_back is not None and len(self.chunk_back):
+            self._pattern_primes_set.update(int(v) for v in self.chunk_back)
+        if self.chunk_forward is not None and len(self.chunk_forward):
+            self._pattern_primes_set.update(int(v) for v in self.chunk_forward)
+
     # ------------------------------------------------------------------
     # Camera -- was on_scroll/on_mouse_button/on_cursor_pos's own closure
     # bodies, with `window`/glfw replaced by an explicit `viewport`/`cursor`
@@ -399,14 +554,46 @@ class RenderSession:
         """One wheel-aware jump (see ring_geometry.next_wheel_n) toward
         the next position that can EVER match this pattern, skipping
         every n forced composite by small-prime divisibility alone.
-        Returns `n` unchanged when there is no further such position --
-        the window edge, or (self.pattern_wheel_residues == []) the
-        pattern's own wheel proving it can never repeat at all."""
+
+        When sliding is enabled (see __init__'s own doc-comment on
+        `sliding_enabled`) and `next_wheel_n` reports nothing further
+        within `chunk_current`'s own edge, this SLIDES the triple-buffer
+        window one (or, for a pathologically sparse chunk, more than one --
+        see the `while True` below) chunk further in `is_right`'s
+        direction and keeps searching, instead of giving up at what used
+        to be a hard boundary. After a slide, the search resumes from just
+        past the new chunk's own edge (`lo - 1`/`hi + 1`) -- next_wheel_n's
+        own residue arithmetic is ABSOLUTE (see its own doc-comment), so
+        this correctly finds the first real wheel-compatible candidate in
+        the new window regardless of how far the slide moved.
+
+        Returns `n` UNCHANGED -- the ORIGINAL `n` passed in, not some
+        intermediate post-slide position -- when there is no further such
+        position anywhere: sliding is off, every slide attempt failed
+        (the TRUE `range_load_from`/`range_load_to` edge was reached), or
+        (self.pattern_wheel_residues == []) the pattern's own wheel proves
+        it can never repeat at all. This preserves the exact "n unchanged
+        == stuck" contract _pattern_seek/tick/bump_n/scrub_advance already
+        rely on -- none of those needed to change for sliding to work."""
         bounds = self._pattern_window_bounds()
         if bounds is None:
             return n
         lo, hi = bounds
-        return next_wheel_n(n, is_right, self.pattern_wheel_modulus, self.pattern_wheel_residues, lo, hi)
+        current = n
+        while True:
+            nxt = next_wheel_n(current, is_right, self.pattern_wheel_modulus, self.pattern_wheel_residues, lo, hi)
+            if nxt != current:
+                return nxt
+            if not self.sliding_enabled:
+                return n
+            slid = self._slide_forward() if is_right else self._slide_backward()
+            if not slid:
+                return n
+            bounds = self._pattern_window_bounds()
+            if bounds is None:
+                return n
+            lo, hi = bounds
+            current = (lo - 1) if is_right else (hi + 1)
 
     def _has_pattern_wheel(self):
         """Whether scrub_advance/tick should use the wheel-jump path at
@@ -418,14 +605,6 @@ class RenderSession:
             self.viz_mode == "line" and self.pattern_offsets
             and self.pattern_wheel_modulus is not None and self.pattern_wheel_modulus > 1
         )
-
-    #: Safety bound for _pattern_seek's own search loop -- with
-    #: next_wheel_n's bisect lookup (O(log residues)) this is generous
-    #: overkill against any realistic loaded window, not a real limit;
-    #: it only guards a single frame from stalling forever on a pattern
-    #: whose desired kind (match, or non-match) never recurs in the
-    #: loaded range.
-    _PATTERN_SEEK_MAX_STEPS = 50_000
 
     def _pattern_uses_seek(self):
         """Whether an advance action should keep taking wheel steps (see
@@ -450,13 +629,30 @@ class RenderSession:
         at all). "Auto" mode always seeks one of these two kinds; it
         never takes a bare, unfiltered wheel step -- see
         _pattern_uses_seek's own doc-comment for why "manual" is the only
-        mode that does. Returns (final_n, found) -- `found` is False when
-        the search gave up at the edge without ever landing on the
-        desired kind, same "stuck" signal _pattern_wheel_step's own
-        n-unchanged convention gives its callers."""
+        mode that does. Returns (final_n, found) -- `found` is False only
+        when the search reaches the genuine window edge (or the wheel
+        proved this pattern can never repeat at all) without ever landing
+        on the desired kind, same "stuck" signal _pattern_wheel_step's own
+        n-unchanged convention gives its callers.
+
+        No artificial step cap: an earlier version bailed out after a
+        fixed _PATTERN_SEEK_MAX_STEPS (50,000) "safety bound", reasoned to
+        be "generous overkill... not a real limit" -- but at real
+        archive scale (a k=5+ pattern, a sparse loaded range) a real
+        search can genuinely need more steps than that to reach its next
+        real MATCH!, and giving up early left the caller landing on (and
+        stopping at) an arbitrary non-match wheel candidate instead --
+        exactly the reported bug ("mimo zaznaczonego match! potrafi
+        zatrzymac sie na wheel"). The loop below is still guaranteed to
+        terminate on its own: `self.n` is bounded by the loaded window
+        (`_pattern_window_bounds`), and next_wheel_n returns `n` unchanged
+        the moment there is nowhere further to go in `is_right`'s
+        direction, which `_pattern_wheel_step` propagates as `nxt ==
+        current` below -- so this can loop at most once per wheel-
+        compatible position in the loaded window, never forever."""
         current = n
         want_match = self.pattern_stop_on_match
-        for _ in range(self._PATTERN_SEEK_MAX_STEPS):
+        while True:
             nxt = self._pattern_wheel_step(current, is_right)
             if nxt == current:
                 return current, False
@@ -464,7 +660,6 @@ class RenderSession:
             is_match = pattern_positions_and_match(current, self.pattern_offsets, self._pattern_primes_set)[2]
             if is_match == want_match:
                 return current, True
-        return current, False
 
     def tick(self):
         """One playback tick, called once the main loop's own tempo_ms
@@ -481,7 +676,21 @@ class RenderSession:
         branch to see)."""
         if self._has_pattern_wheel():
             if self._pattern_uses_seek():
-                new_n, _found = self._pattern_seek(self.n, True)
+                new_n, found = self._pattern_seek(self.n, True)
+                # found=False here can now ONLY mean the genuine loaded-window
+                # edge was reached without ever landing on the desired kind
+                # (_pattern_seek itself no longer gives up early -- see its own
+                # doc-comment) -- so the correct place to stop is HERE, at the
+                # last position that already satisfied pattern_stop_on_match,
+                # not at `new_n` (the last, non-desired wheel candidate the
+                # search happened to pass through on its way to the edge).
+                # Artur's own spec (2026-09-25): "jesli w nastepnym kroku jest
+                # bledne a kolejnego nie ma bo koniec zakresu to zostaje na
+                # ostatnim poprawnym" -- if the next step is wrong and there is
+                # no further one because the range ended, stay on the last
+                # correct one.
+                if not found:
+                    new_n = self.n
             else:
                 new_n = self._pattern_wheel_step(self.n, True)
             if new_n == self.n:
@@ -527,7 +736,13 @@ class RenderSession:
         branch)."""
         if self._has_pattern_wheel():
             if self._pattern_uses_seek():
-                self.n, _found = self._pattern_seek(self.n, delta >= 0)
+                # Only commit the seek's own landing spot when it actually found
+                # the desired kind -- see tick()'s own comment on `found` for why
+                # (the genuine window edge, now the ONLY way this is False,
+                # should leave n on the last position that WAS the desired kind).
+                new_n, found = self._pattern_seek(self.n, delta >= 0)
+                if found:
+                    self.n = new_n
             else:
                 self.n = self._pattern_wheel_step(self.n, delta >= 0)
             return
@@ -556,7 +771,11 @@ class RenderSession:
             self.scrub_held += 1
         if self._has_pattern_wheel():
             if self._pattern_uses_seek():
-                self.n, _found = self._pattern_seek(self.n, is_right)
+                # Same "only commit on an actual found match" guard as bump_n's
+                # own -- see tick()'s comment for why.
+                new_n, found = self._pattern_seek(self.n, is_right)
+                if found:
+                    self.n = new_n
                 return
             for _ in range(10 if ctrl_held else 1):
                 new_n = self._pattern_wheel_step(self.n, is_right)

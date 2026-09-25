@@ -9,7 +9,9 @@ convention as every other ring_viz test in this folder.
 Usage: python unitTests\\test_ring_viz_pattern_mode.py
 """
 import os
+import shutil
 import sys
+import tempfile
 
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(_SCRIPT_DIR)
@@ -450,6 +452,352 @@ def _test_pattern_step_mode_and_stop_on_match():
     auto_off_bump.bump_n(1000)
     check(auto_off_bump.n == 1357,
           f"bump_n in seek-non-match mode also skips 97, ignoring its own delta magnitude (got {auto_off_bump.n})")
+
+
+def _test_pattern_seek_has_no_artificial_step_cap():
+    """Regression (2026-09-25, Artur's real report, ROUND TWO -- his own
+    correction of a first attempted fix): --pattern-stop-on-match's seek
+    used to give up after a fixed _PATTERN_SEEK_MAX_STEPS (50,000) "safety
+    bound" and land on a bare non-match wheel candidate ("mimo zaznaczonego
+    match! potrafi zatrzymac sie na wheel"). A FIRST fix made bump_n/
+    scrub_advance/tick refuse to move at all once that budget was
+    exhausted -- Artur's own correction: that just froze playback/scrub
+    entirely at real archive scale, where a genuine match can legitimately
+    need MORE than 50,000 wheel-hops. His actual spec: "przy zatrzymaniu
+    niech nastapi weryfikacja czy jest match i czy jest zaznaczone match!
+    jesli nie niech idzie dalej" -- at a stop, verify whether it's a match
+    and whether MATCH! is checked; if not, keep going. That's exactly what
+    _pattern_seek's own loop already did per-candidate -- the ONLY bug was
+    the artificial cap cutting that loop short. Fix: removed the cap
+    entirely; the loop's only termination conditions now are finding the
+    desired kind, or _pattern_wheel_step reporting the genuine window edge
+    (see _pattern_seek's own updated doc-comment for why that still always
+    terminates).
+
+    Proves the "many steps before a real match" half of this directly: a
+    real match is manually placed 500 wheel-hops from the anchor (past any
+    small-cap philosophy) in an otherwise permanently-synthetic-non-
+    matching loaded range, and the seek must still reach it."""
+    from primeatlas.rings.ring_viz.session import RenderSession
+    from primeatlas.rings.ring_geometry import pattern_positions_and_match
+    import numpy as np
+
+    base_values = [6 * k + 1 for k in range(1, 20000)]  # only == 1 mod 6 -- never a match on its own
+
+    def make_session(extra_values=()):
+        values = sorted(set(base_values) | set(extra_values))
+        range_primes = np.array(values, dtype=np.int64)
+        session = RenderSession(
+            primes=range_primes, n=11, ceiling=1_000_000, range_mode=True,
+            range_primes=range_primes, range_step=1,
+            track_primes=[], auto_orbit=False, enabled_ids=set(), theta=0.5, law_mode="stepped",
+            max_radius=800.0, tempo_ms=120, buffer_margin=0, can_extend_buffer=False,
+            portal_folder=None, viz_mode="line", pattern_offsets=[0, 2],
+            pattern_step_mode="auto", pattern_stop_on_match=True,
+        )
+        return session, range_primes
+
+    # Walk 500 real wheel-hops forward from the anchor via plain single steps
+    # (bypassing _pattern_seek itself) to find a concrete, deep candidate.
+    probe_session, _ = make_session()
+    target = 11
+    for _ in range(500):
+        target = probe_session._pattern_wheel_step(target, True)
+    check(target != 11, "test setup: 500 wheel-hops actually moved somewhere")
+
+    matched_session, range_primes = make_session(extra_values=(target, target + 2))
+    _positions, _hits, all_match = pattern_positions_and_match(
+        target, [0, 2], set(int(v) for v in range_primes))
+    check(all_match is True, "test setup: the manually-inserted pair really is a match")
+
+    matched_session.scrub_advance(is_right=True, ctrl_held=False, is_first_press=True)
+    check(matched_session.n == target,
+          f"_pattern_seek reaches a real match 500 wheel-hops away instead of giving up early "
+          f"(expected {target}, got {matched_session.n})")
+
+
+def _test_pattern_seek_stays_on_last_real_match_at_genuine_window_edge():
+    """Companion to the "no artificial cap" test above, and Artur's own
+    follow-up correction (2026-09-25): "jesli w nastepnym kroku jest
+    bledne a kolejnego nie ma bo koniec zakresu to zostaje na ostatnim
+    poprawnym" -- if the next step is wrong and there's no further one
+    because the range ended, stay on the last CORRECT one. A first version
+    of this fix let tick()/bump_n/scrub_advance apply _pattern_seek's own
+    `new_n` even when it returned found=False -- landing on the last
+    non-match wheel candidate reached on the way to the edge, not on the
+    last real match. tick()/bump_n/scrub_advance must now discard that
+    non-match landing and leave `n` exactly where it was (the last
+    confirmed MATCH!) when the seek can't find another one before running
+    out of loaded window.
+
+    Built with the same "only == 1 mod 6" synthetic base as the no-cap
+    test (guarantees zero INCIDENTAL matches), plus exactly ONE real match
+    manually inserted at the anchor itself (n=11, by adding 11 to the set
+    -- its partner 13 == 1 mod 6 is already there) -- so there is a real
+    "last correct" position to stay on, and definitively no further one
+    anywhere ahead of it in this tiny window."""
+    from primeatlas.rings.ring_viz.session import RenderSession
+    from primeatlas.rings.ring_geometry import pattern_positions_and_match
+    import numpy as np
+
+    values = sorted(set(6 * k + 1 for k in range(1, 200)) | {11})  # tiny window, one real match at 11
+    range_primes = np.array(values, dtype=np.int64)
+
+    def make_session():
+        return RenderSession(
+            primes=range_primes, n=11, ceiling=100000, range_mode=True,
+            range_primes=range_primes, range_step=1,
+            track_primes=[], auto_orbit=False, enabled_ids=set(), theta=0.5, law_mode="stepped",
+            max_radius=800.0, tempo_ms=120, buffer_margin=0, can_extend_buffer=False,
+            portal_folder=None, viz_mode="line", pattern_offsets=[0, 2],
+            pattern_step_mode="auto", pattern_stop_on_match=True,
+        )
+
+    _positions, _hits, all_match = pattern_positions_and_match(
+        11, [0, 2], set(int(v) for v in range_primes))
+    check(all_match is True, "test setup: n=11 really is a genuine match")
+
+    seek_session = make_session()
+    _final_n, found = seek_session._pattern_seek(11, True)
+    check(found is False, "no FURTHER real match exists ahead of 11 in this tiny window")
+
+    tick_session = make_session()
+    tick_session.playback_running = True
+    stopped = tick_session.tick()
+    check(stopped is True, "tick() stops immediately rather than advancing to a non-match candidate")
+    check(tick_session.n == 11, f"tick() leaves n on the last real match (11), not a non-match candidate "
+                                f"further along (got {tick_session.n})")
+
+    bump_session = make_session()
+    bump_session.bump_n(1000)
+    check(bump_session.n == 11, f"bump_n leaves n on the last real match too (got {bump_session.n})")
+
+    scrub_session = make_session()
+    scrub_session.scrub_advance(is_right=True, ctrl_held=False, is_first_press=True)
+    check(scrub_session.n == 11, f"scrub_advance leaves n on the last real match too (got {scrub_session.n})")
+
+
+# ---------------------------------------------------------------------------
+# Bidirectional sliding/traveling window (chunk_back/chunk_current/
+# chunk_forward) over --load-range -- see memory file
+# primeatlas-ring-viz-sliding-range-window-plan.md, Faza 1/2. Needs REAL
+# on-disk PGS window files (sliding does real I/O via load_archive/
+# load_archive_before), same fixture convention as
+# unitTests/test_ring_viz_renderer.py's own `_write_floor` helper.
+# ---------------------------------------------------------------------------
+
+def _write_floor(portal_dir, base_exponent, windows):
+    """Same convention as test_ring_viz_renderer.py's own helper of this
+    name -- kept as a separate local copy since these are independent
+    plain-script test files (no shared test-utility import), not real
+    prime data (arbitrary ascending ints), one PRIME_WINDOW_*.bin per
+    `windows` entry."""
+    import window_sharding
+    import prime_sieve_v1
+
+    source_dir = os.path.join(portal_dir, f"10p{base_exponent}", "source_primes")
+    shard0 = window_sharding.shard_dir(source_dir, 0)
+    os.makedirs(shard0, exist_ok=True)
+    for i, values in enumerate(windows):
+        name = f"PRIME_WINDOW_off_{i}M.bin" if i > 0 else "PRIME_WINDOW_off_0.bin"
+        prime_sieve_v1.write_prime_window(os.path.join(shard0, name), values)
+
+
+def _test_sliding_forward_multi_chunk_seek_finds_distant_match():
+    """The actual feature this whole plan exists for: Artur's own report
+    (2026-09-25) that a --load-range covering nearly a whole floor only
+    ever showed "a few points" near the low end, because --max-load-count
+    truncated the loaded slice to a razor-thin sliver with no way to reach
+    the rest. This proves a seek can now cross MULTIPLE chunk boundaries
+    in a single call (Faza 2's own "seek must swap mid-loop" requirement)
+    and land on a real match several chunks past the initially-loaded one,
+    instead of stopping dead at what used to be a hard buffer edge.
+
+    Data: 70 values of the form 6k+1 (k=0..69, i.e. 1..415) -- by
+    construction no two of these are ever 2 apart, so (same convention as
+    the no-artificial-cap test above) every wheel-compatible candidate
+    fails the [0,2] match check until it reaches a manually-inserted real
+    pair. That pair (359, 361) is placed so it lands as chunk index 6's own
+    FIRST element once split into chunk_size=10 chunks (verified via a
+    throwaway simulation before writing this test) -- reaching it from the
+    initial chunk (chunk 0) requires 6 real forward slides."""
+    from primeatlas.rings.ring_viz.session import RenderSession
+    from primeatlas.rings.ring_viz.sources import load_archive
+
+    tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
+    try:
+        portal_dir = os.path.join(tmp, "portal")
+        base_values = [6 * k + 1 for k in range(0, 70)]
+        target = 359
+        all_values = sorted(set(base_values) | {target, target + 2})
+        check(all_values[60] == target,
+              f"test setup: target lands exactly at chunk index 6's own first element "
+              f"(got index of {target}: {all_values.index(target)})")
+        _write_floor(portal_dir, 0, [all_values])
+
+        chunk_size = 10
+        initial_chunk = load_archive(portal_dir, upto=1000, max_load_count=chunk_size)
+        check(len(initial_chunk) == chunk_size, "test setup: the initial chunk loaded exactly chunk_size values")
+
+        session = RenderSession(
+            primes=initial_chunk, n=1, ceiling=100000, range_mode=True,
+            range_primes=initial_chunk, range_step=1,
+            track_primes=[], auto_orbit=False, enabled_ids=set(), theta=0.5, law_mode="stepped",
+            max_radius=800.0, tempo_ms=120, buffer_margin=0, can_extend_buffer=True,
+            portal_folder=portal_dir, viz_mode="line", pattern_offsets=[0, 2],
+            pattern_step_mode="auto", pattern_stop_on_match=True,
+            range_load_from=1, range_load_to=1000, chunk_size=chunk_size, sliding_enabled=True,
+        )
+        check(session.sliding_enabled is True, "sliding_enabled turns on when every required kwarg is given")
+        check(session.chunk_back is not None and len(session.chunk_back) == 0,
+              "chunk_back is confirmed empty (not None/unattempted) at the true start of range_load_from")
+        check(session.chunk_forward is not None and len(session.chunk_forward) > 0,
+              "chunk_forward is EAGERLY preloaded at construction, not left as None until first needed")
+
+        session.scrub_advance(is_right=True, ctrl_held=False, is_first_press=True)
+        check(session.n == target,
+              f"a single scrub_advance call crosses multiple chunk boundaries and reaches a real "
+              f"match several chunks away (expected {target}, got {session.n})")
+        check(int(session.chunk_current[0]) == target,
+              f"chunk_current itself has slid forward so the found match is its own first element "
+              f"(got chunk_current[0]={int(session.chunk_current[0]) if len(session.chunk_current) else None})")
+        check(target in session._pattern_primes_set and (target + 2) in session._pattern_primes_set,
+              "the matched pair is present in the rebuilt _pattern_primes_set after sliding")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _test_sliding_backward_swap_mirror():
+    """Mirror of the forward slide: _slide_backward swaps chunk_current
+    into chunk_forward, promotes chunk_back into chunk_current, and reloads
+    a fresh chunk_back via load_archive_before -- called directly (not via
+    a full wheel-seek) since the forward test above already proves the
+    higher-level integration; this pins the backward primitive itself."""
+    from primeatlas.rings.ring_viz.session import RenderSession
+    from primeatlas.rings.ring_viz.sources import load_archive
+
+    tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
+    try:
+        portal_dir = os.path.join(tmp, "portal")
+        all_values = [6 * k + 1 for k in range(0, 40)]  # 1..235, no real [0,2] matches anywhere
+        _write_floor(portal_dir, 0, [all_values])
+
+        chunk_size = 10
+        # Start on the SECOND chunk (values[10:20]) so there's real data
+        # both behind and ahead of the initial window.
+        second_chunk = load_archive(portal_dir, upto=1000, from_n=all_values[9], max_load_count=chunk_size)
+        check(list(second_chunk) == all_values[10:20], "test setup: second_chunk is exactly values[10:20]")
+
+        session = RenderSession(
+            primes=second_chunk, n=int(second_chunk[0]), ceiling=100000, range_mode=True,
+            range_primes=second_chunk, range_step=1,
+            track_primes=[], auto_orbit=False, enabled_ids=set(), theta=0.5, law_mode="stepped",
+            max_radius=800.0, tempo_ms=120, buffer_margin=0, can_extend_buffer=True,
+            portal_folder=portal_dir, viz_mode="line", pattern_offsets=[0, 2],
+            pattern_step_mode="auto", pattern_stop_on_match=False,
+            range_load_from=1, range_load_to=1000, chunk_size=chunk_size, sliding_enabled=True,
+        )
+        check(list(session.chunk_current) == all_values[10:20], "chunk_current starts as the second chunk")
+        check(list(session.chunk_back) == all_values[0:10],
+              f"chunk_back is eagerly preloaded as the FIRST chunk at construction "
+              f"(got {list(session.chunk_back)!r})")
+        check(list(session.chunk_forward) == all_values[20:30],
+              f"chunk_forward is eagerly preloaded as the third chunk at construction "
+              f"(got {list(session.chunk_forward)!r})")
+
+        slid = session._slide_backward()
+        check(slid is True, "_slide_backward reports success when a real back chunk was available")
+        check(list(session.chunk_current) == all_values[0:10],
+              "chunk_back was promoted into chunk_current")
+        check(list(session.chunk_forward) == all_values[10:20],
+              "the old chunk_current was demoted into chunk_forward (swap, not reload)")
+        check(session.chunk_back is not None and len(session.chunk_back) == 0,
+              "a fresh chunk_back was loaded right after the swap and correctly found the true "
+              "start of range_load_from (nothing before value 1)")
+
+        slid_again = session._slide_backward()
+        check(slid_again is False,
+              "a further _slide_backward at the true start of range_load_from correctly reports no-op")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _test_sliding_disabled_by_default_without_full_wiring():
+    """sliding_enabled must degrade gracefully to False -- reproducing
+    today's fixed-slice behavior exactly -- whenever the caller passes
+    sliding_enabled=True but omits any of the OTHER kwargs actually needed
+    to do it safely (portal_folder, chunk_size, range_load_to). Every
+    existing pre-sliding test in this file constructs RenderSession without
+    ANY of these new kwargs at all and must keep passing unchanged (already
+    proven by this file's own full run), so this specifically pins the
+    "explicitly asked for it but incompletely" case, e.g. Faza 4 wiring
+    landing on the GUI side before the CLI side, or vice versa."""
+    from primeatlas.rings.ring_viz.session import RenderSession
+    import numpy as np
+
+    range_primes = np.array([11, 13, 17, 19, 23], dtype=np.int64)
+
+    def make(**kwargs):
+        return RenderSession(
+            primes=range_primes, n=11, ceiling=100000, range_mode=True,
+            range_primes=range_primes, range_step=1,
+            track_primes=[], auto_orbit=False, enabled_ids=set(), theta=0.5, law_mode="stepped",
+            max_radius=800.0, tempo_ms=120, buffer_margin=0, can_extend_buffer=False,
+            portal_folder=None, viz_mode="line", pattern_offsets=[0, 2],
+            pattern_step_mode="auto", pattern_stop_on_match=True,
+            sliding_enabled=True, **kwargs,
+        )
+
+    check(make().sliding_enabled is False, "sliding_enabled=True alone (no portal_folder/chunk_size/range_load_to) still degrades to False")
+    check(make(chunk_size=10).sliding_enabled is False, "still False without a real range_load_to")
+    check(make(chunk_size=10, range_load_to=1000).sliding_enabled is False,
+          "still False without a real portal_folder (portal_folder=None here)")
+
+
+def _test_sliding_found_false_means_true_range_edge_not_chunk_edge():
+    """Core Faza 1 correctness requirement: once sliding is enabled,
+    `found=False` from tick()/_pattern_seek must mean the TRUE
+    range_load_to edge was reached (chunk_forward genuinely empty), not
+    merely the INITIALLY loaded chunk's own edge -- the whole point of this
+    feature. Uses a small range_load_to so the true edge is reachable
+    quickly: no real [0,2] match exists anywhere in this data (same 6k+1
+    trick), so the seek must slide all the way to the actual end of
+    range_load_to and only THEN report found=False/stop, proving it didn't
+    stop early at chunk 0's own boundary."""
+    from primeatlas.rings.ring_viz.session import RenderSession
+    from primeatlas.rings.ring_viz.sources import load_archive
+
+    tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
+    try:
+        portal_dir = os.path.join(tmp, "portal")
+        all_values = [6 * k + 1 for k in range(0, 30)]  # 1..175, no real [0,2] match anywhere
+        _write_floor(portal_dir, 0, [all_values])
+
+        chunk_size = 10
+        initial_chunk = load_archive(portal_dir, upto=1000, max_load_count=chunk_size)
+
+        session = RenderSession(
+            primes=initial_chunk, n=1, ceiling=100000, range_mode=True,
+            range_primes=initial_chunk, range_step=1,
+            track_primes=[], auto_orbit=False, enabled_ids=set(), theta=0.5, law_mode="stepped",
+            max_radius=800.0, tempo_ms=120, buffer_margin=0, can_extend_buffer=True,
+            portal_folder=portal_dir, viz_mode="line", pattern_offsets=[0, 2],
+            pattern_step_mode="auto", pattern_stop_on_match=True,
+            range_load_from=1, range_load_to=1000, chunk_size=chunk_size, sliding_enabled=True,
+        )
+        playback_session_ceiling_before_slide = int(session.chunk_current[-1])
+
+        final_n, found = session._pattern_seek(1, True)
+        check(found is False, "no real match exists anywhere in range_load_from..range_load_to")
+        check(int(session.chunk_current[-1]) > playback_session_ceiling_before_slide,
+              f"the search actually SLID forward past the initial chunk's own edge before giving up "
+              f"(initial edge={playback_session_ceiling_before_slide}, "
+              f"final chunk_current[-1]={int(session.chunk_current[-1])})")
+        check(session.chunk_forward is not None and len(session.chunk_forward) == 0,
+              "gives up only once chunk_forward is confirmed genuinely empty -- the TRUE range_load_to "
+              "edge, not just wherever the initially-loaded chunk happened to end")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 def _test_render_session_wheel_prime_matches_not_skipped():
@@ -967,6 +1315,12 @@ def main():
     _test_pattern_wheel_residues()
     _test_next_wheel_n()
     _test_pattern_step_mode_and_stop_on_match()
+    _test_pattern_seek_has_no_artificial_step_cap()
+    _test_pattern_seek_stays_on_last_real_match_at_genuine_window_edge()
+    _test_sliding_forward_multi_chunk_seek_finds_distant_match()
+    _test_sliding_backward_swap_mirror()
+    _test_sliding_disabled_by_default_without_full_wiring()
+    _test_sliding_found_false_means_true_range_edge_not_chunk_edge()
     _test_render_session_wheel_prime_matches_not_skipped()
     _test_render_session_anchor_always_reachable()
     _test_resolve_pattern_anchor()

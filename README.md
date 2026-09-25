@@ -767,6 +767,33 @@ much to lay out this way as it did before that fallback existed (see this sectio
 `~410ms -> under 1ms` note above), a known, deliberate tradeoff for showing the window's true
 multi-period structure rather than a small recentering slice.
 
+By default, `--load-range` loads a single FIXED slice from FROM ascending, capped at
+`--max-load-count` (2,000,000 by default) -- at real archive-floor scale a huge requested
+range (e.g. essentially all of floor 25) can leave that slice covering only a razor-thin
+sliver of what was actually asked for (confirmed live, 2026-09-25: a ~2.22e25-wide range
+loaded only ~1.15e8 worth, i.e. ~5.2e-18 of it), so most of the range -- and most of a
+sparse k-tuple pattern's real occurrences in it -- stays permanently out of reach. An
+optional "Slide the loaded window" checkbox (`--slide-load-range`, off by default -- Artur's
+own explicit call, 2026-09-25, so a machine that doesn't suit the extra disk I/O keeps
+today's exact fixed-slice behavior unless this is deliberately turned on) replaces that
+fixed slice with a bidirectional TRAVELING window instead: `RenderSession` keeps three
+chunks (`chunk_back`/`chunk_current`/`chunk_forward`, each sized by its own separate
+`--slide-chunk-size` field, not silently reusing `--max-load-count`'s value), only the
+middle one ever rendered. Crossing the visible chunk's own edge swaps it, not reloads it --
+the already-preloaded neighbor becomes the new visible chunk and a fresh one is loaded right
+behind it (`sources.load_archive_before`, a new backward-walking counterpart to the existing
+forward-only `load_archive`, via the same cheap "list filenames, binary-search headers,
+decode only what's needed" pattern `storage.find_prime_in_floor` and the constellation-search
+fix above already use) -- so scrubbing/seeking/playback can now traverse the WHOLE logical
+`--load-range` span a chunk at a time instead of getting stuck wherever the first chunk
+happened to land. `_pattern_primes_set` is rebuilt as the union of all three currently-loaded
+chunks on every swap (a k-tuple's own offsets could otherwise straddle a chunk seam), while
+the pattern cursor's own valid bounds (`_pattern_window_bounds`) stay scoped to the visible
+chunk alone -- two deliberately different ranges. All of the sliding logic lives in one place
+(`RenderSession._pattern_wheel_step`), so `tick`/`bump_n`/`scrub_advance`/`_pattern_seek`
+needed no changes at all to benefit from it, including a single seek call crossing several
+chunk boundaries before landing on a real match.
+
 ## Architecture
 
 ```
@@ -987,7 +1014,21 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               pattern_axis_boundary_radius) and rebuild_line -- a
                               deliberately separate method from rebuild() (ring mode),
                               not a branch inside it, since line mode has none of ring
-                              mode's resonance/window/HUD-factors machinery
+                              mode's resonance/window/HUD-factors machinery. Also owns
+                              the optional bidirectional sliding/traveling window over
+                              --load-range (see "Ring visualization" above):
+                              chunk_back/chunk_current/chunk_forward (range_primes is now
+                              a property aliasing chunk_current, never a second plain
+                              attribute that could drift out of sync), _ensure_back_chunk/
+                              _ensure_forward_chunk (lazy loads, None vs. a confirmed-empty
+                              array distinguishing "not attempted" from "true edge of
+                              range_load_from/range_load_to reached"), _slide_forward/
+                              _slide_backward (the swap-not-reload itself), and
+                              _rebuild_pattern_primes_set (the three-chunk union). Off by
+                              default (sliding_enabled) -- degrades gracefully to today's
+                              fixed-slice behavior whenever portal_folder/chunk_size/
+                              range_load_to aren't all supplied, so every pre-sliding
+                              caller/test is unaffected
     geometry_draw.py               pure vertex/color/camera-math helpers with no GL
                               call anywhere -- per-ring vertex color/position data,
                               the hit/normal buffer split, tracked-ring outline/center-
@@ -1019,7 +1060,14 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               lookahead-extension math, the range-mode dynamic step
                               size, and the resonance-log jump-vs-tick update rule
     sources.py                     load_synthetic/load_sieve/load_archive -- the three
-                              interchangeable ring-array data sources (--source)
+                              interchangeable ring-array data sources (--source), plus
+                              load_archive_before -- the backward-walking counterpart to
+                              load_archive added for the sliding-window feature (see
+                              "Ring visualization" above): the `count` largest real primes
+                              strictly below a boundary (EXCLUSIVE, mirroring load_archive's
+                              own from_n), via the same cheap "list filenames, binary-search
+                              headers, decode only what's needed" pattern load_archive/
+                              storage.find_prime_in_floor already use
     shaders.py                     the GLSL vertex/fragment shader source strings
                               (point-sprite rings, tracked-ring outlines, screen-space
                               shapes, on-canvas HUD text quad)

@@ -312,6 +312,155 @@ def _test_empty_portal():
 
 
 # ---------------------------------------------------------------------------
+# load_archive_before(): the backward-walking counterpart to load_archive(),
+# added for the ring_viz sliding/traveling-window feature (see memory file
+# primeatlas-ring-viz-sliding-range-window-plan.md -- Faza 1). Symmetric
+# fixture convention to load_archive's own tests above; `before_n` is
+# EXCLUSIVE (mirrors load_archive's own `from_n` exclusivity), so a
+# chunk_back ending at some value X and a chunk_current starting at
+# before_n=X never duplicate or gap at the seam.
+# ---------------------------------------------------------------------------
+
+def _test_load_archive_before_basic():
+    from primeatlas.rings.ring_viz.sources import load_archive_before
+
+    tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
+    try:
+        portal_dir = os.path.join(tmp, "portal")
+        _write_floor(portal_dir, 0, [[2, 3, 5, 7]])
+        _write_floor(portal_dir, 1, [[11, 13, 17], [19, 23, 29]])
+
+        result = load_archive_before(portal_dir, before_n=23, count=3)
+        check(list(result) == [13, 17, 19],
+              f"load_archive_before(before_n=23, count=3) returns the 3 largest "
+              f"primes strictly below 23, ascending (got {list(result)!r})")
+
+        result_exclusive = load_archive_before(portal_dir, before_n=19, count=100)
+        check(19 not in list(result_exclusive),
+              "before_n itself is EXCLUSIVE -- a real stored prime exactly at "
+              "before_n is never included (mirrors load_archive's own from_n exclusivity)")
+        check(list(result_exclusive) == [2, 3, 5, 7, 11, 13, 17],
+              f"count larger than what's available below before_n returns "
+              f"everything that qualifies, not an error (got {list(result_exclusive)!r})")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _test_load_archive_before_gap_between_floors():
+    from primeatlas.rings.ring_viz.sources import load_archive_before
+
+    tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
+    try:
+        portal_dir = os.path.join(tmp, "portal")
+        _write_floor(portal_dir, 0, [[2, 3, 5, 7]])
+        # floor 1 (10p1) deliberately not created at all.
+        _write_floor(portal_dir, 2, [[101, 103, 107]])
+
+        result = load_archive_before(portal_dir, before_n=107, count=10)
+        check(list(result) == [2, 3, 5, 7, 101, 103],
+              f"load_archive_before skips a missing floor cleanly walking "
+              f"backward too, not just forward (got {list(result)!r})")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _test_load_archive_before_floor_boundary():
+    """before_n landing EXACTLY on a floor's own lower bound (10**base_exponent)
+    must fall through to the PREVIOUS floor entirely -- nothing in the
+    boundary floor itself can be < before_n when before_n IS that floor's
+    own lower bound."""
+    from primeatlas.rings.ring_viz.sources import load_archive_before
+
+    tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
+    try:
+        portal_dir = os.path.join(tmp, "portal")
+        _write_floor(portal_dir, 0, [[2, 3, 5, 7]])
+        _write_floor(portal_dir, 1, [[11, 13, 17]])
+
+        result = load_archive_before(portal_dir, before_n=10, count=10)
+        check(list(result) == [2, 3, 5, 7],
+              f"before_n exactly on floor 1's own lower bound (10) pulls "
+              f"only from floor 0 (got {list(result)!r})")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _test_load_archive_before_walks_off_the_start():
+    """before_n at or below the true start of the portal's own data --
+    returns whatever's available (possibly empty), never errors or loops
+    forever."""
+    from primeatlas.rings.ring_viz.sources import load_archive_before
+
+    tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
+    try:
+        portal_dir = os.path.join(tmp, "portal")
+        _write_floor(portal_dir, 0, [[2, 3, 5, 7]])
+
+        result = load_archive_before(portal_dir, before_n=2, count=10)
+        check(len(result) == 0,
+              "before_n at the true first stored value returns an empty array, not an error")
+
+        result_far_below = load_archive_before(portal_dir, before_n=1, count=10)
+        check(len(result_far_below) == 0,
+              "before_n below every stored value returns an empty array, not an error")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _test_load_archive_before_empty_portal():
+    from primeatlas.rings.ring_viz.sources import load_archive_before
+
+    tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
+    try:
+        portal_dir = os.path.join(tmp, "portal")
+        os.makedirs(portal_dir, exist_ok=True)
+        result = load_archive_before(portal_dir, before_n=1000, count=10)
+        check(len(result) == 0, "load_archive_before on a portal with no floors returns an empty array")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _test_load_archive_before_window_boundary_exact():
+    """count landing exactly on a window-file boundary stops cleanly there
+    (no off-by-one pulling in one extra/missing value)."""
+    from primeatlas.rings.ring_viz.sources import load_archive_before
+
+    tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
+    try:
+        portal_dir = os.path.join(tmp, "portal")
+        _write_floor(portal_dir, 1, [[11, 13, 17], [19, 23, 29]])
+
+        result = load_archive_before(portal_dir, before_n=19, count=3)
+        check(list(result) == [11, 13, 17],
+              f"before_n exactly at the second window's own base_prime pulls "
+              f"exactly the first window's contents, no off-by-one across the "
+              f"boundary (got {list(result)!r})")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _test_load_archive_before_high_floor_beyond_uint64():
+    """Real floor-25/27-scale magnitude (see load_archive's own sibling test)
+    -- must not overflow, correct object dtype, exact values, walking
+    backward within a single high floor."""
+    from primeatlas.rings.ring_viz.sources import load_archive_before
+
+    tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
+    try:
+        portal_dir = os.path.join(tmp, "portal")
+        base = 10 ** 25
+        high_values = [base, base + 4, base + 6, base + 10]
+        _write_floor(portal_dir, 25, [high_values])
+
+        result = load_archive_before(portal_dir, before_n=base + 10, count=2)
+        check(list(result) == [base + 4, base + 6],
+              f"load_archive_before at real floor-25 magnitude returns the correct "
+              f"exact-value slice without overflow (got {list(result)!r})")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+# ---------------------------------------------------------------------------
 # build_vertex_data's window-highlight-color blending and hud_lines_for_n's
 # HUD text -- both pure numpy/Python, no moderngl/glfw
 # import (the module only imports those inside run(), which none of these
@@ -1665,6 +1814,13 @@ def main():
     _test_load_archive_max_load_count()
     _test_load_archive_high_floor_beyond_uint64()
     _test_empty_portal()
+    _test_load_archive_before_basic()
+    _test_load_archive_before_gap_between_floors()
+    _test_load_archive_before_floor_boundary()
+    _test_load_archive_before_walks_off_the_start()
+    _test_load_archive_before_empty_portal()
+    _test_load_archive_before_window_boundary_exact()
+    _test_load_archive_before_high_floor_beyond_uint64()
     _test_build_vertex_data_no_windows_matches_old_behavior()
     _test_build_vertex_data_bertrand_highlight()
     _test_build_vertex_data_track_primes_white_dot()

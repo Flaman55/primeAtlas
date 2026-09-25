@@ -868,6 +868,8 @@
   "rings.load_range_label": "Wczytaj zakres od:",
   "rings.load_range_to_label": "do:",
   "rings.max_load_count_label": "Limit wczytanych pierścieni (domyślnie 2 000 000):",
+  "rings.slide_load_range_label": "Przesuwaj wczytane okno (przemierzaj cały zakres)",
+  "rings.slide_chunk_size_label": "Rozmiar przesuwanego fragmentu:",
   "rings.line_mode_label": "Tryb liniowy: przesuwanie wzorca k-tupla",
   "rings.pattern_k_label": "Rozmiar wzorca (k):",
   "rings.pattern_p0_label": "Liczba pierwsza startowa (p0, musi być > 2):",
