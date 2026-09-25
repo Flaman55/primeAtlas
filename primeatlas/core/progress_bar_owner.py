@@ -57,3 +57,60 @@ def release_progress_bar(widget, owner):
     can call this unconditionally on every "finished" path without checking first."""
     if getattr(widget, _OWNER_ATTR, None) is owner:
         setattr(widget, _OWNER_ATTR, None)
+
+
+_PUMP_JOB_ATTR = "_pa_progress_pump_job"
+
+
+def pump_indeterminate(widget, interval_ms):
+    """Drives `widget`'s indeterminate-mode thumb via our OWN repeated .step() calls
+    on a single self-owned .after() loop, instead of Progressbar.start()'s own
+    internal Tcl-level repeating timer.
+
+    Why: this widget is `totals_progress`, reused by roughly a dozen independent
+    call sites across the app's whole session (search, every BaseTab subclass's busy
+    spinner, generation, the records-table export, the Goldbach worker -- see this
+    module's own docstring for the full list) -- each one calling .stop()/.start()
+    on the SAME long-lived widget instance many times over a long session. Reported
+    bug (2026-09-25): after the archive-scale search fix made the constellation
+    search's own indeterminate phase fast enough to actually be watched, its thumb
+    doesn't glide -- it snaps between the two extreme ends. Ruled out by direct
+    testing: NOT the .start(ms) interval (Artur: slowing it 10x, 12ms -> 120ms,
+    changed nothing) -- so not simply "too fast to see intermediate frames". A
+    widget this heavily reused, switching between .start()/.stop()/mode= over many
+    independent features across a long session, is exactly the shape of the known
+    ttk::progressbar footgun where a .stop() doesn't reliably cancel a PRIOR
+    .start()'s own still-pending Tcl-level after-callback -- leaving more than one
+    internal phase-advance loop active on the same widget at once, each nudging the
+    thumb independently, which looks exactly like snapping between extremes rather
+    than a single smooth bounce. Driving the animation ourselves sidesteps that
+    entirely: at most ONE of our own .after() jobs is ever scheduled (the job id is
+    stored ON the widget, like _OWNER_ATTR above, so a second call here always
+    cancels the first before scheduling its own), and ttk's own .start()/.stop()
+    machinery is never invoked at all, so its internal bookkeeping has nothing to
+    accumulate. mode="indeterminate" is still set (that's what makes .step() move a
+    small bouncing thumb instead of filling a determinate bar) -- only the TIMER
+    driving each step is now ours instead of Tcl's."""
+    stop_indeterminate_pump(widget)
+    widget.configure(mode="indeterminate")
+
+    def _tick():
+        widget.step()
+        job_id = widget.after(interval_ms, _tick)
+        setattr(widget, _PUMP_JOB_ATTR, job_id)
+
+    _tick()
+
+
+def stop_indeterminate_pump(widget):
+    """Cancels a pump_indeterminate() loop started on `widget`, if one is currently
+    running -- a safe no-op otherwise. Callers switching `widget` away from
+    indeterminate mode (to a real determinate value, or back to the empty resting
+    state) MUST call this first: pump_indeterminate() never calls Tcl's own
+    Progressbar.stop(), so nothing else would ever cancel our own .after() loop --
+    left running, it would keep calling .step() indefinitely and corrupt whatever
+    determinate value/mode the caller sets right after."""
+    job_id = getattr(widget, _PUMP_JOB_ATTR, None)
+    if job_id is not None:
+        widget.after_cancel(job_id)
+        setattr(widget, _PUMP_JOB_ATTR, None)

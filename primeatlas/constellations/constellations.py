@@ -14,6 +14,7 @@ so it and everything it depends on (list_constellation_hits/hit_file_path) are i
 back at that file's top; the records-table builders/PDF renderer are used exclusively
 by primeatlas/constellations/constellations_records_tab.py.
 """
+import bisect
 import csv
 import datetime
 import os
@@ -519,6 +520,48 @@ def render_constellation_records_pdf(path, k, fieldnames, rows, translator=None)
     _write_pdf(path, pages, page_size=(page_w, page_h))
 
 
+def _find_value_in_paged_pattern(vdir, base_exponent, k, variant_id, meta, value):
+    """Checks whether `value` is one of a PAGED pattern's stored starting values,
+    decoding at most ONE page rather than the whole pattern. Pages are closed,
+    contiguous slices of one globally sorted sequence (see hit_paging.py's own
+    append_hits_paged() -- each page is filled to page_size before the next one
+    opens), so bisecting on each page's own first_value (a cheap O(1) header read,
+    same trick storage.py's find_prime_in_floor already applies across whole window
+    files) identifies the ONE page that could contain `value` -- no neighbor
+    safety-net needed the way find_prime_in_floor needs one across window RANGES,
+    since this is a plain positional split of one sorted array, not numeric ranges
+    that could disagree with a pivot at a boundary.
+
+    A page that fails to decode (corrupt/truncated -- should be rare) is treated as
+    "value not found on this page" rather than raising, so one bad page can't take
+    down an entire multi-pattern search."""
+    if value < meta["first_value"] or value > meta["last_value"]:
+        return False
+    lo, hi = 0, hit_paging.page_count(meta) - 1
+    best = -1  # rightmost page seen so far whose first_value <= value
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        try:
+            header = hit_paging.read_page_header(vdir, base_exponent, k, variant_id, mid)
+            first_value = header["base_prime"]
+        except Exception:
+            hi = mid - 1
+            continue
+        if first_value <= value:
+            best = mid
+            lo = mid + 1
+        else:
+            hi = mid - 1
+    if best < 0:
+        return False
+    try:
+        page_values = hit_paging.read_page(vdir, base_exponent, k, variant_id, best)
+    except Exception:
+        return False
+    pos = bisect.bisect_left(page_values, value)
+    return pos < len(page_values) and page_values[pos] == value
+
+
 def find_constellation_participation(portal_folder, base_exponent, number, hit_set_cache=None,
                                       progress_callback=None):
     """For every catalog pattern with an existing hit file at this floor, checks whether
@@ -528,22 +571,32 @@ def find_constellation_participation(portal_folder, base_exponent, number, hit_s
     k=3 and k=2 hit's base -- sub-tuples of a longer pattern), so this returns every match,
     not just the first.
 
+    A pattern already migrated to pages (hit_paging.py -- in practice, any pattern dense
+    enough to matter, since constellation_finder_v2.py auto-migrates the moment a pattern
+    would grow past hit_paging.PAGE_SIZE) is looked up via _find_value_in_paged_pattern():
+    one binary search per offset over cheap page-HEADER reads, decoding at most one page
+    per offset. This REPLACED materializing every page into one big Python set first --
+    for floor 25's k=2 (~2 billion hits across ~2,000 pages), that meant decoding gigabytes
+    of gap-encoded data, and keeping the resulting multi-billion-entry set resident in
+    hit_set_cache for the rest of the session, on EVERY search -- the actual "search grinds
+    to a halt at archive scale" bottleneck this function exists to fix. An UNPAGED pattern
+    (small by construction -- auto-migration keeps it under PAGE_SIZE) still gets the old
+    full-decode-then-cache treatment below, since it's already cheap and the cache still
+    pays off across repeated searches for it.
+
     `hit_set_cache`, if given, is a dict keyed by (base_exponent, k, id) -> set of decoded
-    starting values; reused across repeated searches in the same session so each hit file
-    is only decoded once rather than on every search. Owned by the Constellations tab's
-    Magazyn widget (ConstellationsHitsTab.hit_set_cache) -- passed in explicitly by
-    prime_atlas_v1.py's own _search_job rather than kept as module state here, so this
-    function stays pure and reusable regardless of which tab (or a future test) calls it.
+    starting values; reused across repeated searches in the same session so each UNPAGED
+    hit file is only decoded once rather than on every search (a paged pattern is never
+    added to this cache -- see above). Owned by the Constellations tab's Magazyn widget
+    (ConstellationsHitsTab.hit_set_cache) -- passed in explicitly by prime_atlas_v1.py's
+    own _search_job rather than kept as module state here, so this function stays pure and
+    reusable regardless of which tab (or a future test) calls it.
 
     `progress_callback(done, total)`, if given, is called once per pattern AFTER it's been
-    processed (whether that meant a fresh, potentially slow prime_sieve_v1.read_prime_window()
-    decode or a cache hit) -- a floor's FIRST-ever constellation search can decode dozens
-    of full hit files synchronously (nothing cached yet), which is the actual slow part of
-    this feature (find_prime_in_floor's own binary search is fast in comparison). The GUI
-    thread never calls this directly; prime_atlas_v1's _search_job does, off the main
-    thread (via a PersistentWorker, see primeatlas/core/background.py), and turns each
-    progress_callback invocation into a report_progress() call that drives the shared
-    status/progress bar.
+    processed. The GUI thread never calls this directly; prime_atlas_v1's _search_job
+    does, off the main thread (via a PersistentWorker, see primeatlas/core/background.py),
+    and turns each progress_callback invocation into a report_progress() call that drives
+    the shared status/progress bar.
 
     Returns a list of dicts: {pattern, offset, position, base} (position is 0-indexed --
     0 means "this IS the base of the tuple").
@@ -558,22 +611,31 @@ def find_constellation_participation(portal_folder, base_exponent, number, hit_s
             if progress_callback is not None:
                 progress_callback(done, total)
             continue
-        key = (base_exponent, pattern["k"], pattern["id"])
-        if key not in hit_set_cache:
-            try:
-                values = set()
-                for page_index in range(hit_pattern_page_count(
-                        portal_folder, base_exponent, pattern["k"], pattern["id"])):
-                    values.update(read_hit_pattern_page(
-                        portal_folder, base_exponent, pattern["k"], pattern["id"], page_index))
-                hit_set_cache[key] = values
-            except Exception:
-                hit_set_cache[key] = set()
-        starts = hit_set_cache[key]
-        for position, offset in enumerate(pattern["offsets"]):
-            base = number - offset
-            if base in starts:
-                results.append({"pattern": pattern, "offset": offset, "position": position, "base": base})
+        k, variant_id = pattern["k"], pattern["id"]
+        vdir = hit_paging.variant_dir(portal_folder, base_exponent, k, variant_id)
+        meta = hit_paging.read_meta(vdir)
+        if meta is not None:
+            for position, offset in enumerate(pattern["offsets"]):
+                base = number - offset
+                if _find_value_in_paged_pattern(vdir, base_exponent, k, variant_id, meta, base):
+                    results.append({"pattern": pattern, "offset": offset, "position": position, "base": base})
+        else:
+            key = (base_exponent, k, variant_id)
+            if key not in hit_set_cache:
+                try:
+                    values = set()
+                    for page_index in range(hit_pattern_page_count(
+                            portal_folder, base_exponent, k, variant_id)):
+                        values.update(read_hit_pattern_page(
+                            portal_folder, base_exponent, k, variant_id, page_index))
+                    hit_set_cache[key] = values
+                except Exception:
+                    hit_set_cache[key] = set()
+            starts = hit_set_cache[key]
+            for position, offset in enumerate(pattern["offsets"]):
+                base = number - offset
+                if base in starts:
+                    results.append({"pattern": pattern, "offset": offset, "position": position, "base": base})
         if progress_callback is not None:
             progress_callback(done, total)
     return results
