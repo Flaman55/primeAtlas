@@ -684,6 +684,25 @@ restoring the window's prior geometry on exit (and releasing the fullscreen moni
 before the process is allowed to pause, so a paused, hidden process never leaves a
 monitor stuck in exclusive-fullscreen mode).
 
+Load Range From/To, Max load count, and the sliding-window checkbox are all only
+meaningful in "range" mode -- `_on_mode_changed` greys out their widgets when
+"sequential" mode is selected, but (like every other launch-time field) their
+underlying values are left untouched, not cleared, so a value set during an earlier
+range-mode session (including one loaded back from `AppSettings.ring_viz_params`
+on a fresh app start) is still sitting there the next time the tab opens. That's
+harmless for Load Range From/To and Max load count -- `_on_open` only reads them
+at all when `mode_var` says "range", and renderer.py itself ignores an unrelated
+`--max-load-count` outside `--load-range` -- but the sliding-window checkbox used
+to be read unconditionally, forwarding a stale checked value as `--slide-load-range`
+even in sequential mode, where renderer.py has no `--load-range` to slide over and
+hard-fails its own argparse ("--slide-load-range requires --load-range"). Real bug,
+2026-09-26, Artur's own reproduction: a plain sequential-mode launch crashed at
+startup this way. Fixed by gating the checkbox read on `mode_var == "range"` the
+same way Load Range From/To already were, rather than clearing the BooleanVar
+itself (so the checkbox still shows its last range-mode choice next time "range"
+mode is picked, same remembers-its-last-used-value convention as every other field
+here).
+
 A second, independent drawing mode (`--viz-mode line`, a "Line mode" checkbox next to
 Load Range in the tab) replaces the ring-per-modulus display with a literal number-line:
 a fixed horizontal row of real primes from the chosen Load Range, plus an optional
