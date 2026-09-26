@@ -731,13 +731,50 @@ values give exactly 2 legend lines, not 3. Families whose `lo` ties EXACTLY (e.g
 General Law at theta=0.5, provably identical to Legendre) open the same shell together,
 one legend line, not a separate boundary between them.
 
+Legendre's (and General Law's rigid `'legendre'` mode's) own ring highlight also has a
+fade-continuity layer on top of plain window membership, `ring_geometry.
+is_legendre_highlighted`/`is_general_law_highlighted` -- [ADDED 2026-09-26, Artur's own
+live bug report against this exact module, screenshots at N=144/145/169] plain strict
+membership alone extinguishes an ENTIRE Legendre level's worth of highlighted primes in
+the single step the level advances, even though the new level hasn't produced a member
+of its own yet -- visually jarring next to Bertrand, whose much wider window never
+empties out all at once (consecutive Bertrand windows always overlap by construction, so
+it never needed a fix like this). The fade: treat the previous level's own members as a
+queue, oldest (smallest) first; for every member the current level has produced so far
+(count `m`), retire exactly one -- the smallest still-surviving -- member of that queue.
+This also surfaces, for free, whether the new level is richer or sparser than the old
+one (a slower-filling new level leaves old members lit longer). Deliberately a PURE
+function of n, like everything else in this module -- both "the previous level's own
+full membership" and "how many members the current level has produced so far" are
+directly recomputable from n alone, no per-tick queue kept anywhere, so this can't
+suffer the same rewind/backward-step desync class of bug Artur found by accident while
+producing the screenshots that prompted this fix. An EARLIER, different attempt at this
+same idea (a per-ring "stay lit until your own next self-multiple" rule) was removed
+from this same file, the same day, after Artur found it showed green dots nearly as wide
+as Bertrand's own window for most primes -- see `is_legendre_highlighted`'s own
+[HISTORY] doc-comment note for the exact diagnosis; this design is bounded by the
+previous level's own actual population instead of an arbitrary per-prime multiple, so it
+cannot reproduce that failure mode. `compute_highlight_colors` restores the same
+two-tier strict/sticky blend precedence this needs (a family's fade-only match on a ring
+is excluded from the blend whenever another enabled family strictly matches that ring
+too, e.g. Bertrand's much wider window "beats" a fading Legendre remnant rather than
+diluting it into a blend) via a new `STRICT_MEMBER_FUNCTIONS` registry (the plain
+membership tests) alongside `WINDOW_MEMBER_FUNCTIONS` (now the fade-aware tests).
+Deliberately scoped to `'legendre'`/General-Law's `'legendre'` mode only for now --
+`'sliding'`/`'bertrand'` already read as smoothly continuous with no fade layer at all
+(confirmed by live-testing the equivalent RelationalMathematics website feature this same
+session), and General Law's `'stepped'` mode is left for a later pass (it shares
+Legendre's own level boundaries but scales its own window narrower via a tent factor, so
+the same "previous level's full membership" queue isn't necessarily what `'stepped'`
+itself ever actually lit up -- a correct fix there needs its own design).
+
 All of this -- the per-ring blend, `window_label_colors`, and `nested_shell_colors` --
 is driven entirely by small registries (`WINDOW_BOUNDS_FUNCTIONS`, `WINDOW_MEMBER_
-FUNCTIONS`, alongside the pre-existing `ANCHOR_FUNCTIONS`/`WINDOW_FAMILY_COLORS`) -- a
-future 4th window family (as long as it shares the same "always ends at n" convention
-every family here already follows) needs only a new entry in each registry, and
-automatically gets however many extra shells its own `lo` creates relative to the
-others, with no change to any of these functions themselves.
+FUNCTIONS`, `STRICT_MEMBER_FUNCTIONS`, alongside the pre-existing `ANCHOR_FUNCTIONS`/
+`WINDOW_FAMILY_COLORS`) -- a future 4th window family (as long as it shares the same
+"always ends at n" convention every family here already follows) needs only a new entry
+in each registry, and automatically gets however many extra shells its own `lo` creates
+relative to the others, with no change to any of these functions themselves.
 
 Load Range From/To, Max load count, and the sliding-window checkbox are all only
 meaningful in "range" mode -- `_on_mode_changed` greys out their widgets when

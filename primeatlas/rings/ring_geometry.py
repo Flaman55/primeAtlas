@@ -331,15 +331,126 @@ def is_general_law_member(primes, n, theta, mode):
     return (primes_arr > lo) & (primes_arr <= hi)
 
 
+def is_legendre_highlighted(primes, n):
+    """[ADDED 2026-09-26] The RENDERING variant of Legendre membership, used
+    for the ring's own highlight (teeth) color -- is_legendre_member above
+    stays the strict mathematical test, unchanged, unaffected by this.
+
+    Fixes an abrupt-reset bug Artur reported live against this exact module
+    (screenshots at N=144/145/169, level 11->12 -- see
+    _test_is_legendre_highlighted's own doc-comment for the full report):
+    when the level closes, is_legendre_member alone extinguishes EVERY one of
+    that level's own highlighted primes in the SAME single step the level
+    advances, even though the new level has not yet produced a single member
+    of its own -- visually jarring next to Bertrand, whose much wider window
+    never empties out all at once (see is_bertrand_member's own doc-comment:
+    consecutive Bertrand windows always overlap by construction, so Bertrand
+    never needed a fix like this one).
+
+    [HISTORY] An EARLIER attempt at this same idea (is_legendre_highlighted,
+    "stay lit until this ring's own next self-multiple") was removed
+    entirely from this file (2026-09-26, same day) because Artur found it
+    showed green dots nearly as wide as Bertrand's own (n/2, n] window for
+    most primes -- see _test_legendre_member_strict_only's own doc-comment
+    for the exact diagnosis (that formula's grace period could be a 2x, 3x,
+    or more multiple of the prime's own value, entirely by where the prime
+    happened to sit within its level, with no relationship to the level
+    structure itself). THIS design is different in kind, not just degree:
+    the previous level's own members fade out ONE FOR ONE as the current
+    level produces its own members, so the fade can never outlast "the
+    previous level's own total population" -- a bound tied to the actual
+    level structure, not an arbitrary per-prime multiple.
+
+    Rule (Artur's own, confirmed over several rounds): treat the previous
+    level's own members as a queue, oldest (smallest) first. For every
+    member the CURRENT level has actually produced so far (count `m`),
+    retire exactly one -- the smallest still-surviving -- member of that
+    queue. A previous-level member is therefore still highlighted iff its
+    rank among the previous level's own members (sorted ascending) is >= m.
+    This also surfaces, for free, whether the new level is richer or
+    sparser than the old one: if the new level has FEWER members than the
+    old one, `m` never catches up and some old members stay lit
+    indefinitely (visibly "the new window is sparser"); if it has MORE, the
+    old queue empties out before the new level finishes and the rest of its
+    own members simply light up fresh, no fading involved.
+
+    Deliberately a PURE function of n -- both "the previous level's own full
+    membership" and "how many members the current level has produced so
+    far" are directly recomputable from n and the prime list alone, no
+    per-tick queue kept anywhere -- so this cannot suffer the same
+    rewind/backward-step desync bug Artur found by accident while producing
+    the screenshots that prompted this fix (a genuinely stateful per-tick
+    queue would have exactly that failure mode; see this repo's own
+    long-standing "everything is a pure function of n" convention, e.g.
+    bertrand_anchor_at's own doc-comment, for why state is avoided
+    everywhere else in this module too).
+
+    k<2 (no previous level exists yet -- the only n range where this can
+    ever diverge from a "well-formed" previous level, per Artur's own
+    explicit call to set this boundary case aside as harmless: it only
+    arises while the window itself is still extremely narrow) simply
+    returns is_legendre_member unchanged -- no fabricated previous level."""
+    primes_arr = np.asarray(primes)
+    live = is_legendre_member(primes_arr, n)
+    k = legendre_level_at(n)
+    if k < 2:
+        return live
+    prev_lo = (k - 1) * (k - 1)
+    prev_hi = k * k
+    old_mask = (primes_arr > prev_lo) & (primes_arr <= prev_hi)
+    old_members = np.sort(primes_arr[old_mask])
+    if old_members.size == 0:
+        return live
+    m = int(np.count_nonzero(live))
+    if m >= old_members.size:
+        return live
+    threshold = old_members[m]
+    old_survive_mask = old_mask & (primes_arr >= threshold)
+    return live | old_survive_mask
+
+
+def is_general_law_highlighted(primes, n, theta, mode):
+    """[ADDED 2026-09-26] General Law's own rendering-highlight test, same
+    role as is_legendre_highlighted above for Legendre's -- is_general_law_member
+    stays the strict mathematical test for every mode, unaffected.
+
+    Scoped deliberately narrow, per Artur's own explicit priority call this
+    session ("w trybie liniowym [sliding] ... a stepped jest drugorzędny bo
+    pole ma wydzielony tryb legendre" -- sliding is the priority, stepped is
+    secondary since the dedicated rigid 'legendre' mode already covers the
+    "exact reproduction" need) and his separate live-tested confirmation
+    (against the RelationalMathematics website, this same session) that
+    'sliding' and 'bertrand' already feel right with NO fade layer at all --
+    their own raw membership tests are already smoothly-creeping by
+    construction (see general_law_window_bounds' own doc-comment: 'sliding'
+    has no level concept to abruptly reset from in the first place).
+
+    Only 'legendre' mode gets the fade, by delegating straight to
+    is_legendre_highlighted -- exact reproduction of the real Legendre
+    checkbox, fade included, which is the whole point of a RIGID mode.
+    'bertrand'/'sliding'/'stepped' are unchanged (plain is_general_law_member) --
+    'stepped' is deliberately left out of this pass; revisit only if Artur
+    reports it as its own priority later (see this function's own module-
+    level test for why: 'stepped' shares Legendre's own level boundaries but
+    scales its OWN window narrower via general_law_tent_factor, so the same
+    "previous level's full membership" queue this function's 'legendre'
+    branch reuses is not necessarily what 'stepped' itself ever actually lit
+    up -- a correct fix there needs its own, separate design, not a copy of
+    this one)."""
+    if mode == "legendre":
+        return is_legendre_highlighted(primes, n)
+    return is_general_law_member(primes, n, theta, mode)
+
+
 # ---------------------------------------------------------------------------
 # Highlight-color blending -- ports StructuralSieveApp.js's
 # #windowHighlightFamilies / #computeHighlightColor / #computeTrackedColor /
 # #activeWindowCount into vectorized numpy form. See that file for the full
-# design rationale on why the blend is additive-RGB. Legendre's own
-# highlight test USED to be a separate "sticky" variant
-# (is_legendre_highlighted, since removed -- see compute_highlight_colors'
-# own doc-comment for why: it produced a false-positive green band nearly as
-# wide as Bertrand's own window).
+# design rationale on why the blend is additive-RGB. Legendre's (and General
+# Law's 'legendre' mode's) own highlight test is is_legendre_highlighted --
+# see that function's own doc-comment for the fade-continuity design and its
+# own [HISTORY] note on an EARLIER, since-removed "sticky" variant that
+# produced a false-positive green band nearly as wide as Bertrand's window.
 # The JS versions operate per single (n, prime) pair, called once per ring
 # per animation tick; this module instead computes highlight color for EVERY
 # active ring at once (a whole-frame batch), which is what the ring-count
@@ -378,9 +489,32 @@ WINDOW_BOUNDS_FUNCTIONS = {
 
 #: Registry of family_id -> callable(primes_arr, n, theta, mode) -> bool
 #: array -- same dynamic-registry purpose as WINDOW_BOUNDS_FUNCTIONS above,
-#: for compute_highlight_colors' own per-ring strict-membership test
-#: (previously a hardcoded if/elif/raise chain).
+#: for compute_highlight_colors' own per-ring highlight test (previously a
+#: hardcoded if/elif/raise chain). [CHANGED 2026-09-26] "legendre"/"generalLaw"
+#: now go through is_legendre_highlighted/is_general_law_highlighted (the
+#: fade-continuity layer -- see those functions' own doc-comments) rather
+#: than the plain strict-membership tests directly; "bertrand" is unchanged
+#: (its own window overlap already provides the same continuity with no
+#: extra layer needed). WINDOW_BOUNDS_FUNCTIONS above is DELIBERATELY left
+#: alone (still the plain mathematical lo/hi) -- nested_shell_colors' own
+#: containment logic needs the real window bounds, not the rendering-only
+#: fade adjustment this registry exists for.
 WINDOW_MEMBER_FUNCTIONS = {
+    "bertrand": lambda primes_arr, n, theta, mode: is_bertrand_member(primes_arr, n),
+    "legendre": lambda primes_arr, n, theta, mode: is_legendre_highlighted(primes_arr, n),
+    "generalLaw": lambda primes_arr, n, theta, mode: is_general_law_highlighted(primes_arr, n, theta, mode),
+}
+
+#: [ADDED 2026-09-26] The plain STRICT mathematical membership test per
+#: family, no fade layer -- mirrors StructuralSieveApp.js's own
+#: `isStrictMember` field on #windowHighlightFamilies (Bertrand has no
+#: separate strict test there either, for the same reason: its own
+#: isHighlighted IS already the strict test). Used by
+#: compute_highlight_colors' own two-tier precedence (see that function's
+#: own doc-comment) to decide, per ring, whether a family's fade-only match
+#: should be allowed to blend in or gets overridden by another family's
+#: genuinely-live match.
+STRICT_MEMBER_FUNCTIONS = {
     "bertrand": lambda primes_arr, n, theta, mode: is_bertrand_member(primes_arr, n),
     "legendre": lambda primes_arr, n, theta, mode: is_legendre_member(primes_arr, n),
     "generalLaw": lambda primes_arr, n, theta, mode: is_general_law_member(primes_arr, n, theta, mode),
@@ -749,41 +883,56 @@ def compute_highlight_colors(primes, n, enabled_ids, theta=0.5, mode="stepped"):
     at once. `enabled_ids` is an iterable of family ids from
     WINDOW_FAMILY_COLORS currently toggled on (e.g. {"bertrand", "legendre"}).
 
-    Legendre's own highlight test is exactly its strict membership test,
-    same as Bertrand and General Law: an earlier "sticky" grace period
-    (is_legendre_highlighted, kept a ring green until it crossed its next
-    self-multiple) showed green dots across a range as wide as Bertrand's
-    own (n/2, n] window, even though the Legendre HUD label advertised a
-    much narrower (k*k, n] range -- for most primes past the midpoint of
-    their own level, "next self-multiple" works out to almost exactly 2x
-    their value, i.e. it reproduced Bertrand's own window shape by
-    coincidence. With no family having a distinct sticky variant, the
-    strict/sticky two-tier precedence this function used to implement (see
-    #computeHighlightColor in the JS reference for where that rule came
-    from) is gone too -- this just blends whichever families STRICTLY match
-    each ring.
+    [CHANGED 2026-09-26, reinstated the same day after an earlier removal --
+    see is_legendre_highlighted's own [HISTORY] note] WINDOW_MEMBER_FUNCTIONS
+    now includes a fade-continuity layer for Legendre/General Law('legendre'
+    mode) on top of strict membership (see is_legendre_highlighted's own
+    doc-comment), so this function restores the SAME two-tier strict/sticky
+    precedence the JS reference's own #computeHighlightColor has always had:
+    for each ring, every ENABLED family's own STRICT_MEMBER_FUNCTIONS test is
+    checked first; if ANY family strictly matches that ring, ONLY the
+    strictly-matching families contribute to the blend for it (a family
+    whose only match is via its own fade/sticky layer is excluded) --
+    otherwise (no family strictly matches), every family's own
+    WINDOW_MEMBER_FUNCTIONS result (fade included) is used instead. This is
+    exactly what stops Bertrand's much wider window from "inheriting"
+    Legendre's fading remnants and permanently blending instead of ever
+    showing pure Bertrand pink once a ring is genuinely, strictly inside
+    Bertrand's own window too (see StructuralSieveApp.js's own
+    #computeHighlightColor doc-comment for the original motivating bug this
+    precedence rule fixes).
 
     Returns (colors, matched) -- see _blend_family_colors's own docstring for
     the exact shape; `matched[i] is False` is this function's counterpart to
     the JS version returning null for ring i.
 
-    [CHANGED 2026-09-26] The per-family membership dispatch is now the
-    WINDOW_MEMBER_FUNCTIONS registry instead of a hardcoded if/elif/raise --
+    The per-family membership dispatch is the WINDOW_MEMBER_FUNCTIONS/
+    STRICT_MEMBER_FUNCTIONS registries instead of a hardcoded if/elif/raise --
     same "add a family, don't touch this function" convention ANCHOR_
     FUNCTIONS/WINDOW_BOUNDS_FUNCTIONS already established."""
     primes_arr = to_prime_array(primes)
     count = len(primes_arr)
 
     strict_by_family = {}
+    sticky_by_family = {}
     for family_id in enabled_ids:
         if family_id not in WINDOW_MEMBER_FUNCTIONS:
             raise ValueError(f"unknown window family id {family_id!r}")
-        strict_by_family[family_id] = WINDOW_MEMBER_FUNCTIONS[family_id](primes_arr, n, theta, mode)
+        strict_by_family[family_id] = STRICT_MEMBER_FUNCTIONS[family_id](primes_arr, n, theta, mode)
+        sticky_by_family[family_id] = WINDOW_MEMBER_FUNCTIONS[family_id](primes_arr, n, theta, mode)
 
     if not strict_by_family:
         return np.zeros((count, 3), dtype=np.float64), np.zeros(count, dtype=bool)
 
-    return _blend_family_colors(strict_by_family)
+    any_strict = np.zeros(count, dtype=bool)
+    for mask in strict_by_family.values():
+        any_strict |= mask
+
+    masks_by_family = {
+        family_id: strict_by_family[family_id] | (sticky_by_family[family_id] & ~any_strict)
+        for family_id in enabled_ids
+    }
+    return _blend_family_colors(masks_by_family)
 
 
 def compute_tracked_colors(primes, n, enabled_ids, theta=0.5, mode="stepped", anchor_overrides=None):
