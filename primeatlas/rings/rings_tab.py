@@ -1023,7 +1023,15 @@ class RingsTab(BaseTab):
         # doc-comment above). No chunk-size field here on purpose -- every
         # slid-in chunk simply reuses max_load_count's own value (passed
         # to build_renderer_argv below), never a separately-typed number.
-        slide_load_range = self.slide_load_range_var.get()
+        # Gated on range_mode_selected, same as load_range itself just
+        # above -- real bug, 2026-09-26: _on_mode_changed() only greys out
+        # the checkbox WIDGET, it never clears slide_load_range_var, so a
+        # value left checked from an earlier range-mode session (or loaded
+        # from a persisted settings file) used to still get forwarded as
+        # --slide-load-range while --load-range itself was omitted in
+        # sequential mode, crashing renderer.py's own argparse ("--slide-
+        # load-range requires --load-range").
+        slide_load_range = self.slide_load_range_var.get() if range_mode_selected else False
 
         # Same empty-or-invalid-omits-the-flag
         # convention as every other numeric field here -- renderer.py's own

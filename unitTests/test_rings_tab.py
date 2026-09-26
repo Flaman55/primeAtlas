@@ -440,6 +440,62 @@ def main():
     tab.load_range_to_entry.configure(state="normal")
     tab.load_range_to_entry.delete(0, "end")
 
+    # --- Sliding-window checkbox wiring -- gated on mode_var == "range",
+    # same as Load Range From/To above. Real bug, 2026-09-26: Artur's own
+    # command-line reproduction had --slide-load-range with NO --load-range
+    # at all, crashing renderer.py's own argparse ("--slide-load-range
+    # requires --load-range") in SEQUENTIAL mode. Root cause: _on_mode_
+    # changed() only greys out the checkbox WIDGET, it never clears the
+    # underlying BooleanVar -- so a value checked while in range mode (or
+    # loaded from a persisted settings file saved during an earlier range-
+    # mode session) stays True after switching back to sequential, and
+    # _on_open used to read self.slide_load_range_var.get() unconditionally,
+    # forwarding the stale True regardless of mode.
+    tab.mode_var.set("range")
+    tab._on_mode_changed()
+    tab.load_range_from_entry.delete(0, "end")
+    tab.load_range_from_entry.insert(0, "100")
+    tab.load_range_to_entry.delete(0, "end")
+    tab.load_range_to_entry.insert(0, "500")
+    tab.slide_load_range_var.set(True)
+    fake_ok_script_slide1 = _write_fake_renderer(0)
+    rings_tab_module.RENDERER_SCRIPT = fake_ok_script_slide1
+    tab.n_entry.delete(0, "end")
+    tab.n_entry.insert(0, "500")
+    shown.clear()
+    tab._on_open()
+    launched_cmd = list(tab._runner.cmd) if tab._runner is not None else []
+    check("--slide-load-range" in launched_cmd,
+          f"range mode with the sliding-window checkbox checked reaches the launched argv as "
+          f"--slide-load-range (got argv: {launched_cmd!r})")
+    _pump(app, 3.0)
+    os.remove(fake_ok_script_slide1)
+
+    # Switch BACK to sequential mode WITHOUT touching the checkbox itself
+    # (mirrors a real leftover value, whether from a real Load Range click
+    # earlier in the same run or a persisted settings file) -- must not
+    # resurrect --slide-load-range, since renderer.py hard-fails without a
+    # --load-range alongside it.
+    tab.mode_var.set("sequential")
+    tab._on_mode_changed()
+    fake_ok_script_slide2 = _write_fake_renderer(0)
+    rings_tab_module.RENDERER_SCRIPT = fake_ok_script_slide2
+    tab.n_entry.delete(0, "end")
+    tab.n_entry.insert(0, "500")
+    shown.clear()
+    tab._on_open()
+    launched_cmd = list(tab._runner.cmd) if tab._runner is not None else []
+    check("--slide-load-range" not in launched_cmd,
+          f"sequential mode ignores a leftover checked sliding-window checkbox entirely -- "
+          f"no --slide-load-range (got argv: {launched_cmd!r})")
+    _pump(app, 3.0)
+    os.remove(fake_ok_script_slide2)
+    tab.slide_load_range_var.set(False)
+    tab.load_range_from_entry.configure(state="normal")
+    tab.load_range_from_entry.delete(0, "end")
+    tab.load_range_to_entry.configure(state="normal")
+    tab.load_range_to_entry.delete(0, "end")
+
     # --- Max load count field wiring (range mode) ---------
     tab.mode_var.set("range")
     tab._on_mode_changed()
