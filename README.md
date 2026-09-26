@@ -668,7 +668,21 @@ sawtooth/bell/choir/mute) -- audio requires the optional `sounddevice` package a
 otherwise silently unavailable with a clear console message, never a crash. Window
 highlight checkboxes for the Bertrand, Legendre, and General Law windows (the same three
 families the standalone Structural Sieve HTML tool defines) can be enabled together,
-with the General Law family's own theta and sliding/stepped mode fields; these, like
+with the General Law family's own theta and mode fields. [CHANGED 2026-09-26, ported
+from that same HTML tool -- see its own SieveModel.js commit "Add exact Bertrand/
+Legendre modes to General Law's window selector"] The mode field offers two new RIGID
+choices, "bertrand"/"legendre", alongside the existing theta-parameterized "stepped"/
+"sliding" -- picking one locks the theta field to a fixed display value (1/0.5) and
+makes `general_law_window_bounds` reproduce that family's own window EXACTLY (reusing
+`is_bertrand_member`/`is_legendre_member`'s own `lo` and, for the tracked-ring anchor,
+`bertrand_anchor_at`/`legendre_anchor_at` directly -- see `general_law_anchor_at`'s own
+doc-comment for why `bertrand_anchor_at`'s stateful witness-doubling chain can't be
+approximated by a plain "largest prime below lo" recompute, concretely diverging at
+n=10: floor(10/2)=5 vs. the real chain's 7), rather than only approximating it via
+theta the way stepped/sliding do. "sliding" -- the mode whose `n^theta` formula matches
+literature prime-gap bounds (Baker-Harman-Pintz theta=0.525, Runbo Li's 2023 refinement
+theta=0.52) as a drop-in special case -- became the default again as a result, now that
+Legendre no longer needs "stepped" as its only exact route. These fields, like
 point size and audio, are launch-time-only -- fixed for the life of one running
 subprocess and only editable again after Reset. Every one of these launch-time fields
 remembers its last-used value across app restarts (`AppSettings.ring_viz_params`) --
@@ -683,6 +697,47 @@ are both collapsible, with their own counts shown in the header. F11 toggles ful
 restoring the window's prior geometry on exit (and releasing the fullscreen monitor
 before the process is allowed to pause, so a paused, hidden process never leaves a
 monitor stuck in exclusive-fullscreen mode).
+
+When two or more of Bertrand/Legendre/General Law are enabled at once, a ring strictly
+inside more than one of their windows gets an AVERAGED color (not the additively-summed-
+then-clamped-to-255 color it used to) -- [CHANGED 2026-09-26, Artur's own real bug
+report] Bertrand's `(n//2, n]` window is a near-total superset of Legendre/General Law's
+whenever n isn't tiny, so summing already-saturated colors (pink+green, or all three)
+clipped almost immediately to a washed-out near-white, reading as "unhighlighted" even
+though the blend arithmetic was doing exactly what it was designed to -- confirmed
+directly against real portal data (18 primes strictly inside Legendre's window but
+outside General Law's at n=2,520,000, theta=0.4, rendering (255,255,224) instead of a
+recognizable color). Averaging means each contributing family's color visibly pulls the
+result toward itself instead of washing to white (`ring_geometry._blend_family_colors`,
+used by both `compute_highlight_colors` -- per-ring -- and `compute_tracked_colors`).
+
+The HUD's own three window-range lines ("Bertrand window: ...", etc.) are a SEPARATE
+concern and, after a same-day back-and-forth, do NOT blend at all -- `window_label_colors`
+always gives each enabled family its own plain, unconditional color (pink/green/purple),
+even though no ring ever shows pure green in practice (Bertrand always swallows
+Legendre's window whole): the label's job is identifying "this is Legendre", not
+describing what a blended ring looks like. That job belongs to a separate, dynamically-
+sized color LEGEND instead (Artur's own follow-up request) -- one extra HUD line per
+distinct NESTED SHELL among the enabled families (e.g. "Bertrand + Legendre:", then
+"Bertrand + Legendre + General Law:"), each in that shell's own averaged color.
+`ring_geometry.nested_shell_colors` derives these from a key structural fact: every
+window family here shares the exact same right edge n, so any two enabled windows are
+never a partial, crossing overlap -- one is always a strict superset of the other (or
+they coincide exactly), a total order by `lo`. Sorting enabled families by `lo` and
+walking outermost-to-innermost therefore gives exactly `len(distinct lo values) - 1`
+shells, not every 2^k-1 subset or every C(k,2) pair -- Artur's own live correction after
+watching an earlier (wrong) all-pairwise design render: 3 families with 3 distinct `lo`
+values give exactly 2 legend lines, not 3. Families whose `lo` ties EXACTLY (e.g.
+General Law at theta=0.5, provably identical to Legendre) open the same shell together,
+one legend line, not a separate boundary between them.
+
+All of this -- the per-ring blend, `window_label_colors`, and `nested_shell_colors` --
+is driven entirely by small registries (`WINDOW_BOUNDS_FUNCTIONS`, `WINDOW_MEMBER_
+FUNCTIONS`, alongside the pre-existing `ANCHOR_FUNCTIONS`/`WINDOW_FAMILY_COLORS`) -- a
+future 4th window family (as long as it shares the same "always ends at n" convention
+every family here already follows) needs only a new entry in each registry, and
+automatically gets however many extra shells its own `lo` creates relative to the
+others, with no change to any of these functions themselves.
 
 Load Range From/To, Max load count, and the sliding-window checkbox are all only
 meaningful in "range" mode -- `_on_mode_changed` greys out their widgets when

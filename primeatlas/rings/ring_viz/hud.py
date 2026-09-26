@@ -34,7 +34,13 @@ _PRIME_SIEVE_DIR = os.path.join(_REPO_ROOT, "prime_sieve")
 if _PRIME_SIEVE_DIR not in sys.path:
     sys.path.insert(0, _PRIME_SIEVE_DIR)
 
-from primeatlas.rings.ring_geometry import format_big, legendre_level_at, general_law_window_bounds
+from primeatlas.rings.ring_geometry import (
+    format_big,
+    legendre_level_at,
+    general_law_window_bounds,
+    nested_shell_colors,
+    WINDOW_FAMILY_COLORS,
+)
 
 # On-canvas GL HUD text -- Pillow is used only
 # to RASTERIZE plain text into an RGBA bitmap (PIL.ImageFont.load_default(),
@@ -130,10 +136,32 @@ def hud_lines_for_n(primes_active, n, pos, enabled_ids, theta, mode, tracked_sta
     if "generalLaw" in enabled_ids:
         lo, hi, k, _factor = general_law_window_bounds(n, theta, mode)
         lo_floor = int(np.floor(lo))
+        # [ADDED 2026-09-26] Two RIGID modes -- theta is a locked display
+        # value there (see renderer.py's own --general-law-mode argparse),
+        # not a live parameter, so it's left out of the text entirely and the
+        # mode's real name stands in for it instead. 'legendre' shows k (a
+        # real, meaningful level here, unlike 'bertrand'); neither has a tent
+        # factor to report (that's 'stepped'-only).
         if mode == "stepped":
             lines.append(f"General Law window (theta={theta}, k={k}): ({lo_floor:,}, {hi:,}]")
+        elif mode == "bertrand":
+            lines.append(f"General Law window (Bertrand): ({lo_floor:,}, {hi:,}]")
+        elif mode == "legendre":
+            lines.append(f"General Law window (Legendre, k={k}): ({lo_floor:,}, {hi:,}]")
         else:
             lines.append(f"General Law window (theta={theta}): ({lo_floor:,}, {hi:,}]")
+
+    # [ADDED 2026-09-26, REDESIGNED same day -- see ring_geometry.
+    # nested_shell_colors' own doc-comment] A small color LEGEND -- one line
+    # per distinct NESTING SHELL among currently-enabled families (not every
+    # pairwise combination), in that shell's own averaged color, so a viewer
+    # can look up what a blended ring's color actually means. No numeric
+    # window bounds here -- a shell has no single window of its own to
+    # report, just a color to name.
+    family_order = list(WINDOW_FAMILY_COLORS.keys())
+    for shell_ids, _color in nested_shell_colors(enabled_ids, n, theta, mode).items():
+        ordered = sorted(shell_ids, key=family_order.index)
+        lines.append(_shell_line_prefix(ordered))
 
     return lines
 
@@ -234,8 +262,33 @@ _HUD_WINDOW_LINE_PREFIXES = {
     "generalLaw": "General Law window",
 }
 
+#: [ADDED 2026-09-26] Human-readable display name per family id, used only
+#: to build the dynamic nested-shell color-legend lines below -- separate
+#: from _HUD_WINDOW_LINE_PREFIXES's own "<Name> window:" text since a shell
+#: has no single window of its own to report bounds for, just a color to
+#: name.
+_FAMILY_DISPLAY_NAMES = {
+    "bertrand": "Bertrand",
+    "legendre": "Legendre",
+    "generalLaw": "General Law",
+}
 
-def hud_line_colors(lines, window_colors):
+
+def _shell_line_prefix(family_ids):
+    """The fixed leading text for a nested-shell color-legend HUD line, e.g.
+    "Bertrand + Legendre:" or "Bertrand + Legendre + General Law:" -- called
+    from BOTH hud_lines_for_n (which builds the line) and hud_line_colors
+    (which matches it back to a color) so the two can never drift apart,
+    same "single shared helper" reasoning _HUD_WINDOW_LINE_PREFIXES's own
+    docstring gives for the single-family case. `family_ids` is expected
+    pre-sorted into registry order by the caller (see
+    ring_geometry.nested_shell_colors' own doc-comment) and to have at least
+    2 entries (a 1-family "shell" is just that family's own existing line,
+    never built here)."""
+    return " + ".join(_FAMILY_DISPLAY_NAMES[fid] for fid in family_ids) + ":"
+
+
+def hud_line_colors(lines, window_colors, shell_colors=None):
     """Parallel per-line RGB color list, same length as `lines`
     (hud_lines_for_n's own text output, or compose_hud_canvas_lines' header+
     lines combination -- either works, since neither the header nor any
@@ -244,22 +297,43 @@ def hud_line_colors(lines, window_colors):
 
     Every line defaults to _HUD_TEXT_RGB EXCEPT a window-range line
     (identified by its own fixed leading text, see
-    _HUD_WINDOW_LINE_PREFIXES), which gets that family's own color from
-    `window_colors` (ring_geometry.window_label_colors' output -- solid per-
-    family color, or the additive blend when two+ enabled families' windows
-    coincide exactly at this N).
+    _HUD_WINDOW_LINE_PREFIXES), which gets that family's own plain,
+    unconditional color from `window_colors` (ring_geometry.
+    window_label_colors' output -- see that function's own doc-comment for
+    why it's back to a plain per-family lookup, no blending, as of
+    2026-09-26 -- blending moved to the nested-shell legend lines below).
 
     Matches by TEXT PREFIX rather than by position/index so this stays
     correct even if hud_lines_for_n's own Factors-of-N/Tracked-block line
     count changes later -- the window-range lines are always identifiable
-    by their own fixed leading text regardless of what precedes them."""
+    by their own fixed leading text regardless of what precedes them.
+
+    `shell_colors` -- [ADDED 2026-09-26] optional dict from ring_geometry.
+    nested_shell_colors (frozenset(family ids) -> (r,g,b)), matched the same
+    prefix-text way via _shell_line_prefix -- colors the new nested-shell
+    color-legend lines hud_lines_for_n now appends. None (the default)
+    simply means no shell lines will match, i.e. they'd fall through to the
+    flat default color -- callers that DO enable those lines should always
+    pass the matching dict, same convention `window_colors` already has (an
+    empty/wrong dict there just means those lines fall back to
+    _HUD_TEXT_RGB too, never an error)."""
+    shell_colors = shell_colors or {}
+    family_order = list(WINDOW_FAMILY_COLORS.keys())
     colors = []
     for line in lines:
         color = _HUD_TEXT_RGB
+        matched = False
         for family_id, prefix in _HUD_WINDOW_LINE_PREFIXES.items():
             if line.startswith(prefix):
                 color = window_colors.get(family_id, _HUD_TEXT_RGB)
+                matched = True
                 break
+        if not matched:
+            for shell_ids, scolor in shell_colors.items():
+                ordered = sorted(shell_ids, key=family_order.index)
+                if line.startswith(_shell_line_prefix(ordered)):
+                    color = scolor
+                    break
         colors.append(color)
     return colors
 
@@ -292,8 +366,8 @@ def rasterize_hud_text(lines, font_size=_HUD_FONT_SIZE_DEFAULT, line_colors=None
     one per entry in `lines`, drawn instead of the flat _HUD_TEXT_RGB for
     that line (see hud_line_colors, which builds this list from
     ring_geometry.window_label_colors so the Bertrand/Legendre/General Law
-    window-range lines get their own family color, or a shared blended
-    color when two enabled families' windows coincide exactly). None (the
+    window-range lines get their own family color, or a shared averaged
+    color when two enabled families' windows genuinely overlap). None (the
     default) keeps the old single-flat-color behavior unchanged; a line
     index beyond len(line_colors) also falls back to _HUD_TEXT_RGB, so a
     caller may pass a shorter list covering only the lines it cares about."""

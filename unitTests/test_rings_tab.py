@@ -496,6 +496,61 @@ def main():
     tab.load_range_to_entry.configure(state="normal")
     tab.load_range_to_entry.delete(0, "end")
 
+    # --- General Law mode combobox: new rigid 'bertrand'/'legendre' values
+    # [ADDED 2026-09-26, ported from the RelationalMathematics browser
+    # prototype] lock the theta entry to a fixed display value instead of
+    # leaving it showing a stale editable number. ---------
+    check(list(tab.general_law_mode_combo["values"]) == ["stepped", "sliding", "bertrand", "legendre"],
+          f"General Law mode combobox offers the two new rigid choices alongside stepped/sliding "
+          f"(got {list(tab.general_law_mode_combo['values'])!r})")
+
+    tab.general_law_mode_combo.set("bertrand")
+    tab._on_general_law_mode_changed()
+    check(tab.general_law_theta_entry.get() == "1",
+          f"bertrand mode: theta entry snaps to '1' (got {tab.general_law_theta_entry.get()!r})")
+    check(str(tab.general_law_theta_entry["state"]) == "disabled",
+          f"bertrand mode: theta entry is disabled (got {tab.general_law_theta_entry['state']!r})")
+
+    tab.general_law_mode_combo.set("sliding")
+    tab._on_general_law_mode_changed()
+    check(str(tab.general_law_theta_entry["state"]) == "normal",
+          f"switching back to sliding: theta entry is editable again (got {tab.general_law_theta_entry['state']!r})")
+
+    tab.general_law_mode_combo.set("legendre")
+    tab._on_general_law_mode_changed()
+    check(tab.general_law_theta_entry.get() == "0.5",
+          f"legendre mode: theta entry snaps to '0.5' (got {tab.general_law_theta_entry.get()!r})")
+    check(str(tab.general_law_theta_entry["state"]) == "disabled",
+          f"legendre mode: theta entry is disabled (got {tab.general_law_theta_entry['state']!r})")
+
+    tab.general_law_mode_combo.set("stepped")
+    tab._on_general_law_mode_changed()
+    check(str(tab.general_law_theta_entry["state"]) == "normal",
+          f"switching back to stepped: theta entry is editable again (got {tab.general_law_theta_entry['state']!r})")
+
+    # Launching with 'bertrand' selected forwards --general-law-mode bertrand
+    # and the locked "1" theta value, same as any other launch-time field.
+    tab.general_law_var.set(True)
+    tab.general_law_mode_combo.set("bertrand")
+    tab._on_general_law_mode_changed()
+    fake_ok_script_gl = _write_fake_renderer(0)
+    rings_tab_module.RENDERER_SCRIPT = fake_ok_script_gl
+    tab.n_entry.delete(0, "end")
+    tab.n_entry.insert(0, "500")
+    shown.clear()
+    tab._on_open()
+    launched_cmd = list(tab._runner.cmd) if tab._runner is not None else []
+    check("--general-law-mode" in launched_cmd and launched_cmd[launched_cmd.index("--general-law-mode") + 1] == "bertrand",
+          f"General Law set to bertrand reaches the launched argv as --general-law-mode bertrand "
+          f"(got argv: {launched_cmd!r})")
+    check("--general-law-theta" in launched_cmd and launched_cmd[launched_cmd.index("--general-law-theta") + 1] == "1.0",
+          f"General Law set to bertrand forwards the locked theta=1 (got argv: {launched_cmd!r})")
+    _pump(app, 3.0)
+    os.remove(fake_ok_script_gl)
+    tab.general_law_mode_combo.set("stepped")
+    tab._on_general_law_mode_changed()
+    tab.general_law_var.set(False)
+
     # --- Max load count field wiring (range mode) ---------
     tab.mode_var.set("range")
     tab._on_mode_changed()
