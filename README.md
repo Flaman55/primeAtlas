@@ -760,13 +760,28 @@ is excluded from the blend whenever another enabled family strictly matches that
 too, e.g. Bertrand's much wider window "beats" a fading Legendre remnant rather than
 diluting it into a blend) via a new `STRICT_MEMBER_FUNCTIONS` registry (the plain
 membership tests) alongside `WINDOW_MEMBER_FUNCTIONS` (now the fade-aware tests).
-Deliberately scoped to `'legendre'`/General-Law's `'legendre'` mode only for now --
-`'sliding'`/`'bertrand'` already read as smoothly continuous with no fade layer at all
-(confirmed by live-testing the equivalent RelationalMathematics website feature this same
-session), and General Law's `'stepped'` mode is left for a later pass (it shares
-Legendre's own level boundaries but scales its own window narrower via a tent factor, so
-the same "previous level's full membership" queue isn't necessarily what `'stepped'`
-itself ever actually lit up -- a correct fix there needs its own design).
+`'sliding'`/`'bertrand'` stay unchanged, with no fade layer at all -- both already read as
+smoothly continuous by construction (confirmed by live-testing the equivalent
+RelationalMathematics website feature this same session).
+
+General Law's `'stepped'` mode [ADDED 2026-09-26, same-day follow-up] gets the SAME
+fade queue as `'legendre'` (shared via `ring_geometry._fade_previous_level`), with one
+crucial difference: the retirement pace (`exposure_count`) is NOT `'stepped'`'s own live
+count. `'stepped'` scales its window narrower than Legendre's via a tent factor, and
+unlike Legendre's raw test -- which, once a prime satisfies `(k*k, n]`, can never fail it
+again for the rest of that level -- `'stepped'`'s own `lo` keeps creeping up throughout
+the level, so a prime can satisfy it right when it's born and then drop back OUT later in
+the SAME level with no level change involved. A naive live-count would therefore be
+non-monotonic within a level, which could resurrect an already-retired previous-level
+member. Fix: pace retirement using Legendre's OWN plain membership count instead --
+provably exact, not approximate, since every prime in the current level satisfies
+`'stepped'`'s own window at least momentarily right when it's born (its own `lo` at that
+exact n is always `< n`, for any theta, including the tent's own empty-window guard
+edges), making "how many primes has `'stepped'` ever exposed the viewer to this level"
+always identical to Legendre's own monotonic count. `'stepped'`'s own live mask (what
+survivors get OR'd with) stays exactly as narrow/flickery as before -- that within-level
+flicker is a separate, already-accepted property of a narrow window (same as `'sliding'`
+mode's own sparse look), not something this fade layer smooths over.
 
 All of this -- the per-ring blend, `window_label_colors`, and `nested_shell_colors` --
 is driven entirely by small registries (`WINDOW_BOUNDS_FUNCTIONS`, `WINDOW_MEMBER_

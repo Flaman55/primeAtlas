@@ -331,6 +331,54 @@ def is_general_law_member(primes, n, theta, mode):
     return (primes_arr > lo) & (primes_arr <= hi)
 
 
+def _fade_previous_level(primes_arr, k, exposure_count, live):
+    """[ADDED 2026-09-26] Shared fade-continuity core behind
+    is_legendre_highlighted and is_general_law_highlighted's own 'stepped'
+    branch (see both functions' own doc-comments for the full design
+    history and Artur's own reported bug). Treats the PREVIOUS level's own
+    members ((k-1)^2, k^2]) as a queue, oldest (smallest) first: for every
+    member the CURRENT level has exposed the viewer to so far
+    (`exposure_count`), retires exactly one -- the smallest still-
+    surviving -- member of that queue. A previous-level member is therefore
+    still highlighted iff its rank among the previous level's own members
+    (sorted ascending) is >= exposure_count.
+
+    `exposure_count` is deliberately a SEPARATE argument from `live`
+    (the mask this call ultimately OR's the survivors into), not simply
+    `count_nonzero(live)` -- see is_general_law_highlighted's own 'stepped'
+    branch for why: a family's own CURRENT-level membership test can be
+    narrower than Legendre's plain (k^2, n] and can therefore FLICKER a
+    prime back OUT of membership later in the same level (its own `lo`
+    keeps creeping up as n grows, unlike Legendre's fixed-for-the-level
+    k^2), which would make a naive `count_nonzero(live)` NON-monotonic
+    within a level and let it retire FEWER previous-level members than it
+    already had -- i.e. resurrect an already-retired one. `exposure_count`
+    must be a monotonically non-decreasing count of DISTINCT primes the
+    current level has EVER exposed the viewer to (up to and including
+    y=n), which for plain Legendre happens to equal `count_nonzero(live)`
+    exactly (its own raw membership test never flickers within a level:
+    once a prime is included, it can never fail (k^2, n] again as n only
+    grows and k stays fixed) -- see is_legendre_highlighted's own call
+    below, which passes exactly that.
+
+    k<2 (no previous level exists yet -- the only n range where this can
+    ever diverge from a "well-formed" previous level, per Artur's own
+    explicit call to set this boundary case aside as harmless: it only
+    arises while the window itself is still extremely narrow) simply
+    returns `live` unchanged -- no fabricated previous level."""
+    if k < 2:
+        return live
+    prev_lo = (k - 1) * (k - 1)
+    prev_hi = k * k
+    old_mask = (primes_arr > prev_lo) & (primes_arr <= prev_hi)
+    old_members = np.sort(primes_arr[old_mask])
+    if old_members.size == 0 or exposure_count >= old_members.size:
+        return live
+    threshold = old_members[exposure_count]
+    old_survive_mask = old_mask & (primes_arr >= threshold)
+    return live | old_survive_mask
+
+
 def is_legendre_highlighted(primes, n):
     """[ADDED 2026-09-26] The RENDERING variant of Legendre membership, used
     for the ring's own highlight (teeth) color -- is_legendre_member above
@@ -361,15 +409,13 @@ def is_legendre_highlighted(primes, n):
     previous level's own total population" -- a bound tied to the actual
     level structure, not an arbitrary per-prime multiple.
 
-    Rule (Artur's own, confirmed over several rounds): treat the previous
-    level's own members as a queue, oldest (smallest) first. For every
-    member the CURRENT level has actually produced so far (count `m`),
-    retire exactly one -- the smallest still-surviving -- member of that
-    queue. A previous-level member is therefore still highlighted iff its
-    rank among the previous level's own members (sorted ascending) is >= m.
-    This also surfaces, for free, whether the new level is richer or
-    sparser than the old one: if the new level has FEWER members than the
-    old one, `m` never catches up and some old members stay lit
+    Rule (Artur's own, confirmed over several rounds -- see
+    _fade_previous_level's own doc-comment for the mechanics): treat the
+    previous level's own members as a queue, oldest (smallest) first; for
+    every member the current level has produced so far, retire exactly one
+    survivor. This also surfaces, for free, whether the new level is richer
+    or sparser than the old one: if the new level has FEWER members than
+    the old one, exposure never catches up and some old members stay lit
     indefinitely (visibly "the new window is sparser"); if it has MORE, the
     old queue empties out before the new level finishes and the rest of its
     own members simply light up fresh, no fading involved.
@@ -383,30 +429,12 @@ def is_legendre_highlighted(primes, n):
     queue would have exactly that failure mode; see this repo's own
     long-standing "everything is a pure function of n" convention, e.g.
     bertrand_anchor_at's own doc-comment, for why state is avoided
-    everywhere else in this module too).
-
-    k<2 (no previous level exists yet -- the only n range where this can
-    ever diverge from a "well-formed" previous level, per Artur's own
-    explicit call to set this boundary case aside as harmless: it only
-    arises while the window itself is still extremely narrow) simply
-    returns is_legendre_member unchanged -- no fabricated previous level."""
+    everywhere else in this module too)."""
     primes_arr = np.asarray(primes)
     live = is_legendre_member(primes_arr, n)
     k = legendre_level_at(n)
-    if k < 2:
-        return live
-    prev_lo = (k - 1) * (k - 1)
-    prev_hi = k * k
-    old_mask = (primes_arr > prev_lo) & (primes_arr <= prev_hi)
-    old_members = np.sort(primes_arr[old_mask])
-    if old_members.size == 0:
-        return live
-    m = int(np.count_nonzero(live))
-    if m >= old_members.size:
-        return live
-    threshold = old_members[m]
-    old_survive_mask = old_mask & (primes_arr >= threshold)
-    return live | old_survive_mask
+    exposure_count = int(np.count_nonzero(live))
+    return _fade_previous_level(primes_arr, k, exposure_count, live)
 
 
 def is_general_law_highlighted(primes, n, theta, mode):
@@ -414,31 +442,61 @@ def is_general_law_highlighted(primes, n, theta, mode):
     role as is_legendre_highlighted above for Legendre's -- is_general_law_member
     stays the strict mathematical test for every mode, unaffected.
 
-    Scoped deliberately narrow, per Artur's own explicit priority call this
-    session ("w trybie liniowym [sliding] ... a stepped jest drugorzędny bo
-    pole ma wydzielony tryb legendre" -- sliding is the priority, stepped is
-    secondary since the dedicated rigid 'legendre' mode already covers the
-    "exact reproduction" need) and his separate live-tested confirmation
-    (against the RelationalMathematics website, this same session) that
-    'sliding' and 'bertrand' already feel right with NO fade layer at all --
-    their own raw membership tests are already smoothly-creeping by
-    construction (see general_law_window_bounds' own doc-comment: 'sliding'
-    has no level concept to abruptly reset from in the first place).
+    'bertrand'/'sliding' are unchanged (plain is_general_law_member) --
+    already smoothly-creeping by construction (see
+    general_law_window_bounds' own doc-comment: 'sliding' has no level
+    concept to abruptly reset from in the first place; 'bertrand' delegates
+    to is_bertrand_member's own always-overlapping window), confirmed by
+    live-testing the RelationalMathematics website's equivalent feature this
+    same session -- no fade layer needed for either.
 
-    Only 'legendre' mode gets the fade, by delegating straight to
-    is_legendre_highlighted -- exact reproduction of the real Legendre
-    checkbox, fade included, which is the whole point of a RIGID mode.
-    'bertrand'/'sliding'/'stepped' are unchanged (plain is_general_law_member) --
-    'stepped' is deliberately left out of this pass; revisit only if Artur
-    reports it as its own priority later (see this function's own module-
-    level test for why: 'stepped' shares Legendre's own level boundaries but
-    scales its OWN window narrower via general_law_tent_factor, so the same
-    "previous level's full membership" queue this function's 'legendre'
-    branch reuses is not necessarily what 'stepped' itself ever actually lit
-    up -- a correct fix there needs its own, separate design, not a copy of
-    this one)."""
+    'legendre' mode delegates straight to is_legendre_highlighted -- exact
+    reproduction of the real Legendre checkbox, fade included, which is the
+    whole point of a RIGID mode.
+
+    'stepped' mode [ADDED 2026-09-26, SAME DAY as a follow-up -- Artur:
+    "damy radę przenieść to samo na GL?"] reuses the SAME _fade_previous_level
+    core as 'legendre', with one crucial difference: the `exposure_count`
+    passed to it is NOT count_nonzero of stepped's own (narrower) live mask.
+    'stepped' scales its own window narrower than Legendre's via
+    general_law_tent_factor, and unlike Legendre's raw test -- which, once a
+    prime satisfies (k^2, n], can NEVER fail it again for the rest of that
+    level, since k stays fixed and n only grows -- stepped's own `lo`
+    CONTINUES CREEPING UP throughout the level (it's a blend of n and
+    Legendre's lo, not fixed at the level's own opening edge), so a prime
+    can satisfy stepped's own window right when it's born and then drop
+    back OUT of it later in the SAME level, with no level change involved
+    at all. A naive count_nonzero(stepped's own live mask) would therefore
+    be non-monotonic within a level, which could retire FEWER previous-
+    level members than it already had -- resurrecting an already-retired
+    one.
+
+    The fix: use Legendre's OWN plain membership count for `exposure_count`
+    instead, provably always correct here. Proof: at the exact moment a
+    prime p is born (n=p), stepped's own lo(p) = p*(1-factor) +
+    legendre_lo*factor < p whenever factor > 0 and p > legendre_lo (both
+    always true for an active prime inside the current level -- and even
+    at the tent's own factor=0 edges, general_law_window_bounds' own
+    empty-window guard clamps lo to n-1 < n = p) -- i.e. EVERY prime in the
+    current level satisfies stepped's own window at least momentarily, right
+    when it's born, regardless of theta. So "how many distinct primes has
+    stepped's own window EVER exposed the viewer to during this level" is
+    always exactly equal to plain Legendre's own (monotonic) membership
+    count for the same level -- the two are provably identical, not just
+    coincidentally close. `live` itself (what gets OR'd with the surviving
+    previous-level members) stays stepped's own narrower, possibly-flickering
+    test, unaffected -- that within-level flicker is a separate, already-
+    accepted property of a narrow window (same as 'sliding' mode's own
+    sparse, one-prime-at-a-time look), not something this fade layer is
+    meant to smooth over."""
     if mode == "legendre":
         return is_legendre_highlighted(primes, n)
+    if mode == "stepped":
+        primes_arr = np.asarray(primes)
+        live = is_general_law_member(primes_arr, n, theta, mode)
+        k = legendre_level_at(n)
+        exposure_count = int(np.count_nonzero(is_legendre_member(primes_arr, n)))
+        return _fade_previous_level(primes_arr, k, exposure_count, live)
     return is_general_law_member(primes, n, theta, mode)
 
 

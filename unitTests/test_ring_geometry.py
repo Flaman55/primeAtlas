@@ -451,24 +451,24 @@ def _test_is_legendre_highlighted():
 
 def _test_is_general_law_highlighted():
     """[ADDED 2026-09-26] General Law's own rendering-highlight test, same
-    role as is_legendre_highlighted for Legendre's. Scoped deliberately
-    narrow, per Artur's own explicit priority call this session ("w trybie
-    liniowym [sliding] ... a stepped jest drugorzędny bo pole ma wydzielony
-    tryb legendre" -- sliding is the priority, stepped is secondary since the
-    dedicated rigid 'legendre' mode already covers the "exact reproduction"
-    need) and his separate confirmation, after live-testing the
-    RelationalMathematics website, that 'sliding' and 'bertrand' modes
-    already feel right WITHOUT any fade layer (their own raw membership
-    tests are already smoothly-creeping by construction -- see
-    is_general_law_member/general_law_window_bounds' own doc-comments):
+    role as is_legendre_highlighted for Legendre's. Per Artur's own
+    confirmation, after live-testing the RelationalMathematics website, that
+    'sliding' and 'bertrand' modes already feel right WITHOUT any fade layer
+    (their own raw membership tests are already smoothly-creeping by
+    construction -- see is_general_law_member/general_law_window_bounds' own
+    doc-comments):
 
       - 'legendre' mode: delegates STRAIGHT to is_legendre_highlighted --
         exact reproduction of the real Legendre checkbox, fade included,
         the whole point of a RIGID mode.
-      - 'bertrand'/'sliding'/'stepped': UNCHANGED, exactly is_general_law_member
-        (no fade layer) -- 'stepped' is deliberately left out of this pass
-        (see this test's own module-level note above); revisit only if
-        Artur reports it as its own priority later."""
+      - 'bertrand'/'sliding': UNCHANGED, exactly is_general_law_member (no
+        fade layer needed).
+      - 'stepped' mode [ADDED 2026-09-26, SAME DAY -- Artur: "damy radę
+        przenieść to samo na GL?"]: gets the SAME fade queue as 'legendre',
+        but paced by Legendre's own (monotonic) exposure count rather than
+        stepped's own (possibly-flickering) live count -- see
+        is_general_law_highlighted's own 'stepped' doc-comment for the full
+        proof of why that substitution is exact, not approximate."""
     from primeatlas.rings.ring_geometry import (
         is_general_law_highlighted,
         is_general_law_member,
@@ -491,12 +491,64 @@ def _test_is_general_law_highlighted():
         check(list(got) == list(expected),
               f"GL 'legendre' mode matches is_legendre_highlighted exactly at n={n}")
 
-    # 'bertrand'/'sliding'/'stepped': no fade layer -- exactly is_general_law_member,
-    # spot-checked at the SAME n=145 transition (where 'legendre' mode above
-    # visibly differs from plain membership) to prove these three modes
+    # 'stepped' mode, THE FIX ITSELF: theta=0.3 (narrower than Legendre) over
+    # the SAME real level-11/12 transition. Verified directly against the
+    # implementation (not hand-derived) before writing this test -- see
+    # is_general_law_highlighted's own 'stepped' doc-comment for the
+    # exposure-count substitution this depends on.
+    def highlighted_set_stepped(n):
+        primes_here = primes[primes <= n]
+        mask = is_general_law_highlighted(primes_here, n, 0.3, "stepped")
+        return set(primes_here[mask].tolist())
+
+    # n=144: level 11 still open. Legendre-style exposure so far = 4 (all of
+    # 127,131,137,139 have been "born" already, even though stepped's own
+    # narrower live window has already flickered 127 and 131 back out by
+    # this point) -- level 10's queue (101,103,107,109,113) is fully
+    # retired (exposure 4 < 5, so rank-4 survivor 113 remains), same
+    # boundary-carryover shape _test_is_legendre_highlighted's own n=144
+    # case documents.
+    check(highlighted_set_stepped(144) == {113, 137, 139},
+          "stepped theta=0.3, n=144: 113 (level 10's last survivor) + stepped's own currently-live 137,139 "
+          "(127,131 already flickered out of stepped's OWN narrower window, unrelated to the fade)")
+
+    # n=145: level just closed, stepped's own live set is empty (145 isn't
+    # prime, and its window is razor-narrow) -- Legendre-style exposure=0,
+    # so ALL FOUR of level 11's own members survive untouched.
+    check(highlighted_set_stepped(145) == {127, 131, 137, 139},
+          "stepped theta=0.3, n=145: exposure=0 -- all 4 of level 11's own members survive, "
+          "identical to real Legendre's own fade at this exact n")
+
+    # n=149: Legendre-style exposure=1 (149 born) -- retires the oldest (127).
+    check(highlighted_set_stepped(149) == {131, 137, 139, 149},
+          "stepped theta=0.3, n=149: exposure=1 -- 127 retired")
+
+    # n=151: exposure=2 -- 131 retires too.
+    check(highlighted_set_stepped(151) == {137, 139, 149, 151},
+          "stepped theta=0.3, n=151: exposure=2 -- 131 retired")
+
+    # n=157: exposure=3 -- 137 retires. stepped's OWN live window has by now
+    # also flickered 149 back out (unrelated to the fade), so only
+    # 151/157 are live, plus survivor 139.
+    check(highlighted_set_stepped(157) == {139, 151, 157},
+          "stepped theta=0.3, n=157: exposure=3 -- 137 retired; 149 separately flickered out of "
+          "stepped's own narrower live window")
+
+    # n=163: exposure=4 == old_count -- last survivor (139) retires too.
+    check(highlighted_set_stepped(163) == {157, 163},
+          "stepped theta=0.3, n=163: exposure=4 == old_count -- queue fully drained")
+
+    # n=167: queue long since drained -- matches stepped's own plain live
+    # membership exactly, no fade contribution left.
+    check(highlighted_set_stepped(167) == {157, 163, 167},
+          "stepped theta=0.3, n=167: queue exhausted -- matches plain stepped membership")
+
+    # 'bertrand'/'sliding': no fade layer -- exactly is_general_law_member,
+    # spot-checked at the SAME n=145 transition (where 'legendre'/'stepped'
+    # above visibly differ from plain membership) to prove these two modes
     # deliberately do NOT pick up any fade behavior.
     primes_145 = primes[primes <= 145]
-    for mode, theta in [("bertrand", 1), ("sliding", 0.5), ("stepped", 0.5)]:
+    for mode, theta in [("bertrand", 1), ("sliding", 0.5)]:
         got = is_general_law_highlighted(primes_145, 145, theta, mode)
         expected = is_general_law_member(primes_145, 145, theta, mode)
         check(list(got) == list(expected),
