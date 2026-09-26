@@ -67,6 +67,7 @@ from primeatlas.rings.ring_geometry import (
     cyclic_window_anchor_at,
     format_log_panel_text,
     window_label_colors,
+    nested_shell_colors,
     pattern_wheel_residues,
     next_wheel_n,
     pattern_positions_and_match,
@@ -1466,7 +1467,8 @@ class RenderSession:
             self.hud_n, self.hud_count, self.hud_lines, self.playback_running, self.tempo_ms
         )
         window_colors = window_label_colors(self.enabled_ids, self.hud_n, self.theta, self.law_mode)
-        line_colors = hud_line_colors(canvas_lines, window_colors)
+        shell_colors = nested_shell_colors(self.enabled_ids, self.hud_n, self.theta, self.law_mode)
+        line_colors = hud_line_colors(canvas_lines, window_colors, shell_colors)
         rgba = rasterize_hud_text(canvas_lines, font_size=hud_font_size, line_colors=line_colors)
         if rgba is None:
             return json_line, None, 0, 0

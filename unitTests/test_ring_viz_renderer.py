@@ -809,6 +809,39 @@ def _test_hud_lines_for_n():
           f"General Law window range text uses general_law_window_bounds' own lo/hi "
           f"(got lines={lines!r})")
 
+    # [ADDED 2026-09-26, REDESIGNED same day -- see ring_geometry.
+    # nested_shell_colors' own doc-comment] A nested-shell color-legend line
+    # is appended too. At n=30, theta=0.5, stepped: General Law is provably
+    # identical to Legendre's own window (both lo=25), so they tie into the
+    # SAME shell as Bertrand -- exactly ONE legend line covering all three,
+    # not one per pair.
+    check("Bertrand + Legendre + General Law:" in lines,
+          f"hud_lines_for_n appends one merged shell legend line when Legendre and General Law's "
+          f"windows tie exactly (got lines={lines!r})")
+    check("Bertrand + Legendre:" not in lines and "Bertrand + General Law:" not in lines,
+          f"no separate Bertrand-only-with-one-other shell line when Legendre/General Law tie "
+          f"(got lines={lines!r})")
+
+    # Only ONE family enabled -> no shell legend lines at all (nothing to blend).
+    _data3, _count3, pos3b = build_vertex_data(primes, n, max_radius, {"bertrand"}, theta, mode)
+    lines_single = hud_lines_for_n(primes, n, pos3b, {"bertrand"}, theta, mode)
+    check(not any("+" in line for line in lines_single),
+          f"hud_lines_for_n with only one family enabled appends no shell legend line "
+          f"(got lines={lines_single!r})")
+
+    # A DIFFERENT theta (0.4, no longer an exact tie) DOES give three
+    # distinct lo values -- exactly TWO shell lines then (Bertrand+Legendre,
+    # then +General Law), matching Artur's own real observation.
+    _data3b, _count3b, pos3c = build_vertex_data(primes, n, max_radius, enabled_ids, 0.4, mode)
+    lines_theta04 = hud_lines_for_n(primes, n, pos3c, enabled_ids, 0.4, mode)
+    check("Bertrand + Legendre:" in lines_theta04,
+          f"theta=0.4 (three distinct lo values): the outer shell line appears "
+          f"(got lines={lines_theta04!r})")
+    check("Bertrand + Legendre + General Law:" in lines_theta04,
+          f"theta=0.4: the innermost (all-three) shell line appears too (got lines={lines_theta04!r})")
+    check(sum(1 for line in lines_theta04 if "+" in line) == 2,
+          f"theta=0.4: exactly 2 shell legend lines, not 3 (got lines={lines_theta04!r})")
+
     # No enabled families, no divisors -> no lines at all (n prime, e.g. 31 is
     # itself an active prime here, so it IS a factor of itself -- pick a
     # value with none of the test primes dividing it and no families on).
@@ -1846,6 +1879,29 @@ def _test_hud_line_colors():
           "a Tracked-block line never accidentally matches a window prefix")
 
     check(hud_line_colors([], window_colors) == [], "empty lines list -> empty colors list")
+
+    # [ADDED 2026-09-26, REDESIGNED same day] shell_colors param -- at
+    # n=141, theta=0.4 (three distinct lo values), the two nested-shell
+    # legend lines each get their own averaged color, and a line that
+    # DOESN'T match any known family or shell still falls through to the
+    # flat default.
+    from primeatlas.rings.ring_geometry import nested_shell_colors
+    shell_colors = nested_shell_colors({"bertrand", "legendre", "generalLaw"}, 141, theta=0.4, mode="stepped")
+    shell_lines = ["Bertrand + Legendre:", "Bertrand + Legendre + General Law:", "Unrelated line"]
+    shell_line_colors = hud_line_colors(shell_lines, {}, shell_colors)
+    check(shell_line_colors[0] == shell_colors[frozenset(("bertrand", "legendre"))],
+          f"'Bertrand + Legendre:' line gets that shell's own averaged color (got {shell_line_colors[0]!r})")
+    check(shell_line_colors[1] == shell_colors[frozenset(("bertrand", "legendre", "generalLaw"))],
+          f"'Bertrand + Legendre + General Law:' line gets that shell's own averaged color "
+          f"(got {shell_line_colors[1]!r})")
+    check(shell_line_colors[2] == _HUD_TEXT_RGB,
+          f"a line matching no known family or shell falls through to the flat default "
+          f"(got {shell_line_colors[2]!r})")
+
+    # shell_colors omitted entirely (None, the default) -> shell lines simply
+    # don't match anything, same as an empty dict -- never a crash.
+    check(hud_line_colors(["Bertrand + Legendre:"], {}) == [_HUD_TEXT_RGB],
+          "omitting shell_colors entirely leaves shell lines at the flat default, no crash")
 
 
 def _test_hud_quad_vertex_data():

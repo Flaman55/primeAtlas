@@ -388,6 +388,17 @@ def _run_visualization(args, audio=None):
     enabled_ids = {f.strip() for f in args.windows.split(",") if f.strip()} if args.windows else set()
     theta = args.general_law_theta
     law_mode = args.general_law_mode
+    # [ADDED 2026-09-26] 'bertrand'/'legendre' are RIGID modes -- theta is
+    # ignored by every general_law_* function for these two (see
+    # general_law_window_bounds's own doc-comment), so forcing it here to the
+    # value it conceptually represents (rather than leaving whatever
+    # --general-law-theta happened to be passed) keeps any OTHER place that
+    # might echo `theta` honest, instead of relying on every call site
+    # remembering not to trust it in these two modes.
+    if law_mode == "bertrand":
+        theta = 1.0
+    elif law_mode == "legendre":
+        theta = 0.5
 
     # Track P -- parsed once here (not per-frame), same launch-time-only
     # convention as --windows above (no live in-window text field, see
@@ -1049,7 +1060,19 @@ def main():
     parser.add_argument("--windows", type=str, default="",
                          help="comma-separated window families to highlight: bertrand,legendre,generalLaw")
     parser.add_argument("--general-law-theta", type=float, default=0.5)
-    parser.add_argument("--general-law-mode", choices=["stepped", "sliding"], default="stepped")
+    # [CHANGED 2026-09-26] Two new RIGID choices, ported from the
+    # RelationalMathematics browser prototype (see its own SieveModel.js
+    # commit) -- 'bertrand'/'legendre' reproduce those families' windows
+    # EXACTLY (theta ignored, forced to 1.0/0.5 above for any other place
+    # that might echo it) instead of only approximating them via theta.
+    # Default flipped back to 'sliding' (was 'stepped' since this mode was
+    # added, specifically because Legendre used to be reachable exactly only
+    # via stepped's own theta=0.5 coincidence) -- Legendre now has its own
+    # rigid mode above, so 'sliding' -- the mode whose n^theta formula
+    # matches literature prime-gap bounds (Baker-Harman-Pintz theta=0.525,
+    # Runbo Li's 2023 refinement theta=0.52) for free -- can be the default
+    # again, same reasoning as the browser prototype's own default flip.
+    parser.add_argument("--general-law-mode", choices=["stepped", "sliding", "bertrand", "legendre"], default="sliding")
     # Track P -- comma-separated prime values (same convention as
     # --windows), and --auto-orbit as the JS's #autoOrbit mode (auto-cycle
     # active primes when nothing is explicitly tracked). See rings_tab.py's

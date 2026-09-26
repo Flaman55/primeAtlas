@@ -57,7 +57,7 @@ _RING_VIZ_RESUMED_LINE = "RING_VIZ_RESUMED"
 
 
 def build_renderer_argv(portal_folder, upto, python_executable=None,
-                         windows=(), general_law_theta=0.5, general_law_mode="stepped",
+                         windows=(), general_law_theta=0.5, general_law_mode="sliding",
                          point_size=None, track_primes=(), auto_orbit=False, load_range=None,
                          hit_point_size=None, hud_font_size=None, audio=False,
                          sound_low='sine', sound_prime='triangle', sound_lcm='choir',
@@ -88,7 +88,12 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
     "generalLaw" is among `windows` -- passing them unconditionally would be
     harmless (renderer.py ignores them when that family isn't enabled) but
     a shorter argv is easier to read in the console pane's own `$ ...` echo
-    line.
+    line. `general_law_mode` -- "sliding" (default)/"stepped", plus two RIGID
+    modes [ADDED 2026-09-26, ported from the RelationalMathematics browser
+    prototype] "bertrand"/"legendre", where `general_law_theta` is ignored
+    entirely (forced to 1.0/0.5 by renderer.py itself -- see that file's own
+    --general-law-mode argparse) and the window reproduces that family's own
+    EXACTLY, rather than approximating it via theta.
 
     `point_size` -- None (default) omits --point-size entirely, so
     renderer.py's own argparse default (3.0) applies; a real value is
@@ -683,9 +688,18 @@ class RingsTab(BaseTab):
         self.general_law_theta_entry.insert(0, saved_params.get("general_law_theta", "0.5"))
         self.general_law_theta_entry.pack(side="left", padx=(6, 16))
         ttk.Label(general_law_row, text=self.T("rings.general_law_mode_label")).pack(side="left")
+        # [CHANGED 2026-09-26] Two new RIGID choices, ported from the
+        # RelationalMathematics browser prototype -- 'bertrand'/'legendre'
+        # lock theta to a fixed display value (see _on_general_law_mode_
+        # changed below) and reproduce those families' windows EXACTLY,
+        # rather than only approximating them via theta.
         self.general_law_mode_combo = ttk.Combobox(general_law_row, width=10, state="readonly",
-                                                     values=["stepped", "sliding"])
-        self.general_law_mode_combo.set(saved_params.get("general_law_mode", "stepped"))
+                                                     values=["stepped", "sliding", "bertrand", "legendre"])
+        # Default flipped to "sliding" (was "stepped") -- matches renderer.py's
+        # own --general-law-mode argparse default, see that flag's own
+        # doc-comment for why.
+        self.general_law_mode_combo.set(saved_params.get("general_law_mode", "sliding"))
+        self.general_law_mode_combo.bind("<<ComboboxSelected>>", self._on_general_law_mode_changed)
         self.general_law_mode_combo.pack(side="left", padx=(6, 0))
 
         # Track P field -- comma-separated prime
@@ -771,6 +785,11 @@ class RingsTab(BaseTab):
         # exist, and after n_entry, since it addresses all of them by
         # attribute.
         self._on_mode_changed()
+        # Same, for General Law's own theta lock -- must run after
+        # general_law_theta_entry/general_law_mode_combo above exist, so a
+        # saved_params value of "bertrand"/"legendre" starts the entry
+        # correctly locked instead of only locking on the NEXT manual change.
+        self._on_general_law_mode_changed()
 
         # These two buttons keep their original
         # attribute names (open_button/stop_button -- unchanged, so
@@ -870,6 +889,9 @@ class RingsTab(BaseTab):
             # CURRENTLY selected mode actually uses editable, same as right
             # after _build_ui runs.
             self._on_mode_changed()
+            # Same for General Law's own theta lock -- the blanket loop above
+            # just re-enabled general_law_theta_entry unconditionally too.
+            self._on_general_law_mode_changed()
 
     def _on_mode_changed(self, _event=None):
         """Greys out whichever of N / Load Range's fields the CURRENT mode
@@ -888,6 +910,35 @@ class RingsTab(BaseTab):
         self.load_range_to_entry.configure(state=range_state)
         self.max_load_count_entry.configure(state=range_state)
         self._slide_load_range_check.configure(state=range_state)
+
+    def _on_general_law_mode_changed(self, _event=None):
+        """[ADDED 2026-09-26, ported from the RelationalMathematics browser
+        prototype's own generalLawWindowMode 'change' listener] 'bertrand'/
+        'legendre' are RIGID modes -- theta is not a live parameter there
+        (general_law_window_bounds ignores it entirely for these two, see
+        that function's own doc-comment), so the theta entry is locked to a
+        fixed display value instead of left showing whatever was last typed
+        for stepped/sliding, which would look editable/live but silently do
+        nothing. Re-enabled, keeping its current value as-is, on switching
+        back to stepped/sliding -- same "remembers its last-used value"
+        convention as every other launch-time field here. Called on the
+        combobox's own <<ComboboxSelected>> event, and once more from
+        _set_launch_params_readonly's unlock branch (mirrors _on_mode_
+        changed's own re-apply-after-unlock convention) so Reset/RESUME
+        can't leave a stale unlocked/locked state behind."""
+        mode = self.general_law_mode_combo.get()
+        if mode == "bertrand":
+            self.general_law_theta_entry.configure(state="normal")
+            self.general_law_theta_entry.delete(0, "end")
+            self.general_law_theta_entry.insert(0, "1")
+            self.general_law_theta_entry.configure(state="disabled")
+        elif mode == "legendre":
+            self.general_law_theta_entry.configure(state="normal")
+            self.general_law_theta_entry.delete(0, "end")
+            self.general_law_theta_entry.insert(0, "0.5")
+            self.general_law_theta_entry.configure(state="disabled")
+        else:
+            self.general_law_theta_entry.configure(state="normal")
 
     def _on_n_changed(self, _event=None):
         """Live floor hint next to the N field -- purely informational (which
@@ -946,7 +997,7 @@ class RingsTab(BaseTab):
             theta = float(self.general_law_theta_entry.get().strip())
         except ValueError:
             theta = 0.5
-        mode = self.general_law_mode_combo.get() or "stepped"
+        mode = self.general_law_mode_combo.get() or "sliding"
 
         # Same reasoning as theta above: point size is a float, and an
         # empty/invalid field should just omit --point-size entirely so

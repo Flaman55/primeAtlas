@@ -288,7 +288,22 @@ def general_law_tent_factor(theta):
 def general_law_window_bounds(n, theta, mode):
     """Ports SieveModel.generalLawWindowBounds. Returns (lo, hi, k, factor)
     with the same null-as-None conventions as the JS version (k/factor are
-    None where the JS returns null)."""
+    None where the JS returns null).
+
+    [ADDED 2026-09-26, ported from the RelationalMathematics browser prototype
+    -- see that repo's SieveModel.js commit "Add exact Bertrand/Legendre modes
+    to General Law's window selector"] Two RIGID modes, theta ignored
+    entirely: 'bertrand' reproduces is_bertrand_member's own lo (n//2)
+    exactly, 'legendre' reproduces is_legendre_member's own lo (k*k) exactly
+    -- these approximate nothing, unlike stepped/sliding's theta-parameterized
+    curves. See general_law_anchor_at's own doc-comment for why the ANCHOR
+    (not just this window) also needs its own direct delegation for
+    'bertrand' specifically."""
+    if mode == "bertrand":
+        return n // 2, n, None, None
+    if mode == "legendre":
+        k = legendre_level_at(n)
+        return k * k, n, k, None
     k = None
     factor = None
     if mode == "stepped":
@@ -345,72 +360,129 @@ WINDOW_FAMILY_COLORS = {
 }
 
 
-def _window_bounds_for_label(family_id, n, theta, mode):
-    """The (lo, hi) integer bounds of `family_id`'s own
-    window at this N -- used only for GROUPING window HUD labels by
-    coincidence (see window_label_colors below), NOT the source of truth
-    for the HUD text itself (that stays in renderer.py's hud_lines_for_n,
-    computed independently -- duplicated on purpose, same "small
-    self-contained function over a shared derivation" tradeoff already
-    made for window_anchor_primes above, so a bug here can't silently
-    corrupt the printed window-range text)."""
-    if family_id == "bertrand":
-        return (n // 2, n)
-    if family_id == "legendre":
-        k = legendre_level_at(n)
-        return (k * k, n)
-    if family_id == "generalLaw":
-        lo, hi, _k, _factor = general_law_window_bounds(n, theta, mode)
-        return (int(np.floor(lo)), int(hi))
-    raise ValueError(f"unknown window family id {family_id!r}")
+#: Registry of family_id -> callable(n, theta, mode) -> (lo, hi) numeric
+#: bounds -- the SAME shape ANCHOR_FUNCTIONS below already uses for anchors.
+#: [ADDED 2026-09-26, replaces the old hardcoded if/elif _window_bounds_for_
+#: label] Adding a future 4th window family means adding one entry here (plus
+#: a WINDOW_FAMILY_COLORS color and a WINDOW_MEMBER_FUNCTIONS entry below) --
+#: window_label_colors/compute_highlight_colors themselves never need to
+#: change, since both just iterate `enabled_ids` through these registries.
+#: theta/mode are unused by bertrand/legendre (kept for a uniform call
+#: signature across every registered family, same convention ANCHOR_
+#: FUNCTIONS already established).
+WINDOW_BOUNDS_FUNCTIONS = {
+    "bertrand": lambda n, theta, mode: (n // 2, n),
+    "legendre": lambda n, theta, mode: (legendre_level_at(n) ** 2, n),
+    "generalLaw": lambda n, theta, mode: general_law_window_bounds(n, theta, mode)[:2],
+}
+
+#: Registry of family_id -> callable(primes_arr, n, theta, mode) -> bool
+#: array -- same dynamic-registry purpose as WINDOW_BOUNDS_FUNCTIONS above,
+#: for compute_highlight_colors' own per-ring strict-membership test
+#: (previously a hardcoded if/elif/raise chain).
+WINDOW_MEMBER_FUNCTIONS = {
+    "bertrand": lambda primes_arr, n, theta, mode: is_bertrand_member(primes_arr, n),
+    "legendre": lambda primes_arr, n, theta, mode: is_legendre_member(primes_arr, n),
+    "generalLaw": lambda primes_arr, n, theta, mode: is_general_law_member(primes_arr, n, theta, mode),
+}
 
 
 def window_label_colors(enabled_ids, n, theta=0.5, mode="stepped"):
     """Colors for the HUD's window-range text lines (e.g. "Bertrand window:
-    (70, 141]"),
-    mirroring compute_highlight_colors' additive-RGB blend but applied to
-    whole TEXT LABELS instead of individual rings: each enabled family's
-    label normally gets that family's own WINDOW_FAMILY_COLORS entry, so
-    the color alone tells you which line is which -- but when two or more
-    enabled families' windows are the exact same (lo, hi) range at this N,
-    their labels collapse to ONE shared additively-blended color instead,
-    the same visual cue a ring itself gets when it strictly matches more
-    than one family (see compute_highlight_colors).
+    (70, 141]") -- each enabled family's OWN plain WINDOW_FAMILY_COLORS
+    entry, unconditionally.
 
-    Grouping is by EXACT bound equality, not "any overlap": every enabled
-    family's window always ends at n, so a naive overlap test would
-    trivially fire for any 2+ enabled families and defeat the whole point
-    (telling them apart). Exact equality is the real, meaningful
-    coincidence -- e.g. General Law at theta=0.5 in stepped mode is
-    *provably* identical to Legendre's own window (general_law_window_
-    bounds' own doc-comment / task #577), so enabling both together merges
-    their two labels into one blended color; Bertrand's much wider
-    (n//2, n] window essentially never coincides with either, so it stays
-    solid pink on its own.
+    [REDESIGNED 2026-09-26, twice the same day -- see nested_shell_colors'
+    own doc-comment for the second half of this story] The first redesign
+    (averaging + real-overlap grouping, in response to Artur's own bug
+    report that Legendre's genuinely-non-General-Law primes rendered as a
+    washed-out near-white) made THIS function blend labels together too --
+    but Artur's own follow-up, after actually seeing it live: Bertrand's own
+    line should stay solidly pink (it IS pink on screen), Legendre's own
+    line should stay solidly green (it IS green -- even though no ring ever
+    shows PURE green, since Bertrand always swallows Legendre's window
+    whole, its LABEL still identifies "this is Legendre" by Legendre's own
+    color), same for General Law's purple. Blending moved OUT of this
+    function entirely, into nested_shell_colors' own dedicated legend lines
+    -- this one is back to a plain, unconditional per-family lookup, same
+    shape compute_tracked_colors/compute_highlight_colors' own per-RING
+    colors never had a "no blend, ever" mode to fall back to (rings
+    genuinely can be inside 2+ windows at once; a LABEL identifying which
+    window is which should not visually disappear because of that).
 
-    Returns dict family_id -> (r, g, b) int 0-255 tuple, one entry per id
-    in `enabled_ids` that is a real WINDOW_FAMILY_COLORS key (unknown ids
-    are silently skipped, same permissive convention window_anchor_primes
+    Returns dict family_id -> (r, g, b) int 0-255 tuple, one entry per id in
+    `enabled_ids` that is a real WINDOW_FAMILY_COLORS key (unknown ids are
+    silently skipped, same permissive convention window_anchor_primes
     uses)."""
-    groups = {}
+    return {
+        family_id: tuple(int(c) for c in WINDOW_FAMILY_COLORS[family_id])
+        for family_id in enabled_ids
+        if family_id in WINDOW_FAMILY_COLORS
+    }
+
+
+def nested_shell_colors(enabled_ids, n, theta=0.5, mode="stepped"):
+    """[ADDED 2026-09-26, REPLACES the same-day pairwise_family_colors --
+    see git history] A small color LEGEND for the HUD: one entry per
+    distinct NESTING LEVEL among `enabled_ids`' real windows at this n,
+    mapping frozenset(family ids active from that level inward) to the
+    AVERAGED (r, g, b) of their registered colors.
+
+    Artur's own live correction, after actually seeing all-pairwise legend
+    lines on screen: Bertrand's/Legendre's/General Law's own HUD lines
+    (window_label_colors) should stay solidly their OWN color -- the
+    blending belongs ONLY in dedicated legend lines, and those legend lines
+    should reflect the REAL nested structure, not every abstract pairwise
+    combination. The key mathematical fact making this simple: every window
+    family here shares the exact SAME right edge n (see e.g.
+    isBertrandWindowMember's own doc-comment, "right edge is always the
+    current n... not incidental") -- so for any two enabled families, one's
+    window is ALWAYS either identical to or a strict SUPERSET of the
+    other's (never a partial, crossing overlap) -- comparing `lo` alone
+    gives a total order. Enabled families therefore form a chain of nested
+    shells, outermost (smallest lo) to innermost (largest lo): the first
+    (widest) shell is just that one family alone (already covered by its
+    own solid-color line, not repeated here), and each subsequent, narrower
+    shell adds exactly one more family to the running blend -- giving
+    len(distinct lo values) - 1 legend entries, NOT 2^k-1 (every possible
+    subset) or C(k,2) (every pair) -- e.g. 3 families with 3 distinct `lo`
+    values give exactly 2 entries (Bertrand+Legendre, then +General Law),
+    matching Artur's own count ("tylko dwa dodatkowe pola nie trzy").
+    Families whose `lo` ties EXACTLY (e.g. General Law at theta=0.5,
+    provably identical to Legendre) open the SAME shell together -- no
+    separate boundary between them, since their window is genuinely the
+    same set of primes.
+
+    Same dynamic-registry convention as WINDOW_BOUNDS_FUNCTIONS/WINDOW_
+    MEMBER_FUNCTIONS/ANCHOR_FUNCTIONS: a future 4th window family needs only
+    its own WINDOW_BOUNDS_FUNCTIONS/WINDOW_FAMILY_COLORS entries -- this
+    function automatically grows to however many shells that family's own
+    `lo` creates relative to the others, no code change here. Relies on
+    every registered family sharing the same right edge as n (the
+    established, documented convention every family here already follows);
+    a hypothetical future family that did NOT would break the "total order"
+    assumption this function's shell-chain construction depends on."""
+    bounds_by_family = {}
     for family_id in enabled_ids:
-        if family_id not in WINDOW_FAMILY_COLORS:
+        if family_id not in WINDOW_BOUNDS_FUNCTIONS or family_id not in WINDOW_FAMILY_COLORS:
             continue
-        bounds = _window_bounds_for_label(family_id, n, theta, mode)
-        groups.setdefault(bounds, []).append(family_id)
+        bounds_by_family[family_id] = WINDOW_BOUNDS_FUNCTIONS[family_id](n, theta, mode)
+
+    registry_order = list(WINDOW_FAMILY_COLORS.keys())
+    by_lo = {}
+    for family_id, (lo, _hi) in bounds_by_family.items():
+        by_lo.setdefault(lo, []).append(family_id)
+    for lo in by_lo:
+        by_lo[lo].sort(key=registry_order.index)
 
     result = {}
-    for family_ids in groups.values():
-        if len(family_ids) == 1:
-            result[family_ids[0]] = tuple(int(c) for c in WINDOW_FAMILY_COLORS[family_ids[0]])
-        else:
-            summed = np.zeros(3, dtype=np.float64)
-            for fid in family_ids:
-                summed += np.asarray(WINDOW_FAMILY_COLORS[fid], dtype=np.float64)
-            np.clip(summed, 0, 255, out=summed)
-            blended = tuple(int(round(c)) for c in summed)
-            for fid in family_ids:
-                result[fid] = blended
+    running = []
+    for lo in sorted(by_lo.keys()):
+        running = running + by_lo[lo]
+        if len(running) >= 2:
+            colors = np.array([WINDOW_FAMILY_COLORS[fid] for fid in running], dtype=np.float64)
+            averaged = colors.mean(axis=0)
+            result[frozenset(running)] = tuple(int(round(c)) for c in averaged)
     return result
 
 
@@ -455,7 +527,22 @@ def general_law_anchor_at(primes, n, theta, mode):
     """Ports SieveModel.generalLawAnchorAt: largest active prime at or below
     the window's own current opening edge `lo` (computed as "strictly below
     floor(lo)+1", equivalent for integer primes -- see the JS method's own
-    doc-comment)."""
+    doc-comment).
+
+    [ADDED 2026-09-26] 'bertrand' delegates to bertrand_anchor_at's own
+    stateful witness-doubling chain, NOT this generic "largest active prime
+    <= floor(lo)" recompute -- these can genuinely disagree (n=10:
+    floor(10/2)=5, largest active prime <=5 is 5, but the real chain
+    2->3->5->7 lands on 7, since n=10 >= 2*5 one more time -- see
+    bertrand_anchor_at's own doc-comment for why the anchor is a jump chain,
+    not a plain threshold). 'legendre' delegates to legendre_anchor_at too --
+    already provably equal to the generic recompute, but delegating directly
+    makes "pure Legendre underneath" literal rather than an indirect
+    equivalence."""
+    if mode == "bertrand":
+        return bertrand_anchor_at(primes, n)
+    if mode == "legendre":
+        return legendre_anchor_at(primes, n)
     primes_arr = to_prime_array(primes)
     if len(primes_arr) == 0:
         return None
@@ -565,6 +652,26 @@ def cyclic_window_anchor_at(anchor_state, family_id, primes, n, theta=0.5, mode=
         # ANCHOR_FUNCTIONS["legendre"] itself ignoring mode/theta) -- always
         # level-keyed.
         level_keyed = True
+    elif mode == "bertrand":
+        # [ADDED 2026-09-26] generalLaw's own rigid 'bertrand' mode has no
+        # cyclic state of its own either -- same reason family_id=="bertrand"
+        # itself is rejected below: bertrand_anchor_at's freeze/jump chain is
+        # ALREADY a complete, self-contained cadence (see that function's own
+        # doc-comment), computed fresh from (primes, n) alone. Wrapping it in
+        # this function's own level/lo-creep freeze logic on top would be a
+        # second, redundant (and potentially conflicting) cadence -- bypass
+        # anchor_state entirely and delegate straight through, exactly like
+        # ANCHOR_FUNCTIONS["bertrand"] does for the standalone checkbox.
+        return bertrand_anchor_at(primes_arr, n)
+    elif mode == "legendre":
+        # generalLaw's own rigid 'legendre' mode has EXACTLY Legendre's own
+        # level concept (lo=k*k, piecewise-constant per level) -- same
+        # level-keyed branch as family_id=="legendre" itself, not the
+        # numeric lo-creep branch below (which would still converge to the
+        # same visual result almost always, per the numeric-creep analysis,
+        # but level-keying it directly makes the equivalence exact and
+        # explicit rather than an emergent coincidence).
+        level_keyed = True
     else:
         # generalLaw: level-keyed ONLY when its own `lo` is provably
         # identical to Legendre's constant-per-level `lo` (see this
@@ -586,21 +693,36 @@ def cyclic_window_anchor_at(anchor_state, family_id, primes, n, theta=0.5, mode=
 
 
 def _blend_family_colors(masks_by_family):
-    """Shared additive-RGB blend core used by both compute_highlight_colors
-    and compute_tracked_colors below -- ports the summation half of
-    #computeHighlightColor / #computeTrackedColor (channel sum, clamp to
-    255), factored out because both JS methods do exactly this arithmetic
-    and differ only in HOW each family's per-ring participation mask is
-    derived (strict window membership for highlight color; plain anchor-
-    equality for tracked color -- see the two callers below).
+    """Shared color-blend core used by both compute_highlight_colors and
+    compute_tracked_colors below, factored out because both differ only in
+    HOW each family's per-ring participation mask is derived (strict window
+    membership for highlight color; plain anchor-equality for tracked
+    color -- see the two callers below).
+
+    [CHANGED 2026-09-26] AVERAGE per matched ring, not sum-then-clamp-to-255
+    -- Artur's own real bug report: with Bertrand+Legendre+General Law all
+    enabled, primes strictly inside Legendre but outside General Law still
+    also sit inside Bertrand's own much wider window, so the OLD sum-then-
+    clip rendered them a washed-out near-white (255,255,224) -- summing
+    already-saturated 0-255 channels clips toward white almost immediately,
+    reading as "unhighlighted" at a glance even though the blend arithmetic
+    was doing exactly what it was designed to. Averaging instead means each
+    contributing family's color visibly pulls the result toward itself
+    (pink+green averages to a muted olive, not near-white), and scales to
+    any NUMBER of simultaneously-matched families with no extra code here --
+    same "one dynamic rule, no per-combination special-casing" requirement
+    as window_label_colors' own redesign (see that function's own
+    doc-comment for the full story and Artur's exact quote).
 
     `masks_by_family` -- dict of family_id -> boolean numpy array (same
     length, one entry per ring): True where that family contributes its
     color to that ring.
 
     Returns (colors, matched) -- colors is an (N, 3) float64 array (channel
-    values already clamped to [0, 255], NOT yet cast to uint8 so a caller can
-    still do further math before quantizing for a GPU buffer -- see
+    values already in [0, 255] by construction -- an average of values each
+    already in that range can never leave it, the np.clip below is a
+    defensive no-op, not load-bearing -- NOT yet cast to uint8 so a caller
+    can still do further math before quantizing for a GPU buffer -- see
     build_vertex_data's own float32 buffer for why this module leaves that
     choice to the renderer), matched is an (N,) boolean array, True where at
     least one family contributed (the null/None case in the JS version)."""
@@ -609,11 +731,15 @@ def _blend_family_colors(masks_by_family):
     else:
         n = len(next(iter(masks_by_family.values())))
     colors = np.zeros((n, 3), dtype=np.float64)
+    counts = np.zeros(n, dtype=np.float64)
     matched = np.zeros(n, dtype=bool)
     for family_id, mask in masks_by_family.items():
         color = np.asarray(WINDOW_FAMILY_COLORS[family_id], dtype=np.float64)
         colors[mask] += color
+        counts[mask] += 1
         matched |= mask
+    if np.any(matched):
+        colors[matched] /= counts[matched][:, None]
     np.clip(colors, 0, 255, out=colors)
     return colors, matched
 
@@ -639,21 +765,20 @@ def compute_highlight_colors(primes, n, enabled_ids, theta=0.5, mode="stepped"):
 
     Returns (colors, matched) -- see _blend_family_colors's own docstring for
     the exact shape; `matched[i] is False` is this function's counterpart to
-    the JS version returning null for ring i."""
+    the JS version returning null for ring i.
+
+    [CHANGED 2026-09-26] The per-family membership dispatch is now the
+    WINDOW_MEMBER_FUNCTIONS registry instead of a hardcoded if/elif/raise --
+    same "add a family, don't touch this function" convention ANCHOR_
+    FUNCTIONS/WINDOW_BOUNDS_FUNCTIONS already established."""
     primes_arr = to_prime_array(primes)
     count = len(primes_arr)
 
     strict_by_family = {}
     for family_id in enabled_ids:
-        if family_id == "bertrand":
-            strict = is_bertrand_member(primes_arr, n)
-        elif family_id == "legendre":
-            strict = is_legendre_member(primes_arr, n)
-        elif family_id == "generalLaw":
-            strict = is_general_law_member(primes_arr, n, theta, mode)
-        else:
+        if family_id not in WINDOW_MEMBER_FUNCTIONS:
             raise ValueError(f"unknown window family id {family_id!r}")
-        strict_by_family[family_id] = strict
+        strict_by_family[family_id] = WINDOW_MEMBER_FUNCTIONS[family_id](primes_arr, n, theta, mode)
 
     if not strict_by_family:
         return np.zeros((count, 3), dtype=np.float64), np.zeros(count, dtype=bool)

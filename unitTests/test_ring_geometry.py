@@ -232,6 +232,7 @@ def _test_general_law():
         general_law_tent_factor,
         general_law_window_bounds,
         legendre_level_at,
+        is_general_law_member,
     )
 
     check(math.isclose(general_law_tent_factor(0.1), 0.0, abs_tol=1e-12),
@@ -273,6 +274,40 @@ def _test_general_law():
     check(k_slide is None and factor_slide is None,
           "Sliding mode k/factor are None (no level concept)")
 
+    # [ADDED 2026-09-26, ported from RelationalMathematics's
+    # _test_general_law_window.mjs Part 9] Two new RIGID modes -- theta
+    # ignored entirely, bounds exactly match is_bertrand_member/
+    # is_legendre_member's own lo, for a spread of n and any theta value.
+    from primeatlas.rings.ring_geometry import is_bertrand_member, is_legendre_member
+    for nn in (0, 1, 2, 5, 9, 16, 17, 100, 4999):
+        for theta in (1, 0.7, 0.1):
+            lo_b, hi_b, k_b, factor_b = general_law_window_bounds(nn, theta, "bertrand")
+            check(lo_b == nn // 2 and hi_b == nn,
+                  f"bertrand mode n={nn} theta={theta}: window ({nn // 2},{nn}] (got ({lo_b},{hi_b}])")
+            check(k_b is None and factor_b is None,
+                  f"bertrand mode n={nn} theta={theta}: k and factor both None (got k={k_b}, factor={factor_b})")
+        for theta in (0.5, 0.9, 0.1):
+            k = legendre_level_at(nn)
+            lo_l, hi_l, k_l, factor_l = general_law_window_bounds(nn, theta, "legendre")
+            check(lo_l == k * k and hi_l == nn,
+                  f"legendre mode n={nn} theta={theta}: window ({k * k},{nn}] (got ({lo_l},{hi_l}])")
+            check(k_l == k, f"legendre mode n={nn} theta={theta}: bounds k={k} (got {k_l})")
+            check(factor_l is None, f"legendre mode n={nn} theta={theta}: factor is None (got {factor_l})")
+
+    primes_9 = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23, 29], dtype=np.int64)
+    all_bertrand_match = True
+    all_legendre_match = True
+    for nn in (10, 21, 30):
+        for p in primes_9:
+            if p > nn:
+                continue
+            if bool(is_general_law_member(np.array([p]), nn, 1, "bertrand")[0]) != bool(is_bertrand_member(np.array([p]), nn)[0]):
+                all_bertrand_match = False
+            if bool(is_general_law_member(np.array([p]), nn, 0.5, "legendre")[0]) != bool(is_legendre_member(np.array([p]), nn)[0]):
+                all_legendre_match = False
+    check(all_bertrand_match, "is_general_law_member(...,'bertrand') agrees with is_bertrand_member exactly")
+    check(all_legendre_match, "is_general_law_member(...,'legendre') agrees with is_legendre_member exactly")
+
 
 def _test_legendre_member_strict_only():
     """is_legendre_highlighted (the "sticky" grace-period variant this test
@@ -310,6 +345,20 @@ def _test_anchor_functions():
     check(general_law_anchor_at(primes, 30, 0.5, "stepped") == legendre_anchor_at(primes, 30),
           "general_law_anchor_at @theta=0.5 stepped matches legendre_anchor_at exactly")
 
+    # [ADDED 2026-09-26] 'bertrand'/'legendre' modes delegate DIRECTLY to
+    # bertrand_anchor_at/legendre_anchor_at -- not the generic lo-based
+    # recompute. n=10 is the sharpest proof for bertrand: floor(10/2)=5
+    # (largest active prime <=5 would be 5), but the real freeze/jump chain
+    # (2->3->5->7, since 10>=2*5 triggers one more jump) lands on 7.
+    primes_10 = np.array([2, 3, 5, 7], dtype=np.int64)
+    check(bertrand_anchor_at(primes_10, 10) == 7, "sanity: bertrand_anchor_at(primes_10, 10) == 7 (chain 2->3->5->7)")
+    check(general_law_anchor_at(primes_10, 10, 1, "bertrand") == 7,
+          "general_law_anchor_at('bertrand') at n=10 is 7, the real chain result, NOT floor(10/2)=5")
+    check(general_law_anchor_at(primes, 30, 1, "bertrand") == bertrand_anchor_at(primes, 30),
+          "general_law_anchor_at('bertrand') matches bertrand_anchor_at exactly at n=30")
+    check(general_law_anchor_at(primes, 30, 0.5, "legendre") == legendre_anchor_at(primes, 30),
+          "general_law_anchor_at('legendre') matches legendre_anchor_at exactly at n=30")
+
     # n=40 is where Bertrand and Legendre anchors genuinely diverge (used by
     # _test_compute_tracked_colors below to exercise a real two-family blend
     # rather than a coincidental tie).
@@ -328,12 +377,14 @@ def _test_blend_family_colors():
         "legendre": np.array([True, True, False]),
     }
     colors, matched = _blend_family_colors(masks)
-    expected_ring0 = np.clip(
+    # [CHANGED 2026-09-26] AVERAGE, not sum-then-clip -- see _blend_family_
+    # colors' own doc-comment for why (Artur's real bug report: sum-then-
+    # clip washes toward white for 2-3 already-saturated colors).
+    expected_ring0 = (
         np.array(WINDOW_FAMILY_COLORS["bertrand"], dtype=np.float64)
-        + np.array(WINDOW_FAMILY_COLORS["legendre"], dtype=np.float64),
-        0, 255,
-    )
-    check(np.allclose(colors[0], expected_ring0), "_blend_family_colors: ring 0 additively sums both families, clamped")
+        + np.array(WINDOW_FAMILY_COLORS["legendre"], dtype=np.float64)
+    ) / 2
+    check(np.allclose(colors[0], expected_ring0), "_blend_family_colors: ring 0 averages both families' colors")
     check(np.allclose(colors[1], WINDOW_FAMILY_COLORS["legendre"]), "_blend_family_colors: ring 1 is pure legendre")
     check(np.allclose(colors[2], WINDOW_FAMILY_COLORS["bertrand"]), "_blend_family_colors: ring 2 is pure bertrand")
     check(list(matched) == [True, True, True], "_blend_family_colors: matched True wherever any family contributed")
@@ -365,11 +416,12 @@ def _test_compute_highlight_colors_strict_sticky_precedence():
               f"compute_highlight_colors: ring {p} is pure Bertrand pink -- Bertrand strictly matches "
               f"(in (15,30]) and Legendre no longer has any sticky fallback to blend in with")
 
-    expected_29 = np.clip(
+    # [CHANGED 2026-09-26] AVERAGE, not sum-then-clip -- see _blend_family_
+    # colors' own doc-comment.
+    expected_29 = (
         np.array(WINDOW_FAMILY_COLORS["bertrand"], dtype=np.float64)
-        + np.array(WINDOW_FAMILY_COLORS["legendre"], dtype=np.float64),
-        0, 255,
-    )
+        + np.array(WINDOW_FAMILY_COLORS["legendre"], dtype=np.float64)
+    ) / 2
     check(np.allclose(colors[idx(29)], expected_29),
           "compute_highlight_colors: ring 29 is a genuine Bertrand+Legendre blend (both strictly match)")
 
@@ -542,6 +594,32 @@ def _test_cyclic_window_anchor_at():
     check(cyclic_window_anchor_at({}, "legendre", np.array([], dtype=np.int64), 30) is None,
           "cyclic_window_anchor_at: no active primes yet -> anchor is None, not a crash")
 
+    # --- [ADDED 2026-09-26] generalLaw's own rigid 'bertrand'/'legendre'
+    # modes bypass this function's freeze/cadence logic entirely, delegating
+    # straight to bertrand_anchor_at/legendre_anchor_at -- proving General
+    # Law set to Bertrand/Legendre is a true drop-in of the standalone
+    # family's own tracked anchor, at every n, not merely visually similar. ---
+    from primeatlas.rings.ring_geometry import bertrand_anchor_at as _bertrand_anchor_at_direct
+    all_gl_bertrand_match = True
+    for check_n in range(2, 48):
+        state_gl_bertrand = {}
+        if cyclic_window_anchor_at(state_gl_bertrand, "generalLaw", primes, check_n, 1, "bertrand") != _bertrand_anchor_at_direct(primes, check_n):
+            all_gl_bertrand_match = False
+    check(all_gl_bertrand_match,
+          "cyclic_window_anchor_at: generalLaw/bertrand matches bertrand_anchor_at exactly, for every n in 2..47")
+
+    state_legendre_cmp = {}
+    state_gl_legendre_cmp = {}
+    all_gl_legendre_match = True
+    for check_n in range(2, 48):
+        a_legendre = cyclic_window_anchor_at(state_legendre_cmp, "legendre", primes, check_n)
+        a_gl_legendre = cyclic_window_anchor_at(state_gl_legendre_cmp, "generalLaw", primes, check_n, 0.5, "legendre")
+        if a_legendre != a_gl_legendre:
+            all_gl_legendre_match = False
+    check(all_gl_legendre_match,
+          "cyclic_window_anchor_at: generalLaw/legendre matches the standalone legendre family's own "
+          "cadence exactly (same state-machine timing), for every n in 2..47")
+
     # Regression guard: with Legendre AND General Law both on and theta !=
     # 0.5 (stepped mode), the HUD showed two clearly DIFFERENT window ranges
     # (e.g. Legendre (1156,1199], General Law theta=0.3 (1177,1199]) but
@@ -674,54 +752,61 @@ def _test_window_anchor_primes():
 
 
 def _test_window_label_colors():
-    """window_label_colors: solid per-family color normally, additive blend
-    when two+ enabled families' windows have the EXACT SAME (lo, hi) bounds
-    at this N -- not merely "overlap" (every window shares the same right
-    edge n, so that would trivially always fire). HUD label colors should
-    match each family's own ring color, and change to a shared blended
-    color exactly when the rings themselves would blend (i.e. when the
-    windows' bounds coincide)."""
+    """window_label_colors: each enabled family ALWAYS gets its own plain
+    WINDOW_FAMILY_COLORS entry, unconditionally -- no blending here at all.
+
+    [REDESIGNED 2026-09-26, TWICE the same day -- see this function's own
+    doc-comment for the full back-and-forth] The first redesign (average +
+    real-overlap grouping) fixed the ring-highlight-color bug but ALSO made
+    these text LABELS blend together -- Artur's own live correction, after
+    actually watching it render: Bertrand's line should stay solidly pink
+    (that's its real color), Legendre's stay green, General Law's stay
+    purple, even when no ring anywhere shows that pure color (Bertrand
+    always swallows Legendre/General Law's window whole) -- the label's job
+    is to say "this is Legendre", not to describe what a ring's blended
+    color happens to look like right now. That job moved entirely to
+    nested_shell_colors' own dedicated legend lines instead (see its own
+    test, _test_nested_shell_colors)."""
     from primeatlas.rings.ring_geometry import window_label_colors, WINDOW_FAMILY_COLORS
 
-    # Single family on -> its own solid color, untouched.
+    # Single family on -> its own solid color.
     result = window_label_colors({"bertrand"}, 100)
     check(result == {"bertrand": WINDOW_FAMILY_COLORS["bertrand"]},
           f"a single enabled family keeps its own plain WINDOW_FAMILY_COLORS entry (got {result!r})")
 
-    # n=141: Bertrand=(70,141], Legendre k=11=(121,141] -- different bounds,
-    # so both keep their own solid color.
-    result_diff = window_label_colors({"bertrand", "legendre"}, 141)
-    check(result_diff["bertrand"] == WINDOW_FAMILY_COLORS["bertrand"],
-          f"Bertrand and Legendre windows differ at n=141 -- Bertrand keeps its own color (got {result_diff!r})")
-    check(result_diff["legendre"] == WINDOW_FAMILY_COLORS["legendre"],
-          f"Bertrand and Legendre windows differ at n=141 -- Legendre keeps its own color (got {result_diff!r})")
-    check(result_diff["bertrand"] != result_diff["legendre"],
-          "differing windows never end up sharing a color by accident")
+    # Two families whose windows genuinely overlap (Legendre nested inside
+    # Bertrand at n=141) -- BOTH still keep their OWN distinct solid color,
+    # never blended.
+    result_overlap = window_label_colors({"bertrand", "legendre"}, 141)
+    check(result_overlap["bertrand"] == WINDOW_FAMILY_COLORS["bertrand"],
+          f"Bertrand keeps its own solid color even though Legendre's window is nested inside it "
+          f"(got {result_overlap!r})")
+    check(result_overlap["legendre"] == WINDOW_FAMILY_COLORS["legendre"],
+          f"Legendre keeps its own solid color too (got {result_overlap!r})")
+    check(result_overlap["bertrand"] != result_overlap["legendre"], "the two never share a color")
 
-    # General Law stepped mode at theta=0.5 is provably identical to
-    # Legendre's own window (task #577) -- enabling both together must
-    # collapse their two labels to ONE shared additively-blended color.
+    # Even an EXACT coincidence (General Law at theta=0.5, provably
+    # identical to Legendre's own window) does not blend the labels anymore
+    # -- each still gets its own plain color.
     result_coincide = window_label_colors({"legendre", "generalLaw"}, 141, theta=0.5, mode="stepped")
-    check(result_coincide["legendre"] == result_coincide["generalLaw"],
-          f"Legendre and General Law(theta=0.5, stepped) windows coincide exactly -- "
-          f"both labels get the SAME blended color (got {result_coincide!r})")
-    expected_blend = tuple(
-        min(255, a + b) for a, b in zip(WINDOW_FAMILY_COLORS["legendre"], WINDOW_FAMILY_COLORS["generalLaw"])
-    )
-    check(result_coincide["legendre"] == expected_blend,
-          f"the coincidence color is the additive-RGB sum (clamped to 255) of both families' "
-          f"own colors, same arithmetic as the ring highlight blend (got {result_coincide['legendre']!r}, "
-          f"expected {expected_blend!r})")
+    check(result_coincide["legendre"] == WINDOW_FAMILY_COLORS["legendre"],
+          f"Legendre keeps its own color even when General Law's window exactly coincides "
+          f"(got {result_coincide!r})")
+    check(result_coincide["generalLaw"] == WINDOW_FAMILY_COLORS["generalLaw"],
+          f"General Law keeps its own color too (got {result_coincide!r})")
 
-    # All three enabled but only two coincide (legendre+generalLaw at
-    # theta=0.5) -- Bertrand must NOT be pulled into that blend just for
-    # being enabled at the same time.
-    result_mixed = window_label_colors({"bertrand", "legendre", "generalLaw"}, 141, theta=0.5, mode="stepped")
-    check(result_mixed["bertrand"] == WINDOW_FAMILY_COLORS["bertrand"],
-          f"a family whose window doesn't coincide with anyone else's keeps its own solid "
-          f"color even while other families ARE blending together (got {result_mixed!r})")
-    check(result_mixed["legendre"] == result_mixed["generalLaw"] == expected_blend,
-          f"the other two still blend together correctly in the same call (got {result_mixed!r})")
+    # All three enabled -> all three keep their own distinct solid colors,
+    # regardless of theta/mode or real overlap at this n.
+    result_all3 = window_label_colors({"bertrand", "legendre", "generalLaw"}, 2520000, theta=0.4, mode="stepped")
+    check(
+        result_all3 == {
+            "bertrand": WINDOW_FAMILY_COLORS["bertrand"],
+            "legendre": WINDOW_FAMILY_COLORS["legendre"],
+            "generalLaw": WINDOW_FAMILY_COLORS["generalLaw"],
+        },
+        f"n=2,520,000 theta=0.4 (Artur's own real scenario): all three HUD labels keep their own "
+        f"distinct solid color (got {result_all3!r})"
+    )
 
     # Unknown/unrecognized family ids are silently skipped, not an error.
     result_unknown = window_label_colors({"bertrand", "not-a-real-family"}, 100)
@@ -730,6 +815,129 @@ def _test_window_label_colors():
 
     # Empty enabled_ids -> empty result, not an error.
     check(window_label_colors(set(), 100) == {}, "no enabled families -> empty dict")
+
+
+def _test_compute_highlight_colors_bertrand_swallows_legendre_regression():
+    """[ADDED 2026-09-26] Artur's own real bug report: at n=2,520,000,
+    theta=0.4 (stepped), Legendre's window is (2,518,569, 2,520,000] and
+    General Law's is (2,518,926, 2,520,000] -- he looked up the real portal
+    data and confirmed 18 real primes sit strictly inside Legendre's window
+    but outside General Law's (first=2518577, last=2518913).
+
+    The bug: those 18 primes are ALSO inside Bertrand's own much wider
+    (1,260,000, 2,520,000] window, so with all three families enabled they
+    used to render as a washed-out near-white (255,255,224) -- a sum-then-
+    clip artifact (Bertrand+Legendre summed and clamped), not a real "this
+    is unhighlighted" white. Fixed by averaging (see _blend_family_colors'
+    own doc-comment): the same primes now get the genuine two-family
+    (Bertrand+Legendre, NOT General Law) average, clearly distinct from
+    both pure white and pure Legendre green."""
+    from primeatlas.rings.ring_geometry import (
+        compute_highlight_colors,
+        general_law_window_bounds,
+        legendre_level_at,
+        WINDOW_FAMILY_COLORS,
+    )
+
+    n = 2520000
+    theta = 0.4
+    mode = "stepped"
+    legendre_lo = legendre_level_at(n) ** 2
+    gl_lo, _hi, _k, _factor = general_law_window_bounds(n, theta, mode)
+    check(legendre_lo < gl_lo < n, f"sanity: legendre_lo={legendre_lo} < gl_lo={gl_lo} < n={n} (fixture assumption)")
+
+    # Artur's own real find: first=2518577, last=2518913, both strictly
+    # inside Legendre's window but outside General Law's (legendre_lo=
+    # 2518569 < p <= floor(gl_lo)=2518926).
+    for p_legendre_only in (2518577, 2518913):
+        check(legendre_lo < p_legendre_only <= int(np.floor(gl_lo)),
+              f"sanity: {p_legendre_only} is strictly inside Legendre's window but outside General "
+              f"Law's (legendre_lo={legendre_lo}, floor(gl_lo)={int(np.floor(gl_lo))})")
+
+        primes = np.array([p_legendre_only], dtype=np.int64)
+        colors, matched = compute_highlight_colors(primes, n, {"bertrand", "legendre", "generalLaw"}, theta, mode)
+        expected = tuple(
+            round((a + b) / 2) for a, b in zip(WINDOW_FAMILY_COLORS["bertrand"], WINDOW_FAMILY_COLORS["legendre"])
+        )
+        check(bool(matched[0]) is True, f"{p_legendre_only} matches at least one enabled family")
+        check(tuple(int(round(c)) for c in colors[0]) == expected,
+              f"{p_legendre_only} (Bertrand+Legendre, NOT General Law) gets the genuine two-family "
+              f"average (got {tuple(colors[0])!r}, expected {expected!r}) -- NOT the old washed-out "
+              f"near-white (255,255,224) sum-then-clip artifact")
+        check(tuple(int(round(c)) for c in colors[0]) != (255, 255, 255),
+              f"{p_legendre_only}'s color is not pure white (the old bug's failure mode) "
+              f"(got {tuple(colors[0])!r})")
+
+
+def _test_nested_shell_colors():
+    """[ADDED 2026-09-26, REPLACES the same-day pairwise_family_colors] The
+    key insight (see nested_shell_colors' own doc-comment): every window
+    family here shares the same right edge n, so enabled families are
+    always totally ordered by containment (sorted by `lo`) -- giving
+    len(distinct lo values) - 1 legend entries, not every 2^k-1 subset or
+    every C(k,2) pair. Artur's own live correction after seeing the wrong
+    (all-pairwise) design rendered: 3 families with 3 distinct `lo` values
+    should give exactly 2 entries, not 3."""
+    from primeatlas.rings.ring_geometry import nested_shell_colors, WINDOW_FAMILY_COLORS
+
+    # Fewer than 2 enabled families -> no shells at all (nothing to blend).
+    check(nested_shell_colors(set(), 100) == {}, "no enabled families -> no shells")
+    check(nested_shell_colors({"bertrand"}, 100) == {}, "only one enabled family -> no shells")
+
+    # Two enabled, distinct `lo` (Legendre nested inside Bertrand at n=141)
+    # -> exactly one shell, the average of both.
+    result_two = nested_shell_colors({"bertrand", "legendre"}, 141)
+    expected_bl = tuple(
+        round((a + b) / 2) for a, b in zip(WINDOW_FAMILY_COLORS["bertrand"], WINDOW_FAMILY_COLORS["legendre"])
+    )
+    check(result_two == {frozenset(("bertrand", "legendre")): expected_bl},
+          f"two enabled families with distinct lo -> exactly one shell, averaged (got {result_two!r}, "
+          f"expected {{frozenset(('bertrand','legendre')): {expected_bl!r}}})")
+
+    # Two enabled families whose `lo` ties EXACTLY (Legendre and General Law
+    # at theta=0.5, provably identical windows) -> still exactly one shell
+    # (there's no boundary BETWEEN two windows that are the same set).
+    result_tied = nested_shell_colors({"legendre", "generalLaw"}, 141, theta=0.5, mode="stepped")
+    expected_lg = tuple(
+        round((a + b) / 2) for a, b in zip(WINDOW_FAMILY_COLORS["legendre"], WINDOW_FAMILY_COLORS["generalLaw"])
+    )
+    check(result_tied == {frozenset(("legendre", "generalLaw")): expected_lg},
+          f"two enabled families with an EXACTLY tied lo -> one shell, not zero (got {result_tied!r})")
+
+    # All three enabled, three DISTINCT lo values (n=141, theta!=0.5, the
+    # real case Artur actually saw) -> exactly TWO shells (Bertrand+Legendre,
+    # then +General Law), NOT three pairs and NOT one triple-only entry.
+    result_three = nested_shell_colors({"bertrand", "legendre", "generalLaw"}, 141, theta=0.4, mode="stepped")
+    check(len(result_three) == 2,
+          f"three enabled families with three distinct lo values -> exactly 2 shells, not 3 "
+          f"(got {len(result_three)}: {result_three!r})")
+    check(frozenset(("bertrand", "legendre")) in result_three,
+          f"the outer two families form their own shell (got {result_three!r})")
+    check(frozenset(("bertrand", "legendre", "generalLaw")) in result_three,
+          f"the innermost shell includes all three (got {result_three!r})")
+    check(frozenset(("bertrand", "generalLaw")) not in result_three,
+          f"Bertrand+GeneralLaw alone (skipping Legendre) is never a real shell here -- Legendre is "
+          f"always the middle nesting level, never skippable (got {result_three!r})")
+
+    # Artur's own real scenario: n=2,520,000, theta=0.4 (stepped) -- exactly
+    # 2 shells, Bertrand+Legendre then +General Law, matching what he
+    # actually saw rendered.
+    result_regression = nested_shell_colors({"bertrand", "legendre", "generalLaw"}, 2520000, theta=0.4, mode="stepped")
+    expected_triple = tuple(
+        round(sum(c) / 3) for c in zip(
+            WINDOW_FAMILY_COLORS["bertrand"], WINDOW_FAMILY_COLORS["legendre"], WINDOW_FAMILY_COLORS["generalLaw"]
+        )
+    )
+    check(len(result_regression) == 2, f"n=2,520,000 theta=0.4: exactly 2 shells (got {result_regression!r})")
+    check(result_regression[frozenset(("bertrand", "legendre"))] == expected_bl,
+          "n=2,520,000: Bertrand+Legendre shell matches the plain two-color average")
+    check(result_regression[frozenset(("bertrand", "legendre", "generalLaw"))] == expected_triple,
+          "n=2,520,000: the innermost (all-three) shell matches the plain three-color average")
+
+    # Unknown/unrecognized family ids are silently skipped, not an error.
+    result_unknown = nested_shell_colors({"bertrand", "legendre", "not-a-real-family"}, 141)
+    check(result_unknown == {frozenset(("bertrand", "legendre")): expected_bl},
+          f"an unrecognized family id is silently ignored, not an error (got {result_unknown!r})")
 
 
 def _brute_resonance_at(primes_arr, n):
@@ -897,6 +1105,8 @@ def main():
     _test_cyclic_window_anchor_at()
     _test_window_anchor_primes()
     _test_window_label_colors()
+    _test_compute_highlight_colors_bertrand_swallows_legendre_regression()
+    _test_nested_shell_colors()
     _test_blend_family_colors()
     _test_compute_highlight_colors_strict_sticky_precedence()
     _test_compute_tracked_colors()
