@@ -731,13 +731,65 @@ values give exactly 2 legend lines, not 3. Families whose `lo` ties EXACTLY (e.g
 General Law at theta=0.5, provably identical to Legendre) open the same shell together,
 one legend line, not a separate boundary between them.
 
+Legendre's (and General Law's rigid `'legendre'` mode's) own ring highlight also has a
+fade-continuity layer on top of plain window membership, `ring_geometry.
+is_legendre_highlighted`/`is_general_law_highlighted` -- [ADDED 2026-09-26, Artur's own
+live bug report against this exact module, screenshots at N=144/145/169] plain strict
+membership alone extinguishes an ENTIRE Legendre level's worth of highlighted primes in
+the single step the level advances, even though the new level hasn't produced a member
+of its own yet -- visually jarring next to Bertrand, whose much wider window never
+empties out all at once (consecutive Bertrand windows always overlap by construction, so
+it never needed a fix like this). The fade: treat the previous level's own members as a
+queue, oldest (smallest) first; for every member the current level has produced so far
+(count `m`), retire exactly one -- the smallest still-surviving -- member of that queue.
+This also surfaces, for free, whether the new level is richer or sparser than the old
+one (a slower-filling new level leaves old members lit longer). Deliberately a PURE
+function of n, like everything else in this module -- both "the previous level's own
+full membership" and "how many members the current level has produced so far" are
+directly recomputable from n alone, no per-tick queue kept anywhere, so this can't
+suffer the same rewind/backward-step desync class of bug Artur found by accident while
+producing the screenshots that prompted this fix. An EARLIER, different attempt at this
+same idea (a per-ring "stay lit until your own next self-multiple" rule) was removed
+from this same file, the same day, after Artur found it showed green dots nearly as wide
+as Bertrand's own window for most primes -- see `is_legendre_highlighted`'s own
+[HISTORY] doc-comment note for the exact diagnosis; this design is bounded by the
+previous level's own actual population instead of an arbitrary per-prime multiple, so it
+cannot reproduce that failure mode. `compute_highlight_colors` restores the same
+two-tier strict/sticky blend precedence this needs (a family's fade-only match on a ring
+is excluded from the blend whenever another enabled family strictly matches that ring
+too, e.g. Bertrand's much wider window "beats" a fading Legendre remnant rather than
+diluting it into a blend) via a new `STRICT_MEMBER_FUNCTIONS` registry (the plain
+membership tests) alongside `WINDOW_MEMBER_FUNCTIONS` (now the fade-aware tests).
+`'sliding'`/`'bertrand'` stay unchanged, with no fade layer at all -- both already read as
+smoothly continuous by construction (confirmed by live-testing the equivalent
+RelationalMathematics website feature this same session).
+
+General Law's `'stepped'` mode [ADDED 2026-09-26, same-day follow-up] gets the SAME
+fade queue as `'legendre'` (shared via `ring_geometry._fade_previous_level`), with one
+crucial difference: the retirement pace (`exposure_count`) is NOT `'stepped'`'s own live
+count. `'stepped'` scales its window narrower than Legendre's via a tent factor, and
+unlike Legendre's raw test -- which, once a prime satisfies `(k*k, n]`, can never fail it
+again for the rest of that level -- `'stepped'`'s own `lo` keeps creeping up throughout
+the level, so a prime can satisfy it right when it's born and then drop back OUT later in
+the SAME level with no level change involved. A naive live-count would therefore be
+non-monotonic within a level, which could resurrect an already-retired previous-level
+member. Fix: pace retirement using Legendre's OWN plain membership count instead --
+provably exact, not approximate, since every prime in the current level satisfies
+`'stepped'`'s own window at least momentarily right when it's born (its own `lo` at that
+exact n is always `< n`, for any theta, including the tent's own empty-window guard
+edges), making "how many primes has `'stepped'` ever exposed the viewer to this level"
+always identical to Legendre's own monotonic count. `'stepped'`'s own live mask (what
+survivors get OR'd with) stays exactly as narrow/flickery as before -- that within-level
+flicker is a separate, already-accepted property of a narrow window (same as `'sliding'`
+mode's own sparse look), not something this fade layer smooths over.
+
 All of this -- the per-ring blend, `window_label_colors`, and `nested_shell_colors` --
 is driven entirely by small registries (`WINDOW_BOUNDS_FUNCTIONS`, `WINDOW_MEMBER_
-FUNCTIONS`, alongside the pre-existing `ANCHOR_FUNCTIONS`/`WINDOW_FAMILY_COLORS`) -- a
-future 4th window family (as long as it shares the same "always ends at n" convention
-every family here already follows) needs only a new entry in each registry, and
-automatically gets however many extra shells its own `lo` creates relative to the
-others, with no change to any of these functions themselves.
+FUNCTIONS`, `STRICT_MEMBER_FUNCTIONS`, alongside the pre-existing `ANCHOR_FUNCTIONS`/
+`WINDOW_FAMILY_COLORS`) -- a future 4th window family (as long as it shares the same
+"always ends at n" convention every family here already follows) needs only a new entry
+in each registry, and automatically gets however many extra shells its own `lo` creates
+relative to the others, with no change to any of these functions themselves.
 
 Load Range From/To, Max load count, and the sliding-window checkbox are all only
 meaningful in "range" mode -- `_on_mode_changed` greys out their widgets when

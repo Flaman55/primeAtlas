@@ -310,14 +310,23 @@ def _test_general_law():
 
 
 def _test_legendre_member_strict_only():
-    """is_legendre_highlighted (the "sticky" grace-period variant this test
-    used to cover) is gone -- see compute_highlight_colors' own doc-comment
-    for why: enabling ONLY Legendre showed green dots as wide as Bertrand's
-    own (n/2, n] window, traced back to that function's sticky formula
-    reproducing almost exactly a 2x-multiple window by coincidence.
-    Legendre's highlight test is now simply is_legendre_member -- this just
-    re-confirms that function's own strict behavior still holds now that
-    it's the ONLY test in play."""
+    """is_legendre_member itself is the plain STRICT mathematical membership
+    test ((k*k, n]) and stays exactly that -- unaffected by
+    is_legendre_highlighted's own fade-continuity layer added on top of it
+    (see that function's own doc-comment). This just re-confirms the strict
+    test's own behavior still holds on its own terms.
+
+    [HISTORY] An EARLIER "sticky" grace-period variant (is_legendre_highlighted,
+    keyed to each ring's own next self-multiple after its home level closed)
+    was removed entirely in this same repo (2026-09-26) because it showed
+    green dots nearly as wide as Bertrand's own (n/2, n] window for most
+    primes -- see compute_highlight_colors' OLD doc-comment (superseded) for
+    the exact diagnosis. The CURRENT is_legendre_highlighted (re-added later
+    the same day, see its own doc-comment) is a different, deliberately
+    bounded design: a one-for-one fade of the PREVIOUS level's own members as
+    the current level's own members arrive, never wider than "the previous
+    level's own population", which cannot reproduce Bertrand's width the way
+    the old per-ring multiple-based formula did."""
     from primeatlas.rings.ring_geometry import is_legendre_member
 
     # n=30: level k = floor(sqrt(29)) = 5, window (25,30] -> strict member: 29 only.
@@ -325,6 +334,225 @@ def _test_legendre_member_strict_only():
     strict = is_legendre_member(primes, 30)
     check(list(strict) == [False] * 9 + [True],
           "is_legendre_member at n=30: only 29 strictly in (25,30]")
+
+
+def _test_is_legendre_highlighted():
+    """[ADDED 2026-09-26] The RENDERING variant of Legendre membership --
+    is_legendre_member (above) stays the strict mathematical test, unchanged.
+    This is the fix for the abrupt-reset bug Artur reported live against
+    primeAtlas (screenshots at N=144/145/169, level 11->12): when a level
+    closes, ALL of that level's own highlighted primes used to go dark in
+    the SAME single step the level advanced, even though the new level had
+    not yet produced a single member of its own -- visually jarring compared
+    to Bertrand, whose wide window never empties out all at once.
+
+    Design (Artur's own, confirmed over several rounds this session): treat
+    the previous level's own members as a queue, oldest (smallest) first.
+    For every member the CURRENT level has actually produced so far (count
+    `m`), retire exactly one -- the smallest surviving -- member of the
+    previous level's own queue. A member of the previous level is therefore
+    still highlighted iff its rank among the previous level's own members
+    (sorted ascending) is >= m. This is a PURE function of n (no per-tick
+    queue/state is kept -- both "the previous level's own full membership"
+    and "how many members the current level has produced so far" are
+    directly recomputable from n and the prime list alone), deliberately so
+    it cannot suffer the same rewind/backward-step desync bug Artur found by
+    accident while producing the screenshots that prompted this fix (a
+    genuinely stateful per-tick queue would have exactly that failure mode).
+
+    Test data: the REAL primes from Artur's own screenshots -- level 11
+    (121,144] = {127,131,137,139}, level 12 (144,169] = {149,151,157,163,167}
+    -- not made-up numbers, so this test reproduces the actual reported
+    scenario, not just the abstract rule."""
+    from primeatlas.rings.ring_geometry import is_legendre_highlighted
+
+    primes = np.array(
+        [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61,
+         67, 71, 73, 79, 83, 89, 97, 101, 103, 107, 109, 113, 127, 131, 137,
+         139, 149, 151, 157, 163, 167],
+        dtype=np.int64,
+    )
+
+    def highlighted_set(n):
+        primes_here = primes[primes <= n]
+        mask = is_legendre_highlighted(primes_here, n)
+        return set(primes_here[mask].tolist())
+
+    # n=121: level JUST advanced to 10 (window (100,121]), zero members of
+    # its own yet -- ALL 5 of level 9's own members ((81,100] = {83,89,97}...
+    # wait, level 9 is (81,100], real members {83,89,97} -- verified directly
+    # against the implementation, not hand-derived) stay highlighted.
+    check(highlighted_set(121) == {101, 103, 107, 109, 113},
+          "n=121: level 10 window (100,121] has produced its own 5 members already (100<n<=121 spans "
+          "most of the level in one jump from n=120->121 since 121=11^2) -- level 9's own remnants "
+          "(83,89,97) have ALL already been retired by this point (m=5 >= old_count=3)")
+
+    # n=127..139: level 11 itself producing its own members one at a time
+    # (127,131,137,139) -- each new arrival retires exactly one of level
+    # 10's own remnants (101,103,107,109,113), oldest first. Verified
+    # directly against the implementation (not hand-derived) for the full
+    # progression:
+    check(highlighted_set(127) == {103, 107, 109, 113, 127}, "n=127: m=1 -- 101 retired")
+    check(highlighted_set(131) == {107, 109, 113, 127, 131}, "n=131: m=2 -- 103 retired")
+    check(highlighted_set(137) == {109, 113, 127, 131, 137}, "n=137: m=3 -- 107 retired")
+    check(highlighted_set(139) == {113, 127, 131, 137, 139}, "n=139: m=4 -- 109 retired")
+
+    # n=144: still level 11 (window (121,144]), m stays at 4 (no 5th member
+    # of level 11 exists) -- so 113 (level 10's own last survivor, m=4 <
+    # old_count=5) is STILL fading, alongside level 11's own 4 live members.
+    # This is the real, verified state at Artur's own first screenshot (N=144)
+    # -- not "just 4 plain members" as a naive read of the window bounds
+    # alone would suggest; the fade layer is continuously active, not only
+    # right at a transition.
+    check(highlighted_set(144) == {113, 127, 131, 137, 139},
+          "n=144: level 11's own 4 live members PLUS 113, level 10's last still-fading remnant")
+
+    # n=145: level JUST advanced to 12 (window (144,145]), which has
+    # produced ZERO members of its own yet (145 = 5*29, not prime) -- THE FIX:
+    # all 4 of level 11's own members stay highlighted, none go dark.
+    check(highlighted_set(145) == {127, 131, 137, 139},
+          "n=145: level just closed, m=0 -- ALL 4 old members still highlighted, none go dark")
+
+    # n=149: level 12 has now produced its FIRST member (149) -- exactly ONE
+    # of level 11's own members retires: the OLDEST (smallest), 127.
+    check(highlighted_set(149) == {131, 137, 139, 149},
+          "n=149: m=1 -- oldest old member (127) retired, 3 old + 1 new")
+
+    # n=151: second new member (151) arrives -- second-oldest old member
+    # (131) retires.
+    check(highlighted_set(151) == {137, 139, 149, 151},
+          "n=151: m=2 -- next-oldest old member (131) retired, 2 old + 2 new")
+
+    # n=157: third new member -- 137 retires.
+    check(highlighted_set(157) == {139, 149, 151, 157},
+          "n=157: m=3 -- 137 retired, 1 old + 3 new")
+
+    # n=163: fourth new member -- last old member (139) retires. Exactly
+    # old_count (4) new members have now arrived, so no old members remain.
+    check(highlighted_set(163) == {149, 151, 157, 163},
+          "n=163: m=4 == old_count -- last old member (139) retired, 0 old + 4 new")
+
+    # n=167: fifth new member -- old queue was already fully retired at
+    # n=163, so this is now identical to plain strict membership (no old
+    # members left to protect).
+    check(highlighted_set(167) == {149, 151, 157, 163, 167},
+          "n=167: old queue exhausted -- matches plain is_legendre_member exactly")
+
+    # Small-n edge case: k<2 means no previous level exists at all (the
+    # boundary condition Artur explicitly asked to set aside, since it only
+    # arises while the window itself is still extremely narrow) -- must
+    # simply equal is_legendre_member, no crash, no fabricated "previous
+    # level".
+    from primeatlas.rings.ring_geometry import is_legendre_member
+    small_primes = np.array([2, 3], dtype=np.int64)
+    check(list(is_legendre_highlighted(small_primes, 3)) == list(is_legendre_member(small_primes, 3)),
+          "k<2 (n=3): is_legendre_highlighted matches plain is_legendre_member, no previous level to fade from")
+
+
+def _test_is_general_law_highlighted():
+    """[ADDED 2026-09-26] General Law's own rendering-highlight test, same
+    role as is_legendre_highlighted for Legendre's. Per Artur's own
+    confirmation, after live-testing the RelationalMathematics website, that
+    'sliding' and 'bertrand' modes already feel right WITHOUT any fade layer
+    (their own raw membership tests are already smoothly-creeping by
+    construction -- see is_general_law_member/general_law_window_bounds' own
+    doc-comments):
+
+      - 'legendre' mode: delegates STRAIGHT to is_legendre_highlighted --
+        exact reproduction of the real Legendre checkbox, fade included,
+        the whole point of a RIGID mode.
+      - 'bertrand'/'sliding': UNCHANGED, exactly is_general_law_member (no
+        fade layer needed).
+      - 'stepped' mode [ADDED 2026-09-26, SAME DAY -- Artur: "damy radę
+        przenieść to samo na GL?"]: gets the SAME fade queue as 'legendre',
+        but paced by Legendre's own (monotonic) exposure count rather than
+        stepped's own (possibly-flickering) live count -- see
+        is_general_law_highlighted's own 'stepped' doc-comment for the full
+        proof of why that substitution is exact, not approximate."""
+    from primeatlas.rings.ring_geometry import (
+        is_general_law_highlighted,
+        is_general_law_member,
+        is_legendre_highlighted,
+    )
+
+    primes = np.array(
+        [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61,
+         67, 71, 73, 79, 83, 89, 97, 101, 103, 107, 109, 113, 127, 131, 137,
+         139, 149, 151, 157, 163, 167],
+        dtype=np.int64,
+    )
+
+    # 'legendre' mode: exact delegation, re-using the same real level-11/12
+    # transition as _test_is_legendre_highlighted above.
+    for n in [144, 145, 149, 151, 157, 163, 167]:
+        primes_here = primes[primes <= n]
+        got = is_general_law_highlighted(primes_here, n, 0.5, "legendre")
+        expected = is_legendre_highlighted(primes_here, n)
+        check(list(got) == list(expected),
+              f"GL 'legendre' mode matches is_legendre_highlighted exactly at n={n}")
+
+    # 'stepped' mode, THE FIX ITSELF: theta=0.3 (narrower than Legendre) over
+    # the SAME real level-11/12 transition. Verified directly against the
+    # implementation (not hand-derived) before writing this test -- see
+    # is_general_law_highlighted's own 'stepped' doc-comment for the
+    # exposure-count substitution this depends on.
+    def highlighted_set_stepped(n):
+        primes_here = primes[primes <= n]
+        mask = is_general_law_highlighted(primes_here, n, 0.3, "stepped")
+        return set(primes_here[mask].tolist())
+
+    # n=144: level 11 still open. Legendre-style exposure so far = 4 (all of
+    # 127,131,137,139 have been "born" already, even though stepped's own
+    # narrower live window has already flickered 127 and 131 back out by
+    # this point) -- level 10's queue (101,103,107,109,113) is fully
+    # retired (exposure 4 < 5, so rank-4 survivor 113 remains), same
+    # boundary-carryover shape _test_is_legendre_highlighted's own n=144
+    # case documents.
+    check(highlighted_set_stepped(144) == {113, 137, 139},
+          "stepped theta=0.3, n=144: 113 (level 10's last survivor) + stepped's own currently-live 137,139 "
+          "(127,131 already flickered out of stepped's OWN narrower window, unrelated to the fade)")
+
+    # n=145: level just closed, stepped's own live set is empty (145 isn't
+    # prime, and its window is razor-narrow) -- Legendre-style exposure=0,
+    # so ALL FOUR of level 11's own members survive untouched.
+    check(highlighted_set_stepped(145) == {127, 131, 137, 139},
+          "stepped theta=0.3, n=145: exposure=0 -- all 4 of level 11's own members survive, "
+          "identical to real Legendre's own fade at this exact n")
+
+    # n=149: Legendre-style exposure=1 (149 born) -- retires the oldest (127).
+    check(highlighted_set_stepped(149) == {131, 137, 139, 149},
+          "stepped theta=0.3, n=149: exposure=1 -- 127 retired")
+
+    # n=151: exposure=2 -- 131 retires too.
+    check(highlighted_set_stepped(151) == {137, 139, 149, 151},
+          "stepped theta=0.3, n=151: exposure=2 -- 131 retired")
+
+    # n=157: exposure=3 -- 137 retires. stepped's OWN live window has by now
+    # also flickered 149 back out (unrelated to the fade), so only
+    # 151/157 are live, plus survivor 139.
+    check(highlighted_set_stepped(157) == {139, 151, 157},
+          "stepped theta=0.3, n=157: exposure=3 -- 137 retired; 149 separately flickered out of "
+          "stepped's own narrower live window")
+
+    # n=163: exposure=4 == old_count -- last survivor (139) retires too.
+    check(highlighted_set_stepped(163) == {157, 163},
+          "stepped theta=0.3, n=163: exposure=4 == old_count -- queue fully drained")
+
+    # n=167: queue long since drained -- matches stepped's own plain live
+    # membership exactly, no fade contribution left.
+    check(highlighted_set_stepped(167) == {157, 163, 167},
+          "stepped theta=0.3, n=167: queue exhausted -- matches plain stepped membership")
+
+    # 'bertrand'/'sliding': no fade layer -- exactly is_general_law_member,
+    # spot-checked at the SAME n=145 transition (where 'legendre'/'stepped'
+    # above visibly differ from plain membership) to prove these two modes
+    # deliberately do NOT pick up any fade behavior.
+    primes_145 = primes[primes <= 145]
+    for mode, theta in [("bertrand", 1), ("sliding", 0.5)]:
+        got = is_general_law_highlighted(primes_145, 145, theta, mode)
+        expected = is_general_law_member(primes_145, 145, theta, mode)
+        check(list(got) == list(expected),
+              f"GL '{mode}' mode: no fade layer, matches is_general_law_member exactly at n=145")
 
 
 def _test_anchor_functions():
@@ -395,14 +623,26 @@ def _test_blend_family_colors():
 
 
 def _test_compute_highlight_colors_strict_sticky_precedence():
-    """Name kept even though the sticky variant it originally covered is
-    gone -- see compute_highlight_colors' own doc-comment -- this scenario
-    (n=30, Bertrand ON, Legendre ON) still exercises the SAME multi-family
-    blend it always did; only the reasoning for rings 17/19/23 changed (they
-    used to be pure Bertrand pink because Bertrand's strict match beat
-    Legendre's sticky-only match; now it's simply because Legendre doesn't
-    match them at all -- is_legendre_member(17/19/23, 30) is False, no
-    sticky fallback left to kick in)."""
+    """[REVISED 2026-09-26, same day the fade layer was reinstated -- see
+    is_legendre_highlighted's own [HISTORY] note] n=30: level 5, window
+    (25,30] (live member: 29 only); previous level 4, window (16,25]
+    ({17,19,23}). With Legendre's own current-level count m=1 (only 29 is
+    live so far), is_legendre_highlighted retires the OLDEST previous-level
+    member (17) and keeps the other two (19,23) fading.
+
+    With Bertrand ALSO enabled: 17/19/23 are all genuinely, strictly inside
+    Bertrand's own (15,30] window too, so the two-tier precedence rule (see
+    compute_highlight_colors' own doc-comment) means Bertrand's STRICT match
+    wins outright for all three -- Legendre's fade-only match on 19/23 gets
+    excluded from the blend, same pure-Bertrand-pink result as before this
+    fade layer existed. Ring 29 is a genuine strict/strict match for BOTH
+    families, so it still blends.
+
+    With ONLY Legendre enabled (no Bertrand to out-rank it), THE FIX ITSELF
+    becomes visible: 19 and 23 (Legendre's own fading previous-level
+    remnants) now DO get highlighted (fresh behavior, was impossible before
+    this session's fade layer), while 17 (already retired -- rank 0 < m=1)
+    still does not."""
     from primeatlas.rings.ring_geometry import compute_highlight_colors, WINDOW_FAMILY_COLORS
 
     primes = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23, 29], dtype=np.int64)
@@ -434,18 +674,18 @@ def _test_compute_highlight_colors_strict_sticky_precedence():
     check(empty_colors.shape == (10, 3) and not empty_matched.any(),
           "compute_highlight_colors: empty enabled_ids matches nothing but keeps ring count")
 
-    # Regression guard: enabling ONLY Legendre (no Bertrand) must NOT color
-    # rings 17/19/23 at all -- those are exactly the rings the old
-    # is_legendre_highlighted sticky formula falsely lit up green (a band as
-    # wide as Bertrand's own window), even though none of them are in
-    # Legendre's own (25,30] strict window at n=30.
+    # THE FIX: enabling ONLY Legendre (no Bertrand) now fades 19/23 (previous
+    # level's own surviving members, per is_legendre_highlighted -- see this
+    # test's own module doc-comment) while 17 (already retired) stays dark.
     colors_legendre_only, matched_legendre_only = compute_highlight_colors(primes, 30, {"legendre"})
-    for p in (17, 19, 23):
-        check(bool(matched_legendre_only[idx(p)]) is False,
-              f"compute_highlight_colors: with ONLY legendre enabled, ring {p} is NOT highlighted -- "
-              f"it is outside Legendre's own (25,30] window and there is no sticky fallback left to "
-              f"falsely light it up (this guards against green dots as wide as "
-              f"Bertrand's own window while only Legendre was on)")
+    check(bool(matched_legendre_only[idx(17)]) is False,
+          "compute_highlight_colors: with only legendre enabled, ring 17 is NOT highlighted -- "
+          "already retired from the fade queue (rank 0 < m=1)")
+    for p in (19, 23):
+        check(bool(matched_legendre_only[idx(p)]) is True and np.allclose(colors_legendre_only[idx(p)], WINDOW_FAMILY_COLORS["legendre"]),
+              f"compute_highlight_colors: with only legendre enabled, ring {p} IS highlighted -- "
+              f"a surviving fading remnant of the previous level (17,25], in legendre's own solid color "
+              f"(fade contributes the SAME color, never a blend with itself)")
     check(bool(matched_legendre_only[idx(29)]) is True and np.allclose(colors_legendre_only[idx(29)], WINDOW_FAMILY_COLORS["legendre"]),
           "compute_highlight_colors: with only legendre enabled, ring 29 (the one genuine strict "
           "member of (25,30]) still gets legendre's own color")
@@ -1101,6 +1341,8 @@ def main():
     _test_bertrand_legendre_membership()
     _test_general_law()
     _test_legendre_member_strict_only()
+    _test_is_legendre_highlighted()
+    _test_is_general_law_highlighted()
     _test_anchor_functions()
     _test_cyclic_window_anchor_at()
     _test_window_anchor_primes()
