@@ -1,0 +1,51 @@
+# Builds installer/Output/PrimeAtlasSetup.exe (see installer/build_installer.py) on a Windows
+# runner. A pushed tag like v1.0.0 also publishes it as that GitHub Release's asset -- the
+# single file a new user downloads. Manual runs (Actions tab > Run workflow) only upload it
+# as a workflow artifact, for testing a build without making a release.
+name: Windows installer
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Installer contract test
+        run: python unitTests/test_installer_script.py
+
+      - name: Build PrimeAtlasSetup.exe
+        run: python installer/build_installer.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PrimeAtlasSetup
+          path: installer/Output/PrimeAtlasSetup.exe
+
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" installer/Output/PrimeAtlasSetup.exe --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" installer/Output/PrimeAtlasSetup.exe \
+              --title "PrimeAtlas $GITHUB_REF_NAME" \
+              --notes "Windows installer: download PrimeAtlasSetup.exe and run it (no admin rights needed)."
+          fi

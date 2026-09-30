@@ -210,9 +210,12 @@ def _build_gui():
     from primeatlas.constellations.constellations_tree_coordinator import ConstellationsTreeCoordinator
     from primeatlas.generation.generation_offer_coordinator import GenerationOfferCoordinator
 
+    from primeatlas.core.app_icon import apply_tk_icon
+
     class PortalBrowserApp(tk.Tk):
         def __init__(self):
             super().__init__()
+            apply_tk_icon(self)
             self._apply_theme(APP_SETTINGS.theme)
             self.title(T("app.title"))
             self.geometry("1050x680")
@@ -1252,6 +1255,11 @@ def _build_gui():
 
 
 def main():
+    # Before the first window: without it the taskbar shows pythonw.exe's Python icon
+    # instead of ours (see primeatlas/core/app_icon.py).
+    from primeatlas.core.app_icon import set_app_user_model_id
+    set_app_user_model_id()
+
     # First-run environment check/install wizard (task #513) -- runs BEFORE _build_gui()
     # is even called, let alone PortalBrowserApp constructed. Deliberately not folded into
     # the loading_frame steps below: enabling the WSL Windows features can require a full

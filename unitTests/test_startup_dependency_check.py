@@ -92,12 +92,13 @@ def section_a():
     check(sdc.is_blocking(["moderngl", "glfw"]) is False, "only viz deps missing => not blocking")
     check(sdc.is_blocking([]) is False, "nothing missing => not blocking")
 
-    argv = sdc.build_pip_argv("C:\\Py\\python.exe", ["numpy", "glfw"], in_venv=False)
-    check(argv == ["C:\\Py\\python.exe", "-m", "pip", "install", "--user", "numpy", "glfw"],
-          f"pip argv outside a venv uses --user (got {argv!r})")
-    argv = sdc.build_pip_argv("C:\\Py\\python.exe", ["numpy"], in_venv=True)
-    check(argv == ["C:\\Py\\python.exe", "-m", "pip", "install", "numpy"],
-          f"pip argv inside a venv has no --user (pip refuses it there) (got {argv!r})")
+    # No --user: pip itself falls back to a user install when the interpreter's own
+    # site-packages isn't writable (system Python), while the installer's private Python
+    # and venvs get the packages in their own site-packages -- a forced --user would put
+    # them into %APPDATA%\Python\PythonXY, shared with every other Python of that version.
+    argv = sdc.build_pip_argv("C:\\Py\\python.exe", ["numpy", "glfw"])
+    check(argv == ["C:\\Py\\python.exe", "-m", "pip", "install", "numpy", "glfw"],
+          f"pip argv never forces --user (got {argv!r})")
 
     with tempfile.TemporaryDirectory() as tmp:
         saved = os.path.join(tmp, "language_settings.json")
@@ -169,7 +170,7 @@ class Recorder:
             requirements=list(reqs), strings=dict(sdc.FALLBACK_STRINGS),
             find_spec=self.find_spec, ask_user=self.ask_user, run_install=self.run_install,
             refresh_paths=self.refresh_paths, show_error=self.show_error,
-            executable="PY", in_venv=False)
+            executable="PY")
 
     def kinds(self):
         return [c[0] for c in self.calls]
@@ -199,7 +200,7 @@ def section_b():
     check(r.run() is True, "accepted + pip succeeds => app starts")
     check(r.kinds() == ["ask", "install", "refresh"],
           f"install then refresh import paths BEFORE re-checking (calls {r.kinds()})")
-    check(r.calls[1][1] == ("PY", "-m", "pip", "install", "--user", "numpy", "moderngl", "glfw"),
+    check(r.calls[1][1] == ("PY", "-m", "pip", "install", "numpy", "moderngl", "glfw"),
           f"only the missing packages are installed, with the running interpreter "
           f"(got {r.calls[1][1]!r})")
 
@@ -212,7 +213,7 @@ def section_b():
     check(r.run() is False, "pip fails + numpy missing => app does not start")
     check(r.kinds()[-1] == "error", "pip failure shows an error")
     err = r.calls[-1][1]
-    check("PY -m pip install --user numpy moderngl glfw" in err,
+    check("PY -m pip install numpy moderngl glfw" in err,
           f"the error contains the exact manual command to run (got {err!r})")
 
     r = Recorder(ask_answer=True, install_rc=1)

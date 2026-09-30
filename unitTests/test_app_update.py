@@ -975,12 +975,67 @@ def section_c():
 
 
 # ============================================================================================
+# Section D -- which git binary _run_git() launches
+# ============================================================================================
+
+def section_d():
+    """The Windows installer (installer/PrimeAtlasSetup.iss) lays out <install>/app (this
+    repo), <install>/python and <install>/git (portable MinGit, NOT on PATH). Self-update
+    must find that private git, else it reports git-not-found on every installed machine."""
+    print("\n--- Section D: git executable resolution ---")
+    from primeatlas.settings import app_update as au
+
+    with tempfile.TemporaryDirectory() as root:
+        repo = os.path.join(root, "app")
+        os.makedirs(repo)
+        bundled = os.path.join(root, "git", "cmd", "git.exe")
+
+        check(au.git_executable(repo) == "git",
+              "no bundled git next to the repo => plain 'git' from PATH (unchanged behavior)")
+
+        os.makedirs(os.path.dirname(bundled))
+        open(bundled, "w").close()
+        check(au.git_executable(repo) == bundled,
+              "bundled <install>/git/cmd/git.exe exists => it is used, even if PATH has another git")
+        check(au.git_executable(repo + os.sep) == bundled,
+              "a trailing separator on the repo dir does not break the lookup")
+
+        seen = {}
+        orig_run = au.subprocess.run
+
+        class _Done:
+            returncode, stdout, stderr = 0, "ok", ""
+
+        def fake_run(argv, **kwargs):
+            seen["argv"] = argv
+            return _Done()
+        au.subprocess.run = fake_run
+        try:
+            rc, out, _ = au._run_git(["status"], cwd=repo)
+        finally:
+            au.subprocess.run = orig_run
+        check(seen.get("argv") == [bundled, "status"] and rc == 0,
+              f"_run_git launches the resolved git binary (got {seen.get('argv')!r})")
+
+        def missing_run(argv, **kwargs):
+            raise FileNotFoundError(argv[0])
+        au.subprocess.run = missing_run
+        try:
+            result = au._run_git(["status"], cwd=os.path.join(root, "elsewhere"))
+        finally:
+            au.subprocess.run = orig_run
+        check(result == (None, "", "git-not-found"),
+              "no git anywhere still reports git-not-found, never raises")
+
+
+# ============================================================================================
 
 if __name__ == "__main__":
     section_a()
     section_a2()
     section_b()
     section_c()
+    section_d()
     print(f"\n{'=' * 78}")
     if failures:
         print(f"{len(failures)} FAILURE(S):")

@@ -18,3 +18,8 @@ CONSTELLATION_PORTAL/
 # Working planning doc for the Ring visualization feature -- development-process
 # notes, not source or a user-facing artifact; not meant to ship in the repo.
 PLAN.md
+
+# Inno Setup build output (installer/PrimeAtlasSetup.iss) -- published as a GitHub Release
+# asset, never committed.
+installer/Output/
+installer/vendor/

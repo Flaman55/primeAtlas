@@ -36,6 +36,7 @@ from tkinter import ttk
 from tkinter.scrolledtext import ScrolledText
 
 from . import env_setup
+from ..core.app_icon import apply_tk_icon
 
 _CHECK_LABEL_KEYS = {
     "wsl_present": "wizard.check_wsl",
@@ -266,6 +267,7 @@ class _EnvSetupWizardRoot(tk.Tk, _EnvSetupWizardMixin):
 
     def __init__(self, app_settings, T, distro=env_setup.DEFAULT_WSL_DISTRO):
         tk.Tk.__init__(self)
+        apply_tk_icon(self)
         self._init_wizard(app_settings, T, distro)
 
 
