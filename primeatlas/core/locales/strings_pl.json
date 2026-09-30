@@ -902,5 +902,7 @@
   "depcheck.install_failed": "Instalacja nie powiodła się (kod wyjścia pip: {code}).\n\nMożesz zainstalować ręcznie z terminala:\n{command}",
   "depcheck.still_missing": "Instalacja zakończona, ale tych pakietów nadal nie da się zaimportować: {packages}\n\nSpróbuj ręcznie z terminala:\n{command}",
   "depcheck.declined_blocking": "PrimeAtlas nie uruchomi się bez: {packages}\n\nZainstaluj z terminala:\n{command}",
-  "depcheck.close": "Zamknij"
+  "depcheck.close": "Zamknij",
+  "wizard.hint_wsl_failed": "Windows nie zdołał zainstalować WSL (Windows Subsystem for Linux) -- szczegóły powyżej. W maszynie wirtualnej (VMware, VirtualBox, ...) WSL 2 wymaga zagnieżdżonej wirtualizacji: włącz \"Virtualize Intel VT-x/EPT or AMD-V/RVI\" (lub odpowiednik) w ustawieniach procesora maszyny wirtualnej, wyłącz ją całkowicie i spróbuj ponownie. PrimeAtlasa możesz używać bez WSL już teraz: kliknij Pomiń -- przeglądanie danych działa, tylko generowanie nowych wymaga WSL.",
+  "wizard.hint_install_failed": "PrimeAtlasa możesz używać bez WSL: kliknij Pomiń -- przeglądanie danych działa, tylko generowanie nowych wymaga WSL. \"Kopiuj log\" skopiuje powyższe komunikaty, jeśli potrzebujesz pomocy."
 }

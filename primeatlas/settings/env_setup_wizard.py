@@ -245,6 +245,11 @@ class _EnvSetupWizardMixin:
             return
         self.status_var.set(self.T("wizard.status_install_failed"))
         self._log(self.T("wizard.log_install_failed", error=result.get("error") or ""))
+        # Plain-language next step: a failed WSL install (e.g. a VM without nested
+        # virtualization) gets its own explanation; every failure says Skip still works.
+        hint_key = ("wizard.hint_wsl_failed" if result.get("failure_kind") == "wsl"
+                    else "wizard.hint_install_failed")
+        self._log(self.T(hint_key))
         self.install_btn.configure(state="normal")
         self.recheck_btn.configure(state="normal")
         self.skip_btn.configure(state="normal")

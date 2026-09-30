@@ -292,6 +292,37 @@ def check_environment(distro=DEFAULT_WSL_DISTRO, timeout=60):
 # elevated doesn't hurt them, and it keeps the whole sequence in one place to reason about.
 # ------------------------------------------------------------------------------------------
 
+# How PowerShell must decode a native command's output. wsl.exe's own management commands
+# (--update, --install, --terminate) write UTF-16; Linux programs run inside the distro write
+# UTF-8; dism keeps the console default. Read with the wrong one, the Polish "Nie mozna
+# odnalezc..." from a real Windows 10 run came out as "Nie mo|na odnalez okre[lonego moduBu"
+# ("z" with dot = UTF-16 bytes 7C 01, read one byte at a time). try/catch: assigning the
+# console encoding can throw if there is no console at all, which must never abort the
+# install over cosmetics.
+_NATIVE_UTF16 = 'try { [Console]::OutputEncoding = [System.Text.Encoding]::Unicode } catch { }'
+_NATIVE_UTF8 = 'try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }'
+
+# Failure markers the install script logs, mapped to what the wizard tells the user.
+_FAILURE_MARKERS = (
+    ("WSL_UPDATE_FAILED", "wsl"),
+    ("WSL_INSTALL_FAILED", "wsl"),
+    ("FEATURE_ENABLE_FAILED", "features"),
+    ("APT_INSTALL_FAILED", "packages"),
+    ("SCRIPT_ERROR", "script"),
+)
+
+
+def classify_install_failure(transcript):
+    """Which step of the install script failed, from its own log markers: "wsl" (Windows
+    could not install WSL or the distro -- e.g. no nested virtualization in a VM), "features",
+    "packages", "script", or None if no marker is present."""
+    for line in reversed((transcript or "").splitlines()):
+        for marker, kind in _FAILURE_MARKERS:
+            if marker in line:
+                return kind
+    return None
+
+
 def _build_install_ps1_text(distro, need_features=True, need_distro=True, need_packages=True):
     """Builds the PowerShell script text run (elevated) by run_install(). Pure string
     building -- no subprocess calls here, so this is directly unit-testable without any
@@ -345,10 +376,8 @@ def _build_install_ps1_text(distro, need_features=True, need_distro=True, need_p
         '$ErrorActionPreference = "Continue"',
         '$LogPath = $PSCommandPath + ".log"',
         'if (Test-Path $LogPath) { Remove-Item $LogPath -Force }',
-        # wsl.exe writes UTF-16: newer builds switch to UTF-8 with WSL_UTF8=1; for the rest
-        # (e.g. Windows 10's inbox wsl.exe) Log drops the NULs that UTF-16 leaves in every
-        # captured line, so the wizard shows "Installing", not "I n s t a l l i n g".
-        '$env:WSL_UTF8 = "1"',
+        # Log also drops stray NULs -- a safety net in case some native output still gets
+        # decoded with the wrong encoding (see _NATIVE_UTF16/_NATIVE_UTF8 below).
         'function Log($msg) {',
         '    $msg = "$msg" -replace "`0", ""',
         '    Write-Output $msg',
@@ -360,15 +389,23 @@ def _build_install_ps1_text(distro, need_features=True, need_distro=True, need_p
     if need_features:
         lines.append('$restartNeeded = $false')
         lines.append('Log "STEP:features"')
+        # Skip dism for a feature Windows already reports as Enabled: `wsl --status` (what
+        # check_environment() looks at) also fails while only the WSL kernel is missing,
+        # which made every retry on a fresh Windows 10 machine re-enable both features.
         for name in REQUIRED_WINDOWS_FEATURES:
             lines.append(f'Log "STEP:enable_feature:{name}"')
+            lines.append(f'$state = (Get-WindowsOptionalFeature -Online -FeatureName {name}).State')
+            lines.append('if ("$state" -eq "Enabled") {')
+            lines.append(f'    Log "FEATURE_ALREADY_ENABLED:{name}"')
+            lines.append('} else {')
             lines.append(
-                f'dism.exe /online /enable-feature /featurename:{name} /all /norestart '
+                f'    dism.exe /online /enable-feature /featurename:{name} /all /norestart '
                 f'2>&1 | ForEach-Object {{ Log $_ }}')
             lines.append(
-                'if ($LASTEXITCODE -eq 3010 -or $LASTEXITCODE -eq 3011) { $restartNeeded = $true }')
+                '    if ($LASTEXITCODE -eq 3010 -or $LASTEXITCODE -eq 3011) { $restartNeeded = $true }')
             lines.append(
-                f'elseif ($LASTEXITCODE -ne 0) {{ Log "FEATURE_ENABLE_FAILED:{name}:$LASTEXITCODE"; exit 1 }}')
+                f'    elseif ($LASTEXITCODE -ne 0) {{ Log "FEATURE_ENABLE_FAILED:{name}:$LASTEXITCODE"; exit 1 }}')
+            lines.append('}')
         # dism's 3010/3011 alone is not trusted: on that same fresh Windows 10 machine both
         # enables reported plain success, no restart was flagged, and wsl --install then ran
         # before the reboot it needs. Windows' own feature state is the ground truth --
@@ -390,6 +427,7 @@ def _build_install_ps1_text(distro, need_features=True, need_distro=True, need_p
         # from the web, bypassing the Microsoft Store (often disabled or blocked); after it,
         # wsl.exe understands --no-launch. On an already-current WSL it is a no-op.
         lines.append('Log "STEP:wsl_update"')
+        lines.append(_NATIVE_UTF16)
         lines.append('& wsl.exe --update --web-download 2>&1 | ForEach-Object { Log $_ }')
         lines.append('if ($LASTEXITCODE -ne 0) {')
         lines.append('    Log "WSL_UPDATE_FAILED:$LASTEXITCODE"')
@@ -397,6 +435,7 @@ def _build_install_ps1_text(distro, need_features=True, need_distro=True, need_p
         lines.append('}')
         lines.append('')
         lines.append('Log "STEP:wsl_install"')
+        lines.append(_NATIVE_UTF16)
         lines.append(f'$wslInstallOutput = & wsl.exe --install -d {distro} --no-launch 2>&1')
         lines.append('$wslInstallOutput | ForEach-Object { Log $_ }')
         lines.append('$wslInstallExit = $LASTEXITCODE')
@@ -414,14 +453,17 @@ def _build_install_ps1_text(distro, need_features=True, need_distro=True, need_p
         lines.append('}')
         lines.append('')
         lines.append('Log "STEP:default_root_user"')
+        lines.append(_NATIVE_UTF8)
         lines.append(
             f'wsl.exe -d {distro} -u root -e bash -c "printf \'[user]\\ndefault=root\\n\' '
             f'> /etc/wsl.conf" 2>&1 | ForEach-Object {{ Log $_ }}')
+        lines.append(_NATIVE_UTF16)
         lines.append(f'wsl.exe --terminate {distro}')
         lines.append('')
     if need_packages:
         apt_packages = " ".join(REQUIRED_APT_PACKAGES)
         lines.append('Log "STEP:apt_packages"')
+        lines.append(_NATIVE_UTF8)
         lines.append(
             f'wsl.exe -d {distro} -u root -e bash -c "apt-get update -y && apt-get install -y '
             f'{apt_packages} && ldconfig" 2>&1 | ForEach-Object {{ Log $_ }}')
@@ -577,10 +619,12 @@ def run_install(distro=DEFAULT_WSL_DISTRO, timeout=1800, work_dir=None, report=N
             pass
     if returncode is None:
         return {"ok": False, "restart_required": False, "transcript": transcript,
-                "error": "elevation was declined or the installer could not be launched"}
+                "error": "elevation was declined or the installer could not be launched",
+                "failure_kind": "elevation"}
     if returncode in RESTART_PENDING_EXIT_CODES:
         return {"ok": False, "restart_required": True, "transcript": transcript, "error": None}
     if returncode == 0:
         return {"ok": True, "restart_required": False, "transcript": transcript, "error": None}
     return {"ok": False, "restart_required": False, "transcript": transcript,
-            "error": f"install script exited with code {returncode}"}
+            "error": f"install script exited with code {returncode}",
+            "failure_kind": classify_install_failure(transcript)}
