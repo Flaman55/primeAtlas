@@ -1415,6 +1415,15 @@ constellation/
   pattern_catalog_v1.py       catalog of supported k-tuple patterns, shared by the
                               constellation finder, ktuple_sieve_v1.py, and the
                               Constellation calculator / Records table sub-tabs
+startup_dependency_check.py  pre-import check of requirements.txt's native-Windows
+                              packages, run by prime_atlas_v1.py BEFORE `from primeatlas
+                              import` (primeatlas/__init__.py itself needs numpy); offers
+                              a live-logged `pip install --user` of whatever is missing.
+                              Only numpy blocks startup; moderngl/glfw (Ring viz) don't.
+                              Imports nothing from primeatlas -- reads locale strings
+                              and the saved language straight from the JSON files
+requirements.txt             numpy, moderngl, glfw -- read by the startup check and the
+                              Windows installer
 Run_PrimeAtlas.bat           launches the GUI, visible console (errors surfaced directly)
 Run_PrimeAtlas_Hidden.vbs    launches the GUI with no console window
 ```
@@ -1439,6 +1448,10 @@ GUI:
   Pollard's rho implementation. Installable from inside the app itself (Settings tab's
   optional-library installer, runs `pip install --user sympy` natively on Windows, no
   WSL involved).
+- `numpy` (required to start at all), plus `moderngl` and `glfw` for Ring visualization --
+  all listed in `requirements.txt`. On launch the app checks for them and offers to
+  `pip install` whatever is missing (see `startup_dependency_check.py`), so a fresh Python
+  needs no manual setup beyond an internet connection.
 - For Ring visualization: `numpy`, `moderngl`, and `glfw`, installed into the same native
   Windows Python that runs `prime_atlas_v1.py` (the renderer is launched as a plain
   subprocess of that same interpreter, not through WSL). Optional: `sounddevice`, for the

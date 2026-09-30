@@ -894,5 +894,13 @@
   "rings.instrument_sawtooth": "Sawtooth",
   "rings.instrument_bell": "Bell",
   "rings.instrument_choir": "Choir",
-  "rings.instrument_mute": "Mute"
+  "rings.instrument_mute": "Mute",
+  "depcheck.title": "PrimeAtlas -- missing Python packages",
+  "depcheck.ask_blocking": "PrimeAtlas cannot start without these Python packages:\n\n{packages}\n\nInstall them now? (requires internet access)",
+  "depcheck.ask_optional": "These Python packages are needed for the Ring visualization:\n\n{packages}\n\nInstall them now? (requires internet access; PrimeAtlas starts either way)",
+  "depcheck.installing": "Installing: {packages}",
+  "depcheck.install_failed": "Installation failed (pip exit code {code}).\n\nYou can install manually from a terminal:\n{command}",
+  "depcheck.still_missing": "Installation finished, but these packages still cannot be imported: {packages}\n\nTry manually from a terminal:\n{command}",
+  "depcheck.declined_blocking": "PrimeAtlas cannot start without: {packages}\n\nInstall from a terminal:\n{command}",
+  "depcheck.close": "Close"
 }

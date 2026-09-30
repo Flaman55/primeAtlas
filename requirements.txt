@@ -1,0 +1,8 @@
+# Native-Windows Python packages the PrimeAtlas GUI needs (tkinter ships with Python
+# itself). Read by startup_dependency_check.py at every launch and by the Windows
+# installer. numpy is required to start at all; moderngl/glfw only for Ring visualization.
+# Optional extras (sympy, sounddevice) are deliberately NOT listed here -- the app works
+# without them and installs sympy on demand from Settings > Aktualizacje.
+numpy
+moderngl
+glfw
