@@ -35,6 +35,8 @@ _REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
 REQUIREMENTS_PATH = os.path.join(_REPO_ROOT, "requirements.txt")
 LOCALES_DIR = os.path.join(_REPO_ROOT, "primeatlas", "core", "locales")
 LANGUAGE_SETTINGS_PATH = os.path.join(LOCALES_DIR, "language_settings.json")
+# Read by path, like the locale files -- primeatlas.core.app_icon cannot be imported yet.
+ICON_PATH = os.path.join(_REPO_ROOT, "primeatlas", "core", "assets", "primeatlas.ico")
 
 # Used only if requirements.txt is missing (e.g. a partial copy of the repo).
 DEFAULT_REQUIREMENTS = ("numpy", "moderngl", "glfw")
@@ -113,17 +115,14 @@ def is_blocking(missing):
     return any(import_name_for(name) in REQUIRED_FOR_STARTUP for name in missing)
 
 
-def in_virtualenv():
-    return sys.prefix != getattr(sys, "base_prefix", sys.prefix)
-
-
-def build_pip_argv(executable, packages, in_venv):
-    """Same interpreter that runs the app (never a bare "python" from PATH); --user so no
-    admin rights are needed, except inside a venv where pip rejects --user."""
-    argv = [executable, "-m", "pip", "install"]
-    if not in_venv:
-        argv.append("--user")
-    return argv + list(packages)
+def build_pip_argv(executable, packages):
+    """Same interpreter that runs the app (never a bare "python" from PATH). No --user:
+    pip itself falls back to a user install when this interpreter's site-packages isn't
+    writable (e.g. a system-wide Python), while the installer's private Python and venvs
+    get the packages in their own site-packages -- forcing --user would instead put them
+    into %APPDATA%/Python/PythonXY, shared with every other Python of that version
+    (and pip rejects --user inside a venv outright)."""
+    return [executable, "-m", "pip", "install"] + list(packages)
 
 
 def resolve_language(saved_path=LANGUAGE_SETTINGS_PATH, os_locale=None):
@@ -179,7 +178,7 @@ def refresh_import_paths():
 
 def ensure_dependencies(requirements=None, strings=None, find_spec=importlib.util.find_spec,
                         ask_user=None, run_install=None, refresh_paths=refresh_import_paths,
-                        show_error=None, executable=None, in_venv=None):
+                        show_error=None, executable=None):
     """True if the app may continue starting, False if it must exit."""
     requirements = load_requirements() if requirements is None else requirements
     missing = find_missing(requirements, find_spec=find_spec)
@@ -191,10 +190,9 @@ def ensure_dependencies(requirements=None, strings=None, find_spec=importlib.uti
     run_install = run_install or _tk_run_install
     show_error = show_error or _tk_show_error
     executable = executable or sys.executable
-    in_venv = in_virtualenv() if in_venv is None else in_venv
 
     blocking = is_blocking(missing)
-    argv = build_pip_argv(executable, missing, in_venv)
+    argv = build_pip_argv(executable, missing)
     command = " ".join(f'"{a}"' if " " in a else a for a in argv)
     packages = ", ".join(missing)
 
@@ -223,10 +221,18 @@ def ensure_dependencies(requirements=None, strings=None, find_spec=importlib.uti
 # Tk UI (thin; not unit-tested)
 # ------------------------------------------------------------------------------------------
 
+def _apply_icon(root):
+    try:
+        root.iconbitmap(default=ICON_PATH)
+    except Exception:
+        pass
+
+
 def _hidden_root():
     import tkinter as tk
     root = tk.Tk()
     root.withdraw()
+    _apply_icon(root)
     return root
 
 
@@ -270,9 +276,10 @@ def _tk_run_install(strings, argv):
     import tkinter as tk
 
     root = tk.Tk()
+    _apply_icon(root)
     root.title(strings["depcheck.title"])
     root.geometry("720x360")
-    packages = ", ".join(a for a in argv[4:] if a != "--user")
+    packages = ", ".join(argv[4:])
     tk.Label(root, text=strings["depcheck.installing"].format(packages=packages),
              anchor="w").pack(fill="x", padx=8, pady=(8, 4))
     log = tk.Text(root, height=16, wrap="word")

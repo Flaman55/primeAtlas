@@ -32,6 +32,7 @@ from primeatlas.rings.ring_viz.shaders import (
 )
 from primeatlas.rings.ring_viz.geometry_draw import unit_circle_vertices, axis_boundary_marker_vertices
 from primeatlas.rings.ring_viz.hud import _PIL_AVAILABLE
+from primeatlas.core.app_icon import glfw_icon_images, set_app_user_model_id
 
 
 class GLResources:
@@ -99,10 +100,19 @@ def setup_gl_resources(args):
     glfw.window_hint(glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE)
     glfw.window_hint(glfw.OPENGL_FORWARD_COMPAT, True)
 
+    # A separate process from the GUI: set the same AppUserModelID before the window exists,
+    # so the taskbar shows the PrimeAtlas icon (grouped with the main window), not Python's.
+    set_app_user_model_id()
     window = glfw.create_window(args.width, args.height, "PrimeAtlas -- Ring visualization", None, None)
     if not window:
         glfw.terminate()
         raise RuntimeError("glfw.create_window() failed")
+    icon_images = glfw_icon_images()
+    if icon_images:
+        try:
+            glfw.set_window_icon(window, len(icon_images), icon_images)
+        except Exception:
+            pass  # cosmetic only
     glfw.make_context_current(window)
     glfw.swap_interval(0)  # uncapped, so the title FPS reflects real cost, not vsync
 

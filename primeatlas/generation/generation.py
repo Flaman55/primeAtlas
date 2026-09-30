@@ -1552,14 +1552,17 @@ class WslLoggedRunner:
 
 
 def build_pip_install_argv(package, upgrade=False):
-    """[sys.executable, -m, pip, install, --user, package] -- installs into the SAME
+    """[sys.executable, -m, pip, install, package] -- installs into the SAME
     Python environment this GUI process itself runs under (sys.executable, not a bare
-    "python"/"python3" on PATH, which could resolve to a different interpreter),
-    --user so no admin/venv-write permission is required. Used by the Settings tab's
+    "python"/"python3" on PATH, which could resolve to a different interpreter). No
+    --user: pip falls back to a user install by itself when site-packages isn't writable
+    (so still no admin rights needed), while the Windows installer's private Python keeps
+    its packages in its own site-packages -- same reasoning as
+    startup_dependency_check.build_pip_argv(). Used by the Settings tab's
     optional-library installer -- currently only sympy (see
     primeatlas/primality/primality.py's try_import_sympy()), kept general in case a future
     optional dependency needs the same treatment."""
-    argv = [sys.executable, "-m", "pip", "install", "--user"]
+    argv = [sys.executable, "-m", "pip", "install"]
     if upgrade:
         argv.append("--upgrade")
     argv.append(package)

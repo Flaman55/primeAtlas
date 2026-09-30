@@ -83,6 +83,18 @@ def _popen_kwargs_no_window():
     return kwargs
 
 
+def git_executable(repo_dir):
+    """The git binary to launch for this repo. The Windows installer
+    (installer/PrimeAtlasSetup.iss) puts a portable MinGit at <install>/git, next to
+    <install>/app (this repo) -- NOT on PATH, so a bare "git" would miss it and every
+    installed machine would report git-not-found. That private copy wins when present
+    (installer-controlled, known-good version); otherwise plain "git" from PATH, exactly
+    as before for a hand-made clone."""
+    install_root = os.path.dirname(os.path.normpath(os.path.abspath(repo_dir)))
+    bundled = os.path.join(install_root, "git", "cmd", "git.exe")
+    return bundled if os.path.isfile(bundled) else "git"
+
+
 def _run_git(args, cwd, timeout=30):
     """Thin, mockable wrapper around a single `git` invocation. Returns
     (returncode, stdout, stderr). returncode is None on total launch failure (git itself
@@ -91,7 +103,7 @@ def _run_git(args, cwd, timeout=30):
     the caller inspects, same convention as env_setup.py's _run_windows()."""
     try:
         result = subprocess.run(
-            ["git"] + args, cwd=cwd, capture_output=True, text=True, timeout=timeout,
+            [git_executable(cwd)] + args, cwd=cwd, capture_output=True, text=True, timeout=timeout,
             **_popen_kwargs_no_window())
         return result.returncode, result.stdout, result.stderr
     except FileNotFoundError:
