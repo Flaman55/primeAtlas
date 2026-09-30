@@ -345,7 +345,12 @@ def _build_install_ps1_text(distro, need_features=True, need_distro=True, need_p
         '$ErrorActionPreference = "Continue"',
         '$LogPath = $PSCommandPath + ".log"',
         'if (Test-Path $LogPath) { Remove-Item $LogPath -Force }',
+        # wsl.exe writes UTF-16: newer builds switch to UTF-8 with WSL_UTF8=1; for the rest
+        # (e.g. Windows 10's inbox wsl.exe) Log drops the NULs that UTF-16 leaves in every
+        # captured line, so the wizard shows "Installing", not "I n s t a l l i n g".
+        '$env:WSL_UTF8 = "1"',
         'function Log($msg) {',
+        '    $msg = "$msg" -replace "`0", ""',
         '    Write-Output $msg',
         '    Add-Content -Path $LogPath -Value $msg -Encoding UTF8',
         '}',
@@ -378,6 +383,19 @@ def _build_install_ps1_text(distro, need_features=True, need_distro=True, need_p
         lines.append('}')
         lines.append('')
     if need_distro:
+        # Windows 10's INBOX wsl.exe (seen on a real fresh 22H2 machine, 2026-09-30) has no
+        # kernel yet ("The WSL 2 kernel file is not found ... run 'wsl --update'") and its
+        # `--install` accepts only -d, not --no-launch. `--update --web-download` -- which
+        # the inbox wsl.exe also supports -- installs the current WSL + kernel straight
+        # from the web, bypassing the Microsoft Store (often disabled or blocked); after it,
+        # wsl.exe understands --no-launch. On an already-current WSL it is a no-op.
+        lines.append('Log "STEP:wsl_update"')
+        lines.append('& wsl.exe --update --web-download 2>&1 | ForEach-Object { Log $_ }')
+        lines.append('if ($LASTEXITCODE -ne 0) {')
+        lines.append('    Log "WSL_UPDATE_FAILED:$LASTEXITCODE"')
+        lines.append('    exit 1')
+        lines.append('}')
+        lines.append('')
         lines.append('Log "STEP:wsl_install"')
         lines.append(f'$wslInstallOutput = & wsl.exe --install -d {distro} --no-launch 2>&1')
         lines.append('$wslInstallOutput | ForEach-Object { Log $_ }')

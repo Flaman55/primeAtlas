@@ -66,7 +66,7 @@ Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern dynamic windows11
 UninstallDisplayName={#AppName}
-UninstallDisplayIcon={app}\app\primeatlas\core\assets\primeatlas.ico
+UninstallDisplayIcon={app}\primeatlas.ico
 SetupIconFile=..\primeatlas\core\assets\primeatlas.ico
 SetupLogging=yes
 
@@ -111,11 +111,14 @@ Name: "startmenuicon"; Description: "{cm:TaskStartMenu}"; GroupDescription: "{cm
 [Files]
 ; Extracted, SHA-256-verified runtimes prepared by build_installer.py.
 Source: "vendor\python\*"; DestDir: "{app}\python"; Excludes: ".extracted-from-sha256"; Flags: recursesubdirs createallsubdirs ignoreversion
+; The installer's own copy of the icon: [Icons] runs BEFORE ssPostInstall clones the repo, so
+; shortcuts pointing into {app}\app got a blank icon on a fresh install (2026-09-30).
+Source: "..\primeatlas\core\assets\primeatlas.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "vendor\git\*"; DestDir: "{app}\git"; Excludes: ".extracted-from-sha256"; Flags: recursesubdirs createallsubdirs ignoreversion
 
 [Icons]
-Name: "{autodesktop}\{#AppName}"; Filename: "{app}\python\pythonw.exe"; Parameters: """{app}\app\prime_atlas_v1.py"""; WorkingDir: "{app}\app"; IconFilename: "{app}\app\primeatlas\core\assets\primeatlas.ico"; AppUserModelID: "Flaman55.PrimeAtlas"; Tasks: desktopicon
-Name: "{autoprograms}\{#AppName}"; Filename: "{app}\python\pythonw.exe"; Parameters: """{app}\app\prime_atlas_v1.py"""; WorkingDir: "{app}\app"; IconFilename: "{app}\app\primeatlas\core\assets\primeatlas.ico"; AppUserModelID: "Flaman55.PrimeAtlas"; Tasks: startmenuicon
+Name: "{autodesktop}\{#AppName}"; Filename: "{app}\python\pythonw.exe"; Parameters: """{app}\app\prime_atlas_v1.py"""; WorkingDir: "{app}\app"; IconFilename: "{app}\primeatlas.ico"; AppUserModelID: "Flaman55.PrimeAtlas"; Tasks: desktopicon
+Name: "{autoprograms}\{#AppName}"; Filename: "{app}\python\pythonw.exe"; Parameters: """{app}\app\prime_atlas_v1.py"""; WorkingDir: "{app}\app"; IconFilename: "{app}\primeatlas.ico"; AppUserModelID: "Flaman55.PrimeAtlas"; Tasks: startmenuicon
 
 [Run]
 Filename: "{app}\python\pythonw.exe"; Parameters: """{app}\app\prime_atlas_v1.py"""; WorkingDir: "{app}\app"; Description: "{cm:LaunchApp}"; Flags: postinstall nowait skipifsilent; Check: AppInstalled
