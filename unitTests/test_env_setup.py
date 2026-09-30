@@ -187,6 +187,25 @@ def section_a():
           "a silent exit")
     check("WSL_INSTALL_FAILED" in script and "$wslInstallOutput | ForEach-Object { Log $_ }" in script,
           "wsl --install's own output is logged before its exit code is judged")
+    # Second run on that machine: Windows 10's INBOX wsl.exe -- no --version, `--install`
+    # accepts only -d (no --no-launch), and `wsl --status` says "The WSL 2 kernel file is
+    # not found ... run 'wsl --update'". `wsl --update --web-download` (supported by the
+    # inbox wsl.exe too) installs the current WSL + kernel straight from the web, bypassing
+    # the Microsoft Store; afterwards wsl.exe understands --no-launch. On an up-to-date WSL
+    # it is a no-op.
+    for label, s in (("full", script),
+                     ("distro-only", es._build_install_ps1_text(
+                         "Ubuntu", need_features=False, need_distro=True, need_packages=False))):
+        update_idx = s.find("wsl.exe --update --web-download")
+        install_idx = s.find("wsl.exe --install")
+        check(update_idx != -1 and update_idx < install_idx,
+              f"{label} script: `wsl --update --web-download` runs before `wsl --install`")
+        check("WSL_UPDATE_FAILED" in s and s.find("WSL_UPDATE_FAILED") < install_idx,
+              f"{label} script: a failed update stops with WSL_UPDATE_FAILED, before install")
+    packages_only_script = es._build_install_ps1_text(
+        "Ubuntu", need_features=False, need_distro=False, need_packages=True)
+    check("--update" not in packages_only_script,
+          "no WSL update when only the apt packages are missing (WSL already works)")
 
 
 # ============================================================================================
