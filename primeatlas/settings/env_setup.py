@@ -335,14 +335,21 @@ def _build_install_ps1_text(distro, need_features=True, need_distro=True, need_p
     missed genuinely does already exist), the wsl_install step also inspects its own output
     text for ALREADY_EXISTS and treats that as a harmless no-op regardless of exit code,
     alongside the 1/2 tolerance."""
+    # NOT "Stop": Windows PowerShell 5.1 turns every stderr line a native exe prints under
+    # 2>&1 into an error record, and "Stop" makes that terminating -- on a real fresh
+    # Windows 10 machine (2026-09-30) wsl.exe's stderr killed the script with exit 1
+    # before a single line of its output or WSL_INSTALL_FAILED was logged. Every step
+    # below checks $LASTEXITCODE itself; the trap logs anything unexpected instead of
+    # letting it vanish.
     lines = [
-        '$ErrorActionPreference = "Stop"',
+        '$ErrorActionPreference = "Continue"',
         '$LogPath = $PSCommandPath + ".log"',
         'if (Test-Path $LogPath) { Remove-Item $LogPath -Force }',
         'function Log($msg) {',
         '    Write-Output $msg',
         '    Add-Content -Path $LogPath -Value $msg -Encoding UTF8',
         '}',
+        'trap { Log "SCRIPT_ERROR: $_"; exit 1 }',
         '',
     ]
     if need_features:
@@ -357,6 +364,14 @@ def _build_install_ps1_text(distro, need_features=True, need_distro=True, need_p
                 'if ($LASTEXITCODE -eq 3010 -or $LASTEXITCODE -eq 3011) { $restartNeeded = $true }')
             lines.append(
                 f'elseif ($LASTEXITCODE -ne 0) {{ Log "FEATURE_ENABLE_FAILED:{name}:$LASTEXITCODE"; exit 1 }}')
+        # dism's 3010/3011 alone is not trusted: on that same fresh Windows 10 machine both
+        # enables reported plain success, no restart was flagged, and wsl --install then ran
+        # before the reboot it needs. Windows' own feature state is the ground truth --
+        # EnablePending means enabled but not active until a restart.
+        for name in REQUIRED_WINDOWS_FEATURES:
+            lines.append(f'$state = (Get-WindowsOptionalFeature -Online -FeatureName {name}).State')
+            lines.append(f'Log "FEATURE_STATE:{name}:$state"')
+            lines.append('if ("$state" -eq "EnablePending") { $restartNeeded = $true }')
         lines.append('if ($restartNeeded) {')
         lines.append('    Log "RESTART_REQUIRED"')
         lines.append('    exit 3010')

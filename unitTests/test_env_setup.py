@@ -164,6 +164,30 @@ def section_a():
           f"with nothing needed the script must still be well-formed (just does nothing) "
           f"(got {nothing_needed!r})")
 
+    # Real fresh-machine run (Artur, Windows 10 22H2, 2026-09-30): both dism enable steps
+    # printed "The operation completed successfully.", the script went straight on to
+    # STEP:wsl_install (no RESTART_REQUIRED) and then died with exit code 1 without logging
+    # a single line of wsl.exe output or its own WSL_INSTALL_FAILED marker.
+    #  (1) restart detection must not rest on dism's exit code alone: after enabling, ask
+    #      Windows for each feature's state -- "EnablePending" means a reboot is needed.
+    check("Get-WindowsOptionalFeature" in script and "EnablePending" in script,
+          "restart detection also checks each feature's state for EnablePending after "
+          "enabling, not only dism's 3010/3011 exit code")
+    pending_idx = script.find("EnablePending")
+    wsl_idx = script.find("STEP:wsl_install")
+    check(pending_idx != -1 and pending_idx < script.find("exit 3010") < wsl_idx,
+          "the EnablePending check leads to exit 3010 BEFORE the wsl_install step")
+    #  (2) Windows PowerShell 5.1 turns native stderr lines captured with 2>&1 into error
+    #      records, which $ErrorActionPreference = "Stop" makes terminating -- the script
+    #      then exits 1 before logging anything. Every step checks $LASTEXITCODE itself.
+    check('$ErrorActionPreference = "Stop"' not in script,
+          "the script never runs native commands under ErrorActionPreference Stop")
+    check("trap" in script and "SCRIPT_ERROR" in script,
+          "any unexpected terminating error is logged (SCRIPT_ERROR) before exit 1, never "
+          "a silent exit")
+    check("WSL_INSTALL_FAILED" in script and "$wslInstallOutput | ForEach-Object { Log $_ }" in script,
+          "wsl --install's own output is logged before its exit code is judged")
+
 
 # ============================================================================================
 # Section B -- check_environment()
