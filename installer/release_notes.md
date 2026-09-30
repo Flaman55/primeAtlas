@@ -1,26 +1,3 @@
-## Polski
-
-**PrimeAtlas 1.0.0** — pierwsze wydanie z instalatorem dla Windows.
-
-PrimeAtlas to aplikacja do generowania, przeglądania i badania liczb pierwszych: magazyn liczb pierwszych i konstelacji, zakładki badawcze (Goldbach, kwadraty, wielomiany, luki, przybliżenia π(x)) oraz wizualizacja pierścieni na GPU.
-
-### Instalacja
-1. Pobierz **PrimeAtlasSetup.exe** (poniżej, w sekcji *Assets*) i uruchom go. Nie są potrzebne uprawnienia administratora ani wcześniej zainstalowany Python czy git.
-2. Windows może pokazać ostrzeżenie *„System Windows ochronił ten komputer”*, bo instalator nie jest podpisany cyfrowo. Kliknij **Więcej informacji → Uruchom mimo to**.
-3. Wybierz katalog instalacji (domyślnie `%LOCALAPPDATA%\PrimeAtlas`; musi być pusty albo zawierać wcześniejszą instalację PrimeAtlas) oraz czy utworzyć skróty na pulpicie i w menu Start.
-
-Instalator zawiera własnego Pythona 3.13 i gita (nie ingeruje w programy już zainstalowane na komputerze), pobiera PrimeAtlas z GitHuba i instaluje potrzebne pakiety (numpy, moderngl, glfw) — podczas instalacji wymagane jest połączenie z internetem.
-
-### Warto wiedzieć
-- **Aktualizacje:** Ustawienia → Aktualizacje sprawdza i pobiera nowe wersje z GitHuba.
-- **Generowanie danych** wymaga WSL (Windows Subsystem for Linux) — przy pierwszym uruchomieniu kreator zaproponuje jego konfigurację. Samo przeglądanie danych działa bez WSL.
-- **Deinstalacja** (Ustawienia systemu → Aplikacje) pyta, czy usunąć wygenerowane dane; domyślnie je zostawia.
-- Wymagania: Windows 10/11, 64-bit.
-
-Licencja: PolyForm Noncommercial 1.0.0 (użytek niekomercyjny) — zob. `LICENSE.md` i `NOTICE.md`.
-
----
-
 ## English
 
 **PrimeAtlas 1.0.0** — the first release with a Windows installer.
@@ -41,3 +18,26 @@ The installer carries its own Python 3.13 and git (it does not touch programs al
 - Requirements: Windows 10/11, 64-bit.
 
 License: PolyForm Noncommercial 1.0.0 (noncommercial use) — see `LICENSE.md` and `NOTICE.md`.
+
+---
+
+## Polski
+
+**PrimeAtlas 1.0.0** — pierwsze wydanie z instalatorem dla Windows.
+
+PrimeAtlas to aplikacja do generowania, przeglądania i badania liczb pierwszych: magazyn liczb pierwszych i konstelacji, zakładki badawcze (Goldbach, kwadraty, wielomiany, luki, przybliżenia π(x)) oraz wizualizacja pierścieni na GPU.
+
+### Instalacja
+1. Pobierz **PrimeAtlasSetup.exe** (poniżej, w sekcji *Assets*) i uruchom go. Nie są potrzebne uprawnienia administratora ani wcześniej zainstalowany Python czy git.
+2. Windows może pokazać ostrzeżenie *„System Windows ochronił ten komputer”*, bo instalator nie jest podpisany cyfrowo. Kliknij **Więcej informacji → Uruchom mimo to**.
+3. Wybierz katalog instalacji (domyślnie `%LOCALAPPDATA%\PrimeAtlas`; musi być pusty albo zawierać wcześniejszą instalację PrimeAtlas) oraz czy utworzyć skróty na pulpicie i w menu Start.
+
+Instalator zawiera własnego Pythona 3.13 i gita (nie ingeruje w programy już zainstalowane na komputerze), pobiera PrimeAtlas z GitHuba i instaluje potrzebne pakiety (numpy, moderngl, glfw) — podczas instalacji wymagane jest połączenie z internetem.
+
+### Warto wiedzieć
+- **Aktualizacje:** Ustawienia → Aktualizacje sprawdza i pobiera nowe wersje z GitHuba.
+- **Generowanie danych** wymaga WSL (Windows Subsystem for Linux) — przy pierwszym uruchomieniu kreator zaproponuje jego konfigurację. Samo przeglądanie danych działa bez WSL.
+- **Deinstalacja** (Ustawienia systemu → Aplikacje) pyta, czy usunąć wygenerowane dane; domyślnie je zostawia.
+- Wymagania: Windows 10/11, 64-bit.
+
+Licencja: PolyForm Noncommercial 1.0.0 (użytek niekomercyjny) — zob. `LICENSE.md` i `NOTICE.md`.
