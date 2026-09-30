@@ -46,4 +46,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    import prime_sieve_primesieve
+    from _native_skip import exit_if_skipped
+    exit_if_skipped([prime_sieve_primesieve._load_lib])
     raise SystemExit(main())

@@ -226,22 +226,47 @@ def _patch_app_settings(app_settings):
     """Neuters persistence so this test's many _on_open() calls (each now also writing
     ring_viz_params, see rings_tab.py's own doc-comment) never touch the real
     primeatlas/locales/app_settings.json -- same convention as every other tab test
-    file's own _patch_app_settings (e.g. test_primes_tab.py)."""
+    file's own _patch_app_settings (e.g. test_primes_tab.py).
+
+    Also drops the in-memory ring_viz_params READ from that real file: RingsTab
+    pre-fills its fields (Track P, Auto orbit, load range...) from them, so whatever the
+    person last used in the real app leaked into this test's "empty field -> no flag"
+    checks and made the failure count vary run to run (2026-10-01). Nothing is written
+    back -- save() is neutered above."""
     app_settings.save = lambda: None
+    app_settings._data.pop("ring_viz_params", None)
 
 
-def _write_fake_renderer(exit_code):
+def _stub_app_update_check():
+    """Settings > Updates starts a background `check_for_update()` (GitHub API / git
+    fetch) when the app is built. In this test that meant network access, and its worker
+    thread's self.after() raised "main thread is not in main loop" -- this test drives Tk
+    with update() instead of mainloop(), and Tkinter only accepts calls from other threads
+    while mainloop() runs. The check is unrelated to the Rings tab, so it is not started."""
+    from primeatlas.settings.settings_tab import SettingsTab
+    SettingsTab._check_for_app_update = lambda self, *a, **k: None
+
+
+def _write_fake_renderer(exit_code, linger_seconds=0.5):
     """A stand-in for primeatlas/rings/ring_viz/renderer.py that never touches moderngl/glfw
     -- just proves the real subprocess round trip (launch, live stdout lines, exit
     code) works, independent of anything GPU/display-related. Ignores its argv
     entirely (real renderer.py's own argv contract is covered separately by
-    _test_build_renderer_argv above)."""
+    _test_build_renderer_argv above).
+
+    It lingers linger_seconds before exiting, like a real renderer window staying open:
+    a fake that exited instantly could finish -- and have its exit drained by
+    _on_open()'s own synchronous _poll_queue() -- before _on_open() even returned under
+    CPU load, so "button disabled right after launch" and "argv of tab._runner" checks
+    saw an already-reset tab and failed at random (2026-10-01, reproduced by running
+    three copies of this test in parallel)."""
     fd, path = tempfile.mkstemp(suffix="_fake_renderer.py")
     with os.fdopen(fd, "w") as f:
         f.write(
-            "import sys\n"
-            "print('fake renderer: loading archive...')\n"
-            "print('fake renderer: ready')\n"
+            "import sys, time\n"
+            "print('fake renderer: loading archive...', flush=True)\n"
+            "print('fake renderer: ready', flush=True)\n"
+            f"time.sleep({linger_seconds})\n"
             f"sys.exit({exit_code})\n"
         )
     return path
@@ -252,6 +277,45 @@ def _pump(app, seconds):
     while time.time() < deadline:
         app.update()
         time.sleep(0.02)
+
+
+_LAUNCHED_ARGV = []
+
+
+def _install_launch_recorder(rings_tab_module):
+    """Records each renderer argv the moment RingsTab creates its LocalLoggedRunner.
+    Reading tab._runner.cmd AFTER _on_open() returned raced the fake renderer: under
+    heavy CPU load the process could exit and _on_open()'s own synchronous
+    _poll_queue() drain it -- resetting tab._runner to None -- before the test looked,
+    so these argv checks saw [] at random. Recording at construction time does not
+    depend on how long the process lives."""
+    real_runner = rings_tab_module.LocalLoggedRunner
+
+    class _RecordingRunner(real_runner):
+        def __init__(self, cmd, *args, **kwargs):
+            _LAUNCHED_ARGV.append(list(cmd))
+            super().__init__(cmd, *args, **kwargs)
+
+    rings_tab_module.LocalLoggedRunner = _RecordingRunner
+
+
+def _open_and_capture(tab):
+    """tab._on_open(), returning the argv it launched ([] if it launched nothing)."""
+    _LAUNCHED_ARGV.clear()
+    tab._on_open()
+    return _LAUNCHED_ARGV[-1] if _LAUNCHED_ARGV else []
+
+
+def _pump_until_idle(app, tab, timeout=30.0):
+    """Pumps Tk until the launched (fake) renderer has exited and its exit has been
+    drained (tab._runner back to None), then a short settle. Replaces a fixed 3 s wait,
+    which under CPU load (full suite, parallel runs) ended before a fake process had even
+    started up."""
+    deadline = time.time() + timeout
+    while tab._runner is not None and time.time() < deadline:
+        app.update()
+        time.sleep(0.02)
+    _pump(app, 0.2)
 
 
 def main():
@@ -265,6 +329,8 @@ def main():
     import prime_atlas_v1
     import primeatlas.rings.rings_tab as rings_tab_module
     _patch_app_settings(prime_atlas_v1.APP_SETTINGS)
+    _stub_app_update_check()
+    _install_launch_recorder(rings_tab_module)
     app_cls = prime_atlas_v1._build_gui()
     app = app_cls()
     app.update()
@@ -305,7 +371,7 @@ def main():
           "open button disabled immediately after launch")
     check(str(tab.stop_button["state"]) == "normal",
           "stop button enabled immediately after launch")
-    _pump(app, 3.0)
+    _pump_until_idle(app, tab)
     check(str(tab.open_button["state"]) == "normal",
           "open button re-enabled after the fake renderer process exits 0")
     check(str(tab.stop_button["state"]) == "disabled",
@@ -332,8 +398,7 @@ def main():
     tab.n_entry.delete(0, "end")
     tab.n_entry.insert(0, "500")
     shown.clear()
-    tab._on_open()
-    launched_cmd = list(tab._runner.cmd) if tab._runner is not None else []
+    launched_cmd = _open_and_capture(tab)
     check("--track-primes" in launched_cmd and
           launched_cmd[launched_cmd.index("--track-primes") + 1] == "2,3,5",
           f"Track P field's comma-separated value reaches the launched argv, "
@@ -341,7 +406,7 @@ def main():
     check("--auto-orbit" in launched_cmd,
           f"checked Auto orbit checkbox adds --auto-orbit to the launched argv "
           f"(got argv: {launched_cmd!r})")
-    _pump(app, 3.0)
+    _pump_until_idle(app, tab)
     os.remove(fake_ok_script2)
     tab.track_primes_entry.delete(0, "end")
     tab.auto_orbit_var.set(False)
@@ -387,13 +452,12 @@ def main():
     tab.n_entry.delete(0, "end")
     tab.n_entry.insert(0, "500")
     shown.clear()
-    tab._on_open()
-    launched_cmd = list(tab._runner.cmd) if tab._runner is not None else []
+    launched_cmd = _open_and_capture(tab)
     check("--load-range" in launched_cmd and
           launched_cmd[launched_cmd.index("--load-range") + 1] == "100,500",
           f"range mode with both From/To fields filled in reaches the launched argv as "
           f"--load-range FROM,TO (got argv: {launched_cmd!r})")
-    _pump(app, 3.0)
+    _pump_until_idle(app, tab)
     os.remove(fake_ok_script3)
 
     # Range mode with one field blank/invalid now fails LOUDLY (an error
@@ -428,12 +492,11 @@ def main():
     tab.n_entry.delete(0, "end")
     tab.n_entry.insert(0, "500")
     shown.clear()
-    tab._on_open()
-    launched_cmd = list(tab._runner.cmd) if tab._runner is not None else []
+    launched_cmd = _open_and_capture(tab)
     check("--load-range" not in launched_cmd,
           f"sequential mode ignores a leftover From/To in the (now disabled) range fields "
           f"entirely -- no --load-range (got argv: {launched_cmd!r})")
-    _pump(app, 3.0)
+    _pump_until_idle(app, tab)
     os.remove(fake_ok_script3b)
     tab.load_range_from_entry.configure(state="normal")
     tab.load_range_from_entry.delete(0, "end")
@@ -463,12 +526,11 @@ def main():
     tab.n_entry.delete(0, "end")
     tab.n_entry.insert(0, "500")
     shown.clear()
-    tab._on_open()
-    launched_cmd = list(tab._runner.cmd) if tab._runner is not None else []
+    launched_cmd = _open_and_capture(tab)
     check("--slide-load-range" in launched_cmd,
           f"range mode with the sliding-window checkbox checked reaches the launched argv as "
           f"--slide-load-range (got argv: {launched_cmd!r})")
-    _pump(app, 3.0)
+    _pump_until_idle(app, tab)
     os.remove(fake_ok_script_slide1)
 
     # Switch BACK to sequential mode WITHOUT touching the checkbox itself
@@ -483,12 +545,11 @@ def main():
     tab.n_entry.delete(0, "end")
     tab.n_entry.insert(0, "500")
     shown.clear()
-    tab._on_open()
-    launched_cmd = list(tab._runner.cmd) if tab._runner is not None else []
+    launched_cmd = _open_and_capture(tab)
     check("--slide-load-range" not in launched_cmd,
           f"sequential mode ignores a leftover checked sliding-window checkbox entirely -- "
           f"no --slide-load-range (got argv: {launched_cmd!r})")
-    _pump(app, 3.0)
+    _pump_until_idle(app, tab)
     os.remove(fake_ok_script_slide2)
     tab.slide_load_range_var.set(False)
     tab.load_range_from_entry.configure(state="normal")
@@ -538,14 +599,13 @@ def main():
     tab.n_entry.delete(0, "end")
     tab.n_entry.insert(0, "500")
     shown.clear()
-    tab._on_open()
-    launched_cmd = list(tab._runner.cmd) if tab._runner is not None else []
+    launched_cmd = _open_and_capture(tab)
     check("--general-law-mode" in launched_cmd and launched_cmd[launched_cmd.index("--general-law-mode") + 1] == "bertrand",
           f"General Law set to bertrand reaches the launched argv as --general-law-mode bertrand "
           f"(got argv: {launched_cmd!r})")
     check("--general-law-theta" in launched_cmd and launched_cmd[launched_cmd.index("--general-law-theta") + 1] == "1.0",
           f"General Law set to bertrand forwards the locked theta=1 (got argv: {launched_cmd!r})")
-    _pump(app, 3.0)
+    _pump_until_idle(app, tab)
     os.remove(fake_ok_script_gl)
     tab.general_law_mode_combo.set("stepped")
     tab._on_general_law_mode_changed()
@@ -565,13 +625,12 @@ def main():
     tab.n_entry.delete(0, "end")
     tab.n_entry.insert(0, "500")
     shown.clear()
-    tab._on_open()
-    launched_cmd = list(tab._runner.cmd) if tab._runner is not None else []
+    launched_cmd = _open_and_capture(tab)
     check("--max-load-count" in launched_cmd and
           launched_cmd[launched_cmd.index("--max-load-count") + 1] == "1000",
           f"Max load count field reaches the launched argv as --max-load-count "
           f"(got argv: {launched_cmd!r})")
-    _pump(app, 3.0)
+    _pump_until_idle(app, tab)
     os.remove(fake_ok_script5)
 
     # A non-numeric value must NOT crash the GUI thread -- silent fallback to
@@ -584,12 +643,11 @@ def main():
     tab.n_entry.delete(0, "end")
     tab.n_entry.insert(0, "500")
     shown.clear()
-    tab._on_open()
-    launched_cmd = list(tab._runner.cmd) if tab._runner is not None else []
+    launched_cmd = _open_and_capture(tab)
     check("--max-load-count" not in launched_cmd,
           f"a non-numeric Max load count value omits --max-load-count entirely, "
           f"does not raise (got argv: {launched_cmd!r})")
-    _pump(app, 3.0)
+    _pump_until_idle(app, tab)
     os.remove(fake_ok_script6)
     tab.max_load_count_entry.delete(0, "end")
     tab.load_range_from_entry.delete(0, "end")
@@ -605,11 +663,10 @@ def main():
     tab.n_entry.delete(0, "end")
     tab.n_entry.insert(0, "500")
     shown.clear()
-    tab._on_open()
-    launched_cmd = list(tab._runner.cmd) if tab._runner is not None else []
+    launched_cmd = _open_and_capture(tab)
     check("--tempo-ms" in launched_cmd and launched_cmd[launched_cmd.index("--tempo-ms") + 1] == "250",
           f"Tempo field reaches the launched argv as --tempo-ms (got argv: {launched_cmd!r})")
-    _pump(app, 3.0)
+    _pump_until_idle(app, tab)
     os.remove(fake_ok_script7)
 
     fake_ok_script8 = _write_fake_renderer(0)
@@ -618,12 +675,11 @@ def main():
     tab.n_entry.delete(0, "end")
     tab.n_entry.insert(0, "500")
     shown.clear()
-    tab._on_open()
-    launched_cmd = list(tab._runner.cmd) if tab._runner is not None else []
+    launched_cmd = _open_and_capture(tab)
     check("--tempo-ms" not in launched_cmd,
           f"an empty Tempo field omits --tempo-ms entirely, does not raise "
           f"(got argv: {launched_cmd!r})")
-    _pump(app, 3.0)
+    _pump_until_idle(app, tab)
     os.remove(fake_ok_script8)
     tab.tempo_ms_entry.insert(0, "120")
 
@@ -665,7 +721,7 @@ def main():
     tab.n_entry.insert(0, "500")
     shown.clear()
     tab._on_open()
-    _pump(app, 3.0)
+    _pump_until_idle(app, tab)
     hud_text2 = tab.hud_var.get()
     check("42" in hud_text2, f"HUD panel updated from a real subprocess's HUD_STATE stdout line (got {hud_text2!r})")
     console_text2 = tab.console.text.get("1.0", "end")
@@ -704,7 +760,7 @@ def main():
     check(tab.n_entry.get() == "777",
           f"Reset does NOT overwrite the N field -- the user's own last-entered "
           f"value survives a Reset click (got {tab.n_entry.get()!r})")
-    _pump(app, 3.0)
+    _pump_until_idle(app, tab)
     check(str(tab.open_button["state"]) == "normal",
           "Reset also stops the running process, same as the old Stop button")
     check(tab.n_entry.get() == "777",
@@ -844,7 +900,7 @@ def main():
           "subprocess's own (async) exit to be drained from the queue")
     check(str(tab._bertrand_check["state"]) == "normal",
           "Reset re-enables checkboxes synchronously too")
-    _pump(app, 3.0)  # drain the exit so the next launch starts from a clean queue
+    _pump_until_idle(app, tab)  # drain the exit so the next launch starts from a clean queue
     os.remove(fake_pause_script)
 
     # --- failure path: real subprocess, fake renderer script, exit 1 ----------------
@@ -853,7 +909,7 @@ def main():
     tab.n_entry.delete(0, "end")
     tab.n_entry.insert(0, "500")
     tab._on_open()
-    _pump(app, 3.0)
+    _pump_until_idle(app, tab)
     check(str(tab.open_button["state"]) == "normal",
           "open button re-enabled after the fake renderer process exits nonzero")
     console_text = tab.console.text.get("1.0", "end")

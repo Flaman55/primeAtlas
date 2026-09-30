@@ -627,6 +627,16 @@ class _FakePopen:
         raise AssertionError("communicate() must NEVER be called -- same reasoning as wait()")
 
 
+def _wsl_path_to_local(path):
+    """Inverse of env_setup._windows_path_to_wsl() for /mnt/<drive>/... paths; anything
+    else (a POSIX path on Linux) is returned unchanged."""
+    import re as _re
+    m = _re.match(r"^/mnt/([a-zA-Z])/(.*)$", path)
+    if not m:
+        return path
+    return m.group(1).upper() + ":" + os.sep + m.group(2).replace("/", os.sep)
+
+
 def section_d():
     print("\n--- Section D: _run_inside_wsl_blocking() Popen()+poll() loop ---")
     from primeatlas.settings import env_setup as es
@@ -654,20 +664,19 @@ def section_d():
         check(m is not None, f"bash -c command must contain the expected redirect shape "
                               f"(got {bash_cmd!r})")
         log_wsl, exit_wsl = m.group(1), m.group(2)
-        # Map /mnt/<drive>/... back to a real local path under scratch_dir for this fake --
-        # simplest correct approach: since _windows_path_to_wsl(scratch_dir/...) always
-        # produces /mnt/<drive>/rest, and this test doesn't run on Windows, just write to
-        # the ORIGINAL (pre-mapping) Windows-style paths the function itself used.
-        written["log_wsl"] = log_wsl
-        written["exit_wsl"] = exit_wsl
+        # The function hands WSL-style paths to bash. On Linux (where this test was first
+        # written) a POSIX scratch path passes through unchanged; on Windows it becomes
+        # /mnt/<drive>/..., which Windows' open() cannot reach -- the test then failed with
+        # (None, "") because the OSError from writing the fake output was swallowed by the
+        # function's own `except OSError`. Map back to the real local file either way.
+        written["log_wsl"] = _wsl_path_to_local(log_wsl)
+        written["exit_wsl"] = _wsl_path_to_local(exit_wsl)
         return _FakePopen([None, 0])
 
     es.subprocess.Popen = fake_popen
     try:
-        # On this Linux sandbox _windows_path_to_wsl() only rewrites an actual "X:\..."
-        # drive path -- a plain POSIX scratch_dir path passes through with backslashes
-        # (none present) unchanged, so log_wsl/exit_wsl above are the SAME real paths
-        # _run_inside_wsl_blocking generated, writable directly.
+        # written[...] holds the LOCAL paths (see _wsl_path_to_local above), so the
+        # fake output files land exactly where _run_inside_wsl_blocking reads them.
         returncode_holder = {}
 
         def run_and_capture():
