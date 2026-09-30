@@ -27,6 +27,7 @@ import tempfile
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(_SCRIPT_DIR)
 sys.path.insert(0, _REPO_ROOT)
+sys.path.insert(0, os.path.join(_REPO_ROOT, "prime_sieve"))  # primeatlas/__init__ needs it
 
 import startup_dependency_check as sdc  # noqa: E402
 
@@ -96,9 +97,19 @@ def section_a():
     # site-packages isn't writable (system Python), while the installer's private Python
     # and venvs get the packages in their own site-packages -- a forced --user would put
     # them into %APPDATA%\Python\PythonXY, shared with every other Python of that version.
+    # --no-warn-script-location: pip's "is Scripts\ on PATH?" check calls Path.resolve() on
+    # EVERY PATH entry; on Artur's machine (2026-10-01) one of them (OpenAI Codex's bin, a
+    # redirection point) made Windows raise WinError 448 "untrusted mount point" and pip
+    # aborted the whole install. The flag skips that scan -- the installer always used it.
     argv = sdc.build_pip_argv("C:\\Py\\python.exe", ["numpy", "glfw"])
-    check(argv == ["C:\\Py\\python.exe", "-m", "pip", "install", "numpy", "glfw"],
-          f"pip argv never forces --user (got {argv!r})")
+    check(argv == ["C:\\Py\\python.exe", "-m", "pip", "install", "--disable-pip-version-check",
+                   "--no-warn-script-location", "numpy", "glfw"],
+          f"pip argv never forces --user and never scans PATH (got {argv!r})")
+    from primeatlas.generation.generation import build_pip_install_argv
+    sympy_argv = build_pip_install_argv("sympy")
+    check("--no-warn-script-location" in sympy_argv and "--user" not in sympy_argv
+          and sympy_argv[-1] == "sympy",
+          f"the Settings tab's sympy installer skips the PATH scan too (got {sympy_argv!r})")
 
     with tempfile.TemporaryDirectory() as tmp:
         saved = os.path.join(tmp, "language_settings.json")
@@ -200,7 +211,8 @@ def section_b():
     check(r.run() is True, "accepted + pip succeeds => app starts")
     check(r.kinds() == ["ask", "install", "refresh"],
           f"install then refresh import paths BEFORE re-checking (calls {r.kinds()})")
-    check(r.calls[1][1] == ("PY", "-m", "pip", "install", "numpy", "moderngl", "glfw"),
+    check(r.calls[1][1] == ("PY", "-m", "pip", "install", "--disable-pip-version-check",
+                            "--no-warn-script-location", "numpy", "moderngl", "glfw"),
           f"only the missing packages are installed, with the running interpreter "
           f"(got {r.calls[1][1]!r})")
 
@@ -213,7 +225,8 @@ def section_b():
     check(r.run() is False, "pip fails + numpy missing => app does not start")
     check(r.kinds()[-1] == "error", "pip failure shows an error")
     err = r.calls[-1][1]
-    check("PY -m pip install numpy moderngl glfw" in err,
+    check("PY -m pip install --disable-pip-version-check --no-warn-script-location "
+          "numpy moderngl glfw" in err,
           f"the error contains the exact manual command to run (got {err!r})")
 
     r = Recorder(ask_answer=True, install_rc=1)
