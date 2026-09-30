@@ -116,6 +116,25 @@ PRIMECOUNT_REPO_URL = "https://github.com/kimwalisch/primecount"
 PRIMESIEVE_REPO_URL = "https://github.com/kimwalisch/primesieve"
 
 
+# Widgets that scroll themselves on the mouse wheel through their own class bindings.
+_SELF_SCROLLING_WIDGETS = (tk.Text, tk.Listbox, ttk.Treeview)
+
+
+def event_over_own_scroller(event):
+    """True if a mouse-wheel event happened over (or inside) a widget that scrolls itself,
+    e.g. the sympy installer's ScrolledText log on Settings > Updates. The page-level wheel
+    handler must then leave the event alone: it is bound with bind_all while the pointer is
+    over the page canvas, so it ALSO fires for wheel events over those widgets, and scrolled
+    the whole page together with the log (Artur, 2026-10-01). event.widget can be a plain
+    string for Tk-internal windows (e.g. a combobox popdown) -- never raises."""
+    widget = getattr(event, "widget", None)
+    while widget is not None and not isinstance(widget, str):
+        if isinstance(widget, _SELF_SCROLLING_WIDGETS):
+            return True
+        widget = getattr(widget, "master", None)
+    return False
+
+
 class SettingsTab(BaseTab):
     MAX_STAGE_RETRIES = 2
 
@@ -2236,8 +2255,10 @@ class SettingsTab(BaseTab):
 
         Mouse-wheel scrolling is bound/unbound on Enter/Leave (not bind_all for the
         whole app's lifetime) so it only scrolls THIS canvas while the pointer is
-        over it, never fighting with e.g. the restore/libs ScrolledText widgets
-        packed inside, which have their own independent scrolling."""
+        over it. Enter/Leave alone does NOT keep it off the ScrolledText widgets packed
+        inside (restore/libs/sympy logs...) -- the pointer is still over the canvas
+        there -- so the handler also skips events over any self-scrolling widget, see
+        event_over_own_scroller()."""
         canvas = tk.Canvas(notebook_tab, highlightthickness=0)
         # ROOT CAUSE: Tk's Canvas defaults to yscrollincrement=0, which makes any
         # "scroll N units" call
@@ -2317,7 +2338,7 @@ class SettingsTab(BaseTab):
         canvas.bind("<Configure>", _on_canvas_configure)
 
         def _on_mousewheel(event):
-            if _content_fits():
+            if event_over_own_scroller(event) or _content_fits():
                 return
             scroll_state["user_scrolled"] = True
             canvas.yview_scroll(int(-3 * (event.delta / 120)), "units")

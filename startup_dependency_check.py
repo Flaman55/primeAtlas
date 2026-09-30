@@ -121,8 +121,14 @@ def build_pip_argv(executable, packages):
     writable (e.g. a system-wide Python), while the installer's private Python and venvs
     get the packages in their own site-packages -- forcing --user would instead put them
     into %APPDATA%/Python/PythonXY, shared with every other Python of that version
-    (and pip rejects --user inside a venv outright)."""
-    return [executable, "-m", "pip", "install"] + list(packages)
+    (and pip rejects --user inside a venv outright).
+
+    --no-warn-script-location: pip's "is the Scripts folder on PATH?" warning calls Path.resolve()
+    on every PATH entry; a redirection-point entry (OpenAI Codex's bin on Artur's machine)
+    made Windows raise WinError 448 "untrusted mount point" and pip abort the whole install
+    (2026-10-01). The Windows installer always passed this flag."""
+    return [executable, "-m", "pip", "install", "--disable-pip-version-check",
+            "--no-warn-script-location"] + list(packages)
 
 
 def resolve_language(saved_path=LANGUAGE_SETTINGS_PATH, os_locale=None):
@@ -279,7 +285,7 @@ def _tk_run_install(strings, argv):
     _apply_icon(root)
     root.title(strings["depcheck.title"])
     root.geometry("720x360")
-    packages = ", ".join(argv[4:])
+    packages = ", ".join(a for a in argv[4:] if not a.startswith("-"))
     tk.Label(root, text=strings["depcheck.installing"].format(packages=packages),
              anchor="w").pack(fill="x", padx=8, pady=(8, 4))
     log = tk.Text(root, height=16, wrap="word")

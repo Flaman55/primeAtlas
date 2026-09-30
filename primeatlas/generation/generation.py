@@ -1562,7 +1562,12 @@ def build_pip_install_argv(package, upgrade=False):
     optional-library installer -- currently only sympy (see
     primeatlas/primality/primality.py's try_import_sympy()), kept general in case a future
     optional dependency needs the same treatment."""
-    argv = [sys.executable, "-m", "pip", "install"]
+    # --no-warn-script-location: pip's "is the Scripts folder on PATH?" warning calls
+    # Path.resolve() on every PATH entry, and one redirection-point entry (OpenAI Codex's
+    # bin, on Artur's machine) made Windows raise WinError 448 and pip abort the install
+    # (2026-10-01).
+    argv = [sys.executable, "-m", "pip", "install", "--disable-pip-version-check",
+            "--no-warn-script-location"]
     if upgrade:
         argv.append("--upgrade")
     argv.append(package)
