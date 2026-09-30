@@ -207,6 +207,78 @@ def section_a():
     check("--update" not in packages_only_script,
           "no WSL update when only the apt packages are missing (WSL already works)")
 
+    # Third run: every run re-enabled both features via dism, because `wsl --status` fails
+    # while the WSL kernel is missing even though the features are on. The elevated script
+    # asks Windows itself and skips dism for an already-Enabled feature.
+    for name in es.REQUIRED_WINDOWS_FEATURES:
+        block = script[script.find(f"STEP:enable_feature:{name}"):]
+        check(block.find('-eq "Enabled"') != -1
+              and block.find('-eq "Enabled"') < block.find(f"/featurename:{name}"),
+              f"{name}: current state is checked first, dism only runs if not yet Enabled")
+    # ...and its Polish error came out as "Nie mo|na odnalez okre[lonego moduBu": wsl.exe
+    # writes UTF-16 ("z" with dot = bytes 7C 01), read byte-by-byte. Each native call now
+    # declares how PowerShell must decode it: UTF-16 for wsl.exe's own management
+    # commands, UTF-8 for Linux programs run inside the distro.
+    check("WSL_UTF8" not in script,
+          "no WSL_UTF8 (it would make newer wsl.exe emit UTF-8 where UTF-16 is expected)")
+    for marker, enc in (("wsl.exe --update", "Unicode"), ("wsl.exe --install", "Unicode"),
+                        ("-e bash -c", "UTF8")):
+        idx = script.find(marker)
+        before = script[:idx]
+        last_enc = before.rfind("[Console]::OutputEncoding = [System.Text.Encoding]::")
+        chosen = before[last_enc:].split("::")[-1].split()[0] if last_enc != -1 else None
+        check(idx != -1 and chosen == enc,
+              f"`{marker}` output is decoded as {enc} (got {chosen})")
+
+    # Friendly failure: the wizard must be able to tell WHICH step failed.
+    check(es.classify_install_failure("STEP:wsl_update\nWSL_UPDATE_FAILED:-1\n") == "wsl",
+          "WSL_UPDATE_FAILED => 'wsl' (Windows could not install WSL itself)")
+    check(es.classify_install_failure("STEP:wsl_install\nWSL_INSTALL_FAILED:5\n") == "wsl",
+          "WSL_INSTALL_FAILED => 'wsl'")
+    check(es.classify_install_failure("FEATURE_ENABLE_FAILED:VirtualMachinePlatform:5\n")
+          == "features", "FEATURE_ENABLE_FAILED => 'features'")
+    check(es.classify_install_failure("APT_INSTALL_FAILED:100\n") == "packages",
+          "APT_INSTALL_FAILED => 'packages'")
+    check(es.classify_install_failure("SCRIPT_ERROR: boom\n") == "script",
+          "SCRIPT_ERROR => 'script'")
+    check(es.classify_install_failure("") is None and es.classify_install_failure(None) is None,
+          "no marker => None")
+
+    # run_install() hands that classification to the wizard as failure_kind.
+    all_missing = {"all_ok": False, "checks": [
+        {"id": "wsl_present", "ok": False}, {"id": "distro_present", "ok": False},
+        {"id": "packages", "ok": False}]}
+    orig_run = es._run_elevated_ps1
+    tmp = tempfile.mkdtemp()
+    try:
+        es._run_elevated_ps1 = lambda p, timeout=1800: (1, "STEP:wsl_update\nWSL_UPDATE_FAILED:-1\n")
+        r = es.run_install(report=all_missing, work_dir=tmp)
+        check(r["ok"] is False and r.get("failure_kind") == "wsl",
+              f"run_install reports failure_kind='wsl' for a failed WSL update (got {r!r})")
+        es._run_elevated_ps1 = lambda p, timeout=1800: (None, "")
+        r = es.run_install(report=all_missing, work_dir=tmp)
+        check(r.get("failure_kind") == "elevation",
+              "a declined UAC prompt is failure_kind='elevation'")
+    finally:
+        es._run_elevated_ps1 = orig_run
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    # The wizard turns failure_kind into a plain-language hint (both languages): what went
+    # wrong, and that Atlas still works without WSL via Skip.
+    import json
+    locales = os.path.join(_REPO_ROOT, "primeatlas", "core", "locales")
+    for lang in ("pl", "en"):
+        with open(os.path.join(locales, f"strings_{lang}.json"), encoding="utf-8") as f:
+            strings = json.load(f)
+        for key in ("wizard.hint_wsl_failed", "wizard.hint_install_failed"):
+            check(key in strings, f"strings_{lang}.json defines {key}")
+    with open(os.path.join(_REPO_ROOT, "primeatlas", "settings", "env_setup_wizard.py"),
+              encoding="utf-8") as f:
+        wizard_src = f.read()
+    check('failure_kind' in wizard_src and "wizard.hint_wsl_failed" in wizard_src
+          and "wizard.hint_install_failed" in wizard_src,
+          "the wizard shows the hint matching failure_kind after a failed install")
+
 
 # ============================================================================================
 # Section B -- check_environment()
