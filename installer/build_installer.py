@@ -13,8 +13,10 @@ Steps:
      the single source of truth, also checked by unitTests/test_installer_script.py),
   2. download each ZIP into installer/vendor/ unless an already-downloaded copy has the
      right hash, verify sha256, refuse on mismatch,
-  3. extract to installer/vendor/python and installer/vendor/git (fresh every build),
-  4. run ISCC.exe (Inno Setup 6) on the script.
+  3. extract to installer/vendor/python and installer/vendor/git (skipped when a stamp file
+     shows that exact ZIP is already extracted),
+  4. run ISCC.exe (Inno Setup 6) on the script, passing /DAppVersion from
+     primeatlas/core/version.py (the app's single version number).
 
 Usage (Windows, from the repo root or anywhere):
     python installer/build_installer.py [--iscc PATH_TO_ISCC.exe]
@@ -33,12 +35,23 @@ import zipfile
 INSTALLER_DIR = os.path.dirname(os.path.abspath(__file__))
 ISS_PATH = os.path.join(INSTALLER_DIR, "PrimeAtlasSetup.iss")
 VENDOR_DIR = os.path.join(INSTALLER_DIR, "vendor")
+VERSION_PY = os.path.join(os.path.dirname(INSTALLER_DIR), "primeatlas", "core", "version.py")
 
 ISCC_CANDIDATES = (
     os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs", "Inno Setup 6", "ISCC.exe"),
     os.path.join(os.environ.get("ProgramFiles(x86)", ""), "Inno Setup 6", "ISCC.exe"),
     os.path.join(os.environ.get("ProgramFiles", ""), "Inno Setup 6", "ISCC.exe"),
 )
+
+
+def read_app_version(path=VERSION_PY):
+    """APP_VERSION from primeatlas/core/version.py, by regex -- importing the primeatlas
+    package would need numpy, which a build machine doesn't have to have."""
+    with open(path, encoding="utf-8") as f:
+        m = re.search(r'^APP_VERSION\s*=\s*"([^"]+)"', f.read(), re.MULTILINE)
+    if not m:
+        sys.exit(f"APP_VERSION not found in {path}")
+    return m.group(1)
 
 
 def read_defines(iss_text):
@@ -135,7 +148,9 @@ def main():
         extract_fresh(zip_path, sha, os.path.join(VENDOR_DIR, subdir))
 
     iscc = find_iscc(args.iscc)
-    result = subprocess.run([iscc, "/Q", ISS_PATH])
+    version = read_app_version()
+    print(f"version {version}")
+    result = subprocess.run([iscc, "/Q", f"/DAppVersion={version}", ISS_PATH])
     if result.returncode != 0:
         sys.exit(f"ISCC failed with exit code {result.returncode}")
     print(f"built {os.path.join(INSTALLER_DIR, 'Output', 'PrimeAtlasSetup.exe')}")

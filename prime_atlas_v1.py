@@ -211,13 +211,14 @@ def _build_gui():
     from primeatlas.generation.generation_offer_coordinator import GenerationOfferCoordinator
 
     from primeatlas.core.app_icon import apply_tk_icon
+    from primeatlas.core.version import APP_VERSION
 
     class PortalBrowserApp(tk.Tk):
         def __init__(self):
             super().__init__()
             apply_tk_icon(self)
             self._apply_theme(APP_SETTINGS.theme)
-            self.title(T("app.title"))
+            self.title(f"{T('app.title')} {APP_VERSION}")
             self.geometry("1050x680")
 
             # status_frame/notebook are BUILT here but deliberately left UNPACKED until

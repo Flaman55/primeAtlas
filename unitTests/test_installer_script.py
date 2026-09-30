@@ -177,6 +177,53 @@ def main():
     check("windows11" in style and "dynamic" in style,
           f"WizardStyle uses the windows11 custom style, following light/dark mode (got {style})")
 
+    print("\n--- Release 1.0.0: one version source, licenses, notes ---")
+    version_src = open(os.path.join(_REPO_ROOT, "primeatlas", "core", "version.py"),
+                       encoding="utf-8").read()
+    m = re.search(r'^APP_VERSION\s*=\s*"(\d+\.\d+\.\d+)"\s*$', version_src, re.MULTILINE)
+    check(m is not None, "primeatlas/core/version.py defines APP_VERSION as X.Y.Z")
+    check(re.search(r'^#define\s+AppVersion\s+"', text, re.MULTILINE) is None
+          and "#ifndef AppVersion" in text and "#error" in text,
+          "the .iss never hard-codes AppVersion; built without /DAppVersion it refuses to compile")
+    build = open(os.path.join(_REPO_ROOT, "installer", "build_installer.py"), encoding="utf-8").read()
+    check("/DAppVersion=" in build and "version.py" in build,
+          "build_installer.py passes /DAppVersion read from primeatlas/core/version.py")
+    main_src = open(os.path.join(_REPO_ROOT, "prime_atlas_v1.py"), encoding="utf-8").read()
+    check("APP_VERSION" in main_src, "the main window shows the version (title bar)")
+
+    license_path = os.path.join(_REPO_ROOT, "LICENSE.md")
+    check(os.path.isfile(license_path), "LICENSE.md exists at the repo root")
+    if os.path.isfile(license_path):
+        lic = open(license_path, encoding="utf-8").read()
+        check("# PolyForm Noncommercial License 1.0.0" in lic and "## Definitions" in lic,
+              "LICENSE.md holds the full PolyForm Noncommercial 1.0.0 text")
+        check(re.search(r"^Required Notice: Copyright .+", lic, re.MULTILINE) is not None,
+              "LICENSE.md carries the licensor's 'Required Notice:' line")
+    notice_path = os.path.join(_REPO_ROOT, "NOTICE.md")
+    check(os.path.isfile(notice_path), "NOTICE.md exists (README points to it)")
+    if os.path.isfile(notice_path):
+        notice = open(notice_path, encoding="utf-8").read()
+        for needle in ("primesieve", "primecount", "CUDASieve", "Python Software Foundation",
+                       "MinGit", "v2.56.0.windows.1", "GPL"):
+            check(needle in notice, f"NOTICE.md mentions {needle}")
+    readme = open(os.path.join(_REPO_ROOT, "README.md"), encoding="utf-8").read()
+    license_section = readme[readme.find("\n## License"):]
+    check("`License`" not in license_section and "LICENSE.md" in license_section,
+          "README's License section points to the real LICENSE.md file")
+
+    notes_path = os.path.join(_REPO_ROOT, "installer", "release_notes.md")
+    check(os.path.isfile(notes_path), "installer/release_notes.md exists")
+    if os.path.isfile(notes_path):
+        notes = open(notes_path, encoding="utf-8").read()
+        pl, en = notes.find("## Polski"), notes.find("## English")
+        check(pl != -1 and en != -1 and pl < en, "release notes: Polish first, English below")
+    wf = open(os.path.join(_REPO_ROOT, ".github", "workflows", "installer.yml"),
+              encoding="utf-8").read()
+    check("release_notes.md" in wf, "the workflow publishes installer/release_notes.md")
+    check("--prerelease" in wf, "a tag with a suffix (v1.0.0-rc1) becomes a pre-release")
+    check("APP_VERSION" in wf or "version.py" in wf,
+          "the workflow refuses a tag that does not match APP_VERSION")
+
     print("\n--- Languages ---")
     langs = sec.get("languages", "")
     check("Polish.isl" in langs and "Default.isl" in langs, "Polish and English UI")

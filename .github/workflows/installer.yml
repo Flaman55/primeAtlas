@@ -1,7 +1,9 @@
 # Builds installer/Output/PrimeAtlasSetup.exe (see installer/build_installer.py) on a Windows
-# runner. A pushed tag like v1.0.0 also publishes it as that GitHub Release's asset -- the
-# single file a new user downloads. Manual runs (Actions tab > Run workflow) only upload it
-# as a workflow artifact, for testing a build without making a release.
+# runner. A pushed tag vX.Y.Z publishes it as that GitHub Release's asset -- the single file
+# a new user downloads -- with installer/release_notes.md as the description. A tag with a
+# suffix (vX.Y.Z-rc1) becomes a pre-release, for testing the real download before the final
+# tag. The tag must match APP_VERSION in primeatlas/core/version.py. Manual runs (Actions tab
+# > Run workflow) only upload the exe as a workflow artifact.
 name: Windows installer
 
 on:
@@ -22,6 +24,17 @@ jobs:
         with:
           python-version: "3.13"
 
+      - name: Check tag matches APP_VERSION
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          version=$(python -c "import re; print(re.search(r'^APP_VERSION\s*=\s*\"([^\"]+)\"', open('primeatlas/core/version.py').read(), re.M).group(1))")
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$tag" != "$version" ] && [ "${tag%%-*}" != "$version" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match APP_VERSION $version in primeatlas/core/version.py"
+            exit 1
+          fi
+
       - name: Install Inno Setup
         run: choco install innosetup --no-progress -y
 
@@ -36,16 +49,18 @@ jobs:
           name: PrimeAtlasSetup
           path: installer/Output/PrimeAtlasSetup.exe
 
-      - name: Attach to GitHub Release
+      - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
+          flags=""
+          case "$GITHUB_REF_NAME" in *-*) flags="--prerelease" ;; esac
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" installer/Output/PrimeAtlasSetup.exe --clobber
           else
-            gh release create "$GITHUB_REF_NAME" installer/Output/PrimeAtlasSetup.exe \
-              --title "PrimeAtlas $GITHUB_REF_NAME" \
-              --notes "Windows installer: download PrimeAtlasSetup.exe and run it (no admin rights needed)."
+            gh release create "$GITHUB_REF_NAME" installer/Output/PrimeAtlasSetup.exe $flags \
+              --title "PrimeAtlas ${GITHUB_REF_NAME#v}" \
+              --notes-file installer/release_notes.md
           fi
