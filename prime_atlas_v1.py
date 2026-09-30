@@ -89,6 +89,13 @@ _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 # already added these two directories, since none of those modules re-add them.
 sys.path.insert(0, os.path.join(_SCRIPT_DIR, "prime_sieve"))
 sys.path.insert(0, os.path.join(_SCRIPT_DIR, "constellation"))
+# primeatlas/__init__.py itself imports numpy, so a fresh machine without it would die on the
+# import below with a bare ImportError -- check requirements.txt first and offer a pip install
+# (see startup_dependency_check.py). Only when run as the app, never when imported by tests.
+if __name__ == "__main__":
+    import startup_dependency_check  # noqa: E402
+    if not startup_dependency_check.ensure_dependencies():
+        sys.exit(1)
 from primeatlas import (  # noqa: E402
     AppSettings, Translator, prune_empty_floor_dirs,
     try_import_sympy as primality_try_import_sympy,

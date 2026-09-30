@@ -894,5 +894,13 @@
   "rings.instrument_sawtooth": "Piła",
   "rings.instrument_bell": "Dzwon",
   "rings.instrument_choir": "Chór",
-  "rings.instrument_mute": "Wyciszenie"
+  "rings.instrument_mute": "Wyciszenie",
+  "depcheck.title": "PrimeAtlas -- brakujące pakiety Pythona",
+  "depcheck.ask_blocking": "PrimeAtlas nie uruchomi się bez tych pakietów Pythona:\n\n{packages}\n\nZainstalować je teraz? (wymaga internetu)",
+  "depcheck.ask_optional": "Te pakiety Pythona są potrzebne do wizualizacji pierścieni:\n\n{packages}\n\nZainstalować je teraz? (wymaga internetu; PrimeAtlas i tak się uruchomi)",
+  "depcheck.installing": "Instaluję: {packages}",
+  "depcheck.install_failed": "Instalacja nie powiodła się (kod wyjścia pip: {code}).\n\nMożesz zainstalować ręcznie z terminala:\n{command}",
+  "depcheck.still_missing": "Instalacja zakończona, ale tych pakietów nadal nie da się zaimportować: {packages}\n\nSpróbuj ręcznie z terminala:\n{command}",
+  "depcheck.declined_blocking": "PrimeAtlas nie uruchomi się bez: {packages}\n\nZainstaluj z terminala:\n{command}",
+  "depcheck.close": "Zamknij"
 }
