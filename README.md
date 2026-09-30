@@ -1448,7 +1448,7 @@ installer/                   Windows installer (PrimeAtlasSetup.exe, see "Instal
                               installer/vendor/ (gitignored), extracts them, runs ISCC
   make_icons.py               regenerates primeatlas/core/assets/ from the icon master (or
                               from new artwork passed as an argument); needs Pillow
-  release_notes.md            GitHub Release description (Polish, then English)
+  release_notes.md            GitHub Release description (English, then Polish)
 .github/workflows/
   installer.yml               builds the installer on a Windows runner; a pushed vX.Y.Z tag
                               (must match APP_VERSION) publishes it as that GitHub

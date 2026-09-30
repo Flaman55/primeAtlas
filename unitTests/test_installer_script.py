@@ -216,7 +216,8 @@ def main():
     if os.path.isfile(notes_path):
         notes = open(notes_path, encoding="utf-8").read()
         pl, en = notes.find("## Polski"), notes.find("## English")
-        check(pl != -1 and en != -1 and pl < en, "release notes: Polish first, English below")
+        # Artur: content is English; Polish is only the secondary translation below it.
+        check(pl != -1 and en != -1 and en < pl, "release notes: English first, Polish below")
     wf = open(os.path.join(_REPO_ROOT, ".github", "workflows", "installer.yml"),
               encoding="utf-8").read()
     check("release_notes.md" in wf, "the workflow publishes installer/release_notes.md")
