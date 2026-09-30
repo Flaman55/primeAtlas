@@ -30,15 +30,18 @@ class AudioTests(unittest.TestCase):
         sys.path.insert(0, str(root))
         sys.path.insert(0, str(root/'prime_sieve'))
         from primeatlas.rings.ring_viz import renderer
+        # emit_audio_tick moved from renderer.py to hud.py in the renderer split (aa06f65);
+        # session.py calls it from there.
+        from primeatlas.rings.ring_viz.hud import emit_audio_tick
         from primeatlas.rings.ring_viz.audio import LiveAudio
         from types import SimpleNamespace
         live = LiveAudio(stream_factory=FakeStream)
         live.start()
         active = np.array([2,3,5,7,11])
         mask = np.array([True,True,False,False,False])
-        renderer.emit_audio_tick(live,active,mask,{'to_resonance':0},False)
+        emit_audio_tick(live,active,mask,{'to_resonance':0},False)
         self.assertEqual(live.mixer.pending.qsize(),0)
-        renderer.emit_audio_tick(live,active,mask,{'to_resonance':0},True)
+        emit_audio_tick(live,active,mask,{'to_resonance':0},True)
         self.assertEqual(live.mixer.pending.qsize(),3)
         self.assertEqual(live.mixer.pending.get_nowait().duration,6)
         live.close()
