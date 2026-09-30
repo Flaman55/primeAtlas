@@ -159,6 +159,17 @@ def section_wiring():
     check(len(icon_lines) == 2 and all("IconFilename:" in l and "primeatlas.ico" in l
                                         for l in icon_lines),
           "both shortcuts use the icon")
+    # Artur's fresh install (2026-09-30): the Start-menu entry showed a blank document icon.
+    # Inno creates [Icons] BEFORE ssPostInstall, where the repo is git-cloned, so an icon
+    # path inside {app}\app did not exist yet when the shortcut was made. The installer
+    # must ship its own copy via [Files] and point every icon reference at it.
+    check(re.search(r'^Source:\s*"\.\.\\primeatlas\\core\\assets\\primeatlas\.ico";\s*DestDir:\s*"\{app\}"',
+                    iss, re.MULTILINE) is not None,
+          r"[Files] installs primeatlas.ico into {app} itself (exists before [Icons] runs)")
+    check(all(r'IconFilename: "{app}\primeatlas.ico"' in l for l in icon_lines),
+          r"both shortcuts point at {app}\primeatlas.ico, never at the not-yet-cloned repo")
+    check(re.search(r"^UninstallDisplayIcon=\{app\}\\primeatlas\.ico\s*$", iss, re.MULTILINE)
+          is not None, r"Apps & features also uses {app}\primeatlas.ico")
     check(all(f'AppUserModelID: "{app_icon.APP_USER_MODEL_ID}"' in l for l in icon_lines),
           "both shortcuts carry the same AppUserModelID as the running app (pinned shortcut "
           "and open window share one taskbar button)")
