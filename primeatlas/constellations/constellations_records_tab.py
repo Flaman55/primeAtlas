@@ -52,7 +52,7 @@ from .constellations import (
     write_constellation_detail_rows_csv,
     render_constellation_records_pdf,
     read_hit_pattern_header, read_hit_pattern_page, hit_pattern_page_count,
-    hit_pattern_actual_page_size, hit_pattern_is_paged,
+    hit_pattern_page_start, hit_pattern_is_paged,
 )
 
 # A PDF, unlike streamed CSV, needs every row laid out on paginated pages up front (see
@@ -874,9 +874,8 @@ class ConstellationsRecordsTab(BaseTab):
         total_count = header["count"] if header is not None else len(self._detail_rows)
         record_digits = pattern["record_digits"]
         is_record_floor = record_digits is not None and base_exponent == record_digits - 1
-        page_size = hit_pattern_actual_page_size(
-            portal_folder, base_exponent, pattern["k"], pattern["id"])
-        file_page_offset = self._detail_file_page_index * page_size
+        file_page_offset = hit_pattern_page_start(
+            portal_folder, base_exponent, pattern["k"], pattern["id"], self._detail_file_page_index)
 
         start = max(0, ui_from * self._page_size)
         end = min(len(self._detail_rows), (ui_to + 1) * self._page_size)

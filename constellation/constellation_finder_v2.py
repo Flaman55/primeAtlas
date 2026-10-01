@@ -315,6 +315,60 @@ def _checkpoint_path(base_exponent):
     return os.path.join(folder, CHECKPOINT_FILENAME)
 
 
+#: Explicit list of every window name this floor's scan has finished, one per line,
+#: append-only. The done_range= lines in CHECKPOINT.txt cannot represent a window
+#: generated LATER inside an already-done range: "first|last" resolves against the
+#: CURRENT window list, so a window inserted between two scanned ones silently counted
+#: as done and was never searched (found 2026-10-01 together with the dropped
+#: out-of-order hits -- see _insert_hits_sorted()). Artur's rule: a window may be
+#: generated anywhere on a floor, and the search must cover whatever is new in storage
+#: relative to what was already searched -- by name, the same way backup/restore diff
+#: storage contents. CHECKPOINT.txt keeps its ranges (GUI progress, backups, and the
+#: fallback for a floor whose log does not exist yet).
+DONE_LOG_FILENAME = "DONE_WINDOWS.txt"
+
+
+def _done_log_path(base_exponent):
+    return os.path.join(PORTAL_FOLDER, f"10p{base_exponent}", "constellations", DONE_LOG_FILENAME)
+
+
+def read_done_log(base_exponent):
+    """The set of window names in this floor's done log, or None if it has no log yet."""
+    path = _done_log_path(base_exponent)
+    if not os.path.exists(path):
+        return None
+    with open(path, encoding="utf-8") as f:
+        return {line.strip() for line in f if line.strip()}
+
+
+def seed_done_log(base_exponent, names):
+    """Creates the done log from `names` (atomic tmp-then-replace + fsync) -- used once
+    per floor, from the legacy done_range= resolution."""
+    path = _done_log_path(base_exponent)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp_path = path + ".tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        for name in sorted(names):
+            f.write(name + "\n")
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp_path, path)
+
+
+def append_done_log(base_exponent, names):
+    """Appends newly finished window names (fsynced). A torn last line from a crash
+    mid-append is just an unknown name -- that window gets scanned again, which is safe."""
+    if not names:
+        return
+    path = _done_log_path(base_exponent)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "a", encoding="utf-8") as f:
+        for name in names:
+            f.write(name + "\n")
+        f.flush()
+        os.fsync(f.fileno())
+
+
 def _stop_requested():
     """True once the GUI has asked this run to stop -- see STOP_REQUEST_FILENAME's own
     module-level comment. Deliberately a plain existence check, not consumed/deleted
@@ -388,6 +442,9 @@ def resolve_done_names(base_exponent, names):
     with reality."""
     if not names:
         return set()
+    logged = read_done_log(base_exponent)
+    if logged is not None:
+        return logged.intersection(names)
     index_of = {name: i for i, name in enumerate(names)}
     done = set()
     for first, last in read_done_ranges(base_exponent):
@@ -726,12 +783,13 @@ def append_hits(base_exponent, k, variant_id, new_sorted_starts, known_last_valu
 
 
 def _append_hits_deduped(base_exponent, k, variant_id, new_sorted_starts, last_value_cache=None,
-                          disk_cache=None):
-    """Wraps append_hits() with a pre-filter against whatever this pattern's hit file's
-    CURRENT last stored value actually is, dropping any of `new_sorted_starts` that are
-    <= that value instead of handing them to append_prime_window() (which raises
-    ValueError on exactly that condition -- see its own docstring: "must be strictly
-    greater than the file's current last value").
+                          disk_cache=None, defer_into=None):
+    """Wraps append_hits(): values above this pattern's CURRENT last stored value are
+    appended (append_prime_window() itself requires strictly greater ones); values at or
+    below it go through _insert_hits_sorted(), which merges the genuinely new ones into
+    the sorted storage and reports the rest as duplicates. (Until 2026-10-01 every value
+    <= the last one was dropped as a duplicate -- wrong as soon as a window below or
+    between already-scanned ones is processed; see _insert_hits_sorted().)
 
     Why this exists (see [[primeatlas_storage_merge_federation]]): CHECKPOINT.txt is a
     single plain file with no merge logic of its own -- if a floor's constellations/
@@ -775,6 +833,13 @@ def _append_hits_deduped(base_exponent, k, variant_id, new_sorted_starts, last_v
     behavior) when neither cache has a valid entry -- see _resolve_last_value()'s own
     docstring for exactly when that happens.
 
+    `defer_into`, if given, is a dict {(k, variant_id): [values]} that collects the
+    values at or below the last stored one instead of merging them right away --
+    process_floor() merges them in one go per batch (_flush_deferred_hits()), since a
+    merge rewrites a whole page and a run of windows below the stored range would
+    otherwise rewrite the same page once per window. Deferred values are counted in
+    neither returned number.
+
     Returns (appended_count, skipped_count)."""
     if not new_sorted_starts:
         return 0, 0
@@ -786,25 +851,85 @@ def _append_hits_deduped(base_exponent, k, variant_id, new_sorted_starts, last_v
 
     if known_last_value is None:
         to_append = new_sorted_starts
+        not_after_last = []
     else:
         to_append = [v for v in new_sorted_starts if v > known_last_value]
-    skipped = len(new_sorted_starts) - len(to_append)
+        not_after_last = [v for v in new_sorted_starts if v <= known_last_value]
 
+    # A value <= the last stored one is NOT automatically a duplicate: it is one only if
+    # it is actually stored. Windows are not always scanned in increasing order (Artur,
+    # 2026-10-01: the first 1000 windows of floor 25 generated after the floor had been
+    # scanned from 1.2345e25 up -- every hit was dropped here as a "duplicate"), so these
+    # are merged into the sorted hit storage, which also tells real duplicates apart.
+    if not_after_last and defer_into is not None:
+        defer_into.setdefault(key, []).extend(not_after_last)
+        inserted, skipped = 0, 0
+    elif not_after_last:
+        inserted, skipped = _insert_hits_sorted(base_exponent, k, variant_id, not_after_last)
+    else:
+        inserted, skipped = 0, 0
+    new_last_value = known_last_value
+    new_count = old_count + inserted
     if to_append:
         append_hits(base_exponent, k, variant_id, to_append, known_last_value=known_last_value)
         new_last_value = to_append[-1]
-        new_count = old_count + len(to_append)
-        if last_value_cache is not None:
-            last_value_cache[key] = (new_last_value, new_count)
-        if disk_cache is not None:
-            disk_cache[key] = (new_last_value, new_count)
-    else:
-        if last_value_cache is not None:
-            last_value_cache[key] = (known_last_value, old_count)
-        if disk_cache is not None:
-            disk_cache[key] = (known_last_value, old_count)
+        new_count += len(to_append)
+    if last_value_cache is not None:
+        last_value_cache[key] = (new_last_value, new_count)
+    if disk_cache is not None:
+        disk_cache[key] = (new_last_value, new_count)
 
-    return len(to_append), skipped
+    return len(to_append) + inserted, skipped
+
+
+def _flush_deferred_hits(base_exponent, deferred, last_value_cache, disk_cache):
+    """Merges every pattern's deferred values (see _append_hits_deduped()'s defer_into)
+    into its hit storage and empties `deferred`. Keeps both caches' counts in step (the
+    last stored value cannot change: every deferred value was <= it). Returns
+    ({(k, variant_id): added}, duplicates)."""
+    added_by_key = {}
+    duplicates = 0
+    for key in sorted(deferred):
+        values = sorted(set(deferred[key]))
+        if not values:
+            continue
+        k, variant_id = key
+        added, dup = _insert_hits_sorted(base_exponent, k, variant_id, values)
+        added_by_key[key] = added
+        duplicates += dup + (len(deferred[key]) - len(values))
+        for cache in (last_value_cache, disk_cache):
+            if cache is not None and key in cache:
+                last_value, count = cache[key]
+                cache[key] = (last_value, count + added)
+    deferred.clear()
+    return added_by_key, duplicates
+
+
+def _insert_hits_sorted(base_exponent, k, variant_id, values):
+    """Merges `values` (all <= the pattern's last stored value) into its hit storage as a
+    sorted union. Returns (added, duplicates).
+
+    Paged pattern: hit_paging.insert_hits_paged() rewrites only the pages the values fall
+    into. Unpaged pattern: small by construction (auto-migration keeps it under
+    hit_paging.PAGE_SIZE), so the whole file is decoded, merged and rewritten via a temp
+    file + atomic replace; a merge that grows it past PAGE_SIZE migrates it to pages,
+    same as append_hits() does for an append."""
+    vdir = hit_paging.variant_dir(PORTAL_FOLDER, base_exponent, k, variant_id)
+    if hit_paging.is_paged(vdir):
+        _, added, duplicates = hit_paging.insert_hits_paged(vdir, base_exponent, k, variant_id, values)
+        return added, duplicates
+    path = hit_file_path(base_exponent, k, variant_id)
+    old_values = prime_sieve_v1.read_prime_window(path)
+    merged = sorted(set(old_values).union(values))
+    added = len(merged) - len(old_values)
+    if added == 0:
+        return 0, len(values)
+    tmp_path = path + ".merge.tmp"
+    prime_sieve_v1.write_prime_window(tmp_path, merged)
+    os.replace(tmp_path, path)
+    if len(merged) > hit_paging.PAGE_SIZE:
+        hit_paging.migrate_hit_file_to_pages(path, vdir, base_exponent, k, variant_id)
+    return added, len(values) - added
 
 
 def match_patterns_vectorized(candidates, local_set, active_patterns):
@@ -1009,6 +1134,9 @@ def process_floor(base_exponent, max_windows=None):
     names = [name for name, _, _ in windows]
     index_of = {name: i for i, name in enumerate(names)}
     done_names = resolve_done_names(base_exponent, names)
+    if read_done_log(base_exponent) is None:
+        # First run with the done log on this floor: seed it from the legacy ranges.
+        seed_done_log(base_exponent, done_names)
     # done_indices seeds write_done_ranges()'s own running set below -- it has to start
     # from whatever's ALREADY resolved (not empty), or a run that adds only a handful of
     # new windows to a floor with a huge pre-existing done set would write those back as
@@ -1065,6 +1193,29 @@ def process_floor(base_exponent, max_windows=None):
     # a hit in this run. Also what makes duplicate-detection cheap across the whole run
     # (see _append_hits_deduped()'s own docstring) -- not just a performance cache.
     last_value_cache = {}
+    # Hits at or below a pattern's last stored value (a window below or between already
+    # scanned ones) wait here and are merged once per batch -- see _append_hits_deduped()'s
+    # defer_into. Their windows wait in pending_done: a window only joins the persisted
+    # done set once its hits are stored, so a crash before the merge just means those
+    # windows get scanned again (re-scanning is safe), never lost hits.
+    deferred_hits = {}
+    pending_done = []
+
+    def _commit_pending():
+        if not pending_done and not deferred_hits:
+            return
+        added_by_key, duplicates = _flush_deferred_hits(
+            base_exponent, deferred_hits, last_value_cache, disk_last_values)
+        for key, added in added_by_key.items():
+            total_hits_this_run[key] = total_hits_this_run.get(key, 0) + added
+        if added_by_key:
+            print(f"[CONSTELLATIONS v2] merged {sum(added_by_key.values())} hit(s) from "
+                  f"window(s) below already-stored values into storage"
+                  + (f", {duplicates} duplicate(s) skipped" if duplicates else ""))
+        append_done_log(base_exponent, [names[i] for i in pending_done])
+        done_indices.update(pending_done)
+        pending_done.clear()
+        write_done_ranges(base_exponent, names, done_indices)
 
     if CONSTELLATION_DIAG_ENABLED:
         print(f"[CONSTELLATIONS v2] DIAG: entering per-window loop, elapsed={time.time()-run_start:.2f}s "
@@ -1141,11 +1292,31 @@ def process_floor(base_exponent, max_windows=None):
                        f"{len(candidates):,} primes ({time.time()-t0:.2f}s so far)",
                        detailed=True)
 
+        # Neighbours come from the floor's FULL window list, not from this batch: a window
+        # generated between already-scanned ones (Artur, 2026-10-01: "a single file
+        # between two existing ranges") has done neighbours on both sides. Peeking only
+        # into the next window OF THIS BATCH missed constellations running into a done
+        # successor.
+        position = index_of[name]
         head = []
-        if i + 1 < len(to_process):
-            next_name, next_path, next_base = to_process[i + 1]
-            if next_base is not None:
-                head = prime_sieve_v1.read_prime_window_head(next_path, next_base + max_span)
+        if position + 1 < len(windows):
+            next_name, next_path, next_base = windows[position + 1]
+            if next_base is not None and candidates and next_base <= candidates[-1] + max_span:
+                # Only values a constellation based in THIS window can reach. The real
+                # successor may lie anywhere above (floor 25: the 1000 windows at 10^25
+                # are followed by the old floor start, 1.2345e25) -- values that far off
+                # are useless here and overflowed match_patterns_vectorized()'s int64
+                # offsets (OverflowError, 2026-10-01).
+                head = [v for v in prime_sieve_v1.read_prime_window_head(next_path, next_base + max_span)
+                        if v <= candidates[-1] + max_span]
+        # Look back once per contiguous run: the predecessor was scanned on its own
+        # (earlier run or batch), possibly before this window existed, so a
+        # constellation starting in its last max_span numbers and ending in this window
+        # was never looked for. Already-stored ones come back as duplicates.
+        back_tail = []
+        if position > 0 and (i == 0 or to_process[i - 1][0] != windows[position - 1][0]) and candidates:
+            back_values = prime_sieve_v1.read_prime_window(windows[position - 1][1])
+            back_tail = [v for v in back_values if v >= candidates[0] - max_span]
         if detailed:
             _diag_step(f"window {i+1} -- peeked {len(head):,} value(s) from the next "
                        f"window ({time.time()-t0:.2f}s so far)", detailed=True)
@@ -1154,6 +1325,11 @@ def process_floor(base_exponent, max_windows=None):
         local_set.update(head)
 
         results = match_patterns_vectorized(candidates, local_set, active_patterns)
+        if back_tail:
+            back_results = match_patterns_vectorized(
+                back_tail, local_set.union(back_tail), active_patterns)
+            for key, matches in back_results.items():
+                results.setdefault(key, []).extend(matches)
         if detailed:
             _diag_step(f"window {i+1} -- pattern matching done, "
                        f"{sum(len(v) for v in results.values())} raw match(es) across "
@@ -1161,6 +1337,7 @@ def process_floor(base_exponent, max_windows=None):
                        detailed=True)
         new_hits_count = 0
         skipped_hits_count = 0
+        deferred_before = sum(len(v) for v in deferred_hits.values())
         for (k, vid), matches in results.items():
             starts = sorted(m[0] for m in matches)
             key = (k, vid)
@@ -1175,18 +1352,28 @@ def process_floor(base_exponent, max_windows=None):
             # append_prime_window()'s own strict-increase assertion the instant a
             # re-scanned window turns up a real hit. Kept as a safety net, same as v1.
             appended, skipped = _append_hits_deduped(
-                base_exponent, k, vid, starts, last_value_cache, disk_cache=disk_last_values)
+                base_exponent, k, vid, starts, last_value_cache, disk_cache=disk_last_values,
+                defer_into=deferred_hits)
             total_hits_this_run[key] = total_hits_this_run.get(key, 0) + appended
             new_hits_count += appended
             skipped_hits_count += skipped
+        deferred_now = sum(len(v) for v in deferred_hits.values()) - deferred_before
 
-        done_indices.add(index_of[name])
-        write_done_ranges(base_exponent, names, done_indices)
+        pending_done.append(index_of[name])
+        # Merge early once any pattern has a page's worth waiting (bounds memory on a
+        # long unbatched run); otherwise once, at the end of the batch.
+        if (not deferred_hits
+                or any(len(v) >= hit_paging.PAGE_SIZE for v in deferred_hits.values())):
+            _commit_pending()
 
         extra = f" skipped_duplicates={skipped_hits_count}" if skipped_hits_count else ""
+        if deferred_now:
+            extra += f" queued_below_stored={deferred_now}"
         print(f"[CONSTELLATIONS v2] {i+1}/{len(to_process)}: {name} -- "
               f"primes={len(candidates):,} peeked_head={len(head)} "
               f"new_hits={new_hits_count}{extra} ({time.time()-t0:.2f}s)")
+
+    _commit_pending()
 
     if remaining_after:
         # This batch was clipped -- the floor is NOT fully caught up yet, so the

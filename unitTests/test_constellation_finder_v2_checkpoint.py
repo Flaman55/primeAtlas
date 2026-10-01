@@ -122,15 +122,18 @@ def main():
         # E is legitimately read a second time here regardless of the checkpoint fix --
         # check_floor_boundary() always reads the floor's own LAST window once, the
         # first time a floor becomes fully caught up (see that function's own
-        # docstring) -- that's unrelated to pattern-matching resume. The actual claim
-        # under test is that A, B and D (already done, no boundary role) are NEVER
-        # re-read, and C (the hole) is read exactly once.
+        # docstring) -- that's unrelated to pattern-matching resume. B, C's done
+        # predecessor, is read once on purpose since 2026-10-01: a constellation starting
+        # in B's last numbers and ending in C could not have been found while C was
+        # unscanned (process_floor()'s look-back). The claim under test is that A and D
+        # (already done, not adjacent to the hole's start) are NEVER re-read, and C (the
+        # hole) is read exactly once.
         read_names = sorted(os.path.basename(p) for p in source_reads)
-        check(read_names == ["PRIME_WINDOW_C.bin", "PRIME_WINDOW_E.bin"],
-              f"process_floor() re-reads only the hole (C, for pattern matching) and E "
-              f"(the floor's last window, for the one-time boundary check) -- never "
-              f"re-reading A, B or D, which the done_range set already correctly marks "
-              f"as covered (got {read_names!r})")
+        check(read_names == ["PRIME_WINDOW_B.bin", "PRIME_WINDOW_C.bin", "PRIME_WINDOW_E.bin"],
+              f"process_floor() reads only the hole (C, for pattern matching), its done "
+              f"predecessor B (look-back across the B|C boundary) and E (the floor's last "
+              f"window, for the one-time boundary check) -- never re-reading A or D "
+              f"(got {read_names!r})")
         check(_read_hits(60, 2, 1) == [50],
               f"the hole's own hit (twin at 50) is found once it's actually scanned "
               f"(got {_read_hits(60, 2, 1)!r})")

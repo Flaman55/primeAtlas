@@ -45,9 +45,11 @@ append_prime_window() exactly like the cumulative file was), so every existing
 PGS2-reading primitive (read_prime_window, read_prime_window_header, ...) works on a
 single page completely unchanged; only the bookkeeping of WHICH page is new here.
 """
+import bisect
 import json
 import math
 import os
+import re
 
 import prime_sieve_v1
 
@@ -113,24 +115,53 @@ def write_meta(a_variant_dir, meta):
 
 
 def page_count(meta):
-    """Deliberately NOT stored in the metadata itself -- always derivable from
-    total_count and page_size, so there is one less field that could ever drift out of
-    sync with the pages actually on disk."""
+    """Legacy metadata (no "pages" list): derived from total_count and page_size, every
+    page full except the last. Metadata that has been through insert_hits_paged() lists
+    its pages explicitly (see that function), since pages then differ in size."""
+    if "pages" in meta:
+        return len(meta["pages"])
     if meta["total_count"] == 0:
         return 0
     return math.ceil(meta["total_count"] / meta["page_size"])
+
+
+def page_start(meta, page_index):
+    """Global position (0-based) of page `page_index`'s first entry within the whole
+    pattern -- page_index * page_size for legacy uniform pages, the sum of the earlier
+    pages' counts once they differ in size."""
+    if "pages" in meta:
+        return sum(entry["count"] for entry in meta["pages"][:page_index])
+    return page_index * meta["page_size"]
+
+
+def _page_id(meta, page_index):
+    """File id (the number in "..._page{id:05d}.bin") of the page at position
+    `page_index`. Legacy pages are numbered by position; listed pages carry their own id,
+    because a page rewritten by insert_hits_paged() is written under a FRESH id (see
+    there) and so no longer matches its position."""
+    if meta is not None and "pages" in meta:
+        return meta["pages"][page_index]["id"]
+    return page_index
+
+
+def page_file(a_variant_dir, meta, page_index):
+    """Path of the page at position `page_index`."""
+    return page_path(a_variant_dir, meta["base_exponent"], meta["k"], meta["variant_id"],
+                     _page_id(meta, page_index))
 
 
 def read_page(a_variant_dir, base_exponent, k, variant_id, page_index):
     """Decodes ONLY page `page_index` -- cost is bounded by page_size regardless of how
     large the pattern's total_count is, which is the entire point of paging (see this
     module's own docstring)."""
-    path = page_path(a_variant_dir, base_exponent, k, variant_id, page_index)
+    path = page_path(a_variant_dir, base_exponent, k, variant_id,
+                     _page_id(read_meta(a_variant_dir), page_index))
     return prime_sieve_v1.read_prime_window(path)
 
 
 def read_page_header(a_variant_dir, base_exponent, k, variant_id, page_index):
-    path = page_path(a_variant_dir, base_exponent, k, variant_id, page_index)
+    path = page_path(a_variant_dir, base_exponent, k, variant_id,
+                     _page_id(read_meta(a_variant_dir), page_index))
     return prime_sieve_v1.read_prime_window_header(path)
 
 
@@ -167,6 +198,10 @@ def append_hits_paged(a_variant_dir, base_exponent, k, variant_id, new_sorted_va
             "first_value": None, "last_value": None,
         }
     os.makedirs(a_variant_dir, exist_ok=True)
+    if "pages" in meta:
+        _append_listed(a_variant_dir, meta, list(new_sorted_values))
+        write_meta(a_variant_dir, meta)
+        return meta
     page_size = meta["page_size"]
     remaining = list(new_sorted_values)
     running_last = meta["last_value"]
@@ -187,6 +222,147 @@ def append_hits_paged(a_variant_dir, base_exponent, k, variant_id, new_sorted_va
         running_last = chunk[-1]
     write_meta(a_variant_dir, meta)
     return meta
+
+
+_PAGE_ID_RE = re.compile(r"_page(\d+)\.bin$")
+
+
+def _next_page_id(a_variant_dir, meta):
+    """A page id used neither by the metadata nor by any file on disk -- the disk check
+    matters after a crash between writing new page files and writing the metadata that
+    would have referenced them (insert_hits_paged()'s write order), which leaves such
+    files behind unreferenced. It also makes a page file written a moment ago reserve
+    its id for the next piece of the same split."""
+    used = {entry["id"] for entry in meta["pages"]}
+    if os.path.isdir(a_variant_dir):
+        for name in os.listdir(a_variant_dir):
+            m = _PAGE_ID_RE.search(name)
+            if m:
+                used.add(int(m.group(1)))
+    return max(used, default=-1) + 1
+
+
+def _append_listed(a_variant_dir, meta, values):
+    """append_hits_paged() for listed metadata: fills the last page up to page_size,
+    then opens pages under fresh ids. Mutates `meta` (the caller writes it)."""
+    page_size = meta["page_size"]
+    b, k, v = meta["base_exponent"], meta["k"], meta["variant_id"]
+    while values:
+        last = meta["pages"][-1] if meta["pages"] else None
+        if last is not None and last["count"] < page_size:
+            room = page_size - last["count"]
+            chunk, values = values[:room], values[room:]
+            prime_sieve_v1.append_prime_window(page_path(a_variant_dir, b, k, v, last["id"]), chunk,
+                                               known_last_value=meta["last_value"])
+            last["count"] += len(chunk)
+        else:
+            chunk, values = values[:page_size], values[page_size:]
+            new_id = _next_page_id(a_variant_dir, meta)
+            prime_sieve_v1.write_prime_window(page_path(a_variant_dir, b, k, v, new_id), chunk)
+            meta["pages"].append({"id": new_id, "count": len(chunk), "first": chunk[0]})
+        if meta["first_value"] is None:
+            meta["first_value"] = chunk[0]
+        meta["total_count"] += len(chunk)
+        meta["last_value"] = chunk[-1]
+
+
+def _ensure_page_list(a_variant_dir, meta):
+    """Upgrades legacy metadata (uniform page_size, pages numbered by position) to an
+    explicit [{"id", "count", "first"}, ...] list -- one header read per page, once per
+    pattern. Mutates `meta` (the caller writes it)."""
+    if "pages" in meta:
+        return
+    n = page_count(meta)
+    page_size = meta["page_size"]
+    pages = []
+    for i in range(n):
+        header = prime_sieve_v1.read_prime_window_header(
+            page_path(a_variant_dir, meta["base_exponent"], meta["k"], meta["variant_id"], i))
+        count = page_size if i < n - 1 else meta["total_count"] - page_size * (n - 1)
+        pages.append({"id": i, "count": count, "first": header["base_prime"]})
+    meta["pages"] = pages
+
+
+def insert_hits_paged(a_variant_dir, base_exponent, k, variant_id, new_sorted_values, meta=None):
+    """Stores `new_sorted_values` as the sorted union with what this paged pattern
+    already holds, wherever they fall -- below the first stored value, between stored
+    values, or past the last. Returns (meta, added, duplicates).
+
+    Why: a floor's windows can be generated in any order -- Artur's case (2026-10-01)
+    was the first 1000 windows of floor 25 generated AFTER the floor had been scanned
+    from 1.2345e25 upward, and "a single file between two existing ranges" is equally
+    valid. append_hits_paged() can only extend the end, and the old "<= last stored
+    value means already stored" filter upstream dropped every hit of such a window.
+
+    Values past the last stored one take the cheap append path. The rest are grouped by
+    the page whose range they fall into (the rightmost page whose first value <= the
+    value; page 0 for anything below the whole pattern), and only those pages are
+    rewritten -- decode, merge, re-encode one page (~1M values, well under a second),
+    never the whole pattern (floor 25's k=2: 2,248 pages). A merged page above
+    2 * page_size is split into page_size pieces, so pages stay bounded for every reader
+    (records tab drill-down, hits tab, exports).
+
+    Crash safety: rewritten pages are written under FRESH ids, the metadata (atomic
+    replace) is switched over to them, and only then are the replaced files deleted. A
+    crash before the metadata write leaves the old, still-consistent pattern plus some
+    unreferenced files; after it, at worst some stale files nothing references."""
+    if meta is None:
+        meta = read_meta(a_variant_dir)
+    values = sorted(set(new_sorted_values))
+    if not values:
+        return meta, 0, 0
+    if meta is None or meta["total_count"] == 0:
+        meta = append_hits_paged(a_variant_dir, base_exponent, k, variant_id, values, meta=meta)
+        return meta, len(values), 0
+
+    cut = bisect.bisect_right(values, meta["last_value"])
+    inside, tail = values[:cut], values[cut:]
+    added = 0
+    duplicates = 0
+    if inside:
+        _ensure_page_list(a_variant_dir, meta)
+        page_size = meta["page_size"]
+        firsts = [entry["first"] for entry in meta["pages"]]
+        groups = {}
+        for value in inside:
+            groups.setdefault(max(0, bisect.bisect_right(firsts, value) - 1), []).append(value)
+        obsolete = []
+        # Highest page first: splitting a page inserts list entries after it, which
+        # must not shift the positions of pages still waiting to be processed.
+        for index in sorted(groups, reverse=True):
+            group = groups[index]
+            entry = meta["pages"][index]
+            old_path = page_path(a_variant_dir, base_exponent, k, variant_id, entry["id"])
+            old_values = prime_sieve_v1.read_prime_window(old_path)
+            merged = sorted(set(old_values).union(group))
+            new_here = len(merged) - len(old_values)
+            added += new_here
+            duplicates += len(group) - new_here
+            if new_here == 0:
+                continue
+            pieces = ([merged[i:i + page_size] for i in range(0, len(merged), page_size)]
+                      if len(merged) > 2 * page_size else [merged])
+            replacement = []
+            for piece in pieces:
+                new_id = _next_page_id(a_variant_dir, meta)
+                prime_sieve_v1.write_prime_window(
+                    page_path(a_variant_dir, base_exponent, k, variant_id, new_id), piece)
+                replacement.append({"id": new_id, "count": len(piece), "first": piece[0]})
+            meta["pages"][index:index + 1] = replacement
+            obsolete.append(old_path)
+        if added:
+            meta["total_count"] += added
+            meta["first_value"] = min(meta["first_value"], inside[0])
+            write_meta(a_variant_dir, meta)
+            for path in obsolete:
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+    if tail:
+        meta = append_hits_paged(a_variant_dir, base_exponent, k, variant_id, tail, meta=meta)
+        added += len(tail)
+    return meta, added, duplicates
 
 
 def migrate_hit_file_to_pages(source_path, a_variant_dir, base_exponent, k, variant_id,

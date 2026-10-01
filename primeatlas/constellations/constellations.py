@@ -370,6 +370,19 @@ def hit_pattern_actual_page_size(portal_folder, base_exponent, k, variant_id):
     return pattern_meta["page_size"] if pattern_meta is not None else hit_paging.PAGE_SIZE
 
 
+def hit_pattern_page_start(portal_folder, base_exponent, k, variant_id, page_index):
+    """Global position (0-based) of browsing page `page_index`'s first hit within the
+    whole pattern -- what the records tab adds to a row's index within the page for its
+    "position in file" column. Not page_index * page_size: once hits from a window below
+    or between already-scanned ones have been merged in (hit_paging.insert_hits_paged()),
+    pages differ in size. 0 for an unpaged pattern (its only page) or a missing one."""
+    vdir = hit_paging.variant_dir(portal_folder, base_exponent, k, variant_id)
+    pattern_meta = hit_paging.read_meta(vdir)
+    if pattern_meta is None:
+        return 0
+    return hit_paging.page_start(pattern_meta, page_index)
+
+
 def write_constellation_detail_rows_csv(path, rows):
     """Writes per-hit detail rows (the shape iter_constellation_records_detail_rows()
     yields, or an equivalent plain list of the same dicts) to a CSV file at `path`,
@@ -524,8 +537,8 @@ def _find_value_in_paged_pattern(vdir, base_exponent, k, variant_id, meta, value
     """Checks whether `value` is one of a PAGED pattern's stored starting values,
     decoding at most ONE page rather than the whole pattern. Pages are closed,
     contiguous slices of one globally sorted sequence (see hit_paging.py's own
-    append_hits_paged() -- each page is filled to page_size before the next one
-    opens), so bisecting on each page's own first_value (a cheap O(1) header read,
+    append_hits_paged()/insert_hits_paged() -- pages may differ in size after an
+    insert, but stay in value order), so bisecting on each page's own first_value (a cheap O(1) header read,
     same trick storage.py's find_prime_in_floor already applies across whole window
     files) identifies the ONE page that could contain `value` -- no neighbor
     safety-net needed the way find_prime_in_floor needs one across window RANGES,
