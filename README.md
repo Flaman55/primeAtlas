@@ -1418,8 +1418,28 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               that could drift out of sync with each other
   orchestrator_loop_v2.py    continuous-run driver
   orchestrator_loop_helpers.py
+  hit_paging.py              splits a dense pattern's constellation hit file into
+                              ~1M-entry PGS2 page files + PAGES_META.json (O(1) count/
+                              first/last); insert_hits_paged() merges hits that fall
+                              BELOW or BETWEEN stored ones by rewriting only the
+                              affected pages (fresh page ids, meta switched atomically,
+                              pages above 2x page_size split) -- pages may then differ
+                              in size, so readers use page_start()/page_file()
 constellation/
   constellation_finder_v1.py  k-tuple pattern search over generated prime data
+  constellation_finder_v2.py  the active k-tuple search (PGS2 streaming, k=2..21,
+                              --max-windows batches). Windows may be generated
+                              anywhere on a floor, in any order: DONE_WINDOWS.txt lists
+                              every searched window by name (new = not listed; the
+                              CHECKPOINT.txt done_range= lines are kept for the GUI,
+                              backups and as the seed for floors without the list);
+                              hits at or below a pattern's last stored value are
+                              merged into the sorted storage once per batch, the batch's
+                              windows counting as done only after that merge; each
+                              window peeks into its real successor and, at the start of
+                              a contiguous run, looks back into its predecessor's tail,
+                              so constellations crossing into already-searched
+                              neighbours are found
   ktuple_sieve_v1.py          targeted k-tuple candidate sieve (wheel + trial
                               division + Miller-Rabin) over scattered window
                               locations -- see "Targeted k-tuple sieve" above
