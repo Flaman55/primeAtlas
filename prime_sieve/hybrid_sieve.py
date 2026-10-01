@@ -331,7 +331,7 @@ def run_hybrid_narrow(start: int, end: int, main_cap: int, filter_prime_count: i
         raise HybridSieveError("narrow hybrid accepts one non-empty standard output window only")
     check_target(rounded_end)
     if not 1 <= filter_prime_count <= MAX_FILTER:
-        raise HybridSieveError("Filtr: dozwolone od 1 do 1 000 000 liczb pierwszych.")
+        raise HybridSieveError("Filter: 1 to 1,000,000 primes allowed.")
     started = time.perf_counter()
     bootstrap_started = time.perf_counter()
     plan = build_narrow_plan(main_cap, filter_prime_count)

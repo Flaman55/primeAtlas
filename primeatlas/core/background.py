@@ -3,15 +3,9 @@ background.py -- one small, reusable way to run a slow function off the Tk main 
 and get its result (or an error) back safely, instead of hand-rolling a fresh
 thread+queue+self.after()-poll block per feature.
 
-prime_atlas_v1.py and primeatlas/settings/settings_tab.py previously had SIX independently-
-duplicated persistent worker-thread patterns (totals/search/primesieve_calc/
-primality/goldbach/const_records -- one threading.Thread + two queue.Queue + one
-self.after(150, poll) block each, all doing the same thing with different payload
-shapes) plus several settings_tab.py functions that did comparably slow full-storage-
-tree scans SYNCHRONOUSLY on the GUI thread with no threading at all (_on_check_diff,
-_on_preview_storage_integrate, and the refresh functions for the backup/full-backup/
-floor-delete lists) -- freezing the whole window for however long those scans took,
-inconsistently with the properly-backgrounded actions right next to them.
+Used for slow work that would otherwise run SYNCHRONOUSLY on the GUI thread and freeze
+the window (e.g. settings_tab.py's _on_check_diff, _on_preview_storage_integrate, and the
+backup/full-backup/floor-delete list refreshes).
 
 Design: exactly one moving part, run_in_background(). No class to instantiate, no
 worker thread kept alive across calls -- a fresh daemon thread per call is simpler to
@@ -104,31 +98,22 @@ class PersistentWorker:
     submitted every time a tree node is expanded or a batch scan runs), as opposed to
     run_in_background()'s one-shot-per-call shape above.
 
-    prime_atlas_v1.py had SIX independently hand-rolled copies of the exact same shape -- one
-    threading.Thread(target=self._xxx_worker_loop, daemon=True) running a `while True:
-    request = work_queue.get(); ...; result_queue.put(result)` loop, one
-    self.after(150, self._poll_xxx_results) draining that result queue on the main
-    thread, and two queue.Queue()s per feature (totals/search/primesieve_calc/
-    primality/goldbach/const_records) -- differing only in what the request/result
-    payloads actually contained. This class factors out everything that was IDENTICAL
-    between all six, leaving only the one function that's genuinely different per
-    feature (what to do with one request).
+    One threading.Thread running a `request = work_queue.get(); ...;
+    result_queue.put(result)` loop, a self.after(poll_ms) poll draining the result queue
+    on the main thread, and two queue.Queue()s -- the caller supplies only the one
+    function that differs per feature (what to do with one request). Used for
+    totals/search/primesieve_calc/primality/goldbach/const_records.
 
     fn(request, report_progress) is called once per submitted request, strictly in
     the order submit() was called (never reordered, never run concurrently with
     itself -- exactly one worker thread ever exists per PersistentWorker instance).
     report_progress may be called any number of times to push an immediate payload to
-    on_progress on the main thread BEFORE fn returns -- this is what every one of the
-    six original workers used to announce "I've picked up your request" the instant
-    before starting a possibly-slow scan (see _totals_worker_loop's own original
-    docstring: without that immediate ack, the status bar sat unchanged for the whole
-    scan, making it look stalled rather than working).
+    on_progress on the main thread BEFORE fn returns -- e.g. to announce "request picked
+    up" right before a possibly-slow scan, so the status bar doesn't look stalled.
 
     Deliberately un-clever about errors: unlike run_in_background(), fn here is
     expected to catch its OWN exceptions and fold them into its normal return value
-    (exactly what all six original _xxx_worker_loop bodies already did, e.g.
-    _totals_worker_loop's own `except Exception as e: ... put(("done", ..., str(e),
-    ...))`) -- because callers need to know WHICH request an error belongs to, and a
+    -- because callers need to know WHICH request an error belongs to, and a
     raised exception loses that context by the time it reaches on_result. A raised
     exception is still caught here (so one bad request can never kill the worker
     thread), but only as a last-resort safety net for FRAMEWORK bugs -- it arrives at

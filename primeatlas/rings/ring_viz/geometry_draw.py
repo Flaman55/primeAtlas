@@ -210,16 +210,11 @@ def build_line_vertex_data(range_primes, n, offsets, world_width=1600.0, primes_
     anything outside the slice would round to the exact same handful of
     float32 x positions anyway.
 
-    `curved` -- Artur's own follow-up request (2026-09-18): a PURELY
-    visual choice between laying the very same lo/span-mapped positions
-    out on a straight line (y=0, the default, unchanged) or bent into a
-    circle (line_positions_windowed_ring/value_to_ring_axis_xy) -- see
-    those functions' own doc-comments. Does not touch which positions are
-    computed, which ones count as a match, or ANY navigation/wheel/seek
-    logic -- those all operate on the same `n`/`offsets`/`primes_set`
-    either way, exactly Artur's own spec ("w samym działaniu nic się nie
-    zmieni poza samą wizualizacją osi" -- nothing changes in the actual
-    behavior, only the axis's own visualization).
+    `curved` -- a PURELY visual choice between laying the same lo/span-mapped
+    positions out on a straight line (y=0, the default) or bent into a circle
+    (line_positions_windowed_ring/value_to_ring_axis_xy). Does not touch which
+    positions are computed, which count as a match, or any navigation/wheel/seek
+    logic -- those operate on the same `n`/`offsets`/`primes_set` either way.
 
     `wheel_modulus` -- when `curved` AND this is a real wheel modulus
     (> 1, i.e. ring_geometry.pattern_wheel_residues actually found one --
@@ -229,12 +224,10 @@ def build_line_vertex_data(range_primes, n, offsets, world_width=1600.0, primes_
     `wheel_modulus`-sized chunk of the axis gets its own lap, at a bigger
     radius than the previous one, so a window spanning multiple wheel
     periods shows that structure directly instead of always normalizing
-    the whole window onto one loop -- Artur's own follow-up
-    (2026-09-18/19): "jeśli zakres starcza na niepełny okrąg ... mamy
-    niepełny okrąg, jeśli periodyk powoduje spiralę o kilku stopniach
-    zagnieżdżenia to tak to będzie wyglądać." None or <= 1 (no pattern
-    set, or a pattern whose wheel excludes nothing) falls back to the
-    plain single-circle layout, unchanged.
+    the whole window onto one loop: a range shorter than one period gives an
+    incomplete circle, several periods a multi-lap spiral. None or <= 1 (no
+    pattern set, or a pattern whose wheel excludes nothing) falls back to the
+    plain single-circle layout.
 
     `primes_set` -- optional pre-built `set(int(v) for v in range_primes)`
     for the match check below; a caller holding `range_primes` fixed
@@ -243,7 +236,7 @@ def build_line_vertex_data(range_primes, n, offsets, world_width=1600.0, primes_
     logic) should pass it through here too, instead of this function
     silently rebuilding the same set from scratch on every single N-change
     -- a real cost once `range_primes` is a real archive-scale array.
-    Built fresh (the original behavior) when omitted.
+    Built fresh when omitted.
 
     Returns (data, count, hit_mask, all_match, view_mode, boundary_radius):
     `data`/`count` are build_vertex_data's own flat (count, 5) float32
@@ -438,7 +431,7 @@ def resolve_effective_track_primes(window_anchors, enabled_ids, auto_orbit, orbi
     or recolors anything the window-only behavior already showed.
 
     Only when NO window family is on does auto-orbit or a plain
-    --track-primes list apply on their own, unchanged from before -- see
+    --track-primes list apply on their own -- see
     rebuild_buffer's own call site for why auto-orbit's cycling itself is
     ALSO gated on `not enabled_ids` (a family being on must fully stop
     auto-orbit from advancing in the background, not just from being shown,
@@ -472,7 +465,7 @@ def build_tracked_outline_draws(primes_active, n, enabled_ids, theta, mode, trac
     rebuild_buffer's cyclic_window_anchor_at result color the SAME ring
     window_anchor_primes already chose to track, instead of
     compute_tracked_colors recomputing "legendre"/"generalLaw"'s anchor its
-    own (now stale) way via ANCHOR_FUNCTIONS.
+    own way via ANCHOR_FUNCTIONS, which would pick a different ring.
 
     Returns a list of (radius, (r, g, b, a)) tuples, one per tracked-and-
     active ring, in `primes_active`'s own ascending order (matching how
@@ -631,13 +624,10 @@ def zoom_to_point(old_zoom, old_pan, cursor, viewport, factor):
     where `pan` here is the EFFECTIVE pan already including the viewport-
     center offset (i.e. exactly the u_pan value -- run()'s render loop adds
     state["pan"] + viewport/2 to get this; see this function's own callers).
-    Naively multiplying zoom alone (the old on_scroll behavior) leaves world
-    position (0,0) -- the ring field's own mathematical center -- pinned to
-    whatever screen point `pan` currently is, regardless of where the cursor
-    or the viewport center actually are. That made every zoom anchor on the
-    ring field's center: zooming in on a panned-to tail raced back toward
-    that center instead of staying under the cursor, and zooming out from
-    there flew the view away from the ring field entirely.
+    Multiplying zoom alone would leave world position (0,0) -- the ring field's
+    mathematical center -- pinned to whatever screen point `pan` is, regardless of
+    the cursor or viewport center, so every zoom would anchor on the ring field's
+    center (zooming in on a panned-to tail would race back toward the center).
 
     `old_pan`, returned `new_pan` -- (x, y) tuples, the EFFECTIVE pan (world
     origin's current screen position), NOT run()'s `state["pan"]` (which is

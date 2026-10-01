@@ -89,31 +89,27 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
     harmless (renderer.py ignores them when that family isn't enabled) but
     a shorter argv is easier to read in the console pane's own `$ ...` echo
     line. `general_law_mode` -- "sliding" (default)/"stepped", plus two RIGID
-    modes [ADDED 2026-09-26, ported from the RelationalMathematics browser
-    prototype] "bertrand"/"legendre", where `general_law_theta` is ignored
-    entirely (forced to 1.0/0.5 by renderer.py itself -- see that file's own
-    --general-law-mode argparse) and the window reproduces that family's own
-    EXACTLY, rather than approximating it via theta.
+    modes "bertrand"/"legendre", where `general_law_theta` is ignored entirely
+    (forced to 1.0/0.5 by renderer.py itself -- see its --general-law-mode
+    argparse) and the window reproduces that family's own EXACTLY, rather than
+    approximating it via theta.
 
     `point_size` -- None (default) omits --point-size entirely, so
     renderer.py's own argparse default (3.0) applies; a real value is
-    forwarded as-is. Exposed here (rather than only via renderer.py's own
-    CLI, which needs hand-editing its argparse default to test) specifically
-    so a real value change is verifiable from the GUI alone -- see
-    renderer.py's own [diag] startup print (confirming the requested value
-    actually reaches the renderer, vs. a possible GL_POINT_SIZE_RANGE
-    hardware/driver clamp).
+    forwarded as-is. renderer.py's [diag] startup print shows whether the
+    requested value reaches the renderer or is clamped by the
+    GL_POINT_SIZE_RANGE hardware/driver limit.
 
     `track_primes` -- an iterable of prime
     values (any order/dupes as typed by the user, see ring_geometry.py's
     own filter_active_tracked docstring for why order is preserved) chosen
-    once at launch time via the new "Track P" field, forwarded as-is to
+    once at launch time via the "Track P" field, forwarded as-is to
     renderer.py's --track-primes. `auto_orbit` mirrors the JS's auto-orbit
     checkbox; same launch-time-only convention as `windows` above -- no
     live in-GL-window toggle for either.
 
-    `load_range` -- None (default, sequential
-    mode, unchanged behavior) or a (from, to) pair forwarded as-is to
+    `load_range` -- None (default, sequential mode) or a (from, to) pair
+    forwarded as-is to
     renderer.py's --load-range. As with track_primes, the string values are
     NOT int()-cast here -- an empty or malformed field just omits
     --load-range entirely rather than raising inside the GUI thread;
@@ -141,8 +137,8 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
     `tempo_ms` -- None
     (default) omits --tempo-ms entirely, so renderer.py's own argparse
     default (120, via clamp_tempo_ms) applies; a real value sets the
-    playback tick's own real-time pacing at launch, previously only
-    reachable live (post-launch, via the ]/[ keys inside the GL window).
+    playback tick's real-time pacing at launch (it can also be changed live
+    with the ]/[ keys inside the GL window).
     Same omit-if-None convention as `point_size` above.
 
     `viz_mode` -- "rings" (default, omits --viz-mode entirely so
@@ -165,29 +161,19 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
     _pattern_uses_seek's own doc-comment for the exact combined rule.
 
     `line_axis_curved` -- False (default) omits --line-axis-curved
-    entirely (the straight-line axis, unchanged); True bends line mode's
-    axis into a circle instead -- purely visual, see RenderSession.
-    line_axis_curved's own doc-comment.
+    entirely (straight-line axis); True bends line mode's axis into a
+    circle instead -- purely visual, see RenderSession.line_axis_curved.
 
     `slide_load_range` -- False (default, omits --slide-load-range
-    entirely) keeps today's exact fixed-slice `load_range` behavior
-    (stuck wherever `max_load_count` first landed); True turns on the
-    bidirectional sliding/traveling window (see memory file
-    primeatlas-ring-viz-sliding-range-window-plan.md) so the WHOLE
-    load_range span becomes reachable a chunk at a time. Deliberately
-    off by default -- Artur's own explicit call, 2026-09-25: "domyslnie
-    wylaczone by trzeba bylo to swiadomie wlaczyc" (default off, must be
-    consciously turned on) -- since the extra disk I/O on each chunk
-    swap may not suit every machine. `slide_chunk_size` -- None
-    (default) omits --slide-chunk-size entirely, so renderer.py's own
-    argparse falls back to `max_load_count`'s own value (real regression
-    fix, 2026-09-25 -- an earlier version gave this a separate hardcoded
-    2,000,000 default, so a user who only ever touched Max load count
-    got THAT value for the first chunk, then silently reverted to
-    2,000,000 for every chunk loaded afterward via sliding; inheriting
-    keeps ONE coherent "how much is loaded" number unless deliberately
-    diverged); a real value here overrides that inherited default with
-    a genuinely different chunk size."""
+    entirely) keeps a fixed-slice `load_range` (the first `max_load_count`
+    primes); True turns on the bidirectional sliding window so the WHOLE
+    load_range span becomes reachable a chunk at a time. Off by default
+    (enabled explicitly), since the extra disk I/O on each chunk swap may not
+    suit every machine. `slide_chunk_size` -- None (default) omits
+    --slide-chunk-size entirely, so renderer.py's argparse falls back to
+    `max_load_count`'s value (one "how much is loaded at once" number for the
+    first chunk and every slid-in chunk); a real value overrides that with a
+    different chunk size."""
     exe = python_executable or sys.executable
     argv = [exe, RENDERER_SCRIPT, "--source", "archive",
             "--portal-folder", portal_folder, "--upto", str(upto)]
@@ -245,9 +231,8 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
     # going to act on the RING_VIZ_PAUSED/RESUMED lines this makes
     # renderer.py print (see that flag's own doc-comment there) --
     # RingsTab._on_open is the one real caller and always passes True;
-    # False (default) keeps every existing pure-function test above byte-
-    # for-byte unchanged, and keeps a plain terminal invocation of this
-    # function's own CLI output copy-pasteable with no surprise behavior.
+    # False (default) keeps the argv a plain terminal invocation of
+    # renderer.py's CLI, with no pause/resume behavior.
     if pipe_stdin_commands:
         argv += ["--pipe-stdin-commands"]
     return argv
@@ -293,24 +278,20 @@ class RingsTab(BaseTab):
         instead of into `parent` directly; everything else (canvas, scrollbar,
         width sync, mousewheel binding) is handled here.
 
-        This is the exact same idiom as
-        generation_tab.py's own `_build_scrollable_container` (settings_tab.py's
-        `_make_scrollable_tab` is the same pattern again, one file earlier) --
-        copied rather than shared, matching this codebase's existing convention
-        of each tkinter-importing tab module keeping its own self-contained copy.
-        See [[primeatlas-ring-viz-known-bugs]] bug #2: the HUD panel (and, once
-        Windows & tracking / Appearance / Audio sections plus the console are ALL
-        visible at once, the whole tab) can be taller than the actual window --
-        this wrapper is what makes the overflow reachable via a scrollbar/
-        mousewheel instead of silently clipping it at the window edge.
+        Same idiom as generation_tab.py's `_build_scrollable_container` and
+        settings_tab.py's `_make_scrollable_tab`, kept as a self-contained copy per
+        tkinter-importing tab module (this codebase's convention). With every
+        section (Windows & tracking / Appearance / Audio) plus the HUD console
+        visible, the tab can be taller than the window; the wrapper makes the
+        overflow reachable via scrollbar/mousewheel instead of clipping it.
 
         Standard canvas-scrollregion idiom: an inner frame is placed on a canvas
         via create_window; the inner frame's own <Configure> (fires whenever its
         packed children change its natural size) updates the canvas' scrollregion
         to match, and the canvas' own <Configure> (fires on window resize) keeps
         the inner frame exactly as WIDE as the visible canvas so fill="x" widgets
-        inside it still span the full width like they did before this wrapper
-        existed, instead of collapsing to their minimum content width. Mousewheel
+        inside it span the full width instead of collapsing to their minimum
+        content width. Mousewheel
         scrolling is bound only while the pointer is actually over this canvas
         (bound on <Enter>, unbound on <Leave>) so it doesn't steal wheel events
         from other scrollable widgets on other tabs. <MouseWheel> covers
@@ -345,7 +326,7 @@ class RingsTab(BaseTab):
         outer.pack(fill="both", expand=True)
 
         canvas = tk.Canvas(outer, highlightthickness=0)
-        # ROOT CAUSE (see generation_tab.py's own copy of this comment): Tk's
+        # Tk's
         # Canvas defaults to yscrollincrement=0, which makes any "scroll N units" call (mousewheel,
         # scrollbar arrows) jump by ~10% of the canvas's CURRENT VIEWPORT height
         # instead of a small fixed pixel step, and doesn't clamp the view back to
@@ -456,9 +437,9 @@ class RingsTab(BaseTab):
         return inner, register_exclude
 
     def _build_ui(self):
-        # Every literal fallback below (e.g. "2", "15", "0.5") is
-        # the tab's ORIGINAL hardcoded default -- unchanged, and still what a genuinely
-        # fresh install (no saved_params yet) shows. Once at least one run has launched,
+        # Every literal fallback below (e.g. "2", "15", "0.5") is the tab's
+        # first-run default, shown on a fresh install (no saved_params yet).
+        # Once at least one run has launched,
         # saved_params overrides them, so every field after the first-ever run reopens
         # exactly where the previous one left off (see ring_viz_params's own
         # doc-comment in app_settings.py).
@@ -475,13 +456,10 @@ class RingsTab(BaseTab):
         intro = ttk.Label(container, text=self.T("rings.intro"), wraplength=760, justify="left")
         intro.pack(anchor="w", pady=(0, 10))
 
-        # Every field below used to be one flat stack
-        # of same-looking rows; grouped into labeled sections now (Position/
-        # mode, Appearance, Audio, Windows & tracking) purely as a visual/
-        # layout change -- every widget keeps its exact same attribute name,
-        # so _on_open/_set_launch_params_readonly/persistence and every
-        # existing test (which all address widgets by attribute, never by
-        # parent frame or pack position) are untouched.
+        # Fields are grouped into labeled sections (Position/mode, Appearance,
+        # Audio, Windows & tracking) purely for layout; every widget is addressed
+        # by attribute name (by _on_open, _set_launch_params_readonly, persistence
+        # and tests), never by parent frame or pack position.
 
         # --- Position & mode ---------------------------------------------
         position_frame = ttk.LabelFrame(container, text=self.T("rings.section_position"))
@@ -554,19 +532,13 @@ class RingsTab(BaseTab):
         self.max_load_count_entry.insert(0, saved_params.get("max_load_count", ""))
         self.max_load_count_entry.pack(side="left", padx=(6, 0))
 
-        # Bidirectional sliding/traveling window over Load Range (see memory
-        # file primeatlas-ring-viz-sliding-range-window-plan.md) -- OFF by
-        # default (Artur's own explicit call, 2026-09-25: default off, must
-        # be consciously turned on), so a plain Load Range keeps today's
-        # fixed-slice behavior unless this is checked. Deliberately NO
-        # separate chunk-size field here (Artur's own follow-up call,
-        # 2026-09-25: "zbyt duzo parametrow niszczy intuicje korzystania z
-        # apki" -- too many parameters ruins the app's intuitiveness) --
-        # each slid-in chunk always reuses Max load count's own value
-        # (build_renderer_argv is simply never given a slide_chunk_size
-        # here, so renderer.py's own inherit-from-max-load-count fallback
-        # always applies). renderer.py's own --slide-chunk-size CLI flag
-        # still exists for a direct/advanced invocation outside this GUI.
+        # Bidirectional sliding window over Load Range -- OFF by default (enabled
+        # explicitly), so a plain Load Range is a fixed slice unless this is
+        # checked. No separate chunk-size field (fewer parameters keep the tab
+        # intuitive): each slid-in chunk reuses Max load count's value
+        # (build_renderer_argv is never given a slide_chunk_size here, so
+        # renderer.py's inherit-from-max-load-count fallback applies).
+        # renderer.py's --slide-chunk-size CLI flag remains for direct invocation.
         slide_row = ttk.Frame(position_frame)
         slide_row.pack(fill="x", padx=8, pady=(0, 6))
         self.slide_load_range_var = tk.BooleanVar(value=saved_params.get("slide_load_range", False))
@@ -574,9 +546,9 @@ class RingsTab(BaseTab):
             slide_row, text=self.T("rings.slide_load_range_label"), variable=self.slide_load_range_var)
         self._slide_load_range_check.pack(side="left")
 
-        # Exposes renderer.py's own --tempo-ms at launch time (previously only
-        # reachable live, post-launch, via the ]/[ keys inside the GL
-        # window itself -- see clamp_tempo_ms's own [30,2000] range there).
+        # Exposes renderer.py's --tempo-ms at launch time (also adjustable live
+        # with the ]/[ keys inside the GL window -- see clamp_tempo_ms's
+        # [30,2000] range there).
         # Applies to BOTH modes (it is the playback tick's own real-time
         # pacing, independent of tick_next_n's range_step -- see that
         # function's own doc-comment for how those two are
@@ -615,8 +587,8 @@ class RingsTab(BaseTab):
         self.pattern_p0_entry.insert(0, saved_params.get("pattern_p0", ""))
         self.pattern_p0_entry.pack(side="left", padx=(6, 0))
 
-        # Manual/Auto step-mode radio + "MATCH!" checkbox (Artur's own
-        # spec, 2026-09-18): Manual (default) always takes a single wheel
+        # Manual/Auto step-mode radio + "MATCH!" checkbox: Manual (default) always
+        # takes a single wheel
         # step per LEFT/RIGHT/Up/Down/Space, showing every candidate
         # whether it's a real match or not; Auto always seeks instead
         # (RenderSession._pattern_seek) -- for the next real MATCH! when
@@ -640,7 +612,7 @@ class RingsTab(BaseTab):
             variable=self.pattern_stop_on_match_var)
         self._pattern_stop_on_match_check.pack(side="left")
 
-        # Curved axis (Artur's own spec, 2026-09-18): purely visual --
+        # Curved axis: purely visual --
         # bends line mode's straight dot-row into a circle instead, with a
         # red boundary line marking where the loaded window's own start
         # and end coincide on screen (they are NOT the same value, unlike
@@ -688,16 +660,13 @@ class RingsTab(BaseTab):
         self.general_law_theta_entry.insert(0, saved_params.get("general_law_theta", "0.5"))
         self.general_law_theta_entry.pack(side="left", padx=(6, 16))
         ttk.Label(general_law_row, text=self.T("rings.general_law_mode_label")).pack(side="left")
-        # [CHANGED 2026-09-26] Two new RIGID choices, ported from the
-        # RelationalMathematics browser prototype -- 'bertrand'/'legendre'
-        # lock theta to a fixed display value (see _on_general_law_mode_
-        # changed below) and reproduce those families' windows EXACTLY,
-        # rather than only approximating them via theta.
+        # 'bertrand'/'legendre' are RIGID choices: they lock theta to a fixed
+        # display value (see _on_general_law_mode_changed below) and reproduce those
+        # families' windows EXACTLY, rather than approximating them via theta.
         self.general_law_mode_combo = ttk.Combobox(general_law_row, width=10, state="readonly",
                                                      values=["stepped", "sliding", "bertrand", "legendre"])
-        # Default flipped to "sliding" (was "stepped") -- matches renderer.py's
-        # own --general-law-mode argparse default, see that flag's own
-        # doc-comment for why.
+        # Default "sliding" -- matches renderer.py's --general-law-mode argparse
+        # default (see that flag's doc-comment for why).
         self.general_law_mode_combo.set(saved_params.get("general_law_mode", "sliding"))
         self.general_law_mode_combo.bind("<<ComboboxSelected>>", self._on_general_law_mode_changed)
         self.general_law_mode_combo.pack(side="left", padx=(6, 0))
@@ -791,19 +760,14 @@ class RingsTab(BaseTab):
         # correctly locked instead of only locking on the NEXT manual change.
         self._on_general_law_mode_changed()
 
-        # These two buttons keep their original
-        # attribute names (open_button/stop_button -- unchanged, so
-        # test_rings_tab.py's state checks keep working) and _on_open's own
-        # launch logic is untouched, but their labels/semantics now read as
-        # Start/Resume and Reset -- see _on_reset's and __init__'s own
-        # doc-comments for how the resume half works (short version: the N
-        # field gets silently updated to the last live N whenever the GL
-        # window closes on its own, so clicking this button again reopens
-        # right there; Reset is the one path that discards that live-resume
-        # value instead, without touching what's actually typed in any field).
+        # open_button/stop_button act as Start/Resume and Reset -- see _on_reset
+        # and __init__ for the resume half (the N field is updated to the last
+        # live N whenever the GL window closes on its own, so Start reopens right
+        # there; Reset discards that live-resume value without touching what is
+        # typed in any field).
         # Packed `before=intro`, i.e. at the very top of the tab: launching is the
-        # tab's primary action, and below the option sections it sat far out of
-        # sight (Artur, 2026-10-01). Still created here, after every field it reads.
+        # tab's primary action, and must not sit below the option sections. Still
+        # created here, after every field it reads.
         button_row = ttk.Frame(container)
         button_row.pack(fill="x", pady=(0, 10), before=intro)
         self.open_button = ttk.Button(button_row, text=self.T("rings.open_button"),
@@ -915,8 +879,7 @@ class RingsTab(BaseTab):
         self._slide_load_range_check.configure(state=range_state)
 
     def _on_general_law_mode_changed(self, _event=None):
-        """[ADDED 2026-09-26, ported from the RelationalMathematics browser
-        prototype's own generalLawWindowMode 'change' listener] 'bertrand'/
+        """'bertrand'/
         'legendre' are RIGID modes -- theta is not a live parameter there
         (general_law_window_bounds ignores it entirely for these two, see
         that function's own doc-comment), so the theta entry is locked to a
@@ -946,7 +909,7 @@ class RingsTab(BaseTab):
     def _on_n_changed(self, _event=None):
         """Live floor hint next to the N field -- purely informational (which
         10p{N} floor this N would fall in, via the SAME digit_count_floor()
-        the Primes tab's own search box uses -- see PLAN.md point 4), never
+        the Primes tab's own search box uses), never
         blocks typing on an invalid/incomplete value."""
         raw = self.n_entry.get().strip()
         if not raw:
@@ -1073,18 +1036,14 @@ class RingsTab(BaseTab):
         if max_load_count is not None and max_load_count < 0:
             max_load_count = None
 
-        # Sliding/traveling window -- default OFF (see the checkbox's own
-        # doc-comment above). No chunk-size field here on purpose -- every
-        # slid-in chunk simply reuses max_load_count's own value (passed
-        # to build_renderer_argv below), never a separately-typed number.
-        # Gated on range_mode_selected, same as load_range itself just
-        # above -- real bug, 2026-09-26: _on_mode_changed() only greys out
-        # the checkbox WIDGET, it never clears slide_load_range_var, so a
-        # value left checked from an earlier range-mode session (or loaded
-        # from a persisted settings file) used to still get forwarded as
-        # --slide-load-range while --load-range itself was omitted in
-        # sequential mode, crashing renderer.py's own argparse ("--slide-
-        # load-range requires --load-range").
+        # Sliding window -- default OFF (see the checkbox above). No chunk-size
+        # field: every slid-in chunk reuses max_load_count's value (passed to
+        # build_renderer_argv below). Gated on range_mode_selected, like load_range
+        # just above: _on_mode_changed() only greys out the checkbox WIDGET and
+        # never clears slide_load_range_var, so a value left checked from an
+        # earlier range-mode session (or a persisted settings file) must not be
+        # forwarded in sequential mode -- renderer.py's argparse rejects
+        # --slide-load-range without --load-range.
         slide_load_range = self.slide_load_range_var.get() if range_mode_selected else False
 
         # Same empty-or-invalid-omits-the-flag
@@ -1212,8 +1171,8 @@ class RingsTab(BaseTab):
         self._poll_queue()
 
     def _on_reset(self):
-        """Closes the GL window's own
-        process, same as before -- and unlocks every launch-time field again
+        """Closes the GL window's process and unlocks every launch-time field
+        again
         (see _set_launch_params_readonly), which is what distinguishes an
         explicit Reset click from just closing the GL window yourself (Esc /
         the window's own close control): a plain close is handled by
@@ -1314,10 +1273,8 @@ class RingsTab(BaseTab):
                     self.open_button.configure(state="normal")
                     self.status.set(self.T("rings.status_paused"))
                     self.console.append(self.T("rings.console_paused") + "\n")
-                    # No _set_launch_params_readonly()
-                    # call here anymore -- the fields were already locked
-                    # back at _on_open's initial launch (see there), and
-                    # pausing doesn't change that.
+                    # The fields are already locked since _on_open's initial
+                    # launch; pausing doesn't change that.
                     continue
                 if item.strip() == _RING_VIZ_RESUMED_LINE:
                     self._paused = False

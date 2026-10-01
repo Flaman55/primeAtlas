@@ -1,12 +1,10 @@
 """
-repair_benchmark_log_sharding_bug.py -- one-off repair for a bug in
-orchestrator_v3.py's print_benchmark_summary() (write_files=True branch), which re-derived
-windows_written/total_primes by checking a FLAT "source_dir/PRIME_WINDOW_....bin" path
-with os.path.exists() -- task #405 sharded source_primes/ into shard_NNNNN subfolders,
-and this ONE function (unlike every other reader) was missed in that sweep. Every real,
-correctly-written generation run since the sharding merge logged windows_written=0 and
-total_primes=0 to benchmark_log.csv (and floor_meta.json), even though the actual PGS2
-files were written completely correctly to disk.
+repair_benchmark_log_sharding_bug.py -- one-off repair of benchmark_log.csv rows written
+by an orchestrator_v3.py print_benchmark_summary() (write_files=True branch) that
+re-derived windows_written/total_primes by checking a FLAT "source_dir/PRIME_WINDOW_....bin"
+path with os.path.exists() against sharded storage (shard_NNNNN subfolders, see
+window_sharding.py). Such runs logged windows_written=0 and total_primes=0 to
+benchmark_log.csv (and floor_meta.json) although the PGS2 files were written correctly.
 
 This does NOT touch any PRIME_WINDOW_*.bin file -- only benchmark_log.csv and, if present,
 each affected floor's floor_meta.json, which are pure bookkeeping/history, never the

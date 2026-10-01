@@ -23,3 +23,8 @@ PLAN.md
 # asset, never committed.
 installer/Output/
 installer/vendor/
+
+# AI assistant instruction/config files -- local tooling, not project source.
+CLAUDE.md
+CLAUDE.local.md
+.claude/

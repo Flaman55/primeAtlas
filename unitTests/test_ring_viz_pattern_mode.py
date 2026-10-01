@@ -86,15 +86,12 @@ def _test_line_positions_and_value_to_line_x():
 
 
 def _test_line_positions_archive_scale_precision():
-    """Regression (2026-09-18, Artur's own real report against a real
-    26-digit --load-range: "the space is empty ... only two points
-    travel, not three, for the chosen k3"): line_positions used to cast
-    to float64 BEFORE subtracting `lo`, so at real floor-25+ archive
-    scale (~26-digit values), each value's own float64 rounding error
-    (up to ~value * 2**-52, here ~2.7e9) dwarfed the whole loaded
-    window's actual span (~1.15e8), collapsing every point -- including
-    a k-tuple pattern's own few-unit-wide members -- onto the same pixel.
-    Fixed to subtract in exact integer arithmetic first."""
+    """line_positions must subtract `lo` in exact integer arithmetic BEFORE
+    casting to float64: at floor-25+ archive scale (~26-digit values) each
+    value's float64 rounding error (up to ~value * 2**-52, here ~2.7e9) dwarfs
+    the whole loaded window's span (~1.15e8), which would collapse every point
+    -- including a k-tuple pattern's few-unit-wide members (k=3 drawn as two
+    points) -- onto the same pixel."""
     from primeatlas.rings.ring_geometry import line_positions
     import numpy as np
 
@@ -109,13 +106,12 @@ def _test_line_positions_archive_scale_precision():
 
 
 def _test_value_to_ring_axis_xy():
-    """Spec for ring_geometry.value_to_ring_axis_xy (2026-09-18, Artur's
-    own follow-up: "wizualne zwinięcie w pierścień ... początkiem i
-    końcem będzie pionowa linia czerwona" -- a purely visual curved-axis
-    layout, values keep their exact linear order, only the on-screen
-    shape bends into a circle). t=0 (value==lo) and t=1 (value==lo+span)
-    must coincide at the exact same point -- the seam a real, non-cyclic
-    loaded range needs a boundary marker for."""
+    """Spec for ring_geometry.value_to_ring_axis_xy -- a purely visual
+    curved-axis layout: values keep their exact linear order, only the
+    on-screen shape bends into a circle, with a red vertical line at the
+    start/end seam. t=0 (value==lo) and t=1 (value==lo+span) must coincide at
+    the exact same point -- the seam a real, non-cyclic loaded range needs a
+    boundary marker for."""
     from primeatlas.rings.ring_geometry import value_to_ring_axis_xy
     import math
 
@@ -166,8 +162,8 @@ def _test_line_positions_windowed_ring():
 
 
 def _test_value_to_spiral_xy():
-    """Spec for ring_geometry.value_to_spiral_xy (2026-09-19, Artur's own
-    spiral follow-up): each `period`-sized chunk of the axis gets its own
+    """Spec for ring_geometry.value_to_spiral_xy: each `period`-sized chunk of
+    the axis gets its own
     lap at a bigger radius; every lap's own phase-zero point (value ≡ lo
     mod period) lands at the SAME angle (-pi/2) regardless of which lap,
     only the radius differs -- this is what lets a single straight radial
@@ -363,8 +359,7 @@ def _test_next_wheel_n():
     check(next_wheel_n(5, True, 6, [], 0, 100) == 5,
           "next_wheel_n always returns n unchanged for an empty (dead-pattern) residue set")
 
-    # Regression (2026-09-18, Artur's own real report: "the jump in the
-    # period is shifted"): residues are ABSOLUTE n-mod-modulus conditions,
+    # Residues are ABSOLUTE n-mod-modulus conditions,
     # so `lo` must be a pure window bound, never a phase reference -- the
     # candidate sequence for {0,2} (residues=[5], modulus=6, i.e. the
     # classic twin-prime "n == 5 mod 6") must come out the same
@@ -389,19 +384,15 @@ def _sieve_primes_upto(n):
 
 
 def _test_pattern_step_mode_and_stop_on_match():
-    """Artur's own 2026-09-18 spec (corrected after a real report -- his
-    first phrasing of this was mis-implemented as "auto+unchecked = single
-    step", not seek-for-non-match; his own real k=6 sequence 7 -> 97 -> 1357
-    (7 and 97 are both real matches, 1357 isn't) is what exposed it): a
-    Manual/Auto radio (`pattern_step_mode`) plus a "MATCH!" checkbox
+    """Manual/Auto radio (`pattern_step_mode`) plus a "MATCH!" checkbox
     (`pattern_stop_on_match`) -- "manual" ALWAYS takes a single wheel step,
     showing every candidate whether it's a match or not, regardless of the
-    checkbox; "auto" ALWAYS seeks -- for the next real MATCH! when checked,
-    or specifically for the next NON-match when unchecked (skipping real
-    matches on the way, e.g. 97 here). k=6 offsets [0,4,6,10,12,16] seeded
-    at p0=7 is Artur's own real example, verified here against a real
-    sieve rather than just re-asserting whatever _pattern_seek itself would
-    compute."""
+    checkbox; "auto" ALWAYS seeks -- for the next real MATCH! when checked, or
+    specifically for the next NON-match when unchecked (skipping real matches
+    on the way, e.g. 97 here). k=6 offsets [0,4,6,10,12,16] seeded at p0=7
+    (sequence 7 -> 97 -> 1357: 7 and 97 are real matches, 1357 isn't),
+    verified against a real sieve rather than re-asserting whatever
+    _pattern_seek itself would compute."""
     from primeatlas.rings.ring_viz.session import RenderSession
     import numpy as np
 
@@ -455,29 +446,20 @@ def _test_pattern_step_mode_and_stop_on_match():
 
 
 def _test_pattern_seek_has_no_artificial_step_cap():
-    """Regression (2026-09-25, Artur's real report, ROUND TWO -- his own
-    correction of a first attempted fix): --pattern-stop-on-match's seek
-    used to give up after a fixed _PATTERN_SEEK_MAX_STEPS (50,000) "safety
-    bound" and land on a bare non-match wheel candidate ("mimo zaznaczonego
-    match! potrafi zatrzymac sie na wheel"). A FIRST fix made bump_n/
-    scrub_advance/tick refuse to move at all once that budget was
-    exhausted -- Artur's own correction: that just froze playback/scrub
-    entirely at real archive scale, where a genuine match can legitimately
-    need MORE than 50,000 wheel-hops. His actual spec: "przy zatrzymaniu
-    niech nastapi weryfikacja czy jest match i czy jest zaznaczone match!
-    jesli nie niech idzie dalej" -- at a stop, verify whether it's a match
-    and whether MATCH! is checked; if not, keep going. That's exactly what
-    _pattern_seek's own loop already did per-candidate -- the ONLY bug was
-    the artificial cap cutting that loop short. Fix: removed the cap
-    entirely; the loop's only termination conditions now are finding the
-    desired kind, or _pattern_wheel_step reporting the genuine window edge
-    (see _pattern_seek's own updated doc-comment for why that still always
+    """--pattern-stop-on-match's seek has NO step cap: at archive scale a
+    match can legitimately need more than any fixed number of wheel-hops
+    (e.g. 50,000), and a capped seek would either land on a bare non-match
+    wheel candidate or freeze playback/scrub once the budget is exhausted. At
+    each stop the seek checks whether the candidate is a match and whether
+    MATCH! is checked, and keeps going otherwise; it terminates only on
+    finding the desired kind or on _pattern_wheel_step reporting the genuine
+    window edge (see _pattern_seek's doc-comment for why that always
     terminates).
 
     Proves the "many steps before a real match" half of this directly: a
-    real match is manually placed 500 wheel-hops from the anchor (past any
-    small-cap philosophy) in an otherwise permanently-synthetic-non-
-    matching loaded range, and the seek must still reach it."""
+    real match is manually placed 500 wheel-hops from the anchor in an
+    otherwise permanently-synthetic-non-matching loaded range, and the seek
+    must still reach it."""
     from primeatlas.rings.ring_viz.session import RenderSession
     from primeatlas.rings.ring_geometry import pattern_positions_and_match
     import numpy as np
@@ -517,18 +499,13 @@ def _test_pattern_seek_has_no_artificial_step_cap():
 
 
 def _test_pattern_seek_stays_on_last_real_match_at_genuine_window_edge():
-    """Companion to the "no artificial cap" test above, and Artur's own
-    follow-up correction (2026-09-25): "jesli w nastepnym kroku jest
-    bledne a kolejnego nie ma bo koniec zakresu to zostaje na ostatnim
-    poprawnym" -- if the next step is wrong and there's no further one
-    because the range ended, stay on the last CORRECT one. A first version
-    of this fix let tick()/bump_n/scrub_advance apply _pattern_seek's own
-    `new_n` even when it returned found=False -- landing on the last
-    non-match wheel candidate reached on the way to the edge, not on the
-    last real match. tick()/bump_n/scrub_advance must now discard that
-    non-match landing and leave `n` exactly where it was (the last
-    confirmed MATCH!) when the seek can't find another one before running
-    out of loaded window.
+    """Companion to the "no artificial cap" test above: if the next step is
+    not a match and there's no further one because the range ended, `n` stays
+    on the last CORRECT one. tick()/bump_n/scrub_advance must not apply
+    _pattern_seek's `new_n` when it returned found=False (that would land on
+    the last non-match wheel candidate reached on the way to the edge); `n`
+    stays exactly where it was (the last confirmed MATCH!) when the seek can't
+    find another one before running out of loaded window.
 
     Built with the same "only == 1 mod 6" synthetic base as the no-cap
     test (guarantees zero INCIDENTAL matches), plus exactly ONE real match
@@ -578,9 +555,8 @@ def _test_pattern_seek_stays_on_last_real_match_at_genuine_window_edge():
 
 
 # ---------------------------------------------------------------------------
-# Bidirectional sliding/traveling window (chunk_back/chunk_current/
-# chunk_forward) over --load-range -- see memory file
-# primeatlas-ring-viz-sliding-range-window-plan.md, Faza 1/2. Needs REAL
+# Bidirectional sliding window (chunk_back/chunk_current/chunk_forward) over
+# --load-range. Needs REAL
 # on-disk PGS window files (sliding does real I/O via load_archive/
 # load_archive_before), same fixture convention as
 # unitTests/test_ring_viz_renderer.py's own `_write_floor` helper.
@@ -604,22 +580,18 @@ def _write_floor(portal_dir, base_exponent, windows):
 
 
 def _test_sliding_forward_multi_chunk_seek_finds_distant_match():
-    """The actual feature this whole plan exists for: Artur's own report
-    (2026-09-25) that a --load-range covering nearly a whole floor only
-    ever showed "a few points" near the low end, because --max-load-count
-    truncated the loaded slice to a razor-thin sliver with no way to reach
-    the rest. This proves a seek can now cross MULTIPLE chunk boundaries
-    in a single call (Faza 2's own "seek must swap mid-loop" requirement)
-    and land on a real match several chunks past the initially-loaded one,
-    instead of stopping dead at what used to be a hard buffer edge.
+    """A --load-range covering nearly a whole floor must be reachable beyond
+    the first --max-load-count primes: a seek crosses MULTIPLE chunk
+    boundaries in a single call (swapping mid-loop) and lands on a real match
+    several chunks past the initially-loaded one, instead of stopping at the
+    loaded buffer's edge.
 
     Data: 70 values of the form 6k+1 (k=0..69, i.e. 1..415) -- by
     construction no two of these are ever 2 apart, so (same convention as
     the no-artificial-cap test above) every wheel-compatible candidate
     fails the [0,2] match check until it reaches a manually-inserted real
     pair. That pair (359, 361) is placed so it lands as chunk index 6's own
-    FIRST element once split into chunk_size=10 chunks (verified via a
-    throwaway simulation before writing this test) -- reaching it from the
+    FIRST element once split into chunk_size=10 chunks -- reaching it from the
     initial chunk (chunk 0) requires 6 real forward slides."""
     from primeatlas.rings.ring_viz.session import RenderSession
     from primeatlas.rings.ring_viz.sources import load_archive
@@ -656,8 +628,8 @@ def _test_sliding_forward_multi_chunk_seek_finds_distant_match():
 
         session.scrub_advance(is_right=True, ctrl_held=False, is_first_press=True)
         # With sliding enabled, a multi-chunk seek now runs on a background
-        # thread (see _start_pattern_seek's own doc-comment, 2026-09-25
-        # follow-up) instead of blocking this call -- join it before
+        # thread (see _start_pattern_seek's doc-comment) instead of blocking this
+        # call -- join it before
         # asserting the outcome, same as a real caller waits via the main
         # loop's own n_force_rebuild-triggered rebuild.
         check(session._seek_thread is not None, "test setup: the seek actually moved to a background thread")
@@ -743,15 +715,11 @@ def _test_sliding_backward_swap_mirror():
 
 
 def _test_sliding_neighbor_chunk_loads_in_background_not_blocking():
-    """Regression (2026-09-25, Artur's own real report AFTER the sliding
-    feature above was already committed: "przelaczenie miedzy nimi trwa
-    dosc dlugo" -- switching between them takes quite a while): the FIRST
-    version of _ensure_forward_chunk/_ensure_back_chunk did a plain
-    synchronous load_archive/load_archive_before call, which -- since the
-    real renderer's GLFW loop is single-threaded -- blocked the entire
-    window for however long that disk read took, on EVERY swap, even
-    though the swap itself used already-ready data. Fixed to run the
-    neighbor load on a background daemon thread instead.
+    """_ensure_forward_chunk/_ensure_back_chunk load the neighbor chunk on a
+    background daemon thread: the renderer's GLFW loop is single-threaded, so
+    a synchronous load_archive/load_archive_before call would block the
+    entire window for the whole disk read on EVERY swap, even though the swap
+    itself uses already-ready data.
 
     Proves the actual async contract directly (not just that the final
     DATA ends up correct, which the other sliding tests above already
@@ -813,15 +781,12 @@ def _test_sliding_neighbor_chunk_loads_in_background_not_blocking():
 
 
 def _test_sliding_disabled_by_default_without_full_wiring():
-    """sliding_enabled must degrade gracefully to False -- reproducing
-    today's fixed-slice behavior exactly -- whenever the caller passes
-    sliding_enabled=True but omits any of the OTHER kwargs actually needed
-    to do it safely (portal_folder, chunk_size, range_load_to). Every
-    existing pre-sliding test in this file constructs RenderSession without
-    ANY of these new kwargs at all and must keep passing unchanged (already
-    proven by this file's own full run), so this specifically pins the
-    "explicitly asked for it but incompletely" case, e.g. Faza 4 wiring
-    landing on the GUI side before the CLI side, or vice versa."""
+    """sliding_enabled must degrade gracefully to False (a fixed slice)
+    whenever the caller passes sliding_enabled=True but omits any of the
+    OTHER kwargs needed to do it safely (portal_folder, chunk_size,
+    range_load_to) -- e.g. the GUI and CLI sides wired inconsistently.
+    Constructing RenderSession without ANY of these kwargs is covered by the
+    other tests in this file."""
     from primeatlas.rings.ring_viz.session import RenderSession
     import numpy as np
 
@@ -845,7 +810,7 @@ def _test_sliding_disabled_by_default_without_full_wiring():
 
 
 def _test_sliding_found_false_means_true_range_edge_not_chunk_edge():
-    """Core Faza 1 correctness requirement: once sliding is enabled,
+    """Core correctness requirement: once sliding is enabled,
     `found=False` from tick()/_pattern_seek must mean the TRUE
     range_load_to edge was reached (chunk_forward genuinely empty), not
     merely the INITIALLY loaded chunk's own edge -- the whole point of this
@@ -891,19 +856,13 @@ def _test_sliding_found_false_means_true_range_edge_not_chunk_edge():
 
 
 def _test_sliding_forward_respects_range_load_to_hard_boundary():
-    """Symmetric counterpart to the backward not_below fix (Artur's own
-    follow-up, 2026-09-25: "to samo ograniczenie powinno byc do wartosci do
-    by znow nie pojsc dalej niz ustawiony zakres" -- the same restriction
-    should apply to the TO value too, so it again doesn't go further than
-    the set range). Unlike backward (which needed a brand-new loader with
-    no boundary awareness at all until that fix), forward sliding reuses
-    load_archive(upto=range_load_to) exactly as-is, and that function has
-    ALWAYS hard-bounded by `upto` (`arr <= upto`, plus a floor-level
-    `floor_lo > upto: break`) -- this test exists to PROVE that already-
-    correct behavior at the RenderSession/sliding level with the same
-    rigor as the backward regression test, not because a bug was found
-    here: floor 1 holds real data FAR beyond range_load_to, and sliding
-    forward must never reach it."""
+    """Symmetric counterpart to the backward not_below test: the TO value is
+    a hard boundary too, so sliding never goes further than the set range.
+    Forward sliding reuses load_archive(upto=range_load_to), which always
+    hard-bounds by `upto` (`arr <= upto`, plus a floor-level `floor_lo >
+    upto: break`); this test proves that at the RenderSession/sliding level
+    with the same rigor as the backward test: floor 1 holds real data FAR
+    beyond range_load_to, and sliding forward must never reach it."""
     from primeatlas.rings.ring_viz.session import RenderSession
     from primeatlas.rings.ring_viz.sources import load_archive
 
@@ -952,9 +911,8 @@ def _test_sliding_forward_respects_range_load_to_hard_boundary():
 
 
 def _test_sliding_edge_reached_prints_explicit_message():
-    """Artur's own explicit request, 2026-09-25: "jawna informacja jesli
-    nie da sie isc dalej bo to przekroczy wartosc od albo do" -- explicit
-    information when a move is refused because it would exceed FROM or TO.
+    """Explicit information when a move is refused because it would exceed
+    FROM or TO.
     Console-output test (this module's own convention elsewhere, e.g.
     HUD/rebuild lines, already prints rather than returning strings) --
     captures stdout around a call that's already AT the genuine edge in
@@ -1011,11 +969,8 @@ def _test_sliding_edge_reached_prints_explicit_message():
 
 
 def _test_sliding_edge_reached_shows_in_hud_not_just_console():
-    """Artur's own direct follow-up to the console-message fix above,
-    2026-09-25: "jedynie w oknie gui nic sie nie pojawia ze wstecz nie da
-    sie isc dalej" -- only in the GUI window nothing appears that you
-    can't go further backward. The console print alone was never enough:
-    he's watching the actual GL window, not tailing console text. N
+    """The edge message must also appear in the GL window's HUD, not only on
+    the console. N
     staying unchanged at a genuine edge means renderer.py's own main-loop
     rebuild gate (`session.n != last_n`) never fires by itself, so without
     `n_force_rebuild` being set, rebuild_line (the only place that
@@ -1073,15 +1028,11 @@ def _test_sliding_edge_reached_shows_in_hud_not_just_console():
 
 
 def _test_sliding_edge_message_clears_on_in_chunk_step_no_slide_needed():
-    """Regression (2026-09-25, Artur's own real report, follow-up to the
-    HUD-visibility fix): "po wykonaniu kroku w przeciwnym kierunku komunikat
-    powinien zniknac ... a komunikat zostaje zamrozony" -- after a step in
-    the OPPOSITE direction the message should disappear, but it stays
-    frozen. The previous fix only cleared the edge flags/HUD line inside
-    _slide_forward/_slide_backward's own SUCCESS path -- a step that stays
-    within the ALREADY-loaded chunk_current (no chunk crossing needed at
-    all, the common case for a small step right after bouncing off an
-    edge) never called either method, so the flag/message never cleared.
+    """After a step in the OPPOSITE direction from an edge, the edge message
+    must disappear -- including a step that stays within the ALREADY-loaded
+    chunk_current (no chunk crossing, the common case for a small step right
+    after bouncing off an edge), which never calls _slide_forward/
+    _slide_backward.
 
     Forces a small, dense wheel (modulus=6, residues=[1]) directly onto a
     real session so multiple wheel-compatible positions exist WITHIN one
@@ -1140,9 +1091,8 @@ def _test_sliding_edge_message_clears_on_in_chunk_step_no_slide_needed():
 
 
 def _test_sliding_to_edge_message_clears_on_in_chunk_step_no_slide_needed():
-    """Symmetric counterpart to the FROM-edge in-chunk test above (Artur's
-    own explicit follow-up, 2026-09-25: "i analogicznie jest dla at range
-    to?" -- and is it analogous for 'at range TO'?) -- same fix
+    """Symmetric counterpart to the FROM-edge in-chunk test above -- same
+    behavior
     (_pattern_wheel_step clears BOTH edge flags on any genuine move,
     regardless of direction), same in-chunk-step scenario, mirrored for
     the TO/forward edge instead."""
@@ -1195,12 +1145,10 @@ def _test_sliding_to_edge_message_clears_on_in_chunk_step_no_slide_needed():
 
 
 # ---------------------------------------------------------------------------
-# Background pattern seek (2026-09-25 follow-up to the sliding-window plan
-# above) -- Artur's own real report: chunk_size=500 + a sparse k=5 pattern
-# could need MANY real chunk crossings to reach the next MATCH!, each one a
-# real blocking disk load, freezing the GLFW window for however long that
-# whole chain took since _pattern_seek ran synchronously on the main thread.
-# See session.py's own _start_pattern_seek doc-comment for the full design.
+# Background pattern seek: with chunk_size=500 and a sparse k=5 pattern the next
+# MATCH! can be MANY chunk crossings away, each a blocking disk load, which would
+# freeze the GLFW window if _pattern_seek ran synchronously on the main thread.
+# See session.py's _start_pattern_seek doc-comment for the design.
 # ---------------------------------------------------------------------------
 
 def _test_sliding_seek_runs_in_background_not_blocking_main_thread():
@@ -1389,9 +1337,8 @@ def _test_sliding_seek_hud_shows_searching_while_in_flight():
 
 
 def _test_sliding_seek_tick_not_found_stops_playback_in_background():
-    """tick()'s own not-found stop (previously synchronous: the main
-    loop's own `if should_stop: print(...)` branch reacting to tick()'s
-    True return) must still happen once sliding moves the search to a
+    """tick()'s own not-found stop (stop playback + print) must still happen
+    when sliding moves the search to a
     background thread -- just a frame or more later, once the worker
     itself resolves. Reuses the same "no real [0,2] match anywhere, real
     range_load_to edge" fixture as
@@ -1547,17 +1494,12 @@ def _test_sliding_seek_reset_during_flight_discards_stale_result():
 
 
 def _test_sliding_seek_exception_clears_seek_thread_not_wedged_forever():
-    """Regression (2026-09-25, Artur's own real report: one scrub step
-    landed on a non-match and navigation was then stuck in BOTH
-    directions): `_start_pattern_seek`'s worker used to clear
-    `_seek_thread` only at the very end of its normal body -- any
-    exception raised anywhere inside `_pattern_seek`'s own crawl killed
-    the thread WITHOUT ever reaching that line, so `_seek_thread` stayed
-    permanently non-None and every future tick/bump_n/scrub_advance call
-    silently no-op'd forever (the "already running" guard treats any
-    non-None value the same, whether the thread is genuinely still
-    working or simply died). Fixed with a try/except/finally wrapping the
-    whole worker body. Proven here by monkeypatching `_pattern_seek`
+    """`_start_pattern_seek`'s worker must clear `_seek_thread` even when an
+    exception is raised inside `_pattern_seek`'s crawl; otherwise
+    `_seek_thread` stays non-None and every later tick/bump_n/scrub_advance
+    call is a silent no-op in BOTH directions (the "already running" guard
+    treats any non-None value the same, whether the thread is still working
+    or died). Proven here by monkeypatching `_pattern_seek`
     itself to raise, then confirming (a) the thread still clears and (b)
     a SECOND, real seek afterward is not blocked by the first one's
     crash."""
@@ -1608,11 +1550,9 @@ def _test_sliding_seek_exception_clears_seek_thread_not_wedged_forever():
 
 
 def _test_sliding_seek_searches_with_bigger_stride_then_recenters_to_chunk_size():
-    """Artur's own proposal, 2026-09-25 ("a gdyby przeszukiwanie dzialalo
-    na tych domyslnych 2 milionach ale samo renderowanie bylo dla
-    wyznaczonej liczby" -- what if the SEARCH worked on the default 2
-    million while the RENDERING stayed at the configured, possibly much
-    smaller, chunk_size): a background seek should crawl with a bigger
+    """The SEARCH crawls with the default 2 million stride while the
+    RENDERING stays at the configured, possibly much smaller, chunk_size:
+    a background seek should crawl with a bigger
     internal stride (fewer real chunk crossings for a sparse pattern) and
     only shrink back down to the user's own small chunk_size once a real
     match is found, so what actually gets rendered still respects that
@@ -1716,13 +1656,13 @@ def _test_sliding_seek_fast_in_chunk_match_skips_recenter():
 
 
 def _test_render_session_wheel_prime_matches_not_skipped():
-    """Regression (2026-09-18, Artur's own real report): a k=5 pattern
+    """A k=5 pattern
     seeded at p0=5 (offsets [0,2,6,8,12]) has a REAL match at n=11 (11,13,
     17,19,23 all prime) -- but 11 is itself one of the wheel's own small
     primes, so pure residue arithmetic excludes it (the same "founding
     coincidence" class as the launch-anchor fix above), and
-    --pattern-stop-on-match's own seek silently skipped straight from 5 to
-    101 without ever considering it. The wheel must patch in ANY of
+    --pattern-stop-on-match's seek would skip straight from 5 to 101 without
+    considering it. The wheel must patch in ANY of
     DEFAULT_WHEEL_PRIMES that independently checks out as a real match,
     not just the launch anchor itself."""
     from primeatlas.rings.ring_viz.session import RenderSession
@@ -1746,8 +1686,7 @@ def _test_render_session_wheel_prime_matches_not_skipped():
 
 
 def _test_render_session_anchor_always_reachable():
-    """Regression (2026-09-18, Artur's own real report: "I can't get back
-    to the value I started from"): the k=2 twin-prime pattern seeded at
+    """The k=2 twin-prime pattern seeded at
     p0=3 anchors at n=3 -- but 3 is itself one of the wheel's own primes
     (a "founding coincidence", see pattern_wheel_residues' own
     doc-comment), so pure residue arithmetic excludes n=3's own residue
@@ -1777,9 +1716,8 @@ def _test_render_session_anchor_always_reachable():
 
 
 def _test_resolve_pattern_anchor():
-    """2026-09-18: Artur asked whether this works for an arbitrary
-    --load-range at real archive scale (e.g. a 22-digit to 23-digit
-    window) while the pattern seed stays a small number like 7 or 11 --
+    """An arbitrary --load-range at archive scale (e.g. a 22-digit to 23-digit
+    window) with a small pattern seed like 7 or 11 --
     the seed only picks the pattern's SHAPE, so it should compute the
     phase and land on the first genuinely wheel-compatible candidate
     inside that huge, disjoint window instead of naively clamping to the
@@ -1845,10 +1783,9 @@ def _test_build_line_vertex_data():
 
 
 def _test_build_line_vertex_data_curved():
-    """Spec for build_line_vertex_data's `curved` parameter (2026-09-18,
-    Artur's own spec: "w samym działaniu nic się nie zmieni poza samą
-    wizualizacją osi" -- nothing changes in the actual behavior, only the
-    axis's own visualization). Compares curved=True directly against
+    """Spec for build_line_vertex_data's `curved` parameter: purely visual,
+    nothing changes in matching/navigation, only the axis's visualization.
+    Compares curved=True directly against
     curved=False for the IDENTICAL inputs: match results, hit_mask, and
     row counts must be byte-for-byte identical; only the (x,y) positions
     themselves may differ."""
@@ -1880,9 +1817,9 @@ def _test_build_line_vertex_data_curved():
 
 
 def _test_line_view_bounds():
-    """Spec for ring_geometry.line_view_bounds (2026-09-18, Artur's own
-    "wrap the axis into a phase/ring coordinate" fix for the float32
-    GPU-vertex-buffer precision ceiling): stay in 'full' whole-window mode
+    """Spec for ring_geometry.line_view_bounds (wrapping the axis into a local
+    coordinate around the anchor, for the float32 GPU-vertex-buffer precision
+    ceiling): stay in 'full' whole-window mode
     below LINE_PRECISION_SAFE_SPAN, switch to a 'local', anchor-centered,
     FIXED-width slice above it -- and that local slice must always be wide
     enough to hold the active pattern's own full diameter."""
@@ -1936,10 +1873,8 @@ def _test_line_positions_windowed():
 
 
 def _test_line_positions_windowed_archive_scale_precision():
-    """The actual regression this whole feature exists to fix (2026-09-18,
-    Artur's own real report against a real 26-digit --load-range, k=4:
-    "again one point short... and the spacing between them doesn't match
-    the pattern, since the pattern isn't spaced that evenly"). Unlike
+    """A real 26-digit --load-range with k=4 ([0,2,6,8]): the pattern's
+    members must stay distinct and unevenly spaced on screen. Unlike
     _test_line_positions_archive_scale_precision (which only proved the
     float64 math inside line_positions itself was exact), THIS test casts
     the result to float32 -- exactly like build_line_vertex_data's own
@@ -1980,9 +1915,9 @@ def _test_line_positions_windowed_archive_scale_precision():
           f"the offset-delta-4 gap renders as exactly double an offset-delta-2 gap, "
           f"preserving the pattern's own UNEVEN spacing instead of looking evenly spaced (got gap2={gap2}, gap1={gap1})")
 
-    # Also confirm the naive WHOLE-window mapping (the pre-fix behavior)
-    # really does collapse these same 4 positions at this scale, so this
-    # test is provably exercising the bug it claims to fix.
+    # Also confirm the naive WHOLE-window mapping really does collapse these
+    # same 4 positions at this scale, so this test exercises the failure it
+    # guards against.
     naive_xs_f32 = np.array(
         [value_to_line_x(anchor + o, range_lo, range_hi - range_lo, 1600.0) for o in offsets], dtype=np.float32
     )
@@ -2184,12 +2119,9 @@ def _test_render_session_wheel_scrub():
     check(session.n == expected_backward,
           f"scrub_advance backward matches next_wheel_n's own computation (expected {expected_backward}, got {session.n})")
 
-    # Regression: Up/Down/PageUp/PageDown (bump_n) used to add its raw
-    # n_step delta (e.g. 1000) unconditionally, landing on an arbitrary
-    # position the wheel would never have picked -- looked like "the
-    # period jump is shifted" (Artur's own real bug report, 2026-09-18).
-    # bump_n must now take exactly one wheel step, ignoring delta's
-    # magnitude, same as scrub_advance.
+    # Up/Down/PageUp/PageDown (bump_n) must take exactly one wheel step,
+    # ignoring delta's magnitude (e.g. n_step=1000), same as scrub_advance --
+    # adding the raw delta would land on a position the wheel would never pick.
     session.n = 101
     expected_bump_forward = next_wheel_n(101, True, modulus, residues, lo, hi)
     session.bump_n(1000)

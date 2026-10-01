@@ -1,9 +1,7 @@
 """
-storage_integrate.py -- the systemic fix for the scenario where someone downloads
-PrimeAtlas from GitHub, gets a copy of someone else's storage (or one from another
-machine), and wants to fold it into their own -- growing the local storage the way GIMPS
-folds in partial results from many contributors (see
-[[primeatlas_storage_merge_federation]]).
+storage_integrate.py -- folds another PrimeAtlas storage (someone else's, or one from
+another machine) into the local one, growing the local storage the way GIMPS folds in
+partial results from many contributors.
 
 Doing this with a generic file-copy tool forces the person to resolve a conflict dialog
 for files that were never meant to be merged that way: `.portal_totals_cache.json` and
@@ -13,9 +11,9 @@ overwriting either way is harmless but pointless) and, more dangerously,
 side's rows aren't picked -- there's no way to "merge" two CSVs file-for-file). This
 module never touches any of those three files directly -- it only copies/merges the
 FLOOR folders (10p{N}/source_primes, 10p{N}/constellations, 10p{N}/floor_meta.json),
-which is the part that's actually safe to merge (see this module's own functions'
-docstrings, and the CHECKPOINT.txt regression-safety fix in
-constellation_finder_v1.py's _append_hits_deduped()). benchmark_log.csv then reconciles
+which is the part that's actually safe to merge (see this module's functions'
+docstrings, and constellation_finder_v2.py's _append_hits_deduped(), which makes
+re-scanning safe). benchmark_log.csv then reconciles
 itself automatically and additively the normal way -- via floor_meta.json travelling
 with each floor and prime_atlas_v1.py's totals-worker importing it on the next visit to
 that floor (floor_meta.merge_floor_meta_into_benchmark_log(), already wired) -- this
@@ -99,8 +97,8 @@ def plan_integration(destination_path, external_path):
         if not missing_windows and not missing_hits:
             continue
 
-        # source_primes/ is sharded into shard_NNNNN subfolders (see window_sharding.py,
-        # task #405) -- resolve real external-side paths via one list_sharded_files()
+        # source_primes/ is sharded into shard_NNNNN subfolders (see window_sharding.py) --
+        # resolve real external-side paths via one list_sharded_files()
         # walk rather than assuming a flat os.path.join(ext_source_dir, name).
         ext_source_dir = _floor_source_dir(external_path, base_exponent)
         ext_const_dir = _floor_const_dir(external_path, base_exponent)
@@ -169,8 +167,7 @@ def integrate_floor(destination_path, external_path, base_exponent,
     have a checkpoint, it's left completely untouched (even if the external side's is
     further along) -- the worst consequence of that conservative choice is some
     windows getting reprocessed by a later constellation-finder run, which is exactly
-    the case _append_hits_deduped() (see constellation_finder_v1.py) already made
-    safe -- see [[primeatlas_storage_merge_federation]].
+    the case _append_hits_deduped() (see constellation_finder_v2.py) makes safe.
 
     floor_meta.json rows are merged in additively (both directions are never touched:
     this only ever imports external's rows INTO destination's file, never the
@@ -218,7 +215,7 @@ def integrate_floor(destination_path, external_path, base_exponent,
     ext_source_dir = _floor_source_dir(external_path, base_exponent)
     dest_const_dir = _floor_const_dir(destination_path, base_exponent)
     ext_const_dir = _floor_const_dir(external_path, base_exponent)
-    # source_primes/ is sharded on both sides (see window_sharding.py, task #405): the
+    # source_primes/ is sharded on both sides (see window_sharding.py): the
     # external (read) side is resolved via one list_sharded_files() walk; the
     # destination (write) side picks a shard via shard_dir_for_restored_offset() since
     # the file's original window_m isn't recorded anywhere this merge can see -- see

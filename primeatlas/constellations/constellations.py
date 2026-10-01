@@ -105,8 +105,8 @@ def read_hit_pattern_header(portal_folder, base_exponent, k, variant_id):
 
 def hit_pattern_page_count(portal_folder, base_exponent, k, variant_id):
     """How many browsing "pages" this pattern has -- an unpaged pattern is always
-    exactly 1 "page" (its whole file, read in one shot, same as before this whole
-    paging mechanism existed) so every caller can loop `for i in range(page_count):
+    exactly 1 "page" (its whole file, read in one shot) so every caller can loop
+    `for i in range(page_count):
     read_hit_pattern_page(..., i)` uniformly regardless of whether the pattern has
     actually been migrated. Returns 0 if the pattern has no hit file at all (nothing to
     page through)."""
@@ -144,7 +144,7 @@ def read_hit_pattern_page(portal_folder, base_exponent, k, variant_id, page_inde
     read_prime_window() cost this whole browsing path always had for a small/medium
     pattern), for a paged one it's exactly that hit_paging page, bounded to
     hit_paging.PAGE_SIZE entries regardless of the pattern's total_count. This is the
-    ONE place the records tab drill-down, its PDF/CSV export, and the Magazyn tab's own
+    ONE place the records tab drill-down, its PDF/CSV export, and the Storage tab's own
     preview loader should all read hit values through, instead of calling
     prime_sieve_v1.read_prime_window() on hit_file_path() directly (which silently
     breaks -- FileNotFoundError -- the instant a pattern is migrated to pages, and
@@ -208,14 +208,9 @@ def build_constellation_records_table(portal_folder, k, floor_min=None, floor_ma
     see constellation_finder_v1.py's own module header -- so the smallest is simply the
     first stored value, no need to read/compare the whole file by hand).
 
-    `floor_min`/`floor_max` (both optional, inclusive): scope the scan to a specific
-    piętro/floor range instead of every floor in storage. Added because a project with
-    many populated floors makes the unscoped table both slow to build and noisy to read
-    (mostly "-" cells for floors the user isn't currently interested in) -- passing
-    bounds lets the caller match the curated exp range pzktupel.de's own reference
-    tables show (e.g. only exp 10..19) instead of dumping the whole storage. None means
-    unbounded on that side, matching the pre-existing (pre-filter) behaviour when both
-    are omitted.
+    `floor_min`/`floor_max` (both optional, inclusive): scope the scan to a floor range
+    instead of every floor in storage (e.g. to match the exp range pzktupel.de's
+    reference tables show). None means unbounded on that side.
 
     `is_record_floor` flags a cell whose floor happens to equal the pzktupel.de catalog's
     own record_digits - 1 (a D-digit record lives in floor D-1, since floor N holds
@@ -238,17 +233,11 @@ def build_constellation_records_table(portal_folder, k, floor_min=None, floor_ma
             variant, else {"offset": int, "count": int, "is_record_floor": bool}.
 
     Pure function (no tkinter), reusing list_floors()/floor_has_constellation_hits()/
-    hit_file_path() exactly as reload_constellations_tree() already does, so this is
-    consistent with (and no more expensive than) the existing storage browser -- the one
-    added cost is prime_sieve_v1.read_prime_window_header() per (floor, variant) that
-    actually has a hit file, a fixed-size (~264 byte) header read that returns both
-    base_prime (the smallest stored value -- hit files are sorted ascending, see
-    constellation_finder_v1.py's own module header) and count directly, without decoding
-    the gap-encoded body. Previously this called read_prime_window() (full decode) just
-    to read values[0] and len(values) -- for k2 on floor 25's 2.9GB/~1.5 billion-entry
-    hit file that meant decoding the entire file to read two numbers already available
-    in the header; see list_constellation_hits() above, which already used the header
-    form for the same reason."""
+    hit_file_path() as reload_constellations_tree() does. Per (floor, variant) with a hit
+    file it reads only the fixed-size (~264 byte) header via
+    prime_sieve_v1.read_prime_window_header(), which gives both base_prime (the smallest
+    stored value, hit files being sorted ascending) and count without decoding the
+    gap-encoded body (a full decode of k=2 on floor 25 would be ~1.5 billion entries)."""
     variants = pattern_catalog_v1.patterns_for_k(k)
     variant_ids = [w["id"] for w in variants]
     variant_meta = {w["id"]: w for w in variants}
@@ -284,13 +273,11 @@ def count_constellation_records_detail_rows(portal_folder, k, floor_min=None, fl
     """Cheap O(1)-per-pattern total of how many rows
     build_constellation_records_detail_rows()/iter_constellation_records_detail_rows()
     would produce for this k/floor range -- sums read_hit_pattern_header()'s own
-    `count` per (floor, variant), never touching a single hit VALUE. Added so the
-    records tab's PDF export (which, unlike CSV, needs every row laid out on paginated
-    pages up front -- see render_constellation_records_pdf()) can refuse a range whose
-    row count would make an absurd (or outright OOM-risking) PDF, e.g. floor 25's k=2
-    alone: ~2.16 billion rows, an obviously unusable multi-hundred-million-page PDF
-    even setting memory aside -- BEFORE attempting to build it, rather than after
-    already having decoded everything."""
+    `count` per (floor, variant), never touching a single hit VALUE. Lets the records
+    tab's PDF export (which, unlike CSV, needs every row laid out on paginated pages up
+    front -- see render_constellation_records_pdf()) refuse a range whose row count
+    would make an absurd (or OOM-risking) PDF -- k=2 on floor 25 alone is ~2 billion
+    rows -- BEFORE attempting to build it."""
     variants = pattern_catalog_v1.patterns_for_k(k)
     variant_ids = [w["id"] for w in variants]
     total = 0
@@ -311,13 +298,11 @@ def count_constellation_records_detail_rows(portal_folder, k, floor_min=None, fl
 def iter_constellation_records_detail_rows(portal_folder, k, floor_min=None, floor_max=None):
     """Streaming sibling of build_constellation_records_detail_rows() below: yields the
     same per-hit row dicts ONE AT A TIME instead of collecting them into one big list
-    first. Added because build_constellation_records_detail_rows() already reads hit
-    VALUES through paging-transparent, per-page-bounded reads (see
-    read_hit_pattern_page()'s own docstring) -- but it still accumulates every row dict
-    into one Python list before returning, which for a pattern the scale of floor 25's
-    k=2 (~2.16 billion hits) would try to hold billions of dicts in memory at once, an
-    OOM risk on a completely different axis than the per-page DECODE cost that function
-    already addresses. CSV export (see constellations_records_tab.py's _write_detail_csv)
+    first. build_constellation_records_detail_rows() reads hit VALUES through
+    paging-transparent, per-page-bounded reads (see read_hit_pattern_page()), but
+    accumulates every row dict into one list -- billions of dicts for a dense pattern
+    (k=2 on floor 25), an OOM risk on a different axis than the per-page DECODE cost.
+    CSV export (see constellations_records_tab.py's _write_detail_csv)
     is the one consumer large-scale enough for this to matter -- it iterates this
     directly and writes each row as it arrives, never holding more than one hit-file
     page's worth of rows in memory at once. Same row shape/ordering as
@@ -416,9 +401,9 @@ def build_constellation_records_detail_rows(portal_folder, k, floor_min=None, fl
     range, not only the record-setting smallest one. Same floor_min/floor_max
     semantics (inclusive, None = unbounded) as build_constellation_records_table().
 
-    Added for the PDF/CSV export buttons specifically (user request: the exported
-    file should contain every hit this project has found for the currently displayed
-    floor range, not just the compact one-cell-per-floor summary) -- the on-screen
+    Used by the PDF/CSV export buttons: an export contains every hit found for the
+    currently displayed floor range, not just the compact one-cell-per-floor summary --
+    the on-screen
     tree keeps showing the compact view (see build_constellation_records_table()'s own
     docstring for why that's the right shape for browsing), and the records tab's own
     cell drill-down gives the same full list on-demand for a single cell inside the
@@ -584,23 +569,18 @@ def find_constellation_participation(portal_folder, base_exponent, number, hit_s
     k=3 and k=2 hit's base -- sub-tuples of a longer pattern), so this returns every match,
     not just the first.
 
-    A pattern already migrated to pages (hit_paging.py -- in practice, any pattern dense
-    enough to matter, since constellation_finder_v2.py auto-migrates the moment a pattern
-    would grow past hit_paging.PAGE_SIZE) is looked up via _find_value_in_paged_pattern():
-    one binary search per offset over cheap page-HEADER reads, decoding at most one page
-    per offset. This REPLACED materializing every page into one big Python set first --
-    for floor 25's k=2 (~2 billion hits across ~2,000 pages), that meant decoding gigabytes
-    of gap-encoded data, and keeping the resulting multi-billion-entry set resident in
-    hit_set_cache for the rest of the session, on EVERY search -- the actual "search grinds
-    to a halt at archive scale" bottleneck this function exists to fix. An UNPAGED pattern
-    (small by construction -- auto-migration keeps it under PAGE_SIZE) still gets the old
-    full-decode-then-cache treatment below, since it's already cheap and the cache still
-    pays off across repeated searches for it.
+    A pattern migrated to pages (hit_paging.py; constellation_finder_v2.py auto-migrates
+    once a pattern would grow past hit_paging.PAGE_SIZE) is looked up via
+    _find_value_in_paged_pattern(): one binary search per offset over page-HEADER reads,
+    decoding at most one page per offset. Materializing every page into one set would
+    mean decoding gigabytes and keeping a multi-billion-entry set in memory for a dense
+    pattern. An UNPAGED pattern (under PAGE_SIZE by construction) is fully decoded and
+    cached below, which pays off across repeated searches.
 
     `hit_set_cache`, if given, is a dict keyed by (base_exponent, k, id) -> set of decoded
     starting values; reused across repeated searches in the same session so each UNPAGED
     hit file is only decoded once rather than on every search (a paged pattern is never
-    added to this cache -- see above). Owned by the Constellations tab's Magazyn widget
+    added to this cache -- see above). Owned by the Constellations tab's Storage widget
     (ConstellationsHitsTab.hit_set_cache) -- passed in explicitly by prime_atlas_v1.py's
     own _search_job rather than kept as module state here, so this function stays pure and
     reusable regardless of which tab (or a future test) calls it.

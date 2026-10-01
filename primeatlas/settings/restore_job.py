@@ -225,8 +225,8 @@ def delete_extra_files(storage_path, base_exponent, extra_windows, extra_hits):
     errors = []
     floor_dir = os.path.join(storage_path, f"10p{base_exponent}")
     source_dir = os.path.join(floor_dir, "source_primes")
-    # source_primes/ is sharded into shard_NNNNN subfolders (see window_sharding.py,
-    # task #405) -- a plain filename from extra_windows no longer maps to
+    # source_primes/ is sharded into shard_NNNNN subfolders (see window_sharding.py) --
+    # a plain filename from extra_windows no longer maps to
     # os.path.join(source_dir, fname) directly, so resolve real paths via one
     # list_sharded_files() walk up front. Any name not found on disk at all (already
     # gone somehow) is skipped rather than raising -- matches the pre-existing

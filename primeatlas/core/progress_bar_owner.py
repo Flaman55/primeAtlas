@@ -6,12 +6,10 @@ sub-tab), TotalsSearchCoordinator (floor-totals scan and the Prime numbers/
 Constellations search boxes), GenerationTab (every run engine), and
 ResearchGoldbachTab's own worker-progress callback.
 
-The bug this fixes: with no coordination between these independent writers, whichever
-one's next Tk poll tick happened to call .configure() LAST silently overwrote
-whatever any other writer had just shown -- e.g. a constellation search's own bar
-could sit frozen near-empty (or full, from a leftover previous state) even while its
-own status TEXT correctly reported it 99%+ done, because a floor-totals scan or a
-search-box lookup had claimed the widget in the meantime.
+Without coordination between these independent writers, whichever one's next Tk poll
+tick calls .configure() LAST overwrites whatever another writer just showed -- e.g. a
+constellation search's bar frozen near-empty while its status TEXT reports 99%+ done,
+because a floor-totals scan or a search-box lookup claimed the widget meanwhile.
 
 First writer to claim() an owner token wins and keeps exclusive write access until
 that SAME owner calls release() -- every other owner's claim() calls return False
@@ -67,30 +65,20 @@ def pump_indeterminate(widget, interval_ms):
     on a single self-owned .after() loop, instead of Progressbar.start()'s own
     internal Tcl-level repeating timer.
 
-    Why: this widget is `totals_progress`, reused by roughly a dozen independent
-    call sites across the app's whole session (search, every BaseTab subclass's busy
-    spinner, generation, the records-table export, the Goldbach worker -- see this
-    module's own docstring for the full list) -- each one calling .stop()/.start()
-    on the SAME long-lived widget instance many times over a long session. Reported
-    bug (2026-09-25): after the archive-scale search fix made the constellation
-    search's own indeterminate phase fast enough to actually be watched, its thumb
-    doesn't glide -- it snaps between the two extreme ends. Ruled out by direct
-    testing: NOT the .start(ms) interval (Artur: slowing it 10x, 12ms -> 120ms,
-    changed nothing) -- so not simply "too fast to see intermediate frames". A
-    widget this heavily reused, switching between .start()/.stop()/mode= over many
-    independent features across a long session, is exactly the shape of the known
-    ttk::progressbar footgun where a .stop() doesn't reliably cancel a PRIOR
-    .start()'s own still-pending Tcl-level after-callback -- leaving more than one
-    internal phase-advance loop active on the same widget at once, each nudging the
-    thumb independently, which looks exactly like snapping between extremes rather
-    than a single smooth bounce. Driving the animation ourselves sidesteps that
-    entirely: at most ONE of our own .after() jobs is ever scheduled (the job id is
-    stored ON the widget, like _OWNER_ATTR above, so a second call here always
-    cancels the first before scheduling its own), and ttk's own .start()/.stop()
-    machinery is never invoked at all, so its internal bookkeeping has nothing to
-    accumulate. mode="indeterminate" is still set (that's what makes .step() move a
-    small bouncing thumb instead of filling a determinate bar) -- only the TIMER
-    driving each step is now ours instead of Tcl's."""
+    Why: this widget is `totals_progress`, reused by roughly a dozen independent call
+    sites (search, every BaseTab subclass's busy spinner, generation, the
+    records-table export, the Goldbach worker -- see this module's docstring), each
+    calling .stop()/.start() on the SAME long-lived widget many times over a session.
+    With ttk's own timer the thumb snaps between the two extreme ends instead of
+    gliding, independent of the .start(ms) interval -- the known ttk::progressbar
+    footgun where .stop() doesn't reliably cancel a PRIOR .start()'s pending
+    Tcl-level after-callback, leaving several phase-advance loops nudging the same
+    widget. Driving the animation ourselves avoids that: at most ONE of our own
+    .after() jobs is ever scheduled (the job id is stored ON the widget, like
+    _OWNER_ATTR above, so a second call always cancels the first), and ttk's
+    .start()/.stop() is never invoked. mode="indeterminate" is still set (that's what
+    makes .step() move a small bouncing thumb instead of filling a determinate bar) --
+    only the TIMER driving each step is ours instead of Tcl's."""
     stop_indeterminate_pump(widget)
     widget.configure(mode="indeterminate")
 

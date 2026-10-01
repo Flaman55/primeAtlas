@@ -3,7 +3,7 @@ benchmark_tab.py -- BenchmarkTab, the tkinter widgets for the Benchmark tab: a s
 dependency-free growth chart (numbers/s vs. floor depth, one point per floor -- latest
 logged run wins) plus a phase-breakdown chart (sieve-numbers/s + write-MB/s), above a
 paginated, lazily-expandable tree view of the full benchmark_log.csv (written by
-orchestrator_v1.py's print_benchmark_summary()); a "Save PDF" button renders the same
+orchestrator_v3.py's print_benchmark_summary()); a "Save PDF" button renders the same
 chart(s) + full table into a standalone PDF report.
 
 Split out of prime_atlas_v1.py's tab-by-tab backend/UI separation: this module owns
@@ -84,8 +84,8 @@ def _hover_label_position(px, py, text_w, text_h, canvas_width, canvas_height, p
 
     Pulled out as a plain function (mirroring _nearest_hover_point above) specifically
     so this decision is directly unit-testable without a real Tk canvas or event loop:
-    driving it through a synthetic <Motion> event on a probe canvas turned out to be
-    exactly as unreliable as _nearest_hover_point's own docstring already describes for
+    driving it through a synthetic <Motion> event on a probe canvas is as unreliable
+    as _nearest_hover_point's own docstring describes for
     real OS-level mouse events, and for the same underlying reason here too -- a probe
     canvas packed onto an already-fully-laid-out test window may never actually become
     mapped/viewable, and Tk does not reliably deliver pointer events to an unmapped
@@ -220,22 +220,17 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
     label_key1/label_key2/fmt1/fmt2: same meaning and defaults as
     primeatlas.benchmark.benchmark._pdf_chart_ops()'s matching parameters -- i18n keys for the two
     axis titles, and str.format() templates for tick/point value labels -- so the PDF
-    export and this on-screen chart stay visually consistent for any series pair, not just
-    the original n/s + s/window one.
+    export and this on-screen chart stay visually consistent for any series pair.
 
-    translator (optional): a primeatlas.core.i18n.Translator instance -- unlike the ORIGINAL
-    version of this function (prime_atlas_v1.py, pre-Faza-3), which read the module-level
-    global T() directly, this module has no such global to read (see this file's own
-    docstring on why cross-module globals would be circular here) -- defaults to
-    DEFAULT_LANGUAGE if not given, same fallback _pdf_chart_ops() already uses.
+    translator (optional): a primeatlas.core.i18n.Translator instance (this module has
+    no global T() to read -- see this file's own docstring on why cross-module globals
+    would be circular here) -- defaults to DEFAULT_LANGUAGE if not given, same fallback
+    _pdf_chart_ops() uses.
 
-    bg_color/fg_color/grid_color: lets the caller theme this canvas instead of it
-    staying hardcoded to a light-mode palette regardless of the app's actual theme
-    setting -- BenchmarkTab passes its constructor's
-    theme_palette through here (console_bg/console_fg/border, the same keys already used
-    for the app's other canvas-like widgets) so the chart's background and text actually
-    go dark under the dark theme. Defaults match the ORIGINAL hardcoded colors, so any
-    other caller (tests, etc.) that doesn't pass them sees identical output to before."""
+    bg_color/fg_color/grid_color: lets the caller theme this canvas -- BenchmarkTab
+    passes its constructor's theme_palette through here (console_bg/console_fg/border,
+    the same keys used for the app's other canvas-like widgets) so the chart's
+    background and text go dark under the dark theme. Defaults are a light palette."""
     t = (translator or Translator(DEFAULT_LANGUAGE)).t
     canvas.configure(background=bg_color)
     canvas.delete("all")
@@ -251,9 +246,8 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
     has_secondary = bool(points2)
     pad_top, pad_bottom = 40, 40
     # pad_top has room ABOVE the topmost y-tick (which sits right at pad_top) for the axis
-    # title below -- it used to sit almost on top of that tick's label (both landed within
-    # a few px of each other near the top-left corner) and visually merged into one
-    # unreadable blob.
+    # title, so the title and that tick's label don't merge into one blob near the
+    # top-left corner.
 
     all_xs = sorted({p[0] for p in points} | {p[0] for p in points2})
     x_min, x_max = min(all_xs), max(all_xs)
@@ -275,11 +269,9 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
     if has_secondary:
         y2_min, y2_max = y_bounds(points2)
 
-    # pad_left/pad_right used to be fixed guesses (70px) -- fine for short numbers, but
-    # real benchmark throughput easily reaches 9-11 digit n/s figures ("71,556,448"),
-    # which at that width no longer fit and got clipped against the canvas edge.
-    # Measuring the actual tick label strings with the real font instead of guessing a
-    # fixed width fixes that for any data range.
+    # pad_left/pad_right are measured from the actual tick label strings with the real
+    # font, not fixed guesses: throughput easily reaches 9-11 digit n/s figures
+    # ("71,556,448"), which a fixed 70px would clip against the canvas edge.
     tick_font = tkfont.Font(family="Consolas", size=8)
 
     def _max_tick_label_width(y_lo, y_hi, fmt):
@@ -351,11 +343,9 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
         canvas.create_text(width - 4, pad_top - 10, text=t(label_key2), anchor="se",
                             font=("Consolas", 8, "bold"), fill="#c0504d")
 
-    # Per-point value labels used to be drawn permanently next to every dot -- with
-    # dense series (a couple dozen floors close together) they overlapped into an
-    # unreadable smear. Now only the dots/line are drawn unconditionally; the actual
-    # value is shown on hover via a single tooltip (see _bind_chart_hover below), so
-    # exactly one label is ever visible.
+    # Only the dots/line are drawn unconditionally; a point's value is shown on hover
+    # via a single tooltip (see _bind_chart_hover below) -- permanent per-point labels
+    # overlap into an unreadable smear on dense series.
     hover_points = []
 
     if points:
@@ -453,12 +443,12 @@ class BenchmarkTab(BaseTab):
 
         # Floor pagination -- ABOVE the tree, same Prev/label/Next/goto layout as the
         # "Prime numbers" tab's floor nav (see that tab's own _build_primes_tab for the
-        # full rationale). benchmark_log.csv now gets a row per orchestrator run
+        # full rationale). benchmark_log.csv gets a row per orchestrator run
         # (including cheap, repeatable count-only benchmarking runs -- see the
         # write_files toggle), so a floor can accumulate dozens-to-hundreds of rows;
         # expanding a floor only lists/groups rows already in memory (cheap -- the
-        # whole CSV is small text) but only INSERTS one page's worth of Treeview rows at
-        # a time, which is the part that used to freeze the old flat, ever-growing table.
+        # whole CSV is small text) and INSERTS one page's worth of Treeview rows at a
+        # time (inserting all of them is what would freeze the GUI).
         benchmark_nav = ttk.Frame(tree_frame)
         benchmark_nav.pack(fill="x", pady=(0, 4))
         self.benchmark_prev_btn = ttk.Button(

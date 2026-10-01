@@ -4,23 +4,19 @@ mutual exclusion between self._loop_runner (every Quick-gen/loop/hybrid/orchestr
 direct launch path), self._const_runner (Constellations search) and self._ktuple_runner
 (targeted k-tuple sieve).
 
-Background: all three funnel their live WSL output through the SAME
+All three funnel their live WSL output through the SAME
 _update_shared_progress_from_generation_chunk(), which keeps its parsing state
 (self._gen_step_total, self._const_floor_total_windows, self._const_run_start_
-already_done, etc.) in plain instance attributes with no per-engine namespacing.
-Nothing previously stopped a user from starting, say, a Constellations search AND a
-Quick-gen loop run at the same time -- each engine only guarded against a second
-instance of ITSELF (self._loop_runner.is_running()), never against the OTHER two. Two
-independent 150ms polling loops writing into the same shared state would silently
-corrupt each other's bar/status values.
+already_done, etc.) in plain instance attributes with no per-engine namespacing, so
+two engines running at once (each with its own 150ms polling loop) would corrupt
+each other's bar/status values.
 
-Fix (see generation_tab.py's own _other_engine_is_running/_lock_other_run_buttons/
-_unlock_other_run_buttons docstrings): every launch path now (1) grays out the OTHER
-two engines' own Run buttons for the whole session (not just one chained batch/
-iteration), released only once that engine has GENUINELY finished, and (2) refuses to
-launch if another engine is already running even when called directly (a non-button
-call path, e.g. a search box's "generate missing window" auto-offer, would otherwise
-bypass the button graying entirely).
+Contract (see generation_tab.py's _other_engine_is_running/_lock_other_run_buttons/
+_unlock_other_run_buttons docstrings): every launch path (1) grays out the OTHER two
+engines' Run buttons for the whole session (not just one chained batch/iteration),
+released only once that engine has GENUINELY finished, and (2) refuses to launch if
+another engine is already running even when called directly (a non-button call path,
+e.g. a search box's "generate missing window" auto-offer).
 
 Never drives a REAL WSL process -- WslLoggedRunner is monkeypatched out in every test
 here, same convention as test_constellation_auto_retry.py.
@@ -179,8 +175,8 @@ def _test_starting_constellation_run_locks_loop_and_ktuple_buttons():
                       str(panel["generate_btn"]["state"]) == "disabled"
                       for panel in tab._quick_panels),
                   "every Quick-gen panel's own Generate button is ALSO grayed out "
-                  "while a constellation run is active (this is the button Artur "
-                  "actually clicks -- not just the low-level loop_run_btn)")
+                  "while a constellation run is active (the user-facing launch button, "
+                  "not just the low-level loop_run_btn)")
             check(str(tab.ktuple_run_btn["state"]) == "disabled",
                   "ktuple Run is grayed out while a constellation run is active")
             check(str(tab.ktuple_auto_btn["state"]) == "disabled",

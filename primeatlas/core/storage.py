@@ -8,29 +8,16 @@ search box and the shared cross-tab search worker both use.
 
 Also the persisted GLOBAL total (GLOBAL_TOTAL_KEY / get_global_total() /
 recompute_global_total()) and the incremental bump_floor_total()/remove_floor_total()
-pair: since update_floor_totals_cache() was previously the ONLY way any total ever got
-refreshed, a full directory-listing + os.stat()-every-file pass ran for EVERY floor on
-every startup/reload, even when nothing had changed since the last visit -- see those
-functions' own docstrings. The three real write paths that actually change a floor's
-contents (generation finishing a run, storage_integrate.py merging in an external floor,
-delete_manager.py deleting one) now call bump_floor_total()/remove_floor_total()
-directly with a known delta instead of relying on the next full rescan to notice; the
-full rescan itself is untouched and still exists as a manual verify action
-(primes_tab.py's full totals recompute) for the rare case these totals ever drift (a
-crash mid-write, or files touched outside the app).
+pair: the write paths that change a floor's contents (generation finishing a run,
+storage_integrate.py merging in an external floor, delete_manager.py deleting one) call
+them directly with a known delta, so no full directory-listing + os.stat()-every-file
+pass is needed on startup/reload. The full rescan (update_floor_totals_cache()) remains
+as a manual verify action (primes_tab.py's full totals recompute) for the rare case these
+totals drift (a crash mid-write, or files touched outside the app).
 
-Extracted from prime_atlas_v1.py during a tab-by-tab backend/UI split refactor --
-unlike the Benchmark tab's extraction, these functions were never specific to one tab in
-the first place: list_floors()/list_source_filenames()/
-format_bytes()/format_duration()/digit_count_floor() etc. are called from the "Prime
-numbers" tab (primeatlas/primes/primes_tab.py), the Constellations tab, the Generation tab's
-quick-gen panel, and the Goldbach research tab, all still living directly in
-prime_atlas_v1.py. Moving this whole layer out on its own -- rather than only the parts
-the Primes tab itself needs -- avoids re-deriving which pieces are "primes-tab-only" vs.
-shared (see primes_tab.py's own docstring for how that question came up during this same
-pass) and gives every future tab extraction one obvious place to import this layer back
-from, exactly like primeatlas/benchmark/benchmark.py's read_benchmark_log() is already imported
-back into prime_atlas_v1.py for its own totals-column use.
+These functions are shared by several tabs (Prime numbers, Constellations, the Generation
+tab's quick-gen panel, the Goldbach research tab): list_floors()/list_source_filenames()/
+format_bytes()/format_duration()/digit_count_floor() etc.
 
 Pure logic (no tkinter dependency) -- exercisable/unit-tested without a display, same
 convention as every other module in this package except settings_tab.py/benchmark_tab.py/
@@ -80,7 +67,7 @@ def _is_prime_window_name(name):
 def list_source_files(portal_folder, base_exponent):
     """Returns a list of (filename, full_path, header_dict) for every PRIME_WINDOW_*.bin
     under 10p{base_exponent}/source_primes/ (sharded into shard_NNNNN subfolders -- see
-    window_sharding.py, task #405 -- so this walks those via list_sharded_files() rather
+    window_sharding.py -- so this walks those via list_sharded_files() rather
     than a flat os.listdir()), sorted into ascending window order (by the base prime in
     each file's header -- robust to filename shorthand like "10M" vs "0", unlike trying
     to re-parse format_offset()'s abbreviation back into a number). Files that fail to
@@ -131,7 +118,7 @@ def _offset_from_filename(name):
 
 def list_source_filenames(portal_folder, base_exponent):
     """Cheap listing of every PRIME_WINDOW_*.bin under 10p{base_exponent}/source_primes/
-    (sharded into shard_NNNNN subfolders -- see window_sharding.py, task #405): a cheap
+    (sharded into shard_NNNNN subfolders -- see window_sharding.py): a cheap
     listdir per shard subfolder + a regex per name, NO file opens. Sorted ascending by
     the offset parsed from the filename (see _offset_from_filename) -- a floor can hold
     thousands of windows (10p15 alone is past 2,600+ and still growing, 10p25 past
@@ -185,7 +172,7 @@ def load_totals_cache(portal_folder):
 
 
 def save_totals_cache(portal_folder, cache):
-    """Atomic write (temp file + os.replace()), same pattern as orchestrator_v1.py's
+    """Atomic write (temp file + os.replace()), same pattern as orchestrator_v3.py's
     _ensure_benchmark_log_schema() -- this file can get large (one entry per source window,
     e.g. 15000+ for a heavily-populated floor), so a half-written file from an interrupted
     save must never be what a later load sees."""
@@ -230,24 +217,20 @@ def update_floor_totals_cache(portal_folder, base_exponent, cache):
     fully deterministic from floor+offset (see prime_sieve_*.py's write_prime_window path),
     NOT content-addressed -- a low floor (see LOW_FLOOR_CUTOFF in prime_sieve_v3.py/v4.py)
     always writes to the exact same single filename every time it's regenerated, so an
-    in-place rewrite (e.g. redoing a floor after a bugfix, or after storage was reset and
-    regenerated) previously kept serving the FIRST-ever cached count forever -- the cache
-    only ever checked "have I seen this name before", never "has this name's content
-    changed". Entries from before this check existed are plain ints (old schema) rather than
-    {"count", "mtime"} dicts; any non-dict entry is treated as unconditionally stale so it
-    gets re-read (and migrated to the new shape) the first time this runs against an old
-    cache file, rather than silently trusting a count with no known mtime.
+    in-place rewrite (e.g. redoing a floor, or regenerating after a storage reset) must
+    not keep serving the old cached count, which checking only "have I seen this name"
+    would do. Entries in the old schema are plain ints rather than {"count", "mtime"}
+    dicts; any non-dict entry is treated as stale, so it gets re-read (and migrated to
+    the new shape) the first time this runs against such a cache file.
 
-    LOW-FLOOR EXCEPTION: mtime alone turned out to be unreliable in practice for floors
-    below LOW_FLOOR_CUTOFF -- this project's storage drive is FUSE/WSL-mounted (see the
-    known git-on-that-drive unlink/rename quirk elsewhere in this codebase's history), and
-    the Windows-side os.path.getmtime() this function relies on can keep reporting a stale
-    cached stat for a file just rewritten from the WSL side, for longer than this app's
-    Refresh-then-recompute cycle. A low floor never has more than ONE file (its whole width
-    is always < window_m -- see LOW_FLOOR_CUTOFF's own rationale), so the caching this
-    mtime check exists for barely matters there anyway: unconditionally re-reading a low
-    floor's single file every call costs one extra ~5ms open, not the "78s across 15,101
-    files" cost this whole cache exists to avoid for a heavily-populated NORMAL floor."""
+    LOW-FLOOR EXCEPTION: mtime alone is unreliable for floors below LOW_FLOOR_CUTOFF --
+    the storage drive can be FUSE/WSL-mounted, and the Windows-side os.path.getmtime()
+    this function relies on can keep reporting a stale cached stat for a file just
+    rewritten from the WSL side, for longer than the app's Refresh-then-recompute
+    cycle. A low floor never has more than ONE file (its whole width is always <
+    window_m -- see LOW_FLOOR_CUTOFF), so it is re-read unconditionally every call: one
+    extra ~5ms open, versus the ~78s full-floor scan (15,101 files) this cache avoids
+    for a heavily populated NORMAL floor."""
     key = f"10p{base_exponent}"
     entry = cache.setdefault(key, {"files": {}})
     cached_files = entry.setdefault("files", {})
@@ -313,8 +296,8 @@ def _global_entry(cache):
 
 def get_global_total(cache):
     """Returns (sum, file_count, bytes) from the persisted global summary, or None if it
-    has never been computed yet (a cache from before this feature existed, or a brand-new
-    portal folder) -- callers should treat None as "fall back to a real recompute", same
+    has never been computed yet (an old-schema cache, or a brand-new portal folder) --
+    callers should treat None as "fall back to a real recompute", same
     as load_totals_cache()'s own "missing means rebuild" contract."""
     entry = cache.get(GLOBAL_TOTAL_KEY)
     if not isinstance(entry, dict):
@@ -328,7 +311,7 @@ def recompute_global_total(cache):
     disk I/O of its own (the expensive part was whatever already populated those per-floor
     fields, e.g. a full update_floor_totals_cache() pass over every floor). This is the
     one place that re-derives the global sum independently of the incremental bump/remove
-    bookkeeping below, so it's what the manual "Zweryfikuj sumy" verify action (and a
+    bookkeeping below, so it's what the manual "Verify totals" verify action (and a
     first-ever run against an old cache with no "_global" key yet) uses to self-heal any
     drift between the two. Floors with no "total" yet (never scanned, e.g. right after
     bump_floor_total() created a bare entry with no prior real scan) contribute 0 rather
@@ -351,9 +334,9 @@ def bump_floor_total(cache, base_exponent, delta_count, delta_file_count, delta_
     """Adjusts one floor's cached total (and the persisted global summary alongside it) by
     a DELTA, without touching the per-file "files" map at all and without any disk I/O of
     its own -- the incremental counterpart to update_floor_totals_cache()'s full rescan,
-    added so the three write paths that change a floor's contents (generation, storage
-    merge, floor delete -- see this module's own docstring for the feature this belongs
-    to) can keep the persisted total accurate without ever re-reading a window file's
+    so the three write paths that change a floor's contents (generation, storage merge,
+    floor delete -- see this module's docstring) can keep the persisted total accurate
+    without ever re-reading a window file's
     header or re-listing a floor's directory.
 
     Deliberately does NOT add anything to entry["files"] (the per-filename mtime/count map
@@ -364,9 +347,8 @@ def bump_floor_total(cache, base_exponent, delta_count, delta_file_count, delta_
     trade-off, not an oversight -- entry["files"] simply stays exactly as accurate as it
     was before the bump (it under-represents on-disk reality until the next real scan),
     while entry["total"]/["file_count"]/["total_bytes"] (what every display actually reads)
-    stay correct immediately. The next full rescan (manual "Zweryfikuj sumy", or the first
-    time a floor is opened after this cache predates that feature) re-derives "files" from
-    the real directory listing regardless, the same as it always has, so this never leaves
+    stay correct immediately. The next full rescan (manual "Verify totals") re-derives
+    "files" from the real directory listing regardless, so this never leaves
     a permanent inconsistency -- only a temporary one between bumps and the next verify.
 
     A floor with no prior entry at all (e.g. its very first-ever generation run, before
@@ -515,12 +497,10 @@ def find_prime_in_floor(portal_folder, base_exponent, number):
     off-by-one boundary edge case) -- and, critically, the search only needs to read a
     header for the O(log N) windows it actually PROBES, not every window in the floor.
 
-    This replaced an earlier version that called list_source_files() (reads every
-    window's header up front) before bisecting in memory -- fine at hundreds of windows,
-    but 10p15 alone has passed 14,000: reading every header on every search made the
-    feature unusably slow/freeze-prone at that scale (~14,000 file opens vs. ~14 for a
-    14,000-window binary search). Listing filenames is still cheap (list_source_filenames,
-    no I/O) -- only actual header reads are now bounded.
+    Reading every window's header up front (list_source_files()) would cost one file
+    open per window on every search (~14,000 opens on a 14,000-window floor vs. ~14 for
+    the binary search). Listing filenames is cheap (list_source_filenames, no I/O) --
+    only header reads are bounded.
 
     A handful of unreadable headers along the search path (corrupt/truncated files --
     should be rare) are tolerated by trying the next index once rather than aborting the

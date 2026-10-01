@@ -72,8 +72,7 @@ else
     json_get "$LICENSE_JSON" license_text
     echo "--- end License ---"
     echo "[*] Proceeding straight to build -- you're running this script yourself, on your"
-    echo "    own machine, already knowing CUDASieve is GPLv3 (same terms you accepted"
-    echo "    building it by hand on 2026-08-23)."
+    echo "    own machine, already knowing CUDASieve is GPLv3."
 
     echo
     echo "[3/5] Building (make) -- this is the slow step, live make output follows..."

@@ -440,8 +440,8 @@ def main():
         check(anchor == "e", f"a point near the right edge flips the label to anchor='e' (got {anchor!r})")
         check(tx - 120 - 4 >= 0, f"the flipped label's left edge stays on-screen (tx={tx})")
 
-        # A point near the LEFT edge: plenty of room on the right, so the ORIGINAL
-        # anchor="w"/px+12 placement should be kept unchanged (no unnecessary flip).
+        # A point near the LEFT edge: plenty of room on the right, so the default
+        # anchor="w"/px+12 placement is kept (no unnecessary flip).
         tx, ty, anchor = _hover_label_position(
             px=20, py=110, text_w=120, text_h=14, canvas_width=900, canvas_height=220)
         check(anchor == "w" and tx == 32,

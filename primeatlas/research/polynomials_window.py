@@ -1,7 +1,7 @@
 """
 polynomials_window.py -- pure Python (no tkinter, no external dependencies)
-prime-among-polynomial-values checks for the Badania -> Wielomiany
-pierwszorodne (prime-generating polynomials) sub-tab.
+prime-among-polynomial-values checks for the Research -> Prime-generating
+polynomials (prime-generating polynomials) sub-tab.
 
 Two classical cases share the same question shape ("is f(n) prime, for every
 n in a range?"), differing only in the polynomial itself:

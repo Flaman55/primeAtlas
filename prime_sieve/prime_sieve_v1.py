@@ -345,14 +345,10 @@ def iter_prime_window_chunks(path, chunk_size):
     read_prime_window_last_value()'s own docstring), but yields it as successive lists of
     at most `chunk_size` primes instead of accumulating the whole file into one list.
 
-    Added for hit_paging.py's migrate_hit_file_to_pages() (task: splitting a huge
-    cumulative hit file -- e.g. floor 25's k=2 twin-primes file, ~1.5 billion entries --
-    into fixed-size page files): reading that file via read_prime_window() would
-    materialize 1.5 billion individual Python int objects at once, which is exactly the
-    OOM crash read_prime_window_last_value() was added to avoid on the READ-for-last-
-    value path (see its own docstring) -- migration needs every value, not just the
-    last one, so that fix doesn't apply here, but streaming in bounded chunks keeps peak
-    added memory at O(chunk_size) ints instead of O(count), the same economy principle.
+    Used by hit_paging.py's migrate_hit_file_to_pages(): reading a ~1.5-billion-entry hit
+    file via read_prime_window() would materialize every value as a Python int at once
+    (OOM). Streaming in bounded chunks keeps peak added memory at O(chunk_size) ints
+    instead of O(count).
 
     Still reads the file's raw bytes into memory up front (O(file size), unavoidable
     without complicating varint-boundary handling across a chunked file read -- same
@@ -458,8 +454,8 @@ def _cost_zone_a(a, b, combined_size):
     """Cost of the marking loop for sieving primes p in (a,b]: sum_{a<p<=b} combined_size/p
     =~ combined_size*(ln ln b - ln ln a) (Mertens' second theorem, the constant cancels in
     the difference). Parameter is combined_size (the actual size of the buffer being
-    marked), NOT window_m (a single window's size) -- using window_m here previously
-    underestimated zone-A cost by ~combined_size/window_m times."""
+    marked), NOT window_m (a single window's size) -- window_m would underestimate zone-A
+    cost by ~combined_size/window_m times."""
     def mert(x):
         x = max(x, 2.0)   # smallest real prime is 2 -- ln ln 2 =~ -0.367 is a normal,
         return math.log(math.log(x))   # finite value, no further clamping needed above it
@@ -646,12 +642,12 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True):
 
     # PGS2 windows are written directly under BASE_STORAGE_10PN/10p{N}/source_primes/,
     # matching the CONSTELLATION_PORTAL folder layout (floor -> source_primes / constellations).
-    # write_files=False (write-toggle feature): candidates are still computed in full (needed
+    # write_files=False: candidates are still computed in full (needed
     # to know the count), but write_prime_window() is skipped -- no PGS2 files land on disk,
     # only the aggregate count is kept (total_primes_found below), handed back to the caller
     # via write_scan_metrics_handoff() since there are no files left for it to read counts
     # back from otherwise.
-    # Sharded (see window_sharding.py, task #405): no single directory ever holds more
+    # Sharded (see window_sharding.py): no single directory ever holds more
     # than SHARD_SIZE window files, regardless of floor size -- floor_folder itself is
     # therefore never created/listed directly, only its shard_NNNNN subfolders are.
     floor_folder = os.path.join(BASE_STORAGE_10PN, f"10p{base_power}", "source_primes")
@@ -720,14 +716,14 @@ def write_scan_metrics_handoff(portal_folder, l_final, sieving_primes_count,
                                 total_primes_found=None, windows_processed=None,
                                 write_files=None):
     """Hands a couple of batch-level metrics back to whatever launched this scanner
-    subprocess (orchestrator_v1.py) -- there's no other channel for this: orchestrator
+    subprocess (orchestrator_v3.py) -- there's no other channel for this: orchestrator
     deliberately does NOT capture this process's stdout (subprocess.run(cmd) with no
     capture_output=True), so progress prints stream straight to the console live instead of
     being buffered/hidden until the whole batch finishes. A small JSON file at a fixed,
     well-known path is a simple alternative that doesn't disturb that.
 
     OVERWRITTEN on every call (once per batch, i.e. usually once per orchestrator run -- see
-    BATCH_SIZE in orchestrator_v1.py). If an orchestrator run does span multiple batches, the
+    the orchestrator's batch size). If an orchestrator run does span multiple batches, the
     LAST batch's L_final is always the largest (windows are processed in increasing order),
     so "whatever's in the file when the orchestrator's loop finishes" is exactly the value
     worth recording for that run.
@@ -737,7 +733,7 @@ def write_scan_metrics_handoff(portal_folder, l_final, sieving_primes_count,
     computed in-memory BEFORE the (possibly skipped) write_prime_window() call -- so it's
     available even when write_files=False and there are no PGS2 files on disk to read counts
     back from. The orchestrator uses these instead of scanning source_primes/ for headers
-    when it's running in no-write mode (see print_benchmark_summary() in orchestrator_v1.py)."""
+    when it's running in no-write mode (see print_benchmark_summary() in orchestrator_v3.py)."""
     import json
     path = os.path.join(portal_folder, SCAN_METRICS_FILENAME)
     data = {"l_final": l_final, "sieving_primes_count": sieving_primes_count}

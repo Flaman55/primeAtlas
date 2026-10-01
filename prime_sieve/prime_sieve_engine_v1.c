@@ -86,8 +86,7 @@ int generate_and_sieve_segment(uint64_t start, uint64_t stop,
 }
 
 /* ==========================================================================================
- * generate_and_sieve_segment_bits -- bit-packed output buffer (OOM fix from the original
- * v5.2 lineage).
+ * generate_and_sieve_segment_bits -- bit-packed output buffer (one bit per position).
  *
  * The byte-per-position version above, at 200 windows (combined_size=2 billion bytes),
  * killed the process (OOM): the result buffer was 1 BYTE/position, allocated in EACH of
@@ -142,9 +141,8 @@ int generate_and_sieve_segment_bits(uint64_t start, uint64_t stop,
 /* ==========================================================================================
  * count_sieving_primes -- benchmark metric: how many distinct sieving primes p in [2, limit]
  * were actually used to sieve a combined window (limit = L_final = isqrt(combined_hi) + 1,
- * computed on the Python side exactly as before -- this doesn't change that logic, just
- * reports pi(limit) so it can be recorded alongside the timing/throughput numbers already in
- * benchmark_log.csv).
+ * computed on the Python side) -- reports pi(limit) so it can be recorded alongside the
+ * timing/throughput numbers in benchmark_log.csv.
  *
  * Thin wrapper around primesieve_count_primes(), which uses libprimesieve's own fast prime-
  * COUNTING algorithm (not iteration/generation) -- negligible cost next to the actual sieve

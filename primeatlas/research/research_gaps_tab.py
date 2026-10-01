@@ -1,13 +1,12 @@
 """
 research_gaps_tab.py -- ResearchGapsTab, the tkinter widgets for the
-Research tab's Luki (prime gaps) sub-tab: raw consecutive-prime gaps plus a
+Research tab's Gaps (prime gaps) sub-tab: raw consecutive-prime gaps plus a
 selectable Andrica/Firoozbakht/Cramer overlay, checked over a
 [n_from, n_to] range of prime POSITIONS via primeatlas/research/gaps_window.py's
 pure check_gap_range()/check_gap_range_from_source().
 
-Same shape as ResearchSquaresTab/ResearchPolynomialsTab (see either's own
-docstring for the full data-source-toggle/CSV-export history this mirrors
-from day one): a data-source toggle ("Świeże sito" / "Dane z archive",
+Same shape as ResearchSquaresTab/ResearchPolynomialsTab: a data-source toggle
+("Fresh sieve" / "Storage data",
 storage mode via primeatlas/research/research_gaps.py's read_is_prime_from_storage),
 pagination, and CSV export of the currently-displayed page.
 

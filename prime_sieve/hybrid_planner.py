@@ -2,7 +2,7 @@
 
 This module deliberately does *not* sieve, call libprimesieve, read PGS2 files or
 construct tuple products.  It turns already trusted prime boundaries into one
-immutable plan.  Keeping that mathematical contract separate lets the later WSL
+immutable plan.  Keeping that mathematical contract separate lets the WSL
 runner and C backend share exactly the same safety checks.
 
 Let ``a`` be the last prime in a contiguous existing MAIN base, ``b`` the first
@@ -19,8 +19,8 @@ cover every factor count ``r`` for which ``b**r <= N``.  MAIN still marks every
 multiple of every prime <= ``a`` in the new numeric range.
 
 ``base_is_contiguous`` is an explicit caller assertion.  A finite list of prime
-values cannot prove that a storage prefix has no missing PGS2 window; Phase 3's
-storage adapter will establish that fact from window coverage before it calls
+values cannot prove that a storage prefix has no missing PGS2 window; the storage
+adapter establishes that fact from window coverage before it calls
 this pure planner.  ``filter_is_consecutive`` is the matching bootstrap
 assertion: the supplied list begins with the immediate successor of MAIN and
 ends immediately before ``next_prime_after_filter``.

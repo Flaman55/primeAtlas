@@ -2,22 +2,16 @@
 gl_setup.py -- window/context/shader-program/VAO/VBO creation for
 primeatlas/rings/ring_viz/renderer.py's `_run_visualization`.
 
-This is the one piece of the split that genuinely CANNOT be made GL-free
-(unlike geometry_draw.py/hud.py/playback.py/session.py) -- creating a
-window, an OpenGL context, and every shader program/VAO/VBO the renderer
-needs is unavoidably GL-bound, one-time, sequential setup work. Pulling it
-out of _run_visualization does not make it any more unit-testable (it
-still needs a real display/GPU, exactly as before), but it DOES separate
-"what GL objects exist and how they're wired together at startup" from
-"what happens every frame" -- the two were tangled together in
-_run_visualization before this split.
+The one piece that cannot be GL-free (unlike geometry_draw.py/hud.py/playback.py/
+session.py): creating a window, an OpenGL context, and every shader program/VAO/VBO
+is GL-bound, one-time, sequential setup. Kept apart from _run_visualization so "which
+GL objects exist and how they are wired at startup" is separate from "what happens
+every frame"; it still needs a real display/GPU to test.
 
-setup_gl_resources(args) returns a single GLResources instance bundling
-every created object under one name, rather than the ~16 loose local
-variables _run_visualization used to juggle for this (window, ctx, prog,
-hit_point_size, prog_outline, unit_circle_vao, prog_screen,
-marker_triangle_vbo/vao, marker_line_vbo/vao, flash_quad_vbo/vao,
-prog_text, hud_quad_vbo/vao, hud_tex_holder).
+setup_gl_resources(args) returns a single GLResources instance bundling every created
+object (window, ctx, prog, hit_point_size, prog_outline, unit_circle_vao, prog_screen,
+marker_triangle_vbo/vao, marker_line_vbo/vao, flash_quad_vbo/vao, prog_text,
+hud_quad_vbo/vao, hud_tex_holder).
 """
 
 from primeatlas.rings.ring_viz.shaders import (
@@ -83,12 +77,8 @@ class GLResources:
 
 def setup_gl_resources(args):
     """Creates the GLFW window, the moderngl context, and every shader
-    program/VAO/VBO _run_visualization's main loop and callbacks need.
-    Ports that function's own startup block exactly (see git history if the
-    original per-line comments are ever needed again) -- ordering and every
-    GL call are unchanged, only the ~16 result variables are now attributes
-    on one returned GLResources instance instead of that many loose
-    locals."""
+    program/VAO/VBO _run_visualization's main loop and callbacks need,
+    returned as attributes of one GLResources instance."""
     import glfw
     import moderngl
 

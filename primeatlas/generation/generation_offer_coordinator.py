@@ -1,20 +1,18 @@
 """
 generation_offer_coordinator.py -- GenerationOfferCoordinator, the three
 "offer to generate this missing fragment, then let the caller re-check" bridge
-methods that used to live directly on PortalBrowserApp itself in prime_atlas_v1.py:
-_offer_generate_missing_prime_window, _offer_generate_missing_constellation, and
-_goldbach_offer_generate_missing_range.
+methods (missing prime window, missing constellation, missing Goldbach range).
 
-Continues the same "God object" reduction PrimesTreeCoordinator/
-ConstellationsTreeCoordinator already went through -- see either module's own
-docstring and README.md's "GUI module conventions" -> "Known gaps" section.
+Same app-level coordinator pattern as PrimesTreeCoordinator/
+ConstellationsTreeCoordinator -- see either module's docstring and README.md's "GUI
+module conventions" section.
 
 Unlike the two tree coordinators, this class needs only ONE piece of app state at
 call time -- self.generation_tab_widget (GenerationTab, primeatlas/generation/generation_tab.py)
 -- reached via a lazy get_generation_tab_widget() callable rather than a direct
 reference, since all three of these methods are only ever CALLED well after every
 tab (including Generation) already exists (in response to a search job finding a
-gap, or a Wizualizacja/decompose job hitting one) -- unlike PrimesTreeCoordinator/
+gap, or a Visualize/decompose job hitting one) -- unlike PrimesTreeCoordinator/
 ConstellationsTreeCoordinator, which reach into their own tab widgets from an
 async scan callback that could, in principle, still be in flight from the loading
 screen's own startup kickoff. Being lazy also means this class can be constructed
@@ -28,9 +26,8 @@ none of which belongs to the Generation-offer mechanism this class owns, and non
 of which any one tab (or this coordinator) has (or should have) direct knowledge
 of. This mirrors TotalsSearchCoordinator's own on_const_search_result seam:
 _on_const_search_result calls into THIS class's own offer_generate_missing_prime_
-window/offer_generate_missing_constellation methods directly (same as it always
-called the inline PortalBrowserApp methods), it just doesn't own the offering
-logic itself.
+window/offer_generate_missing_constellation methods directly; it does not own the
+offering logic itself.
 """
 from tkinter import messagebox
 
@@ -99,9 +96,9 @@ class GenerationOfferCoordinator:
         up to it first, because orchestrator_loop_v2.py/v4's engine has no notion of
         "start at an arbitrary target_idx" -- it only ever continues from wherever a
         floor's storage currently ends (see build_loop_argv()'s own CLI, which has no
-        target_idx_start position at all). One real run hit exactly this: floor 11,
-        nothing on disk yet, searched a number landing at target_idx ~30000 -> a
-        30,001-window batch instead of the single window actually needed.
+        target_idx_start position at all) -- e.g. floor 11 with nothing on disk and a
+        number at target_idx ~30000 would become a 30,001-window batch instead of the
+        single window needed.
         build_primesieve_argv()'s script (prime_sieve_primesieve.py) takes
         target_idx_start explicitly and has no continuation requirement -- it writes
         just the ONE window asked for, gaps before it and all, which is exactly what a
@@ -109,10 +106,9 @@ class GenerationOfferCoordinator:
 
         CEILING FALLBACK: primesieve mode can't reach every floor -- libprimesieve's
         own uint64 domain tops out at PRIMESIEVE_MAX_STOP (2**64-1 =~ 1.8e19), while a
-        search can land on any floor at all (a floor-30 constellation search real-world
-        hit this: 10^30 is about eleven orders of magnitude past that ceiling, so
-        primesieve mode silently truncated the run to nothing rather than writing the
-        window). Once `plan['rounded_start']` is past that ceiling, primesieve mode
+        search can land on any floor (e.g. floor 30, eleven orders of magnitude past
+        that ceiling, where primesieve mode would truncate the run to nothing). Once
+        `plan['rounded_start']` is past that ceiling, primesieve mode
         cannot write ANY part of the requested window, so this falls back to
         orchestrator_v3.py run directly (see build_orchestrator_direct_argv()'s own
         docstring for why that engine -- not its loop wrapper -- is the one capable of
@@ -155,8 +151,8 @@ class GenerationOfferCoordinator:
         in the catalog) first, to distinguish the second case from genuine
         non-participation, before calling this.
 
-        The second caller, ConstellationsCalcTab.search_selected() (Kalkulator
-        konstelacji), checks something more specific instead: whether the ONE pattern it's asking
+        The second caller, ConstellationsCalcTab.search_selected() (Constellation
+        calculator), checks something more specific instead: whether the ONE pattern it's asking
         about has a hit file yet, regardless of whether other patterns already do --
         list_constellation_hits()'s "nothing at all" check would stay silent in
         that case even though this exact pattern was never confirmed either way
@@ -195,7 +191,7 @@ class GenerationOfferCoordinator:
         return True
 
     def offer_generate_missing_range(self, op, payload):
-        """Offers to generate the primes storage a Wizualizacja/decompose job
+        """Offers to generate the primes storage a Visualize/decompose job
         just found missing (MissingStorageRangeError, translated into this dict
         by the worker loop's own except MissingStorageRangeError blocks --
         see ResearchGoldbachTab._goldbach_job's docstring). Mirrors

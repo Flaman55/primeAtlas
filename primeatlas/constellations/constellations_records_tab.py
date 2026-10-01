@@ -1,13 +1,13 @@
 """
 constellations_records_tab.py -- ConstellationsRecordsTab, the tkinter widgets for the
-Constellations tab's "Tabela rekordow" sub-tab: a pzktupel.de-style exp x variant
+Constellations tab's "Records table" sub-tab: a pzktupel.de-style exp x variant
 records table, but scanning THIS PROJECT'S OWN storage
 (constellations/k{k}/variant{id}/HITS_....bin) instead of that website -- pick k, click
-Skanuj, see the smallest offset found so far for each floor x variant combination (see
+Scan, see the smallest offset found so far for each floor x variant combination (see
 primeatlas/constellations/constellations.py's build_constellation_records_table() for the exact
 semantics, including what the record-floor asterisk does and doesn't claim).
 
-Unlike its two sibling sub-tabs (Magazyn/Kalkulator), this one is fully
+Unlike its two sibling sub-tabs (Storage/Calculator), this one is fully
 self-contained -- its own background.PersistentWorker
 (self._worker), never shared with anything else in the app (the search worker/totals
 worker stay app-level specifically BECAUSE they're shared across tabs; this one never
@@ -22,7 +22,7 @@ detail panel below the tree. Export to PDF/CSV covers the same full-detail data 
 cell drill-down (one row per individual hit) rather than the compact on-screen summary,
 always covering the SAME floor range as the currently displayed table
 (self._last_floor_bounds, captured at scan time) -- not the live contents of the od/do
-fields, in case they've been edited since the last Skanuj click. CSV streams rows one
+fields, in case they've been edited since the last Scan click. CSV streams rows one
 at a time (iter_constellation_records_detail_rows()) so a range including a pattern the
 scale of floor 25's k=2 (~2.16 billion hits) doesn't try to hold every row in memory at
 once; PDF still needs the whole row list up front for pagination, so it refuses (with a
@@ -98,7 +98,7 @@ class ConstellationsRecordsTab(BaseTab):
         see primeatlas/primes/primes_tab.py's own docstring.
 
         eval_quick_number: prime_atlas_v1.py's own _eval_quick_number() -- same
-        parameter as ConstellationsCalcTab's own, used here for the optional "Pietro
+        parameter as ConstellationsCalcTab's own, used here for the optional "Floor
         od/do" floor-range fields.
 
         totals_progress: the app's shared status/progress bar ttk.Progressbar widget
@@ -116,14 +116,10 @@ class ConstellationsRecordsTab(BaseTab):
         self.totals_progress = totals_progress
 
         self._busy = False
-        # Remembered here (rather than only passed as _start_job()'s own local
-        # `total_rows` parameter) so _on_worker_progress() can fully re-assert
-        # mode="determinate"/maximum on EVERY successful claim, not just read the
-        # bar's CURRENT mode -- see that method's own docstring for the bug this
-        # fixes: if _start_job()'s own initial claim lost the race (some other
-        # owner held the bar when this job started), the bar would otherwise never
-        # get switched into determinate mode for this job's entire run, even well
-        # after that other owner released it.
+        # Kept here (not only as _start_job()'s local `total_rows`) so
+        # _on_worker_progress() can re-assert mode="determinate"/maximum on EVERY
+        # successful claim: if _start_job()'s initial claim lost to another bar owner,
+        # the bar must still switch to determinate mode once that owner releases it.
         self._progress_total_rows = None
         self._worker = background.PersistentWorker(
             self, self._job, on_result=self._on_worker_result,
@@ -162,12 +158,12 @@ class ConstellationsRecordsTab(BaseTab):
         self.export_csv_button.pack(side="left", padx=(6, 0))
 
         # Optional on-screen-page-range scoping for BOTH export buttons above -- left
-        # blank, Eksportuj PDF/CSV export the whole currently-displayed floor range
-        # exactly as before; filled in (requires a cell to have been drilled into
-        # first, via double-click below or Magazyn's "Eksportuj" jump -- see
+        # blank, /CSV export the whole currently-displayed floor range;
+        # filled in (requires a cell to have been drilled into
+        # first, via double-click below or Storage's "Export" jump -- see
         # activate_pattern_for_export()), they scope the SAME two buttons to just the
         # chosen SCREEN pages of that one pattern instead -- SAME numbering as
-        # detail_nav's own "Strona X/Y" label below (self._page_size rows each), NOT
+        # detail_nav's own "Page X/Y" label below (self._page_size rows each), NOT
         # a whole hit-file page (hit_paging.PAGE_SIZE, up to 1,000,000 entries) -- see
         # _build_export_rows_from_current_page()'s own docstring for the on-screen vs
         # hit-file-page distinction this depends on. Scoping lives on these same two
@@ -230,7 +226,7 @@ class ConstellationsRecordsTab(BaseTab):
         # (self._page_size=500-ish rows at a time). Needed so a pattern too
         # large to ever load in full (floor 25's k=2, ~2.16 billion hits / 2160 pages)
         # can still be browsed page by page instead of being stuck on page 1 forever.
-        # Page-scoped export itself lives in the top_row's "Eksportuj strony od/do"
+        # Page-scoped export itself lives in the top_row's "Export pages from/to"
         # fields, feeding the SAME _export_pdf()/_export_csv() buttons as a whole-range
         # export -- see top_row's own construction comment.
         detail_file_nav = FlowRow(detail_frame)
@@ -261,7 +257,7 @@ class ConstellationsRecordsTab(BaseTab):
         self._detail_rows = []  # [(number, offset), ...] for whichever cell was last
                                  # double-clicked
         self._detail_context = None  # {"base_exponent":, "pattern":} for that same
-                                      # cell -- needed by the jump-to-Magazyn handler
+                                      # cell -- needed by the jump-to-Storage handler
         self._detail_page = 0
         self._detail_total_pages = 1
         self._detail_file_page_index = 0  # which hit-file page (0-based) is currently
@@ -278,7 +274,7 @@ class ConstellationsRecordsTab(BaseTab):
         counts, so the tree is destroyed and recreated on every scan rather than
         trying to reuse one fixed-shape widget. Both scrollbars are destroyed and
         recreated right alongside it. Every column is stretch=False (fixed width)
-        with an added horizontal scrollbar, same fix as the Benchmark tab's tree.
+        with a horizontal scrollbar, as in the Benchmark tab's tree.
         `row_count` sizes the Treeview's own `height` to match (capped at 14, floored
         at 3)."""
         if self.tree is not None:
@@ -327,11 +323,11 @@ class ConstellationsRecordsTab(BaseTab):
             T("const_records.status_scanning", k=k))
 
     def _refresh_export_buttons_state(self):
-        """Eksportuj PDF/CSV are usable whenever EITHER a completed scan has rows
+        """/CSV are usable whenever EITHER a completed scan has rows
         (self._last, for a whole-floor-range export) OR a specific pattern is active
         (self._detail_context, for a page-range export -- see _export()'s own
         docstring) -- either alone is enough, since _export() itself decides which
-        mode to use from the top_row "Eksportuj strony od/do" fields at click time,
+        mode to use from the top_row "Export pages from/to" fields at click time,
         not from which of these two is currently populated. Centralized here (rather
         than repeating the OR at every call site) since it's re-evaluated after every
         job result AND every time the drilled-into pattern changes (_load_detail_file_
@@ -389,12 +385,10 @@ class ConstellationsRecordsTab(BaseTab):
         progress call arriving after _stop_busy_progress() already reset it, or during
         a "scan" job, which never calls report_progress in the first place).
 
-        Re-asserts mode="determinate"/maximum on EVERY successful claim here, not just
-        the bar's VALUE -- checking the bar's current mode instead (as this used to)
-        meant that if _start_job()'s own initial claim lost the race (some other owner
-        held the bar when this job started), the bar would never actually get switched
-        into determinate mode for this job's entire run, even long after that other
-        owner released it -- see self._progress_total_rows's own __init__ comment."""
+        Re-asserts mode="determinate"/maximum on EVERY successful claim, not just the
+        bar's VALUE: if _start_job()'s initial claim lost to another owner, the bar has
+        to switch to determinate mode once that owner releases it (see
+        self._progress_total_rows in __init__)."""
         if (self._busy and self._progress_total_rows is not None
                 and claim_progress_bar(self.totals_progress, self)):
             self.totals_progress.stop()
@@ -410,7 +404,7 @@ class ConstellationsRecordsTab(BaseTab):
         loaded when the button was clicked -- job["rows"] is already a fully-built,
         plain list of row dicts, built on the MAIN thread from self._detail_rows
         BEFORE dispatch, see _export()'s own docstring for how a caller picks between
-        the two shapes: the top_row "Eksportuj strony od/do" fields being filled or
+        the two shapes: the top_row "Export pages from/to" fields being filled or
         blank -- this mode needs no disk access here at all).
 
         CSV (either shape) streams -- a generator for the whole-range case
@@ -570,21 +564,15 @@ class ConstellationsRecordsTab(BaseTab):
         and loads the hits behind it (not just the smallest offset the tree cell shows)
         into the paginated detail panel below.
 
-        Reads via read_hit_pattern_header()/read_hit_pattern_page() (paging-transparent
-        -- see primeatlas/constellations/constellations.py's own module-level helpers and
-        prime_sieve/hit_paging.py) instead of a bare prime_sieve_v1.read_prime_window()
-        on hit_file_path(): a pattern this large (dense k=2 on a high floor -- see
-        hit_paging.py's own docstring for the real crash this is about) may have been
-        migrated to pages, in which case the original single file no longer exists at
-        all, AND a full decode of even an unmigrated multi-hundred-million-entry file
-        on THIS (the GUI) thread is exactly what used to freeze the whole app on
-        double-click. Only the FIRST hit-file page (bounded to
-        hit_paging.PAGE_SIZE entries, currently 1,000,000) is ever loaded here -- for
-        the vast majority of patterns (never paged, far fewer hits than that) this is
-        the exact same "whole file" as before; for a paged one, the label makes clear
-        only a first slice is shown and points at CSV/PDF export (which streams every
-        page instead of holding them all in memory -- see build_constellation_records_
-        detail_rows()) for the rest.
+        Reads via read_hit_pattern_header()/read_hit_pattern_page() (paging-transparent,
+        see primeatlas/constellations/constellations.py and prime_sieve/hit_paging.py)
+        instead of prime_sieve_v1.read_prime_window() on hit_file_path(): a dense
+        pattern may be migrated to pages (the single file no longer exists), and a full
+        decode of an unmigrated multi-hundred-million-entry file would block the GUI
+        thread. Only the FIRST hit-file page (at most hit_paging.PAGE_SIZE entries) is
+        loaded; for an unpaged pattern that is the whole file, for a paged one the label
+        says only a first slice is shown and points at CSV/PDF export (which streams
+        every page, see build_constellation_records_detail_rows()).
 
         Stashes (base_exponent, pattern) in self._detail_context -- not just the raw
         values -- so a later double-click on one of the resulting rows
@@ -645,7 +633,7 @@ class ConstellationsRecordsTab(BaseTab):
         _on_cell_activate()'s empty/too-large early returns above, neither of which
         has a real pattern to page through. Callers already set self._detail_context
         to None before calling this; _refresh_export_buttons_state() re-evaluates the
-        Eksportuj PDF/CSV buttons against that (they stay enabled if a PRIOR scan
+        /CSV buttons against that (they stay enabled if a PRIOR scan
         still has rows, disabled only if neither that nor a pattern is available)."""
         self._detail_file_page_index = 0
         self._detail_file_page_count = 1
@@ -712,24 +700,24 @@ class ConstellationsRecordsTab(BaseTab):
 
     def activate_pattern_for_export(self, base_exponent, pattern, page_index):
         """Sets this tab up to browse/export ONE specific pattern's page range, without
-        needing a prior Skanuj/tree click -- called by prime_atlas_v1.py's app-level
-        jump wiring when Magazyn's own "Eksportuj" button (ConstellationsHitsTab, see
+        needing a prior Scan/tree click -- called by prime_atlas_v1.py's app-level
+        jump wiring when Storage's own "Export" button (ConstellationsHitsTab, see
         its own docstring) hands off to here instead of duplicating a whole separate
         export mechanism there.
 
         Sets self._detail_context directly (everything _on_cell_activate() would
         normally derive from a clicked tree cell is already known here -- `pattern`
         is the full catalog dict, not just an id), loads `page_index` (the hit-file
-        page) via _load_detail_file_page(), and pre-fills the top_row "Eksportuj
-        strony od/do" fields to "1"/"1" -- _load_detail_file_page() always resets the
+        page) via _load_detail_file_page(), and pre-fills the top_row "Export
+        pages from/to" fields to "1"/"1" -- _load_detail_file_page() always resets the
         on-screen list pager to its own page 0 on a fresh load (see its own
         docstring), so "1" (on-screen page 1) is always the right default here
         regardless of which hit-file page was loaded; the user can widen the range
-        there before clicking Eksportuj PDF/CSV.
+        there before clicking /CSV.
 
-        Also pre-fills "Pietro od/do" to this exact floor -- these
+        Also pre-fills "Floor from/to" to this exact floor -- these
         aren't read by the page-range export path itself, but matter the moment the
-        user clears "Eksportuj strony od/do" to fall back to a whole-range export
+        user clears "Export pages from/to" to fall back to a whole-range export
         instead: left blank (the pre-jump default), that fallback would silently mean
         "every floor in the whole archive," not "just the floor I jumped from"."""
         self.k_combo.set(str(pattern["k"]))
@@ -747,10 +735,10 @@ class ConstellationsRecordsTab(BaseTab):
         self.detail_export_to_entry.insert(0, "1")
 
     def _parse_export_page_range(self):
-        """Reads the top_row "Eksportuj strony od/do" entries (see their own
+        """Reads the top_row "Export pages from/to" entries (see their own
         construction comment): both blank means "no scoping" (the export buttons fall
         back to their original whole-floor-range behavior) -- returns None. Both
-        filled, 1-based in the UI -- SAME numbering as detail_nav's "Strona X/Y" label
+        filled, 1-based in the UI -- SAME numbering as detail_nav's "Page X/Y" label
         above the drill-down list, i.e. on-screen list-pages of whichever pattern/
         hit-file-page is currently loaded (see _build_export_rows_from_current_page()'s
         own docstring for why THAT granularity, not a whole hit-file page) -- returns
@@ -769,10 +757,10 @@ class ConstellationsRecordsTab(BaseTab):
 
     def bind_jump_to_hits(self, jump_to_hits):
         """Registers the callable used by _on_detail_activate() to jump into the
-        Magazyn tab -- injected via a setter rather than the constructor because
+        Storage tab -- injected via a setter rather than the constructor because
         prime_atlas_v1.py's own _build_constellations_section() constructs this tab
         (and its sibling ConstellationsHitsTab) in a fixed order, and this callable
-        needs to reach the Magazyn tab's own widget/sub-notebook-selection logic (all
+        needs to reach the Storage tab's own widget/sub-notebook-selection logic (all
         app-level, see that method's own comment) -- exactly the same deferred-wiring
         need PrimesTab's constructor covers with a lambda instead, kept as an explicit
         setter here since it is the ONLY app-level callback this otherwise fully
@@ -781,9 +769,9 @@ class ConstellationsRecordsTab(BaseTab):
 
     def _on_detail_activate(self, event):
         """Double-click a hit in the drill-down list: jumps to the Constellations
-        tab's Magazyn sub-tab, expands/selects the exact floor+variant node there, and
+        tab's Storage sub-tab, expands/selects the exact floor+variant node there, and
         scrolls its own hits preview straight to this number -- the same navigation
-        the Kalkulator konstelacji's 'Szukaj zaznaczoną liczbę' button already does,
+        the Constellation calculator's 'Search selected number' button already does,
         just triggered from here instead.
 
         Each row here is a hit file's raw stored value, i.e. a tuple's BASE element
@@ -855,7 +843,7 @@ class ConstellationsRecordsTab(BaseTab):
 
     def _build_export_rows_from_current_page(self, ui_from, ui_to):
         """Builds full CSV/PDF row dicts for ON-SCREEN list-pages [ui_from, ui_to]
-        (0-based, the SAME numbering as detail_nav's "Strona X/Y" label above the
+        (0-based, the SAME numbering as detail_nav's "Page X/Y" label above the
         list) of the CURRENTLY LOADED hit-file page (self._detail_rows) -- NOT a
         whole hit-file page (up to hit_paging.PAGE_SIZE, 1,000,000, entries), and NOT
         the whole pattern.
@@ -891,9 +879,9 @@ class ConstellationsRecordsTab(BaseTab):
         return rows
 
     def _export(self, fmt):
-        """Shared handler for both "Eksportuj PDF" and "Eksportuj CSV" -- each is
-        either a WHOLE-floor-range export (self._last, the old behavior, when the
-        top_row "Eksportuj strony od/do" fields are blank) or scoped to the on-screen
+        """Shared handler for both "" and "" -- each is
+        either a WHOLE-floor-range export (self._last, when the
+        top_row "Export pages from/to" fields are blank) or scoped to the on-screen
         list-pages [od, do] of whichever pattern/hit-file-page is currently loaded
         (self._detail_context/self._detail_rows, when those fields are filled -- see
         _build_export_rows_from_current_page()'s own docstring). One method covers

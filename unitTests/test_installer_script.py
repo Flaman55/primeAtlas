@@ -1,7 +1,7 @@
 """
 test_installer_script.py -- static checks of installer/PrimeAtlasSetup.iss (the Inno Setup
 bootstrapper that becomes PrimeAtlasSetup.exe). Inno's Pascal code can't run here, so this
-pins the CONTRACT instead: the product decisions Artur made (2026-09-30), the directory
+pins the CONTRACT instead: the product decisions, the directory
 layout other code depends on (app_update.git_executable() looks for <install>/git next to
 <install>/app), and the measured constraints (Python 3.13, not 3.14: moderngl/glcontext
 ship no 3.14 wheels). The real end-to-end check is a silent install of the built exe.
@@ -68,7 +68,7 @@ def main():
     check(setup_directive(setup, "DefaultDirName") == r"{localappdata}\PrimeAtlas",
           r"default install dir is {localappdata}\PrimeAtlas")
     check(setup_directive(setup, "DisableDirPage") == "no",
-          "directory page is ALWAYS shown (Artur: 'zawsze pytaj')")
+          "directory page is ALWAYS shown")
     check(setup_directive(setup, "OutputBaseFilename") == "PrimeAtlasSetup",
           "output file is PrimeAtlasSetup.exe")
     check(re.fullmatch(r"\{\{[0-9A-F-]{36}\}", setup_directive(setup, "AppId") or "") is not None,
@@ -135,7 +135,7 @@ def main():
     check("install.log" in code, "post-install output goes to an install.log for diagnosis")
 
     print("\n--- Only an empty/new folder or an earlier PrimeAtlas install is accepted ---")
-    # Artur (2026-09-30): never install into a location that already holds something else --
+    # Never install into a location that already holds something else --
     # the uninstaller deletes {app}\python and {app}\git wholesale, which would take a
     # user's own same-named folders with it.
     check(setup_directive(setup, "DirExistsWarning") == "no",
@@ -171,15 +171,15 @@ def main():
           "app associated with .md files)")
 
     print("\n--- Look ---")
-    # The default (non-custom-styled) modern wizard clipped the checkbox glyphs on Artur's
-    # screen (2026-09-30); the windows11 custom style draws its own controls.
+    # The default (non-custom-styled) modern wizard clips the checkbox glyphs; the
+    # windows11 custom style draws its own controls.
     style = (setup_directive(setup, "WizardStyle") or "").lower().split()
     check("windows11" in style and "dynamic" in style,
           f"WizardStyle uses the windows11 custom style, following light/dark mode (got {style})")
-    # Even the windows11 style still clipped the right edge of each checkbox square at
-    # 125% display scaling (Artur's physical screen; at 100% in the VM it fit) -- the
-    # label is drawn over the DPI-scaled glyph. Both checkbox lists (Tasks page:
-    # shortcuts; last page: Run/README) must widen their glyph-to-label gap with DPI.
+    # Even the windows11 style clips the right edge of each checkbox square above 100%
+    # display scaling (e.g. 125%) -- the label is drawn over the DPI-scaled glyph. Both
+    # checkbox lists (Tasks page: shortcuts; last page: Run/README) must widen their
+    # glyph-to-label gap with DPI.
     init = re.search(r"procedure InitializeWizard;.*?^end;", code, re.DOTALL | re.IGNORECASE | re.MULTILINE)
     init_body = init.group(0) if init else ""
     for list_name in ("TasksList", "RunList"):
@@ -226,7 +226,7 @@ def main():
     if os.path.isfile(notes_path):
         notes = open(notes_path, encoding="utf-8").read()
         pl, en = notes.find("## Polski"), notes.find("## English")
-        # Artur: content is English; Polish is only the secondary translation below it.
+        # Content is English; Polish is only the secondary translation below it.
         check(pl != -1 and en != -1 and en < pl, "release notes: English first, Polish below")
     wf = open(os.path.join(_REPO_ROOT, ".github", "workflows", "installer.yml"),
               encoding="utf-8").read()

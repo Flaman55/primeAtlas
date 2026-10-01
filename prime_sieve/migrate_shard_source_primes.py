@@ -1,25 +1,18 @@
 """
-migrate_shard_source_primes.py -- one-off external migration for task #405's storage
-sharding change.
+migrate_shard_source_primes.py -- one-off migration of a floor's flat source_primes/
+layout into shard_NNNNN subfolders.
 
 WHY THIS EXISTS
 ----------------
-Task #405 sharded source_primes/ into shard_NNNNN subfolders (see prime_sieve/
-window_sharding.py) to fix constellation_finder_v1.py dying silently mid-scan on
-floors with 100k+ flat window files (WSL/NTFS interop degrades badly past that
-point). Every reader in primeAtlas (storage.py, constellation_finder_v1.py,
-manifest.py, delete_manager.py, full_backup.py, storage_integrate.py,
-restore_job.py) now ONLY looks inside shard_NNNNN subfolders -- a floor that was
-generated before this change (flat PRIME_WINDOW_*.bin directly under
-source_primes/) is now INVISIBLE to the app: 0 files, 0 totals, empty tree.
+source_primes/ is sharded into shard_NNNNN subfolders (see prime_sieve/window_sharding.py):
+WSL/NTFS interop degrades badly on directories with 100k+ entries. Every reader in
+primeAtlas (storage.py, the constellation finders, manifest.py, delete_manager.py,
+full_backup.py, storage_integrate.py, restore_job.py) looks ONLY inside shard_NNNNN
+subfolders, so a floor with flat PRIME_WINDOW_*.bin files directly under source_primes/
+is INVISIBLE to the app: 0 files, 0 totals, empty tree.
 
-This script is the migration the task's own design deliberately deferred ("no
-backward-compatibility needed for already-generated unsharded floors -- a
-separate external migration script will handle those"). It moves each existing
-flat window file into its correct shard_NNNNN subfolder, using the exact same
-bucketing rule the app's own readers/writers use (window_sharding.py), so no
-code path needs to change -- the app just needs the files to actually be where
-it now looks.
+This script moves each flat window file into its correct shard_NNNNN subfolder, using the
+exact same bucketing rule the app's readers/writers use (window_sharding.py).
 
 SAFETY
 ------

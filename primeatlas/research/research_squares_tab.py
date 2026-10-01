@@ -1,12 +1,12 @@
 """
 research_squares_tab.py -- ResearchSquaresTab, the tkinter widgets for the
-Research tab's Przedzialy kwadratowe (square intervals) sub-tab: Legendre/
+Research tab's Square intervals (square intervals) sub-tab: Legendre/
 Oppermann/Brocard presets plus a custom a(n)/b(n) formula pair, checked over a
 [n_from, n_to] range via primeatlas/research/squares_window.py's pure
 check_interval_range()/check_interval_range_from_source().
 
 Provides:
-  - a data-source toggle ("Świeże sito" / "Dane z archive") -- storage mode
+  - a data-source toggle ("Fresh sieve" / "Storage data") -- storage mode
     reads is_prime from the real on-disk archive via
     primeatlas/research/research_squares.py's read_is_prime_from_storage (itself a
     re-export of research_goldbach.py's own reader -- see that module's own

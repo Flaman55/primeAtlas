@@ -4,10 +4,8 @@ invariants already pinned down in the JS reference's own test suite
 (_test_legendre_window.mjs /
 _test_general_law_window.mjs in RelationalMathematics/apps/interactive_visuals/
 structural_sieve/), rather than running the JS side by side (no Node needed
-here). Not a port of those test files line-for-line -- just enough
-independent checks on the SAME formulas to catch a transcription error before
-ring_geometry.py is trusted as the base for the ring-visualization feature
-(see PLAN.md).
+here). Not a port of those test files line-for-line -- independent checks on the
+SAME formulas, to catch a transcription error in ring_geometry.py.
 
 Usage (Windows, real Python):
     python unitTests\\test_ring_geometry.py
@@ -275,8 +273,8 @@ def _test_general_law():
     check(k_slide is None and factor_slide is None,
           "Sliding mode k/factor are None (no level concept)")
 
-    # [ADDED 2026-09-26, ported from RelationalMathematics's
-    # _test_general_law_window.mjs Part 9] Two new RIGID modes -- theta
+    # Ported from RelationalMathematics's _test_general_law_window.mjs Part 9: two
+    # RIGID modes -- theta
     # ignored entirely, bounds exactly match is_bertrand_member/
     # is_legendre_member's own lo, for a spread of n and any theta value.
     from primeatlas.rings.ring_geometry import is_bertrand_member, is_legendre_member
@@ -312,22 +310,9 @@ def _test_general_law():
 
 def _test_legendre_member_strict_only():
     """is_legendre_member itself is the plain STRICT mathematical membership
-    test ((k*k, n]) and stays exactly that -- unaffected by
-    is_legendre_highlighted's own fade-continuity layer added on top of it
-    (see that function's own doc-comment). This just re-confirms the strict
-    test's own behavior still holds on its own terms.
-
-    [HISTORY] An EARLIER "sticky" grace-period variant (is_legendre_highlighted,
-    keyed to each ring's own next self-multiple after its home level closed)
-    was removed entirely in this same repo (2026-09-26) because it showed
-    green dots nearly as wide as Bertrand's own (n/2, n] window for most
-    primes -- see compute_highlight_colors' OLD doc-comment (superseded) for
-    the exact diagnosis. The CURRENT is_legendre_highlighted (re-added later
-    the same day, see its own doc-comment) is a different, deliberately
-    bounded design: a one-for-one fade of the PREVIOUS level's own members as
-    the current level's own members arrive, never wider than "the previous
-    level's own population", which cannot reproduce Bertrand's width the way
-    the old per-ring multiple-based formula did."""
+    test ((k*k, n]) -- unaffected by is_legendre_highlighted's fade-continuity
+    layer on top of it (see that function's doc-comment). This re-confirms the
+    strict test's behavior on its own terms."""
     from primeatlas.rings.ring_geometry import is_legendre_member
 
     # n=30: level k = floor(sqrt(29)) = 5, window (25,30] -> strict member: 29 only.
@@ -338,33 +323,24 @@ def _test_legendre_member_strict_only():
 
 
 def _test_is_legendre_highlighted():
-    """[ADDED 2026-09-26] The RENDERING variant of Legendre membership --
-    is_legendre_member (above) stays the strict mathematical test, unchanged.
-    This is the fix for the abrupt-reset bug Artur reported live against
-    primeAtlas (screenshots at N=144/145/169, level 11->12): when a level
-    closes, ALL of that level's own highlighted primes used to go dark in
-    the SAME single step the level advanced, even though the new level had
-    not yet produced a single member of its own -- visually jarring compared
-    to Bertrand, whose wide window never empties out all at once.
+    """The RENDERING variant of Legendre membership -- is_legendre_member
+    (above) stays the strict mathematical test. Without it, when a level
+    closes ALL of that level's highlighted primes go dark in the SAME step the
+    level advances, before the new level has produced a single member of its
+    own (Bertrand's wide window never empties out all at once).
 
-    Design (Artur's own, confirmed over several rounds this session): treat
-    the previous level's own members as a queue, oldest (smallest) first.
-    For every member the CURRENT level has actually produced so far (count
-    `m`), retire exactly one -- the smallest surviving -- member of the
-    previous level's own queue. A member of the previous level is therefore
-    still highlighted iff its rank among the previous level's own members
-    (sorted ascending) is >= m. This is a PURE function of n (no per-tick
-    queue/state is kept -- both "the previous level's own full membership"
-    and "how many members the current level has produced so far" are
-    directly recomputable from n and the prime list alone), deliberately so
-    it cannot suffer the same rewind/backward-step desync bug Artur found by
-    accident while producing the screenshots that prompted this fix (a
-    genuinely stateful per-tick queue would have exactly that failure mode).
+    Rule: the previous level's members form a queue, oldest (smallest) first.
+    For every member the CURRENT level has produced so far (count `m`), retire
+    exactly one -- the smallest surviving -- member of the previous level's
+    queue. A member of the previous level is therefore still highlighted iff
+    its rank among the previous level's members (sorted ascending) is >= m. A
+    PURE function of n (no per-tick queue/state -- both "the previous level's
+    full membership" and "how many members the current level has produced so
+    far" are recomputable from n and the prime list), so it stays consistent
+    under rewind/backward steps.
 
-    Test data: the REAL primes from Artur's own screenshots -- level 11
-    (121,144] = {127,131,137,139}, level 12 (144,169] = {149,151,157,163,167}
-    -- not made-up numbers, so this test reproduces the actual reported
-    scenario, not just the abstract rule."""
+    Test data: real primes -- level 11 (121,144] = {127,131,137,139}, level 12
+    (144,169] = {149,151,157,163,167}."""
     from primeatlas.rings.ring_geometry import is_legendre_highlighted
 
     primes = np.array(
@@ -401,7 +377,7 @@ def _test_is_legendre_highlighted():
     # n=144: still level 11 (window (121,144]), m stays at 4 (no 5th member
     # of level 11 exists) -- so 113 (level 10's own last survivor, m=4 <
     # old_count=5) is STILL fading, alongside level 11's own 4 live members.
-    # This is the real, verified state at Artur's own first screenshot (N=144)
+    # This is the real, verified state at N=144
     # -- not "just 4 plain members" as a naive read of the window bounds
     # alone would suggest; the fade layer is continuously active, not only
     # right at a transition.
@@ -409,7 +385,7 @@ def _test_is_legendre_highlighted():
           "n=144: level 11's own 4 live members PLUS 113, level 10's last still-fading remnant")
 
     # n=145: level JUST advanced to 12 (window (144,145]), which has
-    # produced ZERO members of its own yet (145 = 5*29, not prime) -- THE FIX:
+    # produced ZERO members of its own yet (145 = 5*29, not prime) -- so
     # all 4 of level 11's own members stay highlighted, none go dark.
     check(highlighted_set(145) == {127, 131, 137, 139},
           "n=145: level just closed, m=0 -- ALL 4 old members still highlighted, none go dark")
@@ -439,9 +415,8 @@ def _test_is_legendre_highlighted():
     check(highlighted_set(167) == {149, 151, 157, 163, 167},
           "n=167: old queue exhausted -- matches plain is_legendre_member exactly")
 
-    # Small-n edge case: k<2 means no previous level exists at all (the
-    # boundary condition Artur explicitly asked to set aside, since it only
-    # arises while the window itself is still extremely narrow) -- must
+    # Small-n edge case: k<2 means no previous level exists at all (only
+    # reachable while the window itself is still extremely narrow) -- must
     # simply equal is_legendre_member, no crash, no fabricated "previous
     # level".
     from primeatlas.rings.ring_geometry import is_legendre_member
@@ -451,25 +426,19 @@ def _test_is_legendre_highlighted():
 
 
 def _test_is_general_law_highlighted():
-    """[ADDED 2026-09-26] General Law's own rendering-highlight test, same
-    role as is_legendre_highlighted for Legendre's. Per Artur's own
-    confirmation, after live-testing the RelationalMathematics website, that
-    'sliding' and 'bertrand' modes already feel right WITHOUT any fade layer
-    (their own raw membership tests are already smoothly-creeping by
-    construction -- see is_general_law_member/general_law_window_bounds' own
-    doc-comments):
+    """General Law's rendering-highlight test, same role as
+    is_legendre_highlighted for Legendre:
 
       - 'legendre' mode: delegates STRAIGHT to is_legendre_highlighted --
-        exact reproduction of the real Legendre checkbox, fade included,
-        the whole point of a RIGID mode.
-      - 'bertrand'/'sliding': UNCHANGED, exactly is_general_law_member (no
-        fade layer needed).
-      - 'stepped' mode [ADDED 2026-09-26, SAME DAY -- Artur: "damy radę
-        przenieść to samo na GL?"]: gets the SAME fade queue as 'legendre',
-        but paced by Legendre's own (monotonic) exposure count rather than
-        stepped's own (possibly-flickering) live count -- see
-        is_general_law_highlighted's own 'stepped' doc-comment for the full
-        proof of why that substitution is exact, not approximate."""
+        exact reproduction of the Legendre checkbox, fade included, the point
+        of a RIGID mode.
+      - 'bertrand'/'sliding': exactly is_general_law_member, no fade layer --
+        their raw membership tests already creep smoothly by construction (see
+        is_general_law_member/general_law_window_bounds).
+      - 'stepped' mode: the SAME fade queue as 'legendre', paced by Legendre's
+        (monotonic) exposure count rather than stepped's (possibly flickering)
+        live count -- see is_general_law_highlighted's 'stepped' doc-comment
+        for why that substitution is exact."""
     from primeatlas.rings.ring_geometry import (
         is_general_law_highlighted,
         is_general_law_member,
@@ -574,7 +543,7 @@ def _test_anchor_functions():
     check(general_law_anchor_at(primes, 30, 0.5, "stepped") == legendre_anchor_at(primes, 30),
           "general_law_anchor_at @theta=0.5 stepped matches legendre_anchor_at exactly")
 
-    # [ADDED 2026-09-26] 'bertrand'/'legendre' modes delegate DIRECTLY to
+    # 'bertrand'/'legendre' modes delegate DIRECTLY to
     # bertrand_anchor_at/legendre_anchor_at -- not the generic lo-based
     # recompute. n=10 is the sharpest proof for bertrand: floor(10/2)=5
     # (largest active prime <=5 would be 5), but the real freeze/jump chain
@@ -606,9 +575,8 @@ def _test_blend_family_colors():
         "legendre": np.array([True, True, False]),
     }
     colors, matched = _blend_family_colors(masks)
-    # [CHANGED 2026-09-26] AVERAGE, not sum-then-clip -- see _blend_family_
-    # colors' own doc-comment for why (Artur's real bug report: sum-then-
-    # clip washes toward white for 2-3 already-saturated colors).
+    # AVERAGE, not sum-then-clip -- see _blend_family_colors' doc-comment
+    # (sum-then-clip washes toward white for 2-3 already-saturated colors).
     expected_ring0 = (
         np.array(WINDOW_FAMILY_COLORS["bertrand"], dtype=np.float64)
         + np.array(WINDOW_FAMILY_COLORS["legendre"], dtype=np.float64)
@@ -624,26 +592,21 @@ def _test_blend_family_colors():
 
 
 def _test_compute_highlight_colors_strict_sticky_precedence():
-    """[REVISED 2026-09-26, same day the fade layer was reinstated -- see
-    is_legendre_highlighted's own [HISTORY] note] n=30: level 5, window
-    (25,30] (live member: 29 only); previous level 4, window (16,25]
-    ({17,19,23}). With Legendre's own current-level count m=1 (only 29 is
-    live so far), is_legendre_highlighted retires the OLDEST previous-level
-    member (17) and keeps the other two (19,23) fading.
+    """n=30: level 5, window (25,30] (live member: 29 only); previous level 4,
+    window (16,25] ({17,19,23}). With Legendre's current-level count m=1 (only
+    29 is live so far), is_legendre_highlighted retires the OLDEST
+    previous-level member (17) and keeps the other two (19,23) fading.
 
-    With Bertrand ALSO enabled: 17/19/23 are all genuinely, strictly inside
-    Bertrand's own (15,30] window too, so the two-tier precedence rule (see
-    compute_highlight_colors' own doc-comment) means Bertrand's STRICT match
-    wins outright for all three -- Legendre's fade-only match on 19/23 gets
-    excluded from the blend, same pure-Bertrand-pink result as before this
-    fade layer existed. Ring 29 is a genuine strict/strict match for BOTH
-    families, so it still blends.
+    With Bertrand ALSO enabled: 17/19/23 are all strictly inside Bertrand's
+    (15,30] window too, so the two-tier precedence rule (see
+    compute_highlight_colors' doc-comment) lets Bertrand's STRICT match win
+    outright for all three -- Legendre's fade-only match on 19/23 is excluded
+    from the blend (pure Bertrand pink). Ring 29 is a strict/strict match for
+    BOTH families, so it blends.
 
-    With ONLY Legendre enabled (no Bertrand to out-rank it), THE FIX ITSELF
-    becomes visible: 19 and 23 (Legendre's own fading previous-level
-    remnants) now DO get highlighted (fresh behavior, was impossible before
-    this session's fade layer), while 17 (already retired -- rank 0 < m=1)
-    still does not."""
+    With ONLY Legendre enabled (no Bertrand to out-rank it), 19 and 23
+    (Legendre's fading previous-level remnants) are highlighted, while 17
+    (already retired -- rank 0 < m=1) is not."""
     from primeatlas.rings.ring_geometry import compute_highlight_colors, WINDOW_FAMILY_COLORS
 
     primes = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23, 29], dtype=np.int64)
@@ -657,8 +620,7 @@ def _test_compute_highlight_colors_strict_sticky_precedence():
               f"compute_highlight_colors: ring {p} is pure Bertrand pink -- Bertrand strictly matches "
               f"(in (15,30]) and Legendre no longer has any sticky fallback to blend in with")
 
-    # [CHANGED 2026-09-26] AVERAGE, not sum-then-clip -- see _blend_family_
-    # colors' own doc-comment.
+    # AVERAGE, not sum-then-clip -- see _blend_family_colors' doc-comment.
     expected_29 = (
         np.array(WINDOW_FAMILY_COLORS["bertrand"], dtype=np.float64)
         + np.array(WINDOW_FAMILY_COLORS["legendre"], dtype=np.float64)
@@ -675,7 +637,7 @@ def _test_compute_highlight_colors_strict_sticky_precedence():
     check(empty_colors.shape == (10, 3) and not empty_matched.any(),
           "compute_highlight_colors: empty enabled_ids matches nothing but keeps ring count")
 
-    # THE FIX: enabling ONLY Legendre (no Bertrand) now fades 19/23 (previous
+    # Enabling ONLY Legendre (no Bertrand) fades 19/23 (previous
     # level's own surviving members, per is_legendre_highlighted -- see this
     # test's own module doc-comment) while 17 (already retired) stays dark.
     colors_legendre_only, matched_legendre_only = compute_highlight_colors(primes, 30, {"legendre"})
@@ -835,7 +797,7 @@ def _test_cyclic_window_anchor_at():
     check(cyclic_window_anchor_at({}, "legendre", np.array([], dtype=np.int64), 30) is None,
           "cyclic_window_anchor_at: no active primes yet -> anchor is None, not a crash")
 
-    # --- [ADDED 2026-09-26] generalLaw's own rigid 'bertrand'/'legendre'
+    # --- generalLaw's own rigid 'bertrand'/'legendre'
     # modes bypass this function's freeze/cadence logic entirely, delegating
     # straight to bertrand_anchor_at/legendre_anchor_at -- proving General
     # Law set to Bertrand/Legendre is a true drop-in of the standalone
@@ -861,16 +823,12 @@ def _test_cyclic_window_anchor_at():
           "cyclic_window_anchor_at: generalLaw/legendre matches the standalone legendre family's own "
           "cadence exactly (same state-machine timing), for every n in 2..47")
 
-    # Regression guard: with Legendre AND General Law both on and theta !=
-    # 0.5 (stepped mode), the HUD showed two clearly DIFFERENT window ranges
-    # (e.g. Legendre (1156,1199], General Law theta=0.3 (1177,1199]) but
-    # only ONE ring appeared. Root cause: the level-keyed branch used to
-    # fire for EVERY "stepped" mode call regardless of theta, so General
-    # Law's anchor was computed by the exact same legendre_level_at(n)-keyed
-    # formula as Legendre's own -- identical output for ANY theta, not just
-    # 0.5. Fixed: only theta=0.5 (tent factor==1, General Law's own `lo`
-    # literally IS Legendre's) takes the level-keyed branch; any other theta
-    # now takes the same numeric-creep branch "sliding" mode already used.
+    # Guard: with Legendre AND General Law both on and theta != 0.5 (stepped
+    # mode), the two window ranges differ (e.g. Legendre (1156,1199], General
+    # Law theta=0.3 (1177,1199]), so the anchors must too. Only theta=0.5 (tent
+    # factor==1, General Law's `lo` literally IS Legendre's) takes the
+    # level-keyed branch; any other theta takes the numeric-creep branch
+    # "sliding" mode uses.
     # This test uses level 4 (n=17..25, legendre lo=16 constant) with
     # theta=0.3 (tent factor 0.5) so General Law's own lo = (n+16)/2 creeps
     # from 16.5 to 20.5 across the level -- clearly not constant like
@@ -974,11 +932,11 @@ def _test_window_anchor_primes():
 
     # anchor_overrides -- renderer.py's own hook for feeding
     # cyclic_window_anchor_at's stateful result through this same collection
-    # loop instead of the plain (now legacy-for-this-purpose)
+    # loop instead of the plain
     # legendre_anchor_at/general_law_anchor_at recomputation. A family
     # PRESENT in the dict must use that value verbatim, even if it differs
     # from what ANCHOR_FUNCTIONS would have computed; a family ABSENT from
-    # it must fall back to ANCHOR_FUNCTIONS exactly as before (already
+    # it must fall back to ANCHOR_FUNCTIONS (already
     # exercised by every check above, none of which pass anchor_overrides).
     override_anchor = 17  # a real active prime, deliberately != l_anchor (31) at n=40
     check(override_anchor != l_anchor,
@@ -994,20 +952,12 @@ def _test_window_anchor_primes():
 
 def _test_window_label_colors():
     """window_label_colors: each enabled family ALWAYS gets its own plain
-    WINDOW_FAMILY_COLORS entry, unconditionally -- no blending here at all.
-
-    [REDESIGNED 2026-09-26, TWICE the same day -- see this function's own
-    doc-comment for the full back-and-forth] The first redesign (average +
-    real-overlap grouping) fixed the ring-highlight-color bug but ALSO made
-    these text LABELS blend together -- Artur's own live correction, after
-    actually watching it render: Bertrand's line should stay solidly pink
-    (that's its real color), Legendre's stay green, General Law's stay
-    purple, even when no ring anywhere shows that pure color (Bertrand
-    always swallows Legendre/General Law's window whole) -- the label's job
-    is to say "this is Legendre", not to describe what a ring's blended
-    color happens to look like right now. That job moved entirely to
-    nested_shell_colors' own dedicated legend lines instead (see its own
-    test, _test_nested_shell_colors)."""
+    WINDOW_FAMILY_COLORS entry, unconditionally -- no blending here at all:
+    Bertrand's line stays solidly pink, Legendre's green, General Law's
+    purple, even when no ring shows that pure color (Bertrand's window always
+    contains Legendre's/General Law's). A label says "this is Legendre";
+    blended colors are named by nested_shell_colors' legend lines instead (see
+    _test_nested_shell_colors)."""
     from primeatlas.rings.ring_geometry import window_label_colors, WINDOW_FAMILY_COLORS
 
     # Single family on -> its own solid color.
@@ -1045,7 +995,7 @@ def _test_window_label_colors():
             "legendre": WINDOW_FAMILY_COLORS["legendre"],
             "generalLaw": WINDOW_FAMILY_COLORS["generalLaw"],
         },
-        f"n=2,520,000 theta=0.4 (Artur's own real scenario): all three HUD labels keep their own "
+        f"n=2,520,000 theta=0.4: all three HUD labels keep their own "
         f"distinct solid color (got {result_all3!r})"
     )
 
@@ -1059,20 +1009,17 @@ def _test_window_label_colors():
 
 
 def _test_compute_highlight_colors_bertrand_swallows_legendre_regression():
-    """[ADDED 2026-09-26] Artur's own real bug report: at n=2,520,000,
-    theta=0.4 (stepped), Legendre's window is (2,518,569, 2,520,000] and
-    General Law's is (2,518,926, 2,520,000] -- he looked up the real portal
-    data and confirmed 18 real primes sit strictly inside Legendre's window
-    but outside General Law's (first=2518577, last=2518913).
+    """At n=2,520,000, theta=0.4 (stepped), Legendre's window is
+    (2,518,569, 2,520,000] and General Law's is (2,518,926, 2,520,000]; 18 real
+    primes sit strictly inside Legendre's window but outside General Law's
+    (first=2518577, last=2518913).
 
-    The bug: those 18 primes are ALSO inside Bertrand's own much wider
-    (1,260,000, 2,520,000] window, so with all three families enabled they
-    used to render as a washed-out near-white (255,255,224) -- a sum-then-
-    clip artifact (Bertrand+Legendre summed and clamped), not a real "this
-    is unhighlighted" white. Fixed by averaging (see _blend_family_colors'
-    own doc-comment): the same primes now get the genuine two-family
-    (Bertrand+Legendre, NOT General Law) average, clearly distinct from
-    both pure white and pure Legendre green."""
+    Those 18 primes are ALSO inside Bertrand's much wider (1,260,000,
+    2,520,000] window, so with all three families enabled a sum-then-clip
+    blend would render them washed-out near-white (255,255,224). With
+    averaging (see _blend_family_colors' doc-comment) they get the two-family
+    (Bertrand+Legendre, NOT General Law) average, clearly distinct from both
+    pure white and pure Legendre green."""
     from primeatlas.rings.ring_geometry import (
         compute_highlight_colors,
         general_law_window_bounds,
@@ -1087,7 +1034,7 @@ def _test_compute_highlight_colors_bertrand_swallows_legendre_regression():
     gl_lo, _hi, _k, _factor = general_law_window_bounds(n, theta, mode)
     check(legendre_lo < gl_lo < n, f"sanity: legendre_lo={legendre_lo} < gl_lo={gl_lo} < n={n} (fixture assumption)")
 
-    # Artur's own real find: first=2518577, last=2518913, both strictly
+    # Real data: first=2518577, last=2518913, both strictly
     # inside Legendre's window but outside General Law's (legendre_lo=
     # 2518569 < p <= floor(gl_lo)=2518926).
     for p_legendre_only in (2518577, 2518913):
@@ -1111,14 +1058,11 @@ def _test_compute_highlight_colors_bertrand_swallows_legendre_regression():
 
 
 def _test_nested_shell_colors():
-    """[ADDED 2026-09-26, REPLACES the same-day pairwise_family_colors] The
-    key insight (see nested_shell_colors' own doc-comment): every window
-    family here shares the same right edge n, so enabled families are
-    always totally ordered by containment (sorted by `lo`) -- giving
-    len(distinct lo values) - 1 legend entries, not every 2^k-1 subset or
-    every C(k,2) pair. Artur's own live correction after seeing the wrong
-    (all-pairwise) design rendered: 3 families with 3 distinct `lo` values
-    should give exactly 2 entries, not 3."""
+    """Every window family shares the same right edge n (see
+    nested_shell_colors' doc-comment), so enabled families are always totally
+    ordered by containment (sorted by `lo`) -- giving len(distinct lo values)
+    - 1 legend entries, not every 2^k-1 subset or every C(k,2) pair: 3
+    families with 3 distinct `lo` values give exactly 2 entries, not 3."""
     from primeatlas.rings.ring_geometry import nested_shell_colors, WINDOW_FAMILY_COLORS
 
     # Fewer than 2 enabled families -> no shells at all (nothing to blend).
@@ -1145,8 +1089,8 @@ def _test_nested_shell_colors():
     check(result_tied == {frozenset(("legendre", "generalLaw")): expected_lg},
           f"two enabled families with an EXACTLY tied lo -> one shell, not zero (got {result_tied!r})")
 
-    # All three enabled, three DISTINCT lo values (n=141, theta!=0.5, the
-    # real case Artur actually saw) -> exactly TWO shells (Bertrand+Legendre,
+    # All three enabled, three DISTINCT lo values (n=141, theta!=0.5) ->
+    # exactly TWO shells (Bertrand+Legendre,
     # then +General Law), NOT three pairs and NOT one triple-only entry.
     result_three = nested_shell_colors({"bertrand", "legendre", "generalLaw"}, 141, theta=0.4, mode="stepped")
     check(len(result_three) == 2,
@@ -1160,9 +1104,8 @@ def _test_nested_shell_colors():
           f"Bertrand+GeneralLaw alone (skipping Legendre) is never a real shell here -- Legendre is "
           f"always the middle nesting level, never skippable (got {result_three!r})")
 
-    # Artur's own real scenario: n=2,520,000, theta=0.4 (stepped) -- exactly
-    # 2 shells, Bertrand+Legendre then +General Law, matching what he
-    # actually saw rendered.
+    # n=2,520,000, theta=0.4 (stepped) -- exactly 2 shells, Bertrand+Legendre
+    # then +General Law.
     result_regression = nested_shell_colors({"bertrand", "legendre", "generalLaw"}, 2520000, theta=0.4, mode="stepped")
     expected_triple = tuple(
         round(sum(c) / 3) for c in zip(
@@ -1186,9 +1129,8 @@ def _brute_resonance_at(primes_arr, n):
     resonance_events_in_range is supposed to compute in bulk (mirrors
     SieveModel.js's getStepState per-n resonance test directly, not the bulk
     marking-pass algorithm) -- used ONLY as a cross-check in the test below,
-    deliberately NOT sharing any code with the module under test, after two
-    hand-derived expectations elsewhere in this file turned out wrong on
-    first pass. If this and resonance_events_in_range disagree, at least one
+    deliberately NOT sharing any code with the module under test. If this and
+    resonance_events_in_range disagree, at least one
     of the two independent derivations has a bug worth finding, rather than
     trusting either one blind."""
     factors = []

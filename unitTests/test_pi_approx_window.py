@@ -1,7 +1,7 @@
 """
 test_pi_approx_window.py -- tests for primeatlas/research/pi_approx_window.py, the
-pure-Python pi(x)-approximation-accuracy engine for the Badania ->
-Przyblizenia pi(x) sub-tab (li(x), Riemann's R(x), against the real count).
+pure-Python pi(x)-approximation-accuracy engine for the Research ->
+pi(x) approximations sub-tab (li(x), Riemann's R(x), against the real count).
 No tkinter, no display needed -- run directly:
 
     python unitTests\\test_pi_approx_window.py

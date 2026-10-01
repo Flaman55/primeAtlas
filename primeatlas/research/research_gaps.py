@@ -1,6 +1,6 @@
 """
 research_gaps.py -- on-disk-archive storage bridge for the Research tab's
-Luki (prime gaps) sub-tab.
+Gaps (prime gaps) sub-tab.
 
 Re-exports read_is_prime_from_storage/MissingStorageRangeError from
 research_goldbach.py rather than duplicating them -- same reasoning as

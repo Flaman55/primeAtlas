@@ -97,10 +97,10 @@ def section_a():
     # site-packages isn't writable (system Python), while the installer's private Python
     # and venvs get the packages in their own site-packages -- a forced --user would put
     # them into %APPDATA%\Python\PythonXY, shared with every other Python of that version.
-    # --no-warn-script-location: pip's "is Scripts\ on PATH?" check calls Path.resolve() on
-    # EVERY PATH entry; on Artur's machine (2026-10-01) one of them (OpenAI Codex's bin, a
-    # redirection point) made Windows raise WinError 448 "untrusted mount point" and pip
-    # aborted the whole install. The flag skips that scan -- the installer always used it.
+    # --no-warn-script-location: pip's "is Scripts\ on PATH?" check calls Path.resolve()
+    # on EVERY PATH entry, and a redirection (reparse) point among them can make Windows
+    # raise WinError 448 "untrusted mount point" and pip abort the whole install. The flag
+    # skips that scan -- the installer uses it too.
     argv = sdc.build_pip_argv("C:\\Py\\python.exe", ["numpy", "glfw"])
     check(argv == ["C:\\Py\\python.exe", "-m", "pip", "install", "--disable-pip-version-check",
                    "--no-warn-script-location", "numpy", "glfw"],

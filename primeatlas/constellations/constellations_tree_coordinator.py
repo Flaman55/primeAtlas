@@ -1,25 +1,19 @@
 """
 constellations_tree_coordinator.py -- ConstellationsTreeCoordinator, the background
-floor-list scan/reload logic for the Constellations tab's own "Magazyn" hits tree,
-that used to live directly on PortalBrowserApp itself in prime_atlas_v1.py
-(_constellations_tree_scan/reload_constellations_tree/_on_hits_tree_scan_done).
+floor-list scan/reload logic for the Constellations tab's "Storage" hits tree.
 
-Direct sibling of primeatlas/primes/primes_tree_coordinator.py's own PrimesTreeCoordinator
-(see that module's docstring for the full "God object" reduction lineage). Same
-shape, same reasoning, just for the OTHER tree: this tab's own Refresh button can run
-without reload_primes_tree() ever
-running in the same gesture (e.g. right after constellation-finding finishes), so its
-own prune/scan is dispatched independently rather than piggy-backing on the other
-tree's refresh.
+Sibling of primeatlas/primes/primes_tree_coordinator.py's PrimesTreeCoordinator, same
+shape, for the other tree: this tab's Refresh button can run without
+reload_primes_tree() in the same gesture (e.g. right after constellation-finding
+finishes), so its prune/scan is dispatched independently.
 
 Same dependency-injection shape as PrimesTreeCoordinator -- constructed once in
 PortalBrowserApp.__init__, at the same point TotalsSearchCoordinator/
 PrimesTreeCoordinator already are (AFTER every tab widget exists, since _on_scan_done
 reaches directly into constellations_hits_tab_widget). PortalBrowserApp keeps
 reload_constellations_tree as a ONE-LINE delegating method
-(`self._constellations_tree_coord.reload()`) for the same "existing callers keep
-working unchanged, late-bound class method" reasons PrimesTreeCoordinator's own
-docstring explains for reload_primes_tree.
+(`self._constellations_tree_coord.reload()`), a late-bound class method -- see
+PrimesTreeCoordinator's docstring on reload_primes_tree.
 
 What stays on PortalBrowserApp instead of moving here: the loading-screen completion
 check (_loading_startup_pending/_finish_loading_screen), reported back through the
@@ -27,8 +21,8 @@ same on_startup_scan_done() seam PrimesTreeCoordinator uses (this class just pas
 "constellations" instead of "primes"). _select_constellations_hits_view/
 _jump_records_detail_to_hits/_on_const_search_result stay on PortalBrowserApp too --
 none of them are part of the tree-scan/reload mechanism this class owns; they're
-genuine multi-tab coordination glue (Magazyn <-> Kalkulator konstelacji <-> Tabela
-rekordow), the same category of method TotalsSearchCoordinator's own docstring
+genuine multi-tab coordination glue (Storage <-> Constellation calculator <-> Records
+table), the same category of method TotalsSearchCoordinator's own docstring
 already explains stays at the app level.
 """
 from ..core import background
@@ -68,11 +62,9 @@ class ConstellationsTreeCoordinator:
         self._pending = False
 
     def _scan(self, portal_folder, _report_progress):
-        """Runs OFF the GUI thread -- ported unchanged from the original inline
-        _constellations_tree_scan(). Same idempotent prune_empty_floor_dirs()
-        double-call as PrimesTreeCoordinator's own scan -- now two INDEPENDENT
-        background threads may call it back-to-back rather than the same GUI-thread
-        call twice in a row, but the function's own try/except around each individual
+        """Runs OFF the GUI thread. Calls the idempotent prune_empty_floor_dirs() like
+        PrimesTreeCoordinator's scan -- two INDEPENDENT background threads may call it
+        back-to-back, but the function's own try/except around each individual
         os.rmdir() already makes that race harmless: worst case, one of the two calls
         finds a given empty subdir already gone and silently skips it.
 

@@ -1,6 +1,6 @@
 """
 test_squares_window.py -- tests for primeatlas/research/squares_window.py, the pure-Python
-interval-contains-enough-primes engine for the Badania -> Przedzialy kwadratowe
+interval-contains-enough-primes engine for the Research -> Square intervals
 sub-tab (Legendre/Oppermann/Brocard presets + custom formula). No tkinter, no
 display needed -- run directly:
 

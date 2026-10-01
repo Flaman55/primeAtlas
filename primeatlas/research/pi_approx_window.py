@@ -1,6 +1,6 @@
 """
 pi_approx_window.py -- pure Python (no tkinter, no external dependencies)
-pi(x)-approximation-accuracy checks for the Badania -> Przyblizenia pi(x)
+pi(x)-approximation-accuracy checks for the Research -> pi(x) approximations
 sub-tab.
 
 Compares the REAL count of primes <= x (computed via a fresh sieve or read

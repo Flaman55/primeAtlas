@@ -4,23 +4,23 @@ to constellation_finder_v2.py.
 
 GAP-SAFE HIT RECORDING: this module's location strategies (concentrated, digit_sweep,
 manual_step) deliberately jump around a floor rather than crawling it in increasing
-order, hunting for a rare deep hit far ahead of wherever constellation_finder_v1.py's
+order, hunting for a rare deep hit far ahead of wherever constellation_finder_v2.py's
 exhaustive, window-by-window scan currently is. Both tools append confirmed hits to the
 SAME cumulative HITS_10p{N}_k{K}_v{V}.bin file via the shared _append_hits_deduped(),
 which decides "already known" purely by comparing a new value against the file's own
 LAST stored value -- safe only if every writer discovers hits in strictly increasing
 numeric order. If a targeted, out-of-order find were appended directly, the shared
 file's own "last value" would jump ahead of it, and every SMALLER, genuinely NEW hit
-constellation_finder_v1.py finds afterwards, working its way up from below, would be
-silently treated as an "already known duplicate" and dropped, without any warning --
-this module's own earlier finds (sitting near the top of the floor in LAST_VALUES.tsv)
-poisoning the shared file's dedup cursor against everything smaller.
+constellation_finder_v2.py finds afterwards, working its way up from below, would be
+silently treated as an "already known duplicate" and dropped -- this module's own finds
+(sitting near the top of the floor in LAST_VALUES.tsv) poisoning the shared file's dedup
+cursor against everything smaller.
 
-Fix: before recording a batch of confirmed hits, check them against
+Hence: before recording a batch of confirmed hits, check them against
 constellation_finder_v2's own exhaustive frontier (_exhaustive_frontier_value() below --
 the smallest value NOT yet covered by that module's gap-aware done-range checkpoint,
 see resolve_done_names()). Anything BELOW the frontier is safe to append to the shared
-file as before (the exhaustive scan has already read that window; this is always either
+file (the exhaustive scan has already read that window; this is always either
 a harmless duplicate or a legitimate confirmation). Anything AT OR ABOVE the frontier
 goes into this pattern's own PROVISIONAL_HITS_10p{N}_k{K}_v{V}.txt file instead (see
 read_provisional_hits()/_append_provisional_hits()) -- a plain, order-independent text
@@ -462,7 +462,7 @@ def digit_sweep_locations(base_exponent, n_locations, window_m, anchor_offset=0,
     position's sub-scans first, already clipped to the floor's own upper boundary.
 
     `anchor_offset` shifts the WHOLE nested pattern by a fixed floor-relative amount.
-    Always 0 in current use -- see CONTINUATION FIX in run_ktuple_job()'s own
+    Always 0 in current use -- see CONTINUATION in run_ktuple_job()'s own
     docstring for why a floor-offset shift is unsafe for this strategy; kept as a
     parameter only so a caller with its own use case can still express one.
 
@@ -487,16 +487,16 @@ def digit_sweep_locations(base_exponent, n_locations, window_m, anchor_offset=0,
     value at all; without a cap, extra budget there would produce a contiguous block
     that runs straight past the digit's own single-window sub-interval and into the
     NEXT digit value's territory, silently degenerating the tail of a batch from a
-    0..9 digit sweep into a plain linear crawl. Fixed by capping windows_per_digit at
+    0..9 digit sweep into a plain linear crawl. Guarded by capping windows_per_digit at
     `place // window_m` (always >= 1 for every position digit_sweep_positions()
     returns, by that function's own p_min search).
-    (2) even with (1) handled, a position's OWN committed branch (digit_value == that
+    (2) a position's OWN committed branch (digit_value == that
     position's own committed digit) still starts at EXACTLY the offset the next,
     finer position's own committed-digit branch starts at too (that's the whole
     point of "committing" -- the next position continues from there) -- so if that
     branch got more than one contiguous window at THIS level, those extra windows
     would duplicate ones the NEXT level is about to explore anyway (and in more
-    depth). Fixed by capping the committed branch to exactly one window (the anchor
+    depth). Guarded by capping the committed branch to exactly one window (the anchor
     point itself) at every position except the LAST -- only the finest position,
     with nothing deeper to hand off to, spends its full per-digit budget on every
     digit value including its own committed one."""
@@ -603,8 +603,7 @@ def clear_ktuple_checkpoint(base_exponent, k, variant_id):
 
 
 # ------------------------------------------------------------------------------------------
-# Gap-safe hit recording -- see this module's own "v2 -- provisional hits" header note
-# for the real bug this exists to fix.
+# Gap-safe hit recording -- see this module's GAP-SAFE HIT RECORDING header note.
 # ------------------------------------------------------------------------------------------
 
 def _exhaustive_frontier_value(base_exponent):
@@ -616,7 +615,7 @@ def _exhaustive_frontier_value(base_exponent):
     that scan reaches it. Anything at or above this value has NOT been exhaustively
     confirmed yet -- writing it into the shared file here would poison that file's own
     "last known value" against every smaller, genuinely new hit the exhaustive scan
-    finds afterwards (see this module's header note for the real floor-25 incident).
+    finds afterwards (see this module's GAP-SAFE HIT RECORDING header note).
 
     Deliberately conservative: only the UNBROKEN prefix of done windows starting from
     the floor's very first window counts, even if constellation_finder_v2's own
@@ -649,8 +648,8 @@ def read_provisional_hits(base_exponent, k, variant_id):
     below) -- plain text, one value per line, no ordering invariant of its own (unlike
     the shared HITS_*.bin format): even THIS module's own discovery order isn't
     monotonic across a batch for strategy=digit_sweep (see its own docstring), so a
-    strict-increase format would be the wrong fit here regardless of the cross-tool
-    issue this file exists to sidestep. Empty set if the file doesn't exist yet."""
+    strict-increase format would be the wrong fit here. Empty set if the file doesn't
+    exist yet."""
     path = _provisional_hits_path(base_exponent, k, variant_id)
     if not os.path.exists(path):
         return set()
@@ -782,12 +781,12 @@ def run_ktuple_job(base_exponent, pattern, window_m, strategy, n_locations,
     `pass_counter` -- digit_sweep only, the STARTING pass (0, 1, 2, ..., default 0)
     used only the very first time (no checkpoint yet, or reset_checkpoint=True); every
     batch after that continues from the checkpoint's own pass_counter regardless of
-    what's passed in here. CONTINUATION FIX: a checkpointed anchor_offset that isn't a
+    what's passed in here. CONTINUATION: a checkpointed anchor_offset that isn't a
     multiple of 10**base_exponent corrupts the digit sweep -- every position's own
     d=0..9 loop assumes committed starts CLEAN at that position, i.e. anchor's own
     digit there is 0, so a nonzero leftover from a "shift the whole pattern by
     10**p_min" scheme would add on TOP of that, overflowing past a single digit and
-    producing nonsense offsets. Fixed by NEVER shifting the anchor at all for
+    producing nonsense offsets. Avoided by NEVER shifting the anchor at all for
     digit_sweep (it stays 0, always clean) -- instead, each batch after the first
     just increments pass_counter by 1, persisted in the checkpoint's own next_offset
     field (repurposed to hold the next pass_counter for this one strategy, since a

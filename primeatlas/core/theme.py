@@ -9,7 +9,7 @@ option-database entries -- applying a theme needs a live Tk root/ttk.Style insta
 which this "pure logic" package deliberately never touches, so the data (here) and the
 application logic (there) are deliberately split across the tkinter boundary.
 
-Two themes only, "light" and "dark" (default), picked from Settings > Ogolne (see
+Two themes only, "light" and "dark" (default), picked from Settings > General (see
 settings_tab.py's _build_general_tab) -- same restart-required UX as the language
 switch (i18n.py), for the same reason: re-styling every already-built widget live
 would be a much larger, riskier change than re-applying colors once at the next
@@ -19,16 +19,12 @@ tree_group_bg/tree_stat_bg: per-row highlight colors for a Treeview's own
 tag_configure() calls (NOT covered by ttk.Style() -- a tag's background overrides the
 base "Treeview" style per-row, see _apply_theme()'s own docstring for the ttk-vs-tk
 split, this is a THIRD case: a ttk widget's per-item override that also bypasses
-Style()). The Benchmark tab's own floor-
-grouping/stats-row highlights (primeatlas/benchmark/benchmark_tab.py's "floor"/"stat" tags)
-used to be hardcoded to these same two light colors regardless of theme, with no
-matching foreground override -- in dark mode that meant light Treeview text on a
-light hardcoded background, unreadable except when a row was actually selected (the
-selection highlight uses select_bg/select_fg instead, unaffected). Light theme's
-values here are exactly the previous hardcoded ones (zero visual change there); dark
-theme's are dark-tinted equivalents (blue-ish/amber-ish) paired with this theme's own
-`fg` for the tag's foreground, so the same grouping/highlight effect stays visible in
-both themes.
+Style()). The Benchmark tab's floor-grouping/stats-row highlights
+(primeatlas/benchmark/benchmark_tab.py's "floor"/"stat" tags) use these, each paired with
+this theme's own `fg` for the tag's foreground -- a fixed light background would leave
+light Treeview text unreadable in dark mode. Dark theme's values are dark-tinted
+equivalents (blue-ish/amber-ish), so the grouping/highlight effect stays visible in both
+themes.
 """
 
 DEFAULT_THEME = "dark"

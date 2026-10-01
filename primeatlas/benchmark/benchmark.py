@@ -67,7 +67,7 @@ def _order_benchmark_tree_columns(fieldnames):
     """Reorders the Benchmark tab's visible tree columns so loop_seconds_per_window sits
     immediately after seconds_per_window, instead of trailing at the end where it
     physically lives in benchmark_log.csv. Only the DISPLAY order changes here -- the
-    CSV's own column order (and BENCHMARK_FIELDNAMES in orchestrator_v1.py etc.) is
+    CSV's own column order (and BENCHMARK_FIELDNAMES in orchestrator_v3.py etc.) is
     untouched, still append-only per the established schema-migration pattern. A no-op if
     either column is missing (older schema / already filtered out), so this is safe to
     call unconditionally."""
@@ -95,8 +95,8 @@ def _normalize_decimal_commas(row):
     aggregate_benchmark_fair_spw()/benchmark_row_stats() all call float() on these columns,
     which raises ValueError on a comma decimal and gets caught+skipped, so the chart just
     quietly lost almost every point). Only touches values matching digits-comma-digits
-    exactly (e.g. "1/1" in instance_of_n, or a plain int like "1000", are left alone) --
-    same regex used for the one-off CSV repair that fixed the existing file. Mutates and
+    exactly (e.g. "1/1" in instance_of_n, or a plain int like "1000", are left alone).
+    Mutates and
     returns `row` in place."""
     for k, v in row.items():
         if v and _DECIMAL_COMMA_RE.match(v):
@@ -146,10 +146,10 @@ def aggregate_benchmark_growth(rows):
     floor, for the "cost growth by depth" chart. loop_numbers_per_second is the real
     session-level throughput (total numbers swept across all concurrent instances / real
     wall-clock time of the orchestrator_loop run -- see _tag_single_benchmark_row() /
-    _tag_benchmark_rows_by_range() in orchestrator_loop_v1.py/v2.py), used directly as the
-    y-value -- higher is better, unlike the old seconds_per_window metric which got WORSE
-    (higher) as more concurrent instances were added even though wall-clock throughput
-    actually improved. When a floor has multiple logged runs (re-benchmarked after a
+    _tag_benchmark_rows_by_range() in orchestrator_loop_v2.py), used directly as the
+    y-value -- higher is better (seconds_per_window, by contrast, gets WORSE as more
+    concurrent instances are added even when wall-clock throughput improves). When a
+    floor has multiple logged runs (re-benchmarked after a
     scanner change, or just run again), the LAST row for that floor wins: rows are appended
     in chronological order, so this reflects the most recent measurement instead of blending
     old and new tool versions together into one misleading average. Rows predating this
@@ -475,11 +475,10 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
 
     sieve_points/write_points (optional): the sieve-numbers/s and write-MB/s series from
     aggregate_benchmark_sieve_nps()/aggregate_benchmark_write_mbps() -- only populated for
-    floors re-benchmarked with prime_sieve_v4_1.py, so most projects will have this empty
-    for a while yet. A SECOND chart, same layout as the primary one, is only drawn (taking
-    space away from the table below it) when at least one of the two is non-empty --
-    otherwise page 1 looks exactly as it did before this pair of series existed, rather
-    than reserving blank chart space no data will ever fill.
+    floors benchmarked with prime_sieve_v4_1.py. A SECOND chart, same layout as the
+    primary one, is only drawn (taking space away from the table below it) when at
+    least one of the two is non-empty, rather than reserving blank chart space no data
+    will fill.
 
     translator (optional): a primeatlas.core.i18n.Translator instance, threaded into
     _pdf_chart_ops() and used for the title/subtitle/continuation-page header below --

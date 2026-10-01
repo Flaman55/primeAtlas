@@ -10,25 +10,24 @@ order, how a pattern spanning a window boundary (or a FLOOR boundary) gets caugh
 CHECKPOINT.txt resume works, and the dedup safety net that keeps a re-scanned window from
 crashing.
 
-Targets three specific, documented historical fixes (see each section's own comment):
+Covers three behaviors (see each section's own comment):
 
-  1. Within-floor peek-ahead (present from v1): a pattern whose tail spills past one
-     window's own values into the NEXT window (same floor) is only found because
-     process_floor() peeks a bounded number of values from the head of the next window.
+  1. Within-floor peek-ahead: a pattern whose tail spills past one window's own values
+     into the NEXT window (same floor) is only found because process_floor() peeks a
+     bounded number of values from the head of the next window.
 
   2. FLOOR-boundary crossing: a pattern whose base sits near the very TOP of one floor
-     with its tail spilling into the NEXT FLOOR's numbers was never checked at all before
-     check_floor_boundary() was added -- the within-floor peek only ever looks at the next
-     window inside the SAME floor, and a floor's own last window has no such next window.
-     A hit whose base value belongs to the lower floor must be recorded under that lower
+     with its tail spilling into the NEXT FLOOR's numbers is caught by
+     check_floor_boundary() -- the within-floor peek only looks at the next window
+     inside the SAME floor, and a floor's own last window has no such next window. A
+     hit whose base value belongs to the lower floor must be recorded under that lower
      floor even when its tail value falls in the floor above.
 
   3. Re-scan safety: re-appending the same hit values a second time (e.g. because
-     CHECKPOINT.txt was reset, or a floor's
-     constellations/ folder was physically copied in from another storage that had
-     independently scanned some of the same windows) used to crash on
-     append_prime_window()'s own strict-increase assertion the instant a re-scanned window
-     turned up a real hit; _append_hits_deduped() is supposed to make this safe.
+     CHECKPOINT.txt was reset, or a floor's constellations/ folder was copied in from
+     another storage that had scanned some of the same windows) must not trip
+     append_prime_window()'s strict-increase assertion; _append_hits_deduped() makes
+     this safe.
 
 Uses tiny hand-picked integers as "primes" (write_prime_window doesn't verify primality,
 only that its input is sorted ascending ints -- see that function's own docstring) so
@@ -75,7 +74,7 @@ def main():
 
         def _write_window(floor, name, primes):
             # source_primes/ is sharded into shard_NNNNN subfolders (see
-            # window_sharding.py, task #405) -- constellation_finder_v1.list_source_
+            # window_sharding.py) -- constellation_finder_v1.list_source_
             # windows() now walks those via list_sharded_files() rather than a flat
             # os.listdir(), so fixtures must be placed the same way real writers do.
             # Any valid shard placement works for a test this small; shard_00000
@@ -336,21 +335,17 @@ def main():
               f"decode on a real file (got {(lean_last, lean_count)!r}, expected "
               f"{(real_hits[-1], len(real_hits))!r})")
         # =====================================================================
-        # LAST_VALUES.tsv disk cache -- THE regression test for
-        # the actual floor-25 crash root cause: a fresh process_floor() call's
-        # in-memory last_value_cache starts EMPTY every run, so without a PERSISTENT
-        # disk cache, the first hit for any pattern in a fresh run used to force a
-        # decode of that pattern's WHOLE accumulated hit file just to learn its own
-        # last value -- confirmed via a real crash log to be exactly what killed the
-        # WSL process on floor 25's k=2 hit file after 342,001 already-processed
-        # windows. Proves a SECOND, separate process_floor() call (simulating a fresh
-        # WSL process/relaunch) skips that decode entirely, by counting real calls to
+        # LAST_VALUES.tsv disk cache: a fresh process_floor() call's in-memory
+        # last_value_cache starts EMPTY every run, so without a PERSISTENT disk cache
+        # the first hit for any pattern in a fresh run would decode that pattern's
+        # WHOLE accumulated hit file just to learn its last value (enough to exhaust
+        # memory for a dense pattern like k=2 on floor 25). Proves a SECOND, separate
+        # process_floor() call (simulating a fresh WSL process/relaunch) skips that
+        # decode entirely, by counting calls to
         # prime_sieve_v1.read_prime_window_last_value() (the lean, list-free reader
-        # _resolve_last_value() actually calls -- see that function's own docstring on
-        # why plain read_prime_window() was itself part of the crash, independent of
-        # the caching question) against the HIT FILE path specifically (source window
-        # reads are unaffected and still happen normally, so a blanket call count would
-        # be the wrong signal).
+        # _resolve_last_value() calls) against the HIT FILE path specifically (source
+        # window reads still happen normally, so a blanket call count would be the
+        # wrong signal).
         # =====================================================================
         original_read_last_value = prime_sieve_v1.read_prime_window_last_value
         hit_file_reads = []
@@ -388,8 +383,8 @@ def main():
                   f"CORRECT (got {hits_k2_f40!r})")
 
             # Staleness safety: if the hit file changes WITHOUT the disk cache being
-            # told (simulating an external modification, e.g. a storage merge per
-            # [[primeatlas_storage_merge_federation]]), the cache must be distrusted
+            # told (simulating an external modification, e.g. a storage merge), the
+            # cache must be distrusted
             # and the safe, slow full-decode fallback must still fire -- never silently
             # trust a stale cached last_value (which could corrupt the file's own
             # gap-encoding -- see append_prime_window()'s own docstring).

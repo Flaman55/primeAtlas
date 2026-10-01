@@ -100,7 +100,7 @@ def main():
         check(storage.get_global_total(dest_cache) == (5, 2, dest_entry.get("total_bytes")),
               "the persisted global total reflects the same known-only bump")
 
-        # A real full rescan (the manual 'Zweryfikuj sumy' safety net) must independently
+        # A real full rescan (the manual 'Verify totals' safety net) must independently
         # confirm the TRUE total once it actually reads every file's header, including
         # name_c -- proving the bump under-counted safely rather than over-counting.
         real_cache = dict(dest_cache)

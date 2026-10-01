@@ -1,20 +1,19 @@
 """
-debug_single_window.py -- standalone, minimal diagnostic for isolating WHERE the
-floor-25-scale crash (see constellation_finder_v1.py's own module docstring, and its
-process_floor()/max_windows docstring) actually happens.
+debug_single_window.py -- standalone, minimal diagnostic for isolating WHERE a silent
+WSL-process crash during a large-floor constellation scan happens (see
+constellation_finder_v2.py's process_floor()/max_windows docstring).
 
 Reads exactly ONE window file, in COMPLETE isolation from the rest of process_floor()'s
 own state -- no 545,000-entry shard walk, no WINDOW_INDEX.tsv, no pattern matching, no
 peek into a neighboring window. Two outcomes:
 
-  - If THIS crashes the WSL process too (same "Proces wsl.exe zakonczyl sie bez
-    zapisania kodu wyjscia" signature), the problem is specific to this ONE file's own
+  - If THIS crashes the WSL process too (same "The wsl.exe process exited without
+    writing an exit code" signature), the problem is specific to this ONE file's own
     size/content -- worth inspecting that file directly (size, header, byte contents).
   - If it succeeds cleanly, the problem is something about the ACCUMULATED state from
-    a full process_floor() run instead (e.g. holding the whole floor's 545,000-entry
-    window list + WINDOW_INDEX.tsv cache in memory before ever touching a single
-    window's actual content -- constellation_finder_v1.py's own DIAG lines already
-    showed a real ~200MB jump during exactly that phase on floor 25).
+    a full process_floor() run instead (e.g. a large floor's whole window list +
+    WINDOW_INDEX.tsv cache held in memory before any window's content is touched --
+    watch the finder's DIAG lines for the RSS jump in that phase).
 
 Useful once a crash log has pinpointed the death to somewhere between "reading window 1"
 and that window's own per-step summary -- this script is the fast, surgical follow-up:

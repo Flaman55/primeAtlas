@@ -86,15 +86,12 @@ def _test_cumulative_floor_totals():
     function with no tkinter dependency (mirrors the existing convention of testing
     such extracted pure functions directly, e.g. benchmark_tab.py's
     _nearest_hover_point/_hover_label_position) -- so this runs even without Xvfb/a
-    real display. Added alongside the "cumulative" tree column.
+    real display.
 
-    An EARLIER version of this function excluded a floor's own count (matching
-    Wikipedia's pi(10**N) exactly), but that put a floor's own count off by one from
-    its own cumulative row, which read as confusing next to the "Primes" column right
-    beside it. The design instead follows the app's own floor/file structure rather
-    than an external reference definition. This INCLUSIVE version instead answers
-    "how many primes in total through this floor" -- see that function's own
-    docstring for the full reasoning."""
+    The count is INCLUSIVE ("how many primes in total through this floor"), following
+    the app's own floor/file structure rather than Wikipedia's pi(10**N): excluding a
+    floor's own count would put it off by one from its own cumulative row next to the
+    "Primes" column -- see that function's own docstring."""
     from primeatlas.primes.primes_tab import _cumulative_floor_totals
 
     # Fully known, contiguous floors 0..3 -- each floor's OWN count folded in, so the
@@ -142,8 +139,8 @@ def main():
 
     tmp_portal = tempfile.mkdtemp(prefix="primeatlas_primes_tab_test_")
     try:
-        # source_primes/ is sharded into shard_NNNNN subfolders (see window_sharding.py,
-        # task #405) -- every fixture window below is placed under shard_00000, which is
+        # source_primes/ is sharded into shard_NNNNN subfolders (see window_sharding.py) --
+        # every fixture window below is placed under shard_00000, which is
         # valid regardless of how many windows share it (SHARD_SIZE=5000 is just a cap).
         #
         # Floor 10p0: a single small window, seeded specifically so PAGE_SIZE=5 (see

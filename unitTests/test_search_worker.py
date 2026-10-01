@@ -11,14 +11,13 @@ button on the primes/constellations tabs does -- and asserts the result lands ba
 the UI (search buttons re-enabled, status text set, preview populated) via the
 PersistentWorker-based path.
 
-Also includes a DETERMINISTIC regression test for the status-bar race (task #404):
-a floor-totals batch scan and a search share one status bar, and a stale/slow totals
-completion used to be able to overwrite a just-shown search result. That race's
-real-world timing is unreliable to exercise directly (it depends on how fast a real
-background disk scan happens to settle relative to a search -- see that test block's
-own comment), so it monkeypatches update_floor_totals_cache to force one totals job
-to take ~1.5 real seconds, guaranteeing the exact interleaving the fix targets on
-every run.
+Also includes a DETERMINISTIC test for the status-bar race: a floor-totals batch scan
+and a search share one status bar, and a stale/slow totals completion must not
+overwrite a just-shown search result. Real-world timing of that race is unreliable to
+exercise directly (it depends on how fast a background disk scan settles relative to a
+search -- see that test block's own comment), so it monkeypatches
+update_floor_totals_cache to force one totals job to take ~1.5 real seconds,
+guaranteeing the interleaving on every run.
 
 IMPORTANT -- do not call app_settings.set_storage_path() directly on a live app's
 AppSettings instance: AppSettings.save() persists unconditionally to the REAL
@@ -92,8 +91,8 @@ def main():
 
     tmp_portal = tempfile.mkdtemp(prefix="primeatlas_search_worker_test_")
     try:
-        # source_primes/ is sharded into shard_NNNNN subfolders (see window_sharding.py,
-        # task #405) -- offset 0 always lands in shard_00000.
+        # source_primes/ is sharded into shard_NNNNN subfolders (see window_sharding.py) --
+        # offset 0 always lands in shard_00000.
         source_dir = os.path.join(tmp_portal, "10p3", "source_primes")
         shard_dir = window_sharding.shard_dir(source_dir, 0)
         os.makedirs(shard_dir, exist_ok=True)
@@ -114,7 +113,7 @@ def main():
         # global at dispatch time, so redirecting only AFTER construction leaves that
         # very first scan pointed at whatever real storage path is currently
         # configured. A real storage folder can grow to hundreds of thousands of files
-        # across many floors after the sharding migration (task #417), so that startup
+        # across many floors after the sharding migration, so that startup
         # scan can take long enough to still be in flight when this test's own
         # app.reload_primes_tree() call (further below) fires -- the busy/pending
         # coalescing (PrimesTreeCoordinator.reload(), see that module's own docstring)
@@ -169,7 +168,7 @@ def main():
         _pump(app, 3.0)
         check(not app._totals_search.search_busy, "const search job settles without hanging or crashing")
 
-        # --- Deterministic regression test for the status-bar race (task #404) -----
+        # --- Deterministic regression test for the status-bar race -----
         # The scenarios above pass reliably once the coordinator's fix is in place,
         # but their actual timing depends on how fast the real background totals
         # scan happens to settle relative to the search -- on a fast/lightly-loaded
@@ -217,18 +216,13 @@ def main():
         finally:
             tsc_module.update_floor_totals_cache = _real_update_totals
 
-        # --- Regression test: show_cached_grand_total() must reset totals_progress
-        # (bug: after a generation run finished, the shared bottom progress bar stayed
-        # visibly full forever, reading as still busy while the app sat idle). Root
-        # cause: generation's own completion handler (generation_tab.py's
+        # --- show_cached_grand_total() must reset totals_progress: generation's
+        # completion handler (generation_tab.py's
         # _update_shared_progress_from_generation_chunk) deliberately snaps the bar to
-        # full and relies on WHATEVER runs next to clear it -- that used to be
-        # compute_all_floor_totals()'s own automatic post-reload call, which reset
-        # the bar as a side effect of a real rescan that ran unconditionally after
-        # every reload. Once that automatic call was replaced by the lightweight
-        # show_cached_grand_total() (this test's own portal already exercises that
-        # exact call path via app.reload_primes_tree() above), nothing was left to
-        # perform the reset. Simulates the "just-finished generation" state directly
+        # full and relies on whatever runs next to clear it; without the reset the
+        # shared bottom bar would stay full while the app sits idle, reading as busy.
+        # (This test's portal already exercises that call path via
+        # app.reload_primes_tree() above.) Simulates the "just-finished generation" state directly
         # (mode=determinate, full) rather than actually launching a generation run
         # (no WSL/engine in this sandbox -- see test_generation_launch_planning.py's
         # own module docstring for why), then calls show_cached_grand_total() the same

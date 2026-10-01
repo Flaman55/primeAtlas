@@ -1,6 +1,6 @@
 """
 test_goldbach_worker.py -- functional regression test for the Goldbach
-structural-window worker (Badania -> Goldbach sub-tab), which runs on
+structural-window worker (Research -> Goldbach sub-tab), which runs on
 primeatlas/core/background.py's PersistentWorker and lives in
 primeatlas/research/research_goldbach_tab.py's ResearchGoldbachTab -- all
 app.goldbach_*/app._goldbach_* references below go through
@@ -10,7 +10,7 @@ docstring for why the tab is fully self-contained, own worker included).
 Drives the REAL UI entrypoints (_on_goldbach_run, _on_goldbach_visualize,
 _on_goldbach_viz_decompose) -- exactly what clicking the tab's buttons does --
 rather than hand-building job dicts, so this also exercises _goldbach_parse_n(),
-the Wizualizacja Toplevel lazy-creation path, and the decompose Toplevel's own
+the Visualize Toplevel lazy-creation path, and the decompose Toplevel's own
 dependency on a prior successful "viz" result, not just the worker plumbing in
 isolation.
 
@@ -89,8 +89,8 @@ def main():
         # name (see prime_sieve_v1.main_batch_scanner's own PRIME_WINDOW_10p{N}_off_{...}
         # naming), unlike the simple "PRIME_WINDOW_{start}.bin" name the search-worker
         # test uses (that feature reads window headers directly instead).
-        # source_primes/ is sharded into shard_NNNNN subfolders (see window_sharding.py,
-        # task #405) -- offset 0 always lands in shard_00000.
+        # source_primes/ is sharded into shard_NNNNN subfolders (see window_sharding.py) --
+        # offset 0 always lands in shard_00000.
         import window_sharding
         source_dir = os.path.join(tmp_portal, "10p0", "source_primes")
         shard_dir = window_sharding.shard_dir(source_dir, 0)
@@ -134,7 +134,7 @@ def main():
         check(goldbach._goldbach_viz_last_result is not None,
               "'viz' job populated _goldbach_viz_last_result")
         check(goldbach._goldbach_viz_win is not None and goldbach._goldbach_viz_win.winfo_exists(),
-              "Wizualizacja Toplevel was created and is still open")
+              "Visualize Toplevel was created and is still open")
 
         # --- "decompose" op: depends on the "viz" result just above for its pmax ---
         _set_entry(goldbach.goldbach_viz_decompose_entry, "6")

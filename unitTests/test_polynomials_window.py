@@ -1,7 +1,7 @@
 """
 test_polynomials_window.py -- tests for primeatlas/research/polynomials_window.py, the
-pure-Python prime-among-polynomial-values engine for the Badania -> Wielomiany
-pierwszorodne sub-tab (Landau/Euler presets + custom formula). No tkinter, no
+pure-Python prime-among-polynomial-values engine for the Research -> Prime-generating
+polynomials sub-tab (Landau/Euler presets + custom formula). No tkinter, no
 display needed -- run directly:
 
     python unitTests\\test_polynomials_window.py

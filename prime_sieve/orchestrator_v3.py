@@ -17,26 +17,14 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import window_sharding
 
 # ------------------------------------------------------------------------------------------
-# ENGINE SWITCH -- change ONLY this one flag to flip which scanner generation (v3, v4, or
-# v4.1) this orchestrator drives. Previously this meant editing SCRIPT_NAME (below) AND the
-# `import prime_sieve_v3` line above it separately -- easy to change one and forget the
-# other, which is exactly what happened testing v4 (SCRIPT_NAME pointed at
-# prime_sieve_v4.py, but the module import -- used for format_offset()/
-# read_prime_window_header()/SCAN_METRICS_FILENAME in the benchmark-summary code further
-# down -- was still silently reading v3's copies of those, harmless in practice since v4
-# duplicates them byte-for-byte identically, but not an honest "actually switched" state).
-# v3/v4/v4.1 all write files in the SAME PGS2 format/filename convention and share the same
-# benchmark_log.csv, so flipping this is safe at any time, including mid-floor.
-# v4 = v3 plus an inlined fast-path modulo in the C core for the per-sieving-prime phase
-# computation (see prime_sieve_v4.py's own header) -- should be faster or equal, never
-# slower, so there's rarely a reason to run v3 except for an A/B comparison like this one.
-# v4.1 = v4 plus direct base-gen/sieve/write timing and a bytes-written counter, threaded
-# through into four NEW benchmark_log.csv columns (base_gen_seconds/sieve_seconds/
-# write_seconds/bytes_written, see BENCHMARK_FIELDNAMES below) -- no change to the sieve
-# itself, purely additive instrumentation (see prime_sieve_v4_1.py's own header). Not yet
-# run against real libprimesieve as of this flag's addition -- the timing/handoff logic
-# has no libprimesieve dependency and was exercised with synthetic data instead, but a
-# real WSL run is still needed before trusting the actual timing numbers it reports.
+# ENGINE SWITCH -- the one flag selecting which scanner (v3, v4 or v4.1) this orchestrator
+# drives; it sets both SCRIPT_NAME and the scanner module import below, so the two can't
+# disagree. v3/v4/v4.1 write the SAME PGS2 format/filename convention and share
+# benchmark_log.csv, so switching is safe at any time, including mid-floor.
+# v4 = v3 plus an inlined fast-path modulo for the per-sieving-prime phase computation (see
+# prime_sieve_v4.py's header). v4.1 = v4 plus base-gen/sieve/write timing and a
+# bytes-written counter in four benchmark_log.csv columns (base_gen_seconds/sieve_seconds/
+# write_seconds/bytes_written, see BENCHMARK_FIELDNAMES below).
 SCANNER_VERSION = "v4.1"   # "v3", "v4", or "v4.1"
 
 if SCANNER_VERSION == "v3":
@@ -58,23 +46,14 @@ else:
 # ==========================================================================================
 # orchestrator_v3.py
 #
-# LINEAGE: orchestrator_v2.py (this folder), with ONE change: SCRIPT_NAME points at
-# prime_sieve_v3.py instead of prime_sieve_v2.py, and the module import follows suit. Kept
-# as a SEPARATE file (not a git commit to orchestrator_v2.py) for the same explicit reason
-# prime_sieve_v3.py is a separate file -- see that file's header. orchestrator_v1.py and
-# orchestrator_v2.py are untouched and still fully usable against their respective scanners.
-#
-# Nothing about batching/sequencing/benchmarking logic changed here -- this file's whole job
-# is launching a scanner subprocess and logging what it did, and that job is identical
-# regardless of which scanner (v2's per-worker-private-buffer return+merge, or v3's shared
-# mmap buffer with atomic OR, no merge step) is doing the actual sieving. All three write to
-# the SAME CONSTELLATION_PORTAL/benchmark_log.csv -- deliberately not forked, so the existing
-# growth chart keeps showing one continuous cross-floor history.
+# Launches a scanner subprocess (selected by SCANNER_VERSION above) for a range of windows
+# and logs what it did to CONSTELLATION_PORTAL/benchmark_log.csv -- one shared log for every
+# scanner, so the growth chart shows one continuous cross-floor history.
 # ==========================================================================================
 
 
 def _parse_bool_arg(value):
-    """Unchanged from orchestrator_v2.py -- see that file's docstring."""
+    """Parses a 0/1 (or true/false, yes/no, on/off) CLI flag; raises ValueError otherwise."""
     v = value.strip().lower()
     if v in ("1", "true", "yes", "on"):
         return True
@@ -94,14 +73,10 @@ def format_duration(seconds):
 
 
 def find_auto_start(base_exponent, portal_folder, window_m):
-    """Unchanged from orchestrator_v2.py -- see that file's docstring. The on-disk PGS2
-    window format/filename convention is unchanged by v3 (only how the sieve gets there
-    internally changed).
-
-    source_primes/ is sharded into shard_NNNNN subfolders (see window_sharding.py, task
-    #405) -- a bare os.listdir(source_dir) would only ever see those subfolder names,
-    never match this function's own filename pattern, silently breaking auto-continue.
-    window_sharding.list_sharded_files() walks each shard subfolder instead."""
+    """Target_idx to continue this floor from: one past the highest target_idx among its
+    PRIME_WINDOW_*.bin files (offset // window_m), or None if the floor has none.
+    source_primes/ is sharded into shard_NNNNN subfolders, so the files are listed via
+    window_sharding.list_sharded_files()."""
     pattern = re.compile(rf"^PRIME_WINDOW_10p{base_exponent}_off_(\d+)(M)?\.bin$")
     highest_target_idx = None
 
@@ -122,7 +97,7 @@ def find_auto_start(base_exponent, portal_folder, window_m):
 
 
 # ==============================================================================
-# JOB CONFIGURATION -- same defaults/meaning as orchestrator_v1.py/v2.py's block.
+# JOB CONFIGURATION
 # ==============================================================================
 VERSION = "v3.1"   # see prime_sieve_v3.py's VERSION comment -- same reasoning/bump here.
 BASE_EXPONENT = 17
@@ -132,11 +107,7 @@ WINDOW_COUNT = 200
 BATCH_SIZE = WINDOW_COUNT
 WORKERS = 24
 # SCRIPT_NAME is set by the ENGINE SWITCH block near the top of this file (SCANNER_VERSION),
-# NOT here -- this used to be the one line that differed from orchestrator_v2.py, but having
-# it set a second time in this JOB CONFIGURATION block too (while the scanner MODULE import
-# was a separate, easy-to-forget line elsewhere) is exactly what caused a v3/v4 switch to be
-# only half-applied. Left unset here on purpose so accidentally reintroducing a second
-# assignment is more likely to be noticed.
+# not here, so the scanner script and the scanner module import always switch together.
 WINDOW_M = 10 ** 7
 BATCHES_PER_WORKER = 2
 WRITE_FILES = True
@@ -200,8 +171,8 @@ BENCHMARK_FIELDNAMES = [
 
 
 def _ensure_benchmark_log_schema(log_path):
-    """Same schema-migration logic as orchestrator_v1.py/v2.py -- see orchestrator_v1.py's
-    docstring. Rewrite is ATOMIC (temp file + os.replace())."""
+    """Migrates benchmark_log.csv's header to the current BENCHMARK_FIELDNAMES (adding
+    missing columns to every existing row). Rewrite is ATOMIC (temp file + os.replace())."""
     if not os.path.exists(log_path):
         return
     with open(log_path, newline="") as f:
@@ -236,7 +207,8 @@ def read_scan_metrics_handoff(portal_folder):
 
 
 def peak_child_rss_mb():
-    """Unchanged from orchestrator_v1.py/v2.py."""
+    """Peak resident set size of finished child processes in MB, or None where the
+    `resource` module is unavailable."""
     if resource is None:
         return None
     ru = resource.getrusage(resource.RUSAGE_CHILDREN)
@@ -299,15 +271,11 @@ def print_benchmark_summary(base_exponent, start_idx, end_idx, total_seconds, po
         total_primes = 0
         windows_found = 0
 
-        # Sharded (see window_sharding.py, task #405): a window at this offset now lives
-        # under source_dir/shard_NNNNN/, not directly in source_dir -- this loop used to
-        # os.path.exists() a flat source_dir path for every window, which is ALWAYS False
-        # post-sharding, silently zeroing out total_primes/windows_found (and therefore
-        # this run's whole benchmark_log.csv row) even though the files were written
-        # correctly. Missed in the original task #405 sweep because this function re-derives
-        # counts from disk instead of trusting write_scan_metrics_handoff()'s numbers, so
-        # a generation run can report "0 windows written" here despite the underlying
-        # sieve's own console output showing windows/primes written correctly.
+        # Sharded (see window_sharding.py): a window at this offset lives under
+        # source_dir/shard_NNNNN/, not directly in source_dir; a flat source_dir path
+        # would never exist and zero out total_primes/windows_found (and the run's
+        # benchmark_log.csv row). Counts are re-derived from disk here rather than taken
+        # from write_scan_metrics_handoff().
         source_dir = os.path.join(portal_folder, f"10p{base_exponent}", "source_primes")
         for target_idx in range(start_idx, end_idx):
             offset = target_idx * window_m
@@ -404,9 +372,9 @@ def run_orchestrator(base_exponent=None, window_count=None, start_auto=None, sta
 
     workers/batches_per_worker/window_m are all CLI-overridable (see __main__ below) rather
     than fixed module constants, so a caller (e.g. the GUI's Generation tab) can set every
-    tunable this pipeline has without touching source. They still default to the module
-    constants below when omitted, so direct `python orchestrator_v3.py <base_exponent>
-    <window_count>` calls keep working exactly as before.
+    tunable this pipeline has without touching source. They default to the module
+    constants below when omitted (e.g. a direct `python orchestrator_v3.py <base_exponent>
+    <window_count>` call).
 
     window_m is how many numbers each target_idx step covers -- threaded from the GUI's
     "Generation pipeline" field all the way down through here to the active scanner's (see

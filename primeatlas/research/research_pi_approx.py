@@ -1,6 +1,6 @@
 """
 research_pi_approx.py -- on-disk-archive storage bridge for the Research
-tab's Przyblizenia pi(x) (pi(x) approximations) sub-tab.
+tab's pi(x) approximations (pi(x) approximations) sub-tab.
 
 Re-exports read_is_prime_from_storage/MissingStorageRangeError from
 research_goldbach.py rather than duplicating them -- same reasoning as

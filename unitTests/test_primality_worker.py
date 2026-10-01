@@ -1,6 +1,6 @@
 """
 test_primality_worker.py -- functional regression test for the primality-testing
-worker (Liczby pierwsze -> Testy pierwszosci sub-tab), which runs on
+worker (Prime numbers -> Primality tests sub-tab), which runs on
 primeatlas/core/background.py's PersistentWorker. The worker and its state live in
 primeatlas/primality/primality_tab.py's PrimalityTab -- this suite drives it via
 app.primality_tab_widget.X and monkeypatches

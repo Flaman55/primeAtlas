@@ -35,7 +35,7 @@ _CONSTELLATION_K_RE = re.compile(r"^k(\d+)$")
 _CONSTELLATION_VARIANT_RE = re.compile(r"^variant(\d+)$")
 # Matches both the original single cumulative hit file AND a paged one's page files
 # (see prime_sieve/hit_paging.py) -- "_page\d+" is optional so the unpaged case (the
-# vast majority of patterns) keeps matching exactly as before.
+# vast majority of patterns) matches too.
 _HITS_FILE_RE = re.compile(r"^HITS_10p\d+_k\d+_v\d+(_page\d+)?\.bin$")
 # hit_paging.py's own per-(floor,k,variant) metadata file -- NOT a hit file, but just as
 # essential to back up/restore: without it, a paged pattern's page files are orphaned
@@ -140,8 +140,8 @@ class FloorSnapshot:
         re-reading the same root file per floor) -- optional so this can still be called
         standalone (e.g. from tests) with totals_cache=None, in which case
         totals_cache_entry is simply left None."""
-        # source_primes/ is sharded into shard_NNNNN subfolders (see window_sharding.py,
-        # task #405) -- a bare os.listdir(source_dir) would only ever see those
+        # source_primes/ is sharded into shard_NNNNN subfolders (see window_sharding.py) --
+        # a bare os.listdir(source_dir) would only ever see those
         # subfolder names, never match _SOURCE_WINDOW_RE against an actual filename.
         source_dir = os.path.join(storage_path, f"10p{base_exponent}", "source_primes")
         names = [name for name, _path in window_sharding.list_sharded_files(

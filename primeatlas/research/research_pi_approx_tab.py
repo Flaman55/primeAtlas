@@ -1,15 +1,14 @@
 """
 research_pi_approx_tab.py -- ResearchPiApproxTab, the tkinter widgets for
-the Research tab's Przyblizenia pi(x) (pi(x) approximations) sub-tab:
+the Research tab's pi(x) approximations (pi(x) approximations) sub-tab:
 compares the real prime-counting function pi(x) against li(x) and Riemann's
 R(x) at a set of checkpoints x = x_from, x_from+step, ..., x_to, via
 primeatlas/research/pi_approx_window.py's pure check_pi_approx_range()/check_pi_
 approx_range_from_source().
 
-Same shape as ResearchSquaresTab/ResearchPolynomialsTab/ResearchGapsTab
-(see any of their own docstrings for the full data-source-toggle/CSV-
-export history this mirrors from day one): a data-source toggle ("Świeże
-sito" / "Dane z archive", storage mode via
+Same shape as ResearchSquaresTab/ResearchPolynomialsTab/ResearchGapsTab: a
+data-source toggle ("Fresh
+sieve" / "Storage data", storage mode via
 primeatlas/research/research_pi_approx.py's read_is_prime_from_storage), pagination,
 and CSV export of the currently-displayed page.
 
@@ -29,8 +28,8 @@ primeatlas/generation/generation.py alongside their CUDASieve counterparts -- se
 module's own docstrings). Unlike the sieve/storage modes, this one needs no
 is_prime array at all -- primecount computes pi(x) directly via a
 combinatorial algorithm (see prime_sieve/prime_count_primecount.py's own
-module docstring), so it reaches x far past MAX_SIEVE_BOUND (verified live:
-pi(10**15) in ~0.1s on a 24-core WSL box). Wired into pi_approx_window.
+module docstring), so it reaches x far past MAX_SIEVE_BOUND (e.g. pi(10**15) in
+~0.1s on a 24-core WSL machine). Wired into pi_approx_window.
 check_pi_approx_range_with_pi_func(), the third entry point that skips the
 is_prime array entirely.
 
@@ -42,10 +41,10 @@ libprimecount is a WSL apt package (primecount, libprimecount8,
 libprimecount-dev, libprimecount-dev-common) NOT part of env_setup.py's
 REQUIRED_APT_PACKAGES -- research-module-specific optional C libraries get an
 on-demand install mechanism instead of a blanket first-run install everyone
-pays for. The INSTALL mechanism belongs in Settings -> Aktualizacje (see settings_tab.py's
+pays for. The INSTALL mechanism belongs in Settings -> Updates (see settings_tab.py's
 own primecount section) alongside every other optional-component installer
 in this app, not duplicated here -- this tab only ever OFFERS to install
-(a small Zainstaluj/Anuluj dialog, triggered the moment a "primecount"-mode
+(a small Install/Cancel dialog, triggered the moment a "primecount"-mode
 query actually fails because the library isn't there yet, see
 _offer_install_primecount below), reusing that exact same generation.py
 install function rather than a second copy of it."""
@@ -255,7 +254,7 @@ class ResearchPiApproxTab(BaseTab):
         has none of its own, see pi_approx_window.check_pi_approx_range_
         with_pi_func's own docstring). Returns a (kind, ok, data) 3-tuple:
         "run" for an ordinary checkpoint sweep (data is the same result
-        dict every source has always returned, or an error string on
+        dict, as for every source, or an error string on
         failure), "primecount_not_installed" specifically when a
         "primecount"-mode query failed because the library isn't there yet
         (data is a ready-to-resubmit job dict, the exact one that just
@@ -350,7 +349,7 @@ class ResearchPiApproxTab(BaseTab):
 
     def _offer_install_primecount(self, pending_job):
         """Shown the moment a "primecount"-mode query fails specifically because
-        libprimecount isn't installed yet -- a small Zainstaluj/Anuluj dialog
+        libprimecount isn't installed yet -- a small Install/Cancel dialog
         instead of a generic error message. A plain tkinter messagebox.askyesno can't carry custom
         button labels (Tk supplies its own stock Yes/No text), so this is a
         small dedicated Toplevel, same "own modal dialog for a two-choice
@@ -387,7 +386,7 @@ class ResearchPiApproxTab(BaseTab):
 
     def _start_primecount_install(self, pending_job):
         """Actually starts the install job -- reuses the SAME generation.py install
-        function Settings -> Aktualizacje's own primecount section calls (see that
+        function Settings -> Updates's own primecount section calls (see that
         module's own docstring), remembering `pending_job` (the exact "run" job that
         just failed) so a successful install can automatically retry it, see
         _on_pi_worker_result's own "install_primecount" branch."""

@@ -1,7 +1,7 @@
 """
 test_window_sharding.py -- unit tests for prime_sieve/window_sharding.py, the shared
-sharding scheme introduced for task #405 (constellation_finder_v1.py's WSL process dying
-silently mid-scan on floor 25's 542,001-file flat source_primes/ directory).
+source_primes/ sharding scheme (a flat directory with hundreds of thousands of files
+makes WSL's filesystem interop degrade until the process dies silently).
 
 Pure logic, no tkinter, no real prime data needed -- exercises the module's own functions
 directly against a real (but tiny) temp-directory tree, plus a couple of integration

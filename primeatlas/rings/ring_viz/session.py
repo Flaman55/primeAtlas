@@ -1,23 +1,10 @@
 """
 session.py -- RenderSession: the mutable interactive-playback state for
-primeatlas/rings/ring_viz/renderer.py's `_run_visualization`, consolidated into
-ONE object with methods instead of a dozen separate closures each
-capturing its own local dict (`state`, `playback`, `orbit_state`,
-`flash_state`, `n_holder`, `resonance_log_state`, `hud_state`,
-`scrub_state`, `extend_state`, `cyclic_anchor_state`, plus bare
-`track_primes`/`auto_orbit`/`range_mode`/`range_primes`/`range_step`/
-`primes`/`ceiling` locals mutated via `nonlocal`). [Faza 3 of the
-renderer.py split -- see that file's own module docstring for the overall
-refactor plan this continues.]
-
-DELIBERATELY NOT WIRED INTO _run_visualization YET (Faza 4's job): this
-class is designed and unit-tested here, in isolation, first -- so a
-mistake in its design is caught by these tests before the one part of
-renderer.py with zero pre-existing unit test coverage (the GLFW/moderngl
-main loop, untestable in a headless sandbox) ever comes to depend on it.
-_run_visualization keeps its own current closures/dicts unchanged for now;
-Faza 4 is the actual rewire, done key-by-key/closure-by-closure with a
-real run against a real archive after each step, per PLAN.md.
+primeatlas/rings/ring_viz/renderer.py's `_run_visualization`, as ONE object with
+methods (camera, playback, orbit, flash, resonance log, HUD, scrub, buffer extension,
+cyclic anchors, tracked primes, range mode) instead of separate closures each capturing
+its own dict. Unit-tested here without GL; the GLFW/moderngl main loop itself cannot run
+headless.
 
 Scope boundary: RenderSession owns everything from the point
 _run_visualization has ALREADY resolved --source/--load-range into a
@@ -32,9 +19,8 @@ read and write -- is what actually needed a single owner.
 GL boundary: nothing here imports moderngl or glfw, and no method takes a
 GL context/window. Every method takes and returns plain data (numpy
 arrays, tuples, dicts, strings) -- the four or five lines that are
-genuinely GL-bound in the ported originals (ctx.buffer(), ctx.texture(),
-vbo.write()) are left for _run_visualization's own Faza-4 call sites to
-do with this class's return values, same convention as geometry_draw.py/
+genuinely GL-bound (ctx.buffer(), ctx.texture(), vbo.write()) are done by
+_run_visualization with this class's return values, same convention as geometry_draw.py/
 hud.py/playback.py. This is what makes every method here unit-testable in
 a headless sandbox with no GPU/display, same as those three modules.
 
@@ -110,35 +96,23 @@ from primeatlas.rings.ring_viz.hud import (
 from primeatlas.rings.ring_viz.sources import load_archive, load_archive_before
 
 # Internal-only search stride for a background pattern seek (see
-# _start_pattern_seek/_effective_chunk_size's own doc-comments, 2026-09-25
-# follow-up -- Artur's own proposal: "a gdyby przeszukiwanie dzialalo na
-# tych domyslnych 2 milionach ale samo renderowanie bylo dla wyznaczonej
-# liczby" -- what if the SEARCH worked on the default 2 million while the
-# RENDERING stayed at the configured (possibly much smaller) chunk_size).
-# Deliberately just the app's own existing --max-load-count default
-# (renderer.py), not reinvented -- and deliberately NOT a new user-facing
-# knob (see feedback_configurable_perf_params.md's own 2026-09-25
-# refinement: don't split one conceptual knob into two GUI-visible
-# fields), since it only ever affects how many real chunks a seek's OWN
-# internal crawl needs, never what actually gets rendered.
+# _start_pattern_seek/_effective_chunk_size): the SEARCH crawls in chunks of the app's
+# --max-load-count default (renderer.py) while RENDERING stays at the configured,
+# possibly much smaller, chunk_size. Not a user-facing knob: it only affects how many
+# chunks a seek's internal crawl loads, never what is rendered.
 _SEEK_STRIDE_CHUNK_SIZE = 2_000_000
 
 
 class RenderSession:
     """Owns every piece of state _run_visualization's interactive part
     (camera, playback, HUD, buffer-extension, tracked/auto-orbit) reads or
-    writes, plus the pure state-transition logic that used to live in that
-    function's own closures. See this module's own docstring for the exact
-    scope boundary and why nothing here touches GL directly.
+    writes, plus the pure state-transition logic. See this module's docstring for
+    the scope boundary and why nothing here touches GL directly.
 
-    Construct with everything _run_visualization has already resolved by
-    the point its own `state = {...}` dict used to begin (see that
-    function's own body, right after the --load-range handling block):
-    a concrete `primes` array, the initial `n`/`ceiling`, the range-mode
-    fields, tracked-primes/auto-orbit, the enabled window families, and
-    the launch-time buffer-extension parameters. Every field below has a
-    direct 1:1 counterpart in the pre-Faza-3 closures -- see each field's
-    own comment for which one."""
+    Construct with everything _run_visualization has resolved after its
+    --load-range handling: a concrete `primes` array, the initial `n`/`ceiling`, the
+    range-mode fields, tracked-primes/auto-orbit, the enabled window families, and
+    the launch-time buffer-extension parameters."""
 
     def __init__(self, *, primes, n, ceiling, range_mode, range_primes, range_step,
                  track_primes, auto_orbit, enabled_ids, theta, law_mode, max_radius,
@@ -147,28 +121,21 @@ class RenderSession:
                  pattern_step_mode="manual", pattern_stop_on_match=False,
                  line_axis_curved=False, range_load_from=None, range_load_to=None,
                  chunk_size=None, sliding_enabled=False):
-        # Ring data / sequencing (was: bare `primes`/`ceiling`/`range_mode`/
-        # `range_primes`/`range_step` locals in _run_visualization, some
-        # mutated via `nonlocal`).
+        # Ring data / sequencing.
         self.primes = primes
         self.n = n
         self.ceiling = ceiling
         self.range_mode = range_mode
-        # `range_primes` is now a thin property (see below, right after
-        # __init__) backed by `chunk_current` -- the triple-buffer sliding
-        # window's own middle/visible chunk (see chunk_back/chunk_current/
-        # chunk_forward below). A property, not a second plain attribute
-        # kept manually in sync, so every existing read site
-        # (_pattern_window_bounds, rebuild(), rebuild_line(), etc.) that
-        # already says `self.range_primes` keeps working completely
-        # unchanged and can NEVER silently drift out of sync with a slide
-        # -- see memory file primeatlas-ring-viz-sliding-range-window-plan.md,
-        # Faza 1, for why this was chosen over a duplicated attribute.
+        # `range_primes` is a thin property (see below, right after __init__)
+        # backed by `chunk_current` -- the triple-buffer sliding window's
+        # middle/visible chunk (see chunk_back/chunk_current/chunk_forward
+        # below). A property rather than a second attribute kept in sync, so
+        # every read site (_pattern_window_bounds, rebuild(), rebuild_line(),
+        # etc.) always sees the current chunk after a slide.
         self.chunk_current = range_primes
         self.range_step = range_step
 
-        # Window/tracking launch-time config (was: bare `enabled_ids`/
-        # `theta`/`law_mode`/`track_primes`/`auto_orbit` locals).
+        # Window/tracking launch-time config.
         self.track_primes = track_primes
         self.auto_orbit = auto_orbit
         self.enabled_ids = enabled_ids
@@ -176,28 +143,26 @@ class RenderSession:
         self.law_mode = law_mode
         self.max_radius = max_radius
 
-        # Playback (was: `tempo_ms` local + `playback = {"running": False}`).
+        # Playback.
         self.tempo_ms = clamp_tempo_ms(tempo_ms)
         self.playback_running = False
 
-        # Auto-orbit cycling (was: `orbit_state` dict).
+        # Auto-orbit cycling.
         self.orbit_index = 0
         self.orbit_counter = 0
         self.orbit_current_prime = None
 
-        # Cyclic window-anchor freeze/jump state (was: `cyclic_anchor_state`
-        # dict, one entry per family -- see cyclic_window_anchor_at's own
-        # doc-comment).
+        # Cyclic window-anchor freeze/jump state, one entry per family -- see
+        # cyclic_window_anchor_at.
         self.cyclic_anchor_state = {}
 
-        # Camera (was: `state` dict -- "pan"/"zoom"/"dragging"/"last_mouse").
+        # Camera.
         self.cam_pan = [0.0, 0.0]
         self.cam_zoom = 1.0
         self.cam_dragging = False
         self.cam_last_mouse = (0.0, 0.0)
 
-        # Birth/resonance flash decay accumulators + tracked-outline draw
-        # list (was: `flash_state` dict + `outline_draws_holder` dict).
+        # Birth/resonance flash decay accumulators + tracked-outline draw list.
         self.flash_prime = 0.0
         self.flash_resonance = 0.0
         self.outline_draws = []
@@ -205,16 +170,14 @@ class RenderSession:
         # "line" viz-mode: k-tuple pattern-slide state (see
         # ring_geometry.py's own "line viz-mode" section and
         # rebuild_line/pattern_flash_color below). `viz_mode` stays
-        # "rings" and `pattern_offsets` stays None for every existing
-        # caller that never passes these two kwargs, so ring mode's own
-        # behavior is completely unchanged.
+        # "rings" and `pattern_offsets` stays None for any caller that doesn't
+        # pass these two kwargs (ring mode).
         self.viz_mode = viz_mode
         self.pattern_offsets = list(pattern_offsets) if pattern_offsets else None
         self.pattern_match = False
         self.pattern_view_mode = None
-        # Purely cosmetic, launch-time-only choice (Artur's own spec,
-        # 2026-09-18): draw the axis as a straight line (default,
-        # unchanged) or bent into a circle -- see geometry_draw.
+        # Purely cosmetic, launch-time-only choice: draw the axis as a straight line
+        # (default) or bent into a circle -- see geometry_draw.
         # build_line_vertex_data's own `curved` doc-comment for why this
         # never touches matching/navigation/wheel logic, only which (x,y)
         # a position renders at.
@@ -250,12 +213,10 @@ class RenderSession:
             # doc-comment) -- pure residue arithmetic excludes it
             # (n mod p == 0 looks like "forced composite", even though n
             # itself is prime, not composite), making it UNREACHABLE by
-            # scrubbing/seeking otherwise. Two real reports, both
-            # 2026-09-18: the launch anchor itself (seed 3 for a {0,2}
-            # pattern -- "I can't get back to the value I started from"),
-            # and a genuine match buried mid-range (n=11 for a k=5
-            # pattern -- silently skipped by --pattern-stop-on-match's own
-            # search, which never even considered it a candidate). Patch
+            # scrubbing/seeking otherwise -- both the launch anchor itself (seed 3
+            # for a {0,2} pattern) and a match inside the range (n=11 for a k=5
+            # pattern, which --pattern-stop-on-match's search would never consider
+            # a candidate). Patch
             # BOTH kinds back into the residue set -- the launch anchor
             # itself AND any of DEFAULT_WHEEL_PRIMES -- but ONLY once each
             # is VERIFIED as a real match against `_pattern_primes_set`,
@@ -284,59 +245,47 @@ class RenderSession:
             self.pattern_wheel_modulus, self.pattern_wheel_residues = None, None
             self._pattern_primes_set = None
 
-        # Manual/Auto radio + "MATCH!" checkbox (see _pattern_uses_seek's
-        # own doc-comment for the exact combined semantics Artur
-        # specified, 2026-09-18): "manual" always takes a single wheel
-        # step, showing every candidate whether it's a real match or not
-        # ("w trybie manual ... idę kolejno niezaleznie na jaki
-        # wyladuje"); "auto" always SEEKS -- for a MATCH! when checked,
-        # or specifically for a non-match when unchecked ("po wszystkich
-        # poprawnych ma być match! a odznaczone po niepoprawnych").
+        # Manual/Auto radio + "MATCH!" checkbox (see _pattern_uses_seek for the
+        # combined semantics): "manual" always takes a single wheel step, showing
+        # every candidate whether it's a match or not; "auto" always SEEKS -- for a
+        # MATCH! when checked, or for a non-match when unchecked.
         self.pattern_step_mode = pattern_step_mode
         self.pattern_stop_on_match = pattern_stop_on_match
 
-        # Resonance log (was: `resonance_log_state` dict).
+        # Resonance log.
         self.resonance_log_state = {"lines": [], "last_n": None, "last_range_mode": None}
 
-        # Persistent HUD snapshot (was: `hud_state` dict).
+        # Persistent HUD snapshot.
         self.hud_n = n
         self.hud_count = 0
         self.hud_rebuild_ms = 0.0
         self.hud_lines = []
 
-        # N-change bookkeeping the main loop reads every frame (was:
-        # `n_holder` dict's own "advancing"/"force_rebuild" fields -- its
-        # "n" field is this class's own `self.n` above).
+        # N-change bookkeeping the main loop reads every frame (the current N
+        # itself is `self.n` above).
         self.n_advancing = False
         self.n_force_rebuild = False
 
-        # LEFT/RIGHT scrub bookkeeping (was: `scrub_state` dict).
+        # LEFT/RIGHT scrub bookkeeping.
         self.scrub_held = 0
         self.scrub_was_running = False
 
-        # Buffer-extension launch-time parameters + exhaustion flag (was:
-        # `buffer_margin`/`can_extend_buffer` locals + `extend_state` dict).
+        # Buffer-extension launch-time parameters + exhaustion flag.
         self.buffer_margin = buffer_margin
         self.can_extend_buffer = can_extend_buffer
         self.portal_folder = portal_folder
         self.extend_exhausted = False
 
-        # Bidirectional sliding/traveling window over a --load-range
-        # (memory file primeatlas-ring-viz-sliding-range-window-plan.md,
-        # Faza 1) -- lets line/range mode traverse the FULL logical
-        # [range_load_from, range_load_to) span a chunk at a time instead
-        # of being stuck wherever the first `max_load_count` primes
-        # landed. `chunk_size` is deliberately the caller's own field, per
-        # this project's own configurable-perf-params rule -- never
-        # silently reused from `max_load_count` or hardcoded here (see
-        # that same memory file's Faza 4 section).
+        # Bidirectional sliding window over a --load-range: lets line/range mode
+        # traverse the FULL logical [range_load_from, range_load_to) span a chunk at
+        # a time instead of only the first `max_load_count` primes. `chunk_size` is
+        # the caller's own field (configurable, never derived from `max_load_count`
+        # or hardcoded here).
         #
-        # sliding_enabled requires portal_folder (need real disk I/O to
-        # load a neighbor chunk) AND a real chunk_size AND a real
-        # range_load_to -- missing any of those means the caller didn't
-        # actually wire this up (e.g. an existing caller/test that omits
-        # the new kwargs entirely), so this degrades to False rather than
-        # raising, reproducing today's fixed-slice behavior exactly.
+        # sliding_enabled requires portal_folder (disk I/O to load a neighbor
+        # chunk), a chunk_size AND a range_load_to -- without any of them (e.g. a
+        # caller/test omitting these kwargs) this is False and the session keeps a
+        # fixed slice, rather than raising.
         self.range_load_from = range_load_from
         self.range_load_to = range_load_to
         self.chunk_size = chunk_size
@@ -351,38 +300,27 @@ class RenderSession:
         # own doc-comments for why this three-way state matters.
         self.chunk_back = None
         self.chunk_forward = None
-        # Background-thread handles for an in-flight neighbor-chunk load
-        # (see _ensure_forward_chunk/_ensure_back_chunk's own doc-comments,
-        # 2026-09-25 follow-up): None means no load is currently running.
+        # Background-thread handles for an in-flight neighbor-chunk load (see
+        # _ensure_forward_chunk/_ensure_back_chunk): None means no load is running.
         self._forward_load_thread = None
         self._back_load_thread = None
-        # Dedup flags for the "already at the range's own hard edge"
-        # console message (see _slide_forward/_slide_backward's own
-        # doc-comments, 2026-09-25 follow-up: Artur's own explicit request
-        # for visible feedback when a move is refused specifically because
-        # it would exceed range_load_from/range_load_to) -- reset the
-        # moment either direction actually moves, so returning to an edge
-        # after leaving it reports again instead of staying silent forever
-        # after the first time.
+        # Dedup flags for the "already at the range's hard edge" message (see
+        # _slide_forward/_slide_backward): a refused move past range_load_from/
+        # range_load_to is reported once; reset as soon as either direction moves, so
+        # returning to an edge reports again.
         self._forward_edge_reported = False
         self._back_edge_reported = False
-        # Background-thread seek (2026-09-25 follow-up, Artur's own real
-        # report: chunk_size=500 + a sparse k=5 pattern can need MANY
-        # chunk crossings to reach the next real MATCH!, each one a real
-        # blocking disk load once the crawl outruns the single-chunk-deep
-        # prefetch above -- freezing the GLFW window for however long that
-        # whole chain takes, since _pattern_seek used to run synchronously
-        # on the main thread. See _start_pattern_seek's own doc-comment for
-        # the full design (single in-flight seek at a time, no true
-        # cancellation in v1, _seek_epoch guards a late finisher against a
-        # reset() that already moved the session on). None = idle.
+        # Background-thread seek: with a small chunk_size and a sparse pattern, the
+        # next MATCH! can be many chunk crossings away, each a blocking disk load once
+        # the crawl outruns the one-chunk-deep prefetch; running it on the GLFW main
+        # thread would freeze the window. See _start_pattern_seek (single in-flight
+        # seek, no cancellation, _seek_epoch guards a late finisher against a reset()
+        # that already moved the session on). None = idle.
         self._seek_thread = None
         self._seek_epoch = 0
         # Search-stride override for the CURRENT background seek (see
-        # _effective_chunk_size/_recenter_render_chunks's own doc-comments,
-        # 2026-09-25 follow-up) -- None outside of an active seek, meaning
-        # every neighbor load (construction included) uses the user's own
-        # chunk_size exactly as before this follow-up existed.
+        # _effective_chunk_size/_recenter_render_chunks) -- None outside an active
+        # seek, meaning every neighbor load uses the user's chunk_size.
         self._seek_stride = None
         self._seek_used_stride = False
         if self.sliding_enabled:
@@ -398,9 +336,7 @@ class RenderSession:
 
     # ------------------------------------------------------------------
     # Bidirectional sliding window -- triple-buffer (chunk_back/
-    # chunk_current/chunk_forward) over a --load-range, see this
-    # __init__'s own doc-comment just above and
-    # primeatlas-ring-viz-sliding-range-window-plan.md's own Faza 1/2.
+    # chunk_current/chunk_forward) over a --load-range, see __init__.
     # ------------------------------------------------------------------
 
     @property
@@ -419,11 +355,7 @@ class RenderSession:
         the user's own configured `chunk_size` (the render budget), but
         temporarily overridden to `_SEEK_STRIDE_CHUNK_SIZE` while a
         background pattern seek (`_start_pattern_seek`) is actively
-        crawling: Artur's own proposal, 2026-09-25 ("a gdyby
-        przeszukiwanie dzialalo na tych domyslnych 2 milionach ale samo
-        renderowanie bylo dla wyznaczonej liczby" -- what if the SEARCH
-        worked on the default 2 million while the RENDERING stayed at the
-        configured number) -- a small chunk_size (e.g. 500) means a
+        crawling. A small chunk_size (e.g. 500) means a
         sparse pattern's seek needs proportionally more real chunk
         crossings to reach its next match; searching with a much bigger
         stride instead cuts that crossing count down, at the cost of
@@ -482,23 +414,13 @@ class RenderSession:
     def _ensure_forward_chunk(self):
         """Kicks off loading `chunk_forward` IN THE BACKGROUND (a daemon
         thread) if it hasn't been attempted yet and no load is already in
-        flight -- does NOT block. Regression fix, 2026-09-25 (Artur's own
-        real report: "przełączenie między nimi trwa dość długo" -- switching
-        between them takes quite a while): the renderer's GLFW main loop is
-        single-threaded, so the FIRST version of this method -- a plain
-        synchronous `load_archive` call sitting right inside `_slide_forward`
-        -- blocked the entire window (no frame draw, no input) for however
-        long that disk read took (multi-second at a real archive-scale
-        `--slide-chunk-size`), on EVERY swap, even though the swap itself
-        (using the ALREADY-loaded `chunk_forward`) was instant. The data
-        Artur expected to already be "waiting in memory" by the time it's
-        needed now genuinely is, in the common case: the background thread
-        this kicks off has the entire time the user spends traversing the
-        chunk that was JUST swapped in to finish, before the NEXT swap would
-        need it. See _wait_for_forward_chunk below for what happens on the
-        rarer "raced ahead of the prefetch" case (a fast multi-chunk seek,
-        or construction itself) -- never worse than the old fully-
-        synchronous behavior, just no longer paid on every ordinary swap.
+        flight -- does NOT block. The renderer's GLFW main loop is single-threaded,
+        so a synchronous load here would block the window (no frame draw, no input)
+        for the whole disk read (multi-second at archive-scale `--slide-chunk-size`),
+        while the swap itself, using an already-loaded `chunk_forward`, is instant.
+        The background load has the whole time the user spends traversing the chunk
+        just swapped in to finish. See _wait_for_forward_chunk for the case where a
+        swap outruns the prefetch (a fast multi-chunk seek, or construction).
 
         Sets `chunk_forward` to a real empty array (not left as None) once
         `range_load_to` is confirmed reached -- that check is cheap
@@ -563,14 +485,10 @@ class RenderSession:
         thread already finished during the time the user spent traversing
         the chunk that's about to be swapped out.
 
-        Prints a line whenever it actually had to wait (2026-09-25, Artur's
-        own real report -- a long backward traversal that outruns the
-        one-chunk-deep background prefetch, e.g. a fast multi-chunk seek or
-        Ctrl-scrub back toward range_load_from, needs a real blocking load
-        on EVERY one of those swaps; without this, that looked exactly like
-        the renderer had hung, with zero feedback that it was still working
-        and how far along it was) -- silent (no print) in the common,
-        already-prefetched case, so ordinary single-chunk swaps stay quiet."""
+        Prints a line whenever it actually had to wait (a long traversal that
+        outruns the one-chunk-deep prefetch, e.g. a multi-chunk seek or Ctrl-scrub
+        back toward range_load_from, waits on EVERY swap and would otherwise look
+        like a hang) -- silent in the already-prefetched case."""
         self._ensure_forward_chunk()
         thread = self._forward_load_thread
         if thread is not None:
@@ -594,30 +512,21 @@ class RenderSession:
         becomes `chunk_back`, the (normally already-preloaded, see
         _wait_for_forward_chunk above) `chunk_forward` becomes the new
         visible `chunk_current`, and a fresh `chunk_forward` load is kicked
-        off in the background right after (Artur's own swap-not-reload
-        spec, 2026-09-25 -- see the plan's own "Design" section). Returns
+        off in the background right after (swap, not reload). Returns
         False (no-op) when there's genuinely nothing further ahead
         (`range_load_to` already reached) or sliding isn't enabled -- the
         caller's own edge-reached handling (next_wheel_n's `n`-unchanged
         convention) is unaffected either way.
 
         Prints an explicit message the first time it refuses to move
-        because `range_load_to` is genuinely reached (Artur's own request,
-        2026-09-25: "jawna informacja jesli nie da sie isc dalej bo to
-        przekroczy wartosc od albo do" -- explicit information when a move
-        is refused because it would exceed FROM or TO) -- deduped via
-        `_forward_edge_reported` so holding a key at the edge doesn't spam
-        the console once per frame; reset the moment EITHER direction
-        actually moves, so leaving and later returning to an edge reports
-        again. Also sets `n_force_rebuild` the first time this fires --
-        Artur's own follow-up, 2026-09-25: the console message alone wasn't
-        enough ("jedynie w oknie gui nic sie nie pojawia" -- only in the
-        GUI window nothing appears), since N staying unchanged at a
-        genuine edge means the main loop's own `session.n != last_n`
-        rebuild gate (renderer.py) never fires on its own -- rebuild_line
-        is the only place that refreshes `hud_lines` (see its own
-        edge_lines addition), so without this, the on-screen HUD line
-        would never actually appear even though this console message did."""
+        because `range_load_to` is reached -- deduped via
+        `_forward_edge_reported` so holding a key at the edge doesn't print
+        once per frame; reset as soon as EITHER direction moves, so leaving and
+        later returning to an edge reports again. Also sets `n_force_rebuild`
+        the first time this fires: N staying unchanged at an edge means the main
+        loop's `session.n != last_n` rebuild gate (renderer.py) never fires, and
+        rebuild_line is the only place that refreshes `hud_lines` (its edge_lines),
+        so without it the HUD would not show the edge message."""
         if not self.sliding_enabled:
             return False
         self._wait_for_forward_chunk()
@@ -681,10 +590,8 @@ class RenderSession:
             self._pattern_primes_set.update(int(v) for v in self.chunk_forward)
 
     # ------------------------------------------------------------------
-    # Camera -- was on_scroll/on_mouse_button/on_cursor_pos's own closure
-    # bodies, with `window`/glfw replaced by an explicit `viewport`/`cursor`
-    # the caller reads from glfw itself (see zoom_to_point's own docstring
-    # for the effective-pan/state-pan conversion this still does).
+    # Camera -- the caller reads `viewport`/`cursor` from glfw itself (see
+    # zoom_to_point's docstring for the effective-pan/state-pan conversion).
     # ------------------------------------------------------------------
 
     def on_scroll(self, dy, cursor, viewport):
@@ -705,8 +612,7 @@ class RenderSession:
 
     def on_cursor_pos(self, x, y):
         """Mouse moved to (x, y) -- pans the camera by the delta from the
-        last known position while `cam_dragging` is True, same as
-        on_cursor_pos's own closure body."""
+        last known position while `cam_dragging` is True."""
         lx, ly = self.cam_last_mouse
         if self.cam_dragging:
             self.cam_pan[0] += x - lx
@@ -724,9 +630,8 @@ class RenderSession:
         self.cam_pan[1] = 0.0
 
     # ------------------------------------------------------------------
-    # Playback / tempo -- was on_key's own KEY_SPACE/KEY_RIGHT_BRACKET/
-    # KEY_LEFT_BRACKET/KEY_MINUS branches, and the main loop's own
-    # playback-tick block.
+    # Playback / tempo -- Space, ] / [ / - keys, and the main loop's
+    # playback tick.
     # ------------------------------------------------------------------
 
     def toggle_space(self):
@@ -791,8 +696,7 @@ class RenderSession:
         within `chunk_current`'s own edge, this SLIDES the triple-buffer
         window one (or, for a pathologically sparse chunk, more than one --
         see the `while True` below) chunk further in `is_right`'s
-        direction and keeps searching, instead of giving up at what used
-        to be a hard boundary. After a slide, the search resumes from just
+        direction and keeps searching. After a slide, the search resumes from just
         past the new chunk's own edge (`lo - 1`/`hi + 1`) -- next_wheel_n's
         own residue arithmetic is ABSOLUTE (see its own doc-comment), so
         this correctly finds the first real wheel-compatible candidate in
@@ -803,19 +707,13 @@ class RenderSession:
         position anywhere: sliding is off, every slide attempt failed
         (the TRUE `range_load_from`/`range_load_to` edge was reached), or
         (self.pattern_wheel_residues == []) the pattern's own wheel proves
-        it can never repeat at all. This preserves the exact "n unchanged
-        == stuck" contract _pattern_seek/tick/bump_n/scrub_advance already
-        rely on -- none of those needed to change for sliding to work.
+        it can never repeat at all. This preserves the "n unchanged == stuck"
+        contract _pattern_seek/tick/bump_n/scrub_advance rely on.
 
-        Clears both edge-reported flags (and their HUD line, see
-        rebuild_line's own edge_lines) on ANY genuine move, not just a
-        chunk-crossing one -- regression fix, 2026-09-25 (Artur's own real
-        report: after bouncing off one edge, a step in the OPPOSITE
-        direction that stayed within the ALREADY-loaded chunk_current --
-        no slide needed at all -- left the stale edge message frozen on
-        screen, since only a successful _slide_forward/_slide_backward
-        used to clear it. A move that doesn't need a slide is still a
-        real move away from wherever the edge message was about)."""
+        Clears both edge-reported flags (and their HUD line, see rebuild_line's
+        edge_lines) on ANY move, not just a chunk-crossing one: a step away from an
+        edge that stays inside the loaded chunk_current is still a move away from it,
+        and the edge message must not stay on screen."""
         bounds = self._pattern_window_bounds()
         if bounds is None:
             return n
@@ -853,14 +751,11 @@ class RenderSession:
 
     def _pattern_uses_seek(self):
         """Whether an advance action should keep taking wheel steps (see
-        _pattern_seek) instead of a single wheel step -- exactly Artur's
-        own 2026-09-18 spec: the Manual/Auto radio (`pattern_step_mode`)
-        is the master switch -- "manual" ALWAYS takes a single step,
-        showing every wheel candidate in turn regardless of whether it's
-        a match or not ("idę kolejno niezaleznie na jaki wyladuje"); only
-        "auto" ever seeks. Used identically by scrub_advance, bump_n, and
-        tick, so arrows/Up-Down/Space all agree on which regime is
-        active."""
+        _pattern_seek) instead of a single wheel step. The Manual/Auto radio
+        (`pattern_step_mode`) is the master switch: "manual" ALWAYS takes a single
+        step, showing every wheel candidate in turn whether it's a match or not;
+        only "auto" seeks. Used identically by scrub_advance, bump_n, and tick, so
+        arrows/Up-Down/Space all agree on which regime is active."""
         return self.pattern_step_mode == "auto"
 
     def _pattern_seek(self, n, is_right):
@@ -880,21 +775,13 @@ class RenderSession:
         on the desired kind, same "stuck" signal _pattern_wheel_step's own
         n-unchanged convention gives its callers.
 
-        No artificial step cap: an earlier version bailed out after a
-        fixed _PATTERN_SEEK_MAX_STEPS (50,000) "safety bound", reasoned to
-        be "generous overkill... not a real limit" -- but at real
-        archive scale (a k=5+ pattern, a sparse loaded range) a real
-        search can genuinely need more steps than that to reach its next
-        real MATCH!, and giving up early left the caller landing on (and
-        stopping at) an arbitrary non-match wheel candidate instead --
-        exactly the reported bug ("mimo zaznaczonego match! potrafi
-        zatrzymac sie na wheel"). The loop below is still guaranteed to
-        terminate on its own: `self.n` is bounded by the loaded window
-        (`_pattern_window_bounds`), and next_wheel_n returns `n` unchanged
-        the moment there is nowhere further to go in `is_right`'s
-        direction, which `_pattern_wheel_step` propagates as `nxt ==
-        current` below -- so this can loop at most once per wheel-
-        compatible position in the loaded window, never forever."""
+        No step cap: at archive scale (a k=5+ pattern, a sparse loaded range) the
+        next MATCH! can be any number of wheel steps away, and stopping early would
+        land on an arbitrary non-match candidate. The loop still terminates: `self.n`
+        is bounded by the loaded window (`_pattern_window_bounds`), and next_wheel_n
+        returns `n` unchanged once there is nowhere further in `is_right`'s
+        direction, which `_pattern_wheel_step` propagates as `nxt == current` below
+        -- at most one iteration per wheel-compatible position in the window."""
         current = n
         want_match = self.pattern_stop_on_match
         while True:
@@ -908,47 +795,27 @@ class RenderSession:
 
     def _start_pattern_seek(self, is_right, is_tick):
         """Runs _pattern_seek(self.n, is_right) on a background thread
-        instead of blocking the GLFW main thread -- see this __init__'s
-        own doc-comment on `_seek_thread`/`_seek_epoch` for why: with
-        sliding enabled, _pattern_seek has no artificial step cap (see its
-        own doc-comment) and a small `chunk_size` against a sparse pattern
-        can need many real chunk crossings, each a real disk load, to
-        reach the next MATCH! -- Artur's own real report, 2026-09-25:
-        chunk_size=500 + k=5 made the window "zawiesza się" (hangs) for
-        exactly this reason. Only called from tick()/bump_n()/
-        scrub_advance() when `self.sliding_enabled` -- WITHOUT sliding,
-        _pattern_wheel_step can't loop at all (see its own doc-comment:
-        `if not self.sliding_enabled: return n` fires on the very first
-        failed candidate), so every pre-existing, non-sliding call site
-        keeps calling _pattern_seek synchronously, completely unchanged.
+        instead of blocking the GLFW main thread: with sliding enabled,
+        _pattern_seek has no step cap and a small `chunk_size` against a sparse
+        pattern can need many chunk crossings, each a disk load, to reach the next
+        MATCH!. Only called from tick()/bump_n()/scrub_advance() when
+        `self.sliding_enabled` -- without sliding, _pattern_wheel_step cannot loop
+        (`if not self.sliding_enabled: return n` fires on the first failed
+        candidate), so non-sliding call sites call _pattern_seek synchronously.
 
-        No-ops if a seek is already in flight (`self._seek_thread is not
-        None`) -- ANY navigation input arriving while one is running is
-        simply ignored until it resolves, rather than starting a second,
-        concurrent one: chunk_back/chunk_current/chunk_forward and their
-        own _ensure_forward_chunk/_ensure_back_chunk background-load
-        threads assume a SINGLE caller/owner at a time (no locking of
-        their own, same assumption every other method in this class
-        already relies on) -- two _pattern_seek calls racing through
-        _slide_forward/_slide_backward at once could corrupt that shared
-        state. Known v1 simplification this implies: reversing direction
-        mid-search does nothing until the in-flight search resolves,
-        rather than cancelling it -- acceptable since _pattern_seek is
-        guaranteed to terminate (see its own doc-comment) and the common
-        case (a match within a handful of chunks) resolves fast enough not
-        to be felt; true cancellation would need a cooperative abort check
-        threaded through _pattern_wheel_step's own loop, not attempted
-        here since Artur didn't ask for it.
+        No-ops if a seek is already in flight (`self._seek_thread is not None`):
+        navigation input while one runs is ignored rather than starting a second
+        one, since chunk_back/chunk_current/chunk_forward and their background-load
+        threads assume a SINGLE owner (no locking), and two seeks racing through
+        _slide_forward/_slide_backward could corrupt that state. Consequently,
+        reversing direction mid-search does nothing until the search resolves;
+        _pattern_seek always terminates, and true cancellation would need a
+        cooperative abort check inside _pattern_wheel_step's loop.
 
-        `is_tick` selects tick()'s own extra not-found behavior (stop
-        playback + print, previously handled by the main loop's own
-        `if should_stop: print(...)` branch reacting to tick()'s
-        synchronous return value -- now impossible, since tick() itself
-        must return immediately once the search moves to a thread) versus
-        bump_n/scrub_advance's silent no-op-on-miss. Both share the exact
-        same found-gated commit rule (self.n = new_n only when found) that
-        already existed before this became threaded -- see tick/bump_n/
-        scrub_advance's own doc-comments.
+        `is_tick` selects tick()'s extra not-found behavior (stop playback + print;
+        tick() returns immediately, so the main loop cannot react to a return value)
+        versus bump_n/scrub_advance's silent no-op-on-miss. Both commit only when
+        found (self.n = new_n) -- see tick/bump_n/scrub_advance.
 
         `self._seek_epoch` is captured at kickoff and re-checked right
         before the worker commits anything: reset() bumps this counter, so
@@ -962,22 +829,12 @@ class RenderSession:
         self.n_force_rebuild = True  # shows the "Searching..." HUD line this frame
 
         def _worker():
-            # try/except/finally around the WHOLE body -- regression fix,
-            # 2026-09-25 (Artur's own real report: one step landed on a
-            # non-match and navigation was then stuck in BOTH directions).
-            # `self._seek_thread = None` used to sit only at the very end
-            # of this function -- any exception anywhere in _pattern_seek's
-            # own crawl (a real disk load, load_archive/load_archive_before,
-            # _slide_forward/_slide_backward, ...) would kill this thread
-            # WITHOUT ever reaching that line, leaving _seek_thread
-            # permanently non-None -- and since _start_pattern_seek's own
-            # guard treats any non-None value as "a seek is already
-            # running," every future tick/bump_n/scrub_advance call would
-            # silently no-op forever, in EITHER direction, with no error
-            # ever surfaced. `finally` guarantees the slot is freed
-            # regardless of how this exits; the traceback print at least
-            # makes a future occurrence diagnosable instead of a silent
-            # permanent freeze.
+            # try/except/finally around the WHOLE body: an exception anywhere in
+            # _pattern_seek's crawl (a disk load, load_archive/load_archive_before,
+            # _slide_forward/_slide_backward, ...) must still free `_seek_thread`,
+            # otherwise _start_pattern_seek's "a seek is already running" guard would
+            # make every later tick/bump_n/scrub_advance a silent no-op in both
+            # directions. The traceback print makes such a failure diagnosable.
             self._seek_stride = max(self.chunk_size, _SEEK_STRIDE_CHUNK_SIZE)
             self._seek_used_stride = False
             try:
@@ -1017,7 +874,7 @@ class RenderSession:
         _pattern_wheel_step) instead of ticking by 1/range_step -- this is
         the whole point of the wheel: skip every n the small-prime
         divisibility check alone already rules out. Otherwise ports
-        tick_next_n's call site exactly, same as before. Returns True if
+        tick_next_n. Returns True if
         playback just stopped (N reached the ceiling, the pattern's last
         member reached the loaded window's edge, or the wheel found no
         further compatible position), False if `self.n` advanced (and
@@ -1038,18 +895,11 @@ class RenderSession:
                     self._start_pattern_seek(True, is_tick=True)
                     return False
                 new_n, found = self._pattern_seek(self.n, True)
-                # found=False here can now ONLY mean the genuine loaded-window
-                # edge was reached without ever landing on the desired kind
-                # (_pattern_seek itself no longer gives up early -- see its own
-                # doc-comment) -- so the correct place to stop is HERE, at the
-                # last position that already satisfied pattern_stop_on_match,
-                # not at `new_n` (the last, non-desired wheel candidate the
-                # search happened to pass through on its way to the edge).
-                # Artur's own spec (2026-09-25): "jesli w nastepnym kroku jest
-                # bledne a kolejnego nie ma bo koniec zakresu to zostaje na
-                # ostatnim poprawnym" -- if the next step is wrong and there is
-                # no further one because the range ended, stay on the last
-                # correct one.
+                # found=False here means the loaded-window edge was reached
+                # without landing on the desired kind (_pattern_seek has no early
+                # give-up), so stay HERE, at the last position that satisfied
+                # pattern_stop_on_match, not at `new_n` (the last, non-desired wheel
+                # candidate passed on the way to the edge).
                 if not found:
                     new_n = self.n
             else:
@@ -1075,8 +925,7 @@ class RenderSession:
         return False
 
     # ------------------------------------------------------------------
-    # N navigation -- was on_key's own KEY_UP/DOWN/PAGE_UP/PAGE_DOWN and
-    # KEY_LEFT/KEY_RIGHT (scrub) branches, and KEY_R (reset).
+    # N navigation -- Up/Down/PageUp/PageDown, Left/Right (scrub), R (reset).
     # ------------------------------------------------------------------
 
     def bump_n(self, delta):
@@ -1129,8 +978,7 @@ class RenderSession:
         pattern can never repeat) is reached partway through. Otherwise,
         moves `self.n` by arrow_scrub_delta's step, clamped to the ceiling
         in sequential mode (clamp_scrub_n) so a long hold can never run N
-        so far past it that nothing can resume playback afterward -- same
-        as before the wheel existed."""
+        so far past it that nothing can resume playback afterward."""
         if is_first_press:
             if self.scrub_held == 0 and self.playback_running:
                 self.scrub_was_running = True
@@ -1215,13 +1063,12 @@ class RenderSession:
         self.pattern_axis_boundary_radius = None
 
     # ------------------------------------------------------------------
-    # Buffer extension -- was extend_buffer_if_needed's own closure body.
+    # Buffer extension.
     # ------------------------------------------------------------------
 
     def extend_buffer_if_needed(self):
-        """Ports extend_buffer_if_needed exactly (see that function's own
-        pre-Faza-3 doc-comment, preserved on should_extend_buffer/
-        next_buffer_ceiling in playback.py, for the full rationale).
+        """Extends the loaded prime buffer once N nears its ceiling (rationale on
+        should_extend_buffer/next_buffer_ceiling in playback.py).
         Returns a message string to print, or None if no extension was
         needed/attempted this call."""
         if not self.can_extend_buffer or self.extend_exhausted:
@@ -1239,11 +1086,8 @@ class RenderSession:
         return f"Buffer extend: loaded {len(new_primes):,} more primes ahead of N, ceiling now {self.ceiling:,}"
 
     # ------------------------------------------------------------------
-    # Flash overlays -- was the main loop's own two near-identical
-    # `if flash_state[...] > 0.0:` blocks, split into "what color right
-    # now" (pure) and "advance the decay" (mutates), so the caller can
-    # draw between the two the same way the original drew between
-    # computing `quad` and reassigning `flash_state[...]`.
+    # Flash overlays -- split into "what color right now" (pure) and "advance the
+    # decay" (mutates), so the caller can draw between the two.
     # ------------------------------------------------------------------
 
     def resonance_flash_color(self):
@@ -1278,17 +1122,15 @@ class RenderSession:
         self.flash_pattern = decay_flash(self.flash_pattern, 0.65)
 
     # ------------------------------------------------------------------
-    # Rebuild -- was rebuild_buffer's own closure body, minus its final
-    # four GL-bound lines (ctx.buffer() x2), which the Faza-4 caller does
-    # with this method's own return value.
+    # Rebuild -- everything except the GL buffer uploads (ctx.buffer() x2), which
+    # the caller does with this method's return value.
     # ------------------------------------------------------------------
 
     def rebuild(self, n_value, prev_ring_count=None, advancing=False, audio=None):
         """Recomputes every piece of N-change-triggered state (ring
         geometry/colors, tracked/LCM HUD block, resonance log, tracked-
-        outline draws, flash triggers) for `n_value` -- ports rebuild_
-        buffer's own body verbatim except its final GL buffer uploads.
-        Prints the same console lines rebuild_buffer always did (rebuild
+        outline draws, flash triggers) for `n_value` -- everything except the
+        final GL buffer uploads. Prints the console lines (rebuild
         timing, factors-of-N/tracked HUD lines, resonance log, surviving
         primes) -- these are diagnostic/console-pane output, not test
         assertions, so keeping them here (rather than returning yet more
@@ -1297,8 +1139,7 @@ class RenderSession:
 
         `audio` -- forwarded to emit_audio_tick verbatim (that function's
         own `audio is None` guard already makes this a no-op when no audio
-        engine is running, matching the original call site's behavior
-        with no separate guard needed here).
+        engine is running, so no separate guard is needed here).
 
         Returns (data_normal, data_hit, count, count_hit) -- split_hit_
         normal_vertex_data's own output, ready for the caller's two
@@ -1403,14 +1244,10 @@ class RenderSession:
         self.hud_n = n_value
         self.hud_count = count
         self.hud_rebuild_ms = round(1000 * (t1 - t0), 1)
-        # Sliding-window "hard edge reached" indicator (Artur's own real
-        # report, 2026-09-25: the console already prints this -- see
-        # _slide_forward/_slide_backward's own doc-comments -- but he's
-        # watching the GL window itself, not tailing console text, so
-        # "nic nie pojawia sie w oknie GUI" (nothing appears in the GUI
-        # window) that it can't go further -- surfaced here too, reusing
-        # the SAME dedup flags those methods already set/clear so this
-        # line appears and disappears in lockstep with the console message.
+        # Sliding-window "hard edge reached" indicator in the GL window itself
+        # (the console line alone is not visible while watching the window; see
+        # _slide_forward/_slide_backward), driven by the SAME dedup flags those
+        # methods set/clear, so it appears and disappears with the console message.
         edge_lines = []
         if self._seek_thread is not None:
             # Background pattern seek in flight (see _start_pattern_seek's
@@ -1439,20 +1276,17 @@ class RenderSession:
         return data_normal, data_hit, count, count_hit
 
     # ------------------------------------------------------------------
-    # HUD refresh -- was emit_hud_state (pure) + refresh_hud_texture's own
-    # pure prefix (everything before ctx.texture()/hud_quad_vbo.write()),
-    # unified since every pre-Faza-3 call site always called both together
-    # (see _refresh_hud's own Faza-0 doc-comment).
+    # HUD refresh -- the HUD_STATE line plus the pure part of the HUD texture
+    # (everything before ctx.texture()/hud_quad_vbo.write()), computed together
+    # since every caller needs both.
     # ------------------------------------------------------------------
 
     def refresh_hud(self, hud_font_size):
         """Returns (json_line, rgba_or_None, width, height): `json_line` is
-        the exact "HUD_STATE:..." line emit_hud_state used to print
-        directly (caller prints it); `rgba`/`width`/`height` are refresh_
-        hud_texture's own pure computation (None/0/0 if Pillow isn't
-        installed or there's nothing to draw) -- the caller uploads this
-        to a GL texture and rewrites its quad buffer, same as refresh_hud_
-        texture's own final three lines did."""
+        the "HUD_STATE:..." line (the caller prints it); `rgba`/`width`/`height` are
+        the HUD texture's pure computation (None/0/0 if Pillow isn't installed or
+        there's nothing to draw) -- the caller uploads it to a GL texture and
+        rewrites its quad buffer."""
         payload = {
             "n": self.hud_n,
             "count": self.hud_count,

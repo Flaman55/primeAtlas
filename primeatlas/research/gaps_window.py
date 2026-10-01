@@ -1,6 +1,6 @@
 """
 gaps_window.py -- pure Python (no tkinter, no external dependencies)
-consecutive-prime-gap checks for the Badania -> Luki (prime gaps) sub-tab.
+consecutive-prime-gap checks for the Research -> Gaps (prime gaps) sub-tab.
 
 Raw gaps g_n = p_(n+1) - p_n, plus three classical inequalities that are
 really just different statistics on the SAME p_n/p_(n+1) sequence,

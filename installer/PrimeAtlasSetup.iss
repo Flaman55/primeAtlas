@@ -2,10 +2,10 @@
 ; the pinned CPython and MinGit runtimes are bundled inside the exe (prepared by
 ; build_installer.py into installer\vendor\), only the app itself comes from GitHub.
 ;
-; Why offline: the first build downloaded the runtimes itself and ran git/pip through a hidden
-; cmd.exe -- Windows Defender quarantined it as Trojan:Win32/Bearfoos.B!ml (an ML heuristic
-; for exactly that pattern). Now there is no download code here and no cmd.exe: at install
-; time only the (signed) git.exe and python.exe touch the network (git clone, pip install).
+; Why offline: an installer that downloads runtimes itself and runs git/pip through a hidden
+; cmd.exe matches a Windows Defender ML heuristic (Trojan:Win32/Bearfoos.B!ml). There is no
+; download code here and no cmd.exe: at install time only the (signed) git.exe and
+; python.exe touch the network (git clone, pip install).
 ;
 ; Why a bootstrapper instead of a frozen (PyInstaller) app: PrimeAtlas runs out of its own git
 ; checkout (primeatlas/settings/app_update.py self-updates with git fetch), relies on
@@ -112,7 +112,7 @@ Name: "startmenuicon"; Description: "{cm:TaskStartMenu}"; GroupDescription: "{cm
 ; Extracted, SHA-256-verified runtimes prepared by build_installer.py.
 Source: "vendor\python\*"; DestDir: "{app}\python"; Excludes: ".extracted-from-sha256"; Flags: recursesubdirs createallsubdirs ignoreversion
 ; The installer's own copy of the icon: [Icons] runs BEFORE ssPostInstall clones the repo, so
-; shortcuts pointing into {app}\app got a blank icon on a fresh install (2026-09-30).
+; shortcuts pointing into {app}\app would get a blank icon on a fresh install.
 Source: "..\primeatlas\core\assets\primeatlas.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "vendor\git\*"; DestDir: "{app}\git"; Excludes: ".extracted-from-sha256"; Flags: recursesubdirs createallsubdirs ignoreversion
 
@@ -149,9 +149,9 @@ end;
 
 procedure InitializeWizard;
 begin
-  // At 125% display scaling the checkbox labels were drawn over the right edge of the
-  // DPI-scaled check square (fine at 100%). Widen the glyph-to-label gap by what the
-  // ~13px square grows with DPI, plus 2px: +2 at 100%, +6 at 125%, +10 at 150%.
+  // The glyph-to-label gap does not grow with DPI, so above 100% display scaling the
+  // checkbox labels overlap the right edge of the DPI-scaled check square. Widen it by what
+  // the ~13px square grows with DPI, plus 2px: +2 at 100%, +6 at 125%, +10 at 150%.
   WizardForm.TasksList.Offset := WizardForm.TasksList.Offset + ScaleX(15) - 13;
   WizardForm.RunList.Offset := WizardForm.RunList.Offset + ScaleX(15) - 13;
 end;

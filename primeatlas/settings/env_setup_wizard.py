@@ -1,5 +1,5 @@
 """
-env_setup_wizard.py -- first-run environment check/install wizard UI (task #513).
+env_setup_wizard.py -- first-run environment check/install wizard UI.
 
 Drives primeatlas/settings/env_setup.py's check_environment()/run_install() from a standalone
 tkinter window, shown from prime_atlas_v1.py's main() BEFORE PortalBrowserApp is
@@ -26,9 +26,6 @@ already running is unreliable across platforms (window-manager focus, event-loop
 interaction), so the on-demand path reuses the existing root's real Tcl interpreter rather
 than spinning up a second one. Both share every bit of actual logic via
 _EnvSetupWizardMixin -- one implementation, not two that could drift apart.
-
-NOT YET RUN on a real machine with WSL fully absent (this sandbox has no Windows/WSL) --
-same caveat as env_setup.py's own module docstring.
 """
 import threading
 import tkinter as tk

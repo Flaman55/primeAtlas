@@ -1,10 +1,10 @@
 """
-test_primecount_settings_integration.py -- covers Settings -> Aktualizacje's primecount
+test_primecount_settings_integration.py -- covers Settings -> Updates's primecount
 installer section (settings_tab.py) and the generation.py plumbing it's built on
 (build_primecount_query_argv, run_primecount_wsl_blocking, run_primecount_install_wsl_
 blocking). The "primecount" data-source mode's install mechanism lives in Settings,
 alongside every other optional-component installer (sympy, CUDASieve), rather than on
-the Badania -> Przyblizenia pi(x) tab where the mode itself is used.
+the Research -> pi(x) approximations tab where the mode itself is used.
 
 Same "test the SYNCHRONOUS result-handler methods directly, never the real
 threading.Thread()+self.after() round trip" convention as test_cudasieve_integration.py's
@@ -12,13 +12,12 @@ own Section F (see that file's own module docstring) -- self.after() called from
 background thread needs a REAL Tk mainloop() to work; this test suite (like every other
 one in this project) drives the Tk event loop via manual app.update() polling instead,
 which does NOT count as "in mainloop" and makes a background thread's self.after() call
-raise "main thread is not in main loop" -- a well-understood Tkinter testing limitation,
-not a bug in the code under test (confirmed live: the exact same real WSL
-round-trip works correctly when driven through the tab's own worker-thread-based
-PersistentWorker machinery in test_research_pi_approx_tab.py, and works live in the real
-app under a real mainloop() -- only the settings_tab.py bare threading.Thread(daemon=
-True).start() + self.after() pattern, which CUDASieve's own status/build checks already
-established, hits this specific test-harness artifact). So: test _on_primecount_status_
+raise "main thread is not in main loop" -- a Tkinter testing limitation, not a bug in
+the code under test (the same WSL round-trip works through the tab's
+PersistentWorker machinery in test_research_pi_approx_tab.py and under a real
+mainloop(); only settings_tab.py's bare threading.Thread(daemon=True).start() +
+self.after() pattern, shared with CUDASieve's status/build checks, hits this
+test-harness artifact). So: test _on_primecount_status_
 result/_on_primecount_install_result directly (the synchronous halves), and separately
 prove the wsl_helpers dict wiring is correct, without ever spawning the real background
 thread.
@@ -139,8 +138,8 @@ def _test_settings_tab_primecount_status_and_install():
               f"{[settings_tab_mod.PRIMESIEVE_REPO_URL]!r})")
 
         # --- initial state: not checked yet, install button enabled from the start ----
-        check("nie sprawdzono" in settings_tab.primecount_status_var.get()
-              or "not checked" in settings_tab.primecount_status_var.get().lower(),
+        check(settings_tab.T("settings.primecount_status_not_checked")
+              in settings_tab.primecount_status_var.get(),
               f"the initial status is 'not checked yet' (got "
               f"{settings_tab.primecount_status_var.get()!r})")
         check(str(settings_tab.install_primecount_btn["state"]) == "normal",
@@ -159,8 +158,8 @@ def _test_settings_tab_primecount_status_and_install():
         settings_tab._primecount_install_running = False
         settings_tab._on_primecount_status_result(
             False, {"message": "Could not load libprimecount (fake)", "kind": "not_installed"})
-        check("niezainstalowane" in settings_tab.primecount_status_var.get()
-              or "not installed" in settings_tab.primecount_status_var.get().lower(),
+        check(settings_tab.T("settings.primecount_status_missing")
+              in settings_tab.primecount_status_var.get(),
               f"a not-installed result shows the plain 'missing' status, not the raw "
               f"message (got {settings_tab.primecount_status_var.get()!r})")
         check(str(settings_tab.install_primecount_btn["state"]) == "normal",

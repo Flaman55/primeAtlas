@@ -5,7 +5,7 @@ branch was built and tested in a sandbox with no CUDA Toolkit and no Nvidia GPU 
 file's module header and cmd_build()'s own docstring for the full background).
 
 Run this ONCE, by hand, on the actual WSL2 + Nvidia GPU + CUDA Toolkit machine, AFTER the
-`cudasieve` binary is built and working (Settings tab > Aktualizacje > CUDASieve installer,
+`cudasieve` binary is built and working (Settings tab > Updates > CUDASieve installer,
 or prime_sieve_cudasieve.py --fetch-license / --build directly). It is intentionally NOT part
 of unitTests/ or tests/smoke_test.py -- both of those run in the sandbox on every change and
 must stay runnable there; this script requires hardware neither of them can assume.
@@ -75,7 +75,7 @@ def run_one_range(lo, hi, label):
                                "(checked $CUDASIEVE_BIN, $PATH, and the installer's default "
                                "install dir -- see find_cudasieve_binary() in "
                                "prime_sieve_cudasieve.py) -- if this fails, run the Settings "
-                               "tab installer (Aktualizacje > CUDASieve) first")
+                               "tab installer (Updates > CUDASieve) first")
     if binary is None:
         return None, None
     print(f"    -> {binary}")

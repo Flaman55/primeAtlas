@@ -16,8 +16,7 @@ VERSION = "v4.0"   # bump this whenever this file changes, so console output alo
                     # exactly which iteration of the code produced it.
 
 MAX_WORKERS = 24
-BATCHES_PER_WORKER = 2    # how many contiguous cost-equal batches per worker -- same meaning
-                          # as prime_sieve_v3.py, unchanged
+BATCHES_PER_WORKER = 2    # how many contiguous cost-equal batches per worker
 
 # count_sieving_primes(L_final) is a PURE diagnostic/benchmark statistic (pi(L_final) -- how
 # many primes were used AS the sieving tool) -- it is NOT used anywhere in the actual sieve
@@ -34,50 +33,19 @@ COMPUTE_SIEVING_PRIMES_COUNT = False
 # ==========================================================================================
 # prime_sieve_v4.py
 #
-# LINEAGE: prime_sieve_v3.py (this folder), with TWO changes -- see "WHAT CHANGED" and "ALSO
-# ADDED" below. Everything else (PGS2 format, read/write/append functions, the equal-cost
-# batching model, the shared-mmap/atomic-OR mechanism, the per-window unpacking/file-writing
-# tail of main_batch_scanner()) is copied unchanged from v3. v1/v2/v3 are untouched and remain
-# independently runnable.
+# prime_sieve_v3.py with two engine-level differences; PGS2 format, batching, shared
+# buffer, per-window unpacking, low-floor handling and CLI are the same as v3.
 #
-# WHAT CHANGED: the per-sieving-prime phase computation inside the C engine
-# (prime_sieve_engine_v4.c). For every sieving prime p, the engine needs distance mod p
-# (distance is the combined window's start, a 128-bit value; p is 64-bit). Disassembly of the
-# v3 engine build showed this compiling to a call into libgcc's __umodti3 for EVERY sieving
-# prime -- a genuine function-call cost paid inside the single hottest loop in the program.
-# v4's engine inlines the common case (dividend's high 64 bits below the divisor, which
-# guarantees the quotient fits in 64 bits) down to a single hardware `divq` instruction at the
-# call site, with the full u128 division kept as a fallback for the rare case where that
-# guarantee doesn't hold. Verified bit-for-bit identical to v3's output across a battery of
-# differential tests (fast-path and fallback-path cases, both engine variants). MEASURED END TO
-# END against real libprimesieve (floor 18, both 10 and 1000 windows): no measurable wall-clock
-# difference from v3 at that depth -- an isolated microbenchmark of the phase computation alone
-# had shown ~1.1x-1.5x faster per call, but that gain is not the bottleneck of this engine, so
-# it does not show up in real runs. Kept as an available alternative engine, not the default.
+# 1. Phase computation (prime_sieve_engine_v4.c): for every sieving prime p the engine
+#    needs distance mod p (distance = combined window start, 128-bit; p 64-bit). The common
+#    case (dividend's high 64 bits below the divisor, so the quotient fits in 64 bits) is
+#    inlined to a single hardware `divq`, with the full u128 division as fallback, instead
+#    of a libgcc __umodti3 call per prime. Output is bit-for-bit identical to v3.
 #
-# ALSO ADDED (independent of the above, does not touch the sieve/marking path at all):
-# count_sieving_primes_cached(), a per-floor cache for the pi(L_final) diagnostic stat, built
-# on the engine's new additive count_sieving_primes_range(start, stop). Unlike the modulo
-# change, this targets a cost that WAS confirmed real and significant (see the
-# COMPUTE_SIEVING_PRIMES_COUNT comment above -- "can take minutes at extreme depth"): repeat
-# calls on the same floor recount the ENTIRE [0, L_final] range from scratch every time even
-# though L_final barely moves between consecutive runs. Caching the last counted (L, count) per
-# floor and counting only the new sliver above it on subsequent calls should cut that repeat
-# cost roughly in proportion to how little L_final actually grows -- not yet measured at real
-# floor depth, that is the next thing to benchmark.
-#
-# ALSO ADDED (later, purely additive, doesn't touch anything above): low-floor completion,
-# ported verbatim from prime_sieve_v3.py -- see that file's header for the full rationale.
-# window_m's smallest value is 10,000,000, but floors below 7 are each narrower than that
-# (floor 6 = [10**6, 10**7) is only 9,000,000 numbers). _low_floor_segments() + the branch at
-# the top of main_batch_scanner's write step split a low-floor batch by REAL floor boundary,
-# writing each floor that's fully contained in the generated range as its own complete file
-# under its own 10p{floor}/ -- and since floors 0-6 together are exactly 9,999,999 numbers, one
-# minimum-width request against any floor in that range completes ALL of them in a single pass.
-# A floor only partially covered is left out entirely rather than written half-finished.
-#
-# Nothing about batching, the shared buffer, output format, or CLI changed from v3; this file
-# exists so v3 and v4 can be run side by side on the same floor for a direct comparison.
+# 2. count_sieving_primes_cached(): a per-floor cache for the pi(L_final) diagnostic stat,
+#    built on the engine's count_sieving_primes_range(start, stop) -- repeat calls on the
+#    same floor count only the sliver between the cached L and the new L_final instead of
+#    recounting [0, L_final].
 # ==========================================================================================
 
 _LIB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "prime_sieve_engine_v4.so")
@@ -121,7 +89,8 @@ def _load_lib():
 
 
 def count_sieving_primes(limit):
-    """Unchanged from prime_sieve_v3.py -- see that file's docstring."""
+    """pi(limit): how many sieving primes p in [2, limit] (limit = L_final) were used to
+    sieve the combined window, counted by libprimesieve via the C engine."""
     lib = _load_lib()
     return int(lib.count_sieving_primes(limit))
 
@@ -199,7 +168,8 @@ def count_sieving_primes_cached(portal_folder, base_power, limit):
 
 
 def format_offset(n):
-    """Unchanged from prime_sieve_v3.py."""
+    """Compact offset label for window filenames: exact multiples of 1,000,000 / 1,000 as
+    "<n>M" / "<n>k", otherwise a trimmed decimal M/k form or the plain integer."""
     if n == 0:
         return "0"
     if n % 1_000_000 == 0:
@@ -215,9 +185,8 @@ def format_offset(n):
 
 # ------------------------------------------------------------------------------------------
 # PGS2 -- "Prime Gap Stream v2": binary, gap-delta + LEB128-varint prime storage format.
-# Unchanged from prime_sieve_v3.py -- see prime_sieve_v1.py for the full format rationale.
-# The ON-DISK format is completely independent of how the sieve gets computed -- so
-# PGS_MAGIC stays "PGS2", not bumped to match this file's own version.
+# See prime_sieve_v1.py for the format writeup. The on-disk format is independent of how
+# the sieve is computed, so PGS_MAGIC stays "PGS2".
 # ------------------------------------------------------------------------------------------
 
 PGS_MAGIC = b"PGS2"
@@ -281,7 +250,7 @@ def write_prime_window(path, primes, generated_at=None):
 
 def read_prime_window_header(path):
     """Reads ONLY the header (base prime, count, generation timestamp) WITHOUT decoding the
-    gap stream. Unchanged from prime_sieve_v3.py."""
+    gap stream."""
     with open(path, "rb") as f:
         header = f.read(4 + 1 + 255 + 4 + 4)
     if header[:4] != PGS_MAGIC:
@@ -305,8 +274,7 @@ def read_prime_window_header(path):
 
 
 def read_prime_window(path):
-    """Inverse of write_prime_window(); returns the full sorted list of primes (ints).
-    Unchanged from prime_sieve_v3.py."""
+    """Inverse of write_prime_window(); returns the full sorted list of primes (ints)."""
     with open(path, "rb") as f:
         data = f.read()
     if data[:4] != PGS_MAGIC:
@@ -331,7 +299,10 @@ def read_prime_window(path):
 
 
 def read_prime_window_head(path, threshold):
-    """Unchanged from prime_sieve_v3.py -- see that file for the docstring."""
+    """Reads primes from `path` in order, stopping as soon as a value EXCEEDS `threshold`
+    (a value equal to threshold IS included). Used to peek a bounded number of entries
+    into the next window during streaming k-tuple matching without decoding the whole
+    file."""
     with open(path, "rb") as f:
         data = f.read()
     if data[:4] != PGS_MAGIC:
@@ -360,7 +331,14 @@ def read_prime_window_head(path, threshold):
 
 
 def append_prime_window(path, new_sorted_values, generated_at=None, known_last_value=None):
-    """Unchanged from prime_sieve_v3.py -- see that file for the full docstring."""
+    """Appends `new_sorted_values` to a growing PGS2 file without rewriting it: patches the
+    count/generated_at header fields in place and appends freshly gap-encoded bytes at the
+    end, so each append costs O(len(new_sorted_values)) instead of O(existing count).
+
+    `known_last_value`, if given, is trusted as the file's current last value instead of
+    decoding the whole gap stream to find it. `new_sorted_values` must be sorted ascending
+    and strictly greater than that last value. Creates the file (write_prime_window()) if
+    it doesn't exist yet or is empty."""
     if not new_sorted_values:
         return
     if generated_at is None:
@@ -399,9 +377,8 @@ def append_prime_window(path, new_sorted_values, generated_at=None, known_last_v
 
 
 # ------------------------------------------------------------------------------------------
-# Segment-cost estimation -- UNCHANGED from prime_sieve_v3.py (same Mertens/li_approx
-# analytical model, same equal-cost contiguous batching). v4's change is ENTIRELY in the
-# engine's per-prime phase computation -- not in how batches are chosen.
+# Segment-cost estimation -- Mertens/li_approx analytical model, equal-cost contiguous
+# batching.
 # ------------------------------------------------------------------------------------------
 
 def _cost_zone_a(a, b, combined_size):
@@ -426,8 +403,9 @@ def _cumulative_cost(x, threshold, combined_size):
 
 
 def _build_equal_cost_batches(L_final, combined_size, n_batches):
-    """Unchanged from prime_sieve_v3.py -- see that file's docstring for the full
-    rationale."""
+    """Splits the sieving-prime range [2, L_final] into `n_batches` contiguous batches of
+    roughly equal marking cost (Mertens-based estimate, see _cumulative_cost()), so every
+    worker gets a similar amount of work."""
     threshold = min(combined_size, L_final)
     n = max(1, n_batches)
 
@@ -465,9 +443,9 @@ def _build_equal_cost_batches(L_final, combined_size, n_batches):
 
 
 def _init_shared_buffer(n_bytes):
-    """Unchanged from prime_sieve_v3.py -- allocates the ONE shared output buffer, MUST be
-    called BEFORE the ProcessPoolExecutor is created / before the first task is submitted
-    (see main_batch_scanner()) so forked workers inherit the mapping."""
+    """Allocates the ONE shared output buffer. MUST be called BEFORE the
+    ProcessPoolExecutor is created / before the first task is submitted (see
+    main_batch_scanner()) so forked workers inherit the mapping."""
     global _shm_mmap, _shm_size
     _shm_mmap = mmap.mmap(-1, n_bytes, flags=mmap.MAP_SHARED)
     _shm_size = n_bytes
@@ -475,8 +453,8 @@ def _init_shared_buffer(n_bytes):
 
 
 def process_batch(start_stop_list, distance, window_m):
-    """Unchanged from prime_sieve_v3.py -- writes ATOMICALLY straight into the ONE shared
-    buffer (module-level _shm_mmap/_shm_size, inherited via fork())."""
+    """Writes ATOMICALLY straight into the ONE shared buffer (module-level
+    _shm_mmap/_shm_size, inherited via fork())."""
     lib = _load_lib()
     buf_ctypes = (ctypes.c_ubyte * _shm_size).from_buffer(_shm_mmap)
     out_ptr = ctypes.cast(buf_ctypes, ctypes.POINTER(ctypes.c_ubyte))
@@ -498,8 +476,7 @@ LOW_FLOOR_CUTOFF = 7  # floors 0..6 are each narrower than the smallest supporte
                       # 10**7 is the first floor boundary that's an exact multiple of that
                       # width, so from floor 7 on a window can never straddle a floor
                       # boundary -- see _low_floor_segments()'s docstring for what floors
-                      # below this cutoff need instead. Ported verbatim from
-                      # prime_sieve_v3.py -- see that file's header for the full rationale.
+                      # below this cutoff need instead.
 
 
 def _low_floor_segments(base_power, combined_lo, combined_hi):
@@ -660,8 +637,7 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
         # base_power < LOW_FLOOR_CUTOFF: this combined range spans several REAL floors at
         # once (see _low_floor_segments' docstring) -- write each complete one under its
         # own 10p{floor}/ folder instead of the single 10p{base_power}/ the normal path
-        # below would use, and skip the write loop entirely once done. Ported verbatim
-        # from prime_sieve_v3.py.
+        # below would use, and skip the write loop entirely once done.
         full_unpacked = np.unpackbits(window_occupied_bits, count=combined_size,
                                        bitorder='little').astype(bool)
         total_primes_found = 0
@@ -671,7 +647,7 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
             lo_rel = floor_lo - combined_lo
             segment = full_unpacked[lo_rel:lo_rel + w]
 
-            # Sharded (see window_sharding.py, task #405) -- a low floor always writes
+            # Sharded (see window_sharding.py) -- a low floor always writes
             # its one window at offset 0, so it always lands in shard_00000.
             this_floor_folder = os.path.join(BASE_STORAGE_10PN, f"10p{floor}", "source_primes")
             this_shard_folder = window_sharding.shard_dir(this_floor_folder, 0)
@@ -709,13 +685,13 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
         print("=" * 70)
         return
 
-    # Sharded (see window_sharding.py, task #405): no single directory ever holds more
+    # Sharded (see window_sharding.py): no single directory ever holds more
     # than SHARD_SIZE window files, regardless of floor size -- floor_folder itself is
     # therefore never created/listed directly, only its shard_NNNNN subfolders are.
     floor_folder = os.path.join(BASE_STORAGE_10PN, f"10p{base_power}", "source_primes")
 
-    # Per-window unpacking -- unchanged from prime_sieve_v3.py (see that file's header for the
-    # full rationale: cuts peak memory for this step from O(combined_size) to O(window_m)).
+    # Per-window unpacking: peak memory for this step is O(window_m), not O(combined_size)
+    # (see prime_sieve_v3.py's header).
     use_fast_unpack = (window_m % 8 == 0)
     if use_fast_unpack:
         bytes_per_window = window_m // 8
@@ -769,7 +745,11 @@ SCAN_METRICS_FILENAME = "last_scan_metrics.json"
 def write_scan_metrics_handoff(portal_folder, l_final, sieving_primes_count,
                                 total_primes_found=None, windows_processed=None,
                                 write_files=None):
-    """Unchanged from prime_sieve_v3.py -- see that file for the full rationale."""
+    """Writes batch-level metrics (l_final, sieving_primes_count and, when given,
+    total_primes_found/windows_processed/write_files) to a small JSON file at a fixed path
+    (SCAN_METRICS_FILENAME) for the launching orchestrator, which does not capture this
+    process's stdout. Overwritten on every call; the last batch's values (the largest
+    L_final) are the ones recorded for the run."""
     import json
     path = os.path.join(portal_folder, SCAN_METRICS_FILENAME)
     data = {"l_final": l_final, "sieving_primes_count": sieving_primes_count}
@@ -793,7 +773,6 @@ if __name__ == "__main__":
     print("=" * 70)
     print(f"[*] PRIME SIEVE -- {VERSION} (primesieve, shared mmap buffer, atomic OR, inlined "
           f"phase modulo, PGS2 binary output)")
-    print("    lineage: prime_sieve_v3.py (this folder) -- see this file's header for what changed")
     print("=" * 70)
 
     # CONSTELLATION_PORTAL_DIR: the GUI's Settings tab lets the user point the whole portal
@@ -832,7 +811,7 @@ if __name__ == "__main__":
 
     # WINDOW_M: how many numbers each target_idx step covers. The same constant also exists
     # in orchestrator_v3.py/orchestrator_loop_helpers.py -- all copies must be kept in sync.
-    # Optional CLI position 8. Default unchanged (10_000_000) when omitted.
+    # Optional CLI position 8. Default 10_000_000 when omitted.
     WINDOW_M = int(sys.argv[8]) if len(sys.argv) > 8 else 10 ** 7
     target_idx_list = list(range(target_idx_start, target_idx_stop + 1))
 

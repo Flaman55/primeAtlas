@@ -62,10 +62,8 @@ import orchestrator_loop_helpers as orch  # noqa: E402  -- doesn't run anything 
 #   run_count     -- how many loop ITERATIONS to run. Each iteration launches n_instances
 #                    orchestrators CONCURRENTLY, together covering window_count_per_run
 #                    windows -- so run_count=10 with the default window_count_per_run=1000
-#                    sweeps 10*1000 = 10000 windows total, same total as
-#                    `orchestrator_loop_v1.py <base_exponent> 10`, just each 1000-window
-#                    slice gets internally parallelized across n_instances concurrent
-#                    orchestrators instead of run sequentially by one.
+#                    sweeps 10*1000 = 10000 windows total, each 1000-window slice split
+#                    across n_instances concurrent orchestrators.
 #   n_instances   -- how many orchestrator subprocesses to launch CONCURRENTLY per
 #                    iteration. n_instances=2 means each iteration's window_count_per_run
 #                    windows get split into 2 contiguous halves (e.g. 500 -> 250 + 250),
@@ -132,9 +130,8 @@ def highest_written_target_idx(base_exponent, window_m=None):
 
 def _count_benchmark_rows(portal_folder):
     """Row count of benchmark_log.csv right now (0 if the file doesn't exist yet) -- the
-    baseline _sum_new_benchmark_primes() diffs against. Same mechanism as
-    orchestrator_loop_v1.py's write-toggle grand-total feature -- see that file for the full
-    rationale (each orchestrator instance appends exactly one row, write_files-agnostic)."""
+    baseline _sum_new_benchmark_primes() diffs against (each orchestrator instance appends
+    exactly one row, regardless of write_files)."""
     path = os.path.join(portal_folder, BENCHMARK_LOG_FILENAME)
     if not os.path.exists(path):
         return 0
@@ -239,9 +236,7 @@ def _tag_benchmark_rows_by_range(portal_folder, rows_before, instance_ranges, lo
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(rows)
-    os.replace(tmp_path, path)  # atomic -- see orchestrator_v1.py's
-                                 # _ensure_benchmark_log_schema() docstring for why this
-                                 # matters for a file holding the whole benchmark history
+    os.replace(tmp_path, path)  # atomic: the file holds the whole benchmark history
     return numbers_per_second
 
 
@@ -341,7 +336,7 @@ def run_iteration(base_exponent, start_idx, n_instances, write_files, iteration_
         print(f"[LOOP]   instance {idx}/{len(instance_ranges)}: target_idx "
               f"{inst_start}..{inst_start + size - 1} ({size} windows)")
         # No capture_output -- every instance's (and, underneath it, its scanner's) progress
-        # prints stream straight to this terminal live, same as orchestrator_loop_v1.py.
+        # prints stream straight to this terminal live.
         # With multiple instances running at once, their output WILL interleave -- that's
         # expected, not a bug: these are genuinely separate, concurrently-running processes.
         procs.append(subprocess.Popen(cmd))
@@ -448,11 +443,10 @@ def main():
     benchmark_rows_before = _count_benchmark_rows(PORTAL_FOLDER)
 
     # One-time schema migration up front (not per-instance): with n_instances>1, several
-    # orchestrator subprocesses could otherwise each try to migrate benchmark_log.csv's
-    # header to the new instance_of_n/loop_session_seconds schema at the same time, the very
-    # first time this runs after those columns were added. After this call, every instance's
-    # own (per-invocation) _ensure_benchmark_log_schema() check is a cheap no-op (header
-    # already current) -- avoids that narrow race entirely rather than just tolerating it.
+    # orchestrator subprocesses could otherwise migrate benchmark_log.csv's header to the
+    # instance_of_n/loop_session_seconds schema concurrently. After this call every
+    # instance's own _ensure_benchmark_log_schema() check is a no-op (header already
+    # current).
     orch._ensure_benchmark_log_schema(os.path.join(PORTAL_FOLDER, BENCHMARK_LOG_FILENAME))
 
     print("=" * 70)

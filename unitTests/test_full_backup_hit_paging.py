@@ -2,20 +2,14 @@
 test_full_backup_hit_paging.py -- proves primeatlas/settings/manifest.py's ConstellationSnapshot
 and primeatlas/settings/full_backup.py's copy_floor_increment()/restore_floor_from_full_backup()
 correctly see and round-trip a PAGED constellation pattern (prime_sieve/hit_paging.py),
-not just the original single-cumulative-file case every existing full_backup.py user
-already relied on.
+not just a single cumulative hit file.
 
-Why this exists: manifest.py's ConstellationSnapshot used a hit-file regex
-("^HITS_10p\\d+_k\\d+_v\\d+\\.bin$") that does NOT match a paged pattern's page files
-(f"..._page{P:05d}.bin") or its PAGES_META.json -- meaning, before this fix,
-copy_floor_increment() would silently back up NOTHING for any pattern migrated to
-pages (floor 25's k=2 being the real, motivating case -- see hit_paging.py's own
-module docstring), and a floor's *existing* full backup would look complete
-(list_destination_hit_filenames() using the same kind of narrow match) while actually
-missing that pattern's data entirely. No existing test in this repo covered
-manifest.py or full_backup.py at all before this file (verified via a repo-wide
-grep for "full_backup"/"manifest" imports in unitTests/ turning up nothing) -- adding
-this alongside the fix rather than leaving the gap in place.
+A hit-file regex like "^HITS_10p\\d+_k\\d+_v\\d+\\.bin$" does NOT match a paged pattern's
+page files (f"..._page{P:05d}.bin") or its PAGES_META.json; with it,
+copy_floor_increment() would back up NOTHING for a pattern migrated to pages (e.g. k=2
+on floor 25), and a floor's existing full backup would look complete
+(list_destination_hit_filenames() using the same kind of narrow match) while missing
+that pattern's data entirely.
 
 Usage:
     python unitTests\\test_full_backup_hit_paging.py

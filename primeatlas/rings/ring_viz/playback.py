@@ -161,13 +161,10 @@ def tick_next_n(n, range_mode, ceiling, range_step=1):
     via --load-range: phase = n mod prime needs n to advance by a
     meaningful FRACTION of the prime's own value before any angular
     movement is visible at all, so scaling the step with the largest
-    active prime is required. The computation naturally settles back down
-    to the exact old `1` at low floors, where a full orbit already fit
-    inside _RANGE_STEP_ORBIT_TICKS ticks, so nothing changes there.
-    Sequential mode's own advance is NEVER affected by this parameter.
-    Defaults to 1 (the old, always-correct behavior) so any caller that
-    omits it (including every existing test) sees no change. Returns
-    (new_n, should_stop)."""
+    active prime is required. At low floors, where a full orbit already fits
+    inside _RANGE_STEP_ORBIT_TICKS ticks, the computation gives 1. Sequential
+    mode's own advance is NEVER affected by this parameter. Defaults to 1.
+    Returns (new_n, should_stop)."""
     if not range_mode and n >= ceiling:
         return n, True
     return n + (range_step if range_mode else 1), False
@@ -203,7 +200,7 @@ def update_resonance_log(state, active, n_value, range_mode, advancing):
     rescan the WHOLE history every tick.
 
     Sequential mode's tick_next_n always advances by exactly +1, so this
-    span is always a single value (n_value..n_value) there, same as before.
+    span is always a single value (n_value..n_value) there.
     Range mode's own tick_next_n step can be > 1 (see that function's own
     doc-comment) -- using `state["last_n"] + 1` as the actual from_n here
     (instead of the old hardcoded `n_value` for both ends) is

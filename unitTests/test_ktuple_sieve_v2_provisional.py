@@ -3,16 +3,14 @@ test_ktuple_sieve_v2_provisional.py -- integration tests for ktuple_sieve_v2.py'
 gap-safe hit routing, using REAL temporary storage and REAL PGS2 window files (via
 prime_sieve_v1.write_prime_window), no mocking of either module.
 
-Targets the field report this exists to fix: ktuple_sieve_v1.py
-wrote every confirmed hit straight into the SAME cumulative hit file
-constellation_finder_v1.py's own exhaustive scan uses, via the shared
-_append_hits_deduped() -- which decides "already known" purely by comparing a new value
-against the file's own LAST stored value. Since this module deliberately jumps around a
-floor hunting for rare, deep hits far ahead of wherever the exhaustive scan currently is,
-one of its own finds landing in the shared file poisons that file's dedup cursor against
-every smaller, genuinely new hit the exhaustive scan finds afterwards -- confirmed on a
-real floor-25 run, which reported new_hits=0/skipped_duplicates=~4000 on EVERY window for
-over 90,000 windows straight.
+ktuple_sieve_v1.py wrote every confirmed hit straight into the SAME cumulative hit file
+the exhaustive constellation scan uses, via the shared _append_hits_deduped() -- which
+decided "already known" purely by comparing a new value against the file's own LAST
+stored value. Since the k-tuple sieve jumps around a floor hunting for rare, deep hits
+far ahead of wherever the exhaustive scan currently is, one of its finds landing in the
+shared file would poison that file's dedup cursor against every smaller, genuinely new
+hit the exhaustive scan finds afterwards (new_hits=0 on every window). v2 routes such
+hits separately (provisional) until the exhaustive frontier reaches them.
 
 Covers three layers:
   1. _exhaustive_frontier_value() -- the smallest value NOT yet covered by

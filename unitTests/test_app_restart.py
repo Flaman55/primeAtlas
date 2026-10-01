@@ -1,7 +1,6 @@
 """
 test_app_restart.py -- covers primeatlas/settings/app_restart.py, the os.execv()-based in-place
-relaunch used by settings_tab.py's automatic restart-after-theme/language-change feature
-(task #518).
+relaunch used by settings_tab.py's automatic restart-after-theme/language-change feature.
 
 os.execv() genuinely replaces the calling process -- calling it for real here would kill the
 test runner itself, so this file never calls the real thing. Two sections:
@@ -79,9 +78,7 @@ def section_a():
     # Compared against os.path.abspath()'s own output, not the literal POSIX string above --
     # on Windows, os.path.abspath("/already/absolute/...") prepends the current drive letter
     # (e.g. "F:\already\absolute\..."), so comparing against the un-prefixed POSIX literal
-    # directly would always fail there even though _build_execv_args() did nothing wrong
-    # (this assertion was failing on Windows before this fix, for
-    # a reason unrelated to the space-quoting bug this file otherwise covers).
+    # directly would always fail there even though _build_execv_args() did nothing wrong.
     check(argv2[1] == os.path.abspath("/already/absolute/prime_atlas_v1.py"),
           f"an already-absolute path must not be altered beyond normalization "
           f"(got {argv2[1]!r})")

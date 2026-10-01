@@ -83,8 +83,8 @@ def main():
 
     tmp_portal = tempfile.mkdtemp(prefix="primeatlas_loading_screen_test_")
     try:
-        # source_primes/ is sharded into shard_NNNNN subfolders (see window_sharding.py,
-        # task #405) -- offset 0 always lands in shard_00000.
+        # source_primes/ is sharded into shard_NNNNN subfolders (see window_sharding.py) --
+        # offset 0 always lands in shard_00000.
         source_dir = os.path.join(tmp_portal, "10p0", "source_primes")
         shard_dir = window_sharding.shard_dir(source_dir, 0)
         os.makedirs(shard_dir, exist_ok=True)
@@ -152,7 +152,7 @@ def main():
         app._totals_search.compute_all_floor_totals()
         _pump(app, 5.0)
         check(app._totals_search._grand_total_sum == 4,
-              f"a manual 'Zweryfikuj sumy' verify (compute_all_floor_totals()) still "
+              f"a manual 'Verify totals' verify (compute_all_floor_totals()) still "
               f"correctly sums the seeded floor's real prime count "
               f"(got _grand_total_sum={app._totals_search._grand_total_sum!r})")
 

@@ -1,7 +1,6 @@
 """
 shaders.py -- GLSL source strings for primeatlas/rings/ring_viz/renderer.py's
-moderngl programs. [ADDED Faza 1 of the renderer.py split, see that file's
-own module docstring for the overall refactor plan.] Pure data (plain
+moderngl programs. Pure data (plain
 triple-quoted strings), no logic and no dependency on moderngl/glfw
 themselves -- importable in a headless sandbox with no GPU, same as every
 other non-GL-context-bound piece of this package.
@@ -52,7 +51,7 @@ void main() {
 """
 
 
-# [ADDED Faza 8, see PLAN.md] Tracked-ring outline circles use the SAME
+# Tracked-ring outline circles use the SAME
 # world-space transform as VERTEX_SHADER above (world*zoom+pan -> NDC), so a
 # tracked ring's outline circle scales/pans with the camera exactly like its
 # own point does -- but drawn as a GL_LINE_LOOP over a shared unit-circle
@@ -82,11 +81,8 @@ void main() {
 }
 """
 
-# [DEDUPED Faza 0 refactor] OUTLINE_FRAGMENT_SHADER and SCREEN_FRAGMENT_SHADER
-# used to be two separately-defined but byte-for-byte identical GLSL strings
-# (a flat, unlit vertex-color pass-through) -- one shared constant, aliased
-# under both of this module's existing names so neither call site needs to
-# change.
+# OUTLINE_FRAGMENT_SHADER and SCREEN_FRAGMENT_SHADER are the same flat, unlit
+# vertex-color pass-through: one shared constant under both names.
 FLAT_COLOR_FRAGMENT_SHADER = """
 #version 330
 
@@ -100,7 +96,7 @@ void main() {
 
 OUTLINE_FRAGMENT_SHADER = FLAT_COLOR_FRAGMENT_SHADER
 
-# [ADDED Faza 8] Screen-space shader for the center marker (triangle + line)
+# Screen-space shader for the center marker (triangle + line)
 # and the full-screen flash-overlay quad -- both are drawn in absolute PIXEL
 # space (no u_zoom, no u_pan multiply in the shader itself), matching
 # DrumRenderer's own Canvas 2D calls for these two elements, which draw at
@@ -133,7 +129,7 @@ void main() {
 
 SCREEN_FRAGMENT_SHADER = FLAT_COLOR_FRAGMENT_SHADER
 
-# [ADDED Faza 11B, see PLAN.md] On-canvas HUD text quad -- same absolute-
+# On-canvas HUD text quad -- same absolute-
 # pixel-space / y-down convention as SCREEN_VERTEX_SHADER above (so both
 # share run()'s own u_viewport-from-framebuffer-size wiring), but samples a
 # texture (the Pillow-rasterized HUD bitmap, see rasterize_hud_text) instead

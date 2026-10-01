@@ -2,7 +2,7 @@
 test_progress_bar_owner.py -- unit tests for primeatlas/core/progress_bar_owner.py,
 the arbitration helper that stops the many independent tabs/coordinators sharing one
 totals_progress bar from silently overwriting each other's display (see that module's
-own docstring for the bug this fixes).
+own docstring).
 
 Pure logic, no tkinter -- claim_progress_bar()/owns_progress_bar()/release_progress_
 bar() only ever read/write a plain attribute on whatever object they're given, so a
@@ -108,7 +108,7 @@ def _test_release_on_a_never_claimed_bar_is_a_safe_noop():
 
 
 def _test_symmetric_handoff_matches_the_reported_priority_model():
-    """Mirrors the exact scenario reported live: a floor-totals scan starts first, a
+    """Scenario: a floor-totals scan starts first, a
     Generation run starts while it's still going (must be silently blocked, not
     overwrite the scan's own display), and once the scan finishes and releases, the
     still-running Generation run's own next write reclaims the bar and paints ITS
@@ -198,12 +198,11 @@ def _test_pump_indeterminate_ticks_keep_a_single_job_alive():
 
 
 def _test_pump_indeterminate_called_again_cancels_the_prior_loop():
-    """This is the actual bug fix: plain Progressbar.start()/.stop(), called from the
-    ~10 independent sites that share this widget across a long session, could leave
-    more than one of Tcl's own internal timers alive on the same widget at once --
-    looking exactly like the reported symptom (thumb snapping between the two
-    extremes instead of gliding). pump_indeterminate() guarantees a SECOND call
-    always cancels the first loop's still-pending job before scheduling its own."""
+    """Plain Progressbar.start()/.stop(), called from the ~10 independent sites that
+    share this widget across a long session, can leave more than one of Tcl's internal
+    timers alive on the same widget at once (thumb snapping between the two extremes
+    instead of gliding). pump_indeterminate() guarantees a SECOND call always cancels
+    the first loop's still-pending job before scheduling its own."""
     widget = _FakeAnimatedWidget()
     pump_indeterminate(widget, 120)
     first_job_id = next(iter(widget.scheduled))
