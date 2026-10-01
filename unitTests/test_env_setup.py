@@ -812,6 +812,28 @@ def section_e():
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
+def section_f():
+    """INSTALL_WSL_PRIMEATLAS.md -- the manual guide env_setup.py, README and the wizard's
+    failure path point to -- was referenced for weeks without existing in the repo. It must
+    exist and stay in step with what the installer actually does."""
+    from primeatlas.settings import env_setup
+    print("\n--- F. INSTALL_WSL_PRIMEATLAS.md matches env_setup.py ---")
+    doc_path = os.path.join(_REPO_ROOT, "INSTALL_WSL_PRIMEATLAS.md")
+    check(os.path.isfile(doc_path), "INSTALL_WSL_PRIMEATLAS.md exists at the repo root")
+    if not os.path.isfile(doc_path):
+        return
+    with open(doc_path, encoding="utf-8") as f:
+        doc = f.read()
+    for feature in env_setup.REQUIRED_WINDOWS_FEATURES:
+        check(feature in doc, f"the guide enables Windows feature {feature}")
+    for package in env_setup.REQUIRED_APT_PACKAGES:
+        check(package in doc, f"the guide apt-installs {package}")
+    for heading in ("### 2.1", "## 4.", "## 5.", "### 5.3", "## 6."):
+        check(heading in doc, f"the guide has section '{heading}' that env_setup.py's comments cite")
+    for step in ("--update --web-download", "--no-launch", "default=root", "ldconfig"):
+        check(step in doc, f"the guide covers the installer step '{step}'")
+
+
 # ============================================================================================
 
 if __name__ == "__main__":
@@ -820,6 +842,7 @@ if __name__ == "__main__":
     section_c()
     section_d()
     section_e()
+    section_f()
     print(f"\n{'=' * 78}")
     if failures:
         print(f"{len(failures)} FAILURE(S):")

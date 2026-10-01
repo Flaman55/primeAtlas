@@ -147,6 +147,15 @@ begin
   Result := AppReady;
 end;
 
+procedure InitializeWizard;
+begin
+  // At 125% display scaling the checkbox labels were drawn over the right edge of the
+  // DPI-scaled check square (fine at 100%). Widen the glyph-to-label gap by what the
+  // ~13px square grows with DPI, plus 2px: +2 at 100%, +6 at 125%, +10 at 150%.
+  WizardForm.TasksList.Offset := WizardForm.TasksList.Offset + ScaleX(15) - 13;
+  WizardForm.RunList.Offset := WizardForm.RunList.Offset + ScaleX(15) - 13;
+end;
+
 function DirIsEmpty(const Dir: String): Boolean;
 var
   FindRec: TFindRec;

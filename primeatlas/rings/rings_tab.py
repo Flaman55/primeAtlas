@@ -801,8 +801,11 @@ class RingsTab(BaseTab):
         # window closes on its own, so clicking this button again reopens
         # right there; Reset is the one path that discards that live-resume
         # value instead, without touching what's actually typed in any field).
+        # Packed `before=intro`, i.e. at the very top of the tab: launching is the
+        # tab's primary action, and below the option sections it sat far out of
+        # sight (Artur, 2026-10-01). Still created here, after every field it reads.
         button_row = ttk.Frame(container)
-        button_row.pack(fill="x", pady=(0, 10))
+        button_row.pack(fill="x", pady=(0, 10), before=intro)
         self.open_button = ttk.Button(button_row, text=self.T("rings.open_button"),
                                        command=self._on_open)
         self.open_button.pack(side="left")

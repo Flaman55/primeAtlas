@@ -176,6 +176,16 @@ def main():
     style = (setup_directive(setup, "WizardStyle") or "").lower().split()
     check("windows11" in style and "dynamic" in style,
           f"WizardStyle uses the windows11 custom style, following light/dark mode (got {style})")
+    # Even the windows11 style still clipped the right edge of each checkbox square at
+    # 125% display scaling (Artur's physical screen; at 100% in the VM it fit) -- the
+    # label is drawn over the DPI-scaled glyph. Both checkbox lists (Tasks page:
+    # shortcuts; last page: Run/README) must widen their glyph-to-label gap with DPI.
+    init = re.search(r"procedure InitializeWizard;.*?^end;", code, re.DOTALL | re.IGNORECASE | re.MULTILINE)
+    init_body = init.group(0) if init else ""
+    for list_name in ("TasksList", "RunList"):
+        check(re.search(r"WizardForm\." + list_name + r"\.Offset\s*:=.*ScaleX\(", init_body) is not None,
+              f"InitializeWizard widens WizardForm.{list_name}.Offset by a DPI-scaled amount")
+
 
     print("\n--- Release 1.0.0: one version source, licenses, notes ---")
     version_src = open(os.path.join(_REPO_ROOT, "primeatlas", "core", "version.py"),

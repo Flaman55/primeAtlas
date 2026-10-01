@@ -1121,6 +1121,15 @@ def active_window_count(enabled_ids):
 #: range/tick) this actually guards against.
 _RESONANCE_SCAN_MAX_SIZE = 20_000_000
 
+#: resonance_events_in_range's marking pass: primes with more multiples than this
+#: in the span get their own numpy slice add; the rest are counted together via
+#: np.bincount (one numpy call per chunk instead of one per prime).
+_RESONANCE_SCAN_DENSE_MULTIPLES = 64
+
+#: Upper bound on how many flat multiple-indices one np.bincount chunk expands
+#: (~32 MB per int64 temporary), keeping peak memory near the factor_count array.
+_RESONANCE_SCAN_CHUNK = 4_000_000
+
 
 def resonance_events_in_range(primes, from_n, to_n):
     """Every "resonance" step n in [from_n, to_n] (inclusive): n is a
@@ -1164,52 +1173,68 @@ def resonance_events_in_range(primes, from_n, to_n):
     size = to_n - from_n + 1
     if size > _RESONANCE_SCAN_MAX_SIZE:
         return []
-    factor_count = np.zeros(size, dtype=np.int64)
 
-    # Marking pass: for each active prime p, bump every multiple of p inside
-    # [from_n, to_n] by 1 (a numpy slice add instead of the JS version's own
-    # per-multiple loop -- same O((to_n-from_n) log log to_n) shape overall).
-    for p in primes_arr:
-        p_int = int(p)
-        if p_int > to_n:
-            break
-        m = max(from_n, p_int)
-        m += (p_int - (m % p_int)) % p_int  # round m up to the next multiple of p
-        if m > to_n:
-            continue
-        start = m - from_n
-        factor_count[start::p_int] += 1
+    # Everything below is vectorized: the old per-n Python loop over the whole
+    # span (plus one numpy slice call per active prime) took 4.4 s at N=20M,
+    # all of it inside the ring-viz GLFW loop on every scrub jump (known bug:
+    # Esc/window-close could not be processed until it finished).
+    if primes_arr.dtype == object:
+        candidates = np.array([int(p) for p in primes_arr if int(p) <= to_n], dtype=np.int64)
+    else:
+        candidates = primes_arr[primes_arr <= to_n].astype(np.int64)
+    first = np.maximum(candidates, from_n)
+    first += (-first) % candidates  # round up to the next multiple of p
+    in_span = first <= to_n
+    candidates, first = candidates[in_span], first[in_span]
+    multiples = (to_n - first) // candidates + 1
+
+    # Marking pass: factor_count[i] = number of active primes dividing
+    # from_n + i. Primes with many multiples in the span get a slice add each;
+    # the (typically far more numerous) primes with only a few multiples are
+    # expanded into flat index arrays and counted with np.bincount, in chunks
+    # of at most _RESONANCE_SCAN_CHUNK indices to bound peak memory.
+    factor_count = np.zeros(size, dtype=np.int64)
+    dense = multiples > _RESONANCE_SCAN_DENSE_MULTIPLES
+    for p, m in zip(candidates[dense].tolist(), first[dense].tolist()):
+        factor_count[m - from_n::p] += 1
+    sparse_p, sparse_first, sparse_count = candidates[~dense], first[~dense], multiples[~dense]
+    i = 0
+    while i < len(sparse_p):
+        running = np.cumsum(sparse_count[i:])
+        j = i + max(1, int(np.searchsorted(running, _RESONANCE_SCAN_CHUNK, side="right")))
+        counts = sparse_count[i:j]
+        k = np.arange(int(counts.sum()), dtype=np.int64) - np.repeat(np.cumsum(counts) - counts, counts)
+        offsets = np.repeat(sparse_first[i:j] - from_n, counts) + k * np.repeat(sparse_p[i:j], counts)
+        factor_count += np.bincount(offsets, minlength=size)
+        i = j
 
     # maxResonance(n) only changes at the handful of n where the running
     # primorial crosses n (Python ints here, not int64, so this stays exact
     # well past where a naive int64 accumulator would silently overflow --
     # a correctness improvement over the JS version's plain float64 numbers,
     # though not one expected to matter at the N scale this module targets).
-    thresholds = []
+    # Each crossing bumps max_resonance for the rest of the span.
+    max_resonance = np.zeros(size, dtype=np.int8)
     primorial = 1
     for p in primes_arr:
         primorial *= int(p)
         if primorial > to_n:
             break
-        thresholds.append(primorial)
+        max_resonance[max(primorial - from_n, 0):] += 1
 
+    hits = np.nonzero((max_resonance > 0) & (factor_count >= max_resonance))[0]
     events = []
-    threshold_idx = 0
-    for offset in range(size):
+    for offset in hits.tolist():
         n = from_n + offset
-        while threshold_idx < len(thresholds) and thresholds[threshold_idx] <= n:
-            threshold_idx += 1
-        max_resonance = threshold_idx
         count = int(factor_count[offset])
-        if max_resonance > 0 and count >= max_resonance:
-            factors = []
-            for p in primes_arr:
-                p_int = int(p)
-                if p_int > n or len(factors) >= count:
-                    break
-                if n % p_int == 0:
-                    factors.append(p_int)
-            events.append({"n": n, "factors": factors})
+        factors = []
+        for p in primes_arr:
+            p_int = int(p)
+            if p_int > n or len(factors) >= count:
+                break
+            if n % p_int == 0:
+                factors.append(p_int)
+        events.append({"n": n, "factors": factors})
     return events
 
 

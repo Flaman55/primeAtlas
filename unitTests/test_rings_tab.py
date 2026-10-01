@@ -338,6 +338,18 @@ def main():
 
     tmp_portal = tempfile.mkdtemp(prefix="primeatlas_rings_tab_test_portal_")
 
+    # --- layout: Start/Reset are the first thing in the tab ------------------------
+    # Artur (2026-10-01): "przyciski uruchom i reset sa nisko daleko pod opcjami a
+    # powinny byc na samej gorze jako najwazniejsze elementy" -- the launch buttons
+    # must sit above the intro and every option section, not below Audio.
+    button_row = tab.open_button.master
+    container = button_row.master
+    packed = container.pack_slaves()
+    check(tab.stop_button.master is button_row and packed and packed[0] is button_row,
+          f"Start/Reset button row is the first packed widget of the tab "
+          f"(found at index {packed.index(button_row) if button_row in packed else None})")
+
+
     # --- N-hint field: live floor guess, no crash on garbage input ------------------
     tab.n_entry.delete(0, "end")
     tab.n_entry.insert(0, "12345")

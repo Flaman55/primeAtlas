@@ -1456,6 +1456,10 @@ installer/                   Windows installer (PrimeAtlasSetup.exe, see "Instal
 LICENSE.md                   PolyForm Noncommercial 1.0.0 + the Required Notice line
 NOTICE.md                    third-party attributions, incl. the runtimes the installer
                               bundles (CPython: PSF License; MinGit: GPLv2 + source link)
+INSTALL_WSL_PRIMEATLAS.md    manual WSL 2 / Ubuntu / apt setup, step for step what the
+                              first-run wizard (env_setup.py) runs -- for when the
+                              wizard cannot finish (e.g. a VM without nested
+                              virtualization)
 ```
 
 Generated data is stored under a folder named `CONSTELLATION_PORTAL` (the name predates

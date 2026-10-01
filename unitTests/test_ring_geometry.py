@@ -16,6 +16,7 @@ Usage (this sandbox, headless):
     python3 unitTests/test_ring_geometry.py
 """
 import math
+import time
 import os
 import sys
 
@@ -1273,6 +1274,72 @@ def _test_resonance_events_in_range():
           f"of attempting an infeasible allocation")
 
 
+def _brute_events(primes, from_n, to_n):
+    out = []
+    for n in range(from_n, to_n + 1):
+        active, factors = _brute_resonance_at(primes, n)
+        if active:
+            out.append({"n": n, "factors": factors})
+    return out
+
+
+def _small_primes_upto(limit):
+    sieve = np.ones(limit + 1, dtype=bool)
+    sieve[:2] = False
+    for i in range(2, int(limit ** 0.5) + 1):
+        if sieve[i]:
+            sieve[i * i::i] = False
+    return np.nonzero(sieve)[0].astype(np.int64)
+
+
+def _test_resonance_scan_vectorized_matches_brute():
+    """The scan behind the ring-viz scrub-jump freeze (known bug #1: 4.4 s at
+    N=20M, blocking the GLFW loop so Esc/close could not be processed) must stay
+    exactly equal to the per-n brute force across every shape of input the
+    renderer can pass: an offset from_n, from_n=0 (every p divides 0), active
+    sets not starting at 2 (sliding window), object-dtype arrays, primes above
+    to_n, and a scan split across several internal chunks."""
+    from primeatlas.rings import ring_geometry as rg
+
+    primes = _small_primes_upto(3000)
+    cases = [
+        ("full [1,3000]", primes, 1, 3000),
+        ("from_n=0", primes, 0, 400),
+        ("offset from_n", primes, 1237, 2999),
+        ("single n", primes, 2310, 2310),
+        ("window not starting at 2", primes[primes >= 11], 1, 3000),
+        ("primes above to_n", primes, 1, 500),
+        ("object dtype", np.array([int(x) for x in primes[:200]], dtype=object), 1, 1500),
+    ]
+    for label, arr, lo, hi in cases:
+        got = rg.resonance_events_in_range(arr, lo, hi)
+        want = _brute_events(arr, lo, hi)
+        check(got == want, f"resonance scan == brute force ({label}, {len(want)} events)"
+              + ("" if got == want else f" -- first diff near {[e['n'] for e in got][:5]} vs {[e['n'] for e in want][:5]}"))
+
+    saved = rg._RESONANCE_SCAN_CHUNK
+    rg._RESONANCE_SCAN_CHUNK = 97
+    try:
+        got = rg.resonance_events_in_range(primes, 1, 3000)
+    finally:
+        rg._RESONANCE_SCAN_CHUNK = saved
+    check(got == _brute_events(primes, 1, 3000),
+          "resonance scan split into many small chunks still equals brute force")
+
+
+def _test_resonance_scan_large_n_is_fast():
+    """Known bug #1's own measurement: N=5M took 1.09 s, 20M 4.38 s -- all inside the
+    single-threaded GLFW loop. A 10M full backfill must now finish well under a second
+    (generous bound, the vectorized scan takes ~0.25 s here)."""
+    from primeatlas.rings.ring_geometry import resonance_events_in_range
+    primes = _small_primes_upto(10_000_000)
+    t0 = time.perf_counter()
+    events = resonance_events_in_range(primes, 1, 10_000_000)
+    elapsed = time.perf_counter() - t0
+    check(len(events) > 0 and elapsed < 1.0,
+          f"resonance scan over [1, 10M] with {len(primes):,} active primes takes {elapsed:.2f}s (< 1.0s)")
+
+
 def _test_resonance_log_lines():
     from primeatlas.rings.ring_geometry import resonance_log_lines, resonance_events_in_range
 
@@ -1353,6 +1420,8 @@ def main():
     _test_compute_highlight_colors_strict_sticky_precedence()
     _test_compute_tracked_colors()
     _test_resonance_events_in_range()
+    _test_resonance_scan_vectorized_matches_brute()
+    _test_resonance_scan_large_n_is_fast()
     _test_resonance_log_lines()
     _test_format_log_panel_text()
 
