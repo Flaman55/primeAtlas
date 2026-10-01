@@ -1,6 +1,6 @@
 """
-primality_tab.py -- probabilistic primality testing + factorization sub-tab (Liczby
-pierwsze -> Testy pierwszosci), extracted from prime_atlas_v1.py during the refactor
+primality_tab.py -- probabilistic primality testing + factorization sub-tab (Prime
+numbers -> Primality tests), extracted from prime_atlas_v1.py during the refactor
 branch's tab-by-tab split, the same pass that extracted the primesieve calculator
 sub-tab alongside it (primeatlas/primality/primesieve_calc_tab.py) -- these two were the last
 remaining un-extracted sub-tabs left inline in the app shell after every OTHER tab was
@@ -85,9 +85,9 @@ class PrimalityTab(BaseTab):
                   wraplength=760, justify="left").pack(anchor="w")
 
         # Separate readonly Entry holding JUST the factor list (no "n = " prefix, no
-        # "(metoda: ..., czas: ...)" suffix) -- a plain Label's text can't be selected or
-        # copied at all in tkinter, so the summary line above was previously impossible
-        # to copy from. An Entry supports normal mouse selection (drag for a range,
+        # "(method: ..., time: ...)" suffix) -- a plain Label's text can't be selected or
+        # copied at all in tkinter (the summary line above can't be copied from). An
+        # Entry supports normal mouse selection (drag for a range,
         # double-click for one factor) and Ctrl+C even in readonly state -- readonly only
         # blocks typing/editing, not selection -- plus a one-click Copy button for
         # grabbing the whole list at once.

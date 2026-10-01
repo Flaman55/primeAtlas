@@ -61,20 +61,11 @@ except ImportError:
 
 def hud_lines_for_n(primes_active, n, pos, enabled_ids, theta, mode, tracked_state=None):
     """Ports the non-tracked-primes subset of DrumRenderer's #drawHud /
-    StructuralSieveApp's #renderFrame draw-state construction (see those
-    methods' own doc-comments in js/render/DrumRenderer.js and
-    js/app/StructuralSieveApp.js in the RelationalMathematics repo) as
-    PLAIN TEXT LINES printed to stdout, rather than drawn as an in-GL-window
-    overlay.
-
-    Why stdout and not a GL text overlay: this project has no OpenGL
-    text-rendering pipeline (glyph atlas / freetype / textured-quad-per-glyph
-    shader) -- building one from scratch here would be a real new subsystem,
-    and one this sandbox (no GPU/display) could not visually verify at all
-    before landing it. rings_tab.py's GenerationConsole pane is already
-    proven working on real hardware, since LocalLoggedRunner pipes this
-    module's stdout straight into it -- reusing that live text surface for
-    HUD info is lower-risk than shipping unverified GL text rendering.
+    StructuralSieveApp's #renderFrame draw-state construction (js/render/
+    DrumRenderer.js and js/app/StructuralSieveApp.js in the RelationalMathematics
+    repo) as PLAIN TEXT LINES -- printed to the console pane and rasterized for the
+    GL window's HUD overlay (rasterize_hud_text), so no GL text pipeline (glyph
+    atlas, per-glyph quads) is needed.
 
     `tracked_state` -- the already-computed result of
     ring_geometry.tracked_resonance_state(...)
@@ -92,19 +83,10 @@ def hud_lines_for_n(primes_active, n, pos, enabled_ids, theta, mode, tracked_sta
 
     Returns a list of plain-text lines (may be empty)."""
     lines = []
-    # n=0 is range/fixed mode's own placeholder starting value (see run()'s
-    # own "n = 0 mirrors the JS's own this.#n = 0" comment) -- but
-    # phase = n mod prime is trivially 0 for EVERY prime when n=0, so
-    # pos["is_hit"] was True for ALL of them, and the line below joined
-    # every single active ring's value into one string. That was survivable
-    # when this feature only ever saw a handful of active primes; a real
-    # arbitrary-range load can auto-track/activate thousands of ~26-digit
-    # values at once, turning this into a single tens-of-thousands-of-
-    # characters line that stalls (or silently fails) HUD text
-    # rasterization -- never a MEANINGFUL "factors of N" list either, since
-    # N=0 has no real factorization. Skipped outright for n==0; any n>=1
-    # still gets its real (and normally small) divisor list exactly as
-    # before.
+    # n=0 is range/fixed mode's placeholder starting value. phase = n mod prime is 0
+    # for EVERY prime at n=0, so every active ring would be listed -- after an
+    # arbitrary-range load, thousands of ~26-digit values in one line too long to
+    # rasterize -- while N=0 has no meaningful factorization. Skipped for n==0.
     if n != 0:
         factor_primes = primes_active[pos["is_hit"]] if len(primes_active) else primes_active
         if len(factor_primes):
@@ -136,7 +118,7 @@ def hud_lines_for_n(primes_active, n, pos, enabled_ids, theta, mode, tracked_sta
     if "generalLaw" in enabled_ids:
         lo, hi, k, _factor = general_law_window_bounds(n, theta, mode)
         lo_floor = int(np.floor(lo))
-        # [ADDED 2026-09-26] Two RIGID modes -- theta is a locked display
+        # Two RIGID modes -- theta is a locked display
         # value there (see renderer.py's own --general-law-mode argparse),
         # not a live parameter, so it's left out of the text entirely and the
         # mode's real name stands in for it instead. 'legendre' shows k (a
@@ -151,8 +133,7 @@ def hud_lines_for_n(primes_active, n, pos, enabled_ids, theta, mode, tracked_sta
         else:
             lines.append(f"General Law window (theta={theta}): ({lo_floor:,}, {hi:,}]")
 
-    # [ADDED 2026-09-26, REDESIGNED same day -- see ring_geometry.
-    # nested_shell_colors' own doc-comment] A small color LEGEND -- one line
+    # A small color LEGEND (see ring_geometry.nested_shell_colors) -- one line
     # per distinct NESTING SHELL among currently-enabled families (not every
     # pairwise combination), in that shell's own averaged color, so a viewer
     # can look up what a blended ring's color actually means. No numeric
@@ -184,23 +165,17 @@ def pattern_hud_line(n, offsets, all_match, wheel_modulus=None, wheel_residue_co
 
     `view_mode` -- ring_geometry.line_view_bounds' own "full"/"local" flag
     (build_line_vertex_data's return value, forwarded verbatim by
-    RenderSession.rebuild_line) -- printed only when "local", so Artur can
-    tell at a glance the renderer switched to the anchor-centered
-    viewport (float32-precision fallback for a real archive-scale window,
-    see line_view_bounds' own doc-comment) instead of showing the whole
-    loaded range at once; None or "full" adds nothing, matching this
-    line's own pre-existing text for every case before this fallback
-    existed.
+    RenderSession.rebuild_line) -- printed only when "local", showing that the
+    renderer switched to the anchor-centered viewport (float32-precision fallback
+    for an archive-scale window, see line_view_bounds) instead of the whole loaded
+    range; None or "full" adds nothing.
 
-    `line_axis_curved` -- RenderSession.line_axis_curved's own value
-    (2026-09-18/19 follow-up): when True, reports which curved layout is
-    actually active this frame -- "[axis: spiral]" once a real wheel
+    `line_axis_curved` -- RenderSession.line_axis_curved: when True, reports which
+    curved layout is active this frame -- "[axis: spiral]" once a real wheel
     (`wheel_modulus > 1`) promotes it from a single circle to a spiral
     (see build_line_vertex_data's own `wheel_modulus` doc-comment), or
     "[axis: ring]" for the plain single-circle case (no pattern, or a
-    pattern whose wheel excludes nothing). False (default, unchanged)
-    adds nothing, matching every straight-axis HUD line before this
-    feature existed."""
+    pattern whose wheel excludes nothing). False (default) adds nothing."""
     suffix = "  MATCH!" if all_match else ""
     wheel_text = ""
     if wheel_modulus is not None and wheel_modulus > 1:
@@ -262,7 +237,7 @@ _HUD_WINDOW_LINE_PREFIXES = {
     "generalLaw": "General Law window",
 }
 
-#: [ADDED 2026-09-26] Human-readable display name per family id, used only
+#: Human-readable display name per family id, used only
 #: to build the dynamic nested-shell color-legend lines below -- separate
 #: from _HUD_WINDOW_LINE_PREFIXES's own "<Name> window:" text since a shell
 #: has no single window of its own to report bounds for, just a color to
@@ -299,19 +274,18 @@ def hud_line_colors(lines, window_colors, shell_colors=None):
     (identified by its own fixed leading text, see
     _HUD_WINDOW_LINE_PREFIXES), which gets that family's own plain,
     unconditional color from `window_colors` (ring_geometry.
-    window_label_colors' output -- see that function's own doc-comment for
-    why it's back to a plain per-family lookup, no blending, as of
-    2026-09-26 -- blending moved to the nested-shell legend lines below).
+    window_label_colors' output, a plain per-family lookup with no blending --
+    blending is shown by the nested-shell legend lines below).
 
     Matches by TEXT PREFIX rather than by position/index so this stays
     correct even if hud_lines_for_n's own Factors-of-N/Tracked-block line
     count changes later -- the window-range lines are always identifiable
     by their own fixed leading text regardless of what precedes them.
 
-    `shell_colors` -- [ADDED 2026-09-26] optional dict from ring_geometry.
+    `shell_colors` -- optional dict from ring_geometry.
     nested_shell_colors (frozenset(family ids) -> (r,g,b)), matched the same
-    prefix-text way via _shell_line_prefix -- colors the new nested-shell
-    color-legend lines hud_lines_for_n now appends. None (the default)
+    prefix-text way via _shell_line_prefix -- colors the nested-shell
+    color-legend lines hud_lines_for_n appends. None (the default)
     simply means no shell lines will match, i.e. they'd fall through to the
     flat default color -- callers that DO enable those lines should always
     pass the matching dict, same convention `window_colors` already has (an
@@ -366,9 +340,8 @@ def rasterize_hud_text(lines, font_size=_HUD_FONT_SIZE_DEFAULT, line_colors=None
     one per entry in `lines`, drawn instead of the flat _HUD_TEXT_RGB for
     that line (see hud_line_colors, which builds this list from
     ring_geometry.window_label_colors so the Bertrand/Legendre/General Law
-    window-range lines get their own family color, or a shared averaged
-    color when two enabled families' windows genuinely overlap). None (the
-    default) keeps the old single-flat-color behavior unchanged; a line
+    window-range lines get their own family color). None (the default) draws
+    every line in _HUD_TEXT_RGB; a line
     index beyond len(line_colors) also falls back to _HUD_TEXT_RGB, so a
     caller may pass a shorter list covering only the lines it cares about."""
     if not lines or not _PIL_AVAILABLE:

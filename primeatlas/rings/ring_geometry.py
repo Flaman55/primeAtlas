@@ -9,20 +9,12 @@ benchmark_tab.py/primes_tab.py/widgets.py (see this package's __init__.py's
 own docstring) -- see primeatlas/rings/ring_viz/renderer.py for the GPU-rendered
 interactive consumer of this module's output.
 
-This module exists so that PrimeAtlas's own prime storage plus native
-compute/GPU can drive this same ring visualization at a scale a browser tab
-never could. A standalone feasibility prototype (structural_rings_poc.py,
-this file's original form before landing in this package -- see PLAN.md's
-"Feasibility already confirmed" section) demonstrated the scale this design
-targets: 20 million rings, loaded in 0.27s, pan/zoom held 50+ fps even at a
-fast scroll, N-change rebuild ~1.3s. This module is the "port the math
-correctly" half of that result; get this wrong and nothing built on top of
-it means anything.
+This module lets PrimeAtlas's own prime storage plus native compute/GPU drive the ring
+visualization at a scale a browser tab cannot (target: ~20 million rings, interactive
+pan/zoom). Correctness of these formulas is what everything rendered on top depends on.
 
-Ported formulas (see SieveModel.js/DrumRenderer.js for the original JS and
-its own design-history comments on each -- not reproduced here to avoid two
-copies drifting apart; this file trusts that one as the reference and just
-translates it):
+Ported formulas (SieveModel.js/DrumRenderer.js are the reference and keep their own
+design comments; they are not duplicated here):
 
   - Ring i (0-indexed, ascending prime order) among `count` active rings has
     radius = max_radius * ((i+1)/count) ** 0.85               (DrumRenderer.draw)
@@ -58,35 +50,26 @@ UINT64_MAX = (1 << 64) - 1
 
 def to_prime_array(values):
     """Converts an ascending sequence of nonnegative prime values into the
-    cheapest numpy dtype that holds every value EXACTLY. A real storage floor
-    (floor 25/27, ~10**25-10**27 in magnitude) overflows a hardcoded
-    `dtype=np.int64` cast, so this centralizes the dtype choice instead of
-    letting every prime-handling function decide it independently:
+    cheapest numpy dtype that holds every value EXACTLY. Storage floors 25/27
+    (~10**25-10**27) overflow `dtype=np.int64`, so the dtype choice is centralized
+    here instead of each prime-handling function deciding it:
 
-      - `uint64` (native, vectorized, same speed as the old `int64` path for
-        anything that actually fits -- doubles int64's own ~9.2e18 ceiling to
-        ~1.8e19 for free, purely by dropping the sign bit primes never used)
-        when the largest value fits.
+      - `uint64` (native, vectorized; ~1.8e19 ceiling vs int64's ~9.2e18, since
+        primes never need the sign bit) when the largest value fits.
       - plain-Python-int `object` dtype otherwise -- exact at any magnitude
         (a real floor 25/27 prime included), just slower per-element (numpy
         dispatches object-dtype ufuncs through Python's own int arithmetic
         instead of native SIMD) since there is no fixed-width integer type
         that could hold a 25+-digit value at all.
 
-    Defaults to the fast path, only paying the slow path's cost for the
-    specific data that actually needs it -- so this is checked ONCE here
-    (via the last element, since callers always pass an
-    ascending sequence) rather than every downstream function re-deciding
-    it independently. Already-canonical input (an ndarray already dtype
-    uint64 or object) is returned as-is, no re-copy -- this function is cheap
-    to call at the top of every function that used to hardcode the int64
-    cast, including ones that will see the SAME array call after call.
+    Decided ONCE here from the last element (callers always pass an ascending
+    sequence). Already-canonical input (an ndarray of dtype uint64 or object) is
+    returned as-is, without a copy, so this is cheap to call at the top of every
+    prime-handling function, repeatedly on the same array.
 
-    An already-array `values` that is neither uint64 nor object is (e.g. the
-    old default int64, or a plain Python list) re-cast the slow way (`int(x)`
-    per element) only when its own dtype can't cheaply prove every element
-    fits uint64 -- negligible cost next to the actual load/render work this
-    feeds into."""
+    An array of any other dtype (e.g. int64, or a plain Python list) is re-cast per
+    element (`int(x)`) only when its dtype can't cheaply prove every element fits
+    uint64."""
     if isinstance(values, np.ndarray) and values.dtype in (np.uint64, object):
         return values
     n = len(values)
@@ -201,8 +184,7 @@ def ring_positions(primes, n, max_radius, cx=0.0, cy=0.0):
     arbitrary prime p) -- such a reduction is only ever a no-op safety net
     for n already < 2**63, never a valid shortcut past it, which real
     floor-25+ viewing needs `n` to reach. Instead: `primes_arr` uint64 AND
-    `n` fits uint64 keeps the exact fast vectorized `np.mod` path (unchanged
-    cost, unchanged result for every case that already worked); anything
+    `n` fits uint64 keeps the fast vectorized `np.mod` path; anything
     past either ceiling routes through one `object`-dtype `np.mod` call
     (numpy dispatches this via Python's own exact int `%` per element --
     correct at any magnitude, paid only in this branch)."""
@@ -290,15 +272,10 @@ def general_law_window_bounds(n, theta, mode):
     with the same null-as-None conventions as the JS version (k/factor are
     None where the JS returns null).
 
-    [ADDED 2026-09-26, ported from the RelationalMathematics browser prototype
-    -- see that repo's SieveModel.js commit "Add exact Bertrand/Legendre modes
-    to General Law's window selector"] Two RIGID modes, theta ignored
-    entirely: 'bertrand' reproduces is_bertrand_member's own lo (n//2)
-    exactly, 'legendre' reproduces is_legendre_member's own lo (k*k) exactly
-    -- these approximate nothing, unlike stepped/sliding's theta-parameterized
-    curves. See general_law_anchor_at's own doc-comment for why the ANCHOR
-    (not just this window) also needs its own direct delegation for
-    'bertrand' specifically."""
+    Two RIGID modes ignore theta entirely: 'bertrand' reproduces is_bertrand_member's
+    lo (n//2) exactly, 'legendre' reproduces is_legendre_member's lo (k*k) exactly --
+    unlike stepped/sliding's theta-parameterized curves. See general_law_anchor_at for
+    why the ANCHOR also delegates directly for 'bertrand'."""
     if mode == "bertrand":
         return n // 2, n, None, None
     if mode == "legendre":
@@ -332,10 +309,8 @@ def is_general_law_member(primes, n, theta, mode):
 
 
 def _fade_previous_level(primes_arr, k, exposure_count, live):
-    """[ADDED 2026-09-26] Shared fade-continuity core behind
-    is_legendre_highlighted and is_general_law_highlighted's own 'stepped'
-    branch (see both functions' own doc-comments for the full design
-    history and Artur's own reported bug). Treats the PREVIOUS level's own
+    """Shared fade-continuity core behind is_legendre_highlighted and
+    is_general_law_highlighted's 'stepped' branch. Treats the PREVIOUS level's
     members ((k-1)^2, k^2]) as a queue, oldest (smallest) first: for every
     member the CURRENT level has exposed the viewer to so far
     (`exposure_count`), retires exactly one -- the smallest still-
@@ -361,11 +336,8 @@ def _fade_previous_level(primes_arr, k, exposure_count, live):
     grows and k stays fixed) -- see is_legendre_highlighted's own call
     below, which passes exactly that.
 
-    k<2 (no previous level exists yet -- the only n range where this can
-    ever diverge from a "well-formed" previous level, per Artur's own
-    explicit call to set this boundary case aside as harmless: it only
-    arises while the window itself is still extremely narrow) simply
-    returns `live` unchanged -- no fabricated previous level."""
+    k<2 (no previous level exists; only reachable while the window is still very
+    narrow) returns `live` unchanged -- no fabricated previous level."""
     if k < 2:
         return live
     prev_lo = (k - 1) * (k - 1)
@@ -380,56 +352,28 @@ def _fade_previous_level(primes_arr, k, exposure_count, live):
 
 
 def is_legendre_highlighted(primes, n):
-    """[ADDED 2026-09-26] The RENDERING variant of Legendre membership, used
-    for the ring's own highlight (teeth) color -- is_legendre_member above
-    stays the strict mathematical test, unchanged, unaffected by this.
+    """The RENDERING variant of Legendre membership, used for the ring's
+    highlight (teeth) color -- is_legendre_member stays the strict mathematical
+    test.
 
-    Fixes an abrupt-reset bug Artur reported live against this exact module
-    (screenshots at N=144/145/169, level 11->12 -- see
-    _test_is_legendre_highlighted's own doc-comment for the full report):
-    when the level closes, is_legendre_member alone extinguishes EVERY one of
-    that level's own highlighted primes in the SAME single step the level
-    advances, even though the new level has not yet produced a single member
-    of its own -- visually jarring next to Bertrand, whose much wider window
-    never empties out all at once (see is_bertrand_member's own doc-comment:
-    consecutive Bertrand windows always overlap by construction, so Bertrand
-    never needed a fix like this one).
+    With is_legendre_member alone, every highlighted prime of a level goes dark in
+    the same step the level advances, before the new level has produced any member
+    of its own. (Bertrand needs no such layer: consecutive Bertrand windows always
+    overlap, see is_bertrand_member.)
 
-    [HISTORY] An EARLIER attempt at this same idea (is_legendre_highlighted,
-    "stay lit until this ring's own next self-multiple") was removed
-    entirely from this file (2026-09-26, same day) because Artur found it
-    showed green dots nearly as wide as Bertrand's own (n/2, n] window for
-    most primes -- see _test_legendre_member_strict_only's own doc-comment
-    for the exact diagnosis (that formula's grace period could be a 2x, 3x,
-    or more multiple of the prime's own value, entirely by where the prime
-    happened to sit within its level, with no relationship to the level
-    structure itself). THIS design is different in kind, not just degree:
-    the previous level's own members fade out ONE FOR ONE as the current
-    level produces its own members, so the fade can never outlast "the
-    previous level's own total population" -- a bound tied to the actual
-    level structure, not an arbitrary per-prime multiple.
+    Rule (mechanics in _fade_previous_level): the previous level's members form a
+    queue, oldest (smallest) first; for every member the current level has produced
+    so far, exactly one survivor is retired. The fade therefore never outlasts the
+    previous level's own population -- a bound tied to the level structure, not a
+    per-prime multiple. It also shows whether the new level is richer or sparser: with
+    FEWER members, exposure never catches up and some old members stay lit; with MORE,
+    the old queue empties before the new level finishes.
 
-    Rule (Artur's own, confirmed over several rounds -- see
-    _fade_previous_level's own doc-comment for the mechanics): treat the
-    previous level's own members as a queue, oldest (smallest) first; for
-    every member the current level has produced so far, retire exactly one
-    survivor. This also surfaces, for free, whether the new level is richer
-    or sparser than the old one: if the new level has FEWER members than
-    the old one, exposure never catches up and some old members stay lit
-    indefinitely (visibly "the new window is sparser"); if it has MORE, the
-    old queue empties out before the new level finishes and the rest of its
-    own members simply light up fresh, no fading involved.
-
-    Deliberately a PURE function of n -- both "the previous level's own full
-    membership" and "how many members the current level has produced so
-    far" are directly recomputable from n and the prime list alone, no
-    per-tick queue kept anywhere -- so this cannot suffer the same
-    rewind/backward-step desync bug Artur found by accident while producing
-    the screenshots that prompted this fix (a genuinely stateful per-tick
-    queue would have exactly that failure mode; see this repo's own
-    long-standing "everything is a pure function of n" convention, e.g.
-    bertrand_anchor_at's own doc-comment, for why state is avoided
-    everywhere else in this module too)."""
+    A PURE function of n -- both the previous level's membership and the current
+    level's count so far are recomputable from n and the prime list -- so it stays
+    consistent under rewind/backward steps, where a stateful per-tick queue would
+    desync (same "everything is a pure function of n" convention as
+    bertrand_anchor_at)."""
     primes_arr = np.asarray(primes)
     live = is_legendre_member(primes_arr, n)
     k = legendre_level_at(n)
@@ -438,41 +382,25 @@ def is_legendre_highlighted(primes, n):
 
 
 def is_general_law_highlighted(primes, n, theta, mode):
-    """[ADDED 2026-09-26] General Law's own rendering-highlight test, same
-    role as is_legendre_highlighted above for Legendre's -- is_general_law_member
-    stays the strict mathematical test for every mode, unaffected.
+    """General Law's rendering-highlight test, same role as is_legendre_highlighted
+    for Legendre -- is_general_law_member stays the strict test for every mode.
 
-    'bertrand'/'sliding' are unchanged (plain is_general_law_member) --
-    already smoothly-creeping by construction (see
-    general_law_window_bounds' own doc-comment: 'sliding' has no level
-    concept to abruptly reset from in the first place; 'bertrand' delegates
-    to is_bertrand_member's own always-overlapping window), confirmed by
-    live-testing the RelationalMathematics website's equivalent feature this
-    same session -- no fade layer needed for either.
+    'bertrand'/'sliding' use plain is_general_law_member: both already creep
+    smoothly ('sliding' has no level to reset from; 'bertrand' delegates to
+    is_bertrand_member's always-overlapping window).
 
-    'legendre' mode delegates straight to is_legendre_highlighted -- exact
-    reproduction of the real Legendre checkbox, fade included, which is the
-    whole point of a RIGID mode.
+    'legendre' delegates to is_legendre_highlighted -- an exact reproduction of the
+    Legendre checkbox, fade included, which is the point of a RIGID mode.
 
-    'stepped' mode [ADDED 2026-09-26, SAME DAY as a follow-up -- Artur:
-    "damy radę przenieść to samo na GL?"] reuses the SAME _fade_previous_level
-    core as 'legendre', with one crucial difference: the `exposure_count`
-    passed to it is NOT count_nonzero of stepped's own (narrower) live mask.
-    'stepped' scales its own window narrower than Legendre's via
-    general_law_tent_factor, and unlike Legendre's raw test -- which, once a
-    prime satisfies (k^2, n], can NEVER fail it again for the rest of that
-    level, since k stays fixed and n only grows -- stepped's own `lo`
-    CONTINUES CREEPING UP throughout the level (it's a blend of n and
-    Legendre's lo, not fixed at the level's own opening edge), so a prime
-    can satisfy stepped's own window right when it's born and then drop
-    back OUT of it later in the SAME level, with no level change involved
-    at all. A naive count_nonzero(stepped's own live mask) would therefore
-    be non-monotonic within a level, which could retire FEWER previous-
-    level members than it already had -- resurrecting an already-retired
-    one.
+    'stepped' reuses the same _fade_previous_level core as 'legendre', except that
+    the `exposure_count` passed to it is NOT count_nonzero of stepped's own (narrower)
+    live mask. Stepped's `lo` keeps creeping up throughout a level (a blend of n and
+    Legendre's lo), so a prime can enter stepped's window when born and leave it later
+    in the SAME level; a count of the live mask would be non-monotonic within a level
+    and could retire FEWER previous-level members than before, resurrecting one.
 
-    The fix: use Legendre's OWN plain membership count for `exposure_count`
-    instead, provably always correct here. Proof: at the exact moment a
+    Instead `exposure_count` is Legendre's plain membership count, provably exact.
+    Proof: at the exact moment a
     prime p is born (n=p), stepped's own lo(p) = p*(1-factor) +
     legendre_lo*factor < p whenever factor > 0 and p > legendre_lo (both
     always true for an active prime inside the current level -- and even
@@ -506,9 +434,9 @@ def is_general_law_highlighted(primes, n, theta, mode):
 # #activeWindowCount into vectorized numpy form. See that file for the full
 # design rationale on why the blend is additive-RGB. Legendre's (and General
 # Law's 'legendre' mode's) own highlight test is is_legendre_highlighted --
-# see that function's own doc-comment for the fade-continuity design and its
-# own [HISTORY] note on an EARLIER, since-removed "sticky" variant that
-# produced a false-positive green band nearly as wide as Bertrand's window.
+# see that function's own doc-comment for the fade-continuity design (a fade bounded
+# by the previous level's population, not a per-prime grace period, which would
+# light up a band nearly as wide as Bertrand's window).
 # The JS versions operate per single (n, prime) pair, called once per ring
 # per animation tick; this module instead computes highlight color for EVERY
 # active ring at once (a whole-frame batch), which is what the ring-count
@@ -529,49 +457,35 @@ WINDOW_FAMILY_COLORS = {
 }
 
 
-#: Registry of family_id -> callable(n, theta, mode) -> (lo, hi) numeric
-#: bounds -- the SAME shape ANCHOR_FUNCTIONS below already uses for anchors.
-#: [ADDED 2026-09-26, replaces the old hardcoded if/elif _window_bounds_for_
-#: label] Adding a future 4th window family means adding one entry here (plus
-#: a WINDOW_FAMILY_COLORS color and a WINDOW_MEMBER_FUNCTIONS entry below) --
-#: window_label_colors/compute_highlight_colors themselves never need to
-#: change, since both just iterate `enabled_ids` through these registries.
-#: theta/mode are unused by bertrand/legendre (kept for a uniform call
-#: signature across every registered family, same convention ANCHOR_
-#: FUNCTIONS already established).
+#: Registry of family_id -> callable(n, theta, mode) -> (lo, hi) numeric bounds -- the
+#: same shape ANCHOR_FUNCTIONS uses for anchors. A new window family needs one entry
+#: here (plus WINDOW_FAMILY_COLORS and WINDOW_MEMBER_FUNCTIONS entries);
+#: window_label_colors/compute_highlight_colors iterate `enabled_ids` through these
+#: registries and need no change. theta/mode are unused by bertrand/legendre (uniform
+#: call signature across families).
 WINDOW_BOUNDS_FUNCTIONS = {
     "bertrand": lambda n, theta, mode: (n // 2, n),
     "legendre": lambda n, theta, mode: (legendre_level_at(n) ** 2, n),
     "generalLaw": lambda n, theta, mode: general_law_window_bounds(n, theta, mode)[:2],
 }
 
-#: Registry of family_id -> callable(primes_arr, n, theta, mode) -> bool
-#: array -- same dynamic-registry purpose as WINDOW_BOUNDS_FUNCTIONS above,
-#: for compute_highlight_colors' own per-ring highlight test (previously a
-#: hardcoded if/elif/raise chain). [CHANGED 2026-09-26] "legendre"/"generalLaw"
-#: now go through is_legendre_highlighted/is_general_law_highlighted (the
-#: fade-continuity layer -- see those functions' own doc-comments) rather
-#: than the plain strict-membership tests directly; "bertrand" is unchanged
-#: (its own window overlap already provides the same continuity with no
-#: extra layer needed). WINDOW_BOUNDS_FUNCTIONS above is DELIBERATELY left
-#: alone (still the plain mathematical lo/hi) -- nested_shell_colors' own
-#: containment logic needs the real window bounds, not the rendering-only
-#: fade adjustment this registry exists for.
+#: Registry of family_id -> callable(primes_arr, n, theta, mode) -> bool array, for
+#: compute_highlight_colors' per-ring highlight test. "legendre"/"generalLaw" go through
+#: is_legendre_highlighted/is_general_law_highlighted (the fade-continuity layer);
+#: "bertrand" uses its strict test (its window overlap already gives continuity).
+#: WINDOW_BOUNDS_FUNCTIONS stays the plain mathematical lo/hi: nested_shell_colors'
+#: containment logic needs the real window bounds, not the rendering-only fade.
 WINDOW_MEMBER_FUNCTIONS = {
     "bertrand": lambda primes_arr, n, theta, mode: is_bertrand_member(primes_arr, n),
     "legendre": lambda primes_arr, n, theta, mode: is_legendre_highlighted(primes_arr, n),
     "generalLaw": lambda primes_arr, n, theta, mode: is_general_law_highlighted(primes_arr, n, theta, mode),
 }
 
-#: [ADDED 2026-09-26] The plain STRICT mathematical membership test per
-#: family, no fade layer -- mirrors StructuralSieveApp.js's own
-#: `isStrictMember` field on #windowHighlightFamilies (Bertrand has no
-#: separate strict test there either, for the same reason: its own
-#: isHighlighted IS already the strict test). Used by
-#: compute_highlight_colors' own two-tier precedence (see that function's
-#: own doc-comment) to decide, per ring, whether a family's fade-only match
-#: should be allowed to blend in or gets overridden by another family's
-#: genuinely-live match.
+#: The plain STRICT mathematical membership test per family, no fade layer -- mirrors
+#: StructuralSieveApp.js's `isStrictMember` field on #windowHighlightFamilies (Bertrand
+#: has no separate strict test there either: its isHighlighted already is strict). Used
+#: by compute_highlight_colors' two-tier precedence to decide, per ring, whether a
+#: family's fade-only match may blend in or is overridden by another family's live match.
 STRICT_MEMBER_FUNCTIONS = {
     "bertrand": lambda primes_arr, n, theta, mode: is_bertrand_member(primes_arr, n),
     "legendre": lambda primes_arr, n, theta, mode: is_legendre_member(primes_arr, n),
@@ -581,26 +495,11 @@ STRICT_MEMBER_FUNCTIONS = {
 
 def window_label_colors(enabled_ids, n, theta=0.5, mode="stepped"):
     """Colors for the HUD's window-range text lines (e.g. "Bertrand window:
-    (70, 141]") -- each enabled family's OWN plain WINDOW_FAMILY_COLORS
-    entry, unconditionally.
-
-    [REDESIGNED 2026-09-26, twice the same day -- see nested_shell_colors'
-    own doc-comment for the second half of this story] The first redesign
-    (averaging + real-overlap grouping, in response to Artur's own bug
-    report that Legendre's genuinely-non-General-Law primes rendered as a
-    washed-out near-white) made THIS function blend labels together too --
-    but Artur's own follow-up, after actually seeing it live: Bertrand's own
-    line should stay solidly pink (it IS pink on screen), Legendre's own
-    line should stay solidly green (it IS green -- even though no ring ever
-    shows PURE green, since Bertrand always swallows Legendre's window
-    whole, its LABEL still identifies "this is Legendre" by Legendre's own
-    color), same for General Law's purple. Blending moved OUT of this
-    function entirely, into nested_shell_colors' own dedicated legend lines
-    -- this one is back to a plain, unconditional per-family lookup, same
-    shape compute_tracked_colors/compute_highlight_colors' own per-RING
-    colors never had a "no blend, ever" mode to fall back to (rings
-    genuinely can be inside 2+ windows at once; a LABEL identifying which
-    window is which should not visually disappear because of that).
+    (70, 141]") -- each enabled family's own WINDOW_FAMILY_COLORS entry,
+    unconditionally, never blended: a label identifies one window, and must stay
+    readable as that family's color even though rings can be inside 2+ windows at once
+    (Bertrand's window always contains Legendre's, so no ring is ever pure green).
+    Blends are shown separately, by nested_shell_colors' legend lines.
 
     Returns dict family_id -> (r, g, b) int 0-255 tuple, one entry per id in
     `enabled_ids` that is a real WINDOW_FAMILY_COLORS key (unknown ids are
@@ -614,46 +513,27 @@ def window_label_colors(enabled_ids, n, theta=0.5, mode="stepped"):
 
 
 def nested_shell_colors(enabled_ids, n, theta=0.5, mode="stepped"):
-    """[ADDED 2026-09-26, REPLACES the same-day pairwise_family_colors --
-    see git history] A small color LEGEND for the HUD: one entry per
-    distinct NESTING LEVEL among `enabled_ids`' real windows at this n,
-    mapping frozenset(family ids active from that level inward) to the
-    AVERAGED (r, g, b) of their registered colors.
+    """A small color LEGEND for the HUD: one entry per distinct NESTING LEVEL among
+    `enabled_ids`' real windows at this n, mapping frozenset(family ids active from
+    that level inward) to the AVERAGED (r, g, b) of their registered colors.
 
-    Artur's own live correction, after actually seeing all-pairwise legend
-    lines on screen: Bertrand's/Legendre's/General Law's own HUD lines
-    (window_label_colors) should stay solidly their OWN color -- the
-    blending belongs ONLY in dedicated legend lines, and those legend lines
-    should reflect the REAL nested structure, not every abstract pairwise
-    combination. The key mathematical fact making this simple: every window
-    family here shares the exact SAME right edge n (see e.g.
-    isBertrandWindowMember's own doc-comment, "right edge is always the
-    current n... not incidental") -- so for any two enabled families, one's
-    window is ALWAYS either identical to or a strict SUPERSET of the
-    other's (never a partial, crossing overlap) -- comparing `lo` alone
-    gives a total order. Enabled families therefore form a chain of nested
-    shells, outermost (smallest lo) to innermost (largest lo): the first
-    (widest) shell is just that one family alone (already covered by its
-    own solid-color line, not repeated here), and each subsequent, narrower
-    shell adds exactly one more family to the running blend -- giving
-    len(distinct lo values) - 1 legend entries, NOT 2^k-1 (every possible
-    subset) or C(k,2) (every pair) -- e.g. 3 families with 3 distinct `lo`
-    values give exactly 2 entries (Bertrand+Legendre, then +General Law),
-    matching Artur's own count ("tylko dwa dodatkowe pola nie trzy").
-    Families whose `lo` ties EXACTLY (e.g. General Law at theta=0.5,
-    provably identical to Legendre) open the SAME shell together -- no
-    separate boundary between them, since their window is genuinely the
-    same set of primes.
+    Every window family shares the same right edge n (see isBertrandWindowMember), so
+    of any two enabled windows one always contains the other (never a crossing
+    overlap) and comparing `lo` gives a total order. Enabled families therefore form a
+    chain of nested shells, outermost (smallest lo) to innermost (largest lo). The
+    widest shell is a single family (already shown by its own solid-color line in
+    window_label_colors), and each narrower shell adds one family to the blend --
+    len(distinct lo values) - 1 entries, not every subset or pair (3 families with 3
+    distinct `lo` give 2 entries: Bertrand+Legendre, then +General Law). Families whose
+    `lo` ties exactly (e.g. General Law at theta=0.5, identical to Legendre) open the
+    same shell together, since their windows are the same set of primes.
 
     Same dynamic-registry convention as WINDOW_BOUNDS_FUNCTIONS/WINDOW_
     MEMBER_FUNCTIONS/ANCHOR_FUNCTIONS: a future 4th window family needs only
     its own WINDOW_BOUNDS_FUNCTIONS/WINDOW_FAMILY_COLORS entries -- this
     function automatically grows to however many shells that family's own
-    `lo` creates relative to the others, no code change here. Relies on
-    every registered family sharing the same right edge as n (the
-    established, documented convention every family here already follows);
-    a hypothetical future family that did NOT would break the "total order"
-    assumption this function's shell-chain construction depends on."""
+    `lo` creates. Relies on every registered family sharing n as its right edge; a
+    family that did not would break the total order the shell chain depends on."""
     bounds_by_family = {}
     for family_id in enabled_ids:
         if family_id not in WINDOW_BOUNDS_FUNCTIONS or family_id not in WINDOW_FAMILY_COLORS:
@@ -721,7 +601,7 @@ def general_law_anchor_at(primes, n, theta, mode):
     floor(lo)+1", equivalent for integer primes -- see the JS method's own
     doc-comment).
 
-    [ADDED 2026-09-26] 'bertrand' delegates to bertrand_anchor_at's own
+    'bertrand' delegates to bertrand_anchor_at's own
     stateful witness-doubling chain, NOT this generic "largest active prime
     <= floor(lo)" recompute -- these can genuinely disagree (n=10:
     floor(10/2)=5, largest active prime <=5 is 5, but the real chain
@@ -750,70 +630,40 @@ ANCHOR_FUNCTIONS = {
 
 
 def cyclic_window_anchor_at(anchor_state, family_id, primes, n, theta=0.5, mode="stepped"):
-    """Legendre/General Law's own tracked-ring anchor -- NOT a port of
-    anything in SieveModel.js, a design that REPLACES
-    legendre_anchor_at/general_law_anchor_at for this purpose (those two
-    functions and ANCHOR_FUNCTIONS above are untouched and still used for
-    Bertrand, and still exist in their own right -- only the renderer.py
-    call sites that feed the tracked-ring OUTLINE now use this function
-    instead for "legendre"/"generalLaw").
+    """Legendre/General Law's tracked-ring anchor -- not a port of SieveModel.js.
+    Used by renderer.py for the tracked-ring OUTLINE of "legendre"/"generalLaw";
+    legendre_anchor_at/general_law_anchor_at and ANCHOR_FUNCTIONS remain for Bertrand
+    and other callers.
 
-    Bertrand's freeze/jump rule (jump only once n >= 2*anchor) gives a
-    clean "wait for every pink prime below the tracked ring to reach the
-    vertical red line, then jump" effect on its own wide (n/2, n] window --
-    but Legendre/General Law's window is only a few dozen points wide near
-    the start of the axis (and narrows further as N grows), too narrow for
-    that same 2x-doubling condition to ever fire sensibly.
-    legendre_anchor_at/general_law_anchor_at's plain per-call recomputation
-    (whatever prime currently sits at the window's own edge) was a first
-    attempt at mimicking Bertrand's effect there, but it does not actually
-    hold the tracked ring still long enough to show anything -- it can
-    select a different ring almost every step.
+    Bertrand's freeze/jump rule (jump once n >= 2*anchor) works on its wide (n/2, n]
+    window, but Legendre/General Law's window is only a few dozen points wide near the
+    start of the axis and narrows as N grows, too narrow for a 2x condition. A plain
+    per-call recomputation (whatever prime sits at the window's edge) selects a
+    different ring almost every step.
 
-    Rule implemented here: the anchor freezes at the window's own RIGHT
-    edge (the largest active prime <= n) the moment a new window opens, and
-    stays frozen there for as long as that SAME window is still open,
-    drifting toward the window's own left side only in the sense that
-    newer, bigger rings keep entering to its right while it stays put; once
-    the window closes (a NEW one opens) the anchor re-freezes at the new
-    window's own right edge, and the cycle repeats.
+    Rule: the anchor freezes at the window's RIGHT edge (the largest active prime <= n)
+    when a new window opens and stays there while that window is open; newer rings
+    enter to its right. When a new window opens, it re-freezes at the new right edge.
 
-    What "a new window opens" means differs by family, because Legendre's
-    own `lo` (= k*k) is CONSTANT for the whole level, jumping in one
-    discrete step only at each perfect-square level boundary -- there,
-    "a new window opens" means legendre_level_at(n) itself changed.
-    General Law's `lo` (general_law_window_bounds) is NOT constant per
-    level in general: "sliding" mode has no level concept at all (`lo = n
-    - n**theta` creeps up on every single n), and "stepped" mode's own
-    `lo = n - (n - legendre_lo) * factor` (factor = general_law_tent_factor
-    (theta)) reduces to Legendre's own constant-per-level `lo` ONLY at the
-    exact tent peak theta=0.5 (factor == 1) -- for ANY other theta, factor
-    < 1, so `lo` still creeps up continuously WITHIN a level (just slower
-    than n itself, scaled by (1 - factor)), not just at level boundaries.
-
-    With Legendre AND General Law both on (theta != 0.5, stepped mode),
-    routing every "stepped"-mode General Law call through the SAME
-    level-keyed branch as Legendre, regardless of theta, produces the EXACT
-    SAME anchor value as Legendre for every theta, not just theta=0.5 --
-    since that branch's re-anchor trigger only looks at
-    legendre_level_at(n), never at General Law's own, theta-dependent
-    `lo`. That shows up as two different HUD window ranges (e.g. Legendre
-    (1156,1199], General Law theta=0.3 (1177,1199]) with only one ring
-    appearing, in the additively-blended color, as if both anchors had
-    coincided. The level-keyed branch is therefore used for General Law
-    only when its `lo` genuinely IS piecewise-constant per level (factor ==
-    1.0, i.e. theta==0.5 exactly); any other theta in "stepped" mode takes
-    the same numeric-creep branch "sliding" mode already correctly uses.
+    "A new window opens" differs by family. Legendre's `lo` (= k*k) is constant per
+    level and jumps only at perfect squares, so it means legendre_level_at(n) changed.
+    General Law's `lo` (general_law_window_bounds) is not constant per level in
+    general: "sliding" has no levels (`lo = n - n**theta` creeps on every n), and
+    "stepped" (`lo = n - (n - legendre_lo) * factor`, factor =
+    general_law_tent_factor(theta)) equals Legendre's constant `lo` only at theta=0.5
+    (factor == 1); for any other theta, `lo` creeps within a level. Keying stepped mode
+    on the Legendre level for every theta would give it exactly Legendre's anchor even
+    when the two windows differ (e.g. Legendre (1156,1199] vs. General Law theta=0.3
+    (1177,1199]). Hence:
 
       - family_id == "legendre", or "generalLaw" with mode == "stepped"
         AND theta == 0.5 exactly (factor == 1.0, `lo` piecewise-constant
         per level, identical to Legendre's own): keyed on
         legendre_level_at(n) -- re-anchor at the window's own right edge
         exactly when the level differs from the level the currently-frozen
-        anchor was picked under (this is also why an immediate re-freeze
-        right after re-anchoring is NOT a bug here: the newly-picked
-        anchor's own level always matches the level that was just entered,
-        so the very next call at the same level leaves it untouched).
+        anchor was picked under (an immediate re-freeze right after re-anchoring is
+        expected: the new anchor's level equals the level just entered, so the next
+        call at the same level leaves it untouched).
       - family_id == "generalLaw" with mode == "sliding", OR "stepped" with
         any theta != 0.5: keyed on the numeric `lo` from
         general_law_window_bounds -- re-anchor whenever the frozen anchor
@@ -845,15 +695,11 @@ def cyclic_window_anchor_at(anchor_state, family_id, primes, n, theta=0.5, mode=
         # level-keyed.
         level_keyed = True
     elif mode == "bertrand":
-        # [ADDED 2026-09-26] generalLaw's own rigid 'bertrand' mode has no
-        # cyclic state of its own either -- same reason family_id=="bertrand"
-        # itself is rejected below: bertrand_anchor_at's freeze/jump chain is
-        # ALREADY a complete, self-contained cadence (see that function's own
-        # doc-comment), computed fresh from (primes, n) alone. Wrapping it in
-        # this function's own level/lo-creep freeze logic on top would be a
-        # second, redundant (and potentially conflicting) cadence -- bypass
-        # anchor_state entirely and delegate straight through, exactly like
-        # ANCHOR_FUNCTIONS["bertrand"] does for the standalone checkbox.
+        # generalLaw's rigid 'bertrand' mode has no cyclic state either (same reason
+        # family_id=="bertrand" is rejected below): bertrand_anchor_at's freeze/jump
+        # chain is already a complete cadence computed from (primes, n). A second
+        # level/lo freeze on top would conflict with it, so anchor_state is bypassed and
+        # the call delegated, like ANCHOR_FUNCTIONS["bertrand"] for the checkbox.
         return bertrand_anchor_at(primes_arr, n)
     elif mode == "legendre":
         # generalLaw's own rigid 'legendre' mode has EXACTLY Legendre's own
@@ -891,20 +737,11 @@ def _blend_family_colors(masks_by_family):
     membership for highlight color; plain anchor-equality for tracked
     color -- see the two callers below).
 
-    [CHANGED 2026-09-26] AVERAGE per matched ring, not sum-then-clamp-to-255
-    -- Artur's own real bug report: with Bertrand+Legendre+General Law all
-    enabled, primes strictly inside Legendre but outside General Law still
-    also sit inside Bertrand's own much wider window, so the OLD sum-then-
-    clip rendered them a washed-out near-white (255,255,224) -- summing
-    already-saturated 0-255 channels clips toward white almost immediately,
-    reading as "unhighlighted" at a glance even though the blend arithmetic
-    was doing exactly what it was designed to. Averaging instead means each
-    contributing family's color visibly pulls the result toward itself
-    (pink+green averages to a muted olive, not near-white), and scales to
-    any NUMBER of simultaneously-matched families with no extra code here --
-    same "one dynamic rule, no per-combination special-casing" requirement
-    as window_label_colors' own redesign (see that function's own
-    doc-comment for the full story and Artur's exact quote).
+    Colors are AVERAGED per matched ring, not summed and clamped to 255: summing
+    already-saturated 0-255 channels clips toward white almost immediately (e.g.
+    Bertrand+Legendre+General Law -> (255,255,224), which reads as "unhighlighted").
+    Averaging lets each contributing family visibly pull the result toward its own
+    color (pink+green -> muted olive) and scales to any number of matched families.
 
     `masks_by_family` -- dict of family_id -> boolean numpy array (same
     length, one entry per ring): True where that family contributes its
@@ -941,24 +778,15 @@ def compute_highlight_colors(primes, n, enabled_ids, theta=0.5, mode="stepped"):
     at once. `enabled_ids` is an iterable of family ids from
     WINDOW_FAMILY_COLORS currently toggled on (e.g. {"bertrand", "legendre"}).
 
-    [CHANGED 2026-09-26, reinstated the same day after an earlier removal --
-    see is_legendre_highlighted's own [HISTORY] note] WINDOW_MEMBER_FUNCTIONS
-    now includes a fade-continuity layer for Legendre/General Law('legendre'
-    mode) on top of strict membership (see is_legendre_highlighted's own
-    doc-comment), so this function restores the SAME two-tier strict/sticky
-    precedence the JS reference's own #computeHighlightColor has always had:
-    for each ring, every ENABLED family's own STRICT_MEMBER_FUNCTIONS test is
-    checked first; if ANY family strictly matches that ring, ONLY the
-    strictly-matching families contribute to the blend for it (a family
-    whose only match is via its own fade/sticky layer is excluded) --
-    otherwise (no family strictly matches), every family's own
-    WINDOW_MEMBER_FUNCTIONS result (fade included) is used instead. This is
-    exactly what stops Bertrand's much wider window from "inheriting"
-    Legendre's fading remnants and permanently blending instead of ever
-    showing pure Bertrand pink once a ring is genuinely, strictly inside
-    Bertrand's own window too (see StructuralSieveApp.js's own
-    #computeHighlightColor doc-comment for the original motivating bug this
-    precedence rule fixes).
+    WINDOW_MEMBER_FUNCTIONS includes a fade-continuity layer for Legendre/General Law
+    (see is_legendre_highlighted), so this applies the same two-tier strict/sticky
+    precedence as the JS reference's #computeHighlightColor: for each ring, every
+    enabled family's STRICT_MEMBER_FUNCTIONS test is checked first; if ANY family
+    strictly matches, ONLY the strictly-matching families contribute to the blend (a
+    family matching only through its fade layer is excluded); otherwise every family's
+    WINDOW_MEMBER_FUNCTIONS result (fade included) is used. This keeps a ring strictly
+    inside Bertrand's window pure Bertrand pink instead of blending with Legendre's
+    fading remnants.
 
     Returns (colors, matched) -- see _blend_family_colors's own docstring for
     the exact shape; `matched[i] is False` is this function's counterpart to
@@ -997,21 +825,17 @@ def compute_tracked_colors(primes, n, enabled_ids, theta=0.5, mode="stepped", an
     """Vectorized port of #computeTrackedColor: for each ring, sums the
     colors of every enabled family whose OWN anchor (bertrand_anchor_at /
     legendre_anchor_at / general_law_anchor_at, or `anchor_overrides` below)
-    is exactly that ring's prime. Deliberately a DIFFERENT question from
-    compute_highlight_colors (window membership) -- see that JS method's own
-    doc-comment for the exact bug this distinction fixes (two different
-    anchors collapsing to the same blended color because both happened to
-    satisfy each other's window-membership test).
+    is exactly that ring's prime. A different question from compute_highlight_colors
+    (window membership): two anchors that satisfy each other's window-membership test
+    must still get their own colors.
 
     `anchor_overrides` -- optional {family_id: anchor}
     dict; when a family_id is a key here (even with value None), its value
     is used directly instead of calling ANCHOR_FUNCTIONS[family_id] -- this
     is how renderer.py feeds in cyclic_window_anchor_at's own stateful
     "legendre"/"generalLaw" anchors (see that function's own doc-comment)
-    while Bertrand keeps resolving through ANCHOR_FUNCTIONS as before. A
-    family_id absent from this dict falls back to ANCHOR_FUNCTIONS exactly
-    as it always has, so passing None (the default) reproduces the old
-    behavior unchanged.
+    while Bertrand keeps resolving through ANCHOR_FUNCTIONS. A family_id absent from
+    this dict falls back to ANCHOR_FUNCTIONS; None (the default) means no overrides.
 
     Returns (colors, matched) -- same shape as compute_highlight_colors."""
     primes_arr = to_prime_array(primes)
@@ -1101,24 +925,16 @@ def active_window_count(enabled_ids):
 
 
 # ---------------------------------------------------------------------------
-# Resonance -- ports SieveModel.resonanceEventsInRange,
-# the bulk "goto catch-up" resonance-flash finder used by
-# StructuralSieveApp's resonance log. See that JS method's own extensive
-# doc-comment (SieveModel.js) for the full algorithm rationale and the
-# long-standing toy bug it fixes (goto silently skipping every resonance
-# event strictly before the jumped-to n). Ported here as a near-literal
-# translation rather than further-vectorized, because the JS algorithm is
-# itself already the efficient form (a marking pass, not O(range * primes)
-# trial division) -- the one place numpy helps is the per-prime multiple
-# marking (a slice increment instead of a per-multiple Python loop).
+# Resonance -- ports SieveModel.resonanceEventsInRange, the bulk "goto catch-up"
+# resonance-flash finder used by StructuralSieveApp's resonance log (a goto must not
+# skip resonance events strictly before the jumped-to n; see SieveModel.js for the
+# algorithm). A marking pass, not O(range * primes) trial division; numpy is used for
+# the per-prime multiple marking (see resonance_events_in_range for the vectorization).
 # ---------------------------------------------------------------------------
 
-#: Hard ceiling on resonance_events_in_range's own O(to_n-from_n)
-#: marking-pass array -- 20M int64 entries is ~160MB, a reasonable bound for
-#: a single scan; well past this, the algorithm's own approach (dense per-n
-#: marking) is no longer viable regardless of memory, see that function's
-#: own doc-comment for the real-world case (a real storage-floor-scale
-#: range/tick) this actually guards against.
+#: Hard ceiling on resonance_events_in_range's O(to_n-from_n) marking-pass array --
+#: 20M int64 entries is ~160MB. Beyond this a dense per-n marking pass is not viable
+#: regardless of memory (see that function's docstring).
 _RESONANCE_SCAN_MAX_SIZE = 20_000_000
 
 #: resonance_events_in_range's marking pass: primes with more multiples than this
@@ -1142,29 +958,20 @@ def resonance_events_in_range(primes, from_n, to_n):
     order, factors listing every dividing prime for that n (same shape as
     the JS version's plain objects).
 
-    This function's own marking pass is O(to_n - from_n) by design (see the
-    module comment just above it) -- fine at the small N/gaps this module
-    was built around, but tick_next_n's own `range_step` handling (see that
-    function's doc-comment) means a single range-mode tick's gap can itself
-    be ~10**21-sized once real storage-floor primes are loaded, which a
-    dense `np.zeros(size, ...)` array can never hold. TWO guards below,
-    cheapest first:
-      1. A resonance step needs `primorial(smallest active prime) <= to_n`
-         (see `thresholds` below) -- if even the SMALLEST active prime
-         already exceeds to_n, NO resonance is possible ANYWHERE in this
-         span, full stop, so this returns immediately without ever
-         allocating anything. This is the exact case a real high-floor range
-         hits on literally every tick (active primes ~10**25, to_n only
-         ~10**21 for a long while) -- an O(1) check covers it for free.
+    The marking pass is O(to_n - from_n) by design. tick_next_n's `range_step` can
+    make a single range-mode tick's gap ~10**21 once storage-floor primes are loaded,
+    which no dense array can hold. TWO guards below, cheapest first:
+      1. A resonance step needs `primorial(smallest active prime) <= to_n` (see
+         `thresholds` below) -- if even the SMALLEST active prime's threshold exceeds
+         to_n, no resonance is possible anywhere in the span, so this returns without
+         allocating anything. A high-floor range (active primes ~10**25, to_n ~10**21)
+         hits this on every tick at O(1) cost.
       2. A hard cap on `size` itself, for any other combination that still
          slips past guard 1 (e.g. small-enough primes but an enormous gap
          some other way) -- past this, resonance events genuinely cannot be
-         found by this algorithm's approach at all; returning [] (silently
-         "nothing found," same contract as the to_n<from_n case just above)
-         is correct behavior here, not a workaround -- a marking-pass scan
-         over a span this size was never going to finish in this session
-         regardless of memory, so there is no slower-but-correct fallback
-         worth reaching for."""
+         found by this approach at all; returning [] (same contract as the
+         to_n<from_n case above) is the correct result, since a marking pass over a
+         span this size cannot finish regardless of memory."""
     if to_n < from_n:
         return []
     primes_arr = to_prime_array(primes)
@@ -1335,8 +1142,8 @@ def tracked_ring_mask(primes, tracked):
     plain list); this one answers "which RING INDICES are tracked" so a
     caller can index a position/radius/color array (e.g.
     ring_geometry.ring_positions()'s own "radius" array) directly to draw
-    something at each tracked ring's location -- see Phase 8 (tracked-ring
-    outline circles) in PLAN.md for the caller.
+    something at each tracked ring's location (the tracked-ring outline
+    circles in geometry_draw.build_tracked_outline_draws).
 
     Returns an all-False bool array (length len(primes)) when `tracked` is
     empty, matching np.isin's own behavior against an empty second operand
@@ -1352,10 +1159,9 @@ def tracked_ring_mask(primes, tracked):
 # ---------------------------------------------------------------------------
 # Tracked-primes LCM/resonance -- pure port of
 # StructuralSieveApp.js's #trackedResonanceState / SieveModel.js's
-# lcmOfListBig / #formatBig. See PLAN.md's own design note: the JS's
-# bitmask/lookup-table idea does NOT apply here (its own cap defaults to
-# 500 tracked primes, only tractable in the teens/twenties for a real
-# lookup table) -- this is a straight product-based LCM port instead.
+# lcmOfListBig / #formatBig. The JS's bitmask/lookup-table idea does NOT apply
+# here (its cap defaults to 500 tracked primes, while a lookup table is only
+# tractable in the teens/twenties) -- this is a straight product-based LCM port.
 #
 # Python has no Number/BigInt split -- `int` is already arbitrary-precision
 # -- so unlike the JS (which keeps lcmOfList/lcmOfListBig as two separate
@@ -1549,21 +1355,14 @@ def line_positions(primes, world_width=1600.0):
     pattern-member position that isn't itself in `primes`) through the
     exact same scale via value_to_line_x, without re-deriving it.
 
-    Subtracts `lo` BEFORE ever converting to float -- doing it the other
-    way around (cast to float64 first, subtract after) loses catastrophic
-    precision once values exceed float64's ~15-17 significant digits,
-    e.g. real floor-25+ archive primes (~26 digits): each individual
-    value's own float64 rounding error (up to ~value * 2**-52) can be far
-    bigger than the WHOLE loaded window's span, collapsing every point to
-    the same handful of pixels -- confirmed live, 2026-09-18, against a
-    real 26-digit --load-range ("nie ma nic na przestrzeni jest pusta...
-    podróżuje tylko dwa punkty a nie trzy dla k3" -- a k=3 pattern's 3
-    members visually collapsing to 2). `primes_arr - lo` stays EXACT
-    (object-dtype minus a Python int is exact Python bigint arithmetic;
-    uint64/int64 minus a scalar that still fits the same dtype is exact
-    too) -- the resulting delta is bounded by `span`, which is never
-    astronomically large in practice, so only THEN is it safe to cast to
-    float64."""
+    Subtracts `lo` BEFORE converting to float: casting to float64 first loses
+    precision once values exceed float64's ~15-17 significant digits (floor-25+
+    primes have ~26 digits) -- each value's rounding error (up to ~value * 2**-52) can
+    exceed the whole window's span, collapsing distinct points onto the same pixels
+    (e.g. a k=3 pattern's 3 members drawn as 2). `primes_arr - lo` stays EXACT
+    (object-dtype minus a Python int is bigint arithmetic; uint64/int64 minus a scalar
+    of the same dtype is exact too) and is bounded by `span`, so only then is it cast
+    to float64."""
     primes_arr = to_prime_array(primes)
     lo = int(primes_arr[0])
     hi = int(primes_arr[-1])
@@ -1605,28 +1404,18 @@ def line_view_bounds(range_lo, range_hi, anchor, offsets=()):
     should map "line" viz-mode's world-x coordinates through THIS frame:
     either the whole loaded window's own [range_lo, range_hi] (small
     enough that float32 can resolve every point distinctly), or a FIXED-
-    width slice camera-anchored on the current pattern anchor `anchor` --
-    Artur's own "wrap the axis into a phase/ring coordinate" fix
-    (2026-09-18) for a float32 GPU-vertex-buffer precision ceiling found
-    live at real archive scale.
+    width slice centered on the current pattern anchor `anchor` (wrapping the axis
+    into a local coordinate around the anchor).
 
-    The bug this fixes is DIFFERENT from (and downstream of) the float64
-    precision bug line_positions' own doc-comment already covers: even
-    after computing `(value - lo)` in exact integer arithmetic, casting
-    the RESULT to float32 for the GPU vertex buffer (build_line_vertex_
-    data's own (count, 5) float32 array) loses precision whenever the
-    mapped world-x magnitude (~world_width/2, e.g. 800) is large relative
-    to the smallest MEANINGFUL delta a k-tuple pattern's own offsets need
-    resolved (e.g. 2, 4, 6 for k=4). float32 has ~24 bits of mantissa, so
-    its ULP near x=800 is ~800 * 2**-23 ~= 9.5e-5; once the loaded
-    window's span is astronomically wider than a single k-tuple's own
-    internal spread (real archive scale: span ~1e8+, offsets in the low
-    tens), a value-delta of 2 maps to a world-x delta of
-    `2 / span * world_width`, which underflows that ULP and several
-    offsets silently collapse onto the SAME float32 x -- confirmed live,
-    2026-09-18, against a real 26-digit --load-range: a k=4 pattern's 4
-    members rendered as evenly-spaced-looking dots that did not match its
-    own genuinely uneven [0,2,6,8] offsets.
+    This addresses a float32 limit downstream of the float64 one line_positions
+    handles: even with `(value - lo)` computed exactly, casting the result to float32
+    for the GPU vertex buffer (build_line_vertex_data's (count, 5) float32 array)
+    loses precision when the mapped world-x magnitude (~world_width/2, e.g. 800) is
+    large relative to the smallest delta a pattern's offsets need resolved (e.g. 2, 4,
+    6 for k=4). float32's ULP near x=800 is ~800 * 2**-23 ~= 9.5e-5; with a loaded span
+    of ~1e8+ and offsets in the low tens, a value-delta of 2 maps to a world-x delta of
+    `2 / span * world_width`, below that ULP, so several offsets collapse onto the
+    same float32 x (a k=4 pattern [0,2,6,8] drawn as evenly spaced dots).
 
     Local mode re-centers the very same linear map on the anchor instead
     of the loaded window's own edges: lo = anchor -
@@ -1697,16 +1486,9 @@ def line_positions_windowed(primes, lo, span, world_width=1600.0):
 def value_to_ring_axis_xy(value, lo, span, radius=800.0, cx=0.0, cy=0.0):
     """Maps a single scalar value the same way value_to_line_x does (a
     linear position `t = (value - lo) / span` in [0, 1] along the loaded
-    window), but places it on a CIRCLE instead of a straight line --
-    Artur's own follow-up request (2026-09-18) once the float32-precision
-    fallback (line_view_bounds/line_positions_windowed) landed: a purely
-    VISUAL change to how "line" viz-mode's already-correct, already-
-    ordered axis is drawn, explicitly NOT a change to which values map
-    where in sequence ("w samym działaniu nic się nie zmieni poza samą
-    wizualizacją osi" -- nothing changes in the actual behavior, only the
-    axis's own visualization). Values still keep their exact linear
-    ORDER around the circle; only the on-screen SHAPE bends from a
-    straight row into a ring.
+    window), but places it on a CIRCLE instead of a straight line. A purely visual
+    change to how "line" viz-mode's axis is drawn: values keep their exact linear
+    ORDER around the circle; only the on-screen shape bends from a row into a ring.
 
     Same angle convention ring_geometry.ring_positions already uses
     (`angle = phase * 2*pi/prime - pi/2`, DrumRenderer's own convention):
@@ -1717,7 +1499,7 @@ def value_to_ring_axis_xy(value, lo, span, radius=800.0, cx=0.0, cy=0.0):
     TOP). t=1 (the window's own `lo+span`, one full turn later) maps to
     angle -pi/2 + 2*pi, which is the exact same angle as -pi/2 (sin/cos
     are 2*pi-periodic) -- i.e. the window's start and end coincide at the
-    SAME point on the circle. That coincidence is the seam a real,
+    SAME point on the circle. That coincidence is the seam a
     non-cyclic loaded range needs marked, since (unlike ring mode's own
     n % p, which is genuinely periodic) `lo` and `lo+span` are NOT the
     same value -- see the boundary marker line
@@ -1754,45 +1536,31 @@ def line_positions_windowed_ring(primes, lo, span, radius=800.0, cx=0.0, cy=0.0)
 
 
 def value_to_spiral_xy(value, lo, period, base_radius=800.0, pitch=800.0, cx=0.0, cy=0.0):
-    """Spiral-layout counterpart of value_to_ring_axis_xy (Artur's own
-    follow-up, 2026-09-18/19): instead of normalizing the WHOLE loaded
-    window onto one circle (which forces `lo` and `lo+span` to coincide
-    at the seam regardless of how many real "wheel periods" the window
-    actually spans), each `period`-sized chunk of the axis (`period` =
-    the pattern's own CRT wheel modulus, pattern_wheel_residues' own
-    return value -- the smallest genuine repeat cycle of which residues
-    can ever match) gets its OWN full lap of the circle, at a bigger
-    radius than the previous one: "od wartości początkowej wychodzimy
-    jako ze środka a do wartości końcowej wychodzimy na zewnątrz, z
-    zachowaniem periodyków" -- from the starting value we go out as if
-    from the center, toward the end value we go outward, preserving the
-    periodicity.
+    """Spiral-layout counterpart of value_to_ring_axis_xy: instead of normalizing
+    the WHOLE loaded window onto one circle (forcing `lo` and `lo+span` to coincide
+    at the seam regardless of how many wheel periods the window spans), each
+    `period`-sized chunk of the axis (`period` = the pattern's CRT wheel modulus from
+    pattern_wheel_residues -- the smallest repeat cycle of matching residues) gets its
+    OWN full lap of the circle, each lap at a bigger radius than the previous one:
+    the start value sits innermost, the end value outermost, periodicity preserved.
 
     `lap = (value - lo) // period` (0 for the first period past `lo`, 1
     for the next, ...); `phase = (value - lo) % period` places the value
     within its own lap exactly like value_to_ring_axis_xy places a value
     within the whole window (t = phase/period, same -pi/2-based angle
     convention) -- so EVERY lap's own phase-zero point (value ≡ lo mod
-    period) lands at the identical angle -pi/2, just at that lap's own,
-    bigger radius: "to co ma trafiać na czerwoną pionową linię jest w
-    swojej fazie równej zero" -- what's supposed to land on the red
-    vertical line is at phase zero -- is satisfied by construction, for
-    every lap at once, by a single straight radial line (see
-    spiral_outer_radius/geometry_draw.axis_boundary_marker_vertices)
-    rather than needing a separate per-lap marker.
+    period) lands at the identical angle -pi/2, just at that lap's own, bigger
+    radius -- so a single straight radial line (see
+    spiral_outer_radius/geometry_draw.axis_boundary_marker_vertices) marks phase
+    zero for every lap at once, without a separate per-lap marker.
 
-    `pitch` -- the EXTRA radius each successive lap adds; confirmed by
-    Artur (2026-09-19) to be a purely arbitrary VISUAL choice with NO
-    effect on precision: for a fixed `period`, the ratio of the smallest
-    meaningful value-delta's own world-space arc length to float32's own
-    ULP at any given lap's radius is `(value_delta / period) * 2*pi /
-    FLOAT32_EPS` -- both the arc length and the ULP scale linearly with
-    radius, so radius itself cancels out of that ratio entirely. A real
-    example (k=4 pattern, period=30,030, value_delta=2, the twin-prime-
-    style smallest realistic gap) gives a ~3,500x safety margin at EVERY
-    lap, from the innermost to the outermost, regardless of `pitch` or
-    how many laps exist -- verified numerically before this was
-    implemented, not assumed.
+    `pitch` -- the EXTRA radius each successive lap adds; a purely VISUAL choice
+    with NO effect on precision: for a fixed `period`, the ratio of the smallest
+    value-delta's world-space arc length to float32's ULP at a lap's radius is
+    `(value_delta / period) * 2*pi / FLOAT32_EPS` -- arc length and ULP both scale
+    linearly with radius, so radius cancels out. E.g. a k=4 pattern (period=30,030,
+    value_delta=2) has a ~3,500x margin at every lap, regardless of `pitch` or the
+    number of laps.
 
     `period<=0` degenerates the same way an empty pattern_wheel_residues
     modulus would -- callers (build_line_vertex_data) only take this path
@@ -1871,10 +1639,9 @@ def pattern_positions_and_match(n, offsets, primes_window_set):
     return positions, hit_flags, all_match
 
 
-#: Shared with session.py's own founding-coincidence patch (checking
-#: whether one of these small primes is ITSELF a genuine real match this
-#: wheel would otherwise silently exclude) -- one definition so the two
-#: never drift apart.
+#: Shared with session.py's founding-coincidence check (whether one of these small
+#: primes is ITSELF a real match this wheel would otherwise exclude) -- one definition
+#: so the two never drift apart.
 DEFAULT_WHEEL_PRIMES = (2, 3, 5, 7, 11, 13)
 
 
@@ -1933,12 +1700,9 @@ def next_wheel_n(n, is_right, modulus, residues, lo, hi):
     with wherever the loaded window happens to start), so checking
     `(n - lo) % modulus` instead of plain `n % modulus` would silently
     shift the whole candidate sequence by `lo` -- wrong the moment `lo`
-    isn't itself a multiple of `modulus` (which it essentially never is
-    in practice, e.g. `lo=2` from a Load Range starting at 1). Confirmed
-    against a real report (2026-09-18): a k=2 pattern's scrub landed on
-    values that didn't match hand-derived CRT arithmetic (the classic
-    twin-prime "n == 5 mod 6") until this was fixed to use absolute `n
-    mod modulus` throughout.
+    isn't itself a multiple of `modulus` (which it essentially never is, e.g.
+    `lo=2` from a Load Range starting at 1); for k=2 the candidates must follow the
+    twin-prime CRT condition "n == 5 mod 6" in absolute terms.
 
     Returns `n` UNCHANGED (never raises) when there is no such position:
     either the window edge was reached, or `residues` is empty -- the
@@ -1946,11 +1710,9 @@ def next_wheel_n(n, is_right, modulus, residues, lo, hi):
     pattern_wheel_residues' own doc-comment) -- in which case every call
     ever returns `n` unchanged, same as being permanently at the edge.
 
-    O(log len(residues)) via bisect (`residues` is already sorted) rather
-    than a linear scan -- RenderSession's own seek feature (_pattern_seek)
-    can call this many times in a single frame hunting for the next real
-    MATCH! or non-match, so the per-call cost matters here in a way it
-    didn't for a single scrub/tick step alone."""
+    O(log len(residues)) via bisect (`residues` is already sorted) rather than a
+    linear scan -- RenderSession's seek (_pattern_seek) can call this many times in
+    a single frame hunting for the next MATCH! or non-match."""
     if not residues:
         return n
     period_pos = n % modulus
@@ -1980,12 +1742,9 @@ def resolve_pattern_anchor(seed_prime, offsets, lo, hi):
     guaranteed real MATCH! (pattern_offsets_from_seed built the offsets
     FROM this exact occurrence). Otherwise, DON'T just clamp to `lo` --
     that is an arbitrary value with no guarantee of being wheel-
-    compatible at all. Compute the phase (pattern_wheel_residues) and
-    jump straight to the first genuinely wheel-compatible candidate at or
-    past `lo`, via next_wheel_n, so scrubbing from there on is correctly
-    phase-aligned from frame one -- exactly the "it calculates the phase
-    for the starting number to properly align itself" behavior asked for
-    (2026-09-18)."""
+    compatible at all. Compute the phase (pattern_wheel_residues) and jump straight
+    to the first wheel-compatible candidate at or past `lo`, via next_wheel_n, so
+    scrubbing from there on is phase-aligned from the first frame."""
     if lo <= seed_prime <= hi:
         return seed_prime
     modulus, residues = pattern_wheel_residues(offsets)

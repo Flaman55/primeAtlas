@@ -7,25 +7,15 @@ lets a reader learn total_count/first_value/last_value in O(1) without opening a
 at all, same idea prime_sieve_v1.read_prime_window_header() already applies to a single
 PGS2 file's own header.
 
-Why this exists (Problem B of the archive/records-table browsing fix, see
-primeAtlas/constellations.py's build_constellation_records_table() -- Problem A of that
-same fix -- for the read-only half of this story): PGS2 is gap-encoded, so reading
-"entry N" means sequentially decoding all N-1 entries before it -- there is no random
-access into the middle of a hit file. A dense pattern's single cumulative file (floor
-25's k=2/twin-primes: ~1.5 billion entries, ~2.9GB) makes ANY operation that needs more
-than the header (the records tab's cell drill-down, the PDF/CSV export) either try to
-materialize the whole pattern as one Python list (an OOM risk on the scale that already
-crashed WSL once during WRITING -- see constellation_finder_v2.py's own
-_resolve_last_value() docstring for that incident) or hang the GUI thread for however
-long that decode takes.
+PGS2 is gap-encoded, so reading "entry N" means sequentially decoding all N-1 entries
+before it -- there is no random access into the middle of a hit file. A dense pattern's
+single cumulative file (k=2 on floor 25: ~1.5 billion entries, ~2.9GB) makes any operation
+needing more than the header (the records tab's cell drill-down, PDF/CSV export) either
+materialize the whole pattern as one Python list (OOM risk) or block the GUI thread for the
+whole decode. Pages bound every such read to one page.
 
-Same philosophy as window_sharding.py's source_primes/ sharding (task #405: a single
-flat folder/file that grows without bound eventually breaks something at floor 25's
-scale) applied to hit files instead of window files -- deliberately a SEPARATE module
-from window_sharding.py rather than folded into it, since window_sharding.py's own
-docstring is explicit that constellation hit files were, at the time it was written,
-untouched by that problem on purpose (they don't shard into many small files, they grow
-as ONE cumulative file) -- this module is what changes that.
+A separate module from window_sharding.py: that one splits source_primes/ into many small
+files per directory, while a hit file is a single cumulative file that grows without bound.
 
 Dual-mode by design, not a forced migration: a pattern's hit file is "paged" if and
 only if a PAGES_META.json file exists in its variant{ID}/ folder (is_paged() below) --
@@ -35,8 +25,7 @@ read_prime_window()/read_prime_window_header() directly on hit_file_path()'s pat
 when it's absent. This means migrate_hit_file_to_pages() only needs to run for
 patterns that actually reach problematic scale (in practice: k=2 on the densest,
 highest floors) -- most patterns (anything with a handful to a few thousand hits)
-never need to be touched and keep working through the exact same code path they
-always have.
+never need it and use the single-file path.
 
 Page files live in the SAME variant{ID}/ folder as the (pre-migration) cumulative
 file, named f"HITS_10p{N}_k{K}_v{V}_page{P:05d}.bin" -- each one is an ordinary PGS2
@@ -288,17 +277,14 @@ def insert_hits_paged(a_variant_dir, base_exponent, k, variant_id, new_sorted_va
     already holds, wherever they fall -- below the first stored value, between stored
     values, or past the last. Returns (meta, added, duplicates).
 
-    Why: a floor's windows can be generated in any order -- Artur's case (2026-10-01)
-    was the first 1000 windows of floor 25 generated AFTER the floor had been scanned
-    from 1.2345e25 upward, and "a single file between two existing ranges" is equally
-    valid. append_hits_paged() can only extend the end, and the old "<= last stored
-    value means already stored" filter upstream dropped every hit of such a window.
+    A floor's windows can be generated and scanned in any order (below, between or above
+    already-scanned ones), and append_hits_paged() can only extend the end.
 
     Values past the last stored one take the cheap append path. The rest are grouped by
     the page whose range they fall into (the rightmost page whose first value <= the
     value; page 0 for anything below the whole pattern), and only those pages are
     rewritten -- decode, merge, re-encode one page (~1M values, well under a second),
-    never the whole pattern (floor 25's k=2: 2,248 pages). A merged page above
+    never the whole pattern (k=2 on floor 25: ~2,000 pages). A merged page above
     2 * page_size is split into page_size pieces, so pages stay bounded for every reader
     (records tab drill-down, hits tab, exports).
 

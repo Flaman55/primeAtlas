@@ -56,8 +56,8 @@ def floor_meta_path(storage_path, base_exponent):
 
 def load_floor_meta(storage_path, base_exponent):
     """Returns {"base_exponent": N, "benchmark_rows": [...]}, or None if this floor has no
-    metadata file at all (a floor generated before this feature existed, or one with no
-    completed runs yet). Never raises -- a missing/corrupt file just means no history is
+    metadata file at all (no completed run has written it yet). Never raises -- a
+    missing/corrupt file just means no history is
     known, same best-effort philosophy as the totals cache (load_totals_cache)."""
     path = floor_meta_path(storage_path, base_exponent)
     if not os.path.exists(path):
@@ -90,7 +90,7 @@ def save_floor_meta(storage_path, base_exponent, benchmark_rows):
         return True
     except OSError:
         return False  # best-effort -- a failed save just means this run's row only lives
-                       # in benchmark_log.csv, same as before this feature existed
+                       # in benchmark_log.csv
 
 
 def _row_key(row):

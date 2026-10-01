@@ -1,27 +1,23 @@
 """
 test_generation_window_arithmetic.py -- characterization tests for the pure floor/window
 arithmetic that plans WHERE on disk a generation run writes, WITHOUT launching any real
-sieve/WSL subprocess. Written for the Generation-tab extraction:
-before touching that tab's ~2650 lines of UI code, this suite pins down the
-exact behavior of the functions responsible for its three worst historical production
-incidents (see each test's own docstring for the specific bug it targets):
+sieve/WSL subprocess. Pins down three properties (see each test's own docstring):
 
-  1. MemoryError on floor 25 -- a starting point deep into an empty floor caused
-     target_idx to be built from 0, producing a Python list with hundreds of quadrillions
-     of entries.
-  2. The "floor-7-with-130-million-range-numbers" bug -- a requested range that crossed a
-     floor's own [10**N, 10**(N+1)) boundary silently wrote the NEXT floor's numbers into
-     the current floor's folder.
-  3. The "1001 windows for a Width=1000 request" off-by-one -- rounding both ends of a
-     non-window-aligned starting point outward (instead of only the far end) silently
-     added one extra window beyond what a width BUDGET asked for.
+  1. Memory-bounded target_idx: a starting point deep into an empty floor must not build
+     target_idx from 0 (a Python list with hundreds of quadrillions of entries ->
+     MemoryError on floor 25).
+  2. Floor boundary: a requested range that crosses a floor's [10**N, 10**(N+1))
+     boundary must not write the NEXT floor's numbers into the current floor's folder.
+  3. Window-count budget: rounding both ends of a non-window-aligned starting point
+     outward (instead of only the far end) must not add a window beyond what a width
+     BUDGET asked for (1001 windows for Width=1000).
 
 These target primeatlas/generation/generation.py, not the compiled C sieve engine itself -- see this
 file's own module docstring reasoning for why: the engine (prime_sieve_engine_v*.so,
 ctypes-loaded, linked against libprimesieve.so.12) cannot run in a plain Linux sandbox
 without that exact shared library, which is not installable here without root.
 This suite instead targets the layer that decides what to hand the engine -- which is
-exactly where all three bugs above actually lived -- using real temporary directories
+exactly where all three properties live -- using real temporary directories
 seeded with EMPTY, correctly-named PRIME_WINDOW_*.bin files (list_source_filenames() only
 ever reads a file's NAME via a regex, never its contents -- see primeatlas/core/storage.py's
 own docstring -- so an empty file at the right name is indistinguishable from a real one
@@ -31,16 +27,13 @@ Every check() call states the SPECIFIC expected vs. actual value in its message,
 pass/fail, so a future regression points straight at what went wrong instead of just
 "something in Generation broke".
 
-Updated during the Generation-tab extraction itself: these functions
-moved from prime_atlas_v1.py into primeatlas/generation/generation.py (see that module's own
-docstring) -- this suite now imports from there directly instead of through
-prime_atlas_v1, and no longer needs tkinter/Xvfb at all (generation.py has no GUI
-dependency of its own).
+Imports from primeatlas/generation/generation.py directly (no GUI dependency), so no
+tkinter/Xvfb is needed.
 
 Usage (Windows, real Python -- no Tk/display dependency, these are plain functions):
     python unitTests\\test_generation_window_arithmetic.py
 
-Usage (this sandbox, headless -- plain python3, no Xvfb needed anymore):
+Usage (this sandbox, headless -- plain python3, no Xvfb needed):
     python3 unitTests/test_generation_window_arithmetic.py
 """
 import os
@@ -242,8 +235,7 @@ def main():
               f"an empty floor trims nothing (got start={trimmed_start3}, "
               f"count={trimmed_count3}, expected start=5, count=3 unchanged)")
 
-        # === digit_count_floor: power-of-10 boundaries (primeatlas.core.storage, unchanged by
-        # the Generation-tab extraction -- imported separately here) ====================
+        # === digit_count_floor: power-of-10 boundaries (primeatlas.core.storage) ========
         check(digit_count_floor(1) == 0, "digit_count_floor(1) == floor 0")
         check(digit_count_floor(9) == 0, "digit_count_floor(9) == floor 0 (still 1 digit)")
         check(digit_count_floor(10) == 1, "digit_count_floor(10) == floor 1 (rolls over)")

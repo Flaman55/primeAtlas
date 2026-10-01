@@ -60,7 +60,7 @@ a second, with no real network access or ~30-second wait.
 Runs `git` directly on the Windows side (NOT via wsl.exe) -- this operates on the
 Windows-side git checkout itself; WSL has nothing to do with it. Same "plain local
 subprocess, not a WSL round-trip" reasoning as primality.py's try_import_sympy()/
-LocalLoggedRunner (Faza 2b installer).
+LocalLoggedRunner.
 """
 import glob
 import json
@@ -88,8 +88,8 @@ def git_executable(repo_dir):
     (installer/PrimeAtlasSetup.iss) puts a portable MinGit at <install>/git, next to
     <install>/app (this repo) -- NOT on PATH, so a bare "git" would miss it and every
     installed machine would report git-not-found. That private copy wins when present
-    (installer-controlled, known-good version); otherwise plain "git" from PATH, exactly
-    as before for a hand-made clone."""
+    (installer-controlled, known-good version); otherwise plain "git" from PATH, for a
+    hand-made clone."""
     install_root = os.path.dirname(os.path.normpath(os.path.abspath(repo_dir)))
     bundled = os.path.join(install_root, "git", "cmd", "git.exe")
     return bundled if os.path.isfile(bundled) else "git"
@@ -190,10 +190,10 @@ def _release_all_locks(repo_dir):
 
 
 def _looks_like_lock_error(text):
-    """True if a failed git invocation's stderr looks like the lock/permission quirk this
-    project has hit repeatedly (TEAM_PLAN.md ground rule #7) rather than a genuine history
-    divergence or network failure -- used to decide whether _run_git_with_lock_recovery()
-    should attempt its retry/recovery schedule at all."""
+    """True if a failed git invocation's stderr looks like a leftover/contended lock file
+    (a permission-flavored error) rather than a genuine history divergence or network
+    failure -- used to decide whether _run_git_with_lock_recovery() should attempt its
+    retry/recovery schedule at all."""
     text = (text or "").lower()
     return (
         ("unable to create" in text and "lock" in text)

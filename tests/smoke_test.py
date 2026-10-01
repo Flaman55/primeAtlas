@@ -44,8 +44,8 @@ def report(where, exc):
 
 def find_notebooks(widget):
     """Recursively finds every ttk.Notebook under `widget` -- the app nests a
-    sub-notebook per top-level tab (Liczby pierwsze / Konstelacje / Badania / Ustawienia),
-    while Generowanie/Benchmark are flat -- this walk doesn't need to know which is
+    sub-notebook per top-level tab (Prime numbers / Constellations / Research / Settings),
+    while Generation/Benchmark are flat -- this walk doesn't need to know which is
     which, it just finds whatever's there."""
     found = []
     for child in widget.winfo_children():

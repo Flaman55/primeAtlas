@@ -10,17 +10,14 @@ format and process_floor()'s window-selection logic changed) -- this file covers
 what v2 adds: resuming from a set of DONE RANGES instead of a single last-processed
 pointer.
 
-Targets the field report this exists to fix: an unpredictable PC restart left two
-constellation_finder processes running for the same floor, and
-CHECKPOINT.txt's single "last_processed_file=" pointer -- overwritten by whichever
-process wrote most recently -- ended up naming a window far AHEAD of one that had
-genuinely never been scanned, leaving a "hole" behind it. v1's own resume logic
-("everything after last_done") has no way to represent that hole at all: if it trusted
-the ahead-of-hole pointer, the hole would NEVER get scanned again; if it fell back to
-"ignoring checkpoint, processing from the start" (the only other path v1 has), it would
-burn hours re-scanning everything ALREADY covered just to close one small gap. v2's own
-done_range set can represent "A,B and D,E done, C is not" directly, so it fills exactly
-the hole and nothing else.
+Scenario: two constellation_finder processes running for the same floor (e.g. a stale
+process after an unplanned restart) each write CHECKPOINT.txt; a single
+"last_processed_file=" pointer, overwritten by whichever wrote last, can name a window
+far AHEAD of one that was never scanned, leaving a "hole" behind it. A single pointer
+("everything after last_done") cannot represent that hole: trusting it never scans the
+hole, falling back to "processing from the start" re-scans everything already covered.
+v2's done_range set represents "A,B and D,E done, C is not" directly, so it fills
+exactly the hole and nothing else.
 
 Usage (Windows, real Python -- pure Python + numpy, no Tk/display dependency at all):
     python unitTests\\test_constellation_finder_v2_checkpoint.py
@@ -119,11 +116,11 @@ def main():
         check(remaining == 0,
               f"filling the one-window hole leaves nothing pending "
               f"(got remaining={remaining!r})")
-        # E is legitimately read a second time here regardless of the checkpoint fix --
+        # E is legitimately read a second time here regardless of the checkpoint --
         # check_floor_boundary() always reads the floor's own LAST window once, the
         # first time a floor becomes fully caught up (see that function's own
         # docstring) -- that's unrelated to pattern-matching resume. B, C's done
-        # predecessor, is read once on purpose since 2026-10-01: a constellation starting
+        # predecessor, is read once on purpose: a constellation starting
         # in B's last numbers and ending in C could not have been found while C was
         # unscanned (process_floor()'s look-back). The claim under test is that A and D
         # (already done, not adjacent to the hole's start) are NEVER re-read, and C (the

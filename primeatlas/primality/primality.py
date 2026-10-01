@@ -1,13 +1,13 @@
 """
 primality.py -- pure-Python probabilistic primality testing (Miller-Rabin, Fermat,
 Solovay-Strassen) and integer factorization (trial division + Pollard's rho), for the
-Testy pierwszosci sub-tab (Liczby pierwsze -> Testy pierwszosci). No external
+Primality tests sub-tab (Prime numbers -> Primality tests). No external
 dependencies required for any of this -- consistent with the app's zero-extra-installs
 promise (see the PDF-writer module's own header comment in prime_atlas_v1.py) -- but
 factorize() will use sympy.factorint() INSTEAD whenever sympy happens to be importable
 in this same Python environment (materially faster and complete for numbers the
 pure-Python path might time out on), via the optional-library installer in the
-Settings tab (see settings_tab.py's own "opcjonalne biblioteki" section). Nothing here
+Settings tab (see settings_tab.py's own "Optional libraries" section). Nothing here
 needs tkinter -- this module runs in the same native-Windows Python process the GUI
 itself does (unlike the primesieve calculator, which has to cross into WSL because
 libprimesieve is a Linux shared library -- see prime_sieve_primesieve.py's own module
@@ -23,7 +23,7 @@ import time
 def try_import_sympy():
     """Returns the sympy module if it's importable in this Python environment, else
     None -- never raises. Checked FRESH on every call (not cached at module import
-    time) so a library installed later via the Settings tab's installer (Faza 2b) is
+    time) so a library installed later via the Settings tab's installer is
     picked up the next time this is called, without necessarily needing an app
     restart -- pip installing into site-packages while the process is already running
     is visible to a later plain `import sympy` in most cases (failed imports aren't
@@ -195,7 +195,7 @@ def run_all_tests(n, rounds=40):
     """Runs all three tests above against the SAME n, timing each individually. Returns
     a list of dicts (one per method, in a fixed display order):
     {"method": "Miller-Rabin"|"Fermat"|"Solovay-Strassen", "is_prime": bool,
-    "certainty": str, "seconds": float} -- exactly what the Testy pierwszosci tab's
+    "certainty": str, "seconds": float} -- exactly what the Primality tests tab's
     results table needs, one row per method, no further transformation."""
     rows = []
     for method_name, fn in (
@@ -322,7 +322,7 @@ def _to_factor_pairs(factors):
 
 
 def factorize(n, use_sympy=True, trial_limit=100_000, time_budget=10.0):
-    """Top-level factorization entry point for the Testy pierwszosci tab. Returns
+    """Top-level factorization entry point for the Primality tests tab. Returns
     {"pairs": [(prime, exponent), ...], "method": "sympy"|"pure_python",
     "complete": bool, "seconds": float}.
 

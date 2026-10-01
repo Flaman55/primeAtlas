@@ -2,14 +2,10 @@
 test_hit_insert_out_of_order.py -- constellation hits from a window that lies BELOW (or
 between) already-scanned windows must be stored, not dropped as "duplicates".
 
-Artur's report (2026-10-01): floor 25 had been scanned from 1.2345...e25 upward; he then
-generated the first 1000 windows of the floor (from 10^25) and ran the k-tuple search.
-It processed exactly those 1000 new windows (the done-range diff works), but every hit
-was filtered as a duplicate -- _append_hits_deduped() treated "<= the file's last
-value" as "already stored", which only holds while windows arrive in increasing order.
-His rule: a window may be generated anywhere on a floor, even a single file between two
-existing ranges, and the search must store whatever is new relative to what was already
-searched -- not whatever is larger.
+A floor's windows may be generated in any order -- below, between or above
+already-scanned ones, down to a single file between two existing ranges -- and the
+search must store every hit that is not already stored. Treating "<= the file's last
+value" as "already stored" holds only while windows arrive in increasing order.
 
 Spec covered here:
   hit_paging.insert_hits_paged()  -- sorted union into a paged pattern, touching only
@@ -65,7 +61,7 @@ def _page_files_on_disk(vdir):
 
 
 def _legacy_paged(tmpdir, values, page_size=3):
-    """A pattern paged the pre-2026-10-01 way: uniform page_size, no per-page list."""
+    """A pattern paged the legacy way: uniform page_size, no per-page list."""
     vdir = hit_paging.variant_dir(tmpdir, 3, 2, 1)
     meta = {"base_exponent": 3, "k": 2, "variant_id": 1, "page_size": page_size,
             "total_count": 0, "first_value": None, "last_value": None}
@@ -148,7 +144,7 @@ def test_finder_unpaged():
         cache, disk = {}, {}
         check(cf2._append_hits_deduped(b, k, v, [100, 110, 120], last_value_cache=cache, disk_cache=disk)
               == (3, 0), "first (upper) windows' hits stored")
-        # Artur's case: a window generated later at the START of the floor.
+        # A window generated later at the START of the floor.
         got = cf2._append_hits_deduped(b, k, v, [50, 60], last_value_cache=cache, disk_cache=disk)
         check(got == (2, 0), f"hits from a lower, newly generated window are stored (got {got})")
         got = cf2._append_hits_deduped(b, k, v, [105], last_value_cache=cache, disk_cache=disk)
@@ -208,7 +204,7 @@ def test_finder_paged():
 
 
 def test_process_floor_lower_windows_later():
-    """Artur's exact sequence at test scale: the upper part of a floor is scanned first,
+    """The upper part of a floor is scanned first,
     the windows at the floor's start are generated afterwards and scanned in batches
     (--max-windows). Out-of-order hits are written in one merge per batch (not one page
     rewrite per window), and a window only counts as done once its hits are stored."""
@@ -320,11 +316,11 @@ def test_process_floor_window_inserted_between():
 
 
 def test_process_floor_far_neighbours():
-    """Artur's real floor 25 after the fix (2026-10-01): the last of the 1000 low windows
-    (ending near 10^25 + 10^10) has, as its real successor, the old floor start at
-    1.2345e25. Peeking into it made match_patterns_vectorized() turn values ~2.3e24 away
-    into int64 offsets -- OverflowError, run aborted. Neighbours only matter within
-    max_span of the window; farther values must be ignored, not crash."""
+    """A window's real successor can lie arbitrarily far above it: the last of 1000 low
+    windows of floor 25 (ending near 10^25 + 10^10) is followed by the floor's
+    already-scanned start at 1.2345e25. Turning values ~2.3e24 away into int64 offsets
+    in match_patterns_vectorized() overflows. Neighbours only matter within max_span of
+    the window; farther values must be ignored, not crash."""
     print("\n--- process_floor: real neighbours far away (floor-25 magnitudes) ---")
     import window_sharding
     import constellation_finder_v2 as cf2

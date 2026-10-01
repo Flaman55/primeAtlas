@@ -5,24 +5,13 @@ this package's own __init__.py docstring for why it stays a separate
 process rather than being imported into the main Tkinter app): launched as
 a subprocess by primeatlas/rings/rings_tab.py.
 
-Structural Sieve's browser/Canvas 2D visualization (see
-js/render/DrumRenderer.js in the RelationalMathematics repo) has a
-practical ring-count ceiling bounded by what one JS thread can redraw at
-interactive frame rates, plus what a browser tab can hold in memory -- see
-StructuralSieveApp.js's own "hardware-calibrated auto-track-range" feature,
-added specifically because that ceiling is real. PrimeAtlas already has
-(a) an archive of pre-generated primes far beyond what any in-browser sieve
-would attempt, and (b) real GPU hardware, already exercised for actual
-sieve marking (see this project's cudasieve/marking_*_poc history).
-
-Confirmed on real hardware: 20,000,000 rings loaded in 0.27s, N-change
-rebuild ~1.3s, pan/zoom held 50+ fps even with a fast scroll wheel at the
-full 20M-ring view. This module is a ported prototype rather than a
-rewrite -- the only differences from the standalone prototype version are
-import paths (`primeatlas.rings.ring_geometry` instead of a bare
-`ring_geometry`) and `load_archive`'s repo-root autodetection (derived
-from this file's own location instead of a `--primeatlas-root` CLI flag,
-since the file lives inside the repo it needs to reach into).
+Structural Sieve's browser/Canvas 2D visualization (js/render/DrumRenderer.js in the
+RelationalMathematics repo) has a practical ring-count ceiling bounded by what one JS
+thread can redraw at interactive frame rates and what a browser tab can hold in memory
+(see StructuralSieveApp.js's hardware-calibrated auto-track-range). PrimeAtlas has (a) an
+archive of pre-generated primes far beyond an in-browser sieve and (b) a GPU. Measured:
+20,000,000 rings load in 0.27s, N-change rebuild ~1.3s, pan/zoom 50+ fps at the full
+20M-ring view. load_archive derives the repo root from this file's own location.
 
 Deliberately decoupled from two things this module is NOT responsible for:
 
@@ -54,7 +43,7 @@ Deliberately decoupled from two things this module is NOT responsible for:
      a separate, later question once the rendering-feasibility question this
      module answers is settled.
 
-Architecture (the part that was actually tested):
+Architecture:
 
   - `primes` (ascending int64 numpy array) is loaded/generated ONCE at
     startup.
@@ -138,13 +127,11 @@ Controls:
 
 HUD: current N, ring count, playback status, factors of N, tracked/LCM
 block, and any active window's range (Bertrand/Legendre/General Law) are
-drawn directly in this window's top-left corner -- ports DrumRenderer's own
-#drawHud text overlay, previously only reachable via the console pane or
-rings_tab.py's side panel (see hud_lines_for_n's own doc-comment for that
-history). Needs Pillow; degrades to "no on-canvas text" (everything else
-unaffected) if it isn't installed -- see _PIL_AVAILABLE. Size it with
---hud-font-size (pixels, default 35) if the default is too small on your
-screen/resolution -- see rasterize_hud_text's own docstring.
+drawn directly in this window's top-left corner (ports DrumRenderer's #drawHud
+text overlay; the same lines also go to the console pane, see hud_lines_for_n).
+Needs Pillow; without it there is no on-canvas text (everything else unaffected),
+see _PIL_AVAILABLE. Size it with --hud-font-size (pixels, default 35) -- see
+rasterize_hud_text's own docstring.
 
 --hit-point-size: independent point size for rings ON the vertical
 reference line (real divisors of N), separate from --point-size for every
@@ -206,8 +193,7 @@ from primeatlas.rings.ring_geometry import (
 
 # load_synthetic/load_sieve/load_archive live in sources.py; they have no
 # GL-context dependency (unlike everything below this point in the file).
-# Re-imported under their original names so every call site in
-# _run_visualization/main() below is unchanged.
+# Imported here for _run_visualization/main() below.
 from primeatlas.rings.ring_viz.sources import load_synthetic, load_sieve, load_archive
 
 
@@ -279,9 +265,8 @@ from primeatlas.rings.ring_viz.hud import (
 )
 
 
-# start_stdin_command_reader lives in stdin_commands.py; re-imported under
-# its original name so run()'s own --pipe-stdin-commands call site is
-# unchanged.
+# start_stdin_command_reader lives in stdin_commands.py (used by run()'s
+# --pipe-stdin-commands handling).
 from primeatlas.rings.ring_viz.stdin_commands import start_stdin_command_reader
 
 # RenderSession consolidates _run_visualization's own dozen
@@ -388,13 +373,10 @@ def _run_visualization(args, audio=None):
     enabled_ids = {f.strip() for f in args.windows.split(",") if f.strip()} if args.windows else set()
     theta = args.general_law_theta
     law_mode = args.general_law_mode
-    # [ADDED 2026-09-26] 'bertrand'/'legendre' are RIGID modes -- theta is
-    # ignored by every general_law_* function for these two (see
-    # general_law_window_bounds's own doc-comment), so forcing it here to the
-    # value it conceptually represents (rather than leaving whatever
-    # --general-law-theta happened to be passed) keeps any OTHER place that
-    # might echo `theta` honest, instead of relying on every call site
-    # remembering not to trust it in these two modes.
+    # 'bertrand'/'legendre' are RIGID modes -- theta is ignored by every
+    # general_law_* function for these two (see general_law_window_bounds), so it is
+    # forced here to the value it represents, keeping any place that echoes `theta`
+    # consistent instead of relying on every call site not to trust it.
     if law_mode == "bertrand":
         theta = 1.0
     elif law_mode == "legendre":
@@ -437,13 +419,11 @@ def _run_visualization(args, audio=None):
     # the actual extension call.
     buffer_margin = max(1000, args.upto // 20)
     can_extend_buffer = args.source == "archive" and bool(args.portal_folder)
-    # `extend_state["exhausted"]`, `tempo_ms`/`playback["running"]`,
-    # `orbit_state`, and `cyclic_anchor_state` are RenderSession's own
-    # fields (self.extend_exhausted, self.tempo_ms/playback_running,
-    # self.orbit_*, self.cyclic_anchor_state), constructed further down
-    # once `range_mode`/`range_primes`/`range_step`/`track_primes`/
-    # `auto_orbit` below are all known -- see session.py's own
-    # RenderSession docstring for the full field-by-field mapping.
+    # Extension-exhausted, tempo/playback, orbit and cyclic-anchor state are
+    # RenderSession fields (self.extend_exhausted, self.tempo_ms/playback_running,
+    # self.orbit_*, self.cyclic_anchor_state), constructed further down once
+    # `range_mode`/`range_primes`/`range_step`/`track_primes`/`auto_orbit` below are
+    # known -- see session.py's RenderSession docstring.
 
     # Load Range -- ports #loadPrimeRange: switch
     # to a FIXED ring set (range_primes), independent of N from here on
@@ -560,16 +540,9 @@ def _run_visualization(args, audio=None):
                 print(f"Pattern seed's own occurrence (n={seed_prime:,}) is outside the loaded "
                       f"window -- starting instead at the first phase-compatible candidate: n={n:,}")
 
-    # Everything from here down operates on one RenderSession object instead
-    # of a dozen separate closure-captured dicts (state/pan-zoom, playback,
-    # orbit_state, cyclic_anchor_state, flash_state, outline_draws_holder,
-    # resonance_log_state, hud_state, n_holder, scrub_state, extend_state)
-    # plus bare track_primes/auto_orbit/range_mode/range_primes/range_step/
-    # primes/ceiling locals mutated via `nonlocal`. `session.n` plays
-    # n_holder["n"]'s old role; every GLFW callback and the main loop below
-    # call session.* methods instead of mutating their own captured dict.
-    # See session.py's own RenderSession docstring for the field-by-field
-    # mapping to the old closures.
+    # Everything from here down operates on one RenderSession object (see
+    # session.py); `session.n` is the current N, and every GLFW callback and the main
+    # loop below call session.* methods.
     session = RenderSession(
         primes=primes, n=n, ceiling=ceiling, range_mode=range_mode,
         range_primes=range_primes, range_step=range_step,
@@ -662,10 +635,9 @@ def _run_visualization(args, audio=None):
         if msg is not None:
             print(msg)
 
-    # LEFT/RIGHT scrub state lives on `session` (scrub_held/
-    # scrub_was_running) -- see session.scrub_advance/scrub_release's own
-    # doc-comments for the held-count/was-running bookkeeping this used to
-    # need a separate `scrub_state` dict for.
+    # LEFT/RIGHT scrub state lives on `session` (scrub_held/scrub_was_running) --
+    # see session.scrub_advance/scrub_release for the held-count/was-running
+    # bookkeeping.
     from primeatlas.rings.ring_viz.window_mode import FullscreenToggle
     fullscreen = FullscreenToggle(glfw, gl.window)
     print('F11: toggle fullscreen (auto-fits zoom to the new window size); '
@@ -1038,7 +1010,7 @@ def main():
     # Independent point size for rings ON the vertical reference line
     # (pos["is_hit"] -- real divisors of N), separate from every other
     # ring, e.g. to spot factors of N at a glance without the rest of the
-    # field growing too. Defaults to 40 (was None/"same as --point-size")
+    # field growing too. Defaults to 40
     # so the axis rings are readably distinct even when this flag isn't
     # passed explicitly -- rings_tab.py's own GUI field is pre-filled with
     # "40" to match (see that file's own comment) -- the
@@ -1060,18 +1032,11 @@ def main():
     parser.add_argument("--windows", type=str, default="",
                          help="comma-separated window families to highlight: bertrand,legendre,generalLaw")
     parser.add_argument("--general-law-theta", type=float, default=0.5)
-    # [CHANGED 2026-09-26] Two new RIGID choices, ported from the
-    # RelationalMathematics browser prototype (see its own SieveModel.js
-    # commit) -- 'bertrand'/'legendre' reproduce those families' windows
-    # EXACTLY (theta ignored, forced to 1.0/0.5 above for any other place
-    # that might echo it) instead of only approximating them via theta.
-    # Default flipped back to 'sliding' (was 'stepped' since this mode was
-    # added, specifically because Legendre used to be reachable exactly only
-    # via stepped's own theta=0.5 coincidence) -- Legendre now has its own
-    # rigid mode above, so 'sliding' -- the mode whose n^theta formula
-    # matches literature prime-gap bounds (Baker-Harman-Pintz theta=0.525,
-    # Runbo Li's 2023 refinement theta=0.52) for free -- can be the default
-    # again, same reasoning as the browser prototype's own default flip.
+    # 'bertrand'/'legendre' are RIGID modes reproducing those families' windows
+    # EXACTLY (theta ignored, forced to 1.0/0.5 above for any place that might echo
+    # it) instead of approximating them via theta. Default 'sliding': its n^theta
+    # formula matches literature prime-gap bounds (Baker-Harman-Pintz theta=0.525,
+    # Runbo Li's 2023 refinement theta=0.52).
     parser.add_argument("--general-law-mode", choices=["stepped", "sliding", "bertrand", "legendre"], default="sliding")
     # Track P -- comma-separated prime values (same convention as
     # --windows), and --auto-orbit as the JS's #autoOrbit mode (auto-cycle
@@ -1098,13 +1063,9 @@ def main():
                          help="safety cap on primes materialized for an archive --load-range load; "
                               "the range is truncated from the top if it holds more than this "
                               "(accepts plain digits, a*10**b, a*10^b, or aEb -- see --upto)")
-    # Bidirectional sliding/traveling window over --load-range (see memory
-    # file primeatlas-ring-viz-sliding-range-window-plan.md) -- OFF by
-    # default (Artur's own explicit call, 2026-09-25: "domyslnie wylaczone
-    # by trzeba bylo to swiadomie wlaczyc" -- default off, must be
-    # consciously turned on), so a plain --load-range keeps today's exact
-    # fixed-slice behavior (stuck wherever --max-load-count landed) unless
-    # this is passed too.
+    # Bidirectional sliding window over --load-range -- OFF by default (enabled
+    # explicitly); without it a plain --load-range is a fixed slice of
+    # --max-load-count primes.
     parser.add_argument("--slide-load-range", action="store_true",
                          help="--load-range only: instead of a fixed slice stuck wherever "
                               "--max-load-count first landed, keep a bounded chunk that SLIDES "
@@ -1112,24 +1073,12 @@ def main():
                               "--load-range span becomes reachable a chunk at a time. Off by "
                               "default -- turn on deliberately, since the extra disk I/O on each "
                               "chunk swap may not suit every machine")
-    # `--slide-chunk-size` is left as None here (rather than its own
-    # hardcoded default) and resolved to --max-load-count's own value
-    # below, right after argument parsing -- an EXPLICIT --slide-chunk-size
-    # still overrides that. Regression fix, 2026-09-25 (Artur's own real
-    # report: "limit wczytanych ... nie jest parametrem globalnym a
-    # lokalnym poczatkowym potem wraca do domyslnego 2 miliony" -- the
-    # loaded-count limit isn't a global parameter, it's a local/initial
-    # one, then it reverts to the default 2 million): an EARLIER version
-    # gave this its own separate hardcoded 2,000,000 default, so a user who
-    # only ever touched --max-load-count (or the GUI's "Max loaded rings"
-    # field) got that value for the FIRST chunk, then silently fell back to
-    # 2,000,000 for every chunk loaded afterward via sliding -- surprising,
-    # and (see the neighboring bug report the same message raised) a real
-    # contributor to backward traversal feeling like it hangs, since a
-    # bigger-than-intended chunk means a bigger, slower blocking load on
-    # every swap that outruns the background prefetch. Inheriting from
-    # --max-load-count by default keeps ONE coherent "how much is loaded at
-    # once" number unless the user deliberately diverges them.
+    # `--slide-chunk-size` defaults to None and is resolved to --max-load-count's
+    # value right after argument parsing (an explicit --slide-chunk-size still
+    # overrides it), so the first chunk and every chunk loaded later by sliding use
+    # the same "how much is loaded at once" number unless the user sets them apart.
+    # A bigger chunk also means a slower blocking load whenever a swap outruns the
+    # background prefetch.
     parser.add_argument("--slide-chunk-size", type=parse_big_int, default=None,
                          help="--slide-load-range only: how many primes each of the back/current/"
                               "forward chunks holds -- defaults to --max-load-count's own value "
@@ -1144,9 +1093,9 @@ def main():
     parser.add_argument("--tempo-ms", type=int, default=_TEMPO_MS_DEFAULT,
                          help="playback speed in ms/tick, clamped to [30,2000] "
                               "(Space starts/stops playback, ]/[ adjust it live)")
-    # Opt-in live pause/resume protocol -- OFF by default so running this
-    # file directly from a terminal behaves exactly as before: closing
-    # the window (Esc / titlebar X) really exits. Only rings_tab.py passes
+    # Opt-in live pause/resume protocol -- OFF by default, so running this
+    # file directly from a terminal keeps the plain behavior: closing the
+    # window (Esc / titlebar X) exits. Only rings_tab.py passes
     # this flag, since it's the only caller that pipes stdin (see
     # LocalLoggedRunner.send_line()) and can actually act on the PAUSED/
     # RESUMED lines this prints -- see start_stdin_command_reader's own
@@ -1167,8 +1116,8 @@ def main():
                               "--pattern-seed-start as the sliding k-tuple pattern's offsets")
     parser.add_argument("--pattern-seed-start", type=parse_big_int, default=None,
                          help="line mode only: starting prime (must be > 2) for --pattern-seed-k")
-    # Manual/Auto step-mode radio + "MATCH!" checkbox (Artur's own spec,
-    # 2026-09-18): "manual" (default) always takes a single wheel step per
+    # Manual/Auto step-mode radio + "MATCH!" checkbox: "manual" (default) always
+    # takes a single wheel step per
     # LEFT/RIGHT/Up/Down/Space, showing every wheel candidate in turn
     # whether it's a real match or not; "auto" always SEEKS instead --
     # for the next real MATCH! when the checkbox is given, or specifically
@@ -1182,7 +1131,7 @@ def main():
                          help="line mode pattern only, and only with --pattern-step-mode auto: seek "
                               "the next real MATCH! when given, or specifically the next NON-match "
                               "wheel candidate when not given")
-    # Purely cosmetic (Artur's own spec, 2026-09-18): bend the axis into a
+    # Purely cosmetic: bend the axis into a
     # circle instead of a straight line -- see geometry_draw.
     # build_line_vertex_data's own `curved` doc-comment. Does not change
     # navigation, matching, or the wheel/seek logic at all, only where a

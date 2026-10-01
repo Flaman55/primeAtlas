@@ -1,12 +1,8 @@
 """
 widgets.py -- small, generic tkinter widget helpers with no application-specific state,
-shared by more than one tab. Extracted from prime_atlas_v1.py during the refactor
-branch's Faza 3 (tab-by-tab backend/UI split) when the "Prime numbers" tab
-extraction (primeatlas/primes/primes_tab.py) needed FlowRow but the Constellations tab (still
-in prime_atlas_v1.py at the time) also uses it -- moving it here instead of duplicating
-it into primes_tab.py avoids exactly the kind of copy-paste this whole refactor branch
-exists to undo. prime_atlas_v1.py imports it back as `from primeatlas.core.widgets import
-FlowRow as _FlowRow` to keep its own existing call sites unchanged.
+shared by more than one tab (e.g. FlowRow, used by the Prime numbers and Constellations
+tabs and imported by prime_atlas_v1.py as `from primeatlas.core.widgets import FlowRow
+as _FlowRow`).
 
 This is one of a small number of files in primeatlas/ that import tkinter -- see
 settings_tab.py's own docstring for the general "pure logic elsewhere" convention this
@@ -22,10 +18,9 @@ class FlowRow:
     .pack(side="left")'d onto ONE line has this failure mode: on a narrow window (or a
     narrow detail pane after the split-view divider is dragged), the rightmost controls
     simply run past the frame's right edge and become invisible/unreachable, with no way
-    to get to them short of resizing the whole window -- this is what the Prime numbers
-    and Constellations tabs' preview-navigation rows (Load preview / Prev / page label /
-    Next / page-goto entry) hit, e.g. page-nav buttons in the Constellations tab cut off
-    outside the app window's right edge.
+    to get to them short of resizing the whole window (e.g. the Prime numbers and
+    Constellations tabs' preview-navigation rows: Prev / page label / Next / page-goto
+    entry).
 
     Children are added via .add(widget, padx_left=...) instead of widget.pack(...); this
     class lays them out itself using place() (which, unlike pack/grid, doesn't force a
@@ -76,20 +71,18 @@ def add_page_nav_group(flow_row, T, page_label_var, on_prev, on_next, on_goto=No
     handed to FlowRow.add() as a single item, so FlowRow's own wrap-on-resize (see its
     docstring) only ever breaks BETWEEN whole clusters, never in the middle of one.
 
-    Before this helper, every call site added Prev/label/Next/"Page:"/entry/Go as six
-    separate FlowRow items -- on a narrow pane, FlowRow could wrap mid-cluster (e.g.
-    Prev/label/Next on one line, "Page:"/entry/Go stranded alone on the next, with no
-    visual link between them), which read as an accidental layout rather than a
-    deliberate one -- observed on the Prime numbers tab's preview-nav row (btn_row);
-    the same duplicated pattern also existed in constellations_hits_tab.py and
-    constellations_records_tab.py, fixed here once instead of three times.
+    Added item by item (Prev/label/Next/"Page:"/entry/Go as six FlowRow items), FlowRow
+    could wrap mid-cluster on a narrow pane (Prev/label/Next on one line,
+    "Page:"/entry/Go stranded on the next), which reads as an accidental layout. Used by
+    the Prime numbers tab's preview-nav row (btn_row), constellations_hits_tab.py and
+    constellations_records_tab.py.
 
     prev_key/next_key default to the generic "common.prev_page"/"common.next_page"
     strings, but callers navigating real hit-FILE pages (as opposed to the small
     in-memory sub-page within one loaded file page) pass
     "const_records.file_page_prev"/"file_page_next" instead, so the two different
-    kinds of pagination a pattern can have stay visually distinguishable ("Poprzednia"
-    vs. "Poprz. strona pliku") rather than reading as duplicate controls.
+    kinds of pagination a pattern can have stay visually distinguishable ("Previous"
+    vs. "Prev file page") rather than reading as duplicate controls.
 
     Returns (prev_btn, next_btn, goto_entry) -- goto_entry is None when on_goto is not
     given (a file-page nav cluster with no jump-to-page entry, just Prev/Next/label).
@@ -117,8 +110,8 @@ def add_page_nav_group(flow_row, T, page_label_var, on_prev, on_next, on_goto=No
 
 
 def _build_goto_group(parent, T, on_goto):
-    """Builds the "Strona:"/entry/Idz jump-to-page cluster shared by add_page_nav_group
-    and add_page_nav_row -- factored out when add_page_nav_row was added, so
+    """Builds the "Page:"/entry/Go jump-to-page cluster shared by add_page_nav_group
+    and add_page_nav_row, so
     the ipady height-matching fix below (entry vs. button, see its own comment) lives in
     exactly one place. Returns (goto_frame, goto_entry); the caller packs/adds
     goto_frame itself, since the two callers place it differently (a FlowRow item vs.
@@ -144,11 +137,11 @@ def add_page_nav_row(parent, T, page_label_var, on_prev, on_next, on_goto=None,
                       label_width=16, prev_key="common.prev_page",
                       next_key="common.next_page"):
     """Builds ONE full page-nav row as a plain (non-wrapping) ttk.Frame -- Prev/Next/
-    label packed on the LEFT, an optional "Strona:"/entry/Idz jump group flush against
+    label packed on the LEFT, an optional "Page:"/entry/Go jump group flush against
     the RIGHT edge -- instead of FlowRow's left-to-right flow-and-wrap.
 
     Used where two of these rows stack on top of each other next to a shared tall
-    button (Magazyn's hits_export_btn spanning both) and their jump groups need to
+    button (Storage's hits_export_btn spanning both) and their jump groups need to
     land at the SAME right edge on both rows for a symmetric look, regardless of how
     much shorter one row's left cluster is than the other's -- FlowRow's flow model
     can't express "flush right", and on a narrow pane it would wrap the second row's
@@ -189,18 +182,17 @@ def clamp_pane_min_width(paned, pane_widget, min_width):
 
     Used for a detail pane holding an add_page_nav_row() (see its own docstring) --
     that row never wraps onto extra lines, so past this width its right-flush
-    "Strona:"/entry/Idz jump group starts sliding off the pane's own edge and out of
-    view entirely, not just crowding the left cluster. This use is on the Prime
-    numbers tab's own Magazyn preview, added after the same fix had already gone
-    into Magazyn/Constellations' own (so this call is the second, not first, use).
+    "Page:"/entry/Go jump group starts sliding off the pane's own edge and out of
+    view entirely, not just crowding the left cluster. Used by the Prime numbers and
+    Constellations Storage previews.
 
     Whenever `pane_widget`'s own width changes (a sash drag included, since dragging
     resizes both panes), the sash is clamped back if it would make `pane_widget`
     narrower than `min_width`. The corrective sashpos() call is deferred via
     after_idle rather than issued straight from the <Configure> handler -- calling it
-    synchronously, mid-geometry-pass, left sashpos() reporting the corrected value
-    while the pane's actual on-screen width stayed desynced at the too-narrow size
-    until a LATER, unrelated redraw (reproduced while building the first use of this);
+    synchronously, mid-geometry-pass, leaves sashpos() reporting the corrected value
+    while the pane's actual on-screen width stays desynced at the too-narrow size
+    until a LATER, unrelated redraw;
     deferring to a fresh idle turn lets Tk finish the geometry pass in progress first."""
     def _clamp_sash(max_allowed_sash):
         paned.sashpos(0, max_allowed_sash)

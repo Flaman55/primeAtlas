@@ -1,6 +1,6 @@
 """
 test_app_icon.py -- covers primeatlas/core/app_icon.py and the places that use it: the
-PrimeAtlas globe icon (Artur, 2026-09-30) for the Tk windows, the ring_viz GLFW window, the
+PrimeAtlas globe icon for the Tk windows, the ring_viz GLFW window, the
 taskbar, and the installer's shortcuts.
 
 Why AppUserModelID matters: the app runs as pythonw.exe, so without an explicit
@@ -159,10 +159,9 @@ def section_wiring():
     check(len(icon_lines) == 2 and all("IconFilename:" in l and "primeatlas.ico" in l
                                         for l in icon_lines),
           "both shortcuts use the icon")
-    # Artur's fresh install (2026-09-30): the Start-menu entry showed a blank document icon.
     # Inno creates [Icons] BEFORE ssPostInstall, where the repo is git-cloned, so an icon
-    # path inside {app}\app did not exist yet when the shortcut was made. The installer
-    # must ship its own copy via [Files] and point every icon reference at it.
+    # path inside {app}\app does not exist yet when the shortcut is made (blank icon). The
+    # installer must ship its own copy via [Files] and point every icon reference at it.
     check(re.search(r'^Source:\s*"\.\.\\primeatlas\\core\\assets\\primeatlas\.ico";\s*DestDir:\s*"\{app\}"',
                     iss, re.MULTILINE) is not None,
           r"[Files] installs primeatlas.ico into {app} itself (exists before [Icons] runs)")

@@ -1,9 +1,8 @@
 """
 test_app_update.py -- covers primeatlas/settings/app_update.py, the self-update checker/downloader
-wired into Settings > Aktualizacje and prime_atlas_v1.py's startup hook. It has gone
-through three follow-up rounds -- lock/access-recovery, OS-verified lock recovery, and
-the GitHub-API-based check path -- see app_update.py's own module docstring for the full
-story of each.
+wired into Settings > Updates and prime_atlas_v1.py's startup hook: lock/access
+recovery, OS-verified lock release, and the GitHub-API-based check path (see
+app_update.py's module docstring).
 
 No real git repo, network, or GitHub remote anywhere in this sandbox -- every subprocess
 boundary is stubbed by monkeypatching the module's own _run_git(), same "thin, separately
@@ -24,9 +23,8 @@ API path both run instantly here with no real network access. Four sections:
      confirming check_for_update() itself never calls `git fetch` when the API path
      succeeds, and does fall back to it when the API path is unusable.
   B. download_update() -- status-check-fails / dirty-working-tree-refusal / diverged /
-     merge-fails / full-success paths. Deliberately still 100% git-based, unlike check_for_
-     update() -- see download_update()'s own docstring for why the two commands took
-     different paths in the "part 3" follow-up.
+     merge-fails / full-success paths. Deliberately 100% git-based, unlike
+     check_for_update() -- see download_update()'s own docstring for why.
   C. Lock-recovery mechanics -- _looks_like_lock_error() classification,
      _try_release_lock_file() against real temp files (including the OS-verified "still in
      use" case), _release_all_locks(), and _run_git_with_lock_recovery()'s full
@@ -82,8 +80,7 @@ def make_stub(rules):
             return 0, ".git\n", ""
         if args == ["remote", "get-url", "origin"]:
             # Default: no usable GitHub remote -- forces check_for_update()'s dispatcher
-            # straight to the git-fetch fallback path, so every existing test in Section A
-            # (written against that path) keeps working unchanged. Section A2 overrides
+            # straight to the git-fetch fallback path that Section A tests. Section A2 overrides
             # this per-test where the GitHub-API path itself needs to be exercised.
             return 1, "", "fatal: No such remote 'origin'"
         raise AssertionError(f"unexpected call, got {args!r}")

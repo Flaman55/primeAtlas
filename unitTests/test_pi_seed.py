@@ -12,14 +12,14 @@ Covers:
      count_sieving_primes()/count_sieving_primes_range() calls raise OSError here).
   2. count_sieving_primes_cached() wiring -- use_known_pi_seed=True actually takes the
      "seeded" path on a cold floor (no cache yet) and a "shrink" floor (smaller limit than
-     cached), while use_known_pi_seed=False (the default) is completely unaffected (byte-for-
-     byte the old "cold"/"shrink" behavior). count_sieving_primes/count_sieving_primes_range
+     cached), while use_known_pi_seed=False (the default) keeps the plain
+     "cold"/"shrink" behavior. count_sieving_primes/count_sieving_primes_range
      are monkeypatched at module level for this since the real ones need libprimesieve.
   3. The cache file records seeded_from (power_of_ten/value/source) only when a seed was
      actually used, so a cached count's provenance is always inspectable.
   4. build_wsl_logged_command() (generation.py) -- use_known_pi_seed=True adds
-     PRIMEATLAS_USE_KNOWN_PI_SEED=1 to the env prefix; False (default) leaves it out entirely,
-     unchanged from before this feature existed.
+     PRIMEATLAS_USE_KNOWN_PI_SEED=1 to the env prefix; False (default) leaves it out
+     entirely.
 
 Usage:
     python3 unitTests/test_pi_seed.py

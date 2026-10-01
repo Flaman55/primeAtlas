@@ -1,6 +1,6 @@
 """
 constellations_calc_tab.py -- ConstellationsCalcTab, the tkinter widgets for the
-Constellations tab's "Kalkulator konstelacji" sub-tab: pick a k-tuple pattern from
+Constellations tab's "Constellation calculator" sub-tab: pick a k-tuple pattern from
 pattern_catalog_v1.py (k dropdown -> variant dropdown, showing that variant's offsets
 plus its pzktupel.de record info when tracked), enter exp/Offset, and Atlas computes
 N = 10**exp + Offset plus every N + offset_i for the pattern -- shown in a results
@@ -8,7 +8,7 @@ table (not yet checked for primality; this is pure arithmetic, no file I/O, so i
 instant even for a large exp).
 
 Unlike the Prime numbers tab, this one doesn't dispatch
-searches itself -- the Search button reuses the SIBLING Magazyn tab's own search box
+searches itself -- the Search button reuses the SIBLING Storage tab's own search box
 (ConstellationsHitsTab.search_constellation(), see that method's own docstring)
 against whichever row is currently selected, since that search already covers BOTH
 things the calculator needs to verify: is this number prime at all (offering to
@@ -23,7 +23,7 @@ bolting a second layer of completion-callback state onto an already-intricate fl
 One-row-at-a-time keeps every existing code path untouched and lets the user see each
 result (or generate-offer dialog) before deciding whether to search the next number.
 
-search_selected() ALSO does one thing beyond a plain "trigger the Magazyn search" call:
+search_selected() ALSO does one thing beyond a plain "trigger the Storage search" call:
 since the calculator already knows EXACTLY which catalog pattern (k, variant id) this
 number was computed for (unlike the generic search box, which has no target pattern in
 mind), it (1) proactively checks whether THAT SPECIFIC pattern already has a hit file
@@ -31,7 +31,7 @@ for this floor -- the generic search box's own "offer to generate" check only fi
 when the floor has NO hit files at all, which silently stays quiet whenever the floor
 already has hits for some OTHER pattern -- and offers to generate if not; and (2), once
 the search actually completes, prime_atlas_v1.py's own _on_const_search_result()
-auto-navigates the Magazyn tree straight to that specific (k, variant) node and jumps
+auto-navigates the Storage tree straight to that specific (k, variant) node and jumps
 the preview to this exact number (see this tab's own get_pending()/clear_pending(),
 consumed by that app-level orchestration method) instead of leaving the user to find it
 themselves among however many patterns the participation list turned up.
@@ -60,17 +60,17 @@ class ConstellationsCalcTab(BaseTab):
 
         eval_quick_number: prime_atlas_v1.py's own _eval_quick_number() -- shared by
         every numeric field in the app (Quick generation panel, primesieve calculator,
-        Testy pierwszosci, ...), so it stays a prime_atlas_v1.py-owned function rather
+        Primality tests, ...), so it stays a prime_atlas_v1.py-owned function rather
         than moving here just for this one tab's exp/Offset fields.
 
         get_portal_folder: same as every other tab's own parameter of this name.
 
         select_hits_view(): switches the main notebook to the Constellations tab AND
-        its own sub-notebook to the Magazyn tab -- app-level (touches
+        its own sub-notebook to the Storage tab -- app-level (touches
         self.main_notebook/self.constellations_sub_notebook) because this tab has no
         business knowing about ITS SIBLING tab's own container hierarchy.
 
-        set_hits_search_query(number)/trigger_hits_search(): the Magazyn tab's own
+        set_hits_search_query(number)/trigger_hits_search(): the Storage tab's own
         ConstellationsHitsTab.set_search_query()/search_constellation(), injected as
         plain callables (deferred lambdas at construction time, see
         _build_constellations_section()'s own comment) rather than a direct widget
@@ -240,7 +240,7 @@ class ConstellationsCalcTab(BaseTab):
         pattern = self._active_pattern
         base_exponent = digit_count_floor(number)
 
-        # Switch to Constellations -> Magazyn up front, before any dialog fires, so
+        # Switch to Constellations -> Storage up front, before any dialog fires, so
         # generate-offer confirmations and the eventual result both land where the
         # user is already looking rather than behind the still-visible calculator tab.
         self._select_hits_view()
@@ -250,18 +250,12 @@ class ConstellationsCalcTab(BaseTab):
 
         portal_folder = self._get_portal_folder()
         if base_exponent in list_floors(portal_folder):
-            # Floor exists -- but has constellation_finder_v1.py ever recorded hits
-            # for THIS SPECIFIC pattern here? The generic search box's own "offer to
-            # generate" check only fires when list_constellation_hits() is empty --
-            # i.e. NOTHING has ever been scanned for this floor -- which silently
-            # stays quiet whenever the floor already has hits for some OTHER pattern
-            # (e.g. the user already ran the finder here for twin primes). That's the
-            # right level of caution for the generic search box (it has no specific
-            # pattern in mind, so "maybe check everything" isn't a well-defined
-            # offer), but the calculator DOES know exactly which pattern it's asking
-            # about, so it can check precisely instead of guessing -- closing the gap
-            # reported after searching a calculator number into a floor that had
-            # unrelated constellation hits already.
+            # Floor exists -- but has this specific pattern been scanned here? The
+            # generic search box's "offer to generate" check only fires when
+            # list_constellation_hits() is empty (nothing scanned on this floor at all),
+            # which is the right test when no pattern is known. The calculator knows the
+            # pattern, so it checks that pattern's hits precisely: a floor can have hits
+            # for other patterns and still none recorded for this one.
             has_this_pattern = any(
                 p["id"] == pattern["id"]
                 for p, _path, _hdr in list_constellation_hits(portal_folder, base_exponent)

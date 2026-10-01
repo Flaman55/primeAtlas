@@ -1,8 +1,8 @@
 """
 research_goldbach_tab.py -- ResearchGoldbachTab, the tkinter widgets for the Research
-tab's Goldbach sub-tab: structural-window check ("Sprawdz okno"), the on-disk-archive-
-sourced "Wizualizacja" diagram (both-base [4, Pmax+GOLDBACH_BOTH_BASE_PMIN] window,
-per Lean's additiveSelfContained_of_hasGoldbachRep), and the exhaustive "Rozloz liczbe"
+tab's Goldbach sub-tab: structural-window check ("Check window"), the on-disk-archive-
+sourced "Visualize" diagram (both-base [4, Pmax+GOLDBACH_BOTH_BASE_PMIN] window,
+per Lean's additiveSelfContained_of_hasGoldbachRep), and the exhaustive "Decompose number"
 decomposition detail window.
 
 Extracted from prime_atlas_v1.py during the refactor branch's tab-by-tab
@@ -12,7 +12,7 @@ background.PersistentWorker (self._goldbach_worker) end to end -- see
 primeatlas/constellations/constellations_records_tab.py's own docstring for the general reasoning.
 
 The ONE piece that genuinely can't move here: launching a "generate the missing range"
-run in response to a Wizualizacja/decompose job hitting MissingStorageRangeError needs
+run in response to a Visualize/decompose job hitting MissingStorageRangeError needs
 prime_atlas_v1.py's own quick-gen planning/launch machinery (self._loop_runner,
 _quick_gen_plan_literal_range, _launch_direct_window_range) and its
 _pending_goldbach_retry_op slot (read back by _on_loop_finished once that generation
@@ -45,7 +45,7 @@ from .goldbach_window import (
 from .research_goldbach import read_is_prime_from_storage, MissingStorageRangeError
 
 GOLDBACH_VIZ_ROWS_PER_COL = 14  # per-n decomposition cards drawn in ONE column of the
-                                  # Wizualizacja diagram before wrapping to a new
+                                  # Visualize diagram before wrapping to a new
                                   # column -- see _goldbach_show_window_visualization's
                                   # multi-column layout, which fills the window's width
                                   # instead of piling every row into one narrow strip
@@ -56,7 +56,7 @@ GOLDBACH_CASCADE_ROW_CAP = GOLDBACH_VIZ_ROWS_PER_COL * GOLDBACH_VIZ_MAX_COLS
     # PAGE SIZE for the per-n decomposition rows, one backend goldbach_window_rows()
     # call per page (see row_offset there) -- the coverage verdict and counterexample
     # list are always computed over the FULL window regardless of which page is
-    # requested. Prev/Next buttons in the Wizualizacja window (see
+    # requested. Prev/Next buttons in the Visualize window (see
     # _on_goldbach_viz_row_prev/_next) step through pages of this size, matching the
     # pagination pattern used elsewhere for large lists (Primes tab preview,
     # benchmark log, etc. -- see _update_nav_controls).
@@ -65,8 +65,8 @@ GOLDBACH_VIZ_CHIP_ROWS_PER_PAGE = 6  # old-base prime chips: how many CHIP ROWS 
     # before Prev/Next must be used. Purely a client-side page (old_base_primes is
     # already fully computed by the backend), unlike row pagination above which needs
     # a fresh backend call per page.
-GOLDBACH_DECOMPOSE_ROW_CAP = 300  # defensive cap on how many (p, q) pairs the "Rozloz
-    # liczbe" detail window displays (see goldbach_all_decompositions + _goldbach_show_
+GOLDBACH_DECOMPOSE_ROW_CAP = 300  # defensive cap on how many (p, q) pairs the "Decompose
+    # number" detail window displays (see goldbach_all_decompositions + _goldbach_show_
     # decomposition_detail) -- the old_base_sufficient verdict and total count are
     # always computed over the FULL scan regardless of this cap, only the displayed
     # rows are truncated.
@@ -110,7 +110,7 @@ class ResearchGoldbachTab(BaseTab):
         self._goldbach_worker = background.PersistentWorker(
             self, self._goldbach_job, on_result=self._on_goldbach_worker_result,
             on_progress=self._on_goldbach_worker_progress)
-        # Wizualizacja Toplevel is created lazily (see _goldbach_ensure_viz_window)
+        # Visualize Toplevel is created lazily (see _goldbach_ensure_viz_window)
         # and reused across clicks -- None here means "not open yet".
         self._goldbach_viz_win = None
         # Pagination state for the two independently-browsable sections of the
@@ -124,7 +124,7 @@ class ResearchGoldbachTab(BaseTab):
         self._goldbach_viz_chip_page = 0
         self._goldbach_viz_current_n = None
         self._goldbach_viz_last_result = None
-        # "Rozloz liczbe" detail Toplevel (all_decompositions of one specific n
+        # "Decompose number" detail Toplevel (all_decompositions of one specific n
         # against the currently-open window's Pmax) -- same lazy-create-and-reuse
         # pattern as _goldbach_viz_win, see _goldbach_ensure_decompose_window.
         self._goldbach_decompose_win = None
@@ -146,7 +146,7 @@ class ResearchGoldbachTab(BaseTab):
         """Called by prime_atlas_v1.py's _on_loop_finished once a "generate the
         missing range" run it launched for a "viz" job (see
         _goldbach_offer_generate_missing_range) completes -- re-reads n/row-page/
-        od-do fresh from the still-open Wizualizacja Toplevel's own entries via
+        od-do fresh from the still-open Visualize Toplevel's own entries via
         _goldbach_queue_viz, same as the row Prev/Next handlers do."""
         if self._goldbach_viz_current_n is not None:
             self._goldbach_queue_viz(self._goldbach_viz_current_n, reset_page=False)
@@ -164,7 +164,7 @@ class ResearchGoldbachTab(BaseTab):
         integer) -- Pmax is DERIVED as the largest prime <= n (goldbach_window.
         largest_prime_le), matching the paper's own convention that Pmax must itself
         be a genuine prime, without requiring the person to type a prime by hand.
-        "Sprawdz okno" checks windowCovered(Pmax) -- every even n in [4, 2*Pmax]
+        "Check window" checks windowCovered(Pmax) -- every even n in [4, 2*Pmax]
         must be a sum of two primes -- exactly as formalized in Structural.lean /
         "A Structural Sieve for Goldbach's Conjecture" (see primeatlas/
         goldbach_window.py's own header for the full term-by-term correspondence,
@@ -173,7 +173,7 @@ class ResearchGoldbachTab(BaseTab):
         windowCovered/hasGoldbachRep, the paper's ACTIVE line of proof, coincides
         with buildableFromBase(Pmax, n) on this window) and "all_combinations" (full
         repCount(n) per n -- the paper's counting framing, kept there only for
-        comparison since it inherits the parity problem). "Wizualizacja" draws the
+        comparison since it inherits the parity problem). "Visualize" draws the
         SAME [4, 2*Pmax] window (never a separate cascade step -- see
         goldbach_window.window_rows' own docstring), sourced from the on-disk
         archive. Both run on the shared _goldbach_worker (background.PersistentWorker
@@ -258,11 +258,11 @@ class ResearchGoldbachTab(BaseTab):
 
     def _goldbach_parse_n_from(self, entry):
         """Parses an "n" field via _eval_quick_number (so expressions like 10**4
-        work here too, same as the primesieve calculator's and Testy pierwszosci's
+        work here too, same as the primesieve calculator's and Primality tests's
         fields), requiring an integer >= 2 (so a largest-prime-<=n exists to derive
         Pmax from -- see goldbach_window.largest_prime_le's own docstring). Takes
         the Entry widget explicitly so both the main tab's field and the
-        Wizualizacja window's OWN field (see _goldbach_ensure_viz_window) share one
+        Visualize window's OWN field (see _goldbach_ensure_viz_window) share one
         validation path."""
         n = self._eval_quick_number(entry.get())
         if n is None or n < 2:
@@ -286,8 +286,8 @@ class ResearchGoldbachTab(BaseTab):
         self._goldbach_worker.submit({"op": "window", "n": n, "mode": mode})
 
     def _on_goldbach_visualize(self):
-        """"Wizualizacja" button -- derives Pmax = largest prime <= n (starting from
-        the SAME n as the "Sprawdz okno" field) and draws the window Lean's
+        """"Visualize" button -- derives Pmax = largest prime <= n (starting from
+        the SAME n as the "Check window" field) and draws the window Lean's
         additiveSelfContained_of_hasGoldbachRep proves unconditionally
         (goldbach_window.both_base_window_rows -- see that module's own
         docstring), sourcing is_prime from the on-disk archive
@@ -314,7 +314,7 @@ class ResearchGoldbachTab(BaseTab):
         self._goldbach_queue_viz(n)
 
     def _on_goldbach_viz_refresh(self):
-        """The Wizualizacja Toplevel's OWN "Sprawdz okno" button -- reads "do"
+        """The Visualize Toplevel's OWN "Check window" button -- reads "do"
         from ITS OWN field (self.goldbach_viz_n_entry, still validated via
         _goldbach_parse_n_from -- "do" plays exactly the role the old standalone
         "n" field used to), not the main tab's, so the window is self-sufficient
@@ -335,15 +335,15 @@ class ResearchGoldbachTab(BaseTab):
         SAME value the "do" field holds, i.e. it plays two roles at once: it's
         what Pmax is derived from (largest prime <= n, exactly like the old
         standalone "n" field), AND it's the scan's own upper bound. reset_page=
-        True (the default, used by a fresh "Sprawdz okno" click from either the
-        main tab or the Wizualizacja window's own button) starts back at
+        True (the default, used by a fresh "Check window" click from either the
+        main tab or the Visualize window's own button) starts back at
         row/chip page 0, since a different n means a different window and a
         different old base entirely. reset_page=False (used by the row
         Prev/Next handlers below) keeps whatever self._goldbach_viz_row_page was
         already set to by the caller.
 
         "od" is read fresh from goldbach_viz_range_from_entry every call (not
-        cached, via getattr since that Entry only exists once the Wizualizacja
+        cached, via getattr since that Entry only exists once the Visualize
         Toplevel has actually been built). od/do form a single validated range
         rather than two independent optional ranges (a standalone "n" field plus
         a separate blank-defaults range is ambiguous about which one governs the
@@ -355,8 +355,8 @@ class ResearchGoldbachTab(BaseTab):
         if self._goldbach_busy:
             return
         from_entry = getattr(self, "goldbach_viz_range_from_entry", None)
-        od_raw = from_entry.get().strip() if from_entry is not None else ""
-        n_min = self._eval_quick_number(od_raw) if od_raw else 4
+        from_raw = from_entry.get().strip() if from_entry is not None else ""
+        n_min = self._eval_quick_number(from_raw) if from_raw else 4
         if n_min is None or n_min < 4:
             messagebox.showerror(
                 T("research_goldbach.error_dialog_title"),
@@ -378,7 +378,7 @@ class ResearchGoldbachTab(BaseTab):
         })
 
     def _on_goldbach_viz_row_prev(self):
-        """Sums-grid "Poprzednia" -- steps back one PAGE of decomposition rows
+        """Sums-grid "Previous" -- steps back one PAGE of decomposition rows
         (GOLDBACH_CASCADE_ROW_CAP per page). Needs a fresh worker call (see
         _goldbach_queue_viz's own docstring) since only one page's rows are ever
         held in memory at a time."""
@@ -389,7 +389,7 @@ class ResearchGoldbachTab(BaseTab):
             self._goldbach_queue_viz(self._goldbach_viz_current_n, reset_page=False)
 
     def _on_goldbach_viz_row_next(self):
-        """Sums-grid "Nastepna" -- see _on_goldbach_viz_row_prev. The Next button is
+        """Sums-grid "Next" -- see _on_goldbach_viz_row_prev. The Next button is
         disabled once goldbach_window_rows() reports rows_truncated=False for the
         current page (see _goldbach_show_window_visualization), so this doesn't
         need its own upper-bound check."""
@@ -399,7 +399,7 @@ class ResearchGoldbachTab(BaseTab):
         self._goldbach_queue_viz(self._goldbach_viz_current_n, reset_page=False)
 
     def _on_goldbach_viz_row_goto(self):
-        """Sums-grid "Idz" -- jumps directly to a typed page number instead of
+        """Sums-grid "Go" -- jumps directly to a typed page number instead of
         stepping one page at a time, same as the app's other large-list nav rows
         (see e.g. _goto_floor_page/_goto_benchmark_page). Clamped against the last
         known segment_size (if a result has already been drawn) so a wildly
@@ -424,7 +424,7 @@ class ResearchGoldbachTab(BaseTab):
         self._goldbach_queue_viz(self._goldbach_viz_current_n, reset_page=False)
 
     def _on_goldbach_viz_chip_prev(self):
-        """STARA BAZA "Poprzednia" -- purely client-side: old_base_primes is
+        """OLD BASE "Previous" -- purely client-side: old_base_primes is
         already fully present in the last worker result, so paging through it is
         just a redraw with a different slice, no worker round-trip needed."""
         if self._goldbach_viz_chip_page > 0:
@@ -433,7 +433,7 @@ class ResearchGoldbachTab(BaseTab):
                 self._goldbach_show_window_visualization(self._goldbach_viz_last_result)
 
     def _on_goldbach_viz_chip_next(self):
-        """STARA BAZA "Nastepna" -- see _on_goldbach_viz_chip_prev. Clamped against
+        """OLD BASE "Next" -- see _on_goldbach_viz_chip_prev. Clamped against
         the true page count inside _goldbach_show_window_visualization, so an extra
         click past the end is harmless (the Next button is also disabled there)."""
         self._goldbach_viz_chip_page += 1
@@ -441,7 +441,7 @@ class ResearchGoldbachTab(BaseTab):
             self._goldbach_show_window_visualization(self._goldbach_viz_last_result)
 
     def _on_goldbach_viz_chip_goto(self):
-        """STARA BAZA "Idz" -- pure client-side like chip prev/next, so this just
+        """OLD BASE "Go" -- pure client-side like chip prev/next, so this just
         sets the page and redraws; _goldbach_show_window_visualization clamps it
         against the true page count itself (same as it already does for chip
         prev/next going past either end)."""
@@ -453,7 +453,7 @@ class ResearchGoldbachTab(BaseTab):
             self._goldbach_show_window_visualization(self._goldbach_viz_last_result)
 
     def _on_goldbach_viz_decompose(self):
-        """"Pokaz wszystkie rozklady" -- reads a target n from the Wizualizacja
+        """"Show all decompositions" -- reads a target n from the Visualize
         window's own decompose field and exhaustively scans EVERY prime pair
         summing to it (goldbach_all_decompositions), flagged against the Pmax of
         the window currently displayed above (self._goldbach_viz_last_result).
@@ -487,7 +487,7 @@ class ResearchGoldbachTab(BaseTab):
     def _goldbach_queue_decompose_page(self):
         """Issues a "decompose" worker job for self._goldbach_decompose_page of
         self._goldbach_decompose_current_n against self._goldbach_decompose_
-        current_pmax -- shared by the initial "Pokaz wszystkie rozklady" click and
+        current_pmax -- shared by the initial "Show all decompositions" click and
         the detail window's own Prev/Next/goto handlers, so they all re-request the
         SAME target n/pmax and only the page differs."""
         self._goldbach_set_busy(True)
@@ -556,7 +556,7 @@ class ResearchGoldbachTab(BaseTab):
         ttk.Label(win, textvariable=self.goldbach_decompose_count_var,
                   padding=(10, 0, 10, 2)).pack(anchor="w")
 
-        # Prev/label/Next/goto -- same layout as the Wizualizacja's own row_nav,
+        # Prev/label/Next/goto -- same layout as the Visualize's own row_nav,
         # needed here for the same reason: a large n can have tens of thousands of
         # pairs (e.g. n~=9999992 yields 53364), so a static
         # "(showing first 300 of 53364)" truncation note with no way to see the
@@ -609,7 +609,7 @@ class ResearchGoldbachTab(BaseTab):
         headline verdict on buildableFromBase(Pmax, n) [Constructive.lean] --
         computed over the whole scan regardless of which page is showing. Lean's
         own buildableFromBase only ever bounds p, never q (see goldbach_window.py's
-        module docstring) -- so the per-row "Skad q" column is PURELY
+        module docstring) -- so the per-row "Where q is from" column is PURELY
         INFORMATIONAL (which prime was already known before this window vs first
         appears inside it), never a pass/fail signal. The verdict is about p_in_base
         across the whole list, not about any individual q. Page nav (Prev/Next/
@@ -652,7 +652,7 @@ class ResearchGoldbachTab(BaseTab):
             self.goldbach_decompose_prev_btn, self.goldbach_decompose_next_btn)
 
     def _goldbach_ensure_viz_window(self):
-        """Creates the Wizualizacja Toplevel the first time it's needed, or returns
+        """Creates the Visualize Toplevel the first time it's needed, or returns
         the existing one if it's still open -- so repeated clicks (from this tab's
         button, or from the window's own check button) redraw ONE persistent
         window instead of piling up a new Toplevel per click. Layout: a top row
@@ -673,15 +673,12 @@ class ResearchGoldbachTab(BaseTab):
 
         win.protocol("WM_DELETE_WINDOW", _on_close)
 
-        # Single od/do row: one range to reason about rather than a standalone
-        # "n" field plus a separate independent od/do range. "do" plays n's old
-        # role unchanged (still goldbach_viz_n_entry / _goldbach_parse_n_from,
-        # still what determines Pmax, derived from whatever's typed as the upper
-        # bound); "od" defaults to 4 (not blank) and is validated
-        # against "do" in _goldbach_queue_viz (>=4, and <= do-2 so at least
-        # one even n exists in the range) so the button always operates on a
-        # concrete, well-formed range -- no more separate "leave it blank for
-        # the full window" mode to explain.
+        # Single od/do row: one range to reason about. "do" determines Pmax
+        # (goldbach_viz_n_entry / _goldbach_parse_n_from, derived from whatever's
+        # typed as the upper bound); "od" defaults to 4 (not blank) and is validated
+        # against "do" in _goldbach_queue_viz (>=4, and <= do-2 so at least one even
+        # n exists in the range), so the button always operates on a concrete,
+        # well-formed range.
         top = ttk.Frame(win)
         top.pack(fill="x", padx=10, pady=(10, 4))
         ttk.Label(top, text=T("research_goldbach.viz_range_label")).pack(side="left")
@@ -720,7 +717,7 @@ class ResearchGoldbachTab(BaseTab):
             win, mode="determinate", maximum=1, value=0)
         self.goldbach_viz_progress.pack(fill="x", padx=10, pady=(0, 6))
 
-        # "Rozloz liczbe" -- the smallest-witness search (_smallest_witness /
+        # "Decompose number" -- the smallest-witness search (_smallest_witness /
         # window_rows) can land on a pair
         # whose q > Pmax even when an old-base-only pair (both p, q <= Pmax) exists
         # elsewhere in the full combination list -- e.g. n=1012 against Pmax=997:
@@ -743,7 +740,7 @@ class ResearchGoldbachTab(BaseTab):
 
         # Two INDEPENDENT navigation rows, matching the Prev/Next paging pattern
         # used elsewhere for large lists (Primes tab preview,
-        # benchmark log -- see _update_nav_controls). STARA BAZA pages through
+        # benchmark log -- see _update_nav_controls). OLD BASE pages through
         # old_base_primes client-side; the sums grid pages through the window's
         # decomposition rows via a fresh backend call each time (see
         # _goldbach_queue_viz's docstring for why they differ).
@@ -791,12 +788,10 @@ class ResearchGoldbachTab(BaseTab):
         ttk.Button(row_nav, text=T("common.goto"),
                    command=self._on_goldbach_viz_row_goto).pack(side="left", padx=(4, 0))
 
-        # NOT fill="both"/expand=True here: an earlier version packed the canvas to
-        # fill the whole Toplevel, which meant the Canvas widget stretched to
-        # whatever size the window happened to be (its actual drawn content still
-        # only covering its own configured width/height), leaving a big blank area
-        # to the right and pinning everything to the top-left. Packing it at its
-        # natural size instead means the Toplevel
+        # NOT fill="both"/expand=True here: filling the whole Toplevel would stretch
+        # the Canvas widget to the window's size (its drawn content still covering only
+        # its own configured width/height), leaving a big blank area to the right and
+        # pinning everything to the top-left. Packed at its natural size, the Toplevel
         # itself auto-sizes to the canvas's actual content on every redraw (see
         # the win.geometry("") reset in _goldbach_show_window_visualization).
         canvas_frame = ttk.Frame(win)
@@ -812,7 +807,7 @@ class ResearchGoldbachTab(BaseTab):
     def _goldbach_widget_configure(self, attr_name, **kwargs):
         """configure() an optional, possibly-stale widget attribute without
         blowing up -- `hasattr(self, attr_name)` alone isn't enough here: closing
-        the Wizualizacja or decompose Toplevel (see their own _on_close handlers)
+        the Visualize or decompose Toplevel (see their own _on_close handlers)
         destroys every Tk widget inside it, but does NOT clear out the Python
         attribute still pointing at that now-dead widget (only the *_win attribute
         itself gets reset to None). Configuring a destroyed widget raises
@@ -822,8 +817,8 @@ class ResearchGoldbachTab(BaseTab):
         after). Without this guard, that TclError propagates out of whichever
         caller stopped it from reaching the code that resets self._goldbach_busy
         back to False, permanently disabling every Goldbach button on the tab
-        (e.g. opening and closing "Pokaz wszystkie rozklady" leaves that button
-        greyed out, and the sums-grid "Nastepna" too)."""
+        (e.g. opening and closing "Show all decompositions" leaves that button
+        greyed out, and the sums-grid "Next" too)."""
         widget = getattr(self, attr_name, None)
         if widget is None:
             return
@@ -858,7 +853,7 @@ class ResearchGoldbachTab(BaseTab):
             self._goldbach_viz_progress_set(value=0)
 
     def _goldbach_refresh_nav_buttons(self):
-        """Restores BOTH the Wizualizacja sums-grid Prev/Next and the decompose
+        """Restores BOTH the Visualize sums-grid Prev/Next and the decompose
         window's own Prev/Next from their last-drawn results. Needed because
         _goldbach_set_busy(True) force-disables ALL FOUR of these buttons for
         ANY Goldbach job (window/viz/decompose share one busy flag and one
@@ -867,10 +862,10 @@ class ResearchGoldbachTab(BaseTab):
         call -- _goldbach_show_decomposition_detail never touches the
         sums-grid buttons, and _goldbach_show_window_visualization never
         touches the decompose buttons. Since only ONE show_* function runs per
-        completed job, the OTHER pair was left stuck disabled from the
-        busy=True phase forever -- e.g. clicking
-        "Pokaz wszystkie rozklady" (a decompose job) leaves the Wizualizacja's
-        own "Sumy w oknie" Nastepna button greyed out even though that
+        completed job, the OTHER pair would otherwise stay disabled from the
+        busy=True phase -- e.g. clicking
+        "Show all decompositions" (a decompose job) leaves the Visualize's
+        own "Window sums" Next button greyed out even though that
         viz result's true last-known page state hasn't changed at all.
         Called unconditionally after every busy=False transition, regardless
         of which op just completed -- each block below is a harmless no-op
@@ -912,7 +907,7 @@ class ResearchGoldbachTab(BaseTab):
 
         "viz" -- resolves Pmax the same way, but from is_prime sourced from the
         on-disk archive (read_is_prime_from_storage, up to 2*n -- a safe upper
-        bound since Pmax <= n means 2*Pmax <= 2*n); Wizualizacja reads from
+        bound since Pmax <= n means 2*Pmax <= 2*n); Visualize reads from
         storage rather than recomputing a fresh sieve. Then runs
         goldbach_window.window_rows(is_prime, Pmax, ...) over
         that SAME array -- both the Pmax resolution and the window check share one
@@ -924,8 +919,7 @@ class ResearchGoldbachTab(BaseTab):
         thread. Mid-job progress ticks from both_base_window_rows' own
         progress_cb are relayed via report_progress -- PersistentWorker's own
         channel, kept separate from the (op, ok, payload) result tuple so
-        _on_goldbach_worker_progress never has to be told apart from a finished
-        job the way the old single-queue "progress" tag required.
+        progress updates never have to be told apart from a finished job.
 
         "decompose" -- job carries an explicit "pmax" (the ALREADY-displayed
         window's Pmax, not re-derived from n, since the target n here is a
@@ -970,7 +964,7 @@ class ResearchGoldbachTab(BaseTab):
                 result["page"] = page
                 return op, True, result
             else:
-                # Wizualizacja's only window: [4, Pmax+GOLDBACH_BOTH_BASE_PMIN],
+                # Visualize's only window: [4, Pmax+GOLDBACH_BOTH_BASE_PMIN],
                 # both p and q required <= Pmax -- exactly what Lean's
                 # additiveSelfContained_of_hasGoldbachRep proves unconditionally
                 # (see goldbach_window.BOTH_BASE_PMIN's own docstring). Only
@@ -1031,7 +1025,7 @@ class ResearchGoldbachTab(BaseTab):
         _poll_goldbach_results, just delivered via PersistentWorker instead of a
         bespoke queue.Queue + self.after() pair. Wrapped in its own try/except
         (Exception, not just letting it propagate) so that ONE bad message -- e.g.
-        a result arriving for a Toplevel (Wizualizacja or decompose) the user
+        a result arriving for a Toplevel (Visualize or decompose) the user
         already closed -- can never raise up through PersistentWorker's own
         _poll() and skip ITS self.widget.after() reschedule, which would silently
         kill polling for the rest of the session (background.PersistentWorker._poll
@@ -1075,7 +1069,7 @@ class ResearchGoldbachTab(BaseTab):
             pass
 
     def _goldbach_viz_progress_set(self, indeterminate=False, value=None):
-        """Mirrors totals_progress's own state onto the Wizualizacja Toplevel's
+        """Mirrors totals_progress's own state onto the Visualize Toplevel's
         OWN Progressbar (see _goldbach_ensure_viz_window):
         the shared bottom bar lives in the MAIN window and is invisible while
         the Toplevel is maximized/fullscreen, which is how this tab is used
@@ -1126,7 +1120,7 @@ class ResearchGoldbachTab(BaseTab):
         """Drill-down for "all_combinations" mode -- shows the FULL deduplicated
         witness-pair list for the double-clicked n (the results table only shows
         the smallest pair + count, same drill-down spirit as the Constellations ->
-        Tabela rekordow tab's hit-list dialog). No-op in "touch_once" mode (pairs
+        Records table tab's hit-list dialog). No-op in "touch_once" mode (pairs
         is None there by design -- see goldbach_window.py's own docstring)."""
         T = self.T
         sel = self.goldbach_results_tree.selection()
@@ -1174,11 +1168,11 @@ class ResearchGoldbachTab(BaseTab):
         self.status.set(T("research_goldbach.status_exported", path=path))
 
     def _goldbach_show_window_visualization(self, result):
-        """Redraws the "old base vs window" diagram into the PERSISTENT Wizualizacja
+        """Redraws the "old base vs window" diagram into the PERSISTENT Visualize
         Toplevel/Canvas (see _goldbach_ensure_viz_window) -- built from a REAL
         window_rows() result sourced from the archive
         (read_is_prime_from_storage), covering EXACTLY the window [4, 2*Pmax] that
-        "Sprawdz okno" also checks (never a separate cascade step -- see
+        "Check window" also checks (never a separate cascade step -- see
         goldbach_window.window_rows' own docstring). The window itself, its n
         field and its check button are created once and reused; this method only
         clears and repopulates the canvas so repeated checks (from this tab's
@@ -1245,7 +1239,7 @@ class ResearchGoldbachTab(BaseTab):
         chip_w = _digit_box_w(34, p_digits)
         chip_gap = 6
 
-        # chip_cols (and therefore the "STARA BAZA" box width) is derived from
+        # chip_cols (and therefore the "OLD BASE" box width) is derived from
         # chip_w, not hardcoded -- a fixed 6-column grid at a fixed 230px box width
         # was sized for 1-2 digit primes; once Pmax grew multi-digit (chip_w scaled
         # up above), 6 columns no longer fit inside 230px and the overflow chips
@@ -1259,7 +1253,7 @@ class ResearchGoldbachTab(BaseTab):
         chip_cols = max(3, chip_cols_target_w // (chip_w + chip_gap))
         box_w = 24 + chip_cols * chip_w + (chip_cols - 1) * chip_gap
 
-        # STARA BAZA pagination (client-side, see _on_goldbach_viz_chip_prev/_next):
+        # OLD BASE pagination (client-side, see _on_goldbach_viz_chip_prev/_next):
         # old_base_primes can hold hundreds of thousands of entries for a large
         # Pmax, so only ONE page's worth is ever sliced for drawing, matching the
         # Prev/Next browsing pattern used elsewhere in the app
@@ -1290,7 +1284,7 @@ class ResearchGoldbachTab(BaseTab):
         # the column-width cap just below: adding the mode
         # toggle row (_goldbach_ensure_viz_window) can push a full 3x14-row page
         # (both_base mode, n=1000) tall enough that the canvas -- and with it the
-        # "wszystko pokryte" / counterexamples summary drawn at its very bottom --
+        # "segment covered" / counterexamples summary drawn at its very bottom --
         # runs off the bottom of the screen with no scrollbar to reach it. Unlike
         # the width cap (which drops whole COLUMNS), this shrinks how many ROWS
         # each column holds, so a screen too short for 14 rows still shows AS MANY
@@ -1320,7 +1314,7 @@ class ResearchGoldbachTab(BaseTab):
         # way to reach it). A column that would push the
         # window past screen width is dropped entirely rather than drawn
         # off-screen -- the truncation note below then reports the real shown/total
-        # count so it's clear more rows exist (use n or Eksportuj CSV to see them).
+        # count so it's clear more rows exist (use n or  to see them).
         screen_w = win.winfo_screenwidth()
         available_w = max(700, screen_w - 150)  # leave room for window chrome/taskbar
         fit_cols = max(1, (available_w - right_x - 16 + COL_GAP) // (card_w + COL_GAP))

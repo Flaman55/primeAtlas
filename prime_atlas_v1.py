@@ -32,7 +32,7 @@ import os
 #      (loaded at startup, saved whenever a run is launched).
 #   4) "Benchmark" -- a small dependency-free growth chart (seconds/10M vs. floor depth,
 #      one point per floor -- latest logged run wins) above a full table view of
-#      benchmark_log.csv (written by orchestrator_v1.py's print_benchmark_summary()); a
+#      benchmark_log.csv (written by orchestrator_v3.py's print_benchmark_summary()); a
 #      "Save PDF" button renders that same chart + the full table into a standalone PDF
 #      report (see the hand-rolled PDF writer below render_benchmark_pdf()).
 #   5) "Settings" -- storage path configuration plus backup/restore/delete of the whole
@@ -77,7 +77,7 @@ import os
 #
 # Depends on prime_sieve_v1.py (./prime_sieve/) for the PGS2 format readers and
 # pattern_catalog_v1.py (./constellation/) for pattern offsets/record metadata --
-# imported via sys.path, same approach orchestrator_v1.py/constellation_finder_v1.py use.
+# imported via sys.path, same approach orchestrator_v3.py/constellation_finder_v2.py use.
 # Never touches prime_sieve_engine_v1.so (only prime_sieve_v1's lazy sieving path does).
 # ==========================================================================================
 
@@ -139,7 +139,7 @@ from primeatlas.generation.generation import (  # noqa: E402
 APP_SETTINGS = AppSettings(_SCRIPT_DIR)
 PORTAL_FOLDER = APP_SETTINGS.storage_path
 
-# How long after __init__ finishes to fire the app self-update auto-check (task #524) --
+# How long after __init__ finishes to fire the app self-update auto-check --
 # see PortalBrowserApp.__init__'s own comment at the call site. Long enough that it never
 # competes with the loading screen or the two startup tree scans for attention/bandwidth,
 # short enough that it still fires well within the first minute of a normal session.
@@ -159,9 +159,9 @@ FLOOR_PAGE_SIZE = 200  # PRIME_WINDOW_*.bin files shown per page when a floor no
                         # expanded in the "Prime numbers" tree -- separate from PAGE_SIZE
                         # above (that one pages through prime NUMBERS inside one file; this
                         # one pages through FILES inside one floor). A floor can hold
-                        # thousands of windows (10p15 alone passed 2,600+ and is still
-                        # growing) -- reading every file's header AND inserting every file
-                        # as a tree row on a single expand is what used to freeze the GUI.
+                        # thousands of windows -- reading every file's header AND
+                        # inserting every file as a tree row on a single expand would
+                        # freeze the GUI.
 
 
 # ------------------------------------------------------------------------------------------
@@ -285,9 +285,7 @@ def _build_gui():
 
             # Saved so other tabs/sub-tab modules can programmatically switch the main
             # notebook (e.g. jumping to the Constellations tab, see
-            # _select_constellations_hits_view() below) -- every prior use of this
-            # notebook was purely declarative (add tabs, never navigate between them
-            # from code), so nothing kept a reference until now.
+            # _select_constellations_hits_view() below).
             self.main_notebook = notebook
 
             self.primes_tab = ttk.Frame(notebook)
@@ -345,11 +343,10 @@ def _build_gui():
             # primes_tab_widget/constellations_hits_tab_widget, both of which already
             # exist by this point. reload_primes_tree()/reload_constellations_tree()
             # below stay as one-line delegating METHODS on this class (not instance
-            # attributes reassigned here) so every existing caller that already holds
-            # a self.reload_primes_tree/self.reload_constellations_tree reference
+            # attributes reassigned here), so every caller that holds a
+            # self.reload_primes_tree/self.reload_constellations_tree reference
             # (PrimesTab, ConstellationsHitsTab, GenerationTab, _set_portal_folder,
-            # the startup kickoff further down) keeps working unchanged, late-bound at
-            # call time exactly like the original inline versions were.
+            # the startup kickoff further down) resolves it late, at call time.
             self._primes_tree_coord = PrimesTreeCoordinator(
                 self, get_portal_folder=lambda: PORTAL_FOLDER, status_var=self.status,
                 translator=TRANSLATOR, primes_tab_widget=self.primes_tab_widget,
@@ -379,22 +376,22 @@ def _build_gui():
                 quick_gen_max_window_width=QUICK_GEN_MAX_WINDOW_WIDTH,
                 primesieve_max_stop=PRIMESIEVE_MAX_STOP)
 
-            # The primesieve calculator worker (Liczby pierwsze -> primesieve sub-tab)
-            # and primality-testing worker (Liczby pierwsze -> Testy pierwszosci
+            # The primesieve calculator worker (Prime numbers -> primesieve sub-tab)
+            # and primality-testing worker (Prime numbers -> Primality tests
             # sub-tab) live entirely inside their own PrimesieveCalcTab/PrimalityTab
             # classes -- each is confirmed exclusive to its own one sub-tab, unlike the
             # shared search/totals workers above, which stay here -- see
             # primeatlas/primality/primesieve_calc_tab.py and primeatlas/primality/primality_tab.py's own
             # docstrings.
 
-            # The Goldbach structural-window worker (Badania -> Goldbach sub-tab), its
-            # Wizualizacja/decompose Toplevel state, and all their pagination fields
+            # The Goldbach structural-window worker (Research -> Goldbach sub-tab), its
+            # Visualize/decompose Toplevel state, and all their pagination fields
             # live entirely inside ResearchGoldbachTab -- it's confirmed exclusive to
             # that one sub-tab, unlike the shared search/totals workers below, which
             # stay here -- see primeatlas/research/research_goldbach_tab.py's own docstring.
 
-            # The constellation-records-table scan worker (Constellations -> Tabela
-            # rekordow sub-tab) lives entirely inside ConstellationsRecordsTab -- it's
+            # The constellation-records-table scan worker (Constellations -> Records
+            # table sub-tab) lives entirely inside ConstellationsRecordsTab -- it's
             # confirmed exclusive to that one sub-tab, unlike the shared search/totals
             # workers below, which stay here -- see
             # primeatlas/constellations/constellations_records_tab.py's own docstring.
@@ -430,12 +427,12 @@ def _build_gui():
                                         # floor -- see reload_primes_tree()'s docstring
             self.reload_constellations_tree()
 
-            # App self-update auto-check (task #524) -- deferred several seconds past
+            # App self-update auto-check -- deferred several seconds past
             # startup (not run inline here) so a `git fetch` against GitHub -- a real
             # network round-trip that can be slow or simply hang on a bad connection --
             # never delays the loading screen or the two tree scans just kicked off
             # above. Reuses SettingsTab's own _check_for_app_update() (built for the
-            # manual 'Sprawdz teraz' button) rather than duplicating its network-thread/
+            # manual 'Check now' button) rather than duplicating its network-thread/
             # dialog/download logic here -- single code path, so the Settings tab's
             # status label reflects this automatic check too, not just manual ones.
             # Only actually runs if AppSettings.auto_update_check is on (default True;
@@ -482,7 +479,7 @@ def _build_gui():
             normal ttk style inheritance / Tk option-database lookup instead of
             needing a live re-walk of the whole widget tree once it already exists.
             Same restart-required UX as `language` (see i18n.py's docstring) --
-            Settings > Ogolne's theme picker (settings_tab.py) only writes the choice
+            Settings > General's theme picker (settings_tab.py) only writes the choice
             to AppSettings, it does not attempt to re-theme the already-built app.
 
             Two coloring mechanisms, because this app mixes ttk and raw tk widgets:
@@ -494,7 +491,7 @@ def _build_gui():
                 name actually used anywhere in this app is configured below.
               - the handful of raw tk widgets (tk.Text inside GenerationConsole/
                 ScrolledText, tk.Listbox backing every readonly ttk.Combobox's own
-                dropdown, tk.Canvas for the Wizualizacja/constellation diagrams) obey
+                dropdown, tk.Canvas for the Visualize/constellation diagrams) obey
                 the Tk option DATABASE instead -- root.option_add() below, which only
                 takes effect for widgets that don't pass an explicit bg/fg at
                 construction time. The two benchmark-chart Canvases (see
@@ -586,10 +583,9 @@ def _build_gui():
 
         def _build_primes_section(self):
             """The top-level 'Prime numbers' notebook tab is itself a small ttk.Notebook,
-            not a single flat frame -- 'Magazyn' (Storage) holds exactly what this whole
-            tab used to be (the floor/file browser + search, built by _build_primes_tab()
-            below, unchanged apart from its parent frame now being
-            self.primes_storage_tab instead of self.primes_tab directly), alongside two
+            not a single flat frame -- 'Storage' (Storage) holds the floor/file browser +
+            search (built by _build_primes_tab() below into self.primes_storage_tab),
+            alongside two
             sibling tabs: self.primes_primesieve_tab (a standalone libprimesieve
             calculator -- count/nth/next/prev prime, no on-disk storage involved) and
             self.primes_primality_tab (probabilistic primality testing + factorization
@@ -606,7 +602,7 @@ def _build_gui():
             sub.pack(fill="both", expand=True)
             # Saved for the same reason as self.main_notebook above -- the constellation
             # calculator's Search button needs to switch to this sub-notebook's own
-            # Magazyn tab, not just the top-level Prime numbers tab.
+            # Storage tab, not just the top-level Prime numbers tab.
             self.primes_sub_notebook = sub
             self.primes_storage_tab = ttk.Frame(sub)
             self.primes_primesieve_tab = ttk.Frame(sub)
@@ -658,10 +654,10 @@ def _build_gui():
             One-line delegate to primeatlas/primes/primes_tree_coordinator.py's
             PrimesTreeCoordinator (see that module's own docstring for the full
             scan/reload/caching/coalescing/staleness design). Kept as a plain class
-            METHOD (not an instance attribute reassigned in __init__) so every existing
-            caller that already holds a self.reload_primes_tree reference (PrimesTab,
-            GenerationTab, _set_portal_folder, the startup kickoff in __init__) keeps
-            working unchanged, late-bound at call time -- self._primes_tree_coord only
+            METHOD (not an instance attribute reassigned in __init__) so every caller
+            that holds a self.reload_primes_tree reference (PrimesTab, GenerationTab,
+            _set_portal_folder, the startup kickoff in __init__) resolves it late, at
+            call time -- self._primes_tree_coord only
             needs to exist by the time this is actually CALLED, not by the time some
             other constructor captures this method as a callable."""
             self._primes_tree_coord.reload()
@@ -695,10 +691,10 @@ def _build_gui():
         def _build_constellations_section(self):
             """Thin wrapper -- all three of the Constellations tab's actual widgets/logic
             live in primeatlas/constellations/constellations_hits_tab.py (ConstellationsHitsTab, the
-            "Magazyn" sub-tab), primeatlas/constellations/constellations_calc_tab.py
-            (ConstellationsCalcTab, "Kalkulator konstelacji"), and
-            primeatlas/constellations/constellations_records_tab.py (ConstellationsRecordsTab, "Tabela
-            rekordow") -- see each module's own docstring. Local imports, not
+            "Storage" sub-tab), primeatlas/constellations/constellations_calc_tab.py
+            (ConstellationsCalcTab, "Constellation calculator"), and
+            primeatlas/constellations/constellations_records_tab.py (ConstellationsRecordsTab, "Records
+            table") -- see each module's own docstring. Local imports, not
             module-level, for the same lazy-tkinter-import reason
             SettingsTab/BenchmarkTab/PrimesTab are imported inside their own
             _build_*_tab() methods rather than at this file's top.
@@ -718,7 +714,7 @@ def _build_gui():
             sub.pack(fill="both", expand=True)
             # Saved for the same reason as self.primes_sub_notebook -- the constellation
             # calculator's Search button needs to switch to THIS sub-notebook's own
-            # Magazyn tab (not just the top-level Constellations tab).
+            # Storage tab (not just the top-level Constellations tab).
             self.constellations_sub_notebook = sub
             self.constellations_storage_tab = ttk.Frame(sub)
             self.constellations_calculator_tab = ttk.Frame(sub)
@@ -765,7 +761,7 @@ def _build_gui():
 
         def _select_constellations_hits_view(self):
             """Switches the main notebook to the Constellations tab AND its own
-            sub-notebook to the Magazyn tab -- injected into ConstellationsCalcTab as
+            sub-notebook to the Storage tab -- injected into ConstellationsCalcTab as
             select_hits_view (see that class's own docstring) and used directly by
             _jump_records_detail_to_hits below; app-level because it touches
             self.main_notebook/self.constellations_sub_notebook, neither of which any one
@@ -775,7 +771,7 @@ def _build_gui():
 
         def _jump_records_detail_to_hits(self, base_exponent, pattern, hit_base, position):
             """Registered with ConstellationsRecordsTab.bind_jump_to_hits() -- double-
-            clicking a hit in the Tabela rekordow drill-down list jumps to the Magazyn
+            clicking a hit in the Records table drill-down list jumps to the Storage
             tab's own tree/preview, landing on this exact number. Thin app-level glue
             between two sibling tabs, same shape as _on_const_search_result below."""
             self._select_constellations_hits_view()
@@ -785,17 +781,17 @@ def _build_gui():
 
         def _select_constellations_records_view(self):
             """Switches the main notebook to the Constellations tab AND its own
-            sub-notebook to the Tabela rekordow tab -- mirror of
+            sub-notebook to the Records table tab -- mirror of
             _select_constellations_hits_view() above, for the opposite direction."""
             self.main_notebook.select(self.constellations_tab)
             self.constellations_sub_notebook.select(self.constellations_records_tab)
 
         def _jump_hits_to_records_export(self, base_exponent, pattern, page_index):
             """Registered with ConstellationsHitsTab.bind_export_to_records() --
-            Magazyn's "Eksportuj" button jumps to the Tabela rekordow tab with this
+            Storage's "Export" button jumps to the Records table tab with this
             exact pattern's currently-viewed hit-file page pre-loaded as its export
             range (see ConstellationsRecordsTab.activate_pattern_for_export()'s own
-            docstring for why Magazyn hands off here instead of exporting locally).
+            docstring for why Storage hands off here instead of exporting locally).
             Thin app-level glue, same shape as _jump_records_detail_to_hits above."""
             self._select_constellations_records_view()
             self.constellations_records_tab_widget.activate_pattern_for_export(
@@ -818,9 +814,9 @@ def _build_gui():
             """Thin app-level orchestrator for a "const" search job's completion --
             unlike Primes tab's fully self-contained on_prime_search_result, this stays
             at the app level because it coordinates a genuine three-way handoff: the
-            search worker's raw result, the Magazyn (hits) tab's display (see
+            search worker's raw result, the Storage (hits) tab's display (see
             ConstellationsHitsTab.show_missing_result/show_search_participation/
-            jump_to_search_match), and the Kalkulator konstelacji tab's pending-search
+            jump_to_search_match), and the Constellation calculator tab's pending-search
             state (calc.get_pending()/clear_pending()) -- neither sibling tab should own
             that coupling alone.
 
@@ -828,7 +824,7 @@ def _build_gui():
             constellation calculator itself kicked off, and this call is the one that
             actually reaches a final answer (not a "launched a generation run, wait for
             the re-search" detour), the matching pattern's node gets auto-selected in
-            the Magazyn tree and the preview jumped straight to this number -- see the
+            the Storage tree and the preview jumped straight to this number -- see the
             tail of this method. calc_pending is only ever CLEARED on a genuinely final
             outcome (declined/composite/no-participation/found) so it survives across
             however many generate-then-re-search hops a single calculator search needs;
@@ -927,8 +923,7 @@ def _build_gui():
             here -- they're the same computation the EXISTING Constellations tab already
             does (pattern hit-counting), so that family becomes a future density-comparison
             VIEW added to Constellations (actual hits vs Hardy-Littlewood asymptotic
-            prediction) instead of a duplicate engine here. See this project's own task
-            list for that follow-up.
+            prediction) instead of a duplicate engine here.
 
             ResearchGoldbachTab is constructed via dependency injection (same pattern as
             every other extracted tab -- see primeatlas/primes/primes_tab.py's own docstring),
@@ -1073,7 +1068,7 @@ def _build_gui():
 
         def _build_rings_tab(self):
             """Thin wrapper -- the whole tab lives in primeatlas/rings/rings_tab.py's
-            RingsTab (see PLAN.md at the repo root for the rollout plan), same
+            RingsTab, same
             construction pattern as _build_generation_tab above. get_portal_folder
             is a deferred lambda (not the resolved PORTAL_FOLDER value) so a later
             Settings-tab storage-path change is picked up on the NEXT launch without
@@ -1146,7 +1141,7 @@ def _build_gui():
                         build_wsl_logged_command(argv, log_path, exit_path, PORTAL_FOLDER),
                 "WslLoggedRunner": WslLoggedRunner,
                 "generation_log_paths": generation_log_paths,
-                # Added for the restore driver's own RAM-based "auto width" and low-floor
+                # For the restore driver's own RAM-based "auto width" and low-floor
                 # (0-6) cascade-aware batching -- see restore_job.py / settings_tab.py's
                 # _drive_windows_phase() docstring. Passed through rather than imported
                 # directly in settings_tab.py, same reasoning as every other entry here
@@ -1154,20 +1149,18 @@ def _build_gui():
                 "low_floor_cutoff": LOW_FLOOR_CUTOFF,
                 "estimate_wsl_available_ram_bytes": estimate_wsl_available_ram_bytes,
                 "recommended_max_windows": recommended_max_windows,
-                # Added so the restore driver can prefer primesieve mode (much faster,
+                # Lets the restore driver prefer primesieve mode (much faster,
                 # no RAM-buffer cost) for any floor whose numeric range fits under
                 # libprimesieve's own uint64 ceiling, falling back to the orchestrator
                 # pipeline only for floors that don't -- see _drive_windows_phase().
                 "primesieve_max_stop": PRIMESIEVE_MAX_STOP,
                 "build_primesieve_argv": build_primesieve_argv,
                 "find_continuation_target_idx": find_continuation_target_idx,
-                # Added so SettingsTab can refresh the Prime numbers / Constellations trees
-                # itself after two operations that change disk contents outside those tabs'
-                # own controls: deleting the entire database, and a restore job finishing.
-                # Both trees previously only refreshed via _set_portal_folder (path change)
-                # or _on_loop_finished/_on_constellation_finished (Generation tab runs) --
-                # neither delete-all nor restore-complete touched them at all, so newly
-                # emptied/regenerated floors stayed invisible until a manual Refresh click.
+                # Lets SettingsTab refresh the Prime numbers / Constellations trees itself
+                # after two operations that change disk contents outside those tabs' own
+                # controls: deleting the entire database, and a restore job finishing --
+                # otherwise emptied/regenerated floors stay invisible until a manual
+                # Refresh click.
                 "reload_primes_tree": self.reload_primes_tree,
                 "reload_constellations_tree": self.reload_constellations_tree,
                 # Optional-library installer (currently just sympy, see
@@ -1192,7 +1185,7 @@ def _build_gui():
                         run_cudasieve_wsl_blocking(argv, PORTAL_FOLDER, timeout),
                 # primecount (Kim Walisch's exact combinatorial prime-counting library,
                 # companion to primesieve above) -- on-demand installer for Settings ->
-                # Aktualizacje's own primecount row (see env_setup.py's
+                # Updates's own primecount row (see env_setup.py's
                 # REQUIRED_APT_PACKAGES comment): research-module-specific optional C
                 # libraries get an on-demand button there rather than a blanket
                 # first-run install. Also
@@ -1208,8 +1201,8 @@ def _build_gui():
                 "run_primecount_install_wsl_blocking":
                     lambda timeout=300:
                         run_primecount_install_wsl_blocking(PORTAL_FOLDER, timeout),
-                # Added so the theme/language auto-restart feature (settings_tab.py's
-                # _has_running_job()) can tell whether a Generation-tab pipeline/
+                # The theme/language auto-restart feature (settings_tab.py's
+                # _has_running_job()) uses this to tell whether a Generation-tab pipeline/
                 # constellation-finder/k-tuple run is currently in flight before
                 # replacing the whole process via os.execv -- SettingsTab has no direct
                 # reference to GenerationTab itself (same reasoning as every other entry
@@ -1261,7 +1254,7 @@ def main():
     from primeatlas.core.app_icon import set_app_user_model_id
     set_app_user_model_id()
 
-    # First-run environment check/install wizard (task #513) -- runs BEFORE _build_gui()
+    # First-run environment check/install wizard -- runs BEFORE _build_gui()
     # is even called, let alone PortalBrowserApp constructed. Deliberately not folded into
     # the loading_frame steps below: enabling the WSL Windows features can require a full
     # REBOOT before anything else in this app can usefully run (WSL itself, hence every

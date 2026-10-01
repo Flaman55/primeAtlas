@@ -1,41 +1,25 @@
 /* ==========================================================================================
  * prime_sieve_engine_v3.c -- sieve-generation core, v3 (atomic shared-buffer variant).
  *
- * LINEAGE: prime_sieve_engine_v1.c (this folder), with ONE change, mirroring the versioning
- * pattern prime_sieve_v2.py's own header documents (separate vN file for a structural change
- * to the performance-critical core, not a git-commit-only change -- v1/v2 stay fully
- * untouched and independently runnable).
- *
- * WHAT CHANGED: generate_and_sieve_segment_bits_atomic() is bit-for-bit IDENTICAL to v1's
- * generate_and_sieve_segment_bits(), except the bit-set operation
+ * generate_and_sieve_segment_bits_atomic() is prime_sieve_engine_v1.c's
+ * generate_and_sieve_segment_bits() with the bit-set operation
  *     out_dense_bits[pos >> 3] |= (unsigned char)(1u << (pos & 7));
- * is now an atomic fetch-or:
+ * replaced by an atomic fetch-or:
  *     __atomic_fetch_or(&out_dense_bits[pos >> 3], (unsigned char)(1u << (pos & 7)),
  *                        __ATOMIC_RELAXED);
  *
- * WHY: v3's orchestration (prime_sieve_v3.py) allocates ONE shared output buffer
- * (mmap(MAP_SHARED|MAP_ANONYMOUS), allocated in the parent BEFORE forking worker processes)
- * instead of giving each worker process its own PRIVATE buffer that gets pickled back to the
- * parent for a sequential OR-merge (v1/v2's mechanism). Different batches partition the
- * SIEVING-PRIME axis, not the output axis -- two different batches' primes CAN strike the
- * same output byte -- so once multiple worker PROCESSES write into the SAME shared buffer
- * concurrently, a plain `|=` is a genuine data race (non-atomic read-modify-write across
- * process boundaries). The atomic instruction closes that race.
+ * WHY: prime_sieve_v3.py allocates ONE shared output buffer (mmap(MAP_SHARED|MAP_ANONYMOUS),
+ * allocated in the parent BEFORE forking worker processes) instead of a private buffer per
+ * worker that is pickled back to the parent for a sequential OR-merge. Batches partition
+ * the SIEVING-PRIME axis, not the output axis -- two batches' primes CAN strike the same
+ * output byte -- so with multiple worker PROCESSES writing into the SAME buffer, a plain
+ * `|=` is a data race (non-atomic read-modify-write across processes). The atomic
+ * instruction closes that race; output is bit-for-bit identical to a single-threaded pass.
  *
- * WHY THIS IS WORTH THE NEW ENGINE FILE: at production scale, measuring the old return-and-
- * merge step end to end (not just in isolation) showed 24-way process parallelism delivering
- * almost NO real speedup over a single-threaded pass over the same range, because the
- * parent's sequential return+OR-merge of dozens of large private buffers ate essentially all
- * of the parallel savings. Switching to this shared-buffer mechanism roughly halved total
- * wall time, while producing bit-for-bit identical output (verified against a single-
- * threaded ground-truth pass).
- *
- * What did NOT change: L_final/window_m semantics, the marking algorithm itself (self-
- * elimination guard, mod-arithmetic start position, striding), count_sieving_primes(). v1's
- * plain (non-atomic) functions are also still present here UNCHANGED (copy-pasted, not
- * imported -- this file has zero dependency on prime_sieve_engine_v1.c/.so) so this file
- * remains a complete, independently buildable engine, matching v1/v2's own "no cross-file
- * source dependency" convention.
+ * L_final/window_m semantics, the marking algorithm (self-elimination guard, mod-arithmetic
+ * start position, striding) and count_sieving_primes() are the same as v1. The plain
+ * (non-atomic) functions are also present here as copies (not imported -- no dependency on
+ * prime_sieve_engine_v1.c/.so), so this file is a complete, independently buildable engine.
  *
  * BUILD (WSL, after building+installing libprimesieve):
  *   gcc -O3 -shared -fPIC prime_sieve_engine_v3.c -o prime_sieve_engine_v3.so \
@@ -55,8 +39,8 @@
 typedef unsigned __int128 u128;
 
 /* ------------------------------------------------------------------------------------------
- * generate_and_sieve_segment_bits -- UNCHANGED copy of v1's function (see
- * prime_sieve_engine_v1.c for the full original docstring). Kept here so v3 has no build-time
+ * generate_and_sieve_segment_bits -- copy of prime_sieve_engine_v1.c's function (see that
+ * file for the full docstring). Kept here so v3 has no build-time
  * dependency on v1 -- used by prime_sieve_v3.py's ground-truth/ correctness-anchor path and
  * anywhere a single-threaded, non-shared-buffer call is wanted.
  * ------------------------------------------------------------------------------------------ */
@@ -144,7 +128,7 @@ int generate_and_sieve_segment_bits_atomic(uint64_t start, uint64_t stop,
 }
 
 /* ==========================================================================================
- * count_sieving_primes -- UNCHANGED from v1 (see that file for the full docstring).
+ * count_sieving_primes -- pi(limit) via primesieve_count_primes() (same as v1).
  * ========================================================================================== */
 uint64_t count_sieving_primes(uint64_t limit) {
     return primesieve_count_primes(0, limit);

@@ -1,6 +1,6 @@
 """
 test_gaps_window.py -- tests for primeatlas/research/gaps_window.py, the pure-Python
-consecutive-prime-gap engine for the Badania -> Luki sub-tab (raw gaps +
+consecutive-prime-gap engine for the Research -> Gaps sub-tab (raw gaps +
 Andrica/Firoozbakht/Cramer overlays). No tkinter, no display needed -- run
 directly:
 

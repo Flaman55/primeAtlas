@@ -6,29 +6,19 @@ orchestrator_v3.py direct, constellation_finder_v1.py, ktuple_sieve_v1.py), the 
 runners (WslLoggedRunner/LocalLoggedRunner), and the WSL RAM/CPU-probing helpers used by
 the Quick-gen panel's "Auto" suggestions.
 
-Extracted from prime_atlas_v1.py during the tab-by-tab backend/UI split, alongside the
-tab's own UI split (see generation_tab.py's own docstring). This is the single largest
-of the five tab extractions -- the Generation tab launches every generation/search
-engine in the app and is the one most already covered by dedicated regression tests
-(see unitTests/test_generation_window_arithmetic.py and
-unitTests/test_generation_launch_planning.py, which cover the three documented
-historical bugs living in this arithmetic: floor-25 MemoryError, floor-7-130M-numbers
-boundary bug, 1001-windows-for-1000 off-by-one).
+Covered by unitTests/test_generation_window_arithmetic.py and
+unitTests/test_generation_launch_planning.py (floor-boundary clamping, the window-count
+off-by-one, memory-bounded target_idx handling).
 
-build_primesieve_query_argv()/run_primesieve_query_wsl() deliberately did NOT move here
-even though they sit in the same original file region -- they belong to the UNRELATED
-"primesieve" calculator sub-tab (Liczby pierwsze -> primesieve), not this tab; see
-prime_atlas_v1.py's own copy of those two functions.
+build_primesieve_query_argv()/run_primesieve_query_wsl() belong to the separate
+"primesieve" calculator sub-tab (Prime numbers -> primesieve), not this tab; see
+prime_atlas_v1.py.
 
-build_wsl_logged_command() below takes an explicit `portal_folder` argument instead of
-reading a bare PORTAL_FOLDER module global the way its original in-file version did (see
-prime_atlas_v1.py's own APP_SETTINGS/PORTAL_FOLDER comment for why every function there
-reads that name at CALL time) -- this module has no such mutable global of its own
-(PORTAL_FOLDER only ever changes via _set_portal_folder's `global PORTAL_FOLDER` rebind,
-which is prime_atlas_v1.py's own module namespace, not this one), so the only way to keep
-every WSL launch honoring a live storage-path change is to have the caller (GenerationTab,
-which already receives get_portal_folder() by injection like every other extracted tab)
-pass the CURRENT value in explicitly at each call site.
+build_wsl_logged_command() and the other WSL-launching functions take an explicit
+`portal_folder` argument: the storage path can change at runtime (prime_atlas_v1.py's
+_set_portal_folder rebinds its own module global, not one here), so the caller
+(GenerationTab, which receives get_portal_folder() by injection) passes the CURRENT value
+at each call site.
 """
 import json
 import os
@@ -51,11 +41,8 @@ _SCRIPT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__
 # dirname() hops to land on the same repo root.
 
 
-QUICK_GEN_MAX_WINDOW_WIDTH = 10_000_000  # window width the (future) range ->
-                          # window_count_per_run translation logic must not exceed. Not
-                          # used yet -- interface-only step, logic follows in a later
-                          # change; kept here as the single source of truth for that
-                          # upcoming calculation.
+QUICK_GEN_MAX_WINDOW_WIDTH = 10_000_000  # window width Quick-gen's range ->
+                          # window_count_per_run translation must not exceed.
                           #
                           # NOTE: this constant ASSUMES window_m=10,000,000, matching the
                           # editable "window_m" field on the low-level form (see
@@ -68,12 +55,10 @@ QUICK_GEN_MAX_WINDOW_WIDTH = 10_000_000  # window width the (future) range ->
                           # DEFAULT_GENERATION_SETTINGS) -- not fixed here, only noted as
                           # a known limitation.
                           #
-                          # Exploration's per-iteration width used to be a fixed
-                          # 10,000,000,000 (QUICK_GEN_EXPLORE_ITERATION_WIDTH, since
-                          # removed) -- it now has its own Width spinbox, same [1, 1000]
-                          # x QUICK_GEN_MAX_WINDOW_WIDTH meaning as Floor only's, so the
-                          # per-iteration memory footprint scales with what the machine
-                          # actually has rather than being pinned to one fixed size.
+                          # Exploration's per-iteration width is its own Width spinbox
+                          # ([1, 1000]) x QUICK_GEN_MAX_WINDOW_WIDTH, same meaning as
+                          # Floor only's, so the per-iteration memory footprint follows
+                          # what the machine has.
 
 # LOW_FLOOR_CUTOFF/list_floors/list_source_files/_OFFSET_FROM_NAME_RE/_offset_from_filename/
 # list_source_filenames live in primeatlas/core/storage.py, alongside the "Prime numbers" tab's own
@@ -280,8 +265,8 @@ def find_highest_populated_floor(portal_folder):
 # here); the rest are only used by the (now separate) Constellations sub-tabs.
 
 # _eval_quick_number/_round_range_to_window/_floor_window_count are general-
-# purpose helpers (used by the Quick generation panel, primesieve calculator, Testy
-# pierwszosci, and the Kalkulator konstelacji tab) that happened to sit textually
+# purpose helpers (used by the Quick generation panel, primesieve calculator, Primality
+# tests, and the Constellation calculator tab) that happened to sit textually
 # between render_constellation_records_pdf and find_constellation_participation
 # before the move above -- restored here unchanged, they were never Constellations-
 # specific.
@@ -289,7 +274,7 @@ def find_highest_populated_floor(portal_folder):
 def _eval_quick_number(raw):
     """Best-effort parse of a Python-expression-style number (e.g. "10**5") -- shared by
     every numeric field in this app (Quick generation panel, primesieve calculator,
-    Testy pierwszosci, Kalkulator konstelacji, ...). Returns an int, or None if
+    Primality tests, Constellation calculator, ...). Returns an int, or None if
     `raw` is blank/unparseable; callers
     treat None as "no value given" rather than raising, e.g. to decide whether the
     Floor field should be auto-computed or left for manual entry (see
@@ -396,13 +381,12 @@ def _floor_window_count(base_power, window=QUICK_GEN_MAX_WINDOW_WIDTH):
     so this division never has a remainder to worry about -- e.g. floor 7 -> 9 windows
     (target_idx 0..8), floor 8 -> 90 windows, and so on.
 
-    Exists to stop exactly the bug this was written for: nothing previously checked
-    whether a floor-only/range request's window_count_per_run would push target_idx past
-    a floor's own boundary, so continuing to generate on floor 7 past its 9th window
-    silently wrote floor 8 (and beyond)'s numbers into 10p7's folder, labeled as floor 7.
-    See _quick_gen_plan_literal_range and _on_quick_generate_clicked's blank-starting-
-    point Floor branch for where this gets applied -- Exploration mode deliberately does
-    NOT use this (see that branch's own comment)."""
+    Caps a floor-only/range request's window_count_per_run so target_idx never passes
+    the floor's own boundary; otherwise the next floor's numbers would be written into
+    this floor's folder, labeled as this floor (e.g. floor 7 past its 9th window). See
+    _quick_gen_plan_literal_range and _on_quick_generate_clicked's blank-starting-point
+    Floor branch for where this is applied -- Exploration mode deliberately does NOT use
+    this (see that branch's own comment)."""
     if base_power < LOW_FLOOR_CUTOFF:
         return None
     return (9 * 10 ** base_power) // window
@@ -648,37 +632,29 @@ def run_cudasieve_wsl_blocking(argv, portal_folder, timeout=120):
     (settings_tab.py's wsl_helpers wraps this in a lambda supplying the CURRENT storage
     path, same as it already does for build_wsl_logged_command).
 
-    Deliberately does NOT use the simple subprocess.run(cmd, timeout=timeout) pattern
-    run_primesieve_query_wsl() uses (primesieve_calc_tab.py) -- a real, confirmed-live
-    bug rules that pattern out here:
+    Does NOT use the simple subprocess.run(cmd, timeout=timeout) pattern
+    run_primesieve_query_wsl() uses (primesieve_calc_tab.py):
 
-    1) subprocess.run() against wsl.exe's own stdout pipe hung indefinitely from within
-       this windowed/console-less Tk process, even though a bare `wsl.exe -e bash -c
-       "echo hi"` from a plain terminal returned instantly -- the same console-allocation/
-       pipe-hang failure mode build_wsl_logged_command()'s own docstring documents.
-    2) Switching to build_wsl_logged_command()'s file-redirection (real stdout/stderr never
-       touch a pipe wsl.exe itself owns) while still calling subprocess.run(...,
-       timeout=timeout) STILL hung, even after a full app restart + `wsl --shutdown`. Root
-       cause: on Windows, when Popen.communicate(timeout=timeout) raises TimeoutExpired,
-       CPython's subprocess.run() calls process.kill() and then calls
-       process.communicate() a SECOND time with NO timeout at all, as a "collect the real
-       output" fallback (see subprocess.py's own source). If wsl.exe's own process doesn't
-       actually die from kill() (WSL's process-lifecycle model doesn't guarantee a killed
-       Windows-side wrapper takes the underlying Linux process down with it -- see
-       WslLoggedRunner's own docstring), that second, untimed call can hang forever,
-       silently defeating `timeout=` entirely regardless of its value.
+    1) subprocess.run() against wsl.exe's own stdout pipe can hang indefinitely from
+       this windowed/console-less Tk process, even when the same command returns
+       instantly from a terminal -- the console-allocation/pipe-hang failure mode
+       build_wsl_logged_command()'s docstring documents.
+    2) With file redirection instead of a pipe, subprocess.run(..., timeout=timeout)
+       can still hang: on Windows, when Popen.communicate(timeout=timeout) raises
+       TimeoutExpired, subprocess.run() calls process.kill() and then
+       process.communicate() a SECOND time with NO timeout (see subprocess.py). If
+       wsl.exe doesn't die from kill() (a killed Windows-side wrapper does not
+       necessarily take the Linux process down -- see WslLoggedRunner), that untimed
+       call can hang forever, defeating `timeout=` regardless of its value.
 
-    WslLoggedRunner itself never hits this: it uses Popen() (non-blocking) plus its own
-    manual proc.poll() loop, and never calls wait()/communicate() with (or without) a
-    timeout anywhere. This function now copies that exact pattern instead of leaning on
-    subprocess.run's timeout machinery at all. (run_primesieve_query_wsl() has not hit
-    this in practice since a single count/nth/next/prev query answers in well under a
-    second, but the same latent hang risk applies there too -- flagged separately, not
-    fixed here, since that function belongs to an unrelated tab.)
+    So this uses WslLoggedRunner's pattern instead: Popen() (non-blocking) plus a
+    manual proc.poll() loop, never wait()/communicate(). (run_primesieve_query_wsl()
+    carries the same latent risk, but its sub-second queries make the timeout path
+    unlikely.)
 
     The actual Popen/poll/log-read mechanics live in _run_wsl_blocking_via_logfile() below
     -- factored out so primecount's own blocking WSL calls (run_primecount_wsl_blocking(),
-    used by the Badania -> Przyblizenia pi(x) tab's "primecount" data-source mode) reuse
+    used by the Research -> pi(x) approximations tab's "primecount" data-source mode) reuse
     this exact same hang-safe pattern instead of the naive subprocess.run(..., timeout=...)
     run_primesieve_query_wsl() uses -- primecount's
     own calls (an apt-get install, or a pi_batch query against a deliberately huge x) are
@@ -752,9 +728,7 @@ def _run_wsl_blocking_via_logfile(argv, portal_folder, log_prefix, timeout):
     just its "result" field), matching this function's own existing callers (e.g.
     settings_tab.py's CUDASieve status handler reads specific keys off of it). See
     run_primecount_wsl_blocking() below for a DIFFERENT contract (unwrapped result,
-    structured failure) that a newer caller needed and this one's existing callers
-    don't -- kept as two separate functions rather than changing this one's return shape
-    out from under CUDASieve's already-working, already-tested integration."""
+    structured failure) -- the two contracts are kept as separate functions."""
     log_path, exit_path, _run_id = generation_log_paths(portal_folder, log_prefix)
     cmd = build_wsl_logged_command(argv, log_path, exit_path, portal_folder)
     try:
@@ -790,12 +764,9 @@ def build_primecount_query_argv(op, *args, script_path=None):
 def run_primecount_wsl_blocking(argv, portal_folder, timeout=120):
     """primecount_query.py's own blocking WSL call (a "pi"/"pi_batch"/"nth"/"version"
     query) -- same hang-safe Popen/poll/file-log pattern as run_cudasieve_wsl_blocking()
-    (see that function's own docstring for the full history of why this, not a plain
-    subprocess.run(timeout=...), is the safe way to run a blocking WSL call from this
-    windowed Tk process). primecount's own calls (a pi_batch query against a
-    deliberately huge x) are exactly the kind of longer-running WSL call most likely to
-    actually trigger the timeout codepath that whole history is about, unlike a single
-    sub-second primesieve query.
+    (see that function for why not a plain subprocess.run(timeout=...)); a pi_batch
+    query against a huge x is exactly the kind of long WSL call that reaches the
+    timeout path.
 
     Does NOT reuse _run_wsl_blocking_via_logfile() above -- that function collapses a
     failure down to a bare message string (matching its own existing callers' needs),
@@ -859,7 +830,7 @@ def run_primecount_install_wsl_blocking(portal_folder, timeout=300):
     distro, etc. (Administrator-elevated Windows-side steps this on-demand installer has
     no business touching, since by the time ANY tab is usable, WSL and its distro
     already work). Research-module-specific optional C libraries get an on-demand
-    install button in Settings -> Aktualizacje, next to whichever Badania sub-tab first
+    install button in Settings -> Updates, next to whichever Research sub-tab first
     needs them, not a blanket first-run install everyone pays for."""
     log_path, exit_path, _run_id = generation_log_paths(portal_folder, "primecount_install")
     log_wsl = windows_path_to_wsl(log_path)
@@ -955,7 +926,7 @@ def build_primesieve_argv(base_exponent, target_idx_start, window_count_per_run,
 
 def build_hybrid_argv(base_exponent, iterations, width_windows, filter_prime_count, write_files,
                       script_path=None):
-    """Return the WSL argv for the future ``hybrid_sieve.py`` extension runner.
+    """Return the WSL argv for the ``hybrid_sieve.py`` extension runner.
 
     This deliberately has a compact, hybrid-specific contract rather than borrowing
     ``build_loop_argv()``'s window-count semantics.  A hybrid stage's reach is
@@ -965,8 +936,7 @@ def build_hybrid_argv(base_exponent, iterations, width_windows, filter_prime_cou
     continuous storage that supplies MAIN; ``iterations`` requests successive hybrid
     extensions of that base.
 
-    CLI order is fixed now, before the runner exists, so the GUI and runner can be
-    tested independently in later phases:
+    CLI order:
     ``<base_exponent> <iterations> <width_windows> <filter_prime_count> <write_files 0/1>``.
     """
     script = script_path if script_path is not None else HYBRID_SIEVE_SCRIPT
@@ -1059,12 +1029,11 @@ def build_constellation_finder_argv(base_exponent=None, max_windows=None, script
     None/blank, matching that script's own auto-detect-every-populated-floor behavior
     (list_floors_with_data()) when it's called with no argument at all. Not yet wrapped
     in a wsl.exe invocation -- see build_wsl_logged_command(). Uses `-u` (unbuffered
-    stdout) for the same reason build_loop_argv() does -- see that function's docstring;
-    this script's low per-window print volume made it the one where the default
-    full-buffering was actually reported as a problem.
+    stdout) for the same reason build_loop_argv() does (see its docstring); with this
+    script's low per-window print volume, full buffering would hold output back for long.
 
-    max_windows (see constellation_finder_v2.process_floor()'s own docstring for the
-    full "floor 25 crashes WSL at scale" story this caps): omitted
+    max_windows (see constellation_finder_v2.process_floor() for why a run is capped):
+    omitted
     entirely when None, same "don't pass what wasn't explicitly set" shape as
     base_exponent -- callers use this to bound a single run's own file-open volume,
     letting generation_tab.py's own batch-continuation logic relaunch a fresh WSL
@@ -1183,13 +1152,12 @@ def build_wsl_logged_command(argv, windows_log_path, windows_exit_path, portal_f
     `wsl.exe -e bash -c "..."` invocation that redirects combined stdout+stderr into
     windows_log_path (translated to its WSL mount path) and writes the process's exit
     code into windows_exit_path afterward -- see WslLoggedRunner's docstring for why
-    file-based redirection replaced an earlier subprocess.PIPE-against-wsl.exe's-own-
-    stdout approach. Every token is individually shell-quoted (shlex.quote) so the space
+    file redirection is used rather than a subprocess.PIPE on wsl.exe's own stdout.
+    Every token is individually shell-quoted (shlex.quote) so the space
     in "Prime numbers storage" (and anything else) survives bash -c's re-parsing --
     the exec-mode `wsl.exe -e <argv>` form used elsewhere in this app deliberately avoids
     a shell entirely for that reason, but the `>`/`;` here are shell syntax and need one. `portal_folder` is the CURRENT storage
-    path, passed explicitly by the caller (see this module's own docstring for why -- this
-    function no longer reads a bare PORTAL_FOLDER global).
+    path, passed explicitly by the caller (see this module's docstring for why).
 
     use_known_pi_seed (default False): sets
     PRIMEATLAS_USE_KNOWN_PI_SEED=1 alongside CONSTELLATION_PORTAL_DIR below, using the exact
@@ -1343,8 +1311,7 @@ def format_duration_short(seconds):
 # SHARED bottom status/progress bar (self.status/self.totals_progress -- the same one the
 # floor-totals scan and the Primes/Constellations search box already use) while a run is in
 # flight, in addition to the raw text already visible in the console/terminal panel itself.
-# Every one of these lines is already printed by the engines on their own -- nothing new was
-# added to either script, this only reads what was already there. Together they cover the
+# The engines print these lines themselves; this only parses them. Together they cover the
 # WHOLE pipeline, not just the batch-sieve phase -- see
 # _update_shared_progress_from_generation_chunk()'s own docstring for how the individual
 # lines below map onto one combined step count, so the bar isn't left sitting empty for
@@ -1370,11 +1337,9 @@ def format_duration_short(seconds):
 #     "[CONSTELLATIONS v2] Done. New hits this run, by pattern:"
 #   orchestrator_loop_v2.py (multi-iteration Exploration-mode launches ONLY -- see
 #   _LOOP_SESSION_START_RE/_LOOP_ITERATION_START_RE/_LOOP_SESSION_DONE_RE's own comment
-#   below for why these three matter: without them, _GEN_SIEVE_DONE_RE above fires once
-#   PER ITERATION -- each iteration is its own separate orchestrator_v3.py subprocess --
-#   snapping the bar to "done" after iteration 1 of N, and _GEN_SIEVE_PROGRESS_RE's own
-#   batch count resets every iteration too, so the bar only ever showed progress through
-#   THAT one iteration's own windows, never the whole multi-iteration request):
+#   below: _GEN_SIEVE_DONE_RE above fires once PER ITERATION -- each iteration is its own
+#   orchestrator_v3.py subprocess -- and _GEN_SIEVE_PROGRESS_RE's batch count resets every
+#   iteration, so these three are what tracks the whole multi-iteration request):
 #     "[LOOP] orchestrator_loop_v2 v2 (parallel instances): 10 iteration(s), 1 instance(s)
 #     /iteration, 1000 windows/iteration, ..."
 #     "[LOOP] iteration 3/10: launching 1 instance(s) concurrently -- target_idx ..."
@@ -1461,7 +1426,7 @@ class WslLoggedRunner:
         try:
             self.proc = subprocess.Popen(self.cmd, **_popen_kwargs_no_window())
         except OSError as e:
-            self.output_queue.put(f"[!] Nie udalo sie uruchomic procesu: {e}\n")
+            self.output_queue.put(f"[!] Could not start the process: {e}\n")
             self.output_queue.put(("__exit__", None))
             return
         self._thread = threading.Thread(target=self._tail_loop, daemon=True)
@@ -1493,13 +1458,13 @@ class WslLoggedRunner:
                     elif time.time() > grace_deadline:
                         offset = self._drain_new_log_bytes(offset)
                         self.output_queue.put(
-                            "[!] Proces wsl.exe zakonczyl sie bez zapisania kodu wyjscia.\n")
+                            "[!] The wsl.exe process exited without writing an exit code.\n")
                         self._cleanup_files()
                         self.output_queue.put(("__exit__", None))
                         return
                 time.sleep(self.POLL_INTERVAL)
         except Exception as e:  # noqa: BLE001 -- must never kill this thread silently
-            self.output_queue.put(f"[!] Blad odczytu logu: {e}\n")
+            self.output_queue.put(f"[!] Could not read the log: {e}\n")
             self.output_queue.put(("__exit__", None))
 
     def _drain_new_log_bytes(self, offset):
@@ -1563,9 +1528,8 @@ def build_pip_install_argv(package, upgrade=False):
     primeatlas/primality/primality.py's try_import_sympy()), kept general in case a future
     optional dependency needs the same treatment."""
     # --no-warn-script-location: pip's "is the Scripts folder on PATH?" warning calls
-    # Path.resolve() on every PATH entry, and one redirection-point entry (OpenAI Codex's
-    # bin, on Artur's machine) made Windows raise WinError 448 and pip abort the install
-    # (2026-10-01).
+    # Path.resolve() on every PATH entry, and a PATH entry that is a redirection
+    # (reparse) point can make Windows raise WinError 448 and pip abort the install.
     argv = [sys.executable, "-m", "pip", "install", "--disable-pip-version-check",
             "--no-warn-script-location"]
     if upgrade:

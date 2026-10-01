@@ -3,21 +3,15 @@ test_gen_progress_bar_engine_gating.py -- regression test for disabling the shar
 bottom progress bar for engines that don't print granular progress to stdout
 (primesieve/cudasieve mode).
 
-Background: primesieve mode (prime_sieve_primesieve.py) and cudasieve mode
-(prime_sieve_cudasieve.py) both do ONE blocking call with no per-batch reporting --
-confirmed by reading their actual print() statements -- so the only line of theirs
-that ever matches anything in _update_shared_progress_from_generation_chunk() is the
-final "[*] TOTAL PRIMES FOUND..." line. If that line unconditionally snapped
-totals_progress to "100% done", combined with the earlier "stuck full after
-generation" bug (see test_search_worker.py's own regression block), the bar would
-look like it was tracking progress when it was really just jumping from whatever it
-already showed straight to full at the very end, with no visible state in between.
-The fix: leave totals_progress alone entirely for those two engines
-(self._gen_progress_bar_active=False) rather than fake a step count; the status TEXT
-still updates normally either way. The old batched engine (orchestrator_v3.py /
-orchestrator_loop_v2.py) keeps its existing live bar behavior
-(self._gen_progress_bar_active=True) since it genuinely does print granular
-"[+] Progress: ..." lines.
+primesieve mode (prime_sieve_primesieve.py) and cudasieve mode (prime_sieve_cudasieve.py)
+both do ONE blocking call with no per-batch reporting, so the only line of theirs that
+ever matches anything in _update_shared_progress_from_generation_chunk() is the final
+"[*] TOTAL PRIMES FOUND..." line. Snapping totals_progress to "100% done" on it would
+make the bar look like it tracked progress when it only jumped to full at the very end.
+So totals_progress is left alone for those two engines (self._gen_progress_bar_active=
+False); the status TEXT still updates normally. The batched engine (orchestrator_v3.py /
+orchestrator_loop_v2.py) keeps its live bar (self._gen_progress_bar_active=True) since
+it prints granular "[+] Progress: ..." lines.
 
 This test drives the REAL GenerationTab method
 (_update_shared_progress_from_generation_chunk) with real console-chunk strings
@@ -97,8 +91,8 @@ def main():
               f"(got maximum={bar['maximum']!r}, value={bar['value']!r})")
 
         # =====================================================================
-        # Old batched engine (flag ON): prep -> sieve-progress -> done must move the
-        # bar exactly as before this fix (real print() format strings from
+        # Batched engine (flag ON): prep -> sieve-progress -> done must move the
+        # bar step by step (real print() format strings from
         # prime_sieve_v1/v3/v4/v4_1.py -- see this file's own module docstring).
         # =====================================================================
         gen._gen_progress_bar_active = True

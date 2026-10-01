@@ -1,27 +1,19 @@
 """
 primes_tree_coordinator.py -- PrimesTreeCoordinator, the background floor-list scan/
-reload logic for the "Prime numbers" tab's own tree, that used to live directly on
-PortalBrowserApp itself in prime_atlas_v1.py (_primes_tree_scan/reload_primes_tree/
-_on_primes_tree_scan_done).
-
-Continues the same "God object" reduction TotalsSearchCoordinator already went
-through (see that module's own docstring and README.md's "GUI module conventions" ->
-"Known gaps" section) -- these three methods were pure cross-cutting orchestration
-(background disk scan + tree/cache resync), not tab composition, so they move out the
-same way the two PersistentWorkers already did.
+reload logic for the "Prime numbers" tab's tree (background disk scan + tree/cache
+resync) -- app-level orchestration, not tab composition (see README.md's "GUI module
+conventions").
 
 Same dependency-injection shape as TotalsSearchCoordinator -- constructed once in
 PortalBrowserApp.__init__, at the same point TotalsSearchCoordinator already is
 (AFTER every tab widget exists, since _on_scan_done reaches directly into
 primes_tab_widget and totals_search). PortalBrowserApp keeps reload_primes_tree as a
-ONE-LINE delegating method (`self._primes_tree_coord.reload()`) -- every other caller
-in this codebase (PrimesTab, GenerationTab, _set_portal_folder, the startup kickoff in
-__init__) already only ever calls self.reload_primes_tree() and never touches the
-scan/done internals directly, so that's the only seam that needs to keep existing
-callers working unchanged; being a plain class method (not an instance attribute
-assigned in __init__), it also works correctly even if something captures
-self.reload_primes_tree as a callable BEFORE self._primes_tree_coord itself is built
-(late-bound at call time, same reasoning the original inline version relied on).
+ONE-LINE delegating method (`self._primes_tree_coord.reload()`) -- every caller
+(PrimesTab, GenerationTab, _set_portal_folder, the startup kickoff in __init__) calls
+self.reload_primes_tree() and never touches the scan/done internals; being a plain class
+method (not an instance attribute assigned in __init__), it also works if something
+captures self.reload_primes_tree as a callable BEFORE self._primes_tree_coord is built
+(late-bound at call time).
 
 What stays on PortalBrowserApp instead of moving here: the loading-screen completion
 check (_loading_startup_pending/_finish_loading_screen) is genuinely shared with
@@ -59,8 +51,8 @@ class PrimesTreeCoordinator:
 
         prune_empty_floor_dirs: passed in rather than imported directly here because
         its real home is primeatlas/settings/restore_job.py (re-exported at the primeatlas
-        package's own top level) -- passing it through avoids this module needing to
-        know that historical detail, matching how prime_atlas_v1.py itself imports it.
+        package's own top level) -- passing it through keeps this module independent of
+        where it lives, matching how prime_atlas_v1.py itself imports it.
 
         on_startup_scan_done(name): fired once per completed scan with a fixed string
         ("primes") identifying which tree just finished -- PortalBrowserApp uses this
@@ -85,17 +77,16 @@ class PrimesTreeCoordinator:
 
     def _scan(self, portal_folder, _report_progress):
         """Runs OFF the GUI thread -- every line here is pure disk I/O with no widget
-        access, ported unchanged from the original inline _primes_tree_scan(). Returns
-        a plain dict; _on_scan_done does all the actual tree/widget mutation back on
-        the main thread. portal_folder is passed in explicitly (captured by reload()
-        at dispatch time) rather than re-read from get_portal_folder() in here, so a
-        storage-path change that happens WHILE this scan is running can never make it
-        silently scan the wrong (newly-current) location.
+        access. Returns a plain dict; _on_scan_done does all the tree/widget mutation
+        back on the main thread. portal_folder is passed in explicitly (captured by
+        reload() at dispatch time) rather than re-read from get_portal_folder() in here,
+        so a storage-path change that happens WHILE this scan is running can never make
+        it scan the wrong (newly-current) location.
 
         prune_empty_floor_dirs() runs unconditionally on every reload, floors with no
         PRIME_WINDOW_*.bin files are filtered out, and the totals caches are reloaded
-        fresh from disk every time rather than only once at startup -- see the
-        original method's own (now relocated) docstring for the full rationale."""
+        fresh from disk every time rather than only once at startup, so the tree always
+        reflects the disk's current state."""
         self._prune_empty_floor_dirs(portal_folder)
         floor_total_known = {}
         for _key, _entry in load_totals_cache(portal_folder).items():
@@ -169,14 +160,11 @@ class PrimesTreeCoordinator:
             floors, result["floor_total_known"], result["floor_gen_seconds"])
         self.status.set(self.T("app.status_portal_with_count", folder=portal_folder,
                                 count=len(floors)))
-        # This uses an all-in-memory read of the persisted totals cache this scan
-        # already loaded (via result["totals_cache"] above) instead of
-        # compute_all_floor_totals() -- a real per-file rescan submitted for every
-        # floor -- which used to run unconditionally on every reload/startup even
-        # when nothing had changed; see storage.py's own module docstring and
-        # TotalsSearchCoordinator.show_cached_grand_total()'s docstring. The real
-        # rescan still exists, just moved behind the Primes tab's explicit
-        # "Zweryfikuj sumy" button (PrimesTab._verify_all_totals).
+        # An all-in-memory read of the persisted totals cache this scan already loaded
+        # (result["totals_cache"] above), not compute_all_floor_totals() (a real
+        # per-file rescan of every floor) -- see storage.py's module docstring and
+        # TotalsSearchCoordinator.show_cached_grand_total(). The real rescan sits behind
+        # the Primes tab's explicit "Verify totals" button (PrimesTab._verify_all_totals).
         self._totals_search.show_cached_grand_total(
             result["totals_cache"], result["floor_gen_seconds"], len(floors))
 

@@ -1,38 +1,30 @@
 /* ==========================================================================================
  * prime_sieve_engine_v4.c -- sieve-generation core, v4 (inlined 128/64 phase modulo).
  *
- * LINEAGE: prime_sieve_engine_v3.c (this folder), with ONE change to the per-prime phase
- * computation described below. The marking algorithm, atomic shared-buffer write, and
- * count_sieving_primes() are otherwise unchanged.
+ * prime_sieve_engine_v3.c with a faster per-prime phase computation; the marking algorithm,
+ * atomic shared-buffer write and count_sieving_primes() are the same as v3.
  *
- * WHAT CHANGED: for every sieving prime p, the engine needs distance mod p (the phase of the
- * combined window's start relative to p, i.e. which residue class p first strikes inside the
- * window). distance is a 128-bit value (unsigned __int128); p is 64-bit. Disassembly of the
- * v3 build showed `distance % (u128)p_val` compiling to a call into libgcc's __umodti3 for
- * EVERY sieving prime -- a real function-call cost (argument marshalling, call/ret, no
- * inlining) paid inside the single hottest loop in the program, independent of how deep the
- * floor is.
+ * For every sieving prime p, the engine needs distance mod p (the phase of the combined
+ * window's start relative to p, i.e. which residue class p first strikes inside the
+ * window). distance is a 128-bit value (unsigned __int128); p is 64-bit. Compiled plainly,
+ * `distance % (u128)p_val` becomes a call into libgcc's __umodti3 for EVERY sieving prime
+ * -- a function-call cost (argument marshalling, call/ret, no inlining) inside the hottest
+ * loop.
  *
- * __umodti3 itself already special-cases the common situation (dividend's high 64 bits less
- * than the divisor, which guarantees the quotient fits in 64 bits) down to one hardware
- * `divq` instruction; it only falls back to a full multi-word division when that guarantee
- * doesn't hold. This file inlines that same fast case directly at the call site via a small
- * asm block, so the common case pays for exactly one `divq` and nothing else -- no call, no
- * argument shuffling, no libgcc dependency for that path. The full u128 division remains as a
- * fallback for the (rare) case where the guarantee doesn't hold, so results are identical to
- * v3 in every case, not just the fast one.
+ * __umodti3 special-cases the common situation (dividend's high 64 bits less than the
+ * divisor, which guarantees the quotient fits in 64 bits) down to one hardware `divq`
+ * instruction, falling back to a full multi-word division otherwise. This file inlines that
+ * fast case at the call site via a small asm block, so the common case pays for exactly one
+ * `divq`; the full u128 division remains as the fallback, so results are identical to v3 in
+ * every case.
  *
- * The u128 `distance` value itself is still constructed and used for the subsequent
- * self-elimination guard (`distance + start_pos <= p_val`); only the modulo operation is
- * routed through the fast path. u128 addition and comparison do not involve division and were
- * not observed to generate library calls.
+ * The u128 `distance` value is still used for the self-elimination guard
+ * (`distance + start_pos <= p_val`); only the modulo goes through the fast path. u128
+ * addition and comparison involve no division and generate no library calls.
  *
- * ALSO ADDED (later, purely additive, does not touch the above): count_sieving_primes_range()
- * alongside the original count_sieving_primes() -- lets the Python side count only the primes
- * in [start, stop] instead of always recounting from 0, so repeat pi(L_final) requests on the
- * same floor can reuse a previously counted prefix instead of paying the full count again.
- * See count_sieving_primes_range()'s own comment below and prime_sieve_v4.py's
- * count_sieving_primes_cached().
+ * count_sieving_primes_range() alongside count_sieving_primes() counts only the primes in
+ * [start, stop], so repeat pi(L_final) requests on the same floor can reuse a previously
+ * counted prefix (see prime_sieve_v4.py's count_sieving_primes_cached()).
  *
  * BUILD (WSL, after building+installing libprimesieve):
  *   gcc -O3 -shared -fPIC prime_sieve_engine_v4.c -o prime_sieve_engine_v4.so \
@@ -163,7 +155,7 @@ int generate_and_sieve_segment_bits_atomic(uint64_t start, uint64_t stop,
 }
 
 /* ==========================================================================================
- * count_sieving_primes -- unchanged from v1/v3.
+ * count_sieving_primes -- pi(limit) via primesieve_count_primes() (same as v1/v3).
  *
  * count_sieving_primes_range -- ADDITIVE, does not touch anything above. Counts primes in
  * [start, stop] instead of always starting at 0. Lets the Python side turn "count primes up

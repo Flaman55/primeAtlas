@@ -1,7 +1,7 @@
 """
 test_research_pi_approx_tab.py -- tests for
-primeatlas/research/research_pi_approx_tab.py's ResearchPiApproxTab (Badania ->
-Przyblizenia pi(x)), the UI wired around primeatlas/research/pi_approx_window.py's
+primeatlas/research/research_pi_approx_tab.py's ResearchPiApproxTab (Research ->
+pi(x) approximations), the UI wired around primeatlas/research/pi_approx_window.py's
 pure check_pi_approx_range()/check_pi_approx_range_from_source() (see that
 module's own test file, test_pi_approx_window.py, for the pure-logic
 checks -- this file only exercises the tkinter wiring: running a range,

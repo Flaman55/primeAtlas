@@ -57,8 +57,8 @@ def check(condition, message):
 
 
 def _touch_window(portal, floor, target_idx, window_m=10_000_000):
-    """source_primes/ is sharded into shard_NNNNN subfolders (see window_sharding.py,
-    task #405) -- placed via window_sharding.shard_dir() with the real target_idx as
+    """source_primes/ is sharded into shard_NNNNN subfolders (see window_sharding.py) --
+    placed via window_sharding.shard_dir() with the real target_idx as
     window_index (target_idx IS the window's 0-based generation-order index, matching
     every real writer's own offset // window_m math), so the sharded layout this test
     produces matches what a real engine run would have produced."""
@@ -165,11 +165,11 @@ def main():
               f"501 windows of backfill (got {plan.get('window_count_per_run')!r})")
 
         # =====================================================================
-        # BUG #2 -- floor-7-with-130M-numbers: a request whose END crosses into the
-        # NEXT floor's numbers used to be honored past the boundary, silently writing
-        # the next floor's numbers into this floor's folder. Floor 7 = [10**7, 10**8),
-        # its last window is target_idx 8 (90,000,000-100,000,000); ask for a range
-        # that reaches deep into floor 8's numbers instead.
+        # Floor boundary: a request whose END crosses into the NEXT floor's numbers
+        # must be clamped, never write the next floor's numbers into this floor's
+        # folder. Floor 7 = [10**7, 10**8), its last window is target_idx 8
+        # (90,000,000-100,000,000); ask for a range that reaches deep into floor 8's
+        # numbers instead.
         # =====================================================================
         plan2 = gen._quick_gen_plan_literal_range(
             10 ** 7 + 8 * W, 10 ** 8 + 5 * W)  # requested end reaches into floor 8

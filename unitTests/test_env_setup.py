@@ -164,10 +164,10 @@ def section_a():
           f"with nothing needed the script must still be well-formed (just does nothing) "
           f"(got {nothing_needed!r})")
 
-    # Real fresh-machine run (Artur, Windows 10 22H2, 2026-09-30): both dism enable steps
-    # printed "The operation completed successfully.", the script went straight on to
-    # STEP:wsl_install (no RESTART_REQUIRED) and then died with exit code 1 without logging
-    # a single line of wsl.exe output or its own WSL_INSTALL_FAILED marker.
+    # On a fresh Windows 10 22H2 machine both dism enable steps can print "The operation
+    # completed successfully." with no RESTART_REQUIRED, after which wsl.exe's stderr
+    # (under "Stop") kills the script with exit code 1 before any wsl.exe output or its
+    # WSL_INSTALL_FAILED marker is logged.
     #  (1) restart detection must not rest on dism's exit code alone: after enabling, ask
     #      Windows for each feature's state -- "EnablePending" means a reboot is needed.
     check("Get-WindowsOptionalFeature" in script and "EnablePending" in script,
@@ -406,23 +406,15 @@ def section_c():
     }
 
     # --- Regression: the elevated launcher must never combine -Verb RunAs with any
-    #     -RedirectStandard* parameter. That combination is a real Windows/PowerShell
-    #     limitation (elevation goes through ShellExecuteEx, which has no redirected-handle
-    #     model) -- Start-Process silently writes a non-terminating error and returns $null
-    #     instead of throwing, so $p.ExitCode used to read as empty and _run_elevated_ps1
-    #     misreported this as "elevation declined" even though no UAC prompt was ever shown.
-    #     Observed on real hardware: the install failed instantly, far
-    #     too fast for a real UAC decision. An interim fix piped the ELEVATED process's own
-    #     output into Out-File -Encoding utf8 to also fix a second real bug from the same
-    #     session (Windows PowerShell 5.1's default redirection encoding is UTF-16LE, not
-    #     UTF-8, which produced mojibake once elevation started succeeding) -- but that pipe
-    #     turned out to be a THIRD bug: it made the exit code of `exit 3010` inside the
-    #     elevated script unreliable (confirmed on real hardware: the script correctly
-    #     printed RESTART_REQUIRED and called exit 3010, yet this function received 1).
-    #     All three are now fixed by moving logging into the elevated script itself (see
-    #     _build_install_ps1_text's own docstring/regression test in section_a) and letting
-    #     THIS function go back to the simplest possible invocation: -File, no pipe, no
-    #     redirection at all -- exit codes only ever need to be unambiguous, not captured.
+    #     -RedirectStandard* parameter: elevation goes through ShellExecuteEx, which has
+    #     no redirected-handle model, so Start-Process writes a non-terminating error and
+    #     returns $null instead of throwing; $p.ExitCode then reads as empty and
+    #     _run_elevated_ps1 would report "elevation declined" without any UAC prompt.
+    #     Piping the elevated process's output into Out-File is no alternative either:
+    #     it makes `exit 3010` inside the elevated script come back as 1. Logging lives
+    #     in the elevated script itself (see _build_install_ps1_text and its test in
+    #     section_a), and THIS function uses the simplest invocation: -File, no pipe, no
+    #     redirection -- exit codes only need to be unambiguous, not captured.
     #     This test drives the real _run_elevated_ps1 (only _run_windows is faked) so it
     #     exercises the actual launcher string built.
     captured_argv = []
@@ -500,8 +492,7 @@ def section_c():
 
     # --- Regression: checklist skip -- if the passed-in report says everything is already
     #     satisfied, run_install() must not launch an elevated process AT ALL (no UAC
-    #     prompt for nothing). This is the actual real-hardware bug's root fix: it's what
-    #     stops run_install() from ever re-running `wsl --install` against a distro the
+    #     prompt for nothing), and never re-run `wsl --install` against a distro the
     #     caller's own report already says is present.
     elevated_calls = []
     es._run_elevated_ps1 = lambda ps1_path, timeout=1800: elevated_calls.append(ps1_path) or (0, "")
@@ -664,11 +655,11 @@ def section_d():
         check(m is not None, f"bash -c command must contain the expected redirect shape "
                               f"(got {bash_cmd!r})")
         log_wsl, exit_wsl = m.group(1), m.group(2)
-        # The function hands WSL-style paths to bash. On Linux (where this test was first
-        # written) a POSIX scratch path passes through unchanged; on Windows it becomes
-        # /mnt/<drive>/..., which Windows' open() cannot reach -- the test then failed with
-        # (None, "") because the OSError from writing the fake output was swallowed by the
-        # function's own `except OSError`. Map back to the real local file either way.
+        # The function hands WSL-style paths to bash. On Linux a POSIX scratch path
+        # passes through unchanged; on Windows it becomes /mnt/<drive>/..., which
+        # Windows' open() cannot reach (the OSError from writing the fake output would
+        # be swallowed by the function's own `except OSError`). Map back to the real
+        # local file either way.
         written["log_wsl"] = _wsl_path_to_local(log_wsl)
         written["exit_wsl"] = _wsl_path_to_local(exit_wsl)
         return _FakePopen([None, 0])
@@ -764,9 +755,8 @@ def section_e():
     # env_status from an actual wizard run) is to monkeypatch the module-level
     # LOCALES_DIR itself before constructing AppSettings, same "patch the module global,
     # not the instance" approach this file already uses for es.tempfile.gettempdir
-    # elsewhere. Confirmed this is load-bearing, not defensive: an earlier version of
-    # this test pointed AppSettings at a fresh tempfile.mkdtemp() script_dir and still
-    # read back a pre-existing all_ok=True report from the real repo location.
+    # elsewhere. Load-bearing: a fresh tempfile.mkdtemp() script_dir alone would still
+    # read back the real repo location's app_settings.json.
     tmp_dir = tempfile.mkdtemp(prefix="env_status_test_")
     orig_locales_dir = app_settings_module.LOCALES_DIR
     app_settings_module.LOCALES_DIR = tmp_dir

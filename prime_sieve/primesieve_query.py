@@ -4,7 +4,7 @@ import json
 # ==========================================================================================
 # primesieve_query.py -- one-shot CLI calculator for libprimesieve's public API (count
 # primes in a range, nth prime, next/prev prime), launched by PrimeAtlas's 'primesieve'
-# calculator sub-tab (Liczby pierwsze -> primesieve). Deliberately SEPARATE from
+# calculator sub-tab (Prime numbers -> primesieve). Deliberately SEPARATE from
 # prime_sieve_primesieve.py's own __main__ (a long-running window-GENERATION CLI with its
 # own positional-argument contract, benchmark logging, PGS2 file writes) -- this script
 # answers a SINGLE quick query and exits. No window files, no benchmark log row, nothing

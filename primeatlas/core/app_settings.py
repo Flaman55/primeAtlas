@@ -121,7 +121,7 @@ class AppSettings:
     def theme(self):
         """Visual theme ("light" or "dark") -- see primeatlas/core/theme.py for the two
         color palettes. Read once at startup (PortalBrowserApp._apply_theme(), same
-        restart-required pattern as `language` above -- Settings > Ogolne's theme
+        restart-required pattern as `language` above -- Settings > General's theme
         picker only writes the choice here, it does not attempt to re-theme the
         already-built app). Stored directly in THIS file's own JSON
         (_data["theme"]), unlike `language` above -- theme has nothing to do with
@@ -135,19 +135,16 @@ class AppSettings:
 
     @property
     def cudasieve_status(self):
-        """Last known result of the Settings > Aktualizacje CUDASieve status probe
+        """Last known result of the Settings > Updates CUDASieve status probe
         (see settings_tab.py's _on_check_cudasieve_status()) -- {"ok": bool,
         "payload": dict-or-error-string}, or None if never checked on this install.
 
-        Deliberately NOT re-probed automatically at app startup: an earlier version
-        called the WSL status check directly from the Settings tab's __init__, which (a)
-        paid a WSL round-trip on every single launch for a GPU-only, opt-in engine most
-        sessions never touch, and (b) raced the app's own mainloop() startup
-        (RuntimeError: main thread is not in main loop) since cmd_status() answers fast
-        enough to finish before mainloop() even starts. Caching here fixes the slowdown
-        at its root instead of just the crash: this value is shown as-is on every
-        startup; a fresh WSL probe only happens when the user explicitly clicks
-        Sprawdz status / Pobierz z GitHub / Zainstaluj."""
+        Not re-probed automatically at app startup: a WSL status check from the
+        Settings tab's __init__ would pay a WSL round-trip on every launch for a
+        GPU-only, opt-in engine most sessions never touch, and can race mainloop()
+        startup (RuntimeError: main thread is not in main loop). This cached value is
+        shown on startup; a fresh WSL probe only happens when the user explicitly clicks
+        Check status / Download from GitHub / Install."""
         return self._data.get("cudasieve_status") or None
 
     def set_cudasieve_status(self, ok, payload):
@@ -161,7 +158,7 @@ class AppSettings:
 
     @property
     def setup_completed(self):
-        """Whether the first-run environment wizard (env_setup_wizard.py, task #513) has
+        """Whether the first-run environment wizard (env_setup_wizard.py) has
         already confirmed WSL + Ubuntu + required packages are present on THIS install.
         Checked once at startup (prime_atlas_v1.py's main(), before PortalBrowserApp is
         even constructed -- see that module's own comment) to decide whether to show the
@@ -169,7 +166,7 @@ class AppSettings:
         genuinely fresh one) means the wizard runs. Deliberately NOT re-verified against
         a live WSL probe on every launch, same "cache the last real result, don't pay a
         round-trip every startup" reasoning as cudasieve_status above -- Settings >
-        Aktualizacje's 'Zweryfikuj srodowisko' button (settings_tab.py) re-runs the real
+        Updates's 'Verify environment' button (settings_tab.py) re-runs the real
         check on demand if something changes later (e.g. Ubuntu gets uninstalled)."""
         return bool(self._data.get("setup_completed", False))
 
@@ -184,7 +181,7 @@ class AppSettings:
         True/False setup_completed above. None if never checked on this install.
 
         Exists because setup_completed alone can't answer "what, specifically, is
-        missing" -- Settings > Aktualizacje's on-demand 'Zweryfikuj srodowisko' button
+        missing" -- Settings > Updates's on-demand 'Verify environment' button
         (settings_tab.py) needs to keep showing a real status line (not just revert to
         a blank/neutral one) after its wizard Toplevel closes, same "persist the last
         real result instead of re-probing on every render" reasoning as cudasieve_status
@@ -205,7 +202,7 @@ class AppSettings:
     def auto_update_check(self):
         """Whether prime_atlas_v1.py should silently check GitHub for a newer version a
         few seconds after startup (primeatlas/settings/app_update.py's check_for_update()), without
-        the user having to click Settings > Aktualizacje's manual 'Sprawdz teraz' button.
+        the user having to click Settings > Updates's manual 'Check now' button.
         Defaults to True -- an unattended install that never re-checks would silently miss
         every future bugfix, which is worse than a brief, non-blocking background check
         every launch (see prime_atlas_v1.py's own startup hook for why this is dispatched
@@ -222,7 +219,7 @@ class AppSettings:
         immediately and automatically, instead of asking the user first via a Yes/No
         dialog. Defaults to False -- unlike auto_update_check (a read-only network probe),
         this actually changes files on disk (`git pull --ff-only`), so it stays opt-in
-        until the user explicitly turns it on in Settings > Aktualizacje."""
+        until the user explicitly turns it on in Settings > Updates."""
         return bool(self._data.get("auto_update_download", False))
 
     def set_auto_update_download(self, value):

@@ -74,8 +74,9 @@ BENCHMARK_FIELDNAMES = [
 
 
 def _ensure_benchmark_log_schema(log_path):
-    """Same schema-migration logic as orchestrator_v1.py -- see that file's docstring.
-    Rewrite is ATOMIC (temp file + os.replace()) -- see that file's docstring for why."""
+    """Migrates benchmark_log.csv's header to the current BENCHMARK_FIELDNAMES (adding
+    missing columns to every existing row). Rewrite is ATOMIC (temp file + os.replace()):
+    the file holds the whole benchmark history."""
     if not os.path.exists(log_path):
         return
     with open(log_path, newline="") as f:

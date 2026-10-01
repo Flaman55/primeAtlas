@@ -1,18 +1,12 @@
 """
-window_sharding.py -- restores the ~5000-files-per-subfolder sharding scheme the
-original orchestrator (v1, pre-PrimeAtlas) used for window storage, dropped when
-PrimeAtlas's current flat-per-floor layout (every PRIME_WINDOW_*.bin directly under
-10p{N}/source_primes/) was introduced.
+window_sharding.py -- ~5000-files-per-subfolder sharding of window storage
+(10p{N}/source_primes/shard_NNNNN/).
 
-Why this exists: a single flat source_primes/ folder degrades badly at scale -- floor
-25 alone reached 542,001 files in one directory. Observed failure:
-constellation_finder_v1.py's WSL process died silently mid-scan on floor 25
-(200000/542001 windows in, no Python traceback -- the WSL process itself died), while
-generation (writing files) at that same scale was confirmed fine -- only large-scale
-directory listing/lookup was affected. Root cause: WSL/Windows filesystem interop (9P
-protocol crossing the H:\\ mount) degrades badly on directory listing/lookup at 100k+
-entries in one folder, plausibly timing out or exhausting a resource in a way that
-kills the WSL process without a clean Python exception.
+Why: a single flat source_primes/ folder degrades badly at scale (floor 25 reaches 500k+
+files). WSL/Windows filesystem interop (the 9P protocol crossing the Windows-drive mount)
+degrades on directory listing/lookup at 100k+ entries in one folder and can kill the WSL
+process without a clean Python exception (a constellation scan dying silently mid-floor);
+writing files at that scale is unaffected.
 
 Deliberately ONE small, shared, pure-Python module (plain int arithmetic + os.path
 only -- no ctypes/mmap/multiprocessing) rather than duplicated per file, unlike this
@@ -33,11 +27,9 @@ prime_sieve_v1 itself), and constellation_finder_v1.py already does its own
 sys.path.insert(0, "../prime_sieve") to reach prime_sieve_v1, so this rides along for
 free.
 
-Backward compatibility with pre-existing UNSHARDED floors is explicitly NOT handled
-here -- migrating already-generated floors to this layout is a separate, fully
-external script, outside primeAtlas entirely. Every reader in this codebase can
-therefore assume ALL floors are sharded going forward; there is no dual-layout-support
-code path.
+Unsharded floors are NOT handled here -- prime_sieve/migrate_shard_source_primes.py
+migrates them. Every reader in this codebase assumes ALL floors are sharded; there is
+no dual-layout code path.
 
 Scope: ONLY source_primes/ windows (the ones that reach hundreds of thousands of files
 per floor at scale). Constellation HIT files

@@ -1,23 +1,15 @@
 """
-totals_search_coordinator.py -- TotalsSearchCoordinator, the two PersistentWorkers
-(floor-totals scanning, prime/constellation search) that used to live directly on
-PortalBrowserApp itself in prime_atlas_v1.py.
-
-Extracted from PortalBrowserApp as part of the "God object" reduction named
-as a "Known gap" in README.md's own "GUI module conventions" section -- an earlier
-extraction phase had already pulled every TAB's own widgets/logic out of
-PortalBrowserApp, but PortalBrowserApp itself was still left owning two genuinely
-CROSS-tab background workers directly: the floor-totals cache (shared by the Prime
-numbers tab's tree AND the Benchmark tab's grand-total line) and the prime/
-constellation search worker (shared by the Prime numbers AND Constellations tabs'
-search boxes, since only one search should ever run at a time system-wide -- see
-_start_search_job's own docstring below for why they share one worker/one progress
-bar rather than getting one each).
+totals_search_coordinator.py -- TotalsSearchCoordinator, the two app-level
+PersistentWorkers: floor-totals scanning (shared by the Prime numbers tab's tree AND the
+Benchmark tab's grand-total line) and prime/constellation search (shared by the Prime
+numbers AND Constellations tabs' search boxes, since only one search should ever run at
+a time system-wide -- see _start_search_job's own docstring below for why they share one
+worker/one progress bar rather than getting one each).
 
 Same dependency-injection shape as every extracted tab (see primeatlas/primes/primes_tab.py's
 own docstring for the general pattern this package follows) -- this class is
 constructed once, in PortalBrowserApp.__init__, AFTER every tab widget already exists
-(same construction-order requirement the original inline code had: it reaches directly
+(it reaches directly
 into primes_tab_widget/constellations_hits_tab_widget rather than through a lazy
 getter, since by the time this class is built those two already exist -- see
 prime_atlas_v1.py's own __init__ for the exact point).
@@ -63,11 +55,9 @@ class TotalsSearchCoordinator:
 
         primes_tab_widget/constellations_hits_tab_widget: direct references (not lazy
         getters) to two tab widgets this coordinator updates directly
-        (update_floor_row/get_gen_seconds/get_floor_node_keys on the first,
-        hits_search_button/on_prime_search_result on... actually on_prime_search_result
-        is the Primes tab's own; the hits tab only lends its search button and hit_set_
-        cache) -- safe to take directly rather than via a callable because, by
-        construction order in prime_atlas_v1.py's __init__, both tab widgets already
+        (update_floor_row/get_gen_seconds/get_floor_node_keys/on_prime_search_result on
+        the Primes tab; the hits tab lends its search button and hit_set_cache) -- safe
+        because, by construction order in prime_atlas_v1.py's __init__, both already
         exist by the time this class is built (all six tabs are built before this).
 
         on_const_search_result(base_exponent, number, prime_result, participation):
@@ -94,10 +84,9 @@ class TotalsSearchCoordinator:
         # two genuinely independent, concurrently-runnable jobs (the bulk floor-totals
         # batch scan AND the prime/constellation search -- see start_search_job()'s own
         # comment: a totals job can legitimately still be in flight when a search
-        # starts, and vice versa, task #404's status-bar race fix exists BECAUSE that
-        # overlap is real). Using `self` as the owner for both would make claim_
+        # starts, and vice versa). Using `self` as the owner for both would make claim_
         # progress_bar() trivially succeed for whichever one calls it last regardless
-        # of which is actually mid-job, reintroducing the exact same "whoever writes
+        # of which is actually mid-job -- the same "whoever writes
         # last wins" clobbering progress_bar_owner.py exists to prevent, just between
         # this class's own two jobs instead of across different tabs.
         self._totals_progress_owner = object()
@@ -110,19 +99,17 @@ class TotalsSearchCoordinator:
             root, self._totals_job, on_result=self._on_totals_worker_result,
             on_progress=self._on_floor_total_start)
 
-        # Status-bar race fix (task #404, real bug -- a floor-totals job submitted
-        # BEFORE a search starts can still be sitting in the totals worker's queue
-        # when the search finishes; without this, its eventual completion overwrites
-        # the just-shown search RESULT with a stale "grand total"/"computing X"
-        # message the instant it lands, even though the user is looking at (and asked
-        # for) the search result specifically.
+        # Status-bar race: a floor-totals job submitted BEFORE a search starts can still
+        # be sitting in the totals worker's queue when the search finishes; its eventual
+        # completion must not overwrite the just-shown search RESULT with a stale "grand
+        # total"/"computing X" message.
         #
         # Two independent mechanisms, for two different kinds of totals status write:
         #
         # 1. _totals_batch_suppressed guards the BULK "compute all floors" batch
         #    (compute_all_floor_totals(), triggered automatically after every
         #    reload/Refresh) -- see that method's own docstring and start_search_job's.
-        #    A timestamp-based check here turned out NOT to be reliable in practice:
+        #    A timestamp-based check is NOT reliable here:
         #    reload_primes_tree() coalesces re-entrant calls (see its own
         #    docstring in prime_atlas_v1.py) into a chain that can settle at an
         #    unpredictable moment relative to a search that started in the meantime --
@@ -136,8 +123,8 @@ class TotalsSearchCoordinator:
         #    synchronously on the GUI thread, so it doesn't itself depend on the
         #    relative order two background threads' results get drained in.
         #
-        # 2. _totals_submit_time/_last_search_activity_time (the ORIGINAL, still-used
-        #    mechanism) guards the single ad-hoc per-floor case (_on_tree_open
+        # 2. _totals_submit_time/_last_search_activity_time guards the single ad-hoc
+        #    per-floor case (_on_tree_open
         #    expanding one node) -- a deliberate, single fresh click, for which the
         #    simpler "did this job predate the last search" comparison is adequate
         #    (that submission is never delayed through the multi-hop coalescing chain
@@ -179,13 +166,11 @@ class TotalsSearchCoordinator:
 
     def submit_totals_job(self, base_exponent):
         """Thin public wrapper around the totals worker's own submit() -- PrimesTab
-        receives this directly as its own submit_totals_job callable (see that class's
-        own docstring), same injection shape it already used when this lived inline on
-        PortalBrowserApp. Records the submit time first (see __init__'s own comment on
-        _totals_submit_time/_last_search_activity_time -- task #404's status-bar race
-        fix) -- compute_all_floor_totals() below routes its own per-floor submits
-        through here too, rather than calling _totals_worker.submit() a second way, so
-        every totals job gets this timestamp regardless of which path triggered it."""
+        receives this directly as its submit_totals_job callable (see that class's
+        docstring). Records the submit time first (see __init__'s comment on
+        _totals_submit_time/_last_search_activity_time) -- compute_all_floor_totals()
+        below routes its per-floor submits through here too, so every totals job gets
+        this timestamp regardless of which path triggered it."""
         self._totals_submit_time[base_exponent] = time.monotonic()
         self._totals_worker.submit(base_exponent)
 
@@ -234,8 +219,8 @@ class TotalsSearchCoordinator:
         """Fires the moment the worker PICKS UP a request -- see _totals_job's
         docstring for why this exists separately from the completion handler below.
         Skips the status-bar write (but nothing else -- there IS nothing else here)
-        per the two mechanisms described in __init__'s own comment (task #404's
-        status-bar race fix): _totals_batch_suppressed for the bulk "compute all"
+        per the two mechanisms described in __init__'s comment:
+        _totals_batch_suppressed for the bulk "compute all"
         batch, _totals_status_write_allowed for a single ad-hoc floor request."""
         if self._computing_all_totals:
             if self._totals_batch_suppressed:
@@ -281,7 +266,7 @@ class TotalsSearchCoordinator:
         The status-bar TEXT write is skipped -- via _totals_batch_suppressed for the
         bulk batch branch, _totals_status_write_allowed for the single ad-hoc
         branch -- if this job predates/was interrupted by the most recent search
-        activity (task #404's status-bar race fix, see __init__'s own comment). The
+        activity (see __init__'s comment). The
         tree-row update, grand-total accumulation, and progress-bar VALUE above still
         always run regardless, since those aren't shared/contested UI and skipping
         them would leave the totals cache/tree silently out of date."""
@@ -349,51 +334,32 @@ class TotalsSearchCoordinator:
                            size=format_bytes(total_bytes), extra=extra))
 
     def show_cached_grand_total(self, totals_cache, floor_gen_seconds, floor_count):
-        """Lightweight, all-in-memory replacement for the automatic post-reload call to
-        compute_all_floor_totals() that used to run here -- see storage.py's own
-        module docstring for the full "persisted totals, updated incrementally instead
-        of by a full rescan" feature. This replaces the old behavior, which submitted
-        a real per-file directory-listing + os.stat()-every-file rescan job for EVERY
-        floor after every single reload/startup, even when nothing had changed since
-        the last visit -- exactly the cost this replaces.
+        """Lightweight, all-in-memory grand-total display after a reload -- see
+        storage.py's module docstring on persisted totals updated incrementally instead
+        of by a full rescan.
 
-        `totals_cache` already reflects every floor's own persisted total (kept
-        accurate by the three incremental write-path hooks -- generation finishing a
-        run, storage_integrate.py's merge, delete_manager.py's floor delete -- see
-        storage.py), so reading its already-computed '_global' summary
-        (get_global_total()) costs nothing beyond summing numbers already sitting in
-        memory. A cache with no '_global' key yet (the very first run after upgrading
-        to this feature, before anything has triggered a bump or a manual verify)
-        self-heals via recompute_global_total() -- also pure/in-memory, since it only
-        sums each floor's already-known cached total, never re-reads a single window
-        file -- persisted back to disk so this self-heal only ever needs to happen
-        once. `floor_gen_seconds` (already computed fresh by PrimesTreeCoordinator._
-        scan() from benchmark_log.csv, no extra cost) supplies the duration figure the
-        status message shows, since generation seconds were never part of the totals
-        cache itself.
+        `totals_cache` already reflects every floor's persisted total (kept accurate by
+        the incremental write-path hooks -- generation finishing a run,
+        storage_integrate.py's merge, delete_manager.py's floor delete -- see
+        storage.py), so reading its '_global' summary (get_global_total()) only sums
+        numbers already in memory. A cache with no '_global' key yet self-heals via
+        recompute_global_total() -- also in-memory, it only sums each floor's cached
+        total -- persisted back to disk so this happens once. `floor_gen_seconds`
+        (computed by PrimesTreeCoordinator._scan() from benchmark_log.csv) supplies the
+        duration figure the status message shows.
 
-        compute_all_floor_totals() (the real per-file rescan) still exists exactly as
-        before -- it's reached only via the Primes tab's explicit verify-totals
-        button now, instead of running automatically, for the rare case these
-        persisted totals ever drift (a crash mid-write, or files touched outside the
-        app).
+        compute_all_floor_totals() (the real per-file rescan) runs only from the Primes
+        tab's explicit verify-totals button, for the rare case these persisted totals
+        drift (a crash mid-write, or files touched outside the app).
 
-        Also resets self.totals_progress back to its empty 0/1 resting state: this is
-        called on EVERY reload_primes_tree() -- including the one GenerationTab
-        triggers right after a run finishes (see _on_loop_finished()'s own
-        reload_primes_tree() call) -- but before this fix it never touched
-        totals_progress at all, only self.status. A finished generation
-        run snaps totals_progress to fully complete on purpose (see generation_tab.py's
-        _update_shared_progress_from_generation_chunk() docstring, "snaps the bar to
-        fully complete") and relies on WHATEVER runs next to clear it back to empty --
-        previously that was compute_all_floor_totals()'s own automatic
-        post-reload call (_on_floor_total_ready's completion branch resets the bar),
-        which ran unconditionally after every reload. Once that automatic call was
-        replaced by this lightweight cached-total read (this method), nothing was left
-        to perform that reset -- the bar stayed visibly full indefinitely after a
-        generation run, reading as "still busy" even though the app was idle. Mirrors
-        the exact same reset call _on_floor_total_ready's own completion branch and
-        _finish_search_job() already use."""
+        Also resets self.totals_progress to its empty 0/1 resting state: this runs on
+        EVERY reload_primes_tree(), including the one GenerationTab triggers right after
+        a run finishes (see _on_loop_finished()). A finished generation run leaves
+        totals_progress fully complete on purpose (see generation_tab.py's
+        _update_shared_progress_from_generation_chunk()) and relies on whatever runs next
+        to clear it; without this reset the bar would stay full indefinitely, reading as
+        "still busy". Same reset _on_floor_total_ready's completion branch and
+        _finish_search_job() use."""
         # Claim-write-release in one shot (see progress_bar_owner.py) rather than
         # sustained ownership -- this is a one-off cleanup reset, not an in-progress
         # job. If claim_progress_bar() fails, some OTHER owner (most commonly a
@@ -424,20 +390,18 @@ class TotalsSearchCoordinator:
 
     def compute_all_floor_totals(self):
         """Kicks off the bulk "every floor's total" batch -- called from the Primes
-        tab's explicit verify-totals button (see PrimesTab's own docstring on that
-        button) as a manual safety-net verify, no longer automatically after every
-        reload_primes_tree()/Refresh (see show_cached_grand_total() above for what
-        replaced the automatic call, and storage.py's own module docstring for why).
+        tab's explicit verify-totals button (see PrimesTab's docstring on that button)
+        as a manual safety-net verify; after a reload, show_cached_grand_total() shows
+        the persisted totals instead (see storage.py's module docstring).
 
         _totals_batch_suppressed is seeded from _search_busy right here: even though
-        reload_primes_tree()'s own coalescing chain (see that method's docstring)
-        means THIS exact call can be the delayed tail end of a reload originally
-        triggered before any search even started, if a search happens to ALREADY be
-        in flight by the time this batch actually begins, its messages should never
-        have been shown in the first place -- there's no earlier point to have caught
-        that. start_search_job() below handles the opposite ordering (a batch already
-        running when a NEW search starts) by flipping this same flag retroactively
-        (task #404's status-bar race fix, see __init__'s own comment)."""
+        reload_primes_tree()'s coalescing chain (see that method's docstring) means THIS
+        call can be the delayed tail end of a reload triggered before any search
+        started, if a search is ALREADY in flight by the time this batch begins, its
+        messages should never be shown -- there's no earlier point to catch that.
+        start_search_job() below handles the opposite ordering (a batch already running
+        when a NEW search starts) by flipping this same flag retroactively (see
+        __init__'s comment)."""
         floors = self._primes_tab_widget.get_floor_node_keys()
         if not floors:
             self.status.set(self.T("primes.status_none_to_compute"))
@@ -474,8 +438,8 @@ class TotalsSearchCoordinator:
         Bumps _last_search_activity_time first, and -- if the bulk "compute all"
         batch happens to be running right now -- flips _totals_batch_suppressed too
         (see __init__'s own comment for why the batch needs its own separate flag
-        rather than reusing the timestamp check here; task #404's status-bar race
-        fix): any totals job already sitting in the queue at this instant was
+        rather than reusing the timestamp check here): any totals job already sitting in
+        the queue at this instant was
         necessarily submitted BEFORE this timestamp, so its eventual completion
         message is suppressed rather than clobbering this search's own status text."""
         self._last_search_activity_time = time.monotonic()
@@ -488,7 +452,7 @@ class TotalsSearchCoordinator:
         # owner has it right now -- the search itself still runs and its result
         # still lands normally either way, it just won't animate the bar until
         # whichever owner has it releases (the status TEXT above is unaffected,
-        # that's governed by the separate task #404 suppression flags).
+        # that's governed by the separate status-bar suppression flags).
         if claim_progress_bar(self.totals_progress, self._search_progress_owner):
             # See progress_bar_owner.py's own pump_indeterminate() docstring for why
             # this replaced a plain .stop()/.configure(mode=...)/.start(120) sequence
@@ -572,7 +536,7 @@ class TotalsSearchCoordinator:
     def _finish_search_job(self):
         # Bumped again here (not just at start_search_job's own start) -- see
         # __init__'s own comment on _totals_submit_time/_last_search_activity_time
-        # (task #404's status-bar race fix): this runs BEFORE the caller (_on_search_
+        # (the status-bar race): this runs BEFORE the caller (_on_search_
         # worker_result) writes the actual found/not-found status text below, so any
         # totals job whose completion callback fires from this instant onward is
         # treated as "predating" this search and has its own status write suppressed

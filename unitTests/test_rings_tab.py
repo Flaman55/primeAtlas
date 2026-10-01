@@ -183,8 +183,7 @@ def _test_build_renderer_argv():
     check("--line-axis-curved" in curved_argv,
           f"--line-axis-curved flag is included when checked (got {curved_argv!r})")
 
-    # Sliding/traveling-window argv wiring -- default OFF (Artur's own
-    # explicit call, 2026-09-25), same omit-if-default convention as
+    # Sliding-window argv wiring -- default OFF, same omit-if-default convention as
     # line_axis_curved above.
     check("--slide-load-range" not in default_argv,
           f"no --slide-load-range arg at all when unchecked (default) (got {default_argv!r})")
@@ -203,9 +202,8 @@ def _test_build_renderer_argv():
 
     # hit_point_size/hud_font_size argv wiring, mirroring point_size's own
     # omit-if-None convention exactly. renderer.py's own argparse defaults
-    # are 40.0 / 35 (previously None-falls-back-to-point-size / 16px) --
-    # this test only checks build_renderer_argv's own function-level
-    # default (None omits the flag from argv), which is unchanged; the
+    # are 40.0 / 35 -- this test only checks build_renderer_argv's own
+    # function-level default (None omits the flag from argv); the
     # actual numeric value that then applies lives in renderer.py's
     # argparse, not here.
     check("--hit-point-size" not in default_argv,
@@ -229,10 +227,9 @@ def _patch_app_settings(app_settings):
     file's own _patch_app_settings (e.g. test_primes_tab.py).
 
     Also drops the in-memory ring_viz_params READ from that real file: RingsTab
-    pre-fills its fields (Track P, Auto orbit, load range...) from them, so whatever the
-    person last used in the real app leaked into this test's "empty field -> no flag"
-    checks and made the failure count vary run to run (2026-10-01). Nothing is written
-    back -- save() is neutered above."""
+    pre-fills its fields (Track P, Auto orbit, load range...) from them, so whatever was
+    last used in the real app would leak into this test's "empty field -> no flag"
+    checks. Nothing is written back -- save() is neutered above."""
     app_settings.save = lambda: None
     app_settings._data.pop("ring_viz_params", None)
 
@@ -258,8 +255,7 @@ def _write_fake_renderer(exit_code, linger_seconds=0.5):
     a fake that exited instantly could finish -- and have its exit drained by
     _on_open()'s own synchronous _poll_queue() -- before _on_open() even returned under
     CPU load, so "button disabled right after launch" and "argv of tab._runner" checks
-    saw an already-reset tab and failed at random (2026-10-01, reproduced by running
-    three copies of this test in parallel)."""
+    would see an already-reset tab."""
     fd, path = tempfile.mkstemp(suffix="_fake_renderer.py")
     with os.fdopen(fd, "w") as f:
         f.write(
@@ -339,9 +335,8 @@ def main():
     tmp_portal = tempfile.mkdtemp(prefix="primeatlas_rings_tab_test_portal_")
 
     # --- layout: Start/Reset are the first thing in the tab ------------------------
-    # Artur (2026-10-01): "przyciski uruchom i reset sa nisko daleko pod opcjami a
-    # powinny byc na samej gorze jako najwazniejsze elementy" -- the launch buttons
-    # must sit above the intro and every option section, not below Audio.
+    # The launch buttons must sit above the intro and every option section, not below
+    # Audio: launching is the tab's primary action.
     button_row = tab.open_button.master
     container = button_row.master
     packed = container.pack_slaves()
@@ -516,16 +511,12 @@ def main():
     tab.load_range_to_entry.delete(0, "end")
 
     # --- Sliding-window checkbox wiring -- gated on mode_var == "range",
-    # same as Load Range From/To above. Real bug, 2026-09-26: Artur's own
-    # command-line reproduction had --slide-load-range with NO --load-range
-    # at all, crashing renderer.py's own argparse ("--slide-load-range
-    # requires --load-range") in SEQUENTIAL mode. Root cause: _on_mode_
-    # changed() only greys out the checkbox WIDGET, it never clears the
-    # underlying BooleanVar -- so a value checked while in range mode (or
-    # loaded from a persisted settings file saved during an earlier range-
-    # mode session) stays True after switching back to sequential, and
-    # _on_open used to read self.slide_load_range_var.get() unconditionally,
-    # forwarding the stale True regardless of mode.
+    # same as Load Range From/To above. _on_mode_changed() only greys out the
+    # checkbox WIDGET, it never clears the underlying BooleanVar -- so a value
+    # checked while in range mode (or loaded from a persisted settings file saved
+    # during an earlier range-mode session) stays True after switching back to
+    # sequential, and must not be forwarded: renderer.py's argparse rejects
+    # --slide-load-range without --load-range.
     tab.mode_var.set("range")
     tab._on_mode_changed()
     tab.load_range_from_entry.delete(0, "end")
@@ -569,10 +560,9 @@ def main():
     tab.load_range_to_entry.configure(state="normal")
     tab.load_range_to_entry.delete(0, "end")
 
-    # --- General Law mode combobox: new rigid 'bertrand'/'legendre' values
-    # [ADDED 2026-09-26, ported from the RelationalMathematics browser
-    # prototype] lock the theta entry to a fixed display value instead of
-    # leaving it showing a stale editable number. ---------
+    # --- General Law mode combobox: rigid 'bertrand'/'legendre' values lock the
+    # theta entry to a fixed display value instead of leaving it showing a stale
+    # editable number. ---------
     check(list(tab.general_law_mode_combo["values"]) == ["stepped", "sliding", "bertrand", "legendre"],
           f"General Law mode combobox offers the two new rigid choices alongside stepped/sliding "
           f"(got {list(tab.general_law_mode_combo['values'])!r})")

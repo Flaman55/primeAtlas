@@ -2,13 +2,12 @@
 test_settings_scroll.py -- the Settings tab's page-level mouse-wheel handler must leave the
 wheel to widgets that scroll themselves.
 
-Artur (2026-10-01): with the pointer over the sympy installer's log (a ScrolledText on
-Settings > Updates), scrolling down moved BOTH the log and the whole page; scrolling up
-looked right only because the page was already at its top. The page's handler is bound
-with bind_all while the pointer is over the page canvas, so it also fires for wheel events
-over the log, whose own Text class binding scrolls it at the same time. The Generation tab
-solved the same thing with its own exclusion check; the Settings tab now asks
-settings_tab.event_over_own_scroller() before scrolling the page.
+With the pointer over the sympy installer's log (a ScrolledText on Settings > Updates),
+the page's handler -- bound with bind_all while the pointer is over the page canvas --
+would also fire for wheel events over the log, whose own Text class binding scrolls it
+at the same time, so both would move. The Generation tab uses the same kind of
+exclusion check; the Settings tab asks settings_tab.event_over_own_scroller() before
+scrolling the page.
 
 Usage:
     python unitTests/test_settings_scroll.py

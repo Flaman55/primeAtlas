@@ -74,15 +74,12 @@ def load_archive(portal_folder, upto, progress_callback=None, batch_files=64, fr
     a high floor -- never reads a single file more than needed once the cap
     is hit. Truncation is always from the TOP (the highest values get cut),
     a natural consequence of floors/files being walked in ascending order
-    already. `None` (default) reproduces the old unbounded behavior exactly.
-    No fixed number is hardcoded here on purpose -- see this function's own
-    REAL CEILING note below: nobody has benchmarked a safe figure on real
-    archive hardware yet, so the caller (rings_tab.py) makes this a plain
-    configurable field instead of a guessed constant.
+    already. `None` (default) means unbounded. No fixed cap is hardcoded: no safe
+    figure has been benchmarked on archive hardware, so the caller (rings_tab.py)
+    exposes it as a configurable field.
 
-    Defaults to 0, i.e. every real prime is >0 so this
-    reproduces the exact old `arr[arr <= upto]` behavior unchanged when the
-    caller doesn't pass it. A non-zero `from_n` lets a caller that already
+    `from_n` defaults to 0 (every prime is >0, so the whole (0, upto] range). A
+    non-zero `from_n` lets a caller that already
     holds every prime up to some point (extend_buffer_if_needed in
     _run_visualization, renderer.py) fetch only the NEW primes past that
     point instead of re-reading and re-returning the whole [0, upto] range
@@ -97,26 +94,14 @@ def load_archive(portal_folder, upto, progress_callback=None, batch_files=64, fr
     This loader is hardened against portal-scale failure modes in three
     ways:
 
-    1. Enumerates REAL floors on disk via storage.list_floors() instead of
-       blindly incrementing floor with only a fixed sanity cap (`floor > 30`)
-       as a guard. A gap in the portal (e.g. floor 5 populated, floor 6 not
-       yet) no longer costs an empty list_source_filenames() call for every
-       skipped floor, and a portal whose highest real floor is well below
-       `upto`'s own floor stops there immediately instead of still counting
-       up toward the old hardcoded 30 regardless.
+    1. Enumerates the floors actually on disk via storage.list_floors(), so a gap
+       in the portal (e.g. floor 5 populated, floor 6 not) costs nothing and the
+       walk stops at the portal's highest floor.
     2. Reads window files in BOUNDED BATCHES (`batch_files` at a time,
-       default 64) rather than accumulating one unbounded Python list across
-       an entire floor (or several floors) before ever concatenating -- see
-       this project's own `c_skaner_odczyt_porcjami` history (04_C_skaner
-       once failed the whole sieve, without warning, from a single ~1GB
-       fread instead of reading in ~160MB portions) for the class of failure
-       an unbounded single pass caused elsewhere in this codebase. Each
-       batch is concatenated and appended to the running result list right
-       away, so peak EXTRA memory during the load is bounded by one batch's
-       worth of arrays, not the whole load -- the final full-array
-       concatenate at the end is unavoidable (the renderer needs one
-       contiguous sorted array to hand to ring_geometry), but the batching
-       here at least keeps the INTERMEDIATE working set bounded.
+       default 64) rather than one unbounded Python list across a floor: each
+       batch is concatenated and appended to the running result right away, so
+       peak EXTRA memory during the load is one batch's arrays. The final
+       concatenate is unavoidable (the renderer needs one contiguous sorted array).
     3. Accepts an optional `progress_callback(base_exponent, files_read_in_floor,
        primes_loaded_so_far)`, invoked after every batch, so a caller
        (primeatlas/rings/rings_tab.py) can drive a real progress bar
@@ -134,10 +119,8 @@ def load_archive(portal_folder, upto, progress_callback=None, batch_files=64, fr
     bottleneck to watch for at very high N is FILE COUNT, not prime count: a
     floor with many thousands of small window files costs far more
     wall-clock load time than one with a few large ones holding the same
-    total prime count. (Separately, the GPU rendering ceiling confirmed for
-    this renderer is 20,000,000 rings at 50+ fps -- see PLAN.md's
-    "Feasibility already confirmed" section -- but that measures the
-    renderer, not this loader's own I/O cost.)
+    total prime count. (The renderer itself handles ~20,000,000 rings at 50+ fps;
+    that measures rendering, not this loader's I/O.)
 
     `prime_sieve` (this repo's sibling top-level directory to `primeatlas/`)
     is added to sys.path here because primeatlas.core.storage itself does a bare
@@ -233,40 +216,22 @@ def load_archive(portal_folder, upto, progress_callback=None, batch_files=64, fr
 def load_archive_before(portal_folder, before_n, count, not_below=None):
     """Backward-walking counterpart to load_archive(): the `count` largest
     real primes strictly LESS than `before_n` (ascending order), or fewer if
-    the portal's own data runs out first. Added for the ring_viz sliding/
-    traveling-window feature (chunk_back's own loader -- see memory file
-    primeatlas-ring-viz-sliding-range-window-plan.md, Faza 1): forward
-    sliding already reuses load_archive(from_n=...) as-is, but there was no
-    "give me the last N primes below X" primitive until now.
+    the portal's own data runs out first. The sliding window's chunk_back loader
+    (forward sliding uses load_archive(from_n=...)).
 
     `before_n` is EXCLUSIVE, mirroring load_archive's own `from_n`
     exclusivity (`arr > from_n`) -- so a chunk_back ending here and a
     chunk_current starting at the same `before_n` boundary never duplicate
     or gap a value at the seam.
 
-    `not_below` -- None (default) reproduces the original unbounded
-    behavior (walk all the way back to the true start of the PORTAL's own
-    data, i.e. down toward 2 if nothing else stops it first). Regression
-    fix, 2026-09-25 (Artur's own real report: going back past the very
-    START of his own --load-range, the renderer hung -- "ignorujac zakres
-    od jakiego startuje, a przeciez od powinno byc twarda granica" --
-    ignoring the range's own FROM, when FROM should be a hard boundary):
-    the caller (RenderSession._ensure_back_chunk) only ever needs primes
-    within its OWN logical `range_load_from`, but this function previously
-    had no way to know that boundary existed at all -- it kept walking
-    into EARLIER floors as long as the PORTAL had more real data there
-    (which a real archive almost always does, all the way down to 2,3,5,7),
-    completely ignoring the user's own requested range. A real
-    --load-range starting deep in a high floor (e.g. floor 24) with floors
-    0-23 also populated could walk dozens of floors -- and, once each
-    chunk swap's own load runs on the background thread this session's
-    other regression fix already added, PILE UP one real disk load after
-    another on every one of those slides, looking exactly like a hang.
-    Passing `not_below=range_load_from` makes FROM a genuine hard floor:
-    the function stops (never returns a value `<= not_below`) the moment
-    it reaches the floor containing `not_below`, exactly mirroring how the
-    very first chunk's own initial load already treats FROM as a hard,
-    non-negotiable edge (see renderer.py's own `from_n=preload_from`).
+    `not_below` -- None (default) walks back toward the start of the portal's
+    data. The sliding window passes its `range_load_from`
+    (RenderSession._ensure_back_chunk), making FROM a hard boundary: the function
+    never returns a value `<= not_below` and stops at the floor containing it.
+    Without it, a --load-range starting high (e.g. floor 24) with floors 0-23 also
+    populated would walk earlier floors on every backward slide, one disk load
+    after another. Same treatment of FROM as the first chunk's initial load
+    (renderer.py's `from_n=preload_from`).
 
     Gap-encoded PGS2 windows have no random access (same limitation
     hit_paging.py's own docstring and load_archive's own module docstring
@@ -274,8 +239,8 @@ def load_archive_before(portal_folder, before_n, count, not_below=None):
     boundary still means fully decoding whole window files -- but only the
     ones actually needed, walked from the boundary backward, using the same
     cheap "list filenames (no I/O), binary-search headers (small I/O),
-    decode only what's needed" pattern storage.find_prime_in_floor and this
-    session's own constellation-paging search fix already use:
+    decode only what's needed" pattern storage.find_prime_in_floor and the paged
+    constellation search use:
 
     1. storage.list_floors() to find which floor `before_n` falls in (or
        the nearest floor below it, if `before_n` lands exactly on a floor's

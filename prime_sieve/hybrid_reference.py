@@ -1,8 +1,8 @@
 """Correctness-first implementation of one hybrid sieve segment.
 
-This is intentionally a reference backend, not the eventual high-throughput C
-engine.  It exists to make the hybrid proof executable and to provide a stable
-oracle for Phase 5.  It marks one requested numeric segment with two independent
+This is intentionally a reference backend, not the high-throughput C engine
+(hybrid_native.py).  It makes the hybrid proof executable and serves as the oracle
+for the native backend.  It marks one requested numeric segment with two independent
 sources of compositeness:
 
 * every multiple of each trusted MAIN prime; and
@@ -172,8 +172,8 @@ def write_new_pgs2_floor_window(
     """Write a new window using Atlas's ordinary PGS2 name and shard layout.
 
     The caller owns numeric-range validation; this helper owns only the stable
-    storage convention shared by all engines.  Keeping it here means Phase 3
-    proves that hybrid output is consumable without Storage/Constellations changes.
+    storage convention shared by all engines, so hybrid output is consumable without
+    Storage/Constellations changes.
     """
     if (isinstance(base_exponent, bool) or not isinstance(base_exponent, int) or base_exponent < 0
             or isinstance(target_idx, bool) or not isinstance(target_idx, int) or target_idx < 0

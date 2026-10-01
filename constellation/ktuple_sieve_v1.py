@@ -61,7 +61,7 @@ branch (default: always "...1") at each successive, finer position -- e.g. for a
 11200, ..., 11900, and so on. Extra per-position budget beyond one window per digit
 value is spent as a CONTIGUOUS block right at that digit's own offset (denser, not
 wider, coverage there). Continuation between batches does NOT shift a floor-relative
-offset the way the other three strategies do (that corrupted the digit alignment --
+offset the way the other three strategies do (that would corrupt the digit alignment --
 see run_ktuple_job()'s own docstring for why) -- instead a pass_counter increments by
 1 each batch, and each position derives ITS OWN committed digit from it (a different
 small step per position -- see digit_sweep_locations()'s PATH VARIETY note), so the
@@ -425,7 +425,7 @@ def digit_sweep_locations(base_exponent, n_locations, window_m, anchor_offset=0,
     position's sub-scans first, already clipped to the floor's own upper boundary.
 
     `anchor_offset` shifts the WHOLE nested pattern by a fixed floor-relative amount.
-    Always 0 in current use -- see CONTINUATION FIX in run_ktuple_job()'s own
+    Always 0 in current use -- see CONTINUATION in run_ktuple_job()'s own
     docstring for why a floor-offset shift is unsafe for this strategy; kept as a
     parameter only so a caller with its own use case can still express one.
 

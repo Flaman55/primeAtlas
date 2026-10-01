@@ -136,18 +136,17 @@ class PrimesTab(BaseTab):
         submit_totals_job(base_exponent): prime_atlas_v1.py's per-floor totals
         PersistentWorker's submit() method -- expanding a floor re-checks its total
         (cheap no-op if nothing changed, see update_floor_totals_cache()'s own
-        docstring), the same worker the "Zweryfikuj sumy" button's "compute all" batch
+        docstring), the same worker the "Verify totals" button's "compute all" batch
         (verify_all_totals below) also uses.
 
         verify_all_totals(): TotalsSearchCoordinator.compute_all_floor_totals(), bound
-        to the "Zweryfikuj sumy" button (see this class's own _build_widgets() comment
+        to the "Verify totals" button (see this class's own _build_widgets() comment
         and storage.py's own module docstring for the
         "persisted totals, updated incrementally instead of by a full rescan" feature
-        this button is the manual safety-net verify for). Refresh no longer triggers
-        this automatically -- it used to, back when this was the ONLY way any total
-        ever got refreshed at all -- so this is now the one place a real per-file
-        rescan can still be asked for, for the rare case the persisted totals drift
-        (a crash mid-write, or files touched outside the app).
+        this button is the manual safety-net verify for). Refresh does not trigger it
+        (Refresh shows the persisted totals), so this is the one place a real per-file
+        rescan can be asked for, for the rare case the persisted totals drift (a crash
+        mid-write, or files touched outside the app).
         """
         super().__init__(parent, translator)
         self._get_portal_folder = get_portal_folder
@@ -189,14 +188,11 @@ class PrimesTab(BaseTab):
             top, text=T("common.search_button"), command=self._search_prime)
         self.search_button.pack(side="left")
 
-        # "Zweryfikuj sumy" (verify_all_totals, added above) used to be redundant with
-        # Refresh -- Refresh called compute_all_floor_totals() (a real per-file
-        # rescan) automatically after every reload. That's no longer true (see
-        # storage.py's own module docstring): Refresh now shows the grand total
-        # straight from the persisted totals cache instead, so THIS button is the only
-        # remaining way to trigger a real rescan -- kept as a manual safety net for the
-        # rare case those persisted totals ever drift (a crash mid-write, or files
-        # touched outside the app).
+        # "Verify totals" (verify_all_totals, added above): Refresh shows the grand
+        # total straight from the persisted totals cache (see storage.py's module
+        # docstring), so THIS button is the only way to trigger a real per-file rescan --
+        # a manual safety net for the rare case those persisted totals drift (a crash
+        # mid-write, or files touched outside the app).
         paned = ttk.Panedwindow(self, orient="horizontal")
         paned.pack(fill="both", expand=True, padx=6, pady=4)
 
@@ -205,8 +201,8 @@ class PrimesTab(BaseTab):
 
         # Floor pagination -- ABOVE the tree, same Prev/label/Next/goto layout
         # as the file-preview pane on the right (see btn_row below). A floor can hold
-        # thousands of source windows -- listing+rendering them all on one expand is
-        # what used to freeze the GUI. Expanding a floor now only lists filenames
+        # thousands of source windows -- listing+rendering them all on one expand would
+        # freeze the GUI, so expanding a floor only lists filenames
         # (cheap) and loads ONE page's worth of headers; these controls act on whichever
         # floor was most recently opened/clicked (self._active_floor_node) -- multiple
         # floors can stay expanded at once, each remembering its own page independently.
@@ -235,13 +231,11 @@ class PrimesTab(BaseTab):
         ttk.Label(floor_nav, textvariable=self.floor_subtotal_label, anchor="w").pack(
             side="left", padx=(14, 0))
 
-        # 4 value columns: count/files/generated/timer, split apart
-        # because "generated" used to double as BOTH a per-file UTC timestamp (file rows)
-        # AND a file count (floor summary rows) -- confusing on a collapsed floor, which
-        # only ever shows the summary row. "files" now always means file count, "generated"
-        # always means a UTC timestamp (blank on floor rows -- no single date is
-        # meaningful for a whole floor), "timer" is new: total REAL generation time for
-        # that floor (write_files=True runs only, see aggregate_write_seconds_by_floor()).
+        # 4 value columns: count/files/generated/timer. "files" is always a file count,
+        # "generated" always a per-file UTC timestamp (blank on floor rows -- no single
+        # date is meaningful for a whole floor), "timer" the total REAL generation time
+        # for that floor (write_files=True runs only, see
+        # aggregate_write_seconds_by_floor()).
         # "cumulative" (see _cumulative_floor_totals's own docstring) is READ-ONLY/
         # derived -- the running total of primes found through this floor (this floor's
         # own "count" PLUS every lower floor's), computed purely for display. It sits
@@ -297,7 +291,7 @@ class PrimesTab(BaseTab):
 
         # No "Load preview" button -- selecting a file node in the tree on the left
         # loads its preview immediately (see _on_tree_select()). add_page_nav_row()
-        # (Prev/Next/label on the left, "Strona:"/entry/Idz flush against the right
+        # (Prev/Next/label on the left, "Page:"/entry/Go flush against the right
         # edge -- see its own docstring) gives a consistent, professional-looking
         # right-aligned jump group instead of one trailing wherever the left cluster's
         # own width happens to end.
@@ -310,8 +304,8 @@ class PrimesTab(BaseTab):
 
         # add_page_nav_row() never wraps onto extra lines -- so the detail pane must
         # never be draggable narrower than this row's own natural width, or its
-        # right-flush "Strona:"/entry/Idz jump group starts sliding off the pane's own
-        # edge and out of view entirely. Same fix as Magazyn/ConstellationsHitsTab's
+        # right-flush "Page:"/entry/Go jump group starts sliding off the pane's own
+        # edge and out of view entirely. Same fix as Storage/ConstellationsHitsTab's
         # own preview pane -- see clamp_pane_min_width()'s own docstring for why a
         # ttk::panedwindow needs this done by hand.
         self.update_idletasks()
@@ -430,10 +424,9 @@ class PrimesTab(BaseTab):
             self._refresh_floor_nav_controls()
 
     def on_prime_search_result(self, base_exponent, number, result):
-        """Called by prime_atlas_v1.py's own _on_search_worker_result() once a "prime"
-        search job (dispatched via the injected start_search_job) comes back -- same UI
-        update _search_prime() used to do synchronously right after calling
-        find_prime_in_floor() directly, now driven by the shared search worker instead."""
+        """Called by prime_atlas_v1.py's _on_search_worker_result() once a "prime"
+        search job (dispatched via the injected start_search_job) comes back --
+        updates the UI with the result."""
         T = self.T
         if result is None:
             outcome = self._offer_generate_missing_prime_window(base_exponent, number)

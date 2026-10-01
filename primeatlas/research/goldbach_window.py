@@ -1,11 +1,11 @@
 """
 goldbach_window.py -- structural window check for Goldbach's conjecture, for the
-Badania -> Goldbach sub-tab. Pure Python, no external dependencies (same zero-install
+Research -> Goldbach sub-tab. Pure Python, no external dependencies (same zero-install
 promise as primality.py -- see that module's own header comment).
 
 Mirrors, term for term, the formalization in
 "A Structural Sieve for Goldbach's Conjecture" (LaTeX) and
-Hipoteza Goldbacha/lean/StructuralGoldbach/{Basic,Structural}.lean:
+the Goldbach Lean project's lean/StructuralGoldbach/{Basic,Structural}.lean:
 
   hasGoldbachRep(n)   := exists p q, p prime, q prime, p + q = n            (Basic.lean)
   repCount(n)         := #{p in [0, n] : p prime and (n - p) prime}        (Basic.lean)
@@ -51,7 +51,7 @@ IMPORTANT: buildableFromBase in Constructive.lean only bounds p, the SMALLER sum
 It says NOTHING about q. So buildableFromBase(Pmax, n) holds for EVERY prime pair p <= q
 summing to any n in this window, not just ones where q ALSO happens to be <= Pmax -- a
 stricter "both <= Pmax" condition is NOT what the theorem states, even though the
-"STARA BAZA" visualization panel can make it look that way. Whether q happens to be
+"OLD BASE" visualization panel can make it look that way. Whether q happens to be
 <= Pmax or not is purely INFORMATIONAL (which primes were already known before this
 window vs first appear inside it) -- it is never
 a pass/fail condition. Every function below reflects this: only p is ever checked
@@ -107,8 +107,7 @@ def _smallest_witness(is_prime, n):
     not just similarly-shaped code. For any n <= 2*Pmax this p is AUTOMATICALLY <= Pmax
     (see module docstring) -- so this smallest witness is, unconditionally, a live
     witness of buildableFromBase(Pmax, n) too. No preference or special-casing needed;
-    an earlier version of this file searched for a witness where q ALSO stayed <= Pmax,
-    which was solving a condition Lean's buildableFromBase never asked for."""
+    q is NOT required to stay <= Pmax -- Lean's buildableFromBase bounds only p."""
     for p in range(2, n // 2 + 1):
         if is_prime[p] and is_prime[n - p]:
             return p, n - p
@@ -121,8 +120,8 @@ def window_rows(is_prime, Pmax, row_cap=None, row_offset=0):
     prime_atlas_v1.read_is_prime_from_storage) instead of building a fresh sieve. Runs
     the exact same touch_once witness search as check_window()'s touch_once branch
     (_smallest_witness), just against a caller-supplied is_prime instead of one built
-    internally -- this backs the Goldbach tab's Wizualizacja feature, which always
-    stays inside the [4, 2*Pmax] window -- the SAME window the "Sprawdz okno" check
+    internally -- this backs the Goldbach tab's Visualize feature, which always
+    stays inside the [4, 2*Pmax] window -- the SAME window the "Check window" check
     covers, not a separate cascade step. `is_prime` must be long enough to index up to
     2*Pmax.
 
@@ -192,9 +191,7 @@ def all_decompositions(is_prime, n, pmax=None, cap=None, offset=0):
       "q_in_base": q <= pmax -- PURELY INFORMATIONAL (whether this particular prime
         was already known before this window or first appears inside it). NOT part
         of buildableFromBase, never a requirement -- Lean's theorem says nothing
-        about q. An earlier version of this file collapsed both facts into one
-        "both_old_base" flag and required BOTH to hold, which was never what
-        buildableFromBase actually says (see module docstring's own note on this).
+        about q.
 
     `cap`/`offset` page over the pair list. Pairs are grouped q_in_base=True first,
     then q_in_base=False, ascending p within each group (mirrors window_rows'
@@ -270,7 +267,7 @@ carries over to Pmin=2 without needing to re-run anything."""
 
 BOTH_BASE_PMIN = 2
 """The smallest prime. Matches Lean's `additiveSelfContained_of_hasGoldbachRep`
-(Hipoteza Goldbacha/lean/StructuralGoldbach/SelfContainment.lean) exactly: every
+(the Goldbach Lean project's lean/StructuralGoldbach/SelfContainment.lean) exactly: every
 prime satisfies p, q >= 2, so for any Goldbach representation p+q=n with
 n <= Pmax+Pmin, q = n - p <= n - Pmin <= (Pmax+Pmin) - Pmin = Pmax, and
 symmetrically p <= Pmax. That Lean theorem is unconditional -- no
@@ -352,11 +349,9 @@ def both_base_window_rows(is_prime, Pmax, Pmin=BOTH_BASE_PMIN, row_cap=None,
                            row_offset=0, n_min=None, n_max=None, progress_cb=None):
     """GUI-facing counterpart of check_both_base_coverage, shaped to match
     window_rows()'s own contract (row_cap/row_offset paging, same key names where
-    the concept overlaps) -- prime_atlas_v1.py's Wizualizacja now renders
-    exclusively through this path. With BOTH_BASE_PMIN narrowed to 2, this is
-    exactly the window Lean's additiveSelfContained_of_hasGoldbachRep proves
-    unconditionally, so the older buildableFromBase-only [4, 2*Pmax] mode was
-    dropped rather than kept as a separate, weaker option.
+    the concept overlaps) -- prime_atlas_v1.py's Visualize renders exclusively
+    through this path. With BOTH_BASE_PMIN = 2, this is exactly the window Lean's
+    additiveSelfContained_of_hasGoldbachRep proves unconditionally.
 
     Refuses (ValueError) any Pmax above BOTH_BASE_PMAX_CEILING -- see that
     constant's own docstring for exactly what scale has actually been checked
@@ -366,11 +361,10 @@ def both_base_window_rows(is_prime, Pmax, Pmin=BOTH_BASE_PMIN, row_cap=None,
     window is narrower than window_rows()'s).
 
     `n_min`/`n_max` let the caller restrict which part of [4, Pmax+Pmin] actually
-    gets scanned, instead of always walking from n=4 -- without this, viewing a
-    page deep into a huge window still required a fresh O(window width) scan from
-    the very start on every single request (row_cap/row_offset only ever sliced
-    which rows were RETURNED, never which were COMPUTED). Both default to the full
-    window when omitted, so existing callers are unaffected. When given, they are
+    gets scanned, instead of always walking from n=4 (row_cap/row_offset only slice
+    which rows are RETURNED, not which are COMPUTED, so a page deep into a huge window
+    would otherwise cost a full O(window width) scan). Both default to the full
+    window when omitted. When given, they are
     clamped into [4, Pmax+Pmin] and rounded to the nearest valid even boundary
     (n_min up, n_max down). "covered"/"counterexamples"/"segment_size" describe
     ONLY the resulting [n_min, n_max] range, NOT the full window -- the caller is
@@ -387,18 +381,15 @@ def both_base_window_rows(is_prime, Pmax, Pmin=BOTH_BASE_PMIN, row_cap=None,
     called on EVERY single prime (see the sweep loop) to avoid turning a fast
     vectorized computation back into a slow one via callback overhead.
 
-    Algorithm: rather than a "for each n, linear-scan p" nested loop (which also
-    re-derived old_base_primes via a scalar Python filter over range(2, Pmax+1)
-    on every call), both are now numpy-vectorized sweeps over the SAME
-    base-primes array, computed once.
+    Algorithm: two numpy-vectorized sweeps over the SAME base-primes array, computed
+    once.
       1. old_base_primes: np.nonzero on the is_prime buffer (zero-copy view via
-         np.frombuffer) instead of a Python-level comprehension -- for Pmax in
-         the hundreds of millions this alone used to dominate the wall-clock
-         time, well before the witness search even started.
+         np.frombuffer) -- a Python-level comprehension over range(2, Pmax+1) would
+         dominate the wall-clock time for Pmax in the hundreds of millions.
       2. Witness search: rather than, for each n, trying candidate p=2,3,5,... in
          a Python loop, this sweeps the base primes ONCE, and for each prime p
-         (ascending, so the first hit for any n is still its SMALLEST witness --
-         identical selection to the old algorithm) vectorizes "is n-p prime?"
+         (ascending, so the first hit for any n is still its SMALLEST witness)
+         vectorizes "is n-p prime?"
          across every STILL-UNRESOLVED n in the target range simultaneously via
          numpy boolean indexing. Since witness primes are typically small (this
          project's own WitnessStepBound measurements: the worst-case witness
@@ -412,7 +403,7 @@ def both_base_window_rows(is_prime, Pmax, Pmin=BOTH_BASE_PMIN, row_cap=None,
          a fixed-position array indexed by n's own position in the range, not
          appended in discovery order), stage 2 is assembling the plain dict rows
          list for the requested page (cheap, already-sorted data), stage 3 is
-         the existing, unchanged Tk rendering code in prime_atlas_v1.py."""
+         the Tk rendering code in prime_atlas_v1.py."""
     if Pmax < 2:
         raise ValueError("Pmax must be >= 2")
     if Pmax > BOTH_BASE_PMAX_CEILING:
@@ -423,16 +414,10 @@ def both_base_window_rows(is_prime, Pmax, Pmin=BOTH_BASE_PMIN, row_cap=None,
     import numpy as np
     window_max = Pmax + Pmin
 
-    # Both ends are clamped into [4, window_max] BEFORE the lo>hi check below --
-    # an earlier version only clamped lo's LOWER bound (max(4, n_min)) and hi's
-    # UPPER bound (min(window_max, n_max)), so a wildly out-of-range n_min (e.g.
-    # 10**15 against a window that only reaches ~10**7) left lo sitting at that
-    # huge unclamped value while hi got pulled down to window_max -- lo > hi
-    # correctly triggered the empty-range branch below, but that branch echoed
-    # the raw unclamped lo back out as "range_min", producing a nonsensical
-    # display like [1000000000000000, 9999992] instead of a clean bounded
-    # result. Symmetric fix on hi's lower bound too, so a wildly negative/too-
-    # small n_max can't do the mirror-image version of the same thing.
+    # Both ends are clamped into [4, window_max] BEFORE the lo>hi check below, so an
+    # out-of-range n_min (e.g. 10**15 against a window reaching ~10**7) or n_max cannot
+    # echo a raw unclamped bound back out as "range_min"/"range_max" (a nonsensical
+    # display like [1000000000000000, 9999992]).
     lo = 4 if n_min is None else min(max(4, n_min), window_max)
     hi = window_max if n_max is None else max(min(window_max, n_max), 4)
     if lo % 2 == 1:
@@ -581,7 +566,7 @@ def check_window(Pmax, mode):
 # Cascade step -- Constructive.lean's nextAnchor / anchor / top / CascadeOldBaseSufficiency.
 # A separate, stronger claim from windowCovered above (base held fixed from the PREVIOUS
 # cascade step, rather than re-derived as Pmax for the whole window) -- not currently wired
-# into any GUI control (the Wizualizacja button uses window_rows() instead, to stay strictly
+# into any GUI control (the Visualize button uses window_rows() instead, to stay strictly
 # inside [4, 2*Pmax]), but kept here since it's a distinct, verified, potentially useful
 # piece of the formalization for a future dedicated cascade view.
 # ------------------------------------------------------------------------------------------

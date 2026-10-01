@@ -8,7 +8,7 @@ branch's tab-by-tab backend/UI split. Unlike the Primes
 tab, this tab has TWO extra wrinkles this test specifically exercises:
 
   1. A genuine three-way coupling for a "const" search's completion (search worker +
-     Magazyn/hits display + Kalkulator konstelacji's pending-search state) that stayed
+     Storage/hits display + Constellation calculator's pending-search state) that stayed
      at the app level as _on_const_search_result -- see that method's own docstring.
      The calculator-triggered-search path below is the only way to exercise that
      coupling end to end.
@@ -103,8 +103,8 @@ def main():
         primes_1000_1100 = _primes_in(1000, 1100)
         check(P in primes_1000_1100, f"fixture sanity: {P} is prime (got primes: {primes_1000_1100[:5]}...)")
 
-        # source_primes/ is sharded into shard_NNNNN subfolders (see window_sharding.py,
-        # task #405) -- placed under shard_00000, matching how a real low-index window
+        # source_primes/ is sharded into shard_NNNNN subfolders (see window_sharding.py) --
+        # placed under shard_00000, matching how a real low-index window
         # would land.
         import window_sharding
         floor3_dir = os.path.join(tmp_portal, "10p3", "source_primes")
@@ -153,7 +153,7 @@ def main():
         records.detail_export_from_entry.delete(0, "end")
         records.detail_export_to_entry.delete(0, "end")
 
-        # === 1. Magazyn (ConstellationsHitsTab): tree population + pattern preview ===
+        # === 1. Storage (ConstellationsHitsTab): tree population + pattern preview ===
         top_nodes = hits.hits_tree.get_children("")
         check(len(top_nodes) == 1, f"hits tree has exactly 1 floor node (got {len(top_nodes)})")
         node3 = top_nodes[0]
@@ -197,7 +197,7 @@ def main():
         check(hits._selected_hit_path is not None and hits._hit_values == [P],
               "double-clicking the search result jumped the Magazyn preview to the right pattern")
 
-        # === 3. Kalkulator konstelacji: compute + search-selected triggers the SAME ===
+        # === 3. Constellation calculator: compute + search-selected triggers the SAME ===
         # === real search, and (being calculator-initiated) auto-jumps on completion ===
         calc.k_combo.set(str(k))
         calc._on_k_changed()
@@ -226,7 +226,7 @@ def main():
         check(hits._selected_hit_path is not None and hits._hit_values == [P],
               "calculator-initiated search auto-jumped the Magazyn preview to the exact pattern/number")
 
-        # === 4. Tabela rekordow: scan + cell drill-down + jump back to Magazyn ========
+        # === 4. Records table: scan + cell drill-down + jump back to Storage ========
         # bbox() below needs the tree to actually be mapped on screen (Tk doesn't
         # compute real cell geometry for a widget sitting on an unselected notebook
         # page), so switch to this sub-tab explicitly first.
@@ -259,7 +259,7 @@ def main():
             check(records._detail_context is not None and records._detail_context["base_exponent"] == 3,
                   f"drill-down context recorded the right floor (got {records._detail_context})")
 
-            # Double-clicking that one detail row jumps back to the Magazyn tab, landing
+            # Double-clicking that one detail row jumps back to the Storage tab, landing
             # on the exact same number -- reset the hits tab's state first so this
             # genuinely proves the jump (not a leftover from step 1/3 above).
             hits._reset_preview_state()
@@ -268,7 +268,7 @@ def main():
             records.detail_list.selection_set(0)
             records._on_detail_activate(None)
             check(hits._selected_hit_path is not None and hits._hit_values == [P],
-                  "Tabela rekordow's drill-down jump landed back on the exact hit in Magazyn")
+                  "Records table's drill-down jump landed back on the exact hit in Storage")
 
         # === 4. Interactive preview/drill-down REFUSES a large, NOT-YET-PAGED pattern
         # instead of attempting a full decode on the GUI thread. Guards against the
@@ -286,7 +286,7 @@ def main():
             prime_sieve_v1.write_prime_window(
                 os.path.join(floor4_hit_dir, f"HITS_10p4_k{k}_v{vid}.bin"), oversized_values)
 
-            # --- Magazyn (load_preview) ---
+            # --- Storage (load_preview) ---
             hits._reset_preview_state()
             hits._selected_hit_path = os.path.join(floor4_hit_dir, f"HITS_10p4_k{k}_v{vid}.bin")
             hits._selected_hit_base_exponent = 4
@@ -299,7 +299,7 @@ def main():
             check(len(shown) == shown_before + 1 and shown[-1][0] == "error",
                   f"load_preview() shows an error dialog instead of hanging (got {shown[-1:]})")
 
-            # --- Tabela rekordow (_on_cell_activate) ---
+            # --- Records table (_on_cell_activate) ---
             records.floor_from_entry.delete(0, "end")
             records.floor_to_entry.delete(0, "end")
             records._on_scan_clicked()
@@ -454,7 +454,7 @@ def main():
                   f"screen page [2,2] pulls exactly the remaining 10 rows of hit-file page 0 "
                   f"(got {exported_numbers2})")
 
-            # Same screen-page-1 range, but "Eksportuj PDF" instead -- exercises the
+            # Same screen-page-1 range, but "" instead -- exercises the
             # export_page_range_pdf mode (new, alongside export_page_range_csv above).
             records.detail_export_from_entry.delete(0, "end")
             records.detail_export_from_entry.insert(0, "1")
@@ -474,7 +474,7 @@ def main():
             check(os.path.getsize(range_pdf_path) > 0, "the on-screen-page PDF is non-empty")
 
         # === 7. Same real hit-file page navigation + jump-to-export, in the
-        # Magazyn (ConstellationsHitsTab) tab -- reuses floor 5's already-migrated
+        # Storage (ConstellationsHitsTab) tab -- reuses floor 5's already-migrated
         # k=2/v=1 pattern from section 6 above (3 hit-file pages [60,60,10]). ===
         hits._reload_constellations_tree()
         _pump(app, 3.0)
@@ -510,10 +510,10 @@ def main():
             hits._prev_hit_file_page()
             check(hits._hit_file_page_index == 0, "Magazyn prev file-page button returns to hit-file page 0")
             check(str(hits.hits_export_btn["state"]) == "normal",
-                  "Magazyn's Eksportuj button is enabled once a page is loaded")
+                  "Storage's Export button is enabled once a page is loaded")
 
-            # The Magazyn export button no longer exports locally (that duplicated
-            # Tabela rekordow's own export) -- it jumps there instead, with THIS
+            # The Storage export button no longer exports locally (that duplicated
+            # Records table's own export) -- it jumps there instead, with THIS
             # pattern + the currently-loaded hit-file page pre-selected.
             hits._next_hit_file_page()  # move off page 0 first, so the jump target
             check(hits._hit_file_page_index == 1, "moved to hit-file page 1 before jumping")
@@ -537,7 +537,7 @@ def main():
             app.update()
             check(app.constellations_sub_notebook.index(app.constellations_sub_notebook.select())
                   == app.constellations_sub_notebook.index(app.constellations_records_tab),
-                  "Magazyn's Eksportuj button switches to the Tabela rekordow sub-tab")
+                  "Storage's Export button switches to the Records table sub-tab")
             check(records._detail_context is not None
                   and records._detail_context["base_exponent"] == 5
                   and records._detail_context["pattern"]["k"] == k
@@ -547,7 +547,7 @@ def main():
                   f"the jump overwrites k_combo's dirty bogus value with the real k "
                   f"(got {records.k_combo.get()!r}, expected {str(k)!r})")
             check(records.floor_from_entry.get() == "5" and records.floor_to_entry.get() == "5",
-                  f"the jump overwrites Pietro od/do's dirty bogus values with the real floor "
+                  f"the jump overwrites Floor from/to's dirty bogus values with the real floor "
                   f"(got {records.floor_from_entry.get()!r}/{records.floor_to_entry.get()!r})")
             check(records._detail_file_page_index == 1,
                   f"the jump preloads the SAME hit-file page Magazyn was showing (got {records._detail_file_page_index})")

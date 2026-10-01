@@ -1,11 +1,10 @@
 """
 test_storage.py -- unit tests for primeatlas/core/storage.py's persisted-totals feature: the
 incremental bump_floor_total()/remove_floor_total() pair and the
-persisted GLOBAL total (get_global_total()/recompute_global_total()), added because
-update_floor_totals_cache() (the full per-floor directory-listing +
-os.stat()-every-file rescan) being the ONLY way any total ever got refreshed meant that
-cost ran for EVERY floor on every startup/reload, even when nothing had changed. See
-storage.py's own module docstring for the full feature rationale.
+persisted GLOBAL total (get_global_total()/recompute_global_total()), so the full
+per-floor directory-listing + os.stat()-every-file rescan (update_floor_totals_cache())
+doesn't have to run for every floor on every startup/reload. See storage.py's own
+module docstring.
 
 Pure logic tests first (plain dicts, no disk I/O at all), then a real round-trip against
 load_totals_cache()/save_totals_cache()/update_floor_totals_cache() in a temp directory
@@ -113,7 +112,7 @@ def _test_recompute_global_total():
     check(result2 == (168, 4, 1040),
           "recompute_global_total OVERWRITES a stale/wrong '_global' entry from scratch "
           "rather than trusting or merging into it -- this is exactly the self-healing "
-          "the manual 'Zweryfikuj sumy' verify action relies on")
+          "the manual 'Verify totals' verify action relies on")
 
     check(storage.recompute_global_total({}) == (0, 0, 0),
           "recompute_global_total on a completely empty cache returns (0, 0, 0), not an error")
@@ -148,8 +147,8 @@ def _test_round_trip_bump_matches_full_rescan():
         portal_dir = os.path.join(tmp, "portal")
         base_exponent = 7
         source_dir = os.path.join(portal_dir, f"10p{base_exponent}", "source_primes")
-        # source_primes/ is sharded into shard_NNNNN subfolders (window_sharding.py,
-        # task #405) -- files must live under a real shard dir, not flat, or
+        # source_primes/ is sharded into shard_NNNNN subfolders (window_sharding.py) --
+        # files must live under a real shard dir, not flat, or
         # list_source_filenames() (which this round-trip test exercises via
         # update_floor_totals_cache) finds nothing at all (see test_window_sharding.py
         # for the same convention).
@@ -185,7 +184,7 @@ def _test_round_trip_bump_matches_full_rescan():
         check(storage.get_global_total(cache)[0] == 9,
               "persisted global total reflects the bump immediately, no rescan needed")
 
-        # Now run a REAL full rescan (what the manual "Zweryfikuj sumy" button does) and
+        # Now run a REAL full rescan (what the manual "Verify totals" button does) and
         # confirm it independently arrives at the exact same number the incremental bump
         # already produced -- this is the actual cross-check, not just trusting the bump.
         total2, file_count2, new_read2, total_bytes2 = storage.update_floor_totals_cache(

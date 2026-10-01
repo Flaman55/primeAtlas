@@ -1,27 +1,18 @@
 """
 base_tab.py -- BaseTab(ttk.Frame), the common base class for every GUI tab class in
-this package (see README.md's "GUI module conventions" section for the full history
-and the "Known gaps" this addresses).
+this package (see README.md's "GUI module conventions" section).
 
-Before this, each of the 9 tab classes (PrimesTab, PrimesieveCalcTab, PrimalityTab,
-ConstellationsHitsTab, ConstellationsCalcTab, ConstellationsRecordsTab,
-ResearchGoldbachTab, GenerationTab, BenchmarkTab, SettingsTab) independently
-subclassed ttk.Frame directly and repeated the identical `self.T = translator`
-assignment, plus, in four of them, byte-for-byte identical "switch the shared
-totals_progress bar to a spinning indeterminate state, then back" boilerplate, and in
-five of them, byte-for-byte identical "copy this text to the clipboard" boilerplate.
-This class factors out exactly those two kinds of duplication -- nothing else. Every
-tab class's own constructor signature stays exactly as varied as it needs to be (see
-each class's own docstring for why -- they genuinely need different collaborators,
-from a single `translator` for the smallest tabs up to eight separate callables/
-values for the largest); this base class only standardizes the ONE thing every single
-one of them shares.
+Provides the `self.T = translator` assignment, the "switch the shared totals_progress
+bar to a spinning indeterminate state, then back" helpers, and the "copy this text to
+the clipboard" helper -- nothing else. Every tab class's own constructor signature stays
+as varied as it needs to be (they need different collaborators, from a single
+`translator` for the smallest tabs up to eight separate callables/values for the
+largest).
 
 _start_busy_progress()/_stop_busy_progress() assume self.totals_progress exists,
 which only the tabs constructed with that collaborator actually have (see each
 subclass's own docstring for whether it receives one) -- calling either from a tab
-that lacks it raises AttributeError immediately, exactly as the duplicated inline
-code they replace would have if used the same way. Deliberately does NOT also set
+that lacks it raises AttributeError immediately. Deliberately does NOT also set
 self.status here: the translated message text differs per call site (or is entirely
 absent, e.g. GenerationTab's own multi-step progress accounting), so callers keep
 setting self.status themselves right where they already did.

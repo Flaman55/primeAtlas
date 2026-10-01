@@ -320,8 +320,7 @@ def test_participation_search_multi_offset_pattern_across_pages():
 
 
 def test_participation_search_finds_real_floor25_scale_number():
-    """Regression test anchored on the exact number Artur reported the bug against (a
-    real floor-25-scale value, 26 digits -- digit_count_floor() == 25): proves the
+    """Uses a floor-25-scale value (26 digits -- digit_count_floor() == 25): proves the
     bounded page lookup finds a value of THIS magnitude correctly, not just the small
     fixture values (~1000) the other tests above use, and stays bounded doing it."""
     tmpdir = tempfile.mkdtemp(prefix="const_paging_real_number_")
@@ -356,7 +355,7 @@ def test_participation_search_finds_real_floor25_scale_number():
         matches = [r for r in results if r["pattern"]["k"] == 2 and r["pattern"]["id"] == 1
                    and r["position"] == 0]
         check(len(matches) == 1,
-              f"the real reported number is found at floor 25 scale (got {matches})")
+              f"a 26-digit value is found at floor 25 scale (got {matches})")
         check(len(page_read_calls) <= 2,
               f"finding it decodes at most a couple of the 25 pages, not all of them "
               f"(got {len(page_read_calls)})")

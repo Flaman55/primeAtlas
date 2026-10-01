@@ -1,12 +1,11 @@
 """
 test_research_squares_tab.py -- tests for primeatlas/research/research_squares_tab.py's
-ResearchSquaresTab (Badania -> Przedzialy kwadratowe), the UI wired around
+ResearchSquaresTab (Research -> Square intervals), the UI wired around
 primeatlas/research/squares_window.py's pure check_interval_range()/check_interval_
 range_from_source() (see that module's own test file, test_squares_window.py,
 for the pure-logic checks -- this file only exercises the tkinter wiring:
 preset switching, the required_count auto-fill, the custom a(n)/b(n) fields,
-pagination buttons, error dialogs, the storage data-source toggle (Faza 2),
-and CSV export (Faza 2)).
+pagination buttons, error dialogs, the storage data-source toggle, and CSV export).
 
 Builds the REAL app (same "no mocked LocalLoggedRunner-style stand-in needed
 here -- there's no subprocess involved at all, just a background.

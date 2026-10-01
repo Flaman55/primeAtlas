@@ -254,14 +254,13 @@ def _test_load_archive_max_load_count():
 
 
 def _test_load_archive_high_floor_beyond_uint64():
-    """A real archive has floors far past piętro 18 (real portal data at
-    10p25/10p27 is ~10**25-10**27 magnitude) -- the old hardcoded
-    `dtype=np.int64` cast in load_archive's per-file loop overflowed on
-    exactly this, well before max_load_count/from_n even mattered. This pins
-    the fix: a floor whose own values exceed uint64 loads correctly (as
-    `object` dtype, exact values, no OverflowError), including when combined
-    with a low floor that still fits uint64 (np.concatenate must promote the
-    WHOLE result to object, never silently truncate/wrap the high values)."""
+    """A real archive has floors far past floor 18 (portal data at
+    10p25/10p27 is ~10**25-10**27 magnitude), which a `dtype=np.int64` cast in
+    load_archive's per-file loop would overflow. A floor whose own values
+    exceed uint64 must load correctly (as `object` dtype, exact values, no
+    OverflowError), including when combined with a low floor that still fits
+    uint64 (np.concatenate must promote the WHOLE result to object, never
+    silently truncate/wrap the high values)."""
     from primeatlas.rings.ring_viz.sources import load_archive
 
     tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
@@ -273,7 +272,7 @@ def _test_load_archive_high_floor_beyond_uint64():
 
         result = load_archive(portal_dir, upto=base + 1000, from_n=base - 1)
         check(list(result) == high_values,
-              f"load_archive loads a real piętro-25-scale floor without raising OverflowError "
+              f"load_archive loads a real floor-25-scale floor without raising OverflowError "
               f"(got {list(result)!r})")
         check(result.dtype == object,
               "load_archive: a floor whose values exceed the uint64 ceiling returns object dtype")
@@ -312,18 +311,11 @@ def _test_empty_portal():
 
 
 def _test_slide_chunk_size_defaults_to_max_load_count():
-    """Regression (2026-09-25, Artur's own real report: "limit wczytanych
-    ... nie jest parametrem globalnym a lokalnym poczatkowym potem wraca do
-    domyslnego 2 miliony" -- the loaded-count limit isn't a global
-    parameter, it's a local/initial one, then it reverts to the default 2
-    million): --slide-chunk-size used to carry its own separate hardcoded
-    2,000,000 default, independent of --max-load-count -- a user who only
-    ever set --max-load-count (or the GUI's "Max loaded rings" field) got
-    THAT value for the very first chunk, then every chunk loaded afterward
-    via sliding silently fell back to 2,000,000 regardless. Fixed:
-    --slide-chunk-size now defaults to None at the argparse level and gets
-    resolved to args.max_load_count's own value right after parsing, unless
-    an explicit --slide-chunk-size overrides it.
+    """--slide-chunk-size defaults to None at the argparse level and is
+    resolved to args.max_load_count's value right after parsing, unless an
+    explicit --slide-chunk-size overrides it -- so a user who only sets
+    --max-load-count (or the GUI's "Max loaded rings" field) gets that value
+    for every chunk loaded via sliding, not just the first one.
 
     Exercises main()'s real argparse parsing/validation path (not just
     build_renderer_argv's argv construction) by monkeypatching renderer.run
@@ -385,8 +377,7 @@ def _test_slide_chunk_size_defaults_to_max_load_count():
 
 # ---------------------------------------------------------------------------
 # load_archive_before(): the backward-walking counterpart to load_archive(),
-# added for the ring_viz sliding/traveling-window feature (see memory file
-# primeatlas-ring-viz-sliding-range-window-plan.md -- Faza 1). Symmetric
+# used by the ring_viz sliding window (chunk_back). Symmetric
 # fixture convention to load_archive's own tests above; `before_n` is
 # EXCLUSIVE (mirrors load_archive's own `from_n` exclusivity), so a
 # chunk_back ending at some value X and a chunk_current starting at
@@ -458,14 +449,10 @@ def _test_load_archive_before_floor_boundary():
 
 
 def _test_load_archive_before_not_below_is_a_hard_boundary():
-    """Regression (2026-09-25, Artur's own real report: scrubbing backward
-    past the very START of his own --load-range hung the renderer --
-    "ignorujac zakres od jakiego startuje, a przeciez od powinno byc twarda
-    granica" -- ignoring the range's own FROM, when FROM should be a hard
-    boundary). Before this fix, `not_below` didn't exist at all --
-    load_archive_before kept walking into EARLIER floors as long as the
-    PORTAL had more real data there, completely ignoring the caller's own
-    logical range boundary. Portal here has real data in floor 0
+    """`not_below` makes the range's own FROM a hard boundary for
+    load_archive_before: without it the reader would keep walking into
+    EARLIER floors as long as the portal has data there (scrubbing backward
+    past the start of a --load-range would then hang the renderer). Portal here has real data in floor 0
     (1..97, deliberately MUCH earlier/more than a naive reader might
     expect) plus floor 1 (101..) -- `not_below` pinned to a value INSIDE
     floor 1 must never let ANY floor-0 value leak into the result, no
@@ -809,8 +796,7 @@ def _test_hud_lines_for_n():
           f"General Law window range text uses general_law_window_bounds' own lo/hi "
           f"(got lines={lines!r})")
 
-    # [ADDED 2026-09-26, REDESIGNED same day -- see ring_geometry.
-    # nested_shell_colors' own doc-comment] A nested-shell color-legend line
+    # A nested-shell color-legend line (see ring_geometry.nested_shell_colors)
     # is appended too. At n=30, theta=0.5, stepped: General Law is provably
     # identical to Legendre's own window (both lo=25), so they tie into the
     # SAME shell as Bertrand -- exactly ONE legend line covering all three,
@@ -831,7 +817,7 @@ def _test_hud_lines_for_n():
 
     # A DIFFERENT theta (0.4, no longer an exact tie) DOES give three
     # distinct lo values -- exactly TWO shell lines then (Bertrand+Legendre,
-    # then +General Law), matching Artur's own real observation.
+    # then +General Law).
     _data3b, _count3b, pos3c = build_vertex_data(primes, n, max_radius, enabled_ids, 0.4, mode)
     lines_theta04 = hud_lines_for_n(primes, n, pos3c, enabled_ids, 0.4, mode)
     check("Bertrand + Legendre:" in lines_theta04,
@@ -849,14 +835,12 @@ def _test_hud_lines_for_n():
     empty_lines = hud_lines_for_n(primes, 41, pos2, set(), theta, mode)
     check(empty_lines == [], f"no enabled families and no active-prime factors -> no HUD lines (got {empty_lines!r})")
 
-    # n=0 is range/fixed mode's own placeholder starting value -- phase =
-    # n mod prime is trivially 0 for EVERY prime there, so the OLD code's
-    # "Factors of N" line joined EVERY active ring's value into one string.
-    # Harmless with a handful of primes; with a real arbitrary-range load
-    # (thousands of ~26-digit values, all "hit" at n=0) that line explodes
-    # into tens of thousands of characters and stalls/breaks HUD rendering.
-    # Fixed: skipped outright at n=0, regardless of how many primes are
-    # active.
+    # n=0 is range/fixed mode's placeholder starting value -- phase = n mod
+    # prime is 0 for EVERY prime there, so a "Factors of N" line would join
+    # EVERY active ring's value into one string: with a real arbitrary-range
+    # load (thousands of ~26-digit values, all "hit" at n=0) tens of thousands
+    # of characters that stall/break HUD rendering. Skipped outright at n=0,
+    # regardless of how many primes are active.
     _data3, _count3, pos3 = build_vertex_data(primes, 0, max_radius, set(), theta, mode)
     check(bool(pos3["is_hit"].all()),
           "sanity: at n=0, phase=n%%prime is 0 for every active prime (is_hit is all-True)")
@@ -865,9 +849,9 @@ def _test_hud_lines_for_n():
           f"hud_lines_for_n suppresses the degenerate 'Factors of N' line at n=0, even though "
           f"every active prime is technically \"is_hit\" there (got lines={lines_n_zero!r})")
 
-    # A real load-range-scale case: thousands of huge (piętro-25-scale)
-    # primes, all active/hit at n=0 -- confirms the fix holds at the actual
-    # scale that triggers the bug, not just the small test fixture.
+    # A real load-range-scale case: thousands of huge (floor-25-scale)
+    # primes, all active/hit at n=0 -- at the actual scale where it matters,
+    # not just the small test fixture.
     huge_primes = np.array([12345678901234567890000023 + 2 * i for i in range(2000)], dtype=object)
     _data4, _count4, pos4 = build_vertex_data(huge_primes, 0, max_radius, set(), theta, mode)
     lines_huge_n_zero = hud_lines_for_n(huge_primes, 0, pos4, set(), theta, mode)
@@ -1263,12 +1247,10 @@ def _test_unit_circle_vertices():
 def _test_tracked_outline_color():
     """With only one window family enabled, the HUD's own window-range
     label already shows that family's full color (window_label_colors), so
-    the matching tracked-ring outline should too. This is a deliberate
-    departure from the original site's own
-    `(state.activeWindowCount > 1 && ring.trackedColor) ? ... : gray` gate
-    (see tracked_outline_color's own doc-comment) -- `matched` alone now
-    decides the color, `active_window_count` is no longer a parameter at
-    all."""
+    the matching tracked-ring outline should too -- `matched` alone decides
+    the color (unlike the JS site's `(state.activeWindowCount > 1 &&
+    ring.trackedColor) ? ... : gray` gate, see tracked_outline_color's
+    doc-comment); `active_window_count` is not a parameter."""
     from primeatlas.rings.ring_viz.geometry_draw import tracked_outline_color
 
     gray = tracked_outline_color(False, (255.0, 51.0, 204.0))
@@ -1880,7 +1862,7 @@ def _test_hud_line_colors():
 
     check(hud_line_colors([], window_colors) == [], "empty lines list -> empty colors list")
 
-    # [ADDED 2026-09-26, REDESIGNED same day] shell_colors param -- at
+    # shell_colors param -- at
     # n=141, theta=0.4 (three distinct lo values), the two nested-shell
     # legend lines each get their own averaged color, and a line that
     # DOESN'T match any known family or shell still falls through to the
@@ -1969,9 +1951,8 @@ def _test_rasterize_hud_text():
     check(tuple(green_opaque[0][:3]) == (57, 255, 20),
           f"a different line_colors value produces a different opaque pixel RGB (got {tuple(green_opaque[0][:3])!r})")
 
-    # No line_colors given (None, the default) keeps the old flat
-    # _HUD_TEXT_RGB behavior completely unchanged -- a real regression
-    # guard, not just an absence-of-crash check.
+    # No line_colors given (None, the default) keeps the flat _HUD_TEXT_RGB
+    # for every line.
     from primeatlas.rings.ring_viz.hud import _HUD_TEXT_RGB
     default_rgba = rasterize_hud_text(["N = 100"])
     default_opaque = default_rgba[default_rgba[:, :, 3] > 0]

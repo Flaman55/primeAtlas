@@ -5,8 +5,7 @@ constellation hit files), gzip-compressed, kept at a location OUTSIDE the live s
 path. Restoring from this copies bytes back; it never needs to re-sieve or re-scan for
 constellations the way the metadata-only mode's restore does.
 
-Design (see [[primeatlas_full_data_backup_design]] for the full discussion -- this
-docstring only summarizes the DECIDED shape):
+Design:
 
   - Per-FLOOR, not whole-storage: the person picks which floors get a full-data backup
     (typically the deep, expensive-to-regenerate ones -- see suggest_full_backup_floors()
@@ -20,8 +19,7 @@ docstring only summarizes the DECIDED shape):
     copy_floor_increment() ONLY EVER ADDS files at the destination, never removes one,
     even if something vanished from the live side (e.g. via FloorWiper) -- a full backup
     existing to protect against exactly that kind of mistake must not itself follow the
-    mistake. See [[primeatlas_storage_merge_federation]] for the parallel reasoning
-    behind CHECKPOINT.txt's own regression-safety fix.
+    mistake.
 
   - The one administrative exception to "never overwrite" is CHECKPOINT.txt/
     BOUNDARY_CHECKED.txt (constellation-scan progress markers) -- these are scalar
@@ -77,8 +75,7 @@ def validate_destination_path(storage_path, destination_root):
     """Returns None if `destination_root` is a legitimate, independent location for a
     full-data backup of `storage_path`; otherwise one of the short reason codes below,
     for the caller (settings_tab.py) to turn into a translated error message. A HARD
-    condition, not just a warning -- see this module's own docstring and
-    [[primeatlas_full_data_backup_design]]: a backup living inside (or wrapping) the very
+    condition, not just a warning: a backup living inside (or wrapping) the very
     thing it protects isn't a backup.
 
     Reason codes:
@@ -297,8 +294,8 @@ def copy_floor_increment(storage_path, destination_root, base_exponent,
     const_dir = os.path.join(storage_path, f"10p{base_exponent}", "constellations")
     dest_const_dir = _dest_const_dir(destination_root, base_exponent)
 
-    # source_primes/ is sharded into shard_NNNNN subfolders (see window_sharding.py,
-    # task #405) -- a filename alone (as stored in FloorSnapshot.filenames /
+    # source_primes/ is sharded into shard_NNNNN subfolders (see window_sharding.py) --
+    # a filename alone (as stored in FloorSnapshot.filenames /
     # missing_windows) no longer maps to os.path.join(source_dir, name) directly, so
     # resolve real paths via one list_sharded_files() walk up front rather than per file.
     live_paths_by_name = dict(window_sharding.list_sharded_files(source_dir))
@@ -396,9 +393,9 @@ def restore_floor_from_full_backup(storage_path, destination_root, base_exponent
     one exception, but in the OPPOSITE direction from copy_floor_increment(): they're
     only written into the live storage if it doesn't already have its OWN copy -- this
     restore must never REGRESS a live floor's own, possibly more advanced, scan progress
-    (same principle as _append_hits_deduped() in constellation_finder_v1.py, which makes
-    it safe even if this guard were somehow bypassed -- see
-    [[primeatlas_storage_merge_federation]]). floor_meta.json rows are merged additively,
+    (re-scanning would still be safe if this guard were bypassed -- see
+    constellation_finder_v2.py's _append_hits_deduped()). floor_meta.json rows are
+    merged additively,
     same as the backup direction.
 
     `progress_cb`/`should_stop` -- same shape as copy_floor_increment().
@@ -425,7 +422,7 @@ def restore_floor_from_full_backup(storage_path, destination_root, base_exponent
             if progress_cb is not None:
                 progress_cb("window", name, i, total)
             # Restoring INTO source_primes/ must still land in a shard_NNNNN subfolder
-            # (see window_sharding.py, task #405), not directly under source_dir. The
+            # (see window_sharding.py), not directly under source_dir. The
             # floor's actual original window_m isn't recorded anywhere restorable here,
             # but _RESTORE_SHARD_WINDOW_M (see this module's own comment on it) still
             # guarantees a bounded shard size regardless.
@@ -528,10 +525,9 @@ def aggregate_generation_seconds_by_floor(rows):
 def suggest_full_backup_floors(storage_path, threshold_seconds=3600):
     """Floors whose MEASURED total generation time (summed across every real, file-
     writing benchmark_log.csv run for that floor) exceeds `threshold_seconds` (default
-    one hour, per [[primeatlas_full_data_backup_design]]): a floor costing more than an
-    hour to regenerate is worth trading disk space for restore speed, rather than
-    guessing from the floor's bare exponent the way an earlier version of this design
-    considered and rejected. Returns a sorted list of base_exponent ints -- the caller
+    one hour): a floor costing more than an hour to regenerate is worth trading disk
+    space for restore speed -- a measured cost, not a guess from the floor's exponent.
+    Returns a sorted list of base_exponent ints -- the caller
     (settings_tab.py) uses this to pre-check/highlight those floors in the per-floor
     picker, not to force anything -- the person can still pick differently."""
     rows = _read_benchmark_rows(storage_path)

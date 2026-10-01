@@ -1,6 +1,6 @@
 """
 test_research_gaps_tab.py -- tests for primeatlas/research/research_gaps_tab.py's
-ResearchGapsTab (Badania -> Luki), the UI wired around
+ResearchGapsTab (Research -> Gaps), the UI wired around
 primeatlas/research/gaps_window.py's pure check_gap_range()/check_gap_range_from_
 source() (see that module's own test file, test_gaps_window.py, for the
 pure-logic checks -- this file only exercises the tkinter wiring: overlay

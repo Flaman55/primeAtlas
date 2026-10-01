@@ -171,8 +171,8 @@ class FloorWiper:
         """Dry-run for delete_floor(): (window_count, hit_count) currently under
         10p{base_exponent}, without touching anything on disk.
 
-        source_primes/ is sharded into shard_NNNNN subfolders (see window_sharding.py,
-        task #405) -- window_count is counted via window_sharding.count_sharded_files()
+        source_primes/ is sharded into shard_NNNNN subfolders (see window_sharding.py) --
+        window_count is counted via window_sharding.count_sharded_files()
         rather than a bare os.listdir(source_dir), which would only ever see those
         shard subfolder names, never match _SOURCE_WINDOW_RE against an actual
         filename."""

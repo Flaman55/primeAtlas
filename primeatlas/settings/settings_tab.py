@@ -7,8 +7,8 @@ prime+constellation data, or just that floor's constellations -- see FloorWiper 
 delete_manager.py), and the full-data (compressed) backup section (primeatlas/
 full_backup.py -- a second, data-carrying backup mode alongside the metadata-only one
 above; see that module's own docstring for the design). Laid out as a 3-tab Notebook --
-Ogolne (language + path), Backup (backup/restore/delete, everything storage-affecting),
-Aktualizacje (optional-library installer, CUDASieve installer, WSL environment re-check,
+General (language + path), Backup (backup/restore/delete, everything storage-affecting),
+Updates (optional-library installer, CUDASieve installer, WSL environment re-check,
 and PrimeAtlas's own self-update via git) -- see _build_widgets' own docstring for why.
 
 Full-data backup driving: unlike the WSL-subprocess-driven restore job above,
@@ -47,9 +47,8 @@ circular: that file imports SettingsTab from this package). Expected keys:
                                               out of -- used by the app self-update section
                                               (app_update.py's check_for_update()/
                                               download_update())
-(this list has not been kept exhaustive as later features added more keys -- see the
-lambda literal itself in prime_atlas_v1.py's _build_settings_tab() for the full,
-authoritative set)
+(not exhaustive -- see the literal in prime_atlas_v1.py's _build_settings_tab() for the
+full, authoritative set)
 
 Restore driving semantics: orchestrator_loop_v2.py doesn't accept "regenerate exactly these
 offsets" -- it appends the next N windows from wherever a floor's file count currently sits.
@@ -110,7 +109,7 @@ CUDASIEVE_REPO_URL = "https://github.com/curtisseizert/CUDASieve"
 # call into via ctypes (see either module's own attribution header). primesieve is
 # installed as part of env_setup.py's generic first-run package set rather than its own
 # on-demand installer section like sympy/CUDASieve/primecount each get, so its own
-# "Otworz GitHub" button lives on the generic environment-setup section below instead of
+# "Open on GitHub" button lives on the generic environment-setup section below instead of
 # a dedicated Labelframe of its own.
 PRIMECOUNT_REPO_URL = "https://github.com/kimwalisch/primecount"
 PRIMESIEVE_REPO_URL = "https://github.com/kimwalisch/primesieve"
@@ -124,8 +123,8 @@ def event_over_own_scroller(event):
     """True if a mouse-wheel event happened over (or inside) a widget that scrolls itself,
     e.g. the sympy installer's ScrolledText log on Settings > Updates. The page-level wheel
     handler must then leave the event alone: it is bound with bind_all while the pointer is
-    over the page canvas, so it ALSO fires for wheel events over those widgets, and scrolled
-    the whole page together with the log (Artur, 2026-10-01). event.widget can be a plain
+    over the page canvas, so it ALSO fires for wheel events over those widgets and would
+    scroll the whole page together with the log. event.widget can be a plain
     string for Tk-internal windows (e.g. a combobox popdown) -- never raises."""
     widget = getattr(event, "widget", None)
     while widget is not None and not isinstance(widget, str):
@@ -173,7 +172,7 @@ class SettingsTab(BaseTab):
         self._given_up_hits = set()
         self._incomplete_jobs = []
 
-        # Optional-library installer -- sympy, used by the Testy pierwszosci
+        # Optional-library installer -- sympy, used by the Primality tests
         # tab's factorize() for a faster/more complete result when installed (see
         # primeatlas/primality/primality.py's own docstring). _libs_runner/_libs_queue mirror the
         # restore driver's _restore_runner/_restore_queue shape one-for-one, but drive a
@@ -182,8 +181,7 @@ class SettingsTab(BaseTab):
         self._libs_runner = None
         self._libs_queue = None
 
-        # CUDASieve (GPU engine) installer -- ported from the `cudasieve` branch onto
-        # cudasieve-v2 (task #459). A quick WSL call clones/updates the repo and reads
+        # CUDASieve (GPU engine) installer. A quick WSL call clones/updates the repo and reads
         # back its OWN current License file (GPLv3, third-party, NOT this project's
         # license -- see prime_sieve_cudasieve.py's module header), shown to the user
         # for explicit accept/decline BEFORE the longer `make` build step
@@ -191,14 +189,14 @@ class SettingsTab(BaseTab):
         # _cudasieve_status_running guards the quick status probe; _cudasieve_install_running
         # spans the WHOLE fetch-license -> consent -> build sequence (not just the build
         # step) so a second click can't start an overlapping sequence while a consent
-        # dialog is still open. No separate "download only" flow -- Zainstaluj clones/
-        # updates on its own; Otworz na GitHub below just links to the real repo page.
+        # dialog is still open. No separate "download only" flow -- Install clones/
+        # updates on its own; Open on GitHub below just links to the real repo page.
         self._cudasieve_status_running = False
         self._cudasieve_install_running = False
         self._cudasieve_runner = None
         self._cudasieve_queue = None
 
-        # App self-update (primeatlas/settings/app_update.py, task #524) -- guard flags for the
+        # App self-update (primeatlas/settings/app_update.py) -- guard flags for the
         # same "daemon thread + self.after(0, ...) callback" shape every other
         # WSL/network-touching probe in this file uses, see _check_for_app_update()/
         # _download_app_update() below.
@@ -219,7 +217,7 @@ class SettingsTab(BaseTab):
         # Integrate-external-storage (primeatlas/settings/storage_integrate.py) -- the systemic
         # fix for manually merging a whole external archive folder-by-folder (see that
         # module's own docstring). _storage_integrate_plan caches the last dry-run
-        # preview (plan_integration()'s result) so the Integruj button acts on exactly
+        # preview (plan_integration()'s result) so the Integrate button acts on exactly
         # what was previewed, not a value that may have drifted since; same
         # job-running/stop-event/queue shape as the full-data backup section above.
         self._storage_integrate_plan = []
@@ -239,16 +237,14 @@ class SettingsTab(BaseTab):
         self._refresh_floor_delete_list()
         self._refresh_full_backup_floor_picker()
         self._refresh_full_backup_entries()
-        # Does NOT probe WSL here -- an earlier version of this installer called
-        # _on_check_cudasieve_status() directly from __init__, which paid a WSL
-        # round-trip on every single app launch for a GPU-only, opt-in engine most
-        # sessions never touch (and briefly also crashed outright on the `cudasieve`
-        # branch: RuntimeError: main thread is not in main loop, a background thread's
-        # self.after(...) callback landing before mainloop() had started). Only probe
-        # when the user explicitly asks (Sprawdz status/Pobierz/Zainstaluj); until then,
-        # show whatever the LAST real probe found, persisted in app_settings so it
-        # survives a restart -- see AppSettings.cudasieve_status's own docstring. No
-        # thread, no WSL call, no mainloop race: this just reads a dict.
+        # Does NOT probe WSL here: probing from __init__ would pay a WSL round-trip on
+        # every app launch for a GPU-only, opt-in engine most sessions never touch, and
+        # a background thread's self.after(...) callback can land before mainloop() has
+        # started (RuntimeError: main thread is not in main loop). Only probe when the
+        # user explicitly asks (Check status/Download/Install); until then, show
+        # whatever the LAST real probe found, persisted in app_settings so it survives a
+        # restart -- see AppSettings.cudasieve_status. No thread, no WSL call, no
+        # mainloop race: this just reads a dict.
         self._show_cached_cudasieve_status()
 
     # ---- language -----------------------------------------------------------------------
@@ -318,7 +314,7 @@ class SettingsTab(BaseTab):
         # call above is fully flushed to disk) before the process gets replaced.
         self.after(150, restart_app)
 
-    # ---- app self-update (task #524) ---------------------------------------------------
+    # ---- app self-update ---------------------------------------------------
 
     def _on_auto_update_check_toggled(self):
         self.app_settings.set_auto_update_check(self.auto_update_check_var.get())
@@ -333,8 +329,8 @@ class SettingsTab(BaseTab):
         """Runs app_update.check_for_update() (a `git fetch` against GitHub) on a
         background thread -- same "daemon thread + self.after(0, ...) callback" shape
         every other network/WSL-touching probe in this file uses, since a real network
-        round-trip must never block the GUI thread. Reused for BOTH the manual 'Sprawdz
-        teraz' button (_on_check_app_update_clicked above) and prime_atlas_v1.py's own
+        round-trip must never block the GUI thread. Reused for BOTH the manual 'Check
+        now' button (_on_check_app_update_clicked above) and prime_atlas_v1.py's own
         startup hook (which only calls this at all when AppSettings.auto_update_check is
         on) -- single code path, so the status label always reflects the most recent
         check regardless of which one triggered it.
@@ -541,7 +537,7 @@ class SettingsTab(BaseTab):
         the GUI thread for however long that scan takes.
 
         Calling diff_against_disk() directly, inline, on the GUI thread would freeze the
-        window for the full scan on every click of the "Sprawdz roznice" button."""
+        window for the full scan on every click of the "Check differences" button."""
         if not self._selected_backup_name:
             messagebox.showinfo(self.T("settings.restore_title"),
                                  self.T("settings.restore_select_backup_first"))
@@ -562,12 +558,10 @@ class SettingsTab(BaseTab):
             on_done=self._on_check_diff_done)
 
     def _on_check_diff_done(self, diff, error):
-        """Main-thread callback for _on_check_diff()'s background scan -- everything that
-        used to run right after the (formerly synchronous) diff_against_disk() call now
-        runs here instead, unchanged apart from the error branch, which is new: a raised
-        exception used to propagate out of a Tk button callback and only ever show up as
-        console noise; now it's surfaced to the user via messagebox, and the Start-restore
-        button is left disabled since there's no valid diff to act on."""
+        """Main-thread callback for _on_check_diff()'s background scan. A raised
+        exception is surfaced to the user via messagebox (instead of propagating out of
+        a Tk callback as console noise), and the Start-restore button stays disabled
+        since there's no valid diff to act on."""
         self._diff_check_running = False
         self.restore_diff_btn.configure(state="normal")
         if error is not None:
@@ -817,9 +811,8 @@ class SettingsTab(BaseTab):
             # _drive_restore() ever gets a chance to notice. _drive_restore()'s own very
             # first guard bails out on anything other than STATUS_RUNNING, so calling it
             # here would just no-op silently, leaving _active_job set and the Pause/Resume/
-            # Cancel buttons frozen in whatever state they were in while the job was still
-            # running (this was a real bug: the progress label already says "[completed]",
-            # sourced straight from job.status, while the buttons stayed stuck). Route
+            # Cancel buttons frozen in their running state while the progress label
+            # (sourced from job.status) already says "[completed]". Route
             # through the same finish path _drive_restore() itself uses for the
             # next_step()-is-None case instead.
             self._on_restore_job_finished()
@@ -838,7 +831,7 @@ class SettingsTab(BaseTab):
         header -- which calls libprimesieve's own bulk generate_primes() directly, with no
         batching/RAM-buffer cost of ours at all, dramatically faster than the orchestrator
         pipeline for anything within its reach. A floor that doesn't fit (its own top edge
-        is past the ceiling) falls back to orchestrator_loop_v2.py, unchanged from before.
+        is past the ceiling) falls back to orchestrator_loop_v2.py.
         Floor 19 is the one floor that straddles the ceiling partway through -- treated
         here as "doesn't fit" for simplicity/safety (the orchestrator pipeline has no
         ceiling at all, so it's always correct, just slower); a future refinement could
@@ -849,9 +842,9 @@ class SettingsTab(BaseTab):
         window_count=1 run against the LOWEST pending low floor completes EVERY floor from
         there up through floor 6 in one pass (prime_sieve_primesieve.py ports the exact
         same LOW_FLOOR_CUTOFF/_low_floor_segments() cascade prime_sieve_v3.py/v4.py have --
-        see that file's own docstring for why). Launching once per PENDING low floor (the
-        old behavior) redundantly regenerated that same shared block up to seven times
-        over. _on_step_stage_done()'s low-floor branch re-scans every OTHER pending
+        see that file's own docstring for why). Launching once per PENDING low floor
+        would regenerate that same shared block up to seven times over.
+        _on_step_stage_done()'s low-floor branch re-scans every OTHER pending
         low-floor step once this run finishes and marks whatever the cascade already
         satisfied, instead of separately re-launching a run for each.
 
@@ -982,10 +975,9 @@ class SettingsTab(BaseTab):
         one step. Handles ONLY that stage's own retry-or-give-up decision -- it never
         decides what runs next itself. Control always goes back to _drive_restore() at
         the end (the one place that decides: this step's other aspect, another floor's
-        same-phase work, or moving into the next phase) -- see that method's docstring
-        for why the OLD version of this method (which used to launch hits for this same
-        step immediately after its windows finished) broke the windows-before-hits
-        ordering."""
+        same-phase work, or moving into the next phase) -- launching this step's hits
+        directly here would break the windows-before-hits ordering (see that method's
+        docstring)."""
         job = self._active_job
         self._active_job_runner_kind = None
         self._restore_runner = None
@@ -1165,11 +1157,10 @@ class SettingsTab(BaseTab):
             messagebox.showinfo(self.T("settings.delete_title"), text)
         self._refresh_backup_list()
         self._scan_incomplete_restores()
-        # The Prime numbers / Constellations tabs previously only refreshed themselves via
-        # a storage-path change or a Generation-tab run finishing -- a full-database delete
-        # left both trees showing the just-deleted floors until a manual Refresh click, even
-        # though the disk was now empty. See wsl_helpers' own comment in prime_atlas_v1.py
-        # for why these two callables are passed in rather than imported directly.
+        # Refresh the Prime numbers / Constellations trees after a full-database delete,
+        # otherwise they keep showing the deleted floors until a manual Refresh. See
+        # wsl_helpers' comment in prime_atlas_v1.py for why these two callables are passed
+        # in rather than imported directly.
         self.wsl["reload_primes_tree"]()
         self.wsl["reload_constellations_tree"]()
 
@@ -1637,12 +1628,9 @@ class SettingsTab(BaseTab):
             on_done=self._on_storage_integrate_preview_done)
 
     def _on_storage_integrate_preview_done(self, plan, error):
-        """Main-thread callback for _on_preview_storage_integrate()'s background scan --
-        everything that used to run right after the (formerly synchronous)
-        si.plan_integration() call now runs here instead, unchanged apart from the
-        error branch, which is new: a raised exception used to propagate out of a Tk
-        button callback and only ever show up as console noise nobody was watching;
-        now it's surfaced to the user like any other failure in this tab."""
+        """Main-thread callback for _on_preview_storage_integrate()'s background scan.
+        A raised exception is surfaced to the user like any other failure in this tab
+        (instead of propagating out of a Tk callback as console noise)."""
         self._storage_integrate_preview_running = False
         if error is not None:
             messagebox.showerror(self.T("settings.dialog_title"), str(error))
@@ -1852,9 +1840,9 @@ class SettingsTab(BaseTab):
 
     # ---- primecount (optional exact prime-counting library) installer ---------------------
     #
-    # Flow: [Sprawdz status] -> version query via WSL (background thread, real round-trip,
+    # Flow: [Check status] -> version query via WSL (background thread, real round-trip,
     # same reasoning as CUDASieve's own status probe below) -> status label + enable/
-    # disable the install button. [Zainstaluj primecount] -> apt-get install (background
+    # disable the install button. [Install primecount] -> apt-get install (background
     # thread, WSL, run as root -- see run_primecount_install_wsl_blocking's own docstring)
     # -> log output -> re-run the status probe on completion, same "no second manual
     # click needed" pattern as CUDASieve's own install flow.
@@ -1947,12 +1935,12 @@ class SettingsTab(BaseTab):
         # branch), which this method's own try/except never does directly.
         self._on_check_primecount_status()
 
-    # ---- CUDASieve (GPU engine) installer, ported from `cudasieve` branch (task #459) ----
+    # ---- CUDASieve (GPU engine) installer ----------------------------------------------
     #
-    # Flow: [Sprawdz status] -> quick WSL probe (background thread, since unlike
+    # Flow: [Check status] -> quick WSL probe (background thread, since unlike
     # try_import_sympy() this is a real wsl.exe round-trip, not an in-process import --
     # see run_cudasieve_wsl_blocking()'s own docstring) -> status label + enable/disable
-    # the install button. [Zainstaluj] -> fetch-license (background thread) -> modal
+    # the install button. [Install] -> fetch-license (background thread) -> modal
     # consent dialog showing the license text JUST fetched (never a copy embedded in this
     # project) -> only on Accept, a WslLoggedRunner-driven `make` build (same live-log
     # shape as every Generation-tab job) -> re-run the status probe on completion so the
@@ -1966,7 +1954,7 @@ class SettingsTab(BaseTab):
 
     def _show_cached_cudasieve_status(self):
         """Called once from __init__ instead of probing WSL -- see that call site's own
-        comment. Renders whatever the last real Sprawdz status/Pobierz/Zainstaluj call
+        comment. Renders whatever the last real Check status/Download/Install call
         found (AppSettings.cudasieve_status), or a neutral "not checked yet" label if this
         install has never run one. Routes through _on_cudasieve_status_result() itself
         (not a separate rendering path) so the two can never drift out of sync -- the
@@ -1988,7 +1976,7 @@ class SettingsTab(BaseTab):
             # raised inside it (before or during the WSL call) would silently kill this
             # daemon thread -- self.after(...) below would never run, so
             # _cudasieve_status_running would never go back to False and the label would
-            # stay on "sprawdzam..." forever, indistinguishable from a real wsl.exe hang.
+            # stay on "checking..." forever, indistinguishable from a real wsl.exe hang.
             try:
                 argv = self.wsl["build_cudasieve_status_argv"]()
                 ok, payload = self.wsl["run_cudasieve_wsl_blocking"](argv, 30)
@@ -2025,7 +2013,7 @@ class SettingsTab(BaseTab):
                 text=self.T("settings.cudasieve_install_button"), state="disabled")
             return
         if payload.get("cloned"):
-            # Cloned (via Zainstaluj's own fetch-license step, possibly from a previous,
+            # Cloned (via Install's own fetch-license step, possibly from a previous,
             # not-yet-built run) but not yet built -- distinct from "missing entirely" so
             # the status label reflects exactly what's going on between those two steps.
             # Button stays disabled here (verify the CUDA toolchain by hand first, then
@@ -2046,7 +2034,7 @@ class SettingsTab(BaseTab):
             state="disabled" if self._cudasieve_install_running else "normal")
 
     def _on_open_cudasieve_github_clicked(self):
-        """Opens the real GitHub page rather than an in-app clone-only button -- Zainstaluj
+        """Opens the real GitHub page rather than an in-app clone-only button -- Install
         below remains fully self-sufficient (clones/updates on its own), this is purely
         for someone who wants to inspect/clone by hand before trusting the automated
         build (git clone URL, README, releases, issues)."""
@@ -2152,7 +2140,7 @@ class SettingsTab(BaseTab):
             pass
         self.after(150, self._poll_cudasieve_queue)
 
-    # ---- environment setup re-check (task #514) ---------------------------------------
+    # ---- environment setup re-check ---------------------------------------
 
     def _on_verify_environment_clicked(self):
         """Opens the same first-run environment wizard (env_setup_wizard.py) on demand,
@@ -2205,10 +2193,10 @@ class SettingsTab(BaseTab):
         backup/restore/delete grow alongside language+path+libs: the bottom sections
         (the whole-database delete button in particular) run off the bottom of the
         window with no way to reach them. Split into a Notebook with three sub-tabs
-        instead of trying to shrink anything: Ogolne (language + storage path -- the
+        instead of trying to shrink anything: General (language + storage path -- the
         two settings someone touches once and rarely again), Backup (backup/restore/
         delete, all storage-destructive or storage-preserving operations grouped
-        together), Aktualizacje (optional-library installer, CUDASieve installer, WSL
+        together), Updates (optional-library installer, CUDASieve installer, WSL
         environment re-check, and PrimeAtlas's own self-update).
 
         Splitting into sub-tabs alone isn't enough, though -- Backup on its own
@@ -2260,17 +2248,13 @@ class SettingsTab(BaseTab):
         there -- so the handler also skips events over any self-scrolling widget, see
         event_over_own_scroller()."""
         canvas = tk.Canvas(notebook_tab, highlightthickness=0)
-        # ROOT CAUSE: Tk's Canvas defaults to yscrollincrement=0, which makes any
-        # "scroll N units" call
-        # (mousewheel, scrollbar arrows) jump by ~10% of the canvas's CURRENT
-        # VIEWPORT height -- not a small fixed pixel step. When the real content is
-        # SHORTER than the viewport (e.g. Ogolne's ~229px inside a ~686px window --
-        # nothing to scroll to at all), Tk does not clamp that oversized jump back
-        # to 0; the view is left negative, which visually shows as blank canvas
-        # ABOVE the content that grows with every further wheel tick (confirmed
-        # live: two ticks moved the content's on-screen y from 0 to 68 to 136 --
-        # 686*0.1 = 68.6 -- while canvas.yview() kept reporting (0.0, 1.0), i.e. Tk
-        # itself thought nothing had scrolled). A small fixed increment alone
+        # Tk's Canvas defaults to yscrollincrement=0, which makes any "scroll N units"
+        # call (mousewheel, scrollbar arrows) jump by ~10% of the canvas's CURRENT
+        # VIEWPORT height, not a small fixed pixel step. When the content is SHORTER
+        # than the viewport (e.g. General's ~229px inside a ~686px window), Tk does not
+        # clamp that jump back to 0; the view goes negative, showing blank canvas ABOVE
+        # the content that grows with every wheel tick (~68px per tick at 686px) while
+        # canvas.yview() still reports (0.0, 1.0). A small fixed increment alone
         # doesn't fully fix this, so scrolling is also hard-disabled below whenever
         # content already fits the viewport (see _content_fits()).
         canvas.configure(yscrollincrement=20)
@@ -2502,7 +2486,7 @@ class SettingsTab(BaseTab):
     def _build_storage_integrate_section(self, outer):
         """Integrate-external-storage, primeatlas/settings/storage_integrate.py -- see that
         module's and this class's own docstrings. Always preview-then-confirm: the
-        Integruj button stays disabled until a fresh dry-run has populated
+        Integrate button stays disabled until a fresh dry-run has populated
         self._storage_integrate_plan."""
         frame = ttk.Labelframe(outer, text=self.T("settings.storage_integrate_frame"))
         frame.pack(fill="both", expand=True, pady=(0, 8))
@@ -2703,8 +2687,8 @@ class SettingsTab(BaseTab):
 
         # primecount (Kim Walisch's exact combinatorial prime-counting library, BSD
         # license, companion to primesieve -- see prime_sieve/prime_count_primecount.py's
-        # own module docstring) -- on-demand installer for the Badania -> Przyblizenia
-        # pi(x) tab's "primecount" data-source mode. Same simple shape as the sympy
+        # own module docstring) -- on-demand installer for the Research -> pi(x)
+        # approximations tab's "primecount" data-source mode. Same simple shape as the sympy
         # section above (status label + check/install buttons + a log area), not
         # CUDASieve's own heavier consent-dialog/build flow below -- this is a single
         # apt-get install of an already-BSD-licensed system package, no license text to
@@ -2739,8 +2723,8 @@ class SettingsTab(BaseTab):
         self._primecount_status_running = False
         self._primecount_install_running = False
 
-        # CUDASieve (optional GPU engine) installer -- ported from the `cudasieve` branch
-        # (task #459). Separate Labelframe from the sympy one above: different license
+        # CUDASieve (optional GPU engine) installer. Separate Labelframe from the sympy
+        # one above: different license
         # (GPLv3, not MIT), different runtime (WSL subprocess, not this same Python
         # process), and its own mandatory consent dialog -- see
         # _on_install_cudasieve_clicked's own docstring block above.
@@ -2768,7 +2752,7 @@ class SettingsTab(BaseTab):
             background="#111318", foreground="#d8d8d8")
         self.cudasieve_output.pack(fill="x", padx=6, pady=(0, 6))
 
-        # Environment setup re-check (task #514) -- reuses the exact same
+        # Environment setup re-check -- reuses the exact same
         # check_environment()/run_install() flow the first-run wizard (env_setup.py,
         # env_setup_wizard.py) runs automatically at startup, opened here on demand as a
         # Toplevel of THIS already-running app (see env_setup_wizard.py's own module

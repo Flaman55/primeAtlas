@@ -43,7 +43,7 @@ VERSION = "v1.0"
 # Also exposes a handful of libprimesieve's OTHER public API calls that have nothing to do
 # with window generation at all -- count_primes_in_range()/nth_prime()/next_prime()/
 # prev_prime() -- used by primesieve_query.py (this same folder), the one-shot CLI PrimeAtlas
-# launches for its 'primesieve' calculator sub-tab (Liczby pierwsze -> primesieve). That
+# launches for its 'primesieve' calculator sub-tab (Prime numbers -> primesieve). That
 # script is the one exception to this folder's "no cross-imports between engine files" rule
 # above -- it's not a scanner engine itself, just a thin CLI over this file's own bindings.
 #
@@ -182,18 +182,12 @@ def _low_floor_segments(base_power, combined_lo, combined_hi):
 # BENCHMARK_FIELDNAMES / _ensure_benchmark_log_schema / print_benchmark_summary (same "every
 # engine file stays independently runnable, small stable pieces get duplicated rather than
 # cross-imported" convention already used throughout this file -- see the PGS2/low-floor
-# block above). Without this, a floor generated (or restored) through primesieve mode left
-# NO trace in benchmark_log.csv at all: every OTHER engine writes to it through the
-# orchestrator pipeline, but this mode calls straight into libprimesieve with none of that
-# machinery in between, and that machinery used to be the ONLY thing writing this file.
-# Practical consequence this fixes: the Prime numbers tab's per-floor "generation time"
-# column (sourced entirely from benchmark_log.csv, see prime_atlas_v1.py's own
-# aggregate_write_seconds_by_floor()) stayed blank for anything generated this way, and a
-# backup taken afterward had nothing to preserve for it either (BackupManifest just snapshots
-# benchmark_log.csv's raw text -- see manifest.py's own docstring) -- restoring such a floor
-# via primesieve mode (now the restore driver's own preferred engine for any in-range floor
-# too, see settings_tab.py's _drive_windows_phase()) compounded the gap instead of filling it
-# back in, since restore never measured or recorded a time either.
+# block above). Every OTHER engine writes this log through the orchestrator pipeline, which
+# this mode bypasses; without its own writer, a floor generated (or restored) through
+# primesieve mode would leave NO trace in benchmark_log.csv -- the Prime numbers tab's
+# per-floor "generation time" column (sourced from benchmark_log.csv, see
+# aggregate_write_seconds_by_floor()) would stay blank, and a backup (BackupManifest
+# snapshots benchmark_log.csv's raw text, see manifest.py) would have nothing to preserve.
 # ------------------------------------------------------------------------------------------
 
 BENCHMARK_FIELDNAMES = [
@@ -383,8 +377,8 @@ def _load_lib():
         lib.primesieve_get_max_stop.restype = ctypes.c_uint64
         lib.primesieve_version.argtypes = []
         lib.primesieve_version.restype = ctypes.c_char_p
-        # count_primes/nth_prime -- added for PrimeAtlas's 'primesieve' calculator sub-tab
-        # (Liczby pierwsze -> primesieve, see primesieve_query.py in this same folder for
+        # count_primes/nth_prime -- for PrimeAtlas's 'primesieve' calculator sub-tab
+        # (Prime numbers -> primesieve, see primesieve_query.py in this same folder for
         # the CLI entry point the GUI actually launches). Both are genuine sieve
         # operations under the hood (libprimesieve counts/searches by sieving the
         # requested range, not an O(1) formula), so a caller asking for a huge range
@@ -576,7 +570,7 @@ def generate_floor_windows(base_power, target_idx_start, target_idx_count, windo
             segment = primes[lo_i:hi_i]
             count = len(segment)
             if write_files:
-                # Sharded (see window_sharding.py, task #405) -- a low floor always
+                # Sharded (see window_sharding.py) -- a low floor always
                 # writes its one window at offset 0, so it always lands in
                 # shard_00000.
                 folder = os.path.join(portal_folder, f"10p{floor}", "source_primes")
@@ -592,7 +586,7 @@ def generate_floor_windows(base_power, target_idx_start, target_idx_count, windo
               f"{low_floor_segments[-1][0]} written complete -- floor {skipped_floor} would "
               f"be cut off by this batch's range, so it was skipped (not written partially).")
     else:
-        # Sharded (see window_sharding.py, task #405): no single directory ever holds
+        # Sharded (see window_sharding.py): no single directory ever holds
         # more than SHARD_SIZE window files, regardless of floor size -- floor_folder
         # itself is therefore never created/listed directly, only its shard_NNNNN
         # subfolders are.

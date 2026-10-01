@@ -1,8 +1,6 @@
 """
 stdin_commands.py -- background stdin-command-reader thread for
-primeatlas/rings/ring_viz/renderer.py's --pipe-stdin-commands live pause/resume
-(Faza 13, see PLAN.md). [ADDED Faza 1 of the renderer.py split, see that
-file's own module docstring for the overall refactor plan.]
+primeatlas/rings/ring_viz/renderer.py's --pipe-stdin-commands live pause/resume.
 """
 
 import queue
@@ -11,7 +9,7 @@ import threading
 
 
 def start_stdin_command_reader():
-    """[ADDED Faza 13, see PLAN.md] Background daemon thread that blocks on
+    """Background daemon thread that blocks on
     `sys.stdin.readline()` in a loop, pushing each stripped non-empty line
     into a thread-safe queue.Queue the main GLFW loop polls NON-blockingly
     (queue.get_nowait()) once per frame -- same producer/thread-consumer-

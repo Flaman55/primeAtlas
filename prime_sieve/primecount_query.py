@@ -3,8 +3,8 @@ import json
 
 # ==========================================================================================
 # primecount_query.py -- one-shot CLI calculator for libprimecount's public API (exact
-# pi(x) via combinatorial algorithms, no sieve needed), launched by PrimeAtlas's Badania ->
-# Przyblizenia pi(x) sub-tab's "primecount" data-source mode. Mirrors primesieve_query.py's
+# pi(x) via combinatorial algorithms, no sieve needed), launched by PrimeAtlas's Research ->
+# pi(x) approximations sub-tab's "primecount" data-source mode. Mirrors primesieve_query.py's
 # own shape exactly (same folder, same reasoning) -- see that file's own module header for
 # the split rationale (a single quick query and exit, nothing written to storage).
 #
@@ -24,7 +24,7 @@ import json
 #   python3 primecount_query.py version           libprimecount's own version string --
 #                                                  used purely as a cheap "is it actually
 #                                                  installed?" probe (Settings ->
-#                                                  Aktualizacje's primecount status check),
+#                                                  Updates's primecount status check),
 #                                                  no prime-counting cost at all
 #
 # Prints EXACTLY one line of JSON to stdout:

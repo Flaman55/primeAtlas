@@ -123,10 +123,10 @@ def build_pip_argv(executable, packages):
     into %APPDATA%/Python/PythonXY, shared with every other Python of that version
     (and pip rejects --user inside a venv outright).
 
-    --no-warn-script-location: pip's "is the Scripts folder on PATH?" warning calls Path.resolve()
-    on every PATH entry; a redirection-point entry (OpenAI Codex's bin on Artur's machine)
-    made Windows raise WinError 448 "untrusted mount point" and pip abort the whole install
-    (2026-10-01). The Windows installer always passed this flag."""
+    --no-warn-script-location: pip's "is the Scripts folder on PATH?" warning calls
+    Path.resolve() on every PATH entry, and a PATH entry that is a redirection (reparse)
+    point can make Windows raise WinError 448 "untrusted mount point" and pip abort the
+    whole install. The Windows installer passes this flag too."""
     return [executable, "-m", "pip", "install", "--disable-pip-version-check",
             "--no-warn-script-location"] + list(packages)
 

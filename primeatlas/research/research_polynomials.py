@@ -1,6 +1,6 @@
 """
 research_polynomials.py -- on-disk-archive storage bridge for the Research
-tab's Wielomiany pierwszorodne (prime-generating polynomials) sub-tab.
+tab's Prime-generating polynomials (prime-generating polynomials) sub-tab.
 
 Re-exports read_is_prime_from_storage/MissingStorageRangeError from
 research_goldbach.py rather than duplicating them -- same reasoning as

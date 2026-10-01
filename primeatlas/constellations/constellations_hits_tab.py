@@ -1,6 +1,6 @@
 """
 constellations_hits_tab.py -- ConstellationsHitsTab, the tkinter widgets for the
-Constellations tab's "Magazyn" (storage) sub-tab: a floor tree grouped by k-tuple
+Constellations tab's "Storage" (storage) sub-tab: a floor tree grouped by k-tuple
 pattern (constellations/k{k}/variant{id}/HITS_*.bin), a paginated hit-value preview
 pane, and the "const" search box that jumps straight to every pattern a searched
 number participates in.
@@ -19,7 +19,7 @@ offer_generate_missing_prime_window as injected callables, same shape as
 primeatlas/primes/primes_tab.py's own constructor.
 
 ONE further wrinkle this tab has that Primes didn't: a "const" search's completion
-handler needs to coordinate with the SIBLING Kalkulator konstelacji tab (does this
+handler needs to coordinate with the SIBLING Constellation calculator tab (does this
 result belong to a search the calculator itself kicked off, and if so, auto-jump to
 that exact pattern once the result comes back) -- see on_const_search_result()'s own
 docstring for exactly how that coupling is kept to a thin, app-level orchestration
@@ -149,14 +149,12 @@ class ConstellationsHitsTab(BaseTab):
         self.search_results_list.bind("<Return>", self._on_search_result_activate)
         self._search_results_data = []  # parallel to search_results_list rows
 
-        # No "Load preview" button any more -- selecting a pattern node in the floor
-        # tree on the left now loads its preview automatically (see _on_tree_select());
-        # a separate click-to-load step was one extra click for no benefit, since the
-        # tree selection already identifies exactly one loadable hit file.
+        # Selecting a pattern node in the floor tree loads its preview directly (see
+        # _on_tree_select()); the tree selection identifies exactly one hit file.
         #
         # Two stacked page-nav rows (add_page_nav_row -- Prev/Next/label on the left,
-        # a "Strona:"/entry/Idz jump group flush against the RIGHT edge, see that
-        # helper's own docstring) side by side with "Eksportuj", stretched (fill="y")
+        # a "Page:"/entry/Go jump group flush against the RIGHT edge, see that
+        # helper's own docstring) side by side with "Export", stretched (fill="y")
         # to span both rows' combined height instead of sitting only next to the
         # second one. Both rows' jump groups land at the SAME right edge regardless of
         # how much shorter btn_row's left cluster is than file_page_row's -- a plain
@@ -177,17 +175,13 @@ class ConstellationsHitsTab(BaseTab):
                 self._prev_hits_page, self._next_hits_page, self._goto_hits_page))
         btn_row_frame.pack(side="top", fill="x")
 
-        # Real hit-file page navigation (up to hit_paging.PAGE_SIZE=1,000,000 hits per
-        # page) -- separate from btn_row_frame above, which only paginates WITHIN
-        # whichever hit-file page is currently loaded into self._hit_values/_hit_rows
-        # (self._page_size=500-ish rows at a time). This lets a pattern too large to
-        # ever load in full (floor 25's k=2, ~2.16 billion hits / 2160 pages) still be
-        # browsed page by page instead of being stuck on the first page forever. Its
-        # own "Strona:"/entry/Idź jump group lets you jump straight to one of a
-        # pattern's thousands of hit-file pages instead of only stepping one at a time
-        # -- a SEPARATE entry from
-        # btn_row_frame's own, since these are two different kinds of "page" (hit-file
-        # page vs. the small on-screen sub-page within it).
+        # Hit-file page navigation (up to hit_paging.PAGE_SIZE hits per page) --
+        # separate from btn_row_frame above, which paginates WITHIN the hit-file page
+        # currently loaded into self._hit_values/_hit_rows (~500 rows at a time). This
+        # lets a pattern too large to load in full (k=2 on floor 25: ~2,000 pages) be
+        # browsed page by page. Its own "Page:"/entry/Go jump group is separate from
+        # btn_row_frame's, since the two are different kinds of "page" (hit-file page
+        # vs. the on-screen sub-page within it).
         self.hits_file_page_label = tk.StringVar(value="")
         (file_page_row_frame, self.hits_file_prev_btn, self.hits_file_next_btn,
          self.hits_file_goto_entry) = add_page_nav_row(
@@ -197,8 +191,8 @@ class ConstellationsHitsTab(BaseTab):
             prev_key="const_records.file_page_prev", next_key="const_records.file_page_next")
         file_page_row_frame.pack(side="top", fill="x", pady=(4, 0))
 
-        # "Eksportuj" jumps to the Tabela rekordow tab instead of exporting locally --
-        # see this tab's own _export_current_page() docstring for why Magazyn
+        # "Export" jumps to the Records table tab instead of exporting locally --
+        # see this tab's own _export_current_page() docstring for why Storage
         # deliberately doesn't duplicate a whole export mechanism of its own.
         self.hits_export_btn = ttk.Button(
             preview_nav_frame, text=T("const.export_to_records_button"),
@@ -270,8 +264,7 @@ class ConstellationsHitsTab(BaseTab):
         (primeatlas/constellations/constellations_tree_coordinator.py) once
         reload_constellations_tree()'s background disk scan
         (ConstellationsTreeCoordinator._scan) returns. Also drops the hit-set cache --
-        data on disk may have changed since the last refresh, same reasoning as the
-        original inline version."""
+        data on disk may have changed since the last refresh."""
         T = self.T
         self.hits_tree.delete(*self.hits_tree.get_children())
         for base_exponent in floors:
@@ -281,8 +274,8 @@ class ConstellationsHitsTab(BaseTab):
         self.hit_set_cache = {}
 
     def search_constellation(self):
-        """The Search button's handler -- ALSO called directly by the Kalkulator
-        konstelacji tab (via its own injected trigger_hits_search callable) once it has
+        """The Search button's handler -- ALSO called directly by the Constellation
+        calculator tab (via its own injected trigger_hits_search callable) once it has
         filled in hits_search_entry itself (see set_search_query()) -- so this always
         reads the query from the entry rather than taking a parameter, matching exactly
         what a real button click does regardless of which caller triggered it."""
@@ -314,7 +307,7 @@ class ConstellationsHitsTab(BaseTab):
 
     def set_search_query(self, number):
         """Fills the search entry with `number` without triggering a search -- used by
-        the Kalkulator konstelacji tab right before it calls search_constellation()
+        the Constellation calculator tab right before it calls search_constellation()
         itself, so the resulting search reads exactly the number the calculator
         computed."""
         self.hits_search_entry.delete(0, "end")
@@ -336,11 +329,9 @@ class ConstellationsHitsTab(BaseTab):
         self._reset_preview_state()
 
     def show_search_participation(self, base_exponent, number, prime_result, participation):
-        """Called by prime_atlas_v1.py's own _on_const_search_result() once a "const"
-        search job has come back with a real prime_result (found) -- builds the detail
-        text + one search_results_list row per pattern `number` participates in,
-        exactly as search_constellation() used to do synchronously right after calling
-        find_prime_in_floor()/find_constellation_participation() directly."""
+        """Called by prime_atlas_v1.py's _on_const_search_result() once a "const" search
+        job has returned a found prime_result -- builds the detail text + one
+        search_results_list row per pattern `number` participates in."""
         T = self.T
         lines = [T("const.number_line", number=number),
                  T("const.found_in", name=prime_result['name'], base_exponent=base_exponent), ""]
@@ -408,14 +399,11 @@ class ConstellationsHitsTab(BaseTab):
             self.hits_tree.insert(node, "end", text=T("const.no_hits"))
             return
 
-        # Nested by k, each with its own subtotal -- otherwise every
-        # variant is a flat sibling row ("k=7 v=1", "k=7 v=2", ...) with no way to see
-        # how many k-tuples exist IN TOTAL for a given k without adding the variant
-        # counts up by hand. group_constellation_hits_by_k() re-groups what
-        # list_constellation_hits() already fetched -- no extra I/O, the pattern catalog
-        # is small enough that every existing hit file's header is already read above.
-        # The floor row itself is also updated here to the grand total across every k
-        # (sum of every k-group's own subtotal) -- for the SAME reason: previously blank.
+        # Nested by k, each with its own subtotal, so the total number of k-tuples for a
+        # given k is visible without adding variant counts by hand.
+        # group_constellation_hits_by_k() re-groups what list_constellation_hits()
+        # already fetched -- no extra I/O. The floor row itself shows the grand total
+        # across every k.
         grand_total = 0
         for k, k_total, variants in group_constellation_hits_by_k(entries):
             grand_total += k_total
@@ -488,10 +476,9 @@ class ConstellationsHitsTab(BaseTab):
         self.hits_export_btn.configure(state="disabled")
 
     def _hit_row_formatter(self, row):
-        """Each row is (value, hit_base, position, offset) -- ONE tuple element, not
-        the whole tuple (that used to be a single comma-joined string per row, which
-        meant selecting/copying a row always grabbed every number in the tuple at
-        once). `value` is what a copy action grabs; the rest is just context."""
+        """Each row is (value, hit_base, position, offset) -- ONE tuple element per row,
+        so selecting/copying a row grabs a single number. `value` is what a copy action
+        grabs; the rest is context."""
         T = self.T
         value, hit_base, position, offset = row
         total = len(self._selected_hit_pattern["offsets"])
@@ -501,22 +488,15 @@ class ConstellationsHitsTab(BaseTab):
                  offset=offset, hit_base=hit_base)
 
     def load_preview(self):
-        """Loads this pattern's hit values into the preview list -- via
-        _load_hit_file_page() (paging-transparent, bounded to at most one hit_paging
-        page, currently 1,000,000 entries) rather than a bare
-        prime_sieve_v1.read_prime_window() on the raw path: for a dense pattern (k=2
-        on a high floor is the real case this matters for) that path either no longer
-        exists at all (migrated to pages -- see hit_paging.py) or would decode
-        hundreds of millions of entries synchronously on THIS (the GUI) thread, which
-        is exactly what used to freeze the whole app on the old "Wczytaj podgląd"
-        button -- _on_tree_select() calls this directly now instead.
+        """Loads this pattern's hit values into the preview list via
+        _load_hit_file_page() (paging-transparent, bounded to one hit_paging page)
+        rather than prime_sieve_v1.read_prime_window() on the raw path: for a dense
+        pattern that path either does not exist (migrated to pages, see hit_paging.py)
+        or would decode hundreds of millions of entries on the GUI thread.
 
-        A pattern this large that HASN'T been migrated to pages yet still has its
-        whole hit count in ONE file -- reading "page 0" would be a full, unbounded
-        decode on THIS (the GUI) thread. Refuse rather than attempt it -- see
-        hit_pattern_is_paged()'s own docstring for the real freeze this guards against
-        (k=2 on floor 25, ~2.15 billion hits, hung the whole app before migration ever
-        ran)."""
+        A pattern this large that has NOT been migrated to pages still has its whole
+        hit count in ONE file, so reading "page 0" would be an unbounded decode on the
+        GUI thread; that is refused -- see hit_pattern_is_paged()."""
         if not self._selected_hit_path:
             return
         T = self.T
@@ -587,7 +567,7 @@ class ConstellationsHitsTab(BaseTab):
         self._load_hit_file_page(self._hit_file_page_index + 1)
 
     def bind_export_to_records(self, jump_to_records_export):
-        """Registers the callable "Eksportuj" invokes -- injected via a setter rather
+        """Registers the callable "Export" invokes -- injected via a setter rather
         than the constructor because prime_atlas_v1.py's own _build_constellations_
         section() constructs this tab BEFORE ConstellationsRecordsTab exists yet (same
         deferred-wiring need bind_jump_to_hits() covers in the other direction, on
@@ -595,11 +575,11 @@ class ConstellationsHitsTab(BaseTab):
         self._jump_to_records_export = jump_to_records_export
 
     def _export_current_page(self):
-        """"Eksportuj" button -- jumps to the Tabela rekordow tab with the CURRENTLY
+        """"Export" button -- jumps to the Records table tab with the CURRENTLY
         LOADED hit-file page pre-filled as its export range, rather than exporting
-        locally. Magazyn deliberately doesn't duplicate a whole export mechanism of
-        its own: the previous local page-range CSV export here duplicated Tabela
-        rekordow's own, which already had a real progress bar, PDF support, and CSV
+        locally. Storage deliberately doesn't duplicate a whole export mechanism of
+        its own: the previous local page-range CSV export here duplicated Records
+        table's own, which already had a real progress bar, PDF support, and CSV
         export in one place."""
         if not self._selected_hit_path:
             return
@@ -660,7 +640,7 @@ class ConstellationsHitsTab(BaseTab):
             return
         self.hits_tree.item(floor_item, open=True)
         self._populate_floor_node(floor_item)
-        # Patterns are nested one level deeper, under a "k={k} (razem: N)" group node
+        # Patterns are nested one level deeper, under a "k={k} (total: N)" group node
         # (per-k subtotals -- see _populate_floor_node) -- find that k-group first,
         # then the v=id leaf underneath it.
         k_prefix = f"k={pattern['k']}  "

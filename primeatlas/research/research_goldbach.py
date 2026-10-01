@@ -28,8 +28,8 @@ def _safe_prime_gap_margin(x):
     smaller (see e.g. Tomas Oliveira e Silva's maximal-gap tables: 34 below 10**5, 148
     below 10**7, 282 below 10**9); these constants are deliberately generous, not tight,
     since erring "too strict" only costs an extra generate-more-data prompt, while erring
-    "too loose" would silently trust incomplete data (exactly the bug this function
-    exists to prevent -- see read_is_prime_from_storage's own docstring)."""
+    "too loose" would silently trust incomplete data (see read_is_prime_from_storage's
+    own docstring)."""
     for threshold, margin in (
         (100, 10), (1_000, 20), (10_000, 40), (100_000, 80),
         (1_000_000, 150), (10_000_000, 250), (2 ** 63, 400),
@@ -57,7 +57,7 @@ def read_is_prime_from_storage(portal_folder, limit):
     """Builds an is_prime bytearray covering [0, limit] purely from already-generated
     floor storage (10p{N}/source_primes/PRIME_WINDOW_*.bin, PGS2 format -- see
     prime_sieve_v1.py's own format header) instead of running a fresh sieve. Used by
-    the Goldbach tab's Wizualizacja feature (see research_goldbach_tab.py's
+    the Goldbach tab's Visualize feature (see research_goldbach_tab.py's
     _on_goldbach_visualize), which reads from the archive rather than recomputing --
     the per-n witness search itself still runs the exact same algorithm as
     goldbach_window.py's window_rows(), only the SOURCE of is_prime changes.
@@ -67,23 +67,19 @@ def read_is_prime_from_storage(portal_folder, limit):
     enforced elsewhere by _floor_window_count()/the range-clamping logic around
     "floor_boundary = 10 ** (floor_lo + 1)", and by prime_sieve_v4_1._low_floor_
     segments(). floor 0 = [1,10) (4 primes: 2,3,5,7), floor 1 = [10,100) (21 primes),
-    floor 2 = [100,1000) (143 primes), and so on. An EARLIER version of this
-    function wrongly treated floor 0 alone as extending indefinitely in
-    QUICK_GEN_MAX_WINDOW_WIDTH-wide chunks (i.e. as if floor 0 covered
-    [1,10_000_001)), so e.g. limit=200 was checked entirely against floor 0's
-    single tiny file and failed even though floors 0-2 were each genuinely
-    complete. This version instead walks floor 0, 1, 2,
-    ... up to whichever floor's base exceeds limit, reading each floor's OWN files
-    (possibly split into QUICK_GEN_MAX_WINDOW_WIDTH-wide window files only when a
-    floor's natural width exceeds that, per prime_sieve_v1.main_batch_scanner()) and
-    stitching their primes into one array.
+    floor 2 = [100,1000) (143 primes), and so on -- floor 0 does NOT extend in
+    QUICK_GEN_MAX_WINDOW_WIDTH-wide chunks. This walks floor 0, 1, 2, ... up to
+    whichever floor's base exceeds limit, reading each floor's OWN files (split into
+    QUICK_GEN_MAX_WINDOW_WIDTH-wide window files only when a floor's natural width
+    exceeds that, per prime_sieve_v1.main_batch_scanner()) and stitching their primes
+    into one array.
 
     A window FILE existing on disk at the right offset does not by itself prove it
     actually covers the range needed -- a partial/test/interrupted-generation file can
-    sit at offset 0 with only a handful of primes in it. An earlier version of this
-    function trusted its mere existence, silently building an is_prime array that read
-    as "mostly composite" above the file's real content and rendered a Wizualizacja
-    diagram full of "?" instead of an honest error. So for every window needed, this
+    sit at offset 0 with only a handful of primes in it; trusting its mere existence
+    would build an is_prime array reading "mostly composite" above the file's real
+    content (a Visualize diagram full of "?" instead of an honest error). So for
+    every window needed, this
     also checks that the MAXIMUM prime actually found in that file reaches within
     _safe_prime_gap_margin() of the range it's relied on for -- short of that, the
     window is treated as not-yet-generated, same as if the file were simply missing.

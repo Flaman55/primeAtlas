@@ -1,31 +1,27 @@
 """
-primesieve_calc_tab.py -- standalone libprimesieve calculator sub-tab (Liczby pierwsze
--> primesieve), extracted from prime_atlas_v1.py during the refactor branch's tab-by-tab
-split, after every OTHER tab was already split out. Count primes in a range, nth prime,
-next/prev prime --
-entirely independent of anything already in storage (no floor, no PORTAL_FOLDER,
-nothing written to disk); the only I/O is a single blocking wsl.exe round trip per
-click, via primesieve_query.py (prime_sieve/ folder) -- see build_primesieve_query_argv/
+primesieve_calc_tab.py -- standalone libprimesieve calculator sub-tab (Prime numbers
+-> primesieve): count primes in a range, nth prime, next/prev prime -- entirely
+independent of anything already in storage (no floor, no PORTAL_FOLDER, nothing written
+to disk); the only I/O is a single blocking wsl.exe round trip per click, via
+primesieve_query.py (prime_sieve/ folder) -- see build_primesieve_query_argv/
 run_primesieve_query_wsl's own docstrings below for that CLI's exact contract.
 
-build_primesieve_query_argv/run_primesieve_query_wsl used to be module-level functions
-in prime_atlas_v1.py itself; they move here in full since this calculator sub-tab is
-their only caller. run_primesieve_query_wsl() takes an explicit `translator` parameter
-instead of reading a bare module global T (same reasoning as generation.py's
-build_wsl_logged_command taking an explicit `portal_folder` param -- see that module's
-own docstring) so this stays a self-contained, circularity-free leaf module:
-prime_atlas_v1.py imports FROM here, never the other way around.
+build_primesieve_query_argv/run_primesieve_query_wsl live here since this calculator
+sub-tab is their only caller. run_primesieve_query_wsl() takes an explicit `translator`
+parameter instead of reading a module global (same reasoning as generation.py's
+build_wsl_logged_command taking an explicit `portal_folder` param), so this stays a
+self-contained, circularity-free leaf module: prime_atlas_v1.py imports FROM here, never
+the other way around.
 
 Constructor-injected (same convention as every other extracted tab -- see e.g.
 primeatlas/generation/generation_tab.py's own docstring): status_var and totals_progress are the
 app's SHARED status bar/progress bar (also used by the primality tab, the search
 worker, and the totals-cache scan -- one bar for the whole app, not one per tab), and
-translator is the app's Translator instance (bare T(...) calls become self.T(...)
-here).
+translator is the app's Translator instance (self.T(...)).
 
 Operation-dependent input fields use the grid()/grid_remove() swap technique the
-Quick-gen panel's mode switch established (NOT tkraise -- that approach had a
-frame-overlap bug fixed earlier in this project's history), so only one field layout is
+Quick-gen panel's mode switch uses (NOT tkraise, which leaves stacked frames
+overlapping), so only one field layout is
 ever visible/interactive at a time.
 """
 import json
@@ -276,9 +272,8 @@ class PrimesieveCalcTab(BaseTab):
         return code, args, ok, payload
 
     def _on_primesieve_calc_result(self, payload, error):
-        """Main-thread callback for _primesieve_calc_job -- same 150ms-poll-driven
-        timing as before, just delivered via PersistentWorker instead of a bespoke
-        queue.Queue + self.after() pair."""
+        """Main-thread callback for _primesieve_calc_job (delivered via
+        PersistentWorker's 150ms poll)."""
         self._primesieve_calc_busy = False
         self.primesieve_calc_button.configure(state="normal")
         self._stop_busy_progress()

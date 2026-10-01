@@ -294,9 +294,8 @@ def check_environment(distro=DEFAULT_WSL_DISTRO, timeout=60):
 
 # How PowerShell must decode a native command's output. wsl.exe's own management commands
 # (--update, --install, --terminate) write UTF-16; Linux programs run inside the distro write
-# UTF-8; dism keeps the console default. Read with the wrong one, the Polish "Nie mozna
-# odnalezc..." from a real Windows 10 run came out as "Nie mo|na odnalez okre[lonego moduBu"
-# ("z" with dot = UTF-16 bytes 7C 01, read one byte at a time). try/catch: assigning the
+# UTF-8; dism keeps the console default. Read with the wrong one, localized (non-ASCII) Windows messages come out
+# garbled (e.g. a letter encoded as UTF-16 bytes 7C 01 read one byte at a time as "|"). try/catch: assigning the
 # console encoding can throw if there is no console at all, which must never abort the
 # install over cosmetics.
 _NATIVE_UTF16 = 'try { [Console]::OutputEncoding = [System.Text.Encoding]::Unicode } catch { }'
@@ -367,11 +366,10 @@ def _build_install_ps1_text(distro, need_features=True, need_distro=True, need_p
     text for ALREADY_EXISTS and treats that as a harmless no-op regardless of exit code,
     alongside the 1/2 tolerance."""
     # NOT "Stop": Windows PowerShell 5.1 turns every stderr line a native exe prints under
-    # 2>&1 into an error record, and "Stop" makes that terminating -- on a real fresh
-    # Windows 10 machine (2026-09-30) wsl.exe's stderr killed the script with exit 1
-    # before a single line of its output or WSL_INSTALL_FAILED was logged. Every step
-    # below checks $LASTEXITCODE itself; the trap logs anything unexpected instead of
-    # letting it vanish.
+    # 2>&1 into an error record, and "Stop" makes that terminating -- wsl.exe's stderr
+    # would kill the script with exit 1 before any of its output or WSL_INSTALL_FAILED is
+    # logged. Every step below checks $LASTEXITCODE itself; the trap logs anything
+    # unexpected instead of letting it vanish.
     lines = [
         '$ErrorActionPreference = "Continue"',
         '$LogPath = $PSCommandPath + ".log"',
@@ -420,7 +418,7 @@ def _build_install_ps1_text(distro, need_features=True, need_distro=True, need_p
         lines.append('}')
         lines.append('')
     if need_distro:
-        # Windows 10's INBOX wsl.exe (seen on a real fresh 22H2 machine, 2026-09-30) has no
+        # Windows 10's INBOX wsl.exe (e.g. a fresh 22H2 install) has no
         # kernel yet ("The WSL 2 kernel file is not found ... run 'wsl --update'") and its
         # `--install` accepts only -d, not --no-launch. `--update --web-download` -- which
         # the inbox wsl.exe also supports -- installs the current WSL + kernel straight

@@ -1,18 +1,14 @@
 """
-test_const_records_worker.py -- functional regression test for the constellation-
-records-table worker (Constellations -> Tabela rekordow sub-tab, Faza 4) in
-prime_atlas_v1.py, migrated onto primeatlas/core/background.py's PersistentWorker during
-the refactor branch's background-job consolidation. This is the
-SIXTH and LAST of the six originally hand-rolled worker-thread patterns to be
-migrated -- see primeatlas_refactor_branch memory / commit history for the other
-five (totals, search, primesieve_calc, primality, goldbach).
+test_const_records_worker.py -- functional test for the constellation-records-table
+worker (Constellations -> Records table sub-tab) in prime_atlas_v1.py, built on
+primeatlas/core/background.py's PersistentWorker.
 
 Uses a throwaway EMPTY portal folder for the "scan" case -- build_constellation_
 records_table()'s own docstring says it returns an empty rows list (not an error)
 when a floor has no hit files for the requested k, so this exercises the worker
 plumbing end to end without needing to fabricate real HITS_*.bin constellation
 files. The export cases are driven by calling ConstellationsRecordsTab._start_job(...)
-directly with a fixed path instead of clicking the real "Eksportuj" buttons -- those buttons
+directly with a fixed path instead of clicking the real "Export" buttons -- those buttons
 open a native filedialog.asksaveasfilename() dialog, which (like tkinter.messagebox)
 enters its own nested event loop under Xvfb with no human to dismiss it.
 

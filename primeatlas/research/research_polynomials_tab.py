@@ -1,14 +1,13 @@
 """
 research_polynomials_tab.py -- ResearchPolynomialsTab, the tkinter widgets
-for the Research tab's Wielomiany pierwszorodne (prime-generating
+for the Research tab's Prime-generating polynomials (prime-generating
 polynomials) sub-tab: Landau (n^2+1) / Euler (n^2+n+41) presets plus a
 custom f(n) formula, checked over a [n_from, n_to] range via
 primeatlas/research/polynomials_window.py's pure check_polynomial_range()/
 check_polynomial_range_from_source().
 
-Same shape as ResearchSquaresTab (primeatlas/research/research_squares_tab.py, see
-that module's own docstring for the full Faza-1/Faza-2 history this mirrors
-from day one): a data-source toggle ("Świeże sito" / "Dane z archive",
+Same shape as ResearchSquaresTab (primeatlas/research/research_squares_tab.py): a
+data-source toggle ("Fresh sieve" / "Storage data",
 storage mode via primeatlas/research/research_polynomials.py's
 read_is_prime_from_storage), pagination, and CSV export of the currently-
 displayed page.
