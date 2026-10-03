@@ -1985,7 +1985,7 @@ def _test_render_session_line_mode():
     )
     data_normal, data_hit, count, count_hit = session.rebuild(11)
     check(count_hit == 7, "rebuild_line's hit split carries exactly the 7 pattern-member rows")
-    check(session.mode.pattern_match is True, "session.mode.pattern_match reflects the last rebuild_line's all_match")
+    check(session.mode.pattern_match is True, "session.mode.pattern_match reflects the last rebuild's all_match")
     check(session.mode.flash_pattern == 1.0, "a full pattern match triggers flash_pattern")
 
     color = session.mode.pattern_flash_color()
