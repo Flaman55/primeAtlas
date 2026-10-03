@@ -74,9 +74,9 @@ def _test_construction_defaults():
     check(s.playback_running is False, "playback starts stopped")
     check(s.cam_pan == [0.0, 0.0] and s.cam_zoom == 1.0 and s.cam_dragging is False,
           "camera starts centered, unzoomed, not dragging")
-    check(s.orbit_index == 0 and s.orbit_counter == 0 and s.orbit_current_prime is None,
+    check(s.mode.orbit_index == 0 and s.mode.orbit_counter == 0 and s.mode.orbit_current_prime is None,
           "auto-orbit starts at index 0 with no chosen prime")
-    check(s.flash_prime == 0.0 and s.flash_resonance == 0.0, "flash accumulators start at 0")
+    check(s.mode.flash_prime == 0.0 and s.mode.flash_resonance == 0.0, "flash accumulators start at 0")
     check(s.scrub_held == 0 and s.scrub_was_running is False, "scrub bookkeeping starts idle")
     check(s.extend_exhausted is False, "buffer extension starts not-exhausted")
     check(s.hud_n == 10 and s.hud_count == 0 and s.hud_lines == [], "HUD snapshot seeded from launch n, empty otherwise")
@@ -230,13 +230,13 @@ def _test_scrub_multi_key_hold_needs_both_released():
 def _test_reset():
     s = _make_session(n=500, track_primes=[2, 3, 5], auto_orbit=False, range_mode=True)
     s.playback_running = True
-    s.orbit_index, s.orbit_counter, s.orbit_current_prime = 3, 7, 29
+    s.mode.orbit_index, s.mode.orbit_counter, s.mode.orbit_current_prime = 3, 7, 29
     s.reset()
     check(s.playback_running is False, "reset stops playback")
-    check(s.track_primes == [], "reset clears Track P")
-    check(s.auto_orbit is True, "reset re-enables auto-orbit")
+    check(s.mode.track_primes == [], "reset clears Track P")
+    check(s.mode.auto_orbit is True, "reset re-enables auto-orbit")
     check(s.range_mode is False, "reset drops back to sequential mode even if range mode was active")
-    check((s.orbit_index, s.orbit_counter, s.orbit_current_prime) == (0, 0, None), "reset clears auto-orbit cycling state")
+    check((s.mode.orbit_index, s.mode.orbit_counter, s.mode.orbit_current_prime) == (0, 0, None), "reset clears auto-orbit cycling state")
     check(s.n == 1, f"reset lands N on 1 (got {s.n})")
     check(s.n_force_rebuild is True, "reset forces a rebuild even if N was already 1")
 
@@ -306,30 +306,30 @@ def _test_rebuild_basic():
 def _test_rebuild_prime_flash_on_ring_count_increase():
     s = _make_session(n=6)
     _, _, count6, _ = s.rebuild(6)
-    check(s.flash_prime == 0.0, "no prev_ring_count given -> no birth flash on the very first rebuild")
+    check(s.mode.flash_prime == 0.0, "no prev_ring_count given -> no birth flash on the very first rebuild")
     check(count6 == 3, f"sanity: primes <=6 are {{2,3,5}} (got {count6})")
 
     s2 = _make_session(n=10)
     _, _, count10, _ = s2.rebuild(10)
     _, _, count11, _ = s2.rebuild(11, prev_ring_count=count10)
     check(count11 > count10, f"sanity: crossing prime 11 increases the active count ({count10} -> {count11})")
-    check(s2.flash_prime == 1.0, "ring count increasing triggers the prime-birth flash")
+    check(s2.mode.flash_prime == 1.0, "ring count increasing triggers the prime-birth flash")
 
     s3 = _make_session(n=10)
     _, _, count10b, _ = s3.rebuild(10)
     _, _, count10c, _ = s3.rebuild(10, prev_ring_count=count10b)
-    check(count10c == count10b and s3.flash_prime == 0.0,
+    check(count10c == count10b and s3.mode.flash_prime == 0.0,
           "re-rebuilding at the SAME N (no new prime crossed) does not trigger the birth flash")
 
 
 def _test_rebuild_resonance_flash_when_all_hit():
     s = _make_session(primes=np.array([2, 3], dtype=np.uint64), n=6)
     s.rebuild(6)
-    check(s.flash_resonance == 1.0, "N=6 is divisible by both active primes (2 and 3) -> resonance flash triggers")
+    check(s.mode.flash_resonance == 1.0, "N=6 is divisible by both active primes (2 and 3) -> resonance flash triggers")
 
     s2 = _make_session(primes=np.array([2, 3], dtype=np.uint64), n=7)
     s2.rebuild(7)
-    check(s2.flash_resonance == 0.0, "N=7 divides neither active prime -> no resonance flash")
+    check(s2.mode.flash_resonance == 0.0, "N=7 divides neither active prime -> no resonance flash")
 
 
 def _test_rebuild_tracked_resonance_orange_dot():
@@ -337,7 +337,7 @@ def _test_rebuild_tracked_resonance_orange_dot():
     (tracked_resonance_state's to_resonance == 0), the tracked rings' dots
     turn resonance-orange, not just plain white -- verified end-to-end
     through RenderSession.rebuild(), not just build_vertex_data directly."""
-    from primeatlas.visualization.rings.geometry_draw import _FLASH_RESONANCE_RGB
+    from primeatlas.visualization.rings.ring.ring_draw import _FLASH_RESONANCE_RGB
     expected_rgb = np.array([c / 255.0 for c in _FLASH_RESONANCE_RGB])
 
     # track_primes=[2, 3] -> LCM=6. auto_orbit=False so the manual list is
@@ -364,18 +364,18 @@ def _test_rebuild_tracked_resonance_orange_dot():
 
 def _test_flash_color_and_decay():
     s = _make_session()
-    check(s.resonance_flash_color() is None, "no color while flash_resonance is 0")
-    check(s.prime_flash_color() is None, "no color while flash_prime is 0")
-    s.flash_resonance = 1.0
-    s.flash_prime = 1.0
-    rc = s.resonance_flash_color()
-    pc = s.prime_flash_color()
+    check(s.mode.resonance_flash_color() is None, "no color while flash_resonance is 0")
+    check(s.mode.prime_flash_color() is None, "no color while flash_prime is 0")
+    s.mode.flash_resonance = 1.0
+    s.mode.flash_prime = 1.0
+    rc = s.mode.resonance_flash_color()
+    pc = s.mode.prime_flash_color()
     check(rc is not None and len(rc) == 4, f"resonance flash color is an (r,g,b,a) tuple (got {rc!r})")
     check(pc is not None and len(pc) == 4, f"prime flash color is an (r,g,b,a) tuple (got {pc!r})")
-    s.decay_resonance_flash()
-    s.decay_prime_flash()
-    check(0.0 < s.flash_resonance < 1.0, f"resonance flash decayed toward 0 but not yet there (got {s.flash_resonance})")
-    check(0.0 < s.flash_prime < 1.0, f"prime flash decayed toward 0 but not yet there (got {s.flash_prime})")
+    s.mode.decay_resonance_flash()
+    s.mode.decay_prime_flash()
+    check(0.0 < s.mode.flash_resonance < 1.0, f"resonance flash decayed toward 0 but not yet there (got {s.mode.flash_resonance})")
+    check(0.0 < s.mode.flash_prime < 1.0, f"prime flash decayed toward 0 but not yet there (got {s.mode.flash_prime})")
 
 
 def _test_refresh_hud_json_line():

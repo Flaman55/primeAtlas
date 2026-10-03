@@ -1,10 +1,13 @@
 """
-session.py -- RenderSession: the mutable interactive-playback state for
-primeatlas/visualization/shared/renderer.py's `_run_visualization`, as ONE object with
-methods (camera, playback, orbit, flash, resonance log, HUD, scrub, buffer extension,
-cyclic anchors, tracked primes, range mode) instead of separate closures each capturing
-its own dict. Unit-tested here without GL; the GLFW/moderngl main loop itself cannot run
-headless.
+session.py -- RenderSession: the mutable interactive state for
+primeatlas/visualization/shared/renderer.py's `_run_visualization` that is common to
+every viz-mode -- N, playback, scrub, camera, the HUD snapshot, buffer extension, the
+bidirectional sliding range window and the background seek -- as ONE object with
+methods instead of separate closures each capturing its own dict. Everything
+mode-specific lives in the active mode object (`self.mode`, see shared/mode.py and
+mode_registry.py), which the session delegates rebuilds, HUD colors and
+mode-specific navigation to. Unit-tested without GL; the GLFW/moderngl main loop
+itself cannot run headless.
 
 Scope boundary: RenderSession owns everything from the point
 _run_visualization has ALREADY resolved --source/--load-range into a
@@ -20,9 +23,9 @@ GL boundary: nothing here imports moderngl or glfw, and no method takes a
 GL context/window. Every method takes and returns plain data (numpy
 arrays, tuples, dicts, strings) -- the four or five lines that are
 genuinely GL-bound (ctx.buffer(), ctx.texture(), vbo.write()) are done by
-_run_visualization with this class's return values, same convention as geometry_draw.py/
-hud.py/playback.py. This is what makes every method here unit-testable in
-a headless sandbox with no GPU/display, same as those three modules.
+_run_visualization with this class's return values, same convention as
+draw_primitives.py/hud_text.py/playback.py. This is what makes every method here
+unit-testable in a headless sandbox with no GPU/display.
 
 Self-contained sys.path bootstrap (mirrors renderer.py's own -- see that
 file's module docstring for the full "why plain-script-path" explanation):
@@ -47,33 +50,7 @@ _PRIME_SIEVE_DIR = os.path.join(_REPO_ROOT, "prime_sieve")
 if _PRIME_SIEVE_DIR not in sys.path:
     sys.path.insert(0, _PRIME_SIEVE_DIR)
 
-from primeatlas.visualization.rings.ring_geometry import (
-    tracked_resonance_state,
-    window_anchor_primes,
-    cyclic_window_anchor_at,
-    format_log_panel_text,
-    window_label_colors,
-    nested_shell_colors,
-    pattern_wheel_residues,
-    next_wheel_n,
-    pattern_positions_and_match,
-    DEFAULT_WHEEL_PRIMES,
-)
-from primeatlas.visualization.rings.geometry_draw import (
-    build_vertex_data,
-    build_line_vertex_data,
-    split_hit_normal_vertex_data,
-    resolve_effective_track_primes,
-    build_tracked_outline_draws,
-    decay_flash,
-    flash_overlay_rgba,
-    _FLASH_RESONANCE_RGB,
-    _FLASH_PRIME_RGB,
-    _FLASH_PATTERN_RGB,
-    resonance_is_active,
-    zoom_to_point,
-    fit_zoom_for_viewport,
-)
+from primeatlas.visualization.shared.draw_primitives import zoom_to_point, fit_zoom_for_viewport
 from primeatlas.visualization.shared.playback import (
     clamp_tempo_ms,
     arrow_scrub_delta,
@@ -82,21 +59,13 @@ from primeatlas.visualization.shared.playback import (
     should_extend_buffer,
     next_buffer_ceiling,
     tick_next_n,
-    update_resonance_log,
-    advance_auto_orbit,
 )
-from primeatlas.visualization.rings.hud import (
-    hud_lines_for_n,
-    compose_hud_canvas_lines,
-    hud_line_colors,
-    rasterize_hud_text,
-    emit_audio_tick,
-    pattern_hud_line,
-)
+from primeatlas.visualization.shared.hud_text import compose_hud_canvas_lines, rasterize_hud_text
 from primeatlas.visualization.shared.sources import load_archive, load_archive_before
+from primeatlas.visualization.mode_registry import MODES, RESET_MODE
 
-# Internal-only search stride for a background pattern seek (see
-# _start_pattern_seek/_effective_chunk_size): the SEARCH crawls in chunks of the app's
+# Internal-only search stride for a background seek (see
+# start_background_seek/_effective_chunk_size): the SEARCH crawls in chunks of the app's
 # --max-load-count default (renderer.py) while RENDERING stays at the configured,
 # possibly much smaller, chunk_size. Not a user-facing knob: it only affects how many
 # chunks a seek's internal crawl loads, never what is rendered.
@@ -104,15 +73,17 @@ _SEEK_STRIDE_CHUNK_SIZE = 2_000_000
 
 
 class RenderSession:
-    """Owns every piece of state _run_visualization's interactive part
-    (camera, playback, HUD, buffer-extension, tracked/auto-orbit) reads or
-    writes, plus the pure state-transition logic. See this module's docstring for
-    the scope boundary and why nothing here touches GL directly.
+    """Owns every piece of mode-independent state _run_visualization's interactive
+    part (camera, playback, HUD snapshot, buffer extension, sliding window,
+    background seek) reads or writes, plus the pure state-transition logic, and the
+    active viz-mode object (`self.mode`). See this module's docstring for the scope
+    boundary and why nothing here touches GL directly.
 
     Construct with everything _run_visualization has resolved after its
     --load-range handling: a concrete `primes` array, the initial `n`/`ceiling`, the
-    range-mode fields, tracked-primes/auto-orbit, the enabled window families, and
-    the launch-time buffer-extension parameters."""
+    range-mode fields, the modes' own launch-time config (tracked primes/auto-orbit/
+    window families for rings; the pattern settings for line), and the launch-time
+    buffer-extension parameters."""
 
     def __init__(self, *, primes, n, ceiling, range_mode, range_primes, range_step,
                  track_primes, auto_orbit, enabled_ids, theta, law_mode, max_radius,
@@ -121,7 +92,7 @@ class RenderSession:
                  pattern_step_mode="manual", pattern_stop_on_match=False,
                  line_axis_curved=False, range_load_from=None, range_load_to=None,
                  chunk_size=None, sliding_enabled=False):
-        # Ring data / sequencing.
+        # Prime data / sequencing.
         self.primes = primes
         self.n = n
         self.ceiling = ceiling
@@ -130,31 +101,16 @@ class RenderSession:
         # backed by `chunk_current` -- the triple-buffer sliding window's
         # middle/visible chunk (see chunk_back/chunk_current/chunk_forward
         # below). A property rather than a second attribute kept in sync, so
-        # every read site (_pattern_window_bounds, rebuild(), rebuild_line(),
-        # etc.) always sees the current chunk after a slide.
+        # every read site (the modes' window bounds and rebuilds) always sees
+        # the current chunk after a slide.
         self.chunk_current = range_primes
         self.range_step = range_step
-
-        # Window/tracking launch-time config.
-        self.track_primes = track_primes
-        self.auto_orbit = auto_orbit
-        self.enabled_ids = enabled_ids
-        self.theta = theta
-        self.law_mode = law_mode
+        # View extent the camera fits to (recenter) and the rings mode lays out in.
         self.max_radius = max_radius
 
         # Playback.
         self.tempo_ms = clamp_tempo_ms(tempo_ms)
         self.playback_running = False
-
-        # Auto-orbit cycling.
-        self.orbit_index = 0
-        self.orbit_counter = 0
-        self.orbit_current_prime = None
-
-        # Cyclic window-anchor freeze/jump state, one entry per family -- see
-        # cyclic_window_anchor_at.
-        self.cyclic_anchor_state = {}
 
         # Camera.
         self.cam_pan = [0.0, 0.0]
@@ -162,100 +118,7 @@ class RenderSession:
         self.cam_dragging = False
         self.cam_last_mouse = (0.0, 0.0)
 
-        # Birth/resonance flash decay accumulators + tracked-outline draw list.
-        self.flash_prime = 0.0
-        self.flash_resonance = 0.0
-        self.outline_draws = []
-
-        # "line" viz-mode: k-tuple pattern-slide state (see
-        # ring_geometry.py's own "line viz-mode" section and
-        # rebuild_line/pattern_flash_color below). `viz_mode` stays
-        # "rings" and `pattern_offsets` stays None for any caller that doesn't
-        # pass these two kwargs (ring mode).
-        self.viz_mode = viz_mode
-        self.pattern_offsets = list(pattern_offsets) if pattern_offsets else None
-        self.pattern_match = False
-        self.pattern_view_mode = None
-        # Purely cosmetic, launch-time-only choice: draw the axis as a straight line
-        # (default) or bent into a circle -- see geometry_draw.
-        # build_line_vertex_data's own `curved` doc-comment for why this
-        # never touches matching/navigation/wheel logic, only which (x,y)
-        # a position renders at.
-        self.line_axis_curved = bool(line_axis_curved)
-        # The curved-axis boundary marker's own radius for THIS frame --
-        # world_width/2 for a plain circle, or spiral_outer_radius's
-        # bigger value once a real wheel promotes the layout to a spiral
-        # (see build_line_vertex_data's own `boundary_radius` return) --
-        # None whenever line_axis_curved is False (nothing to draw).
-        # renderer.py's main loop reads this directly instead of
-        # hardcoding a fixed radius, so the marker always reaches exactly
-        # as far out as the outermost lap actually drawn this frame.
-        self.pattern_axis_boundary_radius = None
-        self.flash_pattern = 0.0
-        # Wheel-skip: which n (mod some small-prime-derived period) can
-        # EVER match, computed once up front from the pattern's own
-        # offsets -- see pattern_wheel_residues' own doc-comment. Only
-        # meaningful (modulus > 1) once a pattern is actually set;
-        # scrub_advance/tick fall back to their old plain +1/+step
-        # behavior whenever it isn't (modulus is None or 1).
-        if self.pattern_offsets:
-            self.pattern_wheel_modulus, self.pattern_wheel_residues = pattern_wheel_residues(self.pattern_offsets)
-            # Cached ONCE (range_primes is fixed for the life of line mode --
-            # there is no buffer-extension concept there, see
-            # should_extend_buffer's own range_mode bypass) so both the
-            # founding-coincidence patch just below and _pattern_seek's own
-            # repeated match checks don't rebuild this from a numpy array
-            # on every single candidate.
-            self._pattern_primes_set = set(int(v) for v in self.range_primes) if len(self.range_primes) else set()
-            # Any real occurrence of this pattern whose OWN anchor value
-            # coincides with one of the wheel's own small primes is a
-            # "founding coincidence" (pattern_wheel_residues' own
-            # doc-comment) -- pure residue arithmetic excludes it
-            # (n mod p == 0 looks like "forced composite", even though n
-            # itself is prime, not composite), making it UNREACHABLE by
-            # scrubbing/seeking otherwise -- both the launch anchor itself (seed 3
-            # for a {0,2} pattern) and a match inside the range (n=11 for a k=5
-            # pattern, which --pattern-stop-on-match's search would never consider
-            # a candidate). Patch
-            # BOTH kinds back into the residue set -- the launch anchor
-            # itself AND any of DEFAULT_WHEEL_PRIMES -- but ONLY once each
-            # is VERIFIED as a real match against `_pattern_primes_set`,
-            # never trusted unconditionally: renderer.py's own seed-vs-
-            # window placement (see its "Pattern seed's own occurrence is
-            # outside the loaded window" branch) can hand this class a
-            # launch anchor that's just the phase-correct first candidate
-            # in an archive-scale window nowhere near the small seed, NOT
-            # a guaranteed real occurrence -- forcing an unverified
-            # residue in would pollute the wheel with a mostly-composite
-            # class for the WHOLE window, not just at the anchor. Doesn't
-            # touch the "can never repeat at all" signal (residues == [])
-            # -- an entirely dead pattern still correctly has nowhere else
-            # to go either way.
-            if self.pattern_wheel_modulus > 1 and self.pattern_wheel_residues:
-                extra_residues = set()
-                for candidate in (self.n, *DEFAULT_WHEEL_PRIMES):
-                    if candidate in self._pattern_primes_set and pattern_positions_and_match(
-                        candidate, self.pattern_offsets, self._pattern_primes_set
-                    )[2]:
-                        extra_residues.add(candidate % self.pattern_wheel_modulus)
-                missing = extra_residues - set(self.pattern_wheel_residues)
-                if missing:
-                    self.pattern_wheel_residues = sorted(self.pattern_wheel_residues + list(missing))
-        else:
-            self.pattern_wheel_modulus, self.pattern_wheel_residues = None, None
-            self._pattern_primes_set = None
-
-        # Manual/Auto radio + "MATCH!" checkbox (see _pattern_uses_seek for the
-        # combined semantics): "manual" always takes a single wheel step, showing
-        # every candidate whether it's a match or not; "auto" always SEEKS -- for a
-        # MATCH! when checked, or for a non-match when unchecked.
-        self.pattern_step_mode = pattern_step_mode
-        self.pattern_stop_on_match = pattern_stop_on_match
-
-        # Resonance log.
-        self.resonance_log_state = {"lines": [], "last_n": None, "last_range_mode": None}
-
-        # Persistent HUD snapshot.
+        # Persistent HUD snapshot (written by the active mode's rebuild()).
         self.hud_n = n
         self.hud_count = 0
         self.hud_rebuild_ms = 0.0
@@ -276,7 +139,7 @@ class RenderSession:
         self.portal_folder = portal_folder
         self.extend_exhausted = False
 
-        # Bidirectional sliding window over a --load-range: lets line/range mode
+        # Bidirectional sliding window over a --load-range: lets range mode
         # traverse the FULL logical [range_load_from, range_load_to) span a chunk at
         # a time instead of only the first `max_load_count` primes. `chunk_size` is
         # the caller's own field (configurable, never derived from `max_load_count`
@@ -310,12 +173,13 @@ class RenderSession:
         # returning to an edge reports again.
         self._forward_edge_reported = False
         self._back_edge_reported = False
-        # Background-thread seek: with a small chunk_size and a sparse pattern, the
-        # next MATCH! can be many chunk crossings away, each a blocking disk load once
-        # the crawl outruns the one-chunk-deep prefetch; running it on the GLFW main
-        # thread would freeze the window. See _start_pattern_seek (single in-flight
-        # seek, no cancellation, _seek_epoch guards a late finisher against a reset()
-        # that already moved the session on). None = idle.
+        # Background-thread seek: with a small chunk_size and a sparse target (line
+        # mode's next MATCH!), the next landing spot can be many chunk crossings
+        # away, each a blocking disk load once the crawl outruns the one-chunk-deep
+        # prefetch; running it on the GLFW main thread would freeze the window. See
+        # start_background_seek (single in-flight seek, no cancellation, _seek_epoch
+        # guards a late finisher against a reset() that already moved the session
+        # on). None = idle.
         self._seek_thread = None
         self._seek_epoch = 0
         # Search-stride override for the CURRENT background seek (see
@@ -323,16 +187,33 @@ class RenderSession:
         # seek, meaning every neighbor load uses the user's chunk_size.
         self._seek_stride = None
         self._seek_used_stride = False
+
+        # The active viz-mode (see mode_registry.py and shared/mode.py). Each mode
+        # reads its own keys from this launch-time config; it is kept so reset()
+        # can construct the mode it returns to.
+        self._mode_config = {
+            "track_primes": track_primes, "auto_orbit": auto_orbit, "enabled_ids": enabled_ids,
+            "theta": theta, "law_mode": law_mode,
+            "pattern_offsets": pattern_offsets, "pattern_step_mode": pattern_step_mode,
+            "pattern_stop_on_match": pattern_stop_on_match, "line_axis_curved": line_axis_curved,
+        }
+        self.mode = MODES[viz_mode](self, self._mode_config)
+
         if self.sliding_enabled:
             # Construction itself blocks on both neighbors (there is
             # nothing on screen yet to hide this behind -- same cost as
-            # today's plain initial load), via the SAME wait helpers a
+            # a plain initial load), via the SAME wait helpers a
             # later swap uses when it genuinely races ahead of its own
             # background prefetch (see _wait_for_back_chunk/
             # _wait_for_forward_chunk).
             self._wait_for_back_chunk()
             self._wait_for_forward_chunk()
-            self._rebuild_pattern_primes_set()
+            self.mode.on_chunks_changed()
+
+    @property
+    def viz_mode(self):
+        """Name of the active viz-mode (see mode_registry.MODES)."""
+        return self.mode.name
 
     # ------------------------------------------------------------------
     # Bidirectional sliding window -- triple-buffer (chunk_back/
@@ -354,20 +235,20 @@ class RenderSession:
         """The chunk size to use for the NEXT neighbor load -- normally
         the user's own configured `chunk_size` (the render budget), but
         temporarily overridden to `_SEEK_STRIDE_CHUNK_SIZE` while a
-        background pattern seek (`_start_pattern_seek`) is actively
+        background seek (`start_background_seek`) is actively
         crawling. A small chunk_size (e.g. 500) means a
         sparse pattern's seek needs proportionally more real chunk
         crossings to reach its next match; searching with a much bigger
         stride instead cuts that crossing count down, at the cost of
         chunk_current temporarily holding far more than the user's own
         render budget WHILE the search is still running (never rendered
-        mid-search -- see rebuild_line's own "Searching..." HUD line,
+        mid-search -- see LineMode.rebuild's own "Searching..." HUD line,
         which is all that's shown then). `_recenter_render_chunks` reloads
         back down to the real `chunk_size` around the match once one is
         actually found, so what finally gets RENDERED still respects it.
 
         Records the override into `_seek_used_stride` the moment it's
-        actually read (not just requested) -- `_start_pattern_seek`'s own
+        actually read (not just requested) -- `start_background_seek`'s own
         worker only pays for the recenter reload when this was genuinely
         used at least once, since a fast match found entirely within the
         already-loaded chunk_current never calls this at all."""
@@ -409,7 +290,7 @@ class RenderSession:
             self.chunk_forward = load_archive(
                 self.portal_folder, self.range_load_to, from_n=current_top, max_load_count=self.chunk_size,
             )
-        self._rebuild_pattern_primes_set()
+        self.mode.on_chunks_changed()
 
     def _ensure_forward_chunk(self):
         """Kicks off loading `chunk_forward` IN THE BACKGROUND (a daemon
@@ -525,7 +406,7 @@ class RenderSession:
         later returning to an edge reports again. Also sets `n_force_rebuild`
         the first time this fires: N staying unchanged at an edge means the main
         loop's `session.n != last_n` rebuild gate (renderer.py) never fires, and
-        rebuild_line is the only place that refreshes `hud_lines` (its edge_lines),
+        the mode's rebuild is the only place that refreshes `hud_lines` (line mode's edge_lines),
         so without it the HUD would not show the edge message."""
         if not self.sliding_enabled:
             return False
@@ -542,7 +423,7 @@ class RenderSession:
         self.chunk_current = self.chunk_forward
         self.chunk_forward = None
         self._ensure_forward_chunk()
-        self._rebuild_pattern_primes_set()
+        self.mode.on_chunks_changed()
         self._forward_edge_reported = False
         self._back_edge_reported = False
         return True
@@ -566,28 +447,79 @@ class RenderSession:
         self.chunk_current = self.chunk_back
         self.chunk_back = None
         self._ensure_back_chunk()
-        self._rebuild_pattern_primes_set()
+        self.mode.on_chunks_changed()
         self._forward_edge_reported = False
         self._back_edge_reported = False
         return True
 
-    def _rebuild_pattern_primes_set(self):
-        """Rebuilds `_pattern_primes_set` as the UNION of every currently-
-        loaded chunk (back + current + forward), not `chunk_current` alone
-        -- a k-tuple's own offsets can straddle a chunk seam, and all three
-        chunks are already resident in memory so this costs nothing extra.
-        `_pattern_window_bounds()` (where the cursor itself is allowed to
-        sit) deliberately stays scoped to `chunk_current` only -- these are
-        genuinely two different ranges, see the sliding-window plan's own
-        "Pattern-match correctness at chunk seams" section. No-op when no
-        pattern is active (ring mode, or line mode with no pattern set)."""
-        if self.pattern_offsets is None:
+    def start_background_seek(self, search, is_tick, not_found_message):
+        """Runs `search()` -- a callable returning (final_n, found) -- on a
+        background thread instead of blocking the GLFW main thread, then commits
+        `final_n` when found. Used by modes whose seek can cross many sliding-window
+        chunks (each a disk load), i.e. line mode's pattern seek.
+
+        No-ops if a seek is already in flight (`self._seek_thread is not None`):
+        navigation input while one runs is ignored rather than starting a second
+        one, since chunk_back/chunk_current/chunk_forward and their background-load
+        threads assume a SINGLE owner (no locking), and two seeks racing through
+        _slide_forward/_slide_backward could corrupt that state. Consequently,
+        reversing direction mid-search does nothing until the search resolves;
+        `search` must always terminate, and true cancellation would need a
+        cooperative abort check inside it.
+
+        `is_tick` selects a playback tick's extra not-found behavior (stop playback +
+        print `not_found_message`; the tick returns immediately, so the main loop
+        cannot react to a return value) versus a navigation key's silent
+        no-op-on-miss.
+
+        `self._seek_epoch` is captured at kickoff and re-checked right
+        before the worker commits anything: reset() bumps this counter, so
+        a seek that finishes AFTER a reset() happened silently discards
+        its now-stale result instead of clobbering the fresh session state
+        reset() already moved on to."""
+        if self._seek_thread is not None:
             return
-        self._pattern_primes_set = set(int(v) for v in self.chunk_current) if len(self.chunk_current) else set()
-        if self.chunk_back is not None and len(self.chunk_back):
-            self._pattern_primes_set.update(int(v) for v in self.chunk_back)
-        if self.chunk_forward is not None and len(self.chunk_forward):
-            self._pattern_primes_set.update(int(v) for v in self.chunk_forward)
+        epoch = self._seek_epoch
+        self.n_force_rebuild = True  # shows the mode's "Searching..." HUD line this frame
+
+        def _worker():
+            # try/except/finally around the WHOLE body: an exception anywhere in
+            # the search's crawl (a disk load, load_archive/load_archive_before,
+            # _slide_forward/_slide_backward, ...) must still free `_seek_thread`,
+            # otherwise the "a seek is already running" guard above would make
+            # every later navigation a silent no-op in both directions. The
+            # traceback print makes such a failure diagnosable.
+            self._seek_stride = max(self.chunk_size, _SEEK_STRIDE_CHUNK_SIZE)
+            self._seek_used_stride = False
+            try:
+                new_n, found = search()
+                if self._seek_epoch == epoch:
+                    if found:
+                        if self._seek_used_stride:
+                            # The search grew chunk_current/back/forward
+                            # past the user's own chunk_size along the way
+                            # (see _effective_chunk_size's own doc-comment)
+                            # -- shrink back down to it now that a real
+                            # match is actually being committed, so what
+                            # gets RENDERED still respects that budget.
+                            self._recenter_render_chunks(new_n)
+                        self.n = new_n
+                        self.n_advancing = True
+                    elif is_tick:
+                        self.playback_running = False
+                        print(not_found_message)
+                    self.n_force_rebuild = True
+            except Exception:
+                import traceback
+                print("Pattern search failed with an unexpected error (navigation is still usable -- "
+                      "see the traceback below):")
+                traceback.print_exc()
+            finally:
+                self._seek_stride = None
+                self._seek_thread = None
+
+        self._seek_thread = threading.Thread(target=_worker, daemon=True)
+        self._seek_thread.start()
 
     # ------------------------------------------------------------------
     # Camera -- the caller reads `viewport`/`cursor` from glfw itself (see
@@ -660,259 +592,20 @@ class RenderSession:
         self.tempo_ms = clamp_tempo_ms(round(self.tempo_ms / 0.8))
         return f"Tempo: {self.tempo_ms}ms/tick (slower)"
 
-    def _pattern_window_bounds(self):
-        """(lo, hi) the current line-mode pattern's anchor must stay
-        inside -- lo is the loaded range's own lower edge, hi is reduced
-        by the pattern's diameter so its last member never scrubs past
-        the loaded window's upper edge (see clamp_pattern_anchor's own
-        doc-comment). None when no pattern is active (ring mode, or line
-        mode with no pattern set)."""
-        if self.viz_mode == "line" and self.pattern_offsets and len(self.range_primes):
-            return int(self.range_primes[0]), int(self.range_primes[-1]) - self.pattern_offsets[-1]
-        return None
-
-    def _clamp_pattern_n(self, n):
-        """A no-op for every mode/state other than an active line-mode
-        pattern, so this is safe to call unconditionally from every
-        N-changing method below without altering their existing, tested
-        behavior. Used only where a plain step (bump_n, or scrub/tick's
-        own fallback when the wheel offers no filtering -- see
-        _pattern_wheel_step below) needs the window clamp on its own;
-        scrub_advance/tick's main path uses the wheel jump instead, which
-        already respects this same window."""
-        bounds = self._pattern_window_bounds()
-        if bounds is None:
-            return n
-        lo, hi = bounds
-        return max(lo, min(n, hi))
-
-    def _pattern_wheel_step(self, n, is_right):
-        """One wheel-aware jump (see ring_geometry.next_wheel_n) toward
-        the next position that can EVER match this pattern, skipping
-        every n forced composite by small-prime divisibility alone.
-
-        When sliding is enabled (see __init__'s own doc-comment on
-        `sliding_enabled`) and `next_wheel_n` reports nothing further
-        within `chunk_current`'s own edge, this SLIDES the triple-buffer
-        window one (or, for a pathologically sparse chunk, more than one --
-        see the `while True` below) chunk further in `is_right`'s
-        direction and keeps searching. After a slide, the search resumes from just
-        past the new chunk's own edge (`lo - 1`/`hi + 1`) -- next_wheel_n's
-        own residue arithmetic is ABSOLUTE (see its own doc-comment), so
-        this correctly finds the first real wheel-compatible candidate in
-        the new window regardless of how far the slide moved.
-
-        Returns `n` UNCHANGED -- the ORIGINAL `n` passed in, not some
-        intermediate post-slide position -- when there is no further such
-        position anywhere: sliding is off, every slide attempt failed
-        (the TRUE `range_load_from`/`range_load_to` edge was reached), or
-        (self.pattern_wheel_residues == []) the pattern's own wheel proves
-        it can never repeat at all. This preserves the "n unchanged == stuck"
-        contract _pattern_seek/tick/bump_n/scrub_advance rely on.
-
-        Clears both edge-reported flags (and their HUD line, see rebuild_line's
-        edge_lines) on ANY move, not just a chunk-crossing one: a step away from an
-        edge that stays inside the loaded chunk_current is still a move away from it,
-        and the edge message must not stay on screen."""
-        bounds = self._pattern_window_bounds()
-        if bounds is None:
-            return n
-        lo, hi = bounds
-        current = n
-        while True:
-            nxt = next_wheel_n(current, is_right, self.pattern_wheel_modulus, self.pattern_wheel_residues, lo, hi)
-            if nxt != current:
-                if self._forward_edge_reported or self._back_edge_reported:
-                    self._forward_edge_reported = False
-                    self._back_edge_reported = False
-                    self.n_force_rebuild = True
-                return nxt
-            if not self.sliding_enabled:
-                return n
-            slid = self._slide_forward() if is_right else self._slide_backward()
-            if not slid:
-                return n
-            bounds = self._pattern_window_bounds()
-            if bounds is None:
-                return n
-            lo, hi = bounds
-            current = (lo - 1) if is_right else (hi + 1)
-
-    def _has_pattern_wheel(self):
-        """Whether scrub_advance/tick should use the wheel-jump path at
-        all -- False falls back to their old plain +1/+step behavior,
-        which is the correct thing to do both outside line mode/pattern
-        and in the rare case the wheel found nothing to filter at all
-        (modulus == 1 -- see pattern_wheel_residues' own doc-comment)."""
-        return (
-            self.viz_mode == "line" and self.pattern_offsets
-            and self.pattern_wheel_modulus is not None and self.pattern_wheel_modulus > 1
-        )
-
-    def _pattern_uses_seek(self):
-        """Whether an advance action should keep taking wheel steps (see
-        _pattern_seek) instead of a single wheel step. The Manual/Auto radio
-        (`pattern_step_mode`) is the master switch: "manual" ALWAYS takes a single
-        step, showing every wheel candidate in turn whether it's a match or not;
-        only "auto" seeks. Used identically by scrub_advance, bump_n, and tick, so
-        arrows/Up-Down/Space all agree on which regime is active."""
-        return self.pattern_step_mode == "auto"
-
-    def _pattern_seek(self, n, is_right):
-        """Repeats _pattern_wheel_step in one direction until landing on a
-        wheel candidate of the kind `self.pattern_stop_on_match` asks
-        for -- a genuine MATCH! when the checkbox is checked, or a
-        non-match (a real wheel candidate that ISN'T a real occurrence)
-        when it's unchecked (both checked via the cached
-        `_pattern_primes_set`) -- or there's nowhere further to go
-        (window edge, or the wheel proved this pattern can never repeat
-        at all). "Auto" mode always seeks one of these two kinds; it
-        never takes a bare, unfiltered wheel step -- see
-        _pattern_uses_seek's own doc-comment for why "manual" is the only
-        mode that does. Returns (final_n, found) -- `found` is False only
-        when the search reaches the genuine window edge (or the wheel
-        proved this pattern can never repeat at all) without ever landing
-        on the desired kind, same "stuck" signal _pattern_wheel_step's own
-        n-unchanged convention gives its callers.
-
-        No step cap: at archive scale (a k=5+ pattern, a sparse loaded range) the
-        next MATCH! can be any number of wheel steps away, and stopping early would
-        land on an arbitrary non-match candidate. The loop still terminates: `self.n`
-        is bounded by the loaded window (`_pattern_window_bounds`), and next_wheel_n
-        returns `n` unchanged once there is nowhere further in `is_right`'s
-        direction, which `_pattern_wheel_step` propagates as `nxt == current` below
-        -- at most one iteration per wheel-compatible position in the window."""
-        current = n
-        want_match = self.pattern_stop_on_match
-        while True:
-            nxt = self._pattern_wheel_step(current, is_right)
-            if nxt == current:
-                return current, False
-            current = nxt
-            is_match = pattern_positions_and_match(current, self.pattern_offsets, self._pattern_primes_set)[2]
-            if is_match == want_match:
-                return current, True
-
-    def _start_pattern_seek(self, is_right, is_tick):
-        """Runs _pattern_seek(self.n, is_right) on a background thread
-        instead of blocking the GLFW main thread: with sliding enabled,
-        _pattern_seek has no step cap and a small `chunk_size` against a sparse
-        pattern can need many chunk crossings, each a disk load, to reach the next
-        MATCH!. Only called from tick()/bump_n()/scrub_advance() when
-        `self.sliding_enabled` -- without sliding, _pattern_wheel_step cannot loop
-        (`if not self.sliding_enabled: return n` fires on the first failed
-        candidate), so non-sliding call sites call _pattern_seek synchronously.
-
-        No-ops if a seek is already in flight (`self._seek_thread is not None`):
-        navigation input while one runs is ignored rather than starting a second
-        one, since chunk_back/chunk_current/chunk_forward and their background-load
-        threads assume a SINGLE owner (no locking), and two seeks racing through
-        _slide_forward/_slide_backward could corrupt that state. Consequently,
-        reversing direction mid-search does nothing until the search resolves;
-        _pattern_seek always terminates, and true cancellation would need a
-        cooperative abort check inside _pattern_wheel_step's loop.
-
-        `is_tick` selects tick()'s extra not-found behavior (stop playback + print;
-        tick() returns immediately, so the main loop cannot react to a return value)
-        versus bump_n/scrub_advance's silent no-op-on-miss. Both commit only when
-        found (self.n = new_n) -- see tick/bump_n/scrub_advance.
-
-        `self._seek_epoch` is captured at kickoff and re-checked right
-        before the worker commits anything: reset() bumps this counter, so
-        a seek that finishes AFTER a reset() happened silently discards
-        its now-stale result instead of clobbering the fresh session state
-        reset() already moved on to."""
-        if self._seek_thread is not None:
-            return
-        start_n = self.n
-        epoch = self._seek_epoch
-        self.n_force_rebuild = True  # shows the "Searching..." HUD line this frame
-
-        def _worker():
-            # try/except/finally around the WHOLE body: an exception anywhere in
-            # _pattern_seek's crawl (a disk load, load_archive/load_archive_before,
-            # _slide_forward/_slide_backward, ...) must still free `_seek_thread`,
-            # otherwise _start_pattern_seek's "a seek is already running" guard would
-            # make every later tick/bump_n/scrub_advance a silent no-op in both
-            # directions. The traceback print makes such a failure diagnosable.
-            self._seek_stride = max(self.chunk_size, _SEEK_STRIDE_CHUNK_SIZE)
-            self._seek_used_stride = False
-            try:
-                new_n, found = self._pattern_seek(start_n, is_right)
-                if self._seek_epoch == epoch:
-                    if found:
-                        if self._seek_used_stride:
-                            # The search grew chunk_current/back/forward
-                            # past the user's own chunk_size along the way
-                            # (see _effective_chunk_size's own doc-comment)
-                            # -- shrink back down to it now that a real
-                            # match is actually being committed, so what
-                            # gets RENDERED still respects that budget.
-                            self._recenter_render_chunks(new_n)
-                        self.n = new_n
-                        self.n_advancing = True
-                    elif is_tick:
-                        self.playback_running = False
-                        print("Playback stopped: pattern search reached the loaded range's own edge")
-                    self.n_force_rebuild = True
-            except Exception:
-                import traceback
-                print("Pattern search failed with an unexpected error (navigation is still usable -- "
-                      "see the traceback below):")
-                traceback.print_exc()
-            finally:
-                self._seek_stride = None
-                self._seek_thread = None
-
-        self._seek_thread = threading.Thread(target=_worker, daemon=True)
-        self._seek_thread.start()
-
     def tick(self):
         """One playback tick, called once the main loop's own tempo_ms
-        elapsed-time gate fires. In line mode with a meaningful pattern
-        wheel, advances straight to the next wheel-compatible n (see
-        _pattern_wheel_step) instead of ticking by 1/range_step -- this is
-        the whole point of the wheel: skip every n the small-prime
-        divisibility check alone already rules out. Otherwise ports
-        tick_next_n. Returns True if
-        playback just stopped (N reached the ceiling, the pattern's last
-        member reached the loaded window's edge, or the wheel found no
-        further compatible position), False if `self.n` advanced (and
-        `self.n_advancing` was set for the caller's own N-change/rebuild
-        branch to see)."""
-        if self._has_pattern_wheel():
-            if self._pattern_uses_seek():
-                if self.sliding_enabled:
-                    # With sliding enabled, a seek that needs to cross
-                    # chunks runs in the BACKGROUND (see
-                    # _start_pattern_seek's own doc-comment) -- this kicks
-                    # it off (or no-ops if one is already running) and
-                    # returns False immediately; playback keeps "running"
-                    # while the search is in flight, and the worker itself
-                    # flips playback_running False once it resolves
-                    # without a further match, same end state as the old
-                    # synchronous stop, just reached a frame or more later.
-                    self._start_pattern_seek(True, is_tick=True)
-                    return False
-                new_n, found = self._pattern_seek(self.n, True)
-                # found=False here means the loaded-window edge was reached
-                # without landing on the desired kind (_pattern_seek has no early
-                # give-up), so stay HERE, at the last position that satisfied
-                # pattern_stop_on_match, not at `new_n` (the last, non-desired wheel
-                # candidate passed on the way to the edge).
-                if not found:
-                    new_n = self.n
-            else:
-                new_n = self._pattern_wheel_step(self.n, True)
-            if new_n == self.n:
-                self.playback_running = False
-                return True
-            self.n = new_n
-            self.n_advancing = True
-            return False
+        elapsed-time gate fires. The active mode may handle it itself (line
+        mode's wheel jump, see LineMode.tick); otherwise ports tick_next_n,
+        followed by the mode's clamp. Returns True if playback just stopped
+        (N reached the ceiling, or the mode reported a stop), False if
+        `self.n` advanced (and `self.n_advancing` was set for the caller's own
+        N-change/rebuild branch to see)."""
+        handled = self.mode.tick()
+        if handled is not None:
+            return handled
         new_n, should_stop = tick_next_n(self.n, self.range_mode, self.ceiling, self.range_step)
         if not should_stop:
-            clamped = self._clamp_pattern_n(new_n)
+            clamped = self.mode.clamp_n(new_n)
             if clamped == self.n:
                 should_stop = True
             else:
@@ -932,80 +625,33 @@ class RenderSession:
         """Ports the Up/Down/PageUp/PageDown branch: `self.n + delta`,
         floored at 0, UNCLAMPED at the ceiling (deliberately -- see
         clamp_scrub_n's own doc-comment for why only the scrub keys are
-        capped, not these).
-
-        In line mode with a meaningful pattern wheel, `delta`'s raw
-        magnitude (n_step, 1000 by default) is meaningless once most
-        integers can never match at all -- landing on an arbitrary +1000
-        offset looks like the wheel jump is "shifted" when it's really
-        just a different, wheel-UNAWARE code path. Up/Down/PageUp/
-        PageDown jump ONE wheel step instead, in `delta`'s own sign
-        direction, so every navigation key in this mode -- not just
-        scrub/playback -- only ever lands on a position the pattern could
-        actually match (same reasoning as scrub_advance's own wheel
-        branch)."""
-        if self._has_pattern_wheel():
-            if self._pattern_uses_seek():
-                if self.sliding_enabled:
-                    # See tick()'s own doc-comment on why a sliding seek
-                    # runs in the background -- same reasoning, same
-                    # no-op-if-already-running/found-gated commit here.
-                    self._start_pattern_seek(delta >= 0, is_tick=False)
-                    return
-                # Only commit the seek's own landing spot when it actually found
-                # the desired kind -- see tick()'s own comment on `found` for why
-                # (the genuine window edge, now the ONLY way this is False,
-                # should leave n on the last position that WAS the desired kind).
-                new_n, found = self._pattern_seek(self.n, delta >= 0)
-                if found:
-                    self.n = new_n
-            else:
-                self.n = self._pattern_wheel_step(self.n, delta >= 0)
+        capped, not these), then the mode's clamp. The active mode may handle
+        the step itself instead (see LineMode.bump_n)."""
+        if self.mode.bump_n(delta):
             return
         self.n = max(0, self.n + delta)
-        self.n = self._clamp_pattern_n(self.n)
+        self.n = self.mode.clamp_n(self.n)
 
     def scrub_advance(self, is_right, ctrl_held, is_first_press):
         """Ports the LEFT/RIGHT PRESS/REPEAT branch: on the FIRST press of
         a hold-sequence (`is_first_press=True`), pauses playback if it was
         running and remembers to resume it later.
 
-        In line mode with a meaningful pattern wheel, every press/repeat
-        jumps straight to the next wheel-compatible n in that direction
-        (Ctrl repeats the jump 10 times instead of 1, mirroring
-        arrow_scrub_delta's own x10 -- see _pattern_wheel_step), stopping
-        early without error if the window edge (or an empty wheel -- the
-        pattern can never repeat) is reached partway through. Otherwise,
-        moves `self.n` by arrow_scrub_delta's step, clamped to the ceiling
-        in sequential mode (clamp_scrub_n) so a long hold can never run N
-        so far past it that nothing can resume playback afterward."""
+        The active mode may handle the step itself (see LineMode.scrub).
+        Otherwise, moves `self.n` by arrow_scrub_delta's step, clamped to the
+        ceiling in sequential mode (clamp_scrub_n) so a long hold can never run
+        N so far past it that nothing can resume playback afterward, then the
+        mode's clamp."""
         if is_first_press:
             if self.scrub_held == 0 and self.playback_running:
                 self.scrub_was_running = True
                 self.playback_running = False
             self.scrub_held += 1
-        if self._has_pattern_wheel():
-            if self._pattern_uses_seek():
-                if self.sliding_enabled:
-                    # See tick()'s own doc-comment on why a sliding seek
-                    # runs in the background.
-                    self._start_pattern_seek(is_right, is_tick=False)
-                    return
-                # Same "only commit on an actual found match" guard as bump_n's
-                # own -- see tick()'s comment for why.
-                new_n, found = self._pattern_seek(self.n, is_right)
-                if found:
-                    self.n = new_n
-                return
-            for _ in range(10 if ctrl_held else 1):
-                new_n = self._pattern_wheel_step(self.n, is_right)
-                if new_n == self.n:
-                    break
-                self.n = new_n
+        if self.mode.scrub(is_right, ctrl_held):
             return
         delta = arrow_scrub_delta(is_right, ctrl_held)
         self.n = clamp_scrub_n(self.n + delta, self.range_mode, self.ceiling)
-        self.n = self._clamp_pattern_n(self.n)
+        self.n = self.mode.clamp_n(self.n)
 
     def scrub_release(self):
         """Ports the LEFT/RIGHT RELEASE branch: once every held scrub key
@@ -1028,39 +674,26 @@ class RenderSession:
         return None, False
 
     def reset(self):
-        """Ports the KEY_R branch exactly: stop playback, N=1, drop Track
-        P, re-enable auto-orbit, and fall back to sequential mode even if
-        --load-range was active at launch (mirrors the HTML's own
-        resetSequential()).
+        """Ports the KEY_R branch exactly: stop playback, N=1, and fall back to
+        sequential mode even if --load-range was active at launch (mirrors the
+        HTML's own resetSequential()). The view returns to the rings mode
+        (mode_registry.RESET_MODE) -- a fresh one if another mode was active --
+        whose own reset_state() drops Track P and re-enables auto-orbit.
 
-        Bumps `_seek_epoch` so a background pattern seek (see
-        _start_pattern_seek's own doc-comment) still in flight from
-        BEFORE this reset() call discards its result instead of
-        clobbering self.n/playback_running with a stale answer to a
-        question this reset already moved past -- the seek thread itself
-        isn't cancelled (still v1, see that same doc-comment), it just
-        becomes a no-op once it finishes."""
+        Bumps `_seek_epoch` so a background seek (see start_background_seek's
+        own doc-comment) still in flight from BEFORE this reset() call
+        discards its result instead of clobbering self.n/playback_running with
+        a stale answer to a question this reset already moved past -- the seek
+        thread itself isn't cancelled, it just becomes a no-op once it
+        finishes."""
         self.playback_running = False
-        self.track_primes.clear()
-        self.auto_orbit = True
         self.range_mode = False
-        self.orbit_index = 0
-        self.orbit_counter = 0
-        self.orbit_current_prime = None
         self.n = 1
         self.n_force_rebuild = True
-        self.viz_mode = "rings"
         self._seek_epoch += 1
-        self.pattern_offsets = None
-        self.pattern_match = False
-        self.pattern_view_mode = None
-        self.pattern_wheel_modulus = None
-        self.pattern_wheel_residues = None
-        self._pattern_primes_set = None
-        self.pattern_step_mode = "manual"
-        self.pattern_stop_on_match = False
-        self.line_axis_curved = False
-        self.pattern_axis_boundary_radius = None
+        if self.mode.name != RESET_MODE:
+            self.mode = MODES[RESET_MODE](self, self._mode_config)
+        self.mode.reset_state()
 
     # ------------------------------------------------------------------
     # Buffer extension.
@@ -1086,194 +719,14 @@ class RenderSession:
         return f"Buffer extend: loaded {len(new_primes):,} more primes ahead of N, ceiling now {self.ceiling:,}"
 
     # ------------------------------------------------------------------
-    # Flash overlays -- split into "what color right now" (pure) and "advance the
-    # decay" (mutates), so the caller can draw between the two.
-    # ------------------------------------------------------------------
-
-    def resonance_flash_color(self):
-        """Current resonance-flash overlay (r, g, b, a) in 0..1, or None if
-        fully decayed (nothing to draw this frame)."""
-        if self.flash_resonance <= 0.0:
-            return None
-        return flash_overlay_rgba(self.flash_resonance, _FLASH_RESONANCE_RGB)
-
-    def decay_resonance_flash(self):
-        self.flash_resonance = decay_flash(self.flash_resonance, 0.65)
-
-    def prime_flash_color(self):
-        """Current prime-birth-flash overlay (r, g, b, a) in 0..1, or None
-        if fully decayed (nothing to draw this frame)."""
-        if self.flash_prime <= 0.0:
-            return None
-        return flash_overlay_rgba(self.flash_prime, _FLASH_PRIME_RGB)
-
-    def decay_prime_flash(self):
-        self.flash_prime = decay_flash(self.flash_prime, 0.85)
-
-    def pattern_flash_color(self):
-        """Current pattern-full-match flash overlay (r, g, b, a) in 0..1,
-        or None if fully decayed. "line" viz-mode only -- flash_pattern
-        only ever gets set to 1.0 from rebuild_line."""
-        if self.flash_pattern <= 0.0:
-            return None
-        return flash_overlay_rgba(self.flash_pattern, _FLASH_PATTERN_RGB)
-
-    def decay_pattern_flash(self):
-        self.flash_pattern = decay_flash(self.flash_pattern, 0.65)
-
-    # ------------------------------------------------------------------
-    # Rebuild -- everything except the GL buffer uploads (ctx.buffer() x2), which
-    # the caller does with this method's return value.
+    # Rebuild -- delegated to the active mode; everything except the GL buffer
+    # uploads (ctx.buffer() x2), which the caller does with the return value.
     # ------------------------------------------------------------------
 
     def rebuild(self, n_value, prev_ring_count=None, advancing=False, audio=None):
-        """Recomputes every piece of N-change-triggered state (ring
-        geometry/colors, tracked/LCM HUD block, resonance log, tracked-
-        outline draws, flash triggers) for `n_value` -- everything except the
-        final GL buffer uploads. Prints the console lines (rebuild
-        timing, factors-of-N/tracked HUD lines, resonance log, surviving
-        primes) -- these are diagnostic/console-pane output, not test
-        assertions, so keeping them here (rather than returning yet more
-        strings) matches this module's "pure logic, incidental printing"
-        convention elsewhere (playback.py, hud.py).
-
-        `audio` -- forwarded to emit_audio_tick verbatim (that function's
-        own `audio is None` guard already makes this a no-op when no audio
-        engine is running, so no separate guard is needed here).
-
-        Returns (data_normal, data_hit, count, count_hit) -- split_hit_
-        normal_vertex_data's own output, ready for the caller's two
-        ctx.buffer() calls (see that function's own doc-comment)."""
-        t0 = time.perf_counter()
-        active = self.range_primes if self.range_mode else self.primes[self.primes <= n_value]
-
-        if self.auto_orbit and not self.enabled_ids and advancing:
-            new_index, new_counter, chosen = advance_auto_orbit(
-                active, self.orbit_index, self.orbit_counter
-            )
-            self.orbit_index = new_index
-            self.orbit_counter = new_counter
-            if chosen is not None:
-                self.orbit_current_prime = chosen
-
-        cyclic_anchor_overrides = {
-            family_id: cyclic_window_anchor_at(
-                self.cyclic_anchor_state, family_id, active, n_value, self.theta, self.law_mode
-            )
-            for family_id in ("legendre", "generalLaw")
-            if family_id in self.enabled_ids
-        }
-        window_anchors = window_anchor_primes(
-            active, n_value, self.enabled_ids, self.theta, self.law_mode, cyclic_anchor_overrides
-        )
-        effective_track_primes = resolve_effective_track_primes(
-            window_anchors, self.enabled_ids, self.auto_orbit, self.orbit_current_prime, self.track_primes
-        )
-
-        tracked_state = tracked_resonance_state(self.track_primes, active, n_value, auto_orbit=self.auto_orbit)
-        resonance_track_primes = (
-            tracked_state["tracked"]
-            if tracked_state and not tracked_state.get("too_large") and tracked_state.get("to_resonance") == 0
-            else ()
-        )
-
-        data, count, pos = build_vertex_data(
-            active, n_value, self.max_radius, self.enabled_ids, self.theta, self.law_mode, effective_track_primes,
-            resonance_track_primes
-        )
-        t1 = time.perf_counter()
-        print(f"N={n_value:,}  rings={count:,}  rebuild={1000 * (t1 - t0):.1f}ms")
-
-        emit_audio_tick(audio, active, pos['is_hit'], tracked_state, advancing)
-        current_hud_lines = hud_lines_for_n(active, n_value, pos, self.enabled_ids, self.theta, self.law_mode, tracked_state)
-        for line in current_hud_lines:
-            print(line)
-
-        update_resonance_log(self.resonance_log_state, active, n_value, self.range_mode, advancing)
-        resonance_count, resonance_text = format_log_panel_text(self.resonance_log_state["lines"])
-        print(f"Resonance log ({resonance_count}): {resonance_text}")
-        primes_count, primes_text = format_log_panel_text(list(active))
-        print(f"Surviving primes ({primes_count}): {primes_text}")
-
-        self.outline_draws = build_tracked_outline_draws(
-            active, n_value, self.enabled_ids, self.theta, self.law_mode, effective_track_primes, pos["radius"],
-            cyclic_anchor_overrides
-        )
-
-        if prev_ring_count is not None and count > prev_ring_count:
-            self.flash_prime = 1.0
-        if resonance_is_active(pos):
-            self.flash_resonance = 1.0
-
-        data_normal, data_hit, count_hit = split_hit_normal_vertex_data(data, pos["is_hit"])
-
-        self.hud_n = n_value
-        self.hud_count = count
-        self.hud_rebuild_ms = round(1000 * (t1 - t0), 1)
-        self.hud_lines = current_hud_lines
-
-        return data_normal, data_hit, count, count_hit
-
-    def rebuild_line(self, n_value, advancing=False):
-        """"line" viz-mode counterpart of rebuild(): the fixed dot-row for
-        `self.range_primes` plus the sliding pattern's own positions/match
-        state, via build_line_vertex_data. Deliberately independent of
-        rebuild()'s ring/resonance/window/HUD-factors machinery above --
-        line mode has none of that (no rings, no "factors of N", no
-        resonance log); its only per-frame state is the pattern match.
-
-        Returns (data_normal, data_hit, count, count_hit), the same shape
-        rebuild() returns, so the caller's own two ctx.buffer() uploads and
-        the main render loop's draw calls stay identical between modes."""
-        t0 = time.perf_counter()
-        data, count, hit_mask, all_match, view_mode, boundary_radius = build_line_vertex_data(
-            self.range_primes, n_value, self.pattern_offsets or (), primes_set=self._pattern_primes_set,
-            curved=self.line_axis_curved, wheel_modulus=self.pattern_wheel_modulus,
-        )
-        self.pattern_axis_boundary_radius = boundary_radius
-        t1 = time.perf_counter()
-        print(f"N={n_value:,}  line dots={count:,}  view={view_mode}  rebuild={1000 * (t1 - t0):.1f}ms")
-
-        self.pattern_match = all_match
-        self.pattern_view_mode = view_mode
-        if all_match:
-            self.flash_pattern = 1.0
-
-        data_normal, data_hit, count_hit = split_hit_normal_vertex_data(data, hit_mask)
-
-        self.hud_n = n_value
-        self.hud_count = count
-        self.hud_rebuild_ms = round(1000 * (t1 - t0), 1)
-        # Sliding-window "hard edge reached" indicator in the GL window itself
-        # (the console line alone is not visible while watching the window; see
-        # _slide_forward/_slide_backward), driven by the SAME dedup flags those
-        # methods set/clear, so it appears and disappears with the console message.
-        edge_lines = []
-        if self._seek_thread is not None:
-            # Background pattern seek in flight (see _start_pattern_seek's
-            # own doc-comment) -- N itself hasn't moved yet, so without
-            # this the GUI would look identical to before the key was
-            # pressed for however long the search takes; this line is the
-            # window's own confirmation "yes, it's working."
-            edge_lines.append("Searching for the next pattern match...")
-        if self._forward_edge_reported:
-            edge_lines.append(f"At range TO edge ({self.range_load_to:,}) -- cannot go further forward")
-        if self._back_edge_reported:
-            edge_lines.append(f"At range FROM edge ({self.range_load_from:,}) -- cannot go further backward")
-        self.hud_lines = (
-            [pattern_hud_line(
-                n_value, self.pattern_offsets, all_match,
-                wheel_modulus=self.pattern_wheel_modulus,
-                wheel_residue_count=len(self.pattern_wheel_residues) if self.pattern_wheel_residues else 0,
-                step_mode=self.pattern_step_mode, stop_on_match=self.pattern_stop_on_match,
-                view_mode=view_mode, line_axis_curved=self.line_axis_curved,
-            )] + edge_lines
-            if self.pattern_offsets else []
-        )
-        for line in self.hud_lines:
-            print(line)
-
-        return data_normal, data_hit, count, count_hit
+        """Recomputes the active mode's N-dependent state for `n_value` (see
+        VizMode.rebuild). Returns (data_normal, data_hit, count, count_hit)."""
+        return self.mode.rebuild(n_value, prev_ring_count=prev_ring_count, advancing=advancing, audio=audio)
 
     # ------------------------------------------------------------------
     # HUD refresh -- the HUD_STATE line plus the pure part of the HUD texture
@@ -1300,9 +753,7 @@ class RenderSession:
         canvas_lines = compose_hud_canvas_lines(
             self.hud_n, self.hud_count, self.hud_lines, self.playback_running, self.tempo_ms
         )
-        window_colors = window_label_colors(self.enabled_ids, self.hud_n, self.theta, self.law_mode)
-        shell_colors = nested_shell_colors(self.enabled_ids, self.hud_n, self.theta, self.law_mode)
-        line_colors = hud_line_colors(canvas_lines, window_colors, shell_colors)
+        line_colors = self.mode.hud_line_colors(canvas_lines)
         rgba = rasterize_hud_text(canvas_lines, font_size=hud_font_size, line_colors=line_colors)
         if rgba is None:
             return json_line, None, 0, 0

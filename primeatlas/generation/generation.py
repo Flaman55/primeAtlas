@@ -30,7 +30,7 @@ import threading
 import time
 
 from ..core.storage import LOW_FLOOR_CUTOFF, list_floors, list_source_filenames, _offset_from_filename
-from ..visualization.rings.ring_geometry import parse_big_int
+from ..visualization.shared.bigint import parse_big_int
 
 _SCRIPT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Three levels up from THIS file's own directory (primeatlas/generation/) --

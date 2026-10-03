@@ -36,7 +36,7 @@ from ...core.base_tab import BaseTab
 from ...generation.generation import LocalLoggedRunner, _eval_quick_number
 from ...generation.generation_console import GenerationConsole
 from ...core import storage
-from .ring.audio import INSTRUMENTS
+from ..shared.audio import INSTRUMENTS
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 RENDERER_SCRIPT = os.path.join(os.path.dirname(_THIS_DIR), "shared", "renderer.py")
@@ -162,7 +162,7 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
 
     `line_axis_curved` -- False (default) omits --line-axis-curved
     entirely (straight-line axis); True bends line mode's axis into a
-    circle instead -- purely visual, see RenderSession.line_axis_curved.
+    circle instead -- purely visual, see LineMode.line_axis_curved.
 
     `slide_load_range` -- False (default, omits --slide-load-range
     entirely) keeps a fixed-slice `load_range` (the first `max_load_count`
@@ -591,7 +591,7 @@ class RingsTab(BaseTab):
         # takes a single wheel
         # step per LEFT/RIGHT/Up/Down/Space, showing every candidate
         # whether it's a real match or not; Auto always seeks instead
-        # (RenderSession._pattern_seek) -- for the next real MATCH! when
+        # (LineMode._pattern_seek) -- for the next real MATCH! when
         # checked, or specifically the next NON-match when unchecked. See
         # renderer.py's own --pattern-step-mode/--pattern-stop-on-match
         # doc-comments.
@@ -616,7 +616,7 @@ class RingsTab(BaseTab):
         # bends line mode's straight dot-row into a circle instead, with a
         # red boundary line marking where the loaded window's own start
         # and end coincide on screen (they are NOT the same value, unlike
-        # a real periodic wraparound -- see geometry_draw.
+        # a real periodic wraparound -- see line_draw.
         # axis_boundary_marker_vertices' own doc-comment). Does not touch
         # navigation/matching/wheel logic at all -- see RenderSession.
         # line_axis_curved.

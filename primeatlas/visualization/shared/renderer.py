@@ -1,11 +1,15 @@
 """
-renderer.py -- GPU renderer for the Structural Sieve "drum" (rings + hit
-teeth, see primeatlas/visualization/rings/ring_geometry.py). Standalone runnable module (see
-this package's own __init__.py docstring for why it stays a separate
-process rather than being imported into the main Tkinter app): launched as
-a subprocess by primeatlas/visualization/rings/rings_tab.py.
+renderer.py -- GPU renderer host shared by every viz-mode (see
+primeatlas/visualization/mode_registry.py): the GLFW window, the main loop, camera,
+playback/navigation keys and the HUD texture. Everything mode-specific -- geometry,
+HUD lines, overlay draws, mode-specific navigation, its own CLI arguments -- lives in
+the active mode (RenderSession.mode, see shared/mode.py). Standalone runnable module
+(see this package's own __init__.py docstring for why it stays a separate process
+rather than being imported into the main Tkinter app): launched as a subprocess by a
+visualization sub-tab (primeatlas/visualization/rings/rings_tab.py).
 
-Structural Sieve's browser/Canvas 2D visualization (js/render/DrumRenderer.js in the
+The rings mode renders the Structural Sieve "drum" (rings + hit teeth, see
+primeatlas/visualization/rings/ring/ring_geometry.py). Structural Sieve's browser/Canvas 2D visualization (js/render/DrumRenderer.js in the
 RelationalMathematics repo) has a practical ring-count ceiling bounded by what one JS
 thread can redraw at interactive frame rates and what a browser tab can hold in memory
 (see StructuralSieveApp.js's hardware-calibrated auto-track-range). PrimeAtlas has (a) an
@@ -47,7 +51,8 @@ Architecture:
 
   - `primes` (ascending int64 numpy array) is loaded/generated ONCE at
     startup.
-  - ring_geometry.ring_positions() recomputes x/y/phase/is_hit ONLY when N
+  - The active mode's rebuild (for rings: ring_geometry.ring_positions())
+    recomputes x/y/phase/is_hit ONLY when N
     changes (Up/Down/PageUp/PageDown -- see #advance_n), never every frame:
     test_ring_geometry.py's own benchmark measured roughly 20M rings/second
     on plain CPU numpy for this recompute -- fine for "user pressed a key",
@@ -81,7 +86,7 @@ Usage -- run as a PLAIN SCRIPT PATH, not `python -m primeatlas.visualization.sha
     does a bare `import window_sharding`) before this file's own body -- and
     therefore before the sys.path fix a few lines below ever runs. Run as a
     plain script path instead and that fix executes top-to-bottom before the
-    `from primeatlas.visualization.rings.ring_geometry import ...` line below is reached, exactly
+    `from primeatlas.visualization.shared.bigint import ...` line below is reached, exactly
     like prime_atlas_v2.py's own top-level `sys.path.insert(0, ".../prime_sieve")`
     (see that file) already has to do for the very same reason. If a
     subprocess launcher (rings_tab.py) wants `-m` invocation instead, it must
@@ -119,16 +124,18 @@ Controls:
                       and negligible at high ones), clamped to [30, 2000],
                       printed to the console each press so the change is
                       confirmable even when it's visually subtle
-    R                 reset -- stops playback, N=1, clears Track P, re-enables
-                      auto-orbit, and drops back to sequential mode even if
-                      --load-range was active (mirrors the HTML's own Reset
-                      button, which always calls resetSequential())
+    R                 reset -- stops playback, N=1, returns to the rings mode,
+                      clears Track P, re-enables auto-orbit, and drops back to
+                      sequential mode even if --load-range was active (mirrors
+                      the HTML's own Reset button, which always calls
+                      resetSequential())
     Esc               quit
 
-HUD: current N, ring count, playback status, factors of N, tracked/LCM
-block, and any active window's range (Bertrand/Legendre/General Law) are
-drawn directly in this window's top-left corner (ports DrumRenderer's #drawHud
-text overlay; the same lines also go to the console pane, see hud_lines_for_n).
+HUD: current N, item count, playback status, and the active mode's own lines are
+drawn directly in this window's top-left corner (ports DrumRenderer's #drawHud text
+overlay; the same lines also go to the console pane). Rings: factors of N, the
+tracked/LCM block and any active window's range (Bertrand/Legendre/General Law), see
+ring_hud.hud_lines_for_n; line: the pattern status line, see line_hud.pattern_hud_line.
 Needs Pillow; without it there is no on-canvas text (everything else unaffected),
 see _PIL_AVAILABLE. Size it with --hud-font-size (pixels, default 35) -- see
 rasterize_hud_text's own docstring.
@@ -144,6 +151,7 @@ import os
 import queue
 import sys
 import time
+from types import SimpleNamespace
 
 # Allow `python primeatlas/visualization/shared/renderer.py` (not just `python -m
 # primeatlas.visualization.shared.renderer`) to work by ensuring the repo root is on
@@ -158,131 +166,36 @@ if _REPO_ROOT not in sys.path:
 # prime_sieve_v1.py/window_sharding.py live outside this package as separate
 # top-level modules) -- so `prime_sieve` must be on sys.path before ANY
 # `primeatlas.*` import below, not just inside load_archive() where the
-# actual prime_sieve_v1 usage lives: a bare `from primeatlas.visualization.rings.ring_geometry
-# import ...` fails without this, even though ring_geometry.py itself has
+# actual prime_sieve_v1 usage lives: a bare `from primeatlas.visualization.shared.bigint
+# import ...` fails without this, even though bigint.py itself has
 # no such dependency.
 _PRIME_SIEVE_DIR = os.path.join(_REPO_ROOT, "prime_sieve")
 if _PRIME_SIEVE_DIR not in sys.path:
     sys.path.insert(0, _PRIME_SIEVE_DIR)
 
-# ring_geometry's other functions (ring_positions, compute_highlight_
-# colors, compute_tracked_colors, tracked_ring_mask, legendre_level_at,
-# general_law_window_bounds, tracked_resonance_state, format_big,
-# resonance_log_lines, format_log_panel_text, window_anchor_primes,
-# cyclic_window_anchor_at, window_label_colors, to_prime_array) are used
-# through geometry_draw.py/hud.py/session.py instead of directly here --
-# only parse_big_int (--upto/--load-range/main()'s own CLI parsing) is
-# still used directly in this file.
-from primeatlas.visualization.rings.ring_geometry import (
-    parse_big_int, pattern_offsets_from_seed, next_prime_at_or_above,
-    resolve_pattern_anchor,
-)
-
-# The guarded Pillow import (and rasterize_hud_text, the only function that
-# actually touches Image/ImageDraw/ImageFont) lives in hud.py, since Pillow
-# is entirely a HUD-text-rendering concern. _PIL_AVAILABLE itself is not
-# referenced directly here either -- gl_setup.py's own setup_gl_resources()
-# owns the "allocate the on-canvas HUD texture program/buffers, or don't"
-# decision.
-
-
-# ---------------------------------------------------------------------------
-# Data sources -- see module docstring point 1 for why these are kept
-# interchangeable and independent of the rendering path below.
-# ---------------------------------------------------------------------------
-
-# load_synthetic/load_sieve/load_archive live in sources.py; they have no
-# GL-context dependency (unlike everything below this point in the file).
-# Imported here for _run_visualization/main() below.
+from primeatlas.visualization.shared.bigint import parse_big_int
 from primeatlas.visualization.shared.sources import load_synthetic, load_sieve, load_archive
-
-
-# ---------------------------------------------------------------------------
-# Rendering
-# ---------------------------------------------------------------------------
-
-# The GLSL source strings live in shaders.py, as pure data with no
-# GL-context dependency. Every ctx.program(...) call that uses them lives in
-# gl_setup.py's own setup_gl_resources() -- nothing in this file references
-# the raw shader strings directly.
-
-
-# build_vertex_data through initial_n_for_source live in geometry_draw.py;
-# none of them touch GL state. Most of this module's own call sites for
-# these (build_vertex_data, resolve_effective_track_primes,
-# build_tracked_outline_draws, decay_flash, flash_overlay_rgba,
-# resonance_is_active, zoom_to_point, fit_zoom_for_viewport,
-# split_hit_normal_vertex_data, tracked_outline_color, center_marker_
-# triangle_offsets, the _FLASH_*_RGB constants) live in session.rebuild/
-# session.on_scroll/session.recenter/session.resonance_flash_color/etc;
-# unit_circle_vertices lives in gl_setup.py's own setup_gl_resources() --
-# only the handful still called directly from _run_visualization/main() are
-# re-imported here; unitTests/test_ring_viz_renderer.py imports the rest
-# directly from geometry_draw.py.
-from primeatlas.visualization.rings.geometry_draw import (
-    load_prime_range_slice,
-    marker_device_scale,
-    build_center_marker_vertex_data,
-    build_flash_quad_vertex_data,
+from primeatlas.visualization.shared.range_data import load_prime_range_slice, initial_n_for_source
+from primeatlas.visualization.shared.draw_primitives import (
+    marker_device_scale, build_center_marker_vertex_data, build_flash_quad_vertex_data,
     _FIT_MARGIN,
-    initial_n_for_source,
 )
-
-
-# ---------------------------------------------------------------------------
-# Playback controls (Space to start/stop, ]/[ for tempo, R to reset) and
-# auto-orbit's cycling behavior. Ports StructuralSieveApp's #toggleRunning /
-# #stop / #tick / #setTempo / #advanceAutoOrbit / (the resetSequential()-
-# calling half of) #reset.
-# ---------------------------------------------------------------------------
-
-# All of the pure playback-timing functions (clamp_tempo_ms,
-# arrow_scrub_delta, can_start_playback, clamp_scrub_n, should_extend_
-# buffer, next_buffer_ceiling, tick_next_n, update_resonance_log,
-# advance_auto_orbit, and the _TEMPO_MS_MIN/MAX and _ARROW_SCRUB_STEP*
-# constants) live in playback.py and RenderSession's own methods; none of
-# them touch GL state. Only _TEMPO_MS_DEFAULT (main()'s --tempo-ms argparse
-# default) and _RANGE_STEP_ORBIT_TICKS (this file's own launch-time
-# range_step computation, run before RenderSession is constructed) are
-# still referenced directly here.
-from primeatlas.visualization.shared.playback import (
-    _TEMPO_MS_DEFAULT,
-    _RANGE_STEP_ORBIT_TICKS,
-)
-
-
-# hud_lines_for_n through emit_audio_tick live in hud.py; none of them touch
-# GL state (Pillow rasterization included -- see that module's own
-# docstring for why the guarded PIL import lives there too). Their call
-# sites live in RenderSession.rebuild/RenderSession.refresh_hud -- only
-# _HUD_FONT_SIZE_DEFAULT (main()'s --hud-font-size argparse default) and
-# hud_quad_vertex_data (still called directly by _apply_hud_refresh's own
-# GL upload) are still referenced here; unitTests/test_ring_viz_renderer.py
-# imports the rest directly from hud.py.
-from primeatlas.visualization.rings.hud import (
-    _HUD_FONT_SIZE_DEFAULT,
-    hud_quad_vertex_data,
-)
-
-
-# start_stdin_command_reader lives in stdin_commands.py (used by run()'s
-# --pipe-stdin-commands handling).
+from primeatlas.visualization.shared.playback import _TEMPO_MS_DEFAULT, _RANGE_STEP_ORBIT_TICKS
+from primeatlas.visualization.shared.hud_text import _HUD_FONT_SIZE_DEFAULT, hud_quad_vertex_data
 from primeatlas.visualization.shared.stdin_commands import start_stdin_command_reader
-
-# RenderSession consolidates _run_visualization's own dozen
-# closure-captured state dicts (camera, playback, orbit, flash, HUD, scrub,
-# buffer-extension, tracked/range fields) into one object with methods,
-# unit-tested in isolation in session.py.
 from primeatlas.visualization.shared.session import RenderSession
-
-# Window/context/shader-program/VAO/VBO creation lives in one GLResources
-# instance built by setup_gl_resources(), instead of a ~16-local-variable
-# block inline in _run_visualization.
 from primeatlas.visualization.shared.gl_setup import setup_gl_resources
+from primeatlas.visualization.shared.mode import LaunchAborted
+from primeatlas.visualization.mode_registry import MODES
+
+# Shaders (shaders.py), GL resources (gl_setup.py), pure geometry
+# (draw_primitives.py, the modes' own *_draw.py), HUD text (hud_text.py and the
+# modes' *_hud.py) and playback rules (playback.py) contain no GL calls outside
+# gl_setup.py; this file wires them into the GLFW callbacks and main loop.
 
 
 def run(args):
-    from primeatlas.visualization.rings.ring.audio import Instruments, LiveAudio
+    from primeatlas.visualization.shared.audio import Instruments, LiveAudio
     audio = None
     try:
         if getattr(args, 'audio', False):
@@ -365,32 +278,6 @@ def _run_visualization(args, audio=None):
     # explicit re-fit (F11 / middle-click)" provably the same computation.
     max_radius = min(args.width, args.height) * _FIT_MARGIN
 
-    # Window-highlight families enabled at launch time -- parsed once here
-    # (not per-frame): "" -> empty set (see build_vertex_data's own
-    # doc-comment). No live in-window toggle (would need on-screen UI this
-    # raw GL window doesn't have) -- set via rings_tab.py's launch-time
-    # checkboxes instead, same as N itself.
-    enabled_ids = {f.strip() for f in args.windows.split(",") if f.strip()} if args.windows else set()
-    theta = args.general_law_theta
-    law_mode = args.general_law_mode
-    # 'bertrand'/'legendre' are RIGID modes -- theta is ignored by every
-    # general_law_* function for these two (see general_law_window_bounds), so it is
-    # forced here to the value it represents, keeping any place that echoes `theta`
-    # consistent instead of relying on every call site not to trust it.
-    if law_mode == "bertrand":
-        theta = 1.0
-    elif law_mode == "legendre":
-        theta = 0.5
-
-    # Track P -- parsed once here (not per-frame), same launch-time-only
-    # convention as --windows above (no live in-window text field, see
-    # rings_tab.py's own Track P field docstring for why). `--auto-orbit` is
-    # accepted and stored for the playback loop to read; on its own it
-    # suppresses the tracked/LCM HUD block below (mirrors the JS's own
-    # #trackedResonanceState guard).
-    track_primes = [int(p.strip()) for p in args.track_primes.split(",") if p.strip()] if args.track_primes else []
-    auto_orbit = args.auto_orbit
-
     # Playback state -- ports #isRunning, #tempoMs,
     # #autoOrbitIndex/#autoOrbitCounter/#trackedPrimes (the auto-orbit
     # half). `ceiling` mirrors the JS's own PrimeDataSource ceiling check
@@ -467,18 +354,9 @@ def _run_visualization(args, audio=None):
             # _RANGE_STEP_ORBIT_TICKS).
             if range_count:
                 range_step = max(1, int(range_primes[-1]) // _RANGE_STEP_ORBIT_TICKS)
-            # Auto-populate Track P with EVERY ring in the loaded range --
-            # so the LCM/phase/to-resonance HUD reflects the whole set --
-            # but only up to tracked_resonance_state's own cap
-            # (max_tracked_for_exact_lcm's default, 500), same reasoning as
-            # the JS's #maxTrackedForExactLcm: past that the exact BigInt
-            # LCM of the whole set would be too slow to multiply even once.
-            # Overwrites whatever --track-primes was set at launch, exactly
-            # like the JS overwrites this.#trackedPrimes unconditionally on
-            # a successful range load.
+            # A range of at most 500 primes is tracked in full by the rings mode
+            # (see RingMode.prepare_launch).
             if 0 < range_count <= 500:
-                track_primes = [int(p) for p in range_primes]
-                auto_orbit = False
                 print(f"Range [{load_from:,}, {load_to:,}] loaded: {range_count:,} primes, all tracked")
             elif range_count and int(range_primes[-1]) < load_to:
                 print(f"Range [{load_from:,}, {load_to:,}] capped at --max-load-count="
@@ -489,56 +367,19 @@ def _run_visualization(args, audio=None):
         except ValueError as e:
             print(f"Load Range failed: {e}")
 
-    # --viz-mode line draws range_primes directly (see rebuild_line) and has
-    # no fallback "primes[primes <= n]" path the way ring mode does -- a
-    # --load-range that failed to actually populate range_primes (the
-    # "Load Range failed" message just above, or a --max-load-count of 0)
-    # would otherwise crash deep inside build_line_vertex_data instead of
-    # surfacing the real cause. main()'s own argparse validation can only
-    # check that --load-range was GIVEN, not that it actually loaded
-    # (load_prime_range_slice needs the real `primes` array to know that),
-    # so this is the earliest point that can catch it.
-    if args.viz_mode == "line" and not range_mode:
-        print("--viz-mode line requires --load-range to load successfully -- see the "
-              "'Load Range failed' message above. Exiting without opening a window.")
+    # Each registered mode turns its own CLI arguments into its RenderSession
+    # config (every mode's config is needed: reset() returns to the rings mode).
+    # A mode may move the opening N (line mode's pattern anchor) or refuse to
+    # open the window (LaunchAborted).
+    launch = SimpleNamespace(primes=primes, n=n, range_mode=range_mode, range_primes=range_primes)
+    mode_config = {}
+    try:
+        for mode_cls in MODES.values():
+            mode_config.update(mode_cls.prepare_launch(args, launch))
+    except LaunchAborted as e:
+        print(e)
         return
-
-    # k-tuple pattern-slide seed ("line" viz-mode only) -- derived from real
-    # consecutive primes >= --pattern-seed-start, see
-    # pattern_offsets_from_seed's own doc-comment for why this always yields
-    # an admissible pattern. main()'s own argparse validation already
-    # guarantees --pattern-seed-k/--pattern-seed-start only appear together
-    # and only with --viz-mode line + --load-range, so no further gating is
-    # needed here.
-    #
-    # --pattern-seed-start only picks the pattern's SHAPE (which of the
-    # catalog's v1..v4-style offset variants) -- a small seed like 7 or 11
-    # works exactly the same way whether --load-range is [1, 1000] or a
-    # real archive-scale [10**22, 10**23]. The pattern's OWN anchor
-    # (`n`) is a completely separate concern: if the seed's own resolved
-    # occurrence actually falls inside the loaded window, start there (an
-    # immediate, guaranteed real MATCH! -- see pattern_offsets_from_seed's
-    # own doc-comment for why). Otherwise (the archive-scale case: the
-    # window is nowhere near the small seed used only to pick the shape)
-    # DON'T just clamp to the window's raw lower edge -- that's an
-    # arbitrary value with no guarantee of even being wheel-compatible.
-    # Compute the phase (pattern_wheel_residues, same math session.py's
-    # own RenderSession uses) and jump straight to the first genuinely
-    # wheel-compatible candidate at or past the window's lower edge, so
-    # scrubbing from there on is correctly phase-aligned from frame one.
-    pattern_offsets = None
-    if args.pattern_seed_k is not None:
-        pattern_offsets = pattern_offsets_from_seed(args.pattern_seed_k, args.pattern_seed_start)
-        seed_prime = next_prime_at_or_above(args.pattern_seed_start)
-        print(f"Pattern seed: k={args.pattern_seed_k} start={args.pattern_seed_start:,} -> "
-              f"offsets={pattern_offsets} (first realized at n={seed_prime:,})")
-        if range_mode and len(range_primes):
-            lo = int(range_primes[0])
-            hi = int(range_primes[-1]) - pattern_offsets[-1]
-            n = resolve_pattern_anchor(seed_prime, pattern_offsets, lo, hi)
-            if n != seed_prime:
-                print(f"Pattern seed's own occurrence (n={seed_prime:,}) is outside the loaded "
-                      f"window -- starting instead at the first phase-compatible candidate: n={n:,}")
+    n = launch.n
 
     # Everything from here down operates on one RenderSession object (see
     # session.py); `session.n` is the current N, and every GLFW callback and the main
@@ -546,17 +387,14 @@ def _run_visualization(args, audio=None):
     session = RenderSession(
         primes=primes, n=n, ceiling=ceiling, range_mode=range_mode,
         range_primes=range_primes, range_step=range_step,
-        track_primes=track_primes, auto_orbit=auto_orbit,
-        enabled_ids=enabled_ids, theta=theta, law_mode=law_mode,
         max_radius=max_radius, tempo_ms=args.tempo_ms,
         buffer_margin=buffer_margin, can_extend_buffer=can_extend_buffer,
         portal_folder=args.portal_folder,
-        viz_mode=args.viz_mode, pattern_offsets=pattern_offsets,
-        pattern_step_mode=args.pattern_step_mode, pattern_stop_on_match=args.pattern_stop_on_match,
-        line_axis_curved=args.line_axis_curved,
+        viz_mode=args.viz_mode,
         range_load_from=load_from if range_mode else None,
         range_load_to=load_to if range_mode else None,
         chunk_size=args.slide_chunk_size, sliding_enabled=args.slide_load_range,
+        **mode_config,
     )
 
     def _apply_hud_refresh():
@@ -582,18 +420,13 @@ def _run_visualization(args, audio=None):
     def rebuild_buffer(n_value, prev_ring_count=None, advancing=False):
         """GL-side half of session.rebuild(): uploads its returned vertex
         data into two fresh VBOs (see split_hit_normal_vertex_data's own
-        doc-comment, in geometry_draw.py, for why there are two) and
-        refreshes the HUD. Geometry/color recompute, the tracked/LCM HUD
-        block, resonance log, tracked-outline draws, and flash triggers all
-        live in session.rebuild itself. "line" viz-mode calls session.
-        rebuild_line instead -- see that method's own doc-comment for why
-        it's a separate, independent code path from ring mode's rebuild."""
-        if session.viz_mode == "line":
-            data_normal, data_hit, count, count_hit = session.rebuild_line(n_value, advancing=advancing)
-        else:
-            data_normal, data_hit, count, count_hit = session.rebuild(
-                n_value, prev_ring_count=prev_ring_count, advancing=advancing, audio=audio
-            )
+        doc-comment, in draw_primitives.py, for why there are two) and
+        refreshes the HUD. Everything N-dependent (geometry/colors, HUD lines,
+        outline draws, flash triggers) is computed by the active mode's own
+        rebuild, see session.rebuild."""
+        data_normal, data_hit, count, count_hit = session.rebuild(
+            n_value, prev_ring_count=prev_ring_count, advancing=advancing, audio=audio
+        )
         normal_bytes = data_normal.tobytes()
         vbo_normal = gl.ctx.buffer(normal_bytes) if normal_bytes else gl.ctx.buffer(reserve=20)
         hit_bytes = data_hit.tobytes()
@@ -888,23 +721,24 @@ def _run_visualization(args, audio=None):
         # small (user-typed or capped, see tracked_resonance_state), so a
         # few extra draw calls per frame here is negligible next to the
         # single GL_POINTS call above carrying the real ring count.
-        if session.outline_draws:
+        outline_draws = session.mode.outline_draws()
+        if outline_draws:
             gl.prog_outline["u_pan"].value = (pan_x, pan_y)
             gl.prog_outline["u_zoom"].value = session.cam_zoom
             gl.prog_outline["u_viewport"].value = (width, height)
-            for radius, color in session.outline_draws:
+            for radius, color in outline_draws:
                 gl.prog_outline["u_radius"].value = radius
                 gl.prog_outline["u_color"].value = color
                 gl.unit_circle_vao.render(moderngl.LINE_LOOP)
 
-        # "line" viz-mode's curved-axis boundary marker -- a single red
+        # The mode's radial boundary marker (line mode's curved axis) -- a single red
         # LINE from the circle's own center out to its "12 o'clock" edge,
         # over the SAME prog_outline program/uniforms as the tracked-ring
-        # outlines just above (see axis_boundary_marker_vertices' own
+        # outlines just above (see line_draw.axis_boundary_marker_vertices' own
         # doc-comment for why this needs marking at all: the loaded
         # window's own start and end coincide on screen once bent into a
         # circle, but are NOT actually the same value the way a real
-        # periodic wraparound would be). `pattern_axis_boundary_radius` is
+        # periodic wraparound would be). session.mode.axis_boundary_radius() is
         # exactly the radius build_line_vertex_data itself used for this
         # frame's own layout -- world_width/2 for a plain circle, or the
         # spiral's own bigger outer-lap radius once a real wheel promotes
@@ -914,11 +748,12 @@ def _run_visualization(args, audio=None):
         # phase-zero point along the way (value_to_spiral_xy's own
         # doc-comment explains why one straight radial line does that for
         # every lap at once, with no separate per-lap marker needed).
-        if session.viz_mode == "line" and session.line_axis_curved and session.pattern_axis_boundary_radius:
+        boundary_radius = session.mode.axis_boundary_radius()
+        if boundary_radius:
             gl.prog_outline["u_pan"].value = (pan_x, pan_y)
             gl.prog_outline["u_zoom"].value = session.cam_zoom
             gl.prog_outline["u_viewport"].value = (width, height)
-            gl.prog_outline["u_radius"].value = session.pattern_axis_boundary_radius
+            gl.prog_outline["u_radius"].value = boundary_radius
             gl.prog_outline["u_color"].value = (1.0, 0.0, 0.0, 1.0)
             gl.axis_boundary_vao.render(moderngl.LINES)
 
@@ -934,31 +769,17 @@ def _run_visualization(args, audio=None):
         gl.marker_triangle_vao.render(moderngl.TRIANGLES)
         gl.marker_line_vao.render(moderngl.LINES)
 
-        # Birth/resonance flash overlays -- full-screen washes that decay
-        # over subsequent frames after a trigger (see session.rebuild's own
-        # comment for the trigger conditions). session.resonance_flash_
-        # color()/prime_flash_color() return None once fully decayed (the
-        # overwhelming majority of frames), so this skips the draw call
-        # entirely rather than drawing an alpha-0 quad every frame -- decay
-        # only advances AFTER the draw.
-        resonance_color = session.resonance_flash_color()
-        if resonance_color is not None:
-            quad = build_flash_quad_vertex_data(width, height, resonance_color)
+        # Flash overlays -- full-screen washes that decay over subsequent
+        # frames after a trigger (see the active mode's rebuild for the trigger
+        # conditions). session.mode.flash_overlays() lists only the overlays
+        # not yet fully decayed (none, the overwhelming majority of frames),
+        # so this skips the draw call entirely rather than drawing an alpha-0
+        # quad every frame -- each decay only advances AFTER its draw.
+        for flash_color, decay in session.mode.flash_overlays():
+            quad = build_flash_quad_vertex_data(width, height, flash_color)
             gl.flash_quad_vbo.write(quad.tobytes())
             gl.flash_quad_vao.render(moderngl.TRIANGLE_FAN)
-            session.decay_resonance_flash()
-        prime_color = session.prime_flash_color()
-        if prime_color is not None:
-            quad = build_flash_quad_vertex_data(width, height, prime_color)
-            gl.flash_quad_vbo.write(quad.tobytes())
-            gl.flash_quad_vao.render(moderngl.TRIANGLE_FAN)
-            session.decay_prime_flash()
-        pattern_color = session.pattern_flash_color()
-        if pattern_color is not None:
-            quad = build_flash_quad_vertex_data(width, height, pattern_color)
-            gl.flash_quad_vbo.write(quad.tobytes())
-            gl.flash_quad_vao.render(moderngl.TRIANGLE_FAN)
-            session.decay_pattern_flash()
+            decay()
 
         # On-canvas HUD text quad -- drawn LAST (after
         # rings/outlines/marker/flash, right before the swap) so it always
@@ -988,7 +809,7 @@ def _run_visualization(args, audio=None):
 
 
 def main():
-    from primeatlas.visualization.rings.ring.audio import INSTRUMENTS
+    from primeatlas.visualization.shared.audio import INSTRUMENTS
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--audio', action='store_true', help='enable optional live sound (requires sounddevice)')
     parser.add_argument('--sound-low', choices=INSTRUMENTS, default='sine')
@@ -1026,26 +847,6 @@ def main():
     parser.add_argument("--hud-font-size", type=int, default=_HUD_FONT_SIZE_DEFAULT,
                          help="pixel size of the on-canvas HUD text, default 35")
     parser.add_argument("--n-step", type=int, default=1000)
-    # Window-highlight-color parity with the browser version's
-    # Bertrand/Legendre/General Law toggles -- comma list of family ids
-    # among the three ring_geometry.WINDOW_FAMILY_COLORS keys.
-    parser.add_argument("--windows", type=str, default="",
-                         help="comma-separated window families to highlight: bertrand,legendre,generalLaw")
-    parser.add_argument("--general-law-theta", type=float, default=0.5)
-    # 'bertrand'/'legendre' are RIGID modes reproducing those families' windows
-    # EXACTLY (theta ignored, forced to 1.0/0.5 above for any place that might echo
-    # it) instead of approximating them via theta. Default 'sliding': its n^theta
-    # formula matches literature prime-gap bounds (Baker-Harman-Pintz theta=0.525,
-    # Runbo Li's 2023 refinement theta=0.52).
-    parser.add_argument("--general-law-mode", choices=["stepped", "sliding", "bertrand", "legendre"], default="sliding")
-    # Track P -- comma-separated prime values (same convention as
-    # --windows), and --auto-orbit as the JS's #autoOrbit mode (auto-cycle
-    # active primes when nothing is explicitly tracked). See rings_tab.py's
-    # Track P field docstring for the launch-time-only rationale.
-    parser.add_argument("--track-primes", type=str, default="",
-                         help="comma-separated prime values to track, e.g. 2,3,5")
-    parser.add_argument("--auto-orbit", action="store_true",
-                         help="auto-cycle through active primes instead of a fixed Track P list")
     # Load Range -- comma-separated FROM,TO (two non-negative integers,
     # FROM <= TO checked here; the "does TO actually fit under what got
     # loaded" check needs the real loaded `primes` array, so that half
@@ -1093,6 +894,12 @@ def main():
     parser.add_argument("--tempo-ms", type=int, default=_TEMPO_MS_DEFAULT,
                          help="playback speed in ms/tick, clamped to [30,2000] "
                               "(Space starts/stops playback, ]/[ adjust it live)")
+    # Which viz-mode runs in this window -- see mode_registry.MODES. Each mode adds
+    # its own arguments below (VizMode.add_arguments).
+    parser.add_argument("--viz-mode", choices=list(MODES), default="rings",
+                         help="rings (default): one ring per active small prime, phase = n%%p. "
+                              "line: a fixed row of real primes from --load-range, with an optional "
+                              "--pattern-seed-k/--pattern-seed-start k-tuple pattern slid along it by N")
     # Opt-in live pause/resume protocol -- OFF by default, so running this
     # file directly from a terminal keeps the plain behavior: closing the
     # window (Esc / titlebar X) exits. Only rings_tab.py passes
@@ -1100,79 +907,20 @@ def main():
     # LocalLoggedRunner.send_line()) and can actually act on the PAUSED/
     # RESUMED lines this prints -- see start_stdin_command_reader's own
     # doc-comment for the full protocol.
-    # "line" viz-mode: a fixed horizontal row of real primes (--load-range)
-    # with an optional k-tuple pattern slid along it by N, instead of the
-    # default ring/gear-per-modulus display -- see ring_geometry.py's own
-    # "line viz-mode" section and RenderSession.rebuild_line. Requires
-    # --load-range (validated below); --pattern-seed-k/--pattern-seed-start
-    # are optional within it (no pattern -> just the dot row + a lone N
-    # marker, see build_line_vertex_data's own empty-offsets case).
-    parser.add_argument("--viz-mode", choices=["rings", "line"], default="rings",
-                         help="rings (default): one ring per active small prime, phase = n%%p. "
-                              "line: a fixed row of real primes from --load-range, with an optional "
-                              "--pattern-seed-k/--pattern-seed-start k-tuple pattern slid along it by N")
-    parser.add_argument("--pattern-seed-k", type=int, default=None,
-                         help="line mode only: take this many real consecutive primes >= "
-                              "--pattern-seed-start as the sliding k-tuple pattern's offsets")
-    parser.add_argument("--pattern-seed-start", type=parse_big_int, default=None,
-                         help="line mode only: starting prime (must be > 2) for --pattern-seed-k")
-    # Manual/Auto step-mode radio + "MATCH!" checkbox: "manual" (default) always
-    # takes a single wheel step per
-    # LEFT/RIGHT/Up/Down/Space, showing every wheel candidate in turn
-    # whether it's a real match or not; "auto" always SEEKS instead --
-    # for the next real MATCH! when the checkbox is given, or specifically
-    # for the next NON-match wheel candidate when it isn't. See
-    # RenderSession._pattern_uses_seek's own doc-comment for the exact rule.
-    parser.add_argument("--pattern-step-mode", choices=["manual", "auto"], default="manual",
-                         help="line mode pattern only: 'manual' (default) always takes a single wheel "
-                              "step per navigation key; 'auto' always seeks instead (see "
-                              "--pattern-stop-on-match for which kind)")
-    parser.add_argument("--pattern-stop-on-match", action="store_true",
-                         help="line mode pattern only, and only with --pattern-step-mode auto: seek "
-                              "the next real MATCH! when given, or specifically the next NON-match "
-                              "wheel candidate when not given")
-    # Purely cosmetic: bend the axis into a
-    # circle instead of a straight line -- see geometry_draw.
-    # build_line_vertex_data's own `curved` doc-comment. Does not change
-    # navigation, matching, or the wheel/seek logic at all, only where a
-    # position renders on screen -- see RenderSession.line_axis_curved.
-    parser.add_argument("--line-axis-curved", action="store_true",
-                         help="line mode only: draw the axis bent into a circle instead of a "
-                              "straight line (purely visual -- the loaded window's own start/end "
-                              "coincide on screen, marked with a red boundary line, since they are "
-                              "NOT actually the same value the way a real periodic wraparound would be)")
     parser.add_argument("--pipe-stdin-commands", action="store_true",
                          help="read RESUME commands from stdin and, instead of "
                               "exiting on window-close, hide the window and idle "
                               "until one arrives (used by rings_tab.py for live "
                               "pause/resume; harmless but pointless when running "
                               "this file directly from a terminal)")
+    for mode_cls in MODES.values():
+        mode_cls.add_arguments(parser)
     args = parser.parse_args()
 
     if args.source == "archive" and not args.portal_folder:
         parser.error("--source archive requires --portal-folder")
 
-    valid_families = {"bertrand", "legendre", "generalLaw"}
-    requested_families = {f.strip() for f in args.windows.split(",") if f.strip()}
-    unknown = requested_families - valid_families
-    if unknown:
-        parser.error(f"--windows has unknown family id(s) {sorted(unknown)!r}, expected any of {sorted(valid_families)}")
-
-    # Validate --track-primes up front (same fail-fast convention as
-    # --windows above) instead of letting a malformed entry raise an
-    # uncaught ValueError later inside run()'s own int(p.strip()) parsing.
-    if args.track_primes:
-        bad = []
-        for raw in args.track_primes.split(","):
-            raw = raw.strip()
-            if not raw:
-                continue
-            if not raw.isdigit():
-                bad.append(raw)
-        if bad:
-            parser.error(f"--track-primes has non-integer value(s) {bad!r}, expected comma-separated primes e.g. 2,3,5")
-
-    # Same fail-fast format validation as --track-primes/--windows above:
+    # Same fail-fast format validation as the modes' own argument checks:
     # catch a malformed --load-range before run() ever starts loading
     # primes, rather than raising an uncaught ValueError/unpack error
     # later. The "exceeds what got loaded" case cannot be checked here (no
@@ -1192,8 +940,6 @@ def main():
         if load_from > load_to:
             parser.error(f"--load-range FROM must be <= TO, got {args.load_range!r}")
 
-    if args.viz_mode == "line" and not args.load_range:
-        parser.error("--viz-mode line requires --load-range")
     # Resolve --slide-chunk-size's own inherit-from-max-load-count default
     # (see that argument's own doc-comment above) once, right after
     # parsing -- args.slide_chunk_size is reassigned here so every reader
@@ -1209,15 +955,8 @@ def main():
         if not args.slide_chunk_size or args.slide_chunk_size <= 0:
             parser.error(f"--slide-chunk-size (or --max-load-count, its own default source) must be "
                          f"> 0, got {args.slide_chunk_size}")
-    if (args.pattern_seed_k is None) != (args.pattern_seed_start is None):
-        parser.error("--pattern-seed-k and --pattern-seed-start must be given together")
-    if args.pattern_seed_k is not None:
-        if args.viz_mode != "line":
-            parser.error("--pattern-seed-k/--pattern-seed-start require --viz-mode line")
-        if args.pattern_seed_k < 2:
-            parser.error(f"--pattern-seed-k must be >= 2, got {args.pattern_seed_k}")
-        if args.pattern_seed_start <= 2:
-            parser.error(f"--pattern-seed-start must be > 2, got {args.pattern_seed_start}")
+    for mode_cls in MODES.values():
+        mode_cls.validate_arguments(parser, args)
 
     run(args)
 

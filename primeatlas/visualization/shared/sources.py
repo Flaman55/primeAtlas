@@ -30,7 +30,7 @@ _PRIME_SIEVE_DIR = os.path.join(_REPO_ROOT, "prime_sieve")
 if _PRIME_SIEVE_DIR not in sys.path:
     sys.path.insert(0, _PRIME_SIEVE_DIR)
 
-from primeatlas.visualization.rings.ring_geometry import to_prime_array
+from primeatlas.visualization.shared.bigint import to_prime_array
 
 
 def load_synthetic(count, seed=0):
