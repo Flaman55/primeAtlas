@@ -1,6 +1,6 @@
 """
 session.py -- RenderSession: the mutable interactive-playback state for
-primeatlas/rings/ring_viz/renderer.py's `_run_visualization`, as ONE object with
+primeatlas/visualization/shared/renderer.py's `_run_visualization`, as ONE object with
 methods (camera, playback, orbit, flash, resonance log, HUD, scrub, buffer extension,
 cyclic anchors, tracked primes, range mode) instead of separate closures each capturing
 its own dict. Unit-tested here without GL; the GLFW/moderngl main loop itself cannot run
@@ -39,7 +39,7 @@ import time
 
 import numpy as np
 
-_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))  # ring_viz/ now lives one directory deeper, under primeatlas/rings/
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
@@ -47,7 +47,7 @@ _PRIME_SIEVE_DIR = os.path.join(_REPO_ROOT, "prime_sieve")
 if _PRIME_SIEVE_DIR not in sys.path:
     sys.path.insert(0, _PRIME_SIEVE_DIR)
 
-from primeatlas.rings.ring_geometry import (
+from primeatlas.visualization.rings.ring_geometry import (
     tracked_resonance_state,
     window_anchor_primes,
     cyclic_window_anchor_at,
@@ -59,7 +59,7 @@ from primeatlas.rings.ring_geometry import (
     pattern_positions_and_match,
     DEFAULT_WHEEL_PRIMES,
 )
-from primeatlas.rings.ring_viz.geometry_draw import (
+from primeatlas.visualization.rings.geometry_draw import (
     build_vertex_data,
     build_line_vertex_data,
     split_hit_normal_vertex_data,
@@ -74,7 +74,7 @@ from primeatlas.rings.ring_viz.geometry_draw import (
     zoom_to_point,
     fit_zoom_for_viewport,
 )
-from primeatlas.rings.ring_viz.playback import (
+from primeatlas.visualization.shared.playback import (
     clamp_tempo_ms,
     arrow_scrub_delta,
     can_start_playback,
@@ -85,7 +85,7 @@ from primeatlas.rings.ring_viz.playback import (
     update_resonance_log,
     advance_auto_orbit,
 )
-from primeatlas.rings.ring_viz.hud import (
+from primeatlas.visualization.rings.hud import (
     hud_lines_for_n,
     compose_hud_canvas_lines,
     hud_line_colors,
@@ -93,7 +93,7 @@ from primeatlas.rings.ring_viz.hud import (
     emit_audio_tick,
     pattern_hud_line,
 )
-from primeatlas.rings.ring_viz.sources import load_archive, load_archive_before
+from primeatlas.visualization.shared.sources import load_archive, load_archive_before
 
 # Internal-only search stride for a background pattern seek (see
 # _start_pattern_seek/_effective_chunk_size): the SEARCH crawls in chunks of the app's

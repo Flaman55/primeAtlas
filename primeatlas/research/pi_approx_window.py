@@ -19,7 +19,7 @@ a set of checkpoints x = x_from, x_from+step, ..., x_to:
     li(x) for the same x -- this is a well-known, NOT-a-conjecture fact
     (unlike Squares/Polynomials/Gaps, this whole tab is a measurement-
     quality question, not a yes/no conjecture check -- see
-    prime_atlas_v1.py's own _build_research_section docstring). Computed
+    prime_atlas_v2.py's own _build_research_section docstring). Computed
     via the convergent Gram series R(x) = 1 + sum_{k=1}^inf (ln x)^k /
     (k * k! * zeta(k+1)), using a cheap Euler-Maclaurin-corrected zeta(s)
     for integer s >= 2 (see _zeta's own docstring) -- good to several

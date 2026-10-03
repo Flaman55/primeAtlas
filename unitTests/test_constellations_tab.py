@@ -3,7 +3,7 @@ test_constellations_tab.py -- functional regression test for the Constellations 
 three sub-tabs (primeatlas/constellations/constellations_hits_tab.py's ConstellationsHitsTab,
 constellations_calc_tab.py's ConstellationsCalcTab, constellations_records_tab.py's
 ConstellationsRecordsTab, plus their shared pure-logic backend in
-primeatlas/constellations/constellations.py), extracted from prime_atlas_v1.py during the refactor
+primeatlas/constellations/constellations.py), extracted from prime_atlas_v2.py during the refactor
 branch's tab-by-tab backend/UI split. Unlike the Primes
 tab, this tab has TWO extra wrinkles this test specifically exercises:
 
@@ -125,15 +125,15 @@ def main():
 
         shown = _patch_messageboxes()
 
-        sys.argv = ["prime_atlas_v1.py"]
-        import prime_atlas_v1
+        sys.argv = ["prime_atlas_v2.py"]
+        import prime_atlas_v2
 
-        prime_atlas_v1.PAGE_SIZE = 50
-        _patch_app_settings(prime_atlas_v1.APP_SETTINGS)
-        prime_atlas_v1.APP_SETTINGS.set_storage_path(tmp_portal)
-        prime_atlas_v1.PORTAL_FOLDER = tmp_portal
+        prime_atlas_v2.PAGE_SIZE = 50
+        _patch_app_settings(prime_atlas_v2.APP_SETTINGS)
+        prime_atlas_v2.APP_SETTINGS.set_storage_path(tmp_portal)
+        prime_atlas_v2.PORTAL_FOLDER = tmp_portal
 
-        app_cls = prime_atlas_v1._build_gui()
+        app_cls = prime_atlas_v2._build_gui()
         app = app_cls()
         _pump(app, 5.0)
 
@@ -362,7 +362,7 @@ def main():
         # against an ACTUALLY migrated (paged) pattern -- floor 5's k=2/v=1,
         # hit_paging page_size=60, 130 values -> hit-file pages [60,60,10]. Each
         # hit-file page is bigger than the UI's own page_size (50, set via
-        # prime_atlas_v1.PAGE_SIZE above) so it spans multiple on-screen pages --
+        # prime_atlas_v2.PAGE_SIZE above) so it spans multiple on-screen pages --
         # needed to prove that "export pages from/to" scopes to ON-SCREEN pages,
         # not the much coarser hit-file page a single "page" used to mean. ===
         floor5_dir = os.path.join(tmp_portal, "10p5", "constellations", f"k{k}", f"variant{vid}")

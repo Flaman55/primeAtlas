@@ -1,24 +1,24 @@
 @echo off
 setlocal
 
-rem Run_PrimeAtlas.bat -- double-click launches prime_atlas_v1.py without
+rem Run_PrimeAtlas.bat -- double-click launches prime_atlas_v2.py without
 rem having to type the command into a terminal by hand. Changes to the folder this
 rem .bat file lives in (%~dp0), so it works regardless of where it was launched from
-rem (e.g. a Desktop shortcut). prime_atlas_v1.py itself computes its own paths relative
-rem to its own __file__, so this directory change is only so that "python prime_atlas_v1.py"
+rem (e.g. a Desktop shortcut). prime_atlas_v2.py itself computes its own paths relative
+rem to its own __file__, so this directory change is only so that "python prime_atlas_v2.py"
 rem below finds the right file.
 
 cd /d "%~dp0"
 
 where python >nul 2>nul
 if %errorlevel%==0 (
-    python prime_atlas_v1.py
+    python prime_atlas_v2.py
     goto :check
 )
 
 where py >nul 2>nul
 if %errorlevel%==0 (
-    py prime_atlas_v1.py
+    py prime_atlas_v2.py
     goto :check
 )
 

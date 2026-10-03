@@ -1,5 +1,5 @@
 """
-test_ring_geometry.py -- checks primeatlas/rings/ring_geometry.py against the SAME
+test_ring_geometry.py -- checks primeatlas/visualization/rings/ring_geometry.py against the SAME
 invariants already pinned down in the JS reference's own test suite
 (_test_legendre_window.mjs /
 _test_general_law_window.mjs in RelationalMathematics/apps/interactive_visuals/
@@ -42,7 +42,7 @@ def check(condition, message):
 
 
 def _test_legendre_level_at():
-    from primeatlas.rings.ring_geometry import legendre_level_at
+    from primeatlas.visualization.rings.ring_geometry import legendre_level_at
 
     # The off-by-one edge case for the N=9/15/16 sequence, see
     # SieveModel.js's isLegendreWindowMember doc-comment.
@@ -73,7 +73,7 @@ def _test_legendre_level_at():
 
 
 def _test_ring_radii():
-    from primeatlas.rings.ring_geometry import ring_radii
+    from primeatlas.visualization.rings.ring_geometry import ring_radii
 
     r = ring_radii(4, 100.0)
     expected = [100.0 * ((i + 1) / 4) ** 0.85 for i in range(4)]
@@ -83,7 +83,7 @@ def _test_ring_radii():
 
 
 def _test_ring_positions():
-    from primeatlas.rings.ring_geometry import ring_positions
+    from primeatlas.visualization.rings.ring_geometry import ring_positions
 
     primes = np.array([2, 3, 5, 7], dtype=np.int64)
     pos = ring_positions(primes, n=9, max_radius=100.0)
@@ -119,7 +119,7 @@ def _test_to_prime_array():
     the shared fix every prime-handling function in this module (and
     renderer.py) now routes through -- see its own doc-comment for the
     uint64-fast-path/object-fallback design."""
-    from primeatlas.rings.ring_geometry import to_prime_array, UINT64_MAX
+    from primeatlas.visualization.rings.ring_geometry import to_prime_array, UINT64_MAX
 
     small = to_prime_array([2, 3, 5, 7])
     check(small.dtype == np.uint64,
@@ -156,7 +156,7 @@ def _test_parse_big_int():
     notation as compact alternatives to typing out floor-25+-scale values
     digit by digit -- always via exact integer arithmetic, never float(),
     so such a value never silently rounds."""
-    from primeatlas.rings.ring_geometry import parse_big_int
+    from primeatlas.visualization.rings.ring_geometry import parse_big_int
 
     check(parse_big_int("12345") == 12345, "parse_big_int: plain digits")
     check(parse_big_int("1_000_000") == 1_000_000, "parse_big_int: underscore digit grouping")
@@ -183,7 +183,7 @@ def _test_ring_positions_beyond_uint64():
     the fix also caught along the way: the OLD `n_int % (1 << 63)`
     pre-reduction was mathematically WRONG (not just imprecise) for any
     n >= 2**63 -- see ring_positions' own doc-comment."""
-    from primeatlas.rings.ring_geometry import ring_positions
+    from primeatlas.visualization.rings.ring_geometry import ring_positions
 
     primes = np.array([10 ** 25 + 3, 10 ** 25 + 7, 10 ** 25 + 13], dtype=object)
     n = 10 ** 25 + 20
@@ -216,7 +216,7 @@ def _test_ring_positions_beyond_uint64():
 
 
 def _test_bertrand_legendre_membership():
-    from primeatlas.rings.ring_geometry import is_bertrand_member, is_legendre_member
+    from primeatlas.visualization.rings.ring_geometry import is_bertrand_member, is_legendre_member
 
     check(list(is_bertrand_member(np.array([5, 6, 10]), 10)) == [False, True, True],
           "is_bertrand_member: (n/2, n] excludes n/2 itself, includes n")
@@ -227,7 +227,7 @@ def _test_bertrand_legendre_membership():
 
 
 def _test_general_law():
-    from primeatlas.rings.ring_geometry import (
+    from primeatlas.visualization.rings.ring_geometry import (
         general_law_tent_factor,
         general_law_window_bounds,
         legendre_level_at,
@@ -277,7 +277,7 @@ def _test_general_law():
     # RIGID modes -- theta
     # ignored entirely, bounds exactly match is_bertrand_member/
     # is_legendre_member's own lo, for a spread of n and any theta value.
-    from primeatlas.rings.ring_geometry import is_bertrand_member, is_legendre_member
+    from primeatlas.visualization.rings.ring_geometry import is_bertrand_member, is_legendre_member
     for nn in (0, 1, 2, 5, 9, 16, 17, 100, 4999):
         for theta in (1, 0.7, 0.1):
             lo_b, hi_b, k_b, factor_b = general_law_window_bounds(nn, theta, "bertrand")
@@ -313,7 +313,7 @@ def _test_legendre_member_strict_only():
     test ((k*k, n]) -- unaffected by is_legendre_highlighted's fade-continuity
     layer on top of it (see that function's doc-comment). This re-confirms the
     strict test's behavior on its own terms."""
-    from primeatlas.rings.ring_geometry import is_legendre_member
+    from primeatlas.visualization.rings.ring_geometry import is_legendre_member
 
     # n=30: level k = floor(sqrt(29)) = 5, window (25,30] -> strict member: 29 only.
     primes = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23, 29], dtype=np.int64)
@@ -341,7 +341,7 @@ def _test_is_legendre_highlighted():
 
     Test data: real primes -- level 11 (121,144] = {127,131,137,139}, level 12
     (144,169] = {149,151,157,163,167}."""
-    from primeatlas.rings.ring_geometry import is_legendre_highlighted
+    from primeatlas.visualization.rings.ring_geometry import is_legendre_highlighted
 
     primes = np.array(
         [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61,
@@ -419,7 +419,7 @@ def _test_is_legendre_highlighted():
     # reachable while the window itself is still extremely narrow) -- must
     # simply equal is_legendre_member, no crash, no fabricated "previous
     # level".
-    from primeatlas.rings.ring_geometry import is_legendre_member
+    from primeatlas.visualization.rings.ring_geometry import is_legendre_member
     small_primes = np.array([2, 3], dtype=np.int64)
     check(list(is_legendre_highlighted(small_primes, 3)) == list(is_legendre_member(small_primes, 3)),
           "k<2 (n=3): is_legendre_highlighted matches plain is_legendre_member, no previous level to fade from")
@@ -439,7 +439,7 @@ def _test_is_general_law_highlighted():
         (monotonic) exposure count rather than stepped's (possibly flickering)
         live count -- see is_general_law_highlighted's 'stepped' doc-comment
         for why that substitution is exact."""
-    from primeatlas.rings.ring_geometry import (
+    from primeatlas.visualization.rings.ring_geometry import (
         is_general_law_highlighted,
         is_general_law_member,
         is_legendre_highlighted,
@@ -526,7 +526,7 @@ def _test_is_general_law_highlighted():
 
 
 def _test_anchor_functions():
-    from primeatlas.rings.ring_geometry import bertrand_anchor_at, legendre_anchor_at, general_law_anchor_at
+    from primeatlas.visualization.rings.ring_geometry import bertrand_anchor_at, legendre_anchor_at, general_law_anchor_at
 
     primes = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23, 29], dtype=np.int64)
     # bertrand_anchor_at replays the freeze/jump chain from scratch (see
@@ -568,7 +568,7 @@ def _test_anchor_functions():
 
 
 def _test_blend_family_colors():
-    from primeatlas.rings.ring_geometry import _blend_family_colors, WINDOW_FAMILY_COLORS
+    from primeatlas.visualization.rings.ring_geometry import _blend_family_colors, WINDOW_FAMILY_COLORS
 
     masks = {
         "bertrand": np.array([True, False, True]),
@@ -607,7 +607,7 @@ def _test_compute_highlight_colors_strict_sticky_precedence():
     With ONLY Legendre enabled (no Bertrand to out-rank it), 19 and 23
     (Legendre's fading previous-level remnants) are highlighted, while 17
     (already retired -- rank 0 < m=1) is not."""
-    from primeatlas.rings.ring_geometry import compute_highlight_colors, WINDOW_FAMILY_COLORS
+    from primeatlas.visualization.rings.ring_geometry import compute_highlight_colors, WINDOW_FAMILY_COLORS
 
     primes = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23, 29], dtype=np.int64)
     colors, matched = compute_highlight_colors(primes, 30, {"bertrand", "legendre"})
@@ -655,7 +655,7 @@ def _test_compute_highlight_colors_strict_sticky_precedence():
 
 
 def _test_compute_tracked_colors():
-    from primeatlas.rings.ring_geometry import (
+    from primeatlas.visualization.rings.ring_geometry import (
         compute_tracked_colors,
         bertrand_anchor_at,
         legendre_anchor_at,
@@ -717,7 +717,7 @@ def _test_cyclic_window_anchor_at():
         creeps up on every single n, so the freeze/jump condition is a
         plain numeric comparison instead.
     """
-    from primeatlas.rings.ring_geometry import (
+    from primeatlas.visualization.rings.ring_geometry import (
         cyclic_window_anchor_at,
         legendre_level_at,
         general_law_window_bounds,
@@ -802,7 +802,7 @@ def _test_cyclic_window_anchor_at():
     # straight to bertrand_anchor_at/legendre_anchor_at -- proving General
     # Law set to Bertrand/Legendre is a true drop-in of the standalone
     # family's own tracked anchor, at every n, not merely visually similar. ---
-    from primeatlas.rings.ring_geometry import bertrand_anchor_at as _bertrand_anchor_at_direct
+    from primeatlas.visualization.rings.ring_geometry import bertrand_anchor_at as _bertrand_anchor_at_direct
     all_gl_bertrand_match = True
     for check_n in range(2, 48):
         state_gl_bertrand = {}
@@ -833,7 +833,7 @@ def _test_cyclic_window_anchor_at():
     # theta=0.3 (tent factor 0.5) so General Law's own lo = (n+16)/2 creeps
     # from 16.5 to 20.5 across the level -- clearly not constant like
     # Legendre's.
-    from primeatlas.rings.ring_geometry import general_law_tent_factor
+    from primeatlas.visualization.rings.ring_geometry import general_law_tent_factor
     check(math.isclose(general_law_tent_factor(0.3), 0.5),
           "sanity: theta=0.3's own tent factor is 0.5, not 1 -- General Law's lo genuinely "
           "creeps within level 4, unlike Legendre's own constant lo=16 (fixture assumption)")
@@ -876,7 +876,7 @@ def _test_cyclic_window_anchor_at():
 
 
 def _test_window_anchor_primes():
-    from primeatlas.rings.ring_geometry import (
+    from primeatlas.visualization.rings.ring_geometry import (
         window_anchor_primes,
         bertrand_anchor_at,
         legendre_anchor_at,
@@ -958,7 +958,7 @@ def _test_window_label_colors():
     contains Legendre's/General Law's). A label says "this is Legendre";
     blended colors are named by nested_shell_colors' legend lines instead (see
     _test_nested_shell_colors)."""
-    from primeatlas.rings.ring_geometry import window_label_colors, WINDOW_FAMILY_COLORS
+    from primeatlas.visualization.rings.ring_geometry import window_label_colors, WINDOW_FAMILY_COLORS
 
     # Single family on -> its own solid color.
     result = window_label_colors({"bertrand"}, 100)
@@ -1020,7 +1020,7 @@ def _test_compute_highlight_colors_bertrand_swallows_legendre_regression():
     averaging (see _blend_family_colors' doc-comment) they get the two-family
     (Bertrand+Legendre, NOT General Law) average, clearly distinct from both
     pure white and pure Legendre green."""
-    from primeatlas.rings.ring_geometry import (
+    from primeatlas.visualization.rings.ring_geometry import (
         compute_highlight_colors,
         general_law_window_bounds,
         legendre_level_at,
@@ -1063,7 +1063,7 @@ def _test_nested_shell_colors():
     ordered by containment (sorted by `lo`) -- giving len(distinct lo values)
     - 1 legend entries, not every 2^k-1 subset or every C(k,2) pair: 3
     families with 3 distinct `lo` values give exactly 2 entries, not 3."""
-    from primeatlas.rings.ring_geometry import nested_shell_colors, WINDOW_FAMILY_COLORS
+    from primeatlas.visualization.rings.ring_geometry import nested_shell_colors, WINDOW_FAMILY_COLORS
 
     # Fewer than 2 enabled families -> no shells at all (nothing to blend).
     check(nested_shell_colors(set(), 100) == {}, "no enabled families -> no shells")
@@ -1154,7 +1154,7 @@ def _brute_resonance_at(primes_arr, n):
 
 
 def _test_resonance_events_in_range():
-    from primeatlas.rings.ring_geometry import resonance_events_in_range
+    from primeatlas.visualization.rings.ring_geometry import resonance_events_in_range
 
     primes = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47], dtype=np.int64)
     from_n, to_n = 0, 60
@@ -1207,7 +1207,7 @@ def _test_resonance_events_in_range():
     # span even with small-enough primes to pass the check above: a hard
     # cap on the span itself, past which the marking-pass algorithm could
     # never finish regardless of memory.
-    from primeatlas.rings.ring_geometry import _RESONANCE_SCAN_MAX_SIZE
+    from primeatlas.visualization.rings.ring_geometry import _RESONANCE_SCAN_MAX_SIZE
     small_primes = np.array([2, 3, 5], dtype=np.int64)
     huge_span_to_n = _RESONANCE_SCAN_MAX_SIZE + 1_000_000
     check(resonance_events_in_range(small_primes, 0, huge_span_to_n) == [],
@@ -1241,7 +1241,7 @@ def _test_resonance_scan_vectorized_matches_brute():
     renderer can pass: an offset from_n, from_n=0 (every p divides 0), active
     sets not starting at 2 (sliding window), object-dtype arrays, primes above
     to_n, and a scan split across several internal chunks."""
-    from primeatlas.rings import ring_geometry as rg
+    from primeatlas.visualization.rings import ring_geometry as rg
 
     primes = _small_primes_upto(3000)
     cases = [
@@ -1273,7 +1273,7 @@ def _test_resonance_scan_large_n_is_fast():
     """Known bug #1's own measurement: N=5M took 1.09 s, 20M 4.38 s -- all inside the
     single-threaded GLFW loop. A 10M full backfill must now finish well under a second
     (generous bound, the vectorized scan takes ~0.25 s here)."""
-    from primeatlas.rings.ring_geometry import resonance_events_in_range
+    from primeatlas.visualization.rings.ring_geometry import resonance_events_in_range
     primes = _small_primes_upto(10_000_000)
     t0 = time.perf_counter()
     events = resonance_events_in_range(primes, 1, 10_000_000)
@@ -1283,7 +1283,7 @@ def _test_resonance_scan_large_n_is_fast():
 
 
 def _test_resonance_log_lines():
-    from primeatlas.rings.ring_geometry import resonance_log_lines, resonance_events_in_range
+    from primeatlas.visualization.rings.ring_geometry import resonance_log_lines, resonance_events_in_range
 
     primes = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47], dtype=np.int64)
     from_n, to_n = 0, 60
@@ -1304,7 +1304,7 @@ def _test_resonance_log_lines():
 
 
 def _test_format_log_panel_text():
-    from primeatlas.rings.ring_geometry import format_log_panel_text, LOG_PANEL_TRUNCATE_THRESHOLD
+    from primeatlas.visualization.rings.ring_geometry import format_log_panel_text, LOG_PANEL_TRUNCATE_THRESHOLD
 
     count, text = format_log_panel_text([])
     check(count == 0 and text == "-",

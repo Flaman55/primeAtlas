@@ -1005,7 +1005,7 @@ actually earned.
 ## Architecture
 
 ```
-prime_atlas_v1.py           thin composition root (tkinter); builds the main window and
+prime_atlas_v2.py           thin composition root (tkinter); builds the main window and
                               its seven top-level tabs (three of which -- Prime numbers,
                               Constellations, Research -- are themselves inner
                               notebooks of sub-tabs, see "Features" above; a further one,
@@ -1071,7 +1071,7 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
   totals_search_coordinator.py TotalsSearchCoordinator -- the two PersistentWorkers
                               (floor-totals scanning, prime/constellation search) that
                               used to live directly on PortalBrowserApp itself in
-                              prime_atlas_v1.py; shared by the Prime numbers tab's tree,
+                              prime_atlas_v2.py; shared by the Prime numbers tab's tree,
                               the Benchmark tab's grand-total line, and the Prime
                               numbers/Constellations search boxes
   locales/                      strings_en.json, strings_pl.json, app_settings.json
@@ -1359,7 +1359,7 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               (see INSTALL_WSL_PRIMEATLAS.md), gated on user
                               confirmation
   env_setup_wizard.py           first-run environment check/install wizard UI, shown
-                              from prime_atlas_v1.py's main() BEFORE PortalBrowserApp
+                              from prime_atlas_v2.py's main() BEFORE PortalBrowserApp
                               is constructed (enabling WSL Windows features can
                               require a reboot, so nothing downstream should try to
                               run first)
@@ -1447,7 +1447,7 @@ constellation/
                               constellation finder, ktuple_sieve_v1.py, and the
                               Constellation calculator / Records table sub-tabs
 startup_dependency_check.py  pre-import check of requirements.txt's native-Windows
-                              packages, run by prime_atlas_v1.py BEFORE `from primeatlas
+                              packages, run by prime_atlas_v2.py BEFORE `from primeatlas
                               import` (primeatlas/__init__.py itself needs numpy); offers
                               a live-logged `pip install` of whatever is missing.
                               Only numpy blocks startup; moderngl/glfw (Ring viz) don't.
@@ -1484,7 +1484,7 @@ INSTALL_WSL_PRIMEATLAS.md    manual WSL 2 / Ubuntu / apt setup, step for step wh
 
 Generated data is stored under a folder named `CONSTELLATION_PORTAL` (the name predates
 and is independent of the application's own name). By default this folder is created
-next to `prime_atlas_v1.py`, so the application is self-contained regardless of where
+next to `prime_atlas_v2.py`, so the application is self-contained regardless of where
 its directory is placed on disk. The location can be overridden either through the
 Settings tab or by setting the `CONSTELLATION_PORTAL_DIR` environment variable, which
 the sieve, orchestrator, and constellation-finder scripts also read directly when
@@ -1507,7 +1507,7 @@ GUI:
   `pip install` whatever is missing (see `startup_dependency_check.py`), so a fresh Python
   needs no manual setup beyond an internet connection.
 - For Ring visualization: `numpy`, `moderngl`, and `glfw`, installed into the same native
-  Windows Python that runs `prime_atlas_v1.py` (the renderer is launched as a plain
+  Windows Python that runs `prime_atlas_v2.py` (the renderer is launched as a plain
   subprocess of that same interpreter, not through WSL). Optional: `sounddevice`, for the
   tab's live audio -- without it, audio is silently unavailable with a clear message in
   the console, never a crash.
@@ -1575,7 +1575,7 @@ Double-click `Run_PrimeAtlas.bat` (visible console, useful for diagnosing startu
 errors) or `Run_PrimeAtlas_Hidden.vbs` (no console window). Equivalently:
 
 ```
-python prime_atlas_v1.py
+python prime_atlas_v2.py
 ```
 
 Language (English/Polish, English by default) and theme (light/dark, dark by default) are both set from

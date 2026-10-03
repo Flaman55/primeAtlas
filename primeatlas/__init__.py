@@ -1,5 +1,5 @@
 """
-primeatlas -- the backend + GUI-tab package behind prime_atlas_v1.py, which is now a
+primeatlas -- the backend + GUI-tab package behind prime_atlas_v2.py, which is now a
 thin composition root (see README.md's "Architecture" section for the full module map
 and the tab-class/dependency-injection conventions used throughout this package).
 
@@ -7,7 +7,7 @@ This top-level __init__.py itself only re-exports the pure-logic pieces original
 built for the Settings tab (storage path config, backup/restore as lightweight
 manifests rather than raw data copies, full-database delete, PL/EN language switching,
 light/dark theme palettes -- theme.py is pure data only, the actual
-ttk.Style()/option_add() application lives in prime_atlas_v1.py's
+ttk.Style()/option_add() application lives in prime_atlas_v2.py's
 PortalBrowserApp._apply_theme(), which needs a live Tk root this module deliberately
 never touches) plus primality testing and the Goldbach structural-window backend.
 Every name re-exported here is independently unit-testable without a display. The

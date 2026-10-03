@@ -1,5 +1,5 @@
 """
-playback.py -- pure playback/timing logic for primeatlas/rings/ring_viz/renderer.py:
+playback.py -- pure playback/timing logic for primeatlas/visualization/shared/renderer.py:
 tempo clamping, LEFT/RIGHT scrub deltas, the sequential-mode ceiling guards,
 buffer-lookahead extension math, the range-mode dynamic step size, the
 resonance log's jump-vs-tick update rule, and auto-orbit's cycling. Split out
@@ -15,7 +15,7 @@ function's own doc-comment for the exact JS method it corresponds to.
 
 Self-contained sys.path bootstrap (mirrors renderer.py's own -- see that
 file's module docstring for the full "why plain-script-path" explanation):
-needed so `from primeatlas.rings.ring_geometry import resonance_log_lines` below
+needed so `from primeatlas.visualization.rings.ring_geometry import resonance_log_lines` below
 works whether this module is imported after renderer.py has already run its
 own bootstrap, or on its own (e.g. directly from a test).
 """
@@ -23,7 +23,7 @@ own bootstrap, or on its own (e.g. directly from a test).
 import os
 import sys
 
-_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))  # ring_viz/ now lives one directory deeper, under primeatlas/rings/
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
@@ -31,7 +31,7 @@ _PRIME_SIEVE_DIR = os.path.join(_REPO_ROOT, "prime_sieve")
 if _PRIME_SIEVE_DIR not in sys.path:
     sys.path.insert(0, _PRIME_SIEVE_DIR)
 
-from primeatlas.rings.ring_geometry import resonance_log_lines
+from primeatlas.visualization.rings.ring_geometry import resonance_log_lines
 
 _TEMPO_MS_MIN = 30
 _TEMPO_MS_MAX = 2000

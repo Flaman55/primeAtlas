@@ -1,6 +1,6 @@
 """
 geometry_draw.py -- pure, GL-context-free vertex/color/geometry math for
-primeatlas/rings/ring_viz/renderer.py: per-ring vertex color/position data, the
+primeatlas/visualization/shared/renderer.py: per-ring vertex color/position data, the
 hit/normal buffer split, Load Range slicing, tracked-ring outline geometry,
 the center marker and flash-overlay shapes, camera zoom-to-cursor/fit-to-
 viewport math, and initial-N selection.
@@ -14,7 +14,7 @@ calls.
 
 Self-contained sys.path bootstrap (mirrors renderer.py's own -- see that
 file's module docstring for the full "why plain-script-path" explanation):
-needed so `from primeatlas.rings.ring_geometry import ...` below works whether
+needed so `from primeatlas.visualization.rings.ring_geometry import ...` below works whether
 this module is imported after renderer.py has already run its own
 bootstrap, or on its own (e.g. directly from a test).
 """
@@ -24,7 +24,7 @@ import sys
 
 import numpy as np
 
-_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))  # ring_viz/ now lives one directory deeper, under primeatlas/rings/
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
@@ -32,7 +32,7 @@ _PRIME_SIEVE_DIR = os.path.join(_REPO_ROOT, "prime_sieve")
 if _PRIME_SIEVE_DIR not in sys.path:
     sys.path.insert(0, _PRIME_SIEVE_DIR)
 
-from primeatlas.rings.ring_geometry import (
+from primeatlas.visualization.rings.ring_geometry import (
     ring_positions,
     compute_highlight_colors,
     compute_tracked_colors,

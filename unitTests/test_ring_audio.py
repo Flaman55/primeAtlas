@@ -7,7 +7,7 @@ import time
 from unittest.mock import patch
 import numpy as np
 
-path = Path(__file__).resolve().parents[1]/'primeatlas/rings/ring_viz/audio.py'
+path = Path(__file__).resolve().parents[1]/'primeatlas/visualization/rings/ring/audio.py'
 spec = importlib.util.spec_from_file_location('ring_audio_under_test',path)
 audio = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = audio
@@ -29,11 +29,11 @@ class AudioTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         sys.path.insert(0, str(root))
         sys.path.insert(0, str(root/'prime_sieve'))
-        from primeatlas.rings.ring_viz import renderer
+        from primeatlas.visualization.shared import renderer
         # emit_audio_tick moved from renderer.py to hud.py in the renderer split (aa06f65);
         # session.py calls it from there.
-        from primeatlas.rings.ring_viz.hud import emit_audio_tick
-        from primeatlas.rings.ring_viz.audio import LiveAudio
+        from primeatlas.visualization.rings.hud import emit_audio_tick
+        from primeatlas.visualization.rings.ring.audio import LiveAudio
         from types import SimpleNamespace
         live = LiveAudio(stream_factory=FakeStream)
         live.start()
@@ -46,7 +46,7 @@ class AudioTests(unittest.TestCase):
         self.assertEqual(live.mixer.pending.get_nowait().duration,6)
         live.close()
         args = SimpleNamespace(audio=True,sound_low='sine',sound_prime='bell',sound_lcm='choir')
-        with patch('primeatlas.rings.ring_viz.audio.LiveAudio',return_value=live), \
+        with patch('primeatlas.visualization.rings.ring.audio.LiveAudio',return_value=live), \
              patch.object(renderer,'_run_visualization',side_effect=RuntimeError('GL failure')):
             with self.assertRaises(RuntimeError):
                 renderer.run(args)
@@ -54,7 +54,7 @@ class AudioTests(unittest.TestCase):
         def unavailable(**kwargs):
             raise RuntimeError('No device')
         live = LiveAudio(stream_factory=unavailable)
-        with patch('primeatlas.rings.ring_viz.audio.LiveAudio',return_value=live), \
+        with patch('primeatlas.visualization.rings.ring.audio.LiveAudio',return_value=live), \
              patch.object(renderer,'_run_visualization') as draw:
             renderer.run(args)
             draw.assert_called_once_with(args,None)
@@ -63,7 +63,7 @@ class AudioTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         sys.path.insert(0,str(root))
         sys.path.insert(0,str(root/'prime_sieve'))
-        from primeatlas.rings.rings_tab import build_renderer_argv
+        from primeatlas.visualization.rings.rings_tab import build_renderer_argv
         self.assertNotIn('--audio',build_renderer_argv('/tmp',100))
         args=build_renderer_argv('/tmp',100,audio=True,sound_low='mute',sound_prime='bell',sound_lcm='sine')
         self.assertIn('--audio',args)

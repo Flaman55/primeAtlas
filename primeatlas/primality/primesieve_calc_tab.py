@@ -10,7 +10,7 @@ build_primesieve_query_argv/run_primesieve_query_wsl live here since this calcul
 sub-tab is their only caller. run_primesieve_query_wsl() takes an explicit `translator`
 parameter instead of reading a module global (same reasoning as generation.py's
 build_wsl_logged_command taking an explicit `portal_folder` param), so this stays a
-self-contained, circularity-free leaf module: prime_atlas_v1.py imports FROM here, never
+self-contained, circularity-free leaf module: prime_atlas_v2.py imports FROM here, never
 the other way around.
 
 Constructor-injected (same convention as every other extracted tab -- see e.g.

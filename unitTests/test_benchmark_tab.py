@@ -1,8 +1,8 @@
 """
 test_benchmark_tab.py -- functional regression test for BenchmarkTab (primeatlas/
-benchmark_tab.py + primeatlas/benchmark/benchmark.py), extracted from prime_atlas_v1.py as
+benchmark_tab.py + primeatlas/benchmark/benchmark.py), extracted from prime_atlas_v2.py as
 part of the tab-by-tab backend/UI split. The Benchmark tab was the smallest of the
-five tabs still living directly in prime_atlas_v1.py, so it was the first one
+five tabs still living directly in prime_atlas_v2.py, so it was the first one
 migrated to the SettingsTab-style BenchmarkTab(ttk.Frame) + primeatlas/benchmark/benchmark.py
 pure-logic split.
 
@@ -161,19 +161,19 @@ def main():
 
         shown = _patch_messageboxes()
 
-        sys.argv = ["prime_atlas_v1.py"]
-        import prime_atlas_v1
+        sys.argv = ["prime_atlas_v2.py"]
+        import prime_atlas_v2
 
         # Redirect PORTAL_FOLDER BEFORE constructing the app -- __init__'s own startup
         # call to self.benchmark_tab_widget.reload_benchmark_log() reads the module
         # global via the get_portal_folder=lambda: PORTAL_FOLDER closure captured at
         # _build_benchmark_tab() call time (see that method's own docstring), so
         # redirecting only AFTER construction would miss the very first load.
-        _patch_app_settings(prime_atlas_v1.APP_SETTINGS)
-        prime_atlas_v1.APP_SETTINGS.set_storage_path(tmp_portal)
-        prime_atlas_v1.PORTAL_FOLDER = tmp_portal
+        _patch_app_settings(prime_atlas_v2.APP_SETTINGS)
+        prime_atlas_v2.APP_SETTINGS.set_storage_path(tmp_portal)
+        prime_atlas_v2.PORTAL_FOLDER = tmp_portal
 
-        app_cls = prime_atlas_v1._build_gui()
+        app_cls = prime_atlas_v2._build_gui()
         app = app_cls()
         _pump(app, 5.0)
 
@@ -316,7 +316,7 @@ def main():
         # theme. See BenchmarkTab.__init__'s own docstring and primeatlas/core/theme.py's
         # tree_group_bg/tree_stat_bg docstring for the palette contract this relies on.
         from primeatlas.core.theme import palette_for
-        theme_palette = palette_for(prime_atlas_v1.APP_SETTINGS.theme)
+        theme_palette = palette_for(prime_atlas_v2.APP_SETTINGS.theme)
         # str(...) -- tag_configure's single-option query form can hand back a Tcl
         # color/font object rather than a plain str depending on the Tcl/Tk version
         # (same reason every OTHER tk-value comparison in this file already goes

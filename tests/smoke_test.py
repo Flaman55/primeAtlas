@@ -31,7 +31,7 @@ sys.path.insert(0, _REPO_ROOT)
 
 _tmp_portal = tempfile.mkdtemp(prefix="primeatlas_smoketest_")
 os.environ["CONSTELLATION_PORTAL_DIR"] = _tmp_portal
-sys.argv = ["prime_atlas_v1.py"]
+sys.argv = ["prime_atlas_v2.py"]
 
 failures = []
 
@@ -57,13 +57,13 @@ def find_notebooks(widget):
 
 def main():
     try:
-        import prime_atlas_v1
+        import prime_atlas_v2
     except Exception as exc:
-        report("import prime_atlas_v1", exc)
+        report("import prime_atlas_v2", exc)
         return 1
 
     try:
-        app_cls = prime_atlas_v1._build_gui()
+        app_cls = prime_atlas_v2._build_gui()
     except Exception as exc:
         report("_build_gui()", exc)
         return 1

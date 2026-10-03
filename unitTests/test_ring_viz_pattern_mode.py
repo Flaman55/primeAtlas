@@ -1,6 +1,6 @@
 """
 test_ring_viz_pattern_mode.py -- tests for the "line" viz-mode k-tuple
-pattern-slide feature added to primeatlas/rings/ring_viz/: the pure
+pattern-slide feature added to the ring visualization: the pure
 offset-derivation/geometry functions in ring_geometry.py, the vertex-data
 builder in geometry_draw.py, and RenderSession's line-mode state in
 session.py. No moderngl/glfw import anywhere -- same "pure logic, GPU-free"
@@ -30,7 +30,7 @@ def check(condition, message):
 
 
 def _test_next_prime_at_or_above():
-    from primeatlas.rings.ring_geometry import next_prime_at_or_above
+    from primeatlas.visualization.rings.ring_geometry import next_prime_at_or_above
 
     check(next_prime_at_or_above(2) == 2, "next_prime_at_or_above(2) == 2 (already prime)")
     check(next_prime_at_or_above(4) == 5, "next_prime_at_or_above(4) == 5")
@@ -39,7 +39,7 @@ def _test_next_prime_at_or_above():
 
 
 def _test_pattern_offsets_from_seed():
-    from primeatlas.rings.ring_geometry import pattern_offsets_from_seed
+    from primeatlas.visualization.rings.ring_geometry import pattern_offsets_from_seed
 
     # Regression anchors: these must match constellation/pattern_catalog_v1.py's
     # own catalog entries exactly, since both this function and the catalog
@@ -69,7 +69,7 @@ def _test_pattern_offsets_from_seed():
 
 
 def _test_line_positions_and_value_to_line_x():
-    from primeatlas.rings.ring_geometry import line_positions, value_to_line_x
+    from primeatlas.visualization.rings.ring_geometry import line_positions, value_to_line_x
     import numpy as np
 
     primes = np.array([11, 13, 17, 19, 23], dtype=np.int64)
@@ -92,7 +92,7 @@ def _test_line_positions_archive_scale_precision():
     the whole loaded window's span (~1.15e8), which would collapse every point
     -- including a k-tuple pattern's few-unit-wide members (k=3 drawn as two
     points) -- onto the same pixel."""
-    from primeatlas.rings.ring_geometry import line_positions
+    from primeatlas.visualization.rings.ring_geometry import line_positions
     import numpy as np
 
     base = 12345678901234567890000023
@@ -112,7 +112,7 @@ def _test_value_to_ring_axis_xy():
     start/end seam. t=0 (value==lo) and t=1 (value==lo+span) must coincide at
     the exact same point -- the seam a real, non-cyclic loaded range needs a
     boundary marker for."""
-    from primeatlas.rings.ring_geometry import value_to_ring_axis_xy
+    from primeatlas.visualization.rings.ring_geometry import value_to_ring_axis_xy
     import math
 
     lo, span, radius = 1000, 2000, 800.0
@@ -141,7 +141,7 @@ def _test_line_positions_windowed_ring():
     binary-search filter as line_positions_windowed, but each surviving
     value is placed via value_to_ring_axis_xy's circular math instead of a
     straight y=0 row."""
-    from primeatlas.rings.ring_geometry import line_positions_windowed_ring, value_to_ring_axis_xy
+    from primeatlas.visualization.rings.ring_geometry import line_positions_windowed_ring, value_to_ring_axis_xy
     import numpy as np
     import math
 
@@ -168,7 +168,7 @@ def _test_value_to_spiral_xy():
     mod period) lands at the SAME angle (-pi/2) regardless of which lap,
     only the radius differs -- this is what lets a single straight radial
     line mark phase-zero on every lap at once."""
-    from primeatlas.rings.ring_geometry import value_to_spiral_xy
+    from primeatlas.visualization.rings.ring_geometry import value_to_spiral_xy
     import math
 
     lo, period, base_radius, pitch = 1000, 100, 800.0, 800.0
@@ -200,7 +200,7 @@ def _test_value_to_spiral_xy():
 
 
 def _test_line_positions_windowed_spiral():
-    from primeatlas.rings.ring_geometry import line_positions_windowed_spiral, value_to_spiral_xy
+    from primeatlas.visualization.rings.ring_geometry import line_positions_windowed_spiral, value_to_spiral_xy
     import numpy as np
     import math
 
@@ -223,7 +223,7 @@ def _test_line_positions_windowed_spiral():
 
 
 def _test_spiral_outer_radius():
-    from primeatlas.rings.ring_geometry import spiral_outer_radius
+    from primeatlas.visualization.rings.ring_geometry import spiral_outer_radius
 
     check(spiral_outer_radius(span=5, period=10, base_radius=800.0, pitch=800.0) == 800.0,
           "a span smaller than one period stays at the innermost (lap 0) radius")
@@ -242,8 +242,8 @@ def _test_build_line_vertex_data_spiral():
     window spanning multiple periods, and the boundary_radius reaching the
     outermost lap actually drawn (spiral_outer_radius's own value, not the
     plain world_width/2)."""
-    from primeatlas.rings.ring_viz.geometry_draw import build_line_vertex_data
-    from primeatlas.rings.ring_geometry import spiral_outer_radius
+    from primeatlas.visualization.rings.geometry_draw import build_line_vertex_data
+    from primeatlas.visualization.rings.ring_geometry import spiral_outer_radius
     import numpy as np
     import math
 
@@ -278,7 +278,7 @@ def _test_build_line_vertex_data_spiral():
 
 
 def _test_axis_boundary_marker_vertices():
-    from primeatlas.rings.ring_viz.geometry_draw import axis_boundary_marker_vertices
+    from primeatlas.visualization.rings.geometry_draw import axis_boundary_marker_vertices
     import numpy as np
 
     verts = axis_boundary_marker_vertices()
@@ -289,7 +289,7 @@ def _test_axis_boundary_marker_vertices():
 
 
 def _test_pattern_positions_and_match():
-    from primeatlas.rings.ring_geometry import pattern_positions_and_match
+    from primeatlas.visualization.rings.ring_geometry import pattern_positions_and_match
 
     primes_set = {11, 13, 17, 19, 23, 29, 31}
     positions, hits, all_match = pattern_positions_and_match(11, [0, 2, 6, 8, 12, 18, 20], primes_set)
@@ -306,7 +306,7 @@ def _test_pattern_positions_and_match():
 
 
 def _test_clamp_pattern_anchor():
-    from primeatlas.rings.ring_geometry import clamp_pattern_anchor
+    from primeatlas.visualization.rings.ring_geometry import clamp_pattern_anchor
 
     check(clamp_pattern_anchor(5, 100, 200, [0, 2, 6]) == 100,
           "clamp_pattern_anchor pulls n up to range_from when it's below the window")
@@ -319,7 +319,7 @@ def _test_clamp_pattern_anchor():
 
 
 def _test_pattern_wheel_residues():
-    from primeatlas.rings.ring_geometry import pattern_wheel_residues
+    from primeatlas.visualization.rings.ring_geometry import pattern_wheel_residues
 
     # {0,2} (twin primes): classic "n == 5 mod 6" result -- every twin
     # prime pair above (3,5) has the smaller member of that exact form.
@@ -346,7 +346,7 @@ def _test_pattern_wheel_residues():
 
 
 def _test_next_wheel_n():
-    from primeatlas.rings.ring_geometry import next_wheel_n
+    from primeatlas.visualization.rings.ring_geometry import next_wheel_n
 
     # Wheel from {0,2,6}: residues=[5], modulus=6 -- exactly one
     # candidate per period of 6.
@@ -393,7 +393,7 @@ def _test_pattern_step_mode_and_stop_on_match():
     (sequence 7 -> 97 -> 1357: 7 and 97 are real matches, 1357 isn't),
     verified against a real sieve rather than re-asserting whatever
     _pattern_seek itself would compute."""
-    from primeatlas.rings.ring_viz.session import RenderSession
+    from primeatlas.visualization.shared.session import RenderSession
     import numpy as np
 
     range_primes = np.array(_sieve_primes_upto(1400), dtype=np.int64)
@@ -460,8 +460,8 @@ def _test_pattern_seek_has_no_artificial_step_cap():
     real match is manually placed 500 wheel-hops from the anchor in an
     otherwise permanently-synthetic-non-matching loaded range, and the seek
     must still reach it."""
-    from primeatlas.rings.ring_viz.session import RenderSession
-    from primeatlas.rings.ring_geometry import pattern_positions_and_match
+    from primeatlas.visualization.shared.session import RenderSession
+    from primeatlas.visualization.rings.ring_geometry import pattern_positions_and_match
     import numpy as np
 
     base_values = [6 * k + 1 for k in range(1, 20000)]  # only == 1 mod 6 -- never a match on its own
@@ -513,8 +513,8 @@ def _test_pattern_seek_stays_on_last_real_match_at_genuine_window_edge():
     -- its partner 13 == 1 mod 6 is already there) -- so there is a real
     "last correct" position to stay on, and definitively no further one
     anywhere ahead of it in this tiny window."""
-    from primeatlas.rings.ring_viz.session import RenderSession
-    from primeatlas.rings.ring_geometry import pattern_positions_and_match
+    from primeatlas.visualization.shared.session import RenderSession
+    from primeatlas.visualization.rings.ring_geometry import pattern_positions_and_match
     import numpy as np
 
     values = sorted(set(6 * k + 1 for k in range(1, 200)) | {11})  # tiny window, one real match at 11
@@ -593,8 +593,8 @@ def _test_sliding_forward_multi_chunk_seek_finds_distant_match():
     pair. That pair (359, 361) is placed so it lands as chunk index 6's own
     FIRST element once split into chunk_size=10 chunks -- reaching it from the
     initial chunk (chunk 0) requires 6 real forward slides."""
-    from primeatlas.rings.ring_viz.session import RenderSession
-    from primeatlas.rings.ring_viz.sources import load_archive
+    from primeatlas.visualization.shared.session import RenderSession
+    from primeatlas.visualization.shared.sources import load_archive
 
     tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
     try:
@@ -653,8 +653,8 @@ def _test_sliding_backward_swap_mirror():
     a fresh chunk_back via load_archive_before -- called directly (not via
     a full wheel-seek) since the forward test above already proves the
     higher-level integration; this pins the backward primitive itself."""
-    from primeatlas.rings.ring_viz.session import RenderSession
-    from primeatlas.rings.ring_viz.sources import load_archive
+    from primeatlas.visualization.shared.session import RenderSession
+    from primeatlas.visualization.shared.sources import load_archive
 
     tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
     try:
@@ -729,8 +729,8 @@ def _test_sliding_neighbor_chunk_loads_in_background_not_blocking():
     genuinely still None with a real thread running immediately
     afterward (not silently already finished), and that
     _wait_for_forward_chunk both waits for and returns the real result."""
-    from primeatlas.rings.ring_viz import session as session_module
-    from primeatlas.rings.ring_viz.session import RenderSession
+    from primeatlas.visualization.shared import session as session_module
+    from primeatlas.visualization.shared.session import RenderSession
     import numpy as np
     import time
 
@@ -787,7 +787,7 @@ def _test_sliding_disabled_by_default_without_full_wiring():
     range_load_to) -- e.g. the GUI and CLI sides wired inconsistently.
     Constructing RenderSession without ANY of these kwargs is covered by the
     other tests in this file."""
-    from primeatlas.rings.ring_viz.session import RenderSession
+    from primeatlas.visualization.shared.session import RenderSession
     import numpy as np
 
     range_primes = np.array([11, 13, 17, 19, 23], dtype=np.int64)
@@ -819,8 +819,8 @@ def _test_sliding_found_false_means_true_range_edge_not_chunk_edge():
     trick), so the seek must slide all the way to the actual end of
     range_load_to and only THEN report found=False/stop, proving it didn't
     stop early at chunk 0's own boundary."""
-    from primeatlas.rings.ring_viz.session import RenderSession
-    from primeatlas.rings.ring_viz.sources import load_archive
+    from primeatlas.visualization.shared.session import RenderSession
+    from primeatlas.visualization.shared.sources import load_archive
 
     tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
     try:
@@ -863,8 +863,8 @@ def _test_sliding_forward_respects_range_load_to_hard_boundary():
     upto: break`); this test proves that at the RenderSession/sliding level
     with the same rigor as the backward test: floor 1 holds real data FAR
     beyond range_load_to, and sliding forward must never reach it."""
-    from primeatlas.rings.ring_viz.session import RenderSession
-    from primeatlas.rings.ring_viz.sources import load_archive
+    from primeatlas.visualization.shared.session import RenderSession
+    from primeatlas.visualization.shared.sources import load_archive
 
     tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
     try:
@@ -919,8 +919,8 @@ def _test_sliding_edge_reached_prints_explicit_message():
     each direction and checks the exact boundary value appears."""
     import contextlib
     import io
-    from primeatlas.rings.ring_viz.session import RenderSession
-    from primeatlas.rings.ring_viz.sources import load_archive
+    from primeatlas.visualization.shared.session import RenderSession
+    from primeatlas.visualization.shared.sources import load_archive
 
     tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
     try:
@@ -977,8 +977,8 @@ def _test_sliding_edge_reached_shows_in_hud_not_just_console():
     refreshes `hud_lines`) would never even run. Proves both halves:
     n_force_rebuild becomes True, and calling rebuild_line (as the main
     loop would) actually surfaces an edge line in hud_lines."""
-    from primeatlas.rings.ring_viz.session import RenderSession
-    from primeatlas.rings.ring_viz.sources import load_archive
+    from primeatlas.visualization.shared.session import RenderSession
+    from primeatlas.visualization.shared.sources import load_archive
 
     tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
     try:
@@ -1039,8 +1039,8 @@ def _test_sliding_edge_message_clears_on_in_chunk_step_no_slide_needed():
     small chunk -- proving the fix covers the in-chunk case specifically,
     not just a chunk-crossing move (the OTHER sliding tests above already
     cover that half)."""
-    from primeatlas.rings.ring_viz.session import RenderSession
-    from primeatlas.rings.ring_viz.sources import load_archive
+    from primeatlas.visualization.shared.session import RenderSession
+    from primeatlas.visualization.shared.sources import load_archive
 
     tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
     try:
@@ -1096,8 +1096,8 @@ def _test_sliding_to_edge_message_clears_on_in_chunk_step_no_slide_needed():
     (_pattern_wheel_step clears BOTH edge flags on any genuine move,
     regardless of direction), same in-chunk-step scenario, mirrored for
     the TO/forward edge instead."""
-    from primeatlas.rings.ring_viz.session import RenderSession
-    from primeatlas.rings.ring_viz.sources import load_archive
+    from primeatlas.visualization.shared.session import RenderSession
+    from primeatlas.visualization.shared.sources import load_archive
 
     tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
     try:
@@ -1160,9 +1160,9 @@ def _test_sliding_seek_runs_in_background_not_blocking_main_thread():
     _test_sliding_forward_multi_chunk_seek_finds_distant_match already
     proves for the DATA side -- same fixture (target=359, 6 real chunk
     crossings away)."""
-    from primeatlas.rings.ring_viz import session as session_module
-    from primeatlas.rings.ring_viz.session import RenderSession
-    from primeatlas.rings.ring_viz.sources import load_archive
+    from primeatlas.visualization.shared import session as session_module
+    from primeatlas.visualization.shared.session import RenderSession
+    from primeatlas.visualization.shared.sources import load_archive
     import time
 
     tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
@@ -1223,9 +1223,9 @@ def _test_sliding_seek_ignores_further_nav_input_while_in_flight():
     Proven by identity-checking that _seek_thread stays the SAME thread
     object across the extra calls, and that self.n stays untouched until
     the one real seek eventually resolves."""
-    from primeatlas.rings.ring_viz import session as session_module
-    from primeatlas.rings.ring_viz.session import RenderSession
-    from primeatlas.rings.ring_viz.sources import load_archive
+    from primeatlas.visualization.shared import session as session_module
+    from primeatlas.visualization.shared.session import RenderSession
+    from primeatlas.visualization.shared.sources import load_archive
     import time
 
     tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
@@ -1284,9 +1284,9 @@ def _test_sliding_seek_hud_shows_searching_while_in_flight():
     line while _seek_thread is running, and it must disappear again once
     the search resolves -- a background search is only actually reassuring
     (versus looking frozen) if the user can SEE it's working."""
-    from primeatlas.rings.ring_viz import session as session_module
-    from primeatlas.rings.ring_viz.session import RenderSession
-    from primeatlas.rings.ring_viz.sources import load_archive
+    from primeatlas.visualization.shared import session as session_module
+    from primeatlas.visualization.shared.session import RenderSession
+    from primeatlas.visualization.shared.sources import load_archive
     import time
 
     tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
@@ -1345,8 +1345,8 @@ def _test_sliding_seek_tick_not_found_stops_playback_in_background():
     _test_sliding_found_false_means_true_range_edge_not_chunk_edge."""
     import contextlib
     import io
-    from primeatlas.rings.ring_viz.session import RenderSession
-    from primeatlas.rings.ring_viz.sources import load_archive
+    from primeatlas.visualization.shared.session import RenderSession
+    from primeatlas.visualization.shared.sources import load_archive
 
     tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
     try:
@@ -1393,8 +1393,8 @@ def _test_sliding_seek_bump_and_scrub_not_found_leave_n_unchanged_async():
     if found) still holds once the search is backgrounded -- reuses the
     same real-edge, no-match fixture as the tick() test above, exercised
     via both entry points."""
-    from primeatlas.rings.ring_viz.session import RenderSession
-    from primeatlas.rings.ring_viz.sources import load_archive
+    from primeatlas.visualization.shared.session import RenderSession
+    from primeatlas.visualization.shared.sources import load_archive
 
     tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
     try:
@@ -1438,9 +1438,9 @@ def _test_sliding_seek_reset_during_flight_discards_stale_result():
     search itself keeps running to completion in the background (v1 has
     no true cancellation, see _start_pattern_seek's own doc-comment), its
     result must be silently discarded."""
-    from primeatlas.rings.ring_viz import session as session_module
-    from primeatlas.rings.ring_viz.session import RenderSession
-    from primeatlas.rings.ring_viz.sources import load_archive
+    from primeatlas.visualization.shared import session as session_module
+    from primeatlas.visualization.shared.session import RenderSession
+    from primeatlas.visualization.shared.sources import load_archive
     import time
 
     tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
@@ -1503,7 +1503,7 @@ def _test_sliding_seek_exception_clears_seek_thread_not_wedged_forever():
     itself to raise, then confirming (a) the thread still clears and (b)
     a SECOND, real seek afterward is not blocked by the first one's
     crash."""
-    from primeatlas.rings.ring_viz.session import RenderSession
+    from primeatlas.visualization.shared.session import RenderSession
     import numpy as np
 
     range_primes = np.array([11, 13, 17, 19, 23, 29, 31, 37], dtype=np.int64)
@@ -1563,9 +1563,9 @@ def _test_sliding_seek_searches_with_bigger_stride_then_recenters_to_chunk_size(
     crossings away) -- with stride=30, this needs far fewer real chunk
     loads to get there, and the FINAL chunk_current must still come back
     down to chunk_size=10, not stay stride-sized."""
-    from primeatlas.rings.ring_viz import session as session_module
-    from primeatlas.rings.ring_viz.session import RenderSession
-    from primeatlas.rings.ring_viz.sources import load_archive
+    from primeatlas.visualization.shared import session as session_module
+    from primeatlas.visualization.shared.session import RenderSession
+    from primeatlas.visualization.shared.sources import load_archive
 
     tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
     try:
@@ -1617,8 +1617,8 @@ def _test_sliding_seek_fast_in_chunk_match_skips_recenter():
     is never even called -- `_seek_used_stride` stays False, so
     `_recenter_render_chunks` is skipped and chunk_current is exactly
     whatever it already was, not needlessly reloaded."""
-    from primeatlas.rings.ring_viz.session import RenderSession
-    from primeatlas.rings.ring_viz.sources import load_archive
+    from primeatlas.visualization.shared.session import RenderSession
+    from primeatlas.visualization.shared.sources import load_archive
 
     tmp = tempfile.mkdtemp(prefix="primeatlas_ring_viz_test_")
     try:
@@ -1665,7 +1665,7 @@ def _test_render_session_wheel_prime_matches_not_skipped():
     considering it. The wheel must patch in ANY of
     DEFAULT_WHEEL_PRIMES that independently checks out as a real match,
     not just the launch anchor itself."""
-    from primeatlas.rings.ring_viz.session import RenderSession
+    from primeatlas.visualization.shared.session import RenderSession
     import numpy as np
 
     range_primes = np.array(_sieve_primes_upto(200), dtype=np.int64)
@@ -1692,7 +1692,7 @@ def _test_render_session_anchor_always_reachable():
     doc-comment), so pure residue arithmetic excludes n=3's own residue
     class, making it unreachable once you scrub away from it. The
     session must patch its own launch anchor back into the wheel."""
-    from primeatlas.rings.ring_viz.session import RenderSession
+    from primeatlas.visualization.shared.session import RenderSession
     import numpy as np
 
     range_primes = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61],
@@ -1723,7 +1723,7 @@ def _test_resolve_pattern_anchor():
     inside that huge, disjoint window instead of naively clamping to the
     window's raw lower edge (which has no guarantee of being wheel-
     compatible at all)."""
-    from primeatlas.rings.ring_geometry import (
+    from primeatlas.visualization.rings.ring_geometry import (
         resolve_pattern_anchor, pattern_offsets_from_seed, next_prime_at_or_above,
         pattern_wheel_residues,
     )
@@ -1749,7 +1749,7 @@ def _test_resolve_pattern_anchor():
 
 
 def _test_build_line_vertex_data():
-    from primeatlas.rings.ring_viz.geometry_draw import build_line_vertex_data
+    from primeatlas.visualization.rings.geometry_draw import build_line_vertex_data
     import numpy as np
 
     range_primes = np.array([11, 13, 17, 19, 23, 29, 31, 37], dtype=np.int64)
@@ -1789,7 +1789,7 @@ def _test_build_line_vertex_data_curved():
     curved=False for the IDENTICAL inputs: match results, hit_mask, and
     row counts must be byte-for-byte identical; only the (x,y) positions
     themselves may differ."""
-    from primeatlas.rings.ring_viz.geometry_draw import build_line_vertex_data
+    from primeatlas.visualization.rings.geometry_draw import build_line_vertex_data
     import numpy as np
     import math
 
@@ -1823,7 +1823,7 @@ def _test_line_view_bounds():
     below LINE_PRECISION_SAFE_SPAN, switch to a 'local', anchor-centered,
     FIXED-width slice above it -- and that local slice must always be wide
     enough to hold the active pattern's own full diameter."""
-    from primeatlas.rings.ring_geometry import (
+    from primeatlas.visualization.rings.ring_geometry import (
         line_view_bounds, LINE_PRECISION_SAFE_SPAN, LINE_LOCAL_VIEW_RADIUS,
     )
 
@@ -1855,7 +1855,7 @@ def _test_line_positions_windowed():
     min/max -- the piece line_view_bounds' local mode actually needs to
     render just the anchor-centered neighborhood instead of the whole
     loaded array."""
-    from primeatlas.rings.ring_geometry import line_positions_windowed, value_to_line_x
+    from primeatlas.visualization.rings.ring_geometry import line_positions_windowed, value_to_line_x
     import numpy as np
 
     primes = np.array([5, 11, 13, 17, 19, 23, 29, 1000], dtype=np.int64)
@@ -1887,7 +1887,7 @@ def _test_line_positions_windowed_archive_scale_precision():
     anchor-centered viewport (this function's own `lo`/`span` inputs) is
     meant to avoid entirely, by keeping the mapped span small (a few
     thousand) regardless of the loaded window's real, huge span."""
-    from primeatlas.rings.ring_geometry import (
+    from primeatlas.visualization.rings.ring_geometry import (
         line_positions_windowed, value_to_line_x, line_view_bounds,
     )
     import numpy as np
@@ -1936,8 +1936,8 @@ def _test_build_line_vertex_data_local_view_integration():
     inside the local viewport (not the full loaded array), while the
     pattern's own 4 members still land on 4 distinct float32 x positions
     in the actual GPU vertex buffer `data`."""
-    from primeatlas.rings.ring_viz.geometry_draw import build_line_vertex_data
-    from primeatlas.rings.ring_geometry import LINE_LOCAL_VIEW_RADIUS
+    from primeatlas.visualization.rings.geometry_draw import build_line_vertex_data
+    from primeatlas.visualization.rings.ring_geometry import LINE_LOCAL_VIEW_RADIUS
     import numpy as np
 
     range_lo = 10 ** 26
@@ -1966,7 +1966,7 @@ def _test_build_line_vertex_data_local_view_integration():
 
 
 def _test_render_session_line_mode():
-    from primeatlas.rings.ring_viz.session import RenderSession
+    from primeatlas.visualization.shared.session import RenderSession
     import numpy as np
 
     range_primes = np.array([11, 13, 17, 19, 23, 29, 31, 37, 41, 43], dtype=np.int64)
@@ -2007,7 +2007,7 @@ def _test_render_session_line_axis_curved():
     differing in the actual (x,y) positions rendered. reset() must clear
     it back to False, same "clean baseline" contract as every other line-
     mode launch parameter."""
-    from primeatlas.rings.ring_viz.session import RenderSession
+    from primeatlas.visualization.shared.session import RenderSession
     import numpy as np
 
     range_primes = np.array([11, 13, 17, 19, 23, 29, 31, 37, 41, 43], dtype=np.int64)
@@ -2042,8 +2042,8 @@ def _test_render_session_spiral_axis():
     modulus. Uses a synthetic range spanning multiple real wheel periods
     (30,030 for this k=2 pattern) so the spiral genuinely has more than
     one lap to show."""
-    from primeatlas.rings.ring_viz.session import RenderSession
-    from primeatlas.rings.ring_geometry import pattern_offsets_from_seed, pattern_wheel_residues
+    from primeatlas.visualization.shared.session import RenderSession
+    from primeatlas.visualization.rings.ring_geometry import pattern_offsets_from_seed, pattern_wheel_residues
     import numpy as np
     import math
 
@@ -2090,8 +2090,8 @@ def _test_render_session_wheel_scrub():
     -- see pattern_wheel_residues' own doc-comment on primes coinciding
     with an actual member for why small test primes like 5,7,11 would be
     the wrong choice here)."""
-    from primeatlas.rings.ring_viz.session import RenderSession
-    from primeatlas.rings.ring_geometry import next_wheel_n
+    from primeatlas.visualization.shared.session import RenderSession
+    from primeatlas.visualization.rings.ring_geometry import next_wheel_n
     import numpy as np
 
     range_primes = np.array([101, 103, 107, 109, 113, 127, 131, 137, 139], dtype=np.int64)

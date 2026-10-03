@@ -34,7 +34,7 @@ import sys
 
 def _build_execv_args():
     """Returns (python_executable, argv_list) for relaunching this same script with no
-    extra arguments -- prime_atlas_v1.py currently takes no CLI flags at all (confirmed:
+    extra arguments -- prime_atlas_v2.py currently takes no CLI flags at all (confirmed:
     no argparse, no sys.argv use anywhere in that file), so there is nothing from the
     CURRENT invocation that needs to be forwarded. os.path.abspath() on sys.argv[0] makes
     this robust to whatever relative/absolute form the original launch used (the .bat

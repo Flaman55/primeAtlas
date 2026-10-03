@@ -1,6 +1,6 @@
 """
 gl_setup.py -- window/context/shader-program/VAO/VBO creation for
-primeatlas/rings/ring_viz/renderer.py's `_run_visualization`.
+primeatlas/visualization/shared/renderer.py's `_run_visualization`.
 
 The one piece that cannot be GL-free (unlike geometry_draw.py/hud.py/playback.py/
 session.py): creating a window, an OpenGL context, and every shader program/VAO/VBO
@@ -14,7 +14,7 @@ marker_triangle_vbo/vao, marker_line_vbo/vao, flash_quad_vbo/vao, prog_text,
 hud_quad_vbo/vao, hud_tex_holder).
 """
 
-from primeatlas.rings.ring_viz.shaders import (
+from primeatlas.visualization.shared.shaders import (
     VERTEX_SHADER,
     FRAGMENT_SHADER,
     OUTLINE_VERTEX_SHADER,
@@ -24,8 +24,8 @@ from primeatlas.rings.ring_viz.shaders import (
     TEXT_VERTEX_SHADER,
     TEXT_FRAGMENT_SHADER,
 )
-from primeatlas.rings.ring_viz.geometry_draw import unit_circle_vertices, axis_boundary_marker_vertices
-from primeatlas.rings.ring_viz.hud import _PIL_AVAILABLE
+from primeatlas.visualization.rings.geometry_draw import unit_circle_vertices, axis_boundary_marker_vertices
+from primeatlas.visualization.rings.hud import _PIL_AVAILABLE
 from primeatlas.core.app_icon import glfw_icon_images, set_app_user_model_id
 
 

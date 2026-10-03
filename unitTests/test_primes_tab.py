@@ -1,11 +1,11 @@
 """
 test_primes_tab.py -- functional regression test for PrimesTab (primeatlas/
-primes_tab.py + primeatlas/core/storage.py), extracted from prime_atlas_v1.py as part of
+primes_tab.py + primeatlas/core/storage.py), extracted from prime_atlas_v2.py as part of
 the tab-by-tab backend/UI split. This was the second tab extracted after Benchmark,
 and the first one where the search
 machinery had to stay app-level (see primes_tab.py's own module docstring) -- so this
 test exercises BOTH the tab's self-contained floor/preview UI AND the injected-callable
-seam into prime_atlas_v1.py's shared search worker.
+seam into prime_atlas_v2.py's shared search worker.
 
 Builds the real PortalBrowserApp() end to end against a real on-disk portal folder
 seeded with real PGS1 prime windows, then exercises app.primes_tab_widget (the real
@@ -167,22 +167,22 @@ def main():
 
         shown = _patch_messageboxes()
 
-        sys.argv = ["prime_atlas_v1.py"]
-        import prime_atlas_v1
+        sys.argv = ["prime_atlas_v2.py"]
+        import prime_atlas_v2
 
         # Small page sizes so the fixture above (10 primes / 7 files) actually exercises
         # multi-page pagination without needing hundreds of real files on disk. Both
         # constants are read by PrimesTab.__init__ as plain values at _build_primes_tab()
         # call time (see that method's own docstring), so this MUST happen before the
         # app is constructed -- same reasoning as the PORTAL_FOLDER redirection below.
-        prime_atlas_v1.PAGE_SIZE = 5
-        prime_atlas_v1.FLOOR_PAGE_SIZE = 3
+        prime_atlas_v2.PAGE_SIZE = 5
+        prime_atlas_v2.FLOOR_PAGE_SIZE = 3
 
-        _patch_app_settings(prime_atlas_v1.APP_SETTINGS)
-        prime_atlas_v1.APP_SETTINGS.set_storage_path(tmp_portal)
-        prime_atlas_v1.PORTAL_FOLDER = tmp_portal
+        _patch_app_settings(prime_atlas_v2.APP_SETTINGS)
+        prime_atlas_v2.APP_SETTINGS.set_storage_path(tmp_portal)
+        prime_atlas_v2.PORTAL_FOLDER = tmp_portal
 
-        app_cls = prime_atlas_v1._build_gui()
+        app_cls = prime_atlas_v2._build_gui()
         app = app_cls()
         _pump(app, 5.0)
 

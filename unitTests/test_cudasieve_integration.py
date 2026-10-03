@@ -506,7 +506,7 @@ def section_e():
     messagebox.showinfo = lambda *a, **k: None
     messagebox.showerror = lambda *a, **k: None
 
-    import prime_atlas_v1
+    import prime_atlas_v2
     import primeatlas.generation.generation_tab as generation_tab_mod
     from primeatlas.generation.generation import CUDASIEVE_MIN_PRINTABLE_TOP
 
@@ -517,8 +517,8 @@ def section_e():
     orig_runner_cls = generation_tab_mod.WslLoggedRunner
     generation_tab_mod.WslLoggedRunner = _FakeWslLoggedRunner
     try:
-        sys.argv = ["prime_atlas_v1.py"]
-        app_cls = prime_atlas_v1._build_gui()
+        sys.argv = ["prime_atlas_v2.py"]
+        app_cls = prime_atlas_v2._build_gui()
         app = app_cls()
         app.update()
         gen = app.generation_tab_widget
@@ -662,13 +662,13 @@ def section_f():
     opened_urls = []
     webbrowser.open = lambda url: opened_urls.append(url)
 
-    import prime_atlas_v1
+    import prime_atlas_v2
     import primeatlas.settings.settings_tab as settings_tab_mod
 
     portal = tempfile.mkdtemp(prefix="cudasieve_settingstab_test_")
     try:
-        sys.argv = ["prime_atlas_v1.py"]
-        app_cls = prime_atlas_v1._build_gui()
+        sys.argv = ["prime_atlas_v2.py"]
+        app_cls = prime_atlas_v2._build_gui()
         app = app_cls()
         app.update()
         settings_tab = app.settings_tab

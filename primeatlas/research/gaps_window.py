@@ -5,7 +5,7 @@ consecutive-prime-gap checks for the Research -> Gaps (prime gaps) sub-tab.
 Raw gaps g_n = p_(n+1) - p_n, plus three classical inequalities that are
 really just different statistics on the SAME p_n/p_(n+1) sequence,
 selectable as an OVERLAY on this one tab rather than three separate tabs
-(see prime_atlas_v1.py's own _build_research_section docstring for why):
+(see prime_atlas_v2.py's own _build_research_section docstring for why):
 
   - Andrica:     sqrt(p_(n+1)) - sqrt(p_n) < 1 -- conjectured true for every
                  n, still open; largest known values occur at small n

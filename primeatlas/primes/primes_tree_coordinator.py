@@ -44,7 +44,7 @@ class PrimesTreeCoordinator:
         every tab class -- see primeatlas/primes/primes_tab.py's own docstring.
 
         primes_tab_widget/totals_search: direct references (not lazy getters), safe
-        because -- by construction order in prime_atlas_v1.py's __init__ -- both
+        because -- by construction order in prime_atlas_v2.py's __init__ -- both
         already exist by the time this class is built (same guarantee
         TotalsSearchCoordinator's own docstring relies on for its own two tab-widget
         constructor arguments).
@@ -52,7 +52,7 @@ class PrimesTreeCoordinator:
         prune_empty_floor_dirs: passed in rather than imported directly here because
         its real home is primeatlas/settings/restore_job.py (re-exported at the primeatlas
         package's own top level) -- passing it through keeps this module independent of
-        where it lives, matching how prime_atlas_v1.py itself imports it.
+        where it lives, matching how prime_atlas_v2.py itself imports it.
 
         on_startup_scan_done(name): fired once per completed scan with a fixed string
         ("primes") identifying which tree just finished -- PortalBrowserApp uses this

@@ -30,7 +30,7 @@ mind), it (1) proactively checks whether THAT SPECIFIC pattern already has a hit
 for this floor -- the generic search box's own "offer to generate" check only fires
 when the floor has NO hit files at all, which silently stays quiet whenever the floor
 already has hits for some OTHER pattern -- and offers to generate if not; and (2), once
-the search actually completes, prime_atlas_v1.py's own _on_const_search_result()
+the search actually completes, prime_atlas_v2.py's own _on_const_search_result()
 auto-navigates the Storage tree straight to that specific (k, variant) node and jumps
 the preview to this exact number (see this tab's own get_pending()/clear_pending(),
 consumed by that app-level orchestration method) instead of leaving the user to find it
@@ -58,9 +58,9 @@ class ConstellationsCalcTab(BaseTab):
         translator: same dependency-injection pattern as every other extracted tab --
         see primeatlas/primes/primes_tab.py's own docstring.
 
-        eval_quick_number: prime_atlas_v1.py's own _eval_quick_number() -- shared by
+        eval_quick_number: prime_atlas_v2.py's own _eval_quick_number() -- shared by
         every numeric field in the app (Quick generation panel, primesieve calculator,
-        Primality tests, ...), so it stays a prime_atlas_v1.py-owned function rather
+        Primality tests, ...), so it stays a prime_atlas_v2.py-owned function rather
         than moving here just for this one tab's exp/Offset fields.
 
         get_portal_folder: same as every other tab's own parameter of this name.
@@ -77,7 +77,7 @@ class ConstellationsCalcTab(BaseTab):
         reference, since which of the two sibling tabs gets built first doesn't matter
         as long as both exist by the time a search actually happens.
 
-        offer_generate_missing_constellation(base_exponent, number): prime_atlas_v1.py's
+        offer_generate_missing_constellation(base_exponent, number): prime_atlas_v2.py's
         own _offer_generate_missing_constellation() -- stays at the app level because it
         can launch a generation run via the Generation tab's own methods, same reasoning
         as every other "offer_generate_missing_*" parameter in this refactor.
@@ -91,7 +91,7 @@ class ConstellationsCalcTab(BaseTab):
         self._offer_generate_missing_constellation = offer_generate_missing_constellation
 
         # {"base_exponent", "number", "pattern"} while a calculator-initiated search is
-        # in flight -- consumed by prime_atlas_v1.py's own _on_const_search_result() to
+        # in flight -- consumed by prime_atlas_v2.py's own _on_const_search_result() to
         # auto-navigate to the right variant once that search settles. Public
         # get_pending()/clear_pending() accessors below, rather than direct attribute
         # access, keep that coupling to exactly two small methods instead of the app
@@ -262,7 +262,7 @@ class ConstellationsCalcTab(BaseTab):
                 if p["k"] == pattern["k"])
             if not has_this_pattern and self._offer_generate_missing_constellation(
                     base_exponent, number):
-                return  # generation launched -- prime_atlas_v1.py's own
+                return  # generation launched -- prime_atlas_v2.py's own
                         # _on_loop_finished()/_on_constellation_finished() re-runs the
                         # const search once it's done, landing back in
                         # _on_const_search_result() with self._pending still set, same

@@ -2,7 +2,7 @@
 env_setup_wizard.py -- first-run environment check/install wizard UI.
 
 Drives primeatlas/settings/env_setup.py's check_environment()/run_install() from a standalone
-tkinter window, shown from prime_atlas_v1.py's main() BEFORE PortalBrowserApp is
+tkinter window, shown from prime_atlas_v2.py's main() BEFORE PortalBrowserApp is
 constructed (that class doesn't exist yet at this point in startup, and env_setup's own
 docstring explains why this has to happen before anything else: enabling the WSL Windows
 features can require a reboot, so nothing downstream should even try to run first).
@@ -65,7 +65,7 @@ class _EnvSetupWizardMixin:
         # Deferred via after(), not called directly from __init__ -- lets the window
         # actually paint (title bar, initial "Checking environment..." label) before the
         # first real WSL round-trip starts, same "let something render before the first
-        # slow step" reasoning as prime_atlas_v1.py's own loading_frame.update() call.
+        # slow step" reasoning as prime_atlas_v2.py's own loading_frame.update() call.
         self.after(150, self._start_check)
 
     def _build_widgets(self):
@@ -294,7 +294,7 @@ class _EnvSetupWizardToplevel(tk.Toplevel, _EnvSetupWizardMixin):
 
 def maybe_run_first_run_wizard(app_settings, translator, distro=env_setup.DEFAULT_WSL_DISTRO,
                                 force=False, master=None):
-    """Called from prime_atlas_v1.py's main(), BEFORE PortalBrowserApp is constructed
+    """Called from prime_atlas_v2.py's main(), BEFORE PortalBrowserApp is constructed
     (master=None, the default -- runs as a standalone root; see _EnvSetupWizardRoot).
     Returns True if startup should proceed (environment confirmed ready, or the user chose
     to skip/proceed anyway), False if the app should exit now instead (window closed

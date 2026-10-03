@@ -513,7 +513,7 @@ def generate_floor_windows(base_power, target_idx_start, target_idx_count, windo
     (the other engines in this folder, which have no such ceiling) should be used for
     anything past it. The clamp can leave the LAST window narrower than window_m -- that is
     still written complete for whatever it DOES cover (never anything past combined_hi, so
-    never mislabeled) -- find_continuation_target_idx (prime_atlas_v1.py) only ever reads a
+    never mislabeled) -- find_continuation_target_idx (prime_atlas_v2.py) only ever reads a
     window's offset from its FILENAME, never its content size, so a narrower-than-usual
     final window does not confuse continuation/browsing anywhere else in this application.
 

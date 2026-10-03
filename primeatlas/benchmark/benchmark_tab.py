@@ -6,7 +6,7 @@ paginated, lazily-expandable tree view of the full benchmark_log.csv (written by
 orchestrator_v3.py's print_benchmark_summary()); a "Save PDF" button renders the same
 chart(s) + full table into a standalone PDF report.
 
-Split out of prime_atlas_v1.py's tab-by-tab backend/UI separation: this module owns
+Split out of prime_atlas_v2.py's tab-by-tab backend/UI separation: this module owns
 only the widgets and the tkinter-specific on-screen chart drawing (_draw_growth_chart
 below). All the pure-logic reduction/PDF-rendering work lives in
 primeatlas/benchmark/benchmark.py.
@@ -18,8 +18,8 @@ elsewhere" convention this package follows).
 BenchmarkTab does not know how PORTAL_FOLDER is stored or how the app's shared status
 bar/translator are constructed -- it receives everything it needs at construction time
 (get_portal_folder, status_var, translator, update_nav_controls) instead of importing
-prime_atlas_v1.py directly, which would be circular (that file imports BenchmarkTab
-from this module). update_nav_controls in particular is prime_atlas_v1.py's own small
+prime_atlas_v2.py directly, which would be circular (that file imports BenchmarkTab
+from this module). update_nav_controls in particular is prime_atlas_v2.py's own small
 shared pagination-label/button helper, used identically by every OTHER tab's own
 pagination (Prime numbers, Constellations, Goldbach, ...) -- it stays put there rather
 than being duplicated or promoted to its own module just for this one extraction, and
@@ -206,7 +206,7 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
     connected-scatter chart -- x = floor depth, y = the primary series (by default numbers
     swept per second, real session-level wall-clock throughput, higher is better). Plain
     tk.Canvas drawing, no charting library: this app is deliberately zero-extra-installs
-    (see prime_atlas_v1.py's module header), and a handful of axis lines + dots doesn't
+    (see prime_atlas_v2.py's module header), and a handful of axis lines + dots doesn't
     need one. Clears the canvas first, so this is safe to call again on refresh/resize
     (bound to <Configure>).
 

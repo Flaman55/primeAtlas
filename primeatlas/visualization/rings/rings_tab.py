@@ -1,10 +1,10 @@
 """
 rings_tab.py -- RingsTab(BaseTab), the "Ring visualization" tab. Launches the
-GPU renderer (primeatlas/rings/ring_viz/renderer.py) as a separate native Windows subprocess
+GPU renderer (primeatlas/visualization/shared/renderer.py) as a separate native Windows subprocess
 against the app's own currently-configured archive, given a target N.
 
 WHY A SUBPROCESS, NOT EMBEDDED IN THIS WINDOW: GL's own event loop does not compose
-with Tkinter's mainloop() -- see primeatlas/rings/ring_viz/__init__.py's own docstring for
+with Tkinter's mainloop() -- see primeatlas/visualization/shared/__init__.py's own docstring for
 the full reasoning.
 
 WHY LocalLoggedRunner AND NOT WslLoggedRunner: renderer.py is a plain native Windows
@@ -32,14 +32,14 @@ import sys
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-from ..core.base_tab import BaseTab
-from ..generation.generation import LocalLoggedRunner, _eval_quick_number
-from ..generation.generation_console import GenerationConsole
-from ..core import storage
-from .ring_viz.audio import INSTRUMENTS
+from ...core.base_tab import BaseTab
+from ...generation.generation import LocalLoggedRunner, _eval_quick_number
+from ...generation.generation_console import GenerationConsole
+from ...core import storage
+from .ring.audio import INSTRUMENTS
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-RENDERER_SCRIPT = os.path.join(_THIS_DIR, "ring_viz", "renderer.py")
+RENDERER_SCRIPT = os.path.join(os.path.dirname(_THIS_DIR), "shared", "renderer.py")
 
 # Must match renderer.py's own emit_hud_state()
 # print prefix exactly -- kept as one shared constant name (even though it's
@@ -74,7 +74,7 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
     than one exists on the machine.
 
     Deliberately launches RENDERER_SCRIPT as a PLAIN SCRIPT PATH argument
-    (`[exe, RENDERER_SCRIPT, ...]`), never `-m primeatlas.rings.ring_viz.renderer`
+    (`[exe, RENDERER_SCRIPT, ...]`), never `-m primeatlas.visualization.shared.renderer`
     -- see renderer.py's own module docstring for exactly why that matters
     (its internal sys.path fix for the prime_sieve/ sibling directory runs
     too late to help a `-m`/dotted-import invocation, which imports the

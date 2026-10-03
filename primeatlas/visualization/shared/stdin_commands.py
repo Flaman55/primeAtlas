@@ -1,6 +1,6 @@
 """
 stdin_commands.py -- background stdin-command-reader thread for
-primeatlas/rings/ring_viz/renderer.py's --pipe-stdin-commands live pause/resume.
+primeatlas/visualization/shared/renderer.py's --pipe-stdin-commands live pause/resume.
 """
 
 import queue

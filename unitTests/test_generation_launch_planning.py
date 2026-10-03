@@ -93,14 +93,14 @@ class _LaunchRecorder:
 
 
 def main():
-    import prime_atlas_v1
+    import prime_atlas_v2
     from primeatlas.generation.generation import _floor_window_count
 
     W = 10_000_000
     portal = tempfile.mkdtemp(prefix="primeatlas_gen_launch_test_")
     try:
-        sys.argv = ["prime_atlas_v1.py"]
-        app_cls = prime_atlas_v1._build_gui()
+        sys.argv = ["prime_atlas_v2.py"]
+        app_cls = prime_atlas_v2._build_gui()
         app = app_cls()
         app.update()
         gen = app.generation_tab_widget
@@ -257,7 +257,7 @@ def main():
         gen._launch_direct_window_range(25, 0, 2)  # floor 25 end is far past 2**64-1
         check(len(recorder.calls) == 1 and recorder.calls[0][0] == "orchestrator_direct",
               f"a floor whose requested range exceeds libprimesieve's own uint64 ceiling "
-              f"(PRIMESIEVE_MAX_STOP={prime_atlas_v1.PRIMESIEVE_MAX_STOP}) must fall back "
+              f"(PRIMESIEVE_MAX_STOP={prime_atlas_v2.PRIMESIEVE_MAX_STOP}) must fall back "
               f"to orchestrator_v3.py launched directly, not primesieve "
               f"(got calls={recorder.calls!r})")
 
@@ -285,7 +285,7 @@ def main():
         check(len(recorder.calls) == 0,
               f"a request fully covered by existing windows must launch NOTHING "
               f"(got calls={recorder.calls!r})")
-        check(gen.quick_status_var.get() == prime_atlas_v1.T("quick.status_range_fully_covered"),
+        check(gen.quick_status_var.get() == prime_atlas_v2.T("quick.status_range_fully_covered"),
               "a fully-covered request sets the 'fully covered' status message")
 
         # =====================================================================

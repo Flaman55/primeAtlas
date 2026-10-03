@@ -11,7 +11,7 @@ otherwise affects the embedded pane's content.
 extra_controls_builder, if given, is called once each time the detached window opens, with
 the window itself as parent, to add extra widgets above the mirrored output (used by the
 pipeline section to duplicate its Quick-gen panel so a run can be launched from the
-detached window too -- see prime_atlas_v1.py's _build_detached_quick_panel). It may return
+detached window too -- see prime_atlas_v2.py's _build_detached_quick_panel). It may return
 a no-argument cleanup callable, invoked when the window closes.
 """
 import tkinter as tk
@@ -31,7 +31,7 @@ class GenerationConsole:
         self._mirrors = []
         # Called (no args) after every show()/hide(), including the ones
         # triggered directly by the user clicking toggle_btn -- NOT just the
-        # programmatic show() calls from prime_atlas_v1.py's _show_*_terminal
+        # programmatic show() calls from prime_atlas_v2.py's _show_*_terminal
         # helpers. Packing/unpacking self.text changes this section's natural
         # height by ~500px either way, and the Generation tab's Panedwindow
         # needs to be told to re-measure and re-pin its sashes every time that
@@ -84,7 +84,7 @@ class GenerationConsole:
     def clear(self):
         """Clears every currently-registered mirror (embedded pane + detached copy, if
         open). Only ever called explicitly, via the Clear button -- a new run does NOT
-        call this (see prime_atlas_v1.py's _on_run_loop/_on_run_constellation, which
+        call this (see prime_atlas_v2.py's _on_run_loop/_on_run_constellation, which
         append a separator line instead), so several runs' output can stay stacked in
         the console for comparison until the person clears it themselves."""
         for widget in self._mirrors:

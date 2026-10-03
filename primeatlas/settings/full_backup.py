@@ -39,7 +39,7 @@ Design:
     on decompression -- see restore_floor_from_full_backup()'s own docstring).
 
 Like every other module in this package, this is pure logic -- no tkinter import, no
-dependency on prime_atlas_v1.py (which imports FROM this package, not the other way
+dependency on prime_atlas_v2.py (which imports FROM this package, not the other way
 around) -- exercised directly by standalone tests, wired into the GUI by settings_tab.py.
 """
 import os
@@ -491,7 +491,7 @@ def delete_full_backup_floor(destination_root, base_exponent):
 
 def _read_benchmark_rows(storage_path):
     """Small, self-contained benchmark_log.csv reader -- deliberately NOT imported from
-    prime_atlas_v1.py's own read_benchmark_log() (that module imports FROM this package,
+    prime_atlas_v2.py's own read_benchmark_log() (that module imports FROM this package,
     so the reverse import would be circular; same "duplicate the small helper" convention
     floor_meta.py's own docstring already establishes for the standalone generator
     engines). Returns [] if the file doesn't exist yet."""
@@ -504,7 +504,7 @@ def _read_benchmark_rows(storage_path):
 
 def aggregate_generation_seconds_by_floor(rows):
     """Sums total_seconds per floor across every benchmark_log.csv row that actually
-    wrote files (write_files=="1") -- same filter and rationale as prime_atlas_v1.py's
+    wrote files (write_files=="1") -- same filter and rationale as prime_atlas_v2.py's
     own aggregate_write_seconds_by_floor() (kept in sync by hand; see this module's own
     docstring for why it isn't imported directly). Returns {base_exponent: total_seconds}."""
     totals = {}

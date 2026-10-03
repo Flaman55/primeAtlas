@@ -1,5 +1,5 @@
 """
-sources.py -- ring-array data sources for primeatlas/rings/ring_viz/renderer.py:
+sources.py -- ring-array data sources for primeatlas/visualization/shared/renderer.py:
 load_synthetic, load_sieve, load_archive.
 
 Kept independent of moderngl/glfw and of renderer.py's own GL-context state
@@ -22,7 +22,7 @@ import sys
 
 import numpy as np
 
-_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))  # ring_viz/ now lives one directory deeper, under primeatlas/rings/
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
@@ -30,7 +30,7 @@ _PRIME_SIEVE_DIR = os.path.join(_REPO_ROOT, "prime_sieve")
 if _PRIME_SIEVE_DIR not in sys.path:
     sys.path.insert(0, _PRIME_SIEVE_DIR)
 
-from primeatlas.rings.ring_geometry import to_prime_array
+from primeatlas.visualization.rings.ring_geometry import to_prime_array
 
 
 def load_synthetic(count, seed=0):
@@ -104,7 +104,7 @@ def load_archive(portal_folder, upto, progress_callback=None, batch_files=64, fr
        concatenate is unavoidable (the renderer needs one contiguous sorted array).
     3. Accepts an optional `progress_callback(base_exponent, files_read_in_floor,
        primes_loaded_so_far)`, invoked after every batch, so a caller
-       (primeatlas/rings/rings_tab.py) can drive a real progress bar
+       (primeatlas/visualization/rings/rings_tab.py) can drive a real progress bar
        instead of a frozen GUI during what can be a multi-second load at
        real archive scale. Deliberately NOT trying to make the load itself
        faster (see this module's own docstring, data-source point 1, for why

@@ -6,7 +6,7 @@ sorted array of primes and a step N, compute where every ring's single "hit
 tooth" sits in 2D space. No rendering, no I/O, no tkinter dependency -- same
 convention as every other module in this package except settings_tab.py/
 benchmark_tab.py/primes_tab.py/widgets.py (see this package's __init__.py's
-own docstring) -- see primeatlas/rings/ring_viz/renderer.py for the GPU-rendered
+own docstring) -- see primeatlas/visualization/shared/renderer.py for the GPU-rendered
 interactive consumer of this module's output.
 
 This module lets PrimeAtlas's own prime storage plus native compute/GPU drive the ring
@@ -1275,7 +1275,7 @@ def format_big(value, digit_threshold=15):
 # ----------------------------------------------------------------------
 # "line" viz-mode: a fixed horizontal row of real primes (--load-range)
 # with an optional k-tuple pattern slid along it by N -- see
-# primeatlas/rings/ring_viz/renderer.py's --viz-mode/--pattern-seed-*
+# primeatlas/visualization/shared/renderer.py's --viz-mode/--pattern-seed-*
 # flags and RenderSession.rebuild_line. Unrelated to the ring/gear math
 # above (every "ring" there is a modulus p, phase = n % p) -- this is
 # instead a literal number-line plot of prime VALUES as points, with a

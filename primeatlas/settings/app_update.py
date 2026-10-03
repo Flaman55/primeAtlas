@@ -2,7 +2,7 @@
 app_update.py -- checks GitHub for a newer PrimeAtlas version and applies it.
 
 Unlike a packaged/installed application, PrimeAtlas IS its own git checkout -- the
-running Python process executes prime_atlas_v1.py directly out of the same working tree
+running Python process executes prime_atlas_v2.py directly out of the same working tree
 `git log` shows history for. So there is no separate release/version-number scheme to
 invent: "check for updates" means "is `origin`'s default branch ahead of my current
 HEAD", and "download" means fetching + fast-forwarding to that branch -- nothing more

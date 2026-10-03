@@ -3,7 +3,7 @@
 ' console visible alongside the app window for the whole time the app is running.
 '
 ' Double-clicking the .bat launches it in a cmd.exe window, which sits there line by
-' line waiting for the "python prime_atlas_v1.py" command to finish (see
+' line waiting for the "python prime_atlas_v2.py" command to finish (see
 ' Run_PrimeAtlas.bat) -- that's the cmd.exe console itself, not something created by
 ' Python, and it stays visible for the app's entire runtime.
 '

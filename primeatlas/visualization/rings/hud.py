@@ -1,6 +1,6 @@
 """
 hud.py -- on-canvas/console HUD text composition and rasterization for
-primeatlas/rings/ring_viz/renderer.py: the plain-text HUD line builder
+primeatlas/visualization/shared/renderer.py: the plain-text HUD line builder
 (hud_lines_for_n), the canvas header+status wrapper (compose_hud_canvas_
 lines), per-line window-family coloring (hud_line_colors), Pillow text
 rasterization (rasterize_hud_text), the textured-quad geometry for that
@@ -16,7 +16,7 @@ outside rasterize_hud_text touches them.
 
 Self-contained sys.path bootstrap (mirrors renderer.py's own -- see that
 file's module docstring for the full "why plain-script-path" explanation):
-needed so `from primeatlas.rings.ring_geometry import ...` below works whether
+needed so `from primeatlas.visualization.rings.ring_geometry import ...` below works whether
 this module is imported after renderer.py has already run its own
 bootstrap, or on its own (e.g. directly from a test).
 """
@@ -26,7 +26,7 @@ import sys
 
 import numpy as np
 
-_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))  # ring_viz/ now lives one directory deeper, under primeatlas/rings/
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
@@ -34,7 +34,7 @@ _PRIME_SIEVE_DIR = os.path.join(_REPO_ROOT, "prime_sieve")
 if _PRIME_SIEVE_DIR not in sys.path:
     sys.path.insert(0, _PRIME_SIEVE_DIR)
 
-from primeatlas.rings.ring_geometry import (
+from primeatlas.visualization.rings.ring_geometry import (
     format_big,
     legendre_level_at,
     general_law_window_bounds,

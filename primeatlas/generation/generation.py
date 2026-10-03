@@ -12,10 +12,10 @@ off-by-one, memory-bounded target_idx handling).
 
 build_primesieve_query_argv()/run_primesieve_query_wsl() belong to the separate
 "primesieve" calculator sub-tab (Prime numbers -> primesieve), not this tab; see
-prime_atlas_v1.py.
+prime_atlas_v2.py.
 
 build_wsl_logged_command() and the other WSL-launching functions take an explicit
-`portal_folder` argument: the storage path can change at runtime (prime_atlas_v1.py's
+`portal_folder` argument: the storage path can change at runtime (prime_atlas_v2.py's
 _set_portal_folder rebinds its own module global, not one here), so the caller
 (GenerationTab, which receives get_portal_folder() by injection) passes the CURRENT value
 at each call site.
@@ -30,11 +30,11 @@ import threading
 import time
 
 from ..core.storage import LOW_FLOOR_CUTOFF, list_floors, list_source_filenames, _offset_from_filename
-from ..rings.ring_geometry import parse_big_int
+from ..visualization.rings.ring_geometry import parse_big_int
 
 _SCRIPT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Three levels up from THIS file's own directory (primeatlas/generation/) --
-# prime_atlas_v1.py's original _SCRIPT_DIR pointed at the repo root (where it
+# prime_atlas_v2.py's original _SCRIPT_DIR pointed at the repo root (where it
 # itself lives, alongside the prime_sieve/ and constellation/ directories the
 # script-path constants below resolve into); this module lives two
 # directories deeper, in primeatlas/generation/, so it needs the extra
@@ -1171,7 +1171,7 @@ def build_wsl_logged_command(argv, windows_log_path, windows_exit_path, portal_f
     log_wsl = windows_path_to_wsl(windows_log_path)
     exit_wsl = windows_path_to_wsl(windows_exit_path)
     inner = " ".join(shlex.quote(str(t)) for t in argv)
-    # CONSTELLATION_PORTAL_DIR, set via prime_atlas_v1.py's Settings tab: a plain
+    # CONSTELLATION_PORTAL_DIR, set via prime_atlas_v2.py's Settings tab: a plain
     # os.environ[...] set in THIS (Windows) process does NOT automatically cross into
     # wsl.exe's Linux environment (that needs WSLENV, which this app doesn't otherwise use)
     # -- so the override is prepended directly to the bash -c command line instead, the one
@@ -1567,7 +1567,7 @@ class LocalLoggedRunner:
         # (e.g. settings_tab.py's sympy installer) keeps stdin inherited/
         # default exactly as before. RingsTab is the first caller that
         # needs a way to send commands INTO the running subprocess (see
-        # send_line() below) -- ring_viz/renderer.py's own PAUSE/RESUME
+        # send_line() below) -- visualization/shared/renderer.py's own PAUSE/RESUME
         # protocol reads them off stdin when launched with
         # --pipe-stdin-commands (see build_renderer_argv/rings_tab.py).
         self._pipe_stdin = pipe_stdin

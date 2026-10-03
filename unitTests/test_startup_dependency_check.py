@@ -1,7 +1,7 @@
 """
 test_startup_dependency_check.py -- covers startup_dependency_check.py (repo root), the
 pre-import check for native-Windows Python packages (numpy, moderngl, glfw) that runs from
-prime_atlas_v1.py BEFORE `from primeatlas import ...` -- primeatlas/__init__.py itself pulls
+prime_atlas_v2.py BEFORE `from primeatlas import ...` -- primeatlas/__init__.py itself pulls
 in numpy (via research/goldbach_window.py), so on a fresh machine without numpy the app
 used to die with a bare ImportError before any window was shown.
 
@@ -12,7 +12,7 @@ Written against the intended behavior (spec first), not the implementation. Sect
   B. ensure_dependencies() decision flow, every UI/subprocess boundary injected:
      fast path, declined (blocking / non-blocking), install success, install failure,
      install "success" that still leaves the package invisible.
-  C. Wiring -- the module never imports primeatlas/numpy itself, and prime_atlas_v1.py
+  C. Wiring -- the module never imports primeatlas/numpy itself, and prime_atlas_v2.py
      runs it before its first `from primeatlas import`.
 
 Usage:
@@ -255,16 +255,16 @@ def section_c():
           f"importing startup_dependency_check pulls in neither numpy nor primeatlas "
           f"(stdout {out.stdout.strip()!r}, stderr {out.stderr.strip()[-200:]!r})")
 
-    with open(os.path.join(_REPO_ROOT, "prime_atlas_v1.py"), encoding="utf-8") as f:
+    with open(os.path.join(_REPO_ROOT, "prime_atlas_v2.py"), encoding="utf-8") as f:
         src = f.read()
     call_idx = src.find("startup_dependency_check.ensure_dependencies(")
     import_idx = src.find("from primeatlas import (")
-    check(call_idx != -1, "prime_atlas_v1.py calls startup_dependency_check.ensure_dependencies")
+    check(call_idx != -1, "prime_atlas_v2.py calls startup_dependency_check.ensure_dependencies")
     check(call_idx != -1 and call_idx < import_idx,
-          "the check runs BEFORE prime_atlas_v1.py's first `from primeatlas import`")
+          "the check runs BEFORE prime_atlas_v2.py's first `from primeatlas import`")
     guard_idx = src.rfind('if __name__ == "__main__":', 0, call_idx)
     check(guard_idx != -1 and guard_idx < call_idx and src.count("\n", guard_idx, call_idx) <= 3,
-          "the check is guarded by __name__ == '__main__' so importing prime_atlas_v1 "
+          "the check is guarded by __name__ == '__main__' so importing prime_atlas_v2 "
           "(tests) never pops a dialog")
 
 

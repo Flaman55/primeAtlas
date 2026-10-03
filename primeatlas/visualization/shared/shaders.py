@@ -1,5 +1,5 @@
 """
-shaders.py -- GLSL source strings for primeatlas/rings/ring_viz/renderer.py's
+shaders.py -- GLSL source strings for primeatlas/visualization/shared/renderer.py's
 moderngl programs. Pure data (plain
 triple-quoted strings), no logic and no dependency on moderngl/glfw
 themselves -- importable in a headless sandbox with no GPU, same as every

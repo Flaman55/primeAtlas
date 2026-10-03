@@ -1,9 +1,9 @@
 """
 renderer.py -- GPU renderer for the Structural Sieve "drum" (rings + hit
-teeth, see primeatlas/rings/ring_geometry.py). Standalone runnable module (see
+teeth, see primeatlas/visualization/rings/ring_geometry.py). Standalone runnable module (see
 this package's own __init__.py docstring for why it stays a separate
 process rather than being imported into the main Tkinter app): launched as
-a subprocess by primeatlas/rings/rings_tab.py.
+a subprocess by primeatlas/visualization/rings/rings_tab.py.
 
 Structural Sieve's browser/Canvas 2D visualization (js/render/DrumRenderer.js in the
 RelationalMathematics repo) has a practical ring-count ceiling bounded by what one JS
@@ -65,24 +65,24 @@ Architecture:
     cost.
   - FPS and ring count are both written to the window title every frame.
 
-Usage -- run as a PLAIN SCRIPT PATH, not `python -m primeatlas.rings.ring_viz.renderer`:
+Usage -- run as a PLAIN SCRIPT PATH, not `python -m primeatlas.visualization.shared.renderer`:
     pip install moderngl glfw numpy
     pip install Pillow   # optional -- enables the on-canvas HUD text overlay;
                           # everything else in this module works fine without
                           # it, see _PIL_AVAILABLE.
-    python primeatlas/rings/ring_viz/renderer.py --source synthetic --count 20000000
-    python primeatlas/rings/ring_viz/renderer.py --source sieve --upto 5000000
-    python primeatlas/rings/ring_viz/renderer.py --source archive \
+    python primeatlas/visualization/shared/renderer.py --source synthetic --count 20000000
+    python primeatlas/visualization/shared/renderer.py --source sieve --upto 5000000
+    python primeatlas/visualization/shared/renderer.py --source archive \
         --portal-folder "D:\\...\\PORTAL" --upto 50000000000
 
-    Why plain-script-path and not `-m`: `python -m primeatlas.rings.ring_viz.renderer`
+    Why plain-script-path and not `-m`: `python -m primeatlas.visualization.shared.renderer`
     makes Python import the `primeatlas` package FIRST (running
     `primeatlas/__init__.py`, which transitively imports `.manifest`, which
     does a bare `import window_sharding`) before this file's own body -- and
     therefore before the sys.path fix a few lines below ever runs. Run as a
     plain script path instead and that fix executes top-to-bottom before the
-    `from primeatlas.rings.ring_geometry import ...` line below is reached, exactly
-    like prime_atlas_v1.py's own top-level `sys.path.insert(0, ".../prime_sieve")`
+    `from primeatlas.visualization.rings.ring_geometry import ...` line below is reached, exactly
+    like prime_atlas_v2.py's own top-level `sys.path.insert(0, ".../prime_sieve")`
     (see that file) already has to do for the very same reason. If a
     subprocess launcher (rings_tab.py) wants `-m` invocation instead, it must
     set `PYTHONPATH` to include the repo root's `prime_sieve` directory itself
@@ -145,11 +145,11 @@ import queue
 import sys
 import time
 
-# Allow `python primeatlas/rings/ring_viz/renderer.py` (not just `python -m
-# primeatlas.rings.ring_viz.renderer`) to work by ensuring the repo root is on
+# Allow `python primeatlas/visualization/shared/renderer.py` (not just `python -m
+# primeatlas.visualization.shared.renderer`) to work by ensuring the repo root is on
 # sys.path before the primeatlas.* imports below -- the subprocess launcher
 # in rings_tab.py is free to pick either invocation style.
-_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))  # ring_viz/ now lives one directory deeper, under primeatlas/rings/
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
@@ -158,7 +158,7 @@ if _REPO_ROOT not in sys.path:
 # prime_sieve_v1.py/window_sharding.py live outside this package as separate
 # top-level modules) -- so `prime_sieve` must be on sys.path before ANY
 # `primeatlas.*` import below, not just inside load_archive() where the
-# actual prime_sieve_v1 usage lives: a bare `from primeatlas.rings.ring_geometry
+# actual prime_sieve_v1 usage lives: a bare `from primeatlas.visualization.rings.ring_geometry
 # import ...` fails without this, even though ring_geometry.py itself has
 # no such dependency.
 _PRIME_SIEVE_DIR = os.path.join(_REPO_ROOT, "prime_sieve")
@@ -173,7 +173,7 @@ if _PRIME_SIEVE_DIR not in sys.path:
 # through geometry_draw.py/hud.py/session.py instead of directly here --
 # only parse_big_int (--upto/--load-range/main()'s own CLI parsing) is
 # still used directly in this file.
-from primeatlas.rings.ring_geometry import (
+from primeatlas.visualization.rings.ring_geometry import (
     parse_big_int, pattern_offsets_from_seed, next_prime_at_or_above,
     resolve_pattern_anchor,
 )
@@ -194,7 +194,7 @@ from primeatlas.rings.ring_geometry import (
 # load_synthetic/load_sieve/load_archive live in sources.py; they have no
 # GL-context dependency (unlike everything below this point in the file).
 # Imported here for _run_visualization/main() below.
-from primeatlas.rings.ring_viz.sources import load_synthetic, load_sieve, load_archive
+from primeatlas.visualization.shared.sources import load_synthetic, load_sieve, load_archive
 
 
 # ---------------------------------------------------------------------------
@@ -219,7 +219,7 @@ from primeatlas.rings.ring_viz.sources import load_synthetic, load_sieve, load_a
 # only the handful still called directly from _run_visualization/main() are
 # re-imported here; unitTests/test_ring_viz_renderer.py imports the rest
 # directly from geometry_draw.py.
-from primeatlas.rings.ring_viz.geometry_draw import (
+from primeatlas.visualization.rings.geometry_draw import (
     load_prime_range_slice,
     marker_device_scale,
     build_center_marker_vertex_data,
@@ -245,7 +245,7 @@ from primeatlas.rings.ring_viz.geometry_draw import (
 # default) and _RANGE_STEP_ORBIT_TICKS (this file's own launch-time
 # range_step computation, run before RenderSession is constructed) are
 # still referenced directly here.
-from primeatlas.rings.ring_viz.playback import (
+from primeatlas.visualization.shared.playback import (
     _TEMPO_MS_DEFAULT,
     _RANGE_STEP_ORBIT_TICKS,
 )
@@ -259,7 +259,7 @@ from primeatlas.rings.ring_viz.playback import (
 # hud_quad_vertex_data (still called directly by _apply_hud_refresh's own
 # GL upload) are still referenced here; unitTests/test_ring_viz_renderer.py
 # imports the rest directly from hud.py.
-from primeatlas.rings.ring_viz.hud import (
+from primeatlas.visualization.rings.hud import (
     _HUD_FONT_SIZE_DEFAULT,
     hud_quad_vertex_data,
 )
@@ -267,22 +267,22 @@ from primeatlas.rings.ring_viz.hud import (
 
 # start_stdin_command_reader lives in stdin_commands.py (used by run()'s
 # --pipe-stdin-commands handling).
-from primeatlas.rings.ring_viz.stdin_commands import start_stdin_command_reader
+from primeatlas.visualization.shared.stdin_commands import start_stdin_command_reader
 
 # RenderSession consolidates _run_visualization's own dozen
 # closure-captured state dicts (camera, playback, orbit, flash, HUD, scrub,
 # buffer-extension, tracked/range fields) into one object with methods,
 # unit-tested in isolation in session.py.
-from primeatlas.rings.ring_viz.session import RenderSession
+from primeatlas.visualization.shared.session import RenderSession
 
 # Window/context/shader-program/VAO/VBO creation lives in one GLResources
 # instance built by setup_gl_resources(), instead of a ~16-local-variable
 # block inline in _run_visualization.
-from primeatlas.rings.ring_viz.gl_setup import setup_gl_resources
+from primeatlas.visualization.shared.gl_setup import setup_gl_resources
 
 
 def run(args):
-    from primeatlas.rings.ring_viz.audio import Instruments, LiveAudio
+    from primeatlas.visualization.rings.ring.audio import Instruments, LiveAudio
     audio = None
     try:
         if getattr(args, 'audio', False):
@@ -638,7 +638,7 @@ def _run_visualization(args, audio=None):
     # LEFT/RIGHT scrub state lives on `session` (scrub_held/scrub_was_running) --
     # see session.scrub_advance/scrub_release for the held-count/was-running
     # bookkeeping.
-    from primeatlas.rings.ring_viz.window_mode import FullscreenToggle
+    from primeatlas.visualization.shared.window_mode import FullscreenToggle
     fullscreen = FullscreenToggle(glfw, gl.window)
     print('F11: toggle fullscreen (auto-fits zoom to the new window size); '
           'middle-click: recenter/fit view; Esc: close visualization', flush=True)
@@ -988,7 +988,7 @@ def _run_visualization(args, audio=None):
 
 
 def main():
-    from primeatlas.rings.ring_viz.audio import INSTRUMENTS
+    from primeatlas.visualization.rings.ring.audio import INSTRUMENTS
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--audio', action='store_true', help='enable optional live sound (requires sounddevice)')
     parser.add_argument('--sound-low', choices=INSTRUMENTS, default='sine')

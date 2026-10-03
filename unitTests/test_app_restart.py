@@ -46,7 +46,7 @@ def section_a():
     from primeatlas.settings import app_restart as ar
 
     orig_argv = sys.argv
-    sys.argv = ["/some/relative/../path/prime_atlas_v1.py"]
+    sys.argv = ["/some/relative/../path/prime_atlas_v2.py"]
     try:
         python, argv = ar._build_execv_args()
     finally:
@@ -58,19 +58,19 @@ def section_a():
           f"argv[0] passed to execv must equal the executable itself, matching the usual "
           f"argv[0]==program-name convention (got {argv[0]!r})")
     check(len(argv) == 2,
-          f"argv must be exactly [python, script] -- prime_atlas_v1.py takes no CLI flags "
+          f"argv must be exactly [python, script] -- prime_atlas_v2.py takes no CLI flags "
           f"to forward (got {argv!r})")
     check(os.path.isabs(argv[1]),
           f"the script path must be made absolute (os.path.abspath), robust to whatever "
           f"cwd restart_app() happens to run from (got {argv[1]!r})")
-    check(argv[1].endswith("prime_atlas_v1.py"),
+    check(argv[1].endswith("prime_atlas_v2.py"),
           f"the script path must be derived from sys.argv[0], not hardcoded elsewhere "
           f"(got {argv[1]!r})")
 
     # --- Already-absolute sys.argv[0] must pass through unchanged (aside from any
     #     normalization os.path.abspath itself does) ---
     orig_argv = sys.argv
-    sys.argv = ["/already/absolute/prime_atlas_v1.py"]
+    sys.argv = ["/already/absolute/prime_atlas_v2.py"]
     try:
         _python2, argv2 = ar._build_execv_args()
     finally:
@@ -79,7 +79,7 @@ def section_a():
     # on Windows, os.path.abspath("/already/absolute/...") prepends the current drive letter
     # (e.g. "F:\already\absolute\..."), so comparing against the un-prefixed POSIX literal
     # directly would always fail there even though _build_execv_args() did nothing wrong.
-    check(argv2[1] == os.path.abspath("/already/absolute/prime_atlas_v1.py"),
+    check(argv2[1] == os.path.abspath("/already/absolute/prime_atlas_v2.py"),
           f"an already-absolute path must not be altered beyond normalization "
           f"(got {argv2[1]!r})")
 
@@ -91,13 +91,13 @@ def section_a():
     #     exactly why the auto-restart-after-theme/language-change could silently fail to
     #     reopen PrimeAtlas from a checkout location containing a space. ---
     orig_argv = sys.argv
-    sys.argv = ["/some/dir with space/prime_atlas_v1.py"]
+    sys.argv = ["/some/dir with space/prime_atlas_v2.py"]
     try:
         python3, argv3 = ar._build_execv_args()
     finally:
         sys.argv = orig_argv
 
-    expected_path = os.path.abspath("/some/dir with space/prime_atlas_v1.py")
+    expected_path = os.path.abspath("/some/dir with space/prime_atlas_v2.py")
     check(python3 == sys.executable,
           f"the (python, argv) executable value must stay unquoted -- it's passed to "
           f"os.execv() as the file to run directly, not parsed out of a joined command "
@@ -132,7 +132,7 @@ def section_b():
 
     os.execv = fake_execv
     orig_argv = sys.argv
-    sys.argv = ["/repo/prime_atlas_v1.py"]
+    sys.argv = ["/repo/prime_atlas_v2.py"]
     try:
         ar.restart_app()
     finally:
@@ -144,7 +144,7 @@ def section_b():
     expected_python, expected_argv = ar._build_execv_args()
     # _build_execv_args() was called a second time above (after sys.argv was restored),
     # so recompute it under the SAME sys.argv the real call used for a fair comparison.
-    sys.argv = ["/repo/prime_atlas_v1.py"]
+    sys.argv = ["/repo/prime_atlas_v2.py"]
     try:
         expected_python, expected_argv = ar._build_execv_args()
     finally:

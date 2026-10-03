@@ -15,24 +15,24 @@ Full-data backup driving: unlike the WSL-subprocess-driven restore job above,
 copy_floor_increment()/restore_floor_from_full_backup() are plain in-process Python
 functions (local file I/O only, no subprocess) -- so they're run on a plain
 threading.Thread (same single-owner-per-thread/queue.Queue/self.after(150, poll)
-shape as prime_atlas_v1.py's _totals_worker_loop/_poll_totals_results, except this one
+shape as prime_atlas_v2.py's _totals_worker_loop/_poll_totals_results, except this one
 is a one-shot worker per job rather than a persistent daemon loop, since there's only
 ever one full-data backup job in flight at a time -- see
 _full_backup_worker/_poll_full_backup_queue below).
 
 This is the ONLY file in primeatlas/ that imports tkinter -- every other module in this
 package is pure logic, unit-tested without a display (see __init__.py's docstring).
-SettingsTab is built and imported lazily, exactly once, from inside prime_atlas_v1.py's
+SettingsTab is built and imported lazily, exactly once, from inside prime_atlas_v2.py's
 _build_gui() (itself deferred past module-import time for the same reason -- see that
 function's own docstring) -- so by the time this module is imported, tkinter is already
 known to be importable; no further lazy-import gymnastics are needed here.
 
 SettingsTab does NOT know how to launch orchestrator_loop_v2.py / constellation_finder_v1.py
-itself -- prime_atlas_v1.py already owns that machinery (build_loop_argv,
+itself -- prime_atlas_v2.py already owns that machinery (build_loop_argv,
 build_constellation_finder_argv, build_wsl_logged_command, WslLoggedRunner,
 generation_log_paths -- built for the Generation tab) and hands it to this class as a
 small dict of callables (`wsl_helpers`) at construction time instead of this module
-re-implementing a second copy or importing prime_atlas_v1.py directly (which would be
+re-implementing a second copy or importing prime_atlas_v2.py directly (which would be
 circular: that file imports SettingsTab from this package). Expected keys:
   - get_portal_folder() -> str                     current storage path, read at call time
   - set_portal_folder(path) -> None                 rebinds the app's global + status label
@@ -47,7 +47,7 @@ circular: that file imports SettingsTab from this package). Expected keys:
                                               out of -- used by the app self-update section
                                               (app_update.py's check_for_update()/
                                               download_update())
-(not exhaustive -- see the literal in prime_atlas_v1.py's _build_settings_tab() for the
+(not exhaustive -- see the literal in prime_atlas_v2.py's _build_settings_tab() for the
 full, authoritative set)
 
 Restore driving semantics: orchestrator_loop_v2.py doesn't accept "regenerate exactly these
@@ -284,7 +284,7 @@ class SettingsTab(BaseTab):
         is_any_job_running callback in wsl_helpers, the Generation tab's three runners --
         this tab has no direct reference to GenerationTab itself (see this module's own
         docstring on wsl_helpers), so that cross-tab check has to be threaded through from
-        prime_atlas_v1.py the same way every other cross-tab capability here is."""
+        prime_atlas_v2.py the same way every other cross-tab capability here is."""
         if self._active_job is not None and self._active_job.status == STATUS_RUNNING:
             return True
         if self._full_backup_job_running:
@@ -330,7 +330,7 @@ class SettingsTab(BaseTab):
         background thread -- same "daemon thread + self.after(0, ...) callback" shape
         every other network/WSL-touching probe in this file uses, since a real network
         round-trip must never block the GUI thread. Reused for BOTH the manual 'Check
-        now' button (_on_check_app_update_clicked above) and prime_atlas_v1.py's own
+        now' button (_on_check_app_update_clicked above) and prime_atlas_v2.py's own
         startup hook (which only calls this at all when AppSettings.auto_update_check is
         on) -- single code path, so the status label always reflects the most recent
         check regardless of which one triggered it.
@@ -1159,7 +1159,7 @@ class SettingsTab(BaseTab):
         self._scan_incomplete_restores()
         # Refresh the Prime numbers / Constellations trees after a full-database delete,
         # otherwise they keep showing the deleted floors until a manual Refresh. See
-        # wsl_helpers' comment in prime_atlas_v1.py for why these two callables are passed
+        # wsl_helpers' comment in prime_atlas_v2.py for why these two callables are passed
         # in rather than imported directly.
         self.wsl["reload_primes_tree"]()
         self.wsl["reload_constellations_tree"]()
@@ -2354,7 +2354,7 @@ class SettingsTab(BaseTab):
                   foreground="#555555").grid(row=0, column=2, sticky="w", padx=(0, 6), pady=6)
 
         # Theme picker -- same restart-required pattern as language above (see
-        # prime_atlas_v1.py's PortalBrowserApp._apply_theme() docstring for why a
+        # prime_atlas_v2.py's PortalBrowserApp._apply_theme() docstring for why a
         # live re-theme of every already-built widget is a much larger, riskier
         # change than re-applying colors once at the next startup). Only two
         # options, so no need for language's available()-style discovery list --

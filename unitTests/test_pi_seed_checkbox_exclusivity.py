@@ -53,14 +53,14 @@ def main():
         tkinter.messagebox.showinfo = lambda *a, **k: None
         tkinter.messagebox.showerror = lambda *a, **k: None
 
-        sys.argv = ["prime_atlas_v1.py"]
-        import prime_atlas_v1
+        sys.argv = ["prime_atlas_v2.py"]
+        import prime_atlas_v2
 
-        _patch_app_settings(prime_atlas_v1.APP_SETTINGS)
-        prime_atlas_v1.APP_SETTINGS.set_storage_path(tmp_portal)
-        prime_atlas_v1.PORTAL_FOLDER = tmp_portal
+        _patch_app_settings(prime_atlas_v2.APP_SETTINGS)
+        prime_atlas_v2.APP_SETTINGS.set_storage_path(tmp_portal)
+        prime_atlas_v2.PORTAL_FOLDER = tmp_portal
 
-        app_cls = prime_atlas_v1._build_gui()
+        app_cls = prime_atlas_v2._build_gui()
         app = app_cls()
         app.update()
 

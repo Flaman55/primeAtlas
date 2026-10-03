@@ -3,9 +3,9 @@ pdf_writer.py -- a minimal, dependency-free PDF writer: just enough (text, lines
 shapes, multiple pages) to render this app's reports (the Benchmark tab's growth chart +
 full data table, the Constellations tab's records table) into standalone PDF files.
 
-Extracted from prime_atlas_v1.py during the tab-by-tab backend/UI split -- this toolkit
+Extracted from prime_atlas_v2.py during the tab-by-tab backend/UI split -- this toolkit
 was already shared by TWO independent renderers before the split
-(render_constellation_records_pdf, still in prime_atlas_v1.py, and
+(render_constellation_records_pdf, still in prime_atlas_v2.py, and
 render_benchmark_pdf, moved to primeatlas/benchmark/benchmark.py alongside it), so it gets its own
 module instead of living inside either one specifically -- neither renderer "owns" it, and
 duplicating it into both would recreate the exact kind of copy-paste this whole refactor
@@ -13,7 +13,7 @@ branch exists to undo (see primeatlas/core/background.py's own docstring for the
 applied to worker-thread plumbing).
 
 Written by hand instead of pulling in reportlab/matplotlib, to keep this app's documented
-zero-extra-installs promise (see prime_atlas_v1.py's module header: "no pip packages
+zero-extra-installs promise (see prime_atlas_v2.py's module header: "no pip packages
 required"). Only the three standard core-14 PDF fonts are used (Helvetica, Helvetica-Bold,
 Courier), so no font embedding is needed. WinAnsiEncoding (the default PDF text encoding
 for these fonts) doesn't cover Polish diacritics -- static labels drawn via these helpers

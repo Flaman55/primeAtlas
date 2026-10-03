@@ -11,7 +11,7 @@ Builds the REAL app (same "no mocked LocalLoggedRunner-style stand-in needed
 here -- there's no subprocess involved at all, just a background.
 PersistentWorker thread in the same process" as e.g. test_gen_progress_bar_
 engine_gating.py) rather than constructing ResearchSquaresTab in isolation,
-so the exact same dependency-injection wiring prime_atlas_v1.py itself uses
+so the exact same dependency-injection wiring prime_atlas_v2.py itself uses
 is what gets tested. The storage-mode tests seed a real floor-0 window file
 (primes 2,3,5,7 under 10p0/source_primes/) in a throwaway temp portal folder
 -- same minimal-seed recipe as test_goldbach_worker.py's own module docstring
@@ -88,10 +88,10 @@ def _run(tmp_portal, prime_sieve_v1, window_sharding):
     shown = []
     tkinter.messagebox.showerror = lambda *a, **k: shown.append(("error", a, k))
 
-    sys.argv = ["prime_atlas_v1.py"]
-    import prime_atlas_v1
-    _patch_app_settings(prime_atlas_v1.APP_SETTINGS)
-    app_cls = prime_atlas_v1._build_gui()
+    sys.argv = ["prime_atlas_v2.py"]
+    import prime_atlas_v2
+    _patch_app_settings(prime_atlas_v2.APP_SETTINGS)
+    app_cls = prime_atlas_v2._build_gui()
     app = app_cls()
     app.update()
     tab = app.research_squares_tab_widget

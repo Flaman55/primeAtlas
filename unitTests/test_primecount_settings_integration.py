@@ -95,12 +95,12 @@ def _test_settings_tab_primecount_status_and_install():
     messagebox.showinfo = lambda *a, **k: None
     messagebox.showerror = lambda *a, **k: None
 
-    import prime_atlas_v1
+    import prime_atlas_v2
 
     portal = tempfile.mkdtemp(prefix="primecount_settingstab_test_")
     try:
-        sys.argv = ["prime_atlas_v1.py"]
-        app_cls = prime_atlas_v1._build_gui()
+        sys.argv = ["prime_atlas_v2.py"]
+        app_cls = prime_atlas_v2._build_gui()
         app = app_cls()
         app.update()
         settings_tab = app.settings_tab

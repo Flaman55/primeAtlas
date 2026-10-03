@@ -117,11 +117,11 @@ Source: "..\primeatlas\core\assets\primeatlas.ico"; DestDir: "{app}"; Flags: ign
 Source: "vendor\git\*"; DestDir: "{app}\git"; Excludes: ".extracted-from-sha256"; Flags: recursesubdirs createallsubdirs ignoreversion
 
 [Icons]
-Name: "{autodesktop}\{#AppName}"; Filename: "{app}\python\pythonw.exe"; Parameters: """{app}\app\prime_atlas_v1.py"""; WorkingDir: "{app}\app"; IconFilename: "{app}\primeatlas.ico"; AppUserModelID: "Flaman55.PrimeAtlas"; Tasks: desktopicon
-Name: "{autoprograms}\{#AppName}"; Filename: "{app}\python\pythonw.exe"; Parameters: """{app}\app\prime_atlas_v1.py"""; WorkingDir: "{app}\app"; IconFilename: "{app}\primeatlas.ico"; AppUserModelID: "Flaman55.PrimeAtlas"; Tasks: startmenuicon
+Name: "{autodesktop}\{#AppName}"; Filename: "{app}\python\pythonw.exe"; Parameters: """{app}\app\prime_atlas_v2.py"""; WorkingDir: "{app}\app"; IconFilename: "{app}\primeatlas.ico"; AppUserModelID: "Flaman55.PrimeAtlas"; Tasks: desktopicon
+Name: "{autoprograms}\{#AppName}"; Filename: "{app}\python\pythonw.exe"; Parameters: """{app}\app\prime_atlas_v2.py"""; WorkingDir: "{app}\app"; IconFilename: "{app}\primeatlas.ico"; AppUserModelID: "Flaman55.PrimeAtlas"; Tasks: startmenuicon
 
 [Run]
-Filename: "{app}\python\pythonw.exe"; Parameters: """{app}\app\prime_atlas_v1.py"""; WorkingDir: "{app}\app"; Description: "{cm:LaunchApp}"; Flags: postinstall nowait skipifsilent; Check: AppInstalled
+Filename: "{app}\python\pythonw.exe"; Parameters: """{app}\app\prime_atlas_v2.py"""; WorkingDir: "{app}\app"; Description: "{cm:LaunchApp}"; Flags: postinstall nowait skipifsilent; Check: AppInstalled
 ; The README as a GitHub page, not the local .md: a fresh Windows has no app for .md files.
 Filename: "{#RepoWebUrl}#readme"; Description: "{cm:OpenReadme}"; Flags: postinstall shellexec nowait skipifsilent
 
