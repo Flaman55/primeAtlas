@@ -27,6 +27,18 @@ class VizMode:
     RenderSession was constructed with (each mode reads only its own keys)."""
 
     name = None
+    # The mode R (reset) switches to; None = stay in this mode.
+    reset_mode = None
+    # Window title and the HUD header's name for `hud_count`.
+    window_title = "PrimeAtlas -- Ring visualization"
+    count_label = "rings"
+    # Whether the renderer draws the ring field's center marker.
+    draws_center_marker = True
+    # Whether starting/resuming playback is refused at the loaded prime ceiling (modes
+    # that compute their own data have no such ceiling).
+    uses_prime_ceiling = True
+    # Pixel size of world_labels() text.
+    label_font_size = 16
 
     def __init__(self, session, config):
         self.session = session
@@ -73,6 +85,21 @@ class VizMode:
         draw order; each decay_callable is invoked right after its overlay is drawn."""
         return []
 
+    def marker_data(self):
+        """Striped point markers in world space (see tree/tree_draw.py's marker row
+        layout), or None. Read once after each rebuild."""
+        return None
+
+    def segment_data(self):
+        """(2k, 6) float32 GL_LINES vertices (x, y, r, g, b, a) in world space, or
+        None. Read once after each rebuild."""
+        return None
+
+    def world_labels(self):
+        """shared.world_labels.WorldLabel list anchored in world space. Read once after
+        each rebuild."""
+        return []
+
     def hud_line_colors(self, canvas_lines):
         """Per-line RGB colors for the on-canvas HUD text, or None for the default
         color on every line."""
@@ -95,6 +122,16 @@ class VizMode:
 
     def scrub(self, is_right, ctrl_held):
         """Mode-specific Left/Right step. True if handled."""
+        return False
+
+    def click(self, world_x, world_y, world_per_pixel):
+        """Left click (without a drag) at a world position; `world_per_pixel` converts
+        a pixel tolerance to world units. True if handled (the session then rebuilds)."""
+        return False
+
+    def key(self, name):
+        """A key the shared renderer does not use itself ("backspace", "home"). True
+        if handled (the session then rebuilds)."""
         return False
 
     # -- session events ---------------------------------------------------------

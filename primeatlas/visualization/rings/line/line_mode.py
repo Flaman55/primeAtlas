@@ -43,6 +43,7 @@ class LineMode(VizMode):
     curved-axis layout choice and the pattern-match flash."""
 
     name = "line"
+    reset_mode = "rings"
 
     def __init__(self, session, config):
         super().__init__(session, config)

@@ -1983,12 +1983,33 @@ def _test_renderer_runs_as_plain_script():
     check(proc.returncode == 0,
           f"renderer.py --help exits 0 when run as a plain script (rc={proc.returncode}, "
           f"stderr tail={proc.stderr[-300:]!r})")
-    for flag in ("--viz-mode", "--windows", "--track-primes", "--pattern-seed-k", "--line-axis-curved"):
+    for flag in ("--viz-mode", "--windows", "--track-primes", "--pattern-seed-k", "--line-axis-curved",
+                 "--tree-depth", "--tree-branches", "--tree-highlight"):
         check(flag in proc.stdout, f"renderer.py --help lists {flag}")
     shared_dir = os.path.dirname(script)
     clashes = sorted(f for f in os.listdir(shared_dir)
                      if f.endswith(".py") and f[:-3] in sys.stdlib_module_names)
     check(not clashes, f"no module in visualization/shared/ shadows a stdlib module (got {clashes})")
+
+def _test_source_none_and_tree_drawing_support():
+    """Spec: --source none loads no primes (the tree computes everything itself) and opens
+    at --upto; the HUD header names what the mode counts; the tree's marker and segment
+    shaders exist."""
+    import numpy as np
+    from primeatlas.visualization.shared.range_data import initial_n_for_source
+    from primeatlas.visualization.shared.sources import load_none
+    from primeatlas.visualization.shared.hud_text import compose_hud_canvas_lines
+    from primeatlas.visualization.shared import shaders
+    empty = load_none()
+    check(isinstance(empty, np.ndarray) and len(empty) == 0, "load_none returns an empty array")
+    check(initial_n_for_source("none", 12345, empty) == 12345, "--source none opens at --upto")
+    header = compose_hud_canvas_lines(5, 28, [], False, 120, count_label="nodes")[0]
+    check("nodes = 28" in header, f"the HUD header uses the mode's count label (got {header!r})")
+    header = compose_hud_canvas_lines(5, 28, [], False, 120)[0]
+    check("rings = 28" in header, f"the default count label stays 'rings' (got {header!r})")
+    check("gl_PointCoord" in shaders.MARKER_FRAGMENT_SHADER and "in_size" in shaders.MARKER_VERTEX_SHADER,
+          "the striped-marker shader pair exists")
+    check("in_color" in shaders.SEGMENT_VERTEX_SHADER, "the world-space segment shader exists")
 
 
 def main():
@@ -2050,6 +2071,7 @@ def main():
     _test_hud_quad_vertex_data()
     _test_rasterize_hud_text()
     _test_renderer_runs_as_plain_script()
+    _test_source_none_and_tree_drawing_support()
 
     if failures:
         print(f"\n{len(failures)} FAILURE(S)")

@@ -45,6 +45,7 @@ class RingMode(VizMode):
     resonance log. Reads N/primes/range state from the owning session."""
 
     name = "rings"
+    reset_mode = "rings"
 
     def __init__(self, session, config):
         super().__init__(session, config)

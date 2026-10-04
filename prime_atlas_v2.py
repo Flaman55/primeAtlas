@@ -1076,6 +1076,9 @@ def _build_gui():
             self.visualization_rings_tab = ttk.Frame(sub)
             sub.add(self.visualization_rings_tab, text=T("tabs.visualization_rings"))
             self._build_rings_tab()
+            self.visualization_tree_tab = ttk.Frame(sub)
+            sub.add(self.visualization_tree_tab, text=T("tabs.visualization_tree"))
+            self._build_tree_tab()
 
         def _build_rings_tab(self):
             """Thin wrapper -- the whole sub-tab lives in
@@ -1092,6 +1095,18 @@ def _build_gui():
                 status_var=self.status, translator=TRANSLATOR,
                 totals_progress=self.totals_progress, app_settings=APP_SETTINGS)
             self.rings_tab_widget.pack(fill="both", expand=True)
+
+        def _build_tree_tab(self):
+            """Thin wrapper -- the whole sub-tab lives in
+            primeatlas/visualization/tree/tree_tab.py's TreeTab (its own renderer window
+            and process; it reads no storage, the argument is kept for VizTabBase)."""
+            from primeatlas.visualization.tree.tree_tab import TreeTab
+
+            self.tree_tab_widget = TreeTab(
+                self.visualization_tree_tab, get_portal_folder=lambda: PORTAL_FOLDER,
+                status_var=self.status, translator=TRANSLATOR,
+                totals_progress=self.totals_progress, app_settings=APP_SETTINGS)
+            self.tree_tab_widget.pack(fill="both", expand=True)
 
         # --- Tab 6: Settings -----------------------------------------------------
 

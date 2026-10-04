@@ -174,7 +174,7 @@ if _PRIME_SIEVE_DIR not in sys.path:
     sys.path.insert(0, _PRIME_SIEVE_DIR)
 
 from primeatlas.visualization.shared.bigint import parse_big_int
-from primeatlas.visualization.shared.sources import load_synthetic, load_sieve, load_archive
+from primeatlas.visualization.shared.sources import load_synthetic, load_sieve, load_archive, load_none
 from primeatlas.visualization.shared.range_data import load_prime_range_slice, initial_n_for_source
 from primeatlas.visualization.shared.draw_primitives import (
     marker_device_scale, build_center_marker_vertex_data, build_flash_quad_vertex_data,
@@ -182,6 +182,7 @@ from primeatlas.visualization.shared.draw_primitives import (
 )
 from primeatlas.visualization.shared.playback import _TEMPO_MS_DEFAULT, _RANGE_STEP_ORBIT_TICKS
 from primeatlas.visualization.shared.hud_text import _HUD_FONT_SIZE_DEFAULT, hud_quad_vertex_data
+from primeatlas.visualization.shared.world_labels import build_label_atlas, LabelLayout
 from primeatlas.visualization.shared.stdin_commands import start_stdin_command_reader
 from primeatlas.visualization.shared.session import RenderSession
 from primeatlas.visualization.shared.gl_setup import setup_gl_resources
@@ -220,7 +221,7 @@ def _run_visualization(args, audio=None):
     # Window/context/every shader program/VAO/VBO live on one GLResources
     # instance, `gl`, built by setup_gl_resources(). Every reference to
     # those objects below is `gl.xxx`.
-    gl = setup_gl_resources(args)
+    gl = setup_gl_resources(args, MODES[args.viz_mode].window_title)
 
     # For --source sieve/archive, the view OPENS exactly at N=args.upto (see
     # initial_n_for_source's own docstring) -- but sequential playback needs
@@ -255,7 +256,9 @@ def _run_visualization(args, audio=None):
 
     print(f"Loading primes via --source={args.source} ...")
     t0 = time.perf_counter()
-    if args.source == "synthetic":
+    if args.source == "none":
+        primes = load_none()
+    elif args.source == "synthetic":
         primes = load_synthetic(args.count)
     elif args.source == "sieve":
         primes = load_sieve(load_upto)
@@ -417,6 +420,43 @@ def _run_visualization(args, audio=None):
         gl.hud_tex_holder["tex"] = tex
         gl.hud_quad_vbo.write(hud_quad_vertex_data(w, h).tobytes())
 
+    # The active mode's own world-space draw data (VizMode.marker_data/segment_data/
+    # world_labels), rebuilt together with the ring buffers.
+    mode_draw = {"marker_vao": None, "marker_count": 0, "segment_vao": None, "segment_count": 0,
+                 "labels": None, "label_vbo": None, "label_vao": None}
+
+    def _upload_mode_draw_data():
+        markers = session.mode.marker_data()
+        segments = session.mode.segment_data()
+        for key in ("marker_vao", "segment_vao", "label_vao"):
+            if mode_draw[key] is not None:
+                mode_draw[key].release()
+                mode_draw[key] = None
+        if mode_draw["label_vbo"] is not None:
+            mode_draw["label_vbo"].release()
+            mode_draw["label_vbo"] = None
+        mode_draw["marker_count"] = 0 if markers is None else len(markers)
+        if mode_draw["marker_count"]:
+            mode_draw["marker_vao"] = gl.make_marker_vao(gl.ctx.buffer(markers.astype("f4").tobytes()))
+        mode_draw["segment_count"] = 0 if segments is None else len(segments)
+        if mode_draw["segment_count"]:
+            mode_draw["segment_vao"] = gl.make_segment_vao(gl.ctx.buffer(segments.astype("f4").tobytes()))
+        if gl.label_tex_holder["tex"] is not None:
+            gl.label_tex_holder["tex"].release()
+            gl.label_tex_holder["tex"] = None
+        mode_draw["labels"] = None
+        labels = session.mode.world_labels()
+        if labels and gl.prog_text is not None:
+            rgba, sizes, rects = build_label_atlas(labels, session.mode.label_font_size)
+            if rgba is not None:
+                tex = gl.ctx.texture((rgba.shape[1], rgba.shape[0]), 4, rgba.tobytes())
+                tex.filter = (moderngl.NEAREST, moderngl.NEAREST)
+                gl.label_tex_holder["tex"] = tex
+                mode_draw["labels"] = LabelLayout(labels, sizes, rects)
+                mode_draw["label_vbo"] = gl.ctx.buffer(reserve=max(1, len(labels)) * 6 * 4 * 4)
+                mode_draw["label_vao"] = gl.ctx.vertex_array(
+                    gl.prog_text, [(mode_draw["label_vbo"], "2f 2f", "in_pos", "in_uv")])
+
     def rebuild_buffer(n_value, prev_ring_count=None, advancing=False):
         """GL-side half of session.rebuild(): uploads its returned vertex
         data into two fresh VBOs (see split_hit_normal_vertex_data's own
@@ -431,6 +471,7 @@ def _run_visualization(args, audio=None):
         vbo_normal = gl.ctx.buffer(normal_bytes) if normal_bytes else gl.ctx.buffer(reserve=20)
         hit_bytes = data_hit.tobytes()
         vbo_hit = gl.ctx.buffer(hit_bytes) if hit_bytes else gl.ctx.buffer(reserve=20)
+        _upload_mode_draw_data()
         _apply_hud_refresh()
         return vbo_normal, vbo_hit, count, count_hit
 
@@ -448,9 +489,28 @@ def _run_visualization(args, audio=None):
         width, height = glfw.get_framebuffer_size(gl.window)
         session.on_scroll(dy, session.cam_last_mouse, (width, height))
 
+    # A left press/release pair that moved less than this many pixels is a click
+    # (forwarded to the mode, see RenderSession.click), not a drag.
+    click_slop_px = 4.0
+    press_pos = {"xy": None}
+
     def on_mouse_button(_window, button, action, _mods):
         if button == glfw.MOUSE_BUTTON_LEFT:
             session.set_dragging(action == glfw.PRESS)
+            x, y = glfw.get_cursor_pos(gl.window)
+            if action == glfw.PRESS:
+                press_pos["xy"] = (x, y)
+            elif press_pos["xy"] is not None:
+                px, py = press_pos["xy"]
+                press_pos["xy"] = None
+                if abs(x - px) <= click_slop_px and abs(y - py) <= click_slop_px:
+                    # Cursor positions are in window coordinates; the camera works in
+                    # framebuffer pixels (they differ on a scaled display).
+                    fb_w, fb_h = glfw.get_framebuffer_size(gl.window)
+                    win_w, win_h = glfw.get_window_size(gl.window)
+                    sx = fb_w / win_w if win_w else 1.0
+                    sy = fb_h / win_h if win_h else 1.0
+                    session.click(x * sx, y * sy, (fb_w, fb_h))
         elif button == glfw.MOUSE_BUTTON_MIDDLE and action == glfw.PRESS:
             # See session.recenter's own doc-comment (shared with the F11
             # re-fit branch below, since both do the exact same thing).
@@ -544,6 +604,11 @@ def _run_visualization(args, audio=None):
             delta = -step * 100
         if delta:
             session.bump_n(delta)
+            return
+        mode_key = {glfw.KEY_BACKSPACE: "backspace", glfw.KEY_HOME: "home"}.get(key)
+        if mode_key is not None:
+            if action == glfw.PRESS:
+                session.key(mode_key)
             return
 
         # Playback controls -- gated to PRESS only (not REPEAT), unlike the
@@ -708,10 +773,24 @@ def _run_visualization(args, audio=None):
         # --hit-point-size independent of --point-size on screen. Normal
         # rings drawn first, hit rings drawn last so they stay visually on
         # top of anything they'd otherwise overlap.
+        # The mode's own world-space segments, under every point.
+        if mode_draw["segment_vao"] is not None:
+            gl.prog_segment["u_pan"].value = (pan_x, pan_y)
+            gl.prog_segment["u_zoom"].value = session.cam_zoom
+            gl.prog_segment["u_viewport"].value = (width, height)
+            mode_draw["segment_vao"].render(moderngl.LINES, vertices=mode_draw["segment_count"])
+
         gl.prog["u_point_size"].value = args.point_size
         vao_normal.render(moderngl.POINTS, vertices=ring_count - ring_count_hit)
         gl.prog["u_point_size"].value = gl.hit_point_size
         vao_hit.render(moderngl.POINTS, vertices=ring_count_hit)
+
+        # The mode's own striped markers (each carries its own pixel size).
+        if mode_draw["marker_vao"] is not None:
+            gl.prog_marker["u_pan"].value = (pan_x, pan_y)
+            gl.prog_marker["u_zoom"].value = session.cam_zoom
+            gl.prog_marker["u_viewport"].value = (width, height)
+            mode_draw["marker_vao"].render(moderngl.POINTS, vertices=mode_draw["marker_count"])
 
         # Tracked-ring outline circles -- one LINE_LOOP draw call per
         # tracked-and-active ring over the shared unit-circle buffer,
@@ -761,13 +840,14 @@ def _run_visualization(args, audio=None):
         # ring field's own screen-space origin (pan_x, pan_y; see
         # build_center_marker_vertex_data's own doc-comment for why this is
         # the same point as u_pan above, not further scaled by zoom).
-        s = marker_device_scale(width, height)
-        triangle_data, line_data = build_center_marker_vertex_data(pan_x, pan_y, s)
-        gl.marker_triangle_vbo.write(triangle_data.tobytes())
-        gl.marker_line_vbo.write(line_data.tobytes())
         gl.prog_screen["u_viewport"].value = (width, height)
-        gl.marker_triangle_vao.render(moderngl.TRIANGLES)
-        gl.marker_line_vao.render(moderngl.LINES)
+        if session.mode.draws_center_marker:
+            s = marker_device_scale(width, height)
+            triangle_data, line_data = build_center_marker_vertex_data(pan_x, pan_y, s)
+            gl.marker_triangle_vbo.write(triangle_data.tobytes())
+            gl.marker_line_vbo.write(line_data.tobytes())
+            gl.marker_triangle_vao.render(moderngl.TRIANGLES)
+            gl.marker_line_vao.render(moderngl.LINES)
 
         # Flash overlays -- full-screen washes that decay over subsequent
         # frames after a trigger (see the active mode's rebuild for the trigger
@@ -780,6 +860,17 @@ def _run_visualization(args, audio=None):
             gl.flash_quad_vbo.write(quad.tobytes())
             gl.flash_quad_vao.render(moderngl.TRIANGLE_FAN)
             decay()
+
+        # World-anchored labels: screen quads recomputed from the camera every frame
+        # (pan/zoom never re-rasterizes text), drawn under the HUD.
+        if mode_draw["labels"] is not None and gl.label_tex_holder["tex"] is not None:
+            quads = mode_draw["labels"].quads((pan_x, pan_y), session.cam_zoom, (width, height))
+            if len(quads):
+                mode_draw["label_vbo"].write(quads.tobytes())
+                gl.label_tex_holder["tex"].use(location=0)
+                gl.prog_text["u_tex"].value = 0
+                gl.prog_text["u_viewport"].value = (width, height)
+                mode_draw["label_vao"].render(moderngl.TRIANGLES, vertices=len(quads))
 
         # On-canvas HUD text quad -- drawn LAST (after
         # rings/outlines/marker/flash, right before the swap) so it always
@@ -800,7 +891,8 @@ def _run_visualization(args, audio=None):
         if now - fps_t0 >= 0.5:
             fps = frame_count / (now - fps_t0)
             glfw.set_window_title(
-                gl.window, f"PrimeAtlas -- Ring visualization  N={last_n:,}  rings={ring_count:,}  fps={fps:.1f}"
+                gl.window, f"{session.mode.window_title}  N={last_n:,}  "
+                           f"{session.mode.count_label}={session.hud_count:,}  fps={fps:.1f}"
             )
             frame_count = 0
             fps_t0 = now
@@ -815,7 +907,8 @@ def main():
     parser.add_argument('--sound-low', choices=INSTRUMENTS, default='sine')
     parser.add_argument('--sound-prime', choices=INSTRUMENTS, default='triangle')
     parser.add_argument('--sound-lcm', choices=INSTRUMENTS, default='choir')
-    parser.add_argument("--source", choices=["synthetic", "sieve", "archive"], default="synthetic")
+    # none: no primes at all, for a mode that computes its own data (tree); opens at --upto.
+    parser.add_argument("--source", choices=["synthetic", "sieve", "archive", "none"], default="synthetic")
     parser.add_argument("--count", type=int, default=1_000_000, help="ring count for --source synthetic")
     # Accepts parse_big_int's flexible forms (plain digits, a*10**b, a*10^b,
     # aEb) in addition to a bare int -- see that function's own doc-comment.
@@ -899,7 +992,8 @@ def main():
     parser.add_argument("--viz-mode", choices=list(MODES), default="rings",
                          help="rings (default): one ring per active small prime, phase = n%%p. "
                               "line: a fixed row of real primes from --load-range, with an optional "
-                              "--pattern-seed-k/--pattern-seed-start k-tuple pattern slid along it by N")
+                              "--pattern-seed-k/--pattern-seed-start k-tuple pattern slid along it by N. "
+                              "tree: the sieve-lane tree on the real n axis (use with --source none)")
     # Opt-in live pause/resume protocol -- OFF by default, so running this
     # file directly from a terminal keeps the plain behavior: closing the
     # window (Esc / titlebar X) exits. Only rings_tab.py passes

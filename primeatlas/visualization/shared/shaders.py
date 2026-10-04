@@ -165,3 +165,109 @@ void main() {
     f_color = texture(u_tex, v_uv);
 }
 """
+
+
+# World-space colored line segments (GL_LINES): same camera transform as VERTEX_SHADER,
+# per-vertex rgba. Used by viz-modes that draw edges/lanes (VizMode.segment_data).
+SEGMENT_VERTEX_SHADER = """
+#version 330
+
+in vec2 in_pos;
+in vec4 in_color;
+
+uniform vec2 u_pan;
+uniform float u_zoom;
+uniform vec2 u_viewport;
+
+out vec4 v_color;
+
+void main() {
+    vec2 screen = in_pos * u_zoom + u_pan;
+    vec2 ndc = (screen / u_viewport) * 2.0 - 1.0;
+    ndc.y = -ndc.y;
+    gl_Position = vec4(ndc, 0.0, 1.0);
+    v_color = in_color;
+}
+"""
+
+SEGMENT_FRAGMENT_SHADER = FLAT_COLOR_FRAGMENT_SHADER
+
+# Striped point markers (VizMode.marker_data): a world-space point sprite with its own
+# pixel size, up to six vertical color stripes of equal width (left to right in the
+# order given) and an optional hollow center. Stripe colors arrive as six flat vec3
+# attributes, since GLSL 330 has no per-vertex arrays.
+MARKER_VERTEX_SHADER = """
+#version 330
+
+in vec2 in_pos;
+in float in_size;
+in float in_hollow;
+in float in_count;
+in vec3 in_c0;
+in vec3 in_c1;
+in vec3 in_c2;
+in vec3 in_c3;
+in vec3 in_c4;
+in vec3 in_c5;
+
+uniform vec2 u_pan;
+uniform float u_zoom;
+uniform vec2 u_viewport;
+
+flat out float v_hollow;
+flat out float v_count;
+flat out vec3 v_c0;
+flat out vec3 v_c1;
+flat out vec3 v_c2;
+flat out vec3 v_c3;
+flat out vec3 v_c4;
+flat out vec3 v_c5;
+
+void main() {
+    vec2 screen = in_pos * u_zoom + u_pan;
+    vec2 ndc = (screen / u_viewport) * 2.0 - 1.0;
+    ndc.y = -ndc.y;
+    gl_Position = vec4(ndc, 0.0, 1.0);
+    gl_PointSize = in_size;
+    v_hollow = in_hollow;
+    v_count = in_count;
+    v_c0 = in_c0;
+    v_c1 = in_c1;
+    v_c2 = in_c2;
+    v_c3 = in_c3;
+    v_c4 = in_c4;
+    v_c5 = in_c5;
+}
+"""
+
+MARKER_FRAGMENT_SHADER = """
+#version 330
+
+flat in float v_hollow;
+flat in float v_count;
+flat in vec3 v_c0;
+flat in vec3 v_c1;
+flat in vec3 v_c2;
+flat in vec3 v_c3;
+flat in vec3 v_c4;
+flat in vec3 v_c5;
+
+out vec4 f_color;
+
+void main() {
+    vec2 d = gl_PointCoord - vec2(0.5);
+    float r = length(d) * 2.0;
+    if (r > 1.0) discard;
+    if (v_hollow > 0.5 && r < 0.6) discard;
+    int n = max(int(v_count + 0.5), 1);
+    int idx = clamp(int(gl_PointCoord.x * float(n)), 0, n - 1);
+    vec3 c = v_c0;
+    if (idx == 1) c = v_c1;
+    else if (idx == 2) c = v_c2;
+    else if (idx == 3) c = v_c3;
+    else if (idx == 4) c = v_c4;
+    else if (idx == 5) c = v_c5;
+    float alpha = smoothstep(1.0, 0.85, r);
+    f_color = vec4(c, alpha);
+}
+"""
