@@ -117,7 +117,7 @@ def _smallest_witness(is_prime, n):
 def window_rows(is_prime, Pmax, row_cap=None, row_offset=0):
     """Computes windowCovered(Pmax) (Structural.lean) -- every even n in [4, 2*Pmax] --
     using an EXTERNALLY supplied is_prime array (e.g. sourced from on-disk storage, see
-    prime_atlas_v1.read_is_prime_from_storage) instead of building a fresh sieve. Runs
+    prime_atlas_v2.read_is_prime_from_storage) instead of building a fresh sieve. Runs
     the exact same touch_once witness search as check_window()'s touch_once branch
     (_smallest_witness), just against a caller-supplied is_prime instead of one built
     internally -- this backs the Goldbach tab's Visualize feature, which always
@@ -349,7 +349,7 @@ def both_base_window_rows(is_prime, Pmax, Pmin=BOTH_BASE_PMIN, row_cap=None,
                            row_offset=0, n_min=None, n_max=None, progress_cb=None):
     """GUI-facing counterpart of check_both_base_coverage, shaped to match
     window_rows()'s own contract (row_cap/row_offset paging, same key names where
-    the concept overlaps) -- prime_atlas_v1.py's Visualize renders exclusively
+    the concept overlaps) -- prime_atlas_v2.py's Visualize renders exclusively
     through this path. With BOTH_BASE_PMIN = 2, this is exactly the window Lean's
     additiveSelfContained_of_hasGoldbachRep proves unconditionally.
 
@@ -369,7 +369,7 @@ def both_base_window_rows(is_prime, Pmax, Pmin=BOTH_BASE_PMIN, row_cap=None,
     (n_min up, n_max down). "covered"/"counterexamples"/"segment_size" describe
     ONLY the resulting [n_min, n_max] range, NOT the full window -- the caller is
     responsible for making that scope clear in whatever text it shows (see
-    prime_atlas_v1.py's viz_summary_covered/void usage). The returned
+    prime_atlas_v2.py's viz_summary_covered/void usage). The returned
     "range_min"/"range_max" record exactly what was used, distinct from the
     unchanged "window_max" (the full window's own upper bound), so a UI can
     render both without recomputing the clamp itself.
@@ -403,7 +403,7 @@ def both_base_window_rows(is_prime, Pmax, Pmin=BOTH_BASE_PMIN, row_cap=None,
          a fixed-position array indexed by n's own position in the range, not
          appended in discovery order), stage 2 is assembling the plain dict rows
          list for the requested page (cheap, already-sorted data), stage 3 is
-         the Tk rendering code in prime_atlas_v1.py."""
+         the Tk rendering code in prime_atlas_v2.py."""
     if Pmax < 2:
         raise ValueError("Pmax must be >= 2")
     if Pmax > BOTH_BASE_PMAX_CEILING:

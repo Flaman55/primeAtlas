@@ -5,16 +5,16 @@ pattern (constellations/k{k}/variant{id}/HITS_*.bin), a paginated hit-value prev
 pane, and the "const" search box that jumps straight to every pattern a searched
 number participates in.
 
-Extracted from prime_atlas_v1.py, the third tab split out after Benchmark and Prime
+Extracted from prime_atlas_v2.py, the third tab split out after Benchmark and Prime
 numbers -- see primeatlas/primes/primes_tab.py's own module docstring for the general
-dependency-injection shape this follows (avoids importing prime_atlas_v1.py directly,
+dependency-injection shape this follows (avoids importing prime_atlas_v2.py directly,
 which would be circular).
 
 Like the Prime numbers tab, the SEARCH machinery itself (the shared PersistentWorker,
 one status/progress bar used by both this tab and the Prime numbers tab's own search
 box, and the "generate the missing fragment, then retry" dialog that can launch a run
 via the Generation tab) is a genuinely shared, app-level subsystem and stays in
-prime_atlas_v1.py -- this tab receives start_search_job/is_search_busy/
+prime_atlas_v2.py -- this tab receives start_search_job/is_search_busy/
 offer_generate_missing_prime_window as injected callables, same shape as
 primeatlas/primes/primes_tab.py's own constructor.
 
@@ -23,7 +23,7 @@ handler needs to coordinate with the SIBLING Constellation calculator tab (does 
 result belong to a search the calculator itself kicked off, and if so, auto-jump to
 that exact pattern once the result comes back) -- see on_const_search_result()'s own
 docstring for exactly how that coupling is kept to a thin, app-level orchestration
-method (_on_const_search_result, still in prime_atlas_v1.py) instead of leaking one
+method (_on_const_search_result, still in prime_atlas_v2.py) instead of leaking one
 tab's internals into the other.
 
 This is one of a few files in primeatlas/ that import tkinter -- see
@@ -54,10 +54,10 @@ class ConstellationsHitsTab(BaseTab):
         """
         get_portal_folder/status_var/translator/update_nav_controls/render_page/
         page_size: same dependency-injection pattern as PrimesTab's own constructor
-        (see that class's docstring) -- page_size in particular is prime_atlas_v1.py's
+        (see that class's docstring) -- page_size in particular is prime_atlas_v2.py's
         shared PAGE_SIZE constant, also used by the Prime numbers tab's own preview.
 
-        reload_constellations_tree: prime_atlas_v1.py's own reload_constellations_tree()
+        reload_constellations_tree: prime_atlas_v2.py's own reload_constellations_tree()
         -- the Refresh button's actual handler, staying at the app level for the same
         "shared with the startup loading screen's own bookkeeping" reason
         PrimesTab's reload_primes_tree parameter does.
@@ -67,7 +67,7 @@ class ConstellationsHitsTab(BaseTab):
         primeatlas/primes/primes_tab.py's own docstring for the full rationale (shared with
         the Prime numbers tab's own search box, one status/progress bar for both).
 
-        offer_generate_missing_prime_window(base_exponent, number): prime_atlas_v1.py's
+        offer_generate_missing_prime_window(base_exponent, number): prime_atlas_v2.py's
         own _offer_generate_missing_prime_window(), pre-bound to kind="const" by the
         caller -- stays at the app level for the same reason as PrimesTab's own
         parameter of the same name (can launch a Generation-tab run).
@@ -85,7 +85,7 @@ class ConstellationsHitsTab(BaseTab):
 
         # (base_exponent, k, id) -> set(decoded starting values), reused across
         # searches within this session so each hit file is only decoded once. Public
-        # (no leading underscore) -- prime_atlas_v1.py's own _search_job runs on the
+        # (no leading underscore) -- prime_atlas_v2.py's own _search_job runs on the
         # shared search worker's background thread and mutates this dict in place via
         # find_constellation_participation() (see that function's own docstring for
         # why the cache lives here rather than as module state); _is_search_busy()
@@ -255,7 +255,7 @@ class ConstellationsHitsTab(BaseTab):
         self._hit_file_page_count = 1  # how many hit-file pages this pattern has
         self._jump_to_records_export = None  # set via bind_export_to_records()
 
-    # --- Called by prime_atlas_v1.py's own reload_constellations_tree() machinery,
+    # --- Called by prime_atlas_v2.py's own reload_constellations_tree() machinery,
     # which stays at the app level (see this class's own docstring) -----------------------
 
     def populate_floors(self, floors):
@@ -314,7 +314,7 @@ class ConstellationsHitsTab(BaseTab):
         self.hits_search_entry.insert(0, str(number))
 
     def show_missing_result(self, base_exponent, number, outcome):
-        """Shared by search_constellation()'s no-floor branch and prime_atlas_v1.py's
+        """Shared by search_constellation()'s no-floor branch and prime_atlas_v2.py's
         own _on_const_search_result() (when its prime_result-is-None branch doesn't
         launch a generation run) -- both reach here only when a "generate missing
         fragment" offer was declined or resolved as composite, so there's a result to
@@ -329,7 +329,7 @@ class ConstellationsHitsTab(BaseTab):
         self._reset_preview_state()
 
     def show_search_participation(self, base_exponent, number, prime_result, participation):
-        """Called by prime_atlas_v1.py's _on_const_search_result() once a "const" search
+        """Called by prime_atlas_v2.py's _on_const_search_result() once a "const" search
         job has returned a found prime_result -- builds the detail text + one
         search_results_list row per pattern `number` participates in."""
         T = self.T
@@ -371,7 +371,7 @@ class ConstellationsHitsTab(BaseTab):
         self.status.set(T("const.status_search", number=number, count=len(participation)))
 
     def jump_to_search_match(self, base_exponent, pattern, match):
-        """Called by prime_atlas_v1.py's own _on_const_search_result() when a "const"
+        """Called by prime_atlas_v2.py's own _on_const_search_result() when a "const"
         search that the calculator tab itself kicked off comes back with a hit for the
         EXACT pattern it was asking about -- `match` is one of `participation`'s own
         dicts (has "position"/"base" keys), same shape _on_search_result_activate()
@@ -568,7 +568,7 @@ class ConstellationsHitsTab(BaseTab):
 
     def bind_export_to_records(self, jump_to_records_export):
         """Registers the callable "Export" invokes -- injected via a setter rather
-        than the constructor because prime_atlas_v1.py's own _build_constellations_
+        than the constructor because prime_atlas_v2.py's own _build_constellations_
         section() constructs this tab BEFORE ConstellationsRecordsTab exists yet (same
         deferred-wiring need bind_jump_to_hits() covers in the other direction, on
         ConstellationsRecordsTab itself)."""

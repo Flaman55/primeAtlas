@@ -97,7 +97,7 @@ class ConstellationsRecordsTab(BaseTab):
         page_size: same dependency-injection pattern as every other extracted tab --
         see primeatlas/primes/primes_tab.py's own docstring.
 
-        eval_quick_number: prime_atlas_v1.py's own _eval_quick_number() -- same
+        eval_quick_number: prime_atlas_v2.py's own _eval_quick_number() -- same
         parameter as ConstellationsCalcTab's own, used here for the optional "Floor
         od/do" floor-range fields.
 
@@ -700,7 +700,7 @@ class ConstellationsRecordsTab(BaseTab):
 
     def activate_pattern_for_export(self, base_exponent, pattern, page_index):
         """Sets this tab up to browse/export ONE specific pattern's page range, without
-        needing a prior Scan/tree click -- called by prime_atlas_v1.py's app-level
+        needing a prior Scan/tree click -- called by prime_atlas_v2.py's app-level
         jump wiring when Storage's own "Export" button (ConstellationsHitsTab, see
         its own docstring) hands off to here instead of duplicating a whole separate
         export mechanism there.
@@ -758,7 +758,7 @@ class ConstellationsRecordsTab(BaseTab):
     def bind_jump_to_hits(self, jump_to_hits):
         """Registers the callable used by _on_detail_activate() to jump into the
         Storage tab -- injected via a setter rather than the constructor because
-        prime_atlas_v1.py's own _build_constellations_section() constructs this tab
+        prime_atlas_v2.py's own _build_constellations_section() constructs this tab
         (and its sibling ConstellationsHitsTab) in a fixed order, and this callable
         needs to reach the Storage tab's own widget/sub-notebook-selection logic (all
         app-level, see that method's own comment) -- exactly the same deferred-wiring

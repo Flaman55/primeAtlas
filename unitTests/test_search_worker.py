@@ -103,8 +103,8 @@ def main():
 
         shown = _patch_messageboxes()
 
-        sys.argv = ["prime_atlas_v1.py"]
-        import prime_atlas_v1
+        sys.argv = ["prime_atlas_v2.py"]
+        import prime_atlas_v2
 
         # Redirect PORTAL_FOLDER/APP_SETTINGS to tmp_portal BEFORE constructing the
         # app -- same pattern test_loading_screen.py already uses, and for the same
@@ -124,11 +124,11 @@ def main():
         # before construction means the very first scan already targets tmp_portal, so
         # this race can't occur here at all, independent of how large the real storage
         # folder happens to be.
-        _patch_app_settings(prime_atlas_v1.APP_SETTINGS)
-        prime_atlas_v1.APP_SETTINGS.set_storage_path(tmp_portal)
-        prime_atlas_v1.PORTAL_FOLDER = tmp_portal
+        _patch_app_settings(prime_atlas_v2.APP_SETTINGS)
+        prime_atlas_v2.APP_SETTINGS.set_storage_path(tmp_portal)
+        prime_atlas_v2.PORTAL_FOLDER = tmp_portal
 
-        app_cls = prime_atlas_v1._build_gui()
+        app_cls = prime_atlas_v2._build_gui()
         app = app_cls()
         app.update()
         _pump(app, 3.0)

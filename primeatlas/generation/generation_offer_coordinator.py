@@ -209,7 +209,7 @@ class GenerationOfferCoordinator:
         `offer_generate_missing_range(op, payload)` callable (see that class's own
         docstring) -- ResearchGoldbachTab itself doesn't need to know this now lives
         in its own coordinator class rather than directly on PortalBrowserApp,
-        `prime_atlas_v1.py`'s own `_goldbach_offer_generate_missing_range` delegate
+        `prime_atlas_v2.py`'s own `_goldbach_offer_generate_missing_range` delegate
         still passes this same bound method through unchanged.
 
         Records `op` ("viz" or "decompose") into gen._pending_goldbach_retry_op

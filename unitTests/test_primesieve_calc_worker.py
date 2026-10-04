@@ -65,10 +65,10 @@ def _pump(app, seconds):
 def main():
     shown = _patch_messageboxes()
 
-    sys.argv = ["prime_atlas_v1.py"]
-    import prime_atlas_v1
+    sys.argv = ["prime_atlas_v2.py"]
+    import prime_atlas_v2
     import primeatlas.primality.primesieve_calc_tab as psc
-    app_cls = prime_atlas_v1._build_gui()
+    app_cls = prime_atlas_v2._build_gui()
     app = app_cls()
     app.update()
     tab = app.primesieve_calc_tab_widget

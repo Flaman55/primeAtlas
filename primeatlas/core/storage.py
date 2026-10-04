@@ -38,11 +38,11 @@ LOW_FLOOR_CUTOFF = 7  # duplicated from prime_sieve_v3.py/v4.py's own LOW_FLOOR_
                       # get exactly ONE window file rather than window_m-sized chunks). This
                       # Windows-native module deliberately never imports prime_sieve_v3/v4
                       # (they ctypes-load a Linux .so -- see find_continuation_target_idx's
-                      # own docstring, still in prime_atlas_v1.py, for why), so the value is
+                      # own docstring, still in prime_atlas_v2.py, for why), so the value is
                       # kept in sync by hand here. Used by update_floor_totals_cache() to
                       # decide when its own mtime-based staleness check can't be trusted
                       # (see that function's LOW-FLOOR EXCEPTION docstring paragraph). Also
-                      # re-imported back into prime_atlas_v1.py for its OWN
+                      # re-imported back into prime_atlas_v2.py for its OWN
                       # _floor_window_count()'s use (a Generation-tab quick-gen helper).
 
 
@@ -407,7 +407,7 @@ def format_duration(seconds):
     """H h M m S s, dropping leading zero units. Duplicated (not imported) from
     orchestrator_v3.py's own format_duration() -- this GUI module deliberately doesn't
     import the WSL-only orchestrator scripts directly (see the Generation tab's own note,
-    still in prime_atlas_v1.py, on why orchestrator_loop_v2 is launched as a subprocess
+    still in prime_atlas_v2.py, on why orchestrator_loop_v2 is launched as a subprocess
     instead), so small pure-Python helpers like this one get a local copy rather than a
     cross-module dependency."""
     if seconds is None:

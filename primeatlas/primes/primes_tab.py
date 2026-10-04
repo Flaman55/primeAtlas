@@ -8,17 +8,17 @@ Floor/window listing and the totals-cache logic live in primeatlas/core/storage.
 from here, no circularity since that module has no tkinter dependency), but the SEARCH
 machinery is a genuinely shared, app-level subsystem -- ONE PersistentWorker + ONE
 status/progress bar used by BOTH this tab's search box and the Constellations tab's own
-(still living directly in prime_atlas_v1.py), and the "generate the missing window,
+(still living directly in prime_atlas_v2.py), and the "generate the missing window,
 then retry" dialog it can trigger reaches into the Generation tab's own launch methods
 and its run-finished callback. None of that belongs to "the Prime numbers tab"
-specifically, so it stays in prime_atlas_v1.py and is handed to this class as plain
+specifically, so it stays in prime_atlas_v2.py and is handed to this class as plain
 callables at construction time -- see __init__'s own docstring for exactly which ones
 and why, same reasoning primeatlas/benchmark/benchmark_tab.py's own docstring gives for its
 update_nav_controls parameter.
 
 The per-floor "total prime count" background worker (a SECOND PersistentWorker, reading
 every source window's header for a floor -- can take ~78s on a heavily-populated one)
-also stays in prime_atlas_v1.py, for the same "shares the search worker's status/
+also stays in prime_atlas_v2.py, for the same "shares the search worker's status/
 progress bar" reason. This tab owns only the DISPLAY side of that worker's results (the
 tree rows, the floor nav's page-total label) via populate_floors()/update_floor_row(),
 called by PrimesTreeCoordinator._on_scan_done (primeatlas/primes/primes_tree_coordinator.py)
@@ -97,35 +97,35 @@ class PrimesTab(BaseTab):
         """
         get_portal_folder/status_var/translator/update_nav_controls: same dependency-
         injection pattern as BenchmarkTab's own constructor (see that class's
-        docstring) -- avoids importing prime_atlas_v1.py directly, which would be
+        docstring) -- avoids importing prime_atlas_v2.py directly, which would be
         circular (that file imports PrimesTab from this module).
 
-        reload_primes_tree: prime_atlas_v1.py's own reload_primes_tree() -- the
+        reload_primes_tree: prime_atlas_v2.py's own reload_primes_tree() -- the
         Refresh button's actual handler. Stays at the app level (unlike every OTHER
         tab's own Refresh button) because it dispatches a BACKGROUND disk scan shared
         with the startup loading screen's own bookkeeping (_loading_startup_pending,
         see that method's own docstring) -- this tab only receives the finished
         result, via populate_floors(), once that scan completes.
 
-        render_page: prime_atlas_v1.py's own _render_page() helper, shared with the
+        render_page: prime_atlas_v2.py's own _render_page() helper, shared with the
         Constellations tab's own preview pane -- injected rather than duplicated, same
         reasoning as update_nav_controls.
 
-        page_size/floor_page_size: prime_atlas_v1.py's PAGE_SIZE/FLOOR_PAGE_SIZE module
+        page_size/floor_page_size: prime_atlas_v2.py's PAGE_SIZE/FLOOR_PAGE_SIZE module
         constants, passed as plain values instead of imported -- PAGE_SIZE in
         particular is shared with the Constellations tab's own preview pane, so it
-        stays a prime_atlas_v1.py-owned constant rather than moving here just for this
+        stays a prime_atlas_v2.py-owned constant rather than moving here just for this
         one tab.
 
         start_search_job(kind, base_exponent, number)/is_search_busy(): the shared
         search PersistentWorker's dispatch function and busy-flag getter (see
-        prime_atlas_v1.py's own _start_search_job()/_search_busy) -- shared with the
+        prime_atlas_v2.py's own _start_search_job()/_search_busy) -- shared with the
         Constellations tab's search box (both tabs' Search buttons disable together
         while EITHER kind of search is in flight, and both share one status/progress
-        bar), so the worker itself stays in prime_atlas_v1.py rather than being
+        bar), so the worker itself stays in prime_atlas_v2.py rather than being
         duplicated or awkwardly split between two tab modules.
 
-        offer_generate_missing_prime_window(base_exponent, number): prime_atlas_v1.py's
+        offer_generate_missing_prime_window(base_exponent, number): prime_atlas_v2.py's
         own _offer_generate_missing_prime_window(), pre-bound to kind="prime" by the
         caller -- stays at the app level because it can launch a generation run via the
         Generation tab's own methods (_apply_primesieve_params_and_run/
@@ -133,7 +133,7 @@ class PrimesTab(BaseTab):
         consumed by THAT tab's own run-finished handler (_on_loop_finished) -- none of
         which this tab has any business owning.
 
-        submit_totals_job(base_exponent): prime_atlas_v1.py's per-floor totals
+        submit_totals_job(base_exponent): prime_atlas_v2.py's per-floor totals
         PersistentWorker's submit() method -- expanding a floor re-checks its total
         (cheap no-op if nothing changed, see update_floor_totals_cache()'s own
         docstring), the same worker the "Verify totals" button's "compute all" batch
@@ -337,7 +337,7 @@ class PrimesTab(BaseTab):
         self._preview_total_pages = 1
         self._path_by_item = {}
 
-    # --- Called by prime_atlas_v1.py's own reload_primes_tree()/totals-worker machinery,
+    # --- Called by prime_atlas_v2.py's own reload_primes_tree()/totals-worker machinery,
     # which stays at the app level (see this class's own docstring) -----------------------
 
     def populate_floors(self, floors, floor_total_known, floor_gen_seconds):
@@ -382,13 +382,13 @@ class PrimesTab(BaseTab):
             self._floor_node_by_exp[base_exponent] = node
 
     def get_floor_node_keys(self):
-        """Every floor currently listed in the tree -- used by prime_atlas_v1.py's own
+        """Every floor currently listed in the tree -- used by prime_atlas_v2.py's own
         _compute_all_floor_totals() to know which base_exponents to submit to the
         totals worker for a "recompute everything" batch."""
         return list(self._floor_node_by_exp.keys())
 
     def get_gen_seconds(self, base_exponent):
-        """Read access to this tab's own _floor_gen_seconds, for prime_atlas_v1.py's
+        """Read access to this tab's own _floor_gen_seconds, for prime_atlas_v2.py's
         own _on_floor_total_ready() grand-total duration sum (see that method's own
         docstring) -- this tab is the sole owner of that dict (populated once per
         reload_primes_tree() scan, see populate_floors()), so the app reads it here
@@ -396,7 +396,7 @@ class PrimesTab(BaseTab):
         return self._floor_gen_seconds.get(base_exponent)
 
     def update_floor_row(self, base_exponent, total, file_count, total_bytes):
-        """Called by prime_atlas_v1.py's own _on_floor_total_ready() once the app-level
+        """Called by prime_atlas_v2.py's own _on_floor_total_ready() once the app-level
         totals worker finishes (re-)computing one floor's total -- updates this tab's
         own copy of _floor_total_known plus the corresponding tree row, and refreshes
         the floor-nav page-total label if that floor happens to be the currently active
@@ -424,7 +424,7 @@ class PrimesTab(BaseTab):
             self._refresh_floor_nav_controls()
 
     def on_prime_search_result(self, base_exponent, number, result):
-        """Called by prime_atlas_v1.py's _on_search_worker_result() once a "prime"
+        """Called by prime_atlas_v2.py's _on_search_worker_result() once a "prime"
         search job (dispatched via the injected start_search_job) comes back --
         updates the UI with the result."""
         T = self.T
@@ -685,7 +685,7 @@ class PrimesTab(BaseTab):
             # fragment doesn't exist" situation on_prime_search_result() handles for an
             # existing-but-incomplete floor, just at the whole-floor scale (existing_count
             # is naturally 0 for a floor with zero windows -- see
-            # find_continuation_target_idx()'s own docstring, still in prime_atlas_v1.py).
+            # find_continuation_target_idx()'s own docstring, still in prime_atlas_v2.py).
             # Route it through the exact same offer instead of a dead-end "no floor"
             # message: there's nothing this dialog told the user that generating the
             # fragment doesn't already cover.

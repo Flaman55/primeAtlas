@@ -5,7 +5,7 @@ sourced "Visualize" diagram (both-base [4, Pmax+GOLDBACH_BOTH_BASE_PMIN] window,
 per Lean's additiveSelfContained_of_hasGoldbachRep), and the exhaustive "Decompose number"
 decomposition detail window.
 
-Extracted from prime_atlas_v1.py during the refactor branch's tab-by-tab
+Extracted from prime_atlas_v2.py during the refactor branch's tab-by-tab
 backend/UI split. Fully self-contained, same precedent as
 ConstellationsRecordsTab (confirmed exclusive to this one sub-tab): owns its own
 background.PersistentWorker (self._goldbach_worker) end to end -- see
@@ -13,7 +13,7 @@ primeatlas/constellations/constellations_records_tab.py's own docstring for the 
 
 The ONE piece that genuinely can't move here: launching a "generate the missing range"
 run in response to a Visualize/decompose job hitting MissingStorageRangeError needs
-prime_atlas_v1.py's own quick-gen planning/launch machinery (self._loop_runner,
+prime_atlas_v2.py's own quick-gen planning/launch machinery (self._loop_runner,
 _quick_gen_plan_literal_range, _launch_direct_window_range) and its
 _pending_goldbach_retry_op slot (read back by _on_loop_finished once that generation
 run completes) -- all app-level state shared with the Generation tab, not this tab's
@@ -89,7 +89,7 @@ class ResearchGoldbachTab(BaseTab):
         constellations_records_tab.py's for why totals_progress (a shared widget) is
         passed directly rather than via a deferred lambda.
 
-        offer_generate_missing_range: prime_atlas_v1.py's own
+        offer_generate_missing_range: prime_atlas_v2.py's own
         _goldbach_offer_generate_missing_range(op, payload) -- see this module's own
         docstring for why launching that specific generation run stays app-level.
         """
@@ -143,7 +143,7 @@ class ResearchGoldbachTab(BaseTab):
         self._build_widgets()
 
     def retry_viz(self):
-        """Called by prime_atlas_v1.py's _on_loop_finished once a "generate the
+        """Called by prime_atlas_v2.py's _on_loop_finished once a "generate the
         missing range" run it launched for a "viz" job (see
         _goldbach_offer_generate_missing_range) completes -- re-reads n/row-page/
         od-do fresh from the still-open Visualize Toplevel's own entries via

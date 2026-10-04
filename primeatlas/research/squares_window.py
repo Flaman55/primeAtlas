@@ -13,7 +13,7 @@ formula and the count actually required:
   - Brocard:   [p_k^2, p_(k+1)^2] (squares of consecutive primes),
                required_count = 4 -- the actual conjecture ("at least four
                primes between the squares of consecutive primes greater than
-               2"), not merely ">=1" (an earlier prime_atlas_v1.py comment
+               2"), not merely ">=1" (an earlier prime_atlas_v2.py comment
                describing the whole Research-tab layout simplified all three
                conjectures down to the same ">=1" question for the purpose of
                explaining why they share one tab -- this module keeps that

@@ -1,10 +1,10 @@
 """
 i18n.py -- Translator: loads one of two static locale files (locales/strings_pl.json,
 locales/strings_en.json) and provides T(key, **kwargs) lookups for every piece of
-user-visible text in this app's GUI (prime_atlas_v1.py + settings_tab.py).
+user-visible text in this app's GUI (prime_atlas_v2.py + settings_tab.py).
 
 Deliberately RESTART-required, not a live hot-swap: this app's 5 tabs are built once, at
-startup, by _build_gui() (prime_atlas_v1.py) -- rewriting every already-built widget's
+startup, by _build_gui() (prime_atlas_v2.py) -- rewriting every already-built widget's
 displayed text in place, for every widget in every tab, would be a much larger and
 riskier change to a large file with no way to visually verify tkinter widget layout.
 The language choice persists to AppSettings and takes effect on next launch; the

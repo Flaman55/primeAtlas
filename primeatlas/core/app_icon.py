@@ -6,7 +6,7 @@ AppUserModelID that makes the Windows taskbar actually show it.
 The app runs as pythonw.exe: without an explicit AppUserModelID, Windows groups its windows
 under Python and shows Python's icon on the taskbar regardless of the window's own icon.
 The installer's shortcuts carry the same ID (installer/PrimeAtlasSetup.iss), so a pinned
-shortcut and the running window share one taskbar button. The ring_viz renderer is a
+shortcut and the running window share one taskbar button. The visualization renderer is a
 separate process and sets the ID itself (gl_setup.py).
 
 Every function here is best-effort and never raises -- an icon is never worth a crash.

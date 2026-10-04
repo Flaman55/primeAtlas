@@ -1,6 +1,6 @@
 """
 startup_dependency_check.py -- checks the native-Windows Python packages PrimeAtlas needs
-(requirements.txt: numpy, moderngl, glfw) BEFORE prime_atlas_v1.py imports the primeatlas
+(requirements.txt: numpy, moderngl, glfw) BEFORE prime_atlas_v2.py imports the primeatlas
 package, and offers to pip-install whatever is missing.
 
 Why this lives at the repo root and not inside primeatlas/: primeatlas/__init__.py itself

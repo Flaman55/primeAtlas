@@ -1,7 +1,7 @@
 """
 widgets.py -- small, generic tkinter widget helpers with no application-specific state,
 shared by more than one tab (e.g. FlowRow, used by the Prime numbers and Constellations
-tabs and imported by prime_atlas_v1.py as `from primeatlas.core.widgets import FlowRow
+tabs and imported by prime_atlas_v2.py as `from primeatlas.core.widgets import FlowRow
 as _FlowRow`).
 
 This is one of a small number of files in primeatlas/ that import tkinter -- see
@@ -121,7 +121,7 @@ def _build_goto_group(parent, T, on_goto):
     goto_entry = ttk.Entry(goto_frame, width=6)
     goto_entry.bind("<Return>", lambda _e: on_goto())
     goto_btn = ttk.Button(goto_frame, text=T("common.goto"), command=on_goto)
-    # The "clam" theme (see prime_atlas_v1.py's _apply_theme) gives TButton more
+    # The "clam" theme (see prime_atlas_v2.py's _apply_theme) gives TButton more
     # vertical padding than TEntry, so side by side they sit at visibly
     # different heights. Pad the entry's own height (ipady) up to the button's
     # actual requested height instead of hardcoding a pixel guess, so the two

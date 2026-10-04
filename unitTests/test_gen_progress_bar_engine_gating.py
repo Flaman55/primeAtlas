@@ -53,12 +53,12 @@ def main():
     tkinter.messagebox.showinfo = lambda *a, **k: None
     tkinter.messagebox.showerror = lambda *a, **k: None
 
-    sys.argv = ["prime_atlas_v1.py"]
-    import prime_atlas_v1
+    sys.argv = ["prime_atlas_v2.py"]
+    import prime_atlas_v2
 
     tmp_portal = tempfile.mkdtemp(prefix="primeatlas_gen_progress_gating_test_")
     try:
-        app_cls = prime_atlas_v1._build_gui()
+        app_cls = prime_atlas_v2._build_gui()
         app = app_cls()
         app.update()
         gen = app.generation_tab_widget

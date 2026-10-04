@@ -87,8 +87,8 @@ def main():
             m = re.search(r'Tasks:\s*"?(\w+)"?', line)
             check(m is not None and m.group(1) in task_names,
                   f"every shortcut is gated by its own checkbox task: {line.strip()[:60]}")
-            check(r"pythonw.exe" in line and "prime_atlas_v1.py" in line,
-                  "shortcut runs pythonw.exe prime_atlas_v1.py (no console window)")
+            check(r"pythonw.exe" in line and "prime_atlas_v2.py" in line,
+                  "shortcut runs pythonw.exe prime_atlas_v2.py (no console window)")
 
     print("\n--- Offline: pinned, bundled runtimes, no download/cmd.exe code ---")
     m = re.search(r'#define\s+PythonVersion\s+"(\d+)\.(\d+)\.(\d+)"', text)
@@ -198,7 +198,7 @@ def main():
     build = open(os.path.join(_REPO_ROOT, "installer", "build_installer.py"), encoding="utf-8").read()
     check("/DAppVersion=" in build and "version.py" in build,
           "build_installer.py passes /DAppVersion read from primeatlas/core/version.py")
-    main_src = open(os.path.join(_REPO_ROOT, "prime_atlas_v1.py"), encoding="utf-8").read()
+    main_src = open(os.path.join(_REPO_ROOT, "prime_atlas_v2.py"), encoding="utf-8").read()
     check("APP_VERSION" in main_src, "the main window shows the version (title bar)")
 
     license_path = os.path.join(_REPO_ROOT, "LICENSE.md")

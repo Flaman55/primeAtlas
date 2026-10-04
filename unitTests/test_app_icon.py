@@ -1,6 +1,6 @@
 """
 test_app_icon.py -- covers primeatlas/core/app_icon.py and the places that use it: the
-PrimeAtlas globe icon for the Tk windows, the ring_viz GLFW window, the
+PrimeAtlas globe icon for the Tk windows, the visualization GLFW window, the
 taskbar, and the installer's shortcuts.
 
 Why AppUserModelID matters: the app runs as pythonw.exe, so without an explicit
@@ -139,18 +139,18 @@ def section_tk():
 
 def section_wiring():
     print("\n--- Wiring ---")
-    main_src = read("prime_atlas_v1.py")
-    check("set_app_user_model_id()" in main_src, "prime_atlas_v1.py sets the AppUserModelID")
+    main_src = read("prime_atlas_v2.py")
+    check("set_app_user_model_id()" in main_src, "prime_atlas_v2.py sets the AppUserModelID")
     check("apply_tk_icon(self)" in main_src, "the main window gets the icon")
     check("apply_tk_icon(self)" in read("primeatlas/settings/env_setup_wizard.py"),
           "the first-run WSL wizard window gets the icon")
     check("primeatlas.ico" in read("startup_dependency_check.py"),
           "the pre-import dependency dialogs get the icon (by path -- no primeatlas import)")
-    gl = read("primeatlas/rings/ring_viz/gl_setup.py")
-    check("set_window_icon" in gl, "the ring_viz GLFW window gets the icon")
+    gl = read("primeatlas/visualization/shared/gl_setup.py")
+    check("set_window_icon" in gl, "the visualization GLFW window gets the icon")
     aumid = gl.find("set_app_user_model_id()")
     check(aumid != -1 and aumid < gl.find("glfw.create_window("),
-          "ring_viz sets the AppUserModelID BEFORE creating its window (a separate process)")
+          "the visualization renderer sets the AppUserModelID BEFORE creating its window (a separate process)")
 
     iss = read("installer/PrimeAtlasSetup.iss")
     check(re.search(r"^SetupIconFile=.*primeatlas\.ico\s*$", iss, re.MULTILINE) is not None,

@@ -1,7 +1,7 @@
 """
 floor_meta.py -- per-floor sidecar metadata (10p{N}/floor_meta.json), pure-logic and
 tkinter-free (same philosophy as manifest.py: exercised directly by standalone tests,
-wired into the GUI/backup layers by prime_atlas_v1.py / manifest.py / backup_store.py).
+wired into the GUI/backup layers by prime_atlas_v2.py / manifest.py / backup_store.py).
 
 Why this exists: benchmark_log.csv lives at the STORAGE ROOT, not inside any one floor's
 own 10p{N}/ folder -- so a floor's generation history has no independent existence of its
@@ -17,7 +17,7 @@ write_benchmark_row() -- which duplicate a small inline version of the append lo
 same "no cross-folder import between prime_sieve/ and primeatlas/" convention already used
 throughout this project, since those engines run standalone, possibly under WSL), and
 re-imported into the local benchmark_log.csv the first time this app notices the floor
-(see merge_floor_meta_into_benchmark_log(), called from prime_atlas_v1.py's totals-cache
+(see merge_floor_meta_into_benchmark_log(), called from prime_atlas_v2.py's totals-cache
 background worker on every floor visit). manifest.py folds floor_meta.json's rows into
 backups too, alongside the totals/sieving caches -- see that module's own docstring.
 """
@@ -167,7 +167,7 @@ def merge_floor_meta_into_benchmark_log(storage_path, base_exponent):
     benchmark_log.csv, skipping any row whose key (see _row_key) is already present. This
     is what makes a floor physically copied in from another storage (bringing its own
     floor_meta.json along) show up in THIS storage's Benchmark tab exactly as if it had
-    been generated here. Called unconditionally from prime_atlas_v1.py's totals-cache
+    been generated here. Called unconditionally from prime_atlas_v2.py's totals-cache
     background worker on every floor visit -- a no-op (returns 0) on the ordinary case
     where there's nothing new to import, so it's cheap to call every time rather than
     trying to separately detect "is this floor newly-copied-in".

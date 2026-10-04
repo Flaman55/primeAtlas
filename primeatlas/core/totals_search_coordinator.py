@@ -12,7 +12,7 @@ constructed once, in PortalBrowserApp.__init__, AFTER every tab widget already e
 (it reaches directly
 into primes_tab_widget/constellations_hits_tab_widget rather than through a lazy
 getter, since by the time this class is built those two already exist -- see
-prime_atlas_v1.py's own __init__ for the exact point).
+prime_atlas_v2.py's own __init__ for the exact point).
 
 What stays on PortalBrowserApp instead of moving here: _offer_generate_missing_prime_
 window/_offer_generate_missing_constellation/_on_const_search_result (the "reverse-
@@ -57,7 +57,7 @@ class TotalsSearchCoordinator:
         getters) to two tab widgets this coordinator updates directly
         (update_floor_row/get_gen_seconds/get_floor_node_keys/on_prime_search_result on
         the Primes tab; the hits tab lends its search button and hit_set_cache) -- safe
-        because, by construction order in prime_atlas_v1.py's __init__, both already
+        because, by construction order in prime_atlas_v2.py's __init__, both already
         exist by the time this class is built (all six tabs are built before this).
 
         on_const_search_result(base_exponent, number, prime_result, participation):
@@ -111,7 +111,7 @@ class TotalsSearchCoordinator:
         #    reload/Refresh) -- see that method's own docstring and start_search_job's.
         #    A timestamp-based check is NOT reliable here:
         #    reload_primes_tree() coalesces re-entrant calls (see its own
-        #    docstring in prime_atlas_v1.py) into a chain that can settle at an
+        #    docstring in prime_atlas_v2.py) into a chain that can settle at an
         #    unpredictable moment relative to a search that started in the meantime --
         #    by the time compute_all_floor_totals() actually SUBMITS its jobs, that
         #    submit time can legitimately land AFTER the search's own start/finish
@@ -150,12 +150,12 @@ class TotalsSearchCoordinator:
         .portal_totals_cache.json. See this class's own construction-order comment for
         why the app only ever calls this once, at construction time -- a later
         storage-path change self-heals through _on_primes_tree_scan_done's own fresh
-        read instead (prime_atlas_v1.py's reload_primes_tree() docstring)."""
+        read instead (prime_atlas_v2.py's reload_primes_tree() docstring)."""
         self._totals_cache = load_totals_cache(self._get_portal_folder())
 
     def replace_totals_cache(self, new_cache):
         """Swaps in a freshly-read totals_cache dict wholesale -- called from
-        prime_atlas_v1.py's _on_primes_tree_scan_done() with the copy its OWN
+        prime_atlas_v2.py's _on_primes_tree_scan_done() with the copy its OWN
         background scan (_primes_tree_scan) already read fresh from disk via
         load_totals_cache(), so the totals worker's in-memory copy self-heals after a
         storage-path change or an ordinary Refresh instead of only ever updating

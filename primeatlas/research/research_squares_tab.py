@@ -82,7 +82,7 @@ class ResearchSquaresTab(BaseTab):
         """
         translator/totals_progress: same dependency-injection pattern as every
         other extracted tab -- see primeatlas/primes/primes_tab.py's own docstring.
-        eval_quick_number: prime_atlas_v1.py's shared numeric-field parser
+        eval_quick_number: prime_atlas_v2.py's shared numeric-field parser
         (generation._eval_quick_number), used for the plain integer n_from/
         n_to/required_count fields -- NOT for the custom a(n)/b(n) formulas,
         which need an `n` variable substituted per-row instead (see

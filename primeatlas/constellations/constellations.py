@@ -4,12 +4,12 @@ locating/reading HITS_*.bin files, grouping them for the tree UI, building the
 pzktupel.de-style records table + its full-detail export rows, rendering that table
 to PDF, and checking whether a searched number participates in any recorded hit.
 
-Split out of prime_atlas_v1.py alongside the Constellations tab's own UI split into
+Split out of prime_atlas_v2.py alongside the Constellations tab's own UI split into
 primeatlas/constellations/constellations_hits_tab.py / constellations_calc_tab.py /
 constellations_records_tab.py -- these functions have no tkinter dependency and are
 exercisable without a display, same reasoning as primeatlas/core/storage.py's own split for
 the Prime numbers tab. Only find_constellation_participation is still called from
-prime_atlas_v1.py itself (the shared search worker's _search_job, off the GUI thread),
+prime_atlas_v2.py itself (the shared search worker's _search_job, off the GUI thread),
 so it and everything it depends on (list_constellation_hits/hit_file_path) are imported
 back at that file's top; the records-table builders/PDF renderer are used exclusively
 by primeatlas/constellations/constellations_records_tab.py.
@@ -581,12 +581,12 @@ def find_constellation_participation(portal_folder, base_exponent, number, hit_s
     starting values; reused across repeated searches in the same session so each UNPAGED
     hit file is only decoded once rather than on every search (a paged pattern is never
     added to this cache -- see above). Owned by the Constellations tab's Storage widget
-    (ConstellationsHitsTab.hit_set_cache) -- passed in explicitly by prime_atlas_v1.py's
+    (ConstellationsHitsTab.hit_set_cache) -- passed in explicitly by prime_atlas_v2.py's
     own _search_job rather than kept as module state here, so this function stays pure and
     reusable regardless of which tab (or a future test) calls it.
 
     `progress_callback(done, total)`, if given, is called once per pattern AFTER it's been
-    processed. The GUI thread never calls this directly; prime_atlas_v1's _search_job
+    processed. The GUI thread never calls this directly; prime_atlas_v2's _search_job
     does, off the main thread (via a PersistentWorker, see primeatlas/core/background.py),
     and turns each progress_callback invocation into a report_progress() call that drives
     the shared status/progress bar.

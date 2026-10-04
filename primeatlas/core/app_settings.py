@@ -84,7 +84,7 @@ class AppSettings:
 
     @property
     def ring_viz_params(self):
-        """Last-used Ring visualization launch parameters (primeatlas/rings/rings_tab.py's
+        """Last-used Ring visualization launch parameters (primeatlas/visualization/rings/rings_tab.py's
         RingsTab) -- N, point sizes, window/audio choices, everything that tab's own
         _launch_param_entries/_launch_param_checkbuttons/_launch_param_dropdowns groups
         cover, as the raw strings/bools the widgets themselves held. None on a fresh
@@ -103,7 +103,7 @@ class AppSettings:
 
     @property
     def language(self):
-        """Read once at startup (see prime_atlas_v1.py's TRANSLATOR construction) to
+        """Read once at startup (see prime_atlas_v2.py's TRANSLATOR construction) to
         build the Translator that every T(...) call in this app's GUI uses. Falls back
         to DEFAULT_LANGUAGE ("en") if unset.
 
@@ -160,7 +160,7 @@ class AppSettings:
     def setup_completed(self):
         """Whether the first-run environment wizard (env_setup_wizard.py) has
         already confirmed WSL + Ubuntu + required packages are present on THIS install.
-        Checked once at startup (prime_atlas_v1.py's main(), before PortalBrowserApp is
+        Checked once at startup (prime_atlas_v2.py's main(), before PortalBrowserApp is
         even constructed -- see that module's own comment) to decide whether to show the
         wizard at all; False (the default for any install that predates this flag, or a
         genuinely fresh one) means the wizard runs. Deliberately NOT re-verified against
@@ -200,12 +200,12 @@ class AppSettings:
 
     @property
     def auto_update_check(self):
-        """Whether prime_atlas_v1.py should silently check GitHub for a newer version a
+        """Whether prime_atlas_v2.py should silently check GitHub for a newer version a
         few seconds after startup (primeatlas/settings/app_update.py's check_for_update()), without
         the user having to click Settings > Updates's manual 'Check now' button.
         Defaults to True -- an unattended install that never re-checks would silently miss
         every future bugfix, which is worse than a brief, non-blocking background check
-        every launch (see prime_atlas_v1.py's own startup hook for why this is dispatched
+        every launch (see prime_atlas_v2.py's own startup hook for why this is dispatched
         on a background thread rather than blocking mainloop() startup)."""
         return bool(self._data.get("auto_update_check", True))
 

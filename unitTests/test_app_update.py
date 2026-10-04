@@ -1,6 +1,6 @@
 """
 test_app_update.py -- covers primeatlas/settings/app_update.py, the self-update checker/downloader
-wired into Settings > Updates and prime_atlas_v1.py's startup hook: lock/access
+wired into Settings > Updates and prime_atlas_v2.py's startup hook: lock/access
 recovery, OS-verified lock release, and the GitHub-API-based check path (see
 app_update.py's module docstring).
 

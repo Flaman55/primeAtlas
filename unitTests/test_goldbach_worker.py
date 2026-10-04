@@ -100,9 +100,9 @@ def main():
 
         shown = _patch_messageboxes()
 
-        sys.argv = ["prime_atlas_v1.py"]
-        import prime_atlas_v1
-        app_cls = prime_atlas_v1._build_gui()
+        sys.argv = ["prime_atlas_v2.py"]
+        import prime_atlas_v2
+        app_cls = prime_atlas_v2._build_gui()
         app = app_cls()
         app.update()
 

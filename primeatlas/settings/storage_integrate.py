@@ -15,7 +15,7 @@ which is the part that's actually safe to merge (see this module's functions'
 docstrings, and constellation_finder_v2.py's _append_hits_deduped(), which makes
 re-scanning safe). benchmark_log.csv then reconciles
 itself automatically and additively the normal way -- via floor_meta.json travelling
-with each floor and prime_atlas_v1.py's totals-worker importing it on the next visit to
+with each floor and prime_atlas_v2.py's totals-worker importing it on the next visit to
 that floor (floor_meta.merge_floor_meta_into_benchmark_log(), already wired) -- this
 module gives that mechanism an immediate push per floor too (see integrate_floor()),
 rather than waiting for a later visit.
@@ -172,7 +172,7 @@ def integrate_floor(destination_path, external_path, base_exponent,
     floor_meta.json rows are merged in additively (both directions are never touched:
     this only ever imports external's rows INTO destination's file, never the
     reverse), so this floor's generation history from the external storage becomes
-    available locally too -- and, the next time prime_atlas_v1.py's totals worker
+    available locally too -- and, the next time prime_atlas_v2.py's totals worker
     visits this floor, those rows flow into the LOCAL benchmark_log.csv automatically
     (merge_floor_meta_into_benchmark_log(), already wired -- see this module's own
     docstring for why this file never touches benchmark_log.csv directly itself).

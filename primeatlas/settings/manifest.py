@@ -52,7 +52,7 @@ SIEVING_CACHE_FILENAME = "sieving_primes_count_cache.json"
 
 def _load_json_best_effort(path):
     """Returns the parsed JSON dict at `path`, or None if it doesn't exist or is corrupt --
-    never raises, same best-effort philosophy as load_totals_cache() in prime_atlas_v1.py
+    never raises, same best-effort philosophy as load_totals_cache() in prime_atlas_v2.py
     (deliberately NOT imported from here -- that module imports tkinter transitively, and
     this one must stay importable without it, see this file's own docstring)."""
     if not os.path.exists(path):
@@ -264,7 +264,7 @@ class BackupManifest:
         # Loaded ONCE here rather than per-floor inside FloorSnapshot.scan() -- it's one
         # root-level file shared by every floor, so re-reading it per floor would be pure
         # waste (same reasoning update_floor_totals_cache's caller only loads it once per
-        # app session, see prime_atlas_v1.py's _reload_totals_caches()).
+        # app session, see prime_atlas_v2.py's _reload_totals_caches()).
         totals_cache = _load_json_best_effort(
             os.path.join(storage_path, TOTALS_CACHE_FILENAME)) or {}
         floors = []

@@ -39,7 +39,7 @@ class ConstellationsTreeCoordinator:
         pattern as PrimesTreeCoordinator -- see that class's own docstring.
 
         constellations_hits_tab_widget: direct reference (not a lazy getter), safe
-        because -- by construction order in prime_atlas_v1.py's __init__ -- it already
+        because -- by construction order in prime_atlas_v2.py's __init__ -- it already
         exists by the time this class is built.
 
         prune_empty_floor_dirs: passed in rather than imported directly here --

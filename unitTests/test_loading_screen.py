@@ -1,6 +1,6 @@
 """
 test_loading_screen.py -- functional regression test for the startup loading
-screen + async tree-scan split in prime_atlas_v1.py.
+screen + async tree-scan split in prime_atlas_v2.py.
 
 This change altered __init__ to: (1) show a loading_frame (title + caption + indeterminate
 progress bar) BEFORE building any of the six tabs, updating its caption as each tab is
@@ -99,8 +99,8 @@ def main():
         # left it, THEN gets redirected to tmp_portal below via set_portal_path/
         # set_portal_folder before any tree-affecting assertion is made -- exactly the
         # same pattern every other test in this folder uses.
-        sys.argv = ["prime_atlas_v1.py"]
-        import prime_atlas_v1
+        sys.argv = ["prime_atlas_v2.py"]
+        import prime_atlas_v2
 
         # Point PORTAL_FOLDER (and the underlying APP_SETTINGS it was seeded from --
         # same object SettingsTab receives, see _build_settings_tab's own wiring) at
@@ -110,11 +110,11 @@ def main():
         # captured at dispatch time), so redirecting it only AFTER construction would be
         # too late for this test's very first scan. save() is neutered FIRST so
         # set_storage_path() below never touches the real on-disk app_settings.json.
-        _patch_app_settings(prime_atlas_v1.APP_SETTINGS)
-        prime_atlas_v1.APP_SETTINGS.set_storage_path(tmp_portal)
-        prime_atlas_v1.PORTAL_FOLDER = tmp_portal
+        _patch_app_settings(prime_atlas_v2.APP_SETTINGS)
+        prime_atlas_v2.APP_SETTINGS.set_storage_path(tmp_portal)
+        prime_atlas_v2.PORTAL_FOLDER = tmp_portal
 
-        app_cls = prime_atlas_v1._build_gui()
+        app_cls = prime_atlas_v2._build_gui()
         app = app_cls()
         # Constructor returns immediately after DISPATCHING the two startup scans (see
         # __init__'s own comment on _loading_startup_pending) -- they haven't
@@ -163,7 +163,7 @@ def main():
         # PrimesTreeCoordinator instance), not on app itself -- extracted out of
         # PortalBrowserApp as part of the same "God object" reduction the totals/
         # search worker mechanism went through; app.reload_primes_tree() itself is
-        # still the right thing to call (a one-line delegate, see prime_atlas_v1.py's
+        # still the right thing to call (a one-line delegate, see prime_atlas_v2.py's
         # own docstring for that method).
         coord = app._primes_tree_coord
         original_scan = coord._scan

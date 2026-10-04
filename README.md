@@ -170,10 +170,10 @@ interchangeable engine generations, v3/v4/v4.1 -- see "Architecture" below).
     constellation finder's own `CHECKPOINT.txt` -- its own checkpoint is a completely
     separate file, since these locations are not tied to any pre-existing prime
     window at all (see `ktuple_sieve_v1.py`'s own module docstring).
-- **Ring visualization** -- a seventh top-level tab (between Generation and Benchmark)
-  that opens an interactive, GPU-rendered view of prime rings around a chosen `n`, fed
-  from whatever is already in storage. See "Ring visualization" below for what it shows
-  and how it's launched.
+- **Visualization** -- a seventh top-level tab (between Generation and Benchmark)
+  holding one sub-tab per visualization. Its **Rings** sub-tab opens an interactive,
+  GPU-rendered view of prime rings around a chosen `n`, fed from whatever is already in
+  storage. See "Ring visualization" below for what it shows and how it's launched.
 - **Benchmark** -- a throughput chart (numbers generated per second vs. floor depth,
   derived from the actual count of integers swept per floor rather than a window-count
   approximation, so a mode like Hybrid whose swept range is normally far smaller than
@@ -650,8 +650,9 @@ rather than a fixed default.
 
 Opens an interactive, GPU-driven visualization of prime rings around a chosen `n`, fed
 primes from whatever is currently in storage. Unlike every other tab, it does not build
-its own tkinter widgets for the visualization itself: `rings_tab.py` launches
-`ring_viz/renderer.py` (moderngl + GLFW) as a separate native Windows subprocess, since a
+its own tkinter widgets for the visualization itself: the Visualization > Rings sub-tab
+(`rings_tab.py`) launches `visualization/shared/renderer.py` (moderngl + GLFW) as a
+separate native Windows subprocess, since a
 GL render loop does not compose with Tkinter's own `mainloop()`. Closing the render
 window (Esc, or its own close control) doesn't kill the process outright -- it hides and
 idles in the background, preserving playback position, tempo, and audio state, so
@@ -1005,13 +1006,17 @@ actually earned.
 ## Architecture
 
 ```
-prime_atlas_v1.py           thin composition root (tkinter); builds the main window and
+prime_atlas_v1.py           compatibility entry point: installed shortcuts and the in-app
+                              restart name this file; it only runs prime_atlas_v2.py as
+                              __main__
+prime_atlas_v2.py           thin composition root (tkinter); builds the main window and
                               its seven top-level tabs (three of which -- Prime numbers,
                               Constellations, Research -- are themselves inner
                               notebooks of sub-tabs, see "Features" above; a further one,
-                              Ring visualization, launches a separate GPU-rendered
-                              subprocess rather than building tkinter widgets of its own
-                              -- see "Ring visualization" above), owns the handful of
+                              Visualization, holds sub-tabs that each launch a separate
+                              GPU-rendered subprocess rather than building tkinter widgets
+                              of their own -- see "Ring visualization" above), owns the
+                              handful of
                               genuinely CROSS-tab pieces (module globals
                               PORTAL_FOLDER/TRANSLATOR/T/APP_SETTINGS; the totals-cache
                               and search PersistentWorkers, shared by more than one
@@ -1055,7 +1060,7 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               files, totals caches, format_duration/format_bytes)
                               shared by several tabs, not specific to any one
   app_icon.py                   the globe icon for every window (Tk: main window, WSL
-                              wizard; GLFW: ring_viz) plus the process AppUserModelID
+                              wizard; GLFW: the visualization renderer) plus the process AppUserModelID
                               without which the taskbar shows pythonw.exe's Python icon
                               (the installer's shortcuts carry the same ID); best-effort,
                               never raises, no Pillow needed
@@ -1071,7 +1076,7 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
   totals_search_coordinator.py TotalsSearchCoordinator -- the two PersistentWorkers
                               (floor-totals scanning, prime/constellation search) that
                               used to live directly on PortalBrowserApp itself in
-                              prime_atlas_v1.py; shared by the Prime numbers tab's tree,
+                              prime_atlas_v2.py; shared by the Prime numbers tab's tree,
                               the Benchmark tab's grand-total line, and the Prime
                               numbers/Constellations search boxes
   locales/                      strings_en.json, strings_pl.json, app_settings.json
@@ -1164,157 +1169,158 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               logic, kept in its own file since it runs its preview
                               calculation off the Tk main thread
 
-  primeatlas/rings/              "Ring visualization" tab
-  rings_tab.py                 RingsTab -- launches ring_viz/renderer.py (moderngl/
-                              GLFW) as a separate native Windows subprocess, and
+  primeatlas/visualization/     "Visualization" tab -- a container notebook with one sub-tab
+                              per visualization; each sub-tab launches the shared GPU
+                              renderer (shared/renderer.py, moderngl/GLFW) as a separate
+                              native Windows subprocess in its own --viz-mode, and
                               exchanges state with it over stdin/stdout (HUD JSON,
-                              pause/resume commands) rather than building any of the
+                              pause/resume commands) rather than building the
                               visualization itself as tkinter widgets; see "Ring
                               visualization" above
-  ring_geometry.py              ring/drum placement math, plus Bertrand/Legendre/
-                              General Law highlight-window membership and blended
-                              colors -- ported from the standalone Structural Sieve
-                              HTML tool's own SieveModel.js; pure functions, no OpenGL
-                              or subprocess code (that lives in ring_viz/, below). Also
-                              owns the unrelated "line" viz-mode section (see "Ring
-                              visualization" above): next_prime_at_or_above/
-                              pattern_offsets_from_seed derive a k-tuple pattern from
-                              real primes, line_positions/value_to_line_x place them on
-                              a horizontal line instead of the ring/gear polar layout,
-                              pattern_positions_and_match/clamp_pattern_anchor drive the
-                              sliding-pattern match check and its scrub clamp, and
-                              pattern_wheel_residues/next_wheel_n implement the wheel-skip
-                              (CRT over small primes) that lets scrub/playback jump straight
-                              to the next N that can ever match instead of testing every one,
-                              and resolve_pattern_anchor picks the launch anchor itself --
-                              the seed's own occurrence if the loaded window contains it, or
-                              the first phase-compatible wheel candidate at the window's own
-                              lower edge otherwise (so a small pattern seed like 7 or 11 still
-                              works correctly against a real archive-scale --load-range far
-                              above it, e.g. a 22-digit to 23-digit window), and
-                              line_view_bounds/line_positions_windowed pick a local,
-                              anchor-centered viewport instead of the whole loaded window
-                              once that window's own span would lose a k-tuple's small
-                              internal offsets to the GPU's float32 vertex-buffer precision
-                              limit, value_to_ring_axis_xy/line_positions_windowed_ring
-                              provide the optional curved-axis layout -- same lo/span
-                              mapping, bent onto a circle instead of a straight line, purely
-                              visual, and value_to_spiral_xy/line_positions_windowed_spiral/
-                              spiral_outer_radius promote that circle into a multi-lap
-                              spiral once a real pattern wheel is active, mapping the WHOLE
-                              loaded window directly rather than through line_view_bounds'
-                              own local-viewport fallback (see "Ring visualization" above
-                              for all of these)
-  ring_viz/                      the GPU renderer subprocess launched by rings_tab.py --
-                              kept in its own subpackage since it's a separate OS
-                              process, not additional widgets in the main Tk process;
-                              see "Ring visualization" above
-    renderer.py                  moderngl/GLFW window/main-loop entrypoint -- CLI
-                              argument parsing, the GLFW callbacks/main loop itself,
-                              and wiring the pieces below together; ~1,100 lines, down
-                              from ~2,900 before the file split below pulled out
-                              everything that isn't GL-loop plumbing
+  mode_registry.py              MODES -- every --viz-mode the renderer can run, by name
+                              (rings, line), plus RESET_MODE (the mode R returns to).
+                              Adding a visualization mode means adding one entry here;
+                              shared/ never names a concrete mode
+  shared/                       everything common to all visualizations -- the renderer
+                              subprocess host, the interactive session, and the Tk-side
+                              launcher base class
+    renderer.py                  moderngl/GLFW window/main-loop entrypoint, run as a plain
+                              script path (see its own docstring) -- generic CLI
+                              arguments, data loading (--source/--load-range), the GLFW
+                              callbacks and main loop; every mode-specific step (CLI
+                              arguments, launch preparation, geometry, overlays, HUD
+                              lines) is delegated to the active mode
+    mode.py                       VizMode -- the mode interface: rebuild (vertex data +
+                              HUD snapshot for the current N), outline_draws/
+                              axis_boundary_radius/flash_overlays/hud_line_colors (what
+                              the main loop draws on top), tick/bump_n/scrub/clamp_n
+                              (mode-specific navigation, None/False = the session's plain
+                              step), on_chunks_changed/reset_state, and the launch-time
+                              classmethods add_arguments/validate_arguments/
+                              prepare_launch (each mode owns its own CLI arguments);
+                              LaunchAborted refuses to open the window
+    session.py                     RenderSession -- the mode-independent interactive state
+                              (N, camera pan/zoom, playback/tempo, scrub, HUD snapshot,
+                              buffer extension) and the pure logic that transitions it,
+                              plus the active mode object (`mode`). Owns the optional
+                              bidirectional sliding/traveling window over --load-range
+                              (see "Ring visualization" above): chunk_back/chunk_current/
+                              chunk_forward (range_primes is a property aliasing
+                              chunk_current), _ensure_back_chunk/_ensure_forward_chunk
+                              (BACKGROUND daemon-thread loads, never blocking the GLFW main
+                              loop -- None vs. a confirmed-empty array distinguishing "not
+                              attempted" from "true edge of range_load_from/range_load_to
+                              reached"), _wait_for_back_chunk/_wait_for_forward_chunk (the
+                              only place that can still stall, and only for whatever's left
+                              of a load once a swap races ahead of its own prefetch), and
+                              _slide_forward/_slide_backward (swap, not reload; the mode's
+                              on_chunks_changed runs after every swap). Off by default
+                              (sliding_enabled). start_background_seek runs a mode's
+                              multi-chunk search on its own daemon thread --
+                              _seek_thread/_seek_epoch are its only state, reset() bumping
+                              the epoch so a late finisher can't clobber a reset; the
+                              worker runs inside try/except/finally so an exception never
+                              leaves _seek_thread wedged. _effective_chunk_size/
+                              _recenter_render_chunks let that crawl search with a bigger
+                              internal stride (_SEEK_STRIDE_CHUNK_SIZE) than the user's own
+                              chunk_size, shrinking back down to it once a match is found.
+                              reset() returns to the rings mode (RESET_MODE)
+    viz_tab_base.py                VizTabBase(BaseTab) -- the Tk side every visualization
+                              sub-tab shares: launching renderer.py via LocalLoggedRunner,
+                              the live console, the HUD panel fed by HUD_STATE lines, live
+                              pause/resume over stdin, Reset, the Start/Resume "reopen
+                              where playback left off" N, and the scrollable container;
+                              a sub-tab supplies its own form, argv and LOCALE_PREFIX
     gl_setup.py                   GLResources: window/context/shader-program/VAO/VBO
-                              creation -- the one piece of the split below that is NOT
-                              GL-free, since creating a GL context is unavoidably
-                              GL-bound one-time setup work. axis_boundary_vao reuses the
-                              tracked-ring outline's own OUTLINE_VERTEX_SHADER/prog_outline
-                              (a per-draw-call u_radius/u_color pair) over a fixed 2-vertex
-                              buffer to draw line mode's curved-axis boundary marker
-    session.py                     RenderSession -- the interactive session's own state
-                              (camera pan/zoom, playback/tempo, auto-orbit, tracked-
-                              ring outlines, buffer extension, HUD snapshot) and the
-                              pure logic that transitions it, consolidated into one
-                              object with methods so renderer.py's GLFW callbacks/main
-                              loop are thin adapters rather than a dozen separate
-                              closures each capturing their own mutable dict. Also owns
-                              "line" viz-mode's own state (viz_mode/pattern_offsets/
-                              pattern_match/flash_pattern/line_axis_curved/
-                              pattern_axis_boundary_radius) and rebuild_line -- a
-                              deliberately separate method from rebuild() (ring mode),
-                              not a branch inside it, since line mode has none of ring
-                              mode's resonance/window/HUD-factors machinery. Also owns
-                              the optional bidirectional sliding/traveling window over
-                              --load-range (see "Ring visualization" above):
-                              chunk_back/chunk_current/chunk_forward (range_primes is now
-                              a property aliasing chunk_current, never a second plain
-                              attribute that could drift out of sync), _ensure_back_chunk/
-                              _ensure_forward_chunk (kick off a BACKGROUND daemon-thread load,
-                              never blocking the GLFW main loop -- None vs. a confirmed-empty
-                              array distinguishing "not attempted" from "true edge of
-                              range_load_from/range_load_to reached"), _wait_for_back_chunk/
-                              _wait_for_forward_chunk (start the background load if needed,
-                              then join() it -- the only place that can still stall, and only
-                              for whatever's left of the load once a swap genuinely races
-                              ahead of its own prefetch), _slide_forward/_slide_backward (the
-                              swap-not-reload itself), and _rebuild_pattern_primes_set (the
-                              three-chunk union). Off by
-                              default (sliding_enabled) -- degrades gracefully to today's
-                              fixed-slice behavior whenever portal_folder/chunk_size/
-                              range_load_to aren't all supplied, so every pre-sliding
-                              caller/test is unaffected. _start_pattern_seek moves a
-                              multi-chunk _pattern_seek crawl onto its own background
-                              daemon thread when sliding_enabled (see "Ring visualization"
-                              above) -- _seek_thread/_seek_epoch are its only state,
-                              reset() bumping the epoch so a late finisher from before a
-                              reset can't clobber it; the whole worker runs inside
-                              try/except/finally so an exception can never leave
-                              _seek_thread wedged non-None forever. _effective_chunk_size/
-                              _recenter_render_chunks let that same crawl search with a
-                              bigger internal stride (module-level _SEEK_STRIDE_CHUNK_SIZE)
-                              than the user's own chunk_size, shrinking back down to it
-                              once a match is actually found
-    geometry_draw.py               pure vertex/color/camera-math helpers with no GL
-                              call anywhere -- per-ring vertex color/position data,
-                              the hit/normal buffer split, tracked-ring outline/center-
-                              marker/flash-quad geometry, zoom-to-cursor and fit-to-
-                              viewport camera math. build_line_vertex_data is "line"
-                              viz-mode's own counterpart to build_vertex_data, reusing
-                              the same (count,5) [x,y,r,g,b] layout and hit/normal split
-                              so the GL draw calls need no mode-specific code at all;
-                              it defers to ring_geometry.line_view_bounds each call to
-                              decide whether to map the whole loaded window or a local,
-                              anchor-centered viewport (see "Ring visualization" above),
-                              and accepts an optional pre-built primes_set so a caller
-                              holding range_primes fixed across many calls (RenderSession)
-                              isn't forced to rebuild the same set from scratch every frame,
-                              and (given a real wheel_modulus) promotes the curved layout from
-                              a single circle to a multi-lap spiral, returning the boundary
-                              marker's own radius (boundary_radius) either way so renderer.py
-                              never hardcodes it. axis_boundary_marker_vertices is the
-                              2-vertex (center, edge) buffer for the curved-axis boundary
-                              marker (see gl_setup.py)
-    hud.py                         HUD text composition (plain lines and the on-canvas
-                              canvas-header/status wrapper), per-line window-family
-                              coloring, and Pillow-based rasterization of the on-canvas
-                              HUD bitmap -- also owns the guarded (optional) Pillow
-                              import, since nothing else touches Image/ImageDraw/
-                              ImageFont
-    playback.py                    pure playback-timing logic: tempo clamp, LEFT/RIGHT
-                              scrub deltas, sequential-mode ceiling guards, buffer-
-                              lookahead-extension math, the range-mode dynamic step
-                              size, and the resonance-log jump-vs-tick update rule
+                              creation -- the one piece that is NOT GL-free. The
+                              axis-boundary VAO reuses the outline program over a fixed
+                              2-vertex buffer (line mode's curved-axis marker)
+    draw_primitives.py             pure, GL-free geometry shared by every mode: the
+                              hit/normal vertex-buffer split, the unit circle, the center
+                              marker and flash-overlay shapes and their decay, and
+                              zoom-to-cursor/fit-to-viewport camera math
+    hud_text.py                    on-canvas HUD text: the canvas header/status wrapper,
+                              Pillow rasterization (owns the guarded, optional Pillow
+                              import) and the textured-quad geometry
+    playback.py                    pure playback-timing logic: tempo clamp, LEFT/RIGHT scrub
+                              deltas, sequential-mode ceiling guards, buffer-lookahead
+                              extension math and the range-mode dynamic step size
     sources.py                     load_synthetic/load_sieve/load_archive -- the three
-                              interchangeable ring-array data sources (--source), plus
-                              load_archive_before -- the backward-walking counterpart to
-                              load_archive added for the sliding-window feature (see
-                              "Ring visualization" above): the `count` largest real primes
-                              strictly below a boundary (EXCLUSIVE, mirroring load_archive's
-                              own from_n), via the same cheap "list filenames, binary-search
-                              headers, decode only what's needed" pattern load_archive/
-                              storage.find_prime_in_floor already use
+                              interchangeable data sources (--source), plus
+                              load_archive_before -- the backward-walking counterpart used
+                              by the sliding window: the `count` largest real primes
+                              strictly below a boundary, via the same "list filenames,
+                              binary-search headers, decode only what's needed" pattern
+                              load_archive/storage.find_prime_in_floor already use
+    range_data.py                  launch-time data selection: the Load Range slice of a
+                              loaded prime array and the N a view opens at per --source
+    bigint.py                      exact integer helpers: to_prime_array (cheapest exact
+                              numpy dtype), parse_big_int (plain digits, a*10**b, a*10^b,
+                              aEb), format_big. Named to avoid shadowing the stdlib
+                              `numbers` module, since renderer.py's own directory is
+                              sys.path[0] when it runs as a script
     shaders.py                     the GLSL vertex/fragment shader source strings
-                              (point-sprite rings, tracked-ring outlines, screen-space
-                              shapes, on-canvas HUD text quad)
-    stdin_commands.py              the --pipe-stdin-commands background stdin-reader
-                              thread backing Faza 13's live pause/resume protocol
-    audio.py                     standalone tone-synthesis module (sine/triangle/
-                              square/sawtooth/bell/choir/mute) for the three
-                              independently assignable audio channels (low/prime/lcm)
-    window_mode.py                 FullscreenToggle -- GLFW fullscreen toggle that
-                              preserves windowed geometry/GL context across F11 and
-                              releases exclusive monitor ownership before a paused
-                              window is hidden
+    stdin_commands.py              the --pipe-stdin-commands background stdin-reader thread
+                              backing live pause/resume
+    audio.py                       standalone tone-synthesis engine (sine/triangle/square/
+                              sawtooth/bell/choir/mute) for the three independently
+                              assignable audio channels (low/prime/lcm)
+    window_mode.py                 FullscreenToggle -- GLFW fullscreen toggle that preserves
+                              windowed geometry/GL context across F11 and releases
+                              exclusive monitor ownership before a paused window is hidden
+  rings/                        Visualization > Rings sub-tab (rings and line modes)
+    rings_tab.py                 RingsTab(VizTabBase) -- the sub-tab's launch form and
+                              build_renderer_argv
+    ring/                        "rings" viz-mode
+      ring_mode.py                 RingMode -- window/tracking config, auto-orbit,
+                              cyclic window anchors, resonance log, tracked-ring
+                              outlines, prime-birth/resonance flashes, and its own CLI
+                              arguments (--windows, --general-law-*, --track-primes,
+                              --auto-orbit; a Load Range of at most 500 primes is tracked
+                              in full)
+      ring_geometry.py             ring/drum placement math, Bertrand/Legendre/General Law
+                              highlight-window membership and blended colors, tracked-
+                              prime LCM/resonance, resonance events -- ported from the
+                              standalone Structural Sieve HTML tool's own SieveModel.js;
+                              pure functions, no OpenGL or subprocess code
+      ring_draw.py                 per-ring vertex color/position data, tracked-ring
+                              outline draws, ring-mode flash colors
+      ring_hud.py                  hud_lines_for_n, per-line window-family coloring, the
+                              live-audio-tick bridge
+      ring_playback.py             the resonance log's jump-vs-tick update rule and
+                              auto-orbit's cycling
+    line/                        "line" viz-mode
+      line_mode.py                 LineMode -- the k-tuple pattern (offsets, wheel, match
+                              state, the loaded-prime set it is matched against, rebuilt
+                              as the union of all three sliding-window chunks),
+                              wheel-aware navigation, the pattern seek (synchronous, or on
+                              the session's background seek when sliding), the
+                              pattern-match flash, and its own CLI arguments
+                              (--pattern-seed-*, --pattern-step-mode,
+                              --pattern-stop-on-match, --line-axis-curved)
+      line_geometry.py             next_prime_at_or_above/pattern_offsets_from_seed derive
+                              a k-tuple pattern from real primes; line_positions/
+                              value_to_line_x place them on a horizontal line;
+                              pattern_positions_and_match/clamp_pattern_anchor drive the
+                              match check and its scrub clamp; pattern_wheel_residues/
+                              next_wheel_n implement the wheel-skip (CRT over small primes)
+                              so scrub/playback jump straight to the next N that can ever
+                              match; resolve_pattern_anchor picks the launch anchor (the
+                              seed's own occurrence if the loaded window contains it,
+                              otherwise the first phase-compatible candidate at the
+                              window's lower edge); line_view_bounds/
+                              line_positions_windowed pick a local, anchor-centered
+                              viewport once the window's span would lose a k-tuple's small
+                              offsets to float32 vertex precision; value_to_ring_axis_xy/
+                              line_positions_windowed_ring bend the axis onto a circle
+                              (purely visual), and value_to_spiral_xy/
+                              line_positions_windowed_spiral/spiral_outer_radius promote it
+                              into a multi-lap spiral once a real pattern wheel is active
+      line_draw.py                 build_line_vertex_data (same (count,5) [x,y,r,g,b]
+                              layout and hit/normal split as the rings mode, returning the
+                              boundary marker's own radius) and
+                              axis_boundary_marker_vertices
+      line_hud.py                  pattern_hud_line -- the pattern/wheel/axis status line
 
   primeatlas/benchmark/         "Benchmark" tab
   benchmark_tab.py             BenchmarkTab -- the Benchmark tab (charts + PDF export;
@@ -1359,7 +1365,7 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               (see INSTALL_WSL_PRIMEATLAS.md), gated on user
                               confirmation
   env_setup_wizard.py           first-run environment check/install wizard UI, shown
-                              from prime_atlas_v1.py's main() BEFORE PortalBrowserApp
+                              from prime_atlas_v2.py's main() BEFORE PortalBrowserApp
                               is constructed (enabling WSL Windows features can
                               require a reboot, so nothing downstream should try to
                               run first)
@@ -1447,7 +1453,7 @@ constellation/
                               constellation finder, ktuple_sieve_v1.py, and the
                               Constellation calculator / Records table sub-tabs
 startup_dependency_check.py  pre-import check of requirements.txt's native-Windows
-                              packages, run by prime_atlas_v1.py BEFORE `from primeatlas
+                              packages, run by prime_atlas_v2.py BEFORE `from primeatlas
                               import` (primeatlas/__init__.py itself needs numpy); offers
                               a live-logged `pip install` of whatever is missing.
                               Only numpy blocks startup; moderngl/glfw (Ring viz) don't.
@@ -1484,7 +1490,7 @@ INSTALL_WSL_PRIMEATLAS.md    manual WSL 2 / Ubuntu / apt setup, step for step wh
 
 Generated data is stored under a folder named `CONSTELLATION_PORTAL` (the name predates
 and is independent of the application's own name). By default this folder is created
-next to `prime_atlas_v1.py`, so the application is self-contained regardless of where
+next to `prime_atlas_v2.py`, so the application is self-contained regardless of where
 its directory is placed on disk. The location can be overridden either through the
 Settings tab or by setting the `CONSTELLATION_PORTAL_DIR` environment variable, which
 the sieve, orchestrator, and constellation-finder scripts also read directly when
@@ -1507,7 +1513,7 @@ GUI:
   `pip install` whatever is missing (see `startup_dependency_check.py`), so a fresh Python
   needs no manual setup beyond an internet connection.
 - For Ring visualization: `numpy`, `moderngl`, and `glfw`, installed into the same native
-  Windows Python that runs `prime_atlas_v1.py` (the renderer is launched as a plain
+  Windows Python that runs `prime_atlas_v2.py` (the renderer is launched as a plain
   subprocess of that same interpreter, not through WSL). Optional: `sounddevice`, for the
   tab's live audio -- without it, audio is silently unavailable with a clear message in
   the console, never a crash.
@@ -1575,7 +1581,7 @@ Double-click `Run_PrimeAtlas.bat` (visible console, useful for diagnosing startu
 errors) or `Run_PrimeAtlas_Hidden.vbs` (no console window). Equivalently:
 
 ```
-python prime_atlas_v1.py
+python prime_atlas_v2.py
 ```
 
 Language (English/Polish, English by default) and theme (light/dark, dark by default) are both set from

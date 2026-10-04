@@ -3,7 +3,7 @@ primality.py -- pure-Python probabilistic primality testing (Miller-Rabin, Ferma
 Solovay-Strassen) and integer factorization (trial division + Pollard's rho), for the
 Primality tests sub-tab (Prime numbers -> Primality tests). No external
 dependencies required for any of this -- consistent with the app's zero-extra-installs
-promise (see the PDF-writer module's own header comment in prime_atlas_v1.py) -- but
+promise (see the PDF-writer module's own header comment in prime_atlas_v2.py) -- but
 factorize() will use sympy.factorint() INSTEAD whenever sympy happens to be importable
 in this same Python environment (materially faster and complete for numbers the
 pure-Python path might time out on), via the optional-library installer in the

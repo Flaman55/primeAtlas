@@ -1,6 +1,6 @@
 """
 research_goldbach.py -- pure-logic (no tkinter) storage-bridging layer for the
-Research tab's Goldbach sub-tab, extracted from prime_atlas_v1.py as part of the
+Research tab's Goldbach sub-tab, extracted from prime_atlas_v2.py as part of the
 tab-by-tab backend/UI split (see research_goldbach_tab.py's own docstring).
 
 This module holds ONLY the piece that turns on-disk floor storage into an is_prime
@@ -14,10 +14,10 @@ import prime_sieve_v1
 from ..core.storage import list_source_filenames, _offset_from_filename
 
 QUICK_GEN_MAX_WINDOW_WIDTH = 10_000_000
-"""Window width storage files are split into -- duplicated from prime_atlas_v1.py's own
+"""Window width storage files are split into -- duplicated from prime_atlas_v2.py's own
 module-level constant of the same name (see that file's own comment on why it's
 duplicated rather than imported: this module must not import back from
-prime_atlas_v1.py, which would be circular). Safe as long as window_m stays at its
+prime_atlas_v2.py, which would be circular). Safe as long as window_m stays at its
 default value everywhere it's independently defined (as in DEFAULT_GENERATION_SETTINGS)
 -- same known limitation as the original."""
 

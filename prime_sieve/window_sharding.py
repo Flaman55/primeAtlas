@@ -21,7 +21,7 @@ primeatlas/storage_integrate.py, primeatlas/settings_tab.py) -- a mismatched cop
 just one of those files would silently misplace or "lose" files. Lives in prime_sieve/
 specifically so both sides can import it identically: every WSL engine script in this
 same folder can bare `import window_sharding` (same directory), and every Windows-side
-primeatlas/*.py module can do the same via prime_atlas_v1.py's existing
+primeatlas/*.py module can do the same via prime_atlas_v2.py's existing
 sys.path.insert(0, ".../prime_sieve") (the same mechanism already used there for
 prime_sieve_v1 itself), and constellation_finder_v1.py already does its own
 sys.path.insert(0, "../prime_sieve") to reach prime_sieve_v1, so this rides along for

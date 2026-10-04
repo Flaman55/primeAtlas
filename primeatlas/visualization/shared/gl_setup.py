@@ -1,8 +1,8 @@
 """
 gl_setup.py -- window/context/shader-program/VAO/VBO creation for
-primeatlas/rings/ring_viz/renderer.py's `_run_visualization`.
+primeatlas/visualization/shared/renderer.py's `_run_visualization`.
 
-The one piece that cannot be GL-free (unlike geometry_draw.py/hud.py/playback.py/
+The one piece that cannot be GL-free (unlike draw_primitives.py/hud_text.py/playback.py/
 session.py): creating a window, an OpenGL context, and every shader program/VAO/VBO
 is GL-bound, one-time, sequential setup. Kept apart from _run_visualization so "which
 GL objects exist and how they are wired at startup" is separate from "what happens
@@ -14,7 +14,7 @@ marker_triangle_vbo/vao, marker_line_vbo/vao, flash_quad_vbo/vao, prog_text,
 hud_quad_vbo/vao, hud_tex_holder).
 """
 
-from primeatlas.rings.ring_viz.shaders import (
+from primeatlas.visualization.shared.shaders import (
     VERTEX_SHADER,
     FRAGMENT_SHADER,
     OUTLINE_VERTEX_SHADER,
@@ -24,8 +24,9 @@ from primeatlas.rings.ring_viz.shaders import (
     TEXT_VERTEX_SHADER,
     TEXT_FRAGMENT_SHADER,
 )
-from primeatlas.rings.ring_viz.geometry_draw import unit_circle_vertices, axis_boundary_marker_vertices
-from primeatlas.rings.ring_viz.hud import _PIL_AVAILABLE
+from primeatlas.visualization.shared.draw_primitives import unit_circle_vertices
+from primeatlas.visualization.rings.line.line_draw import axis_boundary_marker_vertices
+from primeatlas.visualization.shared.hud_text import _PIL_AVAILABLE
 from primeatlas.core.app_icon import glfw_icon_images, set_app_user_model_id
 
 
@@ -68,7 +69,7 @@ class GLResources:
 
     def make_ring_vao(self, vbo):
         """(Re)creates the normal/hit VAO pair (see split_hit_normal_
-        vertex_data's own doc-comment, in geometry_draw.py, for why there
+        vertex_data's own doc-comment, in draw_primitives.py, for why there
         are two) from a fresh VBO -- called once at startup and again on
         every N-change rebuild in the main loop. The single place that
         vertex-format string ("2f 3f", "in_pos", "in_color") is written."""

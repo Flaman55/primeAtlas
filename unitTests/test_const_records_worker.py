@@ -1,6 +1,6 @@
 """
 test_const_records_worker.py -- functional test for the constellation-records-table
-worker (Constellations -> Records table sub-tab) in prime_atlas_v1.py, built on
+worker (Constellations -> Records table sub-tab) in prime_atlas_v2.py, built on
 primeatlas/core/background.py's PersistentWorker.
 
 Uses a throwaway EMPTY portal folder for the "scan" case -- build_constellation_
@@ -71,9 +71,9 @@ def main():
     try:
         shown = _patch_messageboxes()
 
-        sys.argv = ["prime_atlas_v1.py"]
-        import prime_atlas_v1
-        app_cls = prime_atlas_v1._build_gui()
+        sys.argv = ["prime_atlas_v2.py"]
+        import prime_atlas_v2
+        app_cls = prime_atlas_v2._build_gui()
         app = app_cls()
         app.update()
 

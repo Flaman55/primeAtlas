@@ -1,6 +1,6 @@
 """
 primality_tab.py -- probabilistic primality testing + factorization sub-tab (Prime
-numbers -> Primality tests), extracted from prime_atlas_v1.py during the refactor
+numbers -> Primality tests), extracted from prime_atlas_v2.py during the refactor
 branch's tab-by-tab split, the same pass that extracted the primesieve calculator
 sub-tab alongside it (primeatlas/primality/primesieve_calc_tab.py) -- these two were the last
 remaining un-extracted sub-tabs left inline in the app shell after every OTHER tab was

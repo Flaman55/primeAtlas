@@ -1,5 +1,5 @@
 """
-test_rings_tab.py -- tests for primeatlas/rings/rings_tab.py's RingsTab.
+test_rings_tab.py -- tests for primeatlas/visualization/rings/rings_tab.py's RingsTab.
 
 Two layers, same split as most tab test files in this folder:
 
@@ -7,9 +7,9 @@ Two layers, same split as most tab test files in this folder:
    no app/display needed at all.
 
 2. The RingsTab widget itself is exercised against a REAL local subprocess, not a
-   mocked LocalLoggedRunner -- monkeypatching primeatlas.rings.rings_tab.RENDERER_SCRIPT to
+   mocked LocalLoggedRunner -- monkeypatching primeatlas.visualization.rings.rings_tab.RENDERER_SCRIPT to
    point at a tiny fixture script (written to a temp file) that just prints a couple
-   of lines and exits 0 or 1, instead of the real primeatlas/rings/ring_viz/renderer.py
+   of lines and exits 0 or 1, instead of the real primeatlas/visualization/shared/renderer.py
    (which imports moderngl/glfw and needs a real GPU/display -- neither exists in
    this sandbox, and isn't the point of this test anyway). This exercises the actual
    LocalLoggedRunner subprocess-launch + queue-drain + __exit__ handling end-to-end,
@@ -34,7 +34,7 @@ _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(_SCRIPT_DIR)
 sys.path.insert(0, _REPO_ROOT)
 # primeatlas/__init__.py imports manifest.py, which imports window_sharding --
-# needed even just to import primeatlas.rings.rings_tab for _test_build_renderer_argv
+# needed even just to import primeatlas.visualization.rings.rings_tab for _test_build_renderer_argv
 # below, same reason test_ring_viz_renderer.py adds this (see that file).
 sys.path.insert(0, os.path.join(_REPO_ROOT, "prime_sieve"))
 
@@ -50,7 +50,7 @@ def check(condition, message):
 
 
 def _test_build_renderer_argv():
-    from primeatlas.rings.rings_tab import build_renderer_argv, RENDERER_SCRIPT
+    from primeatlas.visualization.rings.rings_tab import build_renderer_argv, RENDERER_SCRIPT
 
     argv = build_renderer_argv("/some/portal", 12345, python_executable="FAKE_PY")
     check(argv[0] == "FAKE_PY", f"argv[0] is the given python_executable (got {argv[0]!r})")
@@ -245,7 +245,7 @@ def _stub_app_update_check():
 
 
 def _write_fake_renderer(exit_code, linger_seconds=0.5):
-    """A stand-in for primeatlas/rings/ring_viz/renderer.py that never touches moderngl/glfw
+    """A stand-in for primeatlas/visualization/shared/renderer.py that never touches moderngl/glfw
     -- just proves the real subprocess round trip (launch, live stdout lines, exit
     code) works, independent of anything GPU/display-related. Ignores its argv
     entirely (real renderer.py's own argv contract is covered separately by
@@ -321,18 +321,32 @@ def main():
     shown = []
     tkinter.messagebox.showerror = lambda *a, **k: shown.append(("error", a, k))
 
-    sys.argv = ["prime_atlas_v1.py"]
-    import prime_atlas_v1
-    import primeatlas.rings.rings_tab as rings_tab_module
-    _patch_app_settings(prime_atlas_v1.APP_SETTINGS)
+    sys.argv = ["prime_atlas_v2.py"]
+    import prime_atlas_v2
+    import primeatlas.visualization.rings.rings_tab as rings_tab_module
+    _patch_app_settings(prime_atlas_v2.APP_SETTINGS)
     _stub_app_update_check()
     _install_launch_recorder(rings_tab_module)
-    app_cls = prime_atlas_v1._build_gui()
+    app_cls = prime_atlas_v2._build_gui()
     app = app_cls()
     app.update()
     tab = app.rings_tab_widget
 
     tmp_portal = tempfile.mkdtemp(prefix="primeatlas_rings_tab_test_portal_")
+
+    # --- placement: Visualization top-level tab -> Rings sub-tab -------------------
+    T = prime_atlas_v2.TRANSLATOR.t
+    main_tabs = [app.main_notebook.tab(t, "text") for t in app.main_notebook.tabs()]
+    check(T("tabs.visualization") in main_tabs and T("tabs.visualization_rings") not in main_tabs,
+          f"the main notebook has a Visualization tab and no top-level Rings tab (got {main_tabs})")
+    viz_sub = app.visualization_sub_notebook
+    check(str(viz_sub.master) == str(app.visualization_tab),
+          "the Visualization tab holds its own sub-notebook")
+    sub_tabs = [viz_sub.tab(t, "text") for t in viz_sub.tabs()]
+    check(sub_tabs[:1] == [T("tabs.visualization_rings")],
+          f"the first Visualization sub-tab is Rings (got {sub_tabs})")
+    check(str(tab.master) == str(app.visualization_rings_tab),
+          "RingsTab is built inside the Visualization > Rings sub-tab")
 
     # --- layout: Start/Reset are the first thing in the tab ------------------------
     # The launch buttons must sit above the intro and every option section, not below

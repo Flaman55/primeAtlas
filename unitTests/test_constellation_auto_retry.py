@@ -90,10 +90,10 @@ def _test_read_constellation_checkpoint():
 
 
 def _build_app(tmp_portal):
-    sys.argv = ["prime_atlas_v1.py"]
-    import prime_atlas_v1
-    _patch_app_settings(prime_atlas_v1.APP_SETTINGS)
-    app_cls = prime_atlas_v1._build_gui()
+    sys.argv = ["prime_atlas_v2.py"]
+    import prime_atlas_v2
+    _patch_app_settings(prime_atlas_v2.APP_SETTINGS)
+    app_cls = prime_atlas_v2._build_gui()
     app = app_cls()
     app.update()
     settings_tab = app.settings_tab
