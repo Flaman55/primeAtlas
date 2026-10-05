@@ -174,10 +174,10 @@ interchangeable engine generations, v3/v4/v4.1 -- see "Architecture" below).
   holding one sub-tab per visualization. Its **Rings** sub-tab opens an interactive,
   GPU-rendered view of prime rings around a chosen `n`, fed from whatever is already in
   storage. See "Ring visualization" below for what it shows and how it's launched. Its
-  **Tree** sub-tab opens the prime tree (real `n` or multiples axis) in its own window,
-  computed without storage -- see "Prime tree" below. Its **Assembly** sub-tab animates
-  how each level of the wheel is built from the previous one by copying -- see
-  "Assembly animation" below.
+  **Tree** sub-tab has two visualization modes, both computed without storage: the prime
+  tree (real `n` or multiples axis, see "Prime tree" below) and the assembly animation,
+  how each level of the wheel is built from the previous one by copying (see "Assembly
+  animation" below).
 - **Benchmark** -- a throughput chart (numbers generated per second vs. floor depth,
   derived from the actual count of integers swept per floor rather than a window-count
   approximation, so a mode like Hybrid whose swept range is normally far smaller than
@@ -1019,8 +1019,12 @@ actually earned.
 
 ## Prime tree
 
-The Visualization > Tree sub-tab (`tree_tab.py`) opens the same shared renderer in its own
-window and process with `--viz-mode tree --source none`: the tree computes every value
+The Visualization > Tree sub-tab (`tree_tab.py`) has a visualization-mode selector: tree
+(this section) or assembly (see "Assembly animation" below). The options both modes share
+-- n, the value-label cap, HUD and label font, node size, colors -- are one set of fields;
+the mode-specific ones are shown for the selected mode only. Levels and tempo stay per
+mode (they mean different things and have different defaults). In tree mode it opens the
+same shared renderer in its own window and process with `--viz-mode tree --source none`: the tree computes every value
 itself, so it needs no storage and loads no primes. Its levels are consecutive primes
 starting at the largest prime <= N (a composite N is rounded down). Prime p leaves p-1
 residues mod p free, so every copy of p branches into p-1 copies of the next prime, and
@@ -1062,7 +1066,7 @@ columns without any number -- no labels, no on-canvas HUD.
 
 ## Assembly animation
 
-The Visualization > Assembly sub-tab (`assembly_tab.py`) opens the shared renderer with
+The assembly mode of the Visualization > Tree sub-tab opens the shared renderer with
 `--viz-mode assembly --source none` and animates the wheel being assembled without any
 computation. A level of period M = 2 x 3 x ... x p has L = prod(p-1) lanes, the residues
 mod M no level prime divides. The next prime q lays q copies of the period side by side
@@ -1100,7 +1104,8 @@ picture is the same for every base.
   a number (pixels at the launch view) is used as is, with cells of exactly the set size.
 - Configurable: steps, frames per phase, tempo, the dot, grid-cell, label and lane caps,
   node/cell/label/HUD sizes and per-prime colors. Fields are remembered across restarts
-  (`AppSettings.assembly_viz_params`).
+  with the tree's (`AppSettings.tree_viz_params`, assembly-only keys prefixed where they
+  would collide, plus the selected `viz_mode`).
 
 ## Architecture
 
@@ -1456,10 +1461,13 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
       line_hud.py                  pattern_hud_line -- the pattern/wheel/axis status line
   tree/                         Visualization > Tree sub-tab and the "tree" viz-mode (see
                               "Prime tree" above)
-    tree_tab.py                  TreeTab(VizTabBase) -- the sub-tab's launch form and
-                              build_tree_argv (--source none --viz-mode tree); Start with
-                              an empty storage offers the same storage fill as Rings
-                              (Cancel starts the bare diagram, --tree-bare)
+    tree_tab.py                  TreeTab(VizTabBase) -- the sub-tab's launch form with
+                              the tree/assembly mode selector (common options shared,
+                              mode-specific ones switched), build_tree_argv (--source none
+                              --viz-mode tree); console/status texts follow the launched
+                              mode's locale namespace; Start with an empty storage offers
+                              the same storage fill as Rings (Cancel starts the bare
+                              diagram, --tree-bare / --assembly-bare)
     tree_mode.py                 TreeMode -- the start prime and its history (click/
                               Backspace/Home), prime-by-prime navigation without a prime
                               ceiling, and its own CLI arguments (--tree-*)
@@ -1475,11 +1483,10 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               "p=#rrggbb" override parser
     tree_hud.py                  the tree's HUD lines (start, axis, one line per level)
     highlight_layers.py          HighlightLayer + the LAYERS registry ("primes")
-  assembly/                     Visualization > Assembly sub-tab and the "assembly"
-                              viz-mode (see "Assembly animation" above)
-    assembly_tab.py              AssemblyTab(VizTabBase) -- the sub-tab's launch form and
-                              build_assembly_argv (--source none --viz-mode assembly);
-                              same empty-storage offer as Tree (Cancel: --assembly-bare)
+  assembly/                     the "assembly" viz-mode, the Tree sub-tab's assembly mode
+                              (see "Assembly animation" above)
+    assembly_argv.py             build_assembly_argv (--source none --viz-mode assembly),
+                              launched by tree_tab.py
     assembly_mode.py             AssemblyMode -- the animation position on its Timeline,
                               phase/step stepping, floor clicks (detail grid), its own
                               CLI arguments (--assembly-*)
