@@ -1079,6 +1079,9 @@ def _build_gui():
             self.visualization_tree_tab = ttk.Frame(sub)
             sub.add(self.visualization_tree_tab, text=T("tabs.visualization_tree"))
             self._build_tree_tab()
+            self.visualization_assembly_tab = ttk.Frame(sub)
+            sub.add(self.visualization_assembly_tab, text=T("tabs.visualization_assembly"))
+            self._build_assembly_tab()
 
         def _build_rings_tab(self):
             """Thin wrapper -- the whole sub-tab lives in
@@ -1113,6 +1116,20 @@ def _build_gui():
                 offer_generate_storage=lambda start, end, on_finished:
                     self._generation_offer_coord.offer_fill_storage_range(start, end, on_finished))
             self.tree_tab_widget.pack(fill="both", expand=True)
+
+        def _build_assembly_tab(self):
+            """Thin wrapper -- the whole sub-tab lives in
+            primeatlas/visualization/assembly/assembly_tab.py's AssemblyTab (its own
+            renderer window and process; same storage-fill offer as the Tree sub-tab)."""
+            from primeatlas.visualization.assembly.assembly_tab import AssemblyTab
+
+            self.assembly_tab_widget = AssemblyTab(
+                self.visualization_assembly_tab, get_portal_folder=lambda: PORTAL_FOLDER,
+                status_var=self.status, translator=TRANSLATOR,
+                totals_progress=self.totals_progress, app_settings=APP_SETTINGS,
+                offer_generate_storage=lambda start, end, on_finished:
+                    self._generation_offer_coord.offer_fill_storage_range(start, end, on_finished))
+            self.assembly_tab_widget.pack(fill="both", expand=True)
 
         # --- Tab 6: Settings -----------------------------------------------------
 

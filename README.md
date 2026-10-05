@@ -175,7 +175,9 @@ interchangeable engine generations, v3/v4/v4.1 -- see "Architecture" below).
   GPU-rendered view of prime rings around a chosen `n`, fed from whatever is already in
   storage. See "Ring visualization" below for what it shows and how it's launched. Its
   **Tree** sub-tab opens the prime tree (real `n` or multiples axis) in its own window,
-  computed without storage -- see "Prime tree" below.
+  computed without storage -- see "Prime tree" below. Its **Assembly** sub-tab animates
+  how each level of the wheel is built from the previous one by copying -- see
+  "Assembly animation" below.
 - **Benchmark** -- a throughput chart (numbers generated per second vs. floor depth,
   derived from the actual count of integers swept per floor rather than a window-count
   approximation, so a mode like Hybrid whose swept range is normally far smaller than
@@ -1058,6 +1060,48 @@ columns without any number -- no labels, no on-canvas HUD.
   sizes and per-prime colors. Fields are remembered across restarts
   (`AppSettings.tree_viz_params`).
 
+## Assembly animation
+
+The Visualization > Assembly sub-tab (`assembly_tab.py`) opens the shared renderer with
+`--viz-mode assembly --source none` and animates the wheel being assembled without any
+computation. A level of period M = 2 x 3 x ... x p has L = prod(p-1) lanes, the residues
+mod M no level prime divides. The next prime q lays q copies of the period side by side
+(values r + jM) and removes the multiples of q. M is invertible mod q, so exactly one of
+the q copies of every lane is removed: L becomes L x (q-1), M becomes M x q. The next
+prime is the smallest survivor > 1, and every survivor below its square is prime.
+
+Each step plays four phases, `--assembly-frames` ticks each:
+
+- copy: the current floor fans out into q copy tips one floor up;
+- strike: copy by copy, the removed lanes turn q's color. Each tip shows its lanes as a
+  block of dots while they fit `--assembly-lane-dots`, and its label reads
+  "lanes before -> after";
+- prime: every survivor in (1, next prime^2) pulses in the grid;
+- collapse: the tips draw together into the next floor.
+
+Every finished level is a single branch labelled with its prime, period and lanes, so the
+picture grows upward, not sideways. While q x period fits `--assembly-detail-cells`, a
+grid on the right shows the step cell by cell: q rows, one copy of the period each, so a
+lane is a column. Cells caught by an earlier prime are hollow, in that prime's color.
+During the collapse the rows slide into one row of the new period. N only sets the base
+the grid values are labelled from: the largest multiple of the new period <= N (the HUD
+header shows the current period instead, and N stays in the tab's field). The
+picture is the same for every base.
+
+- Space plays one frame per tick and stops at the end. Right/Left jump to the next or
+  previous phase (Ctrl: step), Home restarts, R resets.
+- Clicking an assembled floor shows the grid of the step that built it, in its final
+  state; Backspace returns to the current step's grid.
+- Lanes are enumerated (per-copy removals, the next prime read off the survivors) up to
+  `--assembly-max-lanes`; past it, the HUD keeps the exact counts.
+- Empty storage: the same fill offer as the Tree sub-tab. Cancel starts the animation
+  without numbers (`--assembly-bare`).
+- Grid spacing: `auto` fits the grid into its panel and shrinks cells that do not fit;
+  a number (pixels at the launch view) is used as is, with cells of exactly the set size.
+- Configurable: steps, frames per phase, tempo, the dot, grid-cell, label and lane caps,
+  node/cell/label/HUD sizes and per-prime colors. Fields are remembered across restarts
+  (`AppSettings.assembly_viz_params`).
+
 ## Architecture
 
 ```
@@ -1236,7 +1280,7 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               visualization itself as tkinter widgets; see "Ring
                               visualization" above
   mode_registry.py              MODES -- every --viz-mode the renderer can run, by name
-                              (rings, line, tree). Adding a visualization mode means
+                              (rings, line, tree, assembly). Adding a visualization mode means
                               adding one entry here; shared/ never names a concrete mode
   shared/                       everything common to all visualizations -- the renderer
                               subprocess host, the interactive session, and the Tk-side
@@ -1259,7 +1303,7 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               reset_state, the class attributes reset_mode (the mode R
                               switches to; None = stay), window_title, count_label,
                               draws_center_marker, uses_prime_ceiling,
-                              label_font_size and draws_hud, and the launch-time classmethods
+                              label_font_size, draws_hud and n_label, and the launch-time classmethods
                               add_arguments/validate_arguments/prepare_launch (each mode
                               owns its own CLI arguments); LaunchAborted refuses to open
                               the window
@@ -1431,6 +1475,22 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               "p=#rrggbb" override parser
     tree_hud.py                  the tree's HUD lines (start, axis, one line per level)
     highlight_layers.py          HighlightLayer + the LAYERS registry ("primes")
+  assembly/                     Visualization > Assembly sub-tab and the "assembly"
+                              viz-mode (see "Assembly animation" above)
+    assembly_tab.py              AssemblyTab(VizTabBase) -- the sub-tab's launch form and
+                              build_assembly_argv (--source none --viz-mode assembly);
+                              same empty-storage offer as Tree (Cancel: --assembly-bare)
+    assembly_mode.py             AssemblyMode -- the animation position on its Timeline,
+                              phase/step stepping, floor clicks (detail grid), its own
+                              CLI arguments (--assembly-*)
+    assembly_layout.py           the pure arithmetic: lanes built copy by copy, the steps
+                              (period, lanes, removals per copy, next prime read off the
+                              survivors) and the Timeline of phases
+    assembly_draw.py             world-space draw data of one frame: floors and trunk, the
+                              fan of copies with lane dots, the detail grid with struck
+                              and highlighted cells, labels and pickable floors
+    assembly_hud.py              the animation's HUD lines (step, period and lanes before
+                              -> after, removals, next prime and its square, density)
 
   primeatlas/benchmark/         "Benchmark" tab
   benchmark_tab.py             BenchmarkTab -- the Benchmark tab (charts + PDF export;

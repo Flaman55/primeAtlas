@@ -115,6 +115,19 @@ class AppSettings:
         self.save()
 
     @property
+    def assembly_viz_params(self):
+        """Last-used Assembly visualization launch parameters (primeatlas/visualization/
+        assembly/assembly_tab.py's AssemblyTab), as the raw strings its widgets held; None
+        before the first launch. Same convention as ring_viz_params."""
+        return self._data.get("assembly_viz_params") or None
+
+    def set_assembly_viz_params(self, params):
+        """Called by AssemblyTab._on_open() with every launch-time field's raw value, each
+        time a run actually starts."""
+        self._data["assembly_viz_params"] = params
+        self.save()
+
+    @property
     def language(self):
         """Read once at startup (see prime_atlas_v2.py's TRANSLATOR construction) to
         build the Translator that every T(...) call in this app's GUI uses. Falls back

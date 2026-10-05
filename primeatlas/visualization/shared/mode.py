@@ -32,6 +32,8 @@ class VizMode:
     # Window title and the HUD header's name for `hud_count`.
     window_title = "PrimeAtlas -- Ring visualization"
     count_label = "rings"
+    # The on-canvas HUD header's name for `hud_n`.
+    n_label = "N"
     # Whether the renderer draws the ring field's center marker.
     draws_center_marker = True
     # Whether starting/resuming playback is refused at the loaded prime ceiling (modes
