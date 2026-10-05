@@ -995,6 +995,7 @@
   "assembly.label_font_size_label": "Label font size in px (default 35):",
   "assembly.node_size_label": "Floor and copy size in px:",
   "assembly.cell_size_label": "Grid cell and lane dot size in px:",
+  "assembly.cell_spacing_label": "Grid cell spacing in px (auto = fit the grid; a number = exactly that):",
   "assembly.colors_label": "Prime colors (e.g. 2=#ff0000,3=#00aaff; empty = default):",
   "assembly.controls_hint": "In the window: Space = play, Right/Left = next/previous phase (Ctrl: step), Home = from the start, click a floor = its grid, Backspace = back to the current grid, Up/Down = move n, R = reset, mouse wheel = zoom, drag = pan, middle click = fit.",
   "assembly.open_button": "Start / Resume",

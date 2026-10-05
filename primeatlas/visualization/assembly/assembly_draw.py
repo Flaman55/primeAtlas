@@ -56,23 +56,26 @@ _BRANCH_ALPHA = 0.7
 _DIM_RGB = (0.45, 0.45, 0.5)
 _HIGHLIGHT_RGB = (1.0, 1.0, 1.0)
 # Cell labels show once the cell spacing covers their width this many times over, so
-# they never run into the neighboring rows.
+# they never run into the neighboring rows (auto spacing; a given spacing is used whole).
 _CELL_LABEL_ROOM = 0.45
 
 
 class AssemblyStyle:
     """Sizes (pixels), caps and colors of the animation. `colors`: {prime: rgb}
     overrides. `lane_dots`: lanes drawn as dots per copy at most; `detail_cells`: grid
-    cells drawn at most (0 = no grid); `max_labels`: cell labels at most."""
+    cells drawn at most (0 = no grid); `max_labels`: cell labels at most. `cell_spacing`:
+    grid spacing in world units (pixels at the launch view), or None to fit the grid into
+    its panel and shrink cells that do not fit their spacing."""
 
     def __init__(self, node_size=15.0, cell_size=12.0, colors=None, lane_dots=48, detail_cells=2310,
-                 max_labels=3000):
+                 max_labels=3000, cell_spacing=None):
         self.node_size = float(node_size)
         self.cell_size = float(cell_size)
         self.colors = dict(colors or {})
         self.lane_dots = int(lane_dots)
         self.detail_cells = int(detail_cells)
         self.max_labels = int(max_labels)
+        self.cell_spacing = None if cell_spacing is None else float(cell_spacing)
 
     def color(self, p, index):
         return prime_color(p, self.colors, index=index)
@@ -80,7 +83,8 @@ class AssemblyStyle:
 
 class GridInfo:
     """What the grid of one step shows: `rows` copies of `cols` cells, values labelled
-    from `base`; the struck and highlighted values (sorted, without base)."""
+    from `base`; the struck and highlighted values (sorted, without base). `x0`: left
+    edge, `spacing`: distance between neighboring cells, `cell_px`: marker size."""
 
     def __init__(self, step_index, rows, cols, base):
         self.step_index = step_index
@@ -90,6 +94,9 @@ class GridInfo:
         self.base = base
         self.struck_values = []
         self.highlighted_values = []
+        self.x0 = 0.0
+        self.spacing = 0.0
+        self.cell_px = 0.0
 
 
 class AssemblyDrawData:
@@ -247,7 +254,8 @@ def _add_grid(data, steps, st, phase, frac, style, base_n, marker_blocks, segmen
 
     x0 = _GRID_X0_SHARE * R
     width = (_GRID_X1_SHARE - _GRID_X0_SHARE) * R
-    cell = min(width / cols, _GRID_HEIGHT_SHARE * R / rows)
+    auto = style.cell_spacing is None
+    cell = min(width / cols, _GRID_HEIGHT_SHARE * R / rows) if auto else style.cell_spacing
     y0 = -rows * cell / 2.0
     r = np.tile(np.arange(cols, dtype=np.int64), rows)
     j = np.repeat(np.arange(rows, dtype=np.int64), cols)
@@ -255,7 +263,7 @@ def _add_grid(data, steps, st, phase, frac, style, base_n, marker_blocks, segmen
     xs = x0 + (r + 0.5) * cell
     ys = y0 + (j + 0.5) * cell
     if phase == PHASE_COLLAPSE:
-        line_cell = width / (rows * cols)
+        line_cell = width / (rows * cols) if auto else cell
         xs = xs + frac * (x0 + (v + 0.5) * line_cell - xs)
         ys = ys + frac * (0.0 - ys)
         cell_room = cell + frac * (line_cell - cell)
@@ -283,7 +291,8 @@ def _add_grid(data, steps, st, phase, frac, style, base_n, marker_blocks, segmen
     solid = visible & lane & ~struck
     hollow_cells = visible & (dead | (struck & (phase == PHASE_COLLAPSE)))
     struck_solid = visible & struck & (phase != PHASE_COLLAPSE)
-    cell_px = _marker_px(cell_room, style.cell_size)
+    cell_px = _marker_px(cell_room, style.cell_size) if auto else style.cell_size
+    grid.x0, grid.spacing, grid.cell_px = x0, cell, cell_px
     for mask, hollow in ((hollow_cells, 1.0), (solid, 0.0), (struck_solid, 0.0)):
         if mask.any():
             marker_blocks.append(_solid_rows(xs[mask], ys[mask], cell_px, rgbs[mask], hollow=hollow))
@@ -310,5 +319,5 @@ def _add_grid(data, steps, st, phase, frac, style, base_n, marker_blocks, segmen
             rgb = tuple(rgbs[index]) if lane[index] else _DIM_RGB
             data.labels.append(WorldLabel(float(xs[index]), float(ys[index]) - 0.5 * cell_room,
                                           value_text(base + int(v[index]), base), rgb,
-                                          room=_CELL_LABEL_ROOM * cell_room,
+                                          room=(_CELL_LABEL_ROOM if auto else 1.0) * cell_room,
                                           anchor=ANCHOR_ABOVE))

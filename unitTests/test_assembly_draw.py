@@ -21,6 +21,10 @@ Spec (R = max_radius; floors stack upward, smaller world y = higher on screen):
   F. detail_step shows that step's grid in its final (struck) state instead of the
      current step's; above detail_cells there is no grid.
   G. Array shapes: markers (k, MARKER_FLOATS) float32, segments (2k, 6) float32.
+  H. Grid spacing: auto (cell_spacing None) fits the grid into the right half and
+     shrinks the cells to 0.85 of the spacing when cell_size does not fit; a given
+     spacing (pixels at the launch view = world units) is used as is, the grid starting
+     at the same left edge, and the cells keep exactly cell_size.
 
 Usage:
     python unitTests/test_assembly_draw.py
@@ -165,9 +169,24 @@ def section_g_shapes():
         check(bool(inside), f"{args}: markers inside the fitted square")
 
 
+def section_h_spacing():
+    print("\n--- H: grid spacing ---")
+    auto = _frame(3, 1, 1.0).grid
+    check(auto.spacing == min(0.9 * R / 30, 1.6 * R / 7), f"auto: the grid fits the panel (got {auto.spacing})")
+    check(auto.cell_px <= 0.85 * auto.spacing + 1e-9 or auto.cell_px == 12.0, f"auto cell px (got {auto.cell_px})")
+    big = _frame(3, 1, 1.0, cell_size=40.0).grid
+    check(abs(big.cell_px - 0.85 * big.spacing) < 1e-9, f"auto: a too large cell shrinks to its spacing (got {big.cell_px})")
+    d = _frame(3, 1, 1.0, cell_spacing=40.0, cell_size=20.0)
+    g = d.grid
+    check(g.spacing == 40.0 and g.cell_px == 20.0, f"given spacing 40, cell 20 (got {g.spacing}, {g.cell_px})")
+    check(abs(g.x0 - auto.x0) < 1e-9, "the grid starts at the same left edge")
+    g = _frame(3, 1, 1.0, cell_spacing=5.0, cell_size=12.0).grid
+    check(g.cell_px == 12.0, f"a given spacing never shrinks the cells (got {g.cell_px})")
+
+
 if __name__ == "__main__":
     for section in (section_a_floors, section_b_copy, section_c_strike, section_d_grid, section_e_collapse,
-                    section_f_detail_step, section_g_shapes):
+                    section_f_detail_step, section_g_shapes, section_h_spacing):
         try:
             section()
         except Exception as e:  # noqa: BLE001

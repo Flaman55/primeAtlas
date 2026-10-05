@@ -37,6 +37,7 @@ _DEFAULTS = {
     "assembly_node_size": 15.0,
     "assembly_cell_size": 12.0,
     "assembly_label_font_size": 35,
+    "assembly_cell_spacing": "auto",
 }
 
 # A click within this many pixels of a floor's node picks it.
@@ -60,7 +61,8 @@ class AssemblyMode(VizMode):
         self.style = AssemblyStyle(node_size=get("assembly_node_size"), cell_size=get("assembly_cell_size"),
                                    colors=config.get("assembly_colors") or {},
                                    lane_dots=get("assembly_lane_dots"), detail_cells=get("assembly_detail_cells"),
-                                   max_labels=get("assembly_max_labels"))
+                                   max_labels=get("assembly_max_labels"),
+                                   cell_spacing=_spacing_value(get("assembly_cell_spacing")))
         self.bare = bool(config.get("assembly_bare", False))
         self.draws_hud = not self.bare
         self.position = 0
@@ -88,6 +90,9 @@ class AssemblyMode(VizMode):
                             help="assembly mode: floor and copy marker size in pixels")
         parser.add_argument("--assembly-cell-size", type=float, default=_DEFAULTS["assembly_cell_size"],
                             help="assembly mode: grid cell and lane dot size in pixels")
+        parser.add_argument("--assembly-cell-spacing", type=str, default=_DEFAULTS["assembly_cell_spacing"],
+                            help="assembly mode: grid cell spacing in pixels at the launch view, or 'auto' "
+                                 "to fit the grid and shrink cells to their spacing")
         parser.add_argument("--assembly-label-font-size", type=int, default=_DEFAULTS["assembly_label_font_size"],
                             help="assembly mode: pixel size of the labels")
         parser.add_argument("--assembly-colors", type=str, default="",
@@ -109,6 +114,10 @@ class AssemblyMode(VizMode):
         if args.assembly_max_lanes < 1:
             parser.error(f"--assembly-max-lanes must be >= 1, got {args.assembly_max_lanes}")
         try:
+            _spacing_value(args.assembly_cell_spacing)
+        except ValueError as e:
+            parser.error(f"--assembly-cell-spacing: {e}")
+        try:
             parse_color_map(args.assembly_colors)
         except ValueError as e:
             parser.error(f"--assembly-colors: {e}")
@@ -117,6 +126,7 @@ class AssemblyMode(VizMode):
     def prepare_launch(cls, args, launch):
         config = {key: getattr(args, key) for key in _DEFAULTS}
         config["assembly_colors"] = parse_color_map(args.assembly_colors)
+        config["assembly_cell_spacing"] = _spacing_value(args.assembly_cell_spacing)
         config["assembly_bare"] = bool(args.assembly_bare)
         return config
 
@@ -201,3 +211,16 @@ class AssemblyMode(VizMode):
     def reset_state(self):
         self.position = 0
         self.detail_step = None
+
+
+def _spacing_value(value):
+    """None for 'auto' (or None), else a spacing > 0 as float; ValueError otherwise."""
+    if value is None or (isinstance(value, str) and value.strip().lower() in ("", "auto")):
+        return None
+    try:
+        spacing = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{value!r} is neither 'auto' nor a number") from None
+    if not spacing > 0:
+        raise ValueError(f"must be > 0, got {value!r}")
+    return spacing

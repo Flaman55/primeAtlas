@@ -1096,6 +1096,8 @@ picture is the same for every base.
   `--assembly-max-lanes`; past it, the HUD keeps the exact counts.
 - Empty storage: the same fill offer as the Tree sub-tab. Cancel starts the animation
   without numbers (`--assembly-bare`).
+- Grid spacing: `auto` fits the grid into its panel and shrinks cells that do not fit;
+  a number (pixels at the launch view) is used as is, with cells of exactly the set size.
 - Configurable: steps, frames per phase, tempo, the dot, grid-cell, label and lane caps,
   node/cell/label/HUD sizes and per-prime colors. Fields are remembered across restarts
   (`AppSettings.assembly_viz_params`).

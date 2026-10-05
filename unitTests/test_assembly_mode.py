@@ -172,11 +172,21 @@ def section_g_cli():
     AssemblyMode.add_arguments(parser)
     args = parser.parse_args([])
     defaults = {"assembly_depth": 6, "assembly_frames": 12, "assembly_lane_dots": 48,
-                "assembly_detail_cells": 2310, "assembly_label_font_size": 35, "assembly_bare": False}
+                "assembly_detail_cells": 2310, "assembly_label_font_size": 35, "assembly_bare": False,
+                "assembly_cell_spacing": "auto"}
     for key, value in defaults.items():
         check(getattr(args, key) == value, f"default {key} = {value} (got {getattr(args, key)})")
     config = AssemblyMode.prepare_launch(args, None)
     check(config["assembly_depth"] == 6 and config["assembly_frames"] == 12, "prepare_launch maps the arguments")
+    check(config["assembly_cell_spacing"] is None, "auto spacing -> None")
+    parser = argparse.ArgumentParser()
+    AssemblyMode.add_arguments(parser)
+    config = AssemblyMode.prepare_launch(parser.parse_args(["--assembly-cell-spacing", "40"]), None)
+    check(config["assembly_cell_spacing"] == 40.0, f"--assembly-cell-spacing 40 -> 40.0 (got {config['assembly_cell_spacing']})")
+    s = _make_session(assembly_cell_spacing=40.0)
+    s.mode.position = s.mode.timeline.step_start(3)
+    s.rebuild(s.n)
+    check(s.mode.draw.grid.spacing == 40.0, "the session passes the spacing to the grid")
 
     class _Exit(Exception):
         pass
@@ -186,7 +196,8 @@ def section_g_cli():
 
     for bad in (["--assembly-depth", "0"], ["--assembly-frames", "0"], ["--assembly-lane-dots", "-1"],
                 ["--assembly-detail-cells", "-1"], ["--assembly-max-labels", "-1"],
-                ["--assembly-max-lanes", "0"], ["--assembly-colors", "4=#ff0000"]):
+                ["--assembly-max-lanes", "0"], ["--assembly-colors", "4=#ff0000"],
+                ["--assembly-cell-spacing", "0"], ["--assembly-cell-spacing", "wide"]):
         parser = argparse.ArgumentParser()
         AssemblyMode.add_arguments(parser)
         parser.error = _error

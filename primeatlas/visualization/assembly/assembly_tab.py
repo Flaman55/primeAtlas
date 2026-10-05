@@ -22,7 +22,7 @@ RENDERER_SCRIPT = os.path.join(os.path.dirname(_THIS_DIR), "shared", "renderer.p
 
 def build_assembly_argv(n, python_executable=None, depth=None, frames=None, tempo_ms=None, lane_dots=None,
                         detail_cells=None, max_labels=None, max_lanes=None, node_size=None, cell_size=None,
-                        hud_font_size=None, label_font_size=None, colors="", bare=False,
+                        hud_font_size=None, label_font_size=None, colors="", cell_spacing="", bare=False,
                         pipe_stdin_commands=False):
     """Argv launching renderer.py (as a plain script path) in assembly mode with the grid
     values labelled from `n`. Every None/empty optional value is omitted, so renderer.py's
@@ -38,6 +38,8 @@ def build_assembly_argv(n, python_executable=None, depth=None, frames=None, temp
             argv += [flag, str(value)]
     if colors:
         argv += ["--assembly-colors", colors]
+    if cell_spacing:
+        argv += ["--assembly-cell-spacing", cell_spacing]
     if bare:
         argv += ["--assembly-bare"]
     if pipe_stdin_commands:
@@ -112,6 +114,13 @@ class AssemblyTab(VizTabBase):
             entry.pack(side="left", padx=(6, 0))
             setattr(self, attr, entry)
 
+        spacing_row = ttk.Frame(sections["appearance"])
+        spacing_row.pack(fill="x", padx=8, pady=(0, 4))
+        ttk.Label(spacing_row, text=self._tk("cell_spacing_label")).pack(side="left")
+        self.cell_spacing_entry = ttk.Entry(spacing_row, width=12)
+        self.cell_spacing_entry.insert(0, saved.get("cell_spacing", "auto"))
+        self.cell_spacing_entry.pack(side="left", padx=(6, 0))
+
         colors_row = ttk.Frame(sections["appearance"])
         colors_row.pack(fill="x", padx=8, pady=(0, 6))
         ttk.Label(colors_row, text=self._tk("colors_label")).pack(side="left")
@@ -131,7 +140,7 @@ class AssemblyTab(VizTabBase):
         self.console = GenerationConsole(container, self.T, height=14, window_title=self._tk("console_title"))
         self._register_scroll_exclude(self.console.text.frame)
 
-        self._launch_param_entries = [self.n_entry, self.colors_entry] + [
+        self._launch_param_entries = [self.n_entry, self.colors_entry, self.cell_spacing_entry] + [
             getattr(self, attr) for attr, *_ in _INT_FIELDS + _FLOAT_FIELDS]
 
     def _set_launch_params_readonly(self, readonly):
@@ -173,13 +182,16 @@ class AssemblyTab(VizTabBase):
                 values[saved_key] = None
         colors = self.colors_entry.get().strip()
         raw["colors"] = colors
+        cell_spacing = self.cell_spacing_entry.get().strip()
+        raw["cell_spacing"] = cell_spacing
 
         argv = build_assembly_argv(n, depth=values["depth"], frames=values["frames"], tempo_ms=values["tempo_ms"],
                                    lane_dots=values["lane_dots"], detail_cells=values["detail_cells"],
                                    max_labels=values["max_labels"], max_lanes=values["max_lanes"],
                                    node_size=values["node_size"], cell_size=values["cell_size"],
                                    hud_font_size=values["hud_font_size"],
-                                   label_font_size=values["label_font_size"], colors=colors, bare=bare,
+                                   label_font_size=values["label_font_size"], colors=colors,
+                                   cell_spacing=cell_spacing, bare=bare,
                                    pipe_stdin_commands=True)
         if self._app_settings is not None:
             self._app_settings.set_assembly_viz_params(raw)

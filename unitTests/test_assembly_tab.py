@@ -63,11 +63,12 @@ def section_a_argv():
     argv = build_assembly_argv(10**25, depth=5, frames=9, tempo_ms=200, lane_dots=30, detail_cells=999,
                                max_labels=77, max_lanes=12345, node_size=12.0, cell_size=6.0,
                                hud_font_size=20, label_font_size=14, colors="2=#ff0000",
-                               pipe_stdin_commands=True)
+                               cell_spacing="40", pipe_stdin_commands=True)
     expected = {"--upto": str(10**25), "--assembly-depth": "5", "--assembly-frames": "9", "--tempo-ms": "200",
                 "--assembly-lane-dots": "30", "--assembly-detail-cells": "999", "--assembly-max-labels": "77",
                 "--assembly-max-lanes": "12345", "--assembly-node-size": "12.0", "--assembly-cell-size": "6.0",
-                "--hud-font-size": "20", "--assembly-label-font-size": "14", "--assembly-colors": "2=#ff0000"}
+                "--hud-font-size": "20", "--assembly-label-font-size": "14", "--assembly-colors": "2=#ff0000",
+                "--assembly-cell-spacing": "40"}
     for flag, value in expected.items():
         check(_value(argv, flag) == value, f"{flag} = {value} (got {_value(argv, flag)!r})")
     check("--pipe-stdin-commands" in argv, "--pipe-stdin-commands when asked")
@@ -138,7 +139,8 @@ def section_bc_app():
     tab = app.assembly_tab_widget
     check(str(tab.master) == str(app.visualization_assembly_tab), "AssemblyTab is built inside its sub-tab")
     first_run = {"depth_entry": "6", "frames_entry": "12", "tempo_ms_entry": "60", "hud_font_size_entry": "35",
-                 "label_font_size_entry": "35", "node_size_entry": "15", "cell_size_entry": "12"}
+                 "label_font_size_entry": "35", "node_size_entry": "15", "cell_size_entry": "12",
+                 "cell_spacing_entry": "auto"}
     got = {attr: getattr(tab, attr).get() for attr in first_run}
     check(got == first_run, f"first-run field defaults (got {got})")
 

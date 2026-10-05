@@ -995,6 +995,7 @@
   "assembly.label_font_size_label": "Rozmiar czcionki etykiet w px (domyślnie 35):",
   "assembly.node_size_label": "Rozmiar piętra i kopii w px:",
   "assembly.cell_size_label": "Rozmiar komórki siatki i kropki toru w px:",
+  "assembly.cell_spacing_label": "Odstęp komórek siatki w px (auto = dopasuj siatkę; liczba = dokładnie tyle):",
   "assembly.colors_label": "Kolory liczb pierwszych (np. 2=#ff0000,3=#00aaff; puste = domyślne):",
   "assembly.controls_hint": "W oknie: Spacja = odtwarzanie, Prawo/Lewo = następna/poprzednia faza (Ctrl: krok), Home = od początku, klik w piętro = jego siatka, Backspace = powrót do bieżącej siatki, Góra/Dół = przesunięcie n, R = reset, kółko = zoom, przeciągnięcie = przesunięcie, środkowy przycisk = dopasuj.",
   "assembly.open_button": "Start / Wznów",
