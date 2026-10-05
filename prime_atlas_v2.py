@@ -1093,7 +1093,10 @@ def _build_gui():
             self.rings_tab_widget = RingsTab(
                 self.visualization_rings_tab, get_portal_folder=lambda: PORTAL_FOLDER,
                 status_var=self.status, translator=TRANSLATOR,
-                totals_progress=self.totals_progress, app_settings=APP_SETTINGS)
+                totals_progress=self.totals_progress, app_settings=APP_SETTINGS,
+                # Lazy: the Visualization tab can be built before the coordinator.
+                offer_generate_storage=lambda start, end, on_finished:
+                    self._generation_offer_coord.offer_fill_storage_range(start, end, on_finished))
             self.rings_tab_widget.pack(fill="both", expand=True)
 
         def _build_tree_tab(self):

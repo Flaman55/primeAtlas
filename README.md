@@ -664,6 +664,16 @@ always-visible HUD panel in the main tkinter window mirrors the renderer's own l
 status (current N, ring count, rebuild time, running/paused state) even while the render
 window itself is hidden.
 
+Empty storage: when no prime window exists anywhere yet, Start opens a dialog instead of
+an empty window, asking for a From/To range to generate first (prefilled with N in
+sequential mode, with the Load Range in range mode; an empty From means 2). The range is
+planned floor by floor (`plan_storage_fill`: floors 0-6 as the single low-floor window,
+then every floor the range touches) and run step by step through the Generation tab's own
+dispatch -- primesieve while a step fits under its uint64 ceiling, PrimeAtlas's own
+engine above it, a floor straddling the ceiling split there. Once the last step finishes
+the visualization starts by itself; an error or Stop ends the plan with a status
+message.
+
 Configurable before launch: point size and a separate hit-ring point size (the axis
 rings), HUD font size, and three independent audio channels (rings `<= 7`, rings `> 7`,
 and the LCM ring) each assignable to one of seven instruments (sine/triangle/square/
@@ -1203,7 +1213,10 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
   generation_offer_coordinator.py GenerationOfferCoordinator -- the three "offer to
                               generate this missing fragment, then let the caller
                               re-check" bridge methods that used to live directly on
-                              PortalBrowserApp itself
+                              PortalBrowserApp itself, plus offer_fill_storage_range
+                              (the visualization's empty-storage fill: plan_storage_fill
+                              run through GenerationTab.start_storage_fill, one
+                              _launch_direct_window_range step per finished run)
   hybrid_controls.py            Hybrid mode's own debounced reach-preview/auto-fit UI
                               logic, kept in its own file since it runs its preview
                               calculation off the Tk main thread
@@ -1279,7 +1292,9 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               sub-tab shares: launching renderer.py via LocalLoggedRunner,
                               the live console, the HUD panel fed by HUD_STATE lines, live
                               pause/resume over stdin, Reset, the Start/Resume "reopen
-                              where playback left off" N, and the scrollable container;
+                              where playback left off" N, the scrollable container, and
+                              the empty-storage "generate a range first?" dialog
+                              (_ask_generate_range/_offer_storage_fill, parse_generate_range);
                               a sub-tab supplies its own form, argv and LOCALE_PREFIX
     gl_setup.py                   GLResources: window/context/shader-program/VAO/VBO
                               creation -- the one piece that is NOT GL-free. The
@@ -1330,10 +1345,15 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               assignable audio channels (low/prime/lcm)
     window_mode.py                 FullscreenToggle -- GLFW fullscreen toggle that preserves
                               windowed geometry/GL context across F11 and releases
-                              exclusive monitor ownership before a paused window is hidden
+                              exclusive monitor ownership before a paused window is hidden;
+                              centered_position/center_glfw_window/center_tk_window open the
+                              GL window (frame included) and the empty-storage dialog
+                              centered on screen
   rings/                        Visualization > Rings sub-tab (rings and line modes)
     rings_tab.py                 RingsTab(VizTabBase) -- the sub-tab's launch form and
-                              build_renderer_argv
+                              build_renderer_argv; Start with an empty storage offers
+                              the storage fill (offer_generate_storage, injected by the
+                              app) and relaunches once it is done
     ring/                        "rings" viz-mode
       ring_mode.py                 RingMode -- window/tracking config, auto-orbit,
                               cyclic window anchors, resonance log, tracked-ring

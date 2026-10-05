@@ -171,6 +171,9 @@ class GenerationTab(HybridControls, BaseTab):
         # see prime_atlas_v2.py's own _goldbach_offer_generate_missing_range docstring.
         # Records WHICH op to retry ("viz" or "decompose", None = nothing pending).
         self._pending_goldbach_retry_op = None
+        # A multi-step "fill this range into storage" plan (see start_storage_fill):
+        # None, or {"launches": remaining steps, "on_finished": callback}.
+        self._pending_storage_fill = None
 
         # Whole-pipeline step count for the shared bottom progress bar -- see
         # _update_shared_progress_from_generation_chunk()'s own docstring below. None
@@ -2107,17 +2110,65 @@ class GenerationTab(HybridControls, BaseTab):
         _trim_existing_from_target_idx_range()'s own docstring) -- every engine this
         app can launch overwrites unconditionally with no existence check of its own,
         so this is the one place that avoids redundantly re-sieving/rewriting windows
-        the caller's own request happens to overlap."""
+        the caller's own request happens to overlap.
+
+        Returns "covered" (nothing left to generate), "launched" (a run started) or
+        "failed" (the engine refused or failed to start; it has already said why)."""
         trimmed_start, trimmed_count = _trim_existing_from_target_idx_range(
             self._get_portal_folder(), floor, target_idx_start, window_count, QUICK_GEN_MAX_WINDOW_WIDTH)
         if trimmed_count <= 0:
             self.quick_status_var.set(self.T("quick.status_range_fully_covered"))
-            return
+            return "covered"
+        runner_before = self._loop_runner
         range_end_abs = 10 ** floor + (trimmed_start + trimmed_count) * QUICK_GEN_MAX_WINDOW_WIDTH
         if range_end_abs - 1 > PRIMESIEVE_MAX_STOP:
             self._apply_orchestrator_direct_params_and_run(floor, trimmed_start, trimmed_count)
         else:
             self._apply_primesieve_params_and_run(floor, trimmed_start, trimmed_count)
+        if self._loop_runner is not None and self._loop_runner is not runner_before:
+            return "launched"
+        return "failed"
+
+    def start_storage_fill(self, launches, on_finished):
+        """Runs plan_storage_fill's launches one after another through
+        _launch_direct_window_range (one Generation run at a time, as everywhere in
+        this tab): each finished run starts the next step (_on_storage_fill_run_
+        finished), a step already on disk is skipped at once. on_finished(True) after
+        the last step; on_finished(False) as soon as a launch fails or a run exits
+        non-zero (an error or Stop), with the rest of the plan dropped. Returns False,
+        launching nothing, while another run is in flight."""
+        if (self._loop_runner is not None and self._loop_runner.is_running()
+                or self._other_engine_is_running("loop")):
+            return False
+        self._pending_storage_fill = {"launches": list(launches), "on_finished": on_finished}
+        self._advance_storage_fill()
+        return True
+
+    def _advance_storage_fill(self):
+        pending = self._pending_storage_fill
+        while pending["launches"]:
+            floor, target_idx_start, window_count = pending["launches"].pop(0)
+            result = self._launch_direct_window_range(floor, target_idx_start, window_count)
+            if result == "launched":
+                return
+            if result == "failed":
+                self._finish_storage_fill(False)
+                return
+        self._finish_storage_fill(True)
+
+    def _finish_storage_fill(self, success):
+        on_finished = self._pending_storage_fill["on_finished"]
+        self._pending_storage_fill = None
+        on_finished(success)
+
+    def _on_storage_fill_run_finished(self, returncode):
+        """_on_loop_finished's hook: the next storage-fill step, or the end of it."""
+        if self._pending_storage_fill is None:
+            return
+        if returncode not in (None, 0):
+            self._finish_storage_fill(False)
+            return
+        self._advance_storage_fill()
 
     def _quick_gen_plan_literal_range(self, start, end, max_window_count=None):
         """Shared by Range mode and Floor mode WITH a starting point set (see
@@ -2898,6 +2949,8 @@ class GenerationTab(HybridControls, BaseTab):
                 self.research_goldbach_tab_widget.retry_viz()
             elif retry_op == "decompose":
                 self.research_goldbach_tab_widget.retry_decompose()
+
+        self._on_storage_fill_run_finished(_returncode)
 
     def _poll_loop_output(self):
         self._drain_output_queue(self._loop_output_queue, self.loop_console,

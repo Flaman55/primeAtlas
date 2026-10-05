@@ -175,6 +175,11 @@ def section_d_locales():
     used = set(re.findall(r'_tk\("([a-z_]+)"', src)) | set(re.findall(r'"tree\.([a-z_]+)"', src))
     base = open(os.path.join(_REPO_ROOT, "primeatlas", "visualization", "shared", "viz_tab_base.py"),
                 encoding="utf-8").read()
+    # The tree runs with --source none and never offers a storage fill, so the base's
+    # storage-fill dialog keys are not tree keys.
+    storage_fill = ("_ask_generate_range", "_offer_storage_fill")
+    check(not any(name in src for name in storage_fill), "TreeTab never calls the storage-fill dialog")
+    base = re.sub(r"\n    def (?:%s)\(.*?(?=\n    def |\Z)" % "|".join(storage_fill), "", base, flags=re.S)
     used |= set(re.findall(r'_tk\("([a-z_]+)"', base))
     locales = os.path.join(_REPO_ROOT, "primeatlas", "core", "locales")
     for name in ("strings_en.json", "strings_pl.json"):

@@ -314,6 +314,87 @@ def _pump_until_idle(app, tab, timeout=30.0):
     _pump(app, 0.2)
 
 
+def _test_empty_storage_offer(app, tab, rings_tab_module, tmp_portal, shown):
+    """Spec: Start with an EMPTY storage (no prime window anywhere) does not open the
+    renderer; it asks for a range to generate, prefilled from the form -- sequential:
+    from empty (= 2), to = N; range: From/To. Generate hands (from, to) to the app's
+    storage-fill offer; once that reports success the visualization starts by itself;
+    failure only reports. Cancel launches nothing. Without an offer callable (or with
+    data in storage) Start launches directly as before."""
+    print("\n--- empty storage: offer to generate ---")
+    rings_tab_module.find_highest_populated_floor = lambda portal: None
+    tab._get_portal_folder = lambda: tmp_portal
+    asked = []
+    offered = []
+    answer = {"value": None}
+
+    def fake_ask(default_from, default_to):
+        asked.append((default_from, default_to))
+        return answer["value"]
+
+    def fake_offer(start, end_inclusive, on_finished):
+        offered.append((start, end_inclusive, on_finished))
+        return True
+
+    tab._ask_generate_range = fake_ask
+    tab._offer_generate_storage = fake_offer
+    tab.mode_var.set("sequential")
+    tab._on_mode_changed()
+    tab.n_entry.delete(0, "end")
+    tab.n_entry.insert(0, "5000")
+    shown.clear()
+    argv = _open_and_capture(tab)
+    check(asked == [("", "5000")], f"sequential: asked with from empty and to = N (got {asked})")
+    check(argv == [] and tab._runner is None and not offered, "Cancel launches nothing")
+
+    answer["value"] = (2, 5000)
+    asked.clear()
+    argv = _open_and_capture(tab)
+    check(argv == [] and len(offered) == 1 and offered[0][:2] == (2, 5000),
+          f"Generate hands (2, 5000) to the storage-fill offer and does not open the renderer (got {offered})")
+    check(tab.status.get() == tab.T("rings.status_generating_storage", start="2", end="5,000"),
+          f"the status bar says the storage is being generated (got {tab.status.get()!r})")
+
+    fake_ok = _write_fake_renderer(0)
+    rings_tab_module.RENDERER_SCRIPT = fake_ok
+    rings_tab_module.find_highest_populated_floor = lambda portal: 0
+    _LAUNCHED_ARGV.clear()
+    offered[0][2](True)
+    check(_LAUNCHED_ARGV and "--upto" in _LAUNCHED_ARGV[-1],
+          "a successful fill starts the visualization by itself")
+    _pump_until_idle(app, tab)
+    os.remove(fake_ok)
+
+    rings_tab_module.find_highest_populated_floor = lambda portal: None
+    _LAUNCHED_ARGV.clear()
+    offered[0][2](False)
+    check(not _LAUNCHED_ARGV and tab.status.get() == tab.T("rings.status_storage_fill_failed"),
+          f"a failed fill only reports (got {tab.status.get()!r})")
+
+    tab.mode_var.set("range")
+    tab._on_mode_changed()
+    tab.load_range_from_entry.delete(0, "end")
+    tab.load_range_from_entry.insert(0, "100")
+    tab.load_range_to_entry.delete(0, "end")
+    tab.load_range_to_entry.insert(0, "900")
+    asked.clear()
+    answer["value"] = None
+    _open_and_capture(tab)
+    check(asked == [("100", "900")], f"range mode: asked with the range's From/To (got {asked})")
+    tab.mode_var.set("sequential")
+    tab._on_mode_changed()
+
+    tab._offer_generate_storage = None
+    asked.clear()
+    fake_ok = _write_fake_renderer(0)
+    rings_tab_module.RENDERER_SCRIPT = fake_ok
+    argv = _open_and_capture(tab)
+    check(not asked and argv, "without an offer callable Start launches directly")
+    _pump_until_idle(app, tab)
+    os.remove(fake_ok)
+    rings_tab_module.find_highest_populated_floor = lambda portal: 0
+
+
 def main():
     _test_build_renderer_argv()
 
@@ -327,6 +408,10 @@ def main():
     _patch_app_settings(prime_atlas_v2.APP_SETTINGS)
     _stub_app_update_check()
     _install_launch_recorder(rings_tab_module)
+    # The launch flows below use an empty temp folder as the portal; they test what
+    # happens with data in storage, so storage reads as populated unless a section
+    # (the empty-storage offer at the end) says otherwise.
+    rings_tab_module.find_highest_populated_floor = lambda portal: 0
     app_cls = prime_atlas_v2._build_gui()
     app = app_cls()
     app.update()
@@ -947,6 +1032,8 @@ def main():
           "opening with a nonexistent portal folder shows an error dialog instead of "
           "launching")
     check(tab._runner is None, "no runner was started for the missing-portal case")
+
+    _test_empty_storage_offer(app, tab, rings_tab_module, tmp_portal, shown)
 
     app.destroy()
 

@@ -1,4 +1,35 @@
-"""GLFW fullscreen toggle preserving windowed geometry and the GL context."""
+"""GLFW fullscreen toggle preserving windowed geometry and the GL context, and
+centering the visualization's windows (GLFW and Tk) on screen."""
+
+
+def centered_position(area, outer_size):
+    """Top-left corner centering a window of `outer_size` (width, height, frame
+    included) in `area` (x, y, width, height); an axis where the window is larger
+    than the area is pinned to the area's edge."""
+    ax, ay, aw, ah = area
+    w, h = outer_size
+    return ax + max(0, (aw - w) // 2), ay + max(0, (ah - h) // 2)
+
+
+def center_glfw_window(glfw, window):
+    """Centers `window`, frame included, in the primary monitor's work area. GLFW
+    positions the client area, so the frame's left/top size is added back."""
+    monitor = glfw.get_primary_monitor()
+    if not monitor:
+        return
+    width, height = glfw.get_window_size(window)
+    left, top, right, bottom = glfw.get_window_frame_size(window)
+    x, y = centered_position(glfw.get_monitor_workarea(monitor),
+                             (width + left + right, height + top + bottom))
+    glfw.set_window_pos(window, x + left, y + top)
+
+
+def center_tk_window(toplevel):
+    """Centers a Tk window (at its requested size) on its screen."""
+    toplevel.update_idletasks()
+    x, y = centered_position((0, 0, toplevel.winfo_screenwidth(), toplevel.winfo_screenheight()),
+                             (toplevel.winfo_reqwidth(), toplevel.winfo_reqheight()))
+    toplevel.geometry(f"+{x}+{y}")
 
 
 class FullscreenToggle:

@@ -31,6 +31,7 @@ from primeatlas.visualization.shared.shaders import (
 from primeatlas.visualization.shared.draw_primitives import unit_circle_vertices
 from primeatlas.visualization.rings.line.line_draw import axis_boundary_marker_vertices
 from primeatlas.visualization.shared.hud_text import _PIL_AVAILABLE
+from primeatlas.visualization.shared.window_mode import center_glfw_window
 from primeatlas.core.app_icon import glfw_icon_images, set_app_user_model_id
 
 
@@ -125,6 +126,7 @@ def setup_gl_resources(args, window_title="PrimeAtlas -- Ring visualization"):
             glfw.set_window_icon(window, len(icon_images), icon_images)
         except Exception:
             pass  # cosmetic only
+    center_glfw_window(glfw, window)
     glfw.make_context_current(window)
     glfw.swap_interval(0)  # uncapped, so the title FPS reflects real cost, not vsync
 
