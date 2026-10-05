@@ -2,7 +2,9 @@
 tree_tab.py -- TreeTab(VizTabBase), the Visualization > Tree sub-tab. Launches the shared
 GPU renderer (primeatlas/visualization/shared/renderer.py) in its own window and process
 with --viz-mode tree --source none: the prime tree computes every value itself, so
-it needs no storage folder and no loaded primes. Launching, the console, the HUD panel
+it needs no storage folder and no loaded primes. With an empty storage, Start still
+offers to generate a range first (as the Rings sub-tab does); Cancel starts the tree
+without it. Launching, the console, the HUD panel
 and live pause/resume come from VizTabBase; this tab builds its form and the argv.
 """
 import os
@@ -10,7 +12,7 @@ import sys
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-from ...generation.generation import LocalLoggedRunner, _eval_quick_number
+from ...generation.generation import LocalLoggedRunner, _eval_quick_number, find_highest_populated_floor
 from ...generation.generation_console import GenerationConsole
 from ..shared.viz_tab_base import VizTabBase
 from .highlight_layers import LAYERS
@@ -75,9 +77,10 @@ class TreeTab(VizTabBase):
     LOCALE_PREFIX = "tree"
 
     def __init__(self, parent, get_portal_folder, status_var, translator, totals_progress,
-                 app_settings=None):
+                 app_settings=None, offer_generate_storage=None):
         super().__init__(parent, get_portal_folder, status_var, translator, totals_progress,
                          app_settings)
+        self._offer_generate_storage = offer_generate_storage
         self._build_ui()
 
     def _build_ui(self):
@@ -175,13 +178,18 @@ class TreeTab(VizTabBase):
         self.n_entry.delete(0, "end")
         self.n_entry.insert(0, str(n))
 
-    def _on_open(self):
+    def _on_open(self, skip_storage_check=False):
         if self._resume_if_paused():
             return
         raw_n = self.n_entry.get().strip()
         n = _eval_quick_number(raw_n) if raw_n else None
         if n is None or n < 0:
             messagebox.showerror(self._tk("error_dialog_title"), self._tk("error_n_invalid"))
+            return
+        if (not skip_storage_check and self._offer_generate_storage is not None
+                and find_highest_populated_floor(self._get_portal_folder()) is None):
+            self._offer_storage_fill("", raw_n, self._on_open,
+                                     on_cancel=lambda: self._on_open(skip_storage_check=True))
             return
 
         values = {}

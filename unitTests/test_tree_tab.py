@@ -12,7 +12,14 @@ Spec:
      renderer (a fake script here) with the tab's field values, locks the launch fields
      while it runs and unlocks them once it exits; the fields are persisted as
      tree_viz_params.
-  D. Locales: every tree.* key used exists in both strings_en.json and strings_pl.json.
+  D. Locales: every tree.* key used exists in both strings_en.json and strings_pl.json
+     (the base's storage-fill dialog keys included).
+  E. Empty storage (no prime window anywhere): Start asks for a range to generate,
+     prefilled with From empty (= 2) and To = N. Generate hands (from, to) to the app's
+     storage-fill offer and does not open the renderer; a successful fill starts the
+     tree by itself, a failed one only reports. Cancel starts the tree anyway (it
+     computes its own values). Without an offer callable, or with data in storage,
+     Start launches directly. The app injects the offer.
 
 Usage:
     python unitTests/test_tree_tab.py
@@ -121,6 +128,7 @@ def section_bc_app():
             super().__init__(cmd, *args, **kwargs)
 
     tree_tab_module.LocalLoggedRunner = _RecordingRunner
+    tree_tab_module.find_highest_populated_floor = lambda portal: 0
 
     app = prime_atlas_v2._build_gui()()
     app.update()
@@ -163,8 +171,61 @@ def section_bc_app():
     saved = settings._data.get("tree_viz_params") or {}
     check(saved.get("n") == "10**6" and saved.get("depth") == "5" and saved.get("highlight_primes") is True,
           f"the fields are persisted as tree_viz_params (got {saved})")
+
+    _section_e_empty_storage(app, tab, tree_tab_module, launched)
     os.remove(fake)
     app.destroy()
+
+
+def _section_e_empty_storage(app, tab, tree_tab_module, launched):
+    print("\n--- E: empty storage ---")
+    check(tab._offer_generate_storage is not None, "the app injects the storage-fill offer")
+    tree_tab_module.find_highest_populated_floor = lambda portal: None
+    asked, offered = [], []
+    answer = {"value": None}
+    tab._ask_generate_range = lambda default_from, default_to: (asked.append((default_from, default_to)),
+                                                                 answer["value"])[1]
+
+    def fake_offer(start, end_inclusive, on_finished):
+        offered.append((start, end_inclusive, on_finished))
+        return True
+
+    real_offer = tab._offer_generate_storage
+    tab._offer_generate_storage = fake_offer
+    tab.n_entry.delete(0, "end")
+    tab.n_entry.insert(0, "5000")
+    launched.clear()
+    tab._on_open()
+    check(asked == [("", "5000")], f"asked with From empty and To = N (got {asked})")
+    check(launched and not offered, "Cancel starts the tree anyway and generates nothing")
+    _pump_until_idle(app, tab)
+
+    answer["value"] = (2, 5000)
+    asked.clear()
+    launched.clear()
+    tab.n_entry.delete(0, "end")
+    tab.n_entry.insert(0, "5000")
+    tab._on_open()
+    check(not launched and len(offered) == 1 and offered[0][:2] == (2, 5000),
+          f"Generate hands (2, 5000) to the offer and does not open the renderer (got {offered})")
+    check(tab.status.get() == tab.T("tree.status_generating_storage", start="2", end="5,000"),
+          f"the status bar says the storage is being generated (got {tab.status.get()!r})")
+    tree_tab_module.find_highest_populated_floor = lambda portal: 0
+    offered[0][2](True)
+    check(launched, "a successful fill starts the tree by itself")
+    _pump_until_idle(app, tab)
+    launched.clear()
+    offered[0][2](False)
+    check(not launched and tab.status.get() == tab.T("tree.status_storage_fill_failed"),
+          f"a failed fill only reports (got {tab.status.get()!r})")
+
+    tree_tab_module.find_highest_populated_floor = lambda portal: None
+    tab._offer_generate_storage = None
+    asked.clear()
+    tab._on_open()
+    check(not asked and launched, "without an offer callable Start launches directly")
+    _pump_until_idle(app, tab)
+    tab._offer_generate_storage = real_offer
 
 
 def section_d_locales():
@@ -175,12 +236,9 @@ def section_d_locales():
     used = set(re.findall(r'_tk\("([a-z_]+)"', src)) | set(re.findall(r'"tree\.([a-z_]+)"', src))
     base = open(os.path.join(_REPO_ROOT, "primeatlas", "visualization", "shared", "viz_tab_base.py"),
                 encoding="utf-8").read()
-    # The tree runs with --source none and never offers a storage fill, so the base's
-    # storage-fill dialog keys are not tree keys.
-    storage_fill = ("_ask_generate_range", "_offer_storage_fill")
-    check(not any(name in src for name in storage_fill), "TreeTab never calls the storage-fill dialog")
-    base = re.sub(r"\n    def (?:%s)\(.*?(?=\n    def |\Z)" % "|".join(storage_fill), "", base, flags=re.S)
     used |= set(re.findall(r'_tk\("([a-z_]+)"', base))
+    # parse_generate_range returns these keys; the dialog translates them.
+    used |= set(re.findall(r'return "(error_generate_[a-z_]+)"', base))
     locales = os.path.join(_REPO_ROOT, "primeatlas", "core", "locales")
     for name in ("strings_en.json", "strings_pl.json"):
         data = json.load(open(os.path.join(locales, name), encoding="utf-8"))

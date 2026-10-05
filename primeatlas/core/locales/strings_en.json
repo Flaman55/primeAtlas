@@ -965,5 +965,18 @@
   "tree.hud_panel_placeholder": "(open the tree to see live status here)",
   "tree.hud_status_running": "running, {tempo}ms/tick",
   "tree.hud_status_stopped": "stopped",
-  "tree.hud_header": "Start = {n}    copies = {count}    rebuild = {rebuild_ms}ms    [{status}]"
+  "tree.hud_header": "Start = {n}    copies = {count}    rebuild = {rebuild_ms}ms    [{status}]",
+  "tree.empty_storage_title": "Storage is empty",
+  "tree.empty_storage_message": "There are no primes in the storage yet. The tree computes its own values and does not need them, but the other views do. Generate a range of primes first? The tree starts by itself once generation finishes; Cancel starts it right away.",
+  "tree.empty_storage_from": "From (empty = 2):",
+  "tree.empty_storage_to": "To:",
+  "tree.empty_storage_hint": "Accepts plain digits, 10**7 or 1e7. Uses primesieve; above 2^64 the generation switches to PrimeAtlas's own engine automatically. Progress is shown in the Generation tab.",
+  "tree.empty_storage_generate": "Generate",
+  "tree.empty_storage_cancel": "Cancel",
+  "tree.error_generate_to_required": "Enter \"To\" as an integer >= 2.",
+  "tree.error_generate_from_invalid": "\"From\" must be a non-negative integer (or empty for 2).",
+  "tree.error_generate_order": "\"From\" must not be greater than \"To\".",
+  "tree.status_generating_storage": "Generating primes {start}..{end} into the storage -- the tree starts when it is done.",
+  "tree.status_storage_ready": "Storage generated -- starting the tree.",
+  "tree.status_storage_fill_failed": "Generating the storage did not finish (error or Stop) -- the tree was not started."
 }

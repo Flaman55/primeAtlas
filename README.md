@@ -1025,6 +1025,11 @@ residues mod p free, so every copy of p branches into p-1 copies of the next pri
 every copy of p also feeds p's one column of multiples p, 2p, 3p, ... The drawn slice has
 the same shape at any scale; only the values and the counts change.
 
+Empty storage: like the Rings sub-tab, Start with no prime window anywhere first offers
+to generate a From/To range (an empty From means 2, To is prefilled with N); the tree
+starts once the fill finishes. The tree itself does not read the storage, so Cancel
+starts it right away.
+
 - Scale: every copy draws at most K child copies (default 3) and shows the rest of its
   p-1 branches as one dashed stub labelled "+N"; copies on the last drawn level show all
   of them as hidden. The drawn copies per level are prod min(p-1, K), the full tree's
@@ -1407,7 +1412,9 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
   tree/                         Visualization > Tree sub-tab and the "tree" viz-mode (see
                               "Prime tree" above)
     tree_tab.py                  TreeTab(VizTabBase) -- the sub-tab's launch form and
-                              build_tree_argv (--source none --viz-mode tree)
+                              build_tree_argv (--source none --viz-mode tree); Start with
+                              an empty storage offers the same storage fill as Rings
+                              (Cancel starts the tree without it)
     tree_mode.py                 TreeMode -- the start prime and its history (click/
                               Backspace/Home), prime-by-prime navigation without a prime
                               ceiling, and its own CLI arguments (--tree-*)
