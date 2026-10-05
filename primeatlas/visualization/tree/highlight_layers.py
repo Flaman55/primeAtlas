@@ -1,5 +1,5 @@
 """
-highlight_layers.py -- pluggable highlight layers for the sieve-lane tree. A layer looks
+highlight_layers.py -- pluggable highlight layers for the prime tree. A layer looks
 at every drawn point and picks the ones it marks; tree_draw.py draws one highlight ring
 per picked point, under the point itself. Adding a layer means one HighlightLayer
 subclass plus one LAYERS entry; the tree, the renderer CLI (--tree-highlight) and the
@@ -10,7 +10,6 @@ from primeatlas.primality.primality import miller_rabin_test
 from primeatlas.visualization.tree.tree_colors import HIGHLIGHT_PRIME_RGB
 
 POINT_NODE = "node"
-POINT_LANE = "lane"
 POINT_COLUMN = "column"
 
 
@@ -21,7 +20,7 @@ class HighlightLayer:
     rgb = (1.0, 1.0, 1.0)
 
     def picks(self, value, kind, column_prime):
-        """True when the point (its `value`, its `kind` -- POINT_NODE / POINT_LANE /
+        """True when the point (its `value`, its `kind` -- POINT_NODE /
         POINT_COLUMN -- and for a column point the column's prime) is highlighted."""
         raise NotImplementedError
 

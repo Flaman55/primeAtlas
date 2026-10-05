@@ -1,22 +1,26 @@
 """
-test_tree_mode.py -- spec tests for primeatlas/visualization/tree/tree_mode.py (TreeMode)
-running inside the shared RenderSession, plus the shared-session behavior the tree needs.
-No GL.
+test_tree_mode.py -- spec tests for primeatlas/visualization/tree/tree_mode.py (TreeMode, the
+prime tree) running inside the shared RenderSession, plus the shared-session
+behavior the tree needs. No GL.
 
 Spec:
   A. Registration: "tree" is a registered viz-mode; RenderSession(viz_mode="tree")
      builds from the tree's own config keys without any loaded primes.
-  B. Rebuild: the ring point buffers are empty (count 0) -- the tree draws through
-     marker_data/segment_data/world_labels; the HUD reports the drawn node count and a
-     density line per level.
-  C. Navigation has no prime ceiling: Space starts playback with no primes loaded, a
-     tick advances N by 1, Left/Right scrub by 1 (Ctrl: 10) and never below 0, Up/Down
-     bump by the given delta.
-  D. Zoom: clicking a free node (world coordinates) makes its lane the view root and
-     forces a rebuild; clicking empty space or the current root does nothing;
-     "backspace" goes to the parent lane, "home" to the top root.
-  E. Reset (R) stays in the tree window: N = 1, mode still "tree", root back at the
-     top. The rings/line windows still reset to "rings".
+  B. Rebuild: the tree starts at the largest prime <= N (N=1 -> 2, N=10 -> 7); the ring
+     point buffers are empty (count 0) -- the tree draws through marker_data/
+     segment_data/world_labels; the HUD N is the start prime, the HUD count the drawn
+     copies (1+1+2+6 for 2,3,5,7), one HUD line per level with its hidden branches, and
+     from 2 on the density prod(1-1/p) (48/210 = 22.857% at 7).
+  C. Navigation has no prime ceiling: Space starts playback with no primes loaded; a
+     tick moves the start to the next prime; Right/Left step one prime (Ctrl: ten),
+     never below 2; Up/Down bump N by the given delta (the rebuild rounds it down to a
+     prime).
+  D. Clicking a copy of a prime other than the start makes that prime the start and
+     forces a rebuild; clicking the start or empty space does nothing; Backspace
+     returns to the previous start, Home to the launch N; both do nothing when there
+     is nowhere to go.
+  E. Reset (R) stays in the tree window: N = 1 (start 2), mode still "tree", the
+     history cleared. The rings/line windows still reset to "rings".
   F. CLI: the tree's arguments exist with sane defaults, prepare_launch turns them
      into config keys, validate_arguments rejects out-of-range values.
   G. Session camera: screen_to_world inverts the shader transform.
@@ -47,9 +51,9 @@ def check(condition, message):
 
 
 def _tree_config(**overrides):
-    config = dict(tree_depth=4, tree_branches=3, tree_periods=2.0, tree_max_nodes=20000,
-                  tree_max_points=500000, tree_colors={}, tree_highlight=[], tree_max_stripes=4,
-                  tree_node_size=11.0, tree_point_size=7.0)
+    config = dict(tree_depth=4, tree_branches=3, tree_height=1.5, tree_max_nodes=2000,
+                  tree_max_points=500000, tree_multiples=4, tree_axis="auto", tree_colors={},
+                  tree_highlight=[], tree_max_stripes=4, tree_node_size=11.0, tree_point_size=7.0)
     config.update(overrides)
     return config
 
@@ -61,6 +65,17 @@ def _make_session(n=1, viz_mode="tree", **tree_overrides):
         range_step=1, max_radius=450.0, tempo_ms=120, buffer_margin=1000, can_extend_buffer=False,
         portal_folder=None, viz_mode=viz_mode, **_tree_config(**tree_overrides),
     )
+
+
+def _world_to_screen(session, wx, wy, viewport):
+    w, h = viewport
+    return (wx * session.cam_zoom + session.cam_pan[0] + w / 2,
+            wy * session.cam_zoom + session.cam_pan[1] + h / 2)
+
+
+def _node_xy(mode, p):
+    node = next(n for n in mode.tree.nodes if n.p == p)
+    return mode.draw.node_xy(node)
 
 
 def section_a_registration():
@@ -78,100 +93,93 @@ def section_b_rebuild():
     data_normal, data_hit, count, count_hit = s.rebuild(1)
     check(count == 0 and count_hit == 0 and len(data_normal) == 0 and len(data_hit) == 0,
           "the ring point buffers are empty for the tree")
+    check(s.mode.tree.start == 2 and s.hud_n == 2, f"N=1 starts the chain at 2 (got {s.mode.tree.start})")
     markers = s.mode.marker_data()
     segments = s.mode.segment_data()
     check(markers is not None and markers.shape[1] == MARKER_FLOATS and len(markers) > 0, "marker data is produced")
     check(segments is not None and segments.shape[1] == 6 and len(segments) % 2 == 0, "segment data is produced")
     check(len(s.mode.world_labels()) > 0, "world labels are produced")
-    check(s.hud_count == 1 + 1 + 2 + 6 + 18, f"HUD count = drawn free nodes (got {s.hud_count})")
+    check(s.hud_count == 10, f"HUD count = drawn copies 1+1+2+6 (got {s.hud_count})")
     lines = "\n".join(s.hud_lines)
     for p in (2, 3, 5, 7):
-        check(f"p={p}" in lines, f"the HUD has a density line for p={p}")
-    check("22.857" in lines, f"the p=7 line shows prod(1-1/p) = 48/210 = 22.857% (HUD:\n{lines})")
+        check(f"p={p}" in lines, f"the HUD has a line for p={p}")
+    check("+1 hidden" in lines and "+6 hidden" in lines, f"the HUD counts hidden branches (HUD:\n{lines})")
+    check("22.857" in lines, "the p=7 line shows prod(1-1/p) = 48/210 = 22.857%")
     check(s.mode.draws_center_marker is False, "the tree draws no ring center marker")
+    s.rebuild(10)
+    check(s.mode.tree.start == 7 and s.hud_n == 7, f"N=10 starts the chain at 7 (got {s.mode.tree.start})")
 
 
 def section_c_navigation():
     print("\n--- C: navigation without a prime ceiling ---")
-    s = _make_session(n=5)
+    s = _make_session(n=10)
+    s.rebuild(10)
     check(s.toggle_space() is None and s.playback_running, "Space starts playback with no primes loaded")
-    check(s.tick() is False and s.n == 6 and s.n_advancing, "a tick advances N by 1")
+    check(s.tick() is False and s.n == 11 and s.n_advancing, f"a tick moves to the next prime (got {s.n})")
     s.playback_running = False
     s.scrub_advance(True, False, True)
-    check(s.n == 7, f"Right scrubs +1 (got {s.n})")
+    check(s.n == 13, f"Right steps one prime (got {s.n})")
     s.scrub_advance(True, True, False)
-    check(s.n == 17, f"Ctrl+Right scrubs +10 (got {s.n})")
+    check(s.n == 53, f"Ctrl+Right steps ten primes, 13 -> 53 (got {s.n})")
     msg, _ = s.scrub_release()
     check(msg is None, "releasing the scrub key prints no ceiling message")
-    s.scrub_advance(False, True, True)
+    s.scrub_advance(False, False, True)
+    check(s.n == 47, f"Left steps one prime back (got {s.n})")
     s.scrub_advance(False, True, False)
-    check(s.n == 0, f"Left never goes below 0 (got {s.n})")
+    s.scrub_advance(False, True, False)
+    check(s.n == 2, f"Left never goes below 2 (got {s.n})")
     s.scrub_release()
     s.bump_n(1000)
-    check(s.n == 1000, f"Up bumps by the delta (got {s.n})")
-    s.bump_n(-5000)
-    check(s.n == 0, f"Down floors at 0 (got {s.n})")
+    check(s.n == 1002, f"Up bumps N by the delta (got {s.n})")
+    s.rebuild(s.n)
+    check(s.mode.tree.start == 997, f"the rebuild rounds the bumped N down to 997 (got {s.mode.tree.start})")
     s.playback_running = True
     s.scrub_advance(True, False, True)
     msg, refresh = s.scrub_release()
     check(s.playback_running and msg is None and refresh, "a scrub during playback resumes it on release")
 
 
-def section_d_zoom():
-    print("\n--- D: zoom into a subtree ---")
-    s = _make_session(n=1)
-    s.rebuild(1)
+def section_d_click():
+    print("\n--- D: click a node ---")
+    s = _make_session(n=2)
+    s.rebuild(2)
     mode = s.mode
-    view = mode.view
-    target = view.nodes_at_level(2)[0]
-    x, y = mode.draw.node_xy(target)
-    s.n_force_rebuild = False
-    world_per_px = 1.0
-    check(mode.click(x + 0.5, y, world_per_px) is True, "clicking next to a free node is handled")
-    check(mode.root == (target.residue, target.modulus, target.depth),
-          f"the clicked lane becomes the root (got {mode.root})")
-    s.rebuild(1)
-    check(all(n.value % target.modulus == target.residue for n in mode.view.nodes),
-          "every node of the zoomed view is inside the clicked lane")
-    check(mode.view.level_primes[0] == 5, f"the zoomed view starts at the next prime, 5 (got {mode.view.level_primes})")
-    rx, ry = mode.draw.node_xy(mode.view.root)
-    # On the real n axis a child can sit a fraction of a pixel from its parent (values
-    # 1 and 7 in a 60,060-high window); a click there opens the deeper node, so the
-    # root alone is hit only at a tolerance below that gap.
-    check(mode.click(rx, ry, 0.001) is False, "clicking the current root alone does nothing")
-    check(mode.click(10_000.0, 10_000.0, world_per_px) is False, "clicking empty space does nothing")
-    check(mode.key("backspace") is True and mode.root == (1, 2, 1), f"backspace goes to the parent lane (got {mode.root})")
-    check(mode.key("home") is True and mode.root == (0, 1, 0), "home returns to the top root")
-    check(mode.key("backspace") is False, "backspace at the top root does nothing")
+    x, y = _node_xy(mode, 5)
+    check(mode.click(x + 0.5, y, 1.0) is True and s.n == 5, f"clicking node 5 makes it the start (n {s.n})")
+    s.rebuild(s.n)
+    x, y = _node_xy(mode, 5)
+    check(mode.click(x, y, 1.0) is False, "clicking the start itself does nothing")
+    check(mode.click(10_000.0, 10_000.0, 1.0) is False, "clicking empty space does nothing")
+    tx, ty = _node_xy(mode, 11)
+    check(mode.click(tx, ty, 1.0) is True and s.n == 11, "a copy on a higher level is clickable too")
+    check(mode.key("backspace") is True and s.n == 5, f"backspace returns to the previous start (got {s.n})")
+    check(mode.key("home") is True and s.n == 2, f"home returns to the launch N (got {s.n})")
+    check(mode.key("home") is False, "home at the launch N does nothing")
+    check(mode.key("backspace") is False, "backspace with no history does nothing")
     check(mode.key("q") is False, "an unrelated key is not handled")
 
-    s2 = _make_session(n=1)
-    s2.rebuild(1)
-    node = s2.mode.view.nodes_at_level(1)[0]
-    nx, ny = s2.mode.draw.node_xy(node)
-    wx, wy = s2.screen_to_world(*_world_to_screen(s2, nx, ny, (800, 600)), (800, 600))
+    s2 = _make_session(n=2)
+    s2.rebuild(2)
+    nx, ny = _node_xy(s2.mode, 3)
     s2.n_force_rebuild = False
     s2.click(*_world_to_screen(s2, nx, ny, (800, 600)), (800, 600))
-    check(s2.mode.root[1] == node.modulus and s2.n_force_rebuild,
-          "RenderSession.click converts screen to world and forces a rebuild when the mode zooms")
+    check(s2.n == 3 and s2.n_force_rebuild,
+          "RenderSession.click converts screen to world and forces a rebuild when the mode moves")
     s2.n_force_rebuild = False
-    check(s2.key("home") and s2.n_force_rebuild, "RenderSession.key forwards to the mode and forces a rebuild")
-
-
-def _world_to_screen(session, wx, wy, viewport):
-    w, h = viewport
-    return (wx * session.cam_zoom + session.cam_pan[0] + w / 2,
-            wy * session.cam_zoom + session.cam_pan[1] + h / 2)
+    check(s2.key("home") and s2.n_force_rebuild and s2.n == 2, "RenderSession.key forwards to the mode")
 
 
 def section_e_reset():
     print("\n--- E: reset stays in the tree ---")
     s = _make_session(n=77)
     s.rebuild(77)
-    s.mode.root = (1, 6, 2)
+    x, y = _node_xy(s.mode, 79)
+    s.mode.click(x, y, 1.0)
     s.reset()
-    check(s.viz_mode == "tree" and s.n == 1 and s.mode.root == (0, 1, 0),
-          f"R keeps the tree mode, N=1, root at the top (mode {s.viz_mode}, n {s.n}, root {s.mode.root})")
+    s.rebuild(s.n)
+    check(s.viz_mode == "tree" and s.n == 1 and s.mode.tree.start == 2,
+          f"R keeps the tree mode, N=1, start 2 (mode {s.viz_mode}, n {s.n})")
+    check(s.mode.key("backspace") is False, "R clears the history")
     from primeatlas.visualization.mode_registry import MODES
     check(MODES["line"].reset_mode == "rings" and MODES["rings"].reset_mode == "rings",
           "the line and rings windows still reset to the rings mode")
@@ -184,15 +192,18 @@ def section_f_cli():
     parser = argparse.ArgumentParser()
     TreeMode.add_arguments(parser)
     args = parser.parse_args([])
-    check(args.tree_depth >= 1 and args.tree_branches >= 1 and args.tree_periods >= 1,
-          "default depth/branches/periods are valid")
+    check(args.tree_depth >= 1 and args.tree_branches == 3 and args.tree_height >= 1
+          and args.tree_axis == "auto" and args.tree_multiples == 4,
+          "defaults: valid depth, 3 drawn branches, height >= 1, auto axis, 4 multiples")
     TreeMode.validate_arguments(parser, args)
-    config = TreeMode.prepare_launch(args, SimpleNamespace(primes=None, n=1, range_mode=False, range_primes=None))
-    for key in ("tree_depth", "tree_branches", "tree_periods", "tree_max_nodes", "tree_max_points",
-                "tree_colors", "tree_highlight", "tree_max_stripes", "tree_node_size"):
+    launch = SimpleNamespace(primes=None, n=1, range_mode=False, range_primes=None)
+    config = TreeMode.prepare_launch(args, launch)
+    for key in ("tree_depth", "tree_branches", "tree_height", "tree_max_nodes", "tree_max_points",
+                "tree_multiples", "tree_axis", "tree_colors", "tree_highlight", "tree_max_stripes",
+                "tree_node_size"):
         check(key in config, f"prepare_launch provides {key}")
     args = parser.parse_args(["--tree-colors", "2=#ff0000", "--tree-highlight", "primes"])
-    config = TreeMode.prepare_launch(args, SimpleNamespace(primes=None, n=1, range_mode=False, range_primes=None))
+    config = TreeMode.prepare_launch(args, launch)
     check(config["tree_colors"] == {2: (1.0, 0.0, 0.0)} and config["tree_highlight"] == ["primes"],
           "colors and highlight layers are parsed")
 
@@ -205,8 +216,9 @@ def section_f_cli():
 
     strict = _Parser()
     TreeMode.add_arguments(strict)
-    for bad in (["--tree-depth", "0"], ["--tree-branches", "0"], ["--tree-periods", "0.5"],
-                ["--tree-max-nodes", "0"], ["--tree-max-points", "0"], ["--tree-max-stripes", "7"],
+    for bad in (["--tree-depth", "0"], ["--tree-branches", "0"], ["--tree-height", "0.5"],
+                ["--tree-max-points", "0"], ["--tree-max-stripes", "7"], ["--tree-max-nodes", "0"],
+                ["--tree-multiples", "1"],
                 ["--tree-colors", "4=#ff0000"], ["--tree-highlight", "nope"]):
         try:
             TreeMode.validate_arguments(strict, strict.parse_args(bad))
@@ -226,7 +238,7 @@ def section_g_camera():
 
 
 if __name__ == "__main__":
-    for section in (section_a_registration, section_b_rebuild, section_c_navigation, section_d_zoom,
+    for section in (section_a_registration, section_b_rebuild, section_c_navigation, section_d_click,
                     section_e_reset, section_f_cli, section_g_camera):
         try:
             section()

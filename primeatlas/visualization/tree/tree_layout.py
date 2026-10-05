@@ -1,302 +1,297 @@
 """
-tree_layout.py -- the arithmetic of the sieve-lane tree, with no drawing and no GL.
+tree_layout.py -- the arithmetic of the prime tree: consecutive primes p_0 < p_1 < ...
+starting at the largest prime <= n. Every node at level i is a copy of p_i. Prime p
+leaves p-1 residues mod p free, so a copy of p has p-1 branches to the next prime: up to
+`branches` of them are drawn as child copies, the rest are counted as hidden. Every copy
+of p also feeds p's one column of multiples p, 2p, 3p, ...
 
-A lane is an arithmetic progression {residue + t*modulus}. Applying prime p to a lane
-splits it into p child lanes mod modulus*p: exactly one is occupied (made only of
-multiples of p) and p-1 are free. Starting from the root lane (0 mod 1, every integer)
-and applying the primes in increasing order, the free lanes at depth d are the residues
-coprime to the first d primes.
-
-Real n axis: a lane's node sits at the lane's first value >= a, where a is the window
-start (the session's N). A child lane is a subset of its parent, so a child's value is
-never below its parent's.
-
-Scale: a node draws at most K free children -- the K with the lowest values -- and
-reports the others as a hidden count plus the exact number of terminal lanes they
-would expand to. By CRT every free lane at one depth has the same subtree shape, so
-counts are products of (p-1) and the full tree is never built. The drawn shape (node
-count, slots, depths) depends only on the primes and K, never on a: moving along n
-changes only the values.
-
-A view starts at any free lane (the root; zooming into a subtree moves it) and spans
-the next primes (`level_primes`). Every free view root is coprime to the primes before
-it, so the least prime factor of a value in the view is decided by the view primes.
+The vertical axis is either the real n axis (a window over the integers) or, where the
+multiples of the drawn primes lie too far apart for one window, the multiples axis: the
+sorted values k*p (1 <= k <= multiples) placed at equal steps. Pure Python/numpy, no
+GL; every value is an exact int, also past uint64.
 """
 
-from dataclasses import dataclass, field
-from fractions import Fraction
-from itertools import combinations
+import math
 
 import numpy as np
 
+from primeatlas.primality.primality import miller_rabin_test
 
-def first_primes(count):
-    """The first `count` primes, ascending."""
-    primes = []
-    candidate = 2
-    while len(primes) < count:
-        if all(candidate % p for p in primes if p * p <= candidate):
-            primes.append(candidate)
-        candidate += 1
-    return primes
+AXIS_AUTO = "auto"
+AXIS_REAL = "real"
+AXIS_MULTIPLES = "multiples"
+AXIS_KINDS = (AXIS_AUTO, AXIS_REAL, AXIS_MULTIPLES)
 
-
-def lane_first_value(a, residue, modulus):
-    """Smallest v >= a with v = residue (mod modulus)."""
-    return a + (residue - a) % modulus
+# "auto" keeps the real axis while the window reaching the last level's 2p is at most
+# this many times the levels' own span (start to the next prime after the last level).
+_AUTO_REAL_SPAN_RATIO = 8
 
 
-def split_lane(residue, modulus, p):
-    """Splits lane `residue` mod `modulus` by prime p into (occupied_residue,
-    [free_residues]), every residue taken mod modulus*p. The occupied child is the
-    one whose values are all multiples of p."""
-    child_modulus = modulus * p
-    children = [(residue + k * modulus) % child_modulus for k in range(p)]
-    occupied = next(c for c in children if c % p == 0)
-    return occupied, [c for c in children if c != occupied]
+def is_prime(n):
+    return n >= 2 and miller_rabin_test(n)[0]
 
 
-def leaves_if_expanded(level_primes):
-    """Number of terminal free lanes one lane expands to over `level_primes`:
-    prod(p - 1)."""
-    total = 1
-    for p in level_primes:
-        total *= p - 1
-    return total
+def prev_prime(n):
+    """The largest prime <= n; 2 for n < 2."""
+    if n <= 2:
+        return 2
+    candidate = n if n % 2 else n - 1
+    while not is_prime(candidate):
+        candidate -= 2
+    return candidate
 
 
-def count_drawn_nodes(level_primes, k):
-    """Free nodes drawn (root included) with at most k free children per node."""
-    total = 1
-    width = 1
-    for p in level_primes:
-        width *= min(p - 1, k)
-        total += width
-    return total
+def next_prime(n):
+    """The smallest prime > n."""
+    if n < 2:
+        return 2
+    candidate = n + 1 if n % 2 == 0 else n + 2
+    while not is_prime(candidate):
+        candidate += 2
+    return candidate
 
 
-def levels_within_cap(level_primes, k, max_nodes):
-    """Largest number of leading levels whose drawn node count stays within
-    max_nodes; at least 1."""
-    levels = 1
-    for count in range(2, len(level_primes) + 1):
-        if count_drawn_nodes(level_primes[:count], k) > max_nodes:
-            break
-        levels = count
-    return min(levels, len(level_primes))
+class TreeLevel:
+    """Level `index` of the tree: copies of prime `p`. `total_copies`: the copies of p in
+    the full tree, prod_{j<i} (p_j - 1)."""
+
+    def __init__(self, p, index, total_copies):
+        self.p = p
+        self.index = index
+        self.total_copies = total_copies
 
 
-@dataclass
-class OccupiedLane:
-    """The occupied child of a node: the multiples of `prime` inside the node's lane."""
-    prime: int
-    residue: int
-    modulus: int
-    value: int
-
-
-@dataclass(eq=False)
 class TreeNode:
-    """One drawn free lane. `depth` counts the primes applied since the top root;
-    `level` counts them since the view root. `slot` is the horizontal position in
-    leaf-slot units."""
-    depth: int
-    level: int
-    residue: int
-    modulus: int
-    value: int
-    leaves_below: int
-    parent: "TreeNode" = None
-    children: list = field(default_factory=list)
-    occupied: OccupiedLane = None
-    hidden_count: int = 0
-    hidden_leaves: int = 0
-    slot: float = 0.0
-    leaf_span: int = 1
+    """One drawn copy of `p` at `level`. `hidden`: its branches to the next prime that
+    are not drawn. `slot`: horizontal position (leaves 0..L-1, inner nodes at the mean of
+    their children); `leaf_span`: the slots its subtree covers."""
+
+    __slots__ = ("level", "p", "parent", "children", "hidden", "slot", "leaf_span")
+
+    def __init__(self, level, p, parent):
+        self.level = level
+        self.p = p
+        self.parent = parent
+        self.children = []
+        self.hidden = 0
+        self.slot = 0.0
+        self.leaf_span = 1
 
 
-@dataclass
-class TreeView:
-    """A built view: the root node, every drawn node in breadth-first order, and the
-    slot count (drawn terminal nodes)."""
-    a: int
-    root: TreeNode
-    nodes: list
-    level_primes: list
-    slot_count: int
+class RealAxis:
+    """The real n axis over [bottom, top]; a value's position is its offset from bottom."""
 
-    def nodes_at_level(self, level):
-        return [n for n in self.nodes if n.level == level]
+    kind = AXIS_REAL
+
+    def __init__(self, bottom, top):
+        self.bottom = bottom
+        self.top = top
 
     @property
-    def leaf_modulus(self):
-        return self.root.modulus * _product(self.level_primes)
+    def length(self):
+        return self.top - self.bottom
+
+    def position(self, value):
+        return value - self.bottom
+
+    def last_multiplier(self, p):
+        return self.top // p
 
 
-def _product(values):
-    total = 1
-    for v in values:
-        total *= v
-    return total
+class MultiplesAxis:
+    """The sorted distinct values k*p (1 <= k <= multiples) of the level primes; a value's
+    position is its rank."""
+
+    kind = AXIS_MULTIPLES
+
+    def __init__(self, primes, multiples):
+        self.multiples = multiples
+        self.values = sorted({k * p for p in primes for k in range(1, multiples + 1)})
+        self._rank = {v: i for i, v in enumerate(self.values)}
+        self.bottom = self.values[0]
+        self.top = self.values[-1]
+
+    @property
+    def length(self):
+        return len(self.values) - 1
+
+    def position(self, value):
+        return self._rank[value]
+
+    def last_multiplier(self, p):
+        return self.multiples
 
 
-def build_view_tree(a, root_residue, root_modulus, root_depth, level_primes, k):
-    """Builds the drawn tree under lane `root_residue` mod `root_modulus` (depth
-    `root_depth`) over `level_primes`, showing at most `k` free children per node (the
-    lowest values, ascending), and assigns slots."""
-    level_primes = list(level_primes)
-    root = TreeNode(depth=root_depth, level=0, residue=root_residue % root_modulus, modulus=root_modulus,
-                    value=lane_first_value(a, root_residue, root_modulus),
-                    leaves_below=leaves_if_expanded(level_primes))
-    nodes = [root]
-    frontier = [root]
-    for level, p in enumerate(level_primes):
-        next_frontier = []
-        deeper_leaves = leaves_if_expanded(level_primes[level + 1:])
-        for node in frontier:
-            child_modulus = node.modulus * p
-            occupied, free = split_lane(node.residue, node.modulus, p)
-            node.occupied = OccupiedLane(p, occupied, child_modulus, lane_first_value(a, occupied, child_modulus))
-            ranked = sorted((lane_first_value(a, r, child_modulus), r) for r in free)
-            for value, residue in ranked[:k]:
-                child = TreeNode(depth=node.depth + 1, level=level + 1, residue=residue, modulus=child_modulus,
-                                 value=value, leaves_below=deeper_leaves, parent=node)
-                node.children.append(child)
-                next_frontier.append(child)
-            node.hidden_count = len(free) - len(node.children)
-            node.hidden_leaves = node.hidden_count * deeper_leaves
-        nodes.extend(next_frontier)
-        frontier = next_frontier
-    slot_count = _assign_slots(root)
-    return TreeView(a=a, root=root, nodes=nodes, level_primes=level_primes, slot_count=slot_count)
+class PrimeTree:
+    """The drawn tree: `levels`, `nodes` (level order, nodes[0] is the root), the
+    vertical `axis`, `slot_count` (drawn leaves) and `levels_cut` (levels left out by the
+    node cap). `capped`: the real window was shrunk to the marker cap."""
+
+    def __init__(self, levels, nodes, axis, slot_count, levels_cut, capped):
+        self.levels = levels
+        self.nodes = nodes
+        self.axis = axis
+        self.slot_count = slot_count
+        self.levels_cut = levels_cut
+        self.capped = capped
+        self._by_level = {}
+        for node in nodes:
+            self._by_level.setdefault(node.level, []).append(node)
+
+    @property
+    def start(self):
+        return self.levels[0].p
+
+    @property
+    def primes(self):
+        return [level.p for level in self.levels]
+
+    def nodes_at(self, level):
+        return self._by_level.get(level, [])
+
+
+def _drawn_level_count(primes, branches, max_nodes):
+    total = 0
+    copies = 1
+    for i, p in enumerate(primes):
+        if i and total + copies > max_nodes:
+            return i
+        total += copies
+        copies *= min(p - 1, branches)
+    return len(primes)
+
+
+def _marker_count(primes, top):
+    return sum(top // p for p in primes)
+
+
+def _real_axis(primes, next_after, height, max_points):
+    start = primes[0]
+    floor_top = max(next_after, 2 * primes[-1])
+    top = max(floor_top, start + math.ceil(height * (next_after - start)))
+    capped = False
+    if _marker_count(primes, top) > max_points and top > floor_top:
+        capped = True
+        lo, hi = floor_top, top
+        while lo < hi:
+            mid = (lo + hi + 1) // 2
+            if _marker_count(primes, mid) <= max_points:
+                lo = mid
+            else:
+                hi = mid - 1
+        top = lo
+    return RealAxis(start, top), capped
 
 
 def _assign_slots(root):
-    """Terminal nodes get consecutive slots in depth-first order; an inner node sits
-    at the mean slot of its children. Returns the slot count."""
     next_slot = 0
     stack = [(root, False)]
     while stack:
-        node, expanded = stack.pop()
+        node, done = stack.pop()
         if not node.children:
             node.slot = float(next_slot)
             node.leaf_span = 1
             next_slot += 1
-        elif expanded:
+        elif done:
             node.slot = sum(c.slot for c in node.children) / len(node.children)
             node.leaf_span = sum(c.leaf_span for c in node.children)
         else:
             stack.append((node, True))
-            for child in reversed(node.children):
-                stack.append((child, False))
+            stack.extend((c, False) for c in reversed(node.children))
     return next_slot
 
 
-def parent_lane(residue, modulus, depth, all_primes):
-    """The lane one level above `residue` mod `modulus` (depth `depth`), as
-    (residue, modulus, depth); None for the top root."""
-    if depth == 0:
-        return None
-    parent_modulus = modulus // all_primes[depth - 1]
-    return residue % parent_modulus, parent_modulus, depth - 1
+def build_tree(n, depth, branches=3, max_nodes=2000, height=1.5, max_points=500_000, multiples=4,
+               axis=AXIS_AUTO):
+    """The tree of `depth` consecutive primes from prev_prime(n), cut to max_nodes drawn
+    copies, and its vertical axis (`axis`: AXIS_AUTO, AXIS_REAL or AXIS_MULTIPLES)."""
+    primes = [prev_prime(n)]
+    while len(primes) < depth:
+        primes.append(next_prime(primes[-1]))
+    drawn = _drawn_level_count(primes, branches, max_nodes)
+    levels_cut = drawn < len(primes)
+    primes = primes[:drawn]
+
+    levels = []
+    total = 1
+    for i, p in enumerate(primes):
+        levels.append(TreeLevel(p, i, total))
+        total *= p - 1
+
+    root = TreeNode(0, primes[0], None)
+    nodes = [root]
+    frontier = [root]
+    for i in range(1, drawn):
+        shown = min(primes[i - 1] - 1, branches)
+        next_frontier = []
+        for parent in frontier:
+            parent.hidden = primes[i - 1] - 1 - shown
+            for _ in range(shown):
+                child = TreeNode(i, primes[i], parent)
+                parent.children.append(child)
+                next_frontier.append(child)
+        nodes.extend(next_frontier)
+        frontier = next_frontier
+    for node in frontier:
+        node.hidden = primes[-1] - 1
+    slot_count = _assign_slots(root)
+
+    next_after = next_prime(primes[-1])
+    if axis == AXIS_AUTO:
+        span = next_after - primes[0]
+        axis = AXIS_REAL if 2 * primes[-1] - primes[0] <= _AUTO_REAL_SPAN_RATIO * span else AXIS_MULTIPLES
+    capped = False
+    if axis == AXIS_REAL:
+        tree_axis, capped = _real_axis(primes, next_after, height, max_points)
+    else:
+        tree_axis = MultiplesAxis(primes, multiples)
+    return PrimeTree(levels, nodes, tree_axis, slot_count, levels_cut, capped)
 
 
-def column_lane(root_residue, root_modulus, p):
-    """The multiples of p inside lane root_residue mod root_modulus, as (residue,
-    modulus*p). p does not divide root_modulus (the view primes come after it)."""
-    modulus = root_modulus * p
-    for k in range(p):
-        candidate = root_residue + k * root_modulus
-        if candidate % p == 0:
-            return candidate % modulus, modulus
-    raise ValueError(f"{p} divides the lane modulus {root_modulus}")
+def column_values(tree, p):
+    """The multipliers k >= 2 of the multiples k*p drawn on p's column."""
+    return np.arange(2, tree.axis.last_multiplier(p) + 1, dtype=np.int64)
 
 
-def lane_values_in_window(a, h, residue, modulus):
-    """(first value, count) of the lane's values inside [a, a + h)."""
-    first = lane_first_value(a, residue, modulus)
-    if first >= a + h:
-        return first, 0
-    return first, (a + h - 1 - first) // modulus + 1
+def _smallest_factors(limit):
+    """spf[k] = the smallest prime factor of k, for 0 <= k <= limit (spf[0] = spf[1] = 0)."""
+    spf = np.zeros(limit + 1, dtype=np.int64)
+    for q in range(2, int(limit ** 0.5) + 1):
+        if spf[q] == 0:
+            block = spf[q * q::q]
+            block[block == 0] = q
+    rest = np.arange(limit + 1, dtype=np.int64)
+    unset = spf == 0
+    spf[unset] = rest[unset]
+    spf[:2] = 0
+    return spf
 
 
-def prime_divisor_flags(first, step, count, primes):
-    """(count, len(primes)) bool array: entry [t, j] is whether primes[j] divides
-    first + t*step. Exact for arbitrarily large `first`/`step` (only residues mod each
-    prime reach numpy)."""
-    t = np.arange(count, dtype=np.int64)
-    flags = np.empty((count, len(primes)), dtype=bool)
-    for j, q in enumerate(primes):
-        flags[:, j] = ((first % q) + t * (step % q)) % q == 0
+def hollow_flags(p, ks):
+    """True for each multiple k*p already sieved out by a smaller prime: k has a prime
+    factor below p."""
+    if len(ks) == 0:
+        return np.zeros(0, dtype=bool)
+    spf = _smallest_factors(int(ks.max()))[ks]
+    return (ks >= 2) & (spf < p)
+
+
+def divisor_flags(column_index, ks, level_primes):
+    """(len(ks), len(level_primes)) bool: level prime j divides the value
+    ks[t] * level_primes[column_index]."""
+    flags = np.zeros((len(ks), len(level_primes)), dtype=bool)
+    kmax = int(ks.max()) if len(ks) else 0
+    for j, q in enumerate(level_primes):
+        if j == column_index:
+            flags[:, j] = True
+        elif q <= kmax:
+            flags[:, j] = ks % q == 0
     return flags
 
 
-def stripe_primes(value, primes):
-    """The distinct primes of `primes` dividing value, ascending (exponents ignored)."""
-    return [q for q in sorted(primes) if value % q == 0]
-
-
-def is_hollow(value, p, primes):
-    """True when a multiple of p on p's column was already caught by a smaller prime
-    (its least prime factor among `primes` is below p)."""
-    return any(value % q == 0 for q in primes if q < p)
-
-
-def exact_density(primes):
-    """prod(1 - 1/p): the share of integers coprime to every prime in `primes`."""
-    density = Fraction(1)
+def chain_density(primes):
+    """prod(1 - 1/p) over `primes`, as a float."""
+    density = 1.0
     for p in primes:
-        density *= Fraction(p - 1, p)
+        density *= 1.0 - 1.0 / p
     return density
-
-
-def _lane_multiples_residue(residue, modulus, d):
-    """The values of lane residue mod modulus divisible by d (d coprime to modulus),
-    as a residue mod modulus*d."""
-    if d == 1:
-        return residue % modulus
-    k = (-residue * pow(modulus, -1, d)) % d
-    return (residue + k * modulus) % (modulus * d)
-
-
-def lane_coprime_count(a, h, residue, modulus, primes):
-    """How many values of lane residue mod modulus inside [a, a + h) are coprime to
-    every prime in `primes` (none of which divides modulus), by inclusion-exclusion
-    over the squarefree divisors."""
-    if h <= 0:
-        return 0
-    total = 0
-    primes = list(primes)
-    for size in range(len(primes) + 1):
-        sign = -1 if size % 2 else 1
-        for combo in combinations(primes, size):
-            d = _product(combo)
-            sub_residue = _lane_multiples_residue(residue, modulus, d)
-            total += sign * lane_values_in_window(a, h, sub_residue, modulus * d)[1]
-    return total
-
-
-def coprime_count(a, b, primes):
-    """How many integers in [a, b) are coprime to every prime in `primes`."""
-    return lane_coprime_count(a, b - a, 0, 1, primes)
-
-
-def line_point_count(h, root_modulus, level_primes, leaf_count):
-    """Upper bound on the markers the vertical lines carry in a window of height h:
-    every prime column plus every drawn terminal lane."""
-    total = 0
-    for p in level_primes:
-        total += h // (root_modulus * p) + 1
-    leaf_modulus = root_modulus * _product(level_primes)
-    total += leaf_count * (h // leaf_modulus + 1)
-    return total
-
-
-def effective_window(h_requested, root_modulus, level_primes, leaf_count, max_points):
-    """The requested window height, shrunk (never below 1) until line_point_count
-    fits max_points."""
-    h = h_requested
-    while h > 1 and line_point_count(h, root_modulus, level_primes, leaf_count) > max_points:
-        count = line_point_count(h, root_modulus, level_primes, leaf_count)
-        h = max(1, min(h - 1, h * max_points // count))
-    return h

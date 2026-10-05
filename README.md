@@ -174,8 +174,8 @@ interchangeable engine generations, v3/v4/v4.1 -- see "Architecture" below).
   holding one sub-tab per visualization. Its **Rings** sub-tab opens an interactive,
   GPU-rendered view of prime rings around a chosen `n`, fed from whatever is already in
   storage. See "Ring visualization" below for what it shows and how it's launched. Its
-  **Tree** sub-tab opens the sieve-lane tree on the real `n` axis in its own window,
-  computed without storage -- see "Sieve-lane tree" below.
+  **Tree** sub-tab opens the prime tree (real `n` or multiples axis) in its own window,
+  computed without storage -- see "Prime tree" below.
 - **Benchmark** -- a throughput chart (numbers generated per second vs. floor depth,
   derived from the actual count of integers swept per floor rather than a window-count
   approximation, so a mode like Hybrid whose swept range is normally far smaller than
@@ -1005,41 +1005,42 @@ into two) -- and skipped entirely when a match resolves within the already-loade
 (no real crossing needed, the common case), so the recenter reload is only ever paid when it was
 actually earned.
 
-## Sieve-lane tree
+## Prime tree
 
 The Visualization > Tree sub-tab (`tree_tab.py`) opens the same shared renderer in its own
 window and process with `--viz-mode tree --source none`: the tree computes every value
-itself, so it needs no storage and loads no primes. A lane is an arithmetic progression
-(residue mod modulus); applying prime p splits a lane into one occupied lane (multiples of
-p) and p-1 free lanes, so the free lanes after the first d primes are the residues coprime
-to their primorial. The vertical axis is the real `n` axis: a lane's node sits at its first
-value >= N (N is the window start), so moving along `n` changes only the values -- the
-drawn shape depends only on the primes and on K.
+itself, so it needs no storage and loads no primes. Its levels are consecutive primes
+starting at the largest prime <= N (a composite N is rounded down). Prime p leaves p-1
+residues mod p free, so every copy of p branches into p-1 copies of the next prime, and
+every copy of p also feeds p's one column of multiples p, 2p, 3p, ... The drawn slice has
+the same shape at any scale; only the values and the counts change.
 
-- Scale: each node draws at most K free branches (the K lowest on the `n` axis) and labels
-  the rest as "+N (L leaves)" with the exact number of terminal lanes they would expand
-  to (by CRT every free lane at one depth has the same subtree, so counts are products of
-  p-1 and the full tree is never built).
-- One column per prime holds every multiple of p in the view's root lane, so 6 sits on
-  both the 2 and the 3 column at the same height. A multiple already caught by a smaller
-  prime is drawn hollow; stripes show the distinct prime divisors in ascending order, one
-  color per prime (exponents ignored: 12 is two colors, 4 one); past the stripe limit the
-  last stripe turns white. Each node has an edge, in p's color, to its occupied child on
-  p's column; each drawn terminal lane continues upward with a marker at every value.
-- The HUD has one line per level: the exact density prod(1-1/p) of the root lane next to
-  the share actually found in the window, plus the overall density when the root is a
-  subtree.
-- Clicking a free node opens its lane as the view root (the next primes become the
-  levels); Backspace goes one level up, Home back to the top, R resets N to 1 and the root
-  to the top. Left/Right step N by 1 (Ctrl: 10), Up/Down by the configured step, Space
-  plays forward.
+- Scale: every copy draws at most K child copies (default 3) and shows the rest of its
+  p-1 branches as one dashed stub labelled "+N"; copies on the last drawn level show all
+  of them as hidden. The drawn copies per level are prod min(p-1, K), the full tree's
+  prod (p-1) (in the HUD); a node cap leaves out deeper levels.
+- Every copy of p, 2 and 3 included, has a merge line to p's column at 2p, so the lines of
+  all copies join in one column. A multiple already caught by a smaller prime is drawn
+  hollow; stripes show the distinct level primes dividing it in ascending order, one color
+  per level (exponents ignored: 12 is two colors, 4 one); past the stripe limit the last
+  stripe turns white. A value on several columns (6 on 2 and 3) is joined across them.
+- Vertical axis: the real `n` axis (from the start prime up to start + height x the
+  levels' span, at least up to the last level's 2p), or the multiples axis: the values
+  p..kp of every level, sorted, at equal steps, with the gap between neighbors labelled
+  "+gap". "auto" keeps the real axis while the doubles fit a short window and switches
+  for larger starts, where no multiple would fall inside a real window.
+- The HUD has one line per level: drawn against full-tree copies, drawn/hidden branches,
+  the gap to the next level and, for a tree starting at 2, the density prod(1-1/p).
+- Clicking a copy makes its prime the start; Backspace returns to the previous start,
+  Home to the launch N, R resets N to 1. Left/Right step one prime (Ctrl: ten), Up/Down
+  move N by the configured step, Space plays forward one prime per tick.
 - Highlight layers come from a registry (`highlight_layers.LAYERS`); "primes" rings every
   drawn real prime. A new layer is one class plus one registry entry -- the CLI and the
   tab's checkboxes read the registry.
-- Configurable: levels, K, window height (in periods of the deepest lanes), Up/Down step,
-  tempo, the drawn-node cap (levels past it are cut) and the line-marker cap (the window
-  shrinks to fit), stripe limit, marker/label/HUD sizes and per-prime colors. Fields are
-  remembered across restarts (`AppSettings.tree_viz_params`).
+- Configurable: levels, K, axis kind, real-axis height and marker cap, multiples per
+  level, the copy and value-label caps, Up/Down step, tempo, stripe limit, marker/label/HUD
+  sizes and per-prime colors. Fields are remembered across restarts
+  (`AppSettings.tree_viz_params`).
 
 ## Architecture
 
@@ -1384,24 +1385,23 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               axis_boundary_marker_vertices
       line_hud.py                  pattern_hud_line -- the pattern/wheel/axis status line
   tree/                         Visualization > Tree sub-tab and the "tree" viz-mode (see
-                              "Sieve-lane tree" above)
+                              "Prime tree" above)
     tree_tab.py                  TreeTab(VizTabBase) -- the sub-tab's launch form and
                               build_tree_argv (--source none --viz-mode tree)
-    tree_mode.py                 TreeMode -- the view root and its zoom (click/Backspace/
-                              Home), navigation without a prime ceiling, the node/point
-                              caps, and its own CLI arguments (--tree-*)
-    tree_layout.py               the pure arithmetic: lane splits, first lane values >= a,
-                              the K-lowest representatives with exact hidden counts,
-                              slots, prime-column lanes, vectorized divisor flags, exact
-                              and in-window densities, parent lanes, node/point caps
-    tree_draw.py                 world-space draw data of one view: the real n axis,
-                              prime columns (hollow/striped markers), edges, terminal
-                              lanes, axis ticks, labels and pickable nodes
-    tree_colors.py               per-prime colors (Okabe-Ito + Tol muted, keyed by the
-                              prime so they survive zooms) and the "p=#rrggbb" override
-                              parser
-    tree_hud.py                  the tree's HUD lines (root, window, caps, density per
-                              level)
+    tree_mode.py                 TreeMode -- the start prime and its history (click/
+                              Backspace/Home), prime-by-prime navigation without a prime
+                              ceiling, and its own CLI arguments (--tree-*)
+    tree_layout.py               the pure arithmetic: prev/next prime (past uint64), the
+                              levels and their drawn copies with hidden counts, the node
+                              cap, slots, the real and multiples axes, column multiples,
+                              hollow and divisor flags
+    tree_draw.py                 world-space draw data of one tree: the axis (ticks or
+                              values with gap labels), copies, edges, merge lines into
+                              the columns, "+N" stubs, hollow/striped column markers,
+                              shared-value links, labels and pickable copies
+    tree_colors.py               colors by level (Okabe-Ito + Tol muted) and the per-prime
+                              "p=#rrggbb" override parser
+    tree_hud.py                  the tree's HUD lines (start, axis, one line per level)
     highlight_layers.py          HighlightLayer + the LAYERS registry ("primes")
 
   primeatlas/benchmark/         "Benchmark" tab

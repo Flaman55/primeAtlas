@@ -1,7 +1,7 @@
 """
-tree_colors.py -- one color per prime for the sieve-lane tree, plus the user's override
-map. Colors are keyed by the prime itself (not by its level in the current view), so a
-prime keeps its color across zooms.
+tree_colors.py -- one color per prime for the prime tree, plus the user's override
+map. A default color is picked by the prime's level in the drawn tree (so primes
+past uint64 need no prime counting); an override is keyed by the prime itself.
 
 The default palette is Okabe-Ito followed by Paul Tol's muted scheme (colorblind-safe);
 past the end of the palette the hues cycle with a golden-angle step.
@@ -56,12 +56,14 @@ def _prime_index(p):
     return index
 
 
-def prime_color(p, overrides=None):
+def prime_color(p, overrides=None, index=None):
     """RGB (0..1 floats) of prime p: the override if one is given, else the default
-    palette entry for p's index among the primes."""
+    palette entry for `index` (p's level in the drawn tree; None = p's index among
+    all primes, counted by trial division, so only for small p)."""
     if overrides and p in overrides:
         return tuple(overrides[p])
-    index = _prime_index(p)
+    if index is None:
+        index = _prime_index(p)
     if index < len(_DEFAULT_PALETTE):
         return _DEFAULT_PALETTE[index]
     hue = (index * 0.381966) % 1.0

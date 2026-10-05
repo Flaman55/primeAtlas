@@ -1,45 +1,50 @@
 """
-tree_hud.py -- the sieve-lane tree's HUD lines: the view root, the window, the scale
-caps, and one density line per level (exact prod(1-1/p) against the share actually
-found in the window).
+tree_hud.py -- the prime tree's HUD lines: the start prime, the axis, and one line per
+level (drawn copies against the full tree's copies, the drawn and hidden branches per
+copy, the gap to the next level and -- for a tree starting at 2 -- the share
+prod(1-1/p) of the integers no level prime up to p divides).
 """
 
-from primeatlas.visualization.tree.tree_layout import exact_density, lane_coprime_count, lane_values_in_window
-
-# Inclusion-exclusion over the view primes costs 2^levels terms per level; past this
-# many levels the in-window share is not computed.
-_MAX_COUNTED_LEVELS = 16
+from primeatlas.visualization.tree.tree_layout import AXIS_REAL, chain_density
 
 
-def _percent(fraction):
-    return f"{100.0 * float(fraction):.3f}%"
+# Counts with more digits than this are shown as d.dd e<exponent>.
+_MAX_PLAIN_DIGITS = 12
 
 
-def tree_hud_lines(view, h, h_requested, all_primes, levels_capped, branches, layer_lines=()):
-    """HUD lines for one built view over the window [view.a, view.a + h)."""
-    root = view.root
-    a = view.a
-    ancestors = all_primes[:root.depth]
+def count_text(count):
+    digits = str(count)
+    if len(digits) <= _MAX_PLAIN_DIGITS:
+        return f"{count:,}"
+    return f"{digits[0]}.{digits[1:3]}e{len(digits) - 1}"
+
+
+def tree_hud_lines(tree, n, layer_lines=()):
+    """HUD lines for one built tree; `n` is the session's N the start was rounded from."""
+    start = tree.start
+    axis = tree.axis
+    if axis.kind == AXIS_REAL:
+        axis_line = f"Axis: real n in [{axis.bottom:,}, {axis.top:,}]"
+        if tree.capped:
+            axis_line += "  (shrunk to the max points cap)"
+    else:
+        axis_line = f"Axis: multiples p..{axis.multiples}p of each level, {len(axis.values)} values"
     lines = [
-        f"Root lane: {root.residue:,} mod {root.modulus:,} (depth {root.depth})"
-        + (f", coprime to {', '.join(map(str, ancestors))}" if ancestors else ", every integer"),
-        f"Window: n in [{a:,}, {a + h:,})" + ("  (shrunk to the max points cap)" if h < h_requested else ""),
-        f"Branches per node: {branches}   levels: {len(view.level_primes)}"
-        + ("  (cut to the max nodes cap)" if levels_capped else "")
-        + f"   terminal lanes if expanded: {root.leaves_below:,}",
+        f"Start: p = {start:,}" + ("" if n == start else f"  (largest prime <= {n:,})"),
+        axis_line,
     ]
-    lane_total = lane_values_in_window(a, h, root.residue, root.modulus)[1]
-    counted = []
-    for p in view.level_primes:
-        counted.append(p)
-        in_lane = exact_density(counted)
-        overall = exact_density(ancestors + counted)
-        line = f"p={p}: prod(1-1/p) = {_percent(in_lane)} of the root lane"
-        if ancestors:
-            line += f" ({_percent(overall)} of all n)"
-        if lane_total and len(counted) <= _MAX_COUNTED_LEVELS:
-            found = lane_coprime_count(a, h, root.residue, root.modulus, counted)
-            line += f", window {_percent(found / lane_total)}"
+    for level in tree.levels:
+        copies = tree.nodes_at(level.index)
+        sample = copies[0]
+        line = f"p={level.p:,}: {len(copies):,} of {count_text(level.total_copies)} copies, {len(sample.children)} drawn"
+        if sample.hidden:
+            line += f" +{sample.hidden:,} hidden"
+        if level.index + 1 < len(tree.levels):
+            line += f", gap {tree.levels[level.index + 1].p - level.p:,}"
+        if start == 2:
+            line += f", prod(1-1/p) {100.0 * chain_density(tree.primes[:level.index + 1]):.3f}%"
         lines.append(line)
+    if tree.levels_cut:
+        lines.append("Deeper levels cut by the max nodes cap")
     lines.extend(layer_lines)
     return lines

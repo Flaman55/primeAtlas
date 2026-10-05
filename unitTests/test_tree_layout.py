@@ -1,40 +1,47 @@
 """
 test_tree_layout.py -- spec tests for primeatlas/visualization/tree/tree_layout.py, the
-pure arithmetic of the sieve-lane tree (no numpy GL data, no GL).
+arithmetic of the prime tree: consecutive primes p_0 < p_1 < ... starting at the largest
+prime <= n; every node at level i is a copy of p_i, with up to `branches` children (copies
+of p_{i+1}) drawn out of its p_i - 1 free branches, the rest counted as hidden; every
+copy of p also feeds p's one column of multiples. No GL.
 
 Spec:
-  A. Lanes: a lane is (residue, modulus); its node sits at the first lane value >= a
-     (the window start, the session's N). Applying prime p splits a lane into one
-     occupied child (multiples of p) and p-1 free children, each mod modulus*p.
-  B. Representatives: a node shows at most K free children -- the K with the lowest
-     values on the n axis, in ascending order -- and reports the hidden ones as a count
-     plus the exact number of terminal lanes they would expand to.
-  C. Counts are exact by formula: leaves_below = prod(p-1) over the deeper levels, and
-     for every node shown leaves + hidden leaves == leaves_below.
-  D. Fixed slice: the tree's shape (node count, slots, depths) does not depend on a;
-     moving along n only changes the values.
-  E. Prime columns, divisors and stripes: every multiple of p in the root lane is on
-     p's column; a multiple whose least prime factor is smaller than p is hollow;
-     stripes are the DISTINCT view primes dividing a value, ascending.
-  F. Density: prod(1-1/p) exactly, and the coprime count in a window matches brute
-     force.
-  G. Zoom: parent_lane inverts a zoom into a child lane.
-  H. Caps: levels are cut so the drawn node count stays within max_nodes; the window
-     is shrunk so the line-point count stays within max_points.
-  I. Big integers: a = 10**25 works with exact values.
+  A. prev_prime(n) is the largest prime <= n (n < 2 gives 2); next_prime(n) the
+     smallest prime > n. Both work past uint64.
+  B. Levels: build_tree(n, depth, ...) has `depth` levels from prev_prime(n); level i
+     holds prod_{j<i} min(p_j - 1, branches) copies of p_i (n=1, branches=3: 1, 1, 2, 6,
+     18) and reports the exact copy count of the full tree, prod_{j<i} (p_j - 1).
+  C. Hidden branches: a node below the last drawn level shows min(p-1, branches)
+     children and hides the rest (2: 0, 3: 0, 5: 1, 7: 3, 11: 7); a node on the last
+     drawn level shows none and hides all p-1.
+  D. Node cap: levels are drawn while the total node count stays <= max_nodes (always
+     at least one level); a cut tree reports levels_cut.
+  E. Slots: the drawn leaves take consecutive slots 0..L-1, every inner node sits at
+     the mean slot of its children.
+  F. Axis choice: "real" and "multiples" are taken as given; "auto" picks the real n
+     axis while the drawn primes' doubles fit a short window (n=2) and the multiples
+     axis otherwise (n=1000, n=10**6).
+  G. Real axis: the window runs from the start prime to max(start + ceil(height *
+     (next prime after the last level - start)), 2 * last level prime); a value's
+     position is its offset from the start; column p holds k*p for 2 <= k <= top // p.
+  H. Multiples axis: the axis values are the sorted distinct k*p (1 <= k <= multiples)
+     over the drawn level primes; a value's position is its rank; column p holds k*p
+     for 2 <= k <= multiples.
+  I. Columns: a multiple k*p is hollow when k has a prime factor smaller than p;
+     divisor flags mark the level primes dividing a column value.
 
 Usage:
     python unitTests/test_tree_layout.py
 """
 import os
 import sys
-from fractions import Fraction
-from math import gcd
 
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(_SCRIPT_DIR)
 sys.path.insert(0, _REPO_ROOT)
 sys.path.insert(0, os.path.join(_REPO_ROOT, "prime_sieve"))
+
+import numpy as np
 
 failures = []
 
@@ -56,204 +63,129 @@ def _lpf(n):
     return n
 
 
-def section_a_lanes():
-    print("\n--- A: lanes, first values, splits ---")
-    from primeatlas.visualization.tree.tree_layout import (
-        first_primes, lane_first_value, split_lane,
-    )
-    check(first_primes(6) == [2, 3, 5, 7, 11, 13], f"first_primes(6) (got {first_primes(6)})")
-    check(first_primes(0) == [], "first_primes(0) is empty")
-    for a in (0, 1, 5, 6, 7, 100, 211):
-        for residue, modulus in ((0, 1), (1, 2), (5, 6), (1, 6), (7, 30)):
-            v = lane_first_value(a, residue, modulus)
-            ok = v >= a and v % modulus == residue % modulus and v - modulus < a
-            check(ok, f"lane_first_value({a}, {residue}, {modulus}) = {v} is the first lane value >= a")
-    occupied, free = split_lane(1, 2, 3)
-    check(occupied == 3 and sorted(free) == [1, 5], f"split of 1 mod 2 by 3: occupied 3, free 1,5 (got {occupied}, {free})")
-    occupied, free = split_lane(0, 1, 2)
-    check(occupied == 0 and free == [1], f"split of the root by 2: occupied 0 (evens), free 1 (got {occupied}, {free})")
-    occupied, free = split_lane(7, 30, 7)
-    check(occupied % 7 == 0 and occupied % 30 == 7 and len(free) == 6
-          and all(f % 30 == 7 and f % 7 != 0 for f in free),
-          f"split of 7 mod 30 by 7: one occupied (multiple of 7), six free children (got {occupied}, {free})")
+def _build(n=1, depth=5, **kw):
+    from primeatlas.visualization.tree.tree_layout import build_tree
+    return build_tree(n, depth=depth, **kw)
 
 
-def section_b_representatives():
-    print("\n--- B: K lowest representatives, hidden counts ---")
-    from primeatlas.visualization.tree.tree_layout import build_view_tree, lane_first_value, split_lane
-    primes = [2, 3, 5, 7]
-    for a in (1, 50, 1234):
-        view = build_view_tree(a, 0, 1, 0, primes, 3)
-        bad = []
-        for node in view.nodes:
-            if node.level == len(primes):
-                if node.children or node.occupied is not None:
-                    bad.append(("terminal has children", node.residue, node.modulus))
-                continue
-            p = primes[node.level]
-            occ, free = split_lane(node.residue, node.modulus, p)
-            child_mod = node.modulus * p
-            all_values = sorted(lane_first_value(a, r, child_mod) for r in free)
-            shown = [c.value for c in node.children]
-            if shown != all_values[:3]:
-                bad.append(("not the K lowest", node.residue, node.modulus, shown, all_values))
-            if node.hidden_count != len(free) - len(shown):
-                bad.append(("hidden count", node.residue, node.modulus))
-            if node.occupied is None or node.occupied.prime != p or node.occupied.value % p != 0:
-                bad.append(("occupied child", node.residue, node.modulus))
-            elif node.occupied.value != lane_first_value(a, occ, child_mod):
-                bad.append(("occupied value", node.residue, node.modulus))
-            for c in node.children:
-                if c.value < node.value or c.value % node.modulus != node.residue % node.modulus:
-                    bad.append(("child not above parent / not in parent lane", c.residue, c.modulus))
-        check(not bad, f"a={a}: every node shows the K=3 lowest free children with exact hidden "
-                       f"counts and its occupied child (problems: {bad[:3]})")
-    view = build_view_tree(1, 0, 1, 0, primes, 3)
-    shape = [len(view.nodes_at_level(l)) for l in range(len(primes) + 1)]
-    check(shape == [1, 1, 2, 6, 18], f"K=3 over 2,3,5,7: drawn free nodes per level 1,1,2,6,18 (got {shape})")
+def section_a_prev_next():
+    print("\n--- A: prev_prime / next_prime ---")
+    from primeatlas.visualization.tree.tree_layout import prev_prime, next_prime
+    for n, expected in ((0, 2), (1, 2), (2, 2), (3, 3), (4, 3), (10, 7), (11, 11), (12, 11), (100, 97)):
+        check(prev_prime(n) == expected, f"prev_prime({n}) = {expected} (got {prev_prime(n)})")
+    for n, expected in ((0, 2), (1, 2), (2, 3), (3, 5), (7, 11), (13, 17), (97, 101)):
+        check(next_prime(n) == expected, f"next_prime({n}) = {expected} (got {next_prime(n)})")
+    check(prev_prime(2 ** 64) == 2 ** 64 - 59, "prev_prime(2^64) = 2^64-59")
+    check(next_prime(2 ** 64) == 2 ** 64 + 13, "next_prime(2^64) = 2^64+13")
 
 
-def section_c_exact_counts():
-    print("\n--- C: exact leaf counts ---")
-    from primeatlas.visualization.tree.tree_layout import build_view_tree, leaves_if_expanded
-    primes = [2, 3, 5, 7, 11]
-    check(leaves_if_expanded(primes) == 1 * 2 * 4 * 6 * 10, "leaves_if_expanded = prod(p-1)")
-    check(leaves_if_expanded([]) == 1, "leaves_if_expanded of no levels is 1 (the lane itself)")
-    view = build_view_tree(17, 0, 1, 0, primes, 2)
-    bad = []
-    for node in view.nodes:
-        expected = leaves_if_expanded(primes[node.level:])
-        if node.leaves_below != expected:
-            bad.append(("leaves_below", node.level, node.leaves_below, expected))
-        if node.children:
-            total = sum(c.leaves_below for c in node.children) + node.hidden_leaves
-            if total != node.leaves_below:
-                bad.append(("sum", node.level, total, node.leaves_below))
-    check(not bad, f"every node: shown leaves + hidden leaves == prod(p-1) below it (problems: {bad[:3]})")
-    check(view.root.leaves_below == 480, f"root of 2..11 expands to 480 terminal lanes (got {view.root.leaves_below})")
+def section_b_levels():
+    print("\n--- B: levels ---")
+    t = _build(1, depth=5, branches=3)
+    check(t.start == 2 and [lv.p for lv in t.levels] == [2, 3, 5, 7, 11],
+          f"n=1: levels 2,3,5,7,11 (got {[lv.p for lv in t.levels]})")
+    counts = [len(t.nodes_at(i)) for i in range(5)]
+    check(counts == [1, 1, 2, 6, 18], f"copies per level 1,1,2,6,18 (got {counts})")
+    check([lv.total_copies for lv in t.levels] == [1, 1, 2, 8, 48],
+          f"full-tree copies prod(p_j - 1): 1,1,2,8,48 (got {[lv.total_copies for lv in t.levels]})")
+    check(all(node.p == t.levels[node.level].p for node in t.nodes), "every node is a copy of its level's prime")
+    check(all(node.parent is None if node.level == 0 else node.parent.level == node.level - 1 for node in t.nodes),
+          "every non-root node hangs under a node of the level below")
+    t = _build(100, depth=3, branches=3, axis="multiples")
+    check([lv.p for lv in t.levels] == [97, 101, 103], f"a composite n=100 starts at 97 (got {[lv.p for lv in t.levels]})")
+    t = _build(10 ** 20, depth=2, axis="multiples")
+    check(t.start <= 10 ** 20 < t.levels[1].p, "a tree past uint64 builds")
 
 
-def section_d_fixed_slice():
-    print("\n--- D: fixed slice -- shape independent of a ---")
-    from primeatlas.visualization.tree.tree_layout import build_view_tree
-    primes = [2, 3, 5, 7]
-
-    def shape(view):
-        return [(n.level, n.slot, len(n.children), n.hidden_count) for n in view.nodes], view.slot_count
-
-    base = shape(build_view_tree(1, 0, 1, 0, primes, 4))
-    others = [shape(build_view_tree(a, 0, 1, 0, primes, 4)) for a in (0, 2, 97, 210, 211, 10**6 + 3)]
-    check(all(o == base for o in others), "node levels, slots and child counts are the same for every a")
-    v1 = [n.value for n in build_view_tree(1, 0, 1, 0, primes, 4).nodes]
-    v2 = [n.value for n in build_view_tree(500, 0, 1, 0, primes, 4).nodes]
-    check(v1 != v2 and all(v >= 500 for v in v2), "the values change with a and stay >= a")
-    view = build_view_tree(1, 0, 1, 0, primes, 4)
-    leaves = [n for n in view.nodes if not n.children]
-    check(sorted(n.slot for n in leaves) == list(range(view.slot_count)),
-          "terminal nodes occupy consecutive slots 0..slot_count-1")
-    inner = [n for n in view.nodes if n.children]
-    check(all(abs(n.slot - sum(c.slot for c in n.children) / len(n.children)) < 1e-9 for n in inner),
-          "an inner node sits at the mean slot of its shown children")
+def section_c_hidden():
+    print("\n--- C: hidden branches ---")
+    t = _build(1, depth=6, branches=3, max_nodes=10 ** 6)
+    got = [(n.p, len(n.children), n.hidden) for n in (t.nodes_at(i)[0] for i in range(6))]
+    check(got == [(2, 1, 0), (3, 2, 0), (5, 3, 1), (7, 3, 3), (11, 3, 7), (13, 0, 12)],
+          f"children/hidden per level, last level hides all p-1 (got {got})")
+    t = _build(1, depth=4, branches=1)
+    got = [(len(n.children), n.hidden) for n in (t.nodes_at(i)[0] for i in range(4))]
+    check(got == [(1, 0), (1, 1), (1, 3), (0, 6)], f"branches=1 (got {got})")
 
 
-def section_e_columns_and_stripes():
-    print("\n--- E: prime columns, hollow points, stripes ---")
-    import numpy as np
-    from primeatlas.visualization.tree.tree_layout import (
-        column_lane, lane_values_in_window, prime_divisor_flags, stripe_primes, is_hollow,
-    )
-    primes = [2, 3, 5, 7]
-    for p in primes:
-        residue, modulus = column_lane(0, 1, p)
-        first, count = lane_values_in_window(1, 30, residue, modulus)
-        values = [first + t * modulus for t in range(count)]
-        check(values == [v for v in range(1, 31) if v % p == 0],
-              f"column {p} over the root holds every multiple of {p} in [1, 31) (got {values})")
-    residue, modulus = column_lane(1, 6, 5)
-    check(residue % 6 == 1 and residue % 5 == 0 and modulus == 30,
-          f"column 5 inside lane 1 mod 6 is 25 mod 30 (got {residue} mod {modulus})")
-    check(stripe_primes(6, primes) == [2, 3], "6 has stripes 2,3")
-    check(stripe_primes(12, primes) == [2, 3], "12 has stripes 2,3 (exponents ignored)")
-    check(stripe_primes(4, primes) == [2], "4 has only the 2 stripe")
-    check(stripe_primes(210, primes) == [2, 3, 5, 7], "210 has all four stripes")
-    check(stripe_primes(11, primes) == [], "11 has no stripe among 2,3,5,7")
-    check(not is_hollow(6, 2, primes), "6 on the 2 column is filled (lpf 2)")
-    check(is_hollow(6, 3, primes), "6 on the 3 column is hollow (caught by 2)")
-    check(not is_hollow(15, 3, primes) and is_hollow(15, 5, primes), "15: filled on 3, hollow on 5")
-    check(not is_hollow(49, 7, primes), "49 on the 7 column is filled")
-    flags = prime_divisor_flags(6, 6, 5, primes)
-    expected = np.array([[v % q == 0 for q in primes] for v in (6, 12, 18, 24, 30)])
-    check(flags.shape == (5, 4) and bool((flags == expected).all()),
-          "prime_divisor_flags matches v % q == 0 for every point and prime")
-    big = 10**25 + 1
-    flags_big = prime_divisor_flags(big, 7, 4, primes)
-    expected_big = np.array([[(big + 7 * t) % q == 0 for q in primes] for t in range(4)])
-    check(bool((flags_big == expected_big).all()), "prime_divisor_flags is exact for a 26-digit start")
+def section_d_cap():
+    print("\n--- D: node cap ---")
+    t = _build(1, depth=6, branches=3, max_nodes=10)
+    check(len(t.levels) == 4 and len(t.nodes) == 10 and t.levels_cut,
+          f"max_nodes=10 draws 1+1+2+6 (levels {len(t.levels)}, nodes {len(t.nodes)}, cut {t.levels_cut})")
+    check(all(n.hidden == 6 and not n.children for n in t.nodes_at(3)), "the cut level hides all of its branches")
+    t = _build(1, depth=3, max_nodes=1)
+    check(len(t.levels) == 1, "at least one level is drawn")
+    t = _build(1, depth=3, max_nodes=10 ** 6)
+    check(not t.levels_cut, "an uncut tree reports levels_cut=False")
 
 
-def section_f_density():
-    print("\n--- F: density ---")
-    from primeatlas.visualization.tree.tree_layout import exact_density, coprime_count
-    check(exact_density([2, 3, 5, 7]) == Fraction(48, 210), "prod(1-1/p) over 2,3,5,7 is 48/210")
-    check(exact_density([]) == 1, "empty product is 1")
-    for a, b in ((1, 211), (0, 1), (5, 5), (1000, 1777), (10**12, 10**12 + 500)):
-        brute = sum(1 for v in range(a, b) if all(v % p for p in (2, 3, 5, 7)))
-        got = coprime_count(a, b, [2, 3, 5, 7])
-        check(got == brute, f"coprime_count({a}, {b}) = {got} matches brute force {brute}")
+def section_e_slots():
+    print("\n--- E: slots ---")
+    t = _build(1, depth=5, branches=3)
+    leaves = sorted(n.slot for n in t.nodes if not n.children)
+    check(leaves == list(range(len(leaves))), f"leaves take slots 0..L-1 (got {leaves[:6]}...)")
+    bad = [n for n in t.nodes if n.children and abs(n.slot - np.mean([c.slot for c in n.children])) > 1e-9]
+    check(not bad, "inner nodes sit at the mean of their children")
+    check(t.slot_count == len(leaves), "slot_count is the leaf count")
 
 
-def section_g_zoom():
-    print("\n--- G: zoom parent lane ---")
-    from primeatlas.visualization.tree.tree_layout import parent_lane, first_primes, split_lane
-    all_primes = first_primes(10)
-    occ, free = split_lane(1, 6, 5)
-    for r in free:
-        check(parent_lane(r, 30, 3, all_primes) == (1, 6, 2), f"parent of {r} mod 30 is 1 mod 6 at depth 2")
-    check(parent_lane(1, 2, 1, all_primes) == (0, 1, 0), "parent of 1 mod 2 is the root")
-    check(parent_lane(0, 1, 0, all_primes) is None, "the top root has no parent")
+def section_f_axis_choice():
+    print("\n--- F: axis choice ---")
+    check(_build(2, depth=4).axis.kind == "real", "auto: n=2 uses the real axis")
+    check(_build(1000, depth=4).axis.kind == "multiples", "auto: n=1000 uses the multiples axis")
+    check(_build(10 ** 6, depth=4).axis.kind == "multiples", "auto: n=10**6 uses the multiples axis")
+    check(_build(2, depth=4, axis="multiples").axis.kind == "multiples", "an explicit multiples axis is kept")
+    check(_build(1000, depth=2, axis="real").axis.kind == "real", "an explicit real axis is kept")
 
 
-def section_h_caps():
-    print("\n--- H: node and point caps ---")
-    from primeatlas.visualization.tree.tree_layout import (
-        count_drawn_nodes, levels_within_cap, line_point_count, effective_window,
-    )
-    check(count_drawn_nodes([2, 3, 5, 7], 3) == 1 + 1 + 2 + 6 + 18, "count_drawn_nodes K=3 over 2..7")
-    check(levels_within_cap([2, 3, 5, 7], 3, 1000) == 4, "a generous cap keeps every level")
-    check(levels_within_cap([2, 3, 5, 7], 3, 10) == 3, "max_nodes=10 cuts to 3 levels (1+1+2+6=10)")
-    check(levels_within_cap([2, 3, 5, 7], 3, 1) == 1, "at least one level always stays")
-    primes = [2, 3, 5, 7]
-    h_req = 2 * 210
-    full = line_point_count(h_req, 1, primes, 48)
-    check(effective_window(h_req, 1, primes, 48, full + 10) == h_req, "no shrink when within max_points")
-    h_eff = effective_window(h_req, 1, primes, 48, 100)
-    check(1 <= h_eff < h_req and line_point_count(h_eff, 1, primes, 48) <= 100,
-          f"the window shrinks so the point count fits max_points (h={h_eff})")
+def section_g_real_axis():
+    print("\n--- G: real axis ---")
+    from primeatlas.visualization.tree.tree_layout import column_values
+    t = _build(2, depth=4, height=1.5, axis="real")
+    check(t.axis.bottom == 2 and t.axis.top == 16, f"window [2, max(2 + ceil(1.5 * 9), 14)] = [2, 16] (got {t.axis.bottom}, {t.axis.top})")
+    t = _build(2, depth=4, height=1.0, axis="real")
+    check(t.axis.top == 14, f"the window reaches 2 * 7 = 14 (got {t.axis.top})")
+    check(t.axis.position(9) - t.axis.position(2) == 7, "a real position is the offset from the start")
+    ks = column_values(t, 3)
+    check(list(ks * 3) == [6, 9, 12], f"column 3 holds 6..12 (got {list(ks * 3)})")
 
 
-def section_i_bigints():
-    print("\n--- I: big integers ---")
-    from primeatlas.visualization.tree.tree_layout import build_view_tree
-    a = 10**25
-    view = build_view_tree(a, 0, 1, 0, [2, 3, 5, 7, 11], 3)
-    ok = all(n.value >= a and n.value - a < n.modulus and n.value % n.modulus == n.residue for n in view.nodes)
-    check(ok, "every node value at a = 10**25 is the exact first lane value >= a")
-    leaves = [n for n in view.nodes if not n.children]
-    check(all(gcd(n.value, 2310) == 1 for n in leaves), "terminal values at 10**25 are coprime to 2310")
-    zoom = build_view_tree(a, 1, 6, 2, [5, 7, 11], 2)
-    check(all(n.value % 6 == 1 for n in zoom.nodes), "a zoomed root (1 mod 6) keeps every node inside its lane")
-    check(all(_lpf(n.occupied.value) == n.occupied.prime for n in build_view_tree(1, 0, 1, 0, [2, 3, 5, 7], 6).nodes
-              if n.occupied is not None),
-          "every occupied child's first value has least prime factor = its prime")
+def section_h_multiples_axis():
+    print("\n--- H: multiples axis ---")
+    from primeatlas.visualization.tree.tree_layout import column_values
+    t = _build(97, depth=3, multiples=4, axis="multiples")
+    expected = [97, 101, 103, 194, 202, 206, 291, 303, 309, 388, 404, 412]
+    check(list(t.axis.values) == expected, f"axis values (got {list(t.axis.values)})")
+    check([t.axis.position(v) for v in (97, 101, 194, 412)] == [0, 1, 3, 11], "a position is the value's rank")
+    check(list(column_values(t, 101) * 101) == [202, 303, 404], "column 101 holds 2p..4p")
+    t = _build(2, depth=3, multiples=4, axis="multiples")
+    check(list(t.axis.values) == [2, 3, 4, 5, 6, 8, 9, 10, 12, 15, 20], f"shared values appear once (got {list(t.axis.values)})")
+
+
+def section_i_columns():
+    print("\n--- I: hollow and divisor flags ---")
+    from primeatlas.visualization.tree.tree_layout import hollow_flags, divisor_flags
+    for p in (2, 3, 5, 7):
+        ks = np.arange(1, 60 // p + 1, dtype=np.int64)
+        check(list(map(bool, hollow_flags(p, ks))) == [_lpf(int(k) * p) < p for k in ks],
+              f"column {p}: hollow = least prime factor below p")
+    chain = [2, 3, 5, 7]
+    ks = np.arange(1, 11, dtype=np.int64)
+    flags = divisor_flags(1, ks, chain)
+    check(all(list(map(bool, row)) == [int(k) * 3 % q == 0 for q in chain] for row, k in zip(flags, ks)),
+          "column 3 flags = level primes dividing each value")
+    big = [10 ** 20 + 39, 10 ** 20 + 129]
+    flags = divisor_flags(0, np.array([1, 2], dtype=np.int64), big)
+    check(flags.tolist() == [[True, False], [True, False]], "a level prime above the value never flags it")
 
 
 if __name__ == "__main__":
-    for section in (section_a_lanes, section_b_representatives, section_c_exact_counts,
-                    section_d_fixed_slice, section_e_columns_and_stripes, section_f_density,
-                    section_g_zoom, section_h_caps, section_i_bigints):
+    for section in (section_a_prev_next, section_b_levels, section_c_hidden, section_d_cap, section_e_slots,
+                    section_f_axis_choice, section_g_real_axis, section_h_multiples_axis, section_i_columns):
         try:
             section()
-        except Exception as e:  # noqa: BLE001 -- a crash in one section is a failure, not an abort
+        except Exception as e:  # noqa: BLE001
             import traceback
             traceback.print_exc()
             check(False, f"{section.__name__} raised {type(e).__name__}: {e}")

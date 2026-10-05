@@ -46,7 +46,7 @@ def load_synthetic(count, seed=0):
 
 def load_none():
     """No values at all: for a viz-mode that computes everything it draws itself
-    (the sieve-lane tree) and opens at --upto."""
+    (the prime tree) and opens at --upto."""
     return np.empty(0, dtype=np.int64)
 
 

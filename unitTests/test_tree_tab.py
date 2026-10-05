@@ -52,15 +52,16 @@ def section_a_argv():
           "the tree launches the shared renderer")
     check(_value(argv, "--source") == "none" and _value(argv, "--viz-mode") == "tree"
           and _value(argv, "--upto") == "500", f"--source none --viz-mode tree --upto 500 (got {argv})")
-    for flag in ("--tree-depth", "--tree-branches", "--tree-highlight", "--tree-colors", "--n-step",
+    for flag in ("--tree-depth", "--tree-branches", "--tree-highlight", "--tree-colors", "--n-step", "--tree-axis",
                  "--pipe-stdin-commands"):
         check(flag not in argv, f"{flag} is omitted by default")
-    argv = build_tree_argv(10**25, depth=5, branches=4, periods=1.5, n_step=7, tempo_ms=200,
-                           max_nodes=999, max_points=12345, colors="2=#ff0000", highlight=["primes"],
+    argv = build_tree_argv(10**25, depth=5, branches=4, height=1.5, n_step=7, tempo_ms=200,
+                           max_nodes=999, max_points=12345, multiples=5, axis="multiples", colors="2=#ff0000", highlight=["primes"],
                            max_stripes=3, node_size=12.0, point_size=6.0, hud_font_size=20,
                            label_font_size=14, pipe_stdin_commands=True)
-    expected = {"--upto": str(10**25), "--tree-depth": "5", "--tree-branches": "4", "--tree-periods": "1.5",
+    expected = {"--upto": str(10**25), "--tree-depth": "5", "--tree-branches": "4", "--tree-height": "1.5",
                 "--n-step": "7", "--tempo-ms": "200", "--tree-max-nodes": "999", "--tree-max-points": "12345",
+                "--tree-multiples": "5", "--tree-axis": "multiples",
                 "--tree-colors": "2=#ff0000", "--tree-highlight": "primes", "--tree-max-stripes": "3",
                 "--tree-node-size": "12.0", "--point-size": "6.0", "--hud-font-size": "20",
                 "--tree-label-font-size": "14"}

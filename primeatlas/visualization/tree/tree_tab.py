@@ -1,7 +1,7 @@
 """
 tree_tab.py -- TreeTab(VizTabBase), the Visualization > Tree sub-tab. Launches the shared
 GPU renderer (primeatlas/visualization/shared/renderer.py) in its own window and process
-with --viz-mode tree --source none: the sieve-lane tree computes every value itself, so
+with --viz-mode tree --source none: the prime tree computes every value itself, so
 it needs no storage folder and no loaded primes. Launching, the console, the HUD panel
 and live pause/resume come from VizTabBase; this tab builds its form and the argv.
 """
@@ -14,13 +14,15 @@ from ...generation.generation import LocalLoggedRunner, _eval_quick_number
 from ...generation.generation_console import GenerationConsole
 from ..shared.viz_tab_base import VizTabBase
 from .highlight_layers import LAYERS
+from .tree_layout import AXIS_AUTO, AXIS_KINDS
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 RENDERER_SCRIPT = os.path.join(os.path.dirname(_THIS_DIR), "shared", "renderer.py")
 
 
-def build_tree_argv(n, python_executable=None, depth=None, branches=None, periods=None, n_step=None,
-                    tempo_ms=None, max_nodes=None, max_points=None, colors="", highlight=(),
+def build_tree_argv(n, python_executable=None, depth=None, branches=None, height=None, n_step=None,
+                    tempo_ms=None, max_nodes=None, max_points=None, max_labels=None, multiples=None,
+                    axis=None, colors="", highlight=(),
                     max_stripes=None, node_size=None, point_size=None, hud_font_size=None,
                     label_font_size=None, pipe_stdin_commands=False):
     """Argv launching renderer.py (as a plain script path, see its module docstring)
@@ -29,9 +31,10 @@ def build_tree_argv(n, python_executable=None, depth=None, branches=None, period
     validates them)."""
     exe = python_executable or sys.executable
     argv = [exe, RENDERER_SCRIPT, "--source", "none", "--upto", str(n), "--viz-mode", "tree"]
-    for flag, value in (("--tree-depth", depth), ("--tree-branches", branches), ("--tree-periods", periods),
+    for flag, value in (("--tree-depth", depth), ("--tree-branches", branches), ("--tree-height", height),
                         ("--n-step", n_step), ("--tempo-ms", tempo_ms), ("--tree-max-nodes", max_nodes),
-                        ("--tree-max-points", max_points), ("--tree-max-stripes", max_stripes),
+                        ("--tree-max-points", max_points), ("--tree-multiples", multiples), ("--tree-axis", axis),
+                        ("--tree-max-labels", max_labels), ("--tree-max-stripes", max_stripes),
                         ("--tree-node-size", node_size), ("--point-size", point_size),
                         ("--hud-font-size", hud_font_size), ("--tree-label-font-size", label_font_size)):
         if value is not None:
@@ -50,17 +53,19 @@ def build_tree_argv(n, python_executable=None, depth=None, branches=None, period
 # entry, in form order; parsed with _eval_quick_number (ints) or float().
 _INT_FIELDS = (
     ("depth_entry", "depth_label", "depth", "4"),
-    ("branches_entry", "branches_label", "branches", "5"),
+    ("branches_entry", "branches_label", "drawn_branches", "3"),
     ("n_step_entry", "n_step_label", "n_step", "1"),
     ("tempo_ms_entry", "tempo_label", "tempo_ms", "120"),
-    ("max_nodes_entry", "max_nodes_label", "max_nodes", "20000"),
+    ("max_nodes_entry", "max_nodes_label", "max_nodes", "2000"),
+    ("multiples_entry", "multiples_label", "multiples", "4"),
     ("max_points_entry", "max_points_label", "max_points", "500000"),
+    ("max_labels_entry", "max_labels_label", "max_labels", "3000"),
     ("max_stripes_entry", "max_stripes_label", "max_stripes", "4"),
     ("hud_font_size_entry", "hud_font_size_label", "hud_font_size", "22"),
     ("label_font_size_entry", "label_font_size_label", "label_font_size", "16"),
 )
 _FLOAT_FIELDS = (
-    ("periods_entry", "periods_label", "periods", "2"),
+    ("height_entry", "height_label", "height", "1.5"),
     ("node_size_entry", "node_size_label", "node_size", "11"),
     ("point_size_entry", "point_size_label", "point_size", "7"),
 )
@@ -97,12 +102,24 @@ class TreeTab(VizTabBase):
         n_row.pack(fill="x", padx=8, pady=(6, 4))
         ttk.Label(n_row, text=self._tk("field_n")).pack(side="left")
         self.n_entry = ttk.Entry(n_row, width=28)
-        self.n_entry.insert(0, saved.get("n", "1"))
+        self.n_entry.insert(0, saved.get("n", "2"))
         self.n_entry.pack(side="left", padx=(6, 0))
+
+        axis_row = ttk.Frame(tree_frame)
+        axis_row.pack(fill="x", padx=8, pady=(0, 4))
+        ttk.Label(axis_row, text=self._tk("axis_label")).pack(side="left")
+        self._axis_choices = [(kind, self._tk(f"axis_{kind}")) for kind in AXIS_KINDS]
+        saved_axis = saved.get("axis", AXIS_AUTO)
+        self.axis_combo = ttk.Combobox(axis_row, state="readonly", width=28,
+                                       values=[label for _kind, label in self._axis_choices])
+        self.axis_combo.current([kind for kind, _label in self._axis_choices].index(
+            saved_axis if saved_axis in AXIS_KINDS else AXIS_AUTO))
+        self.axis_combo.pack(side="left", padx=(6, 0))
 
         appearance_frame = ttk.LabelFrame(container, text=self._tk("section_appearance"))
         appearance_frame.pack(fill="x", pady=(0, 8))
-        tree_keys = {"depth", "branches", "periods", "n_step", "tempo_ms", "max_nodes", "max_points"}
+        tree_keys = {"depth", "drawn_branches", "height", "n_step", "tempo_ms", "max_nodes", "multiples",
+                     "max_points", "max_labels"}
         for attr, label_key, saved_key, default in _INT_FIELDS + _FLOAT_FIELDS:
             parent = tree_frame if saved_key in tree_keys else appearance_frame
             row = ttk.Frame(parent)
@@ -152,6 +169,7 @@ class TreeTab(VizTabBase):
         state = "disabled" if readonly else "normal"
         for widget in self._launch_param_entries + self._highlight_checks:
             widget.configure(state=state)
+        self.axis_combo.configure(state="disabled" if readonly else "readonly")
 
     def _restore_last_n(self, n):
         self.n_entry.delete(0, "end")
@@ -182,13 +200,16 @@ class TreeTab(VizTabBase):
                 values[saved_key] = None
         colors = self.colors_entry.get().strip()
         raw["colors"] = colors
+        axis = self._axis_choices[max(0, self.axis_combo.current())][0]
+        raw["axis"] = axis
         highlight = [name for name, var in self.highlight_vars.items() if var.get()]
         for name, var in self.highlight_vars.items():
             raw[f"highlight_{name}"] = var.get()
 
-        argv = build_tree_argv(n, depth=values["depth"], branches=values["branches"], periods=values["periods"],
-                               n_step=values["n_step"], tempo_ms=values["tempo_ms"],
+        argv = build_tree_argv(n, depth=values["depth"], branches=values["drawn_branches"],
+                               height=values["height"], n_step=values["n_step"], tempo_ms=values["tempo_ms"],
                                max_nodes=values["max_nodes"], max_points=values["max_points"],
+                               max_labels=values["max_labels"], multiples=values["multiples"], axis=axis,
                                colors=colors, highlight=highlight, max_stripes=values["max_stripes"],
                                node_size=values["node_size"], point_size=values["point_size"],
                                hud_font_size=values["hud_font_size"],
