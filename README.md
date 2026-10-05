@@ -173,7 +173,9 @@ interchangeable engine generations, v3/v4/v4.1 -- see "Architecture" below).
 - **Visualization** -- a seventh top-level tab (between Generation and Benchmark)
   holding one sub-tab per visualization. Its **Rings** sub-tab opens an interactive,
   GPU-rendered view of prime rings around a chosen `n`, fed from whatever is already in
-  storage. See "Ring visualization" below for what it shows and how it's launched.
+  storage. See "Ring visualization" below for what it shows and how it's launched. Its
+  **Tree** sub-tab opens the prime tree (real `n` or multiples axis) in its own window,
+  computed without storage -- see "Prime tree" below.
 - **Benchmark** -- a throughput chart (numbers generated per second vs. floor depth,
   derived from the actual count of integers swept per floor rather than a window-count
   approximation, so a mode like Hybrid whose swept range is normally far smaller than
@@ -1013,6 +1015,43 @@ into two) -- and skipped entirely when a match resolves within the already-loade
 (no real crossing needed, the common case), so the recenter reload is only ever paid when it was
 actually earned.
 
+## Prime tree
+
+The Visualization > Tree sub-tab (`tree_tab.py`) opens the same shared renderer in its own
+window and process with `--viz-mode tree --source none`: the tree computes every value
+itself, so it needs no storage and loads no primes. Its levels are consecutive primes
+starting at the largest prime <= N (a composite N is rounded down). Prime p leaves p-1
+residues mod p free, so every copy of p branches into p-1 copies of the next prime, and
+every copy of p also feeds p's one column of multiples p, 2p, 3p, ... The drawn slice has
+the same shape at any scale; only the values and the counts change.
+
+- Scale: every copy draws at most K child copies (default 3) and shows the rest of its
+  p-1 branches as one dashed stub labelled "+N"; copies on the last drawn level show all
+  of them as hidden. The drawn copies per level are prod min(p-1, K), the full tree's
+  prod (p-1) (in the HUD); a node cap leaves out deeper levels.
+- Every copy of p, 2 and 3 included, has a merge line to p's column at 2p, so the lines of
+  all copies join in one column. A multiple already caught by a smaller prime is drawn
+  hollow; stripes show the distinct level primes dividing it in ascending order, one color
+  per level (exponents ignored: 12 is two colors, 4 one); past the stripe limit the last
+  stripe turns white. A value on several columns (6 on 2 and 3) is joined across them.
+- Vertical axis: the real `n` axis (from the start prime up to start + height x the
+  levels' span, at least up to the last level's 2p), or the multiples axis: the values
+  p..kp of every level, sorted, at equal steps, with the gap between neighbors labelled
+  "+gap". "auto" keeps the real axis while the doubles fit a short window and switches
+  for larger starts, where no multiple would fall inside a real window.
+- The HUD has one line per level: drawn against full-tree copies, drawn/hidden branches,
+  the gap to the next level and, for a tree starting at 2, the density prod(1-1/p).
+- Clicking a copy makes its prime the start; Backspace returns to the previous start,
+  Home to the launch N, R resets N to 1. Left/Right step one prime (Ctrl: ten), Up/Down
+  move N by the configured step, Space plays forward one prime per tick.
+- Highlight layers come from a registry (`highlight_layers.LAYERS`); "primes" rings every
+  drawn real prime. A new layer is one class plus one registry entry -- the CLI and the
+  tab's checkboxes read the registry.
+- Configurable: levels, K, axis kind, real-axis height and marker cap, multiples per
+  level, the copy and value-label caps, Up/Down step, tempo, stripe limit, marker/label/HUD
+  sizes and per-prime colors. Fields are remembered across restarts
+  (`AppSettings.tree_viz_params`).
+
 ## Architecture
 
 ```
@@ -1191,9 +1230,8 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               visualization itself as tkinter widgets; see "Ring
                               visualization" above
   mode_registry.py              MODES -- every --viz-mode the renderer can run, by name
-                              (rings, line), plus RESET_MODE (the mode R returns to).
-                              Adding a visualization mode means adding one entry here;
-                              shared/ never names a concrete mode
+                              (rings, line, tree). Adding a visualization mode means
+                              adding one entry here; shared/ never names a concrete mode
   shared/                       everything common to all visualizations -- the renderer
                               subprocess host, the interactive session, and the Tk-side
                               launcher base class
@@ -1208,10 +1246,17 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               axis_boundary_radius/flash_overlays/hud_line_colors (what
                               the main loop draws on top), tick/bump_n/scrub/clamp_n
                               (mode-specific navigation, None/False = the session's plain
-                              step), on_chunks_changed/reset_state, and the launch-time
-                              classmethods add_arguments/validate_arguments/
-                              prepare_launch (each mode owns its own CLI arguments);
-                              LaunchAborted refuses to open the window
+                              step), click/key (a click without a drag in world
+                              coordinates, Backspace/Home by name), marker_data/
+                              segment_data/world_labels (a mode's own world-space striped
+                              markers, line segments and labels), on_chunks_changed/
+                              reset_state, the class attributes reset_mode (the mode R
+                              switches to; None = stay), window_title, count_label,
+                              draws_center_marker, uses_prime_ceiling and
+                              label_font_size, and the launch-time classmethods
+                              add_arguments/validate_arguments/prepare_launch (each mode
+                              owns its own CLI arguments); LaunchAborted refuses to open
+                              the window
     session.py                     RenderSession -- the mode-independent interactive state
                               (N, camera pan/zoom, playback/tempo, scrub, HUD snapshot,
                               buffer extension) and the pure logic that transitions it,
@@ -1237,7 +1282,12 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               _recenter_render_chunks let that crawl search with a bigger
                               internal stride (_SEEK_STRIDE_CHUNK_SIZE) than the user's own
                               chunk_size, shrinking back down to it once a match is found.
-                              reset() returns to the rings mode (RESET_MODE)
+                              reset() switches to the active mode's reset_mode (rings and
+                              line return to rings, the tree stays a tree);
+                              screen_to_world/click/key forward clicks and keys to the
+                              mode and force a rebuild when it handles them. Ring/line
+                              config keys have defaults and any other mode's keys pass
+                              through to the mode config
     viz_tab_base.py                VizTabBase(BaseTab) -- the Tk side every visualization
                               sub-tab shares: launching renderer.py via LocalLoggedRunner,
                               the live console, the HUD panel fed by HUD_STATE lines, live
@@ -1249,19 +1299,29 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
     gl_setup.py                   GLResources: window/context/shader-program/VAO/VBO
                               creation -- the one piece that is NOT GL-free. The
                               axis-boundary VAO reuses the outline program over a fixed
-                              2-vertex buffer (line mode's curved-axis marker)
+                              2-vertex buffer (line mode's curved-axis marker); the
+                              segment and striped-marker programs (make_segment_vao/
+                              make_marker_vao) draw a mode's own world-space data, and
+                              label_tex_holder holds the world-label atlas
     draw_primitives.py             pure, GL-free geometry shared by every mode: the
                               hit/normal vertex-buffer split, the unit circle, the center
                               marker and flash-overlay shapes and their decay, and
                               zoom-to-cursor/fit-to-viewport camera math
-    hud_text.py                    on-canvas HUD text: the canvas header/status wrapper,
-                              Pillow rasterization (owns the guarded, optional Pillow
-                              import) and the textured-quad geometry
+    hud_text.py                    on-canvas HUD text: the canvas header/status wrapper
+                              (its count named by the mode's count_label), Pillow
+                              rasterization (owns the guarded, optional Pillow import)
+                              and the textured-quad geometry
+    world_labels.py                text labels anchored to world positions at a fixed pixel
+                              size: one Pillow atlas per rebuild (build_label_atlas),
+                              per-frame screen quads from the camera (LabelLayout), and a
+                              per-label `room` so dense labels appear only once the view
+                              is zoomed in far enough
     playback.py                    pure playback-timing logic: tempo clamp, LEFT/RIGHT scrub
                               deltas, sequential-mode ceiling guards, buffer-lookahead
                               extension math and the range-mode dynamic step size
     sources.py                     load_synthetic/load_sieve/load_archive -- the three
-                              interchangeable data sources (--source), plus
+                              interchangeable data sources (--source), load_none (no
+                              data, for a mode that computes its own), plus
                               load_archive_before -- the backward-walking counterpart used
                               by the sliding window: the `count` largest real primes
                               strictly below a boundary, via the same "list filenames,
@@ -1274,7 +1334,10 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               aEb), format_big. Named to avoid shadowing the stdlib
                               `numbers` module, since renderer.py's own directory is
                               sys.path[0] when it runs as a script
-    shaders.py                     the GLSL vertex/fragment shader source strings
+    shaders.py                     the GLSL vertex/fragment shader source strings, including
+                              the world-space segment shader and the striped point-marker
+                              shader (up to six equal vertical stripes, optional hollow
+                              center)
     stdin_commands.py              the --pipe-stdin-commands background stdin-reader thread
                               backing live pause/resume
     audio.py                       standalone tone-synthesis engine (sine/triangle/square/
@@ -1341,6 +1404,25 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               boundary marker's own radius) and
                               axis_boundary_marker_vertices
       line_hud.py                  pattern_hud_line -- the pattern/wheel/axis status line
+  tree/                         Visualization > Tree sub-tab and the "tree" viz-mode (see
+                              "Prime tree" above)
+    tree_tab.py                  TreeTab(VizTabBase) -- the sub-tab's launch form and
+                              build_tree_argv (--source none --viz-mode tree)
+    tree_mode.py                 TreeMode -- the start prime and its history (click/
+                              Backspace/Home), prime-by-prime navigation without a prime
+                              ceiling, and its own CLI arguments (--tree-*)
+    tree_layout.py               the pure arithmetic: prev/next prime (past uint64), the
+                              levels and their drawn copies with hidden counts, the node
+                              cap, slots, the real and multiples axes, column multiples,
+                              hollow and divisor flags
+    tree_draw.py                 world-space draw data of one tree: the axis (ticks or
+                              values with gap labels), copies, edges, merge lines into
+                              the columns, "+N" stubs, hollow/striped column markers,
+                              shared-value links, labels and pickable copies
+    tree_colors.py               colors by level (Okabe-Ito + Tol muted) and the per-prime
+                              "p=#rrggbb" override parser
+    tree_hud.py                  the tree's HUD lines (start, axis, one line per level)
+    highlight_layers.py          HighlightLayer + the LAYERS registry ("primes")
 
   primeatlas/benchmark/         "Benchmark" tab
   benchmark_tab.py             BenchmarkTab -- the Benchmark tab (charts + PDF export;

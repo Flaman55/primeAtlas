@@ -6,11 +6,10 @@ concrete mode.
 
 from primeatlas.visualization.rings.ring.ring_mode import RingMode
 from primeatlas.visualization.rings.line.line_mode import LineMode
+from primeatlas.visualization.tree.tree_mode import TreeMode
 
 MODES = {
     RingMode.name: RingMode,
     LineMode.name: LineMode,
+    TreeMode.name: TreeMode,
 }
-
-# The mode R (reset) returns to: the plain sequential rings view.
-RESET_MODE = RingMode.name

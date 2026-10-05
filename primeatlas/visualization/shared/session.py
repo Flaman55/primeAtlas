@@ -62,7 +62,7 @@ from primeatlas.visualization.shared.playback import (
 )
 from primeatlas.visualization.shared.hud_text import compose_hud_canvas_lines, rasterize_hud_text
 from primeatlas.visualization.shared.sources import load_archive, load_archive_before
-from primeatlas.visualization.mode_registry import MODES, RESET_MODE
+from primeatlas.visualization.mode_registry import MODES
 
 # Internal-only search stride for a background seek (see
 # start_background_seek/_effective_chunk_size): the SEARCH crawls in chunks of the app's
@@ -86,12 +86,12 @@ class RenderSession:
     buffer-extension parameters."""
 
     def __init__(self, *, primes, n, ceiling, range_mode, range_primes, range_step,
-                 track_primes, auto_orbit, enabled_ids, theta, law_mode, max_radius,
-                 tempo_ms, buffer_margin, can_extend_buffer, portal_folder,
-                 viz_mode="rings", pattern_offsets=None,
+                 max_radius, tempo_ms, buffer_margin, can_extend_buffer, portal_folder,
+                 track_primes=(), auto_orbit=False, enabled_ids=frozenset(), theta=0.5,
+                 law_mode="sliding", viz_mode="rings", pattern_offsets=None,
                  pattern_step_mode="manual", pattern_stop_on_match=False,
                  line_axis_curved=False, range_load_from=None, range_load_to=None,
-                 chunk_size=None, sliding_enabled=False):
+                 chunk_size=None, sliding_enabled=False, **extra_mode_config):
         # Prime data / sequencing.
         self.primes = primes
         self.n = n
@@ -196,6 +196,7 @@ class RenderSession:
             "theta": theta, "law_mode": law_mode,
             "pattern_offsets": pattern_offsets, "pattern_step_mode": pattern_step_mode,
             "pattern_stop_on_match": pattern_stop_on_match, "line_axis_curved": line_axis_curved,
+            **extra_mode_config,
         }
         self.mode = MODES[viz_mode](self, self._mode_config)
 
@@ -551,6 +552,30 @@ class RenderSession:
             self.cam_pan[1] += y - ly
         self.cam_last_mouse = (x, y)
 
+    def screen_to_world(self, x, y, viewport):
+        """Inverse of the shaders' camera transform screen = world * zoom + pan (with
+        the viewport-center offset on top of `cam_pan`)."""
+        width, height = viewport
+        return ((x - self.cam_pan[0] - width / 2) / self.cam_zoom,
+                (y - self.cam_pan[1] - height / 2) / self.cam_zoom)
+
+    def click(self, x, y, viewport):
+        """A left click without a drag at screen position (x, y): forwarded to the
+        active mode in world coordinates; a handled click forces a rebuild."""
+        wx, wy = self.screen_to_world(x, y, viewport)
+        if self.mode.click(wx, wy, 1.0 / self.cam_zoom):
+            self.n_force_rebuild = True
+            return True
+        return False
+
+    def key(self, name):
+        """A key the renderer forwards by name (see VizMode.key); a handled key forces
+        a rebuild."""
+        if self.mode.key(name):
+            self.n_force_rebuild = True
+            return True
+        return False
+
     def recenter(self, viewport):
         """Snap the camera back to "the whole ring field, centered, filling
         the window" -- ports the middle-click branch of on_mouse_button AND
@@ -575,10 +600,14 @@ class RenderSession:
         if self.playback_running:
             self.playback_running = False
             return None
-        if can_start_playback(self.n, self.range_mode, self.ceiling):
+        if self._may_start_playback():
             self.playback_running = True
             return None
         return "Playback: N is already at the loaded ceiling -- nothing left to advance to"
+
+    def _may_start_playback(self):
+        """can_start_playback, unless the active mode has no prime ceiling."""
+        return not self.mode.uses_prime_ceiling or can_start_playback(self.n, self.range_mode, self.ceiling)
 
     def tempo_faster(self):
         """Ports the KEY_RIGHT_BRACKET/KEY_EQUAL branch: multiplies tempo_ms
@@ -667,7 +696,7 @@ class RenderSession:
         self.scrub_held = max(0, self.scrub_held - 1)
         if self.scrub_held == 0 and self.scrub_was_running:
             self.scrub_was_running = False
-            if can_start_playback(self.n, self.range_mode, self.ceiling):
+            if self._may_start_playback():
                 self.playback_running = True
                 return None, True
             return "Playback: N is already at the loaded ceiling -- nothing left to advance to", True
@@ -676,9 +705,10 @@ class RenderSession:
     def reset(self):
         """Ports the KEY_R branch exactly: stop playback, N=1, and fall back to
         sequential mode even if --load-range was active at launch (mirrors the
-        HTML's own resetSequential()). The view returns to the rings mode
-        (mode_registry.RESET_MODE) -- a fresh one if another mode was active --
-        whose own reset_state() drops Track P and re-enables auto-orbit.
+        HTML's own resetSequential()). The view switches to the active mode's
+        `reset_mode` (the rings and line modes return to a fresh rings mode; a mode
+        with reset_mode None stays itself), whose own reset_state() then runs (rings:
+        drops Track P and re-enables auto-orbit).
 
         Bumps `_seek_epoch` so a background seek (see start_background_seek's
         own doc-comment) still in flight from BEFORE this reset() call
@@ -691,8 +721,9 @@ class RenderSession:
         self.n = 1
         self.n_force_rebuild = True
         self._seek_epoch += 1
-        if self.mode.name != RESET_MODE:
-            self.mode = MODES[RESET_MODE](self, self._mode_config)
+        target = self.mode.reset_mode or self.mode.name
+        if self.mode.name != target:
+            self.mode = MODES[target](self, self._mode_config)
         self.mode.reset_state()
 
     # ------------------------------------------------------------------
@@ -751,7 +782,8 @@ class RenderSession:
         json_line = "HUD_STATE:" + json.dumps(payload)
 
         canvas_lines = compose_hud_canvas_lines(
-            self.hud_n, self.hud_count, self.hud_lines, self.playback_running, self.tempo_ms
+            self.hud_n, self.hud_count, self.hud_lines, self.playback_running, self.tempo_ms,
+            count_label=self.mode.count_label,
         )
         line_colors = self.mode.hud_line_colors(canvas_lines)
         rgba = rasterize_hud_text(canvas_lines, font_size=hud_font_size, line_colors=line_colors)

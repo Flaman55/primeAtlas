@@ -44,6 +44,12 @@ def load_synthetic(count, seed=0):
     return np.cumsum(gaps) + 2
 
 
+def load_none():
+    """No values at all: for a viz-mode that computes everything it draws itself
+    (the prime tree) and opens at --upto."""
+    return np.empty(0, dtype=np.int64)
+
+
 def load_sieve(upto):
     """Real sieve of Eratosthenes up to `upto` (moderate scale only -- this
     is O(upto) memory as a bytearray, fine into the hundreds of millions, not

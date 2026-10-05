@@ -45,7 +45,7 @@ except ImportError:
 # Pillow) decides how it becomes pixels.
 # ---------------------------------------------------------------------------
 
-def compose_hud_canvas_lines(n, count, lines, running, tempo_ms):
+def compose_hud_canvas_lines(n, count, lines, running, tempo_ms, count_label="rings"):
     """The exact list of text lines the GL window's HUD overlay should show,
     in order: a header line (current N and how many rings are active, ports
     DrumRenderer's own N/count header), a playback-status line (mirrors the
@@ -55,9 +55,10 @@ def compose_hud_canvas_lines(n, count, lines, running, tempo_ms):
     window ranges) verbatim and in the same order.
 
     `count` is the number of ACTIVE rings at this N (same value
-    rebuild_buffer already computes), not len(lines)."""
+    rebuild_buffer already computes), not len(lines); `count_label` names what the
+    active mode counts (VizMode.count_label)."""
     status = f"Running ({tempo_ms}ms/tick)" if running else "Stopped"
-    header = f"N = {n:,}    rings = {count:,}    [{status}]"
+    header = f"N = {n:,}    {count_label} = {count:,}    [{status}]"
     return [header] + list(lines)
 
 

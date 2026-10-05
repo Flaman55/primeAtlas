@@ -11,7 +11,7 @@ every frame"; it still needs a real display/GPU to test.
 setup_gl_resources(args) returns a single GLResources instance bundling every created
 object (window, ctx, prog, hit_point_size, prog_outline, unit_circle_vao, prog_screen,
 marker_triangle_vbo/vao, marker_line_vbo/vao, flash_quad_vbo/vao, prog_text,
-hud_quad_vbo/vao, hud_tex_holder).
+hud_quad_vbo/vao, hud_tex_holder, prog_segment, prog_marker, label_tex_holder).
 """
 
 from primeatlas.visualization.shared.shaders import (
@@ -23,6 +23,10 @@ from primeatlas.visualization.shared.shaders import (
     SCREEN_FRAGMENT_SHADER,
     TEXT_VERTEX_SHADER,
     TEXT_FRAGMENT_SHADER,
+    SEGMENT_VERTEX_SHADER,
+    SEGMENT_FRAGMENT_SHADER,
+    MARKER_VERTEX_SHADER,
+    MARKER_FRAGMENT_SHADER,
 )
 from primeatlas.visualization.shared.draw_primitives import unit_circle_vertices
 from primeatlas.visualization.rings.line.line_draw import axis_boundary_marker_vertices
@@ -42,7 +46,7 @@ class GLResources:
                  unit_circle_vao, axis_boundary_vao, prog_screen, marker_triangle_vbo,
                  marker_triangle_vao, marker_line_vbo, marker_line_vao,
                  flash_quad_vbo, flash_quad_vao, prog_text, hud_quad_vbo,
-                 hud_quad_vao):
+                 hud_quad_vao, prog_segment, prog_marker):
         self.window = window
         self.ctx = ctx
         self.prog = prog
@@ -67,6 +71,11 @@ class GLResources:
         # without a `nonlocal` declaration; changing the shape would require
         # touching every call site for no behavioral gain.
         self.hud_tex_holder = {"tex": None}
+        self.prog_segment = prog_segment
+        self.prog_marker = prog_marker
+        # The world-label atlas texture of the current rebuild (see world_labels.py),
+        # same shape and lifetime convention as hud_tex_holder.
+        self.label_tex_holder = {"tex": None}
 
     def make_ring_vao(self, vbo):
         """(Re)creates the normal/hit VAO pair (see split_hit_normal_
@@ -76,10 +85,22 @@ class GLResources:
         vertex-format string ("2f 3f", "in_pos", "in_color") is written."""
         return self.ctx.vertex_array(self.prog, [(vbo, "2f 3f", "in_pos", "in_color")])
 
+    def make_segment_vao(self, vbo):
+        """VAO over VizMode.segment_data rows (x, y, r, g, b, a)."""
+        return self.ctx.vertex_array(self.prog_segment, [(vbo, "2f 4f", "in_pos", "in_color")])
 
-def setup_gl_resources(args):
-    """Creates the GLFW window, the moderngl context, and every shader
-    program/VAO/VBO _run_visualization's main loop and callbacks need,
+    def make_marker_vao(self, vbo):
+        """VAO over VizMode.marker_data rows (x, y, size, hollow, stripe count, six
+        rgb stripes)."""
+        return self.ctx.vertex_array(self.prog_marker, [(
+            vbo, "2f 1f 1f 1f 3f 3f 3f 3f 3f 3f", "in_pos", "in_size", "in_hollow", "in_count",
+            "in_c0", "in_c1", "in_c2", "in_c3", "in_c4", "in_c5",
+        )])
+
+
+def setup_gl_resources(args, window_title="PrimeAtlas -- Ring visualization"):
+    """Creates the GLFW window (titled `window_title`), the moderngl context, and every
+    shader program/VAO/VBO _run_visualization's main loop and callbacks need,
     returned as attributes of one GLResources instance."""
     import glfw
     import moderngl
@@ -95,7 +116,7 @@ def setup_gl_resources(args):
     # A separate process from the GUI: set the same AppUserModelID before the window exists,
     # so the taskbar shows the PrimeAtlas icon (grouped with the main window), not Python's.
     set_app_user_model_id()
-    window = glfw.create_window(args.width, args.height, "PrimeAtlas -- Ring visualization", None, None)
+    window = glfw.create_window(args.width, args.height, window_title, None, None)
     if not window:
         glfw.terminate()
         raise RuntimeError("glfw.create_window() failed")
@@ -212,6 +233,11 @@ def setup_gl_resources(args):
               "(run `pip install --user Pillow` to enable it). Everything "
               "else in this window is unaffected.")
 
+    # World-space line segments and striped point markers (VizMode.segment_data /
+    # marker_data); their VBOs are recreated on each rebuild, like the ring buffers.
+    prog_segment = ctx.program(vertex_shader=SEGMENT_VERTEX_SHADER, fragment_shader=SEGMENT_FRAGMENT_SHADER)
+    prog_marker = ctx.program(vertex_shader=MARKER_VERTEX_SHADER, fragment_shader=MARKER_FRAGMENT_SHADER)
+
     return GLResources(
         window=window, ctx=ctx, prog=prog, hit_point_size=hit_point_size,
         prog_outline=prog_outline, unit_circle_vao=unit_circle_vao,
@@ -221,4 +247,5 @@ def setup_gl_resources(args):
         marker_line_vao=marker_line_vao, flash_quad_vbo=flash_quad_vbo,
         flash_quad_vao=flash_quad_vao, prog_text=prog_text,
         hud_quad_vbo=hud_quad_vbo, hud_quad_vao=hud_quad_vao,
+        prog_segment=prog_segment, prog_marker=prog_marker,
     )
