@@ -575,6 +575,44 @@ PRIMECOUNT_QUERY_SCRIPT = os.path.abspath(
 # cosmetic (a stale value here would at worst show/skip the note a run late).
 PRIMESIEVE_MAX_STOP = 2 ** 64 - 1
 
+
+def plan_storage_fill(start, end, window=QUICK_GEN_MAX_WINDOW_WIDTH, primesieve_max_stop=PRIMESIEVE_MAX_STOP):
+    """Plans filling the literal range [start, end) into storage, across as many floors
+    as it touches, as (floor, target_idx_start, window_count) launches in ascending order
+    for a target_idx-capable engine (GenerationTab._launch_direct_window_range).
+
+    Everything below 10**LOW_FLOOR_CUTOFF is ONE launch, (0, 0, 1): every engine splits
+    a low-floor window starting at 10**0 into the real floors 0..6 itself. From floor
+    LOW_FLOOR_CUTOFF on, each floor touched gets [max(start, 10**f), min(end,
+    10**(f+1))) rounded out to whole windows -- never past the floor's own upper edge,
+    since 10**f is a multiple of `window` there. A floor straddling the primesieve
+    ceiling is split at the last window lying wholly under it, so primesieve covers
+    what it can and only the rest goes to the engine without that limit (the dispatch
+    decides per launch). An empty or inverted request plans nothing."""
+    start = max(start, 1)
+    if end <= start:
+        return []
+    launches = []
+    low_top = 10 ** LOW_FLOOR_CUTOFF
+    if start < low_top:
+        launches.append((0, 0, 1))
+        start = low_top
+    floor = len(str(start)) - 1
+    while start < end and 10 ** floor < end:
+        base = 10 ** floor
+        lo = max(start, base)
+        hi = min(end, 10 ** (floor + 1))
+        idx_start = (lo - base) // window
+        idx_end = -(-(hi - base) // window)
+        split = (primesieve_max_stop + 1 - base) // window
+        if idx_start < split < idx_end:
+            launches.append((floor, idx_start, split - idx_start))
+            launches.append((floor, split, idx_end - split))
+        else:
+            launches.append((floor, idx_start, idx_end - idx_start))
+        floor += 1
+    return launches
+
 # Width (multiplier of QUICK_GEN_MAX_WINDOW_WIDTH) spinbox bound for primesieve mode --
 # deliberately NOT the [1, 1000] cap every other mode's Width field uses (that cap exists
 # because those engines pay a real RAM cost of window_count * window_width / 8 bytes for a
