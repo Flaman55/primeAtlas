@@ -1040,7 +1040,10 @@ columns without any number -- no labels, no on-canvas HUD.
 - Scale: every copy draws at most K child copies (default 3) and shows the rest of its
   p-1 branches as one dashed stub labelled "+N"; copies on the last drawn level show all
   of them as hidden. The drawn copies per level are prod min(p-1, K), the full tree's
-  prod (p-1) (in the HUD); a node cap leaves out deeper levels.
+  prod (p-1) (in the HUD); a node cap leaves out deeper levels. The levels field is a
+  1..30 spinbox; the default cap (100,000 copies) fits 12 full levels at K = 3.
+  A live note under the tree options (`tree_layout.copy_budget`) tells how many copies
+  the levels need and, when the cap cuts them, how many levels will be drawn.
 - Every copy of p, 2 and 3 included, has a merge line to p's column at 2p, so the lines of
   all copies join in one column. A multiple already caught by a smaller prime is drawn
   hollow; stripes show the distinct level primes dividing it in ascending order, one color

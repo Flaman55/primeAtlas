@@ -32,7 +32,7 @@ _DEFAULTS = {
     "tree_depth": 8,
     "tree_branches": 3,
     "tree_height": 1.5,
-    "tree_max_nodes": 2000,
+    "tree_max_nodes": 100_000,
     "tree_max_points": 500_000,
     "tree_multiples": 4,
     "tree_axis": "auto",
@@ -42,6 +42,10 @@ _DEFAULTS = {
     "tree_point_size": 15.0,
     "tree_label_font_size": 35,
 }
+
+# Upper bound of --tree-depth (the tab's levels spinbox uses it too); the copy cap still
+# cuts deeper levels.
+TREE_MAX_DEPTH = 30
 
 # A click within this many pixels of a node's center picks it.
 _PICK_RADIUS_PX = 12.0
@@ -117,8 +121,8 @@ class TreeMode(VizMode):
 
     @classmethod
     def validate_arguments(cls, parser, args):
-        if args.tree_depth < 1:
-            parser.error(f"--tree-depth must be >= 1, got {args.tree_depth}")
+        if not 1 <= args.tree_depth <= TREE_MAX_DEPTH:
+            parser.error(f"--tree-depth must be in 1..{TREE_MAX_DEPTH}, got {args.tree_depth}")
         if args.tree_branches < 1:
             parser.error(f"--tree-branches must be >= 1, got {args.tree_branches}")
         if args.tree_height < 1:

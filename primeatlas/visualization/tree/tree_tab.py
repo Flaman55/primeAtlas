@@ -26,7 +26,8 @@ from ...generation.generation_console import GenerationConsole
 from ..assembly.assembly_argv import build_assembly_argv
 from ..shared.viz_tab_base import VizTabBase
 from .highlight_layers import LAYERS
-from .tree_layout import AXIS_AUTO, AXIS_KINDS
+from .tree_layout import AXIS_AUTO, AXIS_KINDS, copy_budget
+from .tree_mode import TREE_MAX_DEPTH
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 RENDERER_SCRIPT = os.path.join(os.path.dirname(_THIS_DIR), "shared", "renderer.py")
@@ -34,6 +35,8 @@ RENDERER_SCRIPT = os.path.join(os.path.dirname(_THIS_DIR), "shared", "renderer.p
 MODE_TREE = "tree"
 MODE_ASSEMBLY = "assembly"
 MODES = (MODE_TREE, MODE_ASSEMBLY)
+# Foreground of the levels note when the copy cap cuts levels.
+_CUT_NOTE_COLOR = "#d08000"
 
 
 def build_tree_argv(n, python_executable=None, depth=None, branches=None, height=None, n_step=None,
@@ -68,8 +71,8 @@ def build_tree_argv(n, python_executable=None, depth=None, branches=None, height
 
 
 # Entries: (attribute, label key, saved-params key, first-run default, kind), in form
-# order; kind "int" is parsed with _eval_quick_number, "float" with float(), "text" is
-# forwarded as typed. Common and tree labels are tree.* keys, assembly labels assembly.*.
+# order; kind "int" is parsed with _eval_quick_number, "spin" too (a 1..TREE_MAX_DEPTH
+# spinbox), "float" with float(), "text" is forwarded as typed. Common and tree labels are tree.* keys, assembly labels assembly.*.
 _COMMON_FIELDS = (
     ("max_labels_entry", "max_labels_label", "max_labels", "3000", "int"),
     ("hud_font_size_entry", "hud_font_size_label", "hud_font_size", "35", "int"),
@@ -77,11 +80,11 @@ _COMMON_FIELDS = (
     ("node_size_entry", "node_size_label", "node_size", "15", "float"),
 )
 _TREE_FIELDS = (
-    ("depth_entry", "depth_label", "depth", "8", "int"),
+    ("depth_entry", "depth_label", "depth", "8", "spin"),
     ("branches_entry", "branches_label", "drawn_branches", "3", "int"),
     ("n_step_entry", "n_step_label", "n_step", "1", "int"),
     ("tempo_ms_entry", "tempo_label", "tempo_ms", "120", "int"),
-    ("max_nodes_entry", "max_nodes_label", "max_nodes", "2000", "int"),
+    ("max_nodes_entry", "max_nodes_label", "max_nodes", "100000", "int"),
     ("multiples_entry", "multiples_label", "multiples", "4", "int"),
     ("max_points_entry", "max_points_label", "max_points", "500000", "int"),
     ("height_entry", "height_label", "height", "1.5", "float"),
@@ -105,7 +108,7 @@ _ASSEMBLY_FIELDS = (
 def _parse(text, kind):
     if not text:
         return None
-    if kind == "int":
+    if kind in ("int", "spin"):
         parsed = _eval_quick_number(text)
         return parsed if isinstance(parsed, int) else None
     if kind == "float":
@@ -137,11 +140,14 @@ class TreeTab(VizTabBase):
         return self.T(f"assembly.{key}", **kwargs)
 
     def _add_entries(self, parent, fields, saved, label):
-        for attr, label_key, saved_key, default, _kind in fields:
+        for attr, label_key, saved_key, default, kind in fields:
             row = ttk.Frame(parent)
             row.pack(fill="x", padx=8, pady=(0, 4))
             ttk.Label(row, text=label(label_key)).pack(side="left")
-            entry = ttk.Entry(row, width=12)
+            if kind == "spin":
+                entry = ttk.Spinbox(row, from_=1, to=TREE_MAX_DEPTH, increment=1, width=10)
+            else:
+                entry = ttk.Entry(row, width=12)
             entry.insert(0, saved.get(saved_key, default))
             entry.pack(side="left", padx=(6, 0))
             setattr(self, attr, entry)
@@ -209,6 +215,13 @@ class TreeTab(VizTabBase):
             saved_axis if saved_axis in AXIS_KINDS else AXIS_AUTO))
         self.axis_combo.pack(side="left", padx=(6, 0))
         self._add_entries(tree_frame, _TREE_FIELDS, saved, self._tk)
+        self.depth_info_var = tk.StringVar()
+        self.depth_info_label = ttk.Label(tree_frame, textvariable=self.depth_info_var, wraplength=700,
+                                          justify="left")
+        self.depth_info_label.pack(anchor="w", padx=8, pady=(0, 6))
+        self.depth_entry.configure(command=self._refresh_depth_info)
+        for entry in (self.n_entry, self.depth_entry, self.branches_entry, self.max_nodes_entry):
+            entry.bind("<KeyRelease>", lambda _e: self._refresh_depth_info(), add="+")
         appearance_frame = ttk.LabelFrame(self.tree_options, text=self._tk("section_appearance"))
         appearance_frame.pack(fill="x", pady=(0, 8))
         self._add_entries(appearance_frame, _TREE_APPEARANCE_FIELDS, saved, self._tk)
@@ -247,6 +260,28 @@ class TreeTab(VizTabBase):
             getattr(self, attr) for attr, *_ in
             _COMMON_FIELDS + _TREE_FIELDS + _TREE_APPEARANCE_FIELDS + _ASSEMBLY_FIELDS]
         self._apply_mode()
+        self._refresh_depth_info()
+
+    def _refresh_depth_info(self):
+        """The note under the tree options: the copies the levels need and, when the copy
+        cap cuts them, how many levels will be drawn (empty for invalid input)."""
+        values = []
+        for entry in (self.n_entry, self.depth_entry, self.branches_entry, self.max_nodes_entry):
+            text = entry.get().strip()
+            value = _eval_quick_number(text) if text else None
+            values.append(value if isinstance(value, int) else None)
+        n, depth, branches, cap = values
+        if None in values or n < 0 or not 1 <= depth <= TREE_MAX_DEPTH or branches < 1 or cap < 1:
+            self.depth_info_var.set("")
+            return
+        needed, drawn = copy_budget(n, depth, branches, cap)
+        if drawn < depth:
+            self.depth_info_var.set(self._tk("depth_info_cut", needed=f"{needed:,}", cap=f"{cap:,}",
+                                             drawn=drawn, depth=depth))
+            self.depth_info_label.configure(foreground=_CUT_NOTE_COLOR)
+        else:
+            self.depth_info_var.set(self._tk("depth_info_full", needed=f"{needed:,}", depth=depth))
+            self.depth_info_label.configure(foreground="")
 
     # -- mode -------------------------------------------------------------------
 

@@ -12,7 +12,11 @@ Spec:
      renderer (a fake script here) with the tab's field values, locks the launch fields
      while it runs and unlocks them once it exits; the fields are persisted as
      tree_viz_params. On a first run (nothing saved) the fields hold the defaults:
-     8 levels, HUD and label font 35, node and column marker size 15.
+     8 levels, HUD and label font 35, node and column marker size 15, copy cap 100000.
+     The levels field is a spinbox from 1 to TREE_MAX_DEPTH, step 1. Next to it a live note
+     tells how many copies the levels need and, when the copy cap cuts them, how many
+     levels will be drawn; it follows n, levels, branches and the cap, and is empty for
+     invalid input.
   D. Locales: every tree.* key used exists in both strings_en.json and strings_pl.json
      (the base's storage-fill dialog keys included).
   E. Empty storage (no prime window anywhere): Start asks for a range to generate,
@@ -144,9 +148,38 @@ def section_bc_app():
     tab = app.tree_tab_widget
     check(str(tab.master) == str(app.visualization_tree_tab), "TreeTab is built inside the Tree sub-tab")
     first_run = {"depth_entry": "8", "hud_font_size_entry": "35", "label_font_size_entry": "35",
-                 "node_size_entry": "15", "point_size_entry": "15", "branches_entry": "3"}
+                 "node_size_entry": "15", "point_size_entry": "15", "branches_entry": "3",
+                 "max_nodes_entry": "100000"}
     got = {attr: getattr(tab, attr).get() for attr in first_run}
     check(got == first_run, f"first-run field defaults (got {got})")
+    from tkinter import ttk
+    from primeatlas.visualization.tree.tree_mode import TREE_MAX_DEPTH
+    spin = tab.depth_entry
+    check(isinstance(spin, ttk.Spinbox), f"the levels field is a spinbox (got {type(spin).__name__})")
+    check(float(spin.cget("from")) == 1 and float(spin.cget("to")) == TREE_MAX_DEPTH
+          and float(spin.cget("increment")) == 1, "spinbox range 1..TREE_MAX_DEPTH, step 1")
+    for entry, text in ((tab.n_entry, "2"), (tab.depth_entry, "15"), (tab.branches_entry, "3"),
+                        (tab.max_nodes_entry, "2000")):
+        entry.delete(0, "end")
+        entry.insert(0, text)
+    tab._refresh_depth_info()
+    check(tab.depth_info_var.get() == T("tree.depth_info_cut", needed="1,594,324", cap="2,000", drawn=8, depth=15),
+          f"cut note (got {tab.depth_info_var.get()!r})")
+    tab.max_nodes_entry.delete(0, "end")
+    tab.max_nodes_entry.insert(0, "10**7")
+    bound = all(entry.bind("<KeyRelease>") for entry in
+                (tab.n_entry, tab.depth_entry, tab.branches_entry, tab.max_nodes_entry))
+    check(bound and str(tab.depth_entry.cget("command")), "key releases and the spinbox arrows refresh the note")
+    tab._refresh_depth_info()
+    check(tab.depth_info_var.get() == T("tree.depth_info_full", needed="1,594,324", depth=15),
+          f"a cap of 10**7: all levels drawn (got {tab.depth_info_var.get()!r})")
+    tab.depth_entry.delete(0, "end")
+    tab.depth_entry.insert(0, "x")
+    tab._refresh_depth_info()
+    check(tab.depth_info_var.get() == "", "invalid input: no note")
+    for entry, text in ((tab.depth_entry, "8"), (tab.max_nodes_entry, "100000")):
+        entry.delete(0, "end")
+        entry.insert(0, text)
 
     tab.n_entry.delete(0, "end")
     tab.n_entry.insert(0, "garbage")

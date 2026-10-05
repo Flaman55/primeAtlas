@@ -201,7 +201,21 @@ def _assign_slots(root):
     return next_slot
 
 
-def build_tree(n, depth, branches=3, max_nodes=2000, height=1.5, max_points=500_000, multiples=4,
+def copy_budget(n, depth, branches, max_nodes):
+    """(needed, drawn): the copies `depth` levels from prev_prime(n) need with `branches`
+    drawn children per copy, and how many levels build_tree draws under `max_nodes`."""
+    primes = [prev_prime(n)]
+    while len(primes) < depth:
+        primes.append(next_prime(primes[-1]))
+    needed = 0
+    copies = 1
+    for p in primes:
+        needed += copies
+        copies *= min(p - 1, branches)
+    return needed, _drawn_level_count(primes, branches, max_nodes)
+
+
+def build_tree(n, depth, branches=3, max_nodes=100_000, height=1.5, max_points=500_000, multiples=4,
                axis=AXIS_AUTO):
     """The tree of `depth` consecutive primes from prev_prime(n), cut to max_nodes drawn
     copies, and its vertical axis (`axis`: AXIS_AUTO, AXIS_REAL or AXIS_MULTIPLES)."""
