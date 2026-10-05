@@ -21,7 +21,9 @@ Spec:
      is nowhere to go.
   E. Reset (R) stays in the tree window: N = 1 (start 2), mode still "tree", the
      history cleared. The rings/line windows still reset to "rings".
-  F. CLI: the tree's arguments exist with sane defaults, prepare_launch turns them
+  F. CLI: the tree's arguments exist with sane defaults (8 levels, a 100000-copy cap that
+     fits 12 full levels), --tree-depth is limited to 1..TREE_MAX_DEPTH (30), prepare_launch
+     turns them
      into config keys, validate_arguments rejects out-of-range values.
   G. Session camera: screen_to_world inverts the shader transform.
   H. Bare diagram (tree_bare, --tree-bare): the same markers and segments, but no world
@@ -201,6 +203,12 @@ def section_f_cli():
     check(args.tree_depth == 8 and args.tree_node_size == 15.0 and args.tree_label_font_size == 35,
           f"defaults: 8 levels, node size 15, label font 35 (got {args.tree_depth}, "
           f"{args.tree_node_size}, {args.tree_label_font_size})")
+    from primeatlas.visualization.tree.tree_mode import TREE_MAX_DEPTH
+    from primeatlas.visualization.tree.tree_layout import build_tree
+    check(TREE_MAX_DEPTH == 30, f"TREE_MAX_DEPTH = 30 (got {TREE_MAX_DEPTH})")
+    check(args.tree_max_nodes == 100000, f"default copy cap 100000 (got {args.tree_max_nodes})")
+    tree12 = build_tree(2, 12, max_nodes=args.tree_max_nodes)
+    check(len(tree12.levels) == 12 and not tree12.levels_cut, "12 levels fit the default cap uncut")
     TreeMode.validate_arguments(parser, args)
     launch = SimpleNamespace(primes=None, n=1, range_mode=False, range_primes=None)
     config = TreeMode.prepare_launch(args, launch)
@@ -222,7 +230,9 @@ def section_f_cli():
 
     strict = _Parser()
     TreeMode.add_arguments(strict)
-    for bad in (["--tree-depth", "0"], ["--tree-branches", "0"], ["--tree-height", "0.5"],
+    TreeMode.validate_arguments(strict, strict.parse_args(["--tree-depth", "30"]))
+    check(True, "--tree-depth 30 is accepted")
+    for bad in (["--tree-depth", "0"], ["--tree-depth", "31"], ["--tree-branches", "0"], ["--tree-height", "0.5"],
                 ["--tree-max-points", "0"], ["--tree-max-stripes", "7"], ["--tree-max-nodes", "0"],
                 ["--tree-multiples", "1"],
                 ["--tree-colors", "4=#ff0000"], ["--tree-highlight", "nope"]):

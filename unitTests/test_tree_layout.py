@@ -29,6 +29,8 @@ Spec:
      for 2 <= k <= multiples.
   I. Columns: a multiple k*p is hollow when k has a prime factor smaller than p;
      divisor flags mark the level primes dividing a column value.
+  J. copy_budget(n, depth, branches, max_nodes) -> (needed, drawn): the copies all `depth`
+     levels need and how many levels the cap lets build_tree draw (the same count).
 
 Usage:
     python unitTests/test_tree_layout.py
@@ -163,6 +165,21 @@ def section_h_multiples_axis():
     check(list(t.axis.values) == [2, 3, 4, 5, 6, 8, 9, 10, 12, 15, 20], f"shared values appear once (got {list(t.axis.values)})")
 
 
+def section_j_budget():
+    print("\n--- J: copy budget ---")
+    from primeatlas.visualization.tree.tree_layout import build_tree, copy_budget
+    check(copy_budget(2, 8, 3, 2000) == (730, 8), f"8 levels from 2: 730 copies, all drawn (got {copy_budget(2, 8, 3, 2000)})")
+    needed, drawn = copy_budget(2, 15, 3, 2000)
+    check(drawn == 8 and needed == sum([1, 1] + [2 * 3 ** k for k in range(13)]),
+          f"15 levels, cap 2000: 8 drawn of {needed} needed (got {needed}, {drawn})")
+    for n, depth, branches, cap in ((2, 12, 3, 100000), (10 ** 6, 9, 2, 300), (7, 6, 3, 10), (10 ** 25, 5, 3, 50)):
+        tree = build_tree(n, depth, branches=branches, max_nodes=cap)
+        check(copy_budget(n, depth, branches, cap)[1] == len(tree.levels),
+              f"drawn levels match build_tree for n={n}, depth={depth}, K={branches}, cap={cap}")
+    full = build_tree(2, 9, branches=3, max_nodes=10 ** 9)
+    check(copy_budget(2, 9, 3, 10 ** 9)[0] == len(full.nodes), "needed copies = the uncapped tree's copies")
+
+
 def section_i_columns():
     print("\n--- I: hollow and divisor flags ---")
     from primeatlas.visualization.tree.tree_layout import hollow_flags, divisor_flags
@@ -182,7 +199,8 @@ def section_i_columns():
 
 if __name__ == "__main__":
     for section in (section_a_prev_next, section_b_levels, section_c_hidden, section_d_cap, section_e_slots,
-                    section_f_axis_choice, section_g_real_axis, section_h_multiples_axis, section_i_columns):
+                    section_f_axis_choice, section_g_real_axis, section_h_multiples_axis, section_i_columns,
+                    section_j_budget):
         try:
             section()
         except Exception as e:  # noqa: BLE001
