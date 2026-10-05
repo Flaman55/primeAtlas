@@ -1565,10 +1565,11 @@ startup_dependency_check.py  pre-import check of requirements.txt's native-Windo
                               packages, run by prime_atlas_v2.py BEFORE `from primeatlas
                               import` (primeatlas/__init__.py itself needs numpy); offers
                               a live-logged `pip install` of whatever is missing.
-                              Only numpy blocks startup; moderngl/glfw (Ring viz) don't.
+                              Only numpy blocks startup; moderngl/glfw (visualizations)
+                              and Pillow (their HUD/label text) don't.
                               Imports nothing from primeatlas -- reads locale strings
                               and the saved language straight from the JSON files
-requirements.txt             numpy, moderngl, glfw -- read by the startup check and the
+requirements.txt             numpy, moderngl, glfw, Pillow -- read by the startup check and the
                               Windows installer
 Run_PrimeAtlas.bat           launches the GUI, visible console (errors surfaced directly)
 Run_PrimeAtlas_Hidden.vbs    launches the GUI with no console window

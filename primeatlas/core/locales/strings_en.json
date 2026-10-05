@@ -912,7 +912,7 @@
   "rings.status_storage_fill_failed": "Generating the storage did not finish (error or Stop) -- the visualization was not started.",
   "depcheck.title": "PrimeAtlas -- missing Python packages",
   "depcheck.ask_blocking": "PrimeAtlas cannot start without these Python packages:\n\n{packages}\n\nInstall them now? (requires internet access)",
-  "depcheck.ask_optional": "These Python packages are needed for the Ring visualization:\n\n{packages}\n\nInstall them now? (requires internet access; PrimeAtlas starts either way)",
+  "depcheck.ask_optional": "These Python packages are needed for the visualizations:\n\n{packages}\n\nInstall them now? (requires internet access; PrimeAtlas starts either way)",
   "depcheck.installing": "Installing: {packages}",
   "depcheck.install_failed": "Installation failed (pip exit code {code}).\n\nYou can install manually from a terminal:\n{command}",
   "depcheck.still_missing": "Installation finished, but these packages still cannot be imported: {packages}\n\nTry manually from a terminal:\n{command}",

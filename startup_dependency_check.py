@@ -1,6 +1,6 @@
 """
 startup_dependency_check.py -- checks the native-Windows Python packages PrimeAtlas needs
-(requirements.txt: numpy, moderngl, glfw) BEFORE prime_atlas_v2.py imports the primeatlas
+(requirements.txt: numpy, moderngl, glfw, Pillow) BEFORE prime_atlas_v2.py imports the primeatlas
 package, and offers to pip-install whatever is missing.
 
 Why this lives at the repo root and not inside primeatlas/: primeatlas/__init__.py itself
@@ -12,9 +12,9 @@ re-implements the one-line pip argv instead of reusing generation.py's
 build_pip_install_argv().
 
 Only numpy is startup-blocking (REQUIRED_FOR_STARTUP); moderngl/glfw are needed only by the
-Ring visualization renderer, so declining them (or a failed install) still lets the app
-start. Nothing missing => no Tk window is created at all, so a normal launch pays only a
-few importlib.util.find_spec() calls.
+visualization renderer and Pillow only for its text (HUD, labels), so declining them (or a
+failed install) still lets the app start. Nothing missing => no Tk window is created at all,
+so a normal launch pays only a few importlib.util.find_spec() calls.
 
 The decision flow (ensure_dependencies) takes every UI/subprocess boundary as an injectable
 callable, same "thin, separately named I/O wrappers" split as primeatlas/settings/
@@ -39,7 +39,7 @@ LANGUAGE_SETTINGS_PATH = os.path.join(LOCALES_DIR, "language_settings.json")
 ICON_PATH = os.path.join(_REPO_ROOT, "primeatlas", "core", "assets", "primeatlas.ico")
 
 # Used only if requirements.txt is missing (e.g. a partial copy of the repo).
-DEFAULT_REQUIREMENTS = ("numpy", "moderngl", "glfw")
+DEFAULT_REQUIREMENTS = ("numpy", "moderngl", "glfw", "Pillow")
 # Without these the primeatlas package cannot even be imported.
 REQUIRED_FOR_STARTUP = ("numpy",)
 
@@ -49,8 +49,8 @@ FALLBACK_STRINGS = {
     "depcheck.title": "PrimeAtlas -- missing Python packages",
     "depcheck.ask_blocking": "PrimeAtlas cannot start without these Python packages:\n\n"
                              "{packages}\n\nInstall them now? (requires internet access)",
-    "depcheck.ask_optional": "These Python packages are needed for the Ring "
-                             "visualization:\n\n{packages}\n\nInstall them now? "
+    "depcheck.ask_optional": "These Python packages are needed for the "
+                             "visualizations:\n\n{packages}\n\nInstall them now? "
                              "(requires internet access; PrimeAtlas starts either way)",
     "depcheck.installing": "Installing: {packages}",
     "depcheck.install_failed": "Installation failed (pip exit code {code}).\n\n"
@@ -93,8 +93,13 @@ def load_requirements(path=REQUIREMENTS_PATH):
         return list(DEFAULT_REQUIREMENTS)
 
 
+# pip names whose import name is not the lowercased pip name.
+_IMPORT_NAMES = {"pillow": "PIL"}
+
+
 def import_name_for(pip_name):
-    return pip_name.lower().replace("-", "_")
+    key = pip_name.lower().replace("-", "_")
+    return _IMPORT_NAMES.get(key, key)
 
 
 def find_missing(pip_names, find_spec=importlib.util.find_spec):
