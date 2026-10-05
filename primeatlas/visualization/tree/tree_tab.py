@@ -1,11 +1,20 @@
 """
-tree_tab.py -- TreeTab(VizTabBase), the Visualization > Tree sub-tab. Launches the shared
-GPU renderer (primeatlas/visualization/shared/renderer.py) in its own window and process
-with --viz-mode tree --source none: the prime tree computes every value itself, so
-it needs no storage folder and no loaded primes. With an empty storage, Start still
-offers to generate a range first (as the Rings sub-tab does); Cancel starts the tree
-without it, as the bare diagram (--tree-bare, no numbers). Launching, the console, the HUD panel
-and live pause/resume come from VizTabBase; this tab builds its form and the argv.
+tree_tab.py -- TreeTab(VizTabBase), the Visualization > Tree sub-tab. It has two
+visualization modes, both launching the shared GPU renderer
+(primeatlas/visualization/shared/renderer.py) in its own window and process with
+--source none (everything is computed, no storage needed):
+  - tree: --viz-mode tree, the prime tree (build_tree_argv);
+  - assembly: --viz-mode assembly, the wheel assembled level by level
+    (assembly/assembly_argv.py's build_assembly_argv).
+The common options (n, value-label cap, HUD and label font, node size, colors) are one set
+of widgets for both modes; the mode-specific options are shown for the selected mode
+only. Console and status texts come from the launched mode's locale namespace ("tree" or
+"assembly").
+
+With an empty storage, Start still offers to generate a range first (as the Rings
+sub-tab does); Cancel starts the selected mode without numbers (--tree-bare /
+--assembly-bare). Launching, the console, the HUD panel and live pause/resume come from
+VizTabBase; this tab builds its form and the argv.
 """
 import os
 import sys
@@ -14,12 +23,17 @@ from tkinter import ttk, messagebox
 
 from ...generation.generation import LocalLoggedRunner, _eval_quick_number, find_highest_populated_floor
 from ...generation.generation_console import GenerationConsole
+from ..assembly.assembly_argv import build_assembly_argv
 from ..shared.viz_tab_base import VizTabBase
 from .highlight_layers import LAYERS
 from .tree_layout import AXIS_AUTO, AXIS_KINDS
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 RENDERER_SCRIPT = os.path.join(os.path.dirname(_THIS_DIR), "shared", "renderer.py")
+
+MODE_TREE = "tree"
+MODE_ASSEMBLY = "assembly"
+MODES = (MODE_TREE, MODE_ASSEMBLY)
 
 
 def build_tree_argv(n, python_executable=None, depth=None, branches=None, height=None, n_step=None,
@@ -53,26 +67,53 @@ def build_tree_argv(n, python_executable=None, depth=None, branches=None, height
     return argv
 
 
-# (attribute, locale key, saved-params key, first-run default) for every plain numeric
-# entry, in form order; parsed with _eval_quick_number (ints) or float().
-_INT_FIELDS = (
-    ("depth_entry", "depth_label", "depth", "8"),
-    ("branches_entry", "branches_label", "drawn_branches", "3"),
-    ("n_step_entry", "n_step_label", "n_step", "1"),
-    ("tempo_ms_entry", "tempo_label", "tempo_ms", "120"),
-    ("max_nodes_entry", "max_nodes_label", "max_nodes", "2000"),
-    ("multiples_entry", "multiples_label", "multiples", "4"),
-    ("max_points_entry", "max_points_label", "max_points", "500000"),
-    ("max_labels_entry", "max_labels_label", "max_labels", "3000"),
-    ("max_stripes_entry", "max_stripes_label", "max_stripes", "4"),
-    ("hud_font_size_entry", "hud_font_size_label", "hud_font_size", "35"),
-    ("label_font_size_entry", "label_font_size_label", "label_font_size", "35"),
+# Entries: (attribute, label key, saved-params key, first-run default, kind), in form
+# order; kind "int" is parsed with _eval_quick_number, "float" with float(), "text" is
+# forwarded as typed. Common and tree labels are tree.* keys, assembly labels assembly.*.
+_COMMON_FIELDS = (
+    ("max_labels_entry", "max_labels_label", "max_labels", "3000", "int"),
+    ("hud_font_size_entry", "hud_font_size_label", "hud_font_size", "35", "int"),
+    ("label_font_size_entry", "label_font_size_label", "label_font_size", "35", "int"),
+    ("node_size_entry", "node_size_label", "node_size", "15", "float"),
 )
-_FLOAT_FIELDS = (
-    ("height_entry", "height_label", "height", "1.5"),
-    ("node_size_entry", "node_size_label", "node_size", "15"),
-    ("point_size_entry", "point_size_label", "point_size", "15"),
+_TREE_FIELDS = (
+    ("depth_entry", "depth_label", "depth", "8", "int"),
+    ("branches_entry", "branches_label", "drawn_branches", "3", "int"),
+    ("n_step_entry", "n_step_label", "n_step", "1", "int"),
+    ("tempo_ms_entry", "tempo_label", "tempo_ms", "120", "int"),
+    ("max_nodes_entry", "max_nodes_label", "max_nodes", "2000", "int"),
+    ("multiples_entry", "multiples_label", "multiples", "4", "int"),
+    ("max_points_entry", "max_points_label", "max_points", "500000", "int"),
+    ("height_entry", "height_label", "height", "1.5", "float"),
 )
+_TREE_APPEARANCE_FIELDS = (
+    ("max_stripes_entry", "max_stripes_label", "max_stripes", "4", "int"),
+    ("point_size_entry", "point_size_label", "point_size", "15", "float"),
+)
+_ASSEMBLY_FIELDS = (
+    ("assembly_depth_entry", "depth_label", "assembly_depth", "6", "int"),
+    ("frames_entry", "frames_label", "frames", "12", "int"),
+    ("assembly_tempo_ms_entry", "tempo_label", "assembly_tempo_ms", "60", "int"),
+    ("lane_dots_entry", "lane_dots_label", "lane_dots", "48", "int"),
+    ("detail_cells_entry", "detail_cells_label", "detail_cells", "2310", "int"),
+    ("max_lanes_entry", "max_lanes_label", "max_lanes", "200000", "int"),
+    ("cell_size_entry", "cell_size_label", "cell_size", "12", "float"),
+    ("cell_spacing_entry", "cell_spacing_label", "cell_spacing", "auto", "text"),
+)
+
+
+def _parse(text, kind):
+    if not text:
+        return None
+    if kind == "int":
+        parsed = _eval_quick_number(text)
+        return parsed if isinstance(parsed, int) else None
+    if kind == "float":
+        try:
+            return float(text)
+        except ValueError:
+            return None
+    return text
 
 
 class TreeTab(VizTabBase):
@@ -83,7 +124,27 @@ class TreeTab(VizTabBase):
         super().__init__(parent, get_portal_folder, status_var, translator, totals_progress,
                          app_settings)
         self._offer_generate_storage = offer_generate_storage
+        # The locale namespace of the launched (or launching) mode; see _tk.
+        self._active_prefix = MODE_TREE
+        self._launched_mode = MODE_TREE
         self._build_ui()
+
+    def _tk(self, key, **kwargs):
+        """Translation in the active mode's namespace ("tree" or "assembly")."""
+        return self.T(f"{self._active_prefix}.{key}", **kwargs)
+
+    def _ak(self, key, **kwargs):
+        return self.T(f"assembly.{key}", **kwargs)
+
+    def _add_entries(self, parent, fields, saved, label):
+        for attr, label_key, saved_key, default, _kind in fields:
+            row = ttk.Frame(parent)
+            row.pack(fill="x", padx=8, pady=(0, 4))
+            ttk.Label(row, text=label(label_key)).pack(side="left")
+            entry = ttk.Entry(row, width=12)
+            entry.insert(0, saved.get(saved_key, default))
+            entry.pack(side="left", padx=(6, 0))
+            setattr(self, attr, entry)
 
     def _build_ui(self):
         saved = (self._app_settings.tree_viz_params if self._app_settings else None) or {}
@@ -99,19 +160,46 @@ class TreeTab(VizTabBase):
                                       state="disabled")
         self.stop_button.pack(side="left", padx=(6, 0))
 
-        ttk.Label(container, text=self._tk("intro"), wraplength=760, justify="left").pack(anchor="w", pady=(0, 10))
+        mode_row = ttk.Frame(container)
+        mode_row.pack(fill="x", pady=(0, 8))
+        ttk.Label(mode_row, text=self._tk("mode_label")).pack(side="left")
+        self._mode_choices = [(mode, self._tk(f"mode_{mode}")) for mode in MODES]
+        saved_mode = saved.get("viz_mode", MODE_TREE)
+        self.mode_combo = ttk.Combobox(mode_row, state="readonly", width=28,
+                                       values=[label for _mode, label in self._mode_choices])
+        self.mode_combo.current(MODES.index(saved_mode if saved_mode in MODES else MODE_TREE))
+        self.mode_combo.pack(side="left", padx=(6, 0))
+        self.mode_combo.bind("<<ComboboxSelected>>", lambda _e: self._apply_mode())
 
-        tree_frame = ttk.LabelFrame(container, text=self._tk("section_tree"))
-        tree_frame.pack(fill="x", pady=(0, 8))
-        n_row = ttk.Frame(tree_frame)
+        self.intro_label = ttk.Label(container, wraplength=760, justify="left")
+        self.intro_label.pack(anchor="w", pady=(0, 10))
+
+        common_frame = ttk.LabelFrame(container, text=self._tk("section_common"))
+        common_frame.pack(fill="x", pady=(0, 8))
+        n_row = ttk.Frame(common_frame)
         n_row.pack(fill="x", padx=8, pady=(6, 4))
-        ttk.Label(n_row, text=self._tk("field_n")).pack(side="left")
+        self.n_label = ttk.Label(n_row)
+        self.n_label.pack(side="left")
         self.n_entry = ttk.Entry(n_row, width=28)
         self.n_entry.insert(0, saved.get("n", "2"))
         self.n_entry.pack(side="left", padx=(6, 0))
+        self._add_entries(common_frame, _COMMON_FIELDS, saved, self._tk)
+        colors_row = ttk.Frame(common_frame)
+        colors_row.pack(fill="x", padx=8, pady=(0, 6))
+        ttk.Label(colors_row, text=self._tk("colors_label")).pack(side="left")
+        self.colors_entry = ttk.Entry(colors_row, width=40)
+        self.colors_entry.insert(0, saved.get("colors", ""))
+        self.colors_entry.pack(side="left", padx=(6, 0))
 
+        self._options_holder = ttk.Frame(container)
+        self._options_holder.pack(fill="x")
+
+        # Tree-only options.
+        self.tree_options = ttk.Frame(self._options_holder)
+        tree_frame = ttk.LabelFrame(self.tree_options, text=self._tk("section_tree"))
+        tree_frame.pack(fill="x", pady=(0, 8))
         axis_row = ttk.Frame(tree_frame)
-        axis_row.pack(fill="x", padx=8, pady=(0, 4))
+        axis_row.pack(fill="x", padx=8, pady=(6, 4))
         ttk.Label(axis_row, text=self._tk("axis_label")).pack(side="left")
         self._axis_choices = [(kind, self._tk(f"axis_{kind}")) for kind in AXIS_KINDS]
         saved_axis = saved.get("axis", AXIS_AUTO)
@@ -120,29 +208,11 @@ class TreeTab(VizTabBase):
         self.axis_combo.current([kind for kind, _label in self._axis_choices].index(
             saved_axis if saved_axis in AXIS_KINDS else AXIS_AUTO))
         self.axis_combo.pack(side="left", padx=(6, 0))
-
-        appearance_frame = ttk.LabelFrame(container, text=self._tk("section_appearance"))
+        self._add_entries(tree_frame, _TREE_FIELDS, saved, self._tk)
+        appearance_frame = ttk.LabelFrame(self.tree_options, text=self._tk("section_appearance"))
         appearance_frame.pack(fill="x", pady=(0, 8))
-        tree_keys = {"depth", "drawn_branches", "height", "n_step", "tempo_ms", "max_nodes", "multiples",
-                     "max_points", "max_labels"}
-        for attr, label_key, saved_key, default in _INT_FIELDS + _FLOAT_FIELDS:
-            parent = tree_frame if saved_key in tree_keys else appearance_frame
-            row = ttk.Frame(parent)
-            row.pack(fill="x", padx=8, pady=(0, 4))
-            ttk.Label(row, text=self._tk(label_key)).pack(side="left")
-            entry = ttk.Entry(row, width=12)
-            entry.insert(0, saved.get(saved_key, default))
-            entry.pack(side="left", padx=(6, 0))
-            setattr(self, attr, entry)
-
-        colors_row = ttk.Frame(appearance_frame)
-        colors_row.pack(fill="x", padx=8, pady=(0, 6))
-        ttk.Label(colors_row, text=self._tk("colors_label")).pack(side="left")
-        self.colors_entry = ttk.Entry(colors_row, width=40)
-        self.colors_entry.insert(0, saved.get("colors", ""))
-        self.colors_entry.pack(side="left", padx=(6, 0))
-
-        highlight_frame = ttk.LabelFrame(container, text=self._tk("section_highlight"))
+        self._add_entries(appearance_frame, _TREE_APPEARANCE_FIELDS, saved, self._tk)
+        highlight_frame = ttk.LabelFrame(self.tree_options, text=self._tk("section_highlight"))
         highlight_frame.pack(fill="x", pady=(0, 8))
         highlight_row = ttk.Frame(highlight_frame)
         highlight_row.pack(fill="x", padx=8, pady=6)
@@ -155,8 +225,14 @@ class TreeTab(VizTabBase):
             self.highlight_vars[name] = var
             self._highlight_checks.append(check)
 
-        ttk.Label(container, text=self._tk("controls_hint"), wraplength=760, justify="left",
-                  foreground="#888888").pack(anchor="w", pady=(0, 8))
+        # Assembly-only options.
+        self.assembly_options = ttk.Frame(self._options_holder)
+        assembly_frame = ttk.LabelFrame(self.assembly_options, text=self._ak("section_animation"))
+        assembly_frame.pack(fill="x", pady=(0, 8))
+        self._add_entries(assembly_frame, _ASSEMBLY_FIELDS, saved, self._ak)
+
+        self.hint_label = ttk.Label(container, wraplength=760, justify="left", foreground="#888888")
+        self.hint_label.pack(anchor="w", pady=(0, 8))
 
         hud_frame = ttk.LabelFrame(container, text=self._tk("hud_panel_title"))
         hud_frame.pack(fill="x", pady=(0, 10))
@@ -168,21 +244,53 @@ class TreeTab(VizTabBase):
         self._register_scroll_exclude(self.console.text.frame)
 
         self._launch_param_entries = [self.n_entry, self.colors_entry] + [
-            getattr(self, attr) for attr, *_ in _INT_FIELDS + _FLOAT_FIELDS]
+            getattr(self, attr) for attr, *_ in
+            _COMMON_FIELDS + _TREE_FIELDS + _TREE_APPEARANCE_FIELDS + _ASSEMBLY_FIELDS]
+        self._apply_mode()
+
+    # -- mode -------------------------------------------------------------------
+
+    def current_mode(self):
+        return self._mode_choices[max(0, self.mode_combo.current())][0]
+
+    def set_mode(self, mode):
+        self.mode_combo.current(MODES.index(mode))
+        self._apply_mode()
+
+    def _apply_mode(self):
+        """Shows the selected mode's own options, intro, n label and controls hint."""
+        mode = self.current_mode()
+        shown, hidden = ((self.tree_options, self.assembly_options) if mode == MODE_TREE
+                         else (self.assembly_options, self.tree_options))
+        hidden.pack_forget()
+        shown.pack(fill="x")
+        self.intro_label.configure(text=self.T(f"{mode}.intro"))
+        self.n_label.configure(text=self.T(f"{mode}.field_n"))
+        self.hint_label.configure(text=self.T(f"{mode}.controls_hint"))
+
+    # -- VizTabBase hooks -------------------------------------------------------
 
     def _set_launch_params_readonly(self, readonly):
         state = "disabled" if readonly else "normal"
         for widget in self._launch_param_entries + self._highlight_checks:
             widget.configure(state=state)
-        self.axis_combo.configure(state="disabled" if readonly else "readonly")
+        combo_state = "disabled" if readonly else "readonly"
+        self.axis_combo.configure(state=combo_state)
+        self.mode_combo.configure(state=combo_state)
 
     def _restore_last_n(self, n):
+        """Tree mode: the HUD N is the start prime and goes back into the n field. The
+        assembly's HUD N is its period, so the field keeps the label base entered."""
+        if self._launched_mode != MODE_TREE:
+            return
         self.n_entry.delete(0, "end")
         self.n_entry.insert(0, str(n))
 
     def _on_open(self, skip_storage_check=False, bare=False):
         if self._resume_if_paused():
             return
+        mode = self.current_mode()
+        self._active_prefix = mode
         raw_n = self.n_entry.get().strip()
         n = _eval_quick_number(raw_n) if raw_n else None
         if n is None or n < 0:
@@ -194,20 +302,14 @@ class TreeTab(VizTabBase):
                                      on_cancel=lambda: self._on_open(skip_storage_check=True, bare=True))
             return
 
+        raw = dict((self._app_settings.tree_viz_params if self._app_settings else None) or {})
+        raw.update({"n": raw_n, "viz_mode": mode})
         values = {}
-        raw = {"n": raw_n}
-        for attr, _label, saved_key, _default in _INT_FIELDS:
+        for attr, _label, saved_key, _default, kind in (
+                _COMMON_FIELDS + _TREE_FIELDS + _TREE_APPEARANCE_FIELDS + _ASSEMBLY_FIELDS):
             text = getattr(self, attr).get().strip()
             raw[saved_key] = text
-            parsed = _eval_quick_number(text) if text else None
-            values[saved_key] = parsed if isinstance(parsed, int) else None
-        for attr, _label, saved_key, _default in _FLOAT_FIELDS:
-            text = getattr(self, attr).get().strip()
-            raw[saved_key] = text
-            try:
-                values[saved_key] = float(text) if text else None
-            except ValueError:
-                values[saved_key] = None
+            values[saved_key] = _parse(text, kind)
         colors = self.colors_entry.get().strip()
         raw["colors"] = colors
         axis = self._axis_choices[max(0, self.axis_combo.current())][0]
@@ -216,15 +318,26 @@ class TreeTab(VizTabBase):
         for name, var in self.highlight_vars.items():
             raw[f"highlight_{name}"] = var.get()
 
-        argv = build_tree_argv(n, depth=values["depth"], branches=values["drawn_branches"],
-                               height=values["height"], n_step=values["n_step"], tempo_ms=values["tempo_ms"],
-                               max_nodes=values["max_nodes"], max_points=values["max_points"],
-                               max_labels=values["max_labels"], multiples=values["multiples"], axis=axis,
-                               colors=colors, highlight=highlight, max_stripes=values["max_stripes"],
-                               node_size=values["node_size"], point_size=values["point_size"],
-                               hud_font_size=values["hud_font_size"],
-                               label_font_size=values["label_font_size"], bare=bare,
-                               pipe_stdin_commands=True)
+        if mode == MODE_TREE:
+            argv = build_tree_argv(n, depth=values["depth"], branches=values["drawn_branches"],
+                                   height=values["height"], n_step=values["n_step"], tempo_ms=values["tempo_ms"],
+                                   max_nodes=values["max_nodes"], max_points=values["max_points"],
+                                   max_labels=values["max_labels"], multiples=values["multiples"], axis=axis,
+                                   colors=colors, highlight=highlight, max_stripes=values["max_stripes"],
+                                   node_size=values["node_size"], point_size=values["point_size"],
+                                   hud_font_size=values["hud_font_size"],
+                                   label_font_size=values["label_font_size"], bare=bare,
+                                   pipe_stdin_commands=True)
+        else:
+            argv = build_assembly_argv(n, depth=values["assembly_depth"], frames=values["frames"],
+                                       tempo_ms=values["assembly_tempo_ms"], lane_dots=values["lane_dots"],
+                                       detail_cells=values["detail_cells"], max_labels=values["max_labels"],
+                                       max_lanes=values["max_lanes"], node_size=values["node_size"],
+                                       cell_size=values["cell_size"], hud_font_size=values["hud_font_size"],
+                                       label_font_size=values["label_font_size"], colors=colors,
+                                       cell_spacing=values["cell_spacing"] or "", bare=bare,
+                                       pipe_stdin_commands=True)
         if self._app_settings is not None:
             self._app_settings.set_tree_viz_params(raw)
+        self._launched_mode = mode
         self._launch_renderer(argv, n, LocalLoggedRunner)
