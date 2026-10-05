@@ -20,6 +20,8 @@ import tkinter as tk
 from tkinter import ttk
 
 from ...core.base_tab import BaseTab
+from ...generation.generation import _eval_quick_number
+from .window_mode import center_tk_window
 
 # Must match renderer.py's own emit_hud_state()
 # print prefix exactly -- kept as one shared constant name (renderer.py runs as a
@@ -33,6 +35,25 @@ _HUD_STATE_PREFIX = "HUD_STATE:"
 # there's no data to carry, only a state transition to react to.
 _RING_VIZ_PAUSED_LINE = "RING_VIZ_PAUSED"
 _RING_VIZ_RESUMED_LINE = "RING_VIZ_RESUMED"
+
+
+def parse_generate_range(raw_from, raw_to):
+    """The empty-storage generate dialog's From/To fields as (start, end_inclusive), or
+    the error key (under the tab's LOCALE_PREFIX) to show. "To" is required and >= 2;
+    an empty "From" means 2; both accept the app's number forms (10**7, 1e7)."""
+    raw_from, raw_to = raw_from.strip(), raw_to.strip()
+    end = _eval_quick_number(raw_to) if raw_to else None
+    if end is None or end < 2:
+        return "error_generate_to_required"
+    if raw_from:
+        start = _eval_quick_number(raw_from)
+        if start is None or start < 0:
+            return "error_generate_from_invalid"
+    else:
+        start = 2
+    if start > end:
+        return "error_generate_order"
+    return start, end
 
 
 class VizTabBase(BaseTab):
@@ -69,6 +90,79 @@ class VizTabBase(BaseTab):
         # is re-enabled in BOTH cases, but only this one sends "RESUME"
         # over stdin instead of launching a brand new subprocess.
         self._paused = False
+        # The app's storage-fill offer (GenerationOfferCoordinator.offer_fill_storage_
+        # range), injected by tabs that read storage; None = no offer, Start launches
+        # as is even with empty storage.
+        self._offer_generate_storage = None
+
+    def _ask_generate_range(self, default_from, default_to):
+        """Modal dialog shown when Start finds the storage empty: explains it and asks
+        for the range to generate, prefilled with `default_from`/`default_to`. Returns
+        (start, end_inclusive) on Generate, None on Cancel/close. Invalid input is
+        reported inside the dialog, which stays open."""
+        dialog = tk.Toplevel(self)
+        dialog.title(self._tk("empty_storage_title"))
+        dialog.transient(self.winfo_toplevel())
+        dialog.resizable(False, False)
+        body = ttk.Frame(dialog, padding=14)
+        body.pack(fill="both", expand=True)
+        ttk.Label(body, text=self._tk("empty_storage_message"), wraplength=460,
+                  justify="left").grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 10))
+        ttk.Label(body, text=self._tk("empty_storage_from")).grid(row=1, column=0, sticky="w")
+        from_entry = ttk.Entry(body, width=30)
+        from_entry.insert(0, default_from)
+        from_entry.grid(row=1, column=1, sticky="w", padx=(6, 0), pady=2)
+        ttk.Label(body, text=self._tk("empty_storage_to")).grid(row=2, column=0, sticky="w")
+        to_entry = ttk.Entry(body, width=30)
+        to_entry.insert(0, default_to)
+        to_entry.grid(row=2, column=1, sticky="w", padx=(6, 0), pady=2)
+        ttk.Label(body, text=self._tk("empty_storage_hint"), foreground="#888888", wraplength=460,
+                  justify="left").grid(row=3, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        error_var = tk.StringVar(value="")
+        ttk.Label(body, textvariable=error_var, foreground="#cc3333", wraplength=460,
+                  justify="left").grid(row=4, column=0, columnspan=2, sticky="w", pady=(4, 0))
+        result = {"value": None}
+
+        def on_generate():
+            parsed = parse_generate_range(from_entry.get(), to_entry.get())
+            if isinstance(parsed, str):
+                error_var.set(self._tk(parsed))
+                return
+            result["value"] = parsed
+            dialog.destroy()
+
+        buttons = ttk.Frame(body)
+        buttons.grid(row=5, column=0, columnspan=2, sticky="e", pady=(10, 0))
+        ttk.Button(buttons, text=self._tk("empty_storage_generate"), command=on_generate).pack(side="left")
+        ttk.Button(buttons, text=self._tk("empty_storage_cancel"), command=dialog.destroy).pack(
+            side="left", padx=(6, 0))
+        dialog.bind("<Return>", lambda _e: on_generate())
+        dialog.bind("<Escape>", lambda _e: dialog.destroy())
+        to_entry.focus_set()
+        center_tk_window(dialog)
+        dialog.grab_set()
+        self.wait_window(dialog)
+        return result["value"]
+
+    def _offer_storage_fill(self, default_from, default_to, relaunch):
+        """Empty storage on Start: asks for a range (see _ask_generate_range) and hands
+        it to the injected `_offer_generate_storage(start, end_inclusive,
+        on_finished)`. A successful fill calls `relaunch()` (the original Start); a
+        failed or stopped one only reports."""
+        answer = self._ask_generate_range(default_from, default_to)
+        if answer is None:
+            return
+        start, end = answer
+
+        def on_finished(success):
+            if success:
+                self.status.set(self._tk("status_storage_ready"))
+                relaunch()
+            else:
+                self.status.set(self._tk("status_storage_fill_failed"))
+
+        if self._offer_generate_storage(start, end, on_finished):
+            self.status.set(self._tk("status_generating_storage", start=f"{start:,}", end=f"{end:,}"))
 
     def _tk(self, key, **kwargs):
         """This sub-tab's own translation (`LOCALE_PREFIX`.`key`)."""

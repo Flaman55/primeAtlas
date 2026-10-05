@@ -190,6 +190,23 @@ class GenerationOfferCoordinator:
         gen._on_run_constellation()
         return True
 
+    def offer_fill_storage_range(self, start, end_inclusive, on_finished):
+        """Fills [start, end_inclusive] into storage across every floor it touches
+        (plan_storage_fill), for a caller that already confirmed the range with the
+        user (the visualization's empty-storage offer). Each step goes through
+        GenerationTab._launch_direct_window_range, so each picks primesieve when it fits
+        under libprimesieve's uint64 ceiling and orchestrator_v3.py above it.
+        on_finished(success) is called once the whole plan finished or stopped.
+        Returns False, launching nothing, while another Generation run is in flight
+        (already reported with the Quick-gen "already running" message)."""
+        from .generation import plan_storage_fill
+        gen = self._get_generation_tab_widget()
+        launches = plan_storage_fill(start, end_inclusive + 1)
+        if not gen.start_storage_fill(launches, on_finished):
+            messagebox.showinfo(self.T("quick.dialog_title"), self.T("quick.error_already_running"))
+            return False
+        return True
+
     def offer_generate_missing_range(self, op, payload):
         """Offers to generate the primes storage a Visualize/decompose job
         just found missing (MissingStorageRangeError, translated into this dict

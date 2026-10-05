@@ -30,7 +30,7 @@ import sys
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-from ...generation.generation import LocalLoggedRunner, _eval_quick_number
+from ...generation.generation import LocalLoggedRunner, _eval_quick_number, find_highest_populated_floor
 from ...generation.generation_console import GenerationConsole
 from ...core import storage
 from ..shared.audio import INSTRUMENTS
@@ -226,9 +226,10 @@ class RingsTab(VizTabBase):
     LOCALE_PREFIX = "rings"
 
     def __init__(self, parent, get_portal_folder, status_var, translator, totals_progress,
-                 app_settings=None):
+                 app_settings=None, offer_generate_storage=None):
         super().__init__(parent, get_portal_folder, status_var, translator, totals_progress,
                          app_settings)
+        self._offer_generate_storage = offer_generate_storage
         self._build_ui()
 
     def _build_ui(self):
@@ -813,6 +814,16 @@ class RingsTab(VizTabBase):
                 messagebox.showerror(self.T("rings.error_dialog_title"), self.T("rings.error_range_invalid"))
                 return
             load_range = (range_from, range_to)
+
+        # Empty storage (no prime window anywhere): offer to generate a range first,
+        # prefilled from the form (sequential: up to N; range: the range's From/To),
+        # and start this same launch again once it is on disk.
+        if self._offer_generate_storage is not None and find_highest_populated_floor(portal_folder) is None:
+            if range_mode_selected:
+                self._offer_storage_fill(range_from_raw, range_to_raw, self._on_open)
+            else:
+                self._offer_storage_fill("", raw, self._on_open)
+            return
 
         # Same empty-or-invalid-omits-the-flag
         # convention as point_size/hit_point_size/hud_font_size above --
