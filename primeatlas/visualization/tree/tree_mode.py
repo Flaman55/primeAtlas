@@ -26,7 +26,7 @@ from primeatlas.visualization.tree.tree_hud import tree_hud_lines
 from primeatlas.visualization.tree.tree_layout import AXIS_KINDS, build_tree, next_prime, prev_prime
 
 _DEFAULTS = {
-    "tree_depth": 4,
+    "tree_depth": 8,
     "tree_branches": 3,
     "tree_height": 1.5,
     "tree_max_nodes": 2000,
@@ -35,9 +35,9 @@ _DEFAULTS = {
     "tree_axis": "auto",
     "tree_max_labels": 3000,
     "tree_max_stripes": 4,
-    "tree_node_size": 11.0,
-    "tree_point_size": 7.0,
-    "tree_label_font_size": 16,
+    "tree_node_size": 15.0,
+    "tree_point_size": 15.0,
+    "tree_label_font_size": 35,
 }
 
 # A click within this many pixels of a node's center picks it.

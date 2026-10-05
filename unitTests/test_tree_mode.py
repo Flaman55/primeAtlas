@@ -195,6 +195,9 @@ def section_f_cli():
     check(args.tree_depth >= 1 and args.tree_branches == 3 and args.tree_height >= 1
           and args.tree_axis == "auto" and args.tree_multiples == 4,
           "defaults: valid depth, 3 drawn branches, height >= 1, auto axis, 4 multiples")
+    check(args.tree_depth == 8 and args.tree_node_size == 15.0 and args.tree_label_font_size == 35,
+          f"defaults: 8 levels, node size 15, label font 35 (got {args.tree_depth}, "
+          f"{args.tree_node_size}, {args.tree_label_font_size})")
     TreeMode.validate_arguments(parser, args)
     launch = SimpleNamespace(primes=None, n=1, range_mode=False, range_primes=None)
     config = TreeMode.prepare_launch(args, launch)
