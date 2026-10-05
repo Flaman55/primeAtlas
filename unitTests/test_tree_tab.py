@@ -11,7 +11,8 @@ Spec:
   C. Launch: an invalid N shows an error and launches nothing; a valid N launches the
      renderer (a fake script here) with the tab's field values, locks the launch fields
      while it runs and unlocks them once it exits; the fields are persisted as
-     tree_viz_params.
+     tree_viz_params. On a first run (nothing saved) the fields hold the defaults:
+     8 levels, HUD and label font 35, node and column marker size 15.
   D. Locales: every tree.* key used exists in both strings_en.json and strings_pl.json
      (the base's storage-fill dialog keys included).
   E. Empty storage (no prime window anywhere): Start asks for a range to generate,
@@ -139,6 +140,10 @@ def section_bc_app():
           f"the Visualization sub-tabs are Rings then Tree (got {sub_tabs})")
     tab = app.tree_tab_widget
     check(str(tab.master) == str(app.visualization_tree_tab), "TreeTab is built inside the Tree sub-tab")
+    first_run = {"depth_entry": "8", "hud_font_size_entry": "35", "label_font_size_entry": "35",
+                 "node_size_entry": "15", "point_size_entry": "15", "branches_entry": "3"}
+    got = {attr: getattr(tab, attr).get() for attr in first_run}
+    check(got == first_run, f"first-run field defaults (got {got})")
 
     tab.n_entry.delete(0, "end")
     tab.n_entry.insert(0, "garbage")

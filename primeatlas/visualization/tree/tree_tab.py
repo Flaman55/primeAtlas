@@ -54,7 +54,7 @@ def build_tree_argv(n, python_executable=None, depth=None, branches=None, height
 # (attribute, locale key, saved-params key, first-run default) for every plain numeric
 # entry, in form order; parsed with _eval_quick_number (ints) or float().
 _INT_FIELDS = (
-    ("depth_entry", "depth_label", "depth", "4"),
+    ("depth_entry", "depth_label", "depth", "8"),
     ("branches_entry", "branches_label", "drawn_branches", "3"),
     ("n_step_entry", "n_step_label", "n_step", "1"),
     ("tempo_ms_entry", "tempo_label", "tempo_ms", "120"),
@@ -63,13 +63,13 @@ _INT_FIELDS = (
     ("max_points_entry", "max_points_label", "max_points", "500000"),
     ("max_labels_entry", "max_labels_label", "max_labels", "3000"),
     ("max_stripes_entry", "max_stripes_label", "max_stripes", "4"),
-    ("hud_font_size_entry", "hud_font_size_label", "hud_font_size", "22"),
-    ("label_font_size_entry", "label_font_size_label", "label_font_size", "16"),
+    ("hud_font_size_entry", "hud_font_size_label", "hud_font_size", "35"),
+    ("label_font_size_entry", "label_font_size_label", "label_font_size", "35"),
 )
 _FLOAT_FIELDS = (
     ("height_entry", "height_label", "height", "1.5"),
-    ("node_size_entry", "node_size_label", "node_size", "11"),
-    ("point_size_entry", "point_size_label", "point_size", "7"),
+    ("node_size_entry", "node_size_label", "node_size", "15"),
+    ("point_size_entry", "point_size_label", "point_size", "15"),
 )
 
 
