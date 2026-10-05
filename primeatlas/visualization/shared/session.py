@@ -785,7 +785,7 @@ class RenderSession:
 
         canvas_lines = compose_hud_canvas_lines(
             self.hud_n, self.hud_count, self.hud_lines, self.playback_running, self.tempo_ms,
-            count_label=self.mode.count_label,
+            count_label=self.mode.count_label, n_label=self.mode.n_label,
         )
         line_colors = self.mode.hud_line_colors(canvas_lines)
         rgba = rasterize_hud_text(canvas_lines, font_size=hud_font_size, line_colors=line_colors)

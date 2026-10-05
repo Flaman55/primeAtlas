@@ -907,7 +907,7 @@ def main():
     parser.add_argument('--sound-low', choices=INSTRUMENTS, default='sine')
     parser.add_argument('--sound-prime', choices=INSTRUMENTS, default='triangle')
     parser.add_argument('--sound-lcm', choices=INSTRUMENTS, default='choir')
-    # none: no primes at all, for a mode that computes its own data (tree); opens at --upto.
+    # none: no primes at all, for a mode that computes its own data (tree, assembly); opens at --upto.
     parser.add_argument("--source", choices=["synthetic", "sieve", "archive", "none"], default="synthetic")
     parser.add_argument("--count", type=int, default=1_000_000, help="ring count for --source synthetic")
     # Accepts parse_big_int's flexible forms (plain digits, a*10**b, a*10^b,
@@ -993,7 +993,9 @@ def main():
                          help="rings (default): one ring per active small prime, phase = n%%p. "
                               "line: a fixed row of real primes from --load-range, with an optional "
                               "--pattern-seed-k/--pattern-seed-start k-tuple pattern slid along it by N. "
-                              "tree: the prime tree on the real n axis (use with --source none)")
+                              "tree: the prime tree on the real n axis (use with --source none). "
+                              "assembly: the wheel assembled level by level, q copies of the period "
+                              "minus the multiples of q (use with --source none)")
     # Opt-in live pause/resume protocol -- OFF by default, so running this
     # file directly from a terminal keeps the plain behavior: closing the
     # window (Esc / titlebar X) exits. Only rings_tab.py passes
