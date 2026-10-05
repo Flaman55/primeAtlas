@@ -780,6 +780,8 @@ class RenderSession:
             "tempo_ms": self.tempo_ms,
         }
         json_line = "HUD_STATE:" + json.dumps(payload)
+        if not self.mode.draws_hud:
+            return json_line, None, 0, 0
 
         canvas_lines = compose_hud_canvas_lines(
             self.hud_n, self.hud_count, self.hud_lines, self.playback_running, self.tempo_ms,

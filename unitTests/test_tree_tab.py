@@ -19,8 +19,9 @@ Spec:
      prefilled with From empty (= 2) and To = N. Generate hands (from, to) to the app's
      storage-fill offer and does not open the renderer; a successful fill starts the
      tree by itself, a failed one only reports. Cancel starts the tree anyway (it
-     computes its own values). Without an offer callable, or with data in storage,
-     Start launches directly. The app injects the offer.
+     computes its own values) as a bare diagram (--tree-bare: no numbers); every other
+     launch is a normal one. Without an offer callable, or with data in storage, Start
+     launches directly. The app injects the offer.
 
 Usage:
     python unitTests/test_tree_tab.py
@@ -76,6 +77,8 @@ def section_a_argv():
     for flag, value in expected.items():
         check(_value(argv, flag) == value, f"{flag} = {value} (got {_value(argv, flag)!r})")
     check("--pipe-stdin-commands" in argv, "--pipe-stdin-commands when asked")
+    check("--tree-bare" not in argv and "--tree-bare" in build_tree_argv(5, bare=True),
+          "--tree-bare only when asked")
 
 
 def _write_fake_renderer(exit_code, linger_seconds=0.5):
@@ -203,6 +206,7 @@ def _section_e_empty_storage(app, tab, tree_tab_module, launched):
     tab._on_open()
     check(asked == [("", "5000")], f"asked with From empty and To = N (got {asked})")
     check(launched and not offered, "Cancel starts the tree anyway and generates nothing")
+    check(launched and "--tree-bare" in launched[-1], "Cancel starts the bare diagram")
     _pump_until_idle(app, tab)
 
     answer["value"] = (2, 5000)
@@ -217,7 +221,7 @@ def _section_e_empty_storage(app, tab, tree_tab_module, launched):
           f"the status bar says the storage is being generated (got {tab.status.get()!r})")
     tree_tab_module.find_highest_populated_floor = lambda portal: 0
     offered[0][2](True)
-    check(launched, "a successful fill starts the tree by itself")
+    check(launched and "--tree-bare" not in launched[-1], "a successful fill starts the normal tree by itself")
     _pump_until_idle(app, tab)
     launched.clear()
     offered[0][2](False)

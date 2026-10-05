@@ -39,6 +39,8 @@ class VizMode:
     uses_prime_ceiling = True
     # Pixel size of world_labels() text.
     label_font_size = 16
+    # Whether the window shows the on-canvas HUD (the HUD_STATE line goes out either way).
+    draws_hud = True
 
     def __init__(self, session, config):
         self.session = session

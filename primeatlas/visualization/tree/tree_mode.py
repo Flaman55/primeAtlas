@@ -12,6 +12,9 @@ Navigation: Space plays the start forward one prime per tick, Left/Right step on
 prime (Ctrl: ten), Up/Down/PageUp/PageDown move N by --n-step (x100). Clicking a copy
 makes its prime the start; Backspace returns to the previous start, Home to the launch N;
 R resets N to 1 (start 2).
+
+--tree-bare draws the bare diagram: the same nodes, branches and columns without any
+number (no world labels, no on-canvas HUD).
 """
 
 import time
@@ -68,6 +71,8 @@ class TreeMode(VizMode):
                                max_stripes=self.max_stripes, colors=config.get("tree_colors") or {},
                                max_labels=get("tree_max_labels"))
         self.layers = make_layers(config.get("tree_highlight") or [])
+        self.bare = bool(config.get("tree_bare", False))
+        self.draws_hud = not self.bare
         self.tree = None
         self.draw = None
         self._history = []
@@ -105,6 +110,8 @@ class TreeMode(VizMode):
                             help="tree mode: pixel size of the labels next to nodes and columns")
         parser.add_argument("--tree-colors", type=str, default="",
                             help="tree mode: per-prime color overrides, e.g. '2=#ff0000,3=#00aaff'")
+        parser.add_argument("--tree-bare", action="store_true",
+                            help="tree mode: draw the bare diagram, without labels and HUD")
         parser.add_argument("--tree-highlight", type=str, default="",
                             help=f"tree mode: comma-separated highlight layers ({', '.join(sorted(LAYERS))})")
 
@@ -152,6 +159,7 @@ class TreeMode(VizMode):
             "tree_label_font_size": args.tree_label_font_size,
             "tree_colors": parse_color_map(args.tree_colors),
             "tree_highlight": _split_names(args.tree_highlight),
+            "tree_bare": bool(args.tree_bare),
         }
 
     # -- frame data -------------------------------------------------------------
@@ -186,7 +194,7 @@ class TreeMode(VizMode):
         return None if self.draw is None else self.draw.segments
 
     def world_labels(self):
-        return [] if self.draw is None else self.draw.labels
+        return [] if self.draw is None or self.bare else self.draw.labels
 
     # -- navigation -------------------------------------------------------------
 

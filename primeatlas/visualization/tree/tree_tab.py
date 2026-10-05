@@ -4,7 +4,7 @@ GPU renderer (primeatlas/visualization/shared/renderer.py) in its own window and
 with --viz-mode tree --source none: the prime tree computes every value itself, so
 it needs no storage folder and no loaded primes. With an empty storage, Start still
 offers to generate a range first (as the Rings sub-tab does); Cancel starts the tree
-without it. Launching, the console, the HUD panel
+without it, as the bare diagram (--tree-bare, no numbers). Launching, the console, the HUD panel
 and live pause/resume come from VizTabBase; this tab builds its form and the argv.
 """
 import os
@@ -26,7 +26,7 @@ def build_tree_argv(n, python_executable=None, depth=None, branches=None, height
                     tempo_ms=None, max_nodes=None, max_points=None, max_labels=None, multiples=None,
                     axis=None, colors="", highlight=(),
                     max_stripes=None, node_size=None, point_size=None, hud_font_size=None,
-                    label_font_size=None, pipe_stdin_commands=False):
+                    label_font_size=None, bare=False, pipe_stdin_commands=False):
     """Argv launching renderer.py (as a plain script path, see its module docstring)
     in tree mode at window start `n`. Every None/empty optional value is omitted, so
     renderer.py's own defaults apply; values are forwarded as given (renderer.py
@@ -46,6 +46,8 @@ def build_tree_argv(n, python_executable=None, depth=None, branches=None, height
     highlight = list(highlight)
     if highlight:
         argv += ["--tree-highlight", ",".join(highlight)]
+    if bare:
+        argv += ["--tree-bare"]
     if pipe_stdin_commands:
         argv += ["--pipe-stdin-commands"]
     return argv
@@ -178,7 +180,7 @@ class TreeTab(VizTabBase):
         self.n_entry.delete(0, "end")
         self.n_entry.insert(0, str(n))
 
-    def _on_open(self, skip_storage_check=False):
+    def _on_open(self, skip_storage_check=False, bare=False):
         if self._resume_if_paused():
             return
         raw_n = self.n_entry.get().strip()
@@ -189,7 +191,7 @@ class TreeTab(VizTabBase):
         if (not skip_storage_check and self._offer_generate_storage is not None
                 and find_highest_populated_floor(self._get_portal_folder()) is None):
             self._offer_storage_fill("", raw_n, self._on_open,
-                                     on_cancel=lambda: self._on_open(skip_storage_check=True))
+                                     on_cancel=lambda: self._on_open(skip_storage_check=True, bare=True))
             return
 
         values = {}
@@ -221,7 +223,8 @@ class TreeTab(VizTabBase):
                                colors=colors, highlight=highlight, max_stripes=values["max_stripes"],
                                node_size=values["node_size"], point_size=values["point_size"],
                                hud_font_size=values["hud_font_size"],
-                               label_font_size=values["label_font_size"], pipe_stdin_commands=True)
+                               label_font_size=values["label_font_size"], bare=bare,
+                               pipe_stdin_commands=True)
         if self._app_settings is not None:
             self._app_settings.set_tree_viz_params(raw)
         self._launch_renderer(argv, n, LocalLoggedRunner)
