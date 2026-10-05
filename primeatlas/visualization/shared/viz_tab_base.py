@@ -144,13 +144,15 @@ class VizTabBase(BaseTab):
         self.wait_window(dialog)
         return result["value"]
 
-    def _offer_storage_fill(self, default_from, default_to, relaunch):
+    def _offer_storage_fill(self, default_from, default_to, relaunch, on_cancel=None):
         """Empty storage on Start: asks for a range (see _ask_generate_range) and hands
         it to the injected `_offer_generate_storage(start, end_inclusive,
         on_finished)`. A successful fill calls `relaunch()` (the original Start); a
-        failed or stopped one only reports."""
+        failed or stopped one only reports. Cancel calls `on_cancel()` when given."""
         answer = self._ask_generate_range(default_from, default_to)
         if answer is None:
+            if on_cancel is not None:
+                on_cancel()
             return
         start, end = answer
 

@@ -1102,13 +1102,16 @@ def _build_gui():
         def _build_tree_tab(self):
             """Thin wrapper -- the whole sub-tab lives in
             primeatlas/visualization/tree/tree_tab.py's TreeTab (its own renderer window
-            and process; it reads no storage, the argument is kept for VizTabBase)."""
+            and process; it reads no storage, but offers the same empty-storage fill as
+            the Rings sub-tab)."""
             from primeatlas.visualization.tree.tree_tab import TreeTab
 
             self.tree_tab_widget = TreeTab(
                 self.visualization_tree_tab, get_portal_folder=lambda: PORTAL_FOLDER,
                 status_var=self.status, translator=TRANSLATOR,
-                totals_progress=self.totals_progress, app_settings=APP_SETTINGS)
+                totals_progress=self.totals_progress, app_settings=APP_SETTINGS,
+                offer_generate_storage=lambda start, end, on_finished:
+                    self._generation_offer_coord.offer_fill_storage_range(start, end, on_finished))
             self.tree_tab_widget.pack(fill="both", expand=True)
 
         # --- Tab 6: Settings -----------------------------------------------------

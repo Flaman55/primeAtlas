@@ -965,5 +965,18 @@
   "tree.hud_panel_placeholder": "(otwórz drzewo, aby zobaczyć tu bieżący stan)",
   "tree.hud_status_running": "działa, {tempo}ms/takt",
   "tree.hud_status_stopped": "zatrzymane",
-  "tree.hud_header": "Start = {n}    kopie = {count}    przebudowa = {rebuild_ms}ms    [{status}]"
+  "tree.hud_header": "Start = {n}    kopie = {count}    przebudowa = {rebuild_ms}ms    [{status}]",
+  "tree.empty_storage_title": "Magazyn jest pusty",
+  "tree.empty_storage_message": "W magazynie nie ma jeszcze żadnych liczb pierwszych. Drzewo liczy swoje wartości samo i ich nie potrzebuje, ale inne widoki tak. Wygenerować najpierw zakres liczb pierwszych? Drzewo uruchomi się samo po zakończeniu generowania; Anuluj uruchamia je od razu.",
+  "tree.empty_storage_from": "Od (puste = 2):",
+  "tree.empty_storage_to": "Do:",
+  "tree.empty_storage_hint": "Przyjmuje zwykłe cyfry, 10**7 lub 1e7. Używa primesieve; powyżej 2^64 generowanie samo przełącza się na własny silnik PrimeAtlas. Postęp widać w zakładce Generowanie.",
+  "tree.empty_storage_generate": "Generuj",
+  "tree.empty_storage_cancel": "Anuluj",
+  "tree.error_generate_to_required": "Podaj \"Do\" jako liczbę całkowitą >= 2.",
+  "tree.error_generate_from_invalid": "\"Od\" musi być nieujemną liczbą całkowitą (albo puste = 2).",
+  "tree.error_generate_order": "\"Od\" nie może być większe niż \"Do\".",
+  "tree.status_generating_storage": "Generowanie liczb pierwszych {start}..{end} do magazynu -- drzewo uruchomi się po zakończeniu.",
+  "tree.status_storage_ready": "Magazyn wygenerowany -- uruchamianie drzewa.",
+  "tree.status_storage_fill_failed": "Generowanie magazynu nie zakończyło się (błąd lub Stop) -- drzewo nie zostało uruchomione."
 }
