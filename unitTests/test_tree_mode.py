@@ -24,6 +24,9 @@ Spec:
   F. CLI: the tree's arguments exist with sane defaults, prepare_launch turns them
      into config keys, validate_arguments rejects out-of-range values.
   G. Session camera: screen_to_world inverts the shader transform.
+  H. Bare diagram (tree_bare, --tree-bare): the same markers and segments, but no world
+     labels and no on-canvas HUD texture; the HUD_STATE line for the tab still goes
+     out. Off by default; the rings window keeps its HUD.
 
 Usage:
     python unitTests/test_tree_mode.py
@@ -230,6 +233,34 @@ def section_f_cli():
             check(True, f"{bad} is rejected")
 
 
+def section_h_bare():
+    print("\n--- H: bare diagram ---")
+    plain = _make_session(n=2)
+    plain.rebuild(2)
+    bare = _make_session(n=2, tree_bare=True)
+    bare.rebuild(2)
+    check(np.array_equal(plain.mode.marker_data(), bare.mode.marker_data())
+          and np.array_equal(plain.mode.segment_data(), bare.mode.segment_data()),
+          "the bare diagram draws the same markers and segments")
+    check(len(plain.mode.world_labels()) > 0 and bare.mode.world_labels() == [],
+          "the bare diagram has no world labels")
+    json_line, rgba, _w, _h = bare.refresh_hud(22)
+    check(rgba is None and json_line.startswith("HUD_STATE:"),
+          "the bare diagram has no on-canvas HUD, the HUD_STATE line still goes out")
+    _line, plain_rgba, _w, _h = plain.refresh_hud(22)
+    check(plain_rgba is not None, "the normal tree keeps its on-canvas HUD")
+    rings = _make_session(n=2, viz_mode="rings")
+    check(rings.mode.draws_hud, "the rings window keeps its HUD")
+    from primeatlas.visualization.tree.tree_mode import TreeMode
+    from types import SimpleNamespace
+    parser = argparse.ArgumentParser()
+    TreeMode.add_arguments(parser)
+    launch = SimpleNamespace(primes=None, n=1, range_mode=False, range_primes=None)
+    check(TreeMode.prepare_launch(parser.parse_args([]), launch)["tree_bare"] is False, "--tree-bare is off by default")
+    check(TreeMode.prepare_launch(parser.parse_args(["--tree-bare"]), launch)["tree_bare"] is True,
+          "--tree-bare turns it on")
+
+
 def section_g_camera():
     print("\n--- G: screen_to_world ---")
     s = _make_session()
@@ -242,7 +273,7 @@ def section_g_camera():
 
 if __name__ == "__main__":
     for section in (section_a_registration, section_b_rebuild, section_c_navigation, section_d_click,
-                    section_e_reset, section_f_cli, section_g_camera):
+                    section_e_reset, section_f_cli, section_g_camera, section_h_bare):
         try:
             section()
         except Exception as e:  # noqa: BLE001

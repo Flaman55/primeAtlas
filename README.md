@@ -1028,7 +1028,8 @@ the same shape at any scale; only the values and the counts change.
 Empty storage: like the Rings sub-tab, Start with no prime window anywhere first offers
 to generate a From/To range (an empty From means 2, To is prefilled with N); the tree
 starts once the fill finishes. The tree itself does not read the storage, so Cancel
-starts it right away.
+starts it right away, as the bare diagram (`--tree-bare`): the same nodes, branches and
+columns without any number -- no labels, no on-canvas HUD.
 
 - Scale: every copy draws at most K child copies (default 3) and shows the rest of its
   p-1 branches as one dashed stub labelled "+N"; copies on the last drawn level show all
@@ -1257,8 +1258,8 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               markers, line segments and labels), on_chunks_changed/
                               reset_state, the class attributes reset_mode (the mode R
                               switches to; None = stay), window_title, count_label,
-                              draws_center_marker, uses_prime_ceiling and
-                              label_font_size, and the launch-time classmethods
+                              draws_center_marker, uses_prime_ceiling,
+                              label_font_size and draws_hud, and the launch-time classmethods
                               add_arguments/validate_arguments/prepare_launch (each mode
                               owns its own CLI arguments); LaunchAborted refuses to open
                               the window
@@ -1414,7 +1415,7 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
     tree_tab.py                  TreeTab(VizTabBase) -- the sub-tab's launch form and
                               build_tree_argv (--source none --viz-mode tree); Start with
                               an empty storage offers the same storage fill as Rings
-                              (Cancel starts the tree without it)
+                              (Cancel starts the bare diagram, --tree-bare)
     tree_mode.py                 TreeMode -- the start prime and its history (click/
                               Backspace/Home), prime-by-prime navigation without a prime
                               ceiling, and its own CLI arguments (--tree-*)
