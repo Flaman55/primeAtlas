@@ -1,6 +1,6 @@
 """
 test_startup_dependency_check.py -- covers startup_dependency_check.py (repo root), the
-pre-import check for native-Windows Python packages (numpy, moderngl, glfw) that runs from
+pre-import check for native-Windows Python packages (numpy, moderngl, glfw, Pillow) that runs from
 prime_atlas_v2.py BEFORE `from primeatlas import ...` -- primeatlas/__init__.py itself pulls
 in numpy (via research/goldbach_window.py), so on a fresh machine without numpy the app
 used to die with a bare ImportError before any window was shown.
@@ -65,13 +65,19 @@ def section_a():
     check(sdc.import_name_for("Some-Pkg") == "some_pkg",
           "import_name_for lowercases and maps '-' to '_'")
     check(sdc.import_name_for("numpy") == "numpy", "import_name_for('numpy') == 'numpy'")
+    check(sdc.import_name_for("Pillow") == "PIL" and sdc.import_name_for("pillow") == "PIL",
+          "import_name_for maps Pillow to its import name PIL")
+    check(sdc.find_missing(["Pillow"], find_spec=lambda name: object() if name == "PIL" else None) == [],
+          "an installed Pillow (import name PIL) is not reported missing")
 
     req_path = os.path.join(_REPO_ROOT, "requirements.txt")
     check(os.path.isfile(req_path), "requirements.txt exists at the repo root (the installer "
                                     "and the startup check both read it)")
     reqs = sdc.load_requirements(req_path)
-    for name in ("numpy", "moderngl", "glfw"):
+    for name in ("numpy", "moderngl", "glfw", "Pillow"):
         check(name in reqs, f"requirements.txt lists {name}")
+    check("Pillow" in sdc.DEFAULT_REQUIREMENTS, "the fallback list carries Pillow (visualization text)")
+    check("PIL" not in sdc.REQUIRED_FOR_STARTUP, "Pillow does not block startup")
     for name in sdc.REQUIRED_FOR_STARTUP:
         check(name in reqs, f"every startup-blocking package ({name}) is in requirements.txt")
 

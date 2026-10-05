@@ -912,7 +912,7 @@
   "rings.status_storage_fill_failed": "Generowanie magazynu nie zakończyło się (błąd lub Stop) -- wizualizacja nie została uruchomiona.",
   "depcheck.title": "PrimeAtlas -- brakujące pakiety Pythona",
   "depcheck.ask_blocking": "PrimeAtlas nie uruchomi się bez tych pakietów Pythona:\n\n{packages}\n\nZainstalować je teraz? (wymaga internetu)",
-  "depcheck.ask_optional": "Te pakiety Pythona są potrzebne do wizualizacji pierścieni:\n\n{packages}\n\nZainstalować je teraz? (wymaga internetu; PrimeAtlas i tak się uruchomi)",
+  "depcheck.ask_optional": "Te pakiety Pythona są potrzebne do wizualizacji:\n\n{packages}\n\nZainstalować je teraz? (wymaga internetu; PrimeAtlas i tak się uruchomi)",
   "depcheck.installing": "Instaluję: {packages}",
   "depcheck.install_failed": "Instalacja nie powiodła się (kod wyjścia pip: {code}).\n\nMożesz zainstalować ręcznie z terminala:\n{command}",
   "depcheck.still_missing": "Instalacja zakończona, ale tych pakietów nadal nie da się zaimportować: {packages}\n\nSpróbuj ręcznie z terminala:\n{command}",
