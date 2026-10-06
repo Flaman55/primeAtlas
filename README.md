@@ -177,7 +177,8 @@ interchangeable engine generations, v3/v4/v4.1 -- see "Architecture" below).
   **Tree** sub-tab has two visualization modes, both computed without storage: the prime
   tree (real `n` or multiples axis, see "Prime tree" below) and the assembly animation,
   how each level of the wheel is built from the previous one by copying (see "Assembly
-  animation" below).
+  animation" below). Its **Sphere** sub-tab shows the first K primes as rings on a sphere
+  through one common node, where the divisors of N meet (see "Prime sphere" below).
 - **Benchmark** -- a throughput chart (numbers generated per second vs. floor depth,
   derived from the actual count of integers swept per floor rather than a window-count
   approximation, so a mode like Hybrid whose swept range is normally far smaller than
@@ -1110,6 +1111,41 @@ picture is the same for every base.
   with the tree's (`AppSettings.tree_viz_params`, assembly-only keys prefixed where they
   would collide, plus the selected `viz_mode`).
 
+## Prime sphere
+
+The Visualization > Sphere sub-tab (`sphere_tab.py`) opens the shared renderer with
+`--viz-mode sphere --source none` and passes the storage folder as `--portal-folder`. Its
+mode selector holds the sphere's visualization modes; the rings mode is the first.
+
+Rings mode: the rings are the first K primes (`--sphere-rings`, sieved -- they are the
+same at every scale). Every ring is a circle on the unit sphere through the common node
+(0, 0, 1): ring p lies in the plane turned by Ry(a) Rx(a), a = 2 pi p / p_K, so the largest
+ring closes the full turn and 2 lies next to it. The point of ring p has phase
+2 pi (N mod p) / p from the node (exact for any N), so it stands at the node exactly when
+p divides N. A ring takes part once p <= N.
+
+- N walks the integers; each N plays `--sphere-frames` ticks in which the points glide
+  (eased) to their next position, and the view turns by `--sphere-spin` degrees per N.
+- At a whole N the rings dividing N light up in the factor color and the node label lists
+  them; an N the storage lists as prime lights the node green (its own ring too, when
+  N <= p_K). The HUD names the node's rings, "no ring divides N" for a composite whose
+  smallest factor is > p_K, the stored primes around N, or "primality unknown" outside the
+  storage.
+- The storage is read as a list of primes around N (`prime_window.py`):
+  `--sphere-chunk` primes below N and from N, reloaded when N leaves them; past the
+  storage's last prime playback stops. Right/Left jump to the next/previous stored prime
+  (Ctrl: 10), Up/Down step N, Home returns to the start N, R resets to N = 1.
+- A left drag rotates the sphere (the camera is not panned; VizMode.drag/reproject
+  rebuild only the draw data), the wheel zooms, middle click fits. The far half is dimmed,
+  since the sphere is drawn without a depth buffer.
+- At most `--sphere-max-curves` ring curves are drawn (smallest primes first;
+  highlighted rings always), `--sphere-segments` segments each; every ring always has its
+  point.
+- Empty storage: the same fill offer as the other sub-tabs; Cancel starts the sphere
+  without a storage (primality unknown, Left/Right plain +-1/+-10 steps).
+- Fields are remembered across restarts (`AppSettings.sphere_viz_params`, plus the
+  selected `viz_mode`).
+
 ## Architecture
 
 ```
@@ -1288,7 +1324,7 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               visualization itself as tkinter widgets; see "Ring
                               visualization" above
   mode_registry.py              MODES -- every --viz-mode the renderer can run, by name
-                              (rings, line, tree, assembly). Adding a visualization mode means
+                              (rings, line, tree, assembly, sphere). Adding a visualization mode means
                               adding one entry here; shared/ never names a concrete mode
   shared/                       everything common to all visualizations -- the renderer
                               subprocess host, the interactive session, and the Tk-side
@@ -1305,7 +1341,10 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               the main loop draws on top), tick/bump_n/scrub/clamp_n
                               (mode-specific navigation, None/False = the session's plain
                               step), click/key (a click without a drag in world
-                              coordinates, Backspace/Home by name), marker_data/
+                              coordinates, Backspace/Home by name), drag/reproject (a mode
+                              that uses the left drag itself -- the sphere's rotation --
+                              instead of the camera pan, and the draw-data rebuild for
+                              the new view without a HUD refresh), marker_data/
                               segment_data/world_labels (a mode's own world-space striped
                               markers, line segments and labels), on_chunks_changed/
                               reset_state, the class attributes reset_mode (the mode R
@@ -1501,6 +1540,27 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               and highlighted cells, labels and pickable floors
     assembly_hud.py              the animation's HUD lines (step, period and lanes before
                               -> after, removals, next prime and its square, density)
+  sphere/                       Visualization > Sphere sub-tab and the "sphere" viz-mode
+                              (see "Prime sphere" above)
+    sphere_tab.py                SphereTab(VizTabBase) -- the sub-tab's launch form with
+                              its mode selector, build_sphere_argv (--source none
+                              --viz-mode sphere --portal-folder); Start with an empty
+                              storage offers the storage fill (Cancel starts without a
+                              storage)
+    sphere_mode.py               SphereMode -- N's sub-step, the view (drag rotation,
+                              spin), prime-to-prime stepping from the storage, and its own
+                              CLI arguments (--sphere-*)
+    sphere_geometry.py           the pure math: ring angles and circles through the node,
+                              exact phases, easing, the view rotation and projection
+    sphere_draw.py               world-space draw data of one frame: grid and ring curves
+                              (depth-dimmed segments), ring points and the node
+                              (back-to-front markers), the node label
+    sphere_hud.py                the sphere's HUD lines (node rings, primality, rings,
+                              stored neighbors)
+    prime_window.py              PrimeWindow -- the storage primes around N as a list
+                              (primality, next/previous prime, chunked reloads, storage
+                              ends) over ArchiveStorage (load_archive/
+                              load_archive_before)
 
   primeatlas/benchmark/         "Benchmark" tab
   benchmark_tab.py             BenchmarkTab -- the Benchmark tab (charts + PDF export;
