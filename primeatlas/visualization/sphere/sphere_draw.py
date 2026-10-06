@@ -8,7 +8,8 @@ dimmed -- segment alpha and marker color fade toward the background behind the s
 silhouette -- and markers are sorted back to front.
 
 Curves: at most `max_curves` ring curves, the smallest primes first; the highlighted rings
-(factors of N, the birth ring) are always drawn, in their own colors.
+(factors of N, the birth ring) are always drawn, in their own colors. With draw_rings off
+no ring curve is drawn at all (the points stay).
 """
 
 from dataclasses import dataclass, field
@@ -45,6 +46,7 @@ class SphereStyle:
     node_size: float = 22.0
     segments: int = 96
     max_curves: int = 1000
+    draw_rings: bool = True
 
 
 @dataclass
@@ -144,7 +146,7 @@ def build_sphere_draw_data(rings, frames, curve_cache, active, phases, factors, 
     birth_ring = n if birth and active and n <= rings[active - 1] else None
 
     seg_blocks = [_polyline_rows(_GRID, matrix, radius, GRID_RGB, _GRID_ALPHA)]
-    plain = list(range(min(active, style.max_curves)))
+    plain = list(range(min(active, style.max_curves))) if style.draw_rings else []
     index_of = {p: i for i, p in enumerate(rings[:active])} if (factor_set or birth_ring) else {}
     highlighted = sorted({index_of[p] for p in factor_set if p in index_of}
                          | ({index_of[birth_ring]} if birth_ring in index_of else set()))
@@ -152,11 +154,11 @@ def build_sphere_draw_data(rings, frames, curve_cache, active, phases, factors, 
     if plain_only:
         seg_blocks.append(_polyline_rows(curve_cache.curves(plain_only), matrix, radius, ORBIT_RGB,
                                          ring_alpha(active)))
-    for i in highlighted:
+    for i in highlighted if style.draw_rings else []:
         rgb = BIRTH_RGB if rings[i] == birth_ring else FACTOR_RGB
         seg_blocks.append(_polyline_rows(curve_cache.curves([i]), matrix, radius, rgb, _HIGHLIGHT_ALPHA))
     data.segments = np.concatenate(seg_blocks).astype(np.float32)
-    data.curve_primes = sorted(rings[i] for i in set(plain_only) | set(highlighted))
+    data.curve_primes = sorted(rings[i] for i in set(plain_only) | (set(highlighted) if style.draw_rings else set()))
 
     if active:
         pts = ring_points(_subset(frames, np.arange(active)), phases[:active])

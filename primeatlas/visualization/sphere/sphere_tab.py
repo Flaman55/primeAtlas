@@ -6,7 +6,9 @@ through one common node (see sphere_mode.py). The storage folder goes along as
 --portal-folder; the renderer reads it as a list of primes around N (primality of N, the
 jumps to the previous/next prime).
 
-The visualization-mode selector lists the sphere's modes (rings). With an empty storage,
+The visualization-mode selector lists the sphere's modes: rings (--viz-mode sphere) and
+fibers (--viz-mode sphere_fibers, see fibers_mode.py; its fibers selector picks resonance
+or lineage, and only this mode sends the fibers arguments). With an empty storage,
 Start offers to generate a range first (as the Rings sub-tab does); Cancel starts the
 sphere without a storage (primality unknown, Left/Right plain steps). Launching, the
 console, the HUD panel and live pause/resume come from VizTabBase; this tab builds its
@@ -25,7 +27,12 @@ _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 RENDERER_SCRIPT = os.path.join(os.path.dirname(_THIS_DIR), "shared", "renderer.py")
 
 MODE_RINGS = "rings"
-MODES = (MODE_RINGS,)
+MODE_FIBERS = "fibers"
+MODES = (MODE_RINGS, MODE_FIBERS)
+# --viz-mode of every tab mode.
+VIZ_MODES = {MODE_RINGS: "sphere", MODE_FIBERS: "sphere_fibers"}
+# Fibers of the fibers mode (fibers_mode.FIBER_KINDS).
+FIBER_KINDS = ("resonance", "lineage")
 # Playback step: N by 1, or stored prime to stored prime (sphere_mode.STEP_KINDS).
 STEPS = ("n", "p")
 
@@ -33,12 +40,13 @@ STEPS = ("n", "p")
 def build_sphere_argv(n, python_executable=None, portal_folder=None, rings=None, frames=None, tempo_ms=None,
                       spin=None, n_step=None, chunk=None, segments=None, max_curves=None, point_size=None,
                       node_size=None, hud_font_size=None, label_font_size=None, step=None,
-                      pipe_stdin_commands=False):
-    """Argv launching renderer.py (as a plain script path) in sphere mode at N = `n`.
+                      pipe_stdin_commands=False, viz_mode="sphere", fibers=None, visible_fibers=None,
+                      pair_cap=None, fiber_samples=None, hide_rings=False):
+    """Argv launching renderer.py (as a plain script path) in `viz_mode` at N = `n`.
     Every None optional value is omitted, so renderer.py's own defaults apply; values are
     forwarded as given (renderer.py validates them)."""
     exe = python_executable or sys.executable
-    argv = [exe, RENDERER_SCRIPT, "--source", "none", "--upto", str(n), "--viz-mode", "sphere"]
+    argv = [exe, RENDERER_SCRIPT, "--source", "none", "--upto", str(n), "--viz-mode", viz_mode]
     if portal_folder:
         argv += ["--portal-folder", str(portal_folder)]
     for flag, value in (("--sphere-rings", rings), ("--sphere-frames", frames), ("--tempo-ms", tempo_ms),
@@ -46,9 +54,13 @@ def build_sphere_argv(n, python_executable=None, portal_folder=None, rings=None,
                         ("--sphere-segments", segments), ("--sphere-max-curves", max_curves),
                         ("--sphere-point-size", point_size), ("--sphere-node-size", node_size),
                         ("--hud-font-size", hud_font_size), ("--sphere-label-font-size", label_font_size),
-                        ("--sphere-step", step)):
+                        ("--sphere-step", step), ("--sphere-fibers", fibers),
+                        ("--sphere-visible-fibers", visible_fibers), ("--sphere-pair-cap", pair_cap),
+                        ("--sphere-fiber-samples", fiber_samples)):
         if value is not None:
             argv += [flag, str(value)]
+    if hide_rings:
+        argv += ["--sphere-hide-rings"]
     if pipe_stdin_commands:
         argv += ["--pipe-stdin-commands"]
     return argv
@@ -63,6 +75,14 @@ _FIELDS = (
     ("spin_entry", "spin_label", "spin", "0.4", "float"),
     ("n_step_entry", "n_step_label", "n_step", "1", "int"),
 )
+# Fibers mode only (sent with --viz-mode sphere_fibers).
+_FIBER_FIELDS = (
+    ("visible_fibers_entry", "visible_fibers_label", "visible_fibers", "32", "int"),
+)
+_FIBER_PERFORMANCE_FIELDS = (
+    ("pair_cap_entry", "pair_cap_label", "pair_cap", "2000000", "int"),
+    ("fiber_samples_entry", "fiber_samples_label", "fiber_samples", "30", "int"),
+)
 _PERFORMANCE_FIELDS = (
     ("chunk_entry", "chunk_label", "chunk", "100000", "int"),
     ("segments_entry", "segments_label", "segments", "96", "int"),
@@ -75,6 +95,7 @@ _APPEARANCE_FIELDS = (
     ("label_font_size_entry", "label_font_size_label", "label_font_size", "35", "int"),
 )
 _ALL_FIELDS = _FIELDS + _PERFORMANCE_FIELDS + _APPEARANCE_FIELDS
+_ALL_FIBER_FIELDS = _FIBER_FIELDS + _FIBER_PERFORMANCE_FIELDS
 
 
 def _parse(text, kind):
@@ -153,6 +174,21 @@ class SphereTab(VizTabBase):
         self.step_combo.pack(side="left", padx=(6, 0))
         self._add_entries(common_frame, _FIELDS, saved)
 
+        fibers_frame = ttk.LabelFrame(container, text=self._tk("section_fibers"))
+        fibers_frame.pack(fill="x", pady=(0, 8))
+        ttk.Label(fibers_frame, text=self._tk("fibers_intro"), wraplength=740, justify="left").pack(
+            anchor="w", padx=8, pady=(6, 0))
+        fibers_row = ttk.Frame(fibers_frame)
+        fibers_row.pack(fill="x", padx=8, pady=(6, 4))
+        ttk.Label(fibers_row, text=self._tk("fibers_label")).pack(side="left")
+        saved_fibers = saved.get("fibers", FIBER_KINDS[0])
+        self.fibers_combo = ttk.Combobox(fibers_row, state="readonly", width=36,
+                                         values=[self._tk(f"fibers_{kind}") for kind in FIBER_KINDS])
+        self.fibers_combo.current(FIBER_KINDS.index(saved_fibers if saved_fibers in FIBER_KINDS else FIBER_KINDS[0]))
+        self.fibers_combo.pack(side="left", padx=(6, 0))
+        self._add_entries(fibers_frame, _FIBER_FIELDS, saved)
+        self._add_entries(fibers_frame, _FIBER_PERFORMANCE_FIELDS, saved)
+
         performance_frame = ttk.LabelFrame(container, text=self._tk("section_performance"))
         performance_frame.pack(fill="x", pady=(0, 8))
         self._add_entries(performance_frame, _PERFORMANCE_FIELDS, saved)
@@ -160,6 +196,10 @@ class SphereTab(VizTabBase):
         appearance_frame = ttk.LabelFrame(container, text=self._tk("section_appearance"))
         appearance_frame.pack(fill="x", pady=(0, 8))
         self._add_entries(appearance_frame, _APPEARANCE_FIELDS, saved)
+        self.show_rings_var = tk.BooleanVar(value=bool(saved.get("show_rings", True)))
+        self.show_rings_check = ttk.Checkbutton(appearance_frame, text=self._tk("show_rings_label"),
+                                                variable=self.show_rings_var)
+        self.show_rings_check.pack(anchor="w", padx=8, pady=(0, 6))
 
         ttk.Label(container, text=self._tk("controls_hint"), wraplength=760, justify="left",
                   foreground="#888888").pack(anchor="w", pady=(0, 8))
@@ -173,13 +213,17 @@ class SphereTab(VizTabBase):
         self.console = GenerationConsole(container, self.T, height=14, window_title=self._tk("console_title"))
         self._register_scroll_exclude(self.console.text.frame)
 
-        self._launch_param_entries = [self.n_entry] + [getattr(self, attr) for attr, *_ in _ALL_FIELDS]
+        self._launch_param_entries = [self.n_entry] + [getattr(self, attr)
+                                                       for attr, *_ in _ALL_FIELDS + _ALL_FIBER_FIELDS]
 
     def current_mode(self):
         return self._mode_choices[max(0, self.mode_combo.current())][0]
 
     def current_step(self):
         return STEPS[max(0, self.step_combo.current())]
+
+    def current_fibers(self):
+        return FIBER_KINDS[max(0, self.fibers_combo.current())]
 
     # -- VizTabBase hooks -------------------------------------------------------
 
@@ -189,6 +233,8 @@ class SphereTab(VizTabBase):
             widget.configure(state=state)
         self.mode_combo.configure(state="disabled" if readonly else "readonly")
         self.step_combo.configure(state="disabled" if readonly else "readonly")
+        self.fibers_combo.configure(state="disabled" if readonly else "readonly")
+        self.show_rings_check.configure(state="disabled" if readonly else "normal")
 
     def _restore_last_n(self, n):
         self.n_entry.delete(0, "end")
@@ -210,14 +256,22 @@ class SphereTab(VizTabBase):
             return
 
         raw = dict((self._app_settings.sphere_viz_params if self._app_settings else None) or {})
-        raw.update({"n": raw_n, "viz_mode": self.current_mode(), "step": self.current_step()})
+        mode = self.current_mode()
+        raw.update({"n": raw_n, "viz_mode": mode, "step": self.current_step(), "fibers": self.current_fibers(),
+                    "show_rings": bool(self.show_rings_var.get())})
         values = {}
-        for attr, _label, saved_key, _default, kind in _ALL_FIELDS:
+        for attr, _label, saved_key, _default, kind in _ALL_FIELDS + _ALL_FIBER_FIELDS:
             text = getattr(self, attr).get().strip()
             raw[saved_key] = text
             values[saved_key] = _parse(text, kind)
+        if mode == MODE_FIBERS:
+            values["fibers"] = self.current_fibers()
+        else:
+            for _attr, _label, saved_key, _default, _kind in _ALL_FIBER_FIELDS:
+                values.pop(saved_key)
         argv = build_sphere_argv(n, portal_folder=portal if with_storage else None, step=self.current_step(),
-                                 pipe_stdin_commands=True, **values)
+                                 pipe_stdin_commands=True, viz_mode=VIZ_MODES[mode],
+                                 hide_rings=not self.show_rings_var.get(), **values)
         if self._app_settings is not None:
             self._app_settings.set_sphere_viz_params(raw)
         self._launch_renderer(argv, n, LocalLoggedRunner)

@@ -9,6 +9,7 @@ from primeatlas.visualization.rings.line.line_mode import LineMode
 from primeatlas.visualization.tree.tree_mode import TreeMode
 from primeatlas.visualization.assembly.assembly_mode import AssemblyMode
 from primeatlas.visualization.sphere.sphere_mode import SphereMode
+from primeatlas.visualization.sphere.fibers_mode import FibersMode
 
 MODES = {
     RingMode.name: RingMode,
@@ -16,4 +17,5 @@ MODES = {
     TreeMode.name: TreeMode,
     AssemblyMode.name: AssemblyMode,
     SphereMode.name: SphereMode,
+    FibersMode.name: FibersMode,
 }

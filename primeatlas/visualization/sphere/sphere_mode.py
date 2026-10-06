@@ -43,6 +43,7 @@ _DEFAULTS = {
     "sphere_node_size": 22.0,
     "sphere_label_font_size": 35,
     "sphere_step": "n",
+    "sphere_hide_rings": False,
 }
 
 STEP_N = "n"
@@ -88,8 +89,9 @@ class SphereMode(VizMode):
         self.spin = float(get("sphere_spin"))
         self.label_font_size = int(get("sphere_label_font_size"))
         self.style = SphereStyle(point_size=float(get("sphere_point_size")), node_size=float(get("sphere_node_size")),
-                                 segments=int(get("sphere_segments")), max_curves=int(get("sphere_max_curves")))
-        self.ring_frames = ring_frames(ring_angles(self.rings))
+                                 segments=int(get("sphere_segments")), max_curves=int(get("sphere_max_curves")),
+                                 draw_rings=not bool(get("sphere_hide_rings")))
+        self.ring_frames = self._orbit_frames()
         self.curve_cache = CurveCache(self.ring_frames, self.style)
         storage = config.get("sphere_storage")
         self.window = PrimeWindow(storage, int(get("sphere_chunk"))) if storage is not None else None
@@ -130,6 +132,9 @@ class SphereMode(VizMode):
                             help="sphere mode: pixel size of the node label")
         parser.add_argument("--sphere-step", type=str, default=_DEFAULTS["sphere_step"],
                             help="sphere mode: playback walks N by 1 (n) or from stored prime to stored prime (p)")
+        parser.add_argument("--sphere-hide-rings", action="store_true",
+                            help="sphere modes: draw no ring/orbit curves (the points, the fibers and a focused "
+                                 "orbit stay)")
 
     @classmethod
     def validate_arguments(cls, parser, args):
@@ -182,6 +187,7 @@ class SphereMode(VizMode):
         self.birth = whole and prime_state is True
         phases = ring_phases(n, frac, self.rings[:active]) if active else np.zeros(0)
         self._frame = (active, phases, list(self.factors), self.birth, n)
+        self._prepare_frame(n, frac, active, phases)
         self._draw_frame()
         t1 = time.perf_counter()
         prev_p = next_p = None
@@ -192,9 +198,19 @@ class SphereMode(VizMode):
         s.hud_rebuild_ms = round(1000 * (t1 - t0), 1)
         s.hud_lines = sphere_hud_lines(n, not whole, self.factors, prime_state if whole else None,
                                        self.rings, active, prev_p, next_p, self.window is not None,
-                                       target=target)
+                                       target=target) + self._extra_hud_lines(n, frac, active)
         empty = np.zeros((0, 5), dtype=np.float32)
         return empty, empty, 0, 0
+
+    def _orbit_frames(self):
+        return ring_frames(ring_angles(self.rings))
+
+    def _prepare_frame(self, n, frac, active, phases):
+        """Hook: the N-dependent state a subclass draws, computed once per rebuild."""
+
+    def _extra_hud_lines(self, n, frac, active):
+        """Hook: HUD lines appended after the rings mode's own."""
+        return []
 
     def _draw_frame(self):
         active, phases, factors, birth, n = self._frame

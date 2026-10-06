@@ -178,7 +178,8 @@ interchangeable engine generations, v3/v4/v4.1 -- see "Architecture" below).
   tree (real `n` or multiples axis, see "Prime tree" below) and the assembly animation,
   how each level of the wheel is built from the previous one by copying (see "Assembly
   animation" below). Its **Sphere** sub-tab shows the first K primes as rings on a sphere
-  through one common node, where the divisors of N meet (see "Prime sphere" below).
+  through one common node, where the divisors of N meet, and in its fibers mode as a pencil
+  of orbits joined by resonance or lineage fibers (see "Prime sphere" below).
 - **Benchmark** -- a throughput chart (numbers generated per second vs. floor depth,
   derived from the actual count of integers swept per floor rather than a window-count
   approximation, so a mode like Hybrid whose swept range is normally far smaller than
@@ -1114,8 +1115,10 @@ picture is the same for every base.
 ## Prime sphere
 
 The Visualization > Sphere sub-tab (`sphere_tab.py`) opens the shared renderer with
-`--viz-mode sphere --source none` and passes the storage folder as `--portal-folder`. Its
-mode selector holds the sphere's visualization modes; the rings mode is the first.
+`--viz-mode sphere --source none` (the fibers mode: `--viz-mode sphere_fibers`) and passes
+the storage folder as `--portal-folder`. Its mode selector holds the sphere's two
+visualization modes, rings and fibers; both share N's playback, stepping, the storage list,
+the rotation and the empty-storage offer described under the rings mode.
 
 Rings mode: the rings are the first K primes (`--sphere-rings`, sieved -- they are the
 same at every scale). Every ring is a circle on the unit sphere through the common node
@@ -1144,10 +1147,36 @@ p divides N. A ring takes part once p <= N.
 - At most `--sphere-max-curves` ring curves are drawn (smallest primes first;
   highlighted rings always), `--sphere-segments` segments each; every ring always has its
   point.
+- `--sphere-hide-rings` (the tab's "Draw the rings" off, both modes) draws no ring curve
+  at all, highlighted ones included: only the points, the grid, the fibers and a focused
+  orbit stay.
 - Empty storage: the same fill offer as the other sub-tabs; Cancel starts the sphere
   without a storage (primality unknown, prime steps play by 1, Ctrl+Left/Right stay).
 - Fields are remembered across restarts (`AppSettings.sphere_viz_params`, plus the
-  selected `viz_mode`).
+  selected `viz_mode` and `fibers`).
+
+Fibers mode (`fibers_mode.py`, a SphereMode subclass): the same first K primes as a pencil
+of orbits -- orbit i tilted by 38 + 104 frac(0.618 i) degrees, all touching the x axis at
+the node -- with the same phases, plus fibers between orbit points (`--sphere-fibers`):
+
+- Resonance: the `--sphere-visible-fibers` pairs p < q with the highest score 0.72 *
+  strength + 0.28/(1 + ln pq), strength = a Gauss of width 0.115 around the multiples of
+  pq; N mod pq comes from N mod p and N mod q by the CRT, so it is exact at any N. Every
+  pair of the first M orbits is evaluated (M(M-1)/2 <= `--sphere-pair-cap`), plus every
+  pair of the focused orbit, which gets +1. Per frame only the pairs near a multiple of pq
+  or with a high base get their strength computed; the result is checked against a bound
+  for every other pair and falls back to all pairs, so the selection stays exact.
+- Lineage: the chain 2 -> 3 -> 5 -> ...: the fiber of p_k runs from its parent p_{k-1},
+  present once p_k <= N, brightening near the multiples of p_{k-1} p_k (the same Gauss),
+  in three parts proportional to the integers' shares after sieving by every prime up to
+  p: the ancestors' multiples 1 - prod_{q<p}(1 - 1/q), p's own new multiples
+  prod_{q<p}(1 - 1/q)/p, and what stays free prod_{q<=p}(1 - 1/q) (3: 1/2 | 1/6 | 1/3). At
+  most `--sphere-max-curves` fibers (smallest primes first, plus the focused orbit's).
+- Strands are great-circle arcs with a sine wobble, `--sphere-fiber-samples` points each.
+- Phase: a click on an orbit point focuses its orbit (`VizMode.click`): the orbit, the arc
+  from the node to its point, a tick per residue and N mod p with its angle in the HUD (in
+  lineage also its three shares); a click outside the sphere clears the focus, as do N
+  dropping below the focused prime and R.
 
 ## Architecture
 
@@ -1327,7 +1356,7 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               visualization itself as tkinter widgets; see "Ring
                               visualization" above
   mode_registry.py              MODES -- every --viz-mode the renderer can run, by name
-                              (rings, line, tree, assembly, sphere). Adding a visualization mode means
+                              (rings, line, tree, assembly, sphere, sphere_fibers). Adding a visualization mode means
                               adding one entry here; shared/ never names a concrete mode
   shared/                       everything common to all visualizations -- the renderer
                               subprocess host, the interactive session, and the Tk-side
@@ -1543,16 +1572,27 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               and highlighted cells, labels and pickable floors
     assembly_hud.py              the animation's HUD lines (step, period and lanes before
                               -> after, removals, next prime and its square, density)
-  sphere/                       Visualization > Sphere sub-tab and the "sphere" viz-mode
-                              (see "Prime sphere" above)
+  sphere/                       Visualization > Sphere sub-tab and the "sphere" and
+                              "sphere_fibers" viz-modes (see "Prime sphere" above)
     sphere_tab.py                SphereTab(VizTabBase) -- the sub-tab's launch form with
-                              its mode selector, build_sphere_argv (--source none
-                              --viz-mode sphere --portal-folder); Start with an empty
-                              storage offers the storage fill (Cancel starts without a
-                              storage)
+                              its mode and fibers selectors, build_sphere_argv (--source
+                              none --viz-mode sphere|sphere_fibers --portal-folder; the
+                              fibers arguments only for the fibers mode); Start with an
+                              empty storage offers the storage fill (Cancel starts
+                              without a storage)
     sphere_mode.py               SphereMode -- N's sub-step, the view (drag rotation,
                               spin), prime-to-prime stepping from the storage, and its own
-                              CLI arguments (--sphere-*)
+                              CLI arguments (--sphere-*); hooks _orbit_frames/
+                              _prepare_frame/_extra_hud_lines for the fibers mode
+    fibers_mode.py               FibersMode(SphereMode) -- pencil orbits, resonance or
+                              lineage fibers per frame (pair residues cached per whole N),
+                              the focused orbit (click), its HUD lines and CLI arguments
+                              (--sphere-fibers/-visible-fibers/-pair-cap/-fiber-samples)
+    fiber_geometry.py            the fibers' pure math: pencil frames, the pair table and
+                              CRT pair residues, strength/score and the exact pruned top
+                              selection, wobbled strands, lineage shares and their pieces
+    fiber_draw.py                the fibers' draw data: strand segments (depth-dimmed, per
+                              piece colors) and the focused orbit's phase overlay
     sphere_geometry.py           the pure math: ring angles and circles through the node,
                               exact phases, easing, the view rotation and projection
     sphere_draw.py               world-space draw data of one frame: grid and ring curves
