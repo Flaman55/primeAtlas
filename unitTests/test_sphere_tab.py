@@ -13,7 +13,8 @@ Spec:
      locks the launch fields while it runs and unlocks them once it exits; the last HUD N
      goes back into the N field; the fields are persisted as sphere_viz_params. On a first
      run the fields hold the defaults: 200 rings, 8 frames per N, tempo 60, spin 0.4, step 1,
-     chunk 100000, 96 segments, 1000 curves, point 9, node 22, HUD and label font 35.
+     chunk 100000, 96 segments, 1000 curves, point 9, node 22, HUD and label font 35, playback
+     step N; the playback-step selector offers N and p and goes out as --sphere-step.
   D. Locales: every sphere.* key used exists in both strings_en.json and strings_pl.json
      (the base's storage-fill dialog keys included), and tabs.visualization_sphere.
   E. Empty storage: Start asks for a range to generate (From empty, To = N); Generate hands
@@ -60,15 +61,16 @@ def section_a_argv():
           "the sphere launches the shared renderer")
     check(_value(argv, "--source") == "none" and _value(argv, "--viz-mode") == "sphere"
           and _value(argv, "--upto") == "500", f"--source none --viz-mode sphere --upto 500 (got {argv})")
-    for flag in ("--portal-folder", "--sphere-rings", "--tempo-ms", "--pipe-stdin-commands"):
+    for flag in ("--portal-folder", "--sphere-rings", "--tempo-ms", "--pipe-stdin-commands", "--sphere-step"):
         check(flag not in argv, f"{flag} is omitted by default")
     argv = build_sphere_argv(10 ** 25, portal_folder="D:/P", rings=300, frames=5, tempo_ms=90, spin=1.5, n_step=7,
                              chunk=5000, segments=64, max_curves=50, point_size=6.0, node_size=30.0,
-                             hud_font_size=20, label_font_size=14, pipe_stdin_commands=True)
+                             hud_font_size=20, label_font_size=14, step="p", pipe_stdin_commands=True)
     expected = {"--upto": str(10 ** 25), "--portal-folder": "D:/P", "--sphere-rings": "300", "--sphere-frames": "5",
                 "--tempo-ms": "90", "--sphere-spin": "1.5", "--n-step": "7", "--sphere-chunk": "5000",
                 "--sphere-segments": "64", "--sphere-max-curves": "50", "--sphere-point-size": "6.0",
-                "--sphere-node-size": "30.0", "--hud-font-size": "20", "--sphere-label-font-size": "14"}
+                "--sphere-node-size": "30.0", "--hud-font-size": "20", "--sphere-label-font-size": "14",
+                "--sphere-step": "p"}
     for flag, value in expected.items():
         check(_value(argv, flag) == value, f"{flag} = {value} (got {_value(argv, flag)!r})")
     check("--pipe-stdin-commands" in argv, "--pipe-stdin-commands when asked")
@@ -145,6 +147,8 @@ def section_bc_app():
                  "label_font_size_entry": "35"}
     got = {attr: getattr(tab, attr).get() for attr in first_run}
     check(got == first_run, f"first-run field defaults (got {got})")
+    check(tab.current_step() == "n" and list(tab.step_combo.cget("values")) == [T("sphere.step_n"), T("sphere.step_p")],
+          "the playback step offers N (default) and p")
 
     tab.n_entry.delete(0, "end")
     tab.n_entry.insert(0, "garbage")
@@ -158,23 +162,26 @@ def section_bc_app():
     tab.n_entry.insert(0, "10**6")
     tab.rings_entry.delete(0, "end")
     tab.rings_entry.insert(0, "333")
+    tab.step_combo.current(1)
     tab._on_open()
     check(not shown and launched, "a valid N launches the renderer")
     argv = launched[-1] if launched else []
     check(_value(argv, "--upto") == str(10 ** 6) and _value(argv, "--sphere-rings") == "333"
-          and _value(argv, "--tempo-ms") == "60" and "--pipe-stdin-commands" in argv,
+          and _value(argv, "--tempo-ms") == "60" and _value(argv, "--sphere-step") == "p"
+          and "--pipe-stdin-commands" in argv,
           f"the launch carries the tab's values (got {argv})")
     check(_value(argv, "--portal-folder") == str(prime_atlas_v2.PORTAL_FOLDER),
           f"the storage folder is passed (got {_value(argv, '--portal-folder')!r})")
     check(str(tab.n_entry["state"]) == "disabled" and str(tab.open_button["state"]) == "disabled"
-          and str(tab.mode_combo["state"]) == "disabled",
+          and str(tab.mode_combo["state"]) == "disabled" and str(tab.step_combo["state"]) == "disabled",
           "launch fields and Start are locked while the renderer runs")
     _pump_until_idle(app, tab)
     check(str(tab.n_entry["state"]) == "normal" and str(tab.open_button["state"]) == "normal",
           "fields and Start unlock once the renderer exits")
     check(tab.n_entry.get() == "4321", f"the last HUD N goes back into the N field (got {tab.n_entry.get()!r})")
     saved = settings._data.get("sphere_viz_params") or {}
-    check(saved.get("n") == "10**6" and saved.get("rings") == "333" and saved.get("viz_mode") == "rings",
+    check(saved.get("n") == "10**6" and saved.get("rings") == "333" and saved.get("viz_mode") == "rings"
+          and saved.get("step") == "p",
           f"the fields are persisted as sphere_viz_params (got {saved})")
 
     _section_e_empty_storage(app, tab, sphere_tab_module, launched)

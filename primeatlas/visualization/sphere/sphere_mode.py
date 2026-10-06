@@ -5,15 +5,17 @@ K primes as circles on a sphere through one common node; the point of ring p has
 frame's draw data sphere_draw.py, the HUD sphere_hud.py; this class holds N's sub-step, the
 view and the navigation.
 
-N walks the integers; each N plays --sphere-frames sub-steps in which the points glide to
-their next position. Primality of N and the jumps to the previous/next prime come from the
-storage, read as a list around N (prime_window.py); without a storage the primality stays
-unknown and Left/Right step N by 1 (Ctrl: 10). The rings themselves are sieved (they are the
-first K primes at any scale).
+Playback (--sphere-step) walks N by 1 ("n") or from stored prime to stored prime ("p");
+each step plays --sphere-frames sub-steps in which the points glide to their next position
+(over the whole gap in "p"). Primality of N and the jumps to the previous/next prime come
+from the storage, read as a list around N (prime_window.py); without a storage the
+primality stays unknown, "p" plays by 1 and the prime jumps stay put. The rings themselves
+are sieved (they are the first K primes at any scale).
 
-Navigation: Space plays, Right/Left jump to the next/previous stored prime (Ctrl: 10),
-Up/Down step N, Home returns to the launch N, R resets to N = 1 and the start view. A left
-drag rotates the sphere (the camera itself is not panned), the wheel zooms.
+Navigation: Space plays, Right/Left step N by 1, Ctrl+Right/Ctrl+Left jump to the
+next/previous stored prime, Up/Down step N, Home returns to the launch N, R resets to N = 1
+and the start view. A left drag rotates the sphere (the camera itself is not panned), the
+wheel zooms.
 """
 
 import bisect
@@ -40,7 +42,12 @@ _DEFAULTS = {
     "sphere_point_size": 9.0,
     "sphere_node_size": 22.0,
     "sphere_label_font_size": 35,
+    "sphere_step": "n",
 }
+
+STEP_N = "n"
+STEP_P = "p"
+STEP_KINDS = (STEP_N, STEP_P)
 
 SPHERE_MAX_RINGS = 1_000_000
 _MIN_SEGMENTS = 8
@@ -86,8 +93,11 @@ class SphereMode(VizMode):
         self.curve_cache = CurveCache(self.ring_frames, self.style)
         storage = config.get("sphere_storage")
         self.window = PrimeWindow(storage, int(get("sphere_chunk"))) if storage is not None else None
+        self.step = str(get("sphere_step"))
         self.launch_n = int(session.n)
         self.sub = 0
+        # The N the current glide ends at (set when a glide starts).
+        self.target = None
         self.yaw = _START_YAW
         self.pitch = _START_PITCH
         self.factors = []
@@ -118,6 +128,8 @@ class SphereMode(VizMode):
                             help="sphere mode: node marker size in pixels")
         parser.add_argument("--sphere-label-font-size", type=int, default=_DEFAULTS["sphere_label_font_size"],
                             help="sphere mode: pixel size of the node label")
+        parser.add_argument("--sphere-step", type=str, default=_DEFAULTS["sphere_step"],
+                            help="sphere mode: playback walks N by 1 (n) or from stored prime to stored prime (p)")
 
     @classmethod
     def validate_arguments(cls, parser, args):
@@ -129,6 +141,8 @@ class SphereMode(VizMode):
                 parser.error(f"{flag} must be >= 1, got {value}")
         if args.sphere_segments < _MIN_SEGMENTS:
             parser.error(f"--sphere-segments must be >= {_MIN_SEGMENTS}, got {args.sphere_segments}")
+        if args.sphere_step not in STEP_KINDS:
+            parser.error(f"--sphere-step must be one of {', '.join(STEP_KINDS)}, got {args.sphere_step!r}")
         if args.sphere_max_curves < 0:
             parser.error(f"--sphere-max-curves must be >= 0, got {args.sphere_max_curves}")
         for flag, value in (("--sphere-point-size", args.sphere_point_size),
@@ -156,7 +170,8 @@ class SphereMode(VizMode):
         t0 = time.perf_counter()
         n = max(0, int(n_value))
         whole = self.sub == 0
-        frac = ease(self.sub / self.frames)
+        target = self.target if not whole and self.target is not None and self.target > n else n + 1
+        frac = ease(self.sub / self.frames) * (target - n)
         active = bisect.bisect_right(self.rings, n)
         prime_state = self.window.is_prime(n) if self.window is not None else None
         if whole and active:
@@ -176,7 +191,8 @@ class SphereMode(VizMode):
         s.hud_count = active
         s.hud_rebuild_ms = round(1000 * (t1 - t0), 1)
         s.hud_lines = sphere_hud_lines(n, not whole, self.factors, prime_state if whole else None,
-                                       self.rings, active, prev_p, next_p, self.window is not None)
+                                       self.rings, active, prev_p, next_p, self.window is not None,
+                                       target=target)
         empty = np.zeros((0, 5), dtype=np.float32)
         return empty, empty, 0, 0
 
@@ -203,16 +219,27 @@ class SphereMode(VizMode):
     def clamp_n(self, n):
         return max(1, n)
 
+    def _next_target(self, n):
+        """Where a glide from N ends, or None when the storage has nothing past N."""
+        if self.window is None:
+            return n + 1
+        if self.step == STEP_P:
+            return self.window.next_prime(n)
+        return None if self.window.is_prime(n + 1) is None else n + 1
+
     def tick(self):
         s = self.session
-        last_sub = self.sub + 1 >= self.frames
-        if last_sub and self.window is not None and self.window.is_prime(s.n + 1) is None:
-            s.playback_running = False
-            return True
+        if self.sub == 0:
+            target = self._next_target(s.n)
+            if target is None:
+                s.playback_running = False
+                return True
+            self.target = target
         self.yaw += self.spin / self.frames
-        if last_sub:
+        if self.sub + 1 >= self.frames:
             self.sub = 0
-            s.n += 1
+            s.n = self.target
+            self.target = None
             s.n_advancing = True
         else:
             self.sub += 1
@@ -221,23 +248,21 @@ class SphereMode(VizMode):
 
     def bump_n(self, delta):
         self.sub = 0
+        self.target = None
         return False
 
     def scrub(self, is_right, ctrl_held):
+        """Right/Left: N +-1; Ctrl: the next/previous stored prime (stays without one)."""
         s = self.session
         self.sub = 0
+        self.target = None
         s.n_force_rebuild = True
-        steps = 10 if ctrl_held else 1
-        if self.window is None:
-            s.n = max(1, s.n + (steps if is_right else -steps))
-            return True
-        n = s.n
-        for _ in range(steps):
-            step = self.window.next_prime(n) if is_right else self.window.prev_prime(n)
-            if step is None:
-                break
-            n = step
-        s.n = n
+        if not ctrl_held:
+            s.n = max(1, s.n + (1 if is_right else -1))
+        elif self.window is not None:
+            jump = self.window.next_prime(s.n) if is_right else self.window.prev_prime(s.n)
+            if jump is not None:
+                s.n = jump
         return True
 
     def drag(self, dx, dy):
@@ -249,10 +274,12 @@ class SphereMode(VizMode):
         if name == "home":
             self.session.n = self.launch_n
             self.sub = 0
+            self.target = None
             return True
         return False
 
     def reset_state(self):
         self.sub = 0
+        self.target = None
         self.yaw = _START_YAW
         self.pitch = _START_PITCH

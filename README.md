@@ -1124,8 +1124,10 @@ ring closes the full turn and 2 lies next to it. The point of ring p has phase
 2 pi (N mod p) / p from the node (exact for any N), so it stands at the node exactly when
 p divides N. A ring takes part once p <= N.
 
-- N walks the integers; each N plays `--sphere-frames` ticks in which the points glide
-  (eased) to their next position, and the view turns by `--sphere-spin` degrees per N.
+- Playback (`--sphere-step`, the tab's "Playback step") walks N by 1 or from stored
+  prime to stored prime; each step plays `--sphere-frames` ticks in which the points glide
+  (eased) to their next position -- over the whole gap when stepping by primes -- and the
+  view turns by `--sphere-spin` degrees per step.
 - At a whole N the rings dividing N light up in the factor color and the node label lists
   them; an N the storage lists as prime lights the node green (its own ring too, when
   N <= p_K). The HUD names the node's rings, "no ring divides N" for a composite whose
@@ -1133,8 +1135,9 @@ p divides N. A ring takes part once p <= N.
   storage.
 - The storage is read as a list of primes around N (`prime_window.py`):
   `--sphere-chunk` primes below N and from N, reloaded when N leaves them; past the
-  storage's last prime playback stops. Right/Left jump to the next/previous stored prime
-  (Ctrl: 10), Up/Down step N, Home returns to the start N, R resets to N = 1.
+  storage's last prime playback stops. Right/Left step N by 1, Ctrl+Right/Ctrl+Left jump
+  to the next/previous stored prime, Up/Down step N, Home returns to the start N, R resets
+  to N = 1.
 - A left drag rotates the sphere (the camera is not panned; VizMode.drag/reproject
   rebuild only the draw data), the wheel zooms, middle click fits. The far half is dimmed,
   since the sphere is drawn without a depth buffer.
@@ -1142,7 +1145,7 @@ p divides N. A ring takes part once p <= N.
   highlighted rings always), `--sphere-segments` segments each; every ring always has its
   point.
 - Empty storage: the same fill offer as the other sub-tabs; Cancel starts the sphere
-  without a storage (primality unknown, Left/Right plain +-1/+-10 steps).
+  without a storage (primality unknown, prime steps play by 1, Ctrl+Left/Right stay).
 - Fields are remembered across restarts (`AppSettings.sphere_viz_params`, plus the
   selected `viz_mode`).
 

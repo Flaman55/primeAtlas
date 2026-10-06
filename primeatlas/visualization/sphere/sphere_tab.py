@@ -26,11 +26,14 @@ RENDERER_SCRIPT = os.path.join(os.path.dirname(_THIS_DIR), "shared", "renderer.p
 
 MODE_RINGS = "rings"
 MODES = (MODE_RINGS,)
+# Playback step: N by 1, or stored prime to stored prime (sphere_mode.STEP_KINDS).
+STEPS = ("n", "p")
 
 
 def build_sphere_argv(n, python_executable=None, portal_folder=None, rings=None, frames=None, tempo_ms=None,
                       spin=None, n_step=None, chunk=None, segments=None, max_curves=None, point_size=None,
-                      node_size=None, hud_font_size=None, label_font_size=None, pipe_stdin_commands=False):
+                      node_size=None, hud_font_size=None, label_font_size=None, step=None,
+                      pipe_stdin_commands=False):
     """Argv launching renderer.py (as a plain script path) in sphere mode at N = `n`.
     Every None optional value is omitted, so renderer.py's own defaults apply; values are
     forwarded as given (renderer.py validates them)."""
@@ -42,7 +45,8 @@ def build_sphere_argv(n, python_executable=None, portal_folder=None, rings=None,
                         ("--sphere-spin", spin), ("--n-step", n_step), ("--sphere-chunk", chunk),
                         ("--sphere-segments", segments), ("--sphere-max-curves", max_curves),
                         ("--sphere-point-size", point_size), ("--sphere-node-size", node_size),
-                        ("--hud-font-size", hud_font_size), ("--sphere-label-font-size", label_font_size)):
+                        ("--hud-font-size", hud_font_size), ("--sphere-label-font-size", label_font_size),
+                        ("--sphere-step", step)):
         if value is not None:
             argv += [flag, str(value)]
     if pipe_stdin_commands:
@@ -139,6 +143,14 @@ class SphereTab(VizTabBase):
         self.n_entry = ttk.Entry(n_row, width=28)
         self.n_entry.insert(0, saved.get("n", "1"))
         self.n_entry.pack(side="left", padx=(6, 0))
+        step_row = ttk.Frame(common_frame)
+        step_row.pack(fill="x", padx=8, pady=(0, 4))
+        ttk.Label(step_row, text=self._tk("step_label")).pack(side="left")
+        saved_step = saved.get("step", STEPS[0])
+        self.step_combo = ttk.Combobox(step_row, state="readonly", width=36,
+                                       values=[self._tk(f"step_{step}") for step in STEPS])
+        self.step_combo.current(STEPS.index(saved_step if saved_step in STEPS else STEPS[0]))
+        self.step_combo.pack(side="left", padx=(6, 0))
         self._add_entries(common_frame, _FIELDS, saved)
 
         performance_frame = ttk.LabelFrame(container, text=self._tk("section_performance"))
@@ -166,6 +178,9 @@ class SphereTab(VizTabBase):
     def current_mode(self):
         return self._mode_choices[max(0, self.mode_combo.current())][0]
 
+    def current_step(self):
+        return STEPS[max(0, self.step_combo.current())]
+
     # -- VizTabBase hooks -------------------------------------------------------
 
     def _set_launch_params_readonly(self, readonly):
@@ -173,6 +188,7 @@ class SphereTab(VizTabBase):
         for widget in self._launch_param_entries:
             widget.configure(state=state)
         self.mode_combo.configure(state="disabled" if readonly else "readonly")
+        self.step_combo.configure(state="disabled" if readonly else "readonly")
 
     def _restore_last_n(self, n):
         self.n_entry.delete(0, "end")
@@ -194,14 +210,14 @@ class SphereTab(VizTabBase):
             return
 
         raw = dict((self._app_settings.sphere_viz_params if self._app_settings else None) or {})
-        raw.update({"n": raw_n, "viz_mode": self.current_mode()})
+        raw.update({"n": raw_n, "viz_mode": self.current_mode(), "step": self.current_step()})
         values = {}
         for attr, _label, saved_key, _default, kind in _ALL_FIELDS:
             text = getattr(self, attr).get().strip()
             raw[saved_key] = text
             values[saved_key] = _parse(text, kind)
-        argv = build_sphere_argv(n, portal_folder=portal if with_storage else None, pipe_stdin_commands=True,
-                                 **values)
+        argv = build_sphere_argv(n, portal_folder=portal if with_storage else None, step=self.current_step(),
+                                 pipe_stdin_commands=True, **values)
         if self._app_settings is not None:
             self._app_settings.set_sphere_viz_params(raw)
         self._launch_renderer(argv, n, LocalLoggedRunner)

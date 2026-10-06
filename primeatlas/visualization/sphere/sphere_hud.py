@@ -6,14 +6,17 @@ sphere_hud.py -- the HUD lines of the sphere's rings mode (under the shared head
 _HUD_FACTORS = 24
 
 
-def sphere_hud_lines(n, moving, factors, prime_state, rings, active, prev_prime, next_prime, has_storage):
+def sphere_hud_lines(n, moving, factors, prime_state, rings, active, prev_prime, next_prime, has_storage,
+                     target=None):
     """`factors`: the ring primes dividing N (whole N only); `prime_state`: N's primality
     from the storage (True/False, None = unknown); `prev_prime`/`next_prime`: the stored
-    neighbors of N (None when unknown)."""
+    neighbors of N (None when unknown); `target`: where the current glide ends (N + 1 when
+    None)."""
     lines = []
     ring_max = rings[-1]
     if moving:
-        lines.append(f"N {n:,} -> {n + 1:,}: the points move along their rings")
+        end = n + 1 if target is None else target
+        lines.append(f"N {n:,} -> {end:,}: the points move along their rings")
     elif prime_state is True:
         own = " -- its own ring is at the node" if n <= ring_max else ""
         lines.append(f"{n:,} is prime: a new prime{own}")

@@ -15,10 +15,10 @@ Spec:
      tick turns the view by spin/frames degrees (--sphere-spin per N). With a storage, a tick
      that would move N past the storage's last prime stops playback; without one it never
      stops.
-  D. Stepping: Right jumps to the next stored prime, Ctrl+Right ten primes on, Left and
-     Ctrl+Left back, always to sub-step 0; at the storage's ends N stays. Without a storage
-     Left/Right are the session's plain +-1/+-10. Up/Down move N by the step and reset the
-     sub-step; N never drops below 1.
+  D. Stepping: Right/Left move N by 1, Ctrl+Right/Ctrl+Left jump to the next/previous
+     stored prime, always to sub-step 0; N never drops below 1; at the storage's ends a
+     prime jump stays; without a storage Ctrl+Left/Right stay. Up/Down move N by the step
+     and reset the sub-step.
   E. Drag: in the sphere a left drag rotates the view (yaw by dx, pitch by dy, pitch held
      within +-89 degrees) instead of panning the camera, and marks the view dirty;
      reproject() rebuilds the draw data for the new view without touching the HUD. In the
@@ -36,6 +36,11 @@ Spec:
   I. CLI: the sphere's arguments exist with their defaults; prepare_launch maps them (the
      portal folder gives the archive storage); validate_arguments rejects bad values.
   J. Home returns to the launch N at sub-step 0; R gives N = 1, sub-step 0, the start view.
+  K. Playback step (--sphere-step): "n" (default) plays N by 1; "p" plays from stored prime
+     to stored prime -- the sub-steps glide the points over the whole gap (the phase of ring
+     p runs from N to the next prime), the HUD shows N -> next prime, the view turns spin
+     degrees per step; at the storage's last prime playback stops; without a storage "p"
+     plays by 1.
 
 Usage:
     python unitTests/test_sphere_mode.py
@@ -154,28 +159,72 @@ def section_d_stepping():
     s = _make_session(n=100)
     s.mode.sub = 2
     s.scrub_advance(True, False, True)
-    check(s.n == 101 and s.mode.sub == 0, f"Right: next prime 101 at sub 0 (got {s.n})")
-    s.scrub_advance(True, True, True)
-    check(s.n == STORED[STORED.index(101) + 10], f"Ctrl+Right: ten primes on (got {s.n})")
-    s.scrub_advance(False, True, True)
-    check(s.n == 101, f"Ctrl+Left back (got {s.n})")
-    s.scrub_advance(False, False, True)
-    check(s.n == 97, f"Left: previous prime (got {s.n})")
-    s.n = STORED[-1]
+    check(s.n == 101 and s.mode.sub == 0, f"Right: +1 at sub 0 (got {s.n})")
     s.scrub_advance(True, False, True)
-    check(s.n == STORED[-1], "Right at the storage end stays")
-    s.n = 2
+    check(s.n == 102, f"Right: +1 again, not the next prime (got {s.n})")
+    s.scrub_advance(True, True, True)
+    check(s.n == 103, f"Ctrl+Right: next prime (got {s.n})")
+    s.scrub_advance(True, True, True)
+    check(s.n == 107, f"Ctrl+Right: next prime again (got {s.n})")
+    s.mode.sub = 1
+    s.scrub_advance(False, True, True)
+    check(s.n == 103 and s.mode.sub == 0, f"Ctrl+Left: previous prime (got {s.n})")
     s.scrub_advance(False, False, True)
-    check(s.n == 2, "Left at the first prime stays")
+    check(s.n == 102, f"Left: -1 (got {s.n})")
+    s.n = STORED[-1]
+    s.scrub_advance(True, True, True)
+    check(s.n == STORED[-1], "Ctrl+Right at the storage end stays")
+    s.n = 2
+    s.scrub_advance(False, True, True)
+    check(s.n == 2, "Ctrl+Left at the first prime stays")
+    s.n = 1
+    s.scrub_advance(False, False, True)
+    check(s.n == 1, "Left never below 1")
     free = _make_session(n=50, storage=None)
     free.scrub_advance(True, False, True)
     check(free.n == 51, f"without storage Right is +1 (got {free.n})")
+    free.scrub_advance(True, True, True)
+    check(free.n == 51, f"without storage Ctrl+Right stays (got {free.n})")
     s = _make_session(n=5)
     s.mode.sub = 3
     s.bump_n(7)
     check(s.n == 12 and s.mode.sub == 0, f"Up: +step, sub reset (got {s.n}, {s.mode.sub})")
     s.bump_n(-100)
     check(s.n == 1, f"never below 1 (got {s.n})")
+
+
+def section_k_playback_step():
+    print("\n--- K: playback step ---")
+    from primeatlas.visualization.sphere.sphere_geometry import ring_phases
+    s = _make_session(n=89, sphere_step="p", sphere_frames=4)
+    s.playback_running = True
+    yaw0 = s.mode.yaw
+    s.tick()
+    check(s.n == 89 and s.mode.sub == 1 and s.mode.target == 97, f"p: gliding toward 97 (got {s.n}, {s.mode.target})")
+    s.rebuild(s.n)
+    check("89 -> 97" in "\n".join(s.hud_lines), f"HUD N -> next prime (got {s.hud_lines})")
+    s.tick()
+    s.tick()
+    s.rebuild(s.n)
+    from primeatlas.visualization.sphere.sphere_geometry import ease
+    expected = ring_phases(89, ease(3 / 4) * 8, s.mode.rings[:24])
+    check(np.allclose(s.mode._frame[1], expected), "the phase runs over the whole gap")
+    s.tick()
+    check(s.n == 97 and s.mode.sub == 0, f"after frames ticks N is the next prime (got {s.n})")
+    check(abs(s.mode.yaw - yaw0 - 0.4) < 1e-9, f"spin per step (got {s.mode.yaw - yaw0})")
+    end = _make_session(n=STORED[-1], sphere_step="p")
+    end.playback_running = True
+    check(end.tick() is True and not end.playback_running and end.n == STORED[-1],
+          "p: stops at the storage's last prime")
+    free = _make_session(n=10, storage=None, sphere_step="p", sphere_frames=2)
+    free.playback_running = True
+    free.tick()
+    free.tick()
+    check(free.n == 11, f"p without storage plays by 1 (got {free.n})")
+    n_mode = _make_session(n=89, sphere_frames=2)
+    n_mode.tick()
+    n_mode.tick()
+    check(n_mode.n == 90, f"n (default) plays by 1 (got {n_mode.n})")
 
 
 def section_e_drag():
@@ -274,7 +323,7 @@ def section_i_cli():
     args = parser.parse_args([])
     expected = dict(sphere_rings=200, sphere_frames=8, sphere_chunk=100000, sphere_segments=96,
                     sphere_max_curves=1000, sphere_spin=0.4, sphere_point_size=9.0, sphere_node_size=22.0,
-                    sphere_label_font_size=35)
+                    sphere_label_font_size=35, sphere_step="n")
     got = {k: getattr(args, k) for k in expected}
     check(got == expected, f"defaults (got {got})")
     SphereMode.validate_arguments(parser, args)
@@ -294,7 +343,7 @@ def section_i_cli():
     SphereMode.add_arguments(strict)
     for bad in (["--sphere-rings", "0"], ["--sphere-rings", "1000001"], ["--sphere-frames", "0"],
                 ["--sphere-chunk", "0"], ["--sphere-segments", "7"], ["--sphere-max-curves", "-1"],
-                ["--sphere-point-size", "0"], ["--sphere-node-size", "-2"]):
+                ["--sphere-point-size", "0"], ["--sphere-node-size", "-2"], ["--sphere-step", "q"]):
         try:
             SphereMode.validate_arguments(strict, strict.parse_args(bad))
             check(False, f"{bad} rejected")
@@ -322,7 +371,7 @@ def section_j_home_reset():
 def main():
     for section in (section_a_registration, section_b_rings, section_c_playback, section_d_stepping,
                     section_e_drag, section_f_highlights, section_g_hud, section_h_draw, section_i_cli,
-                    section_j_home_reset):
+                    section_j_home_reset, section_k_playback_step):
         try:
             section()
         except Exception as e:  # noqa: BLE001
