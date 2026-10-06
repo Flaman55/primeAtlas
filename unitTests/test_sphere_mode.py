@@ -32,7 +32,8 @@ Spec:
   H. Draw data: one marker per ring taking part plus the node; the ring curves are capped
      by --sphere-max-curves (smallest primes first) but the highlighted rings are always
      drawn, in the factor/birth colors; everything lies within the view radius; the node
-     label lists the factors (or the prime).
+     label lists the factors (or the prime). With --sphere-hide-rings no ring curve is drawn
+     (not even a highlighted one) -- only the grid -- while every point and the node stay.
   I. CLI: the sphere's arguments exist with their defaults; prepare_launch maps them (the
      portal folder gives the archive storage); validate_arguments rejects bad values.
   J. Home returns to the launch N at sub-step 0; R gives N = 1, sub-step 0, the start view.
@@ -311,6 +312,13 @@ def section_h_draw():
     check(s.mode.draw.curve_primes == [89], f"cap 0: only the birth ring (got {s.mode.draw.curve_primes})")
     check(np.any(np.all(np.abs(s.mode.segment_data()[:, 2:5] - BIRTH_RGB) < 1e-3, axis=1)),
           "the birth ring in the birth color")
+    from primeatlas.visualization.sphere.sphere_draw import GRID_RGB
+    hidden = _make_session(n=84, sphere_hide_rings=True)
+    hidden.rebuild(84)
+    seg = hidden.mode.segment_data()
+    check(hidden.mode.draw.curve_primes == [] and np.all(np.abs(seg[:, 2:5] - GRID_RGB) < 1e-3),
+          "hidden rings: only the grid, no ring curve (not even the factors')")
+    check(len(hidden.mode.marker_data()) == 23 + 1, "hidden rings: every point and the node stay")
 
 
 def section_i_cli():
@@ -323,7 +331,7 @@ def section_i_cli():
     args = parser.parse_args([])
     expected = dict(sphere_rings=200, sphere_frames=8, sphere_chunk=100000, sphere_segments=96,
                     sphere_max_curves=1000, sphere_spin=0.4, sphere_point_size=9.0, sphere_node_size=22.0,
-                    sphere_label_font_size=35, sphere_step="n")
+                    sphere_label_font_size=35, sphere_step="n", sphere_hide_rings=False)
     got = {k: getattr(args, k) for k in expected}
     check(got == expected, f"defaults (got {got})")
     SphereMode.validate_arguments(parser, args)
