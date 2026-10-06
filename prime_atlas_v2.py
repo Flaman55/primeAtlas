@@ -1079,6 +1079,9 @@ def _build_gui():
             self.visualization_tree_tab = ttk.Frame(sub)
             sub.add(self.visualization_tree_tab, text=T("tabs.visualization_tree"))
             self._build_tree_tab()
+            self.visualization_sphere_tab = ttk.Frame(sub)
+            sub.add(self.visualization_sphere_tab, text=T("tabs.visualization_sphere"))
+            self._build_sphere_tab()
 
         def _build_rings_tab(self):
             """Thin wrapper -- the whole sub-tab lives in
@@ -1113,6 +1116,21 @@ def _build_gui():
                 offer_generate_storage=lambda start, end, on_finished:
                     self._generation_offer_coord.offer_fill_storage_range(start, end, on_finished))
             self.tree_tab_widget.pack(fill="both", expand=True)
+
+        def _build_sphere_tab(self):
+            """Thin wrapper -- the whole sub-tab lives in
+            primeatlas/visualization/sphere/sphere_tab.py's SphereTab (its own renderer
+            window and process; it reads the storage as a list of primes around N and
+            offers the same empty-storage fill as the Rings sub-tab)."""
+            from primeatlas.visualization.sphere.sphere_tab import SphereTab
+
+            self.sphere_tab_widget = SphereTab(
+                self.visualization_sphere_tab, get_portal_folder=lambda: PORTAL_FOLDER,
+                status_var=self.status, translator=TRANSLATOR,
+                totals_progress=self.totals_progress, app_settings=APP_SETTINGS,
+                offer_generate_storage=lambda start, end, on_finished:
+                    self._generation_offer_coord.offer_fill_storage_range(start, end, on_finished))
+            self.sphere_tab_widget.pack(fill="both", expand=True)
 
         # --- Tab 6: Settings -----------------------------------------------------
 

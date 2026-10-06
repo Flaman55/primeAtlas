@@ -128,6 +128,15 @@ class VizMode:
         """Mode-specific Left/Right step. True if handled."""
         return False
 
+    def drag(self, dx, dy):
+        """Left-button drag by (dx, dy) pixels. True if the mode used it (the session
+        then marks the view dirty instead of panning the camera)."""
+        return False
+
+    def reproject(self):
+        """Rebuilds the draw data for a changed view (after a used drag) without a full
+        rebuild; the HUD stays as it is."""
+
     def click(self, world_x, world_y, world_per_pixel):
         """Left click (without a drag) at a world position; `world_per_pixel` converts
         a pixel tolerance to world units. True if handled (the session then rebuilds)."""

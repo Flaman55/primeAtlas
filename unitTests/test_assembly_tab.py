@@ -7,7 +7,8 @@ Spec:
   A. build_assembly_argv: renderer.py as a plain script path, --source none, --viz-mode
      assembly, --upto N; every optional value is omitted when None/empty and forwarded
      verbatim otherwise.
-  B. Placement: the Visualization sub-tabs are Rings and Tree only; the Tree sub-tab has a
+  B. Placement: the Visualization sub-tabs are Rings, Tree and Sphere (no own Assembly
+     sub-tab); the Tree sub-tab has a
      visualization-mode selector (tree, assembly), tree on a first run.
   C. Switching: the tree-only options are shown in tree mode and the assembly-only
      options in assembly mode, never both; the common options (n, value-label cap, HUD and
@@ -147,8 +148,9 @@ def section_bcde_app():
     T = prime_atlas_v2.TRANSLATOR.t
     sub = app.visualization_sub_notebook
     sub_tabs = [sub.tab(t, "text") for t in sub.tabs()]
-    check(sub_tabs == [T("tabs.visualization_rings"), T("tabs.visualization_tree")],
-          f"the Visualization sub-tabs are Rings and Tree only (got {sub_tabs})")
+    check(sub_tabs == [T("tabs.visualization_rings"), T("tabs.visualization_tree"),
+                       T("tabs.visualization_sphere")],
+          f"the Visualization sub-tabs are Rings, Tree and Sphere, no Assembly (got {sub_tabs})")
     check(not hasattr(app, "assembly_tab_widget"), "no separate Assembly sub-tab")
     tab = app.tree_tab_widget
     check(tab.current_mode() == "tree", f"first run: tree mode (got {tab.current_mode()})")

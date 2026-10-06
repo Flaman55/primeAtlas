@@ -94,7 +94,8 @@ Usage -- run as a PLAIN SCRIPT PATH, not `python -m primeatlas.visualization.sha
     before spawning the subprocess.
 
 Controls:
-    drag              pan
+    drag              pan (a mode may use the drag itself, see VizMode.drag --
+                      the sphere rotates)
     scroll            zoom to cursor
     middle-click      recenter/fit -- resets pan to dead center and zoom to
                       fit_zoom_for_viewport() (fills the window's full
@@ -749,6 +750,13 @@ def _run_visualization(args, audio=None):
             vao_hit = gl.make_ring_vao(vbo_hit)
             session.n_advancing = False
             session.n_force_rebuild = False
+            session.view_dirty = False
+        elif session.view_dirty:
+            # The mode used a drag (e.g. the sphere's rotation): only its draw data
+            # changes, the HUD and the ring buffers stay.
+            session.view_dirty = False
+            session.mode.reproject()
+            _upload_mode_draw_data()
 
         width, height = glfw.get_framebuffer_size(gl.window)
         gl.ctx.viewport = (0, 0, width, height)
@@ -995,7 +1003,10 @@ def main():
                               "--pattern-seed-k/--pattern-seed-start k-tuple pattern slid along it by N. "
                               "tree: the prime tree on the real n axis (use with --source none). "
                               "assembly: the wheel assembled level by level, q copies of the period "
-                              "minus the multiples of q (use with --source none)")
+                              "minus the multiples of q (use with --source none). "
+                              "sphere: the first K primes as rings on a sphere through one node, "
+                              "N's divisors meet at it (use with --source none; --portal-folder "
+                              "gives primality and the prime jumps)")
     # Opt-in live pause/resume protocol -- OFF by default, so running this
     # file directly from a terminal keeps the plain behavior: closing the
     # window (Esc / titlebar X) exits. Only rings_tab.py passes

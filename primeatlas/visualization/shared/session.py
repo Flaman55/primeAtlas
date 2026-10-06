@@ -128,6 +128,9 @@ class RenderSession:
         # itself is `self.n` above).
         self.n_advancing = False
         self.n_force_rebuild = False
+        # Set when the active mode used a drag (VizMode.drag): the main loop then
+        # re-uploads the mode's draw data after VizMode.reproject, without a rebuild.
+        self.view_dirty = False
 
         # LEFT/RIGHT scrub bookkeeping.
         self.scrub_held = 0
@@ -544,12 +547,16 @@ class RenderSession:
         self.cam_dragging = bool(dragging)
 
     def on_cursor_pos(self, x, y):
-        """Mouse moved to (x, y) -- pans the camera by the delta from the
-        last known position while `cam_dragging` is True."""
+        """Mouse moved to (x, y) -- while `cam_dragging` is True, hands the delta from
+        the last known position to the active mode (VizMode.drag) and pans the camera
+        by it when the mode does not use it."""
         lx, ly = self.cam_last_mouse
         if self.cam_dragging:
-            self.cam_pan[0] += x - lx
-            self.cam_pan[1] += y - ly
+            if self.mode.drag(x - lx, y - ly):
+                self.view_dirty = True
+            else:
+                self.cam_pan[0] += x - lx
+                self.cam_pan[1] += y - ly
         self.cam_last_mouse = (x, y)
 
     def screen_to_world(self, x, y, viewport):
