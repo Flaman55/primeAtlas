@@ -310,7 +310,8 @@ class ScrollPad:
     pointer never enters a child widget, which would fire <Leave> on the strip).
 
     Bound app-wide (bind_all) only between <Enter> and <Leave>, the same scoping the page
-    canvases use for their own wheel handling."""
+    canvases use for their own wheel handling. attach(widget) gives another widget (the
+    page scrollbar next to the strip) the same behavior."""
 
     _WHEEL_EVENTS = ("<MouseWheel>", "<Button-4>", "<Button-5>")
 
@@ -327,6 +328,12 @@ class ScrollPad:
         self.frame.bind("<Enter>", self._on_enter)
         self.frame.bind("<Leave>", self._on_leave)
         self.frame.bind("<Configure>", lambda _e: self._draw_label())
+        self.attached = []
+
+    def attach(self, widget):
+        widget.bind("<Enter>", self._on_enter, add="+")
+        widget.bind("<Leave>", self._on_leave, add="+")
+        self.attached.append(widget)
 
     def _draw_label(self):
         self.frame.delete("label")

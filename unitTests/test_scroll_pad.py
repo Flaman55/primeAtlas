@@ -6,6 +6,7 @@ terminals or lists sit under the rest of the page.
 A. ScrollPad: entering binds the wheel app-wide, leaving unbinds it; a wheel notch calls
    scroll(units) with -3 up / +3 down (Windows delta and X11 Button-4/5).
    It is 40px wide by default and shows its label vertically, read top to bottom (rotated 270 degrees).
+   attach(widget) makes another widget (the page scrollbar) behave the same way.
 B. Every page container has one, packed between the page and its scrollbar: each Settings
    sub-tab, the Generation tab, the visualization tabs. A wheel notch over the pad scrolls
    a page whose content does not fit, and does nothing on a page that fits.
@@ -66,6 +67,12 @@ def _test_pad(root):
     pad._on_leave(None)
     check(root.bind_all("<MouseWheel>") == "" and root.bind_all("<Button-4>") == "",
           "leaving the pad unbinds the wheel")
+    bar = ttk.Scrollbar(root)
+    pad.attach(bar)
+    check(bar in pad.attached, "attach() registers the widget")
+    pad._on_enter(None)
+    check(root.bind_all("<MouseWheel>") != "", "entering an attached widget binds the wheel")
+    pad._on_leave(None)
     narrow = ScrollPad(root, calls.append, width=12)
     check(int(narrow.frame.cget("width")) == 12, "width is configurable")
 
@@ -127,6 +134,9 @@ def _test_containers():
             check(pad.frame.winfo_manager() == "pack", f"{label}: pad is packed")
             canvas = _canvas_of(pad)
             check(canvas is not None, f"{label}: pad sits next to the page canvas")
+            bars = [w for w in pad.frame.master.winfo_children() if isinstance(w, ttk.Scrollbar)]
+            check(len(bars) == 1 and bars[0] in pad.attached,
+                  f"{label}: the wheel over the page scrollbar scrolls the page too")
         _wait_mapped(app, app.settings_tab.master.master)
         _show(app.settings_tab)
         app.update()
