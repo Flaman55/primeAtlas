@@ -2275,9 +2275,11 @@ class SettingsTab(BaseTab):
             scroll_state["user_scrolled"] = True
             canvas.yview_scroll(units, "units")
 
-        # Wheel over this strip always scrolls the page, see ScrollPad.
+        # Wheel over this strip and over the scrollbar always scrolls the page, see
+        # ScrollPad.
         pad = ScrollPad(notebook_tab, _scroll_page, text=self.T("common.scroll_pad"))
         pad.frame.pack(side="right", fill="y")
+        pad.attach(vsb)
         self._scroll_pads.append(pad)
 
         inner = ttk.Frame(canvas)

@@ -1220,7 +1220,8 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               across rescans); ScrollPad is the strip along the right
                               edge of every scrollable page (Settings sub-tabs,
                               Generation, visualization tabs) where the mouse wheel
-                              always scrolls the page itself
+                              always scrolls the page itself -- as does the wheel over
+                              the page scrollbar next to it
   theme.py                      light/dark palette DATA only -- the actual
                               ttk.Style()/option_add() application lives in
                               PortalBrowserApp._apply_theme(), which needs a live Tk
