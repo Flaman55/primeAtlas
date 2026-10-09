@@ -313,6 +313,7 @@
   "const_records.pdf_subtitle": "Generated: {now}  --  rows (floors): {rows}",
   "const_records.pdf_continued": "Constellation records table (continued, page {page})",
   "common.refresh": "Refresh",
+  "common.scroll_pad": "Scroll area",
   "common.prev_page": "◀ Previous",
   "common.next_page": "Next ▶",
   "common.page_label": "Page {page} / {total}",

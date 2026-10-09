@@ -84,7 +84,7 @@ from tkinter import ttk, messagebox, filedialog
 from tkinter.scrolledtext import ScrolledText
 
 from ..core.base_tab import BaseTab
-from ..core.widgets import HeightGrip
+from ..core.widgets import HeightGrip, ScrollPad
 from ..generation.generation_console import GenerationConsole
 from .manifest import FloorSnapshot, ConstellationSnapshot
 from .backup_store import BackupStore
@@ -2203,6 +2203,7 @@ class SettingsTab(BaseTab):
         notebook.add(backup_tab, text=self.T("settings.tab_backup"))
         notebook.add(updates_tab, text=self.T("settings.tab_updates"))
 
+        self._scroll_pads = []
         self._build_general_tab(self._make_scrollable_tab(general_tab))
         self._build_backup_tab(self._make_scrollable_tab(backup_tab))
         self._build_updates_tab(self._make_scrollable_tab(updates_tab))
@@ -2267,6 +2268,17 @@ class SettingsTab(BaseTab):
         canvas.configure(yscrollcommand=vsb.set)
         canvas.pack(side="left", fill="both", expand=True)
         vsb.pack(side="right", fill="y")
+
+        def _scroll_page(units):
+            if _content_fits():
+                return
+            scroll_state["user_scrolled"] = True
+            canvas.yview_scroll(units, "units")
+
+        # Wheel over this strip always scrolls the page, see ScrollPad.
+        pad = ScrollPad(notebook_tab, _scroll_page, text=self.T("common.scroll_pad"))
+        pad.frame.pack(side="right", fill="y")
+        self._scroll_pads.append(pad)
 
         inner = ttk.Frame(canvas)
         inner_window = canvas.create_window((0, 0), window=inner, anchor="nw")

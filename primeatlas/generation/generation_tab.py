@@ -52,6 +52,7 @@ from tkinter import ttk, messagebox
 import pattern_catalog_v1
 
 from ..core.base_tab import BaseTab
+from ..core.widgets import ScrollPad
 from ..core.progress_bar_owner import claim_progress_bar, release_progress_bar
 from .hybrid_controls import HybridControls
 from ..benchmark.benchmark import read_benchmark_log
@@ -287,6 +288,16 @@ class GenerationTab(HybridControls, BaseTab):
         canvas.configure(yscrollcommand=vsb.set)
         canvas.pack(side="left", fill="both", expand=True)
         vsb.pack(side="right", fill="y")
+
+        def _scroll_page(units):
+            if _content_fits():
+                return
+            scroll_state["user_scrolled"] = True
+            canvas.yview_scroll(units, "units")
+
+        # Wheel over this strip always scrolls the page, see ScrollPad.
+        self._scroll_pad = ScrollPad(outer, _scroll_page, text=self.T("common.scroll_pad"))
+        self._scroll_pad.frame.pack(side="right", fill="y")
 
         inner = ttk.Frame(canvas)
         inner_window = canvas.create_window((0, 0), window=inner, anchor="nw")

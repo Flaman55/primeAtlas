@@ -313,6 +313,7 @@
   "const_records.pdf_subtitle": "Wygenerowano: {now}  --  wierszy (pięter): {rows}",
   "const_records.pdf_continued": "Tabela rekordów konstelacji (ciąg dalszy, strona {page})",
   "common.refresh": "Refresh",
+  "common.scroll_pad": "Obszar przewijania",
   "common.prev_page": "◀ Poprzednia",
   "common.next_page": "Następna ▶",
   "common.page_label": "Strona {page} / {total}",

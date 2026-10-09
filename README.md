@@ -1217,7 +1217,10 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               table that sets its height in lines (no vertical paned
                               windows anywhere; the Generation tab's sections stack at
                               natural height, the Records table keeps a dragged height
-                              across rescans)
+                              across rescans); ScrollPad is the strip along the right
+                              edge of every scrollable page (Settings sub-tabs,
+                              Generation, visualization tabs) where the mouse wheel
+                              always scrolls the page itself
   theme.py                      light/dark palette DATA only -- the actual
                               ttk.Style()/option_add() application lives in
                               PortalBrowserApp._apply_theme(), which needs a live Tk
