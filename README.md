@@ -1221,7 +1221,9 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               edge of every scrollable page (Settings sub-tabs,
                               Generation, visualization tabs) where the mouse wheel
                               always scrolls the page itself -- as does the wheel over
-                              the page scrollbar next to it
+                              the page scrollbar next to it; its width is a user setting
+                              (Settings > General > User interface) that
+                              set_scroll_pad_width() applies live to every pad
   theme.py                      light/dark palette DATA only -- the actual
                               ttk.Style()/option_add() application lives in
                               PortalBrowserApp._apply_theme(), which needs a live Tk
@@ -1256,7 +1258,8 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               title, installer (/DAppVersion), release-tag check
   app_settings.py               AppSettings -- configurable storage path, persisted
                               OUTSIDE the portal folder itself (see that module's
-                              docstring for why)
+                              docstring for why), plus the per-install UI preferences
+                              (language, theme, scroll-area width, update checks)
   totals_search_coordinator.py TotalsSearchCoordinator -- the two PersistentWorkers
                               (floor-totals scanning, prime/constellation search) that
                               used to live directly on PortalBrowserApp itself in

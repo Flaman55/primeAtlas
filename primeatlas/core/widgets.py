@@ -11,7 +11,10 @@ widgets), so there is no non-tkinter half to split it into.
 """
 import tkinter as tk
 import tkinter.font as tkfont
+import weakref
 from tkinter import ttk
+
+from .app_settings import SCROLL_PAD_WIDTH_DEFAULT, clamp_scroll_pad_width
 
 
 class FlowRow:
@@ -298,7 +301,17 @@ class HeightGrip:
             self._on_change()
 
 
-SCROLL_PAD_WIDTH = 40
+SCROLL_PAD_WIDTH = SCROLL_PAD_WIDTH_DEFAULT
+_scroll_pads = weakref.WeakSet()
+
+
+def set_scroll_pad_width(width):
+    """Sets the width (clamped) of every live ScrollPad and the default for pads built
+    afterwards."""
+    global SCROLL_PAD_WIDTH
+    SCROLL_PAD_WIDTH = clamp_scroll_pad_width(width)
+    for pad in list(_scroll_pads):
+        pad.set_width(SCROLL_PAD_WIDTH)
 
 
 class ScrollPad:
@@ -315,7 +328,9 @@ class ScrollPad:
 
     _WHEEL_EVENTS = ("<MouseWheel>", "<Button-4>", "<Button-5>")
 
-    def __init__(self, parent, scroll, *, text="", width=SCROLL_PAD_WIDTH):
+    def __init__(self, parent, scroll, *, text="", width=None):
+        if width is None:
+            width = SCROLL_PAD_WIDTH
         self._scroll = scroll
         self.text = text
         style = ttk.Style(parent)
@@ -329,6 +344,19 @@ class ScrollPad:
         self.frame.bind("<Leave>", self._on_leave)
         self.frame.bind("<Configure>", lambda _e: self._draw_label())
         self.attached = []
+        _scroll_pads.add(self)
+
+    def set_width(self, width):
+        """No-op (and drops the pad from the live registry) once its widget or its whole
+        Tk application is destroyed."""
+        try:
+            if self.frame.winfo_exists():
+                self.frame.configure(width=width)
+                self._draw_label()
+                return
+        except tk.TclError:
+            pass
+        _scroll_pads.discard(self)
 
     def attach(self, widget):
         widget.bind("<Enter>", self._on_enter, add="+")

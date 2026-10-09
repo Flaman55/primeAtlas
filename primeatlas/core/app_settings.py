@@ -28,6 +28,21 @@ LEGACY_SETTINGS_FILENAME = ".portal_app_settings.json"  # earlier location, next
                                                           # script -- read once for
                                                           # migration, never written again
 
+# Width in px of the ScrollPad strip next to every page scrollbar (core/widgets.py).
+SCROLL_PAD_WIDTH_DEFAULT = 40
+SCROLL_PAD_WIDTH_MIN = 16
+SCROLL_PAD_WIDTH_MAX = 160
+
+
+def clamp_scroll_pad_width(value):
+    """int(value) clamped to [SCROLL_PAD_WIDTH_MIN, SCROLL_PAD_WIDTH_MAX];
+    SCROLL_PAD_WIDTH_DEFAULT if value is not an integer."""
+    try:
+        width = int(value)
+    except (TypeError, ValueError):
+        return SCROLL_PAD_WIDTH_DEFAULT
+    return max(SCROLL_PAD_WIDTH_MIN, min(SCROLL_PAD_WIDTH_MAX, width))
+
 
 class AppSettings:
     """One JSON file (primeatlas/locales/app_settings.json), holding storage_path
@@ -159,6 +174,18 @@ class AppSettings:
 
     def set_theme(self, theme_name):
         self._data["theme"] = theme_name or DEFAULT_THEME
+        self.save()
+
+    @property
+    def scroll_pad_width(self):
+        """Width in px of the ScrollPad strip (Settings > General > User interface),
+        applied live via widgets.set_scroll_pad_width(). Clamped, see
+        clamp_scroll_pad_width()."""
+        return clamp_scroll_pad_width(
+            self._data.get("scroll_pad_width", SCROLL_PAD_WIDTH_DEFAULT))
+
+    def set_scroll_pad_width(self, width):
+        self._data["scroll_pad_width"] = clamp_scroll_pad_width(width)
         self.save()
 
     @property

@@ -84,7 +84,8 @@ from tkinter import ttk, messagebox, filedialog
 from tkinter.scrolledtext import ScrolledText
 
 from ..core.base_tab import BaseTab
-from ..core.widgets import HeightGrip, ScrollPad
+from ..core.app_settings import SCROLL_PAD_WIDTH_MAX, SCROLL_PAD_WIDTH_MIN
+from ..core.widgets import HeightGrip, ScrollPad, set_scroll_pad_width
 from ..generation.generation_console import GenerationConsole
 from .manifest import FloorSnapshot, ConstellationSnapshot
 from .backup_store import BackupStore
@@ -143,6 +144,8 @@ class SettingsTab(BaseTab):
         super().__init__(parent, translator)
         self.app_settings = app_settings
         self.wsl = wsl_helpers
+        # Pads built before this tab are resized, pads built after use it as default.
+        set_scroll_pad_width(app_settings.scroll_pad_width)
 
         self._backups = []              # [(name, path)], newest first
         self._selected_backup_name = None
@@ -317,6 +320,19 @@ class SettingsTab(BaseTab):
         self.after(150, restart_app)
 
     # ---- app self-update ---------------------------------------------------
+
+    def _on_scroll_pad_width_changed(self, _event=None):
+        """Applies the field live: saves the clamped width and resizes every ScrollPad.
+        A non-integer entry is reverted to the saved width."""
+        try:
+            width = int(self.scroll_pad_width_var.get())
+        except ValueError:
+            self.scroll_pad_width_var.set(str(self.app_settings.scroll_pad_width))
+            return
+        self.app_settings.set_scroll_pad_width(width)
+        width = self.app_settings.scroll_pad_width
+        self.scroll_pad_width_var.set(str(width))
+        set_scroll_pad_width(width)
 
     def _on_auto_update_check_toggled(self):
         self.app_settings.set_auto_update_check(self.auto_update_check_var.get())
@@ -2374,6 +2390,22 @@ class SettingsTab(BaseTab):
         theme_combo.grid(row=0, column=1, sticky="w", padx=(0, 12), pady=6)
         theme_combo.bind("<<ComboboxSelected>>", self._on_theme_selected)
         ttk.Label(theme_frame, text=self.T("settings.theme_restart_note"),
+                  foreground="#555555").grid(row=0, column=2, sticky="w", padx=(0, 6), pady=6)
+
+        ui_frame = ttk.Labelframe(outer, text=self.T("settings.ui_frame"))
+        ui_frame.pack(fill="x", pady=(0, 8))
+        ttk.Label(ui_frame, text=self.T("settings.scroll_pad_width_label")).grid(
+            row=0, column=0, sticky="w", padx=6, pady=6)
+        self.scroll_pad_width_var = tk.StringVar(value=str(self.app_settings.scroll_pad_width))
+        width_spin = ttk.Spinbox(
+            ui_frame, textvariable=self.scroll_pad_width_var, from_=SCROLL_PAD_WIDTH_MIN,
+            to=SCROLL_PAD_WIDTH_MAX, increment=4, width=6,
+            command=self._on_scroll_pad_width_changed)
+        width_spin.grid(row=0, column=1, sticky="w", padx=(0, 12), pady=6)
+        width_spin.bind("<Return>", self._on_scroll_pad_width_changed)
+        width_spin.bind("<FocusOut>", self._on_scroll_pad_width_changed)
+        ttk.Label(ui_frame, text=self.T("settings.scroll_pad_width_note",
+                                        min=SCROLL_PAD_WIDTH_MIN, max=SCROLL_PAD_WIDTH_MAX),
                   foreground="#555555").grid(row=0, column=2, sticky="w", padx=(0, 6), pady=6)
 
         path_frame = ttk.Labelframe(outer, text=self.T("settings.path_frame"))
