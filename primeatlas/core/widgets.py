@@ -9,6 +9,8 @@ settings_tab.py's own docstring for the general "pure logic elsewhere" conventio
 package otherwise follows; FlowRow is UI-only by nature (it lays out already-built
 widgets), so there is no non-tkinter half to split it into.
 """
+import tkinter as tk
+import tkinter.font as tkfont
 from tkinter import ttk
 
 
@@ -207,3 +209,149 @@ def clamp_pane_min_width(paned, pane_widget, min_width):
 
     pane_widget.bind("<Configure>", _enforce, add="+")
     pane_widget.after_idle(_enforce)
+
+
+class HeightGrip:
+    """A thin drag handle that sets the height of one or more line-sized widgets (Text,
+    Listbox, Treeview -- anything whose `height` option counts lines or rows). Dragging
+    it changes every target's height by whole lines, clamped to [min_lines, max_lines];
+    on_change (no args) fires once when the drag ends.
+
+    `targets` is a widget, a list of widgets, or a no-argument callable returning either
+    (for a widget that is destroyed and rebuilt later). The grip lives in `parent`; when
+    `after` is given it is packed right below that widget, otherwise the caller packs it
+    with pack()."""
+
+    def __init__(self, parent, targets, *, after=None, min_lines=3, max_lines=200,
+                 on_change=None, padx=0, pady=(0, 4)):
+        self._targets = targets
+        self.min_lines = min_lines
+        self.max_lines = max_lines
+        self._on_change = on_change
+        self._pack_options = {"fill": "x", "padx": padx, "pady": pady}
+        self._drag = None
+        self.frame = ttk.Frame(parent, height=8, cursor="sb_v_double_arrow")
+        line = ttk.Separator(self.frame, orient="horizontal")
+        line.place(relx=0.35, rely=0.5, relwidth=0.3)
+        for widget in (self.frame, line):
+            widget.configure(cursor="sb_v_double_arrow")
+            widget.bind("<ButtonPress-1>", self._on_press)
+            widget.bind("<B1-Motion>", self._on_drag)
+            widget.bind("<ButtonRelease-1>", self._on_release)
+        if after is not None:
+            self.pack(after=after)
+
+    def pack(self, after=None):
+        options = dict(self._pack_options)
+        if after is not None:
+            options["after"] = after
+        self.frame.pack(**options)
+
+    def pack_forget(self):
+        self.frame.pack_forget()
+
+    def targets(self):
+        targets = self._targets() if callable(self._targets) else self._targets
+        if not isinstance(targets, (list, tuple)):
+            targets = [targets]
+        return [t for t in targets if t is not None and t.winfo_exists()]
+
+    def line_height(self):
+        """Pixels per line of the first target: the Treeview style's row height, or the
+        target font's line spacing."""
+        targets = self.targets()
+        if not targets:
+            return 1
+        target = targets[0]
+        if isinstance(target, ttk.Treeview):
+            style = target.cget("style") or "Treeview"
+            try:
+                rowheight = int(ttk.Style(target).lookup(style, "rowheight") or 0)
+            except (TypeError, ValueError):
+                rowheight = 0
+            if rowheight > 0:
+                return rowheight
+            return tkfont.nametofont("TkDefaultFont", root=target).metrics("linespace") + 4
+        return max(1, tkfont.Font(root=target, font=target.cget("font")).metrics("linespace"))
+
+    def _on_press(self, event):
+        targets = self.targets()
+        if targets:
+            self._drag = (event.y_root, [int(t.cget("height")) for t in targets],
+                          self.line_height())
+
+    def _on_drag(self, event):
+        if self._drag is None:
+            return
+        start_y, start_lines, line = self._drag
+        delta = int((event.y_root - start_y) / line)
+        for target, lines in zip(self.targets(), start_lines):
+            lines = max(self.min_lines, min(self.max_lines, lines + delta))
+            if lines != int(target.cget("height")):
+                target.configure(height=lines)
+
+    def _on_release(self, _event):
+        if self._drag is None:
+            return
+        self._drag = None
+        if self._on_change is not None:
+            self._on_change()
+
+
+SCROLL_PAD_WIDTH = 40
+
+
+class ScrollPad:
+    """A strip along the right edge of a scrollable page, next to its scrollbar: while the
+    pointer is over it the mouse wheel always scrolls the page, whatever self-scrolling
+    terminals, lists or tables fill the rest of the page. `scroll(units)` scrolls the
+    page by that many canvas units (negative = up). `text` is drawn vertically down the
+    strip. The caller packs `.frame` (a Canvas, so the label can be rotated and the
+    pointer never enters a child widget, which would fire <Leave> on the strip).
+
+    Bound app-wide (bind_all) only between <Enter> and <Leave>, the same scoping the page
+    canvases use for their own wheel handling."""
+
+    _WHEEL_EVENTS = ("<MouseWheel>", "<Button-4>", "<Button-5>")
+
+    def __init__(self, parent, scroll, *, text="", width=SCROLL_PAD_WIDTH):
+        self._scroll = scroll
+        self.text = text
+        style = ttk.Style(parent)
+        background = style.lookup("TFrame", "background") or None
+        self._foreground = style.lookup("TLabel", "foreground") or "#808080"
+        self.frame = tk.Canvas(parent, width=width, highlightthickness=0, borderwidth=1,
+                               relief="groove", cursor="sb_v_double_arrow")
+        if background:
+            self.frame.configure(background=background)
+        self.frame.bind("<Enter>", self._on_enter)
+        self.frame.bind("<Leave>", self._on_leave)
+        self.frame.bind("<Configure>", lambda _e: self._draw_label())
+
+    def _draw_label(self):
+        self.frame.delete("label")
+        if not self.text:
+            return
+        width = max(self.frame.winfo_width(), int(self.frame.cget("width")))
+        height = max(self.frame.winfo_height(), 1)
+        self.frame.create_text(width / 2, height / 2, text=self.text, angle=270,
+                               fill=self._foreground, tags="label")
+
+    def wheel(self, event):
+        num = getattr(event, "num", 0)
+        if num == 4:
+            units = -3
+        elif num == 5:
+            units = 3
+        else:
+            units = int(-3 * (event.delta / 120))
+        if units:
+            self._scroll(units)
+
+    def _on_enter(self, _event):
+        for sequence in self._WHEEL_EVENTS:
+            self.frame.bind_all(sequence, self.wheel)
+
+    def _on_leave(self, _event):
+        for sequence in self._WHEEL_EVENTS:
+            self.frame.unbind_all(sequence)

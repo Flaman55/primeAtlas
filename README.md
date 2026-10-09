@@ -1212,7 +1212,15 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               tab class in this package (shared self.T assignment,
                               totals_progress spinner toggle, clipboard-copy helper)
   widgets.py                    small generic tkinter helpers (e.g. FlowRow) with no
-                              application-specific state
+                              application-specific state; HeightGrip is the app's one
+                              height control -- a drag handle under a terminal, list or
+                              table that sets its height in lines (no vertical paned
+                              windows anywhere; the Generation tab's sections stack at
+                              natural height, the Records table keeps a dragged height
+                              across rescans); ScrollPad is the strip along the right
+                              edge of every scrollable page (Settings sub-tabs,
+                              Generation, visualization tabs) where the mouse wheel
+                              always scrolls the page itself
   theme.py                      light/dark palette DATA only -- the actual
                               ttk.Style()/option_add() application lives in
                               PortalBrowserApp._apply_theme(), which needs a live Tk
@@ -1334,8 +1342,11 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               by CUDASieve's and primecount's own status/install/query
                               calls (run_cudasieve_wsl_blocking, run_primecount_wsl_
                               blocking, run_primecount_install_wsl_blocking)
-  generation_console.py        stacked/detachable live-output console used by the
-                              Generation tab's loop/constellation/k-tuple sections
+  generation_console.py        stacked/detachable live-output console (Clear, Open in
+                              new window, a HeightGrip under the output) -- every in-app terminal: the Generation tab's
+                              loop/constellation/k-tuple sections, the visualization
+                              tabs' HUD consoles and the Settings tab's restore/full-
+                              backup/integrate/installer logs
   generation_offer_coordinator.py GenerationOfferCoordinator -- the three "offer to
                               generate this missing fragment, then let the caller
                               re-check" bridge methods that used to live directly on

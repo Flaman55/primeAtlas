@@ -67,7 +67,7 @@ from .constellations import (
 # reasonable viewer; a caller who wants more should use CSV export instead (streamed,
 # no row-count limit -- see _job()'s own comment).
 PDF_EXPORT_ROW_LIMIT = 50_000
-from ..core.widgets import FlowRow, add_page_nav_group
+from ..core.widgets import FlowRow, HeightGrip, add_page_nav_group
 
 
 def _iter_with_progress(rows, report_progress, step=100_000):
@@ -181,20 +181,15 @@ class ConstellationsRecordsTab(BaseTab):
         ttk.Label(container, text=T("const_records.hint"), wraplength=760,
                   justify="left", foreground="#555").pack(anchor="w", pady=(0, 8))
 
-        # Vertical split: table on top, full-hit-list drill-down for whatever cell was
-        # last double-clicked on the bottom. Plain tk.PanedWindow, not ttk.Panedwindow
-        # -- ttk's sash is a near-invisible 1-2px line on most themes, which read as
-        # "no divider at all, can't resize" (user report); tk's PanedWindow exposes
-        # sashwidth/sashrelief directly, giving an actually visible grab bar.
-        # stretch="never" on the tree pane + a dynamic tree height (see
-        # _rebuild_tree's row_count param) means the top pane's natural size already
-        # tracks how many floors are in the table.
-        paned = tk.PanedWindow(container, orient="vertical", sashwidth=6,
-                                sashrelief="raised", sashpad=1, bg="#c8c8c8")
-        paned.pack(fill="both", expand=True)
-
-        self.tree_frame = ttk.Frame(paned)
-        paned.add(self.tree_frame, minsize=60, stretch="never")
+        # Table on top at its own row height (see _rebuild_tree's row_count param),
+        # full-hit-list drill-down for whatever cell was last double-clicked filling the
+        # rest below. The grip between them sets the table's height in rows; a height
+        # set by dragging is kept across later rebuilds (self._tree_rows_override).
+        self.tree_frame = ttk.Frame(container)
+        self.tree_frame.pack(fill="x")
+        self._tree_rows_override = None
+        self.tree_grip = HeightGrip(container, lambda: self.tree, after=self.tree_frame,
+                                    on_change=self._on_tree_resized, pady=(2, 4))
         self.tree = None  # built fresh per scan -- see _rebuild_tree(), column count
                            # depends on how many variants k has
         self.tree_vsb = None  # its scrollbars, tracked separately so they can be
@@ -207,8 +202,8 @@ class ConstellationsRecordsTab(BaseTab):
                                                   # the od/do fields
         self._rebuild_tree([])
 
-        detail_frame = ttk.Frame(paned)
-        paned.add(detail_frame, minsize=100, stretch="always")
+        detail_frame = ttk.Frame(container)
+        detail_frame.pack(fill="both", expand=True)
         self.detail_label_var = tk.StringVar(value=T("const_records.detail_hint"))
         ttk.Label(detail_frame, textvariable=self.detail_label_var,
                   anchor="w").pack(fill="x", padx=4, pady=(2, 4))
@@ -276,7 +271,7 @@ class ConstellationsRecordsTab(BaseTab):
         recreated right alongside it. Every column is stretch=False (fixed width)
         with a horizontal scrollbar, as in the Benchmark tab's tree.
         `row_count` sizes the Treeview's own `height` to match (capped at 14, floored
-        at 3)."""
+        at 3), unless a height was set with the grip (self._tree_rows_override)."""
         if self.tree is not None:
             self.tree.destroy()
         if self.tree_vsb is not None:
@@ -286,6 +281,8 @@ class ConstellationsRecordsTab(BaseTab):
         T = self.T
         columns = ("exp",) + tuple(f"v{vid}" for vid in variant_ids)
         height = max(3, min(row_count, 14)) if row_count else 3
+        if self._tree_rows_override is not None:
+            height = self._tree_rows_override
         tree = ttk.Treeview(
             self.tree_frame, columns=columns, show="headings", height=height)
         tree.heading("exp", text=T("const_records.col_exp"))
@@ -303,6 +300,10 @@ class ConstellationsRecordsTab(BaseTab):
         self.tree = tree
         self.tree_vsb = vsb
         self.tree_hsb = hsb
+
+    def _on_tree_resized(self):
+        if self.tree is not None:
+            self._tree_rows_override = int(self.tree.cget("height"))
 
     def _on_scan_clicked(self):
         if self._busy:

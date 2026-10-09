@@ -20,6 +20,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from ...core.base_tab import BaseTab
+from ...core.widgets import ScrollPad
 from ...generation.generation import _eval_quick_number
 from .window_mode import center_tk_window
 
@@ -257,6 +258,16 @@ class VizTabBase(BaseTab):
         canvas.configure(yscrollcommand=vsb.set)
         canvas.pack(side="left", fill="both", expand=True)
         vsb.pack(side="right", fill="y")
+
+        def _scroll_page(units):
+            if _content_fits():
+                return
+            scroll_state["user_scrolled"] = True
+            canvas.yview_scroll(units, "units")
+
+        # Wheel over this strip always scrolls the page, see ScrollPad.
+        self._scroll_pad = ScrollPad(outer, _scroll_page, text=self.T("common.scroll_pad"))
+        self._scroll_pad.frame.pack(side="right", fill="y")
 
         inner = ttk.Frame(canvas)
         inner_window = canvas.create_window((0, 0), window=inner, anchor="nw")

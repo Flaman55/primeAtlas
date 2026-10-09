@@ -13,15 +13,21 @@ the window itself as parent, to add extra widgets above the mirrored output (use
 pipeline section to duplicate its Quick-gen panel so a run can be launched from the
 detached window too -- see prime_atlas_v2.py's _build_detached_quick_panel). It may return
 a no-argument cleanup callable, invoked when the window closes.
+
+A drag grip under the embedded output sets its height in whole lines, clamped to
+[min_lines, max_lines]; on_change fires once when the drag ends.
 """
 import tkinter as tk
 from tkinter import ttk
 from tkinter.scrolledtext import ScrolledText
 
+from ..core.widgets import HeightGrip
+
 
 class GenerationConsole:
     def __init__(self, parent, translator, *, height=10, extra_controls_builder=None,
-                 window_title=None, on_change=None):
+                 window_title=None, on_change=None, start_visible=False, min_lines=3,
+                 max_lines=200):
         self.T = translator
         self._parent = parent
         self._extra_controls_builder = extra_controls_builder
@@ -29,15 +35,8 @@ class GenerationConsole:
         self._visible = False
         self._detached_win = None
         self._mirrors = []
-        # Called (no args) after every show()/hide(), including the ones
-        # triggered directly by the user clicking toggle_btn -- NOT just the
-        # programmatic show() calls from prime_atlas_v2.py's _show_*_terminal
-        # helpers. Packing/unpacking self.text changes this section's natural
-        # height by ~500px either way, and the Generation tab's Panedwindow
-        # needs to be told to re-measure and re-pin its sashes every time that
-        # happens, regardless of which path triggered it -- manual toggle-button
-        # clicks must be wired to this callback too, not just programmatic
-        # call sites, or the resize fix silently misses that path.
+        # Called (no args) after every show()/hide() -- toggle-button clicks included --
+        # and after every height-grip drag, i.e. whenever the console's own height changes.
         self._on_change = on_change
 
         self.toggle_row = ttk.Frame(parent)
@@ -56,13 +55,21 @@ class GenerationConsole:
                                   state="disabled", background="#111318",
                                   foreground="#d8d8d8")
         self._mirrors.append(self.text)
-        # NOT packed here -- starts collapsed, see show()/hide()/toggle().
+
+        self.height_grip = HeightGrip(parent, self.text, min_lines=min_lines,
+                                      max_lines=max_lines, on_change=self._notify_change,
+                                      padx=8)
+        self.grip = self.height_grip.frame
+        # Output and grip are packed only while visible, see show()/hide()/toggle().
+        if start_visible:
+            self.show()
 
     # --- collapse/expand -------------------------------------------------------------
 
     def show(self):
         if not self._visible:
-            self.text.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+            self.text.pack(fill="both", expand=True, padx=8, pady=(0, 0))
+            self.height_grip.pack(after=self.text.frame)
             self._visible = True
             self.toggle_btn.configure(text=self.T("gen.terminal_hide"))
             if self._on_change is not None:
@@ -71,6 +78,7 @@ class GenerationConsole:
     def hide(self):
         if self._visible:
             self.text.pack_forget()
+            self.height_grip.pack_forget()
             self._visible = False
             self.toggle_btn.configure(text=self.T("gen.terminal_show"))
             if self._on_change is not None:
@@ -78,6 +86,10 @@ class GenerationConsole:
 
     def toggle(self):
         self.hide() if self._visible else self.show()
+
+    def _notify_change(self):
+        if self._on_change is not None:
+            self._on_change()
 
     # --- content -----------------------------------------------------------------
 

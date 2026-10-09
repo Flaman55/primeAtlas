@@ -84,6 +84,8 @@ from tkinter import ttk, messagebox, filedialog
 from tkinter.scrolledtext import ScrolledText
 
 from ..core.base_tab import BaseTab
+from ..core.widgets import HeightGrip, ScrollPad
+from ..generation.generation_console import GenerationConsole
 from .manifest import FloorSnapshot, ConstellationSnapshot
 from .backup_store import BackupStore
 from .restore_job import (
@@ -1086,10 +1088,7 @@ class SettingsTab(BaseTab):
             status=job.status))
 
     def _restore_log(self, text):
-        self.restore_output.configure(state="normal")
-        self.restore_output.insert("end", text)
-        self.restore_output.see("end")
-        self.restore_output.configure(state="disabled")
+        self.restore_console.append(text)
 
     # ---- delete ---------------------------------------------------------------------------
 
@@ -1568,10 +1567,7 @@ class SettingsTab(BaseTab):
         self._refresh_full_backup_entries()
 
     def _full_backup_log(self, text):
-        self.full_backup_output.configure(state="normal")
-        self.full_backup_output.insert("end", text)
-        self.full_backup_output.see("end")
-        self.full_backup_output.configure(state="disabled")
+        self.full_backup_console.append(text)
 
     # ---- integrate external storage, primeatlas/settings/storage_integrate.py ---------------------
     #
@@ -1769,10 +1765,7 @@ class SettingsTab(BaseTab):
             self._storage_integrate_stop_event.set()
 
     def _storage_integrate_log(self, text):
-        self.storage_integrate_output.configure(state="normal")
-        self.storage_integrate_output.insert("end", text)
-        self.storage_integrate_output.see("end")
-        self.storage_integrate_output.configure(state="disabled")
+        self.storage_integrate_console.append(text)
 
     # ---- optional libraries (sympy installer) ---------------------------------------------
 
@@ -1833,10 +1826,7 @@ class SettingsTab(BaseTab):
         self.after(150, self._poll_libs_queue)
 
     def _libs_log(self, text):
-        self.libs_output.configure(state="normal")
-        self.libs_output.insert("end", text)
-        self.libs_output.see("end")
-        self.libs_output.configure(state="disabled")
+        self.libs_console.append(text)
 
     # ---- primecount (optional exact prime-counting library) installer ---------------------
     #
@@ -1848,10 +1838,7 @@ class SettingsTab(BaseTab):
     # click needed" pattern as CUDASieve's own install flow.
 
     def _primecount_log(self, text):
-        self.primecount_output.configure(state="normal")
-        self.primecount_output.insert("end", text)
-        self.primecount_output.see("end")
-        self.primecount_output.configure(state="disabled")
+        self.primecount_console.append(text)
 
     def _on_open_primecount_github_clicked(self):
         """Opens primecount's real GitHub page -- attribution for Kim Walisch's own
@@ -1947,10 +1934,7 @@ class SettingsTab(BaseTab):
     # label reflects reality without a second manual click.
 
     def _cudasieve_log(self, text):
-        self.cudasieve_output.configure(state="normal")
-        self.cudasieve_output.insert("end", text)
-        self.cudasieve_output.see("end")
-        self.cudasieve_output.configure(state="disabled")
+        self.cudasieve_console.append(text)
 
     def _show_cached_cudasieve_status(self):
         """Called once from __init__ instead of probing WSL -- see that call site's own
@@ -2219,6 +2203,7 @@ class SettingsTab(BaseTab):
         notebook.add(backup_tab, text=self.T("settings.tab_backup"))
         notebook.add(updates_tab, text=self.T("settings.tab_updates"))
 
+        self._scroll_pads = []
         self._build_general_tab(self._make_scrollable_tab(general_tab))
         self._build_backup_tab(self._make_scrollable_tab(backup_tab))
         self._build_updates_tab(self._make_scrollable_tab(updates_tab))
@@ -2283,6 +2268,17 @@ class SettingsTab(BaseTab):
         canvas.configure(yscrollcommand=vsb.set)
         canvas.pack(side="left", fill="both", expand=True)
         vsb.pack(side="right", fill="y")
+
+        def _scroll_page(units):
+            if _content_fits():
+                return
+            scroll_state["user_scrolled"] = True
+            canvas.yview_scroll(units, "units")
+
+        # Wheel over this strip always scrolls the page, see ScrollPad.
+        pad = ScrollPad(notebook_tab, _scroll_page, text=self.T("common.scroll_pad"))
+        pad.frame.pack(side="right", fill="y")
+        self._scroll_pads.append(pad)
 
         inner = ttk.Frame(canvas)
         inner_window = canvas.create_window((0, 0), window=inner, anchor="nw")
@@ -2452,6 +2448,13 @@ class SettingsTab(BaseTab):
             entries_list_row, orient="vertical", command=self.full_backup_entries_listbox.yview)
         entries_scroll.pack(side="left", fill="y")
         self.full_backup_entries_listbox.configure(yscrollcommand=entries_scroll.set)
+        # One grip under each column; both resize the two lists together so they stay
+        # level side by side.
+        full_backup_lists = [self.full_backup_floor_listbox, self.full_backup_entries_listbox]
+        self.full_backup_lists_grip = HeightGrip(live_col, full_backup_lists,
+                                                 after=live_list_row)
+        self.full_backup_entries_grip = HeightGrip(entries_col, full_backup_lists,
+                                                   after=entries_list_row)
         entries_btn_row = ttk.Frame(entries_col)
         entries_btn_row.pack(anchor="w", pady=(4, 0))
         self.full_backup_restore_btn = ttk.Button(
@@ -2478,10 +2481,10 @@ class SettingsTab(BaseTab):
         ttk.Label(frame, textvariable=self.full_backup_file_status_var, foreground="#555").pack(
             anchor="w", padx=6, pady=(0, 4))
 
-        self.full_backup_output = ScrolledText(
-            frame, height=5, font=("Consolas", 9), state="disabled",
-            background="#111318", foreground="#d8d8d8")
-        self.full_backup_output.pack(fill="both", expand=True, padx=6, pady=(0, 6))
+        self.full_backup_console = GenerationConsole(
+            frame, self.T, height=5, start_visible=True,
+            window_title=self.T("settings.full_backup_frame"))
+        self.full_backup_output = self.full_backup_console.text
 
     def _build_storage_integrate_section(self, outer):
         """Integrate-external-storage, primeatlas/settings/storage_integrate.py -- see that
@@ -2518,6 +2521,8 @@ class SettingsTab(BaseTab):
             command=self.storage_integrate_results_listbox.yview)
         results_scroll.pack(side="left", fill="y")
         self.storage_integrate_results_listbox.configure(yscrollcommand=results_scroll.set)
+        self.storage_integrate_results_grip = HeightGrip(
+            frame, self.storage_integrate_results_listbox, after=results_list_row, padx=6)
 
         self.storage_integrate_totals_var = tk.StringVar(value="")
         ttk.Label(frame, textvariable=self.storage_integrate_totals_var).pack(
@@ -2543,10 +2548,10 @@ class SettingsTab(BaseTab):
         ttk.Label(frame, textvariable=self.storage_integrate_file_status_var,
                   foreground="#555").pack(anchor="w", padx=6, pady=(0, 4))
 
-        self.storage_integrate_output = ScrolledText(
-            frame, height=4, font=("Consolas", 9), state="disabled",
-            background="#111318", foreground="#d8d8d8")
-        self.storage_integrate_output.pack(fill="both", expand=True, padx=6, pady=(0, 6))
+        self.storage_integrate_console = GenerationConsole(
+            frame, self.T, height=4, start_visible=True,
+            window_title=self.T("settings.storage_integrate_frame"))
+        self.storage_integrate_output = self.storage_integrate_console.text
 
     def _build_backup_tab(self, parent):
         outer = ttk.Frame(parent)
@@ -2573,6 +2578,8 @@ class SettingsTab(BaseTab):
         scrollbar = ttk.Scrollbar(list_row, orient="vertical", command=self.backup_listbox.yview)
         scrollbar.pack(side="left", fill="y")
         self.backup_listbox.configure(yscrollcommand=scrollbar.set)
+        self.backup_list_grip = HeightGrip(backup_frame, self.backup_listbox, after=list_row,
+                                           padx=6)
 
         restore_frame = ttk.Labelframe(outer, text=self.T("settings.restore_frame"))
         restore_frame.pack(fill="both", expand=True, pady=(0, 8))
@@ -2615,11 +2622,13 @@ class SettingsTab(BaseTab):
                    command=self._on_resume_incomplete).pack(side="left", padx=(6, 0))
         ttk.Button(incomplete_row, text=self.T("settings.restore_delete_selected"),
                    command=self._on_delete_incomplete).pack(side="left", padx=(6, 0))
+        self.incomplete_list_grip = HeightGrip(restore_frame, self.incomplete_listbox,
+                                               after=incomplete_row, min_lines=2, padx=6)
 
-        self.restore_output = ScrolledText(
-            restore_frame, height=8, font=("Consolas", 9), state="disabled",
-            background="#111318", foreground="#d8d8d8")
-        self.restore_output.pack(fill="both", expand=True, padx=6, pady=(4, 6))
+        self.restore_console = GenerationConsole(
+            restore_frame, self.T, height=8, start_visible=True,
+            window_title=self.T("settings.restore_frame"))
+        self.restore_output = self.restore_console.text
 
         self._build_full_backup_section(outer)
         self._build_storage_integrate_section(outer)
@@ -2680,10 +2689,10 @@ class SettingsTab(BaseTab):
             libs_btn_row, text=self.T("settings.libs_install_sympy_button"),
             command=self._on_install_sympy)
         self.install_sympy_btn.pack(side="left", padx=(6, 0))
-        self.libs_output = ScrolledText(
-            libs_frame, height=5, font=("Consolas", 9), state="disabled",
-            background="#111318", foreground="#d8d8d8")
-        self.libs_output.pack(fill="x", padx=6, pady=(0, 6))
+        self.libs_console = GenerationConsole(
+            libs_frame, self.T, height=5, start_visible=True,
+            window_title=self.T("settings.libs_frame"))
+        self.libs_output = self.libs_console.text
 
         # primecount (Kim Walisch's exact combinatorial prime-counting library, BSD
         # license, companion to primesieve -- see prime_sieve/prime_count_primecount.py's
@@ -2716,10 +2725,10 @@ class SettingsTab(BaseTab):
             primecount_btn_row, text=self.T("settings.primecount_install_button"),
             command=self._on_install_primecount_clicked)
         self.install_primecount_btn.pack(side="left", padx=(6, 0))
-        self.primecount_output = ScrolledText(
-            primecount_frame, height=5, font=("Consolas", 9), state="disabled",
-            background="#111318", foreground="#d8d8d8")
-        self.primecount_output.pack(fill="x", padx=6, pady=(0, 6))
+        self.primecount_console = GenerationConsole(
+            primecount_frame, self.T, height=5, start_visible=True,
+            window_title=self.T("settings.primecount_frame"))
+        self.primecount_output = self.primecount_console.text
         self._primecount_status_running = False
         self._primecount_install_running = False
 
@@ -2747,10 +2756,10 @@ class SettingsTab(BaseTab):
             cudasieve_btn_row, text=self.T("settings.cudasieve_install_button"),
             command=self._on_install_cudasieve_clicked, state="disabled")
         self.install_cudasieve_btn.pack(side="left", padx=(6, 0))
-        self.cudasieve_output = ScrolledText(
-            cudasieve_frame, height=5, font=("Consolas", 9), state="disabled",
-            background="#111318", foreground="#d8d8d8")
-        self.cudasieve_output.pack(fill="x", padx=6, pady=(0, 6))
+        self.cudasieve_console = GenerationConsole(
+            cudasieve_frame, self.T, height=5, start_visible=True,
+            window_title=self.T("settings.cudasieve_frame"))
+        self.cudasieve_output = self.cudasieve_console.text
 
         # Environment setup re-check -- reuses the exact same
         # check_environment()/run_install() flow the first-run wizard (env_setup.py,

@@ -43,7 +43,7 @@ from .constellations import (
     group_constellation_hits_by_k, list_constellation_hits, read_hit_pattern_page,
     hit_pattern_is_paged, hit_pattern_page_count,
 )
-from ..core.widgets import add_page_nav_row, clamp_pane_min_width
+from ..core.widgets import HeightGrip, add_page_nav_row, clamp_pane_min_width
 
 
 class ConstellationsHitsTab(BaseTab):
@@ -144,7 +144,9 @@ class ConstellationsHitsTab(BaseTab):
         # jumps straight to that exact hit's row in the preview below, mirroring how
         # the Prime numbers tab's search lands directly on the found number.
         self.search_results_list = tk.Listbox(detail_frame, height=5, font=("Consolas", 9))
-        self.search_results_list.pack(fill="x", padx=6, pady=(0, 6))
+        self.search_results_list.pack(fill="x", padx=6, pady=(0, 0))
+        self.search_results_grip = HeightGrip(detail_frame, self.search_results_list,
+                                              after=self.search_results_list, padx=6)
         self.search_results_list.bind("<Double-Button-1>", self._on_search_result_activate)
         self.search_results_list.bind("<Return>", self._on_search_result_activate)
         self._search_results_data = []  # parallel to search_results_list rows
