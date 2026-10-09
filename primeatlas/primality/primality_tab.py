@@ -22,6 +22,7 @@ from tkinter import ttk, messagebox
 
 from ..core.background import PersistentWorker
 from ..core.base_tab import BaseTab
+from ..core.widgets import HeightGrip
 from ..generation.generation import _eval_quick_number
 from .primality import run_all_tests as primality_run_all_tests, factorize as primality_factorize
 
@@ -64,7 +65,7 @@ class PrimalityTab(BaseTab):
             anchor="w", padx=6, pady=(0, 8))
 
         tree_frame = ttk.Frame(self)
-        tree_frame.pack(fill="both", expand=False, padx=6, pady=(0, 8))
+        tree_frame.pack(fill="both", expand=False, padx=6, pady=(0, 0))
         columns = ("method", "verdict", "certainty", "seconds")
         self.primality_results_tree = ttk.Treeview(
             tree_frame, columns=columns, show="headings", height=3)
@@ -77,6 +78,8 @@ class PrimalityTab(BaseTab):
         self.primality_results_tree.column("certainty", width=220, anchor="w")
         self.primality_results_tree.column("seconds", width=100, anchor="e")
         self.primality_results_tree.pack(fill="x")
+        self.results_grip = HeightGrip(self, self.primality_results_tree, after=tree_frame,
+                                       min_lines=2, padx=6, pady=(0, 8))
 
         factor_frame = ttk.Frame(self)
         factor_frame.pack(fill="x", padx=6, pady=(0, 4))
