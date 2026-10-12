@@ -1269,7 +1269,13 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
   locales/                      strings_en.json, strings_pl.json, app_settings.json
 
   primeatlas/primes/            "Prime numbers" tab's own Storage sub-tab
-  primes_tab.py                 PrimesTab -- Prime numbers -> Storage sub-tab
+  primes_tab.py                 PrimesTab -- Prime numbers -> Storage sub-tab; tree
+                              columns are sized to their content, the tree pane is
+                              pinned to that width (window resizes go to the
+                              detail pane, sash drags snap back; a window too
+                              narrow for it gets a horizontal scrollbar) and
+                              "Generated (UTC)" is the last column, shown only
+                              while an open floor lists its files
   primes_tree_coordinator.py    PrimesTreeCoordinator -- background floor-list
                               scan/reload logic for this tab's own tree, that used to
                               live directly on PortalBrowserApp itself
