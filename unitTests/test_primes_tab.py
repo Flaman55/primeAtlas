@@ -26,6 +26,10 @@ PrimesTab instance) directly:
      PrimesTab's injected start_search_job callable into the real app-level search
      worker and back into on_prime_search_result(), landing the found prime in the
      preview pane.
+  5. Tree columns: "generated" is last and shown only while an open floor lists files;
+     column widths fit their content; the tree pane is pinned to the content width
+     (resizes, hidden-tab layout, sash drags snap back), with a horizontal
+     scrollbar only while the window is too narrow for it.
 
 Usage (Windows, real display):
     python unitTests\\test_primes_tab.py
@@ -294,9 +298,147 @@ def main():
         check(any(kind == "error" for kind, _a, _k in shown),
               f"an invalid search query shows an error dialog instead (got: {shown})")
 
+        _test_tree_columns(app, widget, node0, node3)
+
         app.destroy()
     finally:
         shutil.rmtree(tmp_portal, ignore_errors=True)
+
+
+def _displayed(widget):
+    return tuple(widget.tree.cget("displaycolumns"))
+
+
+def _cell_texts(widget, column):
+    items, stack = [], list(widget.tree.get_children(""))
+    while stack:
+        item = stack.pop()
+        items.append(item)
+        stack.extend(widget.tree.get_children(item))
+    if column == "#0":
+        return [widget.tree.item(i, "text") for i in items]
+    return [widget.tree.set(i, column) for i in items]
+
+
+def _test_tree_columns(app, widget, node0, node3):
+    """5. Column layout: "generated" is the last column and is shown only while at least
+    one open floor lists file rows; every displayed column is exactly wide enough for its
+    heading and cells (no stretching); the tree pane is pinned to that content width."""
+    import tkinter.font as tkfont
+    print("\n--- 5. tree columns ---")
+    base = ("count", "cumulative", "files", "size", "timer")
+    for node in (node0, node3):
+        if node in widget._floor_state:
+            widget.tree.focus(node)
+            widget._on_tree_close(None)
+    check(_displayed(widget) == base,
+          f"no floor open -> 'generated' hidden, timer last (got {_displayed(widget)})")
+
+    widget.tree.item(node3, open=True)
+    widget._populate_floor_node(node3)
+    check(_displayed(widget) == base + ("generated",),
+          f"an open floor shows 'generated' as the LAST column (got {_displayed(widget)})")
+    widget.tree.item(node0, open=True)
+    widget._populate_floor_node(node0)
+    widget.tree.focus(node3)
+    widget._on_tree_close(None)
+    check(_displayed(widget) == base + ("generated",),
+          "closing one floor while another stays open keeps 'generated'")
+    widget.tree.focus(node0)
+    widget._on_tree_close(None)
+    check(_displayed(widget) == base, "closing the last open floor hides 'generated' again")
+
+    widget._select_primes_file_in_tree(3, "PRIME_WINDOW_0000001000.bin")
+    check(_displayed(widget) == base + ("generated",),
+          "a search opening a floor programmatically shows 'generated'")
+
+    # Widths fit content: never narrower than the heading or any cell, never padded
+    # beyond the fit, and no column stretches to fill the pane.
+    body = tkfont.nametofont("TkDefaultFont")
+    heading = tkfont.nametofont("TkHeadingFont")
+    for column in _displayed(widget):
+        width = int(widget.tree.column(column, "width"))
+        need = max([heading.measure(widget.tree.heading(column, "text"))] +
+                   [body.measure(t) for t in _cell_texts(widget, column)])
+        check(need < width <= need + 40,
+              f"column {column!r} fits its content ({width}px for {need}px of text)")
+        check(not widget.tree.column(column, "stretch"), f"column {column!r} does not stretch")
+    width0 = int(widget.tree.column("#0", "width"))
+    need0 = max(body.measure(t) for t in _cell_texts(widget, "#0"))
+    check(need0 < width0, f"tree column fits the longest file name ({width0}px > {need0}px)")
+
+    widget.tree.focus(node3)
+    widget._on_tree_close(None)
+    check(int(widget.tree.column("#0", "width")) < width0,
+          "closing the floor shrinks the tree column back to the floor labels")
+
+    # Tree pane follows the content until the user drags the sash -- checked on the
+    # pane's on-screen width, which sashpos() alone can misreport.
+    tree_pane = widget._tree_paned.panes()[0]
+
+    def pane_fits(label):
+        need = widget._tree_content_width()
+        actual = app.nametowidget(tree_pane).winfo_width()
+        check(abs(actual - need) <= 12,
+              f"{label}: tree pane is as wide as its content ({actual}px, content {need}px)")
+
+    app.geometry("1600x700")
+    _pump(app, 1.0)
+    pane_fits("after a window resize")
+    widget.tree.item(node3, open=True)
+    widget._populate_floor_node(node3)
+    _pump(app, 0.3)
+    pane_fits("after opening a floor")
+    app.geometry("1900x700")
+    _pump(app, 1.0)
+    pane_fits("after widening the window with a floor open")
+    widget.tree.focus(node3)
+    widget._on_tree_close(None)
+    _pump(app, 0.3)
+    pane_fits("after closing the floor")
+
+    # The tab is laid out for the first time at a new size while it is hidden (startup
+    # on another tab, then the window is maximized) -- shown again it must still fit.
+    primes_page = app.main_notebook.select()
+    other_page = next(t for t in app.main_notebook.tabs() if t != primes_page)
+    app.main_notebook.select(other_page)
+    _pump(app, 0.3)
+    app.geometry("2400x800")
+    _pump(app, 1.0)
+    app.main_notebook.select(primes_page)
+    _pump(app, 1.0)
+    pane_fits("after the tab is shown at a size it was never laid out at")
+
+    # The sash is pinned to the content: a drag in either direction snaps back.
+    need_pane = widget._tree_content_width()
+    widget._tree_paned.sashpos(0, need_pane + 200)
+    widget._on_sash_released(None)
+    _pump(app, 0.3)
+    pane_fits("after dragging the sash wider than the content")
+    widget._tree_paned.sashpos(0, need_pane - 100)
+    widget._on_sash_released(None)
+    _pump(app, 0.3)
+    pane_fits("after dragging the sash narrower than the content")
+    check(not widget._tree_hsb.winfo_ismapped(),
+          "the horizontal scrollbar is hidden while the content fits")
+
+    # A window too narrow for the content (the detail pane keeps its minimum width):
+    # the tree pane gives way and a horizontal scrollbar reaches the cut-off columns.
+    widget.tree.item(node3, open=True)
+    widget._populate_floor_node(node3)
+    app.geometry("800x700")
+    _pump(app, 1.0)
+    narrow = app.nametowidget(tree_pane).winfo_width()
+    check(narrow < widget._tree_content_width(),
+          f"fixture: an 800px window cannot fit the content ({narrow}px < "
+          f"{widget._tree_content_width()}px)")
+    check(widget._tree_hsb.winfo_ismapped(),
+          "a too-narrow tree pane shows the horizontal scrollbar")
+    app.geometry("2400x800")
+    _pump(app, 1.0)
+    pane_fits("after widening the window back")
+    check(not widget._tree_hsb.winfo_ismapped(),
+          "the horizontal scrollbar hides again once the content fits")
 
     if failures:
         print(f"\n{len(failures)} FAILURE(S)")

@@ -32,6 +32,7 @@ package otherwise follows.
 import os
 
 import tkinter as tk
+import tkinter.font as tkfont
 from tkinter import ttk, messagebox
 
 import prime_sieve_v1
@@ -42,6 +43,9 @@ from ..core.storage import (
     list_floors, list_source_filenames, read_source_file_headers,
 )
 from ..core.widgets import add_page_nav_row, clamp_pane_min_width
+
+_BASE_DISPLAY_COLUMNS = ("count", "cumulative", "files", "size", "timer")
+_CELL_PAD = 16  # px around a cell's text (ttk Treeview cell padding + a margin)
 
 
 def _cumulative_floor_totals(floors, floor_total_known):
@@ -196,8 +200,10 @@ class PrimesTab(BaseTab):
         paned = ttk.Panedwindow(self, orient="horizontal")
         paned.pack(fill="both", expand=True, padx=6, pady=4)
 
+        # Weight 0: window resizes go entirely to the detail pane, so the tree pane keeps
+        # the content width _fit_tree_pane() gives it.
         tree_frame = ttk.Frame(paned)
-        paned.add(tree_frame, weight=1)
+        paned.add(tree_frame, weight=0)
 
         # Floor pagination -- ABOVE the tree, same Prev/label/Next/goto layout
         # as the file-preview pane on the right (see btn_row below). A floor can hold
@@ -252,17 +258,28 @@ class PrimesTab(BaseTab):
         self.tree.heading("size", text=T("primes.col_size"))
         self.tree.heading("generated", text=T("primes.col_generated"))
         self.tree.heading("timer", text=T("primes.col_timer"))
-        self.tree.column("#0", width=260)
-        self.tree.column("count", width=90, anchor="e")
-        self.tree.column("cumulative", width=120, anchor="e")
-        self.tree.column("files", width=90, anchor="e")
-        self.tree.column("size", width=90, anchor="e")
-        self.tree.column("generated", width=170)
-        self.tree.column("timer", width=110, anchor="e")
-        vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
-        self.tree.configure(yscrollcommand=vsb.set)
-        self.tree.pack(side="left", fill="both", expand=True)
+        # Widths are set from the content by _fit_tree_columns(); no column stretches,
+        # so the tree pane's width is exactly what its content needs. "generated" is
+        # displayed last, and only while an open floor lists file rows (floor rows
+        # carry no date).
+        self.tree.column("#0", width=120, stretch=False)
+        for column, anchor in (("count", "e"), ("cumulative", "e"), ("files", "e"),
+                               ("size", "e"), ("generated", "w"), ("timer", "e")):
+            self.tree.column(column, width=60, minwidth=20, anchor=anchor, stretch=False)
+        self.tree.configure(displaycolumns=_BASE_DISPLAY_COLUMNS)
+        self._tree_vsb = vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
+        # Shown only while the window is too narrow for the content (the detail pane
+        # keeps its minimum width, see clamp_pane_min_width() below).
+        self._tree_hsb = ttk.Scrollbar(tree_frame, orient="horizontal", command=self.tree.xview)
+        self.tree.configure(yscrollcommand=vsb.set, xscrollcommand=self._on_tree_xscroll)
         vsb.pack(side="right", fill="y")
+        self.tree.pack(side="left", fill="both", expand=True)
+
+        # The sash is pinned to the content width (see _fit_tree_pane()); <ButtonRelease-1>
+        # on the panedwindow itself only fires on the sash.
+        self._tree_paned = paned
+        paned.bind("<ButtonRelease-1>", self._on_sash_released, add="+")
+        paned.bind("<Configure>", lambda _e: self._fit_tree_pane(), add="+")
 
         self.tree.bind("<<TreeviewOpen>>", self._on_tree_open)
         self.tree.bind("<<TreeviewClose>>", self._on_tree_close)
@@ -380,6 +397,7 @@ class PrimesTab(BaseTab):
                                      values=values, open=False, tags=("floor",))
             self.tree.insert(node, "end", text=T("common.loading"))
             self._floor_node_by_exp[base_exponent] = node
+        self._fit_tree_columns()
 
     def get_floor_node_keys(self):
         """Every floor currently listed in the tree -- used by prime_atlas_v2.py's own
@@ -420,6 +438,7 @@ class PrimesTab(BaseTab):
                 continue
             cum = cumulative.get(exp)
             self.tree.set(other_node, "cumulative", f"{cum:,}" if cum is not None else "")
+        self._fit_tree_columns()
         if self._active_floor_node == node:
             self._refresh_floor_nav_controls()
 
@@ -471,6 +490,7 @@ class PrimesTab(BaseTab):
         del self._floor_state[node]
         self._clear_floor_children(node)
         self.tree.insert(node, "end", text=self.T("common.loading"))
+        self._fit_tree_columns()
         if self._active_floor_node == node:
             self._active_floor_node = None
             self._refresh_floor_nav_controls()
@@ -483,6 +503,69 @@ class PrimesTab(BaseTab):
         for child in self.tree.get_children(node):
             self._path_by_item.pop(child, None)
         self.tree.delete(*self.tree.get_children(node))
+
+    def _fit_tree_columns(self):
+        """Shows "generated" (last) only while an open floor lists file rows, sizes every
+        displayed column to its widest heading/cell text, then refits the tree pane."""
+        show_generated = any(self._floor_state.values())
+        displayed = _BASE_DISPLAY_COLUMNS + (("generated",) if show_generated else ())
+        self.tree.configure(displaycolumns=displayed)
+
+        style = ttk.Style(self.tree)
+        try:
+            body = tkfont.nametofont(style.lookup("Treeview", "font") or "TkDefaultFont")
+        except tk.TclError:
+            body = tkfont.nametofont("TkDefaultFont")
+        heading = tkfont.nametofont("TkHeadingFont")
+        indent = round(self.tree.winfo_fpixels(str(style.lookup("Treeview", "indent") or 20)))
+
+        widths = {c: heading.measure(self.tree.heading(c, "text")) for c in displayed}
+        tree_width = heading.measure(self.tree.heading("#0", "text"))
+        stack = [(item, 1) for item in self.tree.get_children("")]
+        while stack:
+            item, depth = stack.pop()
+            tree_width = max(tree_width,
+                             indent * depth + body.measure(self.tree.item(item, "text")))
+            for column in displayed:
+                widths[column] = max(widths[column], body.measure(self.tree.set(item, column)))
+            stack.extend((child, depth + 1) for child in self.tree.get_children(item))
+
+        self.tree.column("#0", width=tree_width + _CELL_PAD)
+        for column, width in widths.items():
+            self.tree.column(column, width=width + _CELL_PAD)
+        self._fit_tree_pane()
+
+    def _tree_content_width(self):
+        columns = ("#0",) + tuple(self.tree.cget("displaycolumns"))
+        return (sum(int(self.tree.column(c, "width")) for c in columns)
+                + self._tree_vsb.winfo_reqwidth() + 4)
+
+    def _fit_tree_pane(self):
+        """Moves the sash to the tree's content width. Deferred to an idle turn: a
+        sashpos() issued mid-geometry-pass is reported but not applied on screen (see
+        clamp_pane_min_width())."""
+        self._tree_paned.after_idle(self._set_tree_sash)
+
+    def _on_sash_released(self, _event):
+        """A sash drag in either direction snaps back to the content width."""
+        self._fit_tree_pane()
+
+    def _set_tree_sash(self):
+        try:
+            if self._tree_paned.winfo_ismapped():
+                self._tree_paned.sashpos(0, self._tree_content_width())
+        except tk.TclError:
+            pass
+
+    def _on_tree_xscroll(self, first, last):
+        """xscrollcommand: updates the horizontal scrollbar and shows it only while part
+        of the content is cut off."""
+        self._tree_hsb.set(first, last)
+        needed = float(first) > 0.0 or float(last) < 1.0
+        if needed and not self._tree_hsb.winfo_manager():
+            self._tree_hsb.pack(side="bottom", fill="x", before=self.tree)
+        elif not needed and self._tree_hsb.winfo_manager():
+            self._tree_hsb.pack_forget()
 
     def _populate_floor_node(self, node):
         if node in self._floor_state:
@@ -500,6 +583,7 @@ class PrimesTab(BaseTab):
         if not filenames:
             self.tree.insert(node, "end", text=T("primes.no_source_files"))
             self._floor_state[node] = None
+            self._fit_tree_columns()
             return
 
         total_pages = max(1, (len(filenames) + self._floor_page_size - 1) // self._floor_page_size)
@@ -546,6 +630,7 @@ class PrimesTab(BaseTab):
                                       tags=("file",))
             self._path_by_item[child] = (path, header)
         state["page_total"] = page_total
+        self._fit_tree_columns()
 
         if self._active_floor_node == node:
             self._refresh_floor_nav_controls()
