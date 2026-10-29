@@ -32,6 +32,7 @@ from tkinter import ttk, messagebox, filedialog
 from tkinter import font as tkfont
 
 from ..core.base_tab import BaseTab
+from ..core.widgets import StripedTreeview
 from .benchmark import (
     BENCHMARK_PAGE_SIZE, BENCHMARK_TREE_HIDDEN_COLUMNS,
     _order_benchmark_tree_columns, aggregate_benchmark_fair_spw,
@@ -469,7 +470,7 @@ class BenchmarkTab(BaseTab):
         ttk.Button(benchmark_nav, text=T("common.goto"), command=self._goto_benchmark_page).pack(
             side="left", padx=(4, 0))
 
-        self.benchmark_tree = ttk.Treeview(tree_frame, show="tree headings")
+        self.benchmark_tree = StripedTreeview(tree_frame, show="tree headings")
         self.benchmark_tree.heading("#0", text=T("bench.col_floor"))
         self.benchmark_tree.column("#0", width=170, stretch=False)
         # Horizontal scrollbar -- with 11 data columns + #0, the row is wider than the

@@ -23,6 +23,7 @@ from tkinter import ttk, messagebox, filedialog
 
 from ..core import background
 from ..core.base_tab import BaseTab
+from ..core.widgets import StripedTreeview
 from .gaps_window import check_gap_range, check_gap_range_from_source, MAX_SIEVE_BOUND
 from .research_gaps import read_is_prime_from_storage, MissingStorageRangeError
 
@@ -108,7 +109,7 @@ class ResearchGapsTab(BaseTab):
         self.gaps_export_button.pack(side="left", padx=(16, 0))
 
         ttk.Label(self, text=T("research_gaps.hint"),
-                  wraplength=760, justify="left", foreground="#555").pack(
+                  wraplength=760, justify="left", style="Hint.TLabel").pack(
             anchor="w", padx=6, pady=(0, 8))
 
         self.gaps_summary_var = tk.StringVar(value="")
@@ -118,7 +119,7 @@ class ResearchGapsTab(BaseTab):
         tree_frame = ttk.Frame(self)
         tree_frame.pack(fill="both", expand=True, padx=6, pady=(0, 8))
         columns = ("n", "p_n", "p_n1", "gap", "overlay_value", "holds")
-        self.gaps_results_tree = ttk.Treeview(
+        self.gaps_results_tree = StripedTreeview(
             tree_frame, columns=columns, show="headings", height=16)
         self.gaps_results_tree.heading("n", text=T("research_gaps.col_n"))
         self.gaps_results_tree.heading("p_n", text=T("research_gaps.col_p_n"))

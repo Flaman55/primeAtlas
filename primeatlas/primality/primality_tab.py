@@ -22,7 +22,7 @@ from tkinter import ttk, messagebox
 
 from ..core.background import PersistentWorker
 from ..core.base_tab import BaseTab
-from ..core.widgets import HeightGrip
+from ..core.widgets import HeightGrip, StripedTreeview
 from ..generation.generation import _eval_quick_number
 from .primality import run_all_tests as primality_run_all_tests, factorize as primality_factorize
 
@@ -61,13 +61,13 @@ class PrimalityTab(BaseTab):
         self.primality_factorize_button.pack(side="left", padx=(8, 0))
 
         ttk.Label(self, text=self.T("primality.hint"),
-                  wraplength=640, justify="left", foreground="#555").pack(
+                  wraplength=640, justify="left", style="Hint.TLabel").pack(
             anchor="w", padx=6, pady=(0, 8))
 
         tree_frame = ttk.Frame(self)
         tree_frame.pack(fill="both", expand=False, padx=6, pady=(0, 0))
         columns = ("method", "verdict", "certainty", "seconds")
-        self.primality_results_tree = ttk.Treeview(
+        self.primality_results_tree = StripedTreeview(
             tree_frame, columns=columns, show="headings", height=3)
         self.primality_results_tree.heading("method", text=self.T("primality.col_method"))
         self.primality_results_tree.heading("verdict", text=self.T("primality.col_verdict"))

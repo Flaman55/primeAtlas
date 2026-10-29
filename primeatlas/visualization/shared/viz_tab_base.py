@@ -117,7 +117,7 @@ class VizTabBase(BaseTab):
         to_entry = ttk.Entry(body, width=30)
         to_entry.insert(0, default_to)
         to_entry.grid(row=2, column=1, sticky="w", padx=(6, 0), pady=2)
-        ttk.Label(body, text=self._tk("empty_storage_hint"), foreground="#888888", wraplength=460,
+        ttk.Label(body, text=self._tk("empty_storage_hint"), style="Hint.TLabel", wraplength=460,
                   justify="left").grid(row=3, column=0, columnspan=2, sticky="w", pady=(6, 0))
         error_var = tk.StringVar(value="")
         ttk.Label(body, textvariable=error_var, foreground="#cc3333", wraplength=460,

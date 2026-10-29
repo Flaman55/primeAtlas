@@ -21,7 +21,7 @@ import os
 import json
 
 from .i18n import DEFAULT_LANGUAGE, LOCALES_DIR, load_saved_language, save_language
-from .theme import DEFAULT_THEME
+from .theme import DEFAULT_THEME, clamp_brightness, clamp_font_scale
 
 SETTINGS_FILENAME = "app_settings.json"
 LEGACY_SETTINGS_FILENAME = ".portal_app_settings.json"  # earlier location, next to the
@@ -174,6 +174,37 @@ class AppSettings:
 
     def set_theme(self, theme_name):
         self._data["theme"] = theme_name or DEFAULT_THEME
+        self.save()
+
+    def theme_brightness(self, theme_name):
+        """(background, text) brightness shifts in percent for `theme_name` (see
+        theme.adjusted_palette()); each theme keeps its own pair. Read once at startup
+        by PortalBrowserApp._apply_theme(), same restart-required pattern as `theme`."""
+        stored = self._data.get("theme_brightness")
+        values = stored.get(theme_name) if isinstance(stored, dict) else None
+        if not isinstance(values, dict):
+            values = {}
+        return (clamp_brightness(values.get("background", 0)),
+                clamp_brightness(values.get("text", 0)))
+
+    def set_theme_brightness(self, theme_name, background, text):
+        stored = self._data.get("theme_brightness")
+        if not isinstance(stored, dict):
+            stored = {}
+        stored[theme_name] = {"background": clamp_brightness(background),
+                              "text": clamp_brightness(text)}
+        self._data["theme_brightness"] = stored
+        self.save()
+
+    @property
+    def font_scale(self):
+        """Text size in percent of the system default, applied at startup through
+        `tk scaling` (PortalBrowserApp._apply_font_scale()). Clamped, see
+        theme.clamp_font_scale()."""
+        return clamp_font_scale(self._data.get("font_scale", 100))
+
+    def set_font_scale(self, percent):
+        self._data["font_scale"] = clamp_font_scale(percent)
         self.save()
 
     @property

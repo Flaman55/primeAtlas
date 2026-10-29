@@ -153,6 +153,8 @@ def _test_containers():
         check(after > before, f"wheel over the pad scrolls the tall Backup page ({before} -> {after})")
         general_pad = app.settings_tab._scroll_pads[0]
         notebook.select(0)
+        # Tall enough for the whole General page, so it is a page that fits.
+        app.geometry("1050x1100")
         app.update()
         gcanvas = _canvas_of(general_pad)
         general_pad.wheel(FakeEvent(delta=-120))

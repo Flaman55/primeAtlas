@@ -85,6 +85,8 @@ from tkinter.scrolledtext import ScrolledText
 
 from ..core.base_tab import BaseTab
 from ..core.app_settings import SCROLL_PAD_WIDTH_MAX, SCROLL_PAD_WIDTH_MIN
+from ..core.theme import (BRIGHTNESS_DEFAULT, BRIGHTNESS_MAX, BRIGHTNESS_MIN, FONT_SCALE_DEFAULT,
+                          FONT_SCALE_MAX, FONT_SCALE_MIN)
 from ..core.widgets import HeightGrip, ScrollPad, set_scroll_pad_width
 from ..generation.generation_console import GenerationConsole
 from .manifest import FloorSnapshot, ConstellationSnapshot
@@ -333,6 +335,40 @@ class SettingsTab(BaseTab):
         width = self.app_settings.scroll_pad_width
         self.scroll_pad_width_var.set(str(width))
         set_scroll_pad_width(width)
+
+    def _load_readability_fields(self):
+        """Fills the brightness/font-size fields from the saved values (brightness of
+        the current theme)."""
+        background, text = self.app_settings.theme_brightness(self.app_settings.theme)
+        self.background_brightness_var.set(str(background))
+        self.text_brightness_var.set(str(text))
+        self.font_scale_var.set(str(self.app_settings.font_scale))
+
+    def _on_readability_apply(self):
+        """Saves the brightness shifts (for the current theme) and the font size, then
+        restarts like the theme switch -- both are applied once at startup. A
+        non-integer entry reverts every field and saves nothing; unchanged values do not
+        restart."""
+        settings = self.app_settings
+        try:
+            background = int(self.background_brightness_var.get())
+            text = int(self.text_brightness_var.get())
+            font_scale = int(self.font_scale_var.get())
+        except ValueError:
+            self._load_readability_fields()
+            return
+        before = (settings.theme_brightness(settings.theme), settings.font_scale)
+        settings.set_theme_brightness(settings.theme, background, text)
+        settings.set_font_scale(font_scale)
+        self._load_readability_fields()
+        if (settings.theme_brightness(settings.theme), settings.font_scale) != before:
+            self._restart_now_or_warn(notice_translator=self.T)
+
+    def _on_readability_reset(self):
+        self.background_brightness_var.set(str(BRIGHTNESS_DEFAULT))
+        self.text_brightness_var.set(str(BRIGHTNESS_DEFAULT))
+        self.font_scale_var.set(str(FONT_SCALE_DEFAULT))
+        self._on_readability_apply()
 
     def _on_auto_update_check_toggled(self):
         self.app_settings.set_auto_update_check(self.auto_update_check_var.get())
@@ -2365,7 +2401,7 @@ class SettingsTab(BaseTab):
         language_combo.grid(row=0, column=1, sticky="w", padx=(0, 12), pady=6)
         language_combo.bind("<<ComboboxSelected>>", self._on_language_selected)
         ttk.Label(lang_frame, text=self.T("settings.language_restart_note"),
-                  foreground="#555555").grid(row=0, column=2, sticky="w", padx=(0, 6), pady=6)
+                  style="Hint.TLabel").grid(row=0, column=2, sticky="w", padx=(0, 6), pady=6)
 
         # Theme picker -- same restart-required pattern as language above (see
         # prime_atlas_v2.py's PortalBrowserApp._apply_theme() docstring for why a
@@ -2390,7 +2426,7 @@ class SettingsTab(BaseTab):
         theme_combo.grid(row=0, column=1, sticky="w", padx=(0, 12), pady=6)
         theme_combo.bind("<<ComboboxSelected>>", self._on_theme_selected)
         ttk.Label(theme_frame, text=self.T("settings.theme_restart_note"),
-                  foreground="#555555").grid(row=0, column=2, sticky="w", padx=(0, 6), pady=6)
+                  style="Hint.TLabel").grid(row=0, column=2, sticky="w", padx=(0, 6), pady=6)
 
         ui_frame = ttk.Labelframe(outer, text=self.T("settings.ui_frame"))
         ui_frame.pack(fill="x", pady=(0, 8))
@@ -2406,7 +2442,38 @@ class SettingsTab(BaseTab):
         width_spin.bind("<FocusOut>", self._on_scroll_pad_width_changed)
         ttk.Label(ui_frame, text=self.T("settings.scroll_pad_width_note",
                                         min=SCROLL_PAD_WIDTH_MIN, max=SCROLL_PAD_WIDTH_MAX),
-                  foreground="#555555").grid(row=0, column=2, sticky="w", padx=(0, 6), pady=6)
+                  style="Hint.TLabel").grid(row=0, column=2, sticky="w", padx=(0, 6), pady=6)
+
+        # Brightness (per theme) and font size are applied once at startup, so they
+        # are committed together by one Apply button instead of on every spin click.
+        self.background_brightness_var = tk.StringVar()
+        self.text_brightness_var = tk.StringVar()
+        self.font_scale_var = tk.StringVar()
+        readability_rows = (
+            ("settings.background_brightness_label", self.background_brightness_var,
+             BRIGHTNESS_MIN, BRIGHTNESS_MAX, 5),
+            ("settings.text_brightness_label", self.text_brightness_var,
+             BRIGHTNESS_MIN, BRIGHTNESS_MAX, 5),
+            ("settings.font_scale_label", self.font_scale_var,
+             FONT_SCALE_MIN, FONT_SCALE_MAX, 10),
+        )
+        for row, (label_key, var, low, high, step) in enumerate(readability_rows, start=1):
+            ttk.Label(ui_frame, text=self.T(label_key)).grid(
+                row=row, column=0, sticky="w", padx=6, pady=(0, 6))
+            ttk.Spinbox(ui_frame, textvariable=var, from_=low, to=high, increment=step,
+                        width=6).grid(row=row, column=1, sticky="w", padx=(0, 12), pady=(0, 6))
+            ttk.Label(ui_frame, text=self.T("settings.readability_range", min=low, max=high),
+                      style="Hint.TLabel").grid(row=row, column=2, sticky="w", padx=(0, 6), pady=(0, 6))
+        self._load_readability_fields()
+        readability_buttons = ttk.Frame(ui_frame)
+        readability_buttons.grid(row=4, column=0, columnspan=3, sticky="w", padx=6, pady=(0, 6))
+        ttk.Button(readability_buttons, text=self.T("settings.readability_apply"),
+                   command=self._on_readability_apply).pack(side="left")
+        ttk.Button(readability_buttons, text=self.T("settings.readability_reset"),
+                   command=self._on_readability_reset).pack(side="left", padx=(6, 0))
+        ttk.Label(ui_frame, text=self.T("settings.readability_note"), style="Hint.TLabel",
+                  wraplength=760, justify="left").grid(
+            row=5, column=0, columnspan=3, sticky="w", padx=6, pady=(0, 6))
 
         path_frame = ttk.Labelframe(outer, text=self.T("settings.path_frame"))
         path_frame.pack(fill="x", pady=(0, 8))
@@ -2421,7 +2488,7 @@ class SettingsTab(BaseTab):
         ttk.Button(path_frame, text=self.T("settings.path_reset"),
                    command=self._on_reset_path).grid(row=0, column=3, padx=(4, 6))
         self.path_status_var = tk.StringVar(value=self._path_status_text())
-        ttk.Label(path_frame, textvariable=self.path_status_var, foreground="#555555").grid(
+        ttk.Label(path_frame, textvariable=self.path_status_var, style="Hint.TLabel").grid(
             row=1, column=0, columnspan=4, sticky="w", padx=6, pady=(0, 6))
 
     def _build_full_backup_section(self, outer):
@@ -2435,7 +2502,7 @@ class SettingsTab(BaseTab):
         frame.pack(fill="both", expand=True, pady=(0, 8))
         ttk.Label(
             frame, text=self.T("settings.full_backup_hint"),
-            foreground="#555", wraplength=760, justify="left").pack(
+            style="Hint.TLabel", wraplength=760, justify="left").pack(
             anchor="w", padx=6, pady=(6, 4))
 
         dest_row = ttk.Frame(frame)
@@ -2512,7 +2579,7 @@ class SettingsTab(BaseTab):
         self.full_backup_status_var = tk.StringVar(value="")
         ttk.Label(frame, textvariable=self.full_backup_status_var).pack(anchor="w", padx=6)
         self.full_backup_file_status_var = tk.StringVar(value="")
-        ttk.Label(frame, textvariable=self.full_backup_file_status_var, foreground="#555").pack(
+        ttk.Label(frame, textvariable=self.full_backup_file_status_var, style="Hint.TLabel").pack(
             anchor="w", padx=6, pady=(0, 4))
 
         self.full_backup_console = GenerationConsole(
@@ -2529,7 +2596,7 @@ class SettingsTab(BaseTab):
         frame.pack(fill="both", expand=True, pady=(0, 8))
         ttk.Label(
             frame, text=self.T("settings.storage_integrate_hint"),
-            foreground="#555", wraplength=760, justify="left").pack(
+            style="Hint.TLabel", wraplength=760, justify="left").pack(
             anchor="w", padx=6, pady=(6, 4))
 
         source_row = ttk.Frame(frame)
@@ -2580,7 +2647,7 @@ class SettingsTab(BaseTab):
         ttk.Label(frame, textvariable=self.storage_integrate_status_var).pack(anchor="w", padx=6)
         self.storage_integrate_file_status_var = tk.StringVar(value="")
         ttk.Label(frame, textvariable=self.storage_integrate_file_status_var,
-                  foreground="#555").pack(anchor="w", padx=6, pady=(0, 4))
+                  style="Hint.TLabel").pack(anchor="w", padx=6, pady=(0, 4))
 
         self.storage_integrate_console = GenerationConsole(
             frame, self.T, height=4, start_visible=True,
@@ -2676,7 +2743,7 @@ class SettingsTab(BaseTab):
         floor_delete_frame.pack(fill="x", pady=(0, 8))
         ttk.Label(
             floor_delete_frame, text=self.T("settings.delete_floor_hint"),
-            foreground="#555", wraplength=760, justify="left").pack(
+            style="Hint.TLabel", wraplength=760, justify="left").pack(
             anchor="w", padx=6, pady=(6, 4))
         floor_pick_row = ttk.Frame(floor_delete_frame)
         floor_pick_row.pack(fill="x", padx=6, pady=(0, 4))
@@ -2711,7 +2778,7 @@ class SettingsTab(BaseTab):
         libs_frame = ttk.Labelframe(outer, text=self.T("settings.libs_frame"))
         libs_frame.pack(fill="x", pady=(0, 8))
         ttk.Label(libs_frame, text=self.T("settings.libs_hint"),
-                  wraplength=760, justify="left", foreground="#555").pack(
+                  wraplength=760, justify="left", style="Hint.TLabel").pack(
             anchor="w", padx=6, pady=(6, 4))
         libs_btn_row = ttk.Frame(libs_frame)
         libs_btn_row.pack(fill="x", padx=6, pady=(0, 4))
@@ -2743,7 +2810,7 @@ class SettingsTab(BaseTab):
         primecount_frame = ttk.Labelframe(outer, text=self.T("settings.primecount_frame"))
         primecount_frame.pack(fill="x", pady=(0, 8))
         ttk.Label(primecount_frame, text=self.T("settings.primecount_hint"),
-                  wraplength=760, justify="left", foreground="#555").pack(
+                  wraplength=760, justify="left", style="Hint.TLabel").pack(
             anchor="w", padx=6, pady=(6, 4))
         primecount_btn_row = ttk.Frame(primecount_frame)
         primecount_btn_row.pack(fill="x", padx=6, pady=(0, 4))
@@ -2774,7 +2841,7 @@ class SettingsTab(BaseTab):
         cudasieve_frame = ttk.Labelframe(outer, text=self.T("settings.cudasieve_frame"))
         cudasieve_frame.pack(fill="x", pady=(0, 8))
         ttk.Label(cudasieve_frame, text=self.T("settings.cudasieve_hint"),
-                  wraplength=760, justify="left", foreground="#555").pack(
+                  wraplength=760, justify="left", style="Hint.TLabel").pack(
             anchor="w", padx=6, pady=(6, 4))
         cudasieve_btn_row = ttk.Frame(cudasieve_frame)
         cudasieve_btn_row.pack(fill="x", padx=6, pady=(0, 4))
@@ -2805,7 +2872,7 @@ class SettingsTab(BaseTab):
         env_frame = ttk.Labelframe(outer, text=self.T("settings.env_frame"))
         env_frame.pack(fill="x", pady=(0, 8))
         ttk.Label(env_frame, text=self.T("settings.env_hint"),
-                  wraplength=760, justify="left", foreground="#555").pack(
+                  wraplength=760, justify="left", style="Hint.TLabel").pack(
             anchor="w", padx=6, pady=(6, 4))
         env_btn_row = ttk.Frame(env_frame)
         env_btn_row.pack(fill="x", padx=6, pady=(0, 6))
@@ -2835,7 +2902,7 @@ class SettingsTab(BaseTab):
         app_update_frame = ttk.Labelframe(outer, text=self.T("settings.app_update_frame"))
         app_update_frame.pack(fill="x", pady=(0, 8))
         ttk.Label(app_update_frame, text=self.T("settings.app_update_hint"),
-                  wraplength=760, justify="left", foreground="#555").pack(
+                  wraplength=760, justify="left", style="Hint.TLabel").pack(
             anchor="w", padx=6, pady=(6, 4))
 
         app_update_toggle_row = ttk.Frame(app_update_frame)

@@ -24,10 +24,31 @@ Style()). The Benchmark tab's floor-grouping/stats-row highlights
 this theme's own `fg` for the tag's foreground -- a fixed light background would leave
 light Treeview text unreadable in dark mode. Dark theme's values are dark-tinted
 equivalents (blue-ish/amber-ish), so the grouping/highlight effect stays visible in both
-themes.
+themes. tree_alt_bg is the stripe color of every second row (widgets.StripedTreeview).
+
+hint_fg: explanatory/secondary label text (the Hint.TLabel style). hint_fg and
+disabled_fg keep at least a 4.5:1 contrast against bg (WCAG AA) in both themes.
+
+adjusted_palette() applies the user's per-theme brightness shifts (Settings > General >
+User interface): `background` moves every BACKGROUND_KEYS color and `text` every
+TEXT_KEYS color toward white (+) or black (-) by that percentage. Selection and accent
+colors stay fixed so the selection highlight keeps its meaning.
 """
 
 DEFAULT_THEME = "dark"
+
+# Brightness shift in percent toward white (+) or black (-); 0 = the palette as defined.
+BRIGHTNESS_DEFAULT = 0
+BRIGHTNESS_MIN = -50
+BRIGHTNESS_MAX = 50
+# Text size in percent of the system default (scales every point-sized font).
+FONT_SCALE_DEFAULT = 100
+FONT_SCALE_MIN = 80
+FONT_SCALE_MAX = 200
+
+BACKGROUND_KEYS = ("bg", "field_bg", "border", "console_bg", "tree_bg", "tree_alt_bg",
+                   "tree_group_bg", "tree_stat_bg", "tab_bg", "tab_selected_bg")
+TEXT_KEYS = ("fg", "field_fg", "disabled_fg", "hint_fg", "console_fg")
 
 THEMES = {
     "light": {
@@ -37,7 +58,8 @@ THEMES = {
         "field_fg": "#000000",
         "select_bg": "#0078d7",
         "select_fg": "#ffffff",
-        "disabled_fg": "#888888",
+        "disabled_fg": "#6b6b6b",
+        "hint_fg": "#555555",
         "border": "#a0a0a0",
         "console_bg": "#ffffff",
         "console_fg": "#000000",
@@ -55,7 +77,8 @@ THEMES = {
         "field_fg": "#e0e0e0",
         "select_bg": "#3a6ea5",
         "select_fg": "#ffffff",
-        "disabled_fg": "#8a8a8a",
+        "disabled_fg": "#949494",
+        "hint_fg": "#b0b0b0",
         "border": "#555555",
         "console_bg": "#1e1e1e",
         "console_fg": "#d4d4d4",
@@ -75,3 +98,44 @@ def palette_for(theme_name):
     version of this app running against an older settings file) -- same
     fail-to-default philosophy as AppSettings.language's DEFAULT_LANGUAGE fallback."""
     return THEMES.get(theme_name, THEMES[DEFAULT_THEME])
+
+
+def _clamp_int(value, lo, hi, default):
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(lo, min(hi, number))
+
+
+def clamp_brightness(value):
+    """int(value) clamped to [BRIGHTNESS_MIN, BRIGHTNESS_MAX]; BRIGHTNESS_DEFAULT if
+    value is not an integer."""
+    return _clamp_int(value, BRIGHTNESS_MIN, BRIGHTNESS_MAX, BRIGHTNESS_DEFAULT)
+
+
+def clamp_font_scale(value):
+    """int(value) clamped to [FONT_SCALE_MIN, FONT_SCALE_MAX]; FONT_SCALE_DEFAULT if
+    value is not an integer."""
+    return _clamp_int(value, FONT_SCALE_MIN, FONT_SCALE_MAX, FONT_SCALE_DEFAULT)
+
+
+def shift_color(color, percent):
+    """"#rrggbb" blended `percent`% toward white (percent > 0) or black (percent < 0)."""
+    channels = [int(color[i:i + 2], 16) for i in (1, 3, 5)]
+    target = 255 if percent > 0 else 0
+    weight = min(abs(percent), 100) / 100
+    return "#" + "".join(f"{round(c + (target - c) * weight):02x}" for c in channels)
+
+
+def adjusted_palette(theme_name, background=BRIGHTNESS_DEFAULT, text=BRIGHTNESS_DEFAULT):
+    """A copy of palette_for(theme_name) with BACKGROUND_KEYS shifted by `background`
+    and TEXT_KEYS by `text` (both clamped, see shift_color())."""
+    palette = dict(palette_for(theme_name))
+    background = clamp_brightness(background)
+    text = clamp_brightness(text)
+    for key in BACKGROUND_KEYS:
+        palette[key] = shift_color(palette[key], background)
+    for key in TEXT_KEYS:
+        palette[key] = shift_color(palette[key], text)
+    return palette

@@ -390,3 +390,129 @@ class ScrollPad:
     def _on_leave(self, _event):
         for sequence in self._WHEEL_EVENTS:
             self.frame.unbind_all(sequence)
+
+
+STRIPE_TAG = "stripe"
+STRIPE_BACKGROUND = "#f5f5f5"
+_striped_trees = weakref.WeakSet()
+_STRIPE_BINDTAG = "StripedTreeview"
+
+
+def set_stripe_background(color):
+    """Sets the stripe color of every live StripedTreeview and the default for trees
+    built afterwards."""
+    global STRIPE_BACKGROUND
+    STRIPE_BACKGROUND = color
+    for tree in list(_striped_trees):
+        try:
+            tree.tag_configure(STRIPE_TAG, background=color)
+        except tk.TclError:
+            pass  # tree (or its Tk root) already destroyed
+
+
+def _on_striped_tree_toggle(event):
+    tree = event.widget
+    if isinstance(tree, StripedTreeview):
+        tree.schedule_restripe()
+
+
+class StripedTreeview(ttk.Treeview):
+    """ttk.Treeview whose every second visible row carries STRIPE_TAG (background
+    STRIPE_BACKGROUND), so a row can be followed across many columns of similar numbers.
+    Restriped once per idle cycle after any insert/delete/move/detach, item tags or open
+    state change, and node open/close. The open/close hook lives on its own bindtag, so a
+    caller's tree.bind("<<TreeviewOpen>>", ...) does not replace it. Rows whose own tag
+    sets a background (group/stat highlights) are never striped, only counted."""
+
+    def __init__(self, master=None, **kw):
+        super().__init__(master, **kw)
+        self._restripe_pending = False
+        self.tag_configure(STRIPE_TAG, background=STRIPE_BACKGROUND)
+        self.bind_class(_STRIPE_BINDTAG, "<<TreeviewOpen>>", _on_striped_tree_toggle)
+        self.bind_class(_STRIPE_BINDTAG, "<<TreeviewClose>>", _on_striped_tree_toggle)
+        self.bindtags(self.bindtags() + (_STRIPE_BINDTAG,))
+        _striped_trees.add(self)
+
+    def insert(self, parent, index, iid=None, **kw):
+        item = super().insert(parent, index, iid, **kw)
+        self.schedule_restripe()
+        return item
+
+    def delete(self, *items):
+        super().delete(*items)
+        self.schedule_restripe()
+
+    def detach(self, *items):
+        super().detach(*items)
+        self.schedule_restripe()
+
+    def move(self, item, parent, index):
+        super().move(item, parent, index)
+        self.schedule_restripe()
+
+    reattach = move
+
+    def item(self, item, option=None, **kw):
+        result = super().item(item, option, **kw)
+        if "open" in kw or "tags" in kw:
+            self.schedule_restripe()
+        return result
+
+    def schedule_restripe(self):
+        if not self._restripe_pending:
+            self._restripe_pending = True
+            self.after_idle(self.restripe)
+
+    def restripe(self):
+        self._restripe_pending = False
+        if not self.winfo_exists():
+            return
+        own_background = {}
+
+        def has_own_background(tags):
+            for tag in tags:
+                if tag != STRIPE_TAG:
+                    if tag not in own_background:
+                        own_background[tag] = bool(str(self.tag_configure(tag, "background")))
+                    if own_background[tag]:
+                        return True
+            return False
+
+        index = 0
+        stack = list(reversed(self.get_children("")))
+        while stack:
+            iid = stack.pop()
+            tags = tuple(t for t in super().item(iid, "tags") or () if t != STRIPE_TAG)
+            if index % 2 == 1 and not has_own_background(tags):
+                tags += (STRIPE_TAG,)
+            if tags != tuple(super().item(iid, "tags") or ()):
+                super().item(iid, tags=tags)
+            index += 1
+            if super().item(iid, "open"):
+                stack.extend(reversed(self.get_children(iid)))
+
+
+class RevealFrame(ttk.Frame):
+    """A frame that stays unpacked until reveal(True), for content that means nothing
+    before a selection (an empty preview list and its page nav). The pack options are
+    fixed at construction; reveal(True, before=w) packs it above `w` while `w` is packed
+    and at the end of the parent otherwise."""
+
+    def __init__(self, parent, **pack_options):
+        super().__init__(parent)
+        self._pack_options = pack_options
+
+    @property
+    def visible(self):
+        return self.winfo_manager() == "pack"
+
+    def reveal(self, visible, before=None):
+        if not visible:
+            self.pack_forget()
+            return
+        if self.visible:
+            return
+        options = dict(self._pack_options)
+        if before is not None and before.winfo_manager() == "pack":
+            options["before"] = before
+        self.pack(**options)

@@ -56,6 +56,7 @@ from tkinter import ttk, messagebox, filedialog
 
 from ..core import background
 from ..core.base_tab import BaseTab
+from ..core.widgets import StripedTreeview
 from ..generation.generation import (
     build_primecount_query_argv, run_primecount_wsl_blocking,
     run_primecount_install_wsl_blocking,
@@ -159,7 +160,7 @@ class ResearchPiApproxTab(BaseTab):
         self.pi_export_button.pack(side="left", padx=(16, 0))
 
         ttk.Label(self, text=T("research_pi_approx.hint"),
-                  wraplength=760, justify="left", foreground="#555").pack(
+                  wraplength=760, justify="left", style="Hint.TLabel").pack(
             anchor="w", padx=6, pady=(0, 8))
 
         self.pi_summary_var = tk.StringVar(value="")
@@ -169,7 +170,7 @@ class ResearchPiApproxTab(BaseTab):
         tree_frame = ttk.Frame(self)
         tree_frame.pack(fill="both", expand=True, padx=6, pady=(0, 8))
         columns = ("x", "pi_x", "li_x", "r_x", "li_error", "r_error")
-        self.pi_results_tree = ttk.Treeview(
+        self.pi_results_tree = StripedTreeview(
             tree_frame, columns=columns, show="headings", height=16)
         self.pi_results_tree.heading("x", text=T("research_pi_approx.col_x"))
         self.pi_results_tree.heading("pi_x", text=T("research_pi_approx.col_pi_x"))

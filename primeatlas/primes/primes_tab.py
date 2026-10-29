@@ -42,7 +42,7 @@ from ..core.storage import (
     digit_count_floor, format_big_int, format_bytes, format_duration,
     list_floors, list_source_filenames, read_source_file_headers,
 )
-from ..core.widgets import add_page_nav_row, clamp_pane_min_width
+from ..core.widgets import RevealFrame, StripedTreeview, add_page_nav_row, clamp_pane_min_width
 
 _BASE_DISPLAY_COLUMNS = ("count", "cumulative", "files", "size", "timer")
 _CELL_PAD = 16  # px around a cell's text (ttk Treeview cell padding + a margin)
@@ -248,7 +248,7 @@ class PrimesTab(BaseTab):
         # right after "count" (the floor's own total on its own) so the two numbers --
         # "how many primes are ON this floor" vs "how many primes in total have been
         # found through this floor" -- read side by side.
-        self.tree = ttk.Treeview(
+        self.tree = StripedTreeview(
             tree_frame, columns=("count", "cumulative", "files", "size", "generated", "timer"),
             show="tree headings")
         self.tree.heading("#0", text=T("primes.col_floor"))
@@ -312,10 +312,13 @@ class PrimesTab(BaseTab):
         # edge -- see its own docstring) gives a consistent, professional-looking
         # right-aligned jump group instead of one trailing wherever the left cluster's
         # own width happens to end.
+        # Page nav + preview list stay hidden until a file is selected (see
+        # _on_tree_select()); before that only the hint above is shown.
+        self._preview_area = RevealFrame(detail_frame, fill="both", expand=True)
         self.preview_page_label = tk.StringVar(value="")
         preview_nav_row, self.prev_page_btn, self.next_page_btn, self.preview_goto_entry = (
             add_page_nav_row(
-                detail_frame, T, self.preview_page_label,
+                self._preview_area, T, self.preview_page_label,
                 self._prev_preview_page, self._next_preview_page, self._goto_preview_page))
         preview_nav_row.pack(anchor="w", padx=6, fill="x")
 
@@ -328,7 +331,7 @@ class PrimesTab(BaseTab):
         self.update_idletasks()
         clamp_pane_min_width(paned, detail_frame, preview_nav_row.winfo_reqwidth() + 12)
 
-        preview_frame = ttk.Frame(detail_frame)
+        preview_frame = ttk.Frame(self._preview_area)
         preview_frame.pack(fill="both", expand=True, padx=6, pady=6)
         self.preview_list = tk.Listbox(preview_frame, font=("Consolas", 9))
         preview_vsb = ttk.Scrollbar(preview_frame, orient="vertical", command=self.preview_list.yview)
@@ -697,6 +700,7 @@ class PrimesTab(BaseTab):
         if header is None:
             self.detail_text.set(T("primes.header_error", path=path))
             return
+        self._preview_area.reveal(True)
         self.detail_text.set(
             f"{path}\n\n" +
             T("primes.header_detail",
@@ -710,6 +714,7 @@ class PrimesTab(BaseTab):
     # --- Preview pane ------------------------------------------------------------------------
 
     def _reset_preview_state(self):
+        self._preview_area.reveal(False)
         self.preview_list.delete(0, "end")
         self._preview_primes = None
         self._preview_page = 0

@@ -170,9 +170,15 @@ def main():
         check(hits.hits_tree.item(pattern_item, "values")[0] == "1",
               f"the v={vid} node shows count=1 (got {hits.hits_tree.item(pattern_item, 'values')})")
 
+        check(hits._hits_preview_area.winfo_manager() == "",
+              "hit preview + page nav are hidden before any pattern is selected")
+        check(hits._search_results_area.winfo_manager() == "",
+              "the search-results list is hidden before any search")
         hits.hits_tree.selection_set(pattern_item)
         hits.hits_tree.focus(pattern_item)
         hits._on_tree_select(None)
+        check(hits._hits_preview_area.winfo_manager() == "pack",
+              "selecting a pattern reveals the hit preview")
         check(hits._hit_values == [P],
               f"selecting the populated pattern node auto-loads its preview, no separate "
               f"'Load preview' click needed (got {hits._hit_values})")
@@ -190,12 +196,20 @@ def main():
         check(hits._search_results_data[0]["base_exponent"] == 3 and hits._search_results_data[0]["hit_base"] == P,
               f"the participation record points at the right floor/base (got {hits._search_results_data[0]})")
 
+        check(hits._search_results_area.winfo_manager() == "pack",
+              "a search with participation reveals the search-results list")
+        check(hits._hits_preview_area.winfo_manager() == "",
+              "a new search result hides the previous pattern's preview")
         # Double-clicking the one search result row jumps the preview straight to it.
         hits.search_results_list.selection_clear(0, "end")
         hits.search_results_list.selection_set(0)
         hits._on_search_result_activate(None)
         check(hits._selected_hit_path is not None and hits._hit_values == [P],
               "double-clicking the search result jumped the Magazyn preview to the right pattern")
+        slaves = hits._search_results_area.master.pack_slaves()
+        check(hits._hits_preview_area in slaves
+              and slaves.index(hits._search_results_area) < slaves.index(hits._hits_preview_area),
+              "the jump reveals the hit preview below the search results")
 
         # === 3. Constellation calculator: compute + search-selected triggers the SAME ===
         # === real search, and (being calculator-initiated) auto-jumps on completion ===

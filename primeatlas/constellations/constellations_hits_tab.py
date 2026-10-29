@@ -43,7 +43,7 @@ from .constellations import (
     group_constellation_hits_by_k, list_constellation_hits, read_hit_pattern_page,
     hit_pattern_is_paged, hit_pattern_page_count,
 )
-from ..core.widgets import HeightGrip, add_page_nav_row, clamp_pane_min_width
+from ..core.widgets import HeightGrip, RevealFrame, StripedTreeview, add_page_nav_row, clamp_pane_min_width
 
 
 class ConstellationsHitsTab(BaseTab):
@@ -117,7 +117,7 @@ class ConstellationsHitsTab(BaseTab):
         tree_frame = ttk.Frame(paned)
         paned.add(tree_frame, weight=1)
 
-        self.hits_tree = ttk.Treeview(tree_frame, columns=("count", "generated"), show="tree headings")
+        self.hits_tree = StripedTreeview(tree_frame, columns=("count", "generated"), show="tree headings")
         self.hits_tree.heading("#0", text=T("const.col_floor"))
         self.hits_tree.heading("count", text=T("const.col_count"))
         self.hits_tree.heading("generated", text=T("const.col_generated"))
@@ -143,9 +143,13 @@ class ConstellationsHitsTab(BaseTab):
         # per pattern the searched number participates in. Double-click (or Enter)
         # jumps straight to that exact hit's row in the preview below, mirroring how
         # the Prime numbers tab's search lands directly on the found number.
-        self.search_results_list = tk.Listbox(detail_frame, height=5, font=("Consolas", 9))
+        # Hidden until a search lists at least one pattern; the hit preview below stays
+        # hidden until a pattern is selected (see _on_tree_select()).
+        self._search_results_area = RevealFrame(detail_frame, fill="x")
+        self._hits_preview_area = RevealFrame(detail_frame, fill="both", expand=True)
+        self.search_results_list = tk.Listbox(self._search_results_area, height=5, font=("Consolas", 9))
         self.search_results_list.pack(fill="x", padx=6, pady=(0, 0))
-        self.search_results_grip = HeightGrip(detail_frame, self.search_results_list,
+        self.search_results_grip = HeightGrip(self._search_results_area, self.search_results_list,
                                               after=self.search_results_list, padx=6)
         self.search_results_list.bind("<Double-Button-1>", self._on_search_result_activate)
         self.search_results_list.bind("<Return>", self._on_search_result_activate)
@@ -162,7 +166,7 @@ class ConstellationsHitsTab(BaseTab):
         # how much shorter btn_row's left cluster is than file_page_row's -- a plain
         # FlowRow flows left-to-right and could strand the second row's jump group on
         # its own stray third line instead.
-        preview_nav_frame = ttk.Frame(detail_frame)
+        preview_nav_frame = ttk.Frame(self._hits_preview_area)
         preview_nav_frame.pack(anchor="w", padx=6, fill="x", pady=(0, 4))
         # nav_rows_frame is deliberately NOT packed yet -- packed last, below, after
         # hits_export_btn (side="right", claiming its own fixed-width chunk out of the
@@ -216,7 +220,7 @@ class ConstellationsHitsTab(BaseTab):
             + 10 + self.hits_export_btn.winfo_reqwidth() + 12)
         clamp_pane_min_width(paned, detail_frame, preview_nav_min_width)
 
-        hits_preview_frame = ttk.Frame(detail_frame)
+        hits_preview_frame = ttk.Frame(self._hits_preview_area)
         hits_preview_frame.pack(fill="both", expand=True, padx=6, pady=6)
         self.hits_preview_list = tk.Listbox(hits_preview_frame, font=("Consolas", 9))
         hits_preview_vsb = ttk.Scrollbar(hits_preview_frame, orient="vertical",
@@ -304,6 +308,7 @@ class ConstellationsHitsTab(BaseTab):
             return
 
         self.search_results_list.delete(0, "end")
+        self._search_results_area.reveal(False)
         self._search_results_data = []
         self._start_search_job("const", base_exponent, number)
 
@@ -365,6 +370,7 @@ class ConstellationsHitsTab(BaseTab):
                     "hit_base": rec["base"],
                 })
         self.hits_detail_text.set("\n".join(lines))
+        self._search_results_area.reveal(bool(participation), before=self._hits_preview_area)
         self._reset_preview_state()
         self._selected_hit_path = None
         self._selected_hit_base_exponent = None
@@ -445,6 +451,7 @@ class ConstellationsHitsTab(BaseTab):
         if header is None:
             self.hits_detail_text.set(T("primes.header_error", path=path))
             return
+        self._hits_preview_area.reveal(True)
         offsets_str = ", ".join(f"+{d}" for d in pattern["offsets"])
         if pattern["record_digits"] is not None:
             record_line = T("const.record_known", digits=pattern['record_digits'],
@@ -462,6 +469,7 @@ class ConstellationsHitsTab(BaseTab):
             self.load_preview()
 
     def _reset_preview_state(self):
+        self._hits_preview_area.reveal(False)
         self.hits_preview_list.delete(0, "end")
         self._hit_values = None
         self._hit_rows = None

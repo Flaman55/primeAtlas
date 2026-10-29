@@ -136,9 +136,50 @@ def _test_settings_tab():
         check(tab.app_settings.scroll_pad_width == 72 and all(_width(p) == 72 for p in pads),
               "an invalid entry changes nothing")
         check(var.get() == "72", "an invalid entry is reverted in the field")
+        _test_readability_fields(tab)
     finally:
         set_scroll_pad_width(SCROLL_PAD_WIDTH_DEFAULT)
         app.destroy()
+
+
+def _test_readability_fields(tab):
+    print("\n--- D. Settings > General > User interface: brightness + font size ---")
+    for key in ("settings.background_brightness_label", "settings.text_brightness_label",
+                "settings.font_scale_label", "settings.readability_apply",
+                "settings.readability_reset", "settings.readability_note"):
+        check(tab.T(key) != key, f"locale has {key}")
+    names = ("background_brightness_var", "text_brightness_var", "font_scale_var")
+    if not all(hasattr(tab, n) for n in names):
+        check(False, "General has background/text brightness and font size fields")
+        return
+    settings = tab.app_settings
+    theme_name = settings.theme
+    settings.set_theme_brightness(theme_name, 5, -5)
+    settings.set_font_scale(110)
+    tab._load_readability_fields()
+    check((tab.background_brightness_var.get(), tab.text_brightness_var.get(),
+           tab.font_scale_var.get()) == ("5", "-5", "110"),
+          "the fields start at the saved values of the current theme")
+    restarts = []
+    tab._restart_now_or_warn = lambda notice_translator: restarts.append(1)
+    tab._on_readability_apply()
+    check(not restarts, "applying unchanged values does not restart")
+    tab.background_brightness_var.set("20")
+    tab.text_brightness_var.set("999")
+    tab.font_scale_var.set("150")
+    tab._on_readability_apply()
+    check(settings.theme_brightness(theme_name) == (20, 50) and settings.font_scale == 150,
+          "applying saves clamped values for the current theme")
+    check(restarts == [1], "applying a change restarts the app")
+    check(tab.text_brightness_var.get() == "50", "the field shows the clamped value")
+    tab.font_scale_var.set("huge")
+    tab._on_readability_apply()
+    check(settings.font_scale == 150 and restarts == [1], "an invalid entry changes nothing")
+    check(tab.font_scale_var.get() == "150", "an invalid entry is reverted in the field")
+    tab._on_readability_reset()
+    check(settings.theme_brightness(theme_name) == (0, 0) and settings.font_scale == 100,
+          "reset restores the defaults")
+    check(restarts == [1, 1], "reset restarts the app")
 
 
 def main():

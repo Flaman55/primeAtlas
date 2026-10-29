@@ -217,6 +217,7 @@ def _build_gui():
         def __init__(self):
             super().__init__()
             apply_tk_icon(self)
+            self._apply_font_scale(APP_SETTINGS.font_scale)
             self._apply_theme(APP_SETTINGS.theme)
             self.title(f"{T('app.title')} {APP_VERSION}")
             self.geometry("1050x680")
@@ -248,7 +249,8 @@ def _build_gui():
             status_frame = ttk.Frame(self)
             self._status_frame = status_frame  # stashed so _finish_loading_screen can pack it
             self.status = tk.StringVar(value=T("app.status_portal_initial", folder=PORTAL_FOLDER))
-            ttk.Label(status_frame, textvariable=self.status, anchor="w").pack(fill="x", side="top")
+            ttk.Label(status_frame, textvariable=self.status, anchor="w",
+                      style="Status.TLabel").pack(fill="x", side="top")
             # Visible progress bar for the floor-totals background scan -- the status TEXT
             # alone, updating only once per finished floor, makes it look like nothing is
             # happening for the first ~78s on a big floor; a bar that fills in as floors
@@ -472,6 +474,22 @@ def _build_gui():
         # primeatlas/core/totals_search_coordinator.py's TotalsSearchCoordinator -- see that
         # module's own docstring and this file's __init__ (self._totals_search).
 
+        def _apply_font_scale(self, percent):
+            """Multiplies `tk scaling` (pixels per point) by percent/100 before any widget
+            is built, so every point-sized font -- named fonts and explicit ("Consolas", 9)
+            tuples, canvas text included -- grows by the same factor. Pixel sizes (column
+            widths, wraplength, paddings) are unaffected; content-fitted widths follow the
+            fonts. The named fonts are reconfigured so they re-resolve their point size
+            under the new scaling. Restart-required, same as the theme."""
+            import tkinter.font as tkfont
+            if percent == 100:
+                return
+            base = float(self.tk.call("tk", "scaling"))
+            self.tk.call("tk", "scaling", base * percent / 100)
+            for name in tkfont.names(self):
+                named = tkfont.nametofont(name, root=self)
+                named.configure(size=named.cget("size"))
+
         def _apply_theme(self, theme_name):
             """Applies primeatlas.core.theme's color palette to every widget class this app
             actually uses -- called once, in __init__, BEFORE any child widget is
@@ -509,8 +527,11 @@ def _build_gui():
             common widgets -- a well-known tkinter limitation) -- without this, a
             dark palette would visually do nothing on Windows, which is where this
             app actually runs."""
-            from primeatlas.core.theme import palette_for
-            p = palette_for(theme_name)
+            import tkinter.font as tkfont
+            from primeatlas.core.theme import adjusted_palette
+            from primeatlas.core.widgets import set_stripe_background
+            p = adjusted_palette(theme_name, *APP_SETTINGS.theme_brightness(theme_name))
+            self._palette = p
 
             style = ttk.Style(self)
             style.theme_use("clam")
@@ -522,6 +543,12 @@ def _build_gui():
             for cls in ("TFrame", "TLabelframe", "TLabelframe.Label", "TLabel",
                         "TCheckbutton", "TRadiobutton", "TPanedwindow"):
                 style.configure(cls, background=p["bg"], foreground=p["fg"])
+            # Hint.TLabel: explanatory/secondary text; Status.TLabel: the bottom status line.
+            style.configure("Hint.TLabel", foreground=p["hint_fg"])
+            status_font = tkfont.nametofont("TkDefaultFont", root=self).actual()
+            status_font["weight"] = "bold"
+            self._status_font = tkfont.Font(root=self, **status_font)
+            style.configure("Status.TLabel", font=self._status_font)
             style.map("TCheckbutton", background=[("active", p["bg"])])
             style.map("TRadiobutton", background=[("active", p["bg"])])
 
@@ -550,12 +577,18 @@ def _build_gui():
 
             style.configure("TNotebook", background=p["bg"], borderwidth=0)
             style.configure("TNotebook.Tab", background=p["tab_bg"], foreground=p["fg"])
+            # Hover ("active") highlights a tab like a button; "selected" is listed first
+            # so the current tab keeps its own color while hovered.
             style.map("TNotebook.Tab",
-                      background=[("selected", p["tab_selected_bg"])],
-                      foreground=[("selected", p["fg"])])
+                      background=[("selected", p["tab_selected_bg"]), ("active", p["select_bg"])],
+                      foreground=[("selected", p["fg"]), ("active", p["select_fg"])])
 
+            # The clam theme's rowheight is a fixed pixel value; it follows the font so
+            # a larger font scale does not clip rows.
+            row_height = tkfont.nametofont("TkDefaultFont", root=self).metrics("linespace") + 2
             style.configure("Treeview", background=p["tree_bg"], fieldbackground=p["tree_bg"],
-                             foreground=p["fg"])
+                             foreground=p["fg"], rowheight=row_height)
+            set_stripe_background(p["tree_alt_bg"])
             style.map("Treeview",
                       background=[("selected", p["select_bg"])],
                       foreground=[("selected", p["select_fg"])])
@@ -1287,12 +1320,11 @@ def _build_gui():
             own docstring for why this ONE shared helper stays here instead of moving
             into primeatlas/ alongside everything else this tab needed."""
             from primeatlas.benchmark.benchmark_tab import BenchmarkTab
-            from primeatlas.core.theme import palette_for
             self.benchmark_tab_widget = BenchmarkTab(
                 self.benchmark_tab, get_portal_folder=lambda: PORTAL_FOLDER,
                 status_var=self.status, translator=TRANSLATOR,
                 update_nav_controls=_update_nav_controls,
-                theme_palette=palette_for(APP_SETTINGS.theme))
+                theme_palette=self._palette)
             self.benchmark_tab_widget.pack(fill="both", expand=True)
 
     return PortalBrowserApp

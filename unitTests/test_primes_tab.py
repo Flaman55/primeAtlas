@@ -261,12 +261,22 @@ def main():
         check(node3 not in widget._floor_state, "closing the floor node drops its cached page state")
 
         # --- selecting a file row + loading the preview -----------------------------
+        # The preview list and its page nav stay hidden until a file is selected; a
+        # floor header alone does not reveal them.
+        check(widget._preview_area.winfo_manager() == "",
+              "preview list + page nav are hidden before any file is selected")
+        widget.tree.selection_set(node0)
+        widget._on_tree_select(None)
+        check(widget._preview_area.winfo_manager() == "",
+              "selecting a floor header keeps the preview area hidden")
         widget.tree.item(node0, open=True)
         widget._populate_floor_node(node0)
         file_item = widget.tree.get_children(node0)[0]
         widget.tree.selection_set(file_item)
         widget.tree.focus(file_item)
         widget._on_tree_select(None)
+        check(widget._preview_area.winfo_manager() == "pack",
+              "selecting a file reveals the preview area")
         check(widget._preview_primes == floor0_primes,
               f"selecting a non-empty file row auto-loads its preview, no separate "
               f"'Load preview' click needed (got {widget._preview_primes})")
