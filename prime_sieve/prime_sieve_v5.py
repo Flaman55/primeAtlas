@@ -10,6 +10,7 @@ import concurrent.futures
 from concurrent.futures import ProcessPoolExecutor
 
 import window_sharding
+import work_plan_v5
 from pgs2_vector import PGS_MAGIC, write_prime_window_offsets
 
 
@@ -46,6 +47,9 @@ COMPUTE_SIEVING_PRIMES_COUNT = False
 #     the prime 2 is added where a window contains it.
 #   - Phase computation (prime_sieve_engine_v5.c): first_odd mod p via an inlined 128/64
 #     `divq` fast path with the full u128 division as fallback.
+#   - Two job kinds per run (work_plan_v5.py): segmented slices of the buffer, sieved in
+#     cache-sized segments by the small primes, and equal-cost batches of the remaining
+#     sieving primes, each striding the whole buffer with atomic ORs.
 #   - count_sieving_primes_cached(): per-floor cache for pi(L_final), counting only the
 #     sliver between the cached L and the new L_final.
 #   - Shared mmap output buffer with atomic-OR marking, per-window unpacking read straight
@@ -89,6 +93,16 @@ def _load_lib():
             ctypes.POINTER(ctypes.c_ubyte),   # out_odd_bits (SHARED buffer, not private)
         ]
         lib.sieve_odd_bits_atomic.restype = ctypes.c_int
+        lib.sieve_odd_segmented.argtypes = [
+            ctypes.c_uint64,                  # stop (segmented primes are 3..stop-1)
+            ctypes.c_uint64,                  # first_odd_hi
+            ctypes.c_uint64,                  # first_odd_lo
+            ctypes.c_uint64,                  # bit_lo (multiple of 64)
+            ctypes.c_uint64,                  # bit_hi
+            ctypes.c_uint64,                  # segment_words
+            ctypes.POINTER(ctypes.c_uint64),  # out_words (SHARED buffer)
+        ]
+        lib.sieve_odd_segmented.restype = ctypes.c_int
         lib.count_sieving_primes.argtypes = [ctypes.c_uint64]
         lib.count_sieving_primes.restype = ctypes.c_uint64
         lib.count_sieving_primes_range.argtypes = [ctypes.c_uint64, ctypes.c_uint64]
@@ -468,77 +482,13 @@ def append_prime_window(path, new_sorted_values, generated_at=None, known_last_v
             prev = v
 
 
-# ------------------------------------------------------------------------------------------
-# Segment-cost estimation -- Mertens/li_approx analytical model, equal-cost contiguous
-# batching.
-# ------------------------------------------------------------------------------------------
-
-def _cost_zone_a(a, b, combined_size):
-    def mert(x):
-        x = max(x, 2.0)
-        return math.log(math.log(x))
-    return combined_size * max(mert(b) - mert(a), 1e-6)
-
-
-def _cost_zone_b(a, b):
-    def li_approx(x):
-        x = max(x, 3.0)
-        return x / math.log(x)
-    return max(li_approx(b) - li_approx(a), 1.0)
-
-
-def _cumulative_cost(x, threshold, combined_size):
-    x = max(2.0, min(float(x), float(threshold if x <= threshold else x)))
-    if x <= threshold:
-        return _cost_zone_a(2, x, combined_size)
-    return _cost_zone_a(2, threshold, combined_size) + _cost_zone_b(threshold, x)
-
-
-def _build_equal_cost_batches(L_final, combined_size, n_batches):
-    """Splits the sieving-prime range [2, L_final] into `n_batches` contiguous batches of
-    roughly equal marking cost (Mertens-based estimate, see _cumulative_cost()), so every
-    worker gets a similar amount of work."""
-    threshold = min(combined_size, L_final)
-    n = max(1, n_batches)
-
-    def cost_upto(x):
-        return _cumulative_cost(x, threshold, combined_size)
-
-    total = cost_upto(L_final)
-    if total <= 0 or L_final <= 2:
-        return [[(2, max(3, L_final))]]
-
-    boundaries = [2]
-    lo = 2
-    for i in range(1, n):
-        target = total * i / n
-        a, b = lo, L_final
-        while a < b:
-            mid = (a + b) // 2
-            if cost_upto(mid) < target:
-                a = mid + 1
-            else:
-                b = mid
-        boundaries.append(a)
-        lo = a
-    boundaries.append(L_final)
-
-    boundaries = sorted(set(g for g in boundaries if 2 <= g <= L_final))
-    batches = []
-    for a, b in zip(boundaries[:-1], boundaries[1:]):
-        if a >= b:
-            continue
-        batches.append([(a, b)])
-    if not batches:
-        batches = [[(2, L_final)]]
-    return batches
-
-
 def _init_shared_buffer(n_bytes):
     """Allocates the ONE shared output buffer. MUST be called BEFORE the
     ProcessPoolExecutor is created / before the first task is submitted (see
-    main_batch_scanner()) so forked workers inherit the mapping."""
+    main_batch_scanner()) so forked workers inherit the mapping. The size is rounded up to
+    whole 64-bit words for the segmented path's word-wide ORs."""
     global _shm_mmap, _shm_size
+    n_bytes = max(8, (n_bytes + 7) // 8 * 8)
     _shm_mmap = mmap.mmap(-1, n_bytes, flags=mmap.MAP_SHARED)
     _shm_size = n_bytes
     return _shm_mmap
@@ -561,6 +511,17 @@ def process_batch(start_stop_list, first_odd, n_bits):
             had_error = True
 
     return had_error
+
+
+def process_slice(bit_lo, bit_hi, first_odd, small_stop, segment_words):
+    """Sieves bits [bit_lo, bit_hi) of the shared buffer with the primes 3..small_stop-1
+    (sieve_odd_segmented()); returns True on an engine error."""
+    lib = _load_lib()
+    words = (ctypes.c_uint64 * (_shm_size // 8)).from_buffer(_shm_mmap)
+    out_ptr = ctypes.cast(words, ctypes.POINTER(ctypes.c_uint64))
+    code = lib.sieve_odd_segmented(small_stop, first_odd >> 64, first_odd & 0xFFFFFFFFFFFFFFFF,
+                                   bit_lo, bit_hi, segment_words, out_ptr)
+    return code != 0
 
 
 def _odd_window_marks(odd_bits, first_odd, lo, hi):
@@ -641,7 +602,8 @@ def _low_floor_segments(base_power, combined_lo, combined_hi):
 
 
 def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
-                        compute_sieving_primes_count=True, use_known_pi_seed=False):
+                        compute_sieving_primes_count=True, use_known_pi_seed=False,
+                        segment_kb=work_plan_v5.DEFAULT_SEGMENT_KB):
     target_idx_list = sorted(target_idx_list)
     BASE = 10 ** base_power
     windows = [(BASE + idx * window_m, window_m) for idx in target_idx_list]
@@ -698,11 +660,18 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
               f"position 7 to compute it.")
 
     n_batches = max(1, MAX_WORKERS * BATCHES_PER_WORKER)
-    batches = _build_equal_cost_batches(L_final, combined_size, n_batches)
+    seg_bits = work_plan_v5.segment_bits(segment_kb)
+    small_stop = work_plan_v5.small_prime_stop(seg_bits, L_final)
+    slices = work_plan_v5.plan_slices(n_odd, n_batches)
+    batches = work_plan_v5.build_equal_cost_batches(L_final, combined_size, n_batches,
+                                                    lo=small_stop)
+    jobs = ([(process_slice, (lo, hi, first_odd, small_stop, seg_bits // 64))
+             for lo, hi in slices]
+            + [(process_batch, (batch, first_odd, n_odd)) for batch in batches])
 
-    print(f"[*] Equal-cost contiguous batches: {len(batches)} "
-          f"({MAX_WORKERS} parallel processes, {len(batches)} total jump_to() bootstrap "
-          f"calls)")
+    print(f"[*] Segmented slices: {len(slices)} ({segment_kb} KiB segments, primes "
+          f"3..{small_stop - 1:,}); equal-cost atomic batches: {len(batches)} (primes "
+          f"{small_stop:,}..{L_final - 1:,}); {MAX_WORKERS} parallel processes")
     print(f"[*] Shared output buffer: {combined_bytes/1e6:.1f} MB, ONE COPY TOTAL (see "
           f"prime_sieve_v3.py's header for why).")
 
@@ -715,20 +684,20 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
                                                 # forkserver (see prime_sieve_v3.py header)
 
     errors = 0
-    print_interval = max(1, len(batches) // 30) if batches else 1
+    print_interval = max(1, len(jobs) // 30) if jobs else 1
 
     t_start = time.perf_counter()
     t_last_print = t_start
     with ProcessPoolExecutor(max_workers=MAX_WORKERS, mp_context=ctx) as executor:
-        batches_iter = iter(batches)
+        jobs_iter = iter(jobs)
         in_flight = {}
 
         def _submit_next():
             try:
-                batch = next(batches_iter)
+                fn, args = next(jobs_iter)
             except StopIteration:
                 return False
-            fut = executor.submit(process_batch, batch, first_odd, n_odd)
+            fut = executor.submit(fn, *args)
             in_flight[fut] = True
             return True
 
@@ -750,11 +719,11 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
 
             if done_count % print_interval == 0 or not in_flight:
                 t_now = time.perf_counter()
-                progress = done_count / len(batches) * 100
+                progress = done_count / len(jobs) * 100
                 print_delta = t_now - t_last_print
                 rate = done_count / (t_now - t_start) if (t_now - t_start) > 0 else 0
-                remaining = (len(batches) - done_count) / rate if rate > 0 else float("inf")
-                print(f"[+] Progress: {progress:.2f}% ({done_count}/{len(batches)} batches) | "
+                remaining = (len(jobs) - done_count) / rate if rate > 0 else float("inf")
+                print(f"[+] Progress: {progress:.2f}% ({done_count}/{len(jobs)} jobs) | "
                       f"time: {t_now - t_start:.2f}s (+{print_delta:.2f}s since last print) | "
                       f"ETA ~{remaining:.0f}s" + (f" | ERRORS={errors}" if errors else ""))
                 t_last_print = t_now
@@ -762,7 +731,7 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
 
     print(f"\n[*] Batch sieve done in {t_sieve:.2f}s. Unpacking result and writing windows...")
     if errors:
-        print(f"[!] WARNING: {errors} batches returned a primesieve error -- results INCOMPLETE.")
+        print(f"[!] WARNING: {errors} jobs returned an engine error -- results INCOMPLETE.")
 
     # Everything from here to each branch's write_scan_metrics_handoff() call below is
     # timed as ONE "write" phase (unpack bits -> prime offsets -> PGS2 file write).
@@ -964,8 +933,10 @@ if __name__ == "__main__":
     # with no new positional CLI argument threaded through three separate scripts' argv
     # parsing. See count_sieving_primes_cached()'s own docstring for what this flag does.
     USE_KNOWN_PI_SEED = bool(int(os.environ.get("PRIMEATLAS_USE_KNOWN_PI_SEED", "0")))
+    # PRIMEATLAS_V5_SEGMENT_KB: segmented-path segment size, same env-var route.
+    SEGMENT_KB = work_plan_v5.segment_kb_from_env(os.environ)
 
     print("Start time:", datetime.datetime.now().strftime("%H:%M:%S"))
     main_batch_scanner(base_exponent, target_idx_list, WINDOW_M, write_files=WRITE_FILES,
                         compute_sieving_primes_count=COMPUTE_SIEVING_PRIMES_COUNT,
-                        use_known_pi_seed=USE_KNOWN_PI_SEED)
+                        use_known_pi_seed=USE_KNOWN_PI_SEED, segment_kb=SEGMENT_KB)

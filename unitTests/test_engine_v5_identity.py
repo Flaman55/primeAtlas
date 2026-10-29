@@ -7,6 +7,8 @@ Cases cover low floors split across real floor boundaries (from floor 0, where t
 holds 1, 2 and the sieving primes themselves), the top end of a floor, an odd window width
 (windows alternate between even and odd starts), floors 10/19/22, count-only mode, and
 floor 25 when PRIMEATLAS_TEST_DEEP=1 (about four and a half minutes on 24 threads).
+SMALL_SEGMENT_CASES rerun some of them with a 1 KiB v5 segment, so every slice spans many
+segments and sieving primes carry their next offset across segment ends.
 
 Run inside WSL from the repo root:
     python3 unitTests/test_engine_v5_identity.py
@@ -41,6 +43,12 @@ CASES = [
     ("floor 22", 22, 5, 7, 10 ** 6, True),
     ("floor 19 count-only", 19, 3, 5, 10 ** 6, False),
 ]
+SMALL_SEGMENT_KB = "1"
+SMALL_SEGMENT_CASES = [
+    ("small segment low floor 10^0..", 0, 0, 0, 10 ** 7, True),
+    ("small segment floor 10 odd width", 10, 0, 2, 999_999, True),
+    ("small segment floor 19", 19, 0, 2, 10 ** 6, True),
+]
 DEEP_CASES = [
     ("floor 25", 25, 0, 1, 10 ** 6, True),
 ]
@@ -51,8 +59,8 @@ def check(value, message):
     return bool(value)
 
 
-def run_scanner(script, portal, floor, idx_lo, idx_hi, window_m, write_files):
-    env = dict(os.environ, CONSTELLATION_PORTAL_DIR=portal)
+def run_scanner(script, portal, floor, idx_lo, idx_hi, window_m, write_files, extra_env):
+    env = dict(os.environ, CONSTELLATION_PORTAL_DIR=portal, **extra_env)
     cmd = [sys.executable, script, str(floor), str(idx_lo), str(idx_hi), str(WORKERS), "2",
            "1" if write_files else "0", "0", str(window_m)]
     proc = subprocess.run(cmd, cwd=SIEVE_DIR, env=env, capture_output=True, text=True)
@@ -85,7 +93,7 @@ def snapshot(portal):
     return files, metrics
 
 
-def compare_case(tmp, label, floor, idx_lo, idx_hi, window_m, write_files):
+def compare_case(tmp, label, floor, idx_lo, idx_hi, window_m, write_files, extra_env=None):
     passed = True
     snaps = {}
     for script in ("prime_sieve_v4_1.py", "prime_sieve_v5.py"):
@@ -93,7 +101,8 @@ def compare_case(tmp, label, floor, idx_lo, idx_hi, window_m, write_files):
         os.makedirs(portal)
         if not os.path.exists(os.path.join(SIEVE_DIR, script)):
             return check(False, f"{label}: {script} exists")
-        rc, tail = run_scanner(script, portal, floor, idx_lo, idx_hi, window_m, write_files)
+        rc, tail = run_scanner(script, portal, floor, idx_lo, idx_hi, window_m, write_files,
+                               extra_env or {})
         if rc != 0:
             print(tail)
         passed &= check(rc == 0, f"{label}: {script} exits 0")
@@ -121,6 +130,9 @@ def main():
     try:
         for case in cases:
             passed &= compare_case(tmp, *case)
+        for case in SMALL_SEGMENT_CASES:
+            passed &= compare_case(tmp, *case,
+                                   extra_env={"PRIMEATLAS_V5_SEGMENT_KB": SMALL_SEGMENT_KB})
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     print("ALL CHECKS PASSED" if passed else "SOME CHECKS FAILED")

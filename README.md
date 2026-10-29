@@ -1708,7 +1708,9 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               second (sieve-speed/write-speed) chart
   prime_sieve_v5.py          engine under development: shared buffer holds odd
                               numbers only (half the RAM, p = 2 never sieved),
-                              windows are written through pgs2_vector.py;
+                              small primes sieve cache-sized segments of
+                              buffer slices (work_plan_v5.py), windows are
+                              written through pgs2_vector.py;
                               output identical to v4.1
                               (unitTests/test_engine_v5_identity.py checks every
                               PGS2 file and the run totals against v4.1)
@@ -1716,6 +1718,11 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               in one vectorized pass from int64 prime offsets, byte-
                               identical to the per-prime writer
                               (unitTests/test_pgs2_vector.py)
+  work_plan_v5.py            splits a v5 run into worker jobs: word-aligned buffer
+                              slices for the segmented small-prime path and equal-
+                              cost batches of the remaining sieving primes; segment
+                              size from env PRIMEATLAS_V5_SEGMENT_KB (default 128)
+                              (unitTests/test_work_plan_v5.py)
   prime_sieve_primesieve.py  "primesieve mode" -- calls libprimesieve's own public C API
                               (primesieve_generate_primes()) directly via ctypes, no custom
                               engine or batching pipeline; see "The primesieve mode" above
