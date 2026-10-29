@@ -392,6 +392,163 @@ class ScrollPad:
             self.frame.unbind_all(sequence)
 
 
+# Widgets that scroll themselves on the mouse wheel through their own class bindings.
+_SELF_SCROLLING_WIDGETS = (tk.Text, tk.Listbox, ttk.Treeview)
+
+
+def event_over_own_scroller(event):
+    """True if a mouse-wheel event happened over (or inside) a widget that scrolls itself,
+    e.g. a ScrolledText log. A page-level wheel handler bound with bind_all also fires for
+    wheel events over those widgets and must leave them alone, or the page and the widget
+    would scroll together. event.widget can be a plain string for Tk-internal windows
+    (e.g. a combobox popdown) -- never raises."""
+    widget = getattr(event, "widget", None)
+    while widget is not None and not isinstance(widget, str):
+        if isinstance(widget, _SELF_SCROLLING_WIDGETS):
+            return True
+        widget = getattr(widget, "master", None)
+    return False
+
+
+class ScrollablePage:
+    """A vertically scrollable page: content goes into `.body`, an inner frame placed on a
+    canvas. `.frame` (packed into `parent` with fill/expand) holds, left to right, the
+    canvas, a ScrollPad and the scrollbar.
+
+    The scrollbar and the pad are shown only while the body's requested height exceeds the
+    viewport. While the content fits, the body is stretched to the viewport height, so
+    expand=True children (trees, logs) fill the page as with a plain pack layout; while it
+    does not, the body keeps its requested height and the page scrolls. Hiding the
+    scrollbar widens the canvas and can only make wrapped content shorter, so the two
+    states cannot alternate.
+
+    The canvas window is a holder frame with no fixed height, packed with a zero-width
+    strut as tall as the viewport next to the body: the holder is then always
+    max(viewport, content) tall and gets a <Configure> whenever that changes, both on a
+    window resize and on content growing past or shrinking below the viewport (a fixed
+    window-item height would swallow the content's size requests without any event).
+
+    The scrollregion comes from the holder's requested size, not canvas.bbox("all"), which
+    can still hold a stale, larger box mid-reflow. Until the person scrolls, every re-check
+    pins the view to the top: Tk does not keep it there across a scrollregion change.
+    yscrollincrement is a fixed 20px; Tk's default 0 scrolls by a tenth of the viewport.
+
+    The wheel is bound app-wide (bind_all) only while the pointer is over the canvas and
+    is left to self-scrolling widgets (event_over_own_scroller) and to subtrees passed to
+    register_exclude()."""
+
+    _WHEEL_EVENTS = ("<MouseWheel>", "<Button-4>", "<Button-5>")
+
+    def __init__(self, parent, *, pad_text=""):
+        self.frame = ttk.Frame(parent)
+        self.frame.pack(fill="both", expand=True)
+        self.canvas = tk.Canvas(self.frame, highlightthickness=0, yscrollincrement=20)
+        self.scrollbar = ttk.Scrollbar(self.frame, orient="vertical",
+                                       command=self._on_scrollbar)
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+        self.pad = ScrollPad(self.frame, self._scroll_units, text=pad_text)
+        self.pad.attach(self.scrollbar)
+        self.canvas.pack(side="left", fill="both", expand=True)
+        self._holder = ttk.Frame(self.canvas)
+        self._strut = ttk.Frame(self._holder, width=0, height=1)
+        self._strut.pack(side="left", fill="y")
+        self.body = ttk.Frame(self._holder)
+        self.body.pack(side="left", fill="both", expand=True)
+        self.window_item = self.canvas.create_window((0, 0), window=self._holder, anchor="nw")
+        self._exclude_roots = []
+        self._user_scrolled = False
+        self._shown = False
+        self._holder.bind("<Configure>", lambda _e: self._sync())
+        self.canvas.bind("<Configure>", self._on_canvas_configure)
+        self.canvas.bind("<Enter>", self._bind_wheel)
+        self.canvas.bind("<Leave>", self._unbind_wheel)
+
+    def register_exclude(self, widget):
+        """The wheel over `widget` or any descendant does not scroll the page."""
+        self._exclude_roots.append(widget)
+
+    def scrolls(self):
+        """True while the content does not fit and the scrollbar is shown."""
+        return self._shown
+
+    def _content_fits(self):
+        canvas_h = self.canvas.winfo_height()
+        return canvas_h > 1 and self.body.winfo_reqheight() <= canvas_h
+
+    def _set_shown(self, shown):
+        if shown == self._shown:
+            return
+        self._shown = shown
+        if shown:
+            self.scrollbar.pack(side="right", fill="y", before=self.canvas)
+            self.pad.frame.pack(side="right", fill="y", before=self.canvas)
+        else:
+            self.scrollbar.pack_forget()
+            self.pad.frame.pack_forget()
+            self._user_scrolled = False
+
+    def _sync(self):
+        canvas_h = self.canvas.winfo_height()
+        if canvas_h <= 1:
+            return
+        if int(self._strut.cget("height")) != canvas_h:
+            self._strut.configure(height=canvas_h)
+        fits = self.body.winfo_reqheight() <= canvas_h
+        self.canvas.configure(scrollregion=(0, 0, self._holder.winfo_reqwidth(),
+                                            max(canvas_h, self.body.winfo_reqheight())))
+        self._set_shown(not fits)
+        if fits or not self._user_scrolled:
+            self.canvas.yview_moveto(0.0)
+
+    def _on_canvas_configure(self, event):
+        self.canvas.itemconfigure(self.window_item, width=event.width)
+        if int(self._strut.cget("height")) != event.height:
+            self._strut.configure(height=event.height)
+        # A width change reflows wrapped labels and changes the body's height.
+        self.canvas.after_idle(self._sync)
+
+    def _scroll_units(self, units):
+        if self._content_fits():
+            return
+        self._user_scrolled = True
+        self.canvas.yview_scroll(units, "units")
+
+    def _on_scrollbar(self, *args):
+        if self._content_fits():
+            return
+        self._user_scrolled = True
+        self.canvas.yview(*args)
+
+    def _over_excluded(self, event):
+        widget = getattr(event, "widget", None)
+        while widget is not None and not isinstance(widget, str):
+            if widget in self._exclude_roots:
+                return True
+            widget = getattr(widget, "master", None)
+        return False
+
+    def on_mousewheel(self, event):
+        if event_over_own_scroller(event) or self._over_excluded(event):
+            return
+        num = getattr(event, "num", 0)
+        if num == 4:
+            units = -3
+        elif num == 5:
+            units = 3
+        else:
+            units = int(-3 * (event.delta / 120))
+        if units:
+            self._scroll_units(units)
+
+    def _bind_wheel(self, _event):
+        for sequence in self._WHEEL_EVENTS:
+            self.canvas.bind_all(sequence, self.on_mousewheel)
+
+    def _unbind_wheel(self, _event):
+        for sequence in self._WHEEL_EVENTS:
+            self.canvas.unbind_all(sequence)
+
+
 STRIPE_TAG = "stripe"
 STRIPE_BACKGROUND = "#f5f5f5"
 _striped_trees = weakref.WeakSet()

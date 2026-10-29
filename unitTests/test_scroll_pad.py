@@ -7,9 +7,11 @@ A. ScrollPad: entering binds the wheel app-wide, leaving unbinds it; a wheel not
    scroll(units) with -3 up / +3 down (Windows delta and X11 Button-4/5).
    It is 40px wide by default and shows its label vertically, read top to bottom (rotated 270 degrees).
    attach(widget) makes another widget (the page scrollbar) behave the same way.
-B. Every page container has one, packed between the page and its scrollbar: each Settings
-   sub-tab, the Generation tab, the visualization tabs. A wheel notch over the pad scrolls
-   a page whose content does not fit, and does nothing on a page that fits.
+B. Every page container has one, between the page and its scrollbar: each Settings
+   sub-tab, the Generation tab, the visualization tabs. Pad and scrollbar are packed
+   together, only while the page does not fit (see test_scrollable_page.py). A wheel notch
+   over the pad scrolls a page whose content does not fit, and does nothing on a page
+   that fits.
 
 Usage:
     python unitTests/test_scroll_pad.py
@@ -131,12 +133,14 @@ def _test_containers():
             if not isinstance(pad, ScrollPad):
                 continue
             check(pad.text == expected, f"{label}: pad label comes from the locale")
-            check(pad.frame.winfo_manager() == "pack", f"{label}: pad is packed")
             canvas = _canvas_of(pad)
             check(canvas is not None, f"{label}: pad sits next to the page canvas")
             bars = [w for w in pad.frame.master.winfo_children() if isinstance(w, ttk.Scrollbar)]
             check(len(bars) == 1 and bars[0] in pad.attached,
                   f"{label}: the wheel over the page scrollbar scrolls the page too")
+            if bars:
+                check(pad.frame.winfo_manager() == bars[0].winfo_manager(),
+                      f"{label}: pad and scrollbar are shown or hidden together")
         _wait_mapped(app, app.settings_tab.master.master)
         _show(app.settings_tab)
         app.update()
@@ -146,6 +150,8 @@ def _test_containers():
         notebook = app.settings_tab.winfo_children()[0].winfo_children()[0]
         notebook.select(1)
         app.update()
+        check(backup_pad.frame.winfo_manager() == "pack",
+              "the Backup page does not fit in 1050x500, so its pad is shown")
         before = canvas.yview()[0]
         backup_pad.wheel(FakeEvent(delta=-120))
         app.update()

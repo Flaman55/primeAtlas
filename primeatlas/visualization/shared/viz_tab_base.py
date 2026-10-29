@@ -20,7 +20,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from ...core.base_tab import BaseTab
-from ...core.widgets import ScrollPad
+from ...core.widgets import ScrollablePage
 from ...generation.generation import _eval_quick_number
 from .window_mode import center_tk_window
 
@@ -172,180 +172,13 @@ class VizTabBase(BaseTab):
         return self.T(f"{self.LOCALE_PREFIX}.{key}", **kwargs)
 
     def _build_scrollable_container(self, parent):
-        """Wraps `parent` in a vertically-scrollable canvas+frame and returns the
-        inner ttk.Frame -- pack the tab's REAL content into that returned frame
-        instead of into `parent` directly; everything else (canvas, scrollbar,
-        width sync, mousewheel binding) is handled here.
-
-        Same idiom as generation_tab.py's `_build_scrollable_container` and
-        settings_tab.py's `_make_scrollable_tab`, kept as a self-contained copy per
-        tkinter-importing tab module (this codebase's convention). With every
-        section (Windows & tracking / Appearance / Audio) plus the HUD console
-        visible, the tab can be taller than the window; the wrapper makes the
-        overflow reachable via scrollbar/mousewheel instead of clipping it.
-
-        Standard canvas-scrollregion idiom: an inner frame is placed on a canvas
-        via create_window; the inner frame's own <Configure> (fires whenever its
-        packed children change its natural size) updates the canvas' scrollregion
-        to match, and the canvas' own <Configure> (fires on window resize) keeps
-        the inner frame exactly as WIDE as the visible canvas so fill="x" widgets
-        inside it span the full width instead of collapsing to their minimum
-        content width. Mousewheel
-        scrolling is bound only while the pointer is actually over this canvas
-        (bound on <Enter>, unbound on <Leave>) so it doesn't steal wheel events
-        from other scrollable widgets on other tabs. <MouseWheel> covers
-        Windows/Mac; <Button-4>/<Button-5> cover X11 (Linux) which reports the
-        wheel as button clicks instead of a delta.
-
-        Returns `(inner, register_exclude)`
-        instead of just `inner` -- `register_exclude(widget)` marks `widget` (and
-        every descendant of it) as having its OWN independent scrolling (e.g. the
-        HUD console's GenerationConsole.text.frame, which wraps a ScrolledText
-        with its own native mousewheel handling), so the wheel/button handlers
-        below skip scrolling THIS canvas whenever the event originates inside one
-        of those subtrees -- the Enter/Leave-based bind_all/unbind_all toggling
-        above only scopes scrolling to "pointer somewhere over the tab", it does
-        NOT stop the global handler from ALSO firing (double-scrolling, on top of
-        the console's own scroll) once the pointer is specifically over a nested
-        widget that has its own competing scroll behavior."""
-        exclude_roots = []
-
-        def register_exclude(widget):
-            exclude_roots.append(widget)
-
-        def _event_over_excluded(event):
-            widget = event.widget
-            while widget is not None:
-                if widget in exclude_roots:
-                    return True
-                widget = getattr(widget, "master", None)
-            return False
-
-        outer = ttk.Frame(parent)
-        outer.pack(fill="both", expand=True)
-
-        canvas = tk.Canvas(outer, highlightthickness=0)
-        # Tk's
-        # Canvas defaults to yscrollincrement=0, which makes any "scroll N units" call (mousewheel,
-        # scrollbar arrows) jump by ~10% of the canvas's CURRENT VIEWPORT height
-        # instead of a small fixed pixel step, and doesn't clamp the view back to
-        # 0 when content is shorter than the viewport. A small fixed increment
-        # alone doesn't fully fix this, so scrolling is also hard-disabled below
-        # whenever content already fits the viewport (see _content_fits()).
-        canvas.configure(yscrollincrement=20)
-
-        # `scroll_state["user_scrolled"]` starts False and flips to True the first
-        # time the person actually drags the scrollbar or spins the wheel (see the
-        # three handlers below). Until that happens, `_sync_scrollregion()` keeps
-        # re-pinning the view to the top -- see that function's own comment for why
-        # this is needed, not just the scrollregion-size fix below it.
-        scroll_state = {"user_scrolled": False}
-
-        def _content_fits():
-            # Nothing to scroll to -- content already fits inside the visible
-            # canvas. winfo_height() is 0/1 before the widget is first mapped,
-            # so treat that as "doesn't fit yet" rather than "fits".
-            canvas_h = canvas.winfo_height()
-            return canvas_h > 1 and inner.winfo_reqheight() <= canvas_h
-
-        def _on_scrollbar(*args):
-            if _content_fits():
-                return
-            scroll_state["user_scrolled"] = True
-            canvas.yview(*args)
-
-        vsb = ttk.Scrollbar(outer, orient="vertical", command=_on_scrollbar)
-        canvas.configure(yscrollcommand=vsb.set)
-        canvas.pack(side="left", fill="both", expand=True)
-        vsb.pack(side="right", fill="y")
-
-        def _scroll_page(units):
-            if _content_fits():
-                return
-            scroll_state["user_scrolled"] = True
-            canvas.yview_scroll(units, "units")
-
-        # Wheel over this strip and over the scrollbar always scrolls the page, see
-        # ScrollPad.
-        self._scroll_pad = ScrollPad(outer, _scroll_page, text=self.T("common.scroll_pad"))
-        self._scroll_pad.frame.pack(side="right", fill="y")
-        self._scroll_pad.attach(vsb)
-
-        inner = ttk.Frame(canvas)
-        inner_window = canvas.create_window((0, 0), window=inner, anchor="nw")
-
-        # NOTE (ported from generation_tab.py/settings_tab.py):
-        # scrollregion is set from inner.winfo_reqwidth()/reqheight() -- NOT
-        # canvas.bbox("all"), which can end up taller than the frame's actual
-        # current content (mid-reflow right after a width change, before layout
-        # has fully settled) and let yview scroll into stale leftover blank
-        # space. Querying the frame's own requested size directly is always in
-        # sync with what's actually packed inside it right now.
-        #
-        # That alone isn't enough either: this tab's content keeps changing
-        # height after it first draws (mode switch greys out/re-enables the
-        # Load Range fields, HUD panel text grows/shrinks per HUD_STATE line,
-        # GenerationConsole's own collapsible pane) and Tk does not guarantee
-        # the view stays pinned to the top pixel across a scrollregion resize.
-        # So: as long as the person hasn't manually scrolled yet -- OR content
-        # fits and there's nothing to scroll to regardless -- force the view
-        # back to the top on every resync.
-        def _sync_scrollregion():
-            canvas.configure(scrollregion=(0, 0, inner.winfo_reqwidth(), inner.winfo_reqheight()))
-            canvas_h = canvas.winfo_height()
-            natural_h = inner.winfo_reqheight()
-            if canvas_h > 1 and natural_h <= canvas_h:
-                canvas.itemconfigure(inner_window, height=canvas_h)
-            elif natural_h > 0:
-                canvas.itemconfigure(inner_window, height=natural_h)
-            if not scroll_state["user_scrolled"] or _content_fits():
-                canvas.yview_moveto(0.0)
-
-        def _on_inner_configure(_event):
-            _sync_scrollregion()
-        inner.bind("<Configure>", _on_inner_configure)
-
-        def _on_canvas_configure(event):
-            canvas.itemconfigure(inner_window, width=event.width)
-            # Width change can immediately change required height (wraplength'd
-            # Labels reflow) -- resync right away instead of waiting on inner's
-            # own <Configure> so a window resize can't leave a stale scrollregion
-            # behind for even one frame.
-            canvas.after_idle(_sync_scrollregion)
-        canvas.bind("<Configure>", _on_canvas_configure)
-
-        def _on_mousewheel(event):
-            if _event_over_excluded(event) or _content_fits():
-                return
-            scroll_state["user_scrolled"] = True
-            canvas.yview_scroll(int(-3 * (event.delta / 120)), "units")
-
-        def _on_button4(event):
-            if _event_over_excluded(event) or _content_fits():
-                return
-            scroll_state["user_scrolled"] = True
-            canvas.yview_scroll(-3, "units")
-
-        def _on_button5(event):
-            if _event_over_excluded(event) or _content_fits():
-                return
-            scroll_state["user_scrolled"] = True
-            canvas.yview_scroll(3, "units")
-
-        def _bind_mousewheel(_event):
-            canvas.bind_all("<MouseWheel>", _on_mousewheel)
-            canvas.bind_all("<Button-4>", _on_button4)
-            canvas.bind_all("<Button-5>", _on_button5)
-
-        def _unbind_mousewheel(_event):
-            canvas.unbind_all("<MouseWheel>")
-            canvas.unbind_all("<Button-4>")
-            canvas.unbind_all("<Button-5>")
-
-        canvas.bind("<Enter>", _bind_mousewheel)
-        canvas.bind("<Leave>", _unbind_mousewheel)
-
-        return inner, register_exclude
+        """Wraps `parent` in a ScrollablePage and returns `(body, register_exclude)`: the
+        frame the tab's content is packed into, and the call that keeps the wheel over a
+        nested self-scrolling widget (a console) from scrolling the page. With every
+        section and the HUD console visible the tab can be taller than the window."""
+        self._scroll_page = ScrollablePage(parent, pad_text=self.T("common.scroll_pad"))
+        self._scroll_pad = self._scroll_page.pad
+        return self._scroll_page.body, self._scroll_page.register_exclude
 
     def _resume_if_paused(self):
         """Start/Resume click while a renderer process already exists. Returns True when

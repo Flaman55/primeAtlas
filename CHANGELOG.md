@@ -18,6 +18,8 @@ releases.
   for the whole app, and the scroll-area width.
 - A scroll strip next to every scrollable page's scrollbar: the mouse wheel over it always
   scrolls the page.
+- Every page gets a vertical scrollbar when its content does not fit the window (e.g. at a
+  larger text size), and loses it again once it fits.
 - Striped tables, more readable hint text, tab highlight on hover; the Storage preview stays
   hidden until a file is selected.
 - The Primes tree columns fit their content and the tree pane keeps that width.
@@ -47,6 +49,8 @@ releases.
   motywu, rozmiar tekstu w całej aplikacji oraz szerokość obszaru przewijania.
 - Obszar przewijania obok paska przewijania każdej przewijanej strony: kółko myszy nad nim
   zawsze przewija stronę.
+- Każda strona dostaje pionowy pasek przewijania, gdy jej treść nie mieści się w oknie
+  (np. przy większym tekście), i traci go, gdy znów się mieści.
 - Tabele w paski, czytelniejsze podpowiedzi, podświetlanie zakładek po najechaniu; podgląd
   w Magazynie pojawia się dopiero po wybraniu pliku.
 - Kolumny drzewa liczb pierwszych dopasowują się do zawartości, a panel drzewa zachowuje
