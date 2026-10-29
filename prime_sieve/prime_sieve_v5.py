@@ -39,12 +39,17 @@ COMPUTE_SIEVING_PRIMES_COUNT = False
 # unitTests/test_engine_v5_identity.py checks that.
 #
 # Pipeline:
-#   - Phase computation (prime_sieve_engine_v5.c): distance mod p via an inlined 128/64
+#   - Odd-only shared buffer (prime_sieve_engine_v5.c): bit i stands for the odd number
+#     first_odd + 2*i of the combined range, so the buffer is half the size of a bit per
+#     number and p = 2 is never sieved; _odd_window_marks() maps a window back onto it, and
+#     the prime 2 is added where a window contains it.
+#   - Phase computation (prime_sieve_engine_v5.c): first_odd mod p via an inlined 128/64
 #     `divq` fast path with the full u128 division as fallback.
 #   - count_sieving_primes_cached(): per-floor cache for pi(L_final), counting only the
 #     sliver between the cached L and the new L_final.
-#   - Shared mmap output buffer with atomic-OR marking, per-window unpacking, and low-floor
-#     splitting by real floor boundary (see prime_sieve_v3.py's header).
+#   - Shared mmap output buffer with atomic-OR marking, per-window unpacking read straight
+#     from the mapping (no copy of the whole buffer), and low-floor splitting by real floor
+#     boundary (see prime_sieve_v3.py's header).
 #   - Timers for base-prime generation, the parallel sieve pass and the unpack-and-write
 #     phase, plus a bytes-written counter, reported through write_scan_metrics_handoff().
 # ==========================================================================================
@@ -72,15 +77,15 @@ def _load_lib():
                 f"Missing {_LIB_PATH} -- build it first: gcc -O3 -shared -fPIC "
                 f"prime_sieve_engine_v5.c -o prime_sieve_engine_v5.so -lprimesieve -lstdc++ -lm")
         lib = ctypes.CDLL(_LIB_PATH)
-        lib.generate_and_sieve_segment_bits_atomic.argtypes = [
+        lib.sieve_odd_bits_atomic.argtypes = [
             ctypes.c_uint64,                  # start
             ctypes.c_uint64,                  # stop
-            ctypes.c_uint64,                  # distance_hi
-            ctypes.c_uint64,                  # distance_lo
-            ctypes.c_uint64,                  # window_m
-            ctypes.POINTER(ctypes.c_ubyte),   # out_dense_bits (SHARED buffer, not private)
+            ctypes.c_uint64,                  # first_odd_hi
+            ctypes.c_uint64,                  # first_odd_lo
+            ctypes.c_uint64,                  # n_bits
+            ctypes.POINTER(ctypes.c_ubyte),   # out_odd_bits (SHARED buffer, not private)
         ]
-        lib.generate_and_sieve_segment_bits_atomic.restype = ctypes.c_int
+        lib.sieve_odd_bits_atomic.restype = ctypes.c_int
         lib.count_sieving_primes.argtypes = [ctypes.c_uint64]
         lib.count_sieving_primes.restype = ctypes.c_uint64
         lib.count_sieving_primes_range.argtypes = [ctypes.c_uint64, ctypes.c_uint64]
@@ -557,23 +562,56 @@ def _init_shared_buffer(n_bytes):
     return _shm_mmap
 
 
-def process_batch(start_stop_list, distance, window_m):
-    """Writes ATOMICALLY straight into the ONE shared buffer (module-level
+def process_batch(start_stop_list, first_odd, n_bits):
+    """Writes ATOMICALLY straight into the ONE shared odd-only buffer (module-level
     _shm_mmap/_shm_size, inherited via fork())."""
     lib = _load_lib()
     buf_ctypes = (ctypes.c_ubyte * _shm_size).from_buffer(_shm_mmap)
     out_ptr = ctypes.cast(buf_ctypes, ctypes.POINTER(ctypes.c_ubyte))
-    distance_hi = distance >> 64
-    distance_lo = distance & 0xFFFFFFFFFFFFFFFF
+    first_odd_hi = first_odd >> 64
+    first_odd_lo = first_odd & 0xFFFFFFFFFFFFFFFF
 
     had_error = False
     for start, stop in start_stop_list:
-        code = lib.generate_and_sieve_segment_bits_atomic(start, stop, distance_hi,
-                                                            distance_lo, window_m, out_ptr)
+        code = lib.sieve_odd_bits_atomic(start, stop, first_odd_hi, first_odd_lo, n_bits,
+                                         out_ptr)
         if code != 0:
             had_error = True
 
     return had_error
+
+
+def _odd_window_marks(odd_bits, first_odd, lo, hi):
+    """(fo, marked) for the odd numbers of [lo, hi): fo is the first of them and marked[k]
+    is True when fo + 2*k is composite. odd_bits is the odd-only buffer whose bit 0 stands
+    for first_odd; only the bytes covering [lo, hi) are unpacked."""
+    fo = lo | 1
+    count = max(0, (hi - fo + 1) // 2)
+    bit0 = (fo - first_odd) // 2
+    byte_lo, shift = bit0 >> 3, bit0 & 7
+    raw = odd_bits[byte_lo:byte_lo + (shift + count + 7) // 8]
+    marked = np.unpackbits(raw, bitorder='little')[shift:shift + count].astype(bool)
+    return fo, marked
+
+
+def _window_primes(odd_bits, first_odd, lo, hi):
+    """Ascending primes of [lo, hi): 2 when the window contains it, then every unmarked
+    odd number above 1."""
+    fo, marked = _odd_window_marks(odd_bits, first_odd, lo, hi)
+    primes = [2] if lo <= 2 < hi else []
+    primes.extend(n for n in (fo + 2 * int(k) for k in np.nonzero(~marked)[0]) if n > 1)
+    return primes
+
+
+def _window_prime_count(odd_bits, first_odd, lo, hi):
+    """len(_window_primes(...)) without building the list."""
+    fo, marked = _odd_window_marks(odd_bits, first_odd, lo, hi)
+    count = int(np.count_nonzero(~marked))
+    if fo == 1 and len(marked) and not marked[0]:
+        count -= 1  # 1 is odd and never marked, but not prime
+    if lo <= 2 < hi:
+        count += 1
+    return count
 
 
 LOW_FLOOR_CUTOFF = 7  # floors 0..6 are each narrower than the smallest supported window_m
@@ -632,14 +670,16 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
     combined_hi = windows[-1][0] + window_m
     N = len(windows)
     combined_size = combined_hi - combined_lo
-    combined_bytes = (combined_size + 7) // 8
+    first_odd = combined_lo | 1
+    n_odd = max(0, (combined_hi - first_odd + 1) // 2)
+    combined_bytes = (n_odd + 7) // 8
 
     print("\n" + "=" * 70)
     print(f"[*] BATCH {VERSION} (primesieve, SHARED mmap buffer, atomic OR, inlined phase "
           f"modulo, PGS2 binary output): {N} windows (target_idx {target_idx_list[0]}.."
           f"{target_idx_list[-1]}), level 10^{base_power}")
     print(f"[*] Combined range: [{combined_lo:,}, {combined_hi:,})  "
-          f"size={combined_size:,}  ({combined_bytes/1e6:.1f} MB bit-packed)")
+          f"size={combined_size:,}  ({combined_bytes/1e6:.1f} MB, one bit per odd number)")
     if not write_files:
         print(f"[*] WRITE_FILES=False -- no PGS2 files will be written this run; only "
               f"aggregate prime counts will be reported.")
@@ -703,7 +743,7 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
                 batch = next(batches_iter)
             except StopIteration:
                 return False
-            fut = executor.submit(process_batch, batch, combined_lo, combined_size)
+            fut = executor.submit(process_batch, batch, first_odd, n_odd)
             in_flight[fut] = True
             return True
 
@@ -746,8 +786,7 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
     t_write_start = time.perf_counter()
     bytes_written = 0
 
-    window_occupied_bits = np.frombuffer(_shm_mmap, dtype=np.uint8, count=combined_bytes).copy()
-    _shm_mmap.close()
+    odd_bits = np.frombuffer(_shm_mmap, dtype=np.uint8, count=combined_bytes)
 
     low_floor_segments = _low_floor_segments(base_power, combined_lo, combined_hi)
     if low_floor_segments:
@@ -755,15 +794,9 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
         # once (see _low_floor_segments' docstring) -- write each complete one under its
         # own 10p{floor}/ folder instead of the single 10p{base_power}/ the normal path
         # below would use, and skip the write loop entirely once done.
-        full_unpacked = np.unpackbits(window_occupied_bits, count=combined_size,
-                                       bitorder='little').astype(bool)
         total_primes_found = 0
         floor_counts = []
         for floor, floor_lo, floor_hi in low_floor_segments:
-            w = floor_hi - floor_lo
-            lo_rel = floor_lo - combined_lo
-            segment = full_unpacked[lo_rel:lo_rel + w]
-
             # Sharded (see window_sharding.py) -- a low floor always writes
             # its one window at offset 0, so it always lands in shard_00000.
             this_floor_folder = os.path.join(BASE_STORAGE_10PN, f"10p{floor}", "source_primes")
@@ -773,17 +806,17 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
 
             if write_files:
                 os.makedirs(this_shard_folder, exist_ok=True)
-                free_locally = np.nonzero(~segment)[0]
-                candidates = [floor_lo + int(k) for k in free_locally if (floor_lo + int(k)) > 1]
+                candidates = _window_primes(odd_bits, first_odd, floor_lo, floor_hi)
                 count = len(candidates)
                 write_prime_window(window_path, candidates, generated_at=generated_at)
                 bytes_written += os.path.getsize(window_path)
             else:
-                count = int(np.count_nonzero(~segment))
-                if floor_lo == 1 and w > 0 and not segment[0]:
-                    count -= 1  # exclude "1" itself -- not prime, but ~segment[0] counts it
+                count = _window_prime_count(odd_bits, first_odd, floor_lo, floor_hi)
             total_primes_found += count
             floor_counts.append((floor, count))
+
+        del odd_bits  # the mapping cannot close while a NumPy view still exports it
+        _shm_mmap.close()
 
         skipped_floor = low_floor_segments[-1][0] + 1
         print(f"\n[*] Low-floor batch: floor(s) {low_floor_segments[0][0]}-"
@@ -813,25 +846,9 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
     floor_folder = os.path.join(BASE_STORAGE_10PN, f"10p{base_power}", "source_primes")
 
     # Per-window unpacking: peak memory for this step is O(window_m), not O(combined_size)
-    # (see prime_sieve_v3.py's header).
-    use_fast_unpack = (window_m % 8 == 0)
-    if use_fast_unpack:
-        bytes_per_window = window_m // 8
-    else:
-        window_occupied_full = np.unpackbits(window_occupied_bits, count=combined_size,
-                                              bitorder='little').astype(bool)
-
+    # (see prime_sieve_v3.py's header), for any window_m.
     total_primes_found = 0
     for wi, (distance, w) in enumerate(windows):
-        lo_rel = distance - combined_lo
-        if use_fast_unpack:
-            byte_start = lo_rel // 8
-            segment = np.unpackbits(window_occupied_bits[byte_start:byte_start + bytes_per_window],
-                                     count=w, bitorder='little').astype(bool)
-        else:
-            hi_rel = lo_rel + w
-            segment = window_occupied_full[lo_rel:hi_rel]
-
         offset = distance - BASE
         target_tag = f"10p{base_power}_off_{format_offset(offset)}"
         window_index = window_sharding.shard_index_for_offset(offset, window_m)
@@ -840,18 +857,16 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
         generated_at = int(time.time())
 
         if write_files:
-            free_locally = np.nonzero(~segment)[0]
-            candidates = [distance + int(k) for k in free_locally if (distance + int(k)) > 1]
+            candidates = _window_primes(odd_bits, first_odd, distance, distance + w)
             total_primes_found += len(candidates)
             os.makedirs(shard_folder, exist_ok=True)
             write_prime_window(window_path, candidates, generated_at=generated_at)
             bytes_written += os.path.getsize(window_path)
         else:
-            count = int(np.count_nonzero(~segment))
-            if distance == 1 and w > 0 and not segment[0]:
-                count -= 1
-            total_primes_found += count
+            total_primes_found += _window_prime_count(odd_bits, first_odd, distance, distance + w)
 
+    del odd_bits  # the mapping cannot close while a NumPy view still exports it
+    _shm_mmap.close()
     t_write = time.perf_counter() - t_write_start
     print(f"\n[*] TOTAL PRIMES FOUND this run: {total_primes_found:,} across {N} windows"
           + ("" if write_files else "  (NO FILES WRITTEN -- count-only mode)"))

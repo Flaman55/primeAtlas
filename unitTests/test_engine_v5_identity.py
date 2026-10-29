@@ -1,11 +1,12 @@
 """WSL test: prime_sieve_v5.py produces exactly what prime_sieve_v4_1.py produces.
 
 Each case runs both scanners as subprocesses on the same windows, each into its own empty
-portal (CONSTELLATION_PORTAL_DIR), then compares every output file byte for byte (except
-the PGS2 generation timestamp) and the
-result fields of the metrics handoff (timings excluded). Cases cover a low floor split across
-real floor boundaries, the top end of a floor, floors 10/19/22, count-only mode, and floor 25
-when PRIMEATLAS_TEST_DEEP=1 (about two minutes on 24 threads).
+portal (CONSTELLATION_PORTAL_DIR), then compares every output file byte for byte (except the
+PGS2 generation timestamp) and the result fields of the metrics handoff (timings excluded).
+Cases cover low floors split across real floor boundaries (from floor 0, where the range
+holds 1, 2 and the sieving primes themselves), the top end of a floor, an odd window width
+(windows alternate between even and odd starts), floors 10/19/22, count-only mode, and
+floor 25 when PRIMEATLAS_TEST_DEEP=1 (about four and a half minutes on 24 threads).
 
 Run inside WSL from the repo root:
     python3 unitTests/test_engine_v5_identity.py
@@ -28,7 +29,12 @@ RESULT_FIELDS = ("l_final", "sieving_primes_count", "total_primes_found", "windo
 
 # (label, floor, first target_idx, last target_idx, window_m, write_files)
 CASES = [
+    ("low floor split 10^0..", 0, 0, 0, 10 ** 7, True),
+    ("low floor split 10^0.. count-only", 0, 0, 0, 10 ** 7, False),
     ("low floor split 10^5..", 5, 0, 0, 10 ** 7, True),
+    ("low floor split count-only", 5, 0, 0, 10 ** 7, False),
+    ("floor 10 odd width", 10, 0, 2, 999_999, True),
+    ("floor 10 odd width count-only", 10, 3, 6, 999_999, False),
     ("floor 10 start", 10, 0, 2, 10 ** 6, True),
     ("floor 10 top end", 10, 89997, 89999, 10 ** 6, True),
     ("floor 19", 19, 0, 2, 10 ** 6, True),

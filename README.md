@@ -1706,7 +1706,9 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
   prime_sieve_v4_1.py        same as v4, plus base-gen/sieve/write phase timing and
                               bytes-written tracking, feeding the Benchmark tab's
                               second (sieve-speed/write-speed) chart
-  prime_sieve_v5.py          engine under development; output identical to v4.1
+  prime_sieve_v5.py          engine under development: shared buffer holds odd
+                              numbers only (half the RAM, p = 2 never sieved);
+                              output identical to v4.1
                               (unitTests/test_engine_v5_identity.py checks every
                               PGS2 file and the run totals against v4.1)
   prime_sieve_primesieve.py  "primesieve mode" -- calls libprimesieve's own public C API
