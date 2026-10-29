@@ -211,7 +211,7 @@ def _build_gui():
     from primeatlas.generation.generation_offer_coordinator import GenerationOfferCoordinator
 
     from primeatlas.core.app_icon import apply_tk_icon
-    from primeatlas.core.version import APP_VERSION
+    from primeatlas.core.version import version_label
 
     class PortalBrowserApp(tk.Tk):
         def __init__(self):
@@ -219,7 +219,8 @@ def _build_gui():
             apply_tk_icon(self)
             self._apply_font_scale(APP_SETTINGS.font_scale)
             self._apply_theme(APP_SETTINGS.theme)
-            self.title(f"{T('app.title')} {APP_VERSION}")
+            # APP_VERSION plus the checked-out commit, see version.py.
+            self.title(f"{T('app.title')} {version_label(_SCRIPT_DIR)}")
             self.geometry("1050x680")
 
             # status_frame/notebook are BUILT here but deliberately left UNPACKED until
@@ -297,6 +298,7 @@ def _build_gui():
             self.visualization_tab = ttk.Frame(notebook)
             self.benchmark_tab = ttk.Frame(notebook)
             self.settings_tab_container = ttk.Frame(notebook)
+            self.about_tab = ttk.Frame(notebook)
             notebook.add(self.primes_tab, text=T("tabs.primes"))
             notebook.add(self.constellations_tab, text=T("tabs.constellations"))
             notebook.add(self.research_tab, text=T("tabs.research"))
@@ -304,6 +306,7 @@ def _build_gui():
             notebook.add(self.visualization_tab, text=T("tabs.visualization"))
             notebook.add(self.benchmark_tab, text=T("tabs.benchmark"))
             notebook.add(self.settings_tab_container, text=T("tabs.settings"))
+            notebook.add(self.about_tab, text=T("tabs.about"))
 
             loading_steps = (
                 (T("tabs.primes"), self._build_primes_section),
@@ -313,6 +316,7 @@ def _build_gui():
                 (T("tabs.visualization"), self._build_visualization_section),
                 (T("tabs.benchmark"), self._build_benchmark_tab),
                 (T("tabs.settings"), lambda: self._build_settings_tab(SettingsTab)),
+                (T("tabs.about"), self._build_about_tab),
             )
             for step_name, step_fn in loading_steps:
                 self._loading_caption.set(T("app.status_loading_step", step=step_name))
@@ -439,7 +443,7 @@ def _build_gui():
             # status label reflects this automatic check too, not just manual ones.
             # Only actually runs if AppSettings.auto_update_check is on (default True;
             # see that property's own docstring) -- settings_tab is already fully built
-            # by this point (it's the last of the loading_steps above).
+            # by this point (every loading_steps entry above has run).
             if APP_SETTINGS.auto_update_check:
                 self.after(_APP_UPDATE_STARTUP_CHECK_DELAY_MS,
                            self.settings_tab._check_for_app_update)
@@ -549,6 +553,15 @@ def _build_gui():
             status_font["weight"] = "bold"
             self._status_font = tkfont.Font(root=self, **status_font)
             style.configure("Status.TLabel", font=self._status_font)
+            # Title.TLabel: the About tab's app name; Link.TLabel: clickable links.
+            title_font = tkfont.nametofont("TkDefaultFont", root=self).actual()
+            title_font.update(weight="bold", size=round(abs(title_font["size"]) * 1.8))
+            self._title_font = tkfont.Font(root=self, **title_font)
+            style.configure("Title.TLabel", font=self._title_font)
+            link_font = tkfont.nametofont("TkDefaultFont", root=self).actual()
+            link_font["underline"] = True
+            self._link_font = tkfont.Font(root=self, **link_font)
+            style.configure("Link.TLabel", foreground=p["link_fg"], font=self._link_font)
             style.map("TCheckbutton", background=[("active", p["bg"])])
             style.map("TRadiobutton", background=[("active", p["bg"])])
 
@@ -1326,6 +1339,13 @@ def _build_gui():
                 update_nav_controls=_update_nav_controls,
                 theme_palette=self._palette)
             self.benchmark_tab_widget.pack(fill="both", expand=True)
+
+        def _build_about_tab(self):
+            """The last main tab, see primeatlas/about/about_tab.py."""
+            from primeatlas.about.about_tab import AboutTab
+            self.about_tab_widget = AboutTab(self.about_tab, repo_root=_SCRIPT_DIR,
+                                             translator=TRANSLATOR)
+            self.about_tab_widget.pack(fill="both", expand=True)
 
     return PortalBrowserApp
 
