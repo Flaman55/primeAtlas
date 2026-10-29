@@ -7,6 +7,9 @@ generated. The GUI runs natively on Windows (tkinter); the generation pipeline i
 runs under WSL, backed by `libprimesieve` and a set of custom C sieve engines (three
 interchangeable engine generations, v3/v4/v4.1 -- see "Architecture" below).
 
+Measured throughput, RAM and disk use, the cost model and comparisons with primesieve and
+PARI/GP are in `BENCHMARK.md`.
+
 ## Features
 
 - **Prime numbers** -- an inner notebook of three sub-tabs:
@@ -1809,6 +1812,13 @@ installer/                   Windows installer (PrimeAtlasSetup.exe, see "Instal
                               Release, vX.Y.Z-rcN as a pre-release
 CHANGELOG.md                 what changed per version (English, then Polish); the newest
                               entry is APP_VERSION
+BENCHMARK.md                 measured sieve throughput, RAM and disk use per floor, the
+                              F(N) + delta * m(N) cost model, primesieve / PARI/GP
+                              comparison and sources
+benchmarks/2026-10-29/       the measurement behind BENCHMARK.md
+  bench_atlas.py              times orchestrator_v3 against the primesieve CLI per floor,
+                              count and write mode, into a scratch storage (runs in WSL)
+  results/                    raw JSON of every series (A-E)
 LICENSE.md                   PolyForm Noncommercial 1.0.0 + the Required Notice line
 NOTICE.md                    third-party attributions, incl. the runtimes the installer
                               bundles (CPython: PSF License; MinGit: GPLv2 + source link)
