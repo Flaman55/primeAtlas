@@ -26,8 +26,8 @@ light Treeview text unreadable in dark mode. Dark theme's values are dark-tinted
 equivalents (blue-ish/amber-ish), so the grouping/highlight effect stays visible in both
 themes. tree_alt_bg is the stripe color of every second row (widgets.StripedTreeview).
 
-hint_fg: explanatory/secondary label text (the Hint.TLabel style). hint_fg and
-disabled_fg keep at least a 4.5:1 contrast against bg (WCAG AA) in both themes.
+hint_fg: explanatory/secondary label text (the Hint.TLabel style); link_fg: clickable
+links (the Link.TLabel style, About tab). hint_fg, link_fg and disabled_fg keep at least a 4.5:1 contrast against bg (WCAG AA) in both themes.
 
 adjusted_palette() applies the user's per-theme brightness shifts (Settings > General >
 User interface): `background` moves every BACKGROUND_KEYS color and `text` every
@@ -48,7 +48,7 @@ FONT_SCALE_MAX = 200
 
 BACKGROUND_KEYS = ("bg", "field_bg", "border", "console_bg", "tree_bg", "tree_alt_bg",
                    "tree_group_bg", "tree_stat_bg", "tab_bg", "tab_selected_bg")
-TEXT_KEYS = ("fg", "field_fg", "disabled_fg", "hint_fg", "console_fg")
+TEXT_KEYS = ("fg", "field_fg", "disabled_fg", "hint_fg", "link_fg", "console_fg")
 
 THEMES = {
     "light": {
@@ -60,6 +60,7 @@ THEMES = {
         "select_fg": "#ffffff",
         "disabled_fg": "#6b6b6b",
         "hint_fg": "#555555",
+        "link_fg": "#0b5cad",
         "border": "#a0a0a0",
         "console_bg": "#ffffff",
         "console_fg": "#000000",
@@ -79,6 +80,7 @@ THEMES = {
         "select_fg": "#ffffff",
         "disabled_fg": "#949494",
         "hint_fg": "#b0b0b0",
+        "link_fg": "#8ab8ff",
         "border": "#555555",
         "console_bg": "#1e1e1e",
         "console_fg": "#d4d4d4",
