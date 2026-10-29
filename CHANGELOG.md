@@ -6,7 +6,7 @@ number, a fix-only release the patch number. The number lives in
 e.g. `1.1.0 (f59ce41)`, because Settings → Updates moves every copy along `main` between
 releases.
 
-## 1.1.0 — unreleased
+## 1.1.0 — 2026-10-29
 
 ### English
 
