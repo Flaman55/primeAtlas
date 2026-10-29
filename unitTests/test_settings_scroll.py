@@ -5,9 +5,8 @@ wheel to widgets that scroll themselves.
 With the pointer over the sympy installer's log (a ScrolledText on Settings > Updates),
 the page's handler -- bound with bind_all while the pointer is over the page canvas --
 would also fire for wheel events over the log, whose own Text class binding scrolls it
-at the same time, so both would move. The Generation tab uses the same kind of
-exclusion check; the Settings tab asks settings_tab.event_over_own_scroller() before
-scrolling the page.
+at the same time, so both would move. Every page is a widgets.ScrollablePage, whose
+wheel handler asks widgets.event_over_own_scroller() before scrolling the page.
 
 Usage:
     python unitTests/test_settings_scroll.py
@@ -23,7 +22,7 @@ _REPO_ROOT = os.path.dirname(_SCRIPT_DIR)
 sys.path.insert(0, _REPO_ROOT)
 sys.path.insert(0, os.path.join(_REPO_ROOT, "prime_sieve"))
 
-from primeatlas.settings import settings_tab  # noqa: E402
+from primeatlas.core import widgets  # noqa: E402
 
 failures = []
 
@@ -51,7 +50,7 @@ def main():
         listbox = tk.Listbox(page)
         tree = ttk.Treeview(page)
         entry = ttk.Entry(page)
-        over = settings_tab.event_over_own_scroller
+        over = widgets.event_over_own_scroller
 
         check(over(FakeEvent(log)) is True,
               "wheel over a ScrolledText log (e.g. the sympy installer output) is left to it")
@@ -63,13 +62,10 @@ def main():
         check(over(FakeEvent(str(log))) is False and over(FakeEvent(None)) is False,
               "a string/None event.widget (Tk-internal popdowns) never raises")
 
-        with open(os.path.join(_REPO_ROOT, "primeatlas", "settings", "settings_tab.py"),
-                  encoding="utf-8") as f:
-            src = f.read()
-        handler = src[src.find("def _on_mousewheel(event):"):]
-        handler = handler[:handler.find("canvas.bind(")]
+        import inspect
+        handler = inspect.getsource(widgets.ScrollablePage.on_mousewheel)
         check("event_over_own_scroller(event)" in handler,
-              "the Settings page's _on_mousewheel consults event_over_own_scroller first")
+              "ScrollablePage.on_mousewheel consults event_over_own_scroller first")
     finally:
         root.destroy()
 

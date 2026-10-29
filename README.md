@@ -1217,11 +1217,16 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               table that sets its height in lines (no vertical paned
                               windows anywhere; the Generation tab's sections stack at
                               natural height, the Records table keeps a dragged height
-                              across rescans); ScrollPad is the strip along the right
-                              edge of every scrollable page (Settings sub-tabs,
-                              Generation, visualization tabs) where the mouse wheel
-                              always scrolls the page itself -- as does the wheel over
-                              the page scrollbar next to it; its width is a user setting
+                              across rescans); ScrollablePage is the app's one page
+                              container (every sub-tab of Prime numbers, Constellations,
+                              Research and Settings, plus Generation, the visualization
+                              tabs, Benchmark and About): its scrollbar and ScrollPad
+                              appear only while the content is taller than the window,
+                              re-checked on every resize, content or font change, and a
+                              page that fits stretches its content to the window;
+                              ScrollPad is the strip next to that scrollbar where the
+                              mouse wheel always scrolls the page itself -- as does the
+                              wheel over the scrollbar; its width is a user setting
                               (Settings > General > User interface) that
                               set_scroll_pad_width() applies live to every pad;
                               StripedTreeview is the app's one table class (every
@@ -1455,7 +1460,7 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               sub-tab shares: launching renderer.py via LocalLoggedRunner,
                               the live console, the HUD panel fed by HUD_STATE lines, live
                               pause/resume over stdin, Reset, the Start/Resume "reopen
-                              where playback left off" N, the scrollable container, and
+                              where playback left off" N, the ScrollablePage, and
                               the empty-storage "generate a range first?" dialog
                               (_ask_generate_range/_offer_storage_fill, parse_generate_range);
                               a sub-tab supplies its own form, argv and LOCALE_PREFIX

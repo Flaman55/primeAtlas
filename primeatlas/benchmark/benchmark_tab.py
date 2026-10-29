@@ -470,7 +470,10 @@ class BenchmarkTab(BaseTab):
         ttk.Button(benchmark_nav, text=T("common.goto"), command=self._goto_benchmark_page).pack(
             side="left", padx=(4, 0))
 
-        self.benchmark_tree = StripedTreeview(tree_frame, show="tree headings")
+        # height is the tree's minimum when the page has to scroll; while the page fits,
+        # pack(expand=True) gives it the rest of the window. Tk's default of 10 rows
+        # makes the page taller than the default 1050x680 window.
+        self.benchmark_tree = StripedTreeview(tree_frame, show="tree headings", height=3)
         self.benchmark_tree.heading("#0", text=T("bench.col_floor"))
         self.benchmark_tree.column("#0", width=170, stretch=False)
         # Horizontal scrollbar -- with 11 data columns + #0, the row is wider than the

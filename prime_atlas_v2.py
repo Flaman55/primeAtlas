@@ -307,6 +307,8 @@ def _build_gui():
             notebook.add(self.benchmark_tab, text=T("tabs.benchmark"))
             notebook.add(self.settings_tab_container, text=T("tabs.settings"))
             notebook.add(self.about_tab, text=T("tabs.about"))
+            # Sub-tab frame attribute name -> its ScrollablePage, see _scroll_body().
+            self.scroll_pages = {}
 
             loading_steps = (
                 (T("tabs.primes"), self._build_primes_section),
@@ -625,6 +627,15 @@ def _build_gui():
             self.option_add("*Entry.Background", p["field_bg"])
             self.option_add("*Entry.Foreground", p["field_fg"])
 
+        def _scroll_body(self, name):
+            """Wraps the page frame `self.<name>` in a ScrollablePage (scrollbar and
+            ScrollPad only while its content does not fit) and returns the frame the
+            page's tab widget is built into."""
+            from primeatlas.core.widgets import ScrollablePage
+            page = ScrollablePage(getattr(self, name), pad_text=T("common.scroll_pad"))
+            self.scroll_pages[name] = page
+            return page.body
+
         # --- Tab 1: Prime numbers (source primes) ---------------------------------
 
         def _build_primes_section(self):
@@ -660,13 +671,13 @@ def _build_gui():
 
             from primeatlas.primality.primesieve_calc_tab import PrimesieveCalcTab
             self.primesieve_calc_tab_widget = PrimesieveCalcTab(
-                self.primes_primesieve_tab, status_var=self.status, translator=TRANSLATOR,
+                self._scroll_body("primes_primesieve_tab"), status_var=self.status, translator=TRANSLATOR,
                 totals_progress=self.totals_progress)
             self.primesieve_calc_tab_widget.pack(fill="both", expand=True)
 
             from primeatlas.primality.primality_tab import PrimalityTab
             self.primality_tab_widget = PrimalityTab(
-                self.primes_primality_tab, status_var=self.status, translator=TRANSLATOR,
+                self._scroll_body("primes_primality_tab"), status_var=self.status, translator=TRANSLATOR,
                 totals_progress=self.totals_progress)
             self.primality_tab_widget.pack(fill="both", expand=True)
 
@@ -678,7 +689,7 @@ def _build_gui():
             at this file's top."""
             from primeatlas.primes.primes_tab import PrimesTab
             self.primes_tab_widget = PrimesTab(
-                self.primes_storage_tab, get_portal_folder=lambda: PORTAL_FOLDER,
+                self._scroll_body("primes_storage_tab"), get_portal_folder=lambda: PORTAL_FOLDER,
                 status_var=self.status, translator=TRANSLATOR,
                 update_nav_controls=_update_nav_controls, render_page=_render_page,
                 page_size=PAGE_SIZE, floor_page_size=FLOOR_PAGE_SIZE,
@@ -770,7 +781,7 @@ def _build_gui():
             sub.add(self.constellations_records_tab, text=T("tabs.constellations_records"))
 
             self.constellations_hits_tab_widget = ConstellationsHitsTab(
-                self.constellations_storage_tab,
+                self._scroll_body("constellations_storage_tab"),
                 get_portal_folder=lambda: PORTAL_FOLDER, status_var=self.status,
                 translator=TRANSLATOR, update_nav_controls=_update_nav_controls,
                 render_page=_render_page, page_size=PAGE_SIZE,
@@ -782,7 +793,7 @@ def _build_gui():
             self.constellations_hits_tab_widget.pack(fill="both", expand=True)
 
             self.constellations_calc_tab_widget = ConstellationsCalcTab(
-                self.constellations_calculator_tab, translator=TRANSLATOR,
+                self._scroll_body("constellations_calculator_tab"), translator=TRANSLATOR,
                 eval_quick_number=_eval_quick_number, get_portal_folder=lambda: PORTAL_FOLDER,
                 select_hits_view=self._select_constellations_hits_view,
                 set_hits_search_query=lambda number:
@@ -793,7 +804,7 @@ def _build_gui():
             self.constellations_calc_tab_widget.pack(fill="both", expand=True)
 
             self.constellations_records_tab_widget = ConstellationsRecordsTab(
-                self.constellations_records_tab, get_portal_folder=lambda: PORTAL_FOLDER,
+                self._scroll_body("constellations_records_tab"), get_portal_folder=lambda: PORTAL_FOLDER,
                 status_var=self.status, translator=TRANSLATOR,
                 update_nav_controls=_update_nav_controls, render_page=_render_page,
                 page_size=PAGE_SIZE, eval_quick_number=_eval_quick_number,
@@ -997,7 +1008,7 @@ def _build_gui():
             self._build_research_polynomials_tab()
 
             self.research_goldbach_tab_widget = ResearchGoldbachTab(
-                self.research_goldbach_tab, get_portal_folder=lambda: PORTAL_FOLDER,
+                self._scroll_body("research_goldbach_tab"), get_portal_folder=lambda: PORTAL_FOLDER,
                 status_var=self.status, translator=TRANSLATOR,
                 update_nav_controls=_update_nav_controls,
                 eval_quick_number=_eval_quick_number, page_size=PAGE_SIZE,
@@ -1018,7 +1029,7 @@ def _build_gui():
             from primeatlas.research.research_squares_tab import ResearchSquaresTab
 
             self.research_squares_tab_widget = ResearchSquaresTab(
-                self.research_squares_tab, translator=TRANSLATOR,
+                self._scroll_body("research_squares_tab"), translator=TRANSLATOR,
                 totals_progress=self.totals_progress,
                 eval_quick_number=_eval_quick_number,
                 get_portal_folder=lambda: PORTAL_FOLDER, status_var=self.status)
@@ -1034,7 +1045,7 @@ def _build_gui():
             from primeatlas.research.research_polynomials_tab import ResearchPolynomialsTab
 
             self.research_polynomials_tab_widget = ResearchPolynomialsTab(
-                self.research_polynomials_tab, translator=TRANSLATOR,
+                self._scroll_body("research_polynomials_tab"), translator=TRANSLATOR,
                 totals_progress=self.totals_progress,
                 eval_quick_number=_eval_quick_number,
                 get_portal_folder=lambda: PORTAL_FOLDER, status_var=self.status)
@@ -1063,7 +1074,7 @@ def _build_gui():
             from primeatlas.research.research_gaps_tab import ResearchGapsTab
 
             self.research_gaps_tab_widget = ResearchGapsTab(
-                self.research_gaps_tab, translator=TRANSLATOR,
+                self._scroll_body("research_gaps_tab"), translator=TRANSLATOR,
                 totals_progress=self.totals_progress,
                 eval_quick_number=_eval_quick_number,
                 get_portal_folder=lambda: PORTAL_FOLDER, status_var=self.status)
@@ -1081,7 +1092,7 @@ def _build_gui():
             from primeatlas.research.research_pi_approx_tab import ResearchPiApproxTab
 
             self.research_pi_approx_tab_widget = ResearchPiApproxTab(
-                self.research_pi_approx_tab, translator=TRANSLATOR,
+                self._scroll_body("research_pi_approx_tab"), translator=TRANSLATOR,
                 totals_progress=self.totals_progress,
                 eval_quick_number=_eval_quick_number,
                 get_portal_folder=lambda: PORTAL_FOLDER, status_var=self.status)
@@ -1334,7 +1345,7 @@ def _build_gui():
             into primeatlas/ alongside everything else this tab needed."""
             from primeatlas.benchmark.benchmark_tab import BenchmarkTab
             self.benchmark_tab_widget = BenchmarkTab(
-                self.benchmark_tab, get_portal_folder=lambda: PORTAL_FOLDER,
+                self._scroll_body("benchmark_tab"), get_portal_folder=lambda: PORTAL_FOLDER,
                 status_var=self.status, translator=TRANSLATOR,
                 update_nav_controls=_update_nav_controls,
                 theme_palette=self._palette)
@@ -1343,7 +1354,7 @@ def _build_gui():
         def _build_about_tab(self):
             """The last main tab, see primeatlas/about/about_tab.py."""
             from primeatlas.about.about_tab import AboutTab
-            self.about_tab_widget = AboutTab(self.about_tab, repo_root=_SCRIPT_DIR,
+            self.about_tab_widget = AboutTab(self._scroll_body("about_tab"), repo_root=_SCRIPT_DIR,
                                              translator=TRANSLATOR)
             self.about_tab_widget.pack(fill="both", expand=True)
 

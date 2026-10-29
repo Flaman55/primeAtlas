@@ -87,7 +87,7 @@ from ..core.base_tab import BaseTab
 from ..core.app_settings import SCROLL_PAD_WIDTH_MAX, SCROLL_PAD_WIDTH_MIN
 from ..core.theme import (BRIGHTNESS_DEFAULT, BRIGHTNESS_MAX, BRIGHTNESS_MIN, FONT_SCALE_DEFAULT,
                           FONT_SCALE_MAX, FONT_SCALE_MIN)
-from ..core.widgets import HeightGrip, ScrollPad, set_scroll_pad_width
+from ..core.widgets import HeightGrip, ScrollablePage, set_scroll_pad_width
 from ..generation.generation_console import GenerationConsole
 from .manifest import FloorSnapshot, ConstellationSnapshot
 from .backup_store import BackupStore
@@ -118,25 +118,6 @@ CUDASIEVE_REPO_URL = "https://github.com/curtisseizert/CUDASieve"
 # a dedicated Labelframe of its own.
 PRIMECOUNT_REPO_URL = "https://github.com/kimwalisch/primecount"
 PRIMESIEVE_REPO_URL = "https://github.com/kimwalisch/primesieve"
-
-
-# Widgets that scroll themselves on the mouse wheel through their own class bindings.
-_SELF_SCROLLING_WIDGETS = (tk.Text, tk.Listbox, ttk.Treeview)
-
-
-def event_over_own_scroller(event):
-    """True if a mouse-wheel event happened over (or inside) a widget that scrolls itself,
-    e.g. the sympy installer's ScrolledText log on Settings > Updates. The page-level wheel
-    handler must then leave the event alone: it is bound with bind_all while the pointer is
-    over the page canvas, so it ALSO fires for wheel events over those widgets and would
-    scroll the whole page together with the log. event.widget can be a plain
-    string for Tk-internal windows (e.g. a combobox popdown) -- never raises."""
-    widget = getattr(event, "widget", None)
-    while widget is not None and not isinstance(widget, str):
-        if isinstance(widget, _SELF_SCROLLING_WIDGETS):
-            return True
-        widget = getattr(widget, "master", None)
-    return False
 
 
 class SettingsTab(BaseTab):
@@ -2238,10 +2219,8 @@ class SettingsTab(BaseTab):
         Splitting into sub-tabs alone isn't enough, though -- Backup on its own
         (backup list + restore controls/log + per-floor delete + whole-database
         delete) can still be taller than a non-maximized window. Every sub-tab is
-        wrapped in _make_scrollable_tab() -- a Canvas+Scrollbar pair, not a
-        fixed-height Labelframe stack -- so ANY tab that grows past the window's
-        current height gets a scrollbar automatically instead of needing this fixed
-        again the next time a section is added."""
+        wrapped in a ScrollablePage, so ANY tab that grows past the window's current
+        height gets a scrollbar automatically, and loses it again once it fits."""
         outer = ttk.Frame(self)
         outer.pack(fill="both", expand=True, padx=6, pady=6)
 
@@ -2255,131 +2234,19 @@ class SettingsTab(BaseTab):
         notebook.add(backup_tab, text=self.T("settings.tab_backup"))
         notebook.add(updates_tab, text=self.T("settings.tab_updates"))
 
+        self._scroll_pages = []
         self._scroll_pads = []
         self._build_general_tab(self._make_scrollable_tab(general_tab))
         self._build_backup_tab(self._make_scrollable_tab(backup_tab))
         self._build_updates_tab(self._make_scrollable_tab(updates_tab))
 
     def _make_scrollable_tab(self, notebook_tab):
-        """Wraps a bare Notebook-tab Frame in a vertically-scrollable Canvas, and
-        returns the inner Frame content should actually be packed into (callers
-        never touch `notebook_tab` directly again). tkinter has no built-in
-        scrollable container -- this is the standard Canvas + Scrollbar + inner-
-        Frame-tracked-via-<Configure> pattern, kept local to this one method rather
-        than a separate module since SettingsTab is the only tkinter-importing file
-        in primeatlas/ (see this module's own docstring) and nothing else needs it
-        yet.
-
-        Two <Configure> bindings do the real work: the inner Frame's own tells the
-        Canvas how tall its scrollregion needs to be (grows as content is added,
-        e.g. once _refresh_floor_delete_list() populates the combobox); the
-        Canvas's own stretches the inner Frame to the Canvas's current WIDTH (not
-        height) on every resize, so widgets packed with fill="x" still reach the
-        visible right edge instead of freezing at whatever width they first
-        requested.
-
-        Mouse-wheel scrolling is bound/unbound on Enter/Leave (not bind_all for the
-        whole app's lifetime) so it only scrolls THIS canvas while the pointer is
-        over it. Enter/Leave alone does NOT keep it off the ScrolledText widgets packed
-        inside (restore/libs/sympy logs...) -- the pointer is still over the canvas
-        there -- so the handler also skips events over any self-scrolling widget, see
-        event_over_own_scroller()."""
-        canvas = tk.Canvas(notebook_tab, highlightthickness=0)
-        # Tk's Canvas defaults to yscrollincrement=0, which makes any "scroll N units"
-        # call (mousewheel, scrollbar arrows) jump by ~10% of the canvas's CURRENT
-        # VIEWPORT height, not a small fixed pixel step. When the content is SHORTER
-        # than the viewport (e.g. General's ~229px inside a ~686px window), Tk does not
-        # clamp that jump back to 0; the view goes negative, showing blank canvas ABOVE
-        # the content that grows with every wheel tick (~68px per tick at 686px) while
-        # canvas.yview() still reports (0.0, 1.0). A small fixed increment alone
-        # doesn't fully fix this, so scrolling is also hard-disabled below whenever
-        # content already fits the viewport (see _content_fits()).
-        canvas.configure(yscrollincrement=20)
-
-        # `scroll_state["user_scrolled"]` starts False and flips to True the first
-        # time the person actually drags the scrollbar or spins the wheel (see the
-        # handlers below). Until that happens, `_sync_scrollregion()` keeps re-pinning
-        # the view to the top -- see that function's own comment for why this is
-        # needed, not just the scrollregion-size fix below it.
-        scroll_state = {"user_scrolled": False}
-
-        def _content_fits():
-            # Nothing to scroll to -- content already fits inside the visible
-            # canvas. winfo_height() is 0/1 before the widget is first mapped,
-            # so treat that as "doesn't fit yet" rather than "fits".
-            canvas_h = canvas.winfo_height()
-            return canvas_h > 1 and inner.winfo_reqheight() <= canvas_h
-
-        def _on_scrollbar(*args):
-            if _content_fits():
-                return
-            scroll_state["user_scrolled"] = True
-            canvas.yview(*args)
-
-        vsb = ttk.Scrollbar(notebook_tab, orient="vertical", command=_on_scrollbar)
-        canvas.configure(yscrollcommand=vsb.set)
-        canvas.pack(side="left", fill="both", expand=True)
-        vsb.pack(side="right", fill="y")
-
-        def _scroll_page(units):
-            if _content_fits():
-                return
-            scroll_state["user_scrolled"] = True
-            canvas.yview_scroll(units, "units")
-
-        # Wheel over this strip and over the scrollbar always scrolls the page, see
-        # ScrollPad.
-        pad = ScrollPad(notebook_tab, _scroll_page, text=self.T("common.scroll_pad"))
-        pad.frame.pack(side="right", fill="y")
-        pad.attach(vsb)
-        self._scroll_pads.append(pad)
-
-        inner = ttk.Frame(canvas)
-        inner_window = canvas.create_window((0, 0), window=inner, anchor="nw")
-
-        # NOTE: scrollregion is set from inner.winfo_reqwidth()/reqheight() -- NOT
-        # canvas.bbox("all"). bbox("all") is the bounding box of everything ever drawn
-        # on the canvas and can end up taller than the frame's actual current content
-        # (e.g. mid-reflow right after a width change below, before layout has fully
-        # settled) -- Tk then happily lets yview scroll into that stale leftover space,
-        # which shows up as the top not staying pinned and blank space becoming
-        # scrollable. Querying the frame's own requested size directly is always in
-        # sync with what's actually packed inside it right now, so the scrollregion
-        # can never exceed real content.
-        #
-        # That alone wasn't enough: General/Updates keep changing content height
-        # AFTER they first draw (async status checks, floor-delete combobox
-        # populated from a background thread, installer step frames swapped via
-        # grid()/grid_remove()) and Tk does not guarantee the view stays pinned to
-        # the top pixel across a scrollregion resize. So: as long as the person
-        # hasn't manually scrolled yet -- OR content fits and there's nothing to
-        # scroll to regardless -- force the view back to the top on every resync.
-        def _sync_scrollregion():
-            canvas.configure(scrollregion=(0, 0, inner.winfo_reqwidth(), inner.winfo_reqheight()))
-            if not scroll_state["user_scrolled"] or _content_fits():
-                canvas.yview_moveto(0.0)
-
-        def _on_inner_configure(_event=None):
-            _sync_scrollregion()
-        inner.bind("<Configure>", _on_inner_configure)
-
-        def _on_canvas_configure(event):
-            canvas.itemconfigure(inner_window, width=event.width)
-            # Width change can immediately change required height (wraplength'd
-            # Labels reflow) -- resync right away instead of waiting on inner's own
-            # <Configure> so a window resize can't leave a stale scrollregion behind.
-            canvas.after_idle(_sync_scrollregion)
-        canvas.bind("<Configure>", _on_canvas_configure)
-
-        def _on_mousewheel(event):
-            if event_over_own_scroller(event) or _content_fits():
-                return
-            scroll_state["user_scrolled"] = True
-            canvas.yview_scroll(int(-3 * (event.delta / 120)), "units")
-        canvas.bind("<Enter>", lambda _e: canvas.bind_all("<MouseWheel>", _on_mousewheel))
-        canvas.bind("<Leave>", lambda _e: canvas.unbind_all("<MouseWheel>"))
-
-        return inner
+        """Wraps a Notebook-tab Frame in a ScrollablePage and returns the frame content is
+        packed into."""
+        page = ScrollablePage(notebook_tab, pad_text=self.T("common.scroll_pad"))
+        self._scroll_pages.append(page)
+        self._scroll_pads.append(page.pad)
+        return page.body
 
     def _build_general_tab(self, parent):
         outer = ttk.Frame(parent)
