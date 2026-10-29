@@ -1707,10 +1707,15 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               bytes-written tracking, feeding the Benchmark tab's
                               second (sieve-speed/write-speed) chart
   prime_sieve_v5.py          engine under development: shared buffer holds odd
-                              numbers only (half the RAM, p = 2 never sieved);
+                              numbers only (half the RAM, p = 2 never sieved),
+                              windows are written through pgs2_vector.py;
                               output identical to v4.1
                               (unitTests/test_engine_v5_identity.py checks every
                               PGS2 file and the run totals against v4.1)
+  pgs2_vector.py             NumPy PGS2 writer: encodes a window's whole gap stream
+                              in one vectorized pass from int64 prime offsets, byte-
+                              identical to the per-prime writer
+                              (unitTests/test_pgs2_vector.py)
   prime_sieve_primesieve.py  "primesieve mode" -- calls libprimesieve's own public C API
                               (primesieve_generate_primes()) directly via ctypes, no custom
                               engine or batching pipeline; see "The primesieve mode" above

@@ -10,6 +10,7 @@ import concurrent.futures
 from concurrent.futures import ProcessPoolExecutor
 
 import window_sharding
+from pgs2_vector import PGS_MAGIC, write_prime_window_offsets
 
 
 VERSION = "v5"     # bump this whenever this file changes, so console output alone identifies
@@ -50,6 +51,8 @@ COMPUTE_SIEVING_PRIMES_COUNT = False
 #   - Shared mmap output buffer with atomic-OR marking, per-window unpacking read straight
 #     from the mapping (no copy of the whole buffer), and low-floor splitting by real floor
 #     boundary (see prime_sieve_v3.py's header).
+#   - Window output as NumPy arrays end to end: _window_prime_offsets() gives p - lo as
+#     int64, and pgs2_vector encodes the gap stream in one vectorized pass per window.
 #   - Timers for base-prime generation, the parallel sieve pass and the unpack-and-write
 #     phase, plus a bytes-written counter, reported through write_scan_metrics_handoff().
 # ==========================================================================================
@@ -296,10 +299,8 @@ def format_offset(n):
 # ------------------------------------------------------------------------------------------
 # PGS2 -- "Prime Gap Stream v2": binary, gap-delta + LEB128-varint prime storage format.
 # See prime_sieve_v1.py for the format writeup. The on-disk format is independent of how
-# the sieve is computed, so PGS_MAGIC stays "PGS2".
+# the sieve is computed, so PGS_MAGIC stays "PGS2". Writing goes through pgs2_vector.
 # ------------------------------------------------------------------------------------------
-
-PGS_MAGIC = b"PGS2"
 
 
 def encode_varint(value):
@@ -334,28 +335,9 @@ def write_prime_window(path, primes, generated_at=None):
     """Writes a sorted list of primes (ints, ascending) to `path` in PGS2 format.
     `generated_at` is a unix epoch timestamp (seconds, UTC) recorded in the header --
     defaults to "now" (time.time()) if not given."""
-    if generated_at is None:
-        generated_at = int(time.time())
-    count = len(primes)
-    with open(path, "wb") as f:
-        f.write(PGS_MAGIC)
-        if count == 0:
-            f.write(bytes([0]))
-            f.write((0).to_bytes(4, "big"))
-            f.write(int(generated_at).to_bytes(4, "big"))
-            return
-        base = primes[0]
-        base_bytes = base.to_bytes(max(1, (base.bit_length() + 7) // 8), "big")
-        if len(base_bytes) > 255:
-            raise ValueError(f"base prime too large for 1-byte length prefix: {base}")
-        f.write(bytes([len(base_bytes)]))
-        f.write(base_bytes)
-        f.write(count.to_bytes(4, "big"))
-        f.write(int(generated_at).to_bytes(4, "big"))
-        prev = base
-        for p in primes[1:]:
-            f.write(encode_varint(p - prev))
-            prev = p
+    lo = primes[0] if primes else 0
+    offsets = np.array([p - lo for p in primes], dtype=np.int64)
+    write_prime_window_offsets(path, lo, offsets, generated_at=generated_at)
 
 
 def read_prime_window_header(path):
@@ -594,17 +576,20 @@ def _odd_window_marks(odd_bits, first_odd, lo, hi):
     return fo, marked
 
 
-def _window_primes(odd_bits, first_odd, lo, hi):
-    """Ascending primes of [lo, hi): 2 when the window contains it, then every unmarked
-    odd number above 1."""
+def _window_prime_offsets(odd_bits, first_odd, lo, hi):
+    """Ascending primes of [lo, hi) as an int64 array of p - lo: 2 when the window contains
+    it, then every unmarked odd number above 1."""
     fo, marked = _odd_window_marks(odd_bits, first_odd, lo, hi)
-    primes = [2] if lo <= 2 < hi else []
-    primes.extend(n for n in (fo + 2 * int(k) for k in np.nonzero(~marked)[0]) if n > 1)
-    return primes
+    offsets = (fo - lo) + 2 * np.flatnonzero(~marked).astype(np.int64)
+    if fo == 1 and offsets.size and offsets[0] == 1 - lo:
+        offsets = offsets[1:]  # 1 is odd and never marked, but not prime
+    if lo <= 2 < hi:
+        offsets = np.concatenate((np.array([2 - lo], dtype=np.int64), offsets))
+    return offsets
 
 
 def _window_prime_count(odd_bits, first_odd, lo, hi):
-    """len(_window_primes(...)) without building the list."""
+    """len(_window_prime_offsets(...)) without building the array."""
     fo, marked = _odd_window_marks(odd_bits, first_odd, lo, hi)
     count = int(np.count_nonzero(~marked))
     if fo == 1 and len(marked) and not marked[0]:
@@ -780,7 +765,7 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
         print(f"[!] WARNING: {errors} batches returned a primesieve error -- results INCOMPLETE.")
 
     # Everything from here to each branch's write_scan_metrics_handoff() call below is
-    # timed as ONE "write" phase (unpack bits -> build candidate lists -> PGS2 file write).
+    # timed as ONE "write" phase (unpack bits -> prime offsets -> PGS2 file write).
     # bytes_written sums os.path.getsize() over every window actually
     # written this run (stays 0 in count-only mode, where nothing is written).
     t_write_start = time.perf_counter()
@@ -806,9 +791,10 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
 
             if write_files:
                 os.makedirs(this_shard_folder, exist_ok=True)
-                candidates = _window_primes(odd_bits, first_odd, floor_lo, floor_hi)
-                count = len(candidates)
-                write_prime_window(window_path, candidates, generated_at=generated_at)
+                offsets = _window_prime_offsets(odd_bits, first_odd, floor_lo, floor_hi)
+                count = len(offsets)
+                write_prime_window_offsets(window_path, floor_lo, offsets,
+                                           generated_at=generated_at)
                 bytes_written += os.path.getsize(window_path)
             else:
                 count = _window_prime_count(odd_bits, first_odd, floor_lo, floor_hi)
@@ -857,10 +843,10 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
         generated_at = int(time.time())
 
         if write_files:
-            candidates = _window_primes(odd_bits, first_odd, distance, distance + w)
-            total_primes_found += len(candidates)
+            offsets = _window_prime_offsets(odd_bits, first_odd, distance, distance + w)
+            total_primes_found += len(offsets)
             os.makedirs(shard_folder, exist_ok=True)
-            write_prime_window(window_path, candidates, generated_at=generated_at)
+            write_prime_window_offsets(window_path, distance, offsets, generated_at=generated_at)
             bytes_written += os.path.getsize(window_path)
         else:
             total_primes_found += _window_prime_count(odd_bits, first_odd, distance, distance + w)
