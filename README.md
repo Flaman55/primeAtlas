@@ -1706,6 +1706,9 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
   prime_sieve_v4_1.py        same as v4, plus base-gen/sieve/write phase timing and
                               bytes-written tracking, feeding the Benchmark tab's
                               second (sieve-speed/write-speed) chart
+  prime_sieve_v5.py          engine under development; output identical to v4.1
+                              (unitTests/test_engine_v5_identity.py checks every
+                              PGS2 file and the run totals against v4.1)
   prime_sieve_primesieve.py  "primesieve mode" -- calls libprimesieve's own public C API
                               (primesieve_generate_primes()) directly via ctypes, no custom
                               engine or batching pipeline; see "The primesieve mode" above
@@ -1745,10 +1748,12 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
   prime_sieve_engine_v1.c    C sieve core for prime_sieve_v1.py (ctypes)
   prime_sieve_engine_v3.c    C sieve core for prime_sieve_v3.py (ctypes)
   prime_sieve_engine_v4.c    C sieve core for prime_sieve_v4.py/v4_1.py (ctypes)
+  prime_sieve_engine_v5.c    C sieve core for prime_sieve_v5.py (ctypes)
   orchestrator_v3.py         single-run driver; a single SCANNER_VERSION flag near
-                              the top selects the active engine ("v3", "v4", or
-                              "v4.1" -- currently v4.1) instead of separate settings
-                              that could drift out of sync with each other
+                              the top selects the active engine ("v3", "v4", "v4.1"
+                              or "v5" -- default v4.1) instead of separate settings
+                              that could drift out of sync with each other; the env
+                              var PRIMEATLAS_SCANNER_VERSION overrides the default
   orchestrator_loop_v2.py    continuous-run driver
   orchestrator_loop_helpers.py
   hit_paging.py              splits a dense pattern's constellation hit file into
@@ -1873,6 +1878,7 @@ From WSL, inside `prime_sieve/`:
 gcc -O3 -shared -fPIC prime_sieve_engine_v1.c -o prime_sieve_engine_v1.so -lprimesieve -lstdc++ -lm
 gcc -O3 -shared -fPIC prime_sieve_engine_v3.c -o prime_sieve_engine_v3.so -lprimesieve -lstdc++ -lm
 gcc -O3 -shared -fPIC prime_sieve_engine_v4.c -o prime_sieve_engine_v4.so -lprimesieve -lstdc++ -lm
+gcc -O3 -shared -fPIC prime_sieve_engine_v5.c -o prime_sieve_engine_v5.so -lprimesieve -lstdc++ -lm
 ```
 
 Prebuilt `.so` files are included; rebuild if the WSL environment's glibc/architecture
