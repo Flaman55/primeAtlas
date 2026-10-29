@@ -690,7 +690,7 @@ class GenerationTab(HybridControls, BaseTab):
 
         self.ktuple_pattern_info_var = tk.StringVar(value="")
         ttk.Label(ktuple_outer, textvariable=self.ktuple_pattern_info_var,
-                  wraplength=760, justify="left", foreground="#555").pack(
+                  wraplength=760, justify="left", style="Hint.TLabel").pack(
             anchor="w", padx=8, pady=(0, 4))
 
         ktuple_form = ttk.Frame(ktuple_outer)
@@ -980,7 +980,7 @@ class GenerationTab(HybridControls, BaseTab):
         readonly toggle (_on_quick_floor_start_changed), and the Generate/Stop label
         flip (_on_run_loop/_on_loop_finished) all loop over self._quick_panels instead
         of touching one fixed widget reference."""
-        ttk.Label(parent, text=self.T("quick.intro"), foreground="#555555",
+        ttk.Label(parent, text=self.T("quick.intro"), style="Hint.TLabel",
                   wraplength=900, justify="left").pack(
             anchor="w", padx=8, pady=(6, 4))
 
@@ -1012,7 +1012,7 @@ class GenerationTab(HybridControls, BaseTab):
         self._build_quick_mode_primesieve(fields_container, mode_frames)
         self._build_quick_mode_cudasieve(fields_container, mode_frames)
 
-        ttk.Label(parent, textvariable=self.quick_hint_var, foreground="#555555",
+        ttk.Label(parent, textvariable=self.quick_hint_var, style="Hint.TLabel",
                   wraplength=900, justify="left").pack(anchor="w", padx=8, pady=(0, 4))
 
         btn_row = ttk.Frame(parent)
@@ -1328,7 +1328,7 @@ class GenerationTab(HybridControls, BaseTab):
                     textvariable=self.quick_primesieve_width_var,
                     width=14, validate="key", validatecommand=width_vcmd).pack(
             side="left", padx=(6, 0))
-        ttk.Label(frame, text=self.T("quick.attribution_primesieve"), foreground="#777777",
+        ttk.Label(frame, text=self.T("quick.attribution_primesieve"), style="Hint.TLabel",
                   font=("TkDefaultFont", 8), wraplength=860, justify="left").pack(
             anchor="w", pady=(4, 0))
         mode_frames["primesieve"] = frame
@@ -1410,7 +1410,7 @@ class GenerationTab(HybridControls, BaseTab):
                     textvariable=self.quick_cudasieve_width_var,
                     width=14, validate="key", validatecommand=width_vcmd).pack(
             side="left", padx=(6, 0))
-        ttk.Label(frame, text=self.T("quick.attribution_cudasieve"), foreground="#777777",
+        ttk.Label(frame, text=self.T("quick.attribution_cudasieve"), style="Hint.TLabel",
                   font=("TkDefaultFont", 8), wraplength=860, justify="left").pack(
             anchor="w", pady=(4, 0))
         mode_frames["cudasieve"] = frame

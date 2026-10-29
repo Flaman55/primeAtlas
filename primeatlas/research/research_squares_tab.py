@@ -44,6 +44,7 @@ from tkinter import ttk, messagebox, filedialog
 
 from ..core import background
 from ..core.base_tab import BaseTab
+from ..core.widgets import StripedTreeview
 from .squares_window import (
     check_interval_range, check_interval_range_from_source, MAX_SIEVE_BOUND, PRESETS,
 )
@@ -185,7 +186,7 @@ class ResearchSquaresTab(BaseTab):
         self.squares_export_button.pack(side="left", padx=(16, 0))
 
         ttk.Label(self, text=T("research_squares.hint"),
-                  wraplength=760, justify="left", foreground="#555").pack(
+                  wraplength=760, justify="left", style="Hint.TLabel").pack(
             anchor="w", padx=6, pady=(0, 8))
 
         self.squares_summary_var = tk.StringVar(value="")
@@ -195,7 +196,7 @@ class ResearchSquaresTab(BaseTab):
         tree_frame = ttk.Frame(self)
         tree_frame.pack(fill="both", expand=True, padx=6, pady=(0, 8))
         columns = ("n", "a", "b", "count", "covered")
-        self.squares_results_tree = ttk.Treeview(
+        self.squares_results_tree = StripedTreeview(
             tree_frame, columns=columns, show="headings", height=16)
         self.squares_results_tree.heading("n", text=T("research_squares.col_n"))
         self.squares_results_tree.heading("a", text=T("research_squares.col_a"))

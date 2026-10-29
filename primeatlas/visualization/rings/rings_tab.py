@@ -290,7 +290,7 @@ class RingsTab(VizTabBase):
         self.n_entry.insert(0, saved_params.get("n", "2"))
         self.n_entry.pack(side="left", padx=(6, 10))
         self.n_hint_var = tk.StringVar(value="")
-        ttk.Label(field_row, textvariable=self.n_hint_var, foreground="#888888").pack(side="left")
+        ttk.Label(field_row, textvariable=self.n_hint_var, style="Hint.TLabel").pack(side="left")
         self.n_entry.bind("<KeyRelease>", self._on_n_changed)
         self._on_n_changed()
 

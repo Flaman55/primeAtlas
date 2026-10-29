@@ -46,6 +46,7 @@ from tkinter import ttk, messagebox
 import pattern_catalog_v1
 
 from ..core.base_tab import BaseTab
+from ..core.widgets import StripedTreeview
 from ..core.storage import digit_count_floor, list_floors
 from .constellations import list_constellation_hits
 
@@ -129,7 +130,7 @@ class ConstellationsCalcTab(BaseTab):
 
         self.pattern_info_var = tk.StringVar(value="")
         ttk.Label(container, textvariable=self.pattern_info_var,
-                  wraplength=760, justify="left", foreground="#555").pack(
+                  wraplength=760, justify="left", style="Hint.TLabel").pack(
             anchor="w", pady=(0, 8))
 
         input_row = ttk.Frame(container)
@@ -146,7 +147,7 @@ class ConstellationsCalcTab(BaseTab):
 
         tree_frame = ttk.Frame(container)
         tree_frame.pack(fill="both", expand=True, pady=(0, 8))
-        self.results_tree = ttk.Treeview(
+        self.results_tree = StripedTreeview(
             tree_frame, columns=("offset", "number"), show="headings",
             height=10, selectmode="browse")
         self.results_tree.heading("offset", text=T("const_calc.col_offset"))

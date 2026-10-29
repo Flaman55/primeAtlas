@@ -202,7 +202,7 @@ class SphereTab(VizTabBase):
         self.show_rings_check.pack(anchor="w", padx=8, pady=(0, 6))
 
         ttk.Label(container, text=self._tk("controls_hint"), wraplength=760, justify="left",
-                  foreground="#888888").pack(anchor="w", pady=(0, 8))
+                  style="Hint.TLabel").pack(anchor="w", pady=(0, 8))
 
         hud_frame = ttk.LabelFrame(container, text=self._tk("hud_panel_title"))
         hud_frame.pack(fill="x", pady=(0, 10))

@@ -244,7 +244,7 @@ class TreeTab(VizTabBase):
         assembly_frame.pack(fill="x", pady=(0, 8))
         self._add_entries(assembly_frame, _ASSEMBLY_FIELDS, saved, self._ak)
 
-        self.hint_label = ttk.Label(container, wraplength=760, justify="left", foreground="#888888")
+        self.hint_label = ttk.Label(container, wraplength=760, justify="left", style="Hint.TLabel")
         self.hint_label.pack(anchor="w", pady=(0, 8))
 
         hud_frame = ttk.LabelFrame(container, text=self._tk("hud_panel_title"))

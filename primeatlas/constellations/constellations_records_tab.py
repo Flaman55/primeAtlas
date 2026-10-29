@@ -67,7 +67,7 @@ from .constellations import (
 # reasonable viewer; a caller who wants more should use CSV export instead (streamed,
 # no row-count limit -- see _job()'s own comment).
 PDF_EXPORT_ROW_LIMIT = 50_000
-from ..core.widgets import FlowRow, HeightGrip, add_page_nav_group
+from ..core.widgets import FlowRow, HeightGrip, StripedTreeview, add_page_nav_group
 
 
 def _iter_with_progress(rows, report_progress, step=100_000):
@@ -179,7 +179,7 @@ class ConstellationsRecordsTab(BaseTab):
         self.detail_export_to_entry.pack(side="left", padx=(4, 0))
 
         ttk.Label(container, text=T("const_records.hint"), wraplength=760,
-                  justify="left", foreground="#555").pack(anchor="w", pady=(0, 8))
+                  justify="left", style="Hint.TLabel").pack(anchor="w", pady=(0, 8))
 
         # Table on top at its own row height (see _rebuild_tree's row_count param),
         # full-hit-list drill-down for whatever cell was last double-clicked filling the
@@ -283,7 +283,7 @@ class ConstellationsRecordsTab(BaseTab):
         height = max(3, min(row_count, 14)) if row_count else 3
         if self._tree_rows_override is not None:
             height = self._tree_rows_override
-        tree = ttk.Treeview(
+        tree = StripedTreeview(
             self.tree_frame, columns=columns, show="headings", height=height)
         tree.heading("exp", text=T("const_records.col_exp"))
         tree.column("exp", width=70, anchor="e", stretch=False)

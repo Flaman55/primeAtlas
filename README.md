@@ -1223,10 +1223,19 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               always scrolls the page itself -- as does the wheel over
                               the page scrollbar next to it; its width is a user setting
                               (Settings > General > User interface) that
-                              set_scroll_pad_width() applies live to every pad
-  theme.py                      light/dark palette DATA only -- the actual
-                              ttk.Style()/option_add() application lives in
-                              PortalBrowserApp._apply_theme(), which needs a live Tk
+                              set_scroll_pad_width() applies live to every pad;
+                              StripedTreeview is the app's one table class (every
+                              second visible row striped, restriped after inserts and
+                              node open/close); RevealFrame keeps a preview list and
+                              its page nav hidden until something is selected (Prime
+                              numbers and Constellations Storage panes)
+  theme.py                      light/dark palette DATA plus adjusted_palette(), which
+                              applies the per-theme background/text brightness shifts
+                              (Settings > General > User interface) -- the actual
+                              ttk.Style()/option_add() application, the Hint.TLabel
+                              (secondary text) and bold Status.TLabel styles and the
+                              font-size `tk scaling` live in PortalBrowserApp's
+                              _apply_theme()/_apply_font_scale(), which need a live Tk
                               root this module deliberately never touches
   i18n.py                       Translator: loads one of two static locale files
   background.py                run_in_background()/PersistentWorker -- shared
@@ -1259,7 +1268,8 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
   app_settings.py               AppSettings -- configurable storage path, persisted
                               OUTSIDE the portal folder itself (see that module's
                               docstring for why), plus the per-install UI preferences
-                              (language, theme, scroll-area width, update checks)
+                              (language, theme, per-theme brightness, font size,
+                              scroll-area width, update checks)
   totals_search_coordinator.py TotalsSearchCoordinator -- the two PersistentWorkers
                               (floor-totals scanning, prime/constellation search) that
                               used to live directly on PortalBrowserApp itself in

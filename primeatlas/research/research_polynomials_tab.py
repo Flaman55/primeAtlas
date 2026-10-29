@@ -35,6 +35,7 @@ from tkinter import ttk, messagebox, filedialog
 
 from ..core import background
 from ..core.base_tab import BaseTab
+from ..core.widgets import StripedTreeview
 from .polynomials_window import (
     check_polynomial_range, check_polynomial_range_from_source, MAX_SIEVE_BOUND,
 )
@@ -156,7 +157,7 @@ class ResearchPolynomialsTab(BaseTab):
         self.poly_export_button.pack(side="left", padx=(16, 0))
 
         ttk.Label(self, text=T("research_polynomials.hint"),
-                  wraplength=760, justify="left", foreground="#555").pack(
+                  wraplength=760, justify="left", style="Hint.TLabel").pack(
             anchor="w", padx=6, pady=(0, 8))
 
         self.poly_summary_var = tk.StringVar(value="")
@@ -166,7 +167,7 @@ class ResearchPolynomialsTab(BaseTab):
         tree_frame = ttk.Frame(self)
         tree_frame.pack(fill="both", expand=True, padx=6, pady=(0, 8))
         columns = ("n", "value", "is_prime")
-        self.poly_results_tree = ttk.Treeview(
+        self.poly_results_tree = StripedTreeview(
             tree_frame, columns=columns, show="headings", height=16)
         self.poly_results_tree.heading("n", text=T("research_polynomials.col_n"))
         self.poly_results_tree.heading("value", text=T("research_polynomials.col_value"))

@@ -32,6 +32,7 @@ from tkinter import ttk, messagebox, filedialog
 
 from ..core import background
 from ..core.base_tab import BaseTab
+from ..core.widgets import StripedTreeview
 from ..core.progress_bar_owner import claim_progress_bar
 from .goldbach_window import (
     check_window as goldbach_check_window,
@@ -208,11 +209,11 @@ class ResearchGoldbachTab(BaseTab):
         self.goldbach_visualize_button.pack(side="left", padx=(8, 0))
 
         ttk.Label(self, text=T("research_goldbach.viz_hint"),
-                  wraplength=760, justify="left", foreground="#555").pack(
+                  wraplength=760, justify="left", style="Hint.TLabel").pack(
             anchor="w", padx=6, pady=(0, 4))
 
         ttk.Label(self, text=T("research_goldbach.hint"),
-                  wraplength=760, justify="left", foreground="#555").pack(
+                  wraplength=760, justify="left", style="Hint.TLabel").pack(
             anchor="w", padx=6, pady=(0, 8))
 
         lean_link = ttk.Label(
@@ -228,7 +229,7 @@ class ResearchGoldbachTab(BaseTab):
         tree_frame = ttk.Frame(self)
         tree_frame.pack(fill="both", expand=True, padx=6, pady=(0, 8))
         columns = ("n", "p", "q", "rep_count")
-        self.goldbach_results_tree = ttk.Treeview(
+        self.goldbach_results_tree = StripedTreeview(
             tree_frame, columns=columns, show="headings", height=16)
         self.goldbach_results_tree.heading("n", text=T("research_goldbach.col_n"))
         self.goldbach_results_tree.heading("p", text=T("research_goldbach.col_p"))
@@ -585,7 +586,7 @@ class ResearchGoldbachTab(BaseTab):
         tree_frame = ttk.Frame(win, padding=(10, 0, 10, 4))
         tree_frame.pack(fill="both", expand=True)
         columns = ("p", "q", "old_base")
-        tree = ttk.Treeview(
+        tree = StripedTreeview(
             tree_frame, columns=columns, show="headings", height=16)
         tree.heading("p", text=T("research_goldbach.decompose_col_p"))
         tree.heading("q", text=T("research_goldbach.decompose_col_q"))
@@ -698,12 +699,12 @@ class ResearchGoldbachTab(BaseTab):
             command=self._on_goldbach_viz_refresh)
         self.goldbach_viz_check_button.pack(side="left")
         ttk.Label(win, text=T("research_goldbach.viz_range_hint"),
-                  wraplength=780, justify="left", foreground="#777").pack(
+                  wraplength=780, justify="left", style="Hint.TLabel").pack(
             anchor="w", padx=10, pady=(0, 6))
 
         self.goldbach_viz_status_var = tk.StringVar(value="")
         ttk.Label(win, textvariable=self.goldbach_viz_status_var,
-                  wraplength=780, justify="left", foreground="#555").pack(
+                  wraplength=780, justify="left", style="Hint.TLabel").pack(
             anchor="w", padx=10, pady=(0, 6))
 
         # Own Progressbar, separate from the shared self.totals_progress in the
