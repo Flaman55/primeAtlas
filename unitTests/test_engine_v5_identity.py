@@ -7,8 +7,10 @@ Cases cover low floors split across real floor boundaries (from floor 0, where t
 holds 1, 2 and the sieving primes themselves), the top end of a floor, an odd window width
 (windows alternate between even and odd starts), floors 10/19/22, count-only mode, and
 floor 25 when PRIMEATLAS_TEST_DEEP=1 (about four and a half minutes on 24 threads).
-SMALL_SEGMENT_CASES rerun some of them with a 1 KiB v5 segment, so every slice spans many
-segments and sieving primes carry their next offset across segment ends.
+SMALL_SEGMENT_CASES rerun some of them with a 1 KiB v5 segment and bucket region and 1 MiB
+of buckets, so every slice spans many segments, sieving primes carry their next offset across
+segment ends, and the bucketed primes need many rounds (buckets fill up mid-prime and resume).
+The other cases run the defaults, where a bucket region spans several segments.
 
 Run inside WSL from the repo root:
     python3 unitTests/test_engine_v5_identity.py
@@ -43,7 +45,8 @@ CASES = [
     ("floor 22", 22, 5, 7, 10 ** 6, True),
     ("floor 19 count-only", 19, 3, 5, 10 ** 6, False),
 ]
-SMALL_SEGMENT_KB = "1"
+SMALL_SEGMENT_ENV = {"PRIMEATLAS_V5_SEGMENT_KB": "1", "PRIMEATLAS_V5_REGION_KB": "1",
+                     "PRIMEATLAS_V5_BUCKET_MB": "1"}
 SMALL_SEGMENT_CASES = [
     ("small segment low floor 10^0..", 0, 0, 0, 10 ** 7, True),
     ("small segment floor 10 odd width", 10, 0, 2, 999_999, True),
@@ -131,8 +134,7 @@ def main():
         for case in cases:
             passed &= compare_case(tmp, *case)
         for case in SMALL_SEGMENT_CASES:
-            passed &= compare_case(tmp, *case,
-                                   extra_env={"PRIMEATLAS_V5_SEGMENT_KB": SMALL_SEGMENT_KB})
+            passed &= compare_case(tmp, *case, extra_env=SMALL_SEGMENT_ENV)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     print("ALL CHECKS PASSED" if passed else "SOME CHECKS FAILED")

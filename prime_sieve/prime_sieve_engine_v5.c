@@ -1,10 +1,11 @@
 /* ==========================================================================================
  * prime_sieve_engine_v5.c -- sieve-generation core, v5.
  *
- * Loaded by prime_sieve_v5.py. The shared output buffer holds odd numbers only (one bit per
- * odd number, see sieve_odd_bits_atomic()): half the memory of a bit per number, and every
- * sieving prime strides it by p bits instead of p numbers, so p = 2 and half of each odd
- * prime's hits disappear. count_sieving_primes() is the same as in prime_sieve_engine_v4.c.
+ * Loaded by prime_sieve_v5.py. The shared output buffer holds odd numbers only: bit i stands
+ * for the odd number first_odd + 2*i (first_odd = (first_odd_hi:first_odd_lo), odd), n_bits
+ * bits in total. That is half the memory of a bit per number, and every sieving prime strides
+ * it by p bits instead of p numbers, so p = 2 and half of each odd prime's hits disappear.
+ * count_sieving_primes() is the same as in prime_sieve_engine_v4.c.
  *
  * For every sieving prime p, the engine needs first_odd mod p (the phase of the combined
  * range's first odd number relative to p, i.e. which residue class p first strikes inside
@@ -21,9 +22,15 @@
  * sieve_odd_segmented() marks the small sieving primes inside one slice of the buffer, segment
  * by segment in a private cache-sized word array, with a stored next offset per prime and a
  * presieve pattern for 3..13; each finished segment is ORed into the shared buffer one 64-bit
- * word at a time. Primes from work_plan_v5.small_prime_stop() up take the full-buffer stride
- * of sieve_odd_bits_atomic(). Both paths use lock-prefixed ORs on the same memory (8-bit and
- * 64-bit); x86 keeps mixed-size locked operations atomic and coherent.
+ * word at a time. Slices run in parallel worker processes, so the ORs are lock-prefixed.
+ *
+ * sieve_odd_bucketed() marks the primes from work_plan_v5.small_prime_stop() up. Their hits
+ * land at random places of a buffer far larger than any cache, so a direct OR per hit costs a
+ * DRAM line read and write-back; 24 threads saturate at roughly 230 million such ORs per
+ * second, locked or not, with or without prefetching. Instead, threads append every hit as a
+ * 32-bit offset to a per-region bucket (sequential writes) and, in rounds, apply the buckets
+ * region by region while the region is cache resident. It runs alone on the buffer (after the
+ * segmented slices), so the apply step uses plain ORs.
  *
  * count_sieving_primes_range() alongside count_sieving_primes() counts only the primes in
  * [start, stop], so repeat pi(L_final) requests on the same floor can reuse a previously
@@ -35,8 +42,10 @@
  * ========================================================================================== */
 
 #include <primesieve.h>
+#include <pthread.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 
 typedef unsigned __int128 u128;
 
@@ -96,45 +105,8 @@ static inline uint64_t first_marked_bit(u128 first, uint64_t first_hi, uint64_t 
 }
 
 /* ------------------------------------------------------------------------------------------
- * sieve_odd_bits_atomic -- marks every odd composite of the combined range in the shared
- * odd-only buffer (multiple worker processes write into one mmap'd buffer; see
- * prime_sieve_engine_v3.c's header for why the write must be atomic).
- *
- * Bit i stands for the odd number first_odd + 2*i (first_odd = (first_odd_hi:first_odd_lo),
- * odd); n_bits bits in total. Even numbers are not stored, so p = 2 is skipped and every odd
- * prime p in [start, stop) strides the buffer by p bits (2p numbers) from first_marked_bit().
- * ------------------------------------------------------------------------------------------ */
-int sieve_odd_bits_atomic(uint64_t start, uint64_t stop,
-                          uint64_t first_odd_hi, uint64_t first_odd_lo,
-                          uint64_t n_bits, unsigned char *out_odd_bits) {
-    if (start >= stop) return 0;
-
-    u128 first_odd = ((u128)first_odd_hi << 64) | (u128)first_odd_lo;
-
-    primesieve_iterator it;
-    primesieve_init(&it);
-    primesieve_jump_to(&it, start, stop);
-
-    uint64_t p_val;
-    while ((p_val = primesieve_next_prime(&it)) < stop) {
-        if (p_val < 3) continue;
-
-        uint64_t i = first_marked_bit(first_odd, first_odd_hi, first_odd_lo, p_val);
-        while (i < n_bits) {
-            unsigned char mask = (unsigned char)(1u << (i & 7));
-            __atomic_fetch_or(&out_odd_bits[i >> 3], mask, __ATOMIC_RELAXED);
-            i += p_val;
-        }
-    }
-
-    int err = it.is_error;
-    primesieve_free_iterator(&it);
-    return err ? -1 : 0;
-}
-
-/* ------------------------------------------------------------------------------------------
  * sieve_odd_segmented -- marks the odd composites of bits [bit_lo, bit_hi) of the shared
- * odd-only buffer (bit i = first_odd + 2*i, as in sieve_odd_bits_atomic()) that have an odd
+ * odd-only buffer (bit i = first_odd + 2*i, see the header) that have an odd
  * prime factor below `stop`. bit_lo must be a multiple of 64, so the slice owns whole words
  * of out_words except where bit_hi cuts the last one; that word is masked to the slice.
  *
@@ -228,6 +200,224 @@ done:
     free(pattern);
     free(next);
     if (primes) primesieve_free(primes);
+    return rc;
+}
+
+/* ------------------------------------------------------------------------------------------
+ * sieve_odd_bucketed -- marks the odd composites of the whole buffer that have a prime factor
+ * in one of the pieces [piece_lo[k], piece_hi[k]) of sieving primes, with n_threads threads.
+ * Each thread claims the next unclaimed piece (atomic counter) whenever it finishes one, so a
+ * thread that runs slower takes fewer pieces and all threads run out of work together.
+ *
+ * The buffer is cut into regions of 2^shift bits, 2^shift the largest power of two not above
+ * region_bits. Each thread owns cap 32-bit slots per region (cap from bucket_bytes, the
+ * memory of all threads together). Every round:
+ *   1. scatter: each thread walks its primes and appends every hit's offset within its region
+ *      to its bucket of that region. A thread stops when one of its buckets is full (it keeps
+ *      its prime and next bit for the next round) and raises round_over; the others stop at
+ *      their next prime boundary.
+ *   2. barrier, then apply: thread t ORs the buckets of every thread for the regions
+ *      [R*t/T, R*(t+1)/T) into out_bits, one region at a time.
+ *   3. barrier; each thread empties its buckets. The run ends after the round in which every
+ *      thread ran out of pieces.
+ * pieces_done[0] counts finished pieces (atomic) so the caller can report progress.
+ * PRECONDITION: no other writer touches out_bits during the call (the apply step uses plain
+ * ORs; regions are exclusive between the threads of this call).
+ * Returns 0, -1 on a primesieve, allocation or thread failure.
+ * ------------------------------------------------------------------------------------------ */
+#define MIN_BUCKET_SLOTS 16u
+
+typedef struct bucket_shared bucket_shared;
+
+typedef struct {
+    bucket_shared *sh;
+    uint64_t index;
+    uint64_t piece;          /* piece being walked (valid while in_piece) */
+    int in_piece;            /* the iterator is positioned inside sh->piece_lo[piece] */
+    primesieve_iterator it;
+    uint64_t p, i;           /* prime being marked (0: none) and its next bit */
+    uint32_t *slots;         /* R * cap offsets */
+    uint32_t *fill;          /* R counters */
+    int exhausted, err;
+} bucket_thread;
+
+struct bucket_shared {
+    const uint64_t *piece_lo, *piece_hi;
+    uint64_t n_pieces, n_threads;
+    u128 first;
+    uint64_t first_hi, first_lo, n_bits;
+    unsigned shift;
+    uint64_t n_regions, cap;
+    unsigned char *out;
+    uint64_t *pieces_done;
+    uint64_t next_piece;         /* first unclaimed piece */
+    int round_over;
+    pthread_barrier_t barrier;
+    bucket_thread *threads;
+    pthread_mutex_t gate_lock;   /* threads start once the caller has fixed n_threads */
+    pthread_cond_t gate_cond;
+    int gate_open;
+};
+
+static void bucket_scatter(bucket_shared *sh, bucket_thread *th) {
+    const uint64_t mask = (1ull << sh->shift) - 1, cap = sh->cap, n_bits = sh->n_bits;
+    for (;;) {
+        if (th->p == 0) {
+            if (__atomic_load_n(&sh->round_over, __ATOMIC_RELAXED)) return;
+            if (!th->in_piece) {
+                th->piece = __atomic_fetch_add(&sh->next_piece, 1, __ATOMIC_RELAXED);
+                if (th->piece >= sh->n_pieces) {
+                    th->exhausted = 1;
+                    return;
+                }
+                primesieve_jump_to(&th->it, sh->piece_lo[th->piece], sh->piece_hi[th->piece]);
+                th->in_piece = 1;
+            }
+            uint64_t p = primesieve_next_prime(&th->it);
+            if (th->it.is_error) {
+                th->err = 1;
+                th->exhausted = 1;
+                return;
+            }
+            if (p >= sh->piece_hi[th->piece]) {
+                th->in_piece = 0;
+                __atomic_fetch_add(sh->pieces_done, 1, __ATOMIC_RELAXED);
+                continue;
+            }
+            if (p < 3) continue;
+            th->p = p;
+            th->i = first_marked_bit(sh->first, sh->first_hi, sh->first_lo, p);
+        }
+        uint64_t p = th->p, i = th->i;
+        while (i < n_bits) {
+            uint64_t r = i >> sh->shift;
+            uint32_t f = th->fill[r];
+            if (f == cap) {
+                th->i = i;
+                __atomic_store_n(&sh->round_over, 1, __ATOMIC_RELAXED);
+                return;
+            }
+            th->slots[r * cap + f] = (uint32_t)(i & mask);
+            th->fill[r] = f + 1;
+            i += p;
+        }
+        th->p = 0;
+    }
+}
+
+static void bucket_apply(bucket_shared *sh, uint64_t t) {
+    uint64_t r0 = sh->n_regions * t / sh->n_threads, r1 = sh->n_regions * (t + 1) / sh->n_threads;
+    for (uint64_t r = r0; r < r1; r++) {
+        uint64_t base = r << sh->shift;
+        for (uint64_t s = 0; s < sh->n_threads; s++) {
+            const bucket_thread *src = &sh->threads[s];
+            const uint32_t *b = src->slots + r * sh->cap;
+            uint32_t n = src->fill[r];
+            for (uint32_t k = 0; k < n; k++) {
+                uint64_t bit = base + b[k];
+                sh->out[bit >> 3] |= (unsigned char)(1u << (bit & 7));
+            }
+        }
+    }
+}
+
+static void *bucket_worker(void *arg) {
+    bucket_thread *th = (bucket_thread *)arg;
+    bucket_shared *sh = th->sh;
+    pthread_mutex_lock(&sh->gate_lock);
+    while (!sh->gate_open) pthread_cond_wait(&sh->gate_cond, &sh->gate_lock);
+    pthread_mutex_unlock(&sh->gate_lock);
+    if (th->index >= sh->n_threads) return NULL;
+    for (;;) {
+        if (!th->exhausted) bucket_scatter(sh, th);
+        pthread_barrier_wait(&sh->barrier);
+        /* Between the barriers nobody scatters: round_over and every exhausted flag are
+         * stable, so all threads reach the same verdict on `all_done`. */
+        if (th->index == 0) __atomic_store_n(&sh->round_over, 0, __ATOMIC_RELAXED);
+        int all_done = 1;
+        for (uint64_t s = 0; s < sh->n_threads; s++)
+            if (!sh->threads[s].exhausted) all_done = 0;
+        bucket_apply(sh, th->index);
+        pthread_barrier_wait(&sh->barrier);
+        memset(th->fill, 0, sh->n_regions * sizeof(uint32_t));
+        if (all_done) return NULL;
+    }
+}
+
+int sieve_odd_bucketed(const uint64_t *piece_lo, const uint64_t *piece_hi, uint64_t n_pieces,
+                       uint64_t first_odd_hi, uint64_t first_odd_lo, uint64_t n_bits,
+                       uint64_t region_bits, uint64_t n_threads, uint64_t bucket_bytes,
+                       unsigned char *out_bits, uint64_t *pieces_done) {
+    if (n_pieces == 0 || n_bits == 0) return 0;
+    if (n_threads == 0) n_threads = 1;
+    if (n_threads > n_pieces) n_threads = n_pieces;
+
+    bucket_shared sh;
+    memset(&sh, 0, sizeof(sh));
+    sh.piece_lo = piece_lo;
+    sh.piece_hi = piece_hi;
+    sh.n_pieces = n_pieces;
+    sh.n_threads = n_threads;
+    sh.first_hi = first_odd_hi;
+    sh.first_lo = first_odd_lo;
+    sh.first = ((u128)first_odd_hi << 64) | (u128)first_odd_lo;
+    sh.n_bits = n_bits;
+    sh.shift = 6;
+    while (sh.shift < 32 && (2ull << sh.shift) <= region_bits) sh.shift++;
+    sh.n_regions = ((n_bits - 1) >> sh.shift) + 1;
+    sh.cap = bucket_bytes / sizeof(uint32_t) / n_threads / sh.n_regions;
+    if (sh.cap < MIN_BUCKET_SLOTS) sh.cap = MIN_BUCKET_SLOTS;
+    sh.out = out_bits;
+    sh.pieces_done = pieces_done;
+
+    int rc = 0;
+    uint64_t made = 0;
+    pthread_t *tids = (pthread_t *)calloc(n_threads, sizeof(pthread_t));
+    sh.threads = (bucket_thread *)calloc(n_threads, sizeof(bucket_thread));
+    if (!tids || !sh.threads) {
+        free(tids);
+        free(sh.threads);
+        return -1;
+    }
+    for (uint64_t t = 0; t < n_threads; t++) {
+        bucket_thread *th = &sh.threads[t];
+        th->sh = &sh;
+        th->index = t;
+        primesieve_init(&th->it);
+        th->slots = (uint32_t *)malloc(sh.n_regions * sh.cap * sizeof(uint32_t));
+        th->fill = (uint32_t *)calloc(sh.n_regions, sizeof(uint32_t));
+        if (!th->slots || !th->fill) rc = -1;
+    }
+    pthread_mutex_init(&sh.gate_lock, NULL);
+    pthread_cond_init(&sh.gate_cond, NULL);
+    if (rc == 0) {
+        for (; made < n_threads; made++)
+            if (pthread_create(&tids[made], NULL, bucket_worker, &sh.threads[made]) != 0) break;
+        /* Fewer threads than asked: the started ones claim all pieces between them. */
+        uint64_t run = made;
+        if (run == 0 || pthread_barrier_init(&sh.barrier, NULL, (unsigned)run) != 0) {
+            rc = -1;
+            run = 0;
+        }
+        pthread_mutex_lock(&sh.gate_lock);
+        sh.n_threads = run;   /* run == 0: every started thread returns at the gate */
+        sh.gate_open = 1;
+        pthread_cond_broadcast(&sh.gate_cond);
+        pthread_mutex_unlock(&sh.gate_lock);
+        for (uint64_t t = 0; t < made; t++) pthread_join(tids[t], NULL);
+        if (run) pthread_barrier_destroy(&sh.barrier);
+    }
+    pthread_mutex_destroy(&sh.gate_lock);
+    pthread_cond_destroy(&sh.gate_cond);
+    for (uint64_t t = 0; t < n_threads; t++) {
+        bucket_thread *th = &sh.threads[t];
+        if (th->err) rc = -1;
+        primesieve_free_iterator(&th->it);
+        free(th->slots);
+        free(th->fill);
+    }
+    free(sh.threads);
+    free(tids);
     return rc;
 }
 

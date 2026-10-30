@@ -5,37 +5,67 @@ Two job kinds cover the run together:
   - segmented slices: a word-aligned bit range of the buffer, sieved in cache-sized segments
     by every odd prime below small_prime_stop() (sieve_odd_segmented() in
     prime_sieve_engine_v5.c);
-  - atomic batches: a contiguous range of the remaining sieving primes
-    [small_prime_stop(), L_final), each prime striding the whole buffer
-    (sieve_odd_bits_atomic()), split by the Mertens/li cost model below.
+  - bucketed pieces: contiguous ranges of the remaining sieving primes
+    [small_prime_stop(), L_final), split by the Mertens/li cost model below and marked by one
+    multi-threaded sieve_odd_bucketed() call, which buckets the hits by buffer region.
 
-The segment size is the perf knob of the segmented path (environment variable
-PRIMEATLAS_V5_SEGMENT_KB; the default is arbitrary, sized for a per-core L2 cache shared by
-two SMT threads).
+Perf knobs (environment variables; the defaults are arbitrary, picked by measurement):
+  - PRIMEATLAS_V5_SEGMENT_KB: segment size, sized for a per-core L2 cache shared by two SMT
+    threads;
+  - PRIMEATLAS_V5_REGION_KB: bucket region size. Larger regions mean fewer buckets per
+    thread, so the scatter's open bucket lines stay in cache; smaller regions keep the
+    apply step's ORs inside L2/L3;
+  - PRIMEATLAS_V5_BUCKET_MB: bucket memory of all threads together; more memory means more
+    hits per region per round, so fewer rounds.
 """
 import math
 
 SEGMENT_KB_ENV = "PRIMEATLAS_V5_SEGMENT_KB"
 DEFAULT_SEGMENT_KB = 128
+REGION_KB_ENV = "PRIMEATLAS_V5_REGION_KB"
+DEFAULT_REGION_KB = 1024
+BUCKET_MB_ENV = "PRIMEATLAS_V5_BUCKET_MB"
+DEFAULT_BUCKET_MB = 1024
+PIECES_PER_THREAD = 16   # claimed one at a time: the last pieces even out thread speeds
+
+
+def _positive_int_from_env(environ, name, default, unit):
+    raw = environ.get(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        raise ValueError(f"{name} must be a positive integer ({unit}), got {raw!r}")
+    if value < 1:
+        raise ValueError(f"{name} must be a positive integer ({unit}), got {raw!r}")
+    return value
 
 
 def segment_kb_from_env(environ):
     """Segment size in KiB from `environ` (a mapping), DEFAULT_SEGMENT_KB when unset.
     Raises ValueError unless the value is a positive integer."""
-    raw = environ.get(SEGMENT_KB_ENV)
-    if raw is None:
-        return DEFAULT_SEGMENT_KB
-    try:
-        kb = int(raw)
-    except ValueError:
-        raise ValueError(f"{SEGMENT_KB_ENV} must be a positive integer (KiB), got {raw!r}")
-    if kb < 1:
-        raise ValueError(f"{SEGMENT_KB_ENV} must be a positive integer (KiB), got {raw!r}")
-    return kb
+    return _positive_int_from_env(environ, SEGMENT_KB_ENV, DEFAULT_SEGMENT_KB, "KiB")
+
+
+def region_kb_from_env(environ):
+    """Bucket region size in KiB from `environ` (a mapping), DEFAULT_REGION_KB when unset.
+    Raises ValueError unless the value is a positive integer."""
+    return _positive_int_from_env(environ, REGION_KB_ENV, DEFAULT_REGION_KB, "KiB")
+
+
+def bucket_mb_from_env(environ):
+    """Bucket memory in MiB from `environ` (a mapping), DEFAULT_BUCKET_MB when unset.
+    Raises ValueError unless the value is a positive integer."""
+    return _positive_int_from_env(environ, BUCKET_MB_ENV, DEFAULT_BUCKET_MB, "MiB")
 
 
 def segment_bits(segment_kb):
     return segment_kb * 1024 * 8
+
+
+def region_bits(region_kb):
+    return region_kb * 1024 * 8
 
 
 def small_prime_stop(seg_bits, L_final):
@@ -114,3 +144,14 @@ def build_equal_cost_batches(L_final, combined_size, n_batches, lo=2):
     boundaries = sorted(set(g for g in boundaries if lo <= g <= L_final))
     batches = [[(a, b)] for a, b in zip(boundaries[:-1], boundaries[1:]) if a < b]
     return batches or [[(lo, L_final)]]
+
+
+def plan_pieces(L_final, combined_size, lo, n_threads):
+    """Ascending, contiguous (piece_lo, piece_hi) ranges covering the bucketed primes
+    [lo, L_final), n_threads * PIECES_PER_THREAD of them at most, of equal estimated cost.
+    sieve_odd_bucketed() threads claim them in order. Empty when lo >= L_final."""
+    if lo >= L_final:
+        return []
+    batches = build_equal_cost_batches(L_final, combined_size,
+                                       max(1, n_threads) * PIECES_PER_THREAD, lo=lo)
+    return [r for batch in batches for r in batch]

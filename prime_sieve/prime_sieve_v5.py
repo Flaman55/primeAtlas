@@ -7,6 +7,7 @@ import time
 import os
 import math
 import concurrent.futures
+import threading
 from concurrent.futures import ProcessPoolExecutor
 
 import window_sharding
@@ -47,12 +48,13 @@ COMPUTE_SIEVING_PRIMES_COUNT = False
 #     the prime 2 is added where a window contains it.
 #   - Phase computation (prime_sieve_engine_v5.c): first_odd mod p via an inlined 128/64
 #     `divq` fast path with the full u128 division as fallback.
-#   - Two job kinds per run (work_plan_v5.py): segmented slices of the buffer, sieved in
-#     cache-sized segments by the small primes, and equal-cost batches of the remaining
-#     sieving primes, each striding the whole buffer with atomic ORs.
+#   - Two stages per run (work_plan_v5.py): segmented slices of the buffer, sieved in
+#     cache-sized segments by the small primes in the worker processes, then one
+#     multi-threaded sieve_odd_bucketed() call for the remaining sieving primes, which buckets
+#     their hits by buffer region and applies them region by region (_run_bucketed()).
 #   - count_sieving_primes_cached(): per-floor cache for pi(L_final), counting only the
 #     sliver between the cached L and the new L_final.
-#   - Shared mmap output buffer with atomic-OR marking, per-window unpacking read straight
+#   - Shared mmap output buffer, per-window unpacking read straight
 #     from the mapping (no copy of the whole buffer), and low-floor splitting by real floor
 #     boundary (see prime_sieve_v3.py's header).
 #   - Window output as NumPy arrays end to end: _window_prime_offsets() gives p - lo as
@@ -84,15 +86,20 @@ def _load_lib():
                 f"Missing {_LIB_PATH} -- build it first: gcc -O3 -shared -fPIC "
                 f"prime_sieve_engine_v5.c -o prime_sieve_engine_v5.so -lprimesieve -lstdc++ -lm")
         lib = ctypes.CDLL(_LIB_PATH)
-        lib.sieve_odd_bits_atomic.argtypes = [
-            ctypes.c_uint64,                  # start
-            ctypes.c_uint64,                  # stop
+        lib.sieve_odd_bucketed.argtypes = [
+            ctypes.POINTER(ctypes.c_uint64),  # piece_lo
+            ctypes.POINTER(ctypes.c_uint64),  # piece_hi
+            ctypes.c_uint64,                  # n_pieces
             ctypes.c_uint64,                  # first_odd_hi
             ctypes.c_uint64,                  # first_odd_lo
             ctypes.c_uint64,                  # n_bits
-            ctypes.POINTER(ctypes.c_ubyte),   # out_odd_bits (SHARED buffer, not private)
+            ctypes.c_uint64,                  # region_bits
+            ctypes.c_uint64,                  # n_threads
+            ctypes.c_uint64,                  # bucket_bytes (all threads)
+            ctypes.POINTER(ctypes.c_ubyte),   # out_bits (SHARED buffer)
+            ctypes.POINTER(ctypes.c_uint64),  # pieces_done (progress counter)
         ]
-        lib.sieve_odd_bits_atomic.restype = ctypes.c_int
+        lib.sieve_odd_bucketed.restype = ctypes.c_int
         lib.sieve_odd_segmented.argtypes = [
             ctypes.c_uint64,                  # stop (segmented primes are 3..stop-1)
             ctypes.c_uint64,                  # first_odd_hi
@@ -494,25 +501,6 @@ def _init_shared_buffer(n_bytes):
     return _shm_mmap
 
 
-def process_batch(start_stop_list, first_odd, n_bits):
-    """Writes ATOMICALLY straight into the ONE shared odd-only buffer (module-level
-    _shm_mmap/_shm_size, inherited via fork())."""
-    lib = _load_lib()
-    buf_ctypes = (ctypes.c_ubyte * _shm_size).from_buffer(_shm_mmap)
-    out_ptr = ctypes.cast(buf_ctypes, ctypes.POINTER(ctypes.c_ubyte))
-    first_odd_hi = first_odd >> 64
-    first_odd_lo = first_odd & 0xFFFFFFFFFFFFFFFF
-
-    had_error = False
-    for start, stop in start_stop_list:
-        code = lib.sieve_odd_bits_atomic(start, stop, first_odd_hi, first_odd_lo, n_bits,
-                                         out_ptr)
-        if code != 0:
-            had_error = True
-
-    return had_error
-
-
 def process_slice(bit_lo, bit_hi, first_odd, small_stop, segment_words):
     """Sieves bits [bit_lo, bit_hi) of the shared buffer with the primes 3..small_stop-1
     (sieve_odd_segmented()); returns True on an engine error."""
@@ -522,6 +510,44 @@ def process_slice(bit_lo, bit_hi, first_odd, small_stop, segment_words):
     code = lib.sieve_odd_segmented(small_stop, first_odd >> 64, first_odd & 0xFFFFFFFFFFFFFFFF,
                                    bit_lo, bit_hi, segment_words, out_ptr)
     return code != 0
+
+
+def _run_bucketed(pieces, first_odd, n_bits, region_bits, n_threads, bucket_mb,
+                  on_progress, poll_seconds=0.5):
+    """Marks the sieving primes of `pieces` into the shared buffer with one
+    sieve_odd_bucketed() call (n_threads threads inside the engine) and returns True on an
+    engine error. The call runs in a helper thread (ctypes releases the GIL), so this thread
+    can report on_progress(finished_pieces) while it runs. No other job may write the buffer
+    meanwhile (see the engine's PRECONDITION)."""
+    if not pieces:
+        return False
+    lib = _load_lib()
+    n = len(pieces)
+    piece_lo = (ctypes.c_uint64 * n)(*[lo for lo, _ in pieces])
+    piece_hi = (ctypes.c_uint64 * n)(*[hi for _, hi in pieces])
+    done = (ctypes.c_uint64 * 1)(0)
+    result = {}
+
+    def _call():
+        # The array view lives only inside this call and is passed as is (no ctypes.cast,
+        # whose result holds a reference cycle to it), so the mmap has no exported pointer
+        # left once the thread ends; main_batch_scanner() closes the mmap later.
+        buf = (ctypes.c_ubyte * _shm_size).from_buffer(_shm_mmap)
+        result["code"] = lib.sieve_odd_bucketed(
+            piece_lo, piece_hi, n, first_odd >> 64, first_odd & 0xFFFFFFFFFFFFFFFF, n_bits,
+            region_bits, n_threads, bucket_mb * 1024 * 1024, buf, done)
+
+    worker = threading.Thread(target=_call, daemon=True)
+    worker.start()
+    reported = 0
+    while worker.is_alive():
+        worker.join(poll_seconds)
+        if done[0] != reported:
+            reported = done[0]
+            on_progress(reported)
+    if done[0] != reported:
+        on_progress(done[0])
+    return result.get("code", -1) != 0
 
 
 def _odd_window_marks(odd_bits, first_odd, lo, hi):
@@ -603,7 +629,9 @@ def _low_floor_segments(base_power, combined_lo, combined_hi):
 
 def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
                         compute_sieving_primes_count=True, use_known_pi_seed=False,
-                        segment_kb=work_plan_v5.DEFAULT_SEGMENT_KB):
+                        segment_kb=work_plan_v5.DEFAULT_SEGMENT_KB,
+                        region_kb=work_plan_v5.DEFAULT_REGION_KB,
+                        bucket_mb=work_plan_v5.DEFAULT_BUCKET_MB):
     target_idx_list = sorted(target_idx_list)
     BASE = 10 ** base_power
     windows = [(BASE + idx * window_m, window_m) for idx in target_idx_list]
@@ -622,8 +650,8 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
     combined_bytes = (n_odd + 7) // 8
 
     print("\n" + "=" * 70)
-    print(f"[*] BATCH {VERSION} (primesieve, SHARED mmap buffer, atomic OR, inlined phase "
-          f"modulo, PGS2 binary output): {N} windows (target_idx {target_idx_list[0]}.."
+    print(f"[*] BATCH {VERSION} (primesieve, SHARED mmap buffer, segmented + bucketed "
+          f"marking, inlined phase modulo, PGS2 binary output): {N} windows (target_idx {target_idx_list[0]}.."
           f"{target_idx_list[-1]}), level 10^{base_power}")
     print(f"[*] Combined range: [{combined_lo:,}, {combined_hi:,})  "
           f"size={combined_size:,}  ({combined_bytes/1e6:.1f} MB, one bit per odd number)")
@@ -663,15 +691,15 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
     seg_bits = work_plan_v5.segment_bits(segment_kb)
     small_stop = work_plan_v5.small_prime_stop(seg_bits, L_final)
     slices = work_plan_v5.plan_slices(n_odd, n_batches)
-    batches = work_plan_v5.build_equal_cost_batches(L_final, combined_size, n_batches,
-                                                    lo=small_stop)
-    jobs = ([(process_slice, (lo, hi, first_odd, small_stop, seg_bits // 64))
-             for lo, hi in slices]
-            + [(process_batch, (batch, first_odd, n_odd)) for batch in batches])
+    pieces = work_plan_v5.plan_pieces(L_final, combined_size, small_stop, MAX_WORKERS)
+    jobs = [(process_slice, (lo, hi, first_odd, small_stop, seg_bits // 64))
+            for lo, hi in slices]
+    n_total = len(jobs) + len(pieces)   # progress counts slices and pieces as "batches"
 
     print(f"[*] Segmented slices: {len(slices)} ({segment_kb} KiB segments, primes "
-          f"3..{small_stop - 1:,}); equal-cost atomic batches: {len(batches)} (primes "
-          f"{small_stop:,}..{L_final - 1:,}); {MAX_WORKERS} parallel processes")
+          f"3..{small_stop - 1:,}, {MAX_WORKERS} parallel processes); bucketed pieces: "
+          f"{len(pieces)} (primes {small_stop:,}..{L_final - 1:,}, {MAX_WORKERS} threads, "
+          f"{region_kb} KiB regions, {bucket_mb} MiB buckets)")
     print(f"[*] Shared output buffer: {combined_bytes/1e6:.1f} MB, ONE COPY TOTAL (see "
           f"prime_sieve_v3.py's header for why).")
 
@@ -684,10 +712,22 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
                                                 # forkserver (see prime_sieve_v3.py header)
 
     errors = 0
-    print_interval = max(1, len(jobs) // 30) if jobs else 1
+    print_interval = max(1, n_total // 30)
 
     t_start = time.perf_counter()
     t_last_print = t_start
+
+    def _print_progress(done_count):
+        nonlocal t_last_print
+        t_now = time.perf_counter()
+        progress = done_count / n_total * 100
+        print_delta = t_now - t_last_print
+        rate = done_count / (t_now - t_start) if (t_now - t_start) > 0 else 0
+        remaining = (n_total - done_count) / rate if rate > 0 else float("inf")
+        print(f"[+] Progress: {progress:.2f}% ({done_count}/{n_total} batches) | "
+              f"time: {t_now - t_start:.2f}s (+{print_delta:.2f}s since last print) | "
+              f"ETA ~{remaining:.0f}s" + (f" | ERRORS={errors}" if errors else ""))
+        t_last_print = t_now
     with ProcessPoolExecutor(max_workers=MAX_WORKERS, mp_context=ctx) as executor:
         jobs_iter = iter(jobs)
         in_flight = {}
@@ -718,15 +758,20 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
                 _submit_next()
 
             if done_count % print_interval == 0 or not in_flight:
-                t_now = time.perf_counter()
-                progress = done_count / len(jobs) * 100
-                print_delta = t_now - t_last_print
-                rate = done_count / (t_now - t_start) if (t_now - t_start) > 0 else 0
-                remaining = (len(jobs) - done_count) / rate if rate > 0 else float("inf")
-                print(f"[+] Progress: {progress:.2f}% ({done_count}/{len(jobs)} jobs) | "
-                      f"time: {t_now - t_start:.2f}s (+{print_delta:.2f}s since last print) | "
-                      f"ETA ~{remaining:.0f}s" + (f" | ERRORS={errors}" if errors else ""))
-                t_last_print = t_now
+                _print_progress(done_count)
+
+    slices_done = len(jobs)
+    last_printed = [slices_done]
+
+    def _on_pieces(pieces_done):
+        count = slices_done + pieces_done
+        if count - last_printed[0] >= print_interval or count == n_total:
+            last_printed[0] = count
+            _print_progress(count)
+
+    if _run_bucketed(pieces, first_odd, n_odd, work_plan_v5.region_bits(region_kb), MAX_WORKERS,
+                     bucket_mb, _on_pieces):
+        errors += 1
     t_sieve = time.perf_counter() - t_start
 
     print(f"\n[*] Batch sieve done in {t_sieve:.2f}s. Unpacking result and writing windows...")
@@ -880,8 +925,9 @@ if __name__ == "__main__":
     import sys
 
     print("=" * 70)
-    print(f"[*] PRIME SIEVE -- {VERSION} (primesieve, shared mmap buffer, atomic OR, inlined "
-          f"phase modulo, base/sieve/write timing + bytes-written, PGS2 binary output)")
+    print(f"[*] PRIME SIEVE -- {VERSION} (primesieve, shared mmap buffer, segmented + "
+          f"bucketed marking, inlined phase modulo, base/sieve/write timing + bytes-written, "
+          f"PGS2 binary output)")
     print("=" * 70)
 
     # CONSTELLATION_PORTAL_DIR: the GUI's Settings tab lets the user point the whole portal
@@ -933,10 +979,14 @@ if __name__ == "__main__":
     # with no new positional CLI argument threaded through three separate scripts' argv
     # parsing. See count_sieving_primes_cached()'s own docstring for what this flag does.
     USE_KNOWN_PI_SEED = bool(int(os.environ.get("PRIMEATLAS_USE_KNOWN_PI_SEED", "0")))
-    # PRIMEATLAS_V5_SEGMENT_KB: segmented-path segment size, same env-var route.
+    # PRIMEATLAS_V5_SEGMENT_KB / _REGION_KB / _BUCKET_MB: segment size, bucket region size
+    # and bucket memory, same env-var route.
     SEGMENT_KB = work_plan_v5.segment_kb_from_env(os.environ)
+    REGION_KB = work_plan_v5.region_kb_from_env(os.environ)
+    BUCKET_MB = work_plan_v5.bucket_mb_from_env(os.environ)
 
     print("Start time:", datetime.datetime.now().strftime("%H:%M:%S"))
     main_batch_scanner(base_exponent, target_idx_list, WINDOW_M, write_files=WRITE_FILES,
                         compute_sieving_primes_count=COMPUTE_SIEVING_PRIMES_COUNT,
-                        use_known_pi_seed=USE_KNOWN_PI_SEED, segment_kb=SEGMENT_KB)
+                        use_known_pi_seed=USE_KNOWN_PI_SEED, segment_kb=SEGMENT_KB,
+                        region_kb=REGION_KB, bucket_mb=BUCKET_MB)

@@ -95,11 +95,68 @@ def check_segment_setting():
     return passed
 
 
+def check_bucket_setting():
+    passed = True
+    name = work_plan_v5.BUCKET_MB_ENV
+    passed &= check(work_plan_v5.bucket_mb_from_env({}) == work_plan_v5.DEFAULT_BUCKET_MB,
+                    f"{name} unset: default {work_plan_v5.DEFAULT_BUCKET_MB} MiB")
+    passed &= check(work_plan_v5.bucket_mb_from_env({name: "256"}) == 256, f"{name}=256 -> 256")
+    for bad in ("0", "-1", "x", "2.5"):
+        try:
+            work_plan_v5.bucket_mb_from_env({name: bad})
+            raised = False
+        except ValueError:
+            raised = True
+        passed &= check(raised, f"{name}={bad!r} raises ValueError")
+    return passed
+
+
+def check_region_setting():
+    passed = True
+    name = work_plan_v5.REGION_KB_ENV
+    passed &= check(work_plan_v5.region_kb_from_env({}) == work_plan_v5.DEFAULT_REGION_KB,
+                    f"{name} unset: default {work_plan_v5.DEFAULT_REGION_KB} KiB")
+    passed &= check(work_plan_v5.region_kb_from_env({name: "4096"}) == 4096,
+                    f"{name}=4096 -> 4096")
+    passed &= check(work_plan_v5.region_bits(1024) == 2 ** 23, "1024 KiB region = 2^23 bits")
+    for bad in ("0", "-1", "x", "2.5"):
+        try:
+            work_plan_v5.region_kb_from_env({name: bad})
+            raised = False
+        except ValueError:
+            raised = True
+        passed &= check(raised, f"{name}={bad!r} raises ValueError")
+    return passed
+
+
+def check_pieces():
+    passed = True
+    for L_final, size, lo in ((3_162_277_660_169, 5 * 10 ** 10, 1_048_576),
+                              (3_162_277_661, 10 ** 10, 1_048_576), (100_001, 10 ** 10, 8_192)):
+        for n_threads in (1, 24):
+            pieces = work_plan_v5.plan_pieces(L_final, size, lo, n_threads)
+            ok = (1 <= len(pieces) <= n_threads * work_plan_v5.PIECES_PER_THREAD
+                  and pieces[0][0] == lo and pieces[-1][1] == L_final
+                  and all(a < b for a, b in pieces)
+                  and all(a[1] == b[0] for a, b in zip(pieces, pieces[1:])))
+            passed &= check(ok, f"plan_pieces({L_final}, lo={lo}, {n_threads} threads): "
+                                f"{len(pieces)} ascending pieces covering [lo, L_final)")
+    deep = work_plan_v5.plan_pieces(3_162_277_660_169, 5 * 10 ** 10, 1_048_576, 24)
+    passed &= check(len(deep) == 24 * work_plan_v5.PIECES_PER_THREAD,
+                    f"deep floor, 24 threads: {24 * work_plan_v5.PIECES_PER_THREAD} pieces")
+    passed &= check(work_plan_v5.plan_pieces(100_001, 10 ** 10, 100_001, 24) == [],
+                    "plan_pieces with lo = L_final is empty")
+    return passed
+
+
 def main():
     passed = check_slices()
     passed &= check_prime_split()
     passed &= check_batches()
     passed &= check_segment_setting()
+    passed &= check_bucket_setting()
+    passed &= check_region_setting()
+    passed &= check_pieces()
     print("ALL CHECKS PASSED" if passed else "SOME CHECKS FAILED")
     return 0 if passed else 1
 
