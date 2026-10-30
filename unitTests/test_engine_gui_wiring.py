@@ -74,8 +74,14 @@ def main():
         gen = app.generation_tab_widget
         fields = gen._engine_fields
 
-        passed &= check(fields.engine() == engine_options.DEFAULT_ENGINE == "v4.1",
-                        f"default engine is v4.1 ({fields.engine()})")
+        from primeatlas.generation.generation import DEFAULT_GENERATION_SETTINGS
+        default_loop = DEFAULT_GENERATION_SETTINGS["loop"]
+        passed &= check(engine_options.resolve(default_loop).engine
+                        == engine_options.DEFAULT_ENGINE == "v4.1",
+                        "default engine is v4.1")
+        # The app loads the user's persisted settings, which may already select v5.
+        fields.engine_var.set("v4.1")
+        app.update()
         passed &= check(all(str(e.cget("state")) == "disabled" for e in fields._knob_entries),
                         "v5 knob fields are disabled under v4.1")
         passed &= check(gen._quick_width_cap() == 1000

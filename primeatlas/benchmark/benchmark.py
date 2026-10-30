@@ -127,18 +127,35 @@ def read_benchmark_log(portal_folder):
     return fieldnames, rows
 
 
-def benchmark_metric_engines(rows, metric):
-    """Engine of the last valid measurement, matching chart reduction."""
+def _row_engine(row):
+    return row.get("engine") or ("hybrid" if row.get("instance_of_n") == "hybrid" else "unknown")
+
+
+def _latest_engines(rows, row_value):
+    """{base_exponent: engine} of the last row per floor whose row_value(row) is not None
+    -- the same row the matching aggregate_* reduction keeps for its chart point."""
     latest = {}
     for row in rows:
         try:
             floor = int(row.get("base_exponent", ""))
-            value = float(row.get(metric, ""))
         except (TypeError, ValueError):
             continue
-        if not math.isnan(value):
-            latest[floor] = row.get("engine") or ("hybrid" if row.get("instance_of_n") == "hybrid" else "unknown")
+        if row_value(row) is not None:
+            latest[floor] = _row_engine(row)
     return latest
+
+
+def _metric_value(row, metric):
+    try:
+        value = float(row.get(metric, ""))
+    except (TypeError, ValueError):
+        return None
+    return None if math.isnan(value) else value
+
+
+def benchmark_metric_engines(rows, metric):
+    """Engine of the last valid measurement, matching chart reduction."""
+    return _latest_engines(rows, lambda row: _metric_value(row, metric))
 
 
 def aggregate_benchmark_growth(rows):
@@ -232,39 +249,62 @@ def aggregate_benchmark_sieve_nps(rows):
     Older Atlas rows lacking recoverable counts remain in the table and report,
     marked unavailable by sieve_count_basis, but have no sieve throughput point.
     """
+    return _aggregate_last_per_floor(rows, _row_sieve_nps)
+
+
+def _row_sieve_nps(row):
+    try:
+        sieve_seconds = float(row.get("sieve_seconds", ""))
+    except (TypeError, ValueError):
+        return None
+    numbers_processed, _ = benchmark_sieve_count(row)
+    if not math.isfinite(sieve_seconds) or sieve_seconds <= 0 or numbers_processed is None:
+        return None
+    return numbers_processed / sieve_seconds
+
+
+def _row_write_mbps(row):
+    try:
+        bytes_written = float(row.get("bytes_written", ""))
+        write_seconds = float(row.get("write_seconds", ""))
+    except (TypeError, ValueError):
+        return None
+    if write_seconds <= 0 or math.isnan(write_seconds) or math.isnan(bytes_written):
+        return None
+    return bytes_written / write_seconds / 1e6
+
+
+def _aggregate_last_per_floor(rows, row_value):
     latest = {}
     for row in rows:
         try:
             base_exponent = int(row.get("base_exponent", ""))
-            sieve_seconds = float(row.get("sieve_seconds", ""))
-            numbers_processed, _ = benchmark_sieve_count(row)
         except (TypeError, ValueError):
             continue
-        if not math.isfinite(sieve_seconds) or sieve_seconds <= 0 or numbers_processed is None:
-            continue
-        latest[base_exponent] = numbers_processed / sieve_seconds
+        value = row_value(row)
+        if value is not None:
+            latest[base_exponent] = value
     return sorted(latest.items())
+
+
+def benchmark_sieve_engines(rows):
+    """{base_exponent: engine} for the points of aggregate_benchmark_sieve_nps()."""
+    return _latest_engines(rows, _row_sieve_nps)
+
+
+def benchmark_write_engines(rows):
+    """{base_exponent: engine} for the points of aggregate_benchmark_write_mbps()."""
+    return _latest_engines(rows, _row_write_mbps)
 
 
 def aggregate_benchmark_write_mbps(rows):
     """Same reduction as aggregate_benchmark_sieve_nps() (last row per floor wins, only
-    prime_sieve_v4_1.py rows have this data, missing/unparseable/non-positive values
+    v4.1 and v5 engine rows have this data, missing/unparseable/non-positive values
     skipped), but for the disk-write phase: bytes_written / write_seconds, in MB/s -- the
     same figure orchestrator_v3.py's print_benchmark_summary() already prints inline next
     to 'write {write_seconds}s', just aggregated per floor here for the chart/PDF. Returns
     (base_exponent, write_mb_per_second) pairs sorted ascending by base_exponent."""
-    latest = {}
-    for row in rows:
-        try:
-            base_exponent = int(row.get("base_exponent", ""))
-            bytes_written = float(row.get("bytes_written", ""))
-            write_seconds = float(row.get("write_seconds", ""))
-        except (TypeError, ValueError):
-            continue
-        if write_seconds <= 0 or math.isnan(write_seconds) or math.isnan(bytes_written):
-            continue
-        latest[base_exponent] = bytes_written / write_seconds / 1e6
-    return sorted(latest.items())
+    return _aggregate_last_per_floor(rows, _row_write_mbps)
 
 
 def group_benchmark_rows_by_floor(rows):
@@ -310,9 +350,14 @@ def benchmark_row_stats(rows):
     }
 
 
+def _pdf_engine_tag(engines, floor):
+    engine = (engines or {}).get(floor, "unknown")
+    return "" if engine == "unknown" else " [" + engine + "]"
+
+
 def _pdf_chart_ops(points, x0, y0, w, h, points2=None, translator=None,
                     label_key1="bench.axis_nps", label_key2="bench.axis_spw",
-                    fmt1="{:,.0f}", fmt2="{:,.3f}", engines=None):
+                    fmt1="{:,.0f}", fmt2="{:,.3f}", engines=None, engines2=None):
     """Returns PDF content-stream ops drawing a (floor, primary-series) growth chart as
     benchmark_tab.py's own _draw_growth_chart() (same axis/tick/point layout logic),
     inside the box [x0, x0+w] x [y0, y0+h] in PDF's bottom-left-origin point space --
@@ -344,7 +389,11 @@ def _pdf_chart_ops(points, x0, y0, w, h, points2=None, translator=None,
     label_key1/label_key2 resolve to, see _draw_growth_chart()) instead of separate
     hardcoded PDF text, then ASCII-fold the result (see _pdf_ascii_fold()), so every axis
     label tracks the app's actual language selection instead of a fixed one. Defaults to
-    DEFAULT_LANGUAGE if not given (e.g. direct/test calls)."""
+    DEFAULT_LANGUAGE if not given (e.g. direct/test calls).
+
+    engines/engines2 (optional): {base_exponent: engine} for each series; a known engine
+    is appended to the point's value label as " [v5]". "unknown" adds no tag: it carries
+    no information and every legacy point would repeat it."""
     t = (translator or Translator(DEFAULT_LANGUAGE)).t
     points = points or []
     points2 = points2 or []
@@ -444,7 +493,8 @@ def _pdf_chart_ops(points, x0, y0, w, h, points2=None, translator=None,
         for x_val, y_val in points:
             cx, cy = sx(x_val), sy(y_val)
             ops.append(_pdf_dot_op(cx, cy, 2.5, rgb=(0.11, 0.37, 0.66)))
-            ops.append(_pdf_text_op(cx - 10, cy + 8, 7, "Courier", fmt1.format(y_val) + (" [" + engines.get(x_val, "unknown") + "]" if engines else "")))
+            ops.append(_pdf_text_op(cx - 10, cy + 8, 7, "Courier",
+                                     fmt1.format(y_val) + _pdf_engine_tag(engines, x_val)))
 
     if has_secondary:
         if len(points2) > 1:
@@ -454,7 +504,9 @@ def _pdf_chart_ops(points, x0, y0, w, h, points2=None, translator=None,
         for x_val, y_val in points2:
             cx, cy = sx(x_val), sy2(y_val)
             ops.append(_pdf_dot_op(cx, cy, 2.5, rgb=red))
-            ops.append(_pdf_text_op(cx - 12, cy - 14, 7, "Courier", fmt2.format(y_val), rgb=red))
+            ops.append(_pdf_text_op(cx - 12, cy - 14, 7, "Courier",
+                                     fmt2.format(y_val) + _pdf_engine_tag(engines2, x_val),
+                                     rgb=red))
 
     return ops
 
@@ -475,7 +527,7 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
 
     sieve_points/write_points (optional): the sieve-numbers/s and write-MB/s series from
     aggregate_benchmark_sieve_nps()/aggregate_benchmark_write_mbps() -- only populated for
-    floors benchmarked with prime_sieve_v4_1.py. A SECOND chart, same layout as the
+    floors benchmarked with the v4.1 or v5 engine. A SECOND chart, same layout as the
     primary one, is only drawn (taking space away from the table below it) when at
     least one of the two is non-empty, rather than reserving blank chart space no data
     will fill.
@@ -545,7 +597,8 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
     chart_y0 = chart_top - chart_h
     ops.extend(_pdf_chart_ops(points, content_left, chart_y0, content_width, chart_h,
                                points2=points2, translator=translator,
-                               engines=benchmark_metric_engines(rows, "loop_numbers_per_second")))
+                               engines=benchmark_metric_engines(rows, "loop_numbers_per_second"),
+                               engines2=benchmark_metric_engines(rows, "loop_seconds_per_window")))
 
     if has_speed_chart:
         chart2_h = 140
@@ -555,7 +608,8 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
             sieve_points, content_left, chart2_y0, content_width, chart2_h,
             points2=write_points, translator=translator,
             label_key1="bench.axis_sieve_nps", label_key2="bench.axis_write_mbps",
-            fmt1="{:,.0f}", fmt2="{:,.1f}"))
+            fmt1="{:,.0f}", fmt2="{:,.1f}",
+            engines=benchmark_sieve_engines(rows), engines2=benchmark_write_engines(rows)))
         table_top = chart2_y0 - 12
     else:
         table_top = chart_y0 - 12

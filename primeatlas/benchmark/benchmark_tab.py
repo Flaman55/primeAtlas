@@ -38,6 +38,7 @@ from .benchmark import (
     _order_benchmark_tree_columns, aggregate_benchmark_fair_spw,
     aggregate_benchmark_growth, aggregate_benchmark_sieve_nps,
     aggregate_benchmark_write_mbps, benchmark_row_stats, benchmark_metric_engines,
+    benchmark_sieve_engines, benchmark_write_engines,
     group_benchmark_rows_by_floor, read_benchmark_log, render_benchmark_pdf,
 )
 from ..core.i18n import Translator, DEFAULT_LANGUAGE
@@ -199,10 +200,16 @@ def _bind_chart_hover(canvas, hover_points, t, fg_color, bg_color, width, height
     canvas.bind("<Leave>", _on_leave)
 
 
+def _engine_tag(engines, floor):
+    """" [engine]" appended to a hover value, or "" when the chart passes no engines."""
+    return " [" + engines.get(floor, "unknown") + "]" if engines else ""
+
+
 def _draw_growth_chart(canvas, points, width, height, points2=None, translator=None,
                         label_key1="bench.axis_nps", label_key2="bench.axis_spw",
                         fmt1="{:,.0f}", fmt2="{:,.3f}",
-                        bg_color="#ffffff", fg_color="#000000", grid_color="#666666", engines=None):
+                        bg_color="#ffffff", fg_color="#000000", grid_color="#666666", engines=None,
+                        engines2=None):
     """Draws (base_exponent, primary-series) points onto `canvas` as a simple axes +
     connected-scatter chart -- x = floor depth, y = the primary series (by default numbers
     swept per second, real session-level wall-clock throughput, higher is better). Plain
@@ -360,7 +367,8 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
         for x_val, y_val in points:
             cx, cy = sx(x_val), sy(y_val)
             canvas.create_oval(cx - r, cy - r, cx + r, cy + r, fill="#1c5fa8", outline="")
-            hover_points.append((cx, cy, x_val, y_val, fmt1 + (" [" + engines.get(x_val, "unknown") + "]" if engines else ""), "#1c5fa8", label_key1))
+            hover_points.append((cx, cy, x_val, y_val, fmt1 + _engine_tag(engines, x_val),
+                                 "#1c5fa8", label_key1))
 
     if has_secondary:
         if len(points2) > 1:
@@ -373,7 +381,8 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
         for x_val, y_val in points2:
             cx, cy = sx(x_val), sy2(y_val)
             canvas.create_oval(cx - r, cy - r, cx + r, cy + r, fill="#c0504d", outline="")
-            hover_points.append((cx, cy, x_val, y_val, fmt2, "#c0504d", label_key2))
+            hover_points.append((cx, cy, x_val, y_val, fmt2 + _engine_tag(engines2, x_val),
+                                 "#c0504d", label_key2))
 
     _bind_chart_hover(canvas, hover_points, t, fg_color, bg_color, width, height)
 
@@ -425,7 +434,7 @@ class BenchmarkTab(BaseTab):
         self.benchmark_chart.bind("<Configure>", lambda _e: self._redraw_benchmark_chart())
 
         # Second chart: sieve-numbers/s + write-MB/s -- the phase-breakdown counterpart
-        # to the growth chart above, populated only from prime_sieve_v4_1.py rows (see
+        # to the growth chart above, populated only from v4.1 and v5 engine rows (see
         # aggregate_benchmark_sieve_nps()/aggregate_benchmark_write_mbps()). Always
         # visible, same as the first chart -- _draw_growth_chart() already shows its own
         # "no data yet" placeholder when both series are empty, so a project that hasn't
@@ -505,10 +514,10 @@ class BenchmarkTab(BaseTab):
         self._benchmark_growth_points = []
         self._benchmark_fair_spw_points = []  # loop_seconds_per_window, second chart line
         self._benchmark_sieve_nps_points = []   # sieve-phase numbers/s, second CHART's
-                                                 # primary line (prime_sieve_v4_1.py rows
+                                                 # primary line (v4.1 and v5 engine rows
                                                  # only -- see aggregate_benchmark_sieve_nps)
         self._benchmark_write_mbps_points = []  # write-phase MB/s, second chart's
-                                                 # secondary line (same v4.1-only caveat)
+                                                 # secondary line (same v4.1/v5-only caveat)
         self._benchmark_fieldnames = []  # kept in sync by reload_benchmark_log() --
         self._benchmark_tree_fieldnames = []  # same, minus BENCHMARK_TREE_HIDDEN_COLUMNS
                                           # -- what the tree itself actually displays
@@ -544,6 +553,7 @@ class BenchmarkTab(BaseTab):
         _draw_growth_chart(self.benchmark_chart, self._benchmark_growth_points, width, height,
                             points2=self._benchmark_fair_spw_points, translator=self.T,
                             engines=benchmark_metric_engines(self._benchmark_rows, "loop_numbers_per_second"),
+                            engines2=benchmark_metric_engines(self._benchmark_rows, "loop_seconds_per_window"),
                             bg_color=p["console_bg"], fg_color=p["console_fg"],
                             grid_color=p["border"])
 
@@ -563,6 +573,8 @@ class BenchmarkTab(BaseTab):
                             label_key1="bench.axis_sieve_nps",
                             label_key2="bench.axis_write_mbps",
                             fmt1="{:,.0f}", fmt2="{:,.1f}", translator=self.T,
+                            engines=benchmark_sieve_engines(self._benchmark_rows),
+                            engines2=benchmark_write_engines(self._benchmark_rows),
                             bg_color=p["console_bg"], fg_color=p["console_fg"],
                             grid_color=p["border"])
 

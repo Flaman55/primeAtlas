@@ -580,7 +580,7 @@
   "bench.axis_floor": "floor (10^N)",
   "bench.axis_nps": "n / s",
   "bench.axis_spw": "s / window",
-  "bench.chart2_hint": "   Phase breakdown (sieve / write) -- prime_sieve_v4_1.py measurements only",
+  "bench.chart2_hint": "   Phase breakdown (sieve / write) -- v4.1 and v5 engines, engine of each point in [ ]",
   "bench.axis_sieve_nps": "sieve: n / s",
   "bench.axis_write_mbps": "write: MB / s",
   "bench.pdf_title": "Benchmark report -- PrimeAtlas",

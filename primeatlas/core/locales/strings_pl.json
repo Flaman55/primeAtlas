@@ -580,7 +580,7 @@
   "bench.axis_floor": "piętro (10^N)",
   "bench.axis_nps": "n / s",
   "bench.axis_spw": "s / okno",
-  "bench.chart2_hint": "   Rozbicie na fazy (sito / zapis) -- tylko pomiary z prime_sieve_v4_1.py",
+  "bench.chart2_hint": "   Rozbicie na fazy (sito / zapis) -- silniki v4.1 i v5, silnik punktu w [ ]",
   "bench.axis_sieve_nps": "sito: n / s",
   "bench.axis_write_mbps": "zapis: MB / s",
   "bench.pdf_title": "Raport benchmarku -- PrimeAtlas",
