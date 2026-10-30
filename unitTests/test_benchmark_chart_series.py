@@ -195,6 +195,59 @@ class PdfTests(unittest.TestCase):
         self.assertIn("(1e8) Tj", toggled)
 
 
+class LineToggleTests(unittest.TestCase):
+    """Each line (series x axis) of a chart can be hidden from its legend on its own."""
+
+    def setUp(self):
+        self.left = chart_series.engine_series({"v5": [(20, 1.0)], "v4.1": [(20, 2.0)]})
+        self.right = chart_series.engine_series({"v5": [(20, 3.0)], "unknown": [(9, 1.0)]})
+        self.refs = reference_points.reference_series(Translator("en").t)
+
+    def test_legend_entries_name_the_axes_of_each_series(self):
+        entries = chart_series.legend_entries(self.left + self.refs, self.right)
+        self.assertEqual([(s.name, axes) for s, axes in entries][:3],
+                         [("unknown", ("secondary",)), ("v4.1", ("primary",)),
+                          ("v5", ("primary", "secondary"))])
+        self.assertEqual([(s.name, axes) for s, axes in entries][3:],
+                         [(r.name, ("primary",)) for r in self.refs])
+
+    def test_visible_series_drop_hidden_lines_of_that_axis_only(self):
+        hidden = {chart_series.line_key("primary", "v5")}
+        self.assertEqual([s.name for s in chart_series.visible_series(self.left, hidden, "primary")],
+                         ["v4.1"])
+        self.assertEqual([s.name for s in
+                          chart_series.visible_series(self.right, hidden, "secondary")],
+                         ["unknown", "v5"])
+        self.assertEqual(chart_series.visible_series(self.left, None, "primary"), self.left)
+
+    def test_toggle_hides_all_or_shows_all(self):
+        both = [chart_series.line_key("primary", "v5"), chart_series.line_key("secondary", "v5")]
+        hidden = chart_series.toggle_lines(set(), both[:1])
+        self.assertEqual(hidden, set(both[:1]))
+        # A name click with one line hidden hides the other one too, then shows both.
+        hidden = chart_series.toggle_lines(hidden, both)
+        self.assertEqual(hidden, set(both))
+        self.assertEqual(chart_series.toggle_lines(hidden, both), set())
+        self.assertEqual(chart_series.toggle_lines(set(both), both[1:]), set(both[:1]))
+
+    def test_report_leaves_out_hidden_lines(self):
+        rows = ROWS
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "report.pdf"
+            benchmark.render_benchmark_pdf(
+                str(path), benchmark.aggregate_benchmark_growth(rows), ["base_exponent"], rows,
+                sieve_points=benchmark.aggregate_benchmark_sieve_nps(rows), references=True,
+                hidden_lines={"sieve": {chart_series.line_key("primary", "v5"),
+                                        chart_series.line_key("primary",
+                                                              self.refs[0].name)}})
+            text = path.read_bytes().decode("latin-1")
+        self.assertNotIn("(200 [v5]) Tj", text)          # sieve n/s of v5: hidden
+        self.assertIn("(0.0500 [v5]) Tj", text)          # its sieve s/window: shown
+        self.assertIn("(350,000,000 [v5]) Tj", text)     # whole-run chart: untouched
+        self.assertNotIn("[" + self.refs[0].tag + "]) Tj", text)
+        self.assertIn("[" + self.refs[1].tag + "]) Tj", text)
+
+
 class TabTests(unittest.TestCase):
     def test_tab_hover_toggles_and_pdf_export(self):
         import tkinter as tk
@@ -266,6 +319,53 @@ class TabTests(unittest.TestCase):
                 text = Path(pdf_path).read_bytes().decode("latin-1")
                 self.assertIn("PARI/GP forprime", text)
                 self.assertIn("(1e8) Tj", text)
+
+                # Legend clicks: the circle hides v5's left-axis line, the square its
+                # right-axis line, the name toggles both; the other chart keeps its lines.
+                tab.references_var.set(False)
+                tab.log_scale_var.set(False)
+                root.update()  # synthetic clicks reach canvas items only once mapped
+                tab._redraw_charts()
+
+                def click(canvas, tag):
+                    items = canvas.find_withtag(tag)
+                    self.assertTrue(items, tag)
+                    x1, y1, x2, y2 = canvas.bbox(items[0])
+                    canvas.event_generate("<Motion>", x=(x1 + x2) // 2, y=(y1 + y2) // 2)
+                    canvas.event_generate("<Button-1>", x=(x1 + x2) // 2, y=(y1 + y2) // 2)
+                    root.update()
+
+                def v5_hover(canvas):
+                    return sorted(p[6] for p in captured.get(str(canvas), [])
+                                  if p[4].endswith("[v5]"))
+
+                self.assertEqual(v5_hover(chart2), ["bench.axis_sieve_nps"] * 2
+                                 + ["bench.axis_sieve_spw"] * 2)
+                click(chart2, "legend:primary:v5")
+                self.assertEqual(v5_hover(chart2), ["bench.axis_sieve_spw"] * 2)
+                click(chart2, "legend:secondary:v5")
+                self.assertEqual(v5_hover(chart2), [])
+                # Every line hidden: the legend stays, so the lines can come back.
+                click(chart2, "legend:secondary:v4.1")
+                click(chart2, "legend:primary:v4.1")
+                self.assertEqual(captured.get(str(chart2)), [])
+                self.assertTrue(chart2.find_withtag("legend:name:v5"))
+                hint = [chart2.itemcget(i, "text") for i in chart2.find_all()
+                        if chart2.type(i) == "text"]
+                self.assertIn(Translator("en").t("bench.all_lines_hidden"), hint)
+                click(chart2, "legend:name:v5")
+                self.assertEqual(len(v5_hover(chart2)), 4)
+                self.assertEqual(len([p for p in captured[str(tab.benchmark_chart)]
+                                      if p[4].endswith("[v5]")]), 3)
+                # Hidden lines survive a reload and leave the PDF.
+                tab.reload_benchmark_log()
+                tab._redraw_charts()
+                self.assertFalse(any(p[4].endswith("[v4.1]")
+                                     for p in captured.get(str(chart2), [])))
+                tab._export_benchmark_pdf()
+                text = Path(pdf_path).read_bytes().decode("latin-1")
+                self.assertIn("(200 [v5]) Tj", text)
+                self.assertNotIn("(100 [v4.1]) Tj", text)
             finally:
                 root.destroy()
                 benchmark_tab._bind_chart_hover = original_hover

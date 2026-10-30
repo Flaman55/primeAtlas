@@ -6,7 +6,8 @@ axes; the renderers tell the axes apart by marker and line weight (primary: circ
 line; secondary: squares, thin line). Reference series (reference_points.py) are drawn
 dashed with hollow markers on the primary axis. Hues are far apart in RGB and readable on
 the light and dark theme backgrounds. YScale maps values to a 0..1 fraction of the plot
-height, linear from zero or log10 fitted to the data.
+height, linear from zero or log10 fitted to the data. A line is one series on one axis;
+each one can be hidden on its own (line_key(), a set of hidden keys per chart).
 No tkinter here: benchmark_tab.py and benchmark.py both render from these objects.
 """
 import math
@@ -65,6 +66,30 @@ def legend_series(*series_lists):
             seen.add(s.name)
             out.append(s)
     return sorted(out, key=lambda s: (s.dashed, (0, "") if s.dashed else _engine_rank(s.name)))
+
+
+def legend_entries(series1, series2):
+    """[(Series, axes)] in legend_series() order; axes: the axes the series has a line on,
+    ("primary",), ("secondary",) or both, so the legend offers one toggle per line."""
+    names = {"primary": {s.name for s in series1}, "secondary": {s.name for s in series2}}
+    return [(s, tuple(axis for axis in ("primary", "secondary") if s.name in names[axis]))
+            for s in legend_series(series1, series2)]
+
+
+def line_key(axis, name):
+    """The key of one line in a chart's set of hidden lines."""
+    return (axis, name)
+
+
+def visible_series(series, hidden, axis):
+    """series without the lines in `hidden` (a set of line_key(); None for none)."""
+    return [s for s in series if not hidden or line_key(axis, s.name) not in hidden]
+
+
+def toggle_lines(hidden, keys):
+    """A new hidden set: all `keys` shown when all of them are hidden, else all hidden."""
+    keys = set(keys)
+    return set(hidden) - keys if keys <= set(hidden) else set(hidden) | keys
 
 
 def series_xs(*series_lists):

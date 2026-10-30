@@ -26,6 +26,7 @@ than being duplicated or promoted to its own module just for this one extraction
 is passed in exactly like SettingsTab's wsl_helpers callables are.
 """
 import datetime
+import re
 
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
@@ -42,7 +43,8 @@ from .benchmark import (
 )
 from ..core.i18n import Translator, DEFAULT_LANGUAGE
 from .chart_series import (
-    engine_series, legend_series, plain_series, point_label, series_xs, y_scale,
+    engine_series, legend_entries, line_key, plain_series, point_label, series_xs,
+    toggle_lines, visible_series, y_scale,
 )
 from .reference_points import reference_series
 
@@ -210,11 +212,54 @@ def _mix(color_a, color_b):
     return "#" + "".join("%02x" % ((x + y) // 2) for x, y in zip(a, b))
 
 
+def _legend_tag(kind, name):
+    """Canvas tag of a legend item; tag searches parse spaces and parentheses, so the
+    series name is reduced to word characters and dots."""
+    return "legend:%s:%s" % (kind, re.sub(r"[^\w.]", "_", name))
+
+
+def _draw_legend(canvas, entries, hidden, on_toggle, x, bg_color, dim_color):
+    """One entry per series along the top edge: a marker per line (circle: left axis,
+    square: right axis) and the name. With on_toggle, a marker click toggles its line and a
+    name click all lines of the series: on_toggle([line_key, ...]). A hidden line's marker
+    is a hollow dim outline; a name whose lines are all hidden is dim."""
+    font = ("Consolas", 8, "bold")
+    r, y = 4, 10
+    for s, axes in entries:
+        keys = [line_key(axis, s.name) for axis in axes]
+        for axis, key in zip(axes, keys):
+            off = key in hidden
+            tag = _legend_tag(axis, s.name)
+            # The background box widens the click target beyond the 8 px marker.
+            canvas.create_rectangle(x, y - 8, x + 14, y + 8, fill=bg_color, outline="",
+                                    tags=("legend", tag))
+            color = dim_color if off else s.color
+            fill = bg_color if off or s.dashed else s.color
+            shape = canvas.create_rectangle if axis == "secondary" else canvas.create_oval
+            shape(x + 7 - r, y - r, x + 7 + r, y + r, outline=color, fill=fill,
+                  width=2 if off or s.dashed else 0, tags=("legend", tag))
+            if on_toggle:
+                canvas.tag_bind(tag, "<Button-1>", lambda _e, k=key: on_toggle([k]))
+            x += 14
+        tag = _legend_tag("name", s.name)
+        text_id = canvas.create_text(x + 3, y, text=s.name, anchor="w", font=font,
+                                     fill=dim_color if all(k in hidden for k in keys)
+                                     else s.color, tags=("legend", tag))
+        if on_toggle:
+            canvas.tag_bind(tag, "<Button-1>", lambda _e, k=keys: on_toggle(k))
+        bbox = canvas.bbox(text_id)
+        x = (bbox[2] if bbox else x + 60) + 16
+    if on_toggle:
+        canvas.tag_bind("legend", "<Enter>", lambda _e: canvas.configure(cursor="hand2"))
+        canvas.tag_bind("legend", "<Leave>", lambda _e: canvas.configure(cursor=""))
+
+
 def _draw_growth_chart(canvas, points, width, height, points2=None, translator=None,
                         label_key1="bench.axis_nps", label_key2="bench.axis_spw",
                         fmt1="{:,.0f}", fmt2="{:,.3f}",
                         bg_color="#ffffff", fg_color="#000000", grid_color="#666666",
-                        series1=None, series2=None, log_y=False):
+                        series1=None, series2=None, log_y=False, hidden=None,
+                        on_toggle=None):
     """Draws a floor-depth chart onto `canvas`: x = floor, y = one or two axes of
     chart_series.Series (one line per engine, plus dashed reference lines). Plain
     tk.Canvas drawing, no charting library: the app is zero-extra-installs. Clears the
@@ -226,7 +271,11 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
     log_y), since the two series differ by orders of magnitude. An engine keeps its color on
     both axes: left-axis points are circles on a thick line, right-axis points squares on a
     thin line, and the axis titles carry the same marker. Named series get one legend entry
-    each along the top edge; a point's value and series tag show in a hover tooltip.
+    each along the top edge (_draw_legend); a point's value and series tag show in a hover
+    tooltip.
+
+    hidden: set of chart_series.line_key() left out of the plot and its scales; their
+    legend markers stay, so on_toggle (the legend's click callback) can bring them back.
 
     label_key1/label_key2/fmt1/fmt2: same meaning as chart_pdf.chart_ops()'s parameters, so
     the PDF and this chart stay consistent. translator: a primeatlas.core.i18n.Translator,
@@ -243,6 +292,17 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
     if not series1 and not series2:
         canvas.create_text(width / 2, height / 2, text=t("bench.no_data_chart"),
                             fill="#888888")
+        return
+    hidden = hidden or set()
+    # A fixed legend origin keeps every toggle under the pointer while the axes refit.
+    _draw_legend(canvas, legend_entries(series1, series2), hidden, on_toggle, 50, bg_color,
+                 _mix(bg_color, grid_color))
+    series1 = visible_series(series1, hidden, "primary")
+    series2 = visible_series(series2, hidden, "secondary")
+    if not series1 and not series2:
+        canvas.create_text(width / 2, height / 2, text=t("bench.all_lines_hidden"),
+                            fill="#888888")
+        _bind_chart_hover(canvas, [], t, fg_color, bg_color, width, height)
         return
 
     has_secondary = bool(series2)
@@ -324,18 +384,6 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
         canvas.create_text(width - 4, pad_top - 10, text=t(label_key2) + " \u25a0", anchor="se",
                             font=("Consolas", 8, "bold"), fill=fg_color)
 
-    legend_font = ("Consolas", 8, "bold")
-    legend_x = pad_left
-    for s in legend_series(series1, series2):
-        canvas.create_line(legend_x, 10, legend_x + 18, 10, fill=s.color, width=2,
-                            dash=(4, 2) if s.dashed else None)
-        canvas.create_oval(legend_x + 5, 6, legend_x + 13, 14, outline=s.color, width=2,
-                            fill=bg_color if s.dashed else s.color)
-        text_id = canvas.create_text(legend_x + 22, 10, text=s.name, anchor="w",
-                                      font=legend_font, fill=s.color)
-        bbox = canvas.bbox(text_id)
-        legend_x = (bbox[2] if bbox else legend_x + 60) + 16
-
     # Values show in one hover tooltip (_bind_chart_hover): permanent per-point labels
     # overlap into an unreadable smear on dense series.
     hover_points = []
@@ -400,7 +448,9 @@ class BenchmarkTab(BaseTab):
         ttk.Button(top, text=T("bench.save_pdf"), command=self._export_benchmark_pdf).pack(
             side="left", padx=(6, 0))
         ttk.Label(top, text=T("bench.chart_hint")).pack(side="left")
-        # Chart view toggles, kept for the session only; the PDF export follows them.
+        # Chart view toggles, kept for the session only; the PDF export follows them, and
+        # the lines hidden from each chart's legend ({chart: set of line_key()}).
+        self._hidden_lines = {"run": set(), "sieve": set()}
         self.log_scale_var = tk.BooleanVar(value=False)
         self.references_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(top, text=T("bench.log_scale"), variable=self.log_scale_var,
@@ -547,6 +597,8 @@ class BenchmarkTab(BaseTab):
                             series1=self._chart_series("growth"),
                             series2=self._chart_series("write"),
                             log_y=self.log_scale_var.get(),
+                            hidden=self._hidden_lines["run"],
+                            on_toggle=lambda keys: self._toggle_lines("run", keys),
                             bg_color=p["console_bg"], fg_color=p["console_fg"],
                             grid_color=p["border"])
 
@@ -558,6 +610,14 @@ class BenchmarkTab(BaseTab):
         if references and self.references_var.get():
             series += reference_series(self.T)
         return series
+
+    def _toggle_lines(self, chart, keys):
+        """Legend click on the "run" or "sieve" chart: hides or shows those lines."""
+        self._hidden_lines[chart] = toggle_lines(self._hidden_lines[chart], keys)
+        if chart == "run":
+            self._redraw_benchmark_chart()
+        else:
+            self._redraw_benchmark_chart2()
 
     def _redraw_charts(self):
         self._redraw_benchmark_chart()
@@ -581,6 +641,8 @@ class BenchmarkTab(BaseTab):
                             series1=self._chart_series("sieve", references=True),
                             series2=self._chart_series("sieve_spw"),
                             log_y=self.log_scale_var.get(),
+                            hidden=self._hidden_lines["sieve"],
+                            on_toggle=lambda keys: self._toggle_lines("sieve", keys),
                             bg_color=p["console_bg"], fg_color=p["console_fg"],
                             grid_color=p["border"])
 
@@ -779,7 +841,8 @@ class BenchmarkTab(BaseTab):
                                   sieve_points=self._benchmark_sieve_nps_points,
                                   write_points=self._benchmark_write_mbps_points,
                                   references=self.references_var.get(),
-                                  log_y=self.log_scale_var.get())
+                                  log_y=self.log_scale_var.get(),
+                                  hidden_lines=self._hidden_lines)
         except Exception as exc:
             messagebox.showerror(T("bench.save_pdf"), T("bench.save_error", error=exc))
             return

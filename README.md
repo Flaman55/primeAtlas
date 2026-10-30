@@ -192,8 +192,9 @@ interchangeable engine generations, v3/v4/v4.1 -- see "Architecture" below).
   every point names its engine. Two toggles add reference points of well-known tools to
   the sieve chart (PARI/GP `forprime` and its sieving patch, primesieve: they sieve or
   iterate in memory and write nothing; published results plus one own measurement, each
-  with its source) and a log10 y-axis fitted to the data range; the PDF export follows
-  both. The progress bar shown during a generation
+  with its source) and a log10 y-axis fitted to the data range. The legend switches each
+  line on its own (circle: left-axis line, square: right-axis line, name: both), and the
+  axes refit to the lines left; the PDF export follows the toggles and the hidden lines. The progress bar shown during a generation
   run models the whole pipeline as a sequence of steps (prep, then each sieve batch,
   then done) rather than only moving during the sieve phase and sitting empty through prep.
 - **Research (Badania)** -- an inner notebook of five sub-tabs, grouped by shared
@@ -1684,7 +1685,8 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               benchmark.py below is the pure-logic backend)
   benchmark.py                  reading/normalizing benchmark_log.csv rows
   chart_series.py               chart Series (one color per engine), linear/log
-                              y-scales -- shared by the canvas and the PDF renderer
+                              y-scales, per-line hide/show keys -- shared by the
+                              canvas and the PDF renderer
   chart_pdf.py                  PDF content ops of one Benchmark chart (axes, lines,
                               value labels with engine tags, legend)
   reference_points.py           reference throughput of PARI/GP and primesieve with

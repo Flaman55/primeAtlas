@@ -33,7 +33,7 @@ import re
 from ..core.i18n import Translator, DEFAULT_LANGUAGE
 from ..core.pdf_writer import _pdf_ascii_fold, _pdf_rect_op, _pdf_text_op, _write_pdf
 from .chart_pdf import chart_ops
-from .chart_series import engine_lines, engine_series
+from .chart_series import engine_lines, engine_series, visible_series
 from .reference_points import REFERENCES, reference_series
 
 QUICK_GEN_MAX_WINDOW_WIDTH = 10_000_000  # see this module's own docstring for why this
@@ -355,7 +355,7 @@ def benchmark_row_stats(rows):
 
 def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translator=None,
                           sieve_points=None, write_points=None, references=False,
-                          log_y=False):
+                          log_y=False, hidden_lines=None):
     """Writes a standalone PDF report -- the same growth chart(s) shown in the Benchmark tab
     plus the FULL benchmark_log.csv table (every row, every column) -- to `path`. The table
     continues onto as many additional (landscape A4) pages as needed, repeating the column
@@ -375,6 +375,8 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
     primesieve sieve or iterate in memory and write nothing, so they compare with the sieve
     phase -- with a footnote line per reference (full name and source) above the table.
     log_y: log10 y-axes on both charts -- the Benchmark tab's two toggles.
+    hidden_lines: {"run" | "sieve": set of chart_series.line_key()} -- the lines switched
+    off in the tab's legends, left out of the charts and their scales.
 
     sieve_points (optional): aggregate_benchmark_sieve_nps(), only populated for floors
     benchmarked with the v4.1 or v5 engine. The sieve chart takes space away from the
@@ -444,9 +446,16 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
     chart_h = 140 if has_speed_chart else 180
     chart_top = content_top - 40
     chart_y0 = chart_top - chart_h
+    hidden_lines = hidden_lines or {}
+
+    def shown(series, chart, axis):
+        return visible_series(series, hidden_lines.get(chart), axis)
+
     ops.extend(chart_ops(content_left, chart_y0, content_width, chart_h,
-                         engine_series(benchmark_engine_lines(rows, "growth")),
-                         engine_series(benchmark_engine_lines(rows, "write")),
+                         shown(engine_series(benchmark_engine_lines(rows, "growth")),
+                               "run", "primary"),
+                         shown(engine_series(benchmark_engine_lines(rows, "write")),
+                               "run", "secondary"),
                          translator=translator,
                          label_key1="bench.axis_total_nps", label_key2="bench.axis_write_mbps",
                          fmt1="{:,.0f}", fmt2="{:,.1f}", log_y=log_y))
@@ -459,8 +468,9 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
         if references:
             sieve_series += reference_series(t)
         ops.extend(chart_ops(
-            content_left, chart2_y0, content_width, chart2_h, sieve_series,
-            engine_series(benchmark_engine_lines(rows, "sieve_spw")),
+            content_left, chart2_y0, content_width, chart2_h,
+            shown(sieve_series, "sieve", "primary"),
+            shown(engine_series(benchmark_engine_lines(rows, "sieve_spw")), "sieve", "secondary"),
             translator=translator,
             label_key1="bench.axis_sieve_nps", label_key2="bench.axis_sieve_spw",
             fmt1="{:,.0f}", fmt2="{:,.4f}", log_y=log_y))

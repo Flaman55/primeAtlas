@@ -577,6 +577,7 @@
   "bench.no_data_row": "Brak jeszcze benchmark_log.csv -- najpierw uruchom orchestrator.",
   "bench.floor_measurements": "10p{base_exponent} ({count} pomiar(ów))",
   "bench.no_data_chart": "Brak danych benchmarku",
+  "bench.all_lines_hidden": "Wszystkie linie ukryte -- kliknij legendę, aby je pokazać",
   "bench.axis_floor": "piętro (10^N)",
   "bench.axis_nps": "n / s",
   "bench.axis_spw": "s / okno",
