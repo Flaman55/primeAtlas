@@ -1385,6 +1385,14 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
   hybrid_controls.py            Hybrid mode's own debounced reach-preview/auto-fit UI
                               logic, kept in its own file since it runs its preview
                               calculation off the Tk main thread
+  run_budget.py                 window count (and v5 bucket memory) of one sieve run:
+                              the smaller of a floor-scaled target (v4.1: 1000; v5:
+                              grows with the run's fixed cost, knob = windows at floor
+                              25, default 5000) and what fits in half the RAM free in
+                              WSL (v5 footprint = odd-only buffer + buckets + overhead;
+                              buckets shrink first when RAM is short); the Auto button's
+                              recommended_max_windows delegates here
+                              (unitTests/test_run_budget.py)
 
   primeatlas/visualization/     "Visualization" tab -- a container notebook with one sub-tab
                               per visualization; each sub-tab launches the shared GPU
