@@ -122,7 +122,7 @@ from primeatlas.generation.generation import (  # noqa: E402
     QUICK_GEN_MAX_WINDOW_WIDTH, PRIMESIEVE_MAX_STOP, _eval_quick_number,
     build_loop_argv, build_constellation_finder_argv, build_wsl_logged_command,
     build_primesieve_argv, generation_log_paths, WslLoggedRunner, LocalLoggedRunner,
-    build_pip_install_argv, estimate_wsl_available_ram_bytes, recommended_max_windows,
+    build_pip_install_argv, estimate_wsl_available_ram_bytes,
     find_continuation_target_idx,
     build_cudasieve_status_argv, build_cudasieve_fetch_license_argv,
     build_cudasieve_build_argv, run_cudasieve_wsl_blocking,
@@ -1244,8 +1244,9 @@ def _build_gui():
                 "build_loop_argv": build_loop_argv,
                 "build_constellation_finder_argv": build_constellation_finder_argv,
                 "build_wsl_logged_command":
-                    lambda argv, log_path, exit_path:
-                        build_wsl_logged_command(argv, log_path, exit_path, PORTAL_FOLDER),
+                    lambda argv, log_path, exit_path, extra_env=():
+                        build_wsl_logged_command(argv, log_path, exit_path, PORTAL_FOLDER,
+                                                 extra_env=extra_env),
                 "WslLoggedRunner": WslLoggedRunner,
                 "generation_log_paths": generation_log_paths,
                 # For the restore driver's own RAM-based "auto width" and low-floor
@@ -1255,7 +1256,6 @@ def _build_gui():
                 # (see this method's own docstring).
                 "low_floor_cutoff": LOW_FLOOR_CUTOFF,
                 "estimate_wsl_available_ram_bytes": estimate_wsl_available_ram_bytes,
-                "recommended_max_windows": recommended_max_windows,
                 # Lets the restore driver prefer primesieve mode (much faster,
                 # no RAM-buffer cost) for any floor whose numeric range fits under
                 # libprimesieve's own uint64 ceiling, falling back to the orchestrator

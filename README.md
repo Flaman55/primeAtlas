@@ -1390,9 +1390,24 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               grows with the run's fixed cost, knob = windows at floor
                               25, default 5000) and what fits in half the RAM free in
                               WSL (v5 footprint = odd-only buffer + buckets + overhead;
-                              buckets shrink first when RAM is short); the Auto button's
-                              recommended_max_windows delegates here
+                              buckets shrink first when RAM is short); used through
+                              engine_options.recommend() and by
+                              recommended_max_windows (v4.1)
                               (unitTests/test_run_budget.py)
+  engine_options.py             sieve engine choice (v4.1 / v5) and v5 perf knobs
+                              (segment KiB, bucket region KiB, bucket memory MiB,
+                              windows per run at floor 25) as persisted in the
+                              Generation settings: parsing, per-run window cap (v4.1
+                              1000, v5 100,000), run sizing for the Auto button and
+                              Restore, and the launch env (PRIMEATLAS_SCANNER_VERSION,
+                              PRIMEATLAS_V5_*) that build_wsl_logged_command puts in
+                              front of every orchestrator launch -- the same variables
+                              are the CLI for runs started by hand
+                              (unitTests/test_engine_options.py)
+  engine_fields.py              EngineFields -- the pipeline form's engine Combobox and
+                              v5 knob Entries (disabled under v4.1); the Quick-gen
+                              Width cap follows the selected engine
+                              (unitTests/test_engine_gui_wiring.py)
 
   primeatlas/visualization/     "Visualization" tab -- a container notebook with one sub-tab
                               per visualization; each sub-tab launches the shared GPU
@@ -1789,6 +1804,8 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               or "v5" -- default v4.1) instead of separate settings
                               that could drift out of sync with each other; the env
                               var PRIMEATLAS_SCANNER_VERSION overrides the default
+                              (the Generation tab always sets it from its engine
+                              selector, see engine_options.py)
   orchestrator_loop_v2.py    continuous-run driver
   orchestrator_loop_helpers.py
   hit_paging.py              splits a dense pattern's constellation hit file into
