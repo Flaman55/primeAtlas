@@ -1725,6 +1725,11 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               output identical to v4.1
                               (unitTests/test_engine_v5_identity.py checks every
                               PGS2 file and the run totals against v4.1)
+  engine_v5_lib.py           ctypes binding of prime_sieve_engine_v5.so, loaded
+                              on first use
+  sieving_prime_count_v5.py  pi(L_final) of a v5 run (diagnostic only): libprimesieve
+                              count through the v5 engine, per-floor cache, optional
+                              seed from known pi(10^n) values
   pgs2_vector.py             NumPy PGS2 writer: encodes a window's whole gap stream
                               in one vectorized pass from int64 prime offsets, byte-
                               identical to the per-prime writer

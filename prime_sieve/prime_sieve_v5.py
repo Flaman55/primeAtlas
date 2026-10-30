@@ -12,7 +12,9 @@ from concurrent.futures import ProcessPoolExecutor
 
 import window_sharding
 import work_plan_v5
+from engine_v5_lib import load_lib as _load_lib
 from pgs2_vector import PGS_MAGIC, write_prime_window_offsets
+from sieving_prime_count_v5 import KNOWN_PI_SOURCE_URL, count_sieving_primes_cached
 
 
 VERSION = "v5"     # bump this whenever this file changes, so console output alone identifies
@@ -29,7 +31,7 @@ BATCHES_PER_WORKER = 2    # how many contiguous cost-equal batches per worker
 # cost would otherwise be invisible in the "Batch sieve done" timing. Defaulting this OFF
 # keeps normal runs fast; pass compute_sieving_primes_count=True (main_batch_scanner) / CLI
 # position 7 / "1" to compute it exactly when pi(L_final) is actually wanted (e.g. for the
-# benchmark_log.csv column). See count_sieving_primes_cached() below for the per-floor caching
+# benchmark_log.csv column). See sieving_prime_count_v5.py for the per-floor caching
 # layer that makes repeat requests on the same floor far cheaper than the first one.
 COMPUTE_SIEVING_PRIMES_COUNT = False
 
@@ -52,8 +54,9 @@ COMPUTE_SIEVING_PRIMES_COUNT = False
 #     cache-sized segments by the small primes in the worker processes, then one
 #     multi-threaded sieve_odd_bucketed() call for the remaining sieving primes, which buckets
 #     their hits by buffer region and applies them region by region (_run_bucketed()).
-#   - count_sieving_primes_cached(): per-floor cache for pi(L_final), counting only the
-#     sliver between the cached L and the new L_final.
+#   - count_sieving_primes_cached() (sieving_prime_count_v5.py): per-floor cache for
+#     pi(L_final), counting only the sliver between the cached L and the new L_final.
+#   - engine_v5_lib.py: the ctypes binding of the engine.
 #   - Shared mmap output buffer, per-window unpacking read straight
 #     from the mapping (no copy of the whole buffer), and low-floor splitting by real floor
 #     boundary (see prime_sieve_v3.py's header).
@@ -63,11 +66,6 @@ COMPUTE_SIEVING_PRIMES_COUNT = False
 #     phase, plus a bytes-written counter, reported through write_scan_metrics_handoff().
 # ==========================================================================================
 
-_LIB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "prime_sieve_engine_v5.so")
-_lib = None  # lazily loaded, SEPARATELY in each worker process
-
-_POPCOUNT_TABLE = np.array([bin(i).count("1") for i in range(256)], dtype=np.uint32)
-
 # The shared mmap output buffer -- MUST be set as a module-level
 # global BEFORE the ProcessPoolExecutor is created / before any task is submitted, so forked
 # worker processes (mp_context "fork", set explicitly below -- see main_batch_scanner())
@@ -76,229 +74,6 @@ _POPCOUNT_TABLE = np.array([bin(i).count("1") for i in range(256)], dtype=np.uin
 # and don't need to be -- that's the whole point).
 _shm_mmap = None
 _shm_size = 0
-
-
-def _load_lib():
-    global _lib
-    if _lib is None:
-        if not os.path.exists(_LIB_PATH):
-            raise RuntimeError(
-                f"Missing {_LIB_PATH} -- build it first: gcc -O3 -shared -fPIC "
-                f"prime_sieve_engine_v5.c -o prime_sieve_engine_v5.so -lprimesieve -lstdc++ -lm")
-        lib = ctypes.CDLL(_LIB_PATH)
-        lib.sieve_odd_bucketed.argtypes = [
-            ctypes.POINTER(ctypes.c_uint64),  # piece_lo
-            ctypes.POINTER(ctypes.c_uint64),  # piece_hi
-            ctypes.c_uint64,                  # n_pieces
-            ctypes.c_uint64,                  # first_odd_hi
-            ctypes.c_uint64,                  # first_odd_lo
-            ctypes.c_uint64,                  # n_bits
-            ctypes.c_uint64,                  # region_bits
-            ctypes.c_uint64,                  # n_threads
-            ctypes.c_uint64,                  # bucket_bytes (all threads)
-            ctypes.POINTER(ctypes.c_ubyte),   # out_bits (SHARED buffer)
-            ctypes.POINTER(ctypes.c_uint64),  # pieces_done (progress counter)
-        ]
-        lib.sieve_odd_bucketed.restype = ctypes.c_int
-        lib.sieve_odd_segmented.argtypes = [
-            ctypes.c_uint64,                  # stop (segmented primes are 3..stop-1)
-            ctypes.c_uint64,                  # first_odd_hi
-            ctypes.c_uint64,                  # first_odd_lo
-            ctypes.c_uint64,                  # bit_lo (multiple of 64)
-            ctypes.c_uint64,                  # bit_hi
-            ctypes.c_uint64,                  # segment_words
-            ctypes.POINTER(ctypes.c_uint64),  # out_words (SHARED buffer)
-        ]
-        lib.sieve_odd_segmented.restype = ctypes.c_int
-        lib.count_sieving_primes.argtypes = [ctypes.c_uint64]
-        lib.count_sieving_primes.restype = ctypes.c_uint64
-        lib.count_sieving_primes_range.argtypes = [ctypes.c_uint64, ctypes.c_uint64]
-        lib.count_sieving_primes_range.restype = ctypes.c_uint64
-        _lib = lib
-    return _lib
-
-
-def count_sieving_primes(limit):
-    """pi(limit): how many sieving primes p in [2, limit] (limit = L_final) were used to
-    sieve the combined window, counted by libprimesieve via the C engine."""
-    lib = _load_lib()
-    return int(lib.count_sieving_primes(limit))
-
-
-def count_sieving_primes_range(start, stop):
-    """pi(stop) - pi(start) -- primes in (start, stop]. Thin wrapper over the engine's
-    additive count_sieving_primes_range(), used by count_sieving_primes_cached() below to
-    count only the NEW territory between a cached L and a larger one, instead of recounting
-    from 0 every time."""
-    lib = _load_lib()
-    return int(lib.count_sieving_primes_range(start, stop))
-
-
-SIEVING_PRIMES_COUNT_CACHE_FILENAME = "sieving_primes_count_cache.json"
-
-# KNOWN_PI_10N -- exact pi(10^n) values for n=1..29, taken from the "x, pi(x)" table on
-# Wikipedia's Prime-counting function page (see KNOWN_PI_SOURCE_URL). That page in turn
-# cites the primary sources for each value (Meissel/Lehmer-method computations by Buethe/
-# Franke/Jost/Kleinjung and Platt up to 10^24-25, Staple for 10^26, and Baugh/Walisch for
-# 10^27-29 -- see the Wikipedia article's own footnotes for full citations).
-#
-# count_sieving_primes_cached() below already avoids recounting a floor's ENTIRE
-# [0, L_final] range on every call once a cache exists for that floor (see that function's
-# own docstring) -- but the very FIRST call on a floor still pays the full
-# count_sieving_primes(0, L_final) cost from scratch: at floor-scale L_final (order 10^13+)
-# that alone can take minutes. Since L_final = isqrt(combined_hi) is itself only ~half as
-# many digits as the floor it belongs to, a floor most people would ever reach (order 10^58
-# or below) has an L_final at or below 10^29 -- squarely inside this table's range. Seeding
-# the cold-start count from the largest known pi(10^n) <= L_final and counting only the
-# remaining sliver via count_sieving_primes_range() turns that first-ever call into the
-# same cheap "incremental" shape every SUBSEQUENT call on that floor already gets, instead
-# of a full from-zero recount.
-#
-# This table is used ONLY when use_known_pi_seed=True is explicitly passed through (default
-# False everywhere -- see COMPUTE_SIEVING_PRIMES_COUNT's own comment for the sibling "off by
-# default" reasoning). Even if a transcription error ever crept into a single entry here, the
-# worst case is a wrong number in one benchmark_log.csv diagnostic column -- sieving_primes_
-# count is never read by the sieve/marking logic itself (see this file's very first comment
-# block above), so this table carries zero correctness risk for the actual generated primes.
-KNOWN_PI_SOURCE_URL = "https://en.wikipedia.org/wiki/Prime-counting_function"
-
-KNOWN_PI_10N = {
-    1: 4,
-    2: 25,
-    3: 168,
-    4: 1229,
-    5: 9592,
-    6: 78498,
-    7: 664579,
-    8: 5761455,
-    9: 50847534,
-    10: 455052511,
-    11: 4118054813,
-    12: 37607912018,
-    13: 346065536839,
-    14: 3204941750802,
-    15: 29844570422669,
-    16: 279238341033925,
-    17: 2623557157654233,
-    18: 24739954287740860,
-    19: 234057667276344607,
-    20: 2220819602560918840,
-    21: 21127269486018731928,
-    22: 201467286689315906290,
-    23: 1925320391606803968923,
-    24: 18435599767349200867866,
-    25: 176846309399143769411680,
-    26: 1699246750872437141327603,
-    27: 16352460426841680446427399,
-    28: 157589269275973410412739598,
-    29: 1520698109714272166094258063,
-}
-
-
-def _seed_from_known_pi(limit):
-    """Returns (seed_l, seed_count, source_url) for the LARGEST 10**n <= limit that
-    KNOWN_PI_10N has an entry for, or None if limit < 10 (no known power of ten fits) or
-    limit is small enough that seeding wouldn't save anything anyway. Pure function, no
-    ctypes/primesieve dependency -- deliberately kept that way so it's unit-testable without
-    the compiled engine .so being present (see this repo's unitTests/ for that test)."""
-    best_n = None
-    for n in KNOWN_PI_10N:
-        if 10 ** n <= limit and (best_n is None or n > best_n):
-            best_n = n
-    if best_n is None:
-        return None
-    return 10 ** best_n, KNOWN_PI_10N[best_n], KNOWN_PI_SOURCE_URL
-
-
-def count_sieving_primes_cached(portal_folder, base_power, limit, use_known_pi_seed=False):
-    """pi(limit), reusing a per-floor cache instead of recomputing from 0 every call.
-
-    Motivation: repeat calls to this diagnostic on the SAME floor almost always ask for a
-    limit that is equal to, or only marginally larger than, the previous call's limit --
-    L_final = isqrt(combined_hi) grows far slower than the floor's own windows do (going
-    another 10 windows deeper at floor 20 nudges L_final by single digits out of ~10^10).
-    Counting that tiny sliver via count_sieving_primes_range(cached_l, limit) is dramatically
-    cheaper than recounting the whole [0, limit] range from scratch, which is exactly what the
-    plain count_sieving_primes() path (and every version before this one) does on every call.
-
-    Cache is a single small JSON file per floor: {"l_final": <largest L counted to>,
-    "count": <pi(that L)>}. Three cases:
-      - no cache yet for this floor              -> full count(0, limit), cache it
-      - limit == cached l_final                   -> return the cached count, NO primesieve
-                                                       call at all
-      - limit >  cached l_final                   -> cached count + count_range(cached_l, limit),
-                                                       cache the new (limit, count) pair
-      - limit <  cached l_final (rare -- exploring
-        a SMALLER limit than before on this floor) -> falls back to a full recount, since the
-                                                       cache only ever stores a running total up
-                                                       to its largest L, not a queryable prefix
-                                                       count at arbitrary smaller points.
-
-    use_known_pi_seed (default False): when the "no cache yet"/"smaller limit" cases above
-    would otherwise fall back to a full count_sieving_primes(0, limit) recount, try
-    _seed_from_known_pi(limit) first -- if it finds a known pi(10^n) at or below limit (see
-    KNOWN_PI_10N above), seed from THAT instead of 0 and only actually count the sliver from
-    there up to limit via count_sieving_primes_range(). Turns what would otherwise be the
-    single most expensive call this function ever makes into the same cheap shape as every
-    later "incremental" call. When a seed is used, the cache also records which one
-    (seeded_from: {power_of_ten, value, source}) so the number's provenance stays visible to
-    anyone inspecting the cache file directly.
-
-    Returns (count, mode) where mode is one of "cold" / "cache_hit" / "incremental" / "shrink"
-    / "seeded" -- purely informational, used by main_batch_scanner()'s timing print so a
-    benchmark run can show which path was actually taken.
-    """
-    import json
-    cache_dir = os.path.join(portal_folder, f"10p{base_power}")
-    cache_path = os.path.join(cache_dir, SIEVING_PRIMES_COUNT_CACHE_FILENAME)
-
-    cached = None
-    try:
-        with open(cache_path, "r", encoding="utf-8") as f:
-            cached = json.load(f)
-    except (OSError, ValueError):
-        cached = None
-
-    seeded_from = None
-    if cached is None or "l_final" not in cached or "count" not in cached:
-        seed = _seed_from_known_pi(limit) if use_known_pi_seed else None
-        if seed is not None:
-            seed_l, seed_count, source = seed
-            count = seed_count + count_sieving_primes_range(seed_l, limit)
-            mode = "seeded"
-            seeded_from = {"power_of_ten": len(str(seed_l)) - 1, "value": seed_count,
-                            "source": source}
-        else:
-            count = count_sieving_primes(limit)
-            mode = "cold"
-    elif limit == cached["l_final"]:
-        return cached["count"], "cache_hit"
-    elif limit > cached["l_final"]:
-        count = cached["count"] + count_sieving_primes_range(cached["l_final"], limit)
-        mode = "incremental"
-    else:
-        seed = _seed_from_known_pi(limit) if use_known_pi_seed else None
-        if seed is not None:
-            seed_l, seed_count, source = seed
-            count = seed_count + count_sieving_primes_range(seed_l, limit)
-            mode = "seeded"
-            seeded_from = {"power_of_ten": len(str(seed_l)) - 1, "value": seed_count,
-                            "source": source}
-        else:
-            count = count_sieving_primes(limit)
-            mode = "shrink"
-
-    try:
-        os.makedirs(cache_dir, exist_ok=True)
-        cache_entry = {"l_final": limit, "count": count}
-        if seeded_from is not None:
-            cache_entry["seeded_from"] = seeded_from
-        with open(cache_path, "w", encoding="utf-8") as f:
-            json.dump(cache_entry, f)
-    except OSError as e:
-        print(f"[!] WARNING: could not write sieving-primes-count cache ({e})")
-
-    return count, mode
 
 
 def format_offset(n):
@@ -319,46 +94,9 @@ def format_offset(n):
 
 # ------------------------------------------------------------------------------------------
 # PGS2 -- "Prime Gap Stream v2": binary, gap-delta + LEB128-varint prime storage format.
-# See prime_sieve_v1.py for the format writeup. The on-disk format is independent of how
-# the sieve is computed, so PGS_MAGIC stays "PGS2". Writing goes through pgs2_vector.
+# See prime_sieve_v1.py for the format writeup. Writing goes through pgs2_vector; the
+# header peek below serves orchestrator_v3.py's benchmark summary.
 # ------------------------------------------------------------------------------------------
-
-
-def encode_varint(value):
-    """LEB128 unsigned varint: 7 data bits per byte, MSB = continuation flag."""
-    if value < 0:
-        raise ValueError("encode_varint requires a non-negative value")
-    out = bytearray()
-    while True:
-        byte = value & 0x7F
-        value >>= 7
-        if value:
-            out.append(byte | 0x80)
-        else:
-            out.append(byte)
-            return bytes(out)
-
-
-def decode_varint(buf, pos):
-    """Returns (value, new_pos)."""
-    result = 0
-    shift = 0
-    while True:
-        b = buf[pos]
-        pos += 1
-        result |= (b & 0x7F) << shift
-        if not (b & 0x80):
-            return result, pos
-        shift += 7
-
-
-def write_prime_window(path, primes, generated_at=None):
-    """Writes a sorted list of primes (ints, ascending) to `path` in PGS2 format.
-    `generated_at` is a unix epoch timestamp (seconds, UTC) recorded in the header --
-    defaults to "now" (time.time()) if not given."""
-    lo = primes[0] if primes else 0
-    offsets = np.array([p - lo for p in primes], dtype=np.int64)
-    write_prime_window_offsets(path, lo, offsets, generated_at=generated_at)
 
 
 def read_prime_window_header(path):
@@ -384,109 +122,6 @@ def read_prime_window_header(path):
         "generated_at": generated_at,
         "generated_at_iso": generated_at_iso,
     }
-
-
-def read_prime_window(path):
-    """Inverse of write_prime_window(); returns the full sorted list of primes (ints)."""
-    with open(path, "rb") as f:
-        data = f.read()
-    if data[:4] != PGS_MAGIC:
-        raise ValueError(f"{path}: not a PGS2 file (bad magic bytes)")
-    pos = 4
-    base_len = data[pos]
-    pos += 1
-    if base_len == 0:
-        return []
-    base = int.from_bytes(data[pos:pos + base_len], "big")
-    pos += base_len
-    count = int.from_bytes(data[pos:pos + 4], "big")
-    pos += 4
-    pos += 4  # generated_at
-    primes = [base]
-    prev = base
-    for _ in range(count - 1):
-        gap, pos = decode_varint(data, pos)
-        prev += gap
-        primes.append(prev)
-    return primes
-
-
-def read_prime_window_head(path, threshold):
-    """Reads primes from `path` in order, stopping as soon as a value EXCEEDS `threshold`
-    (a value equal to threshold IS included). Used to peek a bounded number of entries
-    into the next window during streaming k-tuple matching without decoding the whole
-    file."""
-    with open(path, "rb") as f:
-        data = f.read()
-    if data[:4] != PGS_MAGIC:
-        raise ValueError(f"{path}: not a PGS2 file (bad magic bytes)")
-    pos = 4
-    base_len = data[pos]
-    pos += 1
-    if base_len == 0:
-        return []
-    base = int.from_bytes(data[pos:pos + base_len], "big")
-    pos += base_len
-    count = int.from_bytes(data[pos:pos + 4], "big")
-    pos += 4
-    pos += 4  # generated_at
-    if base > threshold:
-        return []
-    result = [base]
-    prev = base
-    for _ in range(count - 1):
-        gap, pos = decode_varint(data, pos)
-        prev += gap
-        if prev > threshold:
-            break
-        result.append(prev)
-    return result
-
-
-def append_prime_window(path, new_sorted_values, generated_at=None, known_last_value=None):
-    """Appends `new_sorted_values` to a growing PGS2 file without rewriting it: patches the
-    count/generated_at header fields in place and appends freshly gap-encoded bytes at the
-    end, so each append costs O(len(new_sorted_values)) instead of O(existing count).
-
-    `known_last_value`, if given, is trusted as the file's current last value instead of
-    decoding the whole gap stream to find it. `new_sorted_values` must be sorted ascending
-    and strictly greater than that last value. Creates the file (write_prime_window()) if
-    it doesn't exist yet or is empty."""
-    if not new_sorted_values:
-        return
-    if generated_at is None:
-        generated_at = int(time.time())
-
-    file_exists = os.path.exists(path)
-    if known_last_value is None:
-        existing = read_prime_window(path) if file_exists else []
-        if not existing:
-            write_prime_window(path, new_sorted_values, generated_at=generated_at)
-            return
-        known_last_value = existing[-1]
-    elif not file_exists:
-        write_prime_window(path, new_sorted_values, generated_at=generated_at)
-        return
-
-    if new_sorted_values[0] <= known_last_value:
-        raise ValueError(
-            f"append_prime_window: new values must be strictly greater than the file's "
-            f"last stored value ({known_last_value}); got {new_sorted_values[0]} first")
-
-    with open(path, "r+b") as f:
-        header = f.read(4 + 1 + 255 + 4 + 4)
-        base_len = header[4]
-        count_pos = 4 + 1 + base_len
-        old_count = int.from_bytes(header[count_pos:count_pos + 4], "big")
-        new_count = old_count + len(new_sorted_values)
-        f.seek(count_pos)
-        f.write(new_count.to_bytes(4, "big"))
-        f.write(int(generated_at).to_bytes(4, "big"))
-        f.seek(0, os.SEEK_END)
-        prev = known_last_value
-        for v in new_sorted_values:
-            f.write(encode_varint(v - prev))
-            prev = v
 
 
 def _init_shared_buffer(n_bytes):
