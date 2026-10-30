@@ -17,15 +17,18 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import window_sharding
 
 # ------------------------------------------------------------------------------------------
-# ENGINE SWITCH -- the one flag selecting which scanner (v3, v4 or v4.1) this orchestrator
+# ENGINE SWITCH -- the one flag selecting which scanner (v3, v4, v4.1 or v5) this orchestrator
 # drives; it sets both SCRIPT_NAME and the scanner module import below, so the two can't
-# disagree. v3/v4/v4.1 write the SAME PGS2 format/filename convention and share
+# disagree. All scanners write the SAME PGS2 format/filename convention and share
 # benchmark_log.csv, so switching is safe at any time, including mid-floor.
 # v4 = v3 plus an inlined fast-path modulo for the per-sieving-prime phase computation (see
 # prime_sieve_v4.py's header). v4.1 = v4 plus base-gen/sieve/write timing and a
 # bytes-written counter in four benchmark_log.csv columns (base_gen_seconds/sieve_seconds/
-# write_seconds/bytes_written, see BENCHMARK_FIELDNAMES below).
-SCANNER_VERSION = "v4.1"   # "v3", "v4", or "v4.1"
+# write_seconds/bytes_written, see BENCHMARK_FIELDNAMES below). v5 = the engine under
+# development (prime_sieve_v5.py), output identical to v4.1.
+# PRIMEATLAS_SCANNER_VERSION, when set, overrides the default (benchmarks compare engines
+# without editing this file).
+SCANNER_VERSION = os.environ.get("PRIMEATLAS_SCANNER_VERSION") or "v4.1"
 
 if SCANNER_VERSION == "v3":
     import prime_sieve_v3 as prime_sieve_module  # noqa: E402
@@ -36,8 +39,11 @@ elif SCANNER_VERSION == "v4":
 elif SCANNER_VERSION == "v4.1":
     import prime_sieve_v4_1 as prime_sieve_module  # noqa: E402
     SCRIPT_NAME = "prime_sieve_v4_1.py"
+elif SCANNER_VERSION == "v5":
+    import prime_sieve_v5 as prime_sieve_module  # noqa: E402
+    SCRIPT_NAME = "prime_sieve_v5.py"
 else:
-    raise ValueError(f"SCANNER_VERSION must be 'v3', 'v4', or 'v4.1', got {SCANNER_VERSION!r}")
+    raise ValueError(f"SCANNER_VERSION must be 'v3', 'v4', 'v4.1' or 'v5', got {SCANNER_VERSION!r}")
 # format_offset() and read_prime_window_header() (PGS2 fast header peek) are reused here
 # for the benchmark summary, instead of duplicating them -- see prime_sieve_module's own
 # usages below.

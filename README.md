@@ -180,13 +180,21 @@ interchangeable engine generations, v3/v4/v4.1 -- see "Architecture" below).
   animation" below). Its **Sphere** sub-tab shows the first K primes as rings on a sphere
   through one common node, where the divisors of N meet, and in its fibers mode as a pencil
   of orbits joined by resonance or lineage fibers (see "Prime sphere" below).
-- **Benchmark** -- a throughput chart (numbers generated per second vs. floor depth,
-  derived from the actual count of integers swept per floor rather than a window-count
-  approximation, so a mode like Hybrid whose swept range is normally far smaller than
-  one full window still plots accurately), plus a second chart (sieve speed and write
-  speed per floor) whenever the active engine reports that level of phase timing (see
-  `prime_sieve_v4_1.py` under "Architecture" below), a full benchmark log table, and
-  one-click PDF export covering both charts. The progress bar shown during a generation
+- **Benchmark** -- two charts by floor depth, a full benchmark log table, and one-click
+  PDF export covering both charts. The first chart shows the whole run (sieve + write):
+  numbers per second, derived from the actual count of integers swept per floor rather
+  than a window-count approximation (so a mode like Hybrid, whose swept range is normally
+  far smaller than one full window, still plots accurately), with write speed (MB/s) on
+  the right axis. The second chart shows the sieve phase alone: sieve numbers per second,
+  with sieve seconds per window on the right axis, for engines that report phase timing
+  (v4.1, v5; see `prime_sieve_v4_1.py` under "Architecture" below). Each engine gets its
+  own line in its own color on both axes (left axis: circles, right axis: squares), and
+  every point names its engine. Two toggles add reference points of well-known tools to
+  the sieve chart (PARI/GP `forprime` and its sieving patch, primesieve: they sieve or
+  iterate in memory and write nothing; published results plus one own measurement, each
+  with its source) and a log10 y-axis fitted to the data range. The legend switches each
+  line on its own (circle: left-axis line, square: right-axis line, name: both), and the
+  axes refit to the lines left; the PDF export follows the toggles and the hidden lines. The progress bar shown during a generation
   run models the whole pipeline as a sequence of steps (prep, then each sieve batch,
   then done) rather than only moving during the sieve phase and sitting empty through prep.
 - **Research (Badania)** -- an inner notebook of five sub-tabs, grouped by shared
@@ -1385,6 +1393,29 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
   hybrid_controls.py            Hybrid mode's own debounced reach-preview/auto-fit UI
                               logic, kept in its own file since it runs its preview
                               calculation off the Tk main thread
+  run_budget.py                 window count (and v5 bucket memory) of one sieve run:
+                              the smaller of a floor-scaled target (v4.1: 1000; v5:
+                              grows with the run's fixed cost, knob = windows at floor
+                              25, default 5000) and what fits in half the RAM free in
+                              WSL (v5 footprint = odd-only buffer + buckets + overhead;
+                              buckets shrink first when RAM is short); used through
+                              engine_options.recommend() and by
+                              recommended_max_windows (v4.1)
+                              (unitTests/test_run_budget.py)
+  engine_options.py             sieve engine choice (v4.1 / v5) and v5 perf knobs
+                              (segment KiB, bucket region KiB, bucket memory MiB,
+                              windows per run at floor 25) as persisted in the
+                              Generation settings: parsing, per-run window cap (v4.1
+                              1000, v5 100,000), run sizing for the Auto button and
+                              Restore, and the launch env (PRIMEATLAS_SCANNER_VERSION,
+                              PRIMEATLAS_V5_*) that build_wsl_logged_command puts in
+                              front of every orchestrator launch -- the same variables
+                              are the CLI for runs started by hand
+                              (unitTests/test_engine_options.py)
+  engine_fields.py              EngineFields -- the pipeline form's engine Combobox and
+                              v5 knob Entries (disabled under v4.1); the Quick-gen
+                              Width cap follows the selected engine
+                              (unitTests/test_engine_gui_wiring.py)
 
   primeatlas/visualization/     "Visualization" tab -- a container notebook with one sub-tab
                               per visualization; each sub-tab launches the shared GPU
@@ -1653,6 +1684,13 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
   benchmark_tab.py             BenchmarkTab -- the Benchmark tab (charts + PDF export;
                               benchmark.py below is the pure-logic backend)
   benchmark.py                  reading/normalizing benchmark_log.csv rows
+  chart_series.py               chart Series (one color per engine), linear/log
+                              y-scales, per-line hide/show keys -- shared by the
+                              canvas and the PDF renderer
+  chart_pdf.py                  PDF content ops of one Benchmark chart (axes, lines,
+                              value labels with engine tags, legend)
+  reference_points.py           reference throughput of PARI/GP and primesieve with
+                              sources, for the "Reference points" toggle
 
   primeatlas/primality/         "Prime numbers" tab's primesieve-calculator and
                               primality-test sub-tabs
@@ -1706,6 +1744,36 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
   prime_sieve_v4_1.py        same as v4, plus base-gen/sieve/write phase timing and
                               bytes-written tracking, feeding the Benchmark tab's
                               second (sieve-speed/write-speed) chart
+  prime_sieve_v5.py          engine under development: shared buffer holds odd
+                              numbers only (half the RAM, p = 2 never sieved),
+                              small primes sieve cache-sized segments of
+                              buffer slices (work_plan_v5.py), larger primes
+                              go through one multi-threaded bucketed pass
+                              (hits grouped per buffer region, applied while
+                              the region is in cache), windows are
+                              written through pgs2_vector.py;
+                              output identical to v4.1
+                              (unitTests/test_engine_v5_identity.py checks every
+                              PGS2 file and the run totals against v4.1)
+  engine_v5_lib.py           ctypes binding of prime_sieve_engine_v5.so, loaded
+                              on first use
+  sieving_prime_count_v5.py  pi(L_final) of a v5 run (diagnostic only): libprimesieve
+                              count through the v5 engine, per-floor cache, optional
+                              seed from known pi(10^n) values
+  pgs2_vector.py             NumPy PGS2 writer: encodes a window's whole gap stream
+                              in one vectorized pass from int64 prime offsets, byte-
+                              identical to the per-prime writer
+                              (unitTests/test_pgs2_vector.py)
+  work_plan_v5.py            splits a v5 run into work: word-aligned buffer
+                              slices for the segmented small-prime path and
+                              equal-cost pieces of the remaining sieving primes
+                              for the bucketed pass; segment size from env
+                              PRIMEATLAS_V5_SEGMENT_KB (default 128), bucket
+                              region size from env PRIMEATLAS_V5_REGION_KB
+                              (default 1024), bucket memory from env
+                              PRIMEATLAS_V5_BUCKET_MB (default 1024, all threads
+                              together)
+                              (unitTests/test_work_plan_v5.py)
   prime_sieve_primesieve.py  "primesieve mode" -- calls libprimesieve's own public C API
                               (primesieve_generate_primes()) directly via ctypes, no custom
                               engine or batching pipeline; see "The primesieve mode" above
@@ -1745,10 +1813,14 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
   prime_sieve_engine_v1.c    C sieve core for prime_sieve_v1.py (ctypes)
   prime_sieve_engine_v3.c    C sieve core for prime_sieve_v3.py (ctypes)
   prime_sieve_engine_v4.c    C sieve core for prime_sieve_v4.py/v4_1.py (ctypes)
+  prime_sieve_engine_v5.c    C sieve core for prime_sieve_v5.py (ctypes)
   orchestrator_v3.py         single-run driver; a single SCANNER_VERSION flag near
-                              the top selects the active engine ("v3", "v4", or
-                              "v4.1" -- currently v4.1) instead of separate settings
-                              that could drift out of sync with each other
+                              the top selects the active engine ("v3", "v4", "v4.1"
+                              or "v5" -- default v4.1) instead of separate settings
+                              that could drift out of sync with each other; the env
+                              var PRIMEATLAS_SCANNER_VERSION overrides the default
+                              (the Generation tab always sets it from its engine
+                              selector, see engine_options.py)
   orchestrator_loop_v2.py    continuous-run driver
   orchestrator_loop_helpers.py
   hit_paging.py              splits a dense pattern's constellation hit file into
@@ -1873,6 +1945,7 @@ From WSL, inside `prime_sieve/`:
 gcc -O3 -shared -fPIC prime_sieve_engine_v1.c -o prime_sieve_engine_v1.so -lprimesieve -lstdc++ -lm
 gcc -O3 -shared -fPIC prime_sieve_engine_v3.c -o prime_sieve_engine_v3.so -lprimesieve -lstdc++ -lm
 gcc -O3 -shared -fPIC prime_sieve_engine_v4.c -o prime_sieve_engine_v4.so -lprimesieve -lstdc++ -lm
+gcc -O3 -shared -fPIC prime_sieve_engine_v5.c -o prime_sieve_engine_v5.so -lprimesieve -lstdc++ -lm
 ```
 
 Prebuilt `.so` files are included; rebuild if the WSL environment's glibc/architecture

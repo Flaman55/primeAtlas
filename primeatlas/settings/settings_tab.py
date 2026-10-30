@@ -89,6 +89,7 @@ from ..core.theme import (BRIGHTNESS_DEFAULT, BRIGHTNESS_MAX, BRIGHTNESS_MIN, FO
                           FONT_SCALE_MAX, FONT_SCALE_MIN)
 from ..core.widgets import HeightGrip, ScrollablePage, set_scroll_pad_width
 from ..generation.generation_console import GenerationConsole
+from ..generation import engine_options
 from .manifest import FloorSnapshot, ConstellationSnapshot
 from .backup_store import BackupStore
 from .restore_job import (
@@ -890,7 +891,8 @@ class SettingsTab(BaseTab):
           README's "Window count, throughput, and RAM"), so there is no reason to chunk it.
         - orchestrator: the RAM-based recommendation (the same formula the Quick-gen
           panel's own Auto button uses -- estimate_wsl_available_ram_bytes() /
-          recommended_max_windows(), re-read fresh for EVERY floor, since available RAM can
+          engine_options.recommend() with the pipeline form's engine and v5 knobs, re-read
+          fresh for EVERY floor, since available RAM can
           change between floors within one restore run) rather than whatever was last
           manually typed into the low-level Generation form. A floor whose own missing-
           window count fits within that RAM budget restores in ONE run; a floor that needs
@@ -900,6 +902,8 @@ class SettingsTab(BaseTab):
         primesieve_max_stop = self.wsl["primesieve_max_stop"]
         defaults = self.wsl["get_loop_defaults"]()
         window_m = int(defaults.get("window_m") or 10_000_000)
+        engine_choice = engine_options.resolve(defaults)
+        bucket_mb = None
         portal_folder = self.wsl["get_portal_folder"]()
 
         is_low_floor = step.base_exponent < low_floor_cutoff
@@ -918,10 +922,15 @@ class SettingsTab(BaseTab):
                 window_count_per_run = max(1, len(step.missing_windows))
                 run_count = 1
             else:
+                # The pipeline form's engine and v5 knobs size the run; a RAM-reduced
+                # bucket memory goes to the launch env below.
                 available = self.wsl["estimate_wsl_available_ram_bytes"]()
-                recommended = (self.wsl["recommended_max_windows"](available, window_m=window_m)
-                               if available else None)
-                window_count_per_run = recommended or int(defaults.get("window_count_per_run") or 20)
+                budget = engine_options.recommend(
+                    available, engine_choice, step.base_exponent, window_m)
+                if budget is not None:
+                    bucket_mb = budget.bucket_mb
+                window_count_per_run = (budget.windows if budget else None) or int(
+                    defaults.get("window_count_per_run") or 20)
                 run_count = max(1, -(-len(step.missing_windows) // max(1, window_count_per_run)))
 
         if use_primesieve:
@@ -942,7 +951,8 @@ class SettingsTab(BaseTab):
 
         log_path, exit_path, _run_id = self.wsl["generation_log_paths"](
             portal_folder, "restore_loop")
-        cmd = self.wsl["build_wsl_logged_command"](argv, log_path, exit_path)
+        extra_env = () if use_primesieve else engine_options.launch_env(engine_choice, bucket_mb)
+        cmd = self.wsl["build_wsl_logged_command"](argv, log_path, exit_path, extra_env=extra_env)
         q = queue.Queue()
         runner = self.wsl["WslLoggedRunner"](
             cmd, log_path, exit_path, q, kill_pattern=kill_pattern)

@@ -26,6 +26,7 @@ than being duplicated or promoted to its own module just for this one extraction
 is passed in exactly like SettingsTab's wsl_helpers callables are.
 """
 import datetime
+import re
 
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
@@ -37,10 +38,15 @@ from .benchmark import (
     BENCHMARK_PAGE_SIZE, BENCHMARK_TREE_HIDDEN_COLUMNS,
     _order_benchmark_tree_columns, aggregate_benchmark_fair_spw,
     aggregate_benchmark_growth, aggregate_benchmark_sieve_nps,
-    aggregate_benchmark_write_mbps, benchmark_row_stats, benchmark_metric_engines,
+    aggregate_benchmark_write_mbps, benchmark_engine_lines, benchmark_row_stats,
     group_benchmark_rows_by_floor, read_benchmark_log, render_benchmark_pdf,
 )
 from ..core.i18n import Translator, DEFAULT_LANGUAGE
+from .chart_series import (
+    engine_series, legend_entries, line_key, plain_series, point_label, series_xs,
+    toggle_lines, visible_series, y_scale,
+)
+from .reference_points import reference_series
 
 
 def _nearest_hover_point(hover_points, x, y, max_distance=14.0):
@@ -199,131 +205,167 @@ def _bind_chart_hover(canvas, hover_points, t, fg_color, bg_color, width, height
     canvas.bind("<Leave>", _on_leave)
 
 
+def _mix(color_a, color_b):
+    """The hex color half way between two "#rrggbb" colors."""
+    a = [int(color_a[i:i + 2], 16) for i in (1, 3, 5)]
+    b = [int(color_b[i:i + 2], 16) for i in (1, 3, 5)]
+    return "#" + "".join("%02x" % ((x + y) // 2) for x, y in zip(a, b))
+
+
+def _legend_tag(kind, name):
+    """Canvas tag of a legend item; tag searches parse spaces and parentheses, so the
+    series name is reduced to word characters and dots."""
+    return "legend:%s:%s" % (kind, re.sub(r"[^\w.]", "_", name))
+
+
+def _draw_legend(canvas, entries, hidden, on_toggle, x, bg_color, dim_color):
+    """One entry per series along the top edge: a marker per line (circle: left axis,
+    square: right axis) and the name. With on_toggle, a marker click toggles its line and a
+    name click all lines of the series: on_toggle([line_key, ...]). A hidden line's marker
+    is a hollow dim outline; a name whose lines are all hidden is dim."""
+    font = ("Consolas", 8, "bold")
+    r, y = 4, 10
+    for s, axes in entries:
+        keys = [line_key(axis, s.name) for axis in axes]
+        for axis, key in zip(axes, keys):
+            off = key in hidden
+            tag = _legend_tag(axis, s.name)
+            # The background box widens the click target beyond the 8 px marker.
+            canvas.create_rectangle(x, y - 8, x + 14, y + 8, fill=bg_color, outline="",
+                                    tags=("legend", tag))
+            color = dim_color if off else s.color
+            fill = bg_color if off or s.dashed else s.color
+            shape = canvas.create_rectangle if axis == "secondary" else canvas.create_oval
+            shape(x + 7 - r, y - r, x + 7 + r, y + r, outline=color, fill=fill,
+                  width=2 if off or s.dashed else 0, tags=("legend", tag))
+            if on_toggle:
+                canvas.tag_bind(tag, "<Button-1>", lambda _e, k=key: on_toggle([k]))
+            x += 14
+        tag = _legend_tag("name", s.name)
+        text_id = canvas.create_text(x + 3, y, text=s.name, anchor="w", font=font,
+                                     fill=dim_color if all(k in hidden for k in keys)
+                                     else s.color, tags=("legend", tag))
+        if on_toggle:
+            canvas.tag_bind(tag, "<Button-1>", lambda _e, k=keys: on_toggle(k))
+        bbox = canvas.bbox(text_id)
+        x = (bbox[2] if bbox else x + 60) + 16
+    if on_toggle:
+        canvas.tag_bind("legend", "<Enter>", lambda _e: canvas.configure(cursor="hand2"))
+        canvas.tag_bind("legend", "<Leave>", lambda _e: canvas.configure(cursor=""))
+
+
 def _draw_growth_chart(canvas, points, width, height, points2=None, translator=None,
                         label_key1="bench.axis_nps", label_key2="bench.axis_spw",
                         fmt1="{:,.0f}", fmt2="{:,.3f}",
-                        bg_color="#ffffff", fg_color="#000000", grid_color="#666666", engines=None):
-    """Draws (base_exponent, primary-series) points onto `canvas` as a simple axes +
-    connected-scatter chart -- x = floor depth, y = the primary series (by default numbers
-    swept per second, real session-level wall-clock throughput, higher is better). Plain
-    tk.Canvas drawing, no charting library: this app is deliberately zero-extra-installs
-    (see prime_atlas_v2.py's module header), and a handful of axis lines + dots doesn't
-    need one. Clears the canvas first, so this is safe to call again on refresh/resize
-    (bound to <Configure>).
+                        bg_color="#ffffff", fg_color="#000000", grid_color="#666666",
+                        series1=None, series2=None, log_y=False, hidden=None,
+                        on_toggle=None):
+    """Draws a floor-depth chart onto `canvas`: x = floor, y = one or two axes of
+    chart_series.Series (one line per engine, plus dashed reference lines). Plain
+    tk.Canvas drawing, no charting library: the app is zero-extra-installs. Clears the
+    canvas first, so it is safe to call again on refresh/resize (<Configure>).
 
-    points2 (optional): a SECOND series sharing the x-axis -- by default the 'fair'
-    loop_seconds_per_window figure shown alongside n/s, but label_key2/fmt2 (see below) let
-    a caller reuse this for a different pair, e.g. sieve-numbers/s + write-MB/s. Drawn as a
-    red line on its own right-hand y-axis with an independent scale (see
-    primeatlas.benchmark.benchmark._pdf_chart_ops()'s docstring for why it needs its own axis rather
-    than sharing the primary one).
+    series1/series2: [Series] on the left and right axis; when omitted, points/points2
+    (bare (floor, value) lists) are drawn as one unnamed series each. The right axis exists
+    only when it has points; each axis has its own scale (chart_series.YScale, log10 when
+    log_y), since the two series differ by orders of magnitude. An engine keeps its color on
+    both axes: left-axis points are circles on a thick line, right-axis points squares on a
+    thin line, and the axis titles carry the same marker. Named series get one legend entry
+    each along the top edge (_draw_legend); a point's value and series tag show in a hover
+    tooltip.
 
-    label_key1/label_key2/fmt1/fmt2: same meaning and defaults as
-    primeatlas.benchmark.benchmark._pdf_chart_ops()'s matching parameters -- i18n keys for the two
-    axis titles, and str.format() templates for tick/point value labels -- so the PDF
-    export and this on-screen chart stay visually consistent for any series pair.
+    hidden: set of chart_series.line_key() left out of the plot and its scales; their
+    legend markers stay, so on_toggle (the legend's click callback) can bring them back.
 
-    translator (optional): a primeatlas.core.i18n.Translator instance (this module has
-    no global T() to read -- see this file's own docstring on why cross-module globals
-    would be circular here) -- defaults to DEFAULT_LANGUAGE if not given, same fallback
-    _pdf_chart_ops() uses.
-
-    bg_color/fg_color/grid_color: lets the caller theme this canvas -- BenchmarkTab
-    passes its constructor's theme_palette through here (console_bg/console_fg/border,
-    the same keys used for the app's other canvas-like widgets) so the chart's
-    background and text go dark under the dark theme. Defaults are a light palette."""
+    label_key1/label_key2/fmt1/fmt2: same meaning as chart_pdf.chart_ops()'s parameters, so
+    the PDF and this chart stay consistent. translator: a primeatlas.core.i18n.Translator,
+    DEFAULT_LANGUAGE when omitted. bg_color/fg_color/grid_color: the theme's colors."""
     t = (translator or Translator(DEFAULT_LANGUAGE)).t
     canvas.configure(background=bg_color)
     canvas.delete("all")
     if width <= 1 or height <= 1:
         return  # not yet realized/sized
-    points = points or []
-    points2 = points2 or []
-    if not points and not points2:
+    series1 = [s for s in (series1 if series1 is not None else plain_series(points or []))
+               if s.points]
+    series2 = [s for s in (series2 if series2 is not None
+                           else plain_series(points2 or [], "secondary")) if s.points]
+    if not series1 and not series2:
         canvas.create_text(width / 2, height / 2, text=t("bench.no_data_chart"),
                             fill="#888888")
         return
+    hidden = hidden or set()
+    # A fixed legend origin keeps every toggle under the pointer while the axes refit.
+    _draw_legend(canvas, legend_entries(series1, series2), hidden, on_toggle, 50, bg_color,
+                 _mix(bg_color, grid_color))
+    series1 = visible_series(series1, hidden, "primary")
+    series2 = visible_series(series2, hidden, "secondary")
+    if not series1 and not series2:
+        canvas.create_text(width / 2, height / 2, text=t("bench.all_lines_hidden"),
+                            fill="#888888")
+        _bind_chart_hover(canvas, [], t, fg_color, bg_color, width, height)
+        return
 
-    has_secondary = bool(points2)
+    has_secondary = bool(series2)
+    # pad_top holds the legend and, below it, the axis titles above the topmost tick.
     pad_top, pad_bottom = 40, 40
-    # pad_top has room ABOVE the topmost y-tick (which sits right at pad_top) for the axis
-    # title, so the title and that tick's label don't merge into one blob near the
-    # top-left corner.
 
-    all_xs = sorted({p[0] for p in points} | {p[0] for p in points2})
+    all_xs = series_xs(series1, series2)
     x_min, x_max = min(all_xs), max(all_xs)
     if x_min == x_max:
         x_min -= 1
         x_max += 1
-
-    def y_bounds(pts):
-        ys = [p[1] for p in pts]
-        ylo, yhi = min(ys), max(ys)
-        if ylo == yhi:
-            pad = max(1.0, abs(ylo) * 0.1)
-            ylo -= pad
-            yhi += pad
-        return min(ylo, 0), yhi  # anchor at (or below) zero -- growth should read honest
-
-    if points:
-        y_min, y_max = y_bounds(points)
-    if has_secondary:
-        y2_min, y2_max = y_bounds(points2)
+    scale1 = y_scale(series1, log_y) if series1 else None
+    scale2 = y_scale(series2, log_y) if has_secondary else None
 
     # pad_left/pad_right are measured from the actual tick label strings with the real
-    # font, not fixed guesses: throughput easily reaches 9-11 digit n/s figures
-    # ("71,556,448"), which a fixed 70px would clip against the canvas edge.
+    # font: throughput reaches 10-13 digit n/s figures, which a fixed pad would clip.
     tick_font = tkfont.Font(family="Consolas", size=8)
 
-    def _max_tick_label_width(y_lo, y_hi, fmt):
-        labels = [fmt.format(y_lo + (y_hi - y_lo) * i / 5) for i in range(6)]
-        return max((tick_font.measure(s) for s in labels), default=0)
+    def _max_tick_label_width(scale, fmt):
+        return max((tick_font.measure(scale.tick_label(v, fmt)) for v in scale.ticks()),
+                   default=0)
 
-    pad_left = 24
-    if points:
-        pad_left = max(50, _max_tick_label_width(y_min, y_max, fmt1) + 24)
-    pad_right = 24
-    if has_secondary:
-        pad_right = max(50, _max_tick_label_width(y2_min, y2_max, fmt2) + 28)
+    pad_left = max(50, _max_tick_label_width(scale1, fmt1) + 24) if scale1 else 24
+    pad_right = max(50, _max_tick_label_width(scale2, fmt2) + 28) if scale2 else 24
 
     plot_w = max(1, width - pad_left - pad_right)
     plot_h = max(1, height - pad_top - pad_bottom)
 
-    # Same horizontal inset as _pdf_chart_ops() -- see that function's comment for why.
+    # Same horizontal inset as chart_pdf.chart_ops(): edge points stay off the y-axes.
     inset_x = max(15.0, plot_w * 0.05)
 
     def sx(x):
         return pad_left + inset_x + (x - x_min) / (x_max - x_min) * (plot_w - 2 * inset_x)
 
-    def sy(y):
-        return pad_top + plot_h - (y - y_min) / (y_max - y_min) * plot_h
+    def sy(scale, y):
+        return pad_top + plot_h - scale.frac(y) * plot_h
 
-    def sy2(y):
-        return pad_top + plot_h - (y - y2_min) / (y2_max - y2_min) * plot_h
-
+    # Horizontal guides at the left-axis ticks, half way between background and axis color.
+    guide_color = _mix(bg_color, grid_color)
+    if scale1:
+        for y_val in scale1.ticks():
+            canvas.create_line(pad_left, sy(scale1, y_val), pad_left + plot_w, sy(scale1, y_val),
+                                fill=guide_color)
     canvas.create_line(pad_left, pad_top, pad_left, pad_top + plot_h, fill=grid_color)
     canvas.create_line(pad_left, pad_top + plot_h, pad_left + plot_w, pad_top + plot_h,
                         fill=grid_color)
     if has_secondary:
         canvas.create_line(pad_left + plot_w, pad_top, pad_left + plot_w, pad_top + plot_h,
-                            fill="#c0504d")
+                            fill=grid_color)
 
-    if points:
-        for i in range(6):
-            y_val = y_min + (y_max - y_min) * i / 5
-            y_px = sy(y_val)
+    if scale1:
+        for y_val in scale1.ticks():
+            y_px = sy(scale1, y_val)
             canvas.create_line(pad_left - 4, y_px, pad_left, y_px, fill=grid_color)
-            canvas.create_text(pad_left - 8, y_px, text=fmt1.format(y_val), anchor="e",
-                                font=("Consolas", 8), fill=fg_color)
-
-    if has_secondary:
-        for i in range(6):
-            y_val = y2_min + (y2_max - y2_min) * i / 5
-            y_px = sy2(y_val)
+            canvas.create_text(pad_left - 8, y_px, text=scale1.tick_label(y_val, fmt1),
+                                anchor="e", font=("Consolas", 8), fill=fg_color)
+    if scale2:
+        for y_val in scale2.ticks():
+            y_px = sy(scale2, y_val)
             canvas.create_line(pad_left + plot_w, y_px, pad_left + plot_w + 4, y_px,
-                                fill="#c0504d")
-            canvas.create_text(pad_left + plot_w + 8, y_px, text=fmt2.format(y_val), anchor="w",
-                                font=("Consolas", 8), fill="#c0504d")
+                                fill=grid_color)
+            canvas.create_text(pad_left + plot_w + 8, y_px, text=scale2.tick_label(y_val, fmt2),
+                                anchor="w", font=("Consolas", 8), fill=fg_color)
 
     for x_val in all_xs:
         x_px = sx(x_val)
@@ -333,47 +375,45 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
 
     canvas.create_text(pad_left + plot_w / 2, height - 8, text=t("bench.axis_floor"),
                         font=("Consolas", 8, "bold"), fill=fg_color)
-    # Sits in the padding strip ABOVE the plot area (not overlapping any tick label, which
-    # all live at y >= pad_top) -- anchored "sw" so its BOTTOM edge, not its top, is what's
-    # positioned, keeping a consistent small gap above the topmost tick regardless of font
-    # metrics.
-    if points:
-        canvas.create_text(4, pad_top - 10, text=t(label_key1), anchor="sw",
+    # Axis titles sit in the strip above the plot area, anchored by their bottom edge so
+    # the gap above the topmost tick does not depend on font metrics.
+    if series1:
+        canvas.create_text(4, pad_top - 10, text="\u25cf " + t(label_key1), anchor="sw",
                             font=("Consolas", 8, "bold"), fill=fg_color)
     if has_secondary:
-        canvas.create_text(width - 4, pad_top - 10, text=t(label_key2), anchor="se",
-                            font=("Consolas", 8, "bold"), fill="#c0504d")
+        canvas.create_text(width - 4, pad_top - 10, text=t(label_key2) + " \u25a0", anchor="se",
+                            font=("Consolas", 8, "bold"), fill=fg_color)
 
-    # Only the dots/line are drawn unconditionally; a point's value is shown on hover
-    # via a single tooltip (see _bind_chart_hover below) -- permanent per-point labels
+    # Values show in one hover tooltip (_bind_chart_hover): permanent per-point labels
     # overlap into an unreadable smear on dense series.
     hover_points = []
 
-    if points:
-        if len(points) > 1:
-            coords = []
-            for x_val, y_val in points:
-                coords.extend([sx(x_val), sy(y_val)])
-            canvas.create_line(*coords, fill="#4a90d9", width=2)
-
+    def draw(series, scale, fmt, label_key, secondary=False):
         r = 4
-        for x_val, y_val in points:
-            cx, cy = sx(x_val), sy(y_val)
-            canvas.create_oval(cx - r, cy - r, cx + r, cy + r, fill="#1c5fa8", outline="")
-            hover_points.append((cx, cy, x_val, y_val, fmt1 + (" [" + engines.get(x_val, "unknown") + "]" if engines else ""), "#1c5fa8", label_key1))
+        for s in series:
+            pts = [(x, y) for x, y in s.points if scale.usable(y)]
+            coords = [(sx(x), sy(scale, y)) for x, y in pts]
+            if len(coords) > 1:
+                canvas.create_line(*[c for xy in coords for c in xy], fill=s.color,
+                                    width=1 if secondary else 3,
+                                    dash=(5, 3) if s.dashed else None)
+            for (x_val, y_val), (cx, cy) in zip(pts, coords):
+                if secondary:
+                    canvas.create_rectangle(cx - r, cy - r, cx + r, cy + r, outline=s.color,
+                                             width=0, fill=s.color)
+                else:
+                    canvas.create_oval(cx - r, cy - r, cx + r, cy + r, outline=s.color,
+                                        width=2 if s.dashed else 0,
+                                        fill=bg_color if s.dashed else s.color)
+                hover_points.append((cx, cy, x_val, y_val,
+                                     point_label(fmt, y_val, s, show_unknown=True)
+                                     .replace("{", "{{").replace("}", "}}"),
+                                     s.color, label_key))
 
-    if has_secondary:
-        if len(points2) > 1:
-            coords2 = []
-            for x_val, y_val in points2:
-                coords2.extend([sx(x_val), sy2(y_val)])
-            canvas.create_line(*coords2, fill="#c0504d", width=2)
-
-        r = 4
-        for x_val, y_val in points2:
-            cx, cy = sx(x_val), sy2(y_val)
-            canvas.create_oval(cx - r, cy - r, cx + r, cy + r, fill="#c0504d", outline="")
-            hover_points.append((cx, cy, x_val, y_val, fmt2, "#c0504d", label_key2))
+    if scale1:
+        draw(series1, scale1, fmt1, label_key1)
+    if scale2:
+        draw(series2, scale2, fmt2, label_key2, secondary=True)
 
     _bind_chart_hover(canvas, hover_points, t, fg_color, bg_color, width, height)
 
@@ -408,6 +448,15 @@ class BenchmarkTab(BaseTab):
         ttk.Button(top, text=T("bench.save_pdf"), command=self._export_benchmark_pdf).pack(
             side="left", padx=(6, 0))
         ttk.Label(top, text=T("bench.chart_hint")).pack(side="left")
+        # Chart view toggles, kept for the session only; the PDF export follows them, and
+        # the lines hidden from each chart's legend ({chart: set of line_key()}).
+        self._hidden_lines = {"run": set(), "sieve": set()}
+        self.log_scale_var = tk.BooleanVar(value=False)
+        self.references_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(top, text=T("bench.log_scale"), variable=self.log_scale_var,
+                        command=self._redraw_charts).pack(side="right")
+        ttk.Checkbutton(top, text=T("bench.show_references"), variable=self.references_var,
+                        command=self._redraw_charts).pack(side="right", padx=(0, 8))
 
         chart_frame = ttk.Frame(self)
         chart_frame.pack(fill="x", padx=6, pady=(0, 4))
@@ -425,7 +474,7 @@ class BenchmarkTab(BaseTab):
         self.benchmark_chart.bind("<Configure>", lambda _e: self._redraw_benchmark_chart())
 
         # Second chart: sieve-numbers/s + write-MB/s -- the phase-breakdown counterpart
-        # to the growth chart above, populated only from prime_sieve_v4_1.py rows (see
+        # to the growth chart above, populated only from v4.1 and v5 engine rows (see
         # aggregate_benchmark_sieve_nps()/aggregate_benchmark_write_mbps()). Always
         # visible, same as the first chart -- _draw_growth_chart() already shows its own
         # "no data yet" placeholder when both series are empty, so a project that hasn't
@@ -505,10 +554,10 @@ class BenchmarkTab(BaseTab):
         self._benchmark_growth_points = []
         self._benchmark_fair_spw_points = []  # loop_seconds_per_window, second chart line
         self._benchmark_sieve_nps_points = []   # sieve-phase numbers/s, second CHART's
-                                                 # primary line (prime_sieve_v4_1.py rows
+                                                 # primary line (v4.1 and v5 engine rows
                                                  # only -- see aggregate_benchmark_sieve_nps)
         self._benchmark_write_mbps_points = []  # write-phase MB/s, second chart's
-                                                 # secondary line (same v4.1-only caveat)
+                                                 # secondary line (same v4.1/v5-only caveat)
         self._benchmark_fieldnames = []  # kept in sync by reload_benchmark_log() --
         self._benchmark_tree_fieldnames = []  # same, minus BENCHMARK_TREE_HIDDEN_COLUMNS
                                           # -- what the tree itself actually displays
@@ -542,15 +591,42 @@ class BenchmarkTab(BaseTab):
             height = 220
         p = self._theme_palette
         _draw_growth_chart(self.benchmark_chart, self._benchmark_growth_points, width, height,
-                            points2=self._benchmark_fair_spw_points, translator=self.T,
-                            engines=benchmark_metric_engines(self._benchmark_rows, "loop_numbers_per_second"),
+                            points2=self._benchmark_write_mbps_points, translator=self.T,
+                            label_key1="bench.axis_total_nps",
+                            label_key2="bench.axis_write_mbps", fmt2="{:,.1f}",
+                            series1=self._chart_series("growth"),
+                            series2=self._chart_series("write"),
+                            log_y=self.log_scale_var.get(),
+                            hidden=self._hidden_lines["run"],
+                            on_toggle=lambda keys: self._toggle_lines("run", keys),
                             bg_color=p["console_bg"], fg_color=p["console_fg"],
                             grid_color=p["border"])
 
+    def _chart_series(self, metric, references=False):
+        """One Series per engine for a chart metric; with references=True, the reference
+        lines too while the "Reference points" toggle is on. PARI/GP and primesieve write
+        nothing, so the references go on the sieve chart."""
+        series = engine_series(benchmark_engine_lines(self._benchmark_rows, metric))
+        if references and self.references_var.get():
+            series += reference_series(self.T)
+        return series
+
+    def _toggle_lines(self, chart, keys):
+        """Legend click on the "run" or "sieve" chart: hides or shows those lines."""
+        self._hidden_lines[chart] = toggle_lines(self._hidden_lines[chart], keys)
+        if chart == "run":
+            self._redraw_benchmark_chart()
+        else:
+            self._redraw_benchmark_chart2()
+
+    def _redraw_charts(self):
+        self._redraw_benchmark_chart()
+        self._redraw_benchmark_chart2()
+
     def _redraw_benchmark_chart2(self):
         """Same fallback-size handling as _redraw_benchmark_chart() (see that method's own
-        comment) -- draws the sieve-numbers/s + write-MB/s phase-breakdown chart onto its
-        own canvas, right below the growth chart."""
+        comment) -- draws the sieve-phase chart (sieve n/s, sieve s/window, reference
+        points) onto its own canvas, right below the whole-run chart."""
         width = self.benchmark_chart2.winfo_width()
         height = self.benchmark_chart2.winfo_height()
         if width <= 1:
@@ -559,10 +635,14 @@ class BenchmarkTab(BaseTab):
             height = 180
         p = self._theme_palette
         _draw_growth_chart(self.benchmark_chart2, self._benchmark_sieve_nps_points, width,
-                            height, points2=self._benchmark_write_mbps_points,
-                            label_key1="bench.axis_sieve_nps",
-                            label_key2="bench.axis_write_mbps",
-                            fmt1="{:,.0f}", fmt2="{:,.1f}", translator=self.T,
+                            height, label_key1="bench.axis_sieve_nps",
+                            label_key2="bench.axis_sieve_spw",
+                            fmt1="{:,.0f}", fmt2="{:,.4f}", translator=self.T,
+                            series1=self._chart_series("sieve", references=True),
+                            series2=self._chart_series("sieve_spw"),
+                            log_y=self.log_scale_var.get(),
+                            hidden=self._hidden_lines["sieve"],
+                            on_toggle=lambda keys: self._toggle_lines("sieve", keys),
                             bg_color=p["console_bg"], fg_color=p["console_fg"],
                             grid_color=p["border"])
 
@@ -759,7 +839,10 @@ class BenchmarkTab(BaseTab):
                                   points2=self._benchmark_fair_spw_points,
                                   translator=self.T,
                                   sieve_points=self._benchmark_sieve_nps_points,
-                                  write_points=self._benchmark_write_mbps_points)
+                                  write_points=self._benchmark_write_mbps_points,
+                                  references=self.references_var.get(),
+                                  log_y=self.log_scale_var.get(),
+                                  hidden_lines=self._hidden_lines)
         except Exception as exc:
             messagebox.showerror(T("bench.save_pdf"), T("bench.save_error", error=exc))
             return

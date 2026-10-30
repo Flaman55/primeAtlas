@@ -57,6 +57,8 @@ from ..core.progress_bar_owner import claim_progress_bar, release_progress_bar
 from .hybrid_controls import HybridControls
 from ..benchmark.benchmark import read_benchmark_log
 from .generation_console import GenerationConsole
+from . import engine_options
+from .engine_fields import EngineFields
 
 # The constellation finder's WSL process can die mid-run WITHOUT writing an exit code on
 # a large floor (hundreds of thousands of source windows), most likely the
@@ -121,7 +123,7 @@ from .generation import (
     build_orchestrator_direct_argv, build_constellation_finder_argv,
     read_constellation_checkpoint,
     build_ktuple_sieve_argv, generation_log_paths, build_wsl_logged_command,
-    estimate_wsl_available_ram_bytes, recommended_max_windows,
+    estimate_wsl_available_ram_bytes,
     estimate_wsl_available_cpu_count, recommended_worker_count, WslLoggedRunner,
     format_duration_short,
     _LOOP_SESSION_DONE_RE, _LOOP_SESSION_START_RE, _LOOP_ITERATION_START_RE,
@@ -344,6 +346,11 @@ class GenerationTab(HybridControls, BaseTab):
         # which sees its own condition (get() and other.get()) already false and no-ops.
         self._loop_count_sieving_var.trace_add("write", _on_count_sieving_toggle)
         self._loop_use_pi_seed_var.trace_add("write", _on_use_pi_seed_toggle)
+
+        # Sieve engine and v5 knobs (rows 6-8); the Quick-gen Width cap follows the engine.
+        self._engine_fields = EngineFields(loop_form, self.T, loop_settings, row=6)
+        self._engine_fields.on_engine_change(self._sync_quick_width_caps)
+        self._sync_quick_width_caps()
 
         loop_btn_row = ttk.Frame(loop_advanced_content)
         loop_btn_row.pack(fill="x", pady=(6, 0))
@@ -710,6 +717,7 @@ class GenerationTab(HybridControls, BaseTab):
         self.quick_mode_var = tk.StringVar(value="floor")
         self.quick_floor_var = tk.StringVar(value="")
         self.quick_floor_width_var = tk.StringVar(value="1")
+        self._quick_width_spinboxes = []  # Floor/Exploration Width, every panel copy
         self.quick_floor_start_var = tk.StringVar(value="")
         self.quick_floor_start_var.trace_add("write", self._on_quick_floor_start_changed)
         # Shared by TWO modes' own continuation paths: Floor mode's own BLANK-
@@ -898,12 +906,15 @@ class GenerationTab(HybridControls, BaseTab):
         floor_entry.pack(side="left", padx=(6, 20))
         ttk.Label(frame, text=self.T("quick.field_width")).pack(side="left")
         width_vcmd = (self.register(self._validate_quick_width_spinbox), "%P")
-        ttk.Spinbox(frame, from_=1, to=1000, textvariable=self.quick_floor_width_var,
-                    width=6, validate="key", validatecommand=width_vcmd).pack(
-            side="left", padx=(6, 4))
+        width_spinbox = ttk.Spinbox(
+            frame, from_=1, to=self._quick_width_cap(), textvariable=self.quick_floor_width_var,
+            width=6, validate="key", validatecommand=width_vcmd)
+        width_spinbox.pack(side="left", padx=(6, 4))
+        self._quick_width_spinboxes.append(width_spinbox)
         ttk.Button(frame, text=self.T("quick.auto_button"),
                    command=lambda: self._on_quick_auto_width_clicked(
-                       self.quick_floor_width_var)).pack(side="left", padx=(0, 20))
+                       self.quick_floor_width_var,
+                       self._quick_floor_of(self.quick_floor_var))).pack(side="left", padx=(0, 20))
         ttk.Label(frame, text=self.T("quick.field_start")).pack(side="left")
         ttk.Entry(frame, textvariable=self.quick_floor_start_var, width=20).pack(
             side="left", padx=(6, 0))
@@ -917,12 +928,38 @@ class GenerationTab(HybridControls, BaseTab):
     def _validate_quick_width_spinbox(self, proposed):
         """validatecommand for the Width spinbox -- allows an empty field WHILE
         editing (so the user can select-all-and-retype), otherwise only digit strings
-        in [1, 1000] -- UI-level input restriction only; this is not where the actual
-        1 unit = 10,000,000 translation happens (that's the logic step, not yet
-        written)."""
+        in [1, _quick_width_cap()] -- UI-level input restriction only; this is not where
+        the actual 1 unit = 10,000,000 translation happens."""
         if proposed == "":
             return True
-        return proposed.isdigit() and 1 <= int(proposed) <= 1000
+        return proposed.isdigit() and 1 <= int(proposed) <= self._quick_width_cap()
+
+    def _quick_width_cap(self):
+        """Per-run window ceiling of the engine selected in the pipeline form (the
+        default engine's while the form is not built yet)."""
+        fields = getattr(self, "_engine_fields", None)
+        engine = fields.engine() if fields is not None else engine_options.DEFAULT_ENGINE
+        return engine_options.max_windows_per_run(engine)
+
+    def _sync_quick_width_caps(self):
+        cap = self._quick_width_cap()
+        alive = []
+        for spinbox in self._quick_width_spinboxes:
+            try:
+                spinbox.configure(to=cap)
+            except tk.TclError:  # a closed detached panel's copy
+                continue
+            alive.append(spinbox)
+        self._quick_width_spinboxes = alive
+
+    @staticmethod
+    def _quick_floor_of(var, is_number=False):
+        """Floor typed in a Quick-gen field (or the floor of a number typed there when
+        is_number), None when blank or unparseable."""
+        value = _eval_quick_number(var.get())
+        if value is None or value < (1 if is_number else 0):
+            return None
+        return len(str(value)) - 1 if is_number else value
 
     def _validate_primesieve_width_spinbox(self, proposed):
         """validatecommand for primesieve mode's OWN Width spinbox -- same shape as
@@ -970,7 +1007,8 @@ class GenerationTab(HybridControls, BaseTab):
         # via a dialog instead (width_var=None, see _on_quick_auto_width_clicked),
         # for the person to factor into their own From/To choice.
         ttk.Button(frame, text=self.T("quick.auto_button"),
-                   command=lambda: self._on_quick_auto_width_clicked(None)).pack(
+                   command=lambda: self._on_quick_auto_width_clicked(
+                       None, self._quick_floor_of(self.quick_from_var, is_number=True))).pack(
             side="left")
         mode_frames["range"] = frame
 
@@ -1028,12 +1066,15 @@ class GenerationTab(HybridControls, BaseTab):
             side="left", padx=(6, 20))
         ttk.Label(frame, text=self.T("quick.field_width")).pack(side="left")
         width_vcmd = (self.register(self._validate_quick_width_spinbox), "%P")
-        ttk.Spinbox(frame, from_=1, to=1000, textvariable=self.quick_explore_width_var,
-                    width=6, validate="key", validatecommand=width_vcmd).pack(
-            side="left", padx=(6, 4))
+        width_spinbox = ttk.Spinbox(
+            frame, from_=1, to=self._quick_width_cap(), textvariable=self.quick_explore_width_var,
+            width=6, validate="key", validatecommand=width_vcmd)
+        width_spinbox.pack(side="left", padx=(6, 4))
+        self._quick_width_spinboxes.append(width_spinbox)
         ttk.Button(frame, text=self.T("quick.auto_button"),
                    command=lambda: self._on_quick_auto_width_clicked(
-                       self.quick_explore_width_var)).pack(side="left")
+                       self.quick_explore_width_var,
+                       self._quick_floor_of(self.quick_explore_floor_var))).pack(side="left")
         gap_row = ttk.Frame(outer)
         gap_row.grid(row=1, column=0, sticky="w", pady=(4, 0))
         ttk.Checkbutton(gap_row, text=self.T("quick.field_fill_gaps_first"),
@@ -1318,29 +1359,50 @@ class GenerationTab(HybridControls, BaseTab):
             return True
         return proposed.isdigit() and 1 <= int(proposed) <= 1_000_000
 
-    def _on_quick_auto_width_clicked(self, width_var):
+    def _on_quick_auto_width_clicked(self, width_var, base_exponent=None):
         """Auto button handler, shared by every mode's button (see
         _build_quick_mode_floor/_build_quick_mode_explore/_build_quick_mode_range).
         Queries available RAM INSIDE WSL (estimate_wsl_available_ram_bytes -- the
         sieve itself runs there, not in this native Windows process) and turns it
-        into a recommended window count (recommended_max_windows -- see that
+        into a recommended window count (engine_options.recommend -- see that
         function's docstring for exactly what it is and isn't accounting for).
 
         width_var is the Width spinbox's StringVar to fill in directly (Floor/
         Exploration modes); pass None for Range mode, which has no window-count
         field to fill -- there the recommendation is only reported via the dialog,
-        for the person to factor into their own From/To choice."""
+        for the person to factor into their own From/To choice.
+
+        The recommendation follows the engine selected in the pipeline form
+        (engine_options.recommend()): v5 scales the window count with base_exponent
+        (None = unknown floor, sized like a shallow one) and, when RAM is short, lowers
+        the bucket-memory field to what fits."""
+        choice, bad_key = self._engine_fields.choice()
+        if choice is None:
+            messagebox.showerror(self.T("quick.dialog_title"),
+                                 self.T("gen.error_field_int", field=bad_key))
+            return
         available = estimate_wsl_available_ram_bytes()
         if available is None:
             messagebox.showerror(self.T("quick.dialog_title"), self.T("quick.error_ram_probe_failed"))
             return
-        recommended = recommended_max_windows(available)
+        budget = engine_options.recommend(available, choice, base_exponent,
+                                          QUICK_GEN_MAX_WINDOW_WIDTH)
+        recommended = budget.windows
         numbers_total = recommended * QUICK_GEN_MAX_WINDOW_WIDTH
         if width_var is not None:
             width_var.set(str(recommended))
+        if choice.engine != engine_options.ENGINE_V5:
+            messagebox.showinfo(self.T("quick.dialog_title"), self.T(
+                "quick.auto_ram_result", available_gb=f"{available / 1e9:.1f}",
+                recommended=f"{recommended:,}", numbers_total=f"{numbers_total:,}"))
+            return
+        if budget.bucket_mb != choice.knobs["v5_bucket_mb"]:
+            self._engine_fields.set_bucket_mb(budget.bucket_mb)
         messagebox.showinfo(self.T("quick.dialog_title"), self.T(
-            "quick.auto_ram_result", available_gb=f"{available / 1e9:.1f}",
-            recommended=f"{recommended:,}", numbers_total=f"{numbers_total:,}"))
+            "quick.auto_ram_result_v5", available_gb=f"{available / 1e9:.1f}",
+            floor="?" if base_exponent is None else base_exponent,
+            recommended=f"{recommended:,}", numbers_total=f"{numbers_total:,}",
+            bucket_mb=f"{budget.bucket_mb:,}"))
 
     def _on_workers_auto_clicked(self):
         """Auto button handler for the "workers" field in the loop pipeline's
@@ -1709,6 +1771,11 @@ class GenerationTab(HybridControls, BaseTab):
 
         workers = _positive_int_or("workers", 1)
         batches_per_worker = _positive_int_or("batches_per_worker", 1)
+        choice, bad_key = self._engine_fields.choice()
+        if choice is None:
+            messagebox.showerror(
+                self.T("gen.dialog_title"), self.T("gen.error_field_int", field=bad_key))
+            return
         try:
             argv = build_orchestrator_direct_argv(
                 base_exponent, target_idx_start, window_count_per_run,
@@ -1717,7 +1784,7 @@ class GenerationTab(HybridControls, BaseTab):
             log_path, exit_path, _run_id = generation_log_paths(self._get_portal_folder(), "orchdirect")
             cmd = build_wsl_logged_command(
                 argv, log_path, exit_path, self._get_portal_folder(),
-                use_known_pi_seed=use_pi_seed)
+                use_known_pi_seed=use_pi_seed, extra_env=engine_options.launch_env(choice))
 
             self.loop_console.append(self._new_run_separator())
             self._loop_output_queue = queue.Queue()
@@ -2489,6 +2556,12 @@ class GenerationTab(HybridControls, BaseTab):
         # _build_generation_tab for why these are alternatives, not independent toggles.
         parsed["compute_sieving_primes_count"] = (
             self._loop_count_sieving_var.get() or parsed["use_known_pi_seed"])
+        choice, bad_key = self._engine_fields.choice()
+        if choice is None:
+            messagebox.showerror(
+                self.T("gen.dialog_title"), self.T("gen.error_field_int", field=bad_key))
+            return None
+        parsed["engine_choice"] = choice
         return parsed
 
     def _on_run_loop(self):
@@ -2518,6 +2591,7 @@ class GenerationTab(HybridControls, BaseTab):
                 "workers": str(parsed["workers"]),
                 "batches_per_worker": str(parsed["batches_per_worker"]),
                 "window_m": str(parsed["window_m"]),
+                **self._engine_fields.settings(),
             }
             save_generation_settings(self._get_portal_folder(), self._generation_settings)
 
@@ -2529,7 +2603,8 @@ class GenerationTab(HybridControls, BaseTab):
             log_path, exit_path, _run_id = generation_log_paths(self._get_portal_folder(), "loop")
             cmd = build_wsl_logged_command(
                 argv, log_path, exit_path, self._get_portal_folder(),
-                use_known_pi_seed=parsed["use_known_pi_seed"])
+                use_known_pi_seed=parsed["use_known_pi_seed"],
+                extra_env=engine_options.launch_env(parsed["engine_choice"]))
 
             self.loop_console.append(self._new_run_separator())
             self._loop_output_queue = queue.Queue()

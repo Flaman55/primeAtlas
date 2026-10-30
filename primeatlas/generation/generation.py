@@ -31,6 +31,7 @@ import time
 
 from ..core.storage import LOW_FLOOR_CUTOFF, list_floors, list_source_filenames, _offset_from_filename
 from ..visualization.shared.bigint import parse_big_int
+from . import engine_options, run_budget
 
 _SCRIPT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Three levels up from THIS file's own directory (primeatlas/generation/) --
@@ -424,6 +425,9 @@ DEFAULT_GENERATION_SETTINGS = {
         "window_m": "10000000",  # mirrors orchestrator_loop_helpers.py's own
                                   # WINDOW_M -- see build_loop_argv()'s docstring for the
                                   # cross-floor-consistency caveat before changing this.
+        # Sieve engine and v5 perf knobs -- see engine_options.py.
+        "engine": engine_options.DEFAULT_ENGINE,
+        **{key: str(value) for key, value in engine_options.DEFAULT_KNOBS.items()},
     },
     "constellation": {
         "base_exponent": "",  # blank = auto (every floor with source data -- see
@@ -1184,8 +1188,11 @@ def generation_log_paths(portal_folder, prefix):
             run_id)
 
 
+_ENV_NAME_RE = re.compile(r"[A-Z_][A-Z0-9_]*")
+
+
 def build_wsl_logged_command(argv, windows_log_path, windows_exit_path, portal_folder,
-                              use_known_pi_seed=False):
+                              use_known_pi_seed=False, extra_env=()):
     """Wraps a Linux-side argv (e.g. ["python3", "/mnt/d/.../script.py", "20", ...]) in a
     `wsl.exe -e bash -c "..."` invocation that redirects combined stdout+stderr into
     windows_log_path (translated to its WSL mount path) and writes the process's exit
@@ -1205,7 +1212,11 @@ def build_wsl_logged_command(argv, windows_log_path, windows_exit_path, portal_f
     prime_sieve_primesieve.py, ktuple_sieve_v1.py, constellation_finder_v1.py) and only the
     first two ever read this var -- the others simply ignore an env var they don't check, so
     it's harmless to leave at its False default for every call site that doesn't pass it
-    explicitly (only the Generation tab's classic-engine Pipeline/Loop launches do)."""
+    explicitly (only the Generation tab's classic-engine Pipeline/Loop launches do).
+
+    extra_env: (name, value) pairs set the same way, after the two above -- the sieve
+    engine choice and v5 knobs (engine_options.launch_env()). Values are shell-quoted;
+    a name that is not an upper-case identifier raises ValueError."""
     log_wsl = windows_path_to_wsl(windows_log_path)
     exit_wsl = windows_path_to_wsl(windows_exit_path)
     inner = " ".join(shlex.quote(str(t)) for t in argv)
@@ -1220,6 +1231,10 @@ def build_wsl_logged_command(argv, windows_log_path, windows_exit_path, portal_f
     env_prefix = f"CONSTELLATION_PORTAL_DIR={shlex.quote(portal_wsl)} "
     if use_known_pi_seed:
         env_prefix += "PRIMEATLAS_USE_KNOWN_PI_SEED=1 "
+    for name, value in extra_env:
+        if not _ENV_NAME_RE.fullmatch(name):
+            raise ValueError(f"invalid environment variable name: {name!r}")
+        env_prefix += f"{name}={shlex.quote(str(value))} "
     bash_cmd = (f"{env_prefix}{inner} > {shlex.quote(log_wsl)} 2>&1; "
                 f"echo $? > {shlex.quote(exit_wsl)}")
     return ["wsl.exe", "-e", "bash", "-c", bash_cmd]
@@ -1261,25 +1276,16 @@ def estimate_wsl_available_ram_bytes(timeout=10):
 
 
 def recommended_max_windows(available_ram_bytes, window_m=QUICK_GEN_MAX_WINDOW_WIDTH,
-                             safety_fraction=0.5):
-    """Conservative "how many windows should fit in one run" recommendation. Only the ONE
-    memory cost that's known EXACTLY regardless of floor depth is used as the basis: the
-    shared output buffer the engine allocates up front is windows * (window_m // 8) bytes
-    (see prime_sieve_v3.py/v4.py's own "Shared output buffer" print line -- this mirrors
-    that same arithmetic). Per-worker overhead is NOT modeled here -- it DOES grow with
-    floor depth (each worker walks sieving primes up to L_final = isqrt(combined_hi),
-    which grows with the floor), and there isn't enough calibration data yet to model it
-    honestly. safety_fraction (default 0.5 -- only half of available RAM counted) stands
-    in for that unmodeled cost; treat the result as a starting point to try on a small
-    run first, not a guarantee -- the benchmark log's own peak-RAM column is the real
-    feedback loop for tightening this over time. Returns None if available_ram_bytes is
-    None/non-positive; otherwise an int clamped to the same [1, 1000] range every width
-    spinbox in this panel already enforces."""
-    if not available_ram_bytes or available_ram_bytes <= 0:
-        return None
-    bytes_per_window = window_m // 8
-    windows = int((available_ram_bytes * safety_fraction) // bytes_per_window)
-    return max(1, min(1000, windows))
+                             safety_fraction=run_budget.DEFAULT_SAFETY_FRACTION):
+    """Conservative "how many windows should fit in one v4.1 run" recommendation: half the
+    free RAM over the shared bit buffer's window_m // 8 bytes per window, clamped to the
+    same [1, 1000] range every width spinbox in this panel enforces. run_budget.py holds the
+    model (and v5's floor-scaled target and footprint); treat the result as a starting point
+    to try on a small run first, not a guarantee -- the benchmark log's peak-RAM column is
+    the feedback loop. Returns None if available_ram_bytes is None/non-positive."""
+    budget = run_budget.recommend_run(available_ram_bytes, run_budget.ENGINE_V41, 0, window_m,
+                                      safety_fraction=safety_fraction)
+    return budget.windows if budget else None
 
 
 def estimate_wsl_available_cpu_count(timeout=10):
