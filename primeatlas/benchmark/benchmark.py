@@ -31,7 +31,10 @@ import os
 import re
 
 from ..core.i18n import Translator, DEFAULT_LANGUAGE
-from ..core.pdf_writer import _pdf_ascii_fold, _pdf_dot_op, _pdf_line_op, _pdf_rect_op, _pdf_text_op, _write_pdf
+from ..core.pdf_writer import _pdf_ascii_fold, _pdf_rect_op, _pdf_text_op, _write_pdf
+from .chart_pdf import chart_ops
+from .chart_series import engine_lines, engine_series
+from .reference_points import REFERENCES, reference_series
 
 QUICK_GEN_MAX_WINDOW_WIDTH = 10_000_000  # see this module's own docstring for why this
                                           # is a duplicate, not an import, of
@@ -131,20 +134,6 @@ def _row_engine(row):
     return row.get("engine") or ("hybrid" if row.get("instance_of_n") == "hybrid" else "unknown")
 
 
-def _latest_engines(rows, row_value):
-    """{base_exponent: engine} of the last row per floor whose row_value(row) is not None
-    -- the same row the matching aggregate_* reduction keeps for its chart point."""
-    latest = {}
-    for row in rows:
-        try:
-            floor = int(row.get("base_exponent", ""))
-        except (TypeError, ValueError):
-            continue
-        if row_value(row) is not None:
-            latest[floor] = _row_engine(row)
-    return latest
-
-
 def _metric_value(row, metric):
     try:
         value = float(row.get(metric, ""))
@@ -153,9 +142,6 @@ def _metric_value(row, metric):
     return None if math.isnan(value) else value
 
 
-def benchmark_metric_engines(rows, metric):
-    """Engine of the last valid measurement, matching chart reduction."""
-    return _latest_engines(rows, lambda row: _metric_value(row, metric))
 
 
 def aggregate_benchmark_growth(rows):
@@ -287,14 +273,31 @@ def _aggregate_last_per_floor(rows, row_value):
     return sorted(latest.items())
 
 
-def benchmark_sieve_engines(rows):
-    """{base_exponent: engine} for the points of aggregate_benchmark_sieve_nps()."""
-    return _latest_engines(rows, _row_sieve_nps)
+def _row_sieve_spw(row):
+    """Sieve-phase seconds per window: sieve_seconds / windows_written."""
+    try:
+        sieve_seconds = float(row.get("sieve_seconds", ""))
+        windows = int(row.get("windows_written", ""))
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(sieve_seconds) or sieve_seconds <= 0 or windows <= 0:
+        return None
+    return sieve_seconds / windows
 
 
-def benchmark_write_engines(rows):
-    """{base_exponent: engine} for the points of aggregate_benchmark_write_mbps()."""
-    return _latest_engines(rows, _row_write_mbps)
+_LINE_VALUES = {
+    "growth": lambda row: _metric_value(row, "loop_numbers_per_second"),
+    "write": _row_write_mbps,
+    "sieve": _row_sieve_nps,
+    "sieve_spw": _row_sieve_spw,
+}
+
+
+def benchmark_engine_lines(rows, metric):
+    """{engine: [(base_exponent, value)]} for one chart metric ("growth", "write",
+    "sieve", "sieve_spw"): the same per-row value as the matching aggregate_* reduction, but
+    the last row per floor AND engine, so each engine gets its own chart line."""
+    return engine_lines(rows, _LINE_VALUES[metric], _row_engine)
 
 
 def aggregate_benchmark_write_mbps(rows):
@@ -350,169 +353,9 @@ def benchmark_row_stats(rows):
     }
 
 
-def _pdf_engine_tag(engines, floor):
-    engine = (engines or {}).get(floor, "unknown")
-    return "" if engine == "unknown" else " [" + engine + "]"
-
-
-def _pdf_chart_ops(points, x0, y0, w, h, points2=None, translator=None,
-                    label_key1="bench.axis_nps", label_key2="bench.axis_spw",
-                    fmt1="{:,.0f}", fmt2="{:,.3f}", engines=None, engines2=None):
-    """Returns PDF content-stream ops drawing a (floor, primary-series) growth chart as
-    benchmark_tab.py's own _draw_growth_chart() (same axis/tick/point layout logic),
-    inside the box [x0, x0+w] x [y0, y0+h] in PDF's bottom-left-origin point space --
-    kept as a SEPARATE function rather than sharing code with the canvas version, since
-    tkinter's Canvas anchors ("e", "sw", ...) and y-down coordinate system have no PDF
-    equivalent.
-
-    points2 (optional): a SECOND series sharing the x-axis (floor) -- by default the 'fair'
-    loop_seconds_per_window figure shown alongside n/s, but label_key2/fmt2 (see below) let
-    a caller reuse this for a different pair, e.g. sieve-numbers/s + write-MB/s. Drawn as a
-    red line with its OWN right-hand y-axis and its own independent scale (values are a
-    different order of magnitude from the primary series, so sharing one axis would flatten
-    one of the two lines into a straight line at the bottom). The x-tick set is the UNION of
-    both series' base_exponent values, so a floor present in only one series still gets an
-    x-tick.
-
-    label_key1/label_key2: i18n keys for the primary/secondary axis titles (see
-    _draw_growth_chart()'s matching parameters for the full rationale) -- default to the
-    original n/s + s/window pair so existing callers are unaffected.
-
-    fmt1/fmt2: str.format() templates used for every value label drawn next to a point and
-    every y-axis tick on that series' axis -- default to the original ",.0f"/",.3f"
-    precision (huge integer n/s counts vs. tiny decimal s/window figures); a caller with a
-    different value shape (e.g. MB/s) passes its own template instead of getting a
-    precision that doesn't fit its numbers.
-
-    translator (optional): a primeatlas.core.i18n.Translator instance -- axis labels reuse the
-    SAME on-screen chart's i18n keys (bench.axis_floor/no_data_chart plus whichever
-    label_key1/label_key2 resolve to, see _draw_growth_chart()) instead of separate
-    hardcoded PDF text, then ASCII-fold the result (see _pdf_ascii_fold()), so every axis
-    label tracks the app's actual language selection instead of a fixed one. Defaults to
-    DEFAULT_LANGUAGE if not given (e.g. direct/test calls).
-
-    engines/engines2 (optional): {base_exponent: engine} for each series; a known engine
-    is appended to the point's value label as " [v5]". "unknown" adds no tag: it carries
-    no information and every legacy point would repeat it."""
-    t = (translator or Translator(DEFAULT_LANGUAGE)).t
-    points = points or []
-    points2 = points2 or []
-    ops = [_pdf_rect_op(x0, y0, w, h, stroke_rgb=(0.8, 0.8, 0.8), width=0.5)]
-    if not points and not points2:
-        ops.append(_pdf_text_op(x0 + w / 2 - 60, y0 + h / 2, 10, "Helvetica",
-                                 _pdf_ascii_fold(t("bench.no_data_chart"))))
-        return ops
-
-    has_secondary = bool(points2)
-    pad_left = 55
-    pad_right = 55 if has_secondary else 15
-    pad_top, pad_bottom = 20, 30
-    plot_x0 = x0 + pad_left
-    plot_y0 = y0 + pad_bottom
-    plot_w = max(1, w - pad_left - pad_right)
-    plot_h = max(1, h - pad_top - pad_bottom)
-
-    all_xs = sorted({p[0] for p in points} | {p[0] for p in points2})
-    x_min, x_max = min(all_xs), max(all_xs)
-    if x_min == x_max:
-        x_min -= 1
-        x_max += 1
-
-    def y_bounds(pts):
-        ys = [p[1] for p in pts]
-        ylo, yhi = min(ys), max(ys)
-        if ylo == yhi:
-            pad = max(1.0, abs(ylo) * 0.1)
-            ylo -= pad
-            yhi += pad
-        return min(ylo, 0), yhi
-
-    if points:
-        y_min, y_max = y_bounds(points)
-    if has_secondary:
-        y2_min, y2_max = y_bounds(points2)
-
-    # Horizontal inset so the leftmost/rightmost points don't sit flush against the y-axis /
-    # right edge -- their value labels (drawn centered above each point) would otherwise
-    # collide with the y-axis tick labels at the same height. Numbers/second values are wide
-    # (12-14 digit strings), so this collision is far more visible than it was with the old
-    # short 1-2 digit s/10M values.
-    inset_x = max(15.0, plot_w * 0.05)
-
-    def sx(x):
-        return plot_x0 + inset_x + (x - x_min) / (x_max - x_min) * (plot_w - 2 * inset_x)
-
-    def sy(y):
-        return plot_y0 + (y - y_min) / (y_max - y_min) * plot_h
-
-    def sy2(y):
-        return plot_y0 + (y - y2_min) / (y2_max - y2_min) * plot_h
-
-    axis_gray = (0.4, 0.4, 0.4)
-    red = (0.75, 0.2, 0.2)
-    ops.append(_pdf_line_op(plot_x0, plot_y0, plot_x0, plot_y0 + plot_h, rgb=axis_gray))
-    ops.append(_pdf_line_op(plot_x0, plot_y0, plot_x0 + plot_w, plot_y0, rgb=axis_gray))
-    if has_secondary:
-        ops.append(_pdf_line_op(plot_x0 + plot_w, plot_y0, plot_x0 + plot_w, plot_y0 + plot_h,
-                                 rgb=red))
-
-    if points:
-        for i in range(6):
-            y_val = y_min + (y_max - y_min) * i / 5
-            y_px = sy(y_val)
-            ops.append(_pdf_line_op(plot_x0 - 3, y_px, plot_x0, y_px, rgb=axis_gray))
-            ops.append(_pdf_text_op(plot_x0 - 50, y_px - 3, 7, "Courier", fmt1.format(y_val)))
-
-    if has_secondary:
-        for i in range(6):
-            y_val = y2_min + (y2_max - y2_min) * i / 5
-            y_px = sy2(y_val)
-            ops.append(_pdf_line_op(plot_x0 + plot_w, y_px, plot_x0 + plot_w + 3, y_px, rgb=red))
-            ops.append(_pdf_text_op(plot_x0 + plot_w + 5, y_px - 3, 7, "Courier",
-                                     fmt2.format(y_val)))
-
-    for x_val in all_xs:
-        x_px = sx(x_val)
-        ops.append(_pdf_line_op(x_px, plot_y0, x_px, plot_y0 - 3, rgb=axis_gray))
-        ops.append(_pdf_text_op(x_px - 8, plot_y0 - 14, 7, "Courier", str(x_val)))
-
-    ops.append(_pdf_text_op(plot_x0 + plot_w / 2 - 30, y0 + 4, 8, "Helvetica-Bold",
-                             _pdf_ascii_fold(t("bench.axis_floor"))))
-    if points:
-        ops.append(_pdf_text_op(x0 + 2, y0 + h - 10, 8, "Helvetica-Bold",
-                                 _pdf_ascii_fold(t(label_key1))))
-    if has_secondary:
-        ops.append(_pdf_text_op(x0 + w - 62, y0 + h - 10, 8, "Helvetica-Bold",
-                                 _pdf_ascii_fold(t(label_key2)), rgb=red))
-
-    if points:
-        if len(points) > 1:
-            coords = [(sx(xv), sy(yv)) for xv, yv in points]
-            for (x1, y1), (x2, y2) in zip(coords, coords[1:]):
-                ops.append(_pdf_line_op(x1, y1, x2, y2, width=1.5, rgb=(0.29, 0.56, 0.85)))
-        for x_val, y_val in points:
-            cx, cy = sx(x_val), sy(y_val)
-            ops.append(_pdf_dot_op(cx, cy, 2.5, rgb=(0.11, 0.37, 0.66)))
-            ops.append(_pdf_text_op(cx - 10, cy + 8, 7, "Courier",
-                                     fmt1.format(y_val) + _pdf_engine_tag(engines, x_val)))
-
-    if has_secondary:
-        if len(points2) > 1:
-            coords2 = [(sx(xv), sy2(yv)) for xv, yv in points2]
-            for (x1, y1), (x2, y2) in zip(coords2, coords2[1:]):
-                ops.append(_pdf_line_op(x1, y1, x2, y2, width=1.5, rgb=red))
-        for x_val, y_val in points2:
-            cx, cy = sx(x_val), sy2(y_val)
-            ops.append(_pdf_dot_op(cx, cy, 2.5, rgb=red))
-            ops.append(_pdf_text_op(cx - 12, cy - 14, 7, "Courier",
-                                     fmt2.format(y_val) + _pdf_engine_tag(engines2, x_val),
-                                     rgb=red))
-
-    return ops
-
-
 def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translator=None,
-                          sieve_points=None, write_points=None):
+                          sieve_points=None, write_points=None, references=False,
+                          log_y=False):
     """Writes a standalone PDF report -- the same growth chart(s) shown in the Benchmark tab
     plus the FULL benchmark_log.csv table (every row, every column) -- to `path`. The table
     continues onto as many additional (landscape A4) pages as needed, repeating the column
@@ -522,18 +365,24 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
     points/fieldnames/rows this module already computed for the on-screen chart/table and
     hands them here unchanged.
 
-    points2 (optional): second (base_exponent, loop_seconds_per_window) series, drawn as a
-    second red line on its own right-hand y-axis -- see _pdf_chart_ops().
+    The charts draw one line per engine from `rows` (benchmark_engine_lines()): the first
+    one the whole run (sieve + write: loop n/s, with write MB/s on the right axis), the
+    second one the sieve phase alone (sieve n/s, with sieve seconds per window on the right
+    axis). points/points2/sieve_points/write_points are the per-floor reductions, used for
+    the subtitle's floor count and to decide whether the second chart is drawn.
 
-    sieve_points/write_points (optional): the sieve-numbers/s and write-MB/s series from
-    aggregate_benchmark_sieve_nps()/aggregate_benchmark_write_mbps() -- only populated for
-    floors benchmarked with the v4.1 or v5 engine. A SECOND chart, same layout as the
-    primary one, is only drawn (taking space away from the table below it) when at
-    least one of the two is non-empty, rather than reserving blank chart space no data
-    will fill.
+    references: also draw reference_points.py's series on the sieve chart -- PARI/GP and
+    primesieve sieve or iterate in memory and write nothing, so they compare with the sieve
+    phase -- with a footnote line per reference (full name and source) above the table.
+    log_y: log10 y-axes on both charts -- the Benchmark tab's two toggles.
+
+    sieve_points (optional): aggregate_benchmark_sieve_nps(), only populated for floors
+    benchmarked with the v4.1 or v5 engine. The sieve chart takes space away from the
+    table, so it is drawn only when sieve_points is non-empty or references is on.
+    write_points: aggregate_benchmark_write_mbps(), kept for the callers' symmetry.
 
     translator (optional): a primeatlas.core.i18n.Translator instance, threaded into
-    _pdf_chart_ops() and used for the title/subtitle/continuation-page header below --
+    chart_ops() and used for the title/subtitle/continuation-page header below --
     defaults to DEFAULT_LANGUAGE if not given. The title/subtitle/continuation text and
     axis labels are all translator-driven so the report is consistently in one language,
     matching whatever the app's language setting actually is, rather than mixing
@@ -591,28 +440,39 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
     ops.append(_pdf_text_op(content_left, content_top - 30, 9, "Helvetica",
                              _pdf_ascii_fold(t("bench.pdf_subtitle", now=now_str,
                                                runs=len(rows), depths=len(points)))))
-    has_speed_chart = bool(sieve_points) or bool(write_points)
+    has_speed_chart = bool(sieve_points) or references
     chart_h = 140 if has_speed_chart else 180
     chart_top = content_top - 40
     chart_y0 = chart_top - chart_h
-    ops.extend(_pdf_chart_ops(points, content_left, chart_y0, content_width, chart_h,
-                               points2=points2, translator=translator,
-                               engines=benchmark_metric_engines(rows, "loop_numbers_per_second"),
-                               engines2=benchmark_metric_engines(rows, "loop_seconds_per_window")))
+    ops.extend(chart_ops(content_left, chart_y0, content_width, chart_h,
+                         engine_series(benchmark_engine_lines(rows, "growth")),
+                         engine_series(benchmark_engine_lines(rows, "write")),
+                         translator=translator,
+                         label_key1="bench.axis_total_nps", label_key2="bench.axis_write_mbps",
+                         fmt1="{:,.0f}", fmt2="{:,.1f}", log_y=log_y))
 
     if has_speed_chart:
         chart2_h = 140
         chart2_top = chart_y0 - 16
         chart2_y0 = chart2_top - chart2_h
-        ops.extend(_pdf_chart_ops(
-            sieve_points, content_left, chart2_y0, content_width, chart2_h,
-            points2=write_points, translator=translator,
-            label_key1="bench.axis_sieve_nps", label_key2="bench.axis_write_mbps",
-            fmt1="{:,.0f}", fmt2="{:,.1f}",
-            engines=benchmark_sieve_engines(rows), engines2=benchmark_write_engines(rows)))
+        sieve_series = engine_series(benchmark_engine_lines(rows, "sieve"))
+        if references:
+            sieve_series += reference_series(t)
+        ops.extend(chart_ops(
+            content_left, chart2_y0, content_width, chart2_h, sieve_series,
+            engine_series(benchmark_engine_lines(rows, "sieve_spw")),
+            translator=translator,
+            label_key1="bench.axis_sieve_nps", label_key2="bench.axis_sieve_spw",
+            fmt1="{:,.0f}", fmt2="{:,.4f}", log_y=log_y))
         table_top = chart2_y0 - 12
     else:
         table_top = chart_y0 - 12
+    if references:
+        for ref in REFERENCES:
+            table_top -= 8
+            ops.append(_pdf_text_op(content_left, table_top, 6, "Helvetica", _pdf_ascii_fold(
+                f"{ref.tag}: {ref.name} -- {ref.source}")))
+        table_top -= 6
     y_after_header = draw_table_header(ops, table_top)
     available = y_after_header - content_bottom
     rows_fit = max(0, int(available // row_h))

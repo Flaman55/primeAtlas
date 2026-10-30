@@ -180,13 +180,20 @@ interchangeable engine generations, v3/v4/v4.1 -- see "Architecture" below).
   animation" below). Its **Sphere** sub-tab shows the first K primes as rings on a sphere
   through one common node, where the divisors of N meet, and in its fibers mode as a pencil
   of orbits joined by resonance or lineage fibers (see "Prime sphere" below).
-- **Benchmark** -- a throughput chart (numbers generated per second vs. floor depth,
-  derived from the actual count of integers swept per floor rather than a window-count
-  approximation, so a mode like Hybrid whose swept range is normally far smaller than
-  one full window still plots accurately), plus a second chart (sieve speed and write
-  speed per floor) whenever the active engine reports that level of phase timing (see
-  `prime_sieve_v4_1.py` under "Architecture" below), a full benchmark log table, and
-  one-click PDF export covering both charts. The progress bar shown during a generation
+- **Benchmark** -- two charts by floor depth, a full benchmark log table, and one-click
+  PDF export covering both charts. The first chart shows the whole run (sieve + write):
+  numbers per second, derived from the actual count of integers swept per floor rather
+  than a window-count approximation (so a mode like Hybrid, whose swept range is normally
+  far smaller than one full window, still plots accurately), with write speed (MB/s) on
+  the right axis. The second chart shows the sieve phase alone: sieve numbers per second,
+  with sieve seconds per window on the right axis, for engines that report phase timing
+  (v4.1, v5; see `prime_sieve_v4_1.py` under "Architecture" below). Each engine gets its
+  own line in its own color on both axes (left axis: circles, right axis: squares), and
+  every point names its engine. Two toggles add reference points of well-known tools to
+  the sieve chart (PARI/GP `forprime` and its sieving patch, primesieve: they sieve or
+  iterate in memory and write nothing; published results plus one own measurement, each
+  with its source) and a log10 y-axis fitted to the data range; the PDF export follows
+  both. The progress bar shown during a generation
   run models the whole pipeline as a sequence of steps (prep, then each sieve batch,
   then done) rather than only moving during the sieve phase and sitting empty through prep.
 - **Research (Badania)** -- an inner notebook of five sub-tabs, grouped by shared
@@ -1676,6 +1683,12 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
   benchmark_tab.py             BenchmarkTab -- the Benchmark tab (charts + PDF export;
                               benchmark.py below is the pure-logic backend)
   benchmark.py                  reading/normalizing benchmark_log.csv rows
+  chart_series.py               chart Series (one color per engine), linear/log
+                              y-scales -- shared by the canvas and the PDF renderer
+  chart_pdf.py                  PDF content ops of one Benchmark chart (axes, lines,
+                              value labels with engine tags, legend)
+  reference_points.py           reference throughput of PARI/GP and primesieve with
+                              sources, for the "Reference points" toggle
 
   primeatlas/primality/         "Prime numbers" tab's primesieve-calculator and
                               primality-test sub-tabs
