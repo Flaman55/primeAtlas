@@ -9,15 +9,14 @@
  *
  * For every sieving prime p, the engine needs first_odd mod p (the phase of the combined
  * range's first odd number relative to p, i.e. which residue class p first strikes inside
- * the range). first_odd is a 128-bit value (unsigned __int128); p is 64-bit. Compiled plainly,
- * `first_odd % (u128)p_val` becomes a call into libgcc's __umodti3 for EVERY sieving prime.
- * The common case (dividend's high 64 bits less than the divisor, so the quotient fits in
- * 64 bits) is one hardware `divq`, inlined at the call site via a small asm block; the full
- * u128 division remains as the fallback, so results are exact in every case.
- *
- * The u128 `first_odd` value is still used for the self-elimination guard (the first odd
- * multiple equal to p itself); only the modulo goes through the fast path. u128 addition and
- * comparison involve no division and generate no library calls.
+ * the range). first_odd is a 128-bit value (unsigned __int128); p is 64-bit. Deep floors have
+ * about 10^11 sieving primes, so this phase is a fixed per-prime cost of every run, next to
+ * generating the prime itself. phase_rem() computes it exactly by one of two paths:
+ *   - double: the quotient first_odd / p is estimated in double precision and the remainder
+ *     corrected by at most one p (a pipelined floating-point division);
+ *   - divq: one hardware 128-by-64 `divq` when the quotient fits in 64 bits, else the full
+ *     u128 modulo (a libgcc __umodti3 call).
+ * phase_first_marked_bit() exposes the result for tests.
  *
  * sieve_odd_segmented() marks the small sieving primes inside one slice of the buffer, segment
  * by segment in a private cache-sized word array, with a stored next offset per prime and a
@@ -81,6 +80,51 @@ static inline uint64_t phase_mod(u128 distance, uint64_t distance_hi, uint64_t d
 }
 
 /* ------------------------------------------------------------------------------------------
+ * phase_ctx -- the fixed dividend of every phase computation of a call (`first`, an odd
+ * number) in the forms phase_rem() needs.
+ *
+ * phase_rem -- first mod p. The double path applies when p >= dbl_min_p (so the true
+ * quotient Q = first / p is below 2^DBL_QUOT_BITS) and p < 2^53 (p is exact as a double):
+ * fd = first rounded to double has a relative error of at most 2^-53 and fd / p adds another
+ * 2^-53, so the computed quotient is within Q * 2^-52 * (1 + 2^-53) < 0.26 of Q. Truncated,
+ * it is floor(Q) - 1, floor(Q) or floor(Q) + 1, so first - q*p lies in [-p, 2p) and fits an
+ * int64; it is computed modulo 2^64 from the low word and corrected by one p. Otherwise
+ * phase_mod() divides exactly.
+ * ------------------------------------------------------------------------------------------ */
+#define DBL_QUOT_BITS 50
+#define DBL_EXACT_LIMIT (1ull << 53)
+
+typedef struct {
+    u128 first;
+    uint64_t hi, lo;
+    double fd;
+    uint64_t dbl_min_p, dbl_width;   /* double path: p - dbl_min_p < dbl_width */
+} phase_ctx;
+
+static void phase_init(phase_ctx *c, u128 first) {
+    c->first = first;
+    c->hi = (uint64_t)(first >> 64);
+    c->lo = (uint64_t)first;
+    c->fd = (double)first;
+    u128 min_p = (first >> DBL_QUOT_BITS) + 1;
+    c->dbl_min_p = (min_p >= DBL_EXACT_LIMIT) ? DBL_EXACT_LIMIT : (uint64_t)min_p;
+    c->dbl_width = DBL_EXACT_LIMIT - c->dbl_min_p;
+}
+
+static inline uint64_t phase_rem(const phase_ctx *c, uint64_t p_val) {
+    if (__builtin_expect(p_val - c->dbl_min_p < c->dbl_width, 1)) {
+        uint64_t q = (uint64_t)(c->fd / (double)p_val);
+        int64_t r = (int64_t)(c->lo - q * p_val);
+        if (r < 0)
+            r += (int64_t)p_val;
+        else if ((uint64_t)r >= p_val)
+            r -= (int64_t)p_val;
+        return (uint64_t)r;
+    }
+    return phase_mod(c->first, c->hi, c->lo, p_val);
+}
+
+/* ------------------------------------------------------------------------------------------
  * first_multiple_bit -- bit index (relative to the odd number `first`) of the first odd
  * multiple of p at or above `first`:
  *   k = (-first) mod p      offset of the first multiple of p at or above first;
@@ -89,19 +133,33 @@ static inline uint64_t phase_mod(u128 distance, uint64_t distance_hi, uint64_t d
  * first_marked_bit -- the same, skipping p itself (first + 2*i == p -> i += p): p stays
  * unmarked and the next odd multiple is 3p.
  * ------------------------------------------------------------------------------------------ */
-static inline uint64_t first_multiple_bit(u128 first, uint64_t first_hi, uint64_t first_lo,
-                                          uint64_t p_val) {
-    uint64_t rem = phase_mod(first, first_hi, first_lo, p_val);
-    uint64_t k = (rem == 0) ? 0 : (p_val - rem);
+static inline uint64_t first_multiple_offset(const phase_ctx *c, uint64_t p_val) {
+    uint64_t rem = phase_rem(c, p_val);
+    return (rem == 0) ? 0 : (p_val - rem);
+}
+
+static inline uint64_t odd_multiple_bit(uint64_t k, uint64_t p_val) {
     if (k & 1) k += p_val;
     return k >> 1;
 }
 
-static inline uint64_t first_marked_bit(u128 first, uint64_t first_hi, uint64_t first_lo,
-                                        uint64_t p_val) {
-    uint64_t i = first_multiple_bit(first, first_hi, first_lo, p_val);
-    if (first + 2 * (u128)i == (u128)p_val) i += p_val;
+static inline uint64_t skip_self(const phase_ctx *c, uint64_t i, uint64_t p_val) {
+    if (c->first + 2 * (u128)i == (u128)p_val) i += p_val;
     return i;
+}
+
+static inline uint64_t first_multiple_bit(const phase_ctx *c, uint64_t p_val) {
+    return odd_multiple_bit(first_multiple_offset(c, p_val), p_val);
+}
+
+static inline uint64_t first_marked_bit(const phase_ctx *c, uint64_t p_val) {
+    return skip_self(c, first_multiple_bit(c, p_val), p_val);
+}
+
+uint64_t phase_first_marked_bit(uint64_t first_hi, uint64_t first_lo, uint64_t p_val) {
+    phase_ctx c;
+    phase_init(&c, ((u128)first_hi << 64) | (u128)first_lo);
+    return first_marked_bit(&c, p_val);
 }
 
 /* ------------------------------------------------------------------------------------------
@@ -132,7 +190,8 @@ int sieve_odd_segmented(uint64_t stop, uint64_t first_odd_hi, uint64_t first_odd
     if (segment_words == 0) segment_words = 1;
 
     u128 first = (((u128)first_odd_hi << 64) | (u128)first_odd_lo) + 2 * (u128)bit_lo;
-    uint64_t first_hi = (uint64_t)(first >> 64), first_lo = (uint64_t)first;
+    phase_ctx ph;
+    phase_init(&ph, first);
     uint64_t n = bit_hi - bit_lo;
     uint64_t *out = out_words + (bit_lo >> 6);
 
@@ -153,11 +212,11 @@ int sieve_odd_segmented(uint64_t stop, uint64_t first_odd_hi, uint64_t first_odd
     }
 
     for (size_t k = 0; k < n_primes; k++)
-        next[k] = first_marked_bit(first, first_hi, first_lo, primes[k]);
+        next[k] = first_marked_bit(&ph, primes[k]);
 
     for (size_t t = 0; t < N_PRESIEVE_PRIMES; t++) {
         uint64_t q = PRESIEVE_PRIMES[t];
-        for (uint64_t j = first_multiple_bit(first, first_hi, first_lo, q);
+        for (uint64_t j = first_multiple_bit(&ph, q);
              j < (uint64_t)PRESIEVE_WORDS * 64; j += q)
             pattern[j >> 6] |= 1ull << (j & 63);
     }
@@ -214,8 +273,9 @@ done:
  * memory of all threads together). Every round:
  *   1. scatter: each thread walks its primes and appends every hit's offset within its region
  *      to its bucket of that region. A thread stops when one of its buckets is full (it keeps
- *      its prime and next bit for the next round) and raises round_over; the others stop at
- *      their next prime boundary.
+ *      its prime and next bit for the next round) and raises round_over; the others stop
+ *      before their next prime with a hit. Primes whose first hit lies beyond the buffer
+ *      (most of them on deep floors) are skipped in a tight loop that touches no bucket.
  *   2. barrier, then apply: thread t ORs the buckets of every thread for the regions
  *      [R*t/T, R*(t+1)/T) into out_bits, one region at a time.
  *   3. barrier; each thread empties its buckets. The run ends after the round in which every
@@ -244,8 +304,8 @@ typedef struct {
 struct bucket_shared {
     const uint64_t *piece_lo, *piece_hi;
     uint64_t n_pieces, n_threads;
-    u128 first;
-    uint64_t first_hi, first_lo, n_bits;
+    phase_ctx phase;
+    uint64_t n_bits;
     unsigned shift;
     uint64_t n_regions, cap;
     unsigned char *out;
@@ -260,48 +320,88 @@ struct bucket_shared {
 };
 
 static void bucket_scatter(bucket_shared *sh, bucket_thread *th) {
-    const uint64_t mask = (1ull << sh->shift) - 1, cap = sh->cap, n_bits = sh->n_bits;
+    const unsigned shift = sh->shift;
+    const uint64_t mask = (1ull << shift) - 1, cap = sh->cap, n_bits = sh->n_bits;
+    const uint64_t span = 2 * n_bits;
+    const phase_ctx ph = sh->phase;
+    uint32_t *const slots = th->slots, *const fill = th->fill;
+    primesieve_iterator *const it = &th->it;
+    uint64_t p = th->p, i = th->i;
+    th->p = 0;
     for (;;) {
-        if (th->p == 0) {
-            if (__atomic_load_n(&sh->round_over, __ATOMIC_RELAXED)) return;
-            if (!th->in_piece) {
-                th->piece = __atomic_fetch_add(&sh->next_piece, 1, __ATOMIC_RELAXED);
-                if (th->piece >= sh->n_pieces) {
-                    th->exhausted = 1;
+        if (p) {
+            if (__atomic_load_n(&sh->round_over, __ATOMIC_RELAXED)) {
+                th->p = p;
+                th->i = i;
+                return;
+            }
+            for (; i < n_bits; i += p) {
+                uint64_t r = i >> shift;
+                uint32_t f = fill[r];
+                if (f == cap) {
+                    th->p = p;
+                    th->i = i;
+                    __atomic_store_n(&sh->round_over, 1, __ATOMIC_RELAXED);
                     return;
                 }
-                primesieve_jump_to(&th->it, sh->piece_lo[th->piece], sh->piece_hi[th->piece]);
-                th->in_piece = 1;
+                slots[r * cap + f] = (uint32_t)(i & mask);
+                fill[r] = f + 1;
             }
-            uint64_t p = primesieve_next_prime(&th->it);
-            if (th->it.is_error) {
-                th->err = 1;
+            p = 0;
+        }
+        if (!th->in_piece) {
+            if (__atomic_load_n(&sh->round_over, __ATOMIC_RELAXED)) return;
+            th->piece = __atomic_fetch_add(&sh->next_piece, 1, __ATOMIC_RELAXED);
+            if (th->piece >= sh->n_pieces) {
                 th->exhausted = 1;
                 return;
             }
-            if (p >= sh->piece_hi[th->piece]) {
-                th->in_piece = 0;
-                __atomic_fetch_add(sh->pieces_done, 1, __ATOMIC_RELAXED);
-                continue;
-            }
-            if (p < 3) continue;
-            th->p = p;
-            th->i = first_marked_bit(sh->first, sh->first_hi, sh->first_lo, p);
+            /* Starting at 3 or above keeps 2 out of the per-prime loop below. */
+            uint64_t start = sh->piece_lo[th->piece];
+            primesieve_jump_to(it, start < 3 ? 3 : start, sh->piece_hi[th->piece]);
+            th->in_piece = 1;
         }
-        uint64_t p = th->p, i = th->i;
-        while (i < n_bits) {
-            uint64_t r = i >> sh->shift;
-            uint32_t f = th->fill[r];
-            if (f == cap) {
-                th->i = i;
-                __atomic_store_n(&sh->round_over, 1, __ATOMIC_RELAXED);
-                return;
+        /* The loop reads the iterator's buffer directly, as primesieve_next_prime() does:
+         * primes[it->i] is the current prime, primes[it->i + 1 .. size) the next ones, and
+         * after primesieve_generate_next_primes() the next prime is primes[it->i]. On an error
+         * the buffer holds PRIMESIEVE_ERROR (UINT64_MAX), which ends the loop like the end of
+         * the piece does. */
+        const uint64_t hi = sh->piece_hi[th->piece];
+        size_t j = it->i + 1;
+        for (;;) {
+            if (j >= it->size) {
+                primesieve_generate_next_primes(it);
+                j = it->i;
             }
-            th->slots[r * cap + f] = (uint32_t)(i & mask);
-            th->fill[r] = f + 1;
-            i += p;
+            const uint64_t *const primes = it->primes;
+            const size_t n = it->size;
+            for (; j < n; j++) {
+                uint64_t q = primes[j];
+                if (__builtin_expect(q >= hi, 0)) goto piece_end;
+                /* The first multiple at offset k >= span (2 * n_bits numbers) puts the first
+                 * odd one, k or k + p, past the buffer too: one compare rejects most
+                 * deep-floor primes. */
+                uint64_t k = first_multiple_offset(&ph, q);
+                if (__builtin_expect(k >= span, 1)) continue;
+                uint64_t b = skip_self(&ph, odd_multiple_bit(k, q), q);
+                if (b < n_bits) {
+                    it->i = j;
+                    p = q;
+                    i = b;
+                    goto next_prime;
+                }
+            }
         }
-        th->p = 0;
+    piece_end:
+        it->i = j;
+        if (it->is_error) {
+            th->err = 1;
+            th->exhausted = 1;
+            return;
+        }
+        th->in_piece = 0;
+        __atomic_fetch_add(sh->pieces_done, 1, __ATOMIC_RELAXED);
+    next_prime:;
     }
 }
 
@@ -358,9 +458,7 @@ int sieve_odd_bucketed(const uint64_t *piece_lo, const uint64_t *piece_hi, uint6
     sh.piece_hi = piece_hi;
     sh.n_pieces = n_pieces;
     sh.n_threads = n_threads;
-    sh.first_hi = first_odd_hi;
-    sh.first_lo = first_odd_lo;
-    sh.first = ((u128)first_odd_hi << 64) | (u128)first_odd_lo;
+    phase_init(&sh.phase, ((u128)first_odd_hi << 64) | (u128)first_odd_lo);
     sh.n_bits = n_bits;
     sh.shift = 6;
     while (sh.shift < 32 && (2ull << sh.shift) <= region_bits) sh.shift++;
