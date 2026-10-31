@@ -1,0 +1,35 @@
+{
+ "engine": "v5",
+ "floors": [
+  25
+ ],
+ "dist": 10000000000,
+ "windows": 1000,
+ "window_m": 10000000,
+ "workers": 1,
+ "runs": [
+  {
+   "floor": 25,
+   "mode": "count",
+   "primesieve": {
+    "skipped": "not in this series"
+   },
+   "atlas": {
+    "seconds": 838.4154672622681,
+    "returncode": 0,
+    "peak_pss_mb": 1664.8779296875,
+    "peak_procs": 3,
+    "tail": ".py) | START: 10^25\n[*] 1000 windows total, in batches of 1000, 1 workers per batch -- WRITE_FILES=False (count-only, no PGS2 files) -- SIEVING_PRIMES_COUNT=False (skip pi(L_final))\n[*] TARGET: <workspace>/primeAtlas/prime_sieve/prime_sieve_v5.py\n============================================================\n\n[*] manual mode: starting at target_idx=0 (given explicitly)\n\n[15:00:41] Launching batch target_idx 0..999 (1000 windows), WRITE_FILES=False (count-only)...\n[15:14:39] Batch 0..999 DONE.\n\n============================================================\n[!] ALL JOBS DONE. target_idx 0..999 (1000 windows, 10000 million).\n[!] Total orchestrator run time: 13m 58s (15:00:41 -> 15:14:39) -- 0.84 s/window\n============================================================\n\n============================================================\n[BENCHMARK] (count-only mode -- totals from scanner handoff, not disk)\n[BENCHMARK] 10^25, target_idx 0..999 (1000 windows processed (NOT written))\n[BENCHMARK] total time: 13m 58s (0.838 s/window)\n[BENCHMARK] total primes found: 173,728,551 (avg 173,729/window, 207,302 primes/sec)\n[BENCHMARK] peak child-process RAM: 1,653 MB (single largest worker, not the simultaneous total across all workers)\n[BENCHMARK] phase breakdown: sieve 835.61s | write 2.13s\n============================================================\n[BENCHMARK] logged to /mnt/h/primeatlas_bench_v5b_E_1000x1e7_1w_floor25_r2/benchmark_log.csv (for cross-floor growth analysis)\n",
+    "total_seconds": "838.046",
+    "base_gen_seconds": "",
+    "sieve_seconds": "835.605",
+    "write_seconds": "2.133",
+    "total_primes": "173728551",
+    "bytes_written": "0",
+    "max_child_rss_mb": "1652.7",
+    "output_bytes": 0,
+    "output_files": 0
+   }
+  }
+ ]
+}

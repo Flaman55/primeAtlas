@@ -1,0 +1,33 @@
+{
+ "floors": [
+  25
+ ],
+ "dist": 10000000000,
+ "windows": 1000,
+ "window_m": 10000000,
+ "workers": 1,
+ "runs": [
+  {
+   "floor": 25,
+   "mode": "count",
+   "primesieve": {
+    "skipped": "not in this series"
+   },
+   "atlas": {
+    "seconds": 1130.4322562217712,
+    "returncode": 0,
+    "peak_pss_mb": 2393.79296875,
+    "peak_procs": 3,
+    "total_seconds": "1129.609",
+    "base_gen_seconds": "",
+    "sieve_seconds": "1127.178",
+    "write_seconds": "2.216",
+    "total_primes": "173728551",
+    "bytes_written": "0",
+    "max_child_rss_mb": "2416.9",
+    "output_bytes": 0,
+    "output_files": 0
+   }
+  }
+ ]
+}

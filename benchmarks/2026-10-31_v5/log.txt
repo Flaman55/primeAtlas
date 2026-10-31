@@ -1,0 +1,373 @@
+[14:35:31] ab_v4.1_B_24w_r1
+[14:35:31] floor 10 count
+{"floor": 10, "mode": "count", "ps_s": null, "atlas_s": 0.6596693992614746, "sieve_s": "0.060", "write_s": "0.011", "pss_mb": 43, "primes": "434650", "rc": 0, "bytes": 0}
+[14:35:32] floor 13 count
+{"floor": 13, "mode": "count", "ps_s": null, "atlas_s": 0.5663490295410156, "sieve_s": "0.057", "write_s": "0.011", "pss_mb": 47, "primes": "334312", "rc": 0, "bytes": 0}
+[14:35:32] floor 16 count
+{"floor": 16, "mode": "count", "ps_s": null, "atlas_s": 0.6642951965332031, "sieve_s": "0.076", "write_s": "0.009", "pss_mb": 44, "primes": "271897", "rc": 0, "bytes": 0}
+[14:35:33] floor 19 count
+{"floor": 19, "mode": "count", "ps_s": null, "atlas_s": 0.6900074481964111, "sieve_s": "0.118", "write_s": "0.011", "pss_mb": 45, "primes": "229305", "rc": 0, "bytes": 0}
+[14:35:34] floor 20 count
+{"floor": 20, "mode": "count", "ps_s": null, "atlas_s": 0.7354891300201416, "sieve_s": "0.228", "write_s": "0.008", "pss_mb": 104, "primes": "216979", "rc": 0, "bytes": 0}
+[14:35:34] floor 21 count
+{"floor": 21, "mode": "count", "ps_s": null, "atlas_s": 1.103891372680664, "sieve_s": "0.593", "write_s": "0.005", "pss_mb": 106, "primes": "206889", "rc": 0, "bytes": 0}
+[14:35:35] floor 22 count
+{"floor": 22, "mode": "count", "ps_s": null, "atlas_s": 2.419994592666626, "sieve_s": "1.842", "write_s": "0.012", "pss_mb": 120, "primes": "197136", "rc": 0, "bytes": 0}
+[14:35:38] floor 23 count
+{"floor": 23, "mode": "count", "ps_s": null, "atlas_s": 7.2007081508636475, "sieve_s": "6.673", "write_s": "0.011", "pss_mb": 122, "primes": "188571", "rc": 0, "bytes": 0}
+[14:35:45] floor 24 count
+{"floor": 24, "mode": "count", "ps_s": null, "atlas_s": 20.40282106399536, "sieve_s": "19.842", "write_s": "0.011", "pss_mb": 129, "primes": "180298", "rc": 0, "bytes": 0}
+[14:36:05] floor 25 count
+{"floor": 25, "mode": "count", "ps_s": null, "atlas_s": 66.68427157402039, "sieve_s": "66.173", "write_s": "0.011", "pss_mb": 139, "primes": "173428", "rc": 0, "bytes": 0}
+DONE
+[14:37:12] ab_v4.1_B_24w_r1 rc=0
+[14:37:12] ab_v4.1_B_1w_r1
+[14:37:12] floor 10 count
+{"floor": 10, "mode": "count", "ps_s": null, "atlas_s": 0.6430366039276123, "sieve_s": "0.071", "write_s": "0.008", "pss_mb": 45, "primes": "434650", "rc": 0, "bytes": 0}
+[14:37:13] floor 13 count
+{"floor": 13, "mode": "count", "ps_s": null, "atlas_s": 0.6483883857727051, "sieve_s": "0.078", "write_s": "0.008", "pss_mb": 45, "primes": "334312", "rc": 0, "bytes": 0}
+[14:37:14] floor 16 count
+{"floor": 16, "mode": "count", "ps_s": null, "atlas_s": 0.8066895008087158, "sieve_s": "0.114", "write_s": "0.018", "pss_mb": 37, "primes": "271897", "rc": 0, "bytes": 0}
+[14:37:14] floor 19 count
+{"floor": 19, "mode": "count", "ps_s": null, "atlas_s": 1.3040921688079834, "sieve_s": "0.739", "write_s": "0.008", "pss_mb": 50, "primes": "229305", "rc": 0, "bytes": 0}
+[14:37:16] floor 20 count
+{"floor": 20, "mode": "count", "ps_s": null, "atlas_s": 2.60821270942688, "sieve_s": "2.092", "write_s": "0.008", "pss_mb": 50, "primes": "216979", "rc": 0, "bytes": 0}
+[14:37:18] floor 21 count
+{"floor": 21, "mode": "count", "ps_s": null, "atlas_s": 7.291607856750488, "sieve_s": "6.756", "write_s": "0.010", "pss_mb": 50, "primes": "206889", "rc": 0, "bytes": 0}
+DONE
+[14:37:26] ab_v4.1_B_1w_r1 rc=0
+[14:37:26] ab_v5_B_24w_r1
+[14:37:26] floor 10 count
+{"floor": 10, "mode": "count", "ps_s": null, "atlas_s": 0.5980715751647949, "sieve_s": "0.014", "write_s": "0.006", "pss_mb": 44, "primes": "434650", "rc": 0, "bytes": 0}
+[14:37:26] floor 13 count
+{"floor": 13, "mode": "count", "ps_s": null, "atlas_s": 0.6182184219360352, "sieve_s": "0.022", "write_s": "0.004", "pss_mb": 44, "primes": "334312", "rc": 0, "bytes": 0}
+[14:37:27] floor 16 count
+{"floor": 16, "mode": "count", "ps_s": null, "atlas_s": 0.6236250400543213, "sieve_s": "0.026", "write_s": "0.004", "pss_mb": 43, "primes": "271897", "rc": 0, "bytes": 0}
+[14:37:28] floor 19 count
+{"floor": 19, "mode": "count", "ps_s": null, "atlas_s": 0.614708423614502, "sieve_s": "0.074", "write_s": "0.004", "pss_mb": 51, "primes": "229305", "rc": 0, "bytes": 0}
+[14:37:28] floor 20 count
+{"floor": 20, "mode": "count", "ps_s": null, "atlas_s": 0.7238638401031494, "sieve_s": "0.178", "write_s": "0.006", "pss_mb": 31, "primes": "216979", "rc": 0, "bytes": 0}
+[14:37:29] floor 21 count
+{"floor": 21, "mode": "count", "ps_s": null, "atlas_s": 1.0518975257873535, "sieve_s": "0.513", "write_s": "0.005", "pss_mb": 64, "primes": "206889", "rc": 0, "bytes": 0}
+[14:37:30] floor 22 count
+{"floor": 22, "mode": "count", "ps_s": null, "atlas_s": 2.2100203037261963, "sieve_s": "1.651", "write_s": "0.006", "pss_mb": 79, "primes": "197136", "rc": 0, "bytes": 0}
+[14:37:32] floor 23 count
+{"floor": 23, "mode": "count", "ps_s": null, "atlas_s": 5.810083389282227, "sieve_s": "5.235", "write_s": "0.004", "pss_mb": 83, "primes": "188571", "rc": 0, "bytes": 0}
+[14:37:38] floor 24 count
+{"floor": 24, "mode": "count", "ps_s": null, "atlas_s": 18.55499768257141, "sieve_s": "18.016", "write_s": "0.007", "pss_mb": 91, "primes": "180298", "rc": 0, "bytes": 0}
+[14:37:57] floor 25 count
+{"floor": 25, "mode": "count", "ps_s": null, "atlas_s": 62.43711566925049, "sieve_s": "61.909", "write_s": "0.007", "pss_mb": 102, "primes": "173428", "rc": 0, "bytes": 0}
+DONE
+[14:38:59] ab_v5_B_24w_r1 rc=0
+[14:38:59] ab_v5_B_1w_r1
+[14:38:59] floor 10 count
+{"floor": 10, "mode": "count", "ps_s": null, "atlas_s": 0.601715087890625, "sieve_s": "0.013", "write_s": "0.004", "pss_mb": 44, "primes": "434650", "rc": 0, "bytes": 0}
+[14:39:00] floor 13 count
+{"floor": 13, "mode": "count", "ps_s": null, "atlas_s": 0.5923306941986084, "sieve_s": "0.019", "write_s": "0.006", "pss_mb": 44, "primes": "334312", "rc": 0, "bytes": 0}
+[14:39:00] floor 16 count
+{"floor": 16, "mode": "count", "ps_s": null, "atlas_s": 0.6737534999847412, "sieve_s": "0.065", "write_s": "0.006", "pss_mb": 43, "primes": "271897", "rc": 0, "bytes": 0}
+[14:39:01] floor 19 count
+{"floor": 19, "mode": "count", "ps_s": null, "atlas_s": 1.2801692485809326, "sieve_s": "0.648", "write_s": "0.004", "pss_mb": 53, "primes": "229305", "rc": 0, "bytes": 0}
+[14:39:02] floor 20 count
+{"floor": 20, "mode": "count", "ps_s": null, "atlas_s": 2.5122017860412598, "sieve_s": "1.888", "write_s": "0.005", "pss_mb": 54, "primes": "216979", "rc": 0, "bytes": 0}
+[14:39:05] floor 21 count
+{"floor": 21, "mode": "count", "ps_s": null, "atlas_s": 6.350429534912109, "sieve_s": "5.826", "write_s": "0.006", "pss_mb": 56, "primes": "206889", "rc": 0, "bytes": 0}
+DONE
+[14:39:11] ab_v5_B_1w_r1 rc=0
+[14:39:11] ab_v4.1_B_24w_r2
+[14:39:11] floor 10 count
+{"floor": 10, "mode": "count", "ps_s": null, "atlas_s": 0.5871095657348633, "sieve_s": "0.057", "write_s": "0.009", "pss_mb": 98, "primes": "434650", "rc": 0, "bytes": 0}
+[14:39:12] floor 13 count
+{"floor": 13, "mode": "count", "ps_s": null, "atlas_s": 0.558574914932251, "sieve_s": "0.056", "write_s": "0.009", "pss_mb": 56, "primes": "334312", "rc": 0, "bytes": 0}
+[14:39:13] floor 16 count
+{"floor": 16, "mode": "count", "ps_s": null, "atlas_s": 0.5746209621429443, "sieve_s": "0.065", "write_s": "0.006", "pss_mb": 90, "primes": "271897", "rc": 0, "bytes": 0}
+[14:39:13] floor 19 count
+{"floor": 19, "mode": "count", "ps_s": null, "atlas_s": 0.676079511642456, "sieve_s": "0.114", "write_s": "0.010", "pss_mb": 32, "primes": "229305", "rc": 0, "bytes": 0}
+[14:39:14] floor 20 count
+{"floor": 20, "mode": "count", "ps_s": null, "atlas_s": 0.776278018951416, "sieve_s": "0.230", "write_s": "0.006", "pss_mb": 54, "primes": "216979", "rc": 0, "bytes": 0}
+[14:39:15] floor 21 count
+{"floor": 21, "mode": "count", "ps_s": null, "atlas_s": 1.0976500511169434, "sieve_s": "0.582", "write_s": "0.005", "pss_mb": 105, "primes": "206889", "rc": 0, "bytes": 0}
+[14:39:16] floor 22 count
+{"floor": 22, "mode": "count", "ps_s": null, "atlas_s": 2.3358287811279297, "sieve_s": "1.828", "write_s": "0.012", "pss_mb": 120, "primes": "197136", "rc": 0, "bytes": 0}
+[14:39:18] floor 23 count
+{"floor": 23, "mode": "count", "ps_s": null, "atlas_s": 6.213442325592041, "sieve_s": "5.705", "write_s": "0.006", "pss_mb": 123, "primes": "188571", "rc": 0, "bytes": 0}
+[14:39:24] floor 24 count
+{"floor": 24, "mode": "count", "ps_s": null, "atlas_s": 19.88323712348938, "sieve_s": "19.372", "write_s": "0.012", "pss_mb": 129, "primes": "180298", "rc": 0, "bytes": 0}
+[14:39:44] floor 25 count
+{"floor": 25, "mode": "count", "ps_s": null, "atlas_s": 82.02187156677246, "sieve_s": "81.447", "write_s": "0.011", "pss_mb": 138, "primes": "173428", "rc": 0, "bytes": 0}
+DONE
+[14:41:06] ab_v4.1_B_24w_r2 rc=0
+[14:41:06] ab_v4.1_B_1w_r2
+[14:41:06] floor 10 count
+{"floor": 10, "mode": "count", "ps_s": null, "atlas_s": 0.7050662040710449, "sieve_s": "0.073", "write_s": "0.008", "pss_mb": 43, "primes": "434650", "rc": 0, "bytes": 0}
+[14:41:07] floor 13 count
+{"floor": 13, "mode": "count", "ps_s": null, "atlas_s": 0.7564473152160645, "sieve_s": "0.080", "write_s": "0.011", "pss_mb": 37, "primes": "334312", "rc": 0, "bytes": 0}
+[14:41:08] floor 16 count
+{"floor": 16, "mode": "count", "ps_s": null, "atlas_s": 0.7275063991546631, "sieve_s": "0.111", "write_s": "0.008", "pss_mb": 43, "primes": "271897", "rc": 0, "bytes": 0}
+[14:41:09] floor 19 count
+{"floor": 19, "mode": "count", "ps_s": null, "atlas_s": 1.4332687854766846, "sieve_s": "0.775", "write_s": "0.012", "pss_mb": 50, "primes": "229305", "rc": 0, "bytes": 0}
+[14:41:10] floor 20 count
+{"floor": 20, "mode": "count", "ps_s": null, "atlas_s": 2.871659755706787, "sieve_s": "2.248", "write_s": "0.013", "pss_mb": 50, "primes": "216979", "rc": 0, "bytes": 0}
+[14:41:13] floor 21 count
+{"floor": 21, "mode": "count", "ps_s": null, "atlas_s": 7.692647695541382, "sieve_s": "7.082", "write_s": "0.010", "pss_mb": 50, "primes": "206889", "rc": 0, "bytes": 0}
+DONE
+[14:41:21] ab_v4.1_B_1w_r2 rc=0
+[14:41:21] ab_v5_B_24w_r2
+[14:41:21] floor 10 count
+{"floor": 10, "mode": "count", "ps_s": null, "atlas_s": 0.6398289203643799, "sieve_s": "0.015", "write_s": "0.004", "pss_mb": 43, "primes": "434650", "rc": 0, "bytes": 0}
+[14:41:21] floor 13 count
+{"floor": 13, "mode": "count", "ps_s": null, "atlas_s": 0.6301167011260986, "sieve_s": "0.021", "write_s": "0.007", "pss_mb": 43, "primes": "334312", "rc": 0, "bytes": 0}
+[14:41:22] floor 16 count
+{"floor": 16, "mode": "count", "ps_s": null, "atlas_s": 0.6585297584533691, "sieve_s": "0.028", "write_s": "0.004", "pss_mb": 43, "primes": "271897", "rc": 0, "bytes": 0}
+[14:41:23] floor 19 count
+{"floor": 19, "mode": "count", "ps_s": null, "atlas_s": 0.7124552726745605, "sieve_s": "0.081", "write_s": "0.004", "pss_mb": 43, "primes": "229305", "rc": 0, "bytes": 0}
+[14:41:23] floor 20 count
+{"floor": 20, "mode": "count", "ps_s": null, "atlas_s": 0.7902343273162842, "sieve_s": "0.187", "write_s": "0.007", "pss_mb": 43, "primes": "216979", "rc": 0, "bytes": 0}
+[14:41:24] floor 21 count
+{"floor": 21, "mode": "count", "ps_s": null, "atlas_s": 1.133310317993164, "sieve_s": "0.546", "write_s": "0.004", "pss_mb": 71, "primes": "206889", "rc": 0, "bytes": 0}
+[14:41:25] floor 22 count
+{"floor": 22, "mode": "count", "ps_s": null, "atlas_s": 2.3696236610412598, "sieve_s": "1.786", "write_s": "0.007", "pss_mb": 79, "primes": "197136", "rc": 0, "bytes": 0}
+[14:41:28] floor 23 count
+{"floor": 23, "mode": "count", "ps_s": null, "atlas_s": 6.2360241413116455, "sieve_s": "5.651", "write_s": "0.006", "pss_mb": 83, "primes": "188571", "rc": 0, "bytes": 0}
+[14:41:34] floor 24 count
+{"floor": 24, "mode": "count", "ps_s": null, "atlas_s": 19.783742666244507, "sieve_s": "19.176", "write_s": "0.007", "pss_mb": 91, "primes": "180298", "rc": 0, "bytes": 0}
+[14:41:54] floor 25 count
+{"floor": 25, "mode": "count", "ps_s": null, "atlas_s": 73.63789415359497, "sieve_s": "73.027", "write_s": "0.007", "pss_mb": 102, "primes": "173428", "rc": 0, "bytes": 0}
+DONE
+[14:43:08] ab_v5_B_24w_r2 rc=0
+[14:43:08] ab_v5_B_1w_r2
+[14:43:08] floor 10 count
+{"floor": 10, "mode": "count", "ps_s": null, "atlas_s": 0.6787879467010498, "sieve_s": "0.014", "write_s": "0.004", "pss_mb": 41, "primes": "434650", "rc": 0, "bytes": 0}
+[14:43:08] floor 13 count
+{"floor": 13, "mode": "count", "ps_s": null, "atlas_s": 0.6971402168273926, "sieve_s": "0.022", "write_s": "0.005", "pss_mb": 39, "primes": "334312", "rc": 0, "bytes": 0}
+[14:43:09] floor 16 count
+{"floor": 16, "mode": "count", "ps_s": null, "atlas_s": 0.7495236396789551, "sieve_s": "0.072", "write_s": "0.008", "pss_mb": 38, "primes": "271897", "rc": 0, "bytes": 0}
+[14:43:10] floor 19 count
+{"floor": 19, "mode": "count", "ps_s": null, "atlas_s": 1.3359036445617676, "sieve_s": "0.691", "write_s": "0.007", "pss_mb": 53, "primes": "229305", "rc": 0, "bytes": 0}
+[14:43:11] floor 20 count
+{"floor": 20, "mode": "count", "ps_s": null, "atlas_s": 2.6153550148010254, "sieve_s": "1.977", "write_s": "0.006", "pss_mb": 55, "primes": "216979", "rc": 0, "bytes": 0}
+[14:43:14] floor 21 count
+{"floor": 21, "mode": "count", "ps_s": null, "atlas_s": 6.898980617523193, "sieve_s": "6.258", "write_s": "0.004", "pss_mb": 56, "primes": "206889", "rc": 0, "bytes": 0}
+DONE
+[14:43:21] ab_v5_B_1w_r2 rc=0
+[14:43:21] ab_v4.1_B_24w_r3
+[14:43:21] floor 10 count
+{"floor": 10, "mode": "count", "ps_s": null, "atlas_s": 0.6809792518615723, "sieve_s": "0.062", "write_s": "0.011", "pss_mb": 43, "primes": "434650", "rc": 0, "bytes": 0}
+[14:43:21] floor 13 count
+{"floor": 13, "mode": "count", "ps_s": null, "atlas_s": 0.6736979484558105, "sieve_s": "0.064", "write_s": "0.013", "pss_mb": 43, "primes": "334312", "rc": 0, "bytes": 0}
+[14:43:22] floor 16 count
+{"floor": 16, "mode": "count", "ps_s": null, "atlas_s": 0.6769323348999023, "sieve_s": "0.069", "write_s": "0.007", "pss_mb": 43, "primes": "271897", "rc": 0, "bytes": 0}
+[14:43:23] floor 19 count
+{"floor": 19, "mode": "count", "ps_s": null, "atlas_s": 0.7620458602905273, "sieve_s": "0.125", "write_s": "0.009", "pss_mb": 40, "primes": "229305", "rc": 0, "bytes": 0}
+[14:43:24] floor 20 count
+{"floor": 20, "mode": "count", "ps_s": null, "atlas_s": 0.8623650074005127, "sieve_s": "0.251", "write_s": "0.012", "pss_mb": 43, "primes": "216979", "rc": 0, "bytes": 0}
+[14:43:25] floor 21 count
+{"floor": 21, "mode": "count", "ps_s": null, "atlas_s": 1.2789955139160156, "sieve_s": "0.647", "write_s": "0.011", "pss_mb": 116, "primes": "206889", "rc": 0, "bytes": 0}
+[14:43:26] floor 22 count
+{"floor": 22, "mode": "count", "ps_s": null, "atlas_s": 2.5441176891326904, "sieve_s": "1.974", "write_s": "0.012", "pss_mb": 121, "primes": "197136", "rc": 0, "bytes": 0}
+[14:43:28] floor 23 count
+{"floor": 23, "mode": "count", "ps_s": null, "atlas_s": 6.705178499221802, "sieve_s": "6.142", "write_s": "0.007", "pss_mb": 122, "primes": "188571", "rc": 0, "bytes": 0}
+[14:43:35] floor 24 count
+{"floor": 24, "mode": "count", "ps_s": null, "atlas_s": 21.536942958831787, "sieve_s": "20.976", "write_s": "0.012", "pss_mb": 128, "primes": "180298", "rc": 0, "bytes": 0}
+[14:43:57] floor 25 count
+{"floor": 25, "mode": "count", "ps_s": null, "atlas_s": 67.82332825660706, "sieve_s": "67.251", "write_s": "0.010", "pss_mb": 139, "primes": "173428", "rc": 0, "bytes": 0}
+DONE
+[14:45:05] ab_v4.1_B_24w_r3 rc=0
+[14:45:05] ab_v4.1_B_1w_r3
+[14:45:05] floor 10 count
+{"floor": 10, "mode": "count", "ps_s": null, "atlas_s": 0.5614891052246094, "sieve_s": "0.067", "write_s": "0.005", "pss_mb": 49, "primes": "434650", "rc": 0, "bytes": 0}
+[14:45:05] floor 13 count
+{"floor": 13, "mode": "count", "ps_s": null, "atlas_s": 0.5770032405853271, "sieve_s": "0.075", "write_s": "0.005", "pss_mb": 49, "primes": "334312", "rc": 0, "bytes": 0}
+[14:45:06] floor 16 count
+{"floor": 16, "mode": "count", "ps_s": null, "atlas_s": 0.6559438705444336, "sieve_s": "0.108", "write_s": "0.007", "pss_mb": 49, "primes": "271897", "rc": 0, "bytes": 0}
+[14:45:06] floor 19 count
+{"floor": 19, "mode": "count", "ps_s": null, "atlas_s": 1.2546257972717285, "sieve_s": "0.704", "write_s": "0.011", "pss_mb": 50, "primes": "229305", "rc": 0, "bytes": 0}
+[14:45:08] floor 20 count
+{"floor": 20, "mode": "count", "ps_s": null, "atlas_s": 2.6053221225738525, "sieve_s": "2.104", "write_s": "0.008", "pss_mb": 50, "primes": "216979", "rc": 0, "bytes": 0}
+[14:45:10] floor 21 count
+{"floor": 21, "mode": "count", "ps_s": null, "atlas_s": 7.241203308105469, "sieve_s": "6.674", "write_s": "0.010", "pss_mb": 50, "primes": "206889", "rc": 0, "bytes": 0}
+DONE
+[14:45:18] ab_v4.1_B_1w_r3 rc=0
+[14:45:18] ab_v5_B_24w_r3
+[14:45:18] floor 10 count
+{"floor": 10, "mode": "count", "ps_s": null, "atlas_s": 0.6052529811859131, "sieve_s": "0.014", "write_s": "0.003", "pss_mb": 44, "primes": "434650", "rc": 0, "bytes": 0}
+[14:45:18] floor 13 count
+{"floor": 13, "mode": "count", "ps_s": null, "atlas_s": 0.5974724292755127, "sieve_s": "0.021", "write_s": "0.004", "pss_mb": 44, "primes": "334312", "rc": 0, "bytes": 0}
+[14:45:19] floor 16 count
+{"floor": 16, "mode": "count", "ps_s": null, "atlas_s": 0.6116275787353516, "sieve_s": "0.028", "write_s": "0.004", "pss_mb": 44, "primes": "271897", "rc": 0, "bytes": 0}
+[14:45:20] floor 19 count
+{"floor": 19, "mode": "count", "ps_s": null, "atlas_s": 0.6380937099456787, "sieve_s": "0.078", "write_s": "0.004", "pss_mb": 44, "primes": "229305", "rc": 0, "bytes": 0}
+[14:45:20] floor 20 count
+{"floor": 20, "mode": "count", "ps_s": null, "atlas_s": 0.7524960041046143, "sieve_s": "0.179", "write_s": "0.006", "pss_mb": 44, "primes": "216979", "rc": 0, "bytes": 0}
+[14:45:21] floor 21 count
+{"floor": 21, "mode": "count", "ps_s": null, "atlas_s": 1.0676617622375488, "sieve_s": "0.522", "write_s": "0.006", "pss_mb": 66, "primes": "206889", "rc": 0, "bytes": 0}
+[14:45:22] floor 22 count
+{"floor": 22, "mode": "count", "ps_s": null, "atlas_s": 2.2196011543273926, "sieve_s": "1.650", "write_s": "0.007", "pss_mb": 79, "primes": "197136", "rc": 0, "bytes": 0}
+[14:45:24] floor 23 count
+{"floor": 23, "mode": "count", "ps_s": null, "atlas_s": 6.187103986740112, "sieve_s": "5.631", "write_s": "0.006", "pss_mb": 83, "primes": "188571", "rc": 0, "bytes": 0}
+[14:45:30] floor 24 count
+{"floor": 24, "mode": "count", "ps_s": null, "atlas_s": 19.43729305267334, "sieve_s": "18.855", "write_s": "0.006", "pss_mb": 91, "primes": "180298", "rc": 0, "bytes": 0}
+[14:45:50] floor 25 count
+{"floor": 25, "mode": "count", "ps_s": null, "atlas_s": 66.23781323432922, "sieve_s": "65.657", "write_s": "0.007", "pss_mb": 102, "primes": "173428", "rc": 0, "bytes": 0}
+DONE
+[14:46:56] ab_v5_B_24w_r3 rc=0
+[14:46:56] ab_v5_B_1w_r3
+[14:46:56] floor 10 count
+{"floor": 10, "mode": "count", "ps_s": null, "atlas_s": 0.5731680393218994, "sieve_s": "0.013", "write_s": "0.005", "pss_mb": 36, "primes": "434650", "rc": 0, "bytes": 0}
+[14:46:57] floor 13 count
+{"floor": 13, "mode": "count", "ps_s": null, "atlas_s": 0.5437700748443604, "sieve_s": "0.019", "write_s": "0.003", "pss_mb": 49, "primes": "334312", "rc": 0, "bytes": 0}
+[14:46:57] floor 16 count
+{"floor": 16, "mode": "count", "ps_s": null, "atlas_s": 0.5784838199615479, "sieve_s": "0.064", "write_s": "0.005", "pss_mb": 49, "primes": "271897", "rc": 0, "bytes": 0}
+[14:46:58] floor 19 count
+{"floor": 19, "mode": "count", "ps_s": null, "atlas_s": 1.1648170948028564, "sieve_s": "0.631", "write_s": "0.006", "pss_mb": 53, "primes": "229305", "rc": 0, "bytes": 0}
+[14:46:59] floor 20 count
+{"floor": 20, "mode": "count", "ps_s": null, "atlas_s": 2.390622138977051, "sieve_s": "1.847", "write_s": "0.006", "pss_mb": 55, "primes": "216979", "rc": 0, "bytes": 0}
+[14:47:02] floor 21 count
+{"floor": 21, "mode": "count", "ps_s": null, "atlas_s": 6.3301682472229, "sieve_s": "5.803", "write_s": "0.005", "pss_mb": 56, "primes": "206889", "rc": 0, "bytes": 0}
+DONE
+[14:47:08] ab_v5_B_1w_r3 rc=0
+[14:47:08] E_1000x1e7_1w_floor25_r1
+[14:47:08] floor 25 count
+{"floor": 25, "mode": "count", "ps_s": null, "atlas_s": 812.4287350177765, "sieve_s": "809.550", "write_s": "2.334", "pss_mb": 1665, "primes": "173728551", "rc": 0, "bytes": 0}
+DONE
+[15:00:40] E_1000x1e7_1w_floor25_r1 rc=0
+[15:00:40] E_1000x1e7_1w_floor25_r2
+[15:00:41] floor 25 count
+{"floor": 25, "mode": "count", "ps_s": null, "atlas_s": 838.4154672622681, "sieve_s": "835.605", "write_s": "2.133", "pss_mb": 1665, "primes": "173728551", "rc": 0, "bytes": 0}
+DONE
+[15:14:39] E_1000x1e7_1w_floor25_r2 rc=0
+[15:14:39] E_1000x1e7_1w_floor25_r3
+[15:14:39] floor 25 count
+{"floor": 25, "mode": "count", "ps_s": null, "atlas_s": 804.3205211162567, "sieve_s": "801.473", "write_s": "2.331", "pss_mb": 1665, "primes": "173728551", "rc": 0, "bytes": 0}
+DONE
+[15:28:03] E_1000x1e7_1w_floor25_r3 rc=0
+[15:28:03] D_100x1e7_1w
+[15:28:03] floor 10 count
+{"floor": 10, "mode": "count", "ps_s": null, "atlas_s": 1.267242193222046, "sieve_s": "0.418", "write_s": "0.233", "pss_mb": 56, "primes": "43336106", "rc": 0, "bytes": 0}
+[15:28:05] floor 13 count
+{"floor": 13, "mode": "count", "ps_s": null, "atlas_s": 1.566406488418579, "sieve_s": "0.762", "write_s": "0.217", "pss_mb": 102, "primes": "33405006", "rc": 0, "bytes": 0}
+[15:28:06] floor 16 count
+{"floor": 16, "mode": "count", "ps_s": null, "atlas_s": 2.1546998023986816, "sieve_s": "1.342", "write_s": "0.234", "pss_mb": 535, "primes": "27153205", "rc": 0, "bytes": 0}
+[15:28:08] floor 19 count
+{"floor": 19, "mode": "count", "ps_s": null, "atlas_s": 4.405803203582764, "sieve_s": "3.521", "write_s": "0.281", "pss_mb": 913, "primes": "22854258", "rc": 0, "bytes": 0}
+[15:28:13] floor 20 count
+{"floor": 20, "mode": "count", "ps_s": null, "atlas_s": 7.2454514503479, "sieve_s": "6.185", "write_s": "0.316", "pss_mb": 1056, "primes": "21710426", "rc": 0, "bytes": 0}
+[15:28:20] floor 21 count
+{"floor": 21, "mode": "count", "ps_s": null, "atlas_s": 11.350265502929688, "sieve_s": "10.552", "write_s": "0.221", "pss_mb": 1121, "primes": "20684249", "rc": 0, "bytes": 0}
+[15:28:32] floor 22 count
+{"floor": 22, "mode": "count", "ps_s": null, "atlas_s": 26.878227949142456, "sieve_s": "25.960", "write_s": "0.321", "pss_mb": 1122, "primes": "19737627", "rc": 0, "bytes": 0}
+[15:28:58] floor 23 count
+{"floor": 23, "mode": "count", "ps_s": null, "atlas_s": 71.01506805419922, "sieve_s": "70.220", "write_s": "0.224", "pss_mb": 1122, "primes": "18879205", "rc": 0, "bytes": 0}
+[15:30:09] floor 24 count
+{"floor": 24, "mode": "count", "ps_s": null, "atlas_s": 222.6871852874756, "sieve_s": "221.828", "write_s": "0.289", "pss_mb": 1122, "primes": "18099721", "rc": 0, "bytes": 0}
+[15:33:52] floor 25 count
+{"floor": 25, "mode": "count", "ps_s": null, "atlas_s": 741.7782649993896, "sieve_s": "740.991", "write_s": "0.285", "pss_mb": 1122, "primes": "17376254", "rc": 0, "bytes": 0}
+DONE
+[15:46:14] D_100x1e7_1w rc=0
+[15:46:14] B_1x1e7_1w
+[15:46:14] floor 10 count
+{"floor": 10, "mode": "count", "ps_s": null, "atlas_s": 0.5201034545898438, "sieve_s": "0.012", "write_s": "0.005", "pss_mb": 25, "primes": "434650", "rc": 0, "bytes": 0}
+[15:46:15] floor 13 count
+{"floor": 13, "mode": "count", "ps_s": null, "atlas_s": 0.5329608917236328, "sieve_s": "0.019", "write_s": "0.006", "pss_mb": 49, "primes": "334312", "rc": 0, "bytes": 0}
+[15:46:15] floor 16 count
+{"floor": 16, "mode": "count", "ps_s": null, "atlas_s": 0.5766496658325195, "sieve_s": "0.068", "write_s": "0.006", "pss_mb": 50, "primes": "271897", "rc": 0, "bytes": 0}
+[15:46:16] floor 19 count
+{"floor": 19, "mode": "count", "ps_s": null, "atlas_s": 1.1328589916229248, "sieve_s": "0.636", "write_s": "0.005", "pss_mb": 54, "primes": "229305", "rc": 0, "bytes": 0}
+[15:46:17] floor 20 count
+{"floor": 20, "mode": "count", "ps_s": null, "atlas_s": 2.369025707244873, "sieve_s": "1.854", "write_s": "0.005", "pss_mb": 55, "primes": "216979", "rc": 0, "bytes": 0}
+[15:46:19] floor 21 count
+{"floor": 21, "mode": "count", "ps_s": null, "atlas_s": 6.38919734954834, "sieve_s": "5.868", "write_s": "0.004", "pss_mb": 56, "primes": "206889", "rc": 0, "bytes": 0}
+[15:46:26] floor 22 count
+{"floor": 22, "mode": "count", "ps_s": null, "atlas_s": 19.709169626235962, "sieve_s": "19.194", "write_s": "0.006", "pss_mb": 57, "primes": "197136", "rc": 0, "bytes": 0}
+[15:46:45] floor 23 count
+{"floor": 23, "mode": "count", "ps_s": null, "atlas_s": 63.979424476623535, "sieve_s": "63.445", "write_s": "0.006", "pss_mb": 58, "primes": "188571", "rc": 0, "bytes": 0}
+[15:47:49] floor 24 count
+{"floor": 24, "mode": "count", "ps_s": null, "atlas_s": 217.05213069915771, "sieve_s": "216.545", "write_s": "0.005", "pss_mb": 59, "primes": "180298", "rc": 0, "bytes": 0}
+[15:51:26] floor 25 count
+{"floor": 25, "mode": "count", "ps_s": null, "atlas_s": 734.9172253608704, "sieve_s": "734.355", "write_s": "0.006", "pss_mb": 60, "primes": "173428", "rc": 0, "bytes": 0}
+DONE
+[16:03:41] B_1x1e7_1w rc=0
+[16:03:41] A_1000x1e7_24w
+[16:03:41] floor 10 count
+{"floor": 10, "mode": "count", "ps_s": null, "atlas_s": 3.8633153438568115, "sieve_s": "0.431", "write_s": "2.874", "pss_mb": 610, "primes": "427154205", "rc": 0, "bytes": 0}
+[16:03:45] floor 13 count
+{"floor": 13, "mode": "count", "ps_s": null, "atlas_s": 4.318437337875366, "sieve_s": "0.843", "write_s": "2.949", "pss_mb": 806, "primes": "334067230", "rc": 0, "bytes": 0}
+[16:03:50] floor 16 count
+{"floor": 16, "mode": "count", "ps_s": null, "atlas_s": 4.309064626693726, "sieve_s": "1.544", "write_s": "2.215", "pss_mb": 1645, "primes": "271425366", "rc": 0, "bytes": 0}
+[16:03:54] floor 19 count
+{"floor": 19, "mode": "count", "ps_s": null, "atlas_s": 5.75171160697937, "sieve_s": "2.293", "write_s": "2.909", "pss_mb": 1668, "primes": "228568014", "rc": 0, "bytes": 0}
+[16:04:00] floor 20 count
+{"floor": 20, "mode": "count", "ps_s": null, "atlas_s": 5.350594520568848, "sieve_s": "2.688", "write_s": "2.135", "pss_mb": 1670, "primes": "217134492", "rc": 0, "bytes": 0}
+[16:04:05] floor 21 count
+{"floor": 21, "mode": "count", "ps_s": null, "atlas_s": 6.16197657585144, "sieve_s": "3.502", "write_s": "2.129", "pss_mb": 1672, "primes": "206819119", "rc": 0, "bytes": 0}
+[16:04:11] floor 22 count
+{"floor": 22, "mode": "count", "ps_s": null, "atlas_s": 7.866772890090942, "sieve_s": "5.181", "write_s": "2.141", "pss_mb": 1682, "primes": "197397534", "rc": 0, "bytes": 0}
+[16:04:19] floor 23 count
+{"floor": 23, "mode": "count", "ps_s": null, "atlas_s": 12.10543942451477, "sieve_s": "9.439", "write_s": "2.149", "pss_mb": 1682, "primes": "188818982", "rc": 0, "bytes": 0}
+[16:04:31] floor 24 count
+{"floor": 24, "mode": "count", "ps_s": null, "atlas_s": 26.3999662399292, "sieve_s": "22.956", "write_s": "2.915", "pss_mb": 1690, "primes": "180970071", "rc": 0, "bytes": 0}
+[16:04:58] floor 25 count
+{"floor": 25, "mode": "count", "ps_s": null, "atlas_s": 69.94723296165466, "sieve_s": "66.571", "write_s": "2.847", "pss_mb": 1685, "primes": "173728551", "rc": 0, "bytes": 0}
+[16:06:08] floor 10 write
+{"floor": 10, "mode": "write", "ps_s": null, "atlas_s": 31.15950918197632, "sieve_s": "0.403", "write_s": "25.093", "pss_mb": 669, "primes": "427154205", "rc": 0, "bytes": 428050705}
+[16:06:42] floor 13 write
+{"floor": 13, "mode": "write", "ps_s": null, "atlas_s": 32.526766777038574, "sieve_s": "0.860", "write_s": "25.751", "pss_mb": 666, "primes": "334067230", "rc": 0, "bytes": 337259799}
+[16:07:17] floor 16 write
+{"floor": 16, "mode": "write", "ps_s": null, "atlas_s": 33.794859409332275, "sieve_s": "1.662", "write_s": "25.896", "pss_mb": 1654, "primes": "271425366", "rc": 0, "bytes": 278208857}
+[16:07:54] floor 19 write
+{"floor": 19, "mode": "write", "ps_s": null, "atlas_s": 31.29676342010498, "sieve_s": "2.365", "write_s": "22.817", "pss_mb": 1669, "primes": "228568014", "rc": 0, "bytes": 239307982}
+[16:08:28] floor 20 write
+{"floor": 20, "mode": "write", "ps_s": null, "atlas_s": 31.754290103912354, "sieve_s": "2.791", "write_s": "22.415", "pss_mb": 1669, "primes": "217134492", "rc": 0, "bytes": 229163146}
+[16:09:03] floor 21 write
+{"floor": 21, "mode": "write", "ps_s": null, "atlas_s": 34.5070161819458, "sieve_s": "3.918", "write_s": "24.160", "pss_mb": 1668, "primes": "206819119", "rc": 0, "bytes": 220109980}
+[16:09:41] floor 22 write
+{"floor": 22, "mode": "write", "ps_s": null, "atlas_s": 32.70877170562744, "sieve_s": "5.469", "write_s": "21.294", "pss_mb": 1674, "primes": "197397534", "rc": 0, "bytes": 211894293}
+[16:10:16] floor 23 write
+{"floor": 23, "mode": "write", "ps_s": null, "atlas_s": 35.94646739959717, "sieve_s": "9.715", "write_s": "20.354", "pss_mb": 1683, "primes": "188818982", "rc": 0, "bytes": 204471010}
+[16:10:55] floor 24 write
+{"floor": 24, "mode": "write", "ps_s": null, "atlas_s": 50.72920370101929, "sieve_s": "25.713", "write_s": "19.236", "pss_mb": 1691, "primes": "180970071", "rc": 0, "bytes": 197714598}
+[16:11:49] floor 25 write
+{"floor": 25, "mode": "write", "ps_s": null, "atlas_s": 91.94421148300171, "sieve_s": "67.790", "write_s": "18.521", "pss_mb": 1676, "primes": "173728551", "rc": 0, "bytes": 191517120}
+DONE
+[16:13:23] A_1000x1e7_24w rc=0
+[16:13:23] B_1x1e7_24w
+[16:13:24] floor 10 count
+{"floor": 10, "mode": "count", "ps_s": null, "atlas_s": 0.5156757831573486, "sieve_s": "0.012", "write_s": "0.004", "pss_mb": 25, "primes": "434650", "rc": 0, "bytes": 0}
+[16:13:24] floor 13 count
+{"floor": 13, "mode": "count", "ps_s": null, "atlas_s": 0.5395219326019287, "sieve_s": "0.019", "write_s": "0.006", "pss_mb": 50, "primes": "334312", "rc": 0, "bytes": 0}
+[16:13:25] floor 16 count
+{"floor": 16, "mode": "count", "ps_s": null, "atlas_s": 0.53745436668396, "sieve_s": "0.024", "write_s": "0.004", "pss_mb": 57, "primes": "271897", "rc": 0, "bytes": 0}
+[16:13:25] floor 19 count
+{"floor": 19, "mode": "count", "ps_s": null, "atlas_s": 0.5981080532073975, "sieve_s": "0.072", "write_s": "0.006", "pss_mb": 62, "primes": "229305", "rc": 0, "bytes": 0}
+[16:13:26] floor 20 count
+{"floor": 20, "mode": "count", "ps_s": null, "atlas_s": 0.6913344860076904, "sieve_s": "0.173", "write_s": "0.006", "pss_mb": 63, "primes": "216979", "rc": 0, "bytes": 0}
+[16:13:26] floor 21 count
+{"floor": 21, "mode": "count", "ps_s": null, "atlas_s": 1.0167722702026367, "sieve_s": "0.503", "write_s": "0.004", "pss_mb": 61, "primes": "206889", "rc": 0, "bytes": 0}
+[16:13:28] floor 22 count
+{"floor": 22, "mode": "count", "ps_s": null, "atlas_s": 2.111515998840332, "sieve_s": "1.590", "write_s": "0.006", "pss_mb": 79, "primes": "197136", "rc": 0, "bytes": 0}
+[16:13:30] floor 23 count
+{"floor": 23, "mode": "count", "ps_s": null, "atlas_s": 5.8466620445251465, "sieve_s": "5.304", "write_s": "0.006", "pss_mb": 83, "primes": "188571", "rc": 0, "bytes": 0}
+[16:13:36] floor 24 count
+{"floor": 24, "mode": "count", "ps_s": null, "atlas_s": 18.69889259338379, "sieve_s": "18.163", "write_s": "0.005", "pss_mb": 91, "primes": "180298", "rc": 0, "bytes": 0}
+[16:13:54] floor 25 count
+{"floor": 25, "mode": "count", "ps_s": null, "atlas_s": 63.818127393722534, "sieve_s": "63.139", "write_s": "0.006", "pss_mb": 102, "primes": "173428", "rc": 0, "bytes": 0}
+DONE
+[16:14:58] B_1x1e7_24w rc=0
+[16:14:58] C_1x1e10_24w_count
+[16:14:58] floor 10 count
+{"floor": 10, "mode": "count", "ps_s": null, "atlas_s": 5.873958587646484, "sieve_s": "0.391", "write_s": "4.972", "pss_mb": 10177, "primes": "427154205", "rc": 0, "bytes": 0}
+[16:15:04] floor 13 count
+{"floor": 13, "mode": "count", "ps_s": null, "atlas_s": 4.625322103500366, "sieve_s": "0.818", "write_s": "3.303", "pss_mb": 10111, "primes": "334067230", "rc": 0, "bytes": 0}
+[16:15:09] floor 16 count
+{"floor": 16, "mode": "count", "ps_s": null, "atlas_s": 7.080902576446533, "sieve_s": "1.937", "write_s": "4.577", "pss_mb": 10186, "primes": "271425366", "rc": 0, "bytes": 0}
+[16:15:16] floor 19 count
+{"floor": 19, "mode": "count", "ps_s": null, "atlas_s": 8.226735591888428, "sieve_s": "2.552", "write_s": "4.734", "pss_mb": 10188, "primes": "228568014", "rc": 0, "bytes": 0}
+[16:15:24] floor 20 count
+{"floor": 20, "mode": "count", "ps_s": null, "atlas_s": 26.90039896965027, "sieve_s": "3.104", "write_s": "23.232", "pss_mb": 9458, "primes": "217134492", "rc": 0, "bytes": 0}
+[16:15:51] floor 22 count
+{"floor": 22, "mode": "count", "ps_s": null, "atlas_s": 11.579188346862793, "sieve_s": "5.743", "write_s": "5.183", "pss_mb": 10199, "primes": "197397534", "rc": 0, "bytes": 0}
+[16:16:03] floor 25 count
+{"floor": 25, "mode": "count", "ps_s": null, "atlas_s": 75.30031108856201, "sieve_s": "69.943", "write_s": "4.815", "pss_mb": 9901, "primes": "173728551", "rc": 0, "bytes": 0}
+DONE
+[16:17:18] C_1x1e10_24w_count rc=0
+ALL_DONE
