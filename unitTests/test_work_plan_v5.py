@@ -38,6 +38,18 @@ def check_slices():
     sizes = [hi - lo for lo, hi in big]
     passed &= check(len(big) == 48 and max(sizes) - min(sizes) <= 64,
                     "plan_slices(5e9, 48): 48 slices within one word of each other")
+    seg = work_plan_v5.segment_bits(128)
+    for n_bits, n_slices, expected in ((5_000_000, 48, 4), (seg - 1, 48, 1), (seg, 48, 1),
+                                       (2 * seg, 48, 2), (5_000_000_000, 48, 48),
+                                       (5_000_000, 2, 2)):
+        slices = work_plan_v5.plan_slices(n_bits, n_slices, min_slice_bits=seg)
+        ok = (len(slices) == expected and slices[0][0] == 0 and slices[-1][1] == n_bits
+              and all(lo % 64 == 0 and lo < hi for lo, hi in slices)
+              and all(a[1] == b[0] for a, b in zip(slices, slices[1:]))
+              and (len(slices) == 1 or all(hi - lo >= seg - 64 for lo, hi in slices)))
+        passed &= check(ok, f"plan_slices({n_bits}, {n_slices}, min_slice_bits={seg}): "
+                            f"{len(slices)} slices (expected {expected}), none much shorter "
+                            f"than one segment")
     return passed
 
 

@@ -1751,7 +1751,9 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               go through one multi-threaded bucketed pass
                               (hits grouped per buffer region, applied while
                               the region is in cache), windows are
-                              written through pgs2_vector.py;
+                              written through pgs2_vector.py; a buffer of a
+                              few segments starts only as many worker
+                              processes as it has slices;
                               output identical to v4.1
                               (unitTests/test_engine_v5_identity.py checks every
                               PGS2 file and the run totals against v4.1)
@@ -1765,7 +1767,8 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               identical to the per-prime writer
                               (unitTests/test_pgs2_vector.py)
   work_plan_v5.py            splits a v5 run into work: word-aligned buffer
-                              slices for the segmented small-prime path and
+                              slices, none shorter than one segment, for the
+                              segmented small-prime path and
                               equal-cost pieces of the remaining sieving primes
                               for the bucketed pass; segment size from env
                               PRIMEATLAS_V5_SEGMENT_KB (default 128), bucket
@@ -1813,7 +1816,11 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
   prime_sieve_engine_v1.c    C sieve core for prime_sieve_v1.py (ctypes)
   prime_sieve_engine_v3.c    C sieve core for prime_sieve_v3.py (ctypes)
   prime_sieve_engine_v4.c    C sieve core for prime_sieve_v4.py/v4_1.py (ctypes)
-  prime_sieve_engine_v5.c    C sieve core for prime_sieve_v5.py (ctypes)
+  prime_sieve_engine_v5.c    C sieve core for prime_sieve_v5.py (ctypes); the
+                              per-prime phase first_odd mod p comes from a
+                              double-precision quotient with an exact one-p
+                              correction (unitTests/test_engine_v5_phase.py
+                              checks it against exact integer arithmetic)
   orchestrator_v3.py         single-run driver; a single SCANNER_VERSION flag near
                               the top selects the active engine ("v3", "v4", "v4.1"
                               or "v5" -- default v4.1) instead of separate settings

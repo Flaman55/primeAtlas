@@ -75,51 +75,61 @@ def small_prime_stop(seg_bits, L_final):
     return max(3, min(seg_bits, L_final))
 
 
-def plan_slices(n_bits, n_slices):
+def plan_slices(n_bits, n_slices, min_slice_bits=64):
     """Splits bits [0, n_bits) into at most n_slices contiguous (bit_lo, bit_hi) ranges of
     near-equal size; every bit_lo is a multiple of 64, so each slice owns whole 64-bit words
-    except where the last one ends at n_bits."""
+    except where the last one ends at n_bits. No more than n_bits // min_slice_bits slices
+    (one when the buffer is shorter): every slice pays the setup of all segmented primes, so
+    a slice shorter than one segment costs more in setup and process start than it saves."""
     if n_bits <= 0:
         return []
     n_words = (n_bits + 63) // 64
-    n = max(1, min(n_slices, n_words))
+    n = max(1, min(n_slices, n_words, n_bits // max(1, min_slice_bits)))
     bounds = [(n_words * i // n) * 64 for i in range(n)] + [n_bits]
     return [(lo, hi) for lo, hi in zip(bounds[:-1], bounds[1:]) if lo < hi]
 
 
-def _cost_zone_a(a, b, combined_size):
-    def mert(x):
-        x = max(x, 2.0)
-        return math.log(math.log(x))
-    return combined_size * max(mert(b) - mert(a), 1e-6)
+def _mert(x):
+    x = max(x, 2.0)
+    return math.log(math.log(x))
 
 
-def _cost_zone_b(a, b):
-    def li_approx(x):
-        x = max(x, 3.0)
-        return x / math.log(x)
-    return max(li_approx(b) - li_approx(a), 1.0)
+def _li_approx(x):
+    x = max(x, 3.0)
+    return x / math.log(x)
 
 
-def _cumulative_cost(x, threshold, combined_size):
-    x = max(2.0, min(float(x), float(threshold if x <= threshold else x)))
-    if x <= threshold:
-        return _cost_zone_a(2, x, combined_size)
-    return _cost_zone_a(2, threshold, combined_size) + _cost_zone_b(threshold, x)
+def _cumulative_cost_function(threshold, combined_size):
+    """cost_upto(x): estimated marking cost of the primes below x. Primes up to threshold
+    hit the buffer about combined_size / p times each (Mertens: the sum grows as
+    log log x); primes above it cost about one iteration each (x / log x of them). The
+    terms that do not depend on x are computed once, since the bisection in
+    build_equal_cost_batches() calls cost_upto() thousands of times; the per-x terms are the
+    same float operations in the same order, so the batch boundaries do not change."""
+    log = math.log
+    mert_2 = _mert(2)
+    cost_threshold = combined_size * max(_mert(threshold) - mert_2, 1e-6)
+    li_threshold = _li_approx(threshold)
+
+    def cost_upto(x):
+        x = max(2.0, float(x))
+        if x <= threshold:
+            return combined_size * max(log(log(x)) - mert_2, 1e-6)
+        y = max(x, 3.0)
+        return cost_threshold + max(y / log(y) - li_threshold, 1.0)
+    return cost_upto
 
 
 def build_equal_cost_batches(L_final, combined_size, n_batches, lo=2):
     """Splits the sieving-prime range [lo, L_final) into `n_batches` contiguous batches of
-    roughly equal marking cost (Mertens-based estimate, see _cumulative_cost()), so every
-    worker gets a similar amount of work. Empty when lo >= L_final (no prime is left for
-    the atomic path)."""
+    roughly equal marking cost (Mertens-based estimate, see _cumulative_cost_function()), so
+    every worker gets a similar amount of work. Empty when lo >= L_final (no prime is left
+    for the atomic path)."""
     if lo >= L_final and lo > 2:
         return []
     threshold = min(combined_size, L_final)
     n = max(1, n_batches)
-
-    def cost_upto(x):
-        return _cumulative_cost(x, threshold, combined_size)
+    cost_upto = _cumulative_cost_function(threshold, combined_size)
 
     base = cost_upto(lo) if lo > 2 else 0.0
     total = cost_upto(L_final) - base

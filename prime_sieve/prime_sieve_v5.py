@@ -13,8 +13,9 @@ from concurrent.futures import ProcessPoolExecutor
 import window_sharding
 import work_plan_v5
 from engine_v5_lib import load_lib as _load_lib
-from pgs2_vector import PGS_MAGIC, write_prime_window_offsets
-from sieving_prime_count_v5 import KNOWN_PI_SOURCE_URL, count_sieving_primes_cached
+# pgs2_vector and sieving_prime_count_v5 are imported inside the functions that use them: a
+# count-only run without pi(L_final) needs neither, and every module file read at start-up
+# is a fixed cost on each run, paid again by orchestrator_v3.py, which imports this file.
 
 
 VERSION = "v5"     # bump this whenever this file changes, so console output alone identifies
@@ -48,8 +49,9 @@ COMPUTE_SIEVING_PRIMES_COUNT = False
 #     first_odd + 2*i of the combined range, so the buffer is half the size of a bit per
 #     number and p = 2 is never sieved; _odd_window_marks() maps a window back onto it, and
 #     the prime 2 is added where a window contains it.
-#   - Phase computation (prime_sieve_engine_v5.c): first_odd mod p via an inlined 128/64
-#     `divq` fast path with the full u128 division as fallback.
+#   - Phase computation (prime_sieve_engine_v5.c): first_odd mod p from a double-precision
+#     quotient with an exact one-p correction, an inlined 128/64 `divq` where the quotient is
+#     too large for that, and the full u128 division as the last fallback.
 #   - Two stages per run (work_plan_v5.py): segmented slices of the buffer, sieved in
 #     cache-sized segments by the small primes in the worker processes, then one
 #     multi-threaded sieve_odd_bucketed() call for the remaining sieving primes, which buckets
@@ -104,6 +106,7 @@ def read_prime_window_header(path):
     gap stream."""
     with open(path, "rb") as f:
         header = f.read(4 + 1 + 255 + 4 + 4)
+    from pgs2_vector import PGS_MAGIC
     if header[:4] != PGS_MAGIC:
         raise ValueError(f"{path}: not a PGS2 file (bad magic bytes)")
     pos = 4
@@ -286,7 +289,7 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
 
     print("\n" + "=" * 70)
     print(f"[*] BATCH {VERSION} (primesieve, SHARED mmap buffer, segmented + bucketed "
-          f"marking, inlined phase modulo, PGS2 binary output): {N} windows (target_idx {target_idx_list[0]}.."
+          f"marking, double-precision phase, PGS2 binary output): {N} windows (target_idx {target_idx_list[0]}.."
           f"{target_idx_list[-1]}), level 10^{base_power}")
     print(f"[*] Combined range: [{combined_lo:,}, {combined_hi:,})  "
           f"size={combined_size:,}  ({combined_bytes/1e6:.1f} MB, one bit per odd number)")
@@ -298,6 +301,7 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
     L_final = math.isqrt(combined_hi) + 1
     print(f"[*] L_final (sieving-prime base limit): {L_final:,}")
     if compute_sieving_primes_count:
+        from sieving_prime_count_v5 import KNOWN_PI_SOURCE_URL, count_sieving_primes_cached
         t_count_start = time.perf_counter()
         sieving_primes_count, count_mode = count_sieving_primes_cached(
             BASE_STORAGE_10PN, base_power, L_final, use_known_pi_seed=use_known_pi_seed)
@@ -325,14 +329,17 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
     n_batches = max(1, MAX_WORKERS * BATCHES_PER_WORKER)
     seg_bits = work_plan_v5.segment_bits(segment_kb)
     small_stop = work_plan_v5.small_prime_stop(seg_bits, L_final)
-    slices = work_plan_v5.plan_slices(n_odd, n_batches)
+    slices = work_plan_v5.plan_slices(n_odd, n_batches, min_slice_bits=seg_bits)
     pieces = work_plan_v5.plan_pieces(L_final, combined_size, small_stop, MAX_WORKERS)
     jobs = [(process_slice, (lo, hi, first_odd, small_stop, seg_bits // 64))
             for lo, hi in slices]
+    # A fork-context pool starts all its processes up front, so a buffer of a few segments
+    # gets as many processes as slices, not MAX_WORKERS.
+    n_processes = max(1, min(MAX_WORKERS, len(jobs)))
     n_total = len(jobs) + len(pieces)   # progress counts slices and pieces as "batches"
 
     print(f"[*] Segmented slices: {len(slices)} ({segment_kb} KiB segments, primes "
-          f"3..{small_stop - 1:,}, {MAX_WORKERS} parallel processes); bucketed pieces: "
+          f"3..{small_stop - 1:,}, {n_processes} parallel processes); bucketed pieces: "
           f"{len(pieces)} (primes {small_stop:,}..{L_final - 1:,}, {MAX_WORKERS} threads, "
           f"{region_kb} KiB regions, {bucket_mb} MiB buckets)")
     print(f"[*] Shared output buffer: {combined_bytes/1e6:.1f} MB, ONE COPY TOTAL (see "
@@ -341,6 +348,7 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
     # Allocate the SHARED buffer BEFORE creating the ProcessPoolExecutor -- workers fork()
     # after this point and inherit the mapping (see _init_shared_buffer()'s docstring).
     _init_shared_buffer(combined_bytes)
+    _load_lib()   # loaded once here, inherited by every forked worker
     ctx = multiprocessing.get_context("fork")  # explicit, not relying on the platform default
                                                 # -- correctness of the shared-mmap-before-
                                                 # fork trick REQUIRES fork(), not spawn/
@@ -363,7 +371,7 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
               f"time: {t_now - t_start:.2f}s (+{print_delta:.2f}s since last print) | "
               f"ETA ~{remaining:.0f}s" + (f" | ERRORS={errors}" if errors else ""))
         t_last_print = t_now
-    with ProcessPoolExecutor(max_workers=MAX_WORKERS, mp_context=ctx) as executor:
+    with ProcessPoolExecutor(max_workers=n_processes, mp_context=ctx) as executor:
         jobs_iter = iter(jobs)
         in_flight = {}
 
@@ -376,7 +384,7 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
             in_flight[fut] = True
             return True
 
-        for _ in range(MAX_WORKERS):
+        for _ in range(n_processes):
             if not _submit_next():
                 break
 
@@ -419,6 +427,8 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
     # written this run (stays 0 in count-only mode, where nothing is written).
     t_write_start = time.perf_counter()
     bytes_written = 0
+    if write_files:
+        from pgs2_vector import write_prime_window_offsets
 
     odd_bits = np.frombuffer(_shm_mmap, dtype=np.uint8, count=combined_bytes)
 
@@ -561,7 +571,7 @@ if __name__ == "__main__":
 
     print("=" * 70)
     print(f"[*] PRIME SIEVE -- {VERSION} (primesieve, shared mmap buffer, segmented + "
-          f"bucketed marking, inlined phase modulo, base/sieve/write timing + bytes-written, "
+          f"bucketed marking, double-precision phase, base/sieve/write timing + bytes-written, "
           f"PGS2 binary output)")
     print("=" * 70)
 
