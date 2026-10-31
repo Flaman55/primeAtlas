@@ -1,0 +1,155 @@
+{
+ "engine": "v4.1",
+ "floors": [
+  10,
+  13,
+  16,
+  19,
+  20,
+  21
+ ],
+ "dist": 10000000,
+ "windows": 1,
+ "window_m": 10000000,
+ "workers": 1,
+ "runs": [
+  {
+   "floor": 10,
+   "mode": "count",
+   "primesieve": {
+    "skipped": "not in this series"
+   },
+   "atlas": {
+    "seconds": 0.7050662040710449,
+    "returncode": 0,
+    "peak_pss_mb": 42.6318359375,
+    "peak_procs": 2,
+    "tail": "hared mmap buffer, atomic OR, via prime_sieve_v4_1.py) | START: 10^10\n[*] 1 windows total, in batches of 1, 1 workers per batch -- WRITE_FILES=False (count-only, no PGS2 files) -- SIEVING_PRIMES_COUNT=False (skip pi(L_final))\n[*] TARGET: <workspace>/primeAtlas/prime_sieve/prime_sieve_v4_1.py\n============================================================\n\n[*] manual mode: starting at target_idx=0 (given explicitly)\n\n[14:41:07] Launching batch target_idx 0..0 (1 windows), WRITE_FILES=False (count-only)...\n[14:41:07] Batch 0..0 DONE.\n\n============================================================\n[!] ALL JOBS DONE. target_idx 0..0 (1 windows, 10 million).\n[!] Total orchestrator run time: 0s (14:41:07 -> 14:41:07) -- 0.35 s/window\n============================================================\n\n============================================================\n[BENCHMARK] (count-only mode -- totals from scanner handoff, not disk)\n[BENCHMARK] 10^10, target_idx 0..0 (1 windows processed (NOT written))\n[BENCHMARK] total time: 0s (0.352 s/window)\n[BENCHMARK] total primes found: 434,650 (avg 434,650/window, 1,235,523 primes/sec)\n[BENCHMARK] peak child-process RAM: 53 MB (single largest worker, not the simultaneous total across all workers)\n[BENCHMARK] phase breakdown: sieve 0.07s | write 0.01s\n============================================================\n[BENCHMARK] logged to /mnt/h/primeatlas_bench_v5b_ab_v4.1_B_1w_r2/benchmark_log.csv (for cross-floor growth analysis)\n",
+    "total_seconds": "0.352",
+    "base_gen_seconds": "",
+    "sieve_seconds": "0.073",
+    "write_seconds": "0.008",
+    "total_primes": "434650",
+    "bytes_written": "0",
+    "max_child_rss_mb": "53.3",
+    "output_bytes": 0,
+    "output_files": 0
+   }
+  },
+  {
+   "floor": 13,
+   "mode": "count",
+   "primesieve": {
+    "skipped": "not in this series"
+   },
+   "atlas": {
+    "seconds": 0.7564473152160645,
+    "returncode": 0,
+    "peak_pss_mb": 37.0517578125,
+    "peak_procs": 2,
+    "tail": "(shared mmap buffer, atomic OR, via prime_sieve_v4_1.py) | START: 10^13\n[*] 1 windows total, in batches of 1, 1 workers per batch -- WRITE_FILES=False (count-only, no PGS2 files) -- SIEVING_PRIMES_COUNT=False (skip pi(L_final))\n[*] TARGET: <workspace>/primeAtlas/prime_sieve/prime_sieve_v4_1.py\n============================================================\n\n[*] manual mode: starting at target_idx=0 (given explicitly)\n\n[14:41:07] Launching batch target_idx 0..0 (1 windows), WRITE_FILES=False (count-only)...\n[14:41:08] Batch 0..0 DONE.\n\n============================================================\n[!] ALL JOBS DONE. target_idx 0..0 (1 windows, 10 million).\n[!] Total orchestrator run time: 0s (14:41:07 -> 14:41:08) -- 0.38 s/window\n============================================================\n\n============================================================\n[BENCHMARK] (count-only mode -- totals from scanner handoff, not disk)\n[BENCHMARK] 10^13, target_idx 0..0 (1 windows processed (NOT written))\n[BENCHMARK] total time: 0s (0.377 s/window)\n[BENCHMARK] total primes found: 334,312 (avg 334,312/window, 886,088 primes/sec)\n[BENCHMARK] peak child-process RAM: 53 MB (single largest worker, not the simultaneous total across all workers)\n[BENCHMARK] phase breakdown: sieve 0.08s | write 0.01s\n============================================================\n[BENCHMARK] logged to /mnt/h/primeatlas_bench_v5b_ab_v4.1_B_1w_r2/benchmark_log.csv (for cross-floor growth analysis)\n",
+    "total_seconds": "0.377",
+    "base_gen_seconds": "",
+    "sieve_seconds": "0.080",
+    "write_seconds": "0.011",
+    "total_primes": "334312",
+    "bytes_written": "0",
+    "max_child_rss_mb": "52.7",
+    "output_bytes": 0,
+    "output_files": 0
+   }
+  },
+  {
+   "floor": 16,
+   "mode": "count",
+   "primesieve": {
+    "skipped": "not in this series"
+   },
+   "atlas": {
+    "seconds": 0.7275063991546631,
+    "returncode": 0,
+    "peak_pss_mb": 42.6689453125,
+    "peak_procs": 2,
+    "tail": "(shared mmap buffer, atomic OR, via prime_sieve_v4_1.py) | START: 10^16\n[*] 1 windows total, in batches of 1, 1 workers per batch -- WRITE_FILES=False (count-only, no PGS2 files) -- SIEVING_PRIMES_COUNT=False (skip pi(L_final))\n[*] TARGET: <workspace>/primeAtlas/prime_sieve/prime_sieve_v4_1.py\n============================================================\n\n[*] manual mode: starting at target_idx=0 (given explicitly)\n\n[14:41:08] Launching batch target_idx 0..0 (1 windows), WRITE_FILES=False (count-only)...\n[14:41:09] Batch 0..0 DONE.\n\n============================================================\n[!] ALL JOBS DONE. target_idx 0..0 (1 windows, 10 million).\n[!] Total orchestrator run time: 0s (14:41:08 -> 14:41:09) -- 0.38 s/window\n============================================================\n\n============================================================\n[BENCHMARK] (count-only mode -- totals from scanner handoff, not disk)\n[BENCHMARK] 10^16, target_idx 0..0 (1 windows processed (NOT written))\n[BENCHMARK] total time: 0s (0.378 s/window)\n[BENCHMARK] total primes found: 271,897 (avg 271,897/window, 719,981 primes/sec)\n[BENCHMARK] peak child-process RAM: 53 MB (single largest worker, not the simultaneous total across all workers)\n[BENCHMARK] phase breakdown: sieve 0.11s | write 0.01s\n============================================================\n[BENCHMARK] logged to /mnt/h/primeatlas_bench_v5b_ab_v4.1_B_1w_r2/benchmark_log.csv (for cross-floor growth analysis)\n",
+    "total_seconds": "0.378",
+    "base_gen_seconds": "",
+    "sieve_seconds": "0.111",
+    "write_seconds": "0.008",
+    "total_primes": "271897",
+    "bytes_written": "0",
+    "max_child_rss_mb": "53.1",
+    "output_bytes": 0,
+    "output_files": 0
+   }
+  },
+  {
+   "floor": 19,
+   "mode": "count",
+   "primesieve": {
+    "skipped": "not in this series"
+   },
+   "atlas": {
+    "seconds": 1.4332687854766846,
+    "returncode": 0,
+    "peak_pss_mb": 49.91796875,
+    "peak_procs": 3,
+    "tail": "(shared mmap buffer, atomic OR, via prime_sieve_v4_1.py) | START: 10^19\n[*] 1 windows total, in batches of 1, 1 workers per batch -- WRITE_FILES=False (count-only, no PGS2 files) -- SIEVING_PRIMES_COUNT=False (skip pi(L_final))\n[*] TARGET: <workspace>/primeAtlas/prime_sieve/prime_sieve_v4_1.py\n============================================================\n\n[*] manual mode: starting at target_idx=0 (given explicitly)\n\n[14:41:09] Launching batch target_idx 0..0 (1 windows), WRITE_FILES=False (count-only)...\n[14:41:10] Batch 0..0 DONE.\n\n============================================================\n[!] ALL JOBS DONE. target_idx 0..0 (1 windows, 10 million).\n[!] Total orchestrator run time: 1s (14:41:09 -> 14:41:10) -- 1.07 s/window\n============================================================\n\n============================================================\n[BENCHMARK] (count-only mode -- totals from scanner handoff, not disk)\n[BENCHMARK] 10^19, target_idx 0..0 (1 windows processed (NOT written))\n[BENCHMARK] total time: 1s (1.074 s/window)\n[BENCHMARK] total primes found: 229,305 (avg 229,305/window, 213,422 primes/sec)\n[BENCHMARK] peak child-process RAM: 53 MB (single largest worker, not the simultaneous total across all workers)\n[BENCHMARK] phase breakdown: sieve 0.77s | write 0.01s\n============================================================\n[BENCHMARK] logged to /mnt/h/primeatlas_bench_v5b_ab_v4.1_B_1w_r2/benchmark_log.csv (for cross-floor growth analysis)\n",
+    "total_seconds": "1.074",
+    "base_gen_seconds": "",
+    "sieve_seconds": "0.775",
+    "write_seconds": "0.012",
+    "total_primes": "229305",
+    "bytes_written": "0",
+    "max_child_rss_mb": "53.2",
+    "output_bytes": 0,
+    "output_files": 0
+   }
+  },
+  {
+   "floor": 20,
+   "mode": "count",
+   "primesieve": {
+    "skipped": "not in this series"
+   },
+   "atlas": {
+    "seconds": 2.871659755706787,
+    "returncode": 0,
+    "peak_pss_mb": 49.951171875,
+    "peak_procs": 3,
+    "tail": " (shared mmap buffer, atomic OR, via prime_sieve_v4_1.py) | START: 10^20\n[*] 1 windows total, in batches of 1, 1 workers per batch -- WRITE_FILES=False (count-only, no PGS2 files) -- SIEVING_PRIMES_COUNT=False (skip pi(L_final))\n[*] TARGET: <workspace>/primeAtlas/prime_sieve/prime_sieve_v4_1.py\n============================================================\n\n[*] manual mode: starting at target_idx=0 (given explicitly)\n\n[14:41:10] Launching batch target_idx 0..0 (1 windows), WRITE_FILES=False (count-only)...\n[14:41:13] Batch 0..0 DONE.\n\n============================================================\n[!] ALL JOBS DONE. target_idx 0..0 (1 windows, 10 million).\n[!] Total orchestrator run time: 2s (14:41:10 -> 14:41:13) -- 2.52 s/window\n============================================================\n\n============================================================\n[BENCHMARK] (count-only mode -- totals from scanner handoff, not disk)\n[BENCHMARK] 10^20, target_idx 0..0 (1 windows processed (NOT written))\n[BENCHMARK] total time: 2s (2.515 s/window)\n[BENCHMARK] total primes found: 216,979 (avg 216,979/window, 86,265 primes/sec)\n[BENCHMARK] peak child-process RAM: 53 MB (single largest worker, not the simultaneous total across all workers)\n[BENCHMARK] phase breakdown: sieve 2.25s | write 0.01s\n============================================================\n[BENCHMARK] logged to /mnt/h/primeatlas_bench_v5b_ab_v4.1_B_1w_r2/benchmark_log.csv (for cross-floor growth analysis)\n",
+    "total_seconds": "2.515",
+    "base_gen_seconds": "",
+    "sieve_seconds": "2.248",
+    "write_seconds": "0.013",
+    "total_primes": "216979",
+    "bytes_written": "0",
+    "max_child_rss_mb": "53.4",
+    "output_bytes": 0,
+    "output_files": 0
+   }
+  },
+  {
+   "floor": 21,
+   "mode": "count",
+   "primesieve": {
+    "skipped": "not in this series"
+   },
+   "atlas": {
+    "seconds": 7.692647695541382,
+    "returncode": 0,
+    "peak_pss_mb": 49.9912109375,
+    "peak_procs": 3,
+    "tail": " (shared mmap buffer, atomic OR, via prime_sieve_v4_1.py) | START: 10^21\n[*] 1 windows total, in batches of 1, 1 workers per batch -- WRITE_FILES=False (count-only, no PGS2 files) -- SIEVING_PRIMES_COUNT=False (skip pi(L_final))\n[*] TARGET: <workspace>/primeAtlas/prime_sieve/prime_sieve_v4_1.py\n============================================================\n\n[*] manual mode: starting at target_idx=0 (given explicitly)\n\n[14:41:13] Launching batch target_idx 0..0 (1 windows), WRITE_FILES=False (count-only)...\n[14:41:21] Batch 0..0 DONE.\n\n============================================================\n[!] ALL JOBS DONE. target_idx 0..0 (1 windows, 10 million).\n[!] Total orchestrator run time: 7s (14:41:13 -> 14:41:21) -- 7.37 s/window\n============================================================\n\n============================================================\n[BENCHMARK] (count-only mode -- totals from scanner handoff, not disk)\n[BENCHMARK] 10^21, target_idx 0..0 (1 windows processed (NOT written))\n[BENCHMARK] total time: 7s (7.366 s/window)\n[BENCHMARK] total primes found: 206,889 (avg 206,889/window, 28,086 primes/sec)\n[BENCHMARK] peak child-process RAM: 53 MB (single largest worker, not the simultaneous total across all workers)\n[BENCHMARK] phase breakdown: sieve 7.08s | write 0.01s\n============================================================\n[BENCHMARK] logged to /mnt/h/primeatlas_bench_v5b_ab_v4.1_B_1w_r2/benchmark_log.csv (for cross-floor growth analysis)\n",
+    "total_seconds": "7.366",
+    "base_gen_seconds": "",
+    "sieve_seconds": "7.082",
+    "write_seconds": "0.010",
+    "total_primes": "206889",
+    "bytes_written": "0",
+    "max_child_rss_mb": "53.0",
+    "output_bytes": 0,
+    "output_files": 0
+   }
+  }
+ ]
+}

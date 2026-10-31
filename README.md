@@ -7,6 +7,9 @@ generated. The GUI runs natively on Windows (tkinter); the generation pipeline i
 runs under WSL, backed by `libprimesieve` and a set of custom C sieve engines (three
 interchangeable engine generations, v3/v4/v4.1 -- see "Architecture" below).
 
+Measured throughput, RAM and disk use of engines v4.1 and v5, the cost model and
+comparisons with primesieve and PARI/GP are in `BENCHMARK.md`.
+
 ## Features
 
 - **Prime numbers** -- an inner notebook of three sub-tabs:
@@ -1888,6 +1891,21 @@ installer/                   Windows installer (PrimeAtlasSetup.exe, see "Instal
                               Release, vX.Y.Z-rcN as a pre-release
 CHANGELOG.md                 what changed per version (English, then Polish); the newest
                               entry is APP_VERSION
+BENCHMARK.md                 measured sieve throughput, RAM and disk use per floor of
+                              engines v4.1 and v5, the F(N) + delta * m(N) cost model,
+                              primesieve / PARI/GP comparison and sources
+benchmarks/                  the measurements behind BENCHMARK.md, one folder per run
+  2026-10-29/                 engine v4.1 against the primesieve CLI
+    bench_atlas.py            times orchestrator_v3 against the primesieve CLI per floor,
+                              count and write mode, into a scratch storage (runs in WSL)
+    results/                  raw JSON of every series (A-E)
+  2026-10-31_v5/              engine v5, with v4.1 rerun alternately on short runs
+    bench_atlas.py            the 2026-10-29 script plus engine choice
+                              (PRIMEATLAS_SCANNER_VERSION) and orchestrator path
+                              (ATLAS_ORCH)
+    run_v5b.sh, run_low24.sh  the series as run; commit.txt and log.txt record the
+                              measured tree and the run log
+    results/                  raw JSON of every series (A-E, ab_*, low24_*, C reruns)
 LICENSE.md                   PolyForm Noncommercial 1.0.0 + the Required Notice line
 NOTICE.md                    third-party attributions, incl. the runtimes the installer
                               bundles (CPython: PSF License; MinGit: GPLv2 + source link)
