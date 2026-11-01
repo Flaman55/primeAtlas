@@ -15,7 +15,7 @@ version_label() adds the checked-out commit. git_commit() reads it from the file
 import os
 import re
 
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.2.0"
 
 _SHA_RE = re.compile(r"[0-9a-f]{40}")
 
