@@ -71,7 +71,8 @@ class CompatibilityTests(unittest.TestCase):
                 self.assertEqual({k: row[k] for k in FIELDS}, old)
                 self.assertEqual(row['engine'], '')
                 self.assertEqual(row['numbers_processed'], '')
-            self.assertEqual([r['engine'] for r in rows[2:]], ['hybrid', 'v4.1', 'primesieve', 'cuda'])
+            self.assertEqual([r['engine'] for r in rows[2:]], ['hybrid', orchestrator_v3.SCANNER_VERSION,
+                                                           'primesieve', 'cuda'])
             self.assertEqual({p: p.read_bytes() for p in storage.glob('*.bin')}, before)
             _, displayed = read_benchmark_log(folder)
             self.assertEqual(displayed[2]['sieve_count_basis'], 'measured')

@@ -4,8 +4,9 @@ A desktop application for generating, browsing, and searching large-scale prime 
 and prime-constellation (k-tuple) data -- plus standalone primality/factorization tools
 and a constellation-pattern calculator that work independently of anything already
 generated. The GUI runs natively on Windows (tkinter); the generation pipeline it drives
-runs under WSL, backed by `libprimesieve` and a set of custom C sieve engines (three
-interchangeable engine generations, v3/v4/v4.1 -- see "Architecture" below).
+runs under WSL, backed by `libprimesieve` and a set of custom C sieve engines (four
+interchangeable engine generations, v3/v4/v4.1/v5, v5 by default -- see "Architecture"
+below).
 
 Measured throughput, RAM and disk use of engines v4.1 and v5, the cost model and
 comparisons with primesieve and PARI/GP are in `BENCHMARK.md`.
@@ -1405,7 +1406,7 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               engine_options.recommend() and by
                               recommended_max_windows (v4.1)
                               (unitTests/test_run_budget.py)
-  engine_options.py             sieve engine choice (v4.1 / v5) and v5 perf knobs
+  engine_options.py             sieve engine choice (v4.1 / v5, default v5) and v5 perf knobs
                               (segment KiB, bucket region KiB, bucket memory MiB,
                               windows per run at floor 25) as persisted in the
                               Generation settings: parsing, per-run window cap (v4.1
@@ -1747,7 +1748,7 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
   prime_sieve_v4_1.py        same as v4, plus base-gen/sieve/write phase timing and
                               bytes-written tracking, feeding the Benchmark tab's
                               second (sieve-speed/write-speed) chart
-  prime_sieve_v5.py          engine under development: shared buffer holds odd
+  prime_sieve_v5.py          default engine: shared buffer holds odd
                               numbers only (half the RAM, p = 2 never sieved),
                               small primes sieve cache-sized segments of
                               buffer slices (work_plan_v5.py), larger primes
@@ -1826,7 +1827,7 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               checks it against exact integer arithmetic)
   orchestrator_v3.py         single-run driver; a single SCANNER_VERSION flag near
                               the top selects the active engine ("v3", "v4", "v4.1"
-                              or "v5" -- default v4.1) instead of separate settings
+                              or "v5" -- default v5) instead of separate settings
                               that could drift out of sync with each other; the env
                               var PRIMEATLAS_SCANNER_VERSION overrides the default
                               (the Generation tab always sets it from its engine
