@@ -1,16 +1,14 @@
 ## English
 
-**PrimeAtlas 1.1.0** — a Visualization tab with three views, an About tab, readability settings and pages that scroll whenever their content does not fit.
+**PrimeAtlas 1.2.0** — sieve engine v5 becomes the default: byte-identical output, half the RAM for the sieve buffer, and 1.7–13× faster than v4.1 on 10^10 numbers with 24 workers.
 
 PrimeAtlas is an application for generating, browsing and researching prime numbers: a prime and prime-constellation archive, research tabs (Goldbach, squares, polynomials, gaps, π(x) approximations) and GPU-rendered visualizations.
 
 ### What's new
-- **Visualization tab** with three sub-tabs: Rings (moved here), Tree (a prime copy tree with a multiples axis, plus the Assembly animation mode) and Sphere (rings and fibers modes). When the storage is empty, they offer to generate a range.
-- **About tab:** version and commit, author, license and third-party notices.
-- **Settings → General → User interface:** background and text brightness per theme, text size for the whole app, and the scroll-area width.
-- Every page gets a vertical scrollbar when its content does not fit the window, with a scroll strip next to it: the mouse wheel over the strip always scrolls the page.
-- Striped tables, more readable hint text, tab highlight on hover; the Primes tree columns fit their content.
-- Fixed: the ring visualization froze while scrubbing; installer checkboxes were cut off at 125% display scaling; installing sympy failed with WinError 448; mouse-wheel scrolling on Settings pages; constellation hits from windows scanned out of order were not stored.
+- **Sieve engine v5 (default):** the shared buffer holds odd numbers only, small primes sieve cache-sized segments, larger primes go through one multi-threaded bucketed pass. Floor 25, 10^10 numbers, 24 workers: 121 s → 70 s. Measurements, the cost model and comparisons with primesieve and PARI/GP are in `BENCHMARK.md`.
+- **Generation tab:** a *Sieve engine* selector (v4.1 / v5) and four v5 fields (segment size, bucket region, bucket memory, windows per run at floor 25). **Auto** sizes a run from the floor and the RAM free in WSL; v5 allows up to 100,000 windows per run.
+- **Benchmark charts:** one line per engine, the whole run and the sieve phase on separate charts, reference points (PARI/GP, primesieve), a log scale, and a legend that shows or hides each line; the PDF export follows all of them.
+- An installation that already saved its Generation settings keeps the engine it stores: choose **v5** once in the *Sieve engine* field. v4.1 stays available.
 
 The full list is in `CHANGELOG.md`. An existing installation gets this version from **Settings → Updates**; there is no need to reinstall.
 
@@ -33,17 +31,15 @@ License: PolyForm Noncommercial 1.0.0 (noncommercial use). See `LICENSE.md` and 
 
 ## Polski
 
-**PrimeAtlas 1.1.0** — zakładka Wizualizacja z trzema widokami, zakładka O programie, ustawienia czytelności oraz strony, które przewijają się zawsze, gdy ich treść nie mieści się w oknie.
+**PrimeAtlas 1.2.0** — silnik sita v5 staje się domyślny: wynik identyczny co do bajta, połowa RAM-u na bufor sita i 1,7–13× szybciej niż v4.1 na 10^10 liczbach przy 24 procesach.
 
 PrimeAtlas to aplikacja do generowania, przeglądania i badania liczb pierwszych: magazyn liczb pierwszych i konstelacji, zakładki badawcze (Goldbach, kwadraty, wielomiany, luki, przybliżenia π(x)) oraz wizualizacje renderowane na GPU.
 
 ### Co nowego
-- **Zakładka Wizualizacja** z trzema podzakładkami: Pierścienie (przeniesione tutaj), Drzewo (drzewo kopii liczb pierwszych z osią wielokrotności oraz tryb animacji Składanie) i Sfera (tryby pierścieni i włókien). Gdy magazyn jest pusty, proponują wygenerowanie zakresu.
-- **Zakładka O programie:** wersja i commit, autor, licencja i informacje o komponentach zewnętrznych.
-- **Ustawienia → Ogólne → Interfejs użytkownika:** jasność tła i tekstu osobno dla każdego motywu, rozmiar tekstu w całej aplikacji oraz szerokość obszaru przewijania.
-- Każda strona dostaje pionowy pasek przewijania, gdy jej treść nie mieści się w oknie, a obok niego obszar przewijania: kółko myszy nad nim zawsze przewija stronę.
-- Tabele w paski, czytelniejsze podpowiedzi, podświetlanie zakładek po najechaniu; kolumny drzewa liczb pierwszych dopasowują się do zawartości.
-- Poprawione: zawieszanie się wizualizacji pierścieni podczas przewijania; ucięte pola wyboru instalatora przy skalowaniu ekranu 125%; błąd WinError 448 przy instalacji sympy; przewijanie kółkiem myszy na stronach Ustawień; niezapisywane trafienia konstelacji z okien skanowanych poza kolejnością.
+- **Silnik sita v5 (domyślny):** wspólny bufor przechowuje tylko liczby nieparzyste, małe liczby pierwsze przesiewają segmenty o rozmiarze pamięci cache, większe przechodzą przez jeden wielowątkowy przebieg kubełkowy. Piętro 25, 10^10 liczb, 24 procesy: 121 s → 70 s. Pomiary, model kosztów i porównania z primesieve i PARI/GP są w `BENCHMARK.md`.
+- **Zakładka Generowanie:** wybór *Silnik sita* (v4.1 / v5) i cztery pola v5 (rozmiar segmentu, region kubełków, pamięć kubełków, liczba okien na uruchomienie na piętrze 25). **Auto** dobiera wielkość przebiegu do piętra i wolnej pamięci RAM w WSL; v5 pozwala na 100 000 okien na uruchomienie.
+- **Wykresy benchmarku:** osobna linia dla każdego silnika, cały przebieg i samo sito na osobnych wykresach, punkty odniesienia (PARI/GP, primesieve), skala logarytmiczna oraz legenda, która pokazuje i ukrywa każdą linię; eksport PDF uwzględnia je wszystkie.
+- Instalacja, która ma już zapisane ustawienia Generowania, zachowuje zapisany silnik: wybierz raz **v5** w polu *Silnik sita*. v4.1 pozostaje dostępny.
 
 Pełna lista jest w pliku `CHANGELOG.md`. Istniejąca instalacja dostaje tę wersję przez **Ustawienia → Aktualizacje**; nie trzeba instalować ponownie.
 

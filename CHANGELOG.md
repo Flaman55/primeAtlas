@@ -6,6 +6,49 @@ number, a fix-only release the patch number. The number lives in
 e.g. `1.1.0 (f59ce41)`, because Settings → Updates moves every copy along `main` between
 releases.
 
+## 1.2.0 — 2026-11-01
+
+### English
+
+**New**
+- Sieve engine v5, now the default: the shared buffer holds odd numbers only (half the
+  RAM), small primes sieve cache-sized segments, larger primes go through one
+  multi-threaded bucketed pass. Its output is byte-identical to v4.1. On 10^10 numbers with
+  24 workers it is 1.7–13× faster than v4.1 (floor 25: 121 s → 70 s); measurements and the
+  cost model are in `BENCHMARK.md`.
+- Generation tab: a "Sieve engine" selector (v4.1 / v5) and four v5 fields (segment size,
+  bucket region, bucket memory, windows per run at floor 25). The Auto button sizes a run
+  from the floor and the RAM free in WSL; v5 allows up to 100,000 windows per run.
+- Benchmark charts: one line per engine, the whole run and the sieve phase on separate
+  charts, reference points (PARI/GP, primesieve), a log scale, and a legend that shows or
+  hides each line; the PDF export follows all of them.
+
+**Other**
+- `BENCHMARK.md` with the raw results and scripts under `benchmarks/`.
+- An installation that already saved its Generation settings keeps the engine it stores;
+  choose v5 once in the "Sieve engine" field. v4.1 stays available.
+
+### Polski
+
+**Nowe**
+- Silnik sita v5, teraz domyślny: wspólny bufor przechowuje tylko liczby nieparzyste
+  (połowa RAM-u), małe liczby pierwsze przesiewają segmenty o rozmiarze pamięci cache,
+  większe przechodzą przez jeden wielowątkowy przebieg kubełkowy. Wynik jest identyczny co
+  do bajta z v4.1. Na 10^10 liczbach przy 24 procesach jest 1,7–13× szybszy od v4.1
+  (piętro 25: 121 s → 70 s); pomiary i model kosztów są w `BENCHMARK.md`.
+- Zakładka Generowanie: wybór silnika sita (v4.1 / v5) i cztery pola v5 (rozmiar
+  segmentu, region kubełków, pamięć kubełków, liczba okien na przebieg na piętrze 25).
+  Przycisk Auto dobiera wielkość przebiegu do piętra i wolnej pamięci RAM w WSL; v5
+  pozwala na 100 000 okien na przebieg.
+- Wykresy benchmarku: osobna linia dla każdego silnika, cały przebieg i samo sito na
+  osobnych wykresach, punkty odniesienia (PARI/GP, primesieve), skala logarytmiczna oraz
+  legenda, która pokazuje i ukrywa każdą linię; eksport PDF uwzględnia je wszystkie.
+
+**Inne**
+- `BENCHMARK.md` z surowymi wynikami i skryptami w `benchmarks/`.
+- Instalacja, która ma już zapisane ustawienia Generowania, zachowuje zapisany silnik;
+  wybierz raz v5 w polu wyboru silnika. v4.1 pozostaje dostępny.
+
 ## 1.1.0 — 2026-10-29
 
 ### English

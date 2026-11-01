@@ -67,7 +67,7 @@ def _test_version():
     print("\n--- A. version.py ---")
     check(re.fullmatch(r"\d+\.\d+\.\d+", version.APP_VERSION) is not None,
           f"APP_VERSION is X.Y.Z ({version.APP_VERSION})")
-    check(version.APP_VERSION == "1.1.0", "APP_VERSION is bumped to 1.1.0")
+    check(version.APP_VERSION == "1.2.0", "APP_VERSION is bumped to 1.2.0")
     git_commit = getattr(version, "git_commit", None)
     version_label = getattr(version, "version_label", None)
     check(callable(git_commit) and callable(version_label),
