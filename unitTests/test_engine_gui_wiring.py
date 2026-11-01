@@ -77,8 +77,8 @@ def main():
         from primeatlas.generation.generation import DEFAULT_GENERATION_SETTINGS
         default_loop = DEFAULT_GENERATION_SETTINGS["loop"]
         passed &= check(engine_options.resolve(default_loop).engine
-                        == engine_options.DEFAULT_ENGINE == "v4.1",
-                        "default engine is v4.1")
+                        == engine_options.DEFAULT_ENGINE == "v5",
+                        "default engine is v5")
         # The app loads the user's persisted settings, which may already select v5.
         fields.engine_var.set("v4.1")
         app.update()

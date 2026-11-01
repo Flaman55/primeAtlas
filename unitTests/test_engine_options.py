@@ -1,8 +1,9 @@
 """engine_options turns the Generation tab's engine choice and v5 perf knobs into a run plan.
 
 Checks: the engine names, knob defaults and environment variable names mirror
-orchestrator_v3.py / work_plan_v5.py and run_budget.py; an unknown engine falls back to the
-default; knob parsing accepts blanks (default) and positive integers and names the first bad
+orchestrator_v3.py / work_plan_v5.py and run_budget.py; the default engine is v5 in both the
+GUI and orchestrator_v3.py run without PRIMEATLAS_SCANNER_VERSION; an unknown engine falls
+back to the default; knob parsing accepts blanks (default) and positive integers and names the first bad
 field; resolve() never fails (Restore has no form to report errors in); the per-run window
 cap is 1000 for v4.1 and higher for v5; recommend() passes the engine, floor and knobs on to
 run_budget and respects the cap; launch_env() always names the engine and adds the three v5
@@ -12,6 +13,7 @@ the engine and knob defaults. Pure Python, runs on Windows and WSL:
     python unitTests/test_engine_options.py
 """
 import os
+import re
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -35,7 +37,14 @@ def check(value, message):
 def check_mirrors():
     passed = True
     passed &= check(eo.ENGINES == ("v4.1", "v5"), f"engines offered: {eo.ENGINES}")
-    passed &= check(eo.DEFAULT_ENGINE in eo.ENGINES, f"default engine {eo.DEFAULT_ENGINE}")
+    passed &= check(eo.DEFAULT_ENGINE == "v5", f"default engine {eo.DEFAULT_ENGINE}")
+    # orchestrator_v3.py imports WSL-only engine modules, so its default is read from source.
+    with open(os.path.join(ROOT, "prime_sieve", "orchestrator_v3.py"), encoding="utf-8") as f:
+        match = re.search(r'^SCANNER_VERSION = os\.environ\.get\("PRIMEATLAS_SCANNER_VERSION"\)'
+                          r' or "([^"]+)"$', f.read(), re.MULTILINE)
+    passed &= check(match is not None and match.group(1) == eo.DEFAULT_ENGINE,
+                    f"orchestrator_v3.py default engine "
+                    f"{match.group(1) if match else None} matches the GUI default")
     passed &= check(eo.SCANNER_VERSION_ENV == "PRIMEATLAS_SCANNER_VERSION",
                     "engine env name matches orchestrator_v3.py")
     passed &= check((eo.SEGMENT_KB_ENV, eo.REGION_KB_ENV, eo.BUCKET_MB_ENV)
@@ -85,7 +94,8 @@ def check_caps_and_recommend():
     passed &= check(eo.max_windows_per_run("v4.1") == 1000, "v4.1 cap is 1000 windows")
     passed &= check(eo.max_windows_per_run("v5") >= run_budget.target_windows("v5", 27, W),
                     f"v5 cap {eo.max_windows_per_run('v5')} holds the floor-27 target")
-    passed &= check(eo.max_windows_per_run("bogus") == 1000, "unknown engine -> default cap")
+    passed &= check(eo.max_windows_per_run("bogus") == eo.max_windows_per_run(eo.DEFAULT_ENGINE),
+                    "unknown engine -> default engine's cap")
     v5 = eo.resolve({"engine": "v5"})
     rec = eo.recommend(64 * GB, v5, 25, W)
     passed &= check(rec == run_budget.recommend_run(64 * GB, "v5", 25, W),
