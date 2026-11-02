@@ -9,10 +9,10 @@ and v5 two limits apply, the smaller one wins:
     pi(isqrt(10^floor)) ~ L / ln L: the knob is the window count at floor 25 (10^7-wide
     windows), never below 1000;
   - RAM: the run's footprint must fit in safety_fraction of the RAM free in WSL (the
-    Generation tab's RAM budget field, in percent). v4.1 holds
-    a full bit buffer (window_m // 8 bytes per window); v5 holds an odd-only buffer
-    (window_m // 16 per window), its bucket memory and a fixed overhead (worker processes,
-    sieving-prime iterators). When RAM is short, v5's buckets shrink first (down to
+    Generation tab's RAM budget field, in percent). v4.1 holds a full bit buffer
+    (window_m // 8 bytes per window); v5 holds an odd-only buffer (window_m // 16 per
+    window), its bucket memory and a fixed overhead (worker processes, sieving-prime
+    iterators). When RAM is short, v5's buckets shrink first (down to
     MIN_BUCKET_MB, never above the knob): a longer tape gains more than bigger buckets.
 
 The defaults are arbitrary, picked by measurement (24 threads @1e25: 1000 -> 5000 windows

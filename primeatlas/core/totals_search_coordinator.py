@@ -367,7 +367,7 @@ class TotalsSearchCoordinator:
         Also resets self.totals_progress to its empty 0/1 resting state: this runs on
         EVERY reload_primes_tree(), including the one GenerationTab triggers right after
         a run finishes (see _on_loop_finished()). A finished generation run leaves
-        totals_progress fully complete on purpose (see generation_tab.py's
+        totals_progress fully complete on purpose (see run_progress.py's
         _update_shared_progress_from_generation_chunk()) and relies on whatever runs next
         to clear it; without this reset the bar would stay full indefinitely, reading as
         "still busy". Same reset _on_floor_total_ready's completion branch and
@@ -376,7 +376,7 @@ class TotalsSearchCoordinator:
         # sustained ownership -- this is a one-off cleanup reset, not an in-progress
         # job. If claim_progress_bar() fails, some OTHER owner (most commonly a
         # Generation run that hasn't released its own claim yet -- see
-        # generation_tab.py's _on_loop_finished()) is actively using the bar right
+        # loop_section.py's _on_loop_finished()) is actively using the bar right
         # now, so this reset is correctly skipped rather than stomping on it; that
         # owner's own eventual release lets the NEXT reload's call here (or whatever
         # else needs the bar) reset it instead.

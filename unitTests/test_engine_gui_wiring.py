@@ -50,13 +50,13 @@ class _Runner:
 
 def main():
     import prime_atlas_v2
-    from primeatlas.generation import engine_options, generation_tab, run_budget
+    from primeatlas.generation import engine_options, generation_tab, quick_gen_panel, run_budget
     from tkinter import messagebox
 
     shown = []
     messagebox.showinfo = lambda *a, **k: shown.append(("info", a))
     messagebox.showerror = lambda *a, **k: shown.append(("error", a))
-    generation_tab.estimate_wsl_available_ram_bytes = lambda *a, **k: RAM
+    quick_gen_panel.estimate_wsl_available_ram_bytes = lambda *a, **k: RAM
     generation_tab.WslLoggedRunner = _Runner
 
     portal = tempfile.mkdtemp(prefix="primeatlas_engine_gui_test_")

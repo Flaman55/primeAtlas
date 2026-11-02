@@ -4,8 +4,8 @@ between the Generation tab's two "how to compute pi(L_final)" checkboxes:
 self._loop_count_sieving_var (sieve pi(L_final) from zero) and self._loop_use_pi_seed_var
 (seed from a known value) are ALTERNATIVES, not an independent
 base+modifier pair -- checking one must uncheck the other, and having both off is the only way
-to skip computing pi(L_final) entirely. See generation_tab.py's own comment above the two
-Checkbuttons in _build_generation_tab for the full reasoning, and
+to skip computing pi(L_final) entirely. See loop_section.py's own comment above the two
+Checkbuttons in _build_loop_section for the full reasoning, and
 _collect_loop_settings_from_form()'s docstring for how the two vars combine into the single
 effective compute_sieving_primes_count flag actually sent to the scripts.
 

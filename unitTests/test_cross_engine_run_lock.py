@@ -11,7 +11,7 @@ already_done, etc.) in plain instance attributes with no per-engine namespacing,
 two engines running at once (each with its own 150ms polling loop) would corrupt
 each other's bar/status values.
 
-Contract (see generation_tab.py's _other_engine_is_running/_lock_other_run_buttons/
+Contract (see run_progress.py's _other_engine_is_running/_lock_other_run_buttons/
 _unlock_other_run_buttons docstrings): every launch path (1) grays out the OTHER two
 engines' Run buttons for the whole session (not just one chained batch/iteration),
 released only once that engine has GENUINELY finished, and (2) refuses to launch if

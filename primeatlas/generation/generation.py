@@ -1048,7 +1048,7 @@ def build_constellation_finder_argv(base_exponent=None, max_windows=None, script
     omitted
     entirely when None, same "don't pass what wasn't explicitly set" shape as
     base_exponent -- callers use this to bound a single run's own file-open volume,
-    letting generation_tab.py's own batch-continuation logic relaunch a fresh WSL
+    letting constellation_section.py's own batch-continuation logic relaunch a fresh WSL
     process for each slice instead of one process carrying the whole floor."""
     script = script_path if script_path is not None else CONSTELLATION_FINDER_SCRIPT
     script_wsl = windows_path_to_wsl(script)
@@ -1074,7 +1074,7 @@ def read_constellation_checkpoint(portal_folder, base_exponent):
     reading three lines of a text file. Returns None if the floor has no checkpoint
     yet (never scanned, or scanned floor doesn't exist).
 
-    Used by the auto-retry logic in generation_tab.py's own
+    Used by the auto-retry logic in constellation_section.py's own
     _maybe_auto_retry_constellation() -- comparing this before/after a relaunch is how
     that method tells "genuine forward progress" apart from "relaunching into the same
     dead end"."""
@@ -1307,7 +1307,7 @@ def format_duration_short(seconds):
     """Renders a duration (seconds, float or int, may be 0 or slightly negative from
     clock jitter) as a short human string -- "5h03m", "12m07s", or "42s" depending on
     magnitude -- for the constellation search's own elapsed-time/ETA display (see
-    generation_tab.py's own _update_shared_progress_from_generation_chunk()). Picks
+    run_progress.py's own _update_shared_progress_from_generation_chunk()). Picks
     exactly ONE larger unit to pair with the next one down (never seconds AND hours
     together) so the string stays short enough for the shared status bar alongside the
     floor/batch counts already shown there."""
@@ -1370,7 +1370,7 @@ _GEN_CONST_DONE_RE = re.compile(r"\[CONSTELLATIONS v2\] Done\. New hits this run
 # near the start of every process_floor() call, right after the human-readable "N/M
 # windows to process" line): unlike _GEN_CONST_PROGRESS_RE above, whose own (done, total)
 # pair only ever counts this ONE --max-windows-capped batch (resetting to 1 every time
-# generation_tab.py's own _maybe_continue_constellation_batch() chains the next one),
+# constellation_section.py's own _maybe_continue_constellation_batch() chains the next one),
 # this line's three counts are relative to the WHOLE floor, letting the GUI show real
 # progress across a floor's entire remaining backlog instead of the bar/status
 # snapping back to near-zero at every batch boundary. See

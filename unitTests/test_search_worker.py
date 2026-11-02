@@ -205,7 +205,7 @@ def main():
             tsc_module.update_floor_totals_cache = _real_update_totals
 
         # --- show_cached_grand_total() must reset totals_progress: generation's
-        # completion handler (generation_tab.py's
+        # completion handler (run_progress.py's
         # _update_shared_progress_from_generation_chunk) deliberately snaps the bar to
         # full and relies on whatever runs next to clear it; without the reset the
         # shared bottom bar would stay full while the app sits idle, reading as busy.
