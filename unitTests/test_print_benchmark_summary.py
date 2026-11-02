@@ -4,7 +4,8 @@ print_benchmark_summary() (write_files=True branch): it re-derives
 windows_found/total_primes by checking os.path.exists() for each expected window's
 filename, which must use the SHARDED location (source_primes/shard_NNNNN/, see
 window_sharding.py), not a flat "source_dir/PRIME_WINDOW_....bin" path -- otherwise a
-correctly written run logs windows_written=0 / total_primes=0 to benchmark_log.csv.
+correctly written run logs windows_written=0 / total_primes=0 to benchmark_log.csv. The
+headers are read by `workers` threads: the same totals for 1 and for several threads.
 
 Pure logic, no tkinter, no real prime data needed beyond a couple of tiny PGS2 fixture
 windows written via prime_sieve_v1.write_prime_window() into the CORRECT sharded location
@@ -86,6 +87,23 @@ def main():
         check(row["seconds_per_window"] == "6.2500",
               f"seconds_per_window = 12.5s / 2 windows, not nan (got "
               f"{row['seconds_per_window']!r})")
+
+        for workers in (1, 4):
+            tmp_portal3 = tempfile.mkdtemp(prefix="primeatlas_benchmark_summary_test_w_")
+            try:
+                shutil.copytree(os.path.join(tmp_portal, f"10p{base_exponent}"),
+                                os.path.join(tmp_portal3, f"10p{base_exponent}"))
+                orchestrator_v3.print_benchmark_summary(
+                    base_exponent, start_idx, end_idx, total_seconds=12.5,
+                    portal_folder=tmp_portal3, write_files=True, window_m=window_m,
+                    workers=workers)
+                with open(os.path.join(tmp_portal3, "benchmark_log.csv"), newline="") as f:
+                    row3 = list(csv.DictReader(f))[0]
+                check(row3["windows_written"] == "2" and row3["total_primes"] == "3",
+                      f"{workers} header-reading thread(s): 2 windows, 3 primes (got "
+                      f"{row3['windows_written']!r}, {row3['total_primes']!r})")
+            finally:
+                shutil.rmtree(tmp_portal3, ignore_errors=True)
 
         # --- Same call, but against an EMPTY portal (no windows on disk at all) should
         # still behave sanely: 0 windows, 0 primes, no crash, nan-safe division.

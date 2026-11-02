@@ -80,6 +80,61 @@ class EngineLinesTests(unittest.TestCase):
                 self.assertGreaterEqual(distance, 90, f"{a} {colors[a]} vs {b} {colors[b]}")
 
 
+class StoreKindTests(unittest.TestCase):
+    """D and P runs (storage_kinds.py) are measured apart: every row gets a kind from its
+    engine and window range, and a pt1 P run draws its own line."""
+
+    W = benchmark.QUICK_GEN_MAX_WINDOW_WIDTH
+
+    def _pt1(self, floor, start, end, **kw):
+        row = _row(floor, "pt1", **kw)
+        row.update(target_idx_start=str(start), target_idx_end=str(end))
+        return row
+
+    def test_row_kind(self):
+        import storage_kinds as sk
+        bound_idx = (sk.MR_DET_BOUND - 10 ** 24) // self.W
+        cases = [
+            (_row(27, "v5"), "D"),
+            (self._pt1(20, 0, 9), "D"),
+            (self._pt1(27, 0, 9), "P"),
+            (self._pt1(24, 0, 9), "D"),
+            (self._pt1(24, bound_idx - 2, bound_idx + 2), "D+P"),
+            (self._pt1(24, bound_idx + 1, bound_idx + 5), "P"),
+            (_row(26, "pt1"), "P"),
+            (dict(self._pt1(27, 0, 9), kind="D"), "D"),
+        ]
+        for row, kind in cases:
+            self.assertEqual(benchmark.benchmark_row_kind(row), kind, row)
+
+    def test_read_adds_kind_column(self):
+        with tempfile.TemporaryDirectory() as folder:
+            fields = ["base_exponent", "engine", "target_idx_start", "target_idx_end"]
+            with open(os.path.join(folder, "benchmark_log.csv"), "w", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=fields)
+                writer.writeheader()
+                writer.writerow(dict(base_exponent="27", engine="pt1", target_idx_start="0",
+                                     target_idx_end="3"))
+                writer.writerow(dict(base_exponent="27", engine="v5", target_idx_start="0",
+                                     target_idx_end="3"))
+            fieldnames, rows = benchmark.read_benchmark_log(folder)
+        self.assertIn("kind", fieldnames)
+        self.assertEqual([r["kind"] for r in rows], ["P", "D"])
+        self.assertEqual(benchmark._order_benchmark_tree_columns(fieldnames)[:2], ["engine", "kind"])
+
+    def test_d_and_p_runs_draw_separate_lines(self):
+        rows = [self._pt1(22, 0, 9, nps="2e8"), self._pt1(27, 0, 9, nps="1.7e8"),
+                _row(27, "v5", nps="5e7")]
+        for row in rows:
+            row["kind"] = benchmark.benchmark_row_kind(row)
+        lines = benchmark.benchmark_engine_lines(rows, "growth")
+        self.assertEqual(lines, {"pt1": [(22, 2e8)], "pt1 P": [(27, 1.7e8)], "v5": [(27, 5e7)]})
+        series = {s.name: s for s in chart_series.engine_series(lines)}
+        self.assertNotEqual(series["pt1"].color, series["pt1 P"].color)
+        self.assertNotIn(series["pt1 P"].color, (series["v5"].color, chart_series.OTHER_ENGINE_COLOR))
+        self.assertEqual(series["pt1 P"].tag, "pt1 P")
+
+
 class ScaleTests(unittest.TestCase):
     def test_log_scale_fits_the_data_range(self):
         scale = chart_series.YScale([2.6e6, 2.8e9], log=True)

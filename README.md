@@ -1271,7 +1271,13 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               overwrite each other's display
   storage.py                    the core prime-window storage layer (listing floors/
                               files, totals caches, format_duration/format_bytes)
-                              shared by several tabs, not specific to any one
+                              shared by several tabs, not specific to any one;
+                              lists the D store by default (every consumer reads D
+                              only) and both stores on request, keeps a floor's P
+                              totals beside its D totals, outside the floor and
+                              global totals; disk_footprint() gives the Files /
+                              Size columns and the status bar's disk total over both
+                              stores
   app_icon.py                   the globe icon for every window (Tk: main window, WSL
                               wizard; GLFW: the visualization renderer) plus the process AppUserModelID
                               without which the taskbar shows pythonw.exe's Python icon
@@ -1305,7 +1311,13 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               detail pane, sash drags snap back; a window too
                               narrow for it gets a horizontal scrollbar) and
                               "Generated (UTC)" is the last column, shown only
-                              while an open floor lists its files
+                              while an open floor lists its files (with the D/P
+                              column -- D, P or D/P -- D and P windows listed
+                              together by offset);
+                              a "P primes" column shows each floor's P total while
+                              any floor has one; "Verify P against D" runs
+                              dp_verify.verify_floor() over the active floor
+                              (unitTests/test_primes_tab_dp.py)
   primes_tree_coordinator.py    PrimesTreeCoordinator -- background floor-list
                               scan/reload logic for this tab's own tree, that used to
                               live directly on PortalBrowserApp itself
@@ -1397,7 +1409,8 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
   hybrid_controls.py            Hybrid mode's own debounced reach-preview/auto-fit UI
                               logic, kept in its own file since it runs its preview
                               calculation off the Tk main thread
-  run_budget.py                 window count (and v5 bucket memory) of one sieve run:
+  run_budget.py                 window count (and v5 bucket memory) of one sieve run
+                              (pt1: the per-run cap, no RAM limit):
                               the smaller of a floor-scaled target (v4.1: 1000; v5:
                               grows with the run's fixed cost, knob = windows at floor
                               25, default 5000) and what fits in half the RAM free in
@@ -1406,19 +1419,22 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               engine_options.recommend() and by
                               recommended_max_windows (v4.1)
                               (unitTests/test_run_budget.py)
-  engine_options.py             sieve engine choice (v4.1 / v5, default v5) and v5 perf knobs
-                              (segment KiB, bucket region KiB, bucket memory MiB,
-                              windows per run at floor 25) as persisted in the
+  engine_options.py             sieve engine choice (v4.1 / v5 / pt1, default v5) and perf
+                              knobs (v5: segment KiB, bucket region KiB, bucket memory
+                              MiB, windows per run at floor 25; pt1: sieve limit B,
+                              chunk KiB) as persisted in the
                               Generation settings: parsing, per-run window cap (v4.1
-                              1000, v5 100,000), run sizing for the Auto button and
+                              1000, v5 and pt1 100,000), run sizing for the Auto button and
                               Restore, and the launch env (PRIMEATLAS_SCANNER_VERSION,
-                              PRIMEATLAS_V5_*) that build_wsl_logged_command puts in
+                              PRIMEATLAS_V5_*, PRIMEATLAS_PT1_*) that build_wsl_logged_command puts in
                               front of every orchestrator launch -- the same variables
                               are the CLI for runs started by hand
                               (unitTests/test_engine_options.py)
   engine_fields.py              EngineFields -- the pipeline form's engine Combobox and
-                              v5 knob Entries (disabled under v4.1); the Quick-gen
-                              Width cap follows the selected engine
+                              knob Entries (each enabled only under the engine that
+                              reads it); the Quick-gen Width cap and the
+                              continuation / gap / trim planning follow the selected
+                              engine
                               (unitTests/test_engine_gui_wiring.py)
 
   primeatlas/visualization/     "Visualization" tab -- a container notebook with one sub-tab
@@ -1687,8 +1703,11 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
   primeatlas/benchmark/         "Benchmark" tab
   benchmark_tab.py             BenchmarkTab -- the Benchmark tab (charts + PDF export;
                               benchmark.py below is the pure-logic backend)
-  benchmark.py                  reading/normalizing benchmark_log.csv rows
-  chart_series.py               chart Series (one color per engine), linear/log
+  benchmark.py                  reading/normalizing benchmark_log.csv rows; each row
+                              gets a "kind" (D, P, or D+P on floor 24) from its
+                              engine and window range, shown next to "engine"
+  chart_series.py               chart Series (one color per engine, a P run of pt1
+                              on its own "pt1 P" line), linear/log
                               y-scales, per-line hide/show keys -- shared by the
                               canvas and the PDF renderer
   chart_pdf.py                  PDF content ops of one Benchmark chart (axes, lines,
@@ -1763,12 +1782,39 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               PGS2 file and the run totals against v4.1)
   engine_v5_lib.py           ctypes binding of prime_sieve_engine_v5.so, loaded
                               on first use
+  prime_sieve_pt1.py         engine pt1 (partial sieve + primality test): each
+                              window is sieved only by the primes up to B
+                              (default floor(N^(1/4))) and the survivors are
+                              tested -- 13 Miller-Rabin bases below MR_DET_BOUND
+                              (D window, byte-identical to v5), BPSW from it on
+                              (P window, source_primes_P/); constant throughput
+                              on every floor, no run-sized buffer; floors 7..37
+                              (unitTests/test_engine_pt1.py)
+  pt1_plan.py                B and chunk knobs (env PRIMEATLAS_PT1_B,
+                              PRIMEATLAS_PT1_CHUNK_KB), slab grouping of
+                              same-kind windows
+  prime_sieve_engine_pt1.c   C core for prime_sieve_pt1.py (ctypes, threads):
+                              chunked odd-only sieve to B, u128 Montgomery
+                              Miller-Rabin / strong Lucas
+  storage_kinds.py           the D (proven) and P (probable prime) window stores
+                              of a floor: folder and file names (_P suffix), the
+                              label rule (a window reaching MR_DET_BOUND is P),
+                              which store each engine writes and plans from, the
+                              D/P list (10p{N}/DP_PROVEN.txt: D windows that proved
+                              their P window, counted in pt1's store)
+                              (unitTests/test_storage_kinds.py)
+  dp_verify.py               D proves P: a D window compared with the P window of
+                              the same offset -- equal removes P and lists the D
+                              window as D/P, a difference
+                              keeps both, prints an ERROR and lists the window in
+                              10p{N}/DP_MISMATCH.txt (unitTests/test_dp_verify.py)
   sieving_prime_count_v5.py  pi(L_final) of a v5 run (diagnostic only): libprimesieve
                               count through the v5 engine, per-floor cache, optional
                               seed from known pi(10^n) values
   pgs2_vector.py             NumPy PGS2 writer: encodes a window's whole gap stream
                               in one vectorized pass from int64 prime offsets, byte-
-                              identical to the per-prime writer
+                              identical to the per-prime writer; read_window_count()
+                              reads only a header's prime count, unbuffered
                               (unitTests/test_pgs2_vector.py)
   work_plan_v5.py            splits a v5 run into work: word-aligned buffer
                               slices, none shorter than one segment, for the
@@ -1826,12 +1872,17 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               correction (unitTests/test_engine_v5_phase.py
                               checks it against exact integer arithmetic)
   orchestrator_v3.py         single-run driver; a single SCANNER_VERSION flag near
-                              the top selects the active engine ("v3", "v4", "v4.1"
-                              or "v5" -- default v5) instead of separate settings
+                              the top selects the active engine ("v3", "v4", "v4.1",
+                              "v5" or "pt1" -- default v5) instead of separate settings
                               that could drift out of sync with each other; the env
                               var PRIMEATLAS_SCANNER_VERSION overrides the default
                               (the Generation tab always sets it from its engine
-                              selector, see engine_options.py)
+                              selector, see engine_options.py); continues a floor
+                              from the store the engine writes into and, after each
+                              batch, lets every new D window prove its P counterpart
+                              (dp_verify.py); the benchmark row's prime count is
+                              re-read from the written windows' headers by `workers`
+                              threads
   orchestrator_loop_v2.py    continuous-run driver
   orchestrator_loop_helpers.py
   hit_paging.py              splits a dense pattern's constellation hit file into

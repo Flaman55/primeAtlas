@@ -26,6 +26,7 @@ import shutil
 import re
 import csv
 
+import storage_kinds
 import window_sharding
 
 from ..core.storage import remove_floor_total, load_totals_cache, save_totals_cache, TOTALS_CACHE_FILENAME
@@ -169,7 +170,8 @@ class FloorWiper:
 
     def plan_floor(self, base_exponent):
         """Dry-run for delete_floor(): (window_count, hit_count) currently under
-        10p{base_exponent}, without touching anything on disk.
+        10p{base_exponent}, D and P windows together (storage_kinds.py), without touching
+        anything on disk.
 
         source_primes/ is sharded into shard_NNNNN subfolders (see window_sharding.py) --
         window_count is counted via window_sharding.count_sharded_files()
@@ -180,6 +182,8 @@ class FloorWiper:
         source_dir = os.path.join(floor_dir, "source_primes")
         window_count = window_sharding.count_sharded_files(
             source_dir, predicate=_SOURCE_WINDOW_RE.match)
+        window_count += len(storage_kinds.list_window_files(
+            self.storage_path, base_exponent, storage_kinds.KIND_P))
         hit_count = self._count_hits(floor_dir)
         return window_count, hit_count
 

@@ -26,6 +26,8 @@ callable instead of reaching for a Constellations-calc-tab reference of its own.
 import time
 from tkinter import messagebox
 
+import storage_kinds
+
 from ..settings import floor_meta
 from .background import PersistentWorker
 from .progress_bar_owner import (
@@ -34,7 +36,7 @@ from .progress_bar_owner import (
 )
 from ..constellations.constellations import find_constellation_participation
 from .storage import (
-    find_prime_in_floor, format_bytes, format_duration, get_global_total,
+    disk_footprint, find_prime_in_floor, format_bytes, format_duration, get_global_p_total, get_global_total,
     load_totals_cache, recompute_global_total, save_totals_cache, update_floor_totals_cache,
 )
 
@@ -77,6 +79,7 @@ class TotalsSearchCoordinator:
         self._on_const_search_result = on_const_search_result
 
         self._totals_cache = {}
+        self._p_totals = {}            # base_exponent -> P store (total, files, bytes)
         self._reload_totals_caches()
         self._computing_all_totals = False
         self._totals_batch_size = 0
@@ -187,6 +190,10 @@ class TotalsSearchCoordinator:
         try:
             total, file_count, new_read, total_bytes = update_floor_totals_cache(
                 portal_folder, base_exponent, self._totals_cache)
+            p_total = update_floor_totals_cache(portal_folder, base_exponent, self._totals_cache,
+                                                kind=storage_kinds.KIND_P)
+            new_read += p_total[2]
+            self._p_totals[base_exponent] = (p_total[0], p_total[1], p_total[3])
             if new_read:
                 save_totals_cache(portal_folder, self._totals_cache)
             # A floor physically copied in from another storage (archive) brings its
@@ -270,7 +277,8 @@ class TotalsSearchCoordinator:
         tree-row update, grand-total accumulation, and progress-bar VALUE above still
         always run regardless, since those aren't shared/contested UI and skipping
         them would leave the totals cache/tree silently out of date."""
-        self._primes_tab_widget.update_floor_row(base_exponent, total, file_count, total_bytes)
+        self._primes_tab_widget.update_floor_row(base_exponent, total, file_count, total_bytes,
+                                                 p_totals=self._p_totals.get(base_exponent))
         gen_seconds = self._primes_tab_widget.get_gen_seconds(base_exponent)
 
         if self._computing_all_totals:
@@ -279,7 +287,9 @@ class TotalsSearchCoordinator:
                 self._grand_total_seen.add(base_exponent)
                 self._grand_total_sum += total
                 self._grand_total_seconds += gen_seconds or 0.0
-                self._grand_total_bytes += total_bytes or 0
+                self._grand_total_bytes += disk_footprint(
+                    (total, file_count, total_bytes or 0),
+                    self._p_totals.get(base_exponent))[1]
             done = len(self._grand_total_seen)
             expected = self._totals_batch_size
             # Re-asserts mode/maximum on EVERY successful claim, not just value --
@@ -328,10 +338,12 @@ class TotalsSearchCoordinator:
             self._totals_submit_time.pop(base_exponent, None)
             if allow_status_write:
                 extra = self.T("primes.status_extra_new_files", count=new_read) if new_read else ""
+                files, size = disk_footprint((total, file_count, total_bytes or 0),
+                                             self._p_totals.get(base_exponent))
                 self.status.set(
                     self.T("primes.status_floor_total", base_exponent=base_exponent,
-                           total=f"{total:,}", files=f"{file_count:,}",
-                           size=format_bytes(total_bytes), extra=extra))
+                           total=f"{total:,}", files=f"{files:,}",
+                           size=format_bytes(size), extra=extra))
 
     def show_cached_grand_total(self, totals_cache, floor_gen_seconds, floor_count):
         """Lightweight, all-in-memory grand-total display after a reload -- see
@@ -378,12 +390,15 @@ class TotalsSearchCoordinator:
         if known is None:
             known = recompute_global_total(totals_cache)
             save_totals_cache(self._get_portal_folder(), totals_cache)
-        total_sum, _file_count, total_bytes = known
+        total_sum = known[0]
         total_seconds = sum(floor_gen_seconds.values()) if floor_gen_seconds else 0.0
+        p_known = get_global_p_total(totals_cache)
+        p_sum = p_known[0]
         self.status.set(
             self.T("primes.status_grand_total", count=floor_count,
                    sum=f"{total_sum:,}", duration=format_duration(total_seconds),
-                   size=format_bytes(total_bytes)))
+                   size=format_bytes(disk_footprint(known, p_known)[1]))
+            + (self.T("primes.status_grand_total_p", sum=f"{p_sum:,}") if p_sum else ""))
         if claim_progress_bar(self.totals_progress, self._totals_progress_owner):
             self.totals_progress.configure(maximum=1, value=0)
             release_progress_bar(self.totals_progress, self._totals_progress_owner)

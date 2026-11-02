@@ -25,6 +25,7 @@ import re
 import json
 import datetime
 
+import storage_kinds
 import window_sharding
 
 from . import floor_meta
@@ -134,18 +135,22 @@ class FloorSnapshot:
                     data.get("sieving_cache"))
 
     @classmethod
-    def scan(cls, storage_path, base_exponent, totals_cache=None):
+    def scan(cls, storage_path, base_exponent, totals_cache=None,
+             kinds=(storage_kinds.KIND_D,)):
         """`totals_cache` is the ALREADY-LOADED root .portal_totals_cache.json dict (see
         BackupManifest.build_from_disk, which loads it once for every floor rather than
         re-reading the same root file per floor) -- optional so this can still be called
         standalone (e.g. from tests) with totals_cache=None, in which case
-        totals_cache_entry is simply left None."""
-        # source_primes/ is sharded into shard_NNNNN subfolders (see window_sharding.py) --
-        # a bare os.listdir(source_dir) would only ever see those
-        # subfolder names, never match _SOURCE_WINDOW_RE against an actual filename.
-        source_dir = os.path.join(storage_path, f"10p{base_exponent}", "source_primes")
-        names = [name for name, _path in window_sharding.list_sharded_files(
-            source_dir, predicate=_SOURCE_WINDOW_RE.match)]
+        totals_cache_entry is simply left None.
+
+        `kinds` picks the window stores listed (storage_kinds.py). The metadata manifest
+        keeps the default, D only: restoring it regenerates missing windows with a sieve
+        engine, which never writes P. Byte copies (full backup, integrate) pass both."""
+        # Both stores are sharded (window_sharding.py); list_window_files() walks the
+        # shard_NNNNN subfolders.
+        names = [name for kind in kinds
+                 for name, _path in storage_kinds.list_window_files(storage_path, base_exponent, kind)
+                 if kind == storage_kinds.KIND_P or _SOURCE_WINDOW_RE.match(name)]
 
         meta = floor_meta.load_floor_meta(storage_path, base_exponent)
         meta_rows = meta["benchmark_rows"] if meta else []

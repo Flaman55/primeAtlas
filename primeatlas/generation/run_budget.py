@@ -1,6 +1,7 @@
 """Window count (and v5 bucket memory) of one sieve run, from the floor and the RAM free in WSL.
 
-Two limits, the smaller one wins:
+pt1 (partial sieve + primality test) has neither limit: it fills the per-run cap. For v4.1
+and v5 two limits apply, the smaller one wins:
   - target: how long a tape pays off. Each run pays a fixed cost F (iterating the sieving
     primes below L_final and one 128-bit phase division per prime), so a run should cover
     enough windows to amortize it. v4.1 stays at 1000 windows: its random atomic marking
@@ -21,6 +22,7 @@ from collections import namedtuple
 
 ENGINE_V41 = "v4.1"
 ENGINE_V5 = "v5"
+ENGINE_PT1 = "pt1"                   # no fixed cost, no run-sized buffer: never RAM-capped
 BASE_WINDOWS = 1000                  # target at shallow floors and v4.1's ceiling
 DEFAULT_TARGET_WINDOWS_AT_25 = 5000
 REFERENCE_WINDOW_M = 10_000_000      # window width the floor-25 knob is counted in
@@ -63,6 +65,8 @@ def recommend_run(available_ram_bytes, engine, base_exponent, window_m,
     the knob's value unused."""
     if not available_ram_bytes or available_ram_bytes <= 0:
         return None
+    if engine == ENGINE_PT1:
+        return RunBudget(max_windows if max_windows is not None else BASE_WINDOWS, bucket_mb)
     budget = available_ram_bytes * safety_fraction
     target = target_windows(engine, base_exponent, window_m, target_at_25)
     if max_windows is not None:

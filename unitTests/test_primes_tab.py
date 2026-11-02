@@ -26,7 +26,7 @@ PrimesTab instance) directly:
      PrimesTab's injected start_search_job callable into the real app-level search
      worker and back into on_prime_search_result(), landing the found prime in the
      preview pane.
-  5. Tree columns: "generated" is last and shown only while an open floor lists files;
+  5. Tree columns: "kind" (D/P) and "generated" (last) are shown only while an open floor lists files;
      column widths fit their content; the tree pane is pinned to the content width
      (resizes, hidden-tab layout, sash drags snap back), with a horizontal
      scrollbar only while the window is too narrow for it.
@@ -346,20 +346,20 @@ def _test_tree_columns(app, widget, node0, node3):
 
     widget.tree.item(node3, open=True)
     widget._populate_floor_node(node3)
-    check(_displayed(widget) == base + ("generated",),
+    check(_displayed(widget) == base + ("kind", "generated"),
           f"an open floor shows 'generated' as the LAST column (got {_displayed(widget)})")
     widget.tree.item(node0, open=True)
     widget._populate_floor_node(node0)
     widget.tree.focus(node3)
     widget._on_tree_close(None)
-    check(_displayed(widget) == base + ("generated",),
+    check(_displayed(widget) == base + ("kind", "generated"),
           "closing one floor while another stays open keeps 'generated'")
     widget.tree.focus(node0)
     widget._on_tree_close(None)
     check(_displayed(widget) == base, "closing the last open floor hides 'generated' again")
 
     widget._select_primes_file_in_tree(3, "PRIME_WINDOW_0000001000.bin")
-    check(_displayed(widget) == base + ("generated",),
+    check(_displayed(widget) == base + ("kind", "generated"),
           "a search opening a floor programmatically shows 'generated'")
 
     # Widths fit content: never narrower than the heading or any cell, never padded

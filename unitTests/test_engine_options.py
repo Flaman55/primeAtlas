@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.join(ROOT, "constellation"))
 
 from primeatlas.generation import engine_options as eo  # noqa: E402
 from primeatlas.generation import generation, run_budget  # noqa: E402
+import pt1_plan  # noqa: E402
 import work_plan_v5  # noqa: E402
 
 GB = 10 ** 9
@@ -36,12 +37,13 @@ def check(value, message):
 
 def check_mirrors():
     passed = True
-    passed &= check(eo.ENGINES == ("v4.1", "v5"), f"engines offered: {eo.ENGINES}")
+    passed &= check(eo.ENGINES == ("v4.1", "v5", "pt1"), f"engines offered: {eo.ENGINES}")
     passed &= check(eo.DEFAULT_ENGINE == "v5", f"default engine {eo.DEFAULT_ENGINE}")
     # orchestrator_v3.py imports WSL-only engine modules, so its default is read from source.
     with open(os.path.join(ROOT, "prime_sieve", "orchestrator_v3.py"), encoding="utf-8") as f:
-        match = re.search(r'^SCANNER_VERSION = os\.environ\.get\("PRIMEATLAS_SCANNER_VERSION"\)'
-                          r' or "([^"]+)"$', f.read(), re.MULTILINE)
+        src = f.read()
+    match = re.search(r'^SCANNER_VERSION = os\.environ\.get\("PRIMEATLAS_SCANNER_VERSION"\)'
+                      r' or "([^"]+)"$', src, re.MULTILINE)
     passed &= check(match is not None and match.group(1) == eo.DEFAULT_ENGINE,
                     f"orchestrator_v3.py default engine "
                     f"{match.group(1) if match else None} matches the GUI default")
@@ -59,6 +61,17 @@ def check_mirrors():
     passed &= check(d["v5_windows_at_25"] == run_budget.DEFAULT_TARGET_WINDOWS_AT_25,
                     "windows-at-25 default matches run_budget.py")
     passed &= check(set(d) == set(eo.KNOB_KEYS), "DEFAULT_KNOBS covers exactly KNOB_KEYS")
+    passed &= check(re.search(r'^elif SCANNER_VERSION == "pt1":$', src, re.MULTILINE) is not None,
+                    "orchestrator_v3.py has a pt1 branch")
+    passed &= check((eo.PT1_B_ENV, eo.PT1_CHUNK_KB_ENV) == (pt1_plan.B_ENV, pt1_plan.CHUNK_KB_ENV),
+                    "pt1 env names match pt1_plan.py")
+    passed &= check(d["pt1_b"] == 0 and d["pt1_chunk_kb"] == pt1_plan.DEFAULT_CHUNK_KB,
+                    f"pt1 defaults: B auto (0), chunk {pt1_plan.DEFAULT_CHUNK_KB} KiB")
+    passed &= check(eo.engine_knob_keys("pt1") == ("pt1_b", "pt1_chunk_kb")
+                    and eo.engine_knob_keys("v5") == ("v5_segment_kb", "v5_region_kb",
+                                                      "v5_bucket_mb", "v5_windows_at_25")
+                    and eo.engine_knob_keys("v4.1") == (),
+                    "knobs per engine")
     return passed
 
 
@@ -74,8 +87,14 @@ def check_parsing():
     knobs, bad = eo.parse_knobs({"v5_segment_kb": " 256 ", "v5_region_kb": "",
                                  "v5_bucket_mb": 512, "v5_windows_at_25": "2000"})
     passed &= check(bad is None and knobs == {"v5_segment_kb": 256, "v5_region_kb": 1024,
-                                              "v5_bucket_mb": 512, "v5_windows_at_25": 2000},
+                                              "v5_bucket_mb": 512, "v5_windows_at_25": 2000,
+                                              "pt1_b": 0, "pt1_chunk_kb": 4096},
                     f"strings, ints and blanks parse ({knobs})")
+    for raw, want in (("", 0), ("0", 0), (" 5000 ", 5000)):
+        knobs, bad = eo.parse_knobs({"pt1_b": raw})
+        passed &= check(bad is None and knobs["pt1_b"] == want, f"pt1 B {raw!r} -> {want}")
+    knobs, bad = eo.parse_knobs({"pt1_b": "-1"})
+    passed &= check(bad == "pt1_b", "negative B rejected")
     for raw in ("0", "-5", "abc", "1.5"):
         knobs, bad = eo.parse_knobs({"v5_region_kb": raw, "v5_bucket_mb": "x"})
         passed &= check(knobs is None and bad == "v5_region_kb",
@@ -113,6 +132,12 @@ def check_caps_and_recommend():
                     == generation.recommended_max_windows(64 * GB),
                     "v4.1 recommendation matches the old Auto button")
     passed &= check(eo.recommend(None, v5, 25, W) is None, "no RAM reading -> None")
+    pt1 = eo.resolve({"engine": "pt1"})
+    cap = eo.max_windows_per_run("pt1")
+    passed &= check(cap == 100_000, f"pt1 cap {cap}")
+    passed &= check(eo.recommend(64 * GB, pt1, 29, W).windows == cap
+                    and eo.recommend(GB // 2, pt1, 29, W).windows == cap,
+                    "pt1 recommendation is not RAM-capped")
     passed &= check(eo.recommend(64 * GB, v5, None, W).windows == run_budget.BASE_WINDOWS,
                     "unknown floor -> base target")
     return passed
@@ -132,6 +157,14 @@ def check_env():
                     f"v5 env carries the three knobs ({env})")
     env = dict(eo.launch_env(v5, bucket_mb=417))
     passed &= check(env["PRIMEATLAS_V5_BUCKET_MB"] == "417", "bucket override wins")
+    env = eo.launch_env(eo.resolve({"engine": "pt1", "pt1_b": "7000", "v5_bucket_mb": "64"}))
+    passed &= check(env == [("PRIMEATLAS_SCANNER_VERSION", "pt1"), ("PRIMEATLAS_PT1_B", "7000"),
+                            ("PRIMEATLAS_PT1_CHUNK_KB", "4096")],
+                    f"pt1 env carries B and chunk only ({env})")
+    passed &= check(pt1_plan.b_from_env(dict(env)) == 7000
+                    and pt1_plan.chunk_kb_from_env(dict(env)) == 4096
+                    and pt1_plan.b_from_env({}) == 0,
+                    "pt1_plan reads the env back (missing B -> auto)")
     env = dict(eo.launch_env(v5))
     passed &= check(work_plan_v5.segment_kb_from_env(env) == 256
                     and work_plan_v5.bucket_mb_from_env(env) == 1024,

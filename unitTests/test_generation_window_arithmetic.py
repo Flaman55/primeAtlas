@@ -113,6 +113,20 @@ def _test_compute_totals_bumps_from_new_rows():
     check(m.compute_totals_bumps_from_new_rows([], before_count=0) == [],
           "an empty benchmark_log.csv returns an empty list")
 
+    pt1_rows = [
+        {"base_exponent": "22", "total_primes": "7", "windows_written": "1",
+         "bytes_written": "50", "write_files": "1", "engine": "pt1"},   # D: below the bound
+        {"base_exponent": "24", "total_primes": "8", "windows_written": "1",
+         "bytes_written": "60", "write_files": "1", "engine": "pt1"},   # D, P or both
+        {"base_exponent": "26", "total_primes": "9", "windows_written": "1",
+         "bytes_written": "70", "write_files": "1", "engine": "pt1"},   # P
+        {"base_exponent": "26", "total_primes": "5", "windows_written": "1",
+         "bytes_written": "40", "write_files": "1", "engine": "v5"},    # D
+    ]
+    bumps = m.compute_totals_bumps_from_new_rows(pt1_rows, before_count=0)
+    check(bumps == [(22, 7, 1, 50), (26, 5, 1, 40)],
+          f"pt1 rows from floor 24 on (P store, not the D total) are not bumped ({bumps!r})")
+
     legacy_row = [{"base_exponent": "3", "total_primes": "5", "windows_written": "1"}]
     # No "write_files" key at all -- a genuinely ancient row from before that column
     # existed (see orchestrator_v3.py's own BENCHMARK_FIELDNAMES comment: "Rows written

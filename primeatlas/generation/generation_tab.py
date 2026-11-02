@@ -347,7 +347,7 @@ class GenerationTab(HybridControls, BaseTab):
         self._loop_count_sieving_var.trace_add("write", _on_count_sieving_toggle)
         self._loop_use_pi_seed_var.trace_add("write", _on_use_pi_seed_toggle)
 
-        # Sieve engine and v5 knobs (rows 6-8); the Quick-gen Width cap follows the engine.
+        # Sieve engine and its knobs (rows 6-9); the Quick-gen Width cap follows the engine.
         self._engine_fields = EngineFields(loop_form, self.T, loop_settings, row=6)
         self._engine_fields.on_engine_change(self._sync_quick_width_caps)
         self._sync_quick_width_caps()
@@ -934,6 +934,13 @@ class GenerationTab(HybridControls, BaseTab):
             return True
         return proposed.isdigit() and 1 <= int(proposed) <= self._quick_width_cap()
 
+    def _selected_engine(self):
+        """Engine selected in the pipeline form (the default engine's while the form is
+        not built yet): continuation, first-gap, trim and highest-floor planning read the
+        store that engine writes into (storage_kinds.engine_target_idxs())."""
+        fields = getattr(self, "_engine_fields", None)
+        return fields.engine() if fields is not None else engine_options.DEFAULT_ENGINE
+
     def _quick_width_cap(self):
         """Per-run window ceiling of the engine selected in the pipeline form (the
         default engine's while the form is not built yet)."""
@@ -1208,7 +1215,7 @@ class GenerationTab(HybridControls, BaseTab):
             messagebox.showerror(self.T("quick.dialog_title"), self.T("quick.error_floor_required"))
             return
         existing_count = find_continuation_target_idx(
-            self._get_portal_folder(), floor_value, QUICK_GEN_MAX_WINDOW_WIDTH)
+            self._get_portal_folder(), floor_value, QUICK_GEN_MAX_WINDOW_WIDTH, engine=self._selected_engine())
         if floor_value < LOW_FLOOR_CUTOFF:
             # A low floor is AT MOST one combined window wide, ever (see
             # LOW_FLOOR_CUTOFF) -- existing_count>=1 means it (and every other floor
@@ -1289,7 +1296,7 @@ class GenerationTab(HybridControls, BaseTab):
             messagebox.showerror(self.T("quick.dialog_title"), self.T("quick.error_floor_required"))
             return
         existing_count = find_continuation_target_idx(
-            self._get_portal_folder(), floor_value, QUICK_GEN_MAX_WINDOW_WIDTH)
+            self._get_portal_folder(), floor_value, QUICK_GEN_MAX_WINDOW_WIDTH, engine=self._selected_engine())
         if floor_value < LOW_FLOOR_CUTOFF:
             continuation_point = 10 ** floor_value
         else:
@@ -1321,7 +1328,7 @@ class GenerationTab(HybridControls, BaseTab):
         and _on_primesieve_auto_from_clicked (fills a From field given an ALREADY-KNOWN
         Floor), this button determines the Floor itself from scratch by scanning the
         whole database -- there is no floor to read from the UI first."""
-        highest = find_highest_populated_floor(self._get_portal_folder())
+        highest = find_highest_populated_floor(self._get_portal_folder(), engine=self._selected_engine())
         if highest is None:
             messagebox.showinfo(
                 self.T("quick.dialog_title"), self.T("quick.explore_auto_floor_empty"))
@@ -1334,7 +1341,7 @@ class GenerationTab(HybridControls, BaseTab):
         It deliberately does not share the Exploration StringVar: the two modes must
         retain independently typed values when the user compares them side by side.
         """
-        highest = find_highest_populated_floor(self._get_portal_folder())
+        highest = find_highest_populated_floor(self._get_portal_folder(), engine=self._selected_engine())
         if highest is None:
             messagebox.showinfo(
                 self.T("quick.dialog_title"), self.T("quick.explore_auto_floor_empty"))
@@ -1391,6 +1398,11 @@ class GenerationTab(HybridControls, BaseTab):
         numbers_total = recommended * QUICK_GEN_MAX_WINDOW_WIDTH
         if width_var is not None:
             width_var.set(str(recommended))
+        if choice.engine == engine_options.ENGINE_PT1:
+            messagebox.showinfo(self.T("quick.dialog_title"), self.T(
+                "quick.auto_result_pt1", recommended=f"{recommended:,}",
+                numbers_total=f"{numbers_total:,}"))
+            return
         if choice.engine != engine_options.ENGINE_V5:
             messagebox.showinfo(self.T("quick.dialog_title"), self.T(
                 "quick.auto_ram_result", available_gb=f"{available / 1e9:.1f}",
@@ -1627,16 +1639,16 @@ class GenerationTab(HybridControls, BaseTab):
             # Continuing past it means the first window of the next floor,
             # never a fictitious index 1 inside the completed floor.
             target_idx = find_continuation_target_idx(
-                self._get_portal_folder(), floor, QUICK_GEN_MAX_WINDOW_WIDTH)
+                self._get_portal_folder(), floor, QUICK_GEN_MAX_WINDOW_WIDTH, engine=self._selected_engine())
             while floor < LOW_FLOOR_CUTOFF and target_idx >= 1:
                 floor += 1
                 target_idx = find_continuation_target_idx(
-                    self._get_portal_folder(), floor, QUICK_GEN_MAX_WINDOW_WIDTH)
+                    self._get_portal_folder(), floor, QUICK_GEN_MAX_WINDOW_WIDTH, engine=self._selected_engine())
             start, end = hybrid_window_for_floor_index(floor, target_idx)
         elif target_kind == self.T("quick.hybrid_target_fill_gap"):
             start, end = hybrid_window_for_floor_index(
                 floor, find_first_gap_target_idx(self._get_portal_folder(), floor,
-                                                 QUICK_GEN_MAX_WINDOW_WIDTH))
+                                                 QUICK_GEN_MAX_WINDOW_WIDTH, engine=self._selected_engine()))
         else:
             start, end = hybrid_window_for_floor_index(floor, value)
         return start, end
@@ -1842,7 +1854,7 @@ class GenerationTab(HybridControls, BaseTab):
         if not self.quick_floor_fill_gaps_var.get():
             return False
         gap_target_idx = find_first_gap_target_idx(
-            self._get_portal_folder(), floor_value, QUICK_GEN_MAX_WINDOW_WIDTH)
+            self._get_portal_folder(), floor_value, QUICK_GEN_MAX_WINDOW_WIDTH, engine=self._selected_engine())
         if gap_target_idx >= existing_count:
             return False
         floor_window_count = _floor_window_count(floor_value)
@@ -1889,7 +1901,7 @@ class GenerationTab(HybridControls, BaseTab):
         Returns "covered" (nothing left to generate), "launched" (a run started) or
         "failed" (the engine refused or failed to start; it has already said why)."""
         trimmed_start, trimmed_count = _trim_existing_from_target_idx_range(
-            self._get_portal_folder(), floor, target_idx_start, window_count, QUICK_GEN_MAX_WINDOW_WIDTH)
+            self._get_portal_folder(), floor, target_idx_start, window_count, QUICK_GEN_MAX_WINDOW_WIDTH, engine=self._selected_engine())
         if trimmed_count <= 0:
             self.quick_status_var.set(self.T("quick.status_range_fully_covered"))
             return "covered"
@@ -2047,7 +2059,7 @@ class GenerationTab(HybridControls, BaseTab):
                 rounded_end = base + target_idx_end * QUICK_GEN_MAX_WINDOW_WIDTH
                 width_capped = True
         existing_count = find_continuation_target_idx(
-            self._get_portal_folder(), floor_lo, QUICK_GEN_MAX_WINDOW_WIDTH)
+            self._get_portal_folder(), floor_lo, QUICK_GEN_MAX_WINDOW_WIDTH, engine=self._selected_engine())
         # existing_count above is a CONTINUATION POSITION, not necessarily the real
         # file count on a floor with interior gaps -- real_existing_count is for
         # DISPLAY only (see count_existing_windows()'s own docstring); every caller's
@@ -2133,7 +2145,7 @@ class GenerationTab(HybridControls, BaseTab):
                     plan["floor"], plan["target_idx_start"], plan["window_count_per_run"])
                 return
             existing_count = find_continuation_target_idx(
-                self._get_portal_folder(), floor_value, QUICK_GEN_MAX_WINDOW_WIDTH)
+                self._get_portal_folder(), floor_value, QUICK_GEN_MAX_WINDOW_WIDTH, engine=self._selected_engine())
             if floor_value < LOW_FLOOR_CUTOFF:
                 # A floor below the cutoff (see LOW_FLOOR_CUTOFF) is ALWAYS at most
                 # one window wide, never continuable past target_idx=0 -- treated like
@@ -2237,7 +2249,7 @@ class GenerationTab(HybridControls, BaseTab):
                 # docstring. Falls through to the same "type one yourself" error as
                 # before when literally nothing has been generated anywhere yet -- there
                 # is no floor to continue from in that case.
-                floor_value = find_highest_populated_floor(self._get_portal_folder())
+                floor_value = find_highest_populated_floor(self._get_portal_folder(), engine=self._selected_engine())
                 if floor_value is None:
                     messagebox.showerror(
                         self.T("quick.dialog_title"), self.T("quick.error_explore_floor_required"))
@@ -2246,7 +2258,7 @@ class GenerationTab(HybridControls, BaseTab):
             width_mult = _eval_quick_number(self.quick_explore_width_var.get()) or 1
             window_count_per_run = width_mult
             existing_count = find_continuation_target_idx(
-                self._get_portal_folder(), floor_value, QUICK_GEN_MAX_WINDOW_WIDTH)
+                self._get_portal_folder(), floor_value, QUICK_GEN_MAX_WINDOW_WIDTH, engine=self._selected_engine())
             if floor_value < LOW_FLOOR_CUTOFF:
                 # Same low-floor guard as blank-starting-point Floor mode above (see
                 # that branch's comment for the full rationale) -- Exploration is meant
@@ -2271,7 +2283,7 @@ class GenerationTab(HybridControls, BaseTab):
                     floor_value = LOW_FLOOR_CUTOFF
                     self.quick_explore_floor_var.set(str(floor_value))
                     existing_count = find_continuation_target_idx(
-                        self._get_portal_folder(), floor_value, QUICK_GEN_MAX_WINDOW_WIDTH)
+                        self._get_portal_folder(), floor_value, QUICK_GEN_MAX_WINDOW_WIDTH, engine=self._selected_engine())
                 else:
                     self.quick_status_var.set(self.T(
                         "quick.summary_explore", floor=floor_value, iterations=1,
@@ -2308,7 +2320,7 @@ class GenerationTab(HybridControls, BaseTab):
                 floor_value += 1
                 self.quick_explore_floor_var.set(str(floor_value))
                 existing_count = find_continuation_target_idx(
-                    self._get_portal_folder(), floor_value, QUICK_GEN_MAX_WINDOW_WIDTH)
+                    self._get_portal_folder(), floor_value, QUICK_GEN_MAX_WINDOW_WIDTH, engine=self._selected_engine())
                 if self._try_fill_quick_gen_gap(floor_value, existing_count, width_mult):
                     return
                 floor_window_count = _floor_window_count(floor_value)
@@ -2387,7 +2399,7 @@ class GenerationTab(HybridControls, BaseTab):
                 start = 10 ** floor_value
                 if floor_value >= LOW_FLOOR_CUTOFF:
                     existing_count = find_continuation_target_idx(
-                        self._get_portal_folder(), floor_value, QUICK_GEN_MAX_WINDOW_WIDTH)
+                        self._get_portal_folder(), floor_value, QUICK_GEN_MAX_WINDOW_WIDTH, engine=self._selected_engine())
                     start = 10 ** floor_value + existing_count * QUICK_GEN_MAX_WINDOW_WIDTH
                 self.quick_primesieve_from_var.set(str(start))
             if start < 0:
@@ -2404,7 +2416,7 @@ class GenerationTab(HybridControls, BaseTab):
             floor_lo = digit_count_floor(start)
             if floor_lo < LOW_FLOOR_CUTOFF:
                 existing_count = find_continuation_target_idx(
-                    self._get_portal_folder(), floor_lo, QUICK_GEN_MAX_WINDOW_WIDTH)
+                    self._get_portal_folder(), floor_lo, QUICK_GEN_MAX_WINDOW_WIDTH, engine=self._selected_engine())
                 if existing_count >= 1:
                     rounded_start = 10 ** floor_lo
                     rounded_end = rounded_start + QUICK_GEN_MAX_WINDOW_WIDTH
@@ -2482,7 +2494,7 @@ class GenerationTab(HybridControls, BaseTab):
                 start = 10 ** floor_value
                 if floor_value >= LOW_FLOOR_CUTOFF:
                     existing_count = find_continuation_target_idx(
-                        self._get_portal_folder(), floor_value, QUICK_GEN_MAX_WINDOW_WIDTH)
+                        self._get_portal_folder(), floor_value, QUICK_GEN_MAX_WINDOW_WIDTH, engine=self._selected_engine())
                     start = 10 ** floor_value + existing_count * QUICK_GEN_MAX_WINDOW_WIDTH
                 self.quick_cudasieve_from_var.set(str(start))
             if start < 0:

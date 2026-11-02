@@ -48,10 +48,10 @@ import gzip
 import shutil
 import datetime
 
+import storage_kinds
 import window_sharding
 
 from .manifest import FloorSnapshot, ConstellationSnapshot, _save_json_atomic, _load_json_best_effort
-from ..core.storage import _offset_from_filename
 from . import floor_meta
 
 # Used ONLY to pick a shard for a window being restored onto the live side (see
@@ -113,9 +113,6 @@ def validate_destination_path(storage_path, destination_root):
 def _floor_dest_dir(destination_root, base_exponent):
     return os.path.join(destination_root, f"10p{base_exponent}")
 
-def _dest_source_dir(destination_root, base_exponent):
-    return os.path.join(_floor_dest_dir(destination_root, base_exponent), "source_primes")
-
 def _dest_const_dir(destination_root, base_exponent):
     return os.path.join(_floor_dest_dir(destination_root, base_exponent), "constellations")
 
@@ -123,16 +120,24 @@ def _meta_path(destination_root, base_exponent):
     return os.path.join(_floor_dest_dir(destination_root, base_exponent), FULL_BACKUP_META_FILENAME)
 
 
+def _dest_window_path(destination_root, base_exponent, name):
+    """Backup copy of a D or P window: flat (unsharded) under its store's folder."""
+    return os.path.join(storage_kinds.store_dir_for_name(destination_root, base_exponent, name),
+                        name + GZ_SUFFIX)
+
+
 def list_destination_source_filenames(destination_root, base_exponent):
-    """Real (non-.gz-suffixed) source-window filenames already present at the backup
-    destination for this floor -- the destination-side half of the same comparison
-    FloorSnapshot.missing_from() does on the live-storage side."""
-    source_dir = _dest_source_dir(destination_root, base_exponent)
-    if not os.path.isdir(source_dir):
-        return []
-    return sorted(
-        name[:-len(GZ_SUFFIX)] for name in os.listdir(source_dir)
-        if name.startswith("PRIME_WINDOW_") and name.endswith(".bin" + GZ_SUFFIX))
+    """Real (non-.gz-suffixed) window filenames of both stores (storage_kinds.py) already
+    present at the backup destination for this floor -- the destination-side half of the
+    same comparison FloorSnapshot.missing_from() does on the live-storage side."""
+    names = []
+    for kind in storage_kinds.KINDS:
+        source_dir = storage_kinds.source_dir(destination_root, base_exponent, kind)
+        if os.path.isdir(source_dir):
+            names += [name[:-len(GZ_SUFFIX)] for name in os.listdir(source_dir)
+                      if name.endswith(".bin" + GZ_SUFFIX)
+                      and storage_kinds.is_window_name(name[:-len(GZ_SUFFIX)], kind)]
+    return sorted(names)
 
 
 def list_destination_hit_filenames(destination_root, base_exponent):
@@ -207,7 +212,7 @@ def plan_floor_backup_update(storage_path, destination_root, base_exponent):
     Empty missing_windows/missing_hits (this floor is already fully backed up here) is a
     perfectly normal result, not an error -- the caller should treat that as "nothing to
     copy" rather than a failure."""
-    live_floor = FloorSnapshot.scan(storage_path, base_exponent)
+    live_floor = FloorSnapshot.scan(storage_path, base_exponent, kinds=storage_kinds.KINDS)
     live_const = ConstellationSnapshot.scan(storage_path, base_exponent)
     dest_windows = set(list_destination_source_filenames(destination_root, base_exponent))
     dest_hits = set(list_destination_hit_filenames(destination_root, base_exponent))
@@ -290,15 +295,13 @@ def copy_floor_increment(storage_path, destination_root, base_exponent,
     cancelled = False
 
     source_dir = os.path.join(storage_path, f"10p{base_exponent}", "source_primes")
-    dest_source_dir = _dest_source_dir(destination_root, base_exponent)
     const_dir = os.path.join(storage_path, f"10p{base_exponent}", "constellations")
     dest_const_dir = _dest_const_dir(destination_root, base_exponent)
 
-    # source_primes/ is sharded into shard_NNNNN subfolders (see window_sharding.py) --
-    # a filename alone (as stored in FloorSnapshot.filenames /
-    # missing_windows) no longer maps to os.path.join(source_dir, name) directly, so
-    # resolve real paths via one list_sharded_files() walk up front rather than per file.
-    live_paths_by_name = dict(window_sharding.list_sharded_files(source_dir))
+    # Both stores are sharded (window_sharding.py): a filename alone (as stored in
+    # FloorSnapshot.filenames / missing_windows) does not give its path, so real paths
+    # come from one walk of both stores up front rather than per file.
+    live_paths_by_name = dict(storage_kinds.list_all_window_files(storage_path, base_exponent))
 
     try:
         for i, name in enumerate(missing_windows):
@@ -308,8 +311,8 @@ def copy_floor_increment(storage_path, destination_root, base_exponent,
             if progress_cb is not None:
                 progress_cb("window", name, i, total)
             live_path = live_paths_by_name.get(name, os.path.join(source_dir, name))
-            _stream_copy(live_path,
-                         os.path.join(dest_source_dir, name + GZ_SUFFIX), compress=True)
+            _stream_copy(live_path, _dest_window_path(destination_root, base_exponent, name),
+                         compress=True)
             copied_windows += 1
 
         for j, rel_path in enumerate(missing_hits):
@@ -343,6 +346,11 @@ def copy_floor_increment(storage_path, destination_root, base_exponent,
         shutil.copyfile(boundary_src, tmp_path)
         os.replace(tmp_path, boundary_dst)
 
+    # D/P list: a union, like the windows themselves (an entry without its D file is
+    # ignored by every reader, storage_kinds.py).
+    storage_kinds.add_proven_tags(destination_root, base_exponent,
+                                  storage_kinds.read_proven_tags(storage_path, base_exponent))
+
     live_meta = floor_meta.load_floor_meta(storage_path, base_exponent)
     if live_meta and live_meta["benchmark_rows"]:
         floor_meta.merge_rows_into_floor_meta(
@@ -370,7 +378,7 @@ def plan_floor_restore(storage_path, destination_root, base_exponent):
     restore_floor_from_full_backup() needs to copy back. Returns the same
     {"missing_windows": [...], "missing_hits": [...]} shape (named from the LIVE side's
     point of view, same as the metadata-only restore's diff_against_disk())."""
-    live_floor = FloorSnapshot.scan(storage_path, base_exponent)
+    live_floor = FloorSnapshot.scan(storage_path, base_exponent, kinds=storage_kinds.KINDS)
     live_const = ConstellationSnapshot.scan(storage_path, base_exponent)
     dest_windows = set(list_destination_source_filenames(destination_root, base_exponent))
     dest_hits = set(list_destination_hit_filenames(destination_root, base_exponent))
@@ -410,7 +418,6 @@ def restore_floor_from_full_backup(storage_path, destination_root, base_exponent
     cancelled = False
 
     source_dir = os.path.join(storage_path, f"10p{base_exponent}", "source_primes")
-    dest_source_dir = _dest_source_dir(destination_root, base_exponent)
     const_dir = os.path.join(storage_path, f"10p{base_exponent}", "constellations")
     dest_const_dir = _dest_const_dir(destination_root, base_exponent)
 
@@ -426,12 +433,13 @@ def restore_floor_from_full_backup(storage_path, destination_root, base_exponent
             # floor's actual original window_m isn't recorded anywhere restorable here,
             # but _RESTORE_SHARD_WINDOW_M (see this module's own comment on it) still
             # guarantees a bounded shard size regardless.
-            offset = _offset_from_filename(name)
+            offset = storage_kinds.offset_from_name(name)
             window_index = (window_sharding.shard_index_for_offset(offset, _RESTORE_SHARD_WINDOW_M)
                              if offset is not None else 0)
-            shard_folder = window_sharding.shard_dir(source_dir, window_index)
+            shard_folder = window_sharding.shard_dir(
+                storage_kinds.store_dir_for_name(storage_path, base_exponent, name), window_index)
             os.makedirs(shard_folder, exist_ok=True)
-            _stream_copy(os.path.join(dest_source_dir, name + GZ_SUFFIX),
+            _stream_copy(_dest_window_path(destination_root, base_exponent, name),
                          os.path.join(shard_folder, name), compress=False)
             restored_windows += 1
 
@@ -462,6 +470,9 @@ def restore_floor_from_full_backup(storage_path, destination_root, base_exponent
         tmp_path = f"{live_boundary_path}.tmp{os.getpid()}"
         shutil.copyfile(backup_boundary_path, tmp_path)
         os.replace(tmp_path, live_boundary_path)
+
+    storage_kinds.add_proven_tags(storage_path, base_exponent,
+                                  storage_kinds.read_proven_tags(destination_root, base_exponent))
 
     backup_meta = floor_meta.load_floor_meta(destination_root, base_exponent)
     if backup_meta and backup_meta["benchmark_rows"]:

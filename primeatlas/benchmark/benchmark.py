@@ -30,6 +30,8 @@ import math
 import os
 import re
 
+import storage_kinds
+
 from ..core.i18n import Translator, DEFAULT_LANGUAGE
 from ..core.pdf_writer import _pdf_ascii_fold, _pdf_rect_op, _pdf_text_op, _write_pdf
 from .chart_pdf import chart_ops
@@ -78,6 +80,9 @@ def _order_benchmark_tree_columns(fieldnames):
     if "engine" in fieldnames:
         fieldnames.remove("engine")
         fieldnames.insert(0, "engine")
+        if "kind" in fieldnames:
+            fieldnames.remove("kind")
+            fieldnames.insert(1, "kind")
     if "loop_seconds_per_window" not in fieldnames or "seconds_per_window" not in fieldnames:
         return fieldnames
     fieldnames.remove("loop_seconds_per_window")
@@ -127,11 +132,49 @@ def read_benchmark_log(portal_folder):
         _, row["sieve_count_basis"] = benchmark_sieve_count(row)
     if "sieve_count_basis" not in fieldnames:
         fieldnames.append("sieve_count_basis")
+    for row in rows:
+        row["kind"] = benchmark_row_kind(row)
+    if "kind" not in fieldnames:
+        fieldnames.append("kind")
     return fieldnames, rows
+
+
+def benchmark_row_kind(row):
+    """Store a run wrote into (storage_kinds.py): "D", "P", or "D+P" for a pt1 run on
+    floor 24 whose windows lie on both sides of MR_DET_BOUND. Derived from the engine and
+    the run's window range (fixed width QUICK_GEN_MAX_WINDOW_WIDTH; the whole floor when
+    the range is unreadable); a "kind" value already in the row wins."""
+    if row.get("kind"):
+        return row["kind"]
+    engine = _row_engine(row)
+    if engine != storage_kinds.ENGINE_PT1:
+        return storage_kinds.KIND_D
+    try:
+        floor = int(row.get("base_exponent", ""))
+    except (TypeError, ValueError):
+        return ""
+    base = 10 ** floor
+    w = QUICK_GEN_MAX_WINDOW_WIDTH
+    try:
+        lo = base + int(row.get("target_idx_start", "")) * w
+        hi = base + (int(row.get("target_idx_end", "")) + 1) * w
+    except (TypeError, ValueError):
+        lo, hi = base, 10 * base
+    first = storage_kinds.written_kind(engine, lo, lo + w)
+    last = storage_kinds.written_kind(engine, hi - w, hi)
+    return first if first == last else f"{first}+{last}"
 
 
 def _row_engine(row):
     return row.get("engine") or ("hybrid" if row.get("instance_of_n") == "hybrid" else "unknown")
+
+
+def _row_line(row):
+    """Chart line of a row: the engine for D runs, "engine kind" otherwise ("pt1 P"), so
+    D and P measurements never share a line."""
+    kind = row.get("kind") or storage_kinds.KIND_D
+    engine = _row_engine(row)
+    return engine if kind == storage_kinds.KIND_D else f"{engine} {kind}"
 
 
 def _metric_value(row, metric):
@@ -296,8 +339,9 @@ _LINE_VALUES = {
 def benchmark_engine_lines(rows, metric):
     """{engine: [(base_exponent, value)]} for one chart metric ("growth", "write",
     "sieve", "sieve_spw"): the same per-row value as the matching aggregate_* reduction, but
-    the last row per floor AND engine, so each engine gets its own chart line."""
-    return engine_lines(rows, _LINE_VALUES[metric], _row_engine)
+    the last row per floor AND line (_row_line(): engine, plus the store for P runs), so
+    each engine gets its own chart line and a P run one apart from D."""
+    return engine_lines(rows, _LINE_VALUES[metric], _row_line)
 
 
 def aggregate_benchmark_write_mbps(rows):
