@@ -5,11 +5,13 @@ layout, in PDF's bottom-left-origin point space (tkinter's anchors and y-down ca
 no PDF equivalent, so the two renderers stay separate and share chart_series.py instead).
 Every point carries its value label with the series tag ("1,234 [v5]"); engine "unknown"
 gets no tag, since every legacy point would repeat it. Left-axis points are circles on a
-thick line, right-axis points squares on a thin line, as on the canvas.
+thick line, right-axis points squares on a thin line, as on the canvas. A pinned axis
+(chart_series.pin_bound()) cuts its lines at the plot edge and leaves out the points and
+labels beyond it, and its title says so.
 """
 from ..core.i18n import Translator, DEFAULT_LANGUAGE
 from ..core.pdf_writer import _pdf_ascii_fold, _pdf_dot_op, _pdf_line_op, _pdf_rect_op, _pdf_text_op
-from .chart_series import legend_series, point_label, series_xs, y_scale
+from .chart_series import clip_polyline, in_view, legend_series, point_label, series_xs, y_scale
 
 _AXIS_GRAY = (0.4, 0.4, 0.4)
 _GUIDE_GRAY = (0.88, 0.88, 0.88)
@@ -25,7 +27,7 @@ def _dashed(op):
 
 def chart_ops(x0, y0, w, h, series1=(), series2=(), translator=None,
               label_key1="bench.axis_nps", label_key2="bench.axis_spw",
-              fmt1="{:,.0f}", fmt2="{:,.3f}", log_y=False):
+              fmt1="{:,.0f}", fmt2="{:,.3f}", log_y=False, pins1=None, pins2=None):
     """Ops drawing the chart inside the box [x0, x0+w] x [y0, y0+h].
 
     series1/series2: [chart_series.Series] on the left (primary) and right (secondary)
@@ -35,7 +37,8 @@ def chart_ops(x0, y0, w, h, series1=(), series2=(), translator=None,
     along the top edge.
 
     label_key1/label_key2: i18n keys of the axis titles; fmt1/fmt2: str.format() templates
-    of the value labels and linear ticks. Text is ASCII-folded for the PDF base fonts."""
+    of the value labels and linear ticks. pins1/pins2: the axes' pinned (min, max), see
+    chart_series.axis_pins(). Text is ASCII-folded for the PDF base fonts."""
     t = (translator or Translator(DEFAULT_LANGUAGE)).t
     series1 = [s for s in series1 if s.points]
     series2 = [s for s in series2 if s.points]
@@ -59,8 +62,11 @@ def chart_ops(x0, y0, w, h, series1=(), series2=(), translator=None,
     if x_min == x_max:
         x_min -= 1
         x_max += 1
-    scale1 = y_scale(series1, log_y) if series1 else None
-    scale2 = y_scale(series2, log_y) if has_secondary else None
+    scale1 = y_scale(series1, log_y, pins1) if series1 else None
+    scale2 = y_scale(series2, log_y, pins2) if has_secondary else None
+    pinned = " [" + t("bench.axis_pinned") + "]"
+    title1 = t(label_key1) + (pinned if any(v is not None for v in pins1 or ()) else "")
+    title2 = t(label_key2) + (pinned if any(v is not None for v in pins2 or ()) else "")
 
     # Horizontal inset keeps the edge points' value labels off the y-axis tick labels.
     inset_x = max(15.0, plot_w * 0.05)
@@ -70,6 +76,9 @@ def chart_ops(x0, y0, w, h, series1=(), series2=(), translator=None,
 
     def sy(scale, y):
         return plot_y0 + scale.frac(y) * plot_h
+
+    def sf(frac):
+        return plot_y0 + frac * plot_h
 
     if scale1:
         for y_val in scale1.ticks():
@@ -105,11 +114,12 @@ def chart_ops(x0, y0, w, h, series1=(), series2=(), translator=None,
     if series1:
         ops.append(_pdf_dot_op(x0 + 4, y0 + h - 7.5, 2.2, rgb=_AXIS_GRAY))
         ops.append(_pdf_text_op(x0 + 9, y0 + h - 10, 8, "Helvetica-Bold",
-                                 _pdf_ascii_fold(t(label_key1))))
+                                 _pdf_ascii_fold(title1)))
     if has_secondary:
         ops.append(_pdf_rect_op(x0 + w - 6, y0 + h - 9.5, 4, 4, fill_rgb=_AXIS_GRAY))
-        ops.append(_pdf_text_op(x0 + w - 68, y0 + h - 10, 8, "Helvetica-Bold",
-                                 _pdf_ascii_fold(t(label_key2))))
+        # Helvetica-Bold at 8 pt averages ~4.4 pt per character; the title ends at the marker.
+        ops.append(_pdf_text_op(x0 + w - 68 - 4.4 * (len(title2) - len(t(label_key2))),
+                                 y0 + h - 10, 8, "Helvetica-Bold", _pdf_ascii_fold(title2)))
 
     legend_x = x0 + 90
     for s in legend_series(series1, series2):
@@ -129,10 +139,13 @@ def chart_ops(x0, y0, w, h, series1=(), series2=(), translator=None,
         for s in series:
             pts = [(x, y) for x, y in s.points if scale.usable(y)]
             rgb = _rgb(s.color)
+            for run in clip_polyline([(sx(x), scale.frac(y)) for x, y in pts]):
+                for (xa, fa), (xb, fb) in zip(run, run[1:]):
+                    op = _pdf_line_op(xa, sf(fa), xb, sf(fb), width=0.7 if secondary else 1.8,
+                                      rgb=rgb)
+                    ops.append(_dashed(op) if s.dashed else op)
+            pts = [(x, y) for x, y in pts if in_view(scale.frac(y))]
             coords = [(sx(x), sy(scale, y)) for x, y in pts]
-            for (xa, ya), (xb, yb) in zip(coords, coords[1:]):
-                op = _pdf_line_op(xa, ya, xb, yb, width=0.7 if secondary else 1.8, rgb=rgb)
-                ops.append(_dashed(op) if s.dashed else op)
             for (x_val, y_val), (cx, cy) in zip(pts, coords):
                 if secondary:
                     ops.append(_pdf_rect_op(cx - 2.3, cy - 2.3, 4.6, 4.6, fill_rgb=rgb))

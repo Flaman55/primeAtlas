@@ -303,6 +303,234 @@ class LineToggleTests(unittest.TestCase):
         self.assertIn("[" + self.refs[1].tag + "]) Tj", text)
 
 
+class PinTests(unittest.TestCase):
+    """Y-axis pins: a point's value pinned as an axis max or min is that axis' exact edge,
+    like matplotlib's set_ylim; lines are cut at the edge and points outside are not drawn."""
+
+    def test_pinned_linear_bounds_are_exact(self):
+        scale = chart_series.YScale([10.0, 20.0, 1000.0], hi=20.0)
+        self.assertEqual((scale.lo, scale.hi), (0, 20.0))
+        self.assertEqual(scale.frac(20.0), 1.0)
+        self.assertEqual(scale.ticks()[-1], 20.0)
+        self.assertGreater(scale.frac(1000.0), 1.0)
+        scale = chart_series.YScale([10.0, 20.0, 1000.0], lo=10.0)
+        self.assertEqual((scale.lo, scale.hi), (10.0, 1000.0))
+        self.assertLess(scale.frac(0.0), 0.0)
+        scale = chart_series.YScale([10.0, 20.0, 1000.0], lo=10.0, hi=20.0)
+        self.assertEqual((scale.frac(10.0), scale.frac(20.0)), (0.0, 1.0))
+
+    def test_pinned_log_bounds_are_exact(self):
+        values = [1e6, 1e7, 1e9]
+        scale = chart_series.YScale(values, log=True, hi=1e7)
+        self.assertAlmostEqual(scale.frac(1e7), 1.0)
+        self.assertTrue(0 < scale.frac(1e6) < 0.2, scale.frac(1e6))
+        self.assertGreater(scale.frac(1e9), 1.0)
+        scale = chart_series.YScale(values, log=True, lo=1e7)
+        self.assertAlmostEqual(scale.frac(1e7), 0.0)
+        self.assertTrue(0.8 < scale.frac(1e9) < 1, scale.frac(1e9))
+
+    def test_a_pin_never_collapses_the_axis(self):
+        for scale in (chart_series.YScale([5.0, 5.0], lo=5.0),
+                      chart_series.YScale([0.0, 0.0], hi=0.0),
+                      chart_series.YScale([3.0, 9.0], lo=9.0),
+                      chart_series.YScale([7.0, 7.0], log=True, hi=7.0),
+                      chart_series.YScale([2.0, 7.0], log=True, lo=7.0)):
+            self.assertLess(scale.lo, scale.hi)
+            self.assertGreaterEqual(len(scale.ticks()), 2)
+
+    def test_log_ignores_a_pin_it_cannot_show(self):
+        plain = chart_series.YScale([1.0, 10.0], log=True)
+        pinned = chart_series.YScale([1.0, 10.0], log=True, lo=0.0)
+        self.assertEqual((pinned.lo, pinned.hi), (plain.lo, plain.hi))
+
+    def test_y_scale_takes_the_axis_pins(self):
+        series = chart_series.engine_series({"v5": [(20, 10.0), (25, 1000.0)]})
+        self.assertEqual(chart_series.y_scale(series, pins=(None, 20.0)).hi, 20.0)
+        self.assertEqual(chart_series.y_scale(series, pins=None).hi, 1000.0)
+
+    def test_pin_bound_per_axis_and_conflicts(self):
+        pins = chart_series.pin_bound({}, "primary", "max", 50.0)
+        self.assertEqual(pins, {"primary": (None, 50.0)})
+        both = chart_series.pin_bound(pins, "primary", "min", 10.0)
+        self.assertEqual(both, {"primary": (10.0, 50.0)})
+        self.assertEqual(pins, {"primary": (None, 50.0)}, "the old dict is not changed")
+        # A min at or above the pinned max replaces it, and the other way round.
+        self.assertEqual(chart_series.pin_bound(both, "primary", "min", 50.0),
+                         {"primary": (50.0, None)})
+        self.assertEqual(chart_series.pin_bound(both, "primary", "max", 5.0),
+                         {"primary": (None, 5.0)})
+        mixed = chart_series.pin_bound(both, "secondary", "max", 2.0)
+        self.assertEqual(mixed, {"primary": (10.0, 50.0), "secondary": (None, 2.0)})
+        self.assertEqual(chart_series.axis_pins(mixed, "secondary"), (None, 2.0))
+        self.assertEqual(chart_series.axis_pins({}, "primary"), (None, None))
+        self.assertEqual(chart_series.clear_pins(mixed, "primary"), {"secondary": (None, 2.0)})
+        self.assertEqual(chart_series.clear_pins(mixed), {})
+
+    def test_clip_polyline_cuts_lines_at_the_plot_edge(self):
+        clip = chart_series.clip_polyline
+        inside = [(0, 0.2), (1, 0.8)]
+        self.assertEqual(clip(inside), [inside])
+        self.assertEqual(clip([(0, 0.5), (1, 1.5), (2, 0.5)]),
+                         [[(0, 0.5), (0.5, 1.0)], [(1.5, 1.0), (2, 0.5)]])
+        self.assertEqual(clip([(0, 2.0), (1, 3.0)]), [])
+        self.assertEqual(clip([(0, -1.0), (3, 2.0)]), [[(1.0, 0.0), (2.0, 1.0)]])
+        self.assertEqual(clip([(0, 1.0), (1, 0.5)]), [[(0, 1.0), (1, 0.5)]])
+        self.assertTrue(chart_series.in_view(1.0) and chart_series.in_view(0.0))
+        self.assertFalse(chart_series.in_view(1.01) or chart_series.in_view(-0.01))
+
+    def test_chart_ops_follow_the_pins(self):
+        series1 = chart_series.engine_series(benchmark.benchmark_engine_lines(ROWS, "growth"))
+        series2 = chart_series.engine_series(benchmark.benchmark_engine_lines(ROWS, "write"))
+        ops = "\n".join(chart_pdf.chart_ops(0, 0, 800, 140, series1, series2, fmt2="{:,.1f}",
+                                            pins1=(None, 5e7)))
+        self.assertNotIn("350,000,000 [v5]", ops)
+        self.assertIn("(50,000,000 [v4.1]) Tj", ops)
+        self.assertIn("(50,000,000) Tj", ops)                  # the top tick is the pin
+        self.assertIn("(2.0 [v4.1]) Tj", ops)                  # right axis: not pinned
+        self.assertIn("[pinned]", ops)
+        plain = "\n".join(chart_pdf.chart_ops(0, 0, 800, 140, series1, series2))
+        self.assertNotIn("[pinned]", plain)
+
+    def test_report_follows_the_pins(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "report.pdf"
+            benchmark.render_benchmark_pdf(
+                str(path), benchmark.aggregate_benchmark_growth(ROWS), ["base_exponent"], ROWS,
+                sieve_points=benchmark.aggregate_benchmark_sieve_nps(ROWS),
+                y_pins={"run": {"primary": (None, 5e7)}})
+            text = path.read_bytes().decode("latin-1")
+        self.assertNotIn("(350,000,000 [v5]) Tj", text)
+        self.assertIn("(50,000,000 [v4.1]) Tj", text)
+        self.assertIn("(200 [v5]) Tj", text)                    # sieve chart: not pinned
+
+    def test_locales_have_the_pin_keys(self):
+        for lang in ("en", "pl"):
+            strings = json.loads((ROOT / "primeatlas" / "core" / "locales"
+                                  / f"strings_{lang}.json").read_text(encoding="utf-8"))
+            for key in ("bench.pin_max", "bench.pin_min", "bench.pin_reset_primary",
+                        "bench.pin_reset_secondary", "bench.pin_reset_chart",
+                        "bench.axis_pinned"):
+                self.assertTrue(strings.get(key), f"{lang}: {key}")
+            self.assertIn("{value}", strings["bench.pin_max"])
+
+
+class TabPinTests(unittest.TestCase):
+    """Right-click on a chart: the pin menu, its effect on the canvas, and the pins kept
+    across the toggles, a reload and the PDF export."""
+
+    def test_right_click_pins_and_resets(self):
+        import tkinter as tk
+        from tkinter import filedialog, messagebox
+        from primeatlas.benchmark import benchmark_tab
+        from primeatlas.core.theme import palette_for
+
+        t = Translator("en").t
+        captured, menus = {}, []
+        original_hover = benchmark_tab._bind_chart_hover
+        original_save = filedialog.asksaveasfilename
+        originals = {name: getattr(messagebox, name) for name in ("showinfo", "showerror")}
+        for name in originals:
+            setattr(messagebox, name, lambda *a, **k: None)
+        benchmark_tab._bind_chart_hover = (
+            lambda canvas, points, *a: captured.__setitem__(str(canvas), list(points)))
+        with tempfile.TemporaryDirectory() as portal:
+            with open(os.path.join(portal, "benchmark_log.csv"), "w", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=list(ROWS[0]))
+                writer.writeheader()
+                writer.writerows(ROWS)
+            pdf_path = os.path.join(portal, "report.pdf")
+            filedialog.asksaveasfilename = lambda **kw: pdf_path
+            root = tk.Tk()
+            try:
+                tab = benchmark_tab.BenchmarkTab(
+                    root, lambda: portal, tk.StringVar(master=root), Translator("en"),
+                    lambda *a, **k: None, palette_for("light"))
+                tab.pack()
+                tab._post_menu = lambda entries, x, y: menus.append(entries)
+                tab.reload_benchmark_log()
+                root.update()
+                tab._redraw_charts()
+                chart, chart2 = tab.benchmark_chart, tab.benchmark_chart2
+
+                def points(canvas, axis):
+                    return sorted(p[3] for p in captured.get(str(canvas), []) if p[7] == axis)
+
+                def right_click(canvas, value, axis):
+                    hit = [p for p in captured[str(canvas)] if p[3] == value and p[7] == axis]
+                    self.assertTrue(hit, (value, axis))
+                    menus.clear()
+                    canvas.event_generate("<Motion>", x=int(hit[0][0]), y=int(hit[0][1]))
+                    canvas.event_generate("<Button-3>", x=int(hit[0][0]), y=int(hit[0][1]))
+                    root.update()
+                    self.assertEqual(len(menus), 1, "one menu per right-click")
+                    return {label: (command, enabled) for label, command, enabled in menus[0]}
+
+                def texts(canvas):
+                    return [canvas.itemcget(i, "text") for i in canvas.find_all()
+                            if canvas.type(i) == "text"]
+
+                sieve_before = points(chart2, "primary")
+                self.assertEqual(points(chart, "primary"), [4e7, 5e7, 1.4e8, 3.5e8])
+                entries = right_click(chart, 5e7, "primary")
+                pin_max = t("bench.pin_max", value="50,000,000 [v4.1]")
+                self.assertIn(pin_max, entries)
+                self.assertIn(t("bench.pin_min", value="50,000,000 [v4.1]"), entries)
+                self.assertFalse(entries[t("bench.pin_reset_chart")][1], "nothing pinned yet")
+                entries[pin_max][0]()
+                self.assertEqual(points(chart, "primary"), [4e7, 5e7])
+                self.assertEqual(points(chart, "secondary"), [1.0, 2.0, 2.0])
+                self.assertIn("50,000,000", texts(chart))
+                self.assertTrue(any(t("bench.axis_pinned") in x for x in texts(chart)))
+                self.assertEqual(points(chart2, "primary"), sieve_before, "other chart untouched")
+
+                # Right axis of the same chart: pinned on its own.
+                entries = right_click(chart, 1.0, "secondary")
+                entries[t("bench.pin_max", value="1.0 [v5]")][0]()
+                self.assertEqual(points(chart, "secondary"), [1.0])
+                self.assertEqual(points(chart, "primary"), [4e7, 5e7])
+
+                # Right-click off every point: only the resets, enabled per pinned axis.
+                menus.clear()
+                chart.event_generate("<Button-3>", x=3, y=3)
+                root.update()
+                labels = {label: enabled for label, _c, enabled in menus[0]}
+                self.assertEqual(set(labels), {t("bench.pin_reset_primary"),
+                                               t("bench.pin_reset_secondary"),
+                                               t("bench.pin_reset_chart")})
+                self.assertTrue(all(labels.values()))
+
+                # Pins survive the log toggle, a reload and go into the PDF.
+                tab.log_scale_var.set(True)
+                tab._redraw_charts()
+                self.assertEqual(points(chart, "primary"), [4e7, 5e7])
+                tab.log_scale_var.set(False)
+                tab.reload_benchmark_log()
+                tab._redraw_charts()
+                self.assertEqual(points(chart, "primary"), [4e7, 5e7])
+                tab._export_benchmark_pdf()
+                text = Path(pdf_path).read_bytes().decode("latin-1")
+                self.assertNotIn("(350,000,000 [v5]) Tj", text)
+                self.assertIn("(50,000,000 [v4.1]) Tj", text)
+                self.assertNotIn("(2.0 [v4.1]) Tj", text)
+
+                # Reset the left axis, then the whole chart.
+                entries = right_click(chart, 5e7, "primary")
+                entries[t("bench.pin_reset_primary")][0]()
+                self.assertEqual(points(chart, "primary"), [4e7, 5e7, 1.4e8, 3.5e8])
+                self.assertEqual(points(chart, "secondary"), [1.0])
+                entries = right_click(chart, 5e7, "primary")
+                entries[t("bench.pin_reset_chart")][0]()
+                self.assertEqual(points(chart, "secondary"), [1.0, 2.0, 2.0])
+                self.assertFalse(any(t("bench.axis_pinned") in x for x in texts(chart)))
+                self.assertEqual(tab._y_pins, {"run": {}, "sieve": {}})
+            finally:
+                root.destroy()
+                benchmark_tab._bind_chart_hover = original_hover
+                filedialog.asksaveasfilename = original_save
+                for name, fn in originals.items():
+                    setattr(messagebox, name, fn)
+
+
 class TabTests(unittest.TestCase):
     def test_tab_hover_toggles_and_pdf_export(self):
         import tkinter as tk

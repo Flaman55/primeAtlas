@@ -7,8 +7,10 @@ axes; the renderers tell the axes apart by marker and line weight (primary: circ
 line; secondary: squares, thin line). Reference series (reference_points.py) are drawn
 dashed with hollow markers on the primary axis. Hues are far apart in RGB and readable on
 the light and dark theme backgrounds. YScale maps values to a 0..1 fraction of the plot
-height, linear from zero or log10 fitted to the data. A line is one series on one axis;
-each one can be hidden on its own (line_key(), a set of hidden keys per chart).
+height, linear from zero or log10 fitted to the data; a pinned bound (pin_bound(), one
+(min, max) pair per axis) replaces the fitted one exactly, like matplotlib's set_ylim, and
+clip_polyline() cuts the lines at the plot edge. A line is one series on one axis; each one
+can be hidden on its own (line_key(), a set of hidden keys per chart).
 No tkinter here: benchmark_tab.py and benchmark.py both render from these objects.
 """
 import math
@@ -107,28 +109,52 @@ def point_label(fmt, value, series, show_unknown=False):
 class YScale:
     """Linear scale anchored at zero, or log10 over the positive values' own range plus a
     small margin, so the lines use the plot height instead of sitting inside whole empty
-    decades. Values a log scale cannot show (<= 0) are reported by usable()."""
+    decades. Values a log scale cannot show (<= 0) are reported by usable().
+
+    lo/hi: pinned bounds in value units; each one is the axis edge exactly and the other
+    edge is fitted to the data as above. A log scale ignores a pin <= 0. An edge fitted
+    against a pin keeps the axis from collapsing (LOG_MIN_SPAN, or the linear pad)."""
 
     LOG_MARGIN = 0.06  # fraction of the log span added above and below the data
+    LOG_MIN_SPAN = 0.2  # decades
 
-    def __init__(self, values, log=False):
+    def __init__(self, values, log=False, lo=None, hi=None):
         self.log = log
         if log:
             positive = [v for v in values if v > 0] or [1.0]
+            pin_lo = math.log10(lo) if lo is not None and lo > 0 else None
+            pin_hi = math.log10(hi) if hi is not None and hi > 0 else None
             lo, hi = math.log10(min(positive)), math.log10(max(positive))
-            if hi - lo < 0.2:
+            if hi - lo < self.LOG_MIN_SPAN:
                 mid = (lo + hi) / 2
-                lo, hi = mid - 0.1, mid + 0.1
+                lo, hi = mid - self.LOG_MIN_SPAN / 2, mid + self.LOG_MIN_SPAN / 2
             margin = (hi - lo) * self.LOG_MARGIN
-            self.lo, self.hi = lo - margin, hi + margin
+            lo, hi = lo - margin, hi + margin
+            self.lo, self.hi = self._fit(lo, hi, pin_lo, pin_hi, self.LOG_MIN_SPAN)
         else:
             values = list(values) or [0.0]
+            pin_lo, pin_hi = lo, hi
             lo, hi = min(values), max(values)
             if lo == hi:
                 pad = max(1.0, abs(lo) * 0.1)
                 lo -= pad
                 hi += pad
-            self.lo, self.hi = min(lo, 0), hi
+            lo = min(lo, 0)
+            span = pin_lo if pin_lo is not None else pin_hi
+            pad = max(1.0, abs(span) * 0.1) if span is not None else 0
+            self.lo, self.hi = self._fit(lo, hi, pin_lo, pin_hi, pad)
+
+    @staticmethod
+    def _fit(lo, hi, pin_lo, pin_hi, pad):
+        """(lo, hi) with the pins in place; an unpinned edge stays at least `pad` away from
+        a pinned one."""
+        if pin_lo is not None and pin_hi is not None and pin_lo < pin_hi:
+            return pin_lo, pin_hi
+        if pin_hi is not None:
+            return min(lo, pin_hi - pad), pin_hi
+        if pin_lo is not None:
+            return pin_lo, max(hi, pin_lo + pad)
+        return lo, hi
 
     def usable(self, value):
         return value > 0 if self.log else True
@@ -166,5 +192,69 @@ class YScale:
         return fmt.format(value)
 
 
-def y_scale(series, log=False):
-    return YScale([y for s in series for _, y in s.points], log)
+def y_scale(series, log=False, pins=None):
+    """YScale of the series' values; pins: the axis' (min, max) from axis_pins()."""
+    lo, hi = pins or (None, None)
+    return YScale([y for s in series for _, y in s.points], log, lo, hi)
+
+
+def axis_pins(pins, axis):
+    """(min, max) pinned on `axis` ("primary" | "secondary"), None for an unpinned edge;
+    pins: {axis: (min, max)} of one chart."""
+    return (pins or {}).get(axis, (None, None))
+
+
+def pin_bound(pins, axis, which, value):
+    """A new pins dict with `value` as the axis' "min" or "max". A min at or above the
+    pinned max, or a max at or below the pinned min, replaces that other pin."""
+    lo, hi = axis_pins(pins, axis)
+    if which == "max":
+        lo, hi = (lo if lo is not None and lo < value else None), value
+    else:
+        lo, hi = value, (hi if hi is not None and hi > value else None)
+    return dict(pins or {}, **{axis: (lo, hi)})
+
+
+def clear_pins(pins, axis=None):
+    """A new pins dict without the pins of `axis`, or without any for axis=None."""
+    return {} if axis is None else {k: v for k, v in (pins or {}).items() if k != axis}
+
+
+VIEW_EPSILON = 1e-9  # a pinned point's own fraction is 0 or 1 up to rounding
+
+
+def in_view(frac):
+    """True for a fraction of the plot height inside the plot, edges included."""
+    return -VIEW_EPSILON <= frac <= 1 + VIEW_EPSILON
+
+
+def clip_polyline(points):
+    """Runs of a polyline [(x, frac), ...] inside 0 <= frac <= 1: a segment leaving the plot
+    ends on the edge it crosses and the line resumes where it comes back in."""
+    runs, run = [], []
+
+    def cross(a, b, edge):
+        t = (edge - a[1]) / (b[1] - a[1])
+        return (a[0] + (b[0] - a[0]) * t, float(edge))
+
+    for i, p in enumerate(points):
+        if i:
+            a = points[i - 1]
+            edges = sorted({e for e in (0, 1) if min(a[1], p[1]) < e < max(a[1], p[1])},
+                           reverse=a[1] > p[1])
+            for edge in edges:
+                q = cross(a, p, edge)
+                if run:
+                    run.append(q)
+                    runs.append(run)
+                    run = []
+                else:
+                    run = [q]
+        if in_view(p[1]):
+            run.append(p)
+        elif run:
+            runs.append(run)
+            run = []
+    if run:
+        runs.append(run)
+    return runs
