@@ -53,8 +53,8 @@ def main():
     tkinter.messagebox.showinfo = lambda *a, **k: None
     tkinter.messagebox.showerror = lambda *a, **k: None
 
-    sys.argv = ["prime_atlas_v2.py"]
-    import prime_atlas_v2
+    from app_sandbox import isolate_app
+    prime_atlas_v2, _portal = isolate_app()
 
     tmp_portal = tempfile.mkdtemp(prefix="primeatlas_gen_progress_gating_test_")
     try:

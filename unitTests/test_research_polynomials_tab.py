@@ -40,13 +40,6 @@ def check(condition, message):
         print(f"ok:   {message}")
 
 
-def _patch_app_settings(app_settings):
-    """Neuters persistence so this test never touches the real
-    primeatlas/locales/app_settings.json -- same convention as every other
-    tab test file's own _patch_app_settings (e.g. test_research_squares_tab.py)."""
-    app_settings.save = lambda: None
-
-
 def _pump(app, seconds):
     deadline = time.time() + seconds
     while time.time() < deadline:
@@ -88,16 +81,13 @@ def _run(tmp_portal, prime_sieve_v1, window_sharding):
 
     sys.argv = ["prime_atlas_v2.py"]
     import prime_atlas_v2
-    _patch_app_settings(prime_atlas_v2.APP_SETTINGS)
+    from app_sandbox import isolate_app
+    isolate_app(tmp_portal)
     app_cls = prime_atlas_v2._build_gui()
     app = app_cls()
     app.update()
     tab = app.research_polynomials_tab_widget
 
-    settings_tab = app.settings_tab
-    _patch_app_settings(settings_tab.app_settings)
-    settings_tab.app_settings.set_storage_path(tmp_portal)
-    settings_tab.wsl["set_portal_folder"](tmp_portal)
     app.update()
 
     # --- default preset is Landau, n_from defaults to 0 -------------------------------

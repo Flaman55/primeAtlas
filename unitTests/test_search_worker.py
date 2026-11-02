@@ -19,12 +19,8 @@ search -- see that test block's own comment), so it monkeypatches
 update_floor_totals_cache to force one totals job to take ~1.5 real seconds,
 guaranteeing the interleaving on every run.
 
-IMPORTANT -- do not call app_settings.set_storage_path() directly on a live app's
-AppSettings instance: AppSettings.save() persists unconditionally to the REAL
-primeatlas/locales/app_settings.json shipped in this repo, which would silently
-overwrite the real configured storage path with this test's throwaway temp folder.
-This test monkeypatches .save() to a no-op first -- see _patch_app_settings()
-below -- so only the in-memory storage_path changes, never the file on disk.
+The app runs against a temp folder through app_sandbox.isolate_app(), which also keeps
+AppSettings.save() from writing the real primeatlas/locales/app_settings.json.
 
 Usage (Windows, real display, real tkinter -- no Xvfb/PYTHONPATH tricks needed there):
     python unitTests\\test_search_worker.py
@@ -55,13 +51,6 @@ def check(condition, message):
         print(f"FAIL: {message}")
     else:
         print(f"ok:   {message}")
-
-
-def _patch_app_settings(app_settings):
-    """Neuters persistence so this test can point the app at a temp folder without
-    ever touching the real primeatlas/locales/app_settings.json -- see module
-    docstring."""
-    app_settings.save = lambda: None
 
 
 def _patch_messageboxes():
@@ -124,9 +113,8 @@ def main():
         # before construction means the very first scan already targets tmp_portal, so
         # this race can't occur here at all, independent of how large the real storage
         # folder happens to be.
-        _patch_app_settings(prime_atlas_v2.APP_SETTINGS)
-        prime_atlas_v2.APP_SETTINGS.set_storage_path(tmp_portal)
-        prime_atlas_v2.PORTAL_FOLDER = tmp_portal
+        from app_sandbox import isolate_app
+        isolate_app(tmp_portal)
 
         app_cls = prime_atlas_v2._build_gui()
         app = app_cls()

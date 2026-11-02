@@ -57,10 +57,6 @@ def check(condition, message):
         print(f"ok:   {message}")
 
 
-def _patch_app_settings(app_settings):
-    app_settings.save = lambda: None
-
-
 def _patch_messageboxes():
     shown = []
     tkinter.messagebox.showinfo = lambda *a, **k: shown.append(("info", a, k))
@@ -129,9 +125,8 @@ def main():
         import prime_atlas_v2
 
         prime_atlas_v2.PAGE_SIZE = 50
-        _patch_app_settings(prime_atlas_v2.APP_SETTINGS)
-        prime_atlas_v2.APP_SETTINGS.set_storage_path(tmp_portal)
-        prime_atlas_v2.PORTAL_FOLDER = tmp_portal
+        from app_sandbox import isolate_app
+        isolate_app(tmp_portal)
 
         app_cls = prime_atlas_v2._build_gui()
         app = app_cls()

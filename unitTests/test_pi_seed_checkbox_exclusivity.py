@@ -43,10 +43,6 @@ def check(condition, message):
         print(f"ok:   {message}")
 
 
-def _patch_app_settings(app_settings):
-    app_settings.save = lambda: None
-
-
 def main():
     tmp_portal = tempfile.mkdtemp(prefix="primeatlas_pi_seed_ui_test_")
     try:
@@ -56,9 +52,8 @@ def main():
         sys.argv = ["prime_atlas_v2.py"]
         import prime_atlas_v2
 
-        _patch_app_settings(prime_atlas_v2.APP_SETTINGS)
-        prime_atlas_v2.APP_SETTINGS.set_storage_path(tmp_portal)
-        prime_atlas_v2.PORTAL_FOLDER = tmp_portal
+        from app_sandbox import isolate_app
+        isolate_app(tmp_portal)
 
         app_cls = prime_atlas_v2._build_gui()
         app = app_cls()

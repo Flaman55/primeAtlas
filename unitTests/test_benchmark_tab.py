@@ -36,8 +36,8 @@ resulting app.benchmark_tab_widget (the real BenchmarkTab instance) directly:
 See test_loading_screen.py's own module docstring for why PORTAL_FOLDER must be
 redirected BEFORE constructing the app (the constructor's own startup call --
 self.benchmark_tab_widget.reload_benchmark_log() -- reads the module global at
-construction time, same as the tree scans), and test_search_worker.py's for why
-AppSettings.save() must be neutered first.
+construction time, same as the tree scans) -- app_sandbox.isolate_app(tmp_portal) does
+that and keeps AppSettings.save() off the real settings file.
 
 Usage (Windows, real display):
     python unitTests\\test_benchmark_tab.py
@@ -70,10 +70,6 @@ def check(condition, message):
         print(f"FAIL: {message}")
     else:
         print(f"ok:   {message}")
-
-
-def _patch_app_settings(app_settings):
-    app_settings.save = lambda: None
 
 
 def _patch_messageboxes():
@@ -169,9 +165,8 @@ def main():
         # global via the get_portal_folder=lambda: PORTAL_FOLDER closure captured at
         # _build_benchmark_tab() call time (see that method's own docstring), so
         # redirecting only AFTER construction would miss the very first load.
-        _patch_app_settings(prime_atlas_v2.APP_SETTINGS)
-        prime_atlas_v2.APP_SETTINGS.set_storage_path(tmp_portal)
-        prime_atlas_v2.PORTAL_FOLDER = tmp_portal
+        from app_sandbox import isolate_app
+        isolate_app(tmp_portal)
 
         app_cls = prime_atlas_v2._build_gui()
         app = app_cls()

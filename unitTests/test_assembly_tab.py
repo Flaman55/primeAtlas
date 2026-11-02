@@ -123,8 +123,8 @@ def section_bcde_app():
     shown = []
     tkinter.messagebox.showerror = lambda *a, **k: shown.append(a)
 
-    sys.argv = ["prime_atlas_v2.py"]
-    import prime_atlas_v2
+    from app_sandbox import isolate_app
+    prime_atlas_v2, _portal = isolate_app()
     import primeatlas.visualization.tree.tree_tab as tree_tab_module
     settings = prime_atlas_v2.APP_SETTINGS
     settings.save = lambda: None

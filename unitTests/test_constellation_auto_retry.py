@@ -55,10 +55,6 @@ def check(condition, message):
         print(f"ok:   {message}")
 
 
-def _patch_app_settings(app_settings):
-    app_settings.save = lambda: None
-
-
 def _pump(app, seconds):
     deadline = time.time() + seconds
     while time.time() < deadline:
@@ -92,14 +88,11 @@ def _test_read_constellation_checkpoint():
 def _build_app(tmp_portal):
     sys.argv = ["prime_atlas_v2.py"]
     import prime_atlas_v2
-    _patch_app_settings(prime_atlas_v2.APP_SETTINGS)
+    from app_sandbox import isolate_app
+    isolate_app(tmp_portal)
     app_cls = prime_atlas_v2._build_gui()
     app = app_cls()
     app.update()
-    settings_tab = app.settings_tab
-    _patch_app_settings(settings_tab.app_settings)
-    settings_tab.app_settings.set_storage_path(tmp_portal)
-    settings_tab.wsl["set_portal_folder"](tmp_portal)
     app.update()
     return app
 

@@ -1989,6 +1989,14 @@ installer/                   Windows installer (PrimeAtlasSetup.exe, see "Instal
   make_icons.py               regenerates primeatlas/core/assets/ from the icon master (or
                               from new artwork passed as an argument); needs Pillow
   release_notes.md            GitHub Release description (English, then Polish)
+unitTests/                   plain test scripts, `python unitTests/test_x.py` (no pytest)
+  app_sandbox.py              isolate_app(portal=None): imports prime_atlas_v2 with storage
+                              pointed at the test's own seeded folder (or a new empty temp
+                              folder) and AppSettings.save() switched off, so a test that
+                              builds the full app never scans, recovers or rewrites the
+                              user's real storage or app_settings.json
+                              (unitTests/test_app_sandbox.py also checks that every test
+                              calling _build_gui() calls isolate_app() first)
 .github/workflows/
   installer.yml               builds the installer on a Windows runner; a pushed vX.Y.Z tag
                               (must match APP_VERSION) publishes it as that GitHub

@@ -25,8 +25,8 @@ against a real on-disk portal folder with one seeded floor, and checks:
      independent busy/pending pair.
 
 See test_goldbach_worker.py's own module docstring for the PGS1 filename convention
-this test's seeded window file must follow, and test_search_worker.py's for why
-AppSettings.save() must be neutered before touching storage_path in a test like this.
+this test's seeded window file must follow, and app_sandbox.py for how the app is pointed
+at the seeded folder without touching the real settings file.
 
 Usage (Windows, real display):
     python unitTests\\test_loading_screen.py
@@ -57,10 +57,6 @@ def check(condition, message):
         print(f"FAIL: {message}")
     else:
         print(f"ok:   {message}")
-
-
-def _patch_app_settings(app_settings):
-    app_settings.save = lambda: None
 
 
 def _patch_messageboxes():
@@ -110,9 +106,8 @@ def main():
         # captured at dispatch time), so redirecting it only AFTER construction would be
         # too late for this test's very first scan. save() is neutered FIRST so
         # set_storage_path() below never touches the real on-disk app_settings.json.
-        _patch_app_settings(prime_atlas_v2.APP_SETTINGS)
-        prime_atlas_v2.APP_SETTINGS.set_storage_path(tmp_portal)
-        prime_atlas_v2.PORTAL_FOLDER = tmp_portal
+        from app_sandbox import isolate_app
+        isolate_app(tmp_portal)
 
         app_cls = prime_atlas_v2._build_gui()
         app = app_cls()

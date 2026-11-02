@@ -402,8 +402,8 @@ def main():
     shown = []
     tkinter.messagebox.showerror = lambda *a, **k: shown.append(("error", a, k))
 
-    sys.argv = ["prime_atlas_v2.py"]
-    import prime_atlas_v2
+    from app_sandbox import isolate_app
+    prime_atlas_v2, _portal = isolate_app()
     import primeatlas.visualization.rings.rings_tab as rings_tab_module
     _patch_app_settings(prime_atlas_v2.APP_SETTINGS)
     _stub_app_update_check()

@@ -54,10 +54,6 @@ def check(condition, message):
         print(f"ok:   {message}")
 
 
-def _patch_app_settings(app_settings):
-    app_settings.save = lambda: None
-
-
 def _patch_messageboxes():
     shown = []
     tkinter.messagebox.showinfo = lambda *a, **k: shown.append(("info", a, k))
@@ -102,14 +98,12 @@ def main():
 
         sys.argv = ["prime_atlas_v2.py"]
         import prime_atlas_v2
+        from app_sandbox import isolate_app
+        isolate_app(tmp_portal)
         app_cls = prime_atlas_v2._build_gui()
         app = app_cls()
         app.update()
 
-        settings_tab = app.settings_tab
-        _patch_app_settings(settings_tab.app_settings)
-        settings_tab.app_settings.set_storage_path(tmp_portal)
-        settings_tab.wsl["set_portal_folder"](tmp_portal)
         app.update()
 
         goldbach = app.research_goldbach_tab_widget
