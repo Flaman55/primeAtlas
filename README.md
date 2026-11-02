@@ -1943,6 +1943,12 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               column leaves the file untouched; imported by every
                               writer and by floor_meta.py
                               (unitTests/test_benchmark_log_schema.py)
+  floor_meta_store.py        reads and appends a floor's 10p{N}/floor_meta.json (the
+                              copy of its benchmark_log.csv rows); every engine's
+                              benchmark writer appends the row it logs, idempotent by
+                              row key, an unreadable file left untouched; the GUI's
+                              floor_meta.py builds its merge/import on it
+                              (unitTests/test_floor_meta_store.py)
   hit_paging.py              splits a dense pattern's constellation hit file into
                               ~1M-entry PGS2 page files + PAGES_META.json (O(1) count/
                               first/last); insert_hits_paged() merges hits that fall

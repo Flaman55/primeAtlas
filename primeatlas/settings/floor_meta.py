@@ -10,95 +10,20 @@ common case: building a fresh storage but bringing some already-generated floors
 leaves that floor's timing/benchmark rows behind in the OLD root's CSV -- from the new
 storage's point of view the floor's data exists but its history is gone. floor_meta.json
 fixes that by making a floor's generation history travel WITH its own directory: a full
-copy of every benchmark_log.csv row this floor has ever produced, appended incrementally
-as each row is logged (see the two live generator engines' own write hooks --
-orchestrator_v3.py's print_benchmark_summary() and prime_sieve_primesieve.py's
-write_benchmark_row() -- which duplicate a small inline version of the append logic here,
-same "no cross-folder import between prime_sieve/ and primeatlas/" convention already used
-throughout this project, since those engines run standalone, possibly under WSL), and
-re-imported into the local benchmark_log.csv the first time this app notices the floor
-(see merge_floor_meta_into_benchmark_log(), called from prime_atlas_v2.py's totals-cache
+copy of every benchmark_log.csv row this floor has ever produced, appended by each engine
+as it logs the row (prime_sieve/floor_meta_store.py, which also holds the file's reading,
+writing and row key, imported here), and re-imported into the local benchmark_log.csv
+the first time this app notices the floor (see merge_floor_meta_into_benchmark_log(), called from prime_atlas_v2.py's totals-cache
 background worker on every floor visit). manifest.py folds floor_meta.json's rows into
 backups too, alongside the totals/sieving caches -- see that module's own docstring.
 """
 import os
 import csv
-import json
 
 from benchmark_log_schema import BENCHMARK_FIELDNAMES
-
-FLOOR_META_FILENAME = "floor_meta.json"
-
-# What makes one benchmark row unique -- a floor+timerange+run combination should never
-# repeat at second resolution, so this is enough to dedup without needing a stronger hash.
-_ROW_KEY_FIELDS = ("run_timestamp_utc", "base_exponent", "target_idx_start", "target_idx_end")
-
-
-def floor_meta_path(storage_path, base_exponent):
-    return os.path.join(storage_path, f"10p{base_exponent}", FLOOR_META_FILENAME)
-
-
-def load_floor_meta(storage_path, base_exponent):
-    """Returns {"base_exponent": N, "benchmark_rows": [...]}, or None if this floor has no
-    metadata file at all (no completed run has written it yet). Never raises -- a
-    missing/corrupt file just means no history is
-    known, same best-effort philosophy as the totals cache (load_totals_cache)."""
-    path = floor_meta_path(storage_path, base_exponent)
-    if not os.path.exists(path):
-        return None
-    try:
-        with open(path, encoding="utf-8") as f:
-            data = json.load(f)
-        if not isinstance(data, dict):
-            return None
-        return {
-            "base_exponent": data.get("base_exponent", base_exponent),
-            "benchmark_rows": list(data.get("benchmark_rows", [])),
-        }
-    except (OSError, ValueError):
-        return None
-
-
-def save_floor_meta(storage_path, base_exponent, benchmark_rows):
-    """Atomic write (temp file + os.replace()), same pattern as every other persisted file
-    in this project (totals cache, backup manifests, benchmark_log.csv rewrites)."""
-    floor_dir = os.path.join(storage_path, f"10p{base_exponent}")
-    path = floor_meta_path(storage_path, base_exponent)
-    tmp_path = f"{path}.tmp{os.getpid()}"
-    try:
-        os.makedirs(floor_dir, exist_ok=True)
-        with open(tmp_path, "w", encoding="utf-8") as f:
-            json.dump({"base_exponent": base_exponent, "benchmark_rows": benchmark_rows},
-                      f, indent=2, ensure_ascii=False)
-        os.replace(tmp_path, path)
-        return True
-    except OSError:
-        return False  # best-effort -- a failed save just means this run's row only lives
-                       # in benchmark_log.csv
-
-
-def _row_key(row):
-    return tuple(str(row.get(f, "")) for f in _ROW_KEY_FIELDS)
-
-
-def append_benchmark_row_to_floor_meta(storage_path, base_exponent, row):
-    """GUI-side / test-side equivalent of the small inline helper duplicated into the two
-    live generator engines (see this module's docstring) -- kept here too so restore_job.py
-    style code and standalone tests can append without needing a running generation
-    subprocess. `row` should be the exact same dict already written to benchmark_log.csv
-    for this run, so floor_meta.json stays byte-for-byte consistent with the CSV, no
-    separate reconstruction needed.
-
-    Idempotent: a row whose (run_timestamp_utc, base_exponent, target_idx_start,
-    target_idx_end) key already exists is skipped, so calling this twice for the same run
-    (e.g. a retried write) is harmless."""
-    meta = load_floor_meta(storage_path, base_exponent)
-    rows = list(meta["benchmark_rows"]) if meta else []
-    existing_keys = {_row_key(r) for r in rows}
-    if _row_key(row) in existing_keys:
-        return False
-    rows.append(dict(row))
-    return save_floor_meta(storage_path, base_exponent, rows)
+from floor_meta_store import (  # noqa: F401
+    FLOOR_META_FILENAME, append_benchmark_row_to_floor_meta, floor_meta_path,
+    load_floor_meta, row_key as _row_key, save_floor_meta)
 
 
 def merge_rows_into_floor_meta(storage_path, base_exponent, rows):

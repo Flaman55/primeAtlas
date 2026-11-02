@@ -11,6 +11,7 @@ import time
 
 import window_sharding
 from benchmark_log_schema import BENCHMARK_FIELDNAMES, ensure_benchmark_log_schema
+from floor_meta_store import append_benchmark_row_to_floor_meta
 
 VERSION = "v0.1"
 
@@ -195,36 +196,6 @@ def _low_floor_segments(base_power, combined_lo, combined_hi):
 # ------------------------------------------------------------------------------------------
 
 
-def _append_floor_meta_row(portal_folder, base_exponent, row):
-    """Duplicated (self-contained, no cross-import) from prime_sieve_primesieve.py -- see
-    that file's own docstring for the full rationale."""
-    key_fields = ("run_timestamp_utc", "base_exponent", "target_idx_start", "target_idx_end")
-
-    def _key(r):
-        return tuple(str(r.get(k, "")) for k in key_fields)
-
-    floor_dir = os.path.join(portal_folder, f"10p{base_exponent}")
-    path = os.path.join(floor_dir, "floor_meta.json")
-    try:
-        rows = []
-        if os.path.exists(path):
-            with open(path, encoding="utf-8") as f:
-                data = json.load(f)
-            if isinstance(data, dict):
-                rows = list(data.get("benchmark_rows", []))
-        if _key(row) in {_key(r) for r in rows}:
-            return
-        rows.append(dict(row))
-        os.makedirs(floor_dir, exist_ok=True)
-        tmp_path = f"{path}.tmp{os.getpid()}"
-        with open(tmp_path, "w", encoding="utf-8") as f:
-            json.dump({"base_exponent": base_exponent, "benchmark_rows": rows}, f,
-                      indent=2, ensure_ascii=False)
-        os.replace(tmp_path, path)
-    except Exception:
-        pass
-
-
 def write_benchmark_row(base_exponent, target_idx_start, target_idx_count, total_seconds,
                          total_primes, windows_written, write_files, portal_folder):
     """Duplicated from prime_sieve_primesieve.py -- see that file's own docstring. Same
@@ -271,7 +242,7 @@ def write_benchmark_row(base_exponent, target_idx_start, target_idx_count, total
             }
             writer.writerow(row)
         print(f"[BENCHMARK] logged to {log_path} (for cross-floor growth analysis)")
-        _append_floor_meta_row(portal_folder, base_exponent, row)
+        append_benchmark_row_to_floor_meta(portal_folder, base_exponent, row)
     except OSError as e:
         print(f"[BENCHMARK] WARNING: could not write benchmark log ({e})")
 

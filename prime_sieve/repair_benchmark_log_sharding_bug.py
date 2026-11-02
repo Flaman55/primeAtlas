@@ -189,8 +189,8 @@ def repair_benchmark_log(portal_folder, apply_changes):
 
 def repair_floor_meta(portal_folder, repaired_keys, apply_changes):
     """Mirrors the same fix into each affected floor's floor_meta.json (see
-    orchestrator_v3.py's _append_floor_meta_row -- same row data duplicated there so a
-    floor's history travels with its own directory)."""
+    floor_meta_store.py -- every engine copies its logged row there so a floor's history
+    travels with its own directory)."""
     by_floor = {}
     for base_exponent, start_idx, end_idx in repaired_keys:
         by_floor.setdefault(base_exponent, []).append((start_idx, end_idx))
