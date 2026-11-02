@@ -3,8 +3,12 @@
 The PDF counterpart of benchmark_tab._draw_growth_chart(): same series, scales and point
 layout, in PDF's bottom-left-origin point space (tkinter's anchors and y-down canvas have
 no PDF equivalent, so the two renderers stay separate and share chart_series.py instead).
-Every point carries its value label with the series tag ("1,234 [v5]"); engine "unknown"
-gets no tag, since every legacy point would repeat it. Left-axis points are circles on a
+A point's value label carries the series tag ("1,234 [v5]"); engine "unknown" gets no
+tag, since every legacy point would repeat it. Labels never overlap: each line's last
+point is labelled first, stacked away from the point when lines end close together, then
+the other points in order, above the point or else below it; such a label with neither
+place free is left out (the report's tables hold every value). A label is kept inside
+the chart's box, between the x axis and the legend. Left-axis points are circles on a
 thick line, right-axis points squares on a thin line, as on the canvas. A pinned axis
 (chart_series.pin_bound()) cuts its lines at the plot edge and leaves out the points and
 labels beyond it, and its title says so.
@@ -15,6 +19,28 @@ from .chart_series import clip_polyline, in_view, legend_series, point_label, se
 
 _AXIS_GRAY = (0.4, 0.4, 0.4)
 _GUIDE_GRAY = (0.88, 0.88, 0.88)
+_LABEL_SIZE = 7
+_LABEL_CHAR_W = 0.6 * _LABEL_SIZE   # Courier advance width
+_LAST_LABEL_STEPS = 5               # stacked places tried above and below a line's last point
+
+
+def _overlaps(a, b):
+    return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
+
+
+def place_labels(candidates):
+    """[(x, y, text, rgb)] of the labels that fit without overlapping. candidates:
+    [(priority, [(x, y), ...] positions to try in order, text, rgb)], lower priority placed
+    first; a label is boxed from its baseline y - 1 to y + size."""
+    placed, boxes = [], []
+    for _priority, positions, text, rgb in sorted(candidates, key=lambda c: c[0]):
+        for x, y in positions:
+            box = (x, y - 1, x + len(text) * _LABEL_CHAR_W, y + _LABEL_SIZE)
+            if not any(_overlaps(box, b) for b in boxes):
+                boxes.append(box)
+                placed.append((x, y, text, rgb))
+                break
+    return placed
 
 
 def _rgb(hex_color):
@@ -49,7 +75,12 @@ def chart_ops(x0, y0, w, h, series1=(), series2=(), translator=None,
         return ops
 
     has_secondary = bool(series2)
-    pad_left = 55
+    scale1 = y_scale(series1, log_y, pins1) if series1 else None
+    scale2 = y_scale(series2, log_y, pins2) if has_secondary else None
+    # The left margin fits the longest tick label (7 pt Courier) left of the axis.
+    tick_chars = max((len(scale1.tick_label(v, fmt1)) for v in scale1.ticks()),
+                     default=0) if scale1 else 0
+    pad_left = max(55, tick_chars * 0.6 * 7 + 10)
     pad_right = 55 if has_secondary else 15
     pad_top, pad_bottom = 30, 30
     plot_x0 = x0 + pad_left
@@ -62,8 +93,6 @@ def chart_ops(x0, y0, w, h, series1=(), series2=(), translator=None,
     if x_min == x_max:
         x_min -= 1
         x_max += 1
-    scale1 = y_scale(series1, log_y, pins1) if series1 else None
-    scale2 = y_scale(series2, log_y, pins2) if has_secondary else None
     pinned = " [" + t("bench.axis_pinned") + "]"
     title1 = t(label_key1) + (pinned if any(v is not None for v in pins1 or ()) else "")
     title2 = t(label_key2) + (pinned if any(v is not None for v in pins2 or ()) else "")
@@ -94,8 +123,9 @@ def chart_ops(x0, y0, w, h, series1=(), series2=(), translator=None,
         for y_val in scale1.ticks():
             y_px = sy(scale1, y_val)
             ops.append(_pdf_line_op(plot_x0 - 3, y_px, plot_x0, y_px, rgb=_AXIS_GRAY))
-            ops.append(_pdf_text_op(plot_x0 - 50, y_px - 3, 7, "Courier",
-                                     scale1.tick_label(y_val, fmt1)))
+            text = scale1.tick_label(y_val, fmt1)
+            ops.append(_pdf_text_op(plot_x0 - 5 - len(text) * 0.6 * 7, y_px - 3, 7, "Courier",
+                                     text))
     if scale2:
         for y_val in scale2.ticks():
             y_px = sy(scale2, y_val)
@@ -135,6 +165,10 @@ def chart_ops(x0, y0, w, h, series1=(), series2=(), translator=None,
                                  rgb=rgb))
         legend_x += 22 + 6.5 * 0.55 * len(text)
 
+    candidates = []
+    # Labels stay between the x axis and the legend row, off the floor tick labels.
+    label_y_min, label_y_max = plot_y0 + 2, y0 + h - 22
+
     def draw(series, scale, fmt, label_dy, secondary=False):
         for s in series:
             pts = [(x, y) for x, y in s.points if scale.usable(y)]
@@ -146,19 +180,29 @@ def chart_ops(x0, y0, w, h, series1=(), series2=(), translator=None,
                     ops.append(_dashed(op) if s.dashed else op)
             pts = [(x, y) for x, y in pts if in_view(scale.frac(y))]
             coords = [(sx(x), sy(scale, y)) for x, y in pts]
-            for (x_val, y_val), (cx, cy) in zip(pts, coords):
+            for i, ((x_val, y_val), (cx, cy)) in enumerate(zip(pts, coords)):
                 if secondary:
                     ops.append(_pdf_rect_op(cx - 2.3, cy - 2.3, 4.6, 4.6, fill_rgb=rgb))
                 else:
                     ops.append(_pdf_dot_op(cx, cy, 2.5, rgb=rgb))
                 if s.dashed:
                     ops.append(_pdf_dot_op(cx, cy, 1.3, rgb=(1, 1, 1)))
-                ops.append(_pdf_text_op(cx - 10, cy + label_dy, 7, "Courier",
-                                         _pdf_ascii_fold(point_label(fmt, y_val, s)), rgb=rgb))
+                last = i == len(pts) - 1
+                above, below = cy + label_dy, cy - 22 - label_dy
+                steps = range(_LAST_LABEL_STEPS if last else 1)
+                text = _pdf_ascii_fold(point_label(fmt, y_val, s))
+                lx = max(x0 + 2, min(cx - 10, x0 + w - 2 - len(text) * _LABEL_CHAR_W))
+                positions = [(lx, y) for k in steps
+                             for y in (above + k * (_LABEL_SIZE + 2),
+                                       below - k * (_LABEL_SIZE + 2))
+                             if label_y_min <= y <= label_y_max]
+                candidates.append(((0 if last else 1, cx), positions, text, rgb))
 
     if scale1:
         draw(series1, scale1, fmt1, 8)
     if scale2:
         draw(series2, scale2, fmt2, -14, secondary=True)
+    for x, y, text, rgb in place_labels(candidates):
+        ops.append(_pdf_text_op(x, y, _LABEL_SIZE, "Courier", text, rgb=rgb))
     return ops
 

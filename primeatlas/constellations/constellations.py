@@ -24,7 +24,8 @@ import prime_sieve_v1
 import hit_paging
 
 from ..core.storage import list_floors
-from ..core.pdf_writer import _pdf_ascii_fold, _pdf_rect_op, _pdf_text_op, _write_pdf
+from ..core.pdf_table import TableLayout, table_pages
+from ..core.pdf_writer import _pdf_ascii_fold, _pdf_text_op, _write_pdf
 from ..core.i18n import Translator, DEFAULT_LANGUAGE
 
 
@@ -432,10 +433,14 @@ def build_constellation_records_detail_rows(portal_folder, k, floor_min=None, fl
     return variant_ids, variant_meta, rows
 
 
+CONSTELLATION_PDF_KEY_COLUMNS = ("exp", "id")  # repeated in every column band of the
+                                                # records PDF table
+
+
 def render_constellation_records_pdf(path, k, fieldnames, rows, translator=None):
     """Writes a standalone PDF report of one k's records table (see
     build_constellation_records_table()) to `path` -- same low-level PDF-writing
-    machinery (_write_pdf/_pdf_text_op/_pdf_rect_op, cell-truncation table layout) as
+    machinery (_write_pdf/_pdf_text_op, core/pdf_table.py's table layout) as
     render_benchmark_pdf(), just without a chart (this table has no time-series data to
     plot) and with a dynamic column count (1 + however many catalog variants k has,
     instead of a fixed benchmark_log.csv column set). `fieldnames`/`rows` are plain
@@ -454,37 +459,7 @@ def render_constellation_records_pdf(path, k, fieldnames, rows, translator=None)
     content_top = page_h - margin
     content_bottom = margin
 
-    font_size = 8
-    row_h = 14
-    header_h = 16
-    n_cols = max(1, len(fieldnames))
-    col_w = content_width / n_cols
-    max_chars = max(3, int(col_w / (0.6 * font_size)))
-
-    def cell_text(value):
-        s = "" if value is None else str(value)
-        if len(s) > max_chars:
-            s = s[:max(0, max_chars - 3)] + "..."
-        return s
-
-    def draw_table_header(ops, y_top):
-        ops.append(_pdf_rect_op(content_left, y_top - header_h, content_width, header_h,
-                                 fill_rgb=(0.90, 0.90, 0.90)))
-        for i, name in enumerate(fieldnames):
-            ops.append(_pdf_text_op(content_left + i * col_w + 2, y_top - header_h + 4,
-                                     font_size, "Helvetica-Bold", cell_text(name)))
-        return y_top - header_h
-
-    def draw_table_rows(ops, y_top, row_slice):
-        y = y_top
-        for row in row_slice:
-            for i, name in enumerate(fieldnames):
-                ops.append(_pdf_text_op(content_left + i * col_w + 2, y - row_h + 4,
-                                         font_size, "Courier", cell_text(row.get(name, ""))))
-            y -= row_h
-        return y
-
-    pages = []
+    layout = TableLayout(fieldnames, rows, content_width, 8, CONSTELLATION_PDF_KEY_COLUMNS)
     ops = []
     now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     ops.append(_pdf_text_op(content_left, content_top - 14, 14, "Helvetica-Bold",
@@ -492,29 +467,9 @@ def render_constellation_records_pdf(path, k, fieldnames, rows, translator=None)
     ops.append(_pdf_text_op(content_left, content_top - 30, 9, "Helvetica",
                              _pdf_ascii_fold(t("const_records.pdf_subtitle", now=now_str,
                                                rows=len(rows)))))
-    table_top = content_top - 46
-    y_after_header = draw_table_header(ops, table_top)
-    available = y_after_header - content_bottom
-    rows_fit = max(0, int(available // row_h))
-    draw_table_rows(ops, y_after_header, rows[:rows_fit])
-    pages.append(ops)
-
-    remaining = rows[rows_fit:]
-    page_num = 2
-    while remaining:
-        ops = []
-        ops.append(_pdf_text_op(content_left, content_top - 12, 10, "Helvetica-Bold",
-                                 _pdf_ascii_fold(t("const_records.pdf_continued", page=page_num))))
-        table_top = content_top - 22
-        y_after_header = draw_table_header(ops, table_top)
-        available = y_after_header - content_bottom
-        rows_fit = max(1, int(available // row_h))
-        chunk = remaining[:rows_fit]
-        draw_table_rows(ops, y_after_header, chunk)
-        pages.append(ops)
-        remaining = remaining[len(chunk):]
-        page_num += 1
-
+    pages = table_pages(layout, rows, ops, content_top - 46, content_top, content_bottom,
+                        content_left, lambda page, part, parts: t("const_records.pdf_continued", page=page)
+                        + (t("pdf.columns_part", part=part, parts=parts) if parts > 1 else ""))
     _write_pdf(path, pages, page_size=(page_w, page_h))
 
 

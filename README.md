@@ -203,7 +203,13 @@ comparisons with primesieve and PARI/GP are in `BENCHMARK.md`.
   floor's peak can be compared without being flattened: lines are cut at the pinned edge
   and points beyond it are not drawn, and each axis of each chart is pinned and reset on
   its own; pins last for the session, through the toggles and Refresh. The PDF export
-  follows the toggles, the hidden lines and the pins. The progress bar shown during a generation
+  follows the toggles, the hidden lines and the pins. In the PDF each metric gets its
+  own chart (two per page) and value labels never overlap: each line's last point is
+  always labelled, other labels are left out where there is no free room. The log follows
+  in four tables, one question each -- runs (range and status), throughput, phases and
+  resources, sieve results -- each starting with the run timestamp, floor and engine,
+  every cell in full (headers wrap at "_"); a log column none of them names goes to a
+  final "other columns" table. The progress bar shown during a generation
   run models the whole pipeline as a sequence of steps (prep, then each sieve batch,
   then done) rather than only moving during the sieve phase and sitting empty through prep.
 - **Research (Badania)** -- an inner notebook of five sub-tabs, grouped by shared
@@ -1265,6 +1271,10 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               background-job helpers used by any tab that launches a
                               one-shot call or a queue of same-kind jobs off the Tk
                               main thread
+  pdf_table.py                  the paginated data table of both PDF reports: column
+                              widths from the longest value, headers wrapped at "_",
+                              column bands repeating the key columns when the table is
+                              wider than the page
   pdf_writer.py                 a minimal, dependency-free PDF writer (text, lines,
                               filled rects, basic pagination) shared by the Benchmark
                               tab's export and the Constellations Records table's export
@@ -1730,14 +1740,16 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               benchmark.py below is the pure-logic backend)
   benchmark.py                  reading/normalizing benchmark_log.csv rows; each row
                               gets a "kind" (D, P, or D+P on floor 24) from its
-                              engine and window range, shown next to "engine"
+                              engine and window range, shown next to "engine";
+                              the PDF report (one-metric charts, logical tables)
   chart_series.py               chart Series (one color per engine, a P run of pt1
                               on its own "pt1 P" line), linear/log
                               y-scales with pinned y-axis bounds and line clipping
                               at the plot edge, per-line hide/show keys -- shared by
                               the canvas and the PDF renderer
   chart_pdf.py                  PDF content ops of one Benchmark chart (axes, lines,
-                              value labels with engine tags, legend, pinned axes)
+                              non-overlapping value labels with engine tags, legend,
+                              pinned axes)
   reference_points.py           reference throughput of PARI/GP and primesieve with
                               sources, for the "Reference points" toggle
 
