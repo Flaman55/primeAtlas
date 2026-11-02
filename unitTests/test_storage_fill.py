@@ -112,6 +112,7 @@ def _fake_tab(results):
     tab.calls = []
     tab._loop_runner = None
     tab._pending_storage_fill = None
+    tab._loop_stop_requested = False
     pending = list(results)
 
     def launch(floor, idx, count):
@@ -151,6 +152,15 @@ def section_c_queue():
     tab._on_storage_fill_run_finished(1)
     check(done == [False] and tab.calls == [(0, 0, 1)] and tab._pending_storage_fill is None,
           "a non-zero exit (failure or Stop) ends the queue and reports failure")
+
+    done = []
+    tab = _fake_tab(["launched", "launched"])
+    tab.start_storage_fill(launches, done.append)
+    tab._loop_stop_requested = True  # save-point Stop: the run exits 0
+    tab._loop_runner.running = False
+    tab._on_storage_fill_run_finished(0)
+    check(done == [False] and tab.calls == [(0, 0, 1)] and tab._pending_storage_fill is None,
+          "a save-point Stop (exit 0) ends the queue and reports failure")
 
     done = []
     tab = _fake_tab(["failed"])

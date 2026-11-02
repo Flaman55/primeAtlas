@@ -20,6 +20,7 @@ _set_portal_folder rebinds its own module global, not one here), so the caller
 (GenerationTab, which receives get_portal_folder() by injection) passes the CURRENT value
 at each call site.
 """
+import collections
 import json
 import os
 import re
@@ -1427,6 +1428,7 @@ class WslLoggedRunner:
 
     POLL_INTERVAL = 0.2
     EXIT_MARKER_GRACE_SECONDS = 2.0
+    TAIL_LINES = 50
 
     def __init__(self, cmd, log_path, exit_path, output_queue, kill_pattern=None):
         self.cmd = cmd
@@ -1436,6 +1438,22 @@ class WslLoggedRunner:
         self.kill_pattern = kill_pattern
         self.proc = None
         self._thread = None
+        # The last TAIL_LINES output lines, for the close guard's stage label
+        # (run_guard.job_stage); written by the tail thread, read by the GUI thread.
+        self._tail = collections.deque(maxlen=self.TAIL_LINES)
+        self._tail_partial = ""
+        self._tail_lock = threading.Lock()
+
+    @property
+    def tail_lines(self):
+        """Copy of the last output lines, the unfinished last line included."""
+        with self._tail_lock:
+            return list(self._tail) + ([self._tail_partial] if self._tail_partial else [])
+
+    def _remember_tail(self, chunk):
+        with self._tail_lock:
+            *complete, self._tail_partial = (self._tail_partial + chunk).split("\n")
+            self._tail.extend(complete)
 
     def start(self):
         self.output_queue.put(f"$ {' '.join(self.cmd)}\n")
@@ -1494,6 +1512,7 @@ class WslLoggedRunner:
         except OSError:
             return offset
         if chunk:
+            self._remember_tail(chunk)
             self.output_queue.put(chunk)
         return new_offset
 
@@ -1517,6 +1536,11 @@ class WslLoggedRunner:
 
     def is_running(self):
         return self.proc is not None and self.proc.poll() is None
+
+    def is_finished(self):
+        """True once the tail thread has queued the exit sentinel (or never started), so
+        the GUI's next queue drain runs the job's finish callback."""
+        return self._thread is None or not self._thread.is_alive()
 
     def stop(self):
         if self.proc is not None and self.proc.poll() is None:

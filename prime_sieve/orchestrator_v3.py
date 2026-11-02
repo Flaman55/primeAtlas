@@ -14,7 +14,9 @@ except ImportError:
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import generation_stop
 import storage_kinds
+import window_integrity
 
 # ------------------------------------------------------------------------------------------
 # ENGINE SWITCH -- the one flag selecting which scanner (v3, v4, v4.1 or v5) this orchestrator
@@ -34,22 +36,19 @@ SCANNER_VERSION = os.environ.get("PRIMEATLAS_SCANNER_VERSION") or "v5"
 
 if SCANNER_VERSION == "v3":
     import prime_sieve_v3 as prime_sieve_module  # noqa: E402
-    SCRIPT_NAME = "prime_sieve_v3.py"
 elif SCANNER_VERSION == "v4":
     import prime_sieve_v4 as prime_sieve_module  # noqa: E402
-    SCRIPT_NAME = "prime_sieve_v4.py"
 elif SCANNER_VERSION == "v4.1":
     import prime_sieve_v4_1 as prime_sieve_module  # noqa: E402
-    SCRIPT_NAME = "prime_sieve_v4_1.py"
 elif SCANNER_VERSION == "v5":
     import prime_sieve_v5 as prime_sieve_module  # noqa: E402
-    SCRIPT_NAME = "prime_sieve_v5.py"
 elif SCANNER_VERSION == "pt1":
     import prime_sieve_pt1 as prime_sieve_module  # noqa: E402
-    SCRIPT_NAME = "prime_sieve_pt1.py"
 else:
     raise ValueError(f"SCANNER_VERSION must be 'v3', 'v4', 'v4.1', 'v5' or 'pt1', "
                      f"got {SCANNER_VERSION!r}")
+# The GUI's save-point stop kills processes by this name (generation_stop.py).
+SCRIPT_NAME = generation_stop.scanner_script(SCANNER_VERSION)
 # format_offset() and read_prime_window_header() (PGS2 fast header peek) are reused here
 # for the benchmark summary, instead of duplicating them -- see prime_sieve_module's own
 # usages below.
@@ -176,8 +175,13 @@ BENCHMARK_FIELDNAMES = [
     "avg_primes_per_window", "primes_per_second", "l_final", "sieving_primes_count",
     "max_child_rss_mb", "instance_of_n", "loop_session_seconds", "loop_numbers_per_second",
     "loop_seconds_per_window", "write_files", "base_gen_seconds", "sieve_seconds",
-    "write_seconds", "bytes_written", "engine", "numbers_processed",
+    "write_seconds", "bytes_written", "engine", "numbers_processed", "run_status",
 ]
+# run_status: "completed", or "stopped" for a run ended by the GUI's stop request
+# (generation_stop.py) -- its counts cover the windows written before the stop. Rows
+# written before this column existed have it blank, which means completed.
+RUN_STATUS_COMPLETED = "completed"
+RUN_STATUS_STOPPED = "stopped"
 # write_files: lets the GUI's floor list show total REAL generation time per floor, which
 # requires distinguishing actual disk-writing runs from write_files=False count-only
 # benchmark runs (the same base_exponent/range can get run both ways). "1"/"0", same
@@ -282,7 +286,7 @@ def print_benchmark_summary(base_exponent, start_idx, end_idx, total_seconds, po
                              write_files=True, total_primes_found=None, windows_processed=None,
                              window_m=None, base_gen_seconds=None, sieve_seconds=None,
                              write_seconds=None, bytes_written=None, numbers_processed=None,
-                             workers=None):
+                             workers=None, run_status=RUN_STATUS_COMPLETED):
     """Logs to the SAME benchmark_log.csv used by every orchestrator variant (see this file's
     header for why that's deliberately shared, not forked).
 
@@ -294,14 +298,16 @@ def print_benchmark_summary(base_exponent, start_idx, end_idx, total_seconds, po
 
     The headers are read by `workers` threads (default WORKERS, the run's worker count):
     each read is one file open over WSL's /mnt drive, latency-bound, so the threads
-    overlap the waits."""
+    overlap the waits. With bytes_written None the sizes of the windows read are summed
+    instead (a stopped run has no scanner handoff). A stopped run with no window found
+    logs no row."""
     window_m = WINDOW_M if window_m is None else window_m
     workers = WORKERS if workers is None else workers
     if write_files:
         # Counts are re-derived from disk (the store each window was written into, see
         # storage_kinds.written_kind()) rather than taken from write_scan_metrics_handoff():
         # parallel instances share that file (orchestrator_loop_v2.py header).
-        from pgs2_vector import read_window_count
+        from pgs2_vector import read_window_count_and_size
         base = 10 ** base_exponent
 
         def _count(target_idx):
@@ -311,16 +317,21 @@ def print_benchmark_summary(base_exponent, start_idx, end_idx, total_seconds, po
             path = storage_kinds.window_path(portal_folder, base_exponent, offset, window_m,
                                              prime_sieve_module.format_offset(offset), kind)
             try:
-                return read_window_count(path)
+                return read_window_count_and_size(path)
             except FileNotFoundError:
                 return None
 
         print(f"[*] Counting the primes of the written windows ({end_idx - start_idx:,} "
               f"headers, {workers} threads)...")
         with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
-            counts = [c for c in pool.map(_count, range(start_idx, end_idx)) if c is not None]
-        total_primes = sum(counts)
-        windows_found = len(counts)
+            found = [c for c in pool.map(_count, range(start_idx, end_idx)) if c is not None]
+        total_primes = sum(count for count, _size in found)
+        windows_found = len(found)
+        if bytes_written is None:
+            bytes_written = sum(size for _count, size in found)
+        if run_status == RUN_STATUS_STOPPED and windows_found == 0:
+            print("[*] No window was written before the stop -- nothing to log.")
+            return
     else:
         total_primes = total_primes_found if total_primes_found is not None else 0
         windows_found = windows_processed if windows_processed is not None else (end_idx - start_idx)
@@ -390,6 +401,7 @@ def print_benchmark_summary(base_exponent, start_idx, end_idx, total_seconds, po
                 "sieve_seconds": f"{sieve_seconds:.3f}" if sieve_seconds is not None else "",
                 "write_seconds": f"{write_seconds:.3f}" if write_seconds is not None else "",
                 "bytes_written": bytes_written if bytes_written is not None else "",
+                "run_status": run_status,
             }
             writer.writerow(row)
         print(f"[BENCHMARK] logged to {log_path} (for cross-floor growth analysis)")
@@ -485,12 +497,24 @@ def run_orchestrator(base_exponent=None, window_count=None, start_auto=None, sta
     end_at = actual_start_window + window_count
     current = actual_start_window
     interrupted = False
+    stopped = False
     while current < end_at:
+        if generation_stop.stop_requested(portal_folder):
+            # Stop requested before this batch's scanner existed for the GUI to kill.
+            stopped = True
+            break
         batch_stop = min(current + batch_size, end_at) - 1
         ok = run_batch(scanner_path, base_exponent, current, batch_stop, workers,
                         batches_per_worker=batches_per_worker, write_files=write_files,
                         compute_sieving_primes_count=compute_sieving_primes_count,
                         window_m=window_m)
+        if not ok and generation_stop.stop_requested(portal_folder):
+            stopped = True
+            if write_files:
+                _delete_cut_windows(portal_folder, base_exponent, current, batch_stop,
+                                    window_m, workers)
+            current = batch_stop + 1
+            break
         if not ok:
             interrupted = True
             break
@@ -505,7 +529,13 @@ def run_orchestrator(base_exponent=None, window_count=None, start_auto=None, sta
     seconds_per_window = total_seconds / windows_done if windows_done > 0 else float("nan")
 
     print(f"\n{'='*60}")
-    if interrupted:
+    if stopped:
+        print(f"[!] STOPPED ON REQUEST. target_idx {actual_start_window}..{current - 1}: the "
+              f"windows written before the stop are kept." if current > actual_start_window
+              else "[!] STOPPED ON REQUEST before any batch started.")
+        print(f"[!] Orchestrator run time: {total_duration} "
+              f"({clock_start} -> {datetime.now().strftime('%H:%M:%S')})")
+    elif interrupted:
         print(f"[!] STOPPED AFTER ERROR. target_idx {actual_start_window}..{current - 1} "
               f"({windows_done} windows completed before the error).")
         print(f"[!] Orchestrator run time: {total_duration} "
@@ -519,7 +549,16 @@ def run_orchestrator(base_exponent=None, window_count=None, start_auto=None, sta
               f"-- {seconds_per_window:.2f} s/window")
     print(f"{'='*60}")
 
-    if current > actual_start_window:
+    if stopped:
+        # The killed scanner wrote no handoff (one left on disk belongs to an earlier
+        # run), so the row takes everything from the window headers.
+        if write_files:
+            print_benchmark_summary(base_exponent, actual_start_window, current,
+                                    total_seconds, portal_folder,
+                                    max_child_rss_mb=peak_child_rss_mb(),
+                                    write_files=write_files, window_m=window_m,
+                                    workers=workers, run_status=RUN_STATUS_STOPPED)
+    elif current > actual_start_window:
         metrics = read_scan_metrics_handoff(portal_folder)
         l_final = metrics.get("l_final")
         sieving_primes_count = metrics.get("sieving_primes_count")
@@ -549,7 +588,29 @@ def run_orchestrator(base_exponent=None, window_count=None, start_auto=None, sta
     return not interrupted
 
 
+def _delete_cut_windows(portal_folder, base_exponent, target_idx_start, target_idx_stop,
+                        window_m, workers):
+    """Deletes the windows of a stopped batch that the scanner kill cut mid-write
+    (window_integrity.repair_recent(), relative to the stop request's time)."""
+    base = 10 ** base_exponent
+    paths = []
+    for target_idx in range(target_idx_start, target_idx_stop + 1):
+        offset = target_idx * window_m
+        kind = storage_kinds.written_kind(SCANNER_VERSION, base + offset, base + offset + window_m)
+        paths.append(storage_kinds.window_path(portal_folder, base_exponent, offset, window_m,
+                                               prime_sieve_module.format_offset(offset), kind))
+    print(f"[*] Checking the windows written before the stop ({len(paths):,} headers)...")
+    deleted = window_integrity.repair_recent(
+        paths, reference_time=generation_stop.stop_request_time(portal_folder),
+        workers=workers)
+    for path in deleted:
+        print(f"[!] Deleted the window cut by the stop: {os.path.basename(path)}")
+    return deleted
+
+
 if __name__ == "__main__":
+    # The GUI tails stdout from a file; line buffering makes each stage visible when printed.
+    sys.stdout.reconfigure(line_buffering=True)
     if len(sys.argv) > 2:
         cli_base_exponent = int(sys.argv[1])
         cli_window_count = int(sys.argv[2])

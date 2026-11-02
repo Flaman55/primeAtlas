@@ -104,6 +104,10 @@ class GenerationConsole:
             widget.delete("1.0", "end")
             widget.configure(state="disabled")
 
+    def get_text(self):
+        """The console's whole text (every mirror holds the same)."""
+        return self._mirrors[0].get("1.0", "end-1c") if self._mirrors else ""
+
     def append(self, text):
         """Writes into every currently-registered mirror. The embedded pane and an open
         detached window always show identical, up-to-date content -- there is only ever

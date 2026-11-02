@@ -12,6 +12,7 @@ sys.path.insert(0, _SCRIPT_DIR)
 # full orchestrator module, so this self-contained copy doesn't need to carry unused scanning/
 # CLI logic or its ctypes sieve-engine dependency just to reach four small helper functions.
 import orchestrator_loop_helpers as orch  # noqa: E402  -- doesn't run anything on import.
+import generation_stop  # noqa: E402
 
 # ==========================================================================================
 # orchestrator_loop_v2.py -- parallel-instance loop runner for orchestrator_v3.py.
@@ -462,6 +463,10 @@ def main():
     t_loop_start = time.time()
     interrupted = False
     for i in range(1, run_count + 1):
+        if generation_stop.stop_requested(PORTAL_FOLDER):
+            # Each instance already logged its stopped row (orchestrator_v3.py).
+            print(f"[LOOP] stop requested -- iteration {i}/{run_count} not started.")
+            break
         rows_before_this_iteration = _count_benchmark_rows(PORTAL_FOLDER)
         t0 = time.time()
         next_start, ok, instance_ranges = run_iteration(
@@ -479,7 +484,8 @@ def main():
         print(f"[LOOP] iteration {i}/{run_count} finished in {elapsed:.1f}s "
               f"(target_idx now at {next_start}){throughput_note}")
         start_idx = next_start
-        if not ok:
+        # A batch cut by the stop is not a failure: the check above ends the loop.
+        if not ok and not generation_stop.stop_requested(PORTAL_FOLDER):
             print(f"[LOOP] at least one instance failed in iteration {i}/{run_count} -- "
                   f"stopping the loop early.")
             interrupted = True
@@ -499,4 +505,6 @@ def main():
 
 
 if __name__ == "__main__":
+    # The GUI tails stdout from a file; line buffering makes each stage visible when printed.
+    sys.stdout.reconfigure(line_buffering=True)
     main()
