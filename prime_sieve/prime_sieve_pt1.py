@@ -9,7 +9,8 @@ written to the D store (byte-identical to v5's output; unitTests/test_engine_pt1
 that); any other window is tested with BPSW and written to the P store
 (10p{N}/source_primes_P/, filenames ending in _P.bin).
 
-Memory is one slab bitmap plus one flag chunk per thread, independent of the run length.
+Memory is two slab bitmaps (slab k+1 is sieved while slab k is written, overlap_pipeline.py)
+plus one flag chunk per thread, independent of the run length.
 Floors 0..6 (the scanners' low-floor path) and floors above 37 (n >= 2^127) are refused.
 """
 import ctypes
@@ -24,6 +25,7 @@ import numpy as np
 
 import pt1_plan
 import storage_kinds
+from overlap_pipeline import run_overlapped
 from prime_sieve_v5 import (SCAN_METRICS_FILENAME, _window_prime_count,  # noqa: F401
                             _window_prime_offsets, format_offset, read_prime_window_header,
                             write_scan_metrics_handoff)
@@ -148,7 +150,6 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
     if write_files:
         from pgs2_vector import write_prime_window_offsets
     t_start = time.perf_counter()
-    t_sieve = t_write = 0.0
     bytes_written = total_primes_found = 0
     chunks_before = 0
     last_print = [t_start, -1]
@@ -164,34 +165,43 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
               f"chunks) | time: {now - t_start:.2f}s | ETA ~{eta:.0f}s")
         last_print[0], last_print[1] = now, done
 
+    def _sieve(slab):
+        nonlocal chunks_before
+        kind, ix = slab
+        slab_lo, slab_hi = windows[ix[0]][0], windows[ix[-1]][1]
+        sieved = _sieve_slab(ctx, slab_lo, slab_hi, kind == storage_kinds.KIND_D, MAX_WORKERS,
+                             chunk_odd, _progress)
+        chunks_before += math.ceil(((slab_hi - sieved[0] + 1) // 2) / chunk_odd)
+        return sieved
+
+    def _write(slab, sieved):
+        nonlocal total_primes_found, bytes_written
+        kind, ix = slab
+        first_odd, bits = sieved
+        for i in ix:
+            lo, hi = windows[i]
+            if write_files:
+                offset = lo - BASE
+                path = storage_kinds.window_path(BASE_STORAGE_10PN, base_power, offset, window_m,
+                                                 format_offset(offset), kind)
+                offsets = _window_prime_offsets(bits, first_odd, lo, hi)
+                total_primes_found += len(offsets)
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                write_prime_window_offsets(path, lo, offsets, generated_at=int(time.time()))
+                bytes_written += os.path.getsize(path)
+            else:
+                total_primes_found += _window_prime_count(bits, first_odd, lo, hi)
+
+    # Slab k+1 is sieved while slab k is unpacked and written (overlap_pipeline.py).
     try:
-        for kind, ix in slabs:
-            slab_lo, slab_hi = windows[ix[0]][0], windows[ix[-1]][1]
-            t0 = time.perf_counter()
-            first_odd, bits = _sieve_slab(ctx, slab_lo, slab_hi, kind == storage_kinds.KIND_D,
-                                          MAX_WORKERS, chunk_odd, _progress)
-            t1 = time.perf_counter()
-            for i in ix:
-                lo, hi = windows[i]
-                if write_files:
-                    offset = lo - BASE
-                    path = storage_kinds.window_path(BASE_STORAGE_10PN, base_power, offset, window_m,
-                                                     format_offset(offset), kind)
-                    offsets = _window_prime_offsets(bits, first_odd, lo, hi)
-                    total_primes_found += len(offsets)
-                    os.makedirs(os.path.dirname(path), exist_ok=True)
-                    write_prime_window_offsets(path, lo, offsets, generated_at=int(time.time()))
-                    bytes_written += os.path.getsize(path)
-                else:
-                    total_primes_found += _window_prime_count(bits, first_odd, lo, hi)
-            t_sieve += t1 - t0
-            t_write += time.perf_counter() - t1
-            chunks_before += math.ceil(((slab_hi - first_odd + 1) // 2) / chunk_odd)
+        timings = run_overlapped(slabs, _sieve, _write)
     finally:
         lib.pt1_ctx_free(ctx)
+    t_sieve, t_write = timings.produce_seconds, timings.consume_seconds
     _progress(0)
 
-    print(f"\n[*] Sieve + test {t_sieve:.2f}s, unpack + write {t_write:.2f}s")
+    print(f"\n[*] Sieve + test {t_sieve:.2f}s, unpack + write {t_write:.2f}s (overlapped with "
+          f"the sieve; {timings.wait_seconds:.2f}s not hidden)")
     print(f"[*] TOTAL PRIMES FOUND this run: {total_primes_found:,} across {len(windows)} windows"
           + ("" if write_files else "  (NO FILES WRITTEN -- count-only mode)"))
     write_scan_metrics_handoff(BASE_STORAGE_10PN, b,

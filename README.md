@@ -1831,6 +1831,10 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
   pt1_plan.py                B and chunk knobs (env PRIMEATLAS_PT1_B,
                               PRIMEATLAS_PT1_CHUNK_KB), slab grouping of
                               same-kind windows
+  overlap_pipeline.py        run_overlapped(): produce in the caller, consume in one
+                              helper thread, consume(k) overlapping produce(k+1),
+                              at most two products alive; pt1 writes slab k while
+                              it sieves slab k+1 (unitTests/test_overlap_pipeline.py)
   prime_sieve_engine_pt1.c   C core for prime_sieve_pt1.py (ctypes, threads):
                               chunked odd-only sieve to B, u128 Montgomery
                               Miller-Rabin / strong Lucas
