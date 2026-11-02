@@ -35,7 +35,7 @@ import storage_kinds
 from ..core.i18n import Translator, DEFAULT_LANGUAGE
 from ..core.pdf_writer import _pdf_ascii_fold, _pdf_rect_op, _pdf_text_op, _write_pdf
 from .chart_pdf import chart_ops
-from .chart_series import engine_lines, engine_series, visible_series
+from .chart_series import axis_pins, engine_lines, engine_series, visible_series
 from .reference_points import REFERENCES, reference_series
 
 QUICK_GEN_MAX_WINDOW_WIDTH = 10_000_000  # see this module's own docstring for why this
@@ -399,7 +399,7 @@ def benchmark_row_stats(rows):
 
 def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translator=None,
                           sieve_points=None, write_points=None, references=False,
-                          log_y=False, hidden_lines=None):
+                          log_y=False, hidden_lines=None, y_pins=None):
     """Writes a standalone PDF report -- the same growth chart(s) shown in the Benchmark tab
     plus the FULL benchmark_log.csv table (every row, every column) -- to `path`. The table
     continues onto as many additional (landscape A4) pages as needed, repeating the column
@@ -421,6 +421,8 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
     log_y: log10 y-axes on both charts -- the Benchmark tab's two toggles.
     hidden_lines: {"run" | "sieve": set of chart_series.line_key()} -- the lines switched
     off in the tab's legends, left out of the charts and their scales.
+    y_pins: {"run" | "sieve": {axis: (min, max)}} -- the tab's pinned y-axis bounds
+    (chart_series.pin_bound()).
 
     sieve_points (optional): aggregate_benchmark_sieve_nps(), only populated for floors
     benchmarked with the v4.1 or v5 engine. The sieve chart takes space away from the
@@ -491,6 +493,10 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
     chart_top = content_top - 40
     chart_y0 = chart_top - chart_h
     hidden_lines = hidden_lines or {}
+    y_pins = y_pins or {}
+
+    def pins(chart, axis):
+        return axis_pins(y_pins.get(chart), axis)
 
     def shown(series, chart, axis):
         return visible_series(series, hidden_lines.get(chart), axis)
@@ -502,7 +508,8 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
                                "run", "secondary"),
                          translator=translator,
                          label_key1="bench.axis_total_nps", label_key2="bench.axis_write_mbps",
-                         fmt1="{:,.0f}", fmt2="{:,.1f}", log_y=log_y))
+                         fmt1="{:,.0f}", fmt2="{:,.1f}", log_y=log_y,
+                         pins1=pins("run", "primary"), pins2=pins("run", "secondary")))
 
     if has_speed_chart:
         chart2_h = 140
@@ -517,7 +524,8 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
             shown(engine_series(benchmark_engine_lines(rows, "sieve_spw")), "sieve", "secondary"),
             translator=translator,
             label_key1="bench.axis_sieve_nps", label_key2="bench.axis_sieve_spw",
-            fmt1="{:,.0f}", fmt2="{:,.4f}", log_y=log_y))
+            fmt1="{:,.0f}", fmt2="{:,.4f}", log_y=log_y,
+            pins1=pins("sieve", "primary"), pins2=pins("sieve", "secondary")))
         table_top = chart2_y0 - 12
     else:
         table_top = chart_y0 - 12

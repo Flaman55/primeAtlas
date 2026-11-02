@@ -43,10 +43,22 @@ from .benchmark import (
 )
 from ..core.i18n import Translator, DEFAULT_LANGUAGE
 from .chart_series import (
-    engine_series, legend_entries, line_key, plain_series, point_label, series_xs,
-    toggle_lines, visible_series, y_scale,
+    axis_pins, clear_pins, clip_polyline, engine_series, in_view, legend_entries, line_key,
+    pin_bound, plain_series, point_label, series_xs, toggle_lines, visible_series, y_scale,
 )
 from .reference_points import reference_series
+
+
+def _nearest_point(hover_points, x, y, max_distance=14.0):
+    """The whole hover_points tuple closest to (x, y) within max_distance pixels, or None."""
+    best = None
+    best_d2 = max_distance ** 2
+    for point in hover_points:
+        d2 = (x - point[0]) ** 2 + (y - point[1]) ** 2
+        if d2 <= best_d2:
+            best_d2 = d2
+            best = point
+    return best
 
 
 def _nearest_hover_point(hover_points, x, y, max_distance=14.0):
@@ -63,14 +75,8 @@ def _nearest_hover_point(hover_points, x, y, max_distance=14.0):
     Returns (px, py, x_val, y_val, fmt, color) for the closest point within
     max_distance pixels, or None if every point is farther than that (or the list
     is empty)."""
-    best = None
-    best_d2 = max_distance ** 2
-    for px, py, x_val, y_val, fmt, color, _label_key in hover_points:
-        d2 = (x - px) ** 2 + (y - py) ** 2
-        if d2 <= best_d2:
-            best_d2 = d2
-            best = (px, py, x_val, y_val, fmt, color)
-    return best
+    best = _nearest_point(hover_points, x, y, max_distance)
+    return tuple(best[:6]) if best else None
 
 
 def _hover_label_position(px, py, text_w, text_h, canvas_width, canvas_height, pad=4):
@@ -125,7 +131,7 @@ def _bind_chart_hover(canvas, hover_points, t, fg_color, bg_color, width, height
     cleared on <Leave>, so exactly one value is legible at a time no matter how dense
     the series is.
 
-    hover_points: a flat list of (px, py, x_val, y_val, fmt, color, unused_label_key)
+    hover_points: a flat list of (px, py, x_val, y_val, fmt, color, label_key, axis)
     tuples in CANVAS pixel space, built by the caller from whichever series (primary
     and/or secondary) it already computed pixel coordinates for -- this function itself
     has no notion of axes/scales, just "here are some labeled dots".
@@ -259,7 +265,7 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
                         fmt1="{:,.0f}", fmt2="{:,.3f}",
                         bg_color="#ffffff", fg_color="#000000", grid_color="#666666",
                         series1=None, series2=None, log_y=False, hidden=None,
-                        on_toggle=None):
+                        on_toggle=None, pins1=None, pins2=None, on_pin_menu=None):
     """Draws a floor-depth chart onto `canvas`: x = floor, y = one or two axes of
     chart_series.Series (one line per engine, plus dashed reference lines). Plain
     tk.Canvas drawing, no charting library: the app is zero-extra-installs. Clears the
@@ -276,6 +282,11 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
 
     hidden: set of chart_series.line_key() left out of the plot and its scales; their
     legend markers stay, so on_toggle (the legend's click callback) can bring them back.
+
+    pins1/pins2: the axes' pinned (min, max) (chart_series.axis_pins()): a pinned bound is
+    the axis edge exactly, lines are cut there and the points beyond it are not drawn; the
+    axis title says "pinned". on_pin_menu(target, x_root, y_root): right-click callback,
+    target = (axis, value, value text) of the point under the pointer or None.
 
     label_key1/label_key2/fmt1/fmt2: same meaning as chart_pdf.chart_ops()'s parameters, so
     the PDF and this chart stay consistent. translator: a primeatlas.core.i18n.Translator,
@@ -303,6 +314,7 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
         canvas.create_text(width / 2, height / 2, text=t("bench.all_lines_hidden"),
                             fill="#888888")
         _bind_chart_hover(canvas, [], t, fg_color, bg_color, width, height)
+        _bind_pin_menu(canvas, [], on_pin_menu)
         return
 
     has_secondary = bool(series2)
@@ -314,8 +326,8 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
     if x_min == x_max:
         x_min -= 1
         x_max += 1
-    scale1 = y_scale(series1, log_y) if series1 else None
-    scale2 = y_scale(series2, log_y) if has_secondary else None
+    scale1 = y_scale(series1, log_y, pins1) if series1 else None
+    scale2 = y_scale(series2, log_y, pins2) if has_secondary else None
 
     # pad_left/pad_right are measured from the actual tick label strings with the real
     # font: throughput reaches 10-13 digit n/s figures, which a fixed pad would clip.
@@ -375,13 +387,18 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
 
     canvas.create_text(pad_left + plot_w / 2, height - 8, text=t("bench.axis_floor"),
                         font=("Consolas", 8, "bold"), fill=fg_color)
+    def pinned(pins):
+        return (" [" + t("bench.axis_pinned") + "]"
+                if any(v is not None for v in pins or ()) else "")
+
     # Axis titles sit in the strip above the plot area, anchored by their bottom edge so
     # the gap above the topmost tick does not depend on font metrics.
     if series1:
-        canvas.create_text(4, pad_top - 10, text="\u25cf " + t(label_key1), anchor="sw",
-                            font=("Consolas", 8, "bold"), fill=fg_color)
+        canvas.create_text(4, pad_top - 10, text="\u25cf " + t(label_key1) + pinned(pins1),
+                            anchor="sw", font=("Consolas", 8, "bold"), fill=fg_color)
     if has_secondary:
-        canvas.create_text(width - 4, pad_top - 10, text=t(label_key2) + " \u25a0", anchor="se",
+        canvas.create_text(width - 4, pad_top - 10,
+                            text=t(label_key2) + pinned(pins2) + " \u25a0", anchor="se",
                             font=("Consolas", 8, "bold"), fill=fg_color)
 
     # Values show in one hover tooltip (_bind_chart_hover): permanent per-point labels
@@ -392,11 +409,14 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
         r = 4
         for s in series:
             pts = [(x, y) for x, y in s.points if scale.usable(y)]
+            for run in clip_polyline([(sx(x), scale.frac(y)) for x, y in pts]):
+                if len(run) > 1:
+                    coords = [(x, pad_top + plot_h - f * plot_h) for x, f in run]
+                    canvas.create_line(*[c for xy in coords for c in xy], fill=s.color,
+                                        width=1 if secondary else 3,
+                                        dash=(5, 3) if s.dashed else None)
+            pts = [(x, y) for x, y in pts if in_view(scale.frac(y))]
             coords = [(sx(x), sy(scale, y)) for x, y in pts]
-            if len(coords) > 1:
-                canvas.create_line(*[c for xy in coords for c in xy], fill=s.color,
-                                    width=1 if secondary else 3,
-                                    dash=(5, 3) if s.dashed else None)
             for (x_val, y_val), (cx, cy) in zip(pts, coords):
                 if secondary:
                     canvas.create_rectangle(cx - r, cy - r, cx + r, cy + r, outline=s.color,
@@ -408,7 +428,8 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
                 hover_points.append((cx, cy, x_val, y_val,
                                      point_label(fmt, y_val, s, show_unknown=True)
                                      .replace("{", "{{").replace("}", "}}"),
-                                     s.color, label_key))
+                                     s.color, label_key,
+                                     "secondary" if secondary else "primary"))
 
     if scale1:
         draw(series1, scale1, fmt1, label_key1)
@@ -416,6 +437,22 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
         draw(series2, scale2, fmt2, label_key2, secondary=True)
 
     _bind_chart_hover(canvas, hover_points, t, fg_color, bg_color, width, height)
+    _bind_pin_menu(canvas, hover_points, on_pin_menu)
+
+
+def _bind_pin_menu(canvas, hover_points, on_pin_menu):
+    """Right-click on the canvas: on_pin_menu((axis, value, value text) of the point under
+    the pointer, or None off every point, x_root, y_root). Rebound on every redraw, like
+    _bind_chart_hover."""
+    if on_pin_menu is None:
+        return
+
+    def _on_right_click(event):
+        point = _nearest_point(hover_points, event.x, event.y)
+        target = (point[7], point[3], point[4].format(point[3])) if point else None
+        on_pin_menu(target, event.x_root, event.y_root)
+
+    canvas.bind("<Button-3>", _on_right_click)
 
 
 class BenchmarkTab(BaseTab):
@@ -448,9 +485,11 @@ class BenchmarkTab(BaseTab):
         ttk.Button(top, text=T("bench.save_pdf"), command=self._export_benchmark_pdf).pack(
             side="left", padx=(6, 0))
         ttk.Label(top, text=T("bench.chart_hint")).pack(side="left")
-        # Chart view toggles, kept for the session only; the PDF export follows them, and
-        # the lines hidden from each chart's legend ({chart: set of line_key()}).
+        # Chart view toggles, kept for the session only; the PDF export follows them, the
+        # lines hidden from each chart's legend ({chart: set of line_key()}) and the pinned
+        # y-axis bounds ({chart: {axis: (min, max)}}, set from the right-click menu).
         self._hidden_lines = {"run": set(), "sieve": set()}
+        self._y_pins = {"run": {}, "sieve": {}}
         self.log_scale_var = tk.BooleanVar(value=False)
         self.references_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(top, text=T("bench.log_scale"), variable=self.log_scale_var,
@@ -599,6 +638,9 @@ class BenchmarkTab(BaseTab):
                             log_y=self.log_scale_var.get(),
                             hidden=self._hidden_lines["run"],
                             on_toggle=lambda keys: self._toggle_lines("run", keys),
+                            pins1=axis_pins(self._y_pins["run"], "primary"),
+                            pins2=axis_pins(self._y_pins["run"], "secondary"),
+                            on_pin_menu=lambda *a: self._on_pin_menu("run", *a),
                             bg_color=p["console_bg"], fg_color=p["console_fg"],
                             grid_color=p["border"])
 
@@ -614,6 +656,9 @@ class BenchmarkTab(BaseTab):
     def _toggle_lines(self, chart, keys):
         """Legend click on the "run" or "sieve" chart: hides or shows those lines."""
         self._hidden_lines[chart] = toggle_lines(self._hidden_lines[chart], keys)
+        self._redraw_chart(chart)
+
+    def _redraw_chart(self, chart):
         if chart == "run":
             self._redraw_benchmark_chart()
         else:
@@ -622,6 +667,47 @@ class BenchmarkTab(BaseTab):
     def _redraw_charts(self):
         self._redraw_benchmark_chart()
         self._redraw_benchmark_chart2()
+
+    def _set_pins(self, chart, pins):
+        self._y_pins[chart] = pins
+        self._redraw_chart(chart)
+
+    def _pin_menu_entries(self, chart, target):
+        """[(label, command, enabled)] of the right-click menu, the three resets last;
+        target: see _draw_growth_chart's on_pin_menu. A point offers its value as its axis'
+        max or min; a reset is enabled while its axis has a pin."""
+        T, pins = self.T, self._y_pins[chart]
+        entries = []
+        if target:
+            axis, value, text = target
+            for which in ("max", "min"):
+                entries.append((T("bench.pin_" + which, value=text),
+                                lambda w=which, a=axis: self._set_pins(
+                                    chart, pin_bound(self._y_pins[chart], a, w, value)),
+                                True))
+        for axis in ("primary", "secondary"):
+            entries.append((T("bench.pin_reset_" + axis),
+                            lambda a=axis: self._set_pins(
+                                chart, clear_pins(self._y_pins[chart], a)),
+                            axis in pins))
+        entries.append((T("bench.pin_reset_chart"), lambda: self._set_pins(chart, {}),
+                        bool(pins)))
+        return entries
+
+    def _on_pin_menu(self, chart, target, x_root, y_root):
+        self._post_menu(self._pin_menu_entries(chart, target), x_root, y_root)
+
+    def _post_menu(self, entries, x_root, y_root):
+        menu = tk.Menu(self, tearoff=False)
+        for i, (label, command, enabled) in enumerate(entries):
+            if i and i == len(entries) - 3:
+                menu.add_separator()
+            menu.add_command(label=label, command=command,
+                             state="normal" if enabled else "disabled")
+        try:
+            menu.tk_popup(x_root, y_root)
+        finally:
+            menu.grab_release()
 
     def _redraw_benchmark_chart2(self):
         """Same fallback-size handling as _redraw_benchmark_chart() (see that method's own
@@ -643,6 +729,9 @@ class BenchmarkTab(BaseTab):
                             log_y=self.log_scale_var.get(),
                             hidden=self._hidden_lines["sieve"],
                             on_toggle=lambda keys: self._toggle_lines("sieve", keys),
+                            pins1=axis_pins(self._y_pins["sieve"], "primary"),
+                            pins2=axis_pins(self._y_pins["sieve"], "secondary"),
+                            on_pin_menu=lambda *a: self._on_pin_menu("sieve", *a),
                             bg_color=p["console_bg"], fg_color=p["console_fg"],
                             grid_color=p["border"])
 
@@ -842,7 +931,8 @@ class BenchmarkTab(BaseTab):
                                   write_points=self._benchmark_write_mbps_points,
                                   references=self.references_var.get(),
                                   log_y=self.log_scale_var.get(),
-                                  hidden_lines=self._hidden_lines)
+                                  hidden_lines=self._hidden_lines,
+                                  y_pins=self._y_pins)
         except Exception as exc:
             messagebox.showerror(T("bench.save_pdf"), T("bench.save_error", error=exc))
             return
