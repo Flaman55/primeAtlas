@@ -308,7 +308,7 @@ def main():
               "actually caught up, a stop mid-floor is not the same as finishing it")
         os.remove(stop_path)
 
-        # Resuming afterward (marker gone, exactly what generation_tab.py's own
+        # Resuming afterward (marker gone, exactly what constellation_section.py's own
         # _on_constellation_finished() guarantees -- see that method's own docstring)
         # must pick up right where the stop left off, same as any other checkpoint
         # resume already tested above.

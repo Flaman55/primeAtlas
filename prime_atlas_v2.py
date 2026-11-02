@@ -117,7 +117,7 @@ from primeatlas.core.storage import LOW_FLOOR_CUTOFF  # noqa: E402
 # ConstellationsCalcTab/ConstellationsRecordsTab construction (_eval_quick_number) and
 # _build_settings_tab's wsl_helpers dict call directly are imported from
 # primeatlas.generation.generation here; everything else the Generation tab itself needs is
-# imported locally inside primeatlas/generation/generation_tab.py.
+# imported by the Generation tab's own modules in primeatlas/generation/.
 from primeatlas.generation.generation import (  # noqa: E402
     QUICK_GEN_MAX_WINDOW_WIDTH, PRIMESIEVE_MAX_STOP, _eval_quick_number,
     build_loop_argv, build_constellation_finder_argv, build_wsl_logged_command,
@@ -203,7 +203,7 @@ def _build_gui():
     # same reason tkinter itself is: it keeps this module's top-level prefix (everything
     # above _build_gui) importable/testable without tkinter installed. GenerationConsole
     # is no longer imported here -- its only user (the Generation tab) now imports it
-    # directly inside primeatlas/generation/generation_tab.py.
+    # directly in its section modules in primeatlas/generation/.
     from primeatlas.settings.settings_tab import SettingsTab
     from primeatlas.core.totals_search_coordinator import TotalsSearchCoordinator
     from primeatlas.primes.primes_tree_coordinator import PrimesTreeCoordinator

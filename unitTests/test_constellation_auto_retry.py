@@ -1,7 +1,7 @@
 """
 test_constellation_auto_retry.py -- tests for the floor-25-scale fix, spread across
 primeatlas/generation/generation.py (read_constellation_checkpoint, build_constellation_finder_
-argv's own max_windows) and primeatlas/generation/generation_tab.py (GenerationTab._maybe_auto_
+argv's own max_windows) and primeatlas/generation/constellation_section.py (GenerationTab._maybe_auto_
 retry_constellation, _maybe_continue_constellation_batch, _scan_const_chunk_for_batch_
 marker). Pure-logic batching of constellation_finder_v1.process_floor() itself
 (max_windows/remaining-count/BATCH DONE marker) is covered separately, in
@@ -144,9 +144,9 @@ def _test_auto_retry_relaunches_on_real_progress():
         # Simulate process_floor() having advanced the checkpoint before dying.
         _write_checkpoint(tmp, 25, "PRIME_WINDOW_10p25_off_999.bin")
 
-        import primeatlas.generation.generation_tab as generation_tab_module
-        original_delay = generation_tab_module.CONSTELLATION_AUTO_RETRY_DELAY_MS
-        generation_tab_module.CONSTELLATION_AUTO_RETRY_DELAY_MS = 20
+        import primeatlas.generation.constellation_section as constellation_module
+        original_delay = constellation_module.CONSTELLATION_AUTO_RETRY_DELAY_MS
+        constellation_module.CONSTELLATION_AUTO_RETRY_DELAY_MS = 20
         try:
             retried = tab._maybe_auto_retry_constellation(None)
             check(retried is True, "real forward progress -> schedules a retry")
@@ -156,7 +156,7 @@ def _test_auto_retry_relaunches_on_real_progress():
                   f"the scheduled relaunch actually calls _start_constellation_runner "
                   f"with the same floor (got {launched!r})")
         finally:
-            generation_tab_module.CONSTELLATION_AUTO_RETRY_DELAY_MS = original_delay
+            constellation_module.CONSTELLATION_AUTO_RETRY_DELAY_MS = original_delay
         app.destroy()
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -189,11 +189,11 @@ def _test_auto_retry_stops_at_cap():
         tab = app.generation_tab_widget
         tab._start_constellation_runner = lambda base_exponent: None
 
-        import primeatlas.generation.generation_tab as generation_tab_module
-        original_cap = generation_tab_module.MAX_CONSTELLATION_AUTO_RETRIES
-        original_delay = generation_tab_module.CONSTELLATION_AUTO_RETRY_DELAY_MS
-        generation_tab_module.MAX_CONSTELLATION_AUTO_RETRIES = 3
-        generation_tab_module.CONSTELLATION_AUTO_RETRY_DELAY_MS = 3_600_000  # never actually fires in this test
+        import primeatlas.generation.constellation_section as constellation_module
+        original_cap = constellation_module.MAX_CONSTELLATION_AUTO_RETRIES
+        original_delay = constellation_module.CONSTELLATION_AUTO_RETRY_DELAY_MS
+        constellation_module.MAX_CONSTELLATION_AUTO_RETRIES = 3
+        constellation_module.CONSTELLATION_AUTO_RETRY_DELAY_MS = 3_600_000  # never actually fires in this test
         try:
             tab._const_base_exponent_var.set("25")
             tab._on_run_constellation()
@@ -209,8 +209,8 @@ def _test_auto_retry_stops_at_cap():
             check(tab._const_auto_retry_base_exponent is None,
                   "auto-retry state cleared once the cap is hit")
         finally:
-            generation_tab_module.MAX_CONSTELLATION_AUTO_RETRIES = original_cap
-            generation_tab_module.CONSTELLATION_AUTO_RETRY_DELAY_MS = original_delay
+            constellation_module.MAX_CONSTELLATION_AUTO_RETRIES = original_cap
+            constellation_module.CONSTELLATION_AUTO_RETRY_DELAY_MS = original_delay
         app.destroy()
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -261,8 +261,8 @@ def _test_graceful_stop_writes_sentinel_and_cleans_up():
         tab = app.generation_tab_widget
         tab._start_constellation_runner = lambda base_exponent: None
 
-        import primeatlas.generation.generation_tab as generation_tab_module
-        stop_path = os.path.join(tmp, generation_tab_module.CONSTELLATION_STOP_REQUEST_FILENAME)
+        import primeatlas.generation.constellation_section as constellation_module
+        stop_path = os.path.join(tmp, constellation_module.CONSTELLATION_STOP_REQUEST_FILENAME)
 
         tab._const_base_exponent_var.set("25")
         tab._on_run_constellation()
@@ -357,7 +357,7 @@ def _test_floor_progress_scales_bar_to_run_relative_progress():
         tab._gen_progress_bar_active = True
         tab._start_constellation_runner = lambda base_exponent: None
 
-        import primeatlas.generation.generation_tab as generation_tab_module
+        import primeatlas.generation.constellation_section as constellation_module
 
         # A fresh Run click against a floor that's ALREADY 340000/545000 done from a
         # much earlier session -- the run-relative baseline anchors to that 340000.
@@ -387,8 +387,8 @@ def _test_floor_progress_scales_bar_to_run_relative_progress():
         check(int(bar["value"]) == 1234,
               f"bar value is this run's own progress since its start baseline, "
               f"not the floor-wide total (got {bar['value']!r})")
-        expected_batch_count = -(-run_total // generation_tab_module.CONSTELLATION_BATCH_SIZE)
-        expected_batch_num = 1234 // generation_tab_module.CONSTELLATION_BATCH_SIZE + 1
+        expected_batch_count = -(-run_total // constellation_module.CONSTELLATION_BATCH_SIZE)
+        expected_batch_num = 1234 // constellation_module.CONSTELLATION_BATCH_SIZE + 1
         expected_prefix = tab.T(
             "gen.status_progress_const_batch", done=1234, total=run_total,
             batch_num=expected_batch_num, batch_count=expected_batch_count)
@@ -462,8 +462,8 @@ def _test_floor_progress_resets_between_launches():
 def _test_elapsed_and_eta_in_status():
     """Elapsed time (since the session's own Run click) and ETA (windows-remaining /
     wall-clock rate since the floor total was last anchored) both show up in the shared
-    status text. Drives a fake clock (replacing the `time` name generation_tab.py
-    itself sees, not the real stdlib module) so the test is fully deterministic instead
+    status text. Drives a fake clock (replacing the `time` name constellation_section.py and
+    run_progress.py see, not the real stdlib module) so the test is fully deterministic instead
     of racing a real 10/30s sleep."""
     tmp = tempfile.mkdtemp(prefix="primeatlas_const_retry_test_")
     try:
@@ -471,7 +471,8 @@ def _test_elapsed_and_eta_in_status():
         tab = app.generation_tab_widget
         tab._start_constellation_runner = lambda base_exponent: None
 
-        import primeatlas.generation.generation_tab as generation_tab_module
+        import primeatlas.generation.constellation_section as constellation_module
+        import primeatlas.generation.run_progress as run_progress_module
 
         class _FakeClock:
             def __init__(self, start):
@@ -480,8 +481,11 @@ def _test_elapsed_and_eta_in_status():
             def time(self):
                 return self.now
         fake_clock = _FakeClock(1_000_000.0)
-        original_time_module = generation_tab_module.time
-        generation_tab_module.time = fake_clock
+        # Session start (constellation_section) and ETA (run_progress) read one clock.
+        clocked = (constellation_module, run_progress_module)
+        original_time_modules = [m.time for m in clocked]
+        for m in clocked:
+            m.time = fake_clock
         try:
             tab._const_base_exponent_var.set("25")
             tab._on_run_constellation()  # anchors _const_session_start_time = now
@@ -517,7 +521,8 @@ def _test_elapsed_and_eta_in_status():
                   f"ETA reflects the wall-clock rate since the baseline "
                   f"(got {status!r})")
         finally:
-            generation_tab_module.time = original_time_module
+            for m, original in zip(clocked, original_time_modules):
+                m.time = original
         app.destroy()
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -609,6 +614,7 @@ def _test_start_constellation_runner_caps_batch_and_snapshots_checkpoint():
         _write_checkpoint(tmp, 25, "PRIME_WINDOW_10p25_off_777.bin")
 
         import primeatlas.generation.generation_tab as generation_tab_module
+        import primeatlas.generation.constellation_section as constellation_module
         recorded_cmds = []
 
         class _FakeRunner:
@@ -631,9 +637,9 @@ def _test_start_constellation_runner_caps_batch_and_snapshots_checkpoint():
 
         check(len(recorded_cmds) == 1, "exactly one WslLoggedRunner was constructed")
         cmd_str = " ".join(recorded_cmds[0])
-        check(f"--max-windows {generation_tab_module.CONSTELLATION_BATCH_SIZE}" in cmd_str,
+        check(f"--max-windows {constellation_module.CONSTELLATION_BATCH_SIZE}" in cmd_str,
               f"a specific-floor run's command carries --max-windows "
-              f"{generation_tab_module.CONSTELLATION_BATCH_SIZE} (got {cmd_str!r})")
+              f"{constellation_module.CONSTELLATION_BATCH_SIZE} (got {cmd_str!r})")
         check(tab._const_last_checkpoint_seen == "PRIME_WINDOW_10p25_off_777.bin",
               f"the checkpoint snapshot is read fresh from disk right before launching "
               f"(got {tab._const_last_checkpoint_seen!r})")

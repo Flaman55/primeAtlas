@@ -1388,21 +1388,44 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               deliberately-duplicated sieve_is_prime)
 
   primeatlas/generation/        "Generation" tab
-  generation_tab.py             GenerationTab -- the Generation tab (largest one: Quick-
-                              gen panel -- Floor only/Range/Exploration/primesieve/
-                              cudasieve/Hybrid modes -- plus the loop/orchestrator-
-                              direct/primesieve/k-tuple-sieve launch forms;
-                              generation.py below is the pure-logic backend). The three
-                              independent engines (loop/quick-gen family, constellation
-                              search, k-tuple sieve) share one totals_progress bar and
-                              one output-parsing pipeline
-                              (_update_shared_progress_from_generation_chunk), so only
-                              one may run at a time: starting any engine hard-locks
-                              every other engine's Run/Generate buttons (including the
-                              Quick-gen panels' own "Generuj" buttons, not just the
-                              lower-level loop_run_btn) via _lock_other_run_buttons/
-                              _unlock_other_run_buttons, rather than isolating their
-                              state.
+  generation_tab.py             GenerationTab -- the Generation tab: builds the Quick-gen
+                              panel and Sections A-C, owns the state they share and
+                              the WSL runner factory (_new_wsl_runner); the parts
+                              below are its mixins, generation.py the pure-logic
+                              backend. The three independent engines (loop/quick-gen
+                              family, constellation search, k-tuple sieve) share one
+                              totals_progress bar and one output-parsing pipeline, so
+                              only one may run at a time: starting any engine
+                              hard-locks every other engine's Run/Generate buttons
+                              (including the Quick-gen panels' own "Generuj" buttons,
+                              not just the lower-level loop_run_btn) via
+                              _lock_other_run_buttons/_unlock_other_run_buttons,
+                              rather than isolating their state.
+  quick_gen_panel.py            QuickGenPanel mixin: the Quick-gen panel's shared
+                              Variables, per-mode frames (Floor only/Range/
+                              Exploration/Hybrid/primesieve/cudasieve), width caps
+                              and validators, RAM/CPU/storage Auto buttons
+  quick_gen_runs.py             QuickGenRuns mixin: Generate/Stop and one apply-and-run
+                              launcher per engine (loop, primesieve, Hybrid,
+                              cudasieve, orchestrator-direct window range), gap
+                              filling, multi-step start_storage_fill
+  quick_gen_plan.py             QuickGenPlan mixin: Quick-gen fields -> one launch
+                              (_quick_gen_plan_literal_range,
+                              _on_quick_generate_clicked)
+  loop_section.py               LoopSection mixin: Section A, the orchestrator_loop_v2.py
+                              form (Advanced, engine fields), its console, Run/finish/
+                              poll handlers and the floor-totals bump after a run
+  constellation_section.py      ConstellationSection mixin: Section B, the
+                              constellation_finder_v1.py form and console, batched
+                              launches, graceful Stop via STOP_REQUEST.txt,
+                              checkpoint-verified auto-retry (its CONSTELLATION_*
+                              constants live here)
+  ktuple_section.py             KtupleSection mixin: Section C, the ktuple_sieve_v1.py
+                              form (pattern, strategy, Advanced), Run/Auto/Stop/finish
+  run_progress.py               GenerationRunProgress mixin: output-queue draining into
+                              consoles, the shared progress bar and status text
+                              (_update_shared_progress_from_generation_chunk), the
+                              cross-engine Run lock, constellation elapsed/ETA
   generation.py                 window/floor arithmetic, generation-settings
                               persistence, argv builders for every launch engine,
                               WslLoggedRunner/LocalLoggedRunner, WSL RAM/CPU probing,

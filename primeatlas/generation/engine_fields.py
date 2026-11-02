@@ -2,8 +2,8 @@
 
 One readonly Combobox picks the sieve engine (engine_options.ENGINES); one Entry per knob
 (engine_options.KNOB_KEYS: four for v5, B and the chunk size for pt1, the RAM budget for
-v4.1 and v5), enabled only while an engine that reads it is selected. Parsing, defaults and the launch env live in
-engine_options.py; this module only owns the widgets.
+v4.1 and v5), enabled only while an engine that reads it is selected. Parsing, defaults
+and the launch env live in engine_options.py; this module only owns the widgets.
 """
 import tkinter as tk
 from tkinter import ttk
