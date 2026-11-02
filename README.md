@@ -1394,6 +1394,13 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               by CUDASieve's and primecount's own status/install/query
                               calls (run_cudasieve_wsl_blocking, run_primecount_wsl_
                               blocking, run_primecount_install_wsl_blocking)
+  close_guard.py                closing the main window while a Generation-tab job
+                              runs: Yes/No dialog (default No) with each job's stage,
+                              on Yes the save-point stop of every job, a Stopping
+                              window with live stages and Close now, each stopped
+                              job's console saved to .generation_logs/closed_*.log,
+                              then the app closes (CLOSE_GUARD_PLAN.md;
+                              unitTests/test_close_guard.py)
   generation_console.py        stacked/detachable live-output console (Clear, Open in
                               new window, a HeightGrip under the output) -- every in-app terminal: the Generation tab's
                               loop/constellation/k-tuple sections, the visualization
@@ -1409,6 +1416,18 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
   hybrid_controls.py            Hybrid mode's own debounced reach-preview/auto-fit UI
                               logic, kept in its own file since it runs its preview
                               calculation off the Tk main thread
+  run_guard.py                  tkinter-free close-guard logic: a job's stage from its
+                              output tail, the generation stop request, the
+                              active-run marker (.generation_logs/ACTIVE_RUN.json)
+                              and the start-up recovery of a run the GUI never saw
+                              finish (totals from its benchmark rows, or cut windows
+                              deleted + floor recount) (unitTests/test_run_guard.py)
+  run_guard_controls.py         GenerationTab mixin: one launch path for Generation
+                              runs (marker, stop request cleared), the save-point
+                              Stop (stop request + kill of the scanner only; second
+                              Stop or a non-orchestrator engine: hard stop), the
+                              interface close_guard.py drives, start-up recovery
+                              (unitTests/test_close_guard_wiring.py)
   run_budget.py                 window count (and v5 bucket memory) of one sieve run
                               (pt1: the per-run cap, no RAM limit):
                               the smaller of a floor-scaled target (v4.1: 1000; v5:
@@ -1815,7 +1834,14 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               in one vectorized pass from int64 prime offsets, byte-
                               identical to the per-prime writer; read_window_count()
                               reads only a header's prime count, unbuffered
+                              (read_window_count_and_size(): plus the file size)
                               (unitTests/test_pgs2_vector.py)
+  generation_stop.py         the generation stop request file the GUI writes and the
+                              orchestrators read, and the scanner script of each
+                              orchestrator engine (what the save-point stop kills)
+  window_integrity.py        PGS2 completeness check (payload = exactly count - 1
+                              varints) and repair_recent(): deletes the windows a
+                              kill cut mid-write (unitTests/test_window_integrity.py)
   work_plan_v5.py            splits a v5 run into work: word-aligned buffer
                               slices, none shorter than one segment, for the
                               segmented small-prime path and
@@ -1882,9 +1908,16 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               batch, lets every new D window prove its P counterpart
                               (dp_verify.py); the benchmark row's prime count is
                               re-read from the written windows' headers by `workers`
-                              threads
-  orchestrator_loop_v2.py    continuous-run driver
-  orchestrator_loop_helpers.py
+                              threads; a batch failing while the GUI's stop request
+                              exists is a stop: windows cut by the scanner kill are
+                              deleted and the row (run_status=stopped) covers the
+                              windows kept (unitTests/test_orchestrator_stop.py)
+  orchestrator_loop_v2.py    continuous-run driver; checks the stop request before
+                              every iteration and starts none while it exists
+  orchestrator_loop_helpers.py  benchmark log helpers of the loop; every benchmark
+                              writer (orchestrator_v3, these helpers, primesieve,
+                              cudasieve, hybrid) shares one header with run_status
+                              (unitTests/test_benchmark_run_status.py)
   hit_paging.py              splits a dense pattern's constellation hit file into
                               ~1M-entry PGS2 page files + PAGES_META.json (O(1) count/
                               first/last); insert_hits_paged() merges hits that fall

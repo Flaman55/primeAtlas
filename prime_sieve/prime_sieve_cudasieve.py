@@ -201,7 +201,7 @@ BENCHMARK_FIELDNAMES = [
     "avg_primes_per_window", "primes_per_second", "l_final", "sieving_primes_count",
     "max_child_rss_mb", "instance_of_n", "loop_session_seconds", "loop_numbers_per_second",
     "loop_seconds_per_window", "write_files", "base_gen_seconds", "sieve_seconds",
-    "write_seconds", "bytes_written", "engine", "numbers_processed",
+    "write_seconds", "bytes_written", "engine", "numbers_processed", "run_status",
 ]
 
 
@@ -279,6 +279,7 @@ def write_benchmark_row(base_exponent, target_idx_start, target_idx_count, total
                 writer.writeheader()
             row = {
                 "engine": "cuda",
+                "run_status": "completed",
                 "run_timestamp_utc": datetime.datetime.now(datetime.timezone.utc).strftime(
                     "%Y-%m-%d %H:%M:%S UTC"),
                 "base_exponent": base_exponent,

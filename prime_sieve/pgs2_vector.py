@@ -5,6 +5,7 @@ modules (format writeup: prime_sieve_v1.py).
 A window is given as its lower bound `lo` (Python int, may exceed 2**64) plus the ascending
 prime offsets p - lo as an int64 array, so no per-prime Python int is ever built.
 """
+import os
 import time
 
 import numpy as np
@@ -54,12 +55,18 @@ def pgs2_header(base, count, generated_at):
 def read_window_count(path):
     """Prime count from a PGS2 header. Unbuffered: a buffered open reads a whole block
     (128 KiB over WSL's /mnt drives) to return the few header bytes."""
+    return read_window_count_and_size(path)[0]
+
+
+def read_window_count_and_size(path):
+    """(prime count, file size in bytes) of a PGS2 window, from one unbuffered open."""
     with open(path, "rb", buffering=0) as f:
         header = f.read(4 + 1 + 255 + 4)
+        size = os.fstat(f.fileno()).st_size
     if header[:4] != PGS_MAGIC:
         raise ValueError(f"{path}: not a PGS2 file (bad magic bytes)")
     pos = 5 + header[4]
-    return int.from_bytes(header[pos:pos + 4], "big")
+    return int.from_bytes(header[pos:pos + 4], "big"), size
 
 
 def write_prime_window_offsets(path, lo, offsets, generated_at=None):

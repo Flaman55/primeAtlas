@@ -55,6 +55,7 @@ from ..core.base_tab import BaseTab
 from ..core.widgets import ScrollablePage
 from ..core.progress_bar_owner import claim_progress_bar, release_progress_bar
 from .hybrid_controls import HybridControls
+from .run_guard_controls import RunGuardControls
 from ..benchmark.benchmark import read_benchmark_log
 from .generation_console import GenerationConsole
 from . import engine_options
@@ -133,7 +134,7 @@ from .generation import (
 )
 
 
-class GenerationTab(HybridControls, BaseTab):
+class GenerationTab(HybridControls, RunGuardControls, BaseTab):
     def __init__(self, parent, get_portal_folder, status_var, translator,
                  totals_progress, reload_primes_tree, reload_constellations_tree,
                  research_goldbach_tab_widget):
@@ -383,6 +384,8 @@ class GenerationTab(HybridControls, BaseTab):
         self._register_scroll_exclude(self.loop_console.text.frame)
 
         self._loop_runner = None
+        # Looked up at call time, so tests can swap this module's WslLoggedRunner.
+        self._init_run_guard(lambda *args, **kwargs: WslLoggedRunner(*args, **kwargs))
         self._loop_output_queue = queue.Queue()
         self._benchmark_rows_before_run = None  # row count of benchmark_log.csv as of
         # the moment the currently-running (or just-launched) self._loop_runner started
@@ -1564,13 +1567,9 @@ class GenerationTab(HybridControls, BaseTab):
 
             self.loop_console.append(self._new_run_separator())
             self._loop_output_queue = queue.Queue()
-            # Snapshot BEFORE starting the subprocess -- see this attribute's own
-            # comment in __init__ for why _on_loop_finished needs it.
-            self._benchmark_rows_before_run = len(read_benchmark_log(self._get_portal_folder())[1])
-            self._loop_runner = WslLoggedRunner(
-                cmd, log_path, exit_path, self._loop_output_queue,
-                kill_pattern="prime_sieve_primesieve.py")
-            self._loop_runner.start()
+            self._start_loop_runner(cmd, log_path, exit_path, "prime_sieve_primesieve.py",
+                                    base_exponent, first_target_idx=target_idx_start,
+                                    window_m=QUICK_GEN_MAX_WINDOW_WIDTH)
         except Exception as e:  # noqa: BLE001 -- see _on_run_loop's own comment on
             # why this is caught and surfaced instead of silently swallowed.
             self._loop_runner = None
@@ -1607,11 +1606,8 @@ class GenerationTab(HybridControls, BaseTab):
             cmd = build_wsl_logged_command(argv, log_path, exit_path, self._get_portal_folder())
             self.loop_console.append(self._new_run_separator())
             self._loop_output_queue = queue.Queue()
-            self._benchmark_rows_before_run = len(read_benchmark_log(self._get_portal_folder())[1])
-            self._loop_runner = WslLoggedRunner(
-                cmd, log_path, exit_path, self._loop_output_queue,
-                kill_pattern="hybrid_sieve.py")
-            self._loop_runner.start()
+            self._start_loop_runner(cmd, log_path, exit_path, "hybrid_sieve.py",
+                                    base_exponent)
         except Exception as e:  # noqa: BLE001 -- launch errors belong in the GUI.
             self._loop_runner = None
             self._gen_loop_run_count = None
@@ -1670,10 +1666,8 @@ class GenerationTab(HybridControls, BaseTab):
             cmd = build_wsl_logged_command(argv, log_path, exit_path, self._get_portal_folder())
             self.loop_console.append(self._new_run_separator())
             self._loop_output_queue = queue.Queue()
-            self._benchmark_rows_before_run = len(read_benchmark_log(self._get_portal_folder())[1])
-            self._loop_runner = WslLoggedRunner(cmd, log_path, exit_path, self._loop_output_queue,
-                                                 kill_pattern="hybrid_sieve.py")
-            self._loop_runner.start()
+            self._start_loop_runner(cmd, log_path, exit_path, "hybrid_sieve.py",
+                                    digit_count_floor(start))
         except Exception as e:  # noqa: BLE001
             self._loop_runner = None
             messagebox.showerror(self.T("gen.dialog_title"), self.T("gen.error_launch_failed", error=str(e)))
@@ -1721,11 +1715,9 @@ class GenerationTab(HybridControls, BaseTab):
 
             self.loop_console.append(self._new_run_separator())
             self._loop_output_queue = queue.Queue()
-            self._benchmark_rows_before_run = len(read_benchmark_log(self._get_portal_folder())[1])
-            self._loop_runner = WslLoggedRunner(
-                cmd, log_path, exit_path, self._loop_output_queue,
-                kill_pattern="prime_sieve_cudasieve.py")
-            self._loop_runner.start()
+            self._start_loop_runner(cmd, log_path, exit_path, "prime_sieve_cudasieve.py",
+                                    base_exponent, first_target_idx=target_idx_start,
+                                    window_m=QUICK_GEN_MAX_WINDOW_WIDTH)
         except Exception as e:  # noqa: BLE001 -- see _on_run_loop's own comment on
             # why this is caught and surfaced instead of silently swallowed.
             self._loop_runner = None
@@ -1800,13 +1792,9 @@ class GenerationTab(HybridControls, BaseTab):
 
             self.loop_console.append(self._new_run_separator())
             self._loop_output_queue = queue.Queue()
-            # Snapshot BEFORE starting the subprocess -- see this attribute's own
-            # comment in __init__ for why _on_loop_finished needs it.
-            self._benchmark_rows_before_run = len(read_benchmark_log(self._get_portal_folder())[1])
-            self._loop_runner = WslLoggedRunner(
-                cmd, log_path, exit_path, self._loop_output_queue,
-                kill_pattern="orchestrator_v3.py")
-            self._loop_runner.start()
+            self._start_loop_runner(cmd, log_path, exit_path, "orchestrator_v3.py",
+                                    base_exponent, engine=choice.engine,
+                                    first_target_idx=target_idx_start, window_m=QUICK_GEN_MAX_WINDOW_WIDTH)
         except Exception as e:  # noqa: BLE001 -- see _on_run_loop's own comment on
             # why this is caught and surfaced instead of silently swallowed.
             self._loop_runner = None
@@ -1951,7 +1939,7 @@ class GenerationTab(HybridControls, BaseTab):
         """_on_loop_finished's hook: the next storage-fill step, or the end of it."""
         if self._pending_storage_fill is None:
             return
-        if returncode not in (None, 0):
+        if returncode not in (None, 0) or self._loop_stop_requested:
             self._finish_storage_fill(False)
             return
         self._advance_storage_fill()
@@ -2620,13 +2608,9 @@ class GenerationTab(HybridControls, BaseTab):
 
             self.loop_console.append(self._new_run_separator())
             self._loop_output_queue = queue.Queue()
-            # Snapshot BEFORE starting the subprocess -- see this attribute's own
-            # comment in __init__ for why _on_loop_finished needs it.
-            self._benchmark_rows_before_run = len(read_benchmark_log(self._get_portal_folder())[1])
-            self._loop_runner = WslLoggedRunner(
-                cmd, log_path, exit_path, self._loop_output_queue,
-                kill_pattern="orchestrator_loop_v2.py")
-            self._loop_runner.start()
+            self._start_loop_runner(cmd, log_path, exit_path, "orchestrator_loop_v2.py",
+                                    parsed["base_exponent"],
+                                    engine=parsed["engine_choice"].engine, window_m=parsed["window_m"])
         except Exception as e:  # noqa: BLE001 -- without this, a launch failure is
             # swallowed by Tk's default callback exception handling (printed to a
             # console the user usually can't see; the GUI looks unchanged). Surface it.
@@ -2646,11 +2630,6 @@ class GenerationTab(HybridControls, BaseTab):
         for panel in self._quick_panels:
             panel["generate_btn"].configure(text=self.T("common.stop"))
         self._show_loop_terminal()
-
-    def _on_stop_loop(self):
-        if self._loop_runner is not None:
-            self._loop_runner.stop()
-            self.loop_status_label.set(self.T("common.stopping"))
 
     def _bump_totals_from_finished_run(self):
         """Reads benchmark_log.csv fresh and folds every NEW row written since
@@ -2697,6 +2676,7 @@ class GenerationTab(HybridControls, BaseTab):
         change."""
         for panel in self._quick_panels:
             panel["generate_btn"].configure(text=self.T("quick.generate_button"))
+        self._settle_finished_loop_run()
         # Loop/hybrid/orchestrator's own subprocess encompasses its whole
         # multi-iteration run internally -- unlike constellation's batch chaining,
         # _on_loop_finished ALWAYS means this session is genuinely over, so it's

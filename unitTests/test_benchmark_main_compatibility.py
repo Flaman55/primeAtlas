@@ -17,7 +17,8 @@ import prime_sieve_primesieve
 import prime_sieve_cudasieve
 from primeatlas.benchmark.benchmark import read_benchmark_log, aggregate_benchmark_sieve_nps
 
-FIELDS = hybrid_sieve.BENCHMARK_FIELDNAMES[:-2]  # main schema, before engine/count
+# main schema: the columns before engine (engine, numbers_processed, run_status came later)
+FIELDS = hybrid_sieve.BENCHMARK_FIELDNAMES[:hybrid_sieve.BENCHMARK_FIELDNAMES.index("engine")]
 
 
 class CompatibilityTests(unittest.TestCase):
