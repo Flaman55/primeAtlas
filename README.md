@@ -1937,6 +1937,12 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               writer (orchestrator_v3, these helpers, primesieve,
                               cudasieve, hybrid) shares one header with run_status
                               (unitTests/test_benchmark_run_status.py)
+  benchmark_log_schema.py    the one header of benchmark_log.csv (BENCHMARK_FIELDNAMES,
+                              run_status values) and its migration: an older subset
+                              header gains the missing columns (blank), a foreign
+                              column leaves the file untouched; imported by every
+                              writer and by floor_meta.py
+                              (unitTests/test_benchmark_log_schema.py)
   hit_paging.py              splits a dense pattern's constellation hit file into
                               ~1M-entry PGS2 page files + PAGES_META.json (O(1) count/
                               first/last); insert_hits_paged() merges hits that fall

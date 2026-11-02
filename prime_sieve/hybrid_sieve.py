@@ -19,7 +19,6 @@ import sys
 import time
 import csv
 import datetime
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -30,19 +29,12 @@ from hybrid_reference import HybridReferenceError, sieve_reference_segment, writ
 from prime_sieve_primesieve import generate_primes_in_range, write_scan_metrics_handoff
 from prime_sieve_v1 import format_offset, read_prime_window
 import window_sharding
+from benchmark_log_schema import BENCHMARK_FIELDNAMES, ensure_benchmark_log_schema
 
 
 WINDOW_M = 10_000_000
 LOW_FLOOR_CUTOFF = 7
 _WINDOW_FILE_RE = re.compile(r"^PRIME_WINDOW_10p(?P<floor>\d+)_off_(?P<offset>\d+)(?P<million>M)?\.bin$")
-BENCHMARK_FIELDNAMES = [
-    "run_timestamp_utc", "base_exponent", "target_idx_start", "target_idx_end",
-    "windows_written", "total_seconds", "seconds_per_window", "total_primes",
-    "avg_primes_per_window", "primes_per_second", "l_final", "sieving_primes_count",
-    "max_child_rss_mb", "instance_of_n", "loop_session_seconds", "loop_numbers_per_second",
-    "loop_seconds_per_window", "write_files", "base_gen_seconds", "sieve_seconds",
-    "write_seconds", "bytes_written", "engine", "numbers_processed", "run_status",
-]
 
 
 def write_hybrid_benchmark_row(portal_folder, base_exponent, target_idx_start, windows_written, total_seconds,
@@ -52,28 +44,8 @@ def write_hybrid_benchmark_row(portal_folder, base_exponent, target_idx_start, w
     if windows_written == 0:
         return
     path = os.path.join(portal_folder, "benchmark_log.csv")
-    rows = []
-    if os.path.exists(path):
-        with open(path, newline="") as stream:
-            reader = csv.DictReader(stream)
-            old_fields = reader.fieldnames or []
-            rows = list(reader)
-        if old_fields != BENCHMARK_FIELDNAMES:
-            if not all(field in BENCHMARK_FIELDNAMES for field in old_fields):
-                raise HybridSieveError("benchmark_log.csv has an incompatible schema")
-            temp_path = None
-            try:
-                with tempfile.NamedTemporaryFile(mode="w", newline="", dir=portal_folder,
-                                                 prefix=".benchmark_", delete=False) as stream:
-                    temp_path = stream.name
-                    writer = csv.DictWriter(stream, fieldnames=BENCHMARK_FIELDNAMES)
-                    writer.writeheader()
-                    for old_row in rows:
-                        writer.writerow({field: old_row.get(field, "") for field in BENCHMARK_FIELDNAMES})
-                os.replace(temp_path, path)
-            finally:
-                if temp_path is not None and os.path.exists(temp_path):
-                    os.unlink(temp_path)
+    if not ensure_benchmark_log_schema(path):
+        raise HybridSieveError("benchmark_log.csv has an incompatible schema")
     is_new = not os.path.exists(path)
     with open(path, "a", newline="") as stream:
         writer = csv.DictWriter(stream, fieldnames=BENCHMARK_FIELDNAMES)

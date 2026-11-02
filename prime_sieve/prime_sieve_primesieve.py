@@ -9,6 +9,7 @@ import sys
 import time
 
 import window_sharding
+from benchmark_log_schema import BENCHMARK_FIELDNAMES, ensure_benchmark_log_schema
 
 VERSION = "v1.0"
 
@@ -178,48 +179,15 @@ def _low_floor_segments(base_power, combined_lo, combined_hi):
 
 
 # ------------------------------------------------------------------------------------------
-# benchmark_log.csv logging -- schema/writer duplicated from orchestrator_v3.py's own
-# BENCHMARK_FIELDNAMES / _ensure_benchmark_log_schema / print_benchmark_summary (same "every
-# engine file stays independently runnable, small stable pieces get duplicated rather than
-# cross-imported" convention already used throughout this file -- see the PGS2/low-floor
-# block above). Every OTHER engine writes this log through the orchestrator pipeline, which
-# this mode bypasses; without its own writer, a floor generated (or restored) through
-# primesieve mode would leave NO trace in benchmark_log.csv -- the Prime numbers tab's
-# per-floor "generation time" column (sourced from benchmark_log.csv, see
-# aggregate_write_seconds_by_floor()) would stay blank, and a backup (BackupManifest
-# snapshots benchmark_log.csv's raw text, see manifest.py) would have nothing to preserve.
+# benchmark_log.csv logging -- header and migration from benchmark_log_schema.py, the row
+# writer mirrors orchestrator_v3.py's print_benchmark_summary(). Every OTHER engine
+# writes this log through the orchestrator pipeline, which this mode bypasses; without its
+# own writer, a floor generated (or restored) through primesieve mode would leave NO trace
+# in benchmark_log.csv -- the Prime numbers tab's per-floor "generation time" column
+# (sourced from benchmark_log.csv, see aggregate_write_seconds_by_floor()) would stay
+# blank, and a backup (BackupManifest snapshots benchmark_log.csv's raw text, see
+# manifest.py) would have nothing to preserve.
 # ------------------------------------------------------------------------------------------
-
-BENCHMARK_FIELDNAMES = [
-    "run_timestamp_utc", "base_exponent", "target_idx_start", "target_idx_end",
-    "windows_written", "total_seconds", "seconds_per_window", "total_primes",
-    "avg_primes_per_window", "primes_per_second", "l_final", "sieving_primes_count",
-    "max_child_rss_mb", "instance_of_n", "loop_session_seconds", "loop_numbers_per_second",
-    "loop_seconds_per_window", "write_files", "base_gen_seconds", "sieve_seconds",
-    "write_seconds", "bytes_written", "engine", "numbers_processed", "run_status",
-]
-
-
-def _ensure_benchmark_log_schema(log_path):
-    """Duplicated verbatim from orchestrator_v3.py -- see that file's own docstring for the
-    full rationale. Rewrite is ATOMIC (temp file + os.replace())."""
-    if not os.path.exists(log_path):
-        return
-    with open(log_path, newline="") as f:
-        reader = csv.DictReader(f)
-        existing_fields = reader.fieldnames or []
-        rows = list(reader)
-    if existing_fields == BENCHMARK_FIELDNAMES:
-        return
-    if not all(field in BENCHMARK_FIELDNAMES for field in existing_fields):
-        return
-    tmp_path = f"{log_path}.tmp{os.getpid()}"
-    with open(tmp_path, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=BENCHMARK_FIELDNAMES)
-        writer.writeheader()
-        for row in rows:
-            writer.writerow({field: row.get(field, "") for field in BENCHMARK_FIELDNAMES})
-    os.replace(tmp_path, log_path)
 
 
 def _append_floor_meta_row(portal_folder, base_exponent, row):
@@ -227,7 +195,7 @@ def _append_floor_meta_row(portal_folder, base_exponent, row):
     append_benchmark_row_to_floor_meta() -- deliberately NOT imported from there: this
     engine runs standalone (possibly under WSL, a different sys.path than the Windows-side
     GUI package), same reasoning every other cross-folder duplication in this project
-    already follows (see e.g. _ensure_benchmark_log_schema()'s own docstring above).
+    already follows.
     Writes 10p{base_exponent}/floor_meta.json so this floor's generation history travels
     with its own directory if it's ever copied into a different storage (archive) -- see
     floor_meta.py's module docstring for the full rationale. Best-effort/non-fatal: any
@@ -289,7 +257,7 @@ def write_benchmark_row(base_exponent, target_idx_start, target_idx_count, total
     log_path = os.path.join(portal_folder, "benchmark_log.csv")
     try:
         os.makedirs(portal_folder, exist_ok=True)
-        _ensure_benchmark_log_schema(log_path)
+        ensure_benchmark_log_schema(log_path)
         is_new = not os.path.exists(log_path)
         with open(log_path, "a", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=BENCHMARK_FIELDNAMES)

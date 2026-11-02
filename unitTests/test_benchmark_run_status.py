@@ -81,7 +81,7 @@ def main():
         tmp = tempfile.mkdtemp(prefix=f"primeatlas_run_status_{name}_")
         try:
             path = _old_log(tmp, module.BENCHMARK_FIELDNAMES)
-            module._ensure_benchmark_log_schema(path)
+            module.ensure_benchmark_log_schema(path)
             fields, rows = _read(path)
             check("run_status" in (fields or []), f"{name}: migration adds run_status")
             check(len(rows) == 1 and _old_row_unchanged(rows[0]),

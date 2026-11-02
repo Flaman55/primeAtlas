@@ -16,6 +16,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import generation_stop
 import storage_kinds
+from benchmark_log_schema import (BENCHMARK_FIELDNAMES, RUN_STATUS_COMPLETED,
+                                  RUN_STATUS_STOPPED, ensure_benchmark_log_schema)
 import window_integrity
 
 # ------------------------------------------------------------------------------------------
@@ -26,7 +28,7 @@ import window_integrity
 # v4 = v3 plus an inlined fast-path modulo for the per-sieving-prime phase computation (see
 # prime_sieve_v4.py's header). v4.1 = v4 plus base-gen/sieve/write timing and a
 # bytes-written counter in four benchmark_log.csv columns (base_gen_seconds/sieve_seconds/
-# write_seconds/bytes_written, see BENCHMARK_FIELDNAMES below). v5 = the default engine
+# write_seconds/bytes_written, see benchmark_log_schema.py). v5 = the default engine
 # (prime_sieve_v5.py), output identical to v4.1. pt1 = partial sieve + primality test
 # (prime_sieve_pt1.py): D windows identical to v5, BPSW windows from MR_DET_BOUND on go to
 # the P store (see storage_kinds.py).
@@ -169,57 +171,6 @@ def run_batch(scanner_path, base_exponent, target_idx_start, target_idx_stop, wo
     return True
 
 
-BENCHMARK_FIELDNAMES = [
-    "run_timestamp_utc", "base_exponent", "target_idx_start", "target_idx_end",
-    "windows_written", "total_seconds", "seconds_per_window", "total_primes",
-    "avg_primes_per_window", "primes_per_second", "l_final", "sieving_primes_count",
-    "max_child_rss_mb", "instance_of_n", "loop_session_seconds", "loop_numbers_per_second",
-    "loop_seconds_per_window", "write_files", "base_gen_seconds", "sieve_seconds",
-    "write_seconds", "bytes_written", "engine", "numbers_processed", "run_status",
-]
-# run_status: "completed", or "stopped" for a run ended by the GUI's stop request
-# (generation_stop.py) -- its counts cover the windows written before the stop. Rows
-# written before this column existed have it blank, which means completed.
-RUN_STATUS_COMPLETED = "completed"
-RUN_STATUS_STOPPED = "stopped"
-# write_files: lets the GUI's floor list show total REAL generation time per floor, which
-# requires distinguishing actual disk-writing runs from write_files=False count-only
-# benchmark runs (the same base_exponent/range can get run both ways). "1"/"0", same
-# convention as this file's own CLI encoding of the flag (see run_batch()). Rows written
-# before this column existed have it blank -- _ensure_benchmark_log_schema() leaves old rows
-# blank rather than guessing.
-#
-# base_gen_seconds/sieve_seconds/write_seconds/bytes_written: ONLY populated by
-# prime_sieve_v4_1.py (SCANNER_VERSION="v4.1") -- see that file's own header for what each
-# phase covers. Blank for every row logged by v3/v4 (they never measured a write-phase timer
-# at all, and only ever PRINTED base_gen/sieve time rather than handing it back here) -- same
-# "leave old/unmeasured rows blank rather than guessing" rule _ensure_benchmark_log_schema()
-# already applies to write_files. Together these four are what let the Benchmark tab draw a
-# sieve-speed/write-speed breakdown instead of just one combined total_seconds figure.
-
-
-def _ensure_benchmark_log_schema(log_path):
-    """Migrates benchmark_log.csv's header to the current BENCHMARK_FIELDNAMES (adding
-    missing columns to every existing row). Rewrite is ATOMIC (temp file + os.replace())."""
-    if not os.path.exists(log_path):
-        return
-    with open(log_path, newline="") as f:
-        reader = csv.DictReader(f)
-        existing_fields = reader.fieldnames or []
-        rows = list(reader)
-    if existing_fields == BENCHMARK_FIELDNAMES:
-        return
-    if not all(field in BENCHMARK_FIELDNAMES for field in existing_fields):
-        return
-    tmp_path = f"{log_path}.tmp{os.getpid()}"
-    with open(tmp_path, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=BENCHMARK_FIELDNAMES)
-        writer.writeheader()
-        for row in rows:
-            writer.writerow({field: row.get(field, "") for field in BENCHMARK_FIELDNAMES})
-    os.replace(tmp_path, log_path)
-
-
 def read_scan_metrics_handoff(portal_folder):
     """Reads whatever metrics the active scanner's (see SCANNER_VERSION near the top of this
     file) write_scan_metrics_handoff() left behind -- same handoff file/format as v1/v2,
@@ -248,7 +199,7 @@ def _append_floor_meta_row(portal_folder, base_exponent, row):
     append_benchmark_row_to_floor_meta() -- deliberately NOT imported from there: this
     engine runs standalone (possibly under WSL, a different sys.path than the Windows-side
     GUI package), same reasoning every other cross-folder duplication in this project
-    already follows (see e.g. _ensure_benchmark_log_schema()'s own docstring). Writes
+    already follows. Writes
     10p{base_exponent}/floor_meta.json so this floor's generation history travels with its
     own directory if it's ever copied into a different storage (archive) -- see
     floor_meta.py's module docstring for the full rationale. Best-effort/non-fatal: any
@@ -374,7 +325,7 @@ def print_benchmark_summary(base_exponent, start_idx, end_idx, total_seconds, po
     log_path = os.path.join(portal_folder, "benchmark_log.csv")
     try:
         os.makedirs(portal_folder, exist_ok=True)
-        _ensure_benchmark_log_schema(log_path)
+        ensure_benchmark_log_schema(log_path)
         is_new = not os.path.exists(log_path)
         with open(log_path, "a", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=BENCHMARK_FIELDNAMES)

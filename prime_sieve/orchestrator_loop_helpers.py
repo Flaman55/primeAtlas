@@ -1,19 +1,21 @@
 """
 orchestrator_loop_helpers.py -- the 4 symbols orchestrator_loop_v2.py actually uses
-(find_auto_start, WINDOW_M, _parse_bool_arg, _ensure_benchmark_log_schema), extracted into
+(find_auto_start, WINDOW_M, _parse_bool_arg, ensure_benchmark_log_schema), extracted into
 their own tiny, dependency-free module.
 
 This self-contained app copy of the pipeline doesn't need to import a full orchestrator
 module (with its own scanning/CLI logic and ctypes sieve-engine dependency) just to reach
 four small helper functions, so they live here instead as a standalone extraction.
+ensure_benchmark_log_schema (and BENCHMARK_FIELDNAMES) are re-exported from
+benchmark_log_schema.py, shared with every engine.
 
-If a bug is ever found in one of these four functions, the equivalent logic in the full
-orchestrator module(s) elsewhere in the project likely needs the same fix.
+If a bug is ever found in find_auto_start or _parse_bool_arg, the equivalent logic in the
+full orchestrator module(s) elsewhere in the project likely needs the same fix.
 """
 import os
-import csv
 
 import storage_kinds
+from benchmark_log_schema import BENCHMARK_FIELDNAMES, ensure_benchmark_log_schema  # noqa: F401
 
 
 def _parse_bool_arg(value):
@@ -41,35 +43,3 @@ def find_auto_start(base_exponent, portal_folder, window_m, engine=None):
 
 
 WINDOW_M = 10 ** 7
-
-BENCHMARK_FIELDNAMES = [
-    "run_timestamp_utc", "base_exponent", "target_idx_start", "target_idx_end",
-    "windows_written", "total_seconds", "seconds_per_window", "total_primes",
-    "avg_primes_per_window", "primes_per_second", "l_final", "sieving_primes_count",
-    "max_child_rss_mb", "instance_of_n", "loop_session_seconds", "loop_numbers_per_second",
-    "loop_seconds_per_window", "write_files", "base_gen_seconds", "sieve_seconds",
-    "write_seconds", "bytes_written", "engine", "numbers_processed", "run_status",
-]
-
-
-def _ensure_benchmark_log_schema(log_path):
-    """Migrates benchmark_log.csv's header to the current BENCHMARK_FIELDNAMES (adding
-    missing columns to every existing row). Rewrite is ATOMIC (temp file + os.replace()):
-    the file holds the whole benchmark history."""
-    if not os.path.exists(log_path):
-        return
-    with open(log_path, newline="") as f:
-        reader = csv.DictReader(f)
-        existing_fields = reader.fieldnames or []
-        rows = list(reader)
-    if existing_fields == BENCHMARK_FIELDNAMES:
-        return
-    if not all(field in BENCHMARK_FIELDNAMES for field in existing_fields):
-        return
-    tmp_path = f"{log_path}.tmp{os.getpid()}"
-    with open(tmp_path, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=BENCHMARK_FIELDNAMES)
-        writer.writeheader()
-        for row in rows:
-            writer.writerow({field: row.get(field, "") for field in BENCHMARK_FIELDNAMES})
-    os.replace(tmp_path, log_path)
