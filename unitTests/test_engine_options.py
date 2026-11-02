@@ -4,7 +4,8 @@ Checks: the engine names, knob defaults and environment variable names mirror
 orchestrator_v3.py / work_plan_v5.py and run_budget.py; the default engine is v5 in both the
 GUI and orchestrator_v3.py run without PRIMEATLAS_SCANNER_VERSION; an unknown engine falls
 back to the default; knob parsing accepts blanks (default) and positive integers and names the first bad
-field; resolve() never fails (Restore has no form to report errors in); the per-run window
+field; the RAM budget knob is a percentage 1..100 (default from run_budget.py) read by
+v4.1 and v5, never by pt1, and reaches run_budget as safety_fraction; resolve() never fails (Restore has no form to report errors in); the per-run window
 cap is 1000 for v4.1 and higher for v5; recommend() passes the engine, floor and knobs on to
 run_budget and respects the cap; launch_env() always names the engine and adds the three v5
 knobs only for v5, with a bucket override; build_wsl_logged_command() puts that env in front
@@ -69,9 +70,15 @@ def check_mirrors():
                     f"pt1 defaults: B auto (0), chunk {pt1_plan.DEFAULT_CHUNK_KB} KiB")
     passed &= check(eo.engine_knob_keys("pt1") == ("pt1_b", "pt1_chunk_kb")
                     and eo.engine_knob_keys("v5") == ("v5_segment_kb", "v5_region_kb",
-                                                      "v5_bucket_mb", "v5_windows_at_25")
-                    and eo.engine_knob_keys("v4.1") == (),
+                                                      "v5_bucket_mb", "v5_windows_at_25",
+                                                      "ram_budget_pct")
+                    and eo.engine_knob_keys("v4.1") == ("ram_budget_pct",),
                     "knobs per engine")
+    passed &= check(eo.KNOB_KEYS[-1] == "ram_budget_pct"
+                    and len(set(eo.KNOB_KEYS)) == len(eo.KNOB_KEYS),
+                    f"KNOB_KEYS lists each knob once, RAM budget last ({eo.KNOB_KEYS})")
+    passed &= check(d["ram_budget_pct"] == round(run_budget.DEFAULT_SAFETY_FRACTION * 100) == 50,
+                    f"RAM budget default {d['ram_budget_pct']} % matches run_budget.py")
     return passed
 
 
@@ -88,11 +95,19 @@ def check_parsing():
                                  "v5_bucket_mb": 512, "v5_windows_at_25": "2000"})
     passed &= check(bad is None and knobs == {"v5_segment_kb": 256, "v5_region_kb": 1024,
                                               "v5_bucket_mb": 512, "v5_windows_at_25": 2000,
-                                              "pt1_b": 0, "pt1_chunk_kb": 4096},
+                                              "pt1_b": 0, "pt1_chunk_kb": 4096,
+                                              "ram_budget_pct": 50},
                     f"strings, ints and blanks parse ({knobs})")
     for raw, want in (("", 0), ("0", 0), (" 5000 ", 5000)):
         knobs, bad = eo.parse_knobs({"pt1_b": raw})
         passed &= check(bad is None and knobs["pt1_b"] == want, f"pt1 B {raw!r} -> {want}")
+    for raw, want in (("1", 1), (" 80 ", 80), ("100", 100), ("", 50)):
+        knobs, bad = eo.parse_knobs({"ram_budget_pct": raw})
+        passed &= check(bad is None and knobs["ram_budget_pct"] == want,
+                        f"RAM budget {raw!r} -> {want}")
+    for raw in ("0", "101", "-5", "50.5", "half"):
+        knobs, bad = eo.parse_knobs({"ram_budget_pct": raw})
+        passed &= check(knobs is None and bad == "ram_budget_pct", f"RAM budget {raw!r} rejected")
     knobs, bad = eo.parse_knobs({"pt1_b": "-1"})
     passed &= check(bad == "pt1_b", "negative B rejected")
     for raw in ("0", "-5", "abc", "1.5"):
@@ -140,6 +155,22 @@ def check_caps_and_recommend():
                     "pt1 recommendation is not RAM-capped")
     passed &= check(eo.recommend(64 * GB, v5, None, W).windows == run_budget.BASE_WINDOWS,
                     "unknown floor -> base target")
+    for engine, floor in (("v5", 25), ("v5", 27), ("v4.1", 25)):
+        choice = eo.resolve({"engine": engine, "ram_budget_pct": "80"})
+        for ram in (8 * GB, 64 * GB):
+            rec = eo.recommend(ram, choice, floor, W)
+            want = run_budget.recommend_run(
+                ram, engine, floor, W, safety_fraction=0.8,
+                max_windows=eo.max_windows_per_run(engine))
+            passed &= check(rec == want, f"{engine} @{floor}, {ram // GB} GB, 80 %: "
+                                         f"budget follows the knob ({rec} == {want})")
+    small = eo.recommend(8 * GB, eo.resolve({"engine": "v4.1", "ram_budget_pct": "10"}), 25, W)
+    large = eo.recommend(8 * GB, eo.resolve({"engine": "v4.1", "ram_budget_pct": "90"}), 25, W)
+    passed &= check(small.windows < large.windows,
+                    f"v4.1, 8 GB: 10 % fits fewer windows than 90 % ({small.windows} < "
+                    f"{large.windows})")
+    rec = eo.recommend(GB // 2, eo.resolve({"engine": "pt1", "ram_budget_pct": "1"}), 29, W)
+    passed &= check(rec.windows == cap, "pt1 ignores the RAM budget")
     return passed
 
 
@@ -148,7 +179,7 @@ def check_env():
     v41 = eo.launch_env(eo.resolve({"engine": "v4.1", "v5_bucket_mb": "64"}))
     passed &= check(v41 == [("PRIMEATLAS_SCANNER_VERSION", "v4.1")],
                     f"v4.1 env names only the engine ({v41})")
-    v5 = eo.resolve({"engine": "v5", "v5_segment_kb": "256"})
+    v5 = eo.resolve({"engine": "v5", "v5_segment_kb": "256", "ram_budget_pct": "80"})
     env = eo.launch_env(v5)
     passed &= check(env == [("PRIMEATLAS_SCANNER_VERSION", "v5"),
                             ("PRIMEATLAS_V5_SEGMENT_KB", "256"),

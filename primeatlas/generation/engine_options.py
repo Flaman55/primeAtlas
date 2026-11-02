@@ -5,7 +5,9 @@ settings' "loop" section. They reach the WSL side as environment variables in fr
 launched command (see generation.build_wsl_logged_command()): orchestrator_v3.py reads
 PRIMEATLAS_SCANNER_VERSION, prime_sieve_v5.py reads the PRIMEATLAS_V5_* knobs through
 work_plan_v5.py, prime_sieve_pt1.py the PRIMEATLAS_PT1_* knobs through pt1_plan.py. The
-same variables are the command-line interface for runs started by hand.
+same variables are the command-line interface for runs started by hand. The RAM budget
+knob (percent of the RAM free in WSL that a run may use) only sizes the run on this side
+(recommend()); no engine reads it, so it has no environment variable.
 
 Names and defaults mirror orchestrator_v3.py, work_plan_v5.py, pt1_plan.py and run_budget.py instead of
 importing the engine modules: this module runs in the native Windows GUI, which must not
@@ -28,12 +30,16 @@ BUCKET_MB_ENV = "PRIMEATLAS_V5_BUCKET_MB"
 PT1_B_ENV = "PRIMEATLAS_PT1_B"
 PT1_CHUNK_KB_ENV = "PRIMEATLAS_PT1_CHUNK_KB"
 
+RAM_BUDGET_KNOB = "ram_budget_pct"
+_V5_OWN_KNOBS = ("v5_segment_kb", "v5_region_kb", "v5_bucket_mb", "v5_windows_at_25")
+_PT1_KNOBS = ("pt1_b", "pt1_chunk_kb")
+# pt1's footprint does not grow with the window count, so the RAM budget never limits it.
 _ENGINE_KNOBS = {
-    ENGINE_V41: (),
-    ENGINE_V5: ("v5_segment_kb", "v5_region_kb", "v5_bucket_mb", "v5_windows_at_25"),
-    ENGINE_PT1: ("pt1_b", "pt1_chunk_kb"),
+    ENGINE_V41: (RAM_BUDGET_KNOB,),
+    ENGINE_V5: _V5_OWN_KNOBS + (RAM_BUDGET_KNOB,),
+    ENGINE_PT1: _PT1_KNOBS,
 }
-KNOB_KEYS = _ENGINE_KNOBS[ENGINE_V5] + _ENGINE_KNOBS[ENGINE_PT1]
+KNOB_KEYS = _V5_OWN_KNOBS + _PT1_KNOBS + (RAM_BUDGET_KNOB,)
 DEFAULT_KNOBS = {
     "v5_segment_kb": 128,
     "v5_region_kb": 1024,
@@ -41,9 +47,11 @@ DEFAULT_KNOBS = {
     "v5_windows_at_25": run_budget.DEFAULT_TARGET_WINDOWS_AT_25,
     "pt1_b": 0,             # 0 = floor(N^(1/4)) of the run's top
     "pt1_chunk_kb": 4096,
+    RAM_BUDGET_KNOB: round(run_budget.DEFAULT_SAFETY_FRACTION * 100),
 }
 _ZERO_ALLOWED = {"pt1_b"}
 PT1_MAX_B = 2 ** 32 - 1
+_MAX_VALUES = {"pt1_b": PT1_MAX_B, RAM_BUDGET_KNOB: 100}
 
 # Input ceiling of one run's window count. v4.1 gains nothing from longer tapes; v5's cap
 # leaves room above the floor-27 target (about 46,000 windows of 10^7); pt1 has no fixed
@@ -74,8 +82,8 @@ def _parse_positive(raw, zero_allowed=False):
 
 def parse_knobs(raw):
     """(knobs, None) with every KNOB_KEYS value as a positive int (pt1_b: 0 or more, at
-    most PT1_MAX_B; blank or missing -> default), or (None, key) naming the first invalid
-    value."""
+    most PT1_MAX_B; ram_budget_pct: at most 100; blank or missing -> default), or
+    (None, key) naming the first invalid value."""
     knobs = {}
     for key in KNOB_KEYS:
         value = raw.get(key)
@@ -83,7 +91,7 @@ def parse_knobs(raw):
             knobs[key] = DEFAULT_KNOBS[key]
             continue
         parsed = _parse_positive(value, key in _ZERO_ALLOWED)
-        if key == "pt1_b" and parsed is not None and parsed > PT1_MAX_B:
+        if parsed is not None and parsed > _MAX_VALUES.get(key, parsed):
             parsed = None
         if parsed is None:
             return None, key
@@ -106,13 +114,15 @@ def max_windows_per_run(engine):
 
 def recommend(available_ram_bytes, choice, base_exponent, window_m):
     """run_budget.RunBudget for one run with this engine and knobs, capped at
-    max_windows_per_run(); None without a RAM reading. An unknown floor (None) sizes the
-    run like a shallow floor."""
+    max_windows_per_run() and fitted into ram_budget_pct percent of available_ram_bytes;
+    None without a RAM reading. An unknown floor (None) sizes the run like a shallow
+    floor."""
     floor = base_exponent if base_exponent is not None else 0
     return run_budget.recommend_run(
         available_ram_bytes, choice.engine, floor, window_m,
         bucket_mb=choice.knobs["v5_bucket_mb"],
         target_at_25=choice.knobs["v5_windows_at_25"],
+        safety_fraction=choice.knobs[RAM_BUDGET_KNOB] / 100,
         max_windows=max_windows_per_run(choice.engine))
 
 

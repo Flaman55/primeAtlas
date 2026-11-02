@@ -556,8 +556,9 @@ worker its own private buffer, multiplying peak RAM by the worker count), but it
 still the hard ceiling: however much window count helps throughput, the whole combined
 buffer for one run has to fit in RAM at once. The Quick-gen panel's "Auto" button reads
 WSL's currently available memory and suggests a window count against exactly this
-formula (using half the available RAM as a safety margin, since the buffer is not the
-only thing using memory during a run) -- pushing window count past that estimate risks
+formula (using the Generation form's "RAM budget" field, default 50 % of the available
+RAM, an arbitrary safety margin, since the buffer is not the only thing using memory
+during a run) -- pushing window count past that estimate risks
 an out-of-memory failure rather than a graceful slowdown.
 
 In short: within whatever RAM is available, a larger window count is close to strictly
@@ -1447,8 +1448,8 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               (pt1: the per-run cap, no RAM limit):
                               the smaller of a floor-scaled target (v4.1: 1000; v5:
                               grows with the run's fixed cost, knob = windows at floor
-                              25, default 5000) and what fits in half the RAM free in
-                              WSL (v5 footprint = odd-only buffer + buckets + overhead;
+                              25, default 5000) and what fits in the RAM budget
+                              (percent of the RAM free in WSL, default 50) (v5 footprint = odd-only buffer + buckets + overhead;
                               buckets shrink first when RAM is short); used through
                               engine_options.recommend() and by
                               recommended_max_windows (v4.1)
@@ -1456,7 +1457,7 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
   engine_options.py             sieve engine choice (v4.1 / v5 / pt1, default v5) and perf
                               knobs (v5: segment KiB, bucket region KiB, bucket memory
                               MiB, windows per run at floor 25; pt1: sieve limit B,
-                              chunk KiB) as persisted in the
+                              chunk KiB; v4.1 and v5: RAM budget %) as persisted in the
                               Generation settings: parsing, per-run window cap (v4.1
                               1000, v5 and pt1 100,000), run sizing for the Auto button and
                               Restore, and the launch env (PRIMEATLAS_SCANNER_VERSION,

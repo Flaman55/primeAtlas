@@ -81,8 +81,10 @@ def main():
         # The app loads the user's persisted settings, which may already select v5.
         fields.engine_var.set("v4.1")
         app.update()
-        passed &= check(all(str(e.cget("state")) == "disabled" for e in fields.knob_entries.values()),
-                        "every knob field is disabled under v4.1")
+        states = {key: str(e.cget("state")) for key, e in fields.knob_entries.items()}
+        passed &= check(states.pop("ram_budget_pct", None) == "normal"
+                        and all(s == "disabled" for s in states.values()),
+                        f"under v4.1 only the RAM budget field is enabled ({states})")
         passed &= check(gen._quick_width_cap() == 1000
                         and gen._validate_quick_width_spinbox("1000")
                         and not gen._validate_quick_width_spinbox("1001"),
@@ -123,6 +125,16 @@ def main():
         passed &= check(gen.quick_floor_width_var.get() == "1000",
                         f"v4.1 Auto keeps the old recommendation "
                         f"({gen.quick_floor_width_var.get()})")
+        fields.knob_vars["ram_budget_pct"].set("25")
+        shown.clear()
+        gen._on_quick_auto_width_clicked(gen.quick_floor_width_var, 25)
+        quarter = run_budget.recommend_run(RAM, "v4.1", 25, 10_000_000, safety_fraction=0.25)
+        passed &= check(gen.quick_floor_width_var.get() == str(quarter.windows),
+                        f"v4.1 Auto follows a 25 % RAM budget "
+                        f"({gen.quick_floor_width_var.get()}, expected {quarter.windows})")
+        passed &= check(shown and "25 %" in str(shown[-1][1]),
+                        "the Auto dialog names the RAM budget used")
+        fields.knob_vars["ram_budget_pct"].set("50")
 
         fields.engine_var.set("pt1")
         app.update()

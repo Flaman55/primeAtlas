@@ -348,7 +348,7 @@ class GenerationTab(HybridControls, RunGuardControls, BaseTab):
         self._loop_count_sieving_var.trace_add("write", _on_count_sieving_toggle)
         self._loop_use_pi_seed_var.trace_add("write", _on_use_pi_seed_toggle)
 
-        # Sieve engine and its knobs (rows 6-9); the Quick-gen Width cap follows the engine.
+        # Sieve engine and its knobs (rows 6-10); the Quick-gen Width cap follows the engine.
         self._engine_fields = EngineFields(loop_form, self.T, loop_settings, row=6)
         self._engine_fields.on_engine_change(self._sync_quick_width_caps)
         self._sync_quick_width_caps()
@@ -1409,12 +1409,14 @@ class GenerationTab(HybridControls, RunGuardControls, BaseTab):
         if choice.engine != engine_options.ENGINE_V5:
             messagebox.showinfo(self.T("quick.dialog_title"), self.T(
                 "quick.auto_ram_result", available_gb=f"{available / 1e9:.1f}",
+                budget_pct=choice.knobs[engine_options.RAM_BUDGET_KNOB],
                 recommended=f"{recommended:,}", numbers_total=f"{numbers_total:,}"))
             return
         if budget.bucket_mb != choice.knobs["v5_bucket_mb"]:
             self._engine_fields.set_bucket_mb(budget.bucket_mb)
         messagebox.showinfo(self.T("quick.dialog_title"), self.T(
             "quick.auto_ram_result_v5", available_gb=f"{available / 1e9:.1f}",
+            budget_pct=choice.knobs[engine_options.RAM_BUDGET_KNOB],
             floor="?" if base_exponent is None else base_exponent,
             recommended=f"{recommended:,}", numbers_total=f"{numbers_total:,}",
             bucket_mb=f"{budget.bucket_mb:,}"))
