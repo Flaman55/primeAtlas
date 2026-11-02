@@ -64,9 +64,8 @@ def main():
         paths = _seed(portal)
         sys.argv = ["prime_atlas_v2.py"]
         import prime_atlas_v2
-        prime_atlas_v2.APP_SETTINGS.save = lambda: None
-        prime_atlas_v2.APP_SETTINGS.set_storage_path(portal)
-        prime_atlas_v2.PORTAL_FOLDER = portal
+        from app_sandbox import isolate_app
+        isolate_app(portal)
         app = prime_atlas_v2._build_gui()()
         _pump(app, 3.0)
         widget = app.primes_tab_widget

@@ -66,8 +66,8 @@ def _pump(app, seconds):
 def main():
     shown = _patch_messageboxes()
 
-    sys.argv = ["prime_atlas_v2.py"]
-    import prime_atlas_v2
+    from app_sandbox import isolate_app
+    prime_atlas_v2, _portal = isolate_app()
     import primeatlas.primality.primality_tab as pt
     app_cls = prime_atlas_v2._build_gui()
     app = app_cls()

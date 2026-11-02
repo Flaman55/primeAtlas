@@ -201,8 +201,8 @@ def _test_app():
     import tkinter.messagebox as messagebox
     messagebox.showinfo = lambda *a, **k: None
     messagebox.showerror = lambda *a, **k: None
-    import prime_atlas_v2
-    sys.argv = ["prime_atlas_v2.py"]
+    from app_sandbox import isolate_app
+    prime_atlas_v2, _portal = isolate_app()
     app = prime_atlas_v2._build_gui()()
     try:
         deadline = time.time() + 8

@@ -100,13 +100,12 @@ def _test_settings_tab_primecount_status_and_install():
     portal = tempfile.mkdtemp(prefix="primecount_settingstab_test_")
     try:
         sys.argv = ["prime_atlas_v2.py"]
+        from app_sandbox import isolate_app
+        isolate_app(portal)
         app_cls = prime_atlas_v2._build_gui()
         app = app_cls()
         app.update()
         settings_tab = app.settings_tab
-        settings_tab.app_settings.save = lambda: None
-        settings_tab.app_settings.set_storage_path(portal)
-        settings_tab.wsl["set_portal_folder"](portal)
         app.update()
 
         # --- wsl_helpers wiring: the three primecount entries must actually be there --
