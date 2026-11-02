@@ -14,8 +14,8 @@ applied to worker-thread plumbing).
 
 Written by hand instead of pulling in reportlab/matplotlib, to keep this app's documented
 zero-extra-installs promise (see prime_atlas_v2.py's module header: "no pip packages
-required"). Only the three standard core-14 PDF fonts are used (Helvetica, Helvetica-Bold,
-Courier), so no font embedding is needed. WinAnsiEncoding (the default PDF text encoding
+required"). Only four standard core-14 PDF fonts are used (Helvetica, Helvetica-Bold,
+Courier, Courier-Bold), so no font embedding is needed. WinAnsiEncoding (the default PDF text encoding
 for these fonts) doesn't cover Polish diacritics -- static labels drawn via these helpers
 stick to plain ASCII; see _pdf_ascii_fold()'s own docstring for how callers handle that.
 
@@ -111,7 +111,7 @@ def _write_pdf(path, pages, page_size=(841.89, 595.28)):
         return oid
 
     font_ids = {}
-    for name in ("Helvetica", "Helvetica-Bold", "Courier"):
+    for name in ("Helvetica", "Helvetica-Bold", "Courier", "Courier-Bold"):
         font_ids[name] = alloc(
             f"<< /Type /Font /Subtype /Type1 /BaseFont /{name} >>".encode("ascii"))
 

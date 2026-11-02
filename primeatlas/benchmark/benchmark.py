@@ -33,7 +33,8 @@ import re
 import storage_kinds
 
 from ..core.i18n import Translator, DEFAULT_LANGUAGE
-from ..core.pdf_writer import _pdf_ascii_fold, _pdf_rect_op, _pdf_text_op, _write_pdf
+from ..core.pdf_table import TableLayout, table_pages
+from ..core.pdf_writer import _pdf_ascii_fold, _pdf_text_op, _write_pdf
 from .chart_pdf import chart_ops
 from .chart_series import axis_pins, engine_lines, engine_series, visible_series
 from .reference_points import REFERENCES, reference_series
@@ -43,6 +44,23 @@ QUICK_GEN_MAX_WINDOW_WIDTH = 10_000_000  # see this module's own docstring for w
                                           # prime_atlas_v2.py's own constant of the
                                           # same name.
 
+BENCHMARK_PDF_KEY_COLUMNS = ("run_timestamp_utc", "base_exponent", "engine")  # first in
+                                # every PDF table, to match a run's rows across tables
+# The PDF report's logical tables: (i18n title key, columns), one question each -- what
+# was run, how fast, where the time and memory went, what the sieve found. A log column
+# in none of them goes to a final "other" table (benchmark_pdf_tables()).
+BENCHMARK_PDF_TABLES = (
+    ("bench.pdf_table_run", ("kind", "run_status", "instance_of_n", "target_idx_start",
+                             "target_idx_end", "windows_written", "numbers_processed",
+                             "write_files")),
+    ("bench.pdf_table_speed", ("total_seconds", "seconds_per_window", "loop_session_seconds",
+                               "loop_seconds_per_window", "loop_numbers_per_second",
+                               "primes_per_second")),
+    ("bench.pdf_table_phases", ("base_gen_seconds", "sieve_seconds", "write_seconds",
+                                "bytes_written", "max_child_rss_mb")),
+    ("bench.pdf_table_results", ("total_primes", "avg_primes_per_window", "l_final",
+                                 "sieving_primes_count", "sieve_count_basis")),
+)
 BENCHMARK_TREE_HIDDEN_COLUMNS = {"base_exponent", "run_timestamp_utc"}  # columns dropped
                                 # from the Benchmark tab's tree (not from the CSV, PDF
                                 # export, or growth chart -- those still use every column).
@@ -400,45 +418,36 @@ def benchmark_row_stats(rows):
 def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translator=None,
                           sieve_points=None, write_points=None, references=False,
                           log_y=False, hidden_lines=None, y_pins=None):
-    """Writes a standalone PDF report -- the same growth chart(s) shown in the Benchmark tab
-    plus the FULL benchmark_log.csv table (every row, every column) -- to `path`. The table
-    continues onto as many additional (landscape A4) pages as needed, repeating the column
-    header row on each one, since a project running for months can accumulate far more rows
-    than fit on one page. Pure function (no tkinter) so it can be exercised/tested without a
-    display -- the GUI layer (BenchmarkTab._export_benchmark_pdf) just gathers the same
-    points/fieldnames/rows this module already computed for the on-screen chart/table and
-    hands them here unchanged.
+    """Writes a standalone PDF report -- the Benchmark tab's charts plus the FULL
+    benchmark_log.csv (every row, every column, every cell in full) -- to `path`, A4
+    landscape. Pure function (no tkinter): the GUI layer (BenchmarkTab._export_benchmark_pdf)
+    hands over the points/fieldnames/rows it already computed for the tab.
 
-    The charts draw one line per engine from `rows` (benchmark_engine_lines()): the first
-    one the whole run (sieve + write: loop n/s, with write MB/s on the right axis), the
-    second one the sieve phase alone (sieve n/s, with sieve seconds per window on the right
-    axis). points/points2/sieve_points/write_points are the per-floor reductions, used for
-    the subtitle's floor count and to decide whether the second chart is drawn.
+    Charts: one metric per chart, two charts per page, one line per engine from `rows`
+    (benchmark_engine_lines()): the whole run (loop n/s), its write speed (MB/s), and --
+    when sieve_points is non-empty or references is on -- the sieve phase alone (sieve n/s)
+    and its seconds per window. The tab's two-axis charts are split in two here so that
+    each chart has room for its value labels (chart_pdf.place_labels()).
 
-    references: also draw reference_points.py's series on the sieve chart -- PARI/GP and
-    primesieve sieve or iterate in memory and write nothing, so they compare with the sieve
-    phase -- with a footnote line per reference (full name and source) above the table.
-    log_y: log10 y-axes on both charts -- the Benchmark tab's two toggles.
+    Tables: BENCHMARK_PDF_TABLES, one logical table per question, each starting on its own
+    page with BENCHMARK_PDF_KEY_COLUMNS first, continuing over as many pages as the rows
+    need (core/pdf_table.py). Column headers are the raw benchmark_log.csv names, as in the
+    tab's tree.
+
+    references: also draw reference_points.py's series on the sieve n/s chart -- PARI/GP
+    and primesieve sieve or iterate in memory and write nothing, so they compare with the
+    sieve phase -- with a footnote line per reference (full name and source).
+    log_y: log10 y-axes on every chart -- the Benchmark tab's two toggles.
     hidden_lines: {"run" | "sieve": set of chart_series.line_key()} -- the lines switched
     off in the tab's legends, left out of the charts and their scales.
     y_pins: {"run" | "sieve": {axis: (min, max)}} -- the tab's pinned y-axis bounds
-    (chart_series.pin_bound()).
+    (chart_series.pin_bound()); each axis' pins apply to the chart of that metric.
 
-    sieve_points (optional): aggregate_benchmark_sieve_nps(), only populated for floors
-    benchmarked with the v4.1 or v5 engine. The sieve chart takes space away from the
-    table, so it is drawn only when sieve_points is non-empty or references is on.
-    write_points: aggregate_benchmark_write_mbps(), kept for the callers' symmetry.
+    points: aggregate_benchmark_growth(), for the subtitle's floor count. points2 and
+    write_points are kept for the callers' symmetry.
 
-    translator (optional): a primeatlas.core.i18n.Translator instance, threaded into
-    chart_ops() and used for the title/subtitle/continuation-page header below --
-    defaults to DEFAULT_LANGUAGE if not given. The title/subtitle/continuation text and
-    axis labels are all translator-driven so the report is consistently in one language,
-    matching whatever the app's language setting actually is, rather than mixing
-    languages across different pieces of chrome. Table column headers (`fieldnames`) are
-    deliberately left alone -- they're the raw benchmark_log.csv
-    column names, same untranslated technical identifiers already shown as-is in the
-    on-screen Benchmark tab's own Treeview (see BenchmarkTab.benchmark_tree.heading(col,
-    text=col)), not app-owned UI vocabulary."""
+    translator (optional): a primeatlas.core.i18n.Translator instance for every title,
+    axis label and continuation header -- DEFAULT_LANGUAGE if not given."""
     t = (translator or Translator(DEFAULT_LANGUAGE)).t
     page_w, page_h = 841.89, 595.28  # A4 landscape, points
     margin = 30
@@ -446,41 +455,23 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
     content_width = page_w - 2 * margin
     content_top = page_h - margin
     content_bottom = margin
+    chart_gap = 15
+    hidden_lines = hidden_lines or {}
+    y_pins = y_pins or {}
 
-    font_size = 6.5
-    row_h = 12
-    header_h = 14
-    n_cols = max(1, len(fieldnames))
-    col_w = content_width / n_cols
-    max_chars = max(3, int(col_w / (0.6 * font_size)))  # ~0.6*size = Courier's fixed
-                                                          # advance width per character
+    def chart(chart_key, axis, metric, label_key, fmt, y0, h, extra=()):
+        series = engine_series(benchmark_engine_lines(rows, metric)) + list(extra)
+        return chart_ops(content_left, y0, content_width, h,
+                         visible_series(series, hidden_lines.get(chart_key), axis),
+                         translator=translator, label_key1=label_key, fmt1=fmt,
+                         log_y=log_y, pins1=axis_pins(y_pins.get(chart_key), axis))
 
-    def cell_text(value):
-        s = "" if value is None else str(value)
-        if len(s) > max_chars:
-            s = s[:max(0, max_chars - 3)] + "..."
-        return s
+    def chart_pair(ops, top, bottom, first, second, extra=()):
+        h = (top - bottom - chart_gap) / 2
+        ops.extend(chart(*first, y0=top - h, h=h, extra=extra))
+        ops.extend(chart(*second, y0=bottom, h=h))
 
-    def draw_table_header(ops, y_top):
-        ops.append(_pdf_rect_op(content_left, y_top - header_h, content_width, header_h,
-                                 fill_rgb=(0.90, 0.90, 0.90)))
-        for i, name in enumerate(fieldnames):
-            ops.append(_pdf_text_op(content_left + i * col_w + 2, y_top - header_h + 3,
-                                     font_size, "Helvetica-Bold", cell_text(name)))
-        return y_top - header_h
-
-    def draw_table_rows(ops, y_top, row_slice):
-        y = y_top
-        for row in row_slice:
-            for i, name in enumerate(fieldnames):
-                ops.append(_pdf_text_op(content_left + i * col_w + 2, y - row_h + 3,
-                                         min(font_size, (col_w - 4) / (0.6 * max(1, len(str(row.get(name, "")))))) if name == "engine" else font_size, "Courier", str(row.get(name, "")) if name == "engine" else cell_text(row.get(name, ""))))
-            y -= row_h
-        return y
-
-    pages = []
-
-    # --- page 1: title + chart + as many table rows as fit below it ---
+    # --- page 1: title, the whole run's two charts ---
     ops = []
     now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     ops.append(_pdf_text_op(content_left, content_top - 14, 14, "Helvetica-Bold",
@@ -488,76 +479,56 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
     ops.append(_pdf_text_op(content_left, content_top - 30, 9, "Helvetica",
                              _pdf_ascii_fold(t("bench.pdf_subtitle", now=now_str,
                                                runs=len(rows), depths=len(points)))))
-    has_speed_chart = bool(sieve_points) or references
-    chart_h = 140 if has_speed_chart else 180
-    chart_top = content_top - 40
-    chart_y0 = chart_top - chart_h
-    hidden_lines = hidden_lines or {}
-    y_pins = y_pins or {}
+    chart_pair(ops, content_top - 40, content_bottom,
+               ("run", "primary", "growth", "bench.axis_total_nps", "{:,.0f}"),
+               ("run", "secondary", "write", "bench.axis_write_mbps", "{:,.1f}"))
+    pages = [ops]
 
-    def pins(chart, axis):
-        return axis_pins(y_pins.get(chart), axis)
-
-    def shown(series, chart, axis):
-        return visible_series(series, hidden_lines.get(chart), axis)
-
-    ops.extend(chart_ops(content_left, chart_y0, content_width, chart_h,
-                         shown(engine_series(benchmark_engine_lines(rows, "growth")),
-                               "run", "primary"),
-                         shown(engine_series(benchmark_engine_lines(rows, "write")),
-                               "run", "secondary"),
-                         translator=translator,
-                         label_key1="bench.axis_total_nps", label_key2="bench.axis_write_mbps",
-                         fmt1="{:,.0f}", fmt2="{:,.1f}", log_y=log_y,
-                         pins1=pins("run", "primary"), pins2=pins("run", "secondary")))
-
-    if has_speed_chart:
-        chart2_h = 140
-        chart2_top = chart_y0 - 16
-        chart2_y0 = chart2_top - chart2_h
-        sieve_series = engine_series(benchmark_engine_lines(rows, "sieve"))
+    # --- page 2: the sieve phase's two charts, reference footnotes below them ---
+    if sieve_points or references:
+        ops = [_pdf_text_op(content_left, content_top - 12, 10, "Helvetica-Bold",
+                            _pdf_ascii_fold(t("bench.pdf_continued", page=2)))]
+        bottom = content_bottom
         if references:
-            sieve_series += reference_series(t)
-        ops.extend(chart_ops(
-            content_left, chart2_y0, content_width, chart2_h,
-            shown(sieve_series, "sieve", "primary"),
-            shown(engine_series(benchmark_engine_lines(rows, "sieve_spw")), "sieve", "secondary"),
-            translator=translator,
-            label_key1="bench.axis_sieve_nps", label_key2="bench.axis_sieve_spw",
-            fmt1="{:,.0f}", fmt2="{:,.4f}", log_y=log_y,
-            pins1=pins("sieve", "primary"), pins2=pins("sieve", "secondary")))
-        table_top = chart2_y0 - 12
-    else:
-        table_top = chart_y0 - 12
-    if references:
-        for ref in REFERENCES:
-            table_top -= 8
-            ops.append(_pdf_text_op(content_left, table_top, 6, "Helvetica", _pdf_ascii_fold(
-                f"{ref.tag}: {ref.name} -- {ref.source}")))
-        table_top -= 6
-    y_after_header = draw_table_header(ops, table_top)
-    available = y_after_header - content_bottom
-    rows_fit = max(0, int(available // row_h))
-    draw_table_rows(ops, y_after_header, rows[:rows_fit])
-    pages.append(ops)
-
-    # --- continuation pages: just the table, repeating the header row ---
-    remaining = rows[rows_fit:]
-    page_num = 2
-    while remaining:
-        ops = []
-        ops.append(_pdf_text_op(content_left, content_top - 12, 10, "Helvetica-Bold",
-                                 _pdf_ascii_fold(t("bench.pdf_continued", page=page_num))))
-        table_top = content_top - 22
-        y_after_header = draw_table_header(ops, table_top)
-        available = y_after_header - content_bottom
-        rows_fit = max(1, int(available // row_h))  # at least 1, so a single
-                                                       # oversized/edge-case row can't loop
-                                                       # forever without making progress
-        chunk = remaining[:rows_fit]
-        draw_table_rows(ops, y_after_header, chunk)
+            for i, ref in enumerate(reversed(REFERENCES)):
+                ops.append(_pdf_text_op(content_left, content_bottom + 8 * i, 6, "Helvetica",
+                                        _pdf_ascii_fold(f"{ref.tag}: {ref.name} -- {ref.source}")))
+            bottom = content_bottom + 8 * len(REFERENCES) + 4
+        chart_pair(ops, content_top - 22, bottom,
+                   ("sieve", "primary", "sieve", "bench.axis_sieve_nps", "{:,.0f}"),
+                   ("sieve", "secondary", "sieve_spw", "bench.axis_sieve_spw", "{:,.4f}"),
+                   extra=reference_series(t) if references else ())
         pages.append(ops)
-        remaining = remaining[len(chunk):]
-        page_num += 1
 
+    # --- the logical tables, each from a new page ---
+    for title_key, columns in benchmark_pdf_tables(fieldnames):
+        title = t(title_key)
+        layout = TableLayout(columns, rows, content_width, 6.5, BENCHMARK_PDF_KEY_COLUMNS)
+        first = [_pdf_text_op(content_left, content_top - 12, 12, "Helvetica-Bold",
+                              _pdf_ascii_fold(title))]
+        offset = len(pages)
+        pages += table_pages(
+            layout, rows, first, content_top - 22, content_top, content_bottom, content_left,
+            lambda page, part, parts, title=title, offset=offset:
+            t("bench.pdf_table_continued", title=title, page=offset + page)
+            + (t("pdf.columns_part", part=part, parts=parts) if parts > 1 else ""))
     _write_pdf(path, pages, page_size=(page_w, page_h))
+
+
+def benchmark_pdf_tables(fieldnames):
+    """[(i18n title key, columns)] of the PDF report's tables for this log's fieldnames:
+    each BENCHMARK_PDF_TABLES entry with at least one of its columns present, the key
+    columns first, then a "bench.pdf_table_other" table of every remaining column (also
+    when no logical table applies, so a log of only key columns still gets a table)."""
+    keys = [k for k in BENCHMARK_PDF_KEY_COLUMNS if k in fieldnames]
+    grouped = set(keys)
+    tables = []
+    for title_key, columns in BENCHMARK_PDF_TABLES:
+        own = [c for c in columns if c in fieldnames]
+        grouped.update(own)
+        if own:
+            tables.append((title_key, keys + own))
+    rest = [c for c in fieldnames if c not in grouped]
+    if rest or not tables:
+        tables.append(("bench.pdf_table_other", keys + rest))
+    return tables
