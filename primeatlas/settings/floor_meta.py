@@ -25,25 +25,9 @@ import os
 import csv
 import json
 
-FLOOR_META_FILENAME = "floor_meta.json"
+from benchmark_log_schema import BENCHMARK_FIELDNAMES
 
-# Canonical column order used only when this module has to grow a benchmark_log.csv from
-# scratch (e.g. importing a moved floor into an otherwise-empty destination storage) -- a
-# superset across every generator engine this project has had (see
-# prime_sieve_primesieve.py's own BENCHMARK_FIELDNAMES and orchestrator_v3.py's, which
-# differ from each other). Deliberately NOT imported from either of those -- this module
-# has no dependency on the versioned generator scripts (see this file's own docstring).
-# Any row key not in this list still gets written; it's appended to the header, sorted,
-# the first time it's seen.
-CANONICAL_BENCHMARK_FIELDNAMES = [
-    "run_timestamp_utc", "base_exponent", "target_idx_start", "target_idx_end",
-    "windows_written", "total_seconds", "seconds_per_window", "total_primes",
-    "avg_primes_per_window", "primes_per_second",
-    "l_final", "sieving_primes_count", "max_child_rss_mb",
-    "base_gen_seconds", "sieve_seconds", "write_seconds", "bytes_written",
-    "instance_of_n", "loop_session_seconds", "loop_numbers_per_second",
-    "loop_seconds_per_window", "write_files",
-]
+FLOOR_META_FILENAME = "floor_meta.json"
 
 # What makes one benchmark row unique -- a floor+timerange+run combination should never
 # repeat at second resolution, so this is enough to dedup without needing a stronger hash.
@@ -184,10 +168,12 @@ def merge_floor_meta_into_benchmark_log(storage_path, base_exponent):
     if not to_import:
         return 0
     if not fieldnames:
-        fieldnames = list(CANONICAL_BENCHMARK_FIELDNAMES)
+        # A log grown from scratch (e.g. a moved floor imported into an empty storage) gets
+        # the engines' own header, so a later engine run appends without a migration.
+        fieldnames = list(BENCHMARK_FIELDNAMES)
     # Grow the header (never shrink/reorder existing columns) if an imported row has a key
-    # this log hasn't seen before -- additive, unlike _ensure_benchmark_log_schema()
-    # elsewhere in this project (which migrates to one fixed target schema); this module
+    # this log hasn't seen before -- additive, unlike ensure_benchmark_log_schema()
+    # in benchmark_log_schema.py (which migrates to one fixed target schema); this module
     # doesn't own a fixed schema, so it only ever adds columns, never rewrites their
     # meaning.
     extra_fields = []

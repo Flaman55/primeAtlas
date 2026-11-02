@@ -10,6 +10,7 @@ import sys
 import time
 
 import window_sharding
+from benchmark_log_schema import BENCHMARK_FIELDNAMES, ensure_benchmark_log_schema
 
 VERSION = "v0.1"
 
@@ -189,41 +190,9 @@ def _low_floor_segments(base_power, combined_lo, combined_hi):
 
 
 # ------------------------------------------------------------------------------------------
-# benchmark_log.csv logging -- schema/writer duplicated from orchestrator_v3.py /
-# prime_sieve_primesieve.py's own copy. See that file's header comment for the full
-# rationale (every engine writes to the SAME log so the Benchmark tab sees one unified
-# history regardless of which engine produced which floor).
+# benchmark_log.csv logging -- header and migration from benchmark_log_schema.py, the row
+# writer mirrors prime_sieve_primesieve.py's write_benchmark_row().
 # ------------------------------------------------------------------------------------------
-
-BENCHMARK_FIELDNAMES = [
-    "run_timestamp_utc", "base_exponent", "target_idx_start", "target_idx_end",
-    "windows_written", "total_seconds", "seconds_per_window", "total_primes",
-    "avg_primes_per_window", "primes_per_second", "l_final", "sieving_primes_count",
-    "max_child_rss_mb", "instance_of_n", "loop_session_seconds", "loop_numbers_per_second",
-    "loop_seconds_per_window", "write_files", "base_gen_seconds", "sieve_seconds",
-    "write_seconds", "bytes_written", "engine", "numbers_processed", "run_status",
-]
-
-
-def _ensure_benchmark_log_schema(log_path):
-    """Duplicated verbatim from orchestrator_v3.py / prime_sieve_primesieve.py."""
-    if not os.path.exists(log_path):
-        return
-    with open(log_path, newline="") as f:
-        reader = csv.DictReader(f)
-        existing_fields = reader.fieldnames or []
-        rows = list(reader)
-    if existing_fields == BENCHMARK_FIELDNAMES:
-        return
-    if not all(field in BENCHMARK_FIELDNAMES for field in existing_fields):
-        return
-    tmp_path = f"{log_path}.tmp{os.getpid()}"
-    with open(tmp_path, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=BENCHMARK_FIELDNAMES)
-        writer.writeheader()
-        for row in rows:
-            writer.writerow({field: row.get(field, "") for field in BENCHMARK_FIELDNAMES})
-    os.replace(tmp_path, log_path)
 
 
 def _append_floor_meta_row(portal_folder, base_exponent, row):
@@ -271,7 +240,7 @@ def write_benchmark_row(base_exponent, target_idx_start, target_idx_count, total
     log_path = os.path.join(portal_folder, "benchmark_log.csv")
     try:
         os.makedirs(portal_folder, exist_ok=True)
-        _ensure_benchmark_log_schema(log_path)
+        ensure_benchmark_log_schema(log_path)
         is_new = not os.path.exists(log_path)
         with open(log_path, "a", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=BENCHMARK_FIELDNAMES)

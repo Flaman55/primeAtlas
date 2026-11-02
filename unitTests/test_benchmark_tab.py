@@ -60,6 +60,7 @@ from tkinter import filedialog
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(_SCRIPT_DIR)
 sys.path.insert(0, _REPO_ROOT)
+sys.path.insert(0, os.path.join(_REPO_ROOT, "prime_sieve"))
 
 failures = []
 
@@ -86,19 +87,10 @@ def _pump(app, seconds):
         time.sleep(0.02)
 
 
-# Same canonical column set as primeatlas/settings/floor_meta.py's CANONICAL_BENCHMARK_FIELDNAMES
-# -- a realistic superset across every generator engine this project has had, so the
-# seeded CSV exercises every aggregate_benchmark_*()/benchmark_row_stats() column at
-# once instead of a stripped-down fixture that would miss a column-name typo.
-_FIELDNAMES = [
-    "run_timestamp_utc", "base_exponent", "target_idx_start", "target_idx_end",
-    "windows_written", "total_seconds", "seconds_per_window", "total_primes",
-    "avg_primes_per_window", "primes_per_second",
-    "l_final", "sieving_primes_count", "max_child_rss_mb",
-    "base_gen_seconds", "sieve_seconds", "write_seconds", "bytes_written", "numbers_processed",
-    "instance_of_n", "loop_session_seconds", "loop_numbers_per_second",
-    "loop_seconds_per_window", "write_files",
-]
+# The engines' own header (prime_sieve/benchmark_log_schema.py), so the seeded CSV exercises
+# every aggregate_benchmark_*()/benchmark_row_stats() column at once instead of a
+# stripped-down fixture that would miss a column-name typo.
+from benchmark_log_schema import BENCHMARK_FIELDNAMES as _FIELDNAMES  # noqa: E402
 
 
 def _row(base_exponent, idx, **overrides):

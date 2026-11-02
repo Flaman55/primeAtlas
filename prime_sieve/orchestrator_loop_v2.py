@@ -8,7 +8,7 @@ from datetime import datetime
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _SCRIPT_DIR)
 # This app copy imports the small, dependency-free orchestrator_loop_helpers.py extraction
-# (find_auto_start()/WINDOW_M/_parse_bool_arg()/_ensure_benchmark_log_schema()) rather than a
+# (find_auto_start()/WINDOW_M/_parse_bool_arg()/ensure_benchmark_log_schema()) rather than a
 # full orchestrator module, so this self-contained copy doesn't need to carry unused scanning/
 # CLI logic or its ctypes sieve-engine dependency just to reach four small helper functions.
 import orchestrator_loop_helpers as orch  # noqa: E402  -- doesn't run anything on import.
@@ -446,9 +446,9 @@ def main():
     # One-time schema migration up front (not per-instance): with n_instances>1, several
     # orchestrator subprocesses could otherwise migrate benchmark_log.csv's header to the
     # instance_of_n/loop_session_seconds schema concurrently. After this call every
-    # instance's own _ensure_benchmark_log_schema() check is a no-op (header already
+    # instance's own ensure_benchmark_log_schema() check is a no-op (header already
     # current).
-    orch._ensure_benchmark_log_schema(os.path.join(PORTAL_FOLDER, BENCHMARK_LOG_FILENAME))
+    orch.ensure_benchmark_log_schema(os.path.join(PORTAL_FOLDER, BENCHMARK_LOG_FILENAME))
 
     print("=" * 70)
     print(f"[LOOP] orchestrator_loop_v2 {VERSION} (parallel instances): {run_count} "

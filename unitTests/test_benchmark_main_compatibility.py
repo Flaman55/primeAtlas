@@ -63,7 +63,7 @@ class CompatibilityTests(unittest.TestCase):
                 numbers_processed=10_000_000)
             for module in (prime_sieve_primesieve, prime_sieve_cudasieve):
                 module.write_benchmark_row(8, 3, 1, 1, 1, 1, False, folder)
-            orchestrator_loop_helpers._ensure_benchmark_log_schema(str(path))
+            orchestrator_loop_helpers.ensure_benchmark_log_schema(str(path))
             with path.open() as stream:
                 reader = csv.DictReader(stream)
                 rows = list(reader)

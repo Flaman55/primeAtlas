@@ -173,8 +173,8 @@ def load_totals_cache(portal_folder):
 
 
 def save_totals_cache(portal_folder, cache):
-    """Atomic write (temp file + os.replace()), same pattern as orchestrator_v3.py's
-    _ensure_benchmark_log_schema() -- this file can get large (one entry per source window,
+    """Atomic write (temp file + os.replace()), same pattern as benchmark_log_schema.py's
+    ensure_benchmark_log_schema() -- this file can get large (one entry per source window,
     e.g. 15000+ for a heavily-populated floor), so a half-written file from an interrupted
     save must never be what a later load sees."""
     path = _totals_cache_path(portal_folder)
