@@ -2,7 +2,8 @@
 
 Checks encode_varints() against encode_varint() on varint byte-length boundaries and random
 values, and write_prime_window_offsets() against write_prime_window() on an empty window, a
-single prime, small primes, and windows whose base is above 2**64. Pure Python + NumPy, runs
+single prime, small primes, and windows whose base is above 2**64; read_window_count()
+against the header count of the same windows (and a refusal of a non-PGS2 file). Pure Python + NumPy, runs
 on Windows and WSL:
     python unitTests/test_pgs2_vector.py
 """
@@ -77,6 +78,18 @@ def check_windows(tmp):
             got = f.read()
         passed &= check(got == expected, f"write_prime_window_offsets {label} "
                                          f"({len(primes)} primes, {len(expected)} bytes)")
+        count = pgs2_vector.read_window_count(new_path)
+        passed &= check(count == len(primes), f"read_window_count {label} "
+                                              f"(got {count}, expected {len(primes)})")
+    bad_path = os.path.join(tmp, "bad.bin")
+    with open(bad_path, "wb") as f:
+        f.write(b"NOPE" + bytes(20))
+    try:
+        pgs2_vector.read_window_count(bad_path)
+        refused = False
+    except ValueError:
+        refused = True
+    passed &= check(refused, "read_window_count refuses a file without the PGS2 magic")
     return passed
 
 

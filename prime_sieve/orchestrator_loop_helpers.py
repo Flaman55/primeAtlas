@@ -11,10 +11,9 @@ If a bug is ever found in one of these four functions, the equivalent logic in t
 orchestrator module(s) elsewhere in the project likely needs the same fix.
 """
 import os
-import re
 import csv
 
-import window_sharding
+import storage_kinds
 
 
 def _parse_bool_arg(value):
@@ -30,35 +29,15 @@ def _parse_bool_arg(value):
     raise ValueError(f"expected 0/1 (or true/false, yes/no, on/off) for auto mode, got: {value!r}")
 
 
-def find_auto_start(base_exponent, portal_folder, window_m):
-    """Looks for already-written PRIME_WINDOW_*.bin files for this base_exponent under
-    portal_folder/10p{N}/source_primes/. Returns the target_idx right AFTER the highest
-    window already done -- a safe continuation point with no manual offset arithmetic.
-    Returns None if nothing was found (caller should then use the fallback).
-
-    source_primes/ is sharded into shard_NNNNN subfolders (see window_sharding.py, task
-    #405) -- a bare os.listdir(source_dir) would only ever see those subfolder names,
-    never match this function's own filename pattern, silently breaking auto-continue
-    (every run would look like "nothing written yet" and restart from the fallback
-    instead of actually resuming). window_sharding.list_sharded_files() walks each
-    shard subfolder instead."""
-    pattern = re.compile(rf"^PRIME_WINDOW_10p{base_exponent}_off_(\d+)(M)?\.bin$")
-    highest_target_idx = None
-
-    source_dir = os.path.join(portal_folder, f"10p{base_exponent}", "source_primes")
-    for name, _path in window_sharding.list_sharded_files(source_dir):
-        m = pattern.match(name)
-        if not m:
-            continue
-        number = int(m.group(1))
-        offset = number * 1_000_000 if m.group(2) else number
-        target_idx = offset // window_m
-        if highest_target_idx is None or target_idx > highest_target_idx:
-            highest_target_idx = target_idx
-
-    if highest_target_idx is None:
-        return None
-    return highest_target_idx + 1
+def find_auto_start(base_exponent, portal_folder, window_m, engine=None):
+    """The target_idx right AFTER the highest window `engine` already counts as done on
+    this floor (storage_kinds.engine_target_idxs(): the store that engine writes into), or
+    None if there is none (caller should then use the fallback). engine defaults to
+    PRIMEATLAS_SCANNER_VERSION, as orchestrator_v3.py's SCANNER_VERSION does."""
+    if engine is None:
+        engine = os.environ.get("PRIMEATLAS_SCANNER_VERSION") or "v5"
+    idxs = storage_kinds.engine_target_idxs(portal_folder, base_exponent, window_m, engine)
+    return max(idxs) + 1 if idxs else None
 
 
 WINDOW_M = 10 ** 7

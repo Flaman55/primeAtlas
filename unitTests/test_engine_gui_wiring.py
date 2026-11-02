@@ -3,11 +3,11 @@ and Restore.
 
 Drives the real app (tkinter, temp portal folder) with the WSL side stubbed: the RAM probe
 returns a fixed reading, WslLoggedRunner and the restore launch record the command instead
-of starting it. Checks: v4.1 is selected by default with the v5 knob fields disabled and a
-Width cap of 1000; picking v5 enables the knobs and raises every Quick-gen Width spinbox's
+of starting it. Checks: under v4.1 every knob field is disabled and the Width cap is 1000; picking v5 enables the knobs and raises every Quick-gen Width spinbox's
 cap; Auto under v5 fills the floor-scaled window count and lowers the bucket field when RAM
 is short, under v4.1 it gives the old recommendation; a bad v5 knob blocks a v5 run but not
-a v4.1 run; the pipeline launch carries the engine env and persists the choice; Restore
+a v4.1 run; pt1 enables only its B and chunk fields, its Auto fills the per-run cap
+whatever the RAM, and its launch carries the pt1 env and no v5 knobs; the pipeline launch carries the engine env and persists the choice; Restore
 sizes an orchestrator floor with the persisted engine and passes the RAM-reduced bucket
 memory. Windows, real display:
     python unitTests/test_engine_gui_wiring.py
@@ -82,8 +82,8 @@ def main():
         # The app loads the user's persisted settings, which may already select v5.
         fields.engine_var.set("v4.1")
         app.update()
-        passed &= check(all(str(e.cget("state")) == "disabled" for e in fields._knob_entries),
-                        "v5 knob fields are disabled under v4.1")
+        passed &= check(all(str(e.cget("state")) == "disabled" for e in fields.knob_entries.values()),
+                        "every knob field is disabled under v4.1")
         passed &= check(gen._quick_width_cap() == 1000
                         and gen._validate_quick_width_spinbox("1000")
                         and not gen._validate_quick_width_spinbox("1001"),
@@ -95,7 +95,8 @@ def main():
         passed &= check(caps and all(c == engine_options.max_windows_per_run("v5") for c in caps),
                         f"v5 raises every Width spinbox cap ({caps})")
         passed &= check(gen._validate_quick_width_spinbox("5000"), "v5 Width accepts 5000")
-        passed &= check(all(str(e.cget("state")) == "normal" for e in fields._knob_entries),
+        passed &= check(all(str(fields.knob_entries[k].cget("state")) == "normal"
+                            for k in engine_options.engine_knob_keys("v5")),
                         "v5 knob fields are enabled under v5")
 
         expected = run_budget.recommend_run(RAM, "v5", 25, 10_000_000)
@@ -123,6 +124,28 @@ def main():
         passed &= check(gen.quick_floor_width_var.get() == "1000",
                         f"v4.1 Auto keeps the old recommendation "
                         f"({gen.quick_floor_width_var.get()})")
+
+        fields.engine_var.set("pt1")
+        app.update()
+        states = {key: str(e.cget("state")) for key, e in fields.knob_entries.items()}
+        passed &= check(states["pt1_b"] == states["pt1_chunk_kb"] == "normal"
+                        and all(states[k] == "disabled" for k in engine_options.engine_knob_keys("v5")),
+                        f"pt1 enables its own fields only ({states})")
+        gen._on_quick_auto_width_clicked(gen.quick_floor_width_var, 29)
+        passed &= check(gen.quick_floor_width_var.get()
+                        == str(engine_options.max_windows_per_run("pt1")),
+                        f"pt1 Auto is not RAM-capped ({gen.quick_floor_width_var.get()})")
+        fields.knob_vars["pt1_b"].set("12345")
+        gen._loop_vars["window_count_per_run"].set("10")
+        _Runner.commands.clear()
+        gen._on_run_loop()
+        bash = _Runner.commands[-1][-1] if _Runner.commands else ""
+        passed &= check("PRIMEATLAS_SCANNER_VERSION=pt1 " in bash
+                        and "PRIMEATLAS_PT1_B=12345 " in bash
+                        and "PRIMEATLAS_V5_" not in bash,
+                        f"pipeline launch carries the pt1 env ({bash[:160]}...)")
+        gen._loop_runner = None
+        gen._loop_vars["window_count_per_run"].set(str(expected.windows))
 
         fields.engine_var.set("v5")
         fields.knob_vars["v5_region_kb"].set("2048")

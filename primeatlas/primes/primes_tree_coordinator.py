@@ -26,7 +26,10 @@ own on_const_search_result constructor parameter.
 """
 from ..core import background
 from ..benchmark.benchmark import read_benchmark_log
+import storage_kinds
+
 from ..core.storage import (
+    get_floor_p_total,
     aggregate_write_seconds_by_floor, list_floors, list_source_filenames,
     load_totals_cache,
 )
@@ -89,18 +92,24 @@ class PrimesTreeCoordinator:
         reflects the disk's current state."""
         self._prune_empty_floor_dirs(portal_folder)
         floor_total_known = {}
-        for _key, _entry in load_totals_cache(portal_folder).items():
+        floor_p_known = {}
+        cache = load_totals_cache(portal_folder)
+        for _key, _entry in cache.items():
             if _key.startswith("10p") and _key[3:].isdigit():
                 floor_total_known[int(_key[3:])] = (
                     _entry.get("total", 0), _entry.get("file_count", 0),
                     _entry.get("total_bytes", 0))
+                p_known = get_floor_p_total(cache, int(_key[3:]))
+                if p_known:
+                    floor_p_known[int(_key[3:])] = p_known
         totals_cache = load_totals_cache(portal_folder)  # worker-owned copy
         floor_gen_seconds = aggregate_write_seconds_by_floor(
             read_benchmark_log(portal_folder)[1])
         floors = [be for be in list_floors(portal_folder)
-                  if list_source_filenames(portal_folder, be)]
+                  if list_source_filenames(portal_folder, be, kinds=storage_kinds.KINDS)]
         return {
             "floor_total_known": floor_total_known,
+            "floor_p_known": floor_p_known,
             "totals_cache": totals_cache,
             "floor_gen_seconds": floor_gen_seconds,
             "floors": floors,
@@ -157,7 +166,8 @@ class PrimesTreeCoordinator:
         # text, kicking off the background totals scan, and reporting startup
         # completion.
         self._primes_tab_widget.populate_floors(
-            floors, result["floor_total_known"], result["floor_gen_seconds"])
+            floors, result["floor_total_known"], result["floor_gen_seconds"],
+            floor_p_known=result["floor_p_known"])
         self.status.set(self.T("app.status_portal_with_count", folder=portal_folder,
                                 count=len(floors)))
         # An all-in-memory read of the persisted totals cache this scan already loaded

@@ -29,6 +29,8 @@ import sys
 import threading
 import time
 
+import storage_kinds
+
 from ..core.storage import LOW_FLOOR_CUTOFF, list_floors, list_source_filenames, _offset_from_filename
 from ..visualization.shared.bigint import parse_big_int
 from . import engine_options, run_budget
@@ -108,13 +110,20 @@ def compute_totals_bumps_from_new_rows(rows, before_count):
     GenerationTab/tkinter widget or a real benchmark_log.csv on disk -- the same
     "extract the decision logic, keep the I/O at the edges" convention this package
     already uses for primes_tab.py's _cumulative_floor_totals()/benchmark_tab.py's
-    _hover_label_position()."""
+    _hover_label_position().
+
+    The bumped totals are the D store's (storage_kinds.py). A pt1 row on a floor reaching
+    MR_DET_BOUND (floor 24 and up) wrote P windows, or a mix on floor 24, so it is skipped:
+    P totals come from the P store's rescan (update_floor_totals_cache(kind="P"))."""
     bumps = []
     for row in rows[before_count:]:
         if row.get("write_files") != "1":
             continue
         try:
             base_exponent = int(row["base_exponent"])
+            if (row.get("engine") == storage_kinds.ENGINE_PT1
+                    and 10 ** (base_exponent + 1) > storage_kinds.MR_DET_BOUND):
+                continue
             delta_count = int(row["total_primes"])
             delta_file_count = int(row["windows_written"])
             delta_bytes = int(row.get("bytes_written") or 0)
@@ -143,77 +152,44 @@ def count_existing_windows(portal_folder, base_exponent):
     return len(list_source_filenames(portal_folder, base_exponent))
 
 
-def find_continuation_target_idx(portal_folder, base_exponent, window_m):
-    """Pure-Python, WSL/ctypes-free reimplementation of orchestrator_v2_debug.
-    find_auto_start()'s logic, built on list_source_filenames() (already parses each
-    PRIME_WINDOW_*.bin's offset straight from its filename, no file opens). Returns the
-    target_idx the REAL orchestrator will actually continue from the next time it runs
-    against this floor (0 if nothing exists yet) -- used by the Quick generation panel
-    to preview/validate a requested range against what generation can truthfully
-    do, WITHOUT importing orchestrator_v2_debug itself: that module's import
-    chain ctypes-loads a Linux .so a few hops down (prime_sieve_v2_debug ->
-    prime_sieve_engine), which this native-Windows tkinter app must never require just to
-    check what's already on disk (same reasoning DEFAULT_GENERATION_SETTINGS's own
-    docstring gives for duplicating orchestrator_loop_v2's defaults instead of importing
-    them)."""
-    highest = -1
-    for name, _path in list_source_filenames(portal_folder, base_exponent):
-        offset = _offset_from_filename(name)
-        if offset is None:
-            continue
-        target_idx = offset // window_m
-        if target_idx > highest:
-            highest = target_idx
-    return highest + 1
+def _engine_idxs(portal_folder, base_exponent, window_m, engine):
+    return storage_kinds.engine_target_idxs(portal_folder, base_exponent, window_m,
+                                            engine or engine_options.DEFAULT_ENGINE)
 
 
-def find_first_gap_target_idx(portal_folder, base_exponent, window_m):
-    """Returns the target_idx of the FIRST missing window on this floor (0 if nothing
-    exists yet) -- where a 'fill gaps first' continuation strategy should start next, as
-    opposed to find_continuation_target_idx()'s own 'extend past the highest existing
-    file' strategy. Direct-start generation (see _launch_direct_window_range()) made
-    genuine gaps possible for the first time; before that, every floor was always
-    contiguous from index 0, so the two strategies always agreed. Returns the exact
-    same value as find_continuation_target_idx() when
-    the floor genuinely has no gaps (still the common case) -- only differs once one
-    exists. list_source_filenames() is already sorted ascending by offset, so this is a
-    single linear pass comparing each file's target_idx against the NEXT expected one,
-    stopping the instant they disagree -- safe even for a floor whose highest target_idx
-    is astronomically large (e.g. one created by a direct-start write deep into an
-    otherwise-empty floor), since this never iterates the numeric RANGE, only the actual
-    file COUNT."""
+def find_continuation_target_idx(portal_folder, base_exponent, window_m, engine=None):
+    """The target_idx orchestrator_v3.find_auto_start() continues this floor from with
+    `engine` (default: the default engine): one past the highest window of the store that
+    engine writes into (storage_kinds.engine_target_idxs()), 0 if there is none. Pure
+    Python on filenames: this native-Windows app never imports the WSL engine modules."""
+    idxs = _engine_idxs(portal_folder, base_exponent, window_m, engine)
+    return max(idxs) + 1 if idxs else 0
+
+
+def find_first_gap_target_idx(portal_folder, base_exponent, window_m, engine=None):
+    """The target_idx of the FIRST window missing from `engine`'s store on this floor (0 if
+    nothing exists yet) -- where a 'fill gaps first' continuation starts, as opposed to
+    find_continuation_target_idx()'s 'extend past the highest existing window'. Equal to it
+    when the floor has no gap. Walks the existing windows, never the numeric range, so a
+    window written deep into an otherwise empty floor costs nothing."""
+    idxs = _engine_idxs(portal_folder, base_exponent, window_m, engine)
     expected = 0
-    for name, _path in list_source_filenames(portal_folder, base_exponent):
-        offset = _offset_from_filename(name)
-        if offset is None:
-            continue
-        target_idx = offset // window_m
-        if target_idx != expected:
-            return expected
+    while expected in idxs:
         expected += 1
     return expected
 
 
 def _trim_existing_from_target_idx_range(portal_folder, base_exponent, target_idx_start,
-                                          window_count, window_m):
-    """Shrinks [target_idx_start, target_idx_start + window_count) to skip whatever
-    ALREADY exists at its own front and back edges -- write_prime_window() (every engine
-    in prime_sieve/) always overwrites unconditionally, with no existence check of its
-    own, so without this a request that happens to overlap already-generated windows
-    would harmlessly but needlessly re-sieve and rewrite them. Only trims contiguous
-    existing runs at the two EDGES of the
-    request, not scattered gaps in its interior -- detecting/skipping an interior gap
-    would need one launch per gap instead of one per request; an interior already-existing
-    window still gets safely, harmlessly rewritten with identical content, same as before
-    this function existed.
+                                          window_count, window_m, engine=None):
+    """Shrinks [target_idx_start, target_idx_start + window_count) to skip the windows of
+    `engine`'s store that ALREADY exist at its front and back edges: every engine
+    overwrites unconditionally, so a request overlapping generated windows would re-sieve
+    them for nothing. Interior existing windows are rewritten with identical content (one
+    launch per request, not per gap).
 
     Returns (trimmed_start, trimmed_count) -- trimmed_count is 0 (trimmed_start
     meaningless) if the ENTIRE requested range turns out to already exist."""
-    existing = set()
-    for name, _path in list_source_filenames(portal_folder, base_exponent):
-        offset = _offset_from_filename(name)
-        if offset is not None:
-            existing.add(offset // window_m)
+    existing = _engine_idxs(portal_folder, base_exponent, window_m, engine)
     start = target_idx_start
     end = target_idx_start + window_count  # exclusive
     while start < end and start in existing:
@@ -223,26 +199,19 @@ def _trim_existing_from_target_idx_range(portal_folder, base_exponent, target_id
     return start, max(0, end - start)
 
 
-def find_highest_populated_floor(portal_folder):
-    """Highest base_exponent among every 10p{N} folder that actually has at least one
-    PRIME_WINDOW_*.bin file on disk -- an empty/leftover 10p{N} directory with no
-    source_primes files doesn't count. Returns None if nothing has been generated
-    anywhere yet.
+def find_highest_populated_floor(portal_folder, engine=None):
+    """Highest base_exponent with at least one window in a store `engine` writes into (D
+    for the sieve engines, D or P for pt1); an empty or leftover 10p{N} folder doesn't
+    count. None if nothing has been generated anywhere yet.
 
-    Used by Exploration mode's own blank-Floor auto-continue (see
-    _build_quick_mode_explore's docstring): the same way find_continuation_target_idx()
-    above finds where ONE SPECIFIC floor's own data ends, this finds WHICH floor the
-    whole database's deepest generated data currently sits on, so repeatedly clicking
-    Generate with Floor left blank keeps extending whatever is actually the deepest data
-    right now, without the person having to track and retype that floor number by hand
-    (or getting stuck re-requesting an already-satisfied range on some floor number they
-    typed once and never updated).
-
-    list_floors() returns folders sorted ascending; checked in reverse so this returns as
-    soon as the first (highest) populated one is found, rather than scanning every floor
-    unconditionally."""
+    Used by Exploration mode's blank-Floor auto-continue (see _build_quick_mode_explore's
+    docstring): repeatedly clicking Generate with Floor left blank keeps extending the
+    deepest data. Floors are checked from the highest down, stopping at the first hit."""
+    engine = engine or engine_options.DEFAULT_ENGINE
+    kinds = storage_kinds.KINDS if engine == storage_kinds.ENGINE_PT1 else (storage_kinds.KIND_D,)
     for base_exponent in reversed(list_floors(portal_folder)):
-        if list_source_filenames(portal_folder, base_exponent):
+        if any(storage_kinds.list_window_files(portal_folder, base_exponent, kind)
+               for kind in kinds):
             return base_exponent
     return None
 
@@ -1368,6 +1337,8 @@ def format_duration_short(seconds):
 #     "[*] Active sieving primes count (pi(L_final)): SKIPPED (...)"
 #   prime_sieve_v4.py/prime_sieve_v4_1.py (main_batch_scanner's own progress print):
 #     "[+] Progress: 42.31% (156/369 batches) | time: 12.34s (...) | ETA ~16s"
+#   prime_sieve_pt1.py (same line, counted in sieve chunks):
+#     "[+] Progress: 21.00% (210/1000 chunks) | time: 1700.00s | ETA ~6395s"
 #   prime_sieve_v4.py/prime_sieve_v4_1.py (main_batch_scanner, run-finished line -- printed
 #   for BOTH the low-floor and normal-window code paths, only the tail differs):
 #     "[*] TOTAL PRIMES FOUND this run: 167,026,529 across 1000 windows"
@@ -1389,7 +1360,8 @@ def format_duration_short(seconds):
 #     "[LOOP] iteration 3/10: launching 1 instance(s) concurrently -- target_idx ..."
 #     "[LOOP] All iterations complete in 123.4s total." / "[LOOP] Stopped early in ...s total."
 _GEN_PREP_DONE_RE = re.compile(r"\[\*\] Active sieving primes (?:used|count) \(pi\(L_final\)\)")
-_GEN_SIEVE_PROGRESS_RE = re.compile(r"\[\+\] Progress: ([\d.]+)% \((\d+)/(\d+) batches\)")
+_GEN_SIEVE_PROGRESS_RE = re.compile(
+    r"\[\+\] Progress: ([\d.]+)% \((\d+)/(\d+) (?:batches|chunks)\)")
 _GEN_SIEVE_DONE_RE = re.compile(r"\[\*\] TOTAL PRIMES FOUND this run:")
 _GEN_CONST_PROGRESS_RE = re.compile(r"\[CONSTELLATIONS v2\] (\d+)/(\d+): ")
 _GEN_CONST_DONE_RE = re.compile(r"\[CONSTELLATIONS v2\] Done\. New hits this run")

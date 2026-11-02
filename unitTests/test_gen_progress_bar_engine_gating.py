@@ -118,6 +118,18 @@ def main():
               f"batched-engine DONE line snaps the bar to fully complete "
               f"(got maximum={bar['maximum']!r}, value={bar['value']!r})")
 
+        # pt1 (prime_sieve_pt1.py) counts chunks, not batches: its own progress line
+        # must drive the bar the same way (no prep line: the first progress line sets
+        # the total).
+        bar.configure(mode="determinate", maximum=1, value=0)
+        gen._gen_step_total = None
+        gen._update_shared_progress_from_generation_chunk(
+            "[+] Progress: 21.00% (210/1000 chunks) | time: 1700.00s | ETA ~6395s")
+        check(int(bar["maximum"]) == 1001 and int(bar["value"]) == 211,
+              f"pt1's chunk progress line must set the total (1000 chunks + 1 prep "
+              f"step) and value=done+1 "
+              f"(got maximum={bar['maximum']!r}, value={bar['value']!r})")
+
         # =====================================================================
         # Launcher wiring: each _on_run_*() sets the flag to match its own engine.
         # Stubs WslLoggedRunner to avoid any real subprocess/WSL dependency.

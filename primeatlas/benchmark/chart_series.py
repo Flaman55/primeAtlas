@@ -1,7 +1,8 @@
 """Series and y-scales of the Benchmark charts, shared by the canvas and the PDF renderer.
 
 A chart draws a list of Series per y-axis. Engine series come from benchmark_log.csv, one
-line per engine (last row per floor and engine wins), one distinct hue per engine on both
+line per engine, with P runs (pt1 above MR_DET_BOUND, "pt1 P") on a line of their own
+(last row per floor and line wins), one distinct hue per line on both
 axes; the renderers tell the axes apart by marker and line weight (primary: circles, thick
 line; secondary: squares, thin line). Reference series (reference_points.py) are drawn
 dashed with hollow markers on the primary axis. Hues are far apart in RGB and readable on
@@ -17,9 +18,10 @@ from collections import namedtuple
 Series = namedtuple("Series", "name tag points color dashed")
 
 # Drawing order: later engines on top.
-ENGINE_DRAW_ORDER = ("unknown", "hybrid", "v4.1", "v5")
+ENGINE_DRAW_ORDER = ("unknown", "hybrid", "v4.1", "v5", "pt1", "pt1 D+P", "pt1 P")
 
-ENGINE_COLORS = {"unknown": "#8c8c8c", "hybrid": "#009e73", "v4.1": "#e69f00", "v5": "#2f7fe0"}
+ENGINE_COLORS = {"unknown": "#8c8c8c", "hybrid": "#009e73", "v4.1": "#e69f00", "v5": "#2f7fe0",
+                 "pt1": "#e0a0e0", "pt1 D+P": "#608000", "pt1 P": "#00e000"}
 OTHER_ENGINE_COLOR = "#b5e61d"
 
 AXIS_COLOR = {"primary": "#2f7fe0", "secondary": "#e69f00"}

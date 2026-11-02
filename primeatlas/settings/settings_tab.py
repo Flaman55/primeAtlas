@@ -903,6 +903,11 @@ class SettingsTab(BaseTab):
         defaults = self.wsl["get_loop_defaults"]()
         window_m = int(defaults.get("window_m") or 10_000_000)
         engine_choice = engine_options.resolve(defaults)
+        if engine_choice.engine == engine_options.ENGINE_PT1:
+            # The manifest lists D windows only: a restore regenerates them with a sieve
+            # engine, never pt1, which writes P from MR_DET_BOUND on.
+            engine_choice = engine_options.EngineChoice(engine_options.DEFAULT_ENGINE,
+                                                        engine_choice.knobs)
         bucket_mb = None
         portal_folder = self.wsl["get_portal_folder"]()
 

@@ -1,10 +1,10 @@
 import subprocess
 import sys
 import os
-import re
 import csv
 import json
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
 try:
@@ -14,7 +14,7 @@ except ImportError:
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-import window_sharding
+import storage_kinds
 
 # ------------------------------------------------------------------------------------------
 # ENGINE SWITCH -- the one flag selecting which scanner (v3, v4, v4.1 or v5) this orchestrator
@@ -25,7 +25,9 @@ import window_sharding
 # prime_sieve_v4.py's header). v4.1 = v4 plus base-gen/sieve/write timing and a
 # bytes-written counter in four benchmark_log.csv columns (base_gen_seconds/sieve_seconds/
 # write_seconds/bytes_written, see BENCHMARK_FIELDNAMES below). v5 = the default engine
-# (prime_sieve_v5.py), output identical to v4.1.
+# (prime_sieve_v5.py), output identical to v4.1. pt1 = partial sieve + primality test
+# (prime_sieve_pt1.py): D windows identical to v5, BPSW windows from MR_DET_BOUND on go to
+# the P store (see storage_kinds.py).
 # PRIMEATLAS_SCANNER_VERSION, when set, overrides the default (benchmarks compare engines
 # without editing this file).
 SCANNER_VERSION = os.environ.get("PRIMEATLAS_SCANNER_VERSION") or "v5"
@@ -42,8 +44,12 @@ elif SCANNER_VERSION == "v4.1":
 elif SCANNER_VERSION == "v5":
     import prime_sieve_v5 as prime_sieve_module  # noqa: E402
     SCRIPT_NAME = "prime_sieve_v5.py"
+elif SCANNER_VERSION == "pt1":
+    import prime_sieve_pt1 as prime_sieve_module  # noqa: E402
+    SCRIPT_NAME = "prime_sieve_pt1.py"
 else:
-    raise ValueError(f"SCANNER_VERSION must be 'v3', 'v4', 'v4.1' or 'v5', got {SCANNER_VERSION!r}")
+    raise ValueError(f"SCANNER_VERSION must be 'v3', 'v4', 'v4.1', 'v5' or 'pt1', "
+                     f"got {SCANNER_VERSION!r}")
 # format_offset() and read_prime_window_header() (PGS2 fast header peek) are reused here
 # for the benchmark summary, instead of duplicating them -- see prime_sieve_module's own
 # usages below.
@@ -78,28 +84,40 @@ def format_duration(seconds):
     return f"{secs}s"
 
 
-def find_auto_start(base_exponent, portal_folder, window_m):
-    """Target_idx to continue this floor from: one past the highest target_idx among its
-    PRIME_WINDOW_*.bin files (offset // window_m), or None if the floor has none.
-    source_primes/ is sharded into shard_NNNNN subfolders, so the files are listed via
-    window_sharding.list_sharded_files()."""
-    pattern = re.compile(rf"^PRIME_WINDOW_10p{base_exponent}_off_(\d+)(M)?\.bin$")
-    highest_target_idx = None
+def find_auto_start(base_exponent, portal_folder, window_m, engine=None):
+    """Target_idx to continue this floor from with `engine` (default SCANNER_VERSION): one
+    past the highest window of the store that engine writes into
+    (storage_kinds.engine_target_idxs()), or None if there is none."""
+    idxs = storage_kinds.engine_target_idxs(portal_folder, base_exponent, window_m,
+                                            engine or SCANNER_VERSION)
+    return max(idxs) + 1 if idxs else None
 
-    source_dir = os.path.join(portal_folder, f"10p{base_exponent}", "source_primes")
-    for name, _path in window_sharding.list_sharded_files(source_dir):
-        m = pattern.match(name)
-        if not m:
+
+def reconcile_batch(portal_folder, base_exponent, target_idx_start, target_idx_stop, window_m):
+    """D proves P (dp_verify.py) for every D window of the batch that has a P counterpart;
+    returns the {status: count} of the comparisons made."""
+    import dp_verify
+    summary = {}
+    base = 10 ** base_exponent
+    p_dir = storage_kinds.source_dir(portal_folder, base_exponent, storage_kinds.KIND_P)
+    if not os.path.isdir(p_dir):
+        return summary
+    for target_idx in range(target_idx_start, target_idx_stop + 1):
+        offset = target_idx * window_m
+        lo = base + offset
+        if storage_kinds.written_kind(SCANNER_VERSION, lo, lo + window_m) != storage_kinds.KIND_D:
             continue
-        number = int(m.group(1))
-        offset = number * 1_000_000 if m.group(2) else number
-        target_idx = offset // window_m
-        if highest_target_idx is None or target_idx > highest_target_idx:
-            highest_target_idx = target_idx
-
-    if highest_target_idx is None:
-        return None
-    return highest_target_idx + 1
+        d_path = storage_kinds.window_path(portal_folder, base_exponent, offset, window_m,
+                                           prime_sieve_module.format_offset(offset))
+        if not os.path.exists(d_path):
+            continue
+        status = dp_verify.reconcile_d(portal_folder, base_exponent, d_path).status
+        if status != "no_p":
+            summary[status] = summary.get(status, 0) + 1
+    if summary:
+        print(f"[*] D proves P for target_idx {target_idx_start}..{target_idx_stop}: "
+              + ", ".join(f"{k}={v}" for k, v in sorted(summary.items())))
+    return summary
 
 
 # ==============================================================================
@@ -263,7 +281,8 @@ def print_benchmark_summary(base_exponent, start_idx, end_idx, total_seconds, po
                              l_final=None, sieving_primes_count=None, max_child_rss_mb=None,
                              write_files=True, total_primes_found=None, windows_processed=None,
                              window_m=None, base_gen_seconds=None, sieve_seconds=None,
-                             write_seconds=None, bytes_written=None, numbers_processed=None):
+                             write_seconds=None, bytes_written=None, numbers_processed=None,
+                             workers=None):
     """Logs to the SAME benchmark_log.csv used by every orchestrator variant (see this file's
     header for why that's deliberately shared, not forked).
 
@@ -271,29 +290,37 @@ def print_benchmark_summary(base_exponent, start_idx, end_idx, total_seconds, po
     PRIME_WINDOW_*.bin filenames (which encode ABSOLUTE offsets, not window_m itself)
     requires knowing the same window_m used to write them, to recompute each target_idx's
     expected filename below. Defaults to the module WINDOW_M when omitted, same as
-    everywhere else in this file."""
-    window_m = WINDOW_M if window_m is None else window_m
-    if write_files:
-        total_primes = 0
-        windows_found = 0
+    everywhere else in this file.
 
-        # Sharded (see window_sharding.py): a window at this offset lives under
-        # source_dir/shard_NNNNN/, not directly in source_dir; a flat source_dir path
-        # would never exist and zero out total_primes/windows_found (and the run's
-        # benchmark_log.csv row). Counts are re-derived from disk here rather than taken
-        # from write_scan_metrics_handoff().
-        source_dir = os.path.join(portal_folder, f"10p{base_exponent}", "source_primes")
-        for target_idx in range(start_idx, end_idx):
+    The headers are read by `workers` threads (default WORKERS, the run's worker count):
+    each read is one file open over WSL's /mnt drive, latency-bound, so the threads
+    overlap the waits."""
+    window_m = WINDOW_M if window_m is None else window_m
+    workers = WORKERS if workers is None else workers
+    if write_files:
+        # Counts are re-derived from disk (the store each window was written into, see
+        # storage_kinds.written_kind()) rather than taken from write_scan_metrics_handoff():
+        # parallel instances share that file (orchestrator_loop_v2.py header).
+        from pgs2_vector import read_window_count
+        base = 10 ** base_exponent
+
+        def _count(target_idx):
             offset = target_idx * window_m
-            tag = f"10p{base_exponent}_off_{prime_sieve_module.format_offset(offset)}"
-            window_index = window_sharding.shard_index_for_offset(offset, window_m)
-            shard_folder = window_sharding.shard_dir(source_dir, window_index)
-            path = os.path.join(shard_folder, f"PRIME_WINDOW_{tag}.bin")
-            if not os.path.exists(path):
-                continue
-            header = prime_sieve_module.read_prime_window_header(path)
-            total_primes += header["count"]
-            windows_found += 1
+            kind = storage_kinds.written_kind(SCANNER_VERSION, base + offset,
+                                              base + offset + window_m)
+            path = storage_kinds.window_path(portal_folder, base_exponent, offset, window_m,
+                                             prime_sieve_module.format_offset(offset), kind)
+            try:
+                return read_window_count(path)
+            except FileNotFoundError:
+                return None
+
+        print(f"[*] Counting the primes of the written windows ({end_idx - start_idx:,} "
+              f"headers, {workers} threads)...")
+        with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+            counts = [c for c in pool.map(_count, range(start_idx, end_idx)) if c is not None]
+        total_primes = sum(counts)
+        windows_found = len(counts)
     else:
         total_primes = total_primes_found if total_primes_found is not None else 0
         windows_found = windows_processed if windows_processed is not None else (end_idx - start_idx)
@@ -467,6 +494,8 @@ def run_orchestrator(base_exponent=None, window_count=None, start_auto=None, sta
         if not ok:
             interrupted = True
             break
+        if write_files:
+            reconcile_batch(portal_folder, base_exponent, current, batch_stop, window_m)
         current = batch_stop + 1
 
     t_end_orchestrator = time.perf_counter()
@@ -514,7 +543,8 @@ def run_orchestrator(base_exponent=None, window_count=None, start_auto=None, sta
                                  windows_processed=windows_processed, window_m=window_m,
                                  base_gen_seconds=base_gen_seconds, sieve_seconds=sieve_seconds,
                                  write_seconds=write_seconds, bytes_written=bytes_written,
-                                 numbers_processed=metrics.get("numbers_processed"))
+                                 numbers_processed=metrics.get("numbers_processed"),
+                                 workers=workers)
 
     return not interrupted
 

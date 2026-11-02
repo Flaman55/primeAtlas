@@ -212,7 +212,46 @@ def _test_round_trip_bump_matches_full_rescan():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def _test_d_and_p_stores():
+    """D and P windows of one floor: list_source_filenames() lists D by default (every
+    consumer reads D only) and both stores merged by offset on request; P totals are kept
+    beside the D totals and never enter the floor total or the global total."""
+    from primeatlas.core import storage
+    import prime_sieve_v1
+    import storage_kinds as sk
+
+    tmp = tempfile.mkdtemp(prefix="storage_dp_")
+    try:
+        w = 10 ** 7
+        for idx, kind, primes in ((0, "D", [11, 13]), (1, "P", [17, 19, 23]),
+                                  (0, "P", [11, 13]), (2, "D", [29])):
+            offset = idx * w
+            path = sk.window_path(tmp, 25, offset, w, f"{offset // 10 ** 6}M" if offset else "0", kind)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            prime_sieve_v1.write_prime_window(path, primes)
+        d_only = [name for name, _p in storage.list_source_filenames(tmp, 25)]
+        check(d_only == ["PRIME_WINDOW_10p25_off_0.bin", "PRIME_WINDOW_10p25_off_20M.bin"],
+              f"default listing is D only ({d_only})")
+        both = [name for name, _p in storage.list_source_filenames(tmp, 25, kinds=sk.KINDS)]
+        check(both == ["PRIME_WINDOW_10p25_off_0.bin", "PRIME_WINDOW_10p25_off_0_P.bin",
+                       "PRIME_WINDOW_10p25_off_10M_P.bin", "PRIME_WINDOW_10p25_off_20M.bin"],
+              f"both stores merged by offset, D before P on the same offset ({both})")
+        cache = {}
+        d_total = storage.update_floor_totals_cache(tmp, 25, cache)
+        p_total = storage.update_floor_totals_cache(tmp, 25, cache, kind="P")
+        check(d_total[:2] == (3, 2) and p_total[:2] == (5, 2),
+              f"D and P totals counted separately (D {d_total}, P {p_total})")
+        check(cache["10p25"]["total"] == 3 and storage.get_floor_p_total(cache, 25)[0] == 5,
+              "floor entry total is D; the P total sits beside it")
+        check(storage.recompute_global_total(cache)[0] == 3 and storage.get_global_p_total(cache)[0] == 5,
+              "global total counts D only; separate P global total")
+        check(storage.get_floor_p_total({}, 25) is None, "no P total yet -> None")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def main():
+    _test_d_and_p_stores()
     _test_bump_and_global()
     _test_get_global_total_missing()
     _test_recompute_global_total()

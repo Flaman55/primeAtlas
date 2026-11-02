@@ -30,6 +30,7 @@ import os
 import re
 
 import prime_sieve_v1
+import storage_kinds
 import window_sharding
 
 LOW_FLOOR_CUTOFF = 7  # duplicated from prime_sieve_v3.py/v4.py's own LOW_FLOOR_CUTOFF (see
@@ -116,22 +117,22 @@ def _offset_from_filename(name):
     return n
 
 
-def list_source_filenames(portal_folder, base_exponent):
-    """Cheap listing of every PRIME_WINDOW_*.bin under 10p{base_exponent}/source_primes/
-    (sharded into shard_NNNNN subfolders -- see window_sharding.py): a cheap
-    listdir per shard subfolder + a regex per name, NO file opens. Sorted ascending by
-    the offset parsed from the filename (see _offset_from_filename) -- a floor can hold
-    thousands of windows (10p15 alone is past 2,600+ and still growing, 10p25 past
-    500,000 -- see window_sharding.py's own docstring on why this can no longer be a
-    single flat directory at all), and list_source_files()'s per-file header read is
-    exactly what made expanding a heavily-populated floor node freeze the GUI. Returns
-    [(name, path), ...]; headers are read separately, only for whichever page is
-    actually being displayed (see read_source_file_headers())."""
-    source_dir = os.path.join(portal_folder, f"10p{base_exponent}", "source_primes")
-    entries = [(_offset_from_filename(name), name, path)
-               for name, path in window_sharding.list_sharded_files(source_dir, predicate=_is_prime_window_name)]
-    entries.sort(key=lambda e: (e[0] is None, e[0], e[1]))
-    return [(name, path) for _offset, name, path in entries]
+def list_source_filenames(portal_folder, base_exponent, kinds=(storage_kinds.KIND_D,)):
+    """Cheap listing of every PRIME_WINDOW_*.bin of the given stores of a floor
+    (storage_kinds.py: D = source_primes/, the default, which every consumer reads; P =
+    source_primes_P/), sharded into shard_NNNNN subfolders (window_sharding.py): one
+    listdir per shard + a regex per name, NO file opens. Sorted ascending by the offset
+    parsed from the filename, D before P on the same offset -- a floor can hold hundreds
+    of thousands of windows, and reading every header is what froze the GUI on expand.
+    Returns [(name, path), ...]; headers are read separately, only for the page being
+    displayed (see read_source_file_headers())."""
+    order = {kind: i for i, kind in enumerate(storage_kinds.KINDS)}
+    entries = []
+    for kind in kinds:
+        for name, path in storage_kinds.list_window_files(portal_folder, base_exponent, kind):
+            entries.append((storage_kinds.offset_from_name(name), order[kind], name, path))
+    entries.sort(key=lambda e: (e[0] is None, e[0] or 0, e[1], e[2]))
+    return [(name, path) for _offset, _kind, name, path in entries]
 
 
 def read_source_file_headers(entries):
@@ -187,8 +188,51 @@ def save_totals_cache(portal_folder, cache):
         pass  # best-effort -- a failed cache save just means the next visit re-scans
 
 
-def update_floor_totals_cache(portal_folder, base_exponent, cache):
-    """Computes (and caches) the TOTAL prime count across every source window file for one
+def _totals_entry(cache, base_exponent, kind):
+    """The cache entry holding one store's totals of a floor: the floor entry itself for D
+    (what the floor total and the global total read), its "p" sub-entry for P."""
+    entry = cache.setdefault(f"10p{base_exponent}", {"files": {}})
+    if kind == storage_kinds.KIND_P:
+        entry = entry.setdefault("p", {"files": {}})
+    return entry
+
+
+def get_floor_p_total(cache, base_exponent):
+    """(total, file_count, total_bytes) of the floor's P store, or None if never computed."""
+    entry = cache.get(f"10p{base_exponent}")
+    p = entry.get("p") if isinstance(entry, dict) else None
+    if not isinstance(p, dict) or "total" not in p:
+        return None
+    return p.get("total", 0), p.get("file_count", 0), p.get("total_bytes", 0)
+
+
+def get_global_p_total(cache):
+    """(total, file_count, total_bytes) summed over every floor's computed P totals."""
+    sums = [0, 0, 0]
+    for key, entry in cache.items():
+        if key.startswith("10p") and key[3:].isdigit():
+            known = get_floor_p_total(cache, int(key[3:]))
+            if known:
+                sums = [a + b for a, b in zip(sums, known)]
+    return tuple(sums)
+
+
+def disk_footprint(d_known, p_known):
+    """(file_count, total_bytes) of both stores of a floor (or of all floors) from their
+    (total, file_count, total_bytes) triples, either of them None when unknown: the
+    Storage tab's Files and Size columns and the status bar's disk total show what the
+    floor occupies on disk, while its prime totals stay per store."""
+    files = total_bytes = 0
+    for known in (d_known, p_known):
+        if known:
+            files += known[1]
+            total_bytes += known[2]
+    return files, total_bytes
+
+
+def update_floor_totals_cache(portal_folder, base_exponent, cache, kind=storage_kinds.KIND_D):
+    """Computes (and caches) the TOTAL prime count across every window file of one store
+    (`kind`, D by default; see _totals_entry() for where P totals are kept) of one
     floor -- the file list on its own only shows each file's OWN count, never a sum, so
     this fills in the floor row's total. Reading every file's header for a
     heavily-populated floor is NOT cheap on this project's actual storage (~78s for one
@@ -231,11 +275,10 @@ def update_floor_totals_cache(portal_folder, base_exponent, cache):
     window_m -- see LOW_FLOOR_CUTOFF), so it is re-read unconditionally every call: one
     extra ~5ms open, versus the ~78s full-floor scan (15,101 files) this cache avoids
     for a heavily populated NORMAL floor."""
-    key = f"10p{base_exponent}"
-    entry = cache.setdefault(key, {"files": {}})
+    entry = _totals_entry(cache, base_exponent, kind)
     cached_files = entry.setdefault("files", {})
 
-    filenames = list_source_filenames(portal_folder, base_exponent)
+    filenames = list_source_filenames(portal_folder, base_exponent, kinds=(kind,))
     current_names = {name for name, _path in filenames}
 
     for stale_name in list(cached_files.keys()):

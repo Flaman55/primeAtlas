@@ -51,6 +51,17 @@ def pgs2_header(base, count, generated_at):
             + int(generated_at).to_bytes(4, "big"))
 
 
+def read_window_count(path):
+    """Prime count from a PGS2 header. Unbuffered: a buffered open reads a whole block
+    (128 KiB over WSL's /mnt drives) to return the few header bytes."""
+    with open(path, "rb", buffering=0) as f:
+        header = f.read(4 + 1 + 255 + 4)
+    if header[:4] != PGS_MAGIC:
+        raise ValueError(f"{path}: not a PGS2 file (bad magic bytes)")
+    pos = 5 + header[4]
+    return int.from_bytes(header[pos:pos + 4], "big")
+
+
 def write_prime_window_offsets(path, lo, offsets, generated_at=None):
     """Writes the primes lo + offsets (offsets: ascending int64 array) to `path` in PGS2
     format with one write call. `generated_at` defaults to now (unix seconds)."""

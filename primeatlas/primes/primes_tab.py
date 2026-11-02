@@ -35,11 +35,14 @@ import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import ttk, messagebox
 
+import dp_verify
 import prime_sieve_v1
+import storage_kinds
 
+from ..core import background
 from ..core.base_tab import BaseTab
 from ..core.storage import (
-    digit_count_floor, format_big_int, format_bytes, format_duration,
+    digit_count_floor, disk_footprint, format_big_int, format_bytes, format_duration,
     list_floors, list_source_filenames, read_source_file_headers,
 )
 from ..core.widgets import RevealFrame, StripedTreeview, add_page_nav_row, clamp_pane_min_width
@@ -166,6 +169,8 @@ class PrimesTab(BaseTab):
         self._submit_totals_job = submit_totals_job
         self._verify_all_totals = verify_all_totals
 
+        self._floor_p_known = {}       # base_exponent -> P store (total, file_count,
+                                         # total_bytes)
         self._floor_total_known = {}   # base_exponent -> (total, file_count,
                                          # total_bytes), seeded by populate_floors(),
                                          # kept current by update_floor_row()
@@ -183,6 +188,9 @@ class PrimesTab(BaseTab):
         ttk.Button(top, text=T("common.refresh"), command=self._reload_primes_tree).pack(side="left")
         ttk.Button(top, text=T("primes.btn_verify_totals"),
                    command=self._verify_all_totals).pack(side="left", padx=(6, 0))
+        self.verify_dp_button = ttk.Button(top, text=T("primes.btn_verify_dp"),
+                                           command=self._verify_p_against_d)
+        self.verify_dp_button.pack(side="left", padx=(6, 0))
 
         ttk.Label(top, text=T("common.search_label")).pack(side="left")
         self.search_entry = ttk.Entry(top, width=26)
@@ -249,7 +257,8 @@ class PrimesTab(BaseTab):
         # "how many primes are ON this floor" vs "how many primes in total have been
         # found through this floor" -- read side by side.
         self.tree = StripedTreeview(
-            tree_frame, columns=("count", "cumulative", "files", "size", "generated", "timer"),
+            tree_frame, columns=("count", "cumulative", "files", "size", "generated", "timer",
+                                 "kind", "p_count"),
             show="tree headings")
         self.tree.heading("#0", text=T("primes.col_floor"))
         self.tree.heading("count", text=T("primes.col_count"))
@@ -258,13 +267,19 @@ class PrimesTab(BaseTab):
         self.tree.heading("size", text=T("primes.col_size"))
         self.tree.heading("generated", text=T("primes.col_generated"))
         self.tree.heading("timer", text=T("primes.col_timer"))
+        # "kind": D (proven) or P (probable prime) store of a file row, shown with the file
+        # rows; "p_count": a floor's P total, shown while some floor has P primes. The
+        # floor's own "count" and the running total are D only (storage_kinds.py).
+        self.tree.heading("kind", text=T("primes.col_kind"))
+        self.tree.heading("p_count", text=T("primes.col_p_count"))
         # Widths are set from the content by _fit_tree_columns(); no column stretches,
         # so the tree pane's width is exactly what its content needs. "generated" is
         # displayed last, and only while an open floor lists file rows (floor rows
         # carry no date).
         self.tree.column("#0", width=120, stretch=False)
         for column, anchor in (("count", "e"), ("cumulative", "e"), ("files", "e"),
-                               ("size", "e"), ("generated", "w"), ("timer", "e")):
+                               ("size", "e"), ("generated", "w"), ("timer", "e"),
+                               ("kind", "center"), ("p_count", "e")):
             self.tree.column(column, width=60, minwidth=20, anchor=anchor, stretch=False)
         self.tree.configure(displaycolumns=_BASE_DISPLAY_COLUMNS)
         self._tree_vsb = vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
@@ -360,7 +375,7 @@ class PrimesTab(BaseTab):
     # --- Called by prime_atlas_v2.py's own reload_primes_tree()/totals-worker machinery,
     # which stays at the app level (see this class's own docstring) -----------------------
 
-    def populate_floors(self, floors, floor_total_known, floor_gen_seconds):
+    def populate_floors(self, floors, floor_total_known, floor_gen_seconds, floor_p_known=None):
         """Rebuilds the floor tree from scratch -- called by
         PrimesTreeCoordinator._on_scan_done (primeatlas/primes/primes_tree_coordinator.py)
         once reload_primes_tree()'s background disk scan (PrimesTreeCoordinator._scan)
@@ -371,6 +386,7 @@ class PrimesTab(BaseTab):
         scratch."""
         T = self.T
         self._floor_total_known = floor_total_known
+        self._floor_p_known = dict(floor_p_known or {})
         self._floor_gen_seconds = floor_gen_seconds
         self.tree.delete(*self.tree.get_children())
         self._floor_state = {}
@@ -394,8 +410,12 @@ class PrimesTab(BaseTab):
             timer_str = format_duration(gen_seconds) if gen_seconds is not None else ""
             cum = cumulative.get(base_exponent)
             cum_str = f"{cum:,}" if cum is not None else ""
-            values = ((f"{known[0]:,}", cum_str, f"{known[1]:,}", format_bytes(known[2]), "", timer_str)
-                      if known else ("", cum_str, "", "", "", timer_str))
+            p_known = self._floor_p_known.get(base_exponent)
+            files, size = disk_footprint(known, p_known)
+            values = ((f"{known[0]:,}" if known else "", cum_str,
+                       f"{files:,}" if known or p_known else "",
+                       format_bytes(size) if known or p_known else "", "", timer_str))
+            values += (("", f"{p_known[0]:,}") if p_known and p_known[0] else ("", ""))
             node = self.tree.insert("", "end", text=f"10p{base_exponent}",
                                      values=values, open=False, tags=("floor",))
             self.tree.insert(node, "end", text=T("common.loading"))
@@ -416,7 +436,7 @@ class PrimesTab(BaseTab):
         rather than keeping a second copy."""
         return self._floor_gen_seconds.get(base_exponent)
 
-    def update_floor_row(self, base_exponent, total, file_count, total_bytes):
+    def update_floor_row(self, base_exponent, total, file_count, total_bytes, p_totals=None):
         """Called by prime_atlas_v2.py's own _on_floor_total_ready() once the app-level
         totals worker finishes (re-)computing one floor's total -- updates this tab's
         own copy of _floor_total_known plus the corresponding tree row, and refreshes
@@ -428,12 +448,17 @@ class PrimesTab(BaseTab):
         column is recomputed for every known floor here, not just this row -- cheap
         (a handful of floors at most) compared to the disk work that got us here."""
         self._floor_total_known[base_exponent] = (total, file_count, total_bytes)
+        if p_totals is not None:
+            self._floor_p_known[base_exponent] = p_totals
         node = self._floor_node_by_exp.get(base_exponent)
         gen_seconds = self._floor_gen_seconds.get(base_exponent)
         timer_str = format_duration(gen_seconds) if gen_seconds is not None else ""
         if node is not None and self.tree.exists(node):
+            p_known = self._floor_p_known.get(base_exponent)
+            files, size = disk_footprint((total, file_count, total_bytes), p_known)
             self.tree.item(node, values=(
-                f"{total:,}", "", f"{file_count:,}", format_bytes(total_bytes), "", timer_str))
+                f"{total:,}", "", f"{files:,}", format_bytes(size), "", timer_str,
+                "", f"{p_known[0]:,}" if p_known and p_known[0] else ""))
         cumulative = _cumulative_floor_totals(
             self._floor_node_by_exp.keys(), self._floor_total_known)
         for exp, other_node in self._floor_node_by_exp.items():
@@ -508,10 +533,13 @@ class PrimesTab(BaseTab):
         self.tree.delete(*self.tree.get_children(node))
 
     def _fit_tree_columns(self):
-        """Shows "generated" (last) only while an open floor lists file rows, sizes every
-        displayed column to its widest heading/cell text, then refits the tree pane."""
-        show_generated = any(self._floor_state.values())
-        displayed = _BASE_DISPLAY_COLUMNS + (("generated",) if show_generated else ())
+        """Shows "p_count" after "count" while some floor has P primes and "kind" plus
+        "generated" (last) only while an open floor lists file rows, sizes every displayed
+        column to its widest heading/cell text, then refits the tree pane."""
+        show_files = any(self._floor_state.values())
+        show_p = any(known and known[0] for known in self._floor_p_known.values())
+        displayed = (_BASE_DISPLAY_COLUMNS[:1] + (("p_count",) if show_p else ())
+                     + _BASE_DISPLAY_COLUMNS[1:] + (("kind", "generated") if show_files else ()))
         self.tree.configure(displaycolumns=displayed)
 
         style = ttk.Style(self.tree)
@@ -579,7 +607,8 @@ class PrimesTab(BaseTab):
             self.tree.delete(children[0])
 
         base_exponent = int(self.tree.item(node, "text")[3:])  # "10p{N}"
-        filenames = list_source_filenames(self._get_portal_folder(), base_exponent)  # cheap:
+        filenames = list_source_filenames(self._get_portal_folder(), base_exponent,  # cheap:
+                                          kinds=storage_kinds.KINDS)
                                                                                        # no
                                                                                        # header
                                                                                        # I/O
@@ -614,6 +643,8 @@ class PrimesTab(BaseTab):
 
         self._clear_floor_children(node)
         page_total = 0
+        proven_tags = storage_kinds.read_proven_tags(
+            self._get_portal_folder(), int(self.tree.item(node, "text")[3:]))
         for name, path, header in page_entries:
             try:
                 size_str = format_bytes(os.path.getsize(path))
@@ -629,7 +660,8 @@ class PrimesTab(BaseTab):
             # file row has no cumulative/files/timer value of its own (those are
             # floor-summary-only columns), so those three stay blank.
             child = self.tree.insert(node, "end", text=name,
-                                      values=(count_str, "", "", size_str, gen_str, ""),
+                                      values=(count_str, "", "", size_str, gen_str, "",
+                                              storage_kinds.display_kind(name, proven_tags), ""),
                                       tags=("file",))
             self._path_by_item[child] = (path, header)
         state["page_total"] = page_total
@@ -637,6 +669,39 @@ class PrimesTab(BaseTab):
 
         if self._active_floor_node == node:
             self._refresh_floor_nav_controls()
+
+    def _verify_p_against_d(self):
+        """"Verify P against D" for the active floor (the floor clicked or opened last):
+        dp_verify.verify_floor() in the background -- every P window with a D window of
+        the same offset is compared, proven ones removed and their D windows shown as
+        D/P, mismatches kept and listed in DP_MISMATCH.txt -- then the outcome in a dialog and a tree refresh."""
+        node = self._active_floor_node
+        if node is None or not self.tree.exists(node):
+            messagebox.showinfo(self.T("primes.verify_dp_title"), self.T("primes.verify_dp_pick_floor"))
+            return
+        base_exponent = int(self.tree.item(node, "text")[3:])
+        portal_folder = self._get_portal_folder()
+        self.verify_dp_button.configure(state="disabled")
+        self.status.set(self.T("primes.verify_dp_running", base_exponent=base_exponent))
+
+        def _done(summary, error):
+            self.verify_dp_button.configure(state="normal")
+            if error is not None:
+                messagebox.showerror(self.T("primes.verify_dp_title"), str(error))
+                return
+            message = self.T("primes.verify_dp_result", base_exponent=base_exponent,
+                             equal=summary.get("equal", 0), mismatch=summary.get("mismatch", 0),
+                             no_d=summary.get("no_d", 0), file=dp_verify.MISMATCH_FILENAME)
+            self.status.set(message.splitlines()[0])
+            if summary.get("mismatch"):
+                messagebox.showerror(self.T("primes.verify_dp_title"), message)
+            else:
+                messagebox.showinfo(self.T("primes.verify_dp_title"), message)
+            self._reload_primes_tree()
+
+        background.run_in_background(
+            self, lambda _report: dp_verify.verify_floor(portal_folder, base_exponent),
+            on_done=_done)
 
     def _set_active_floor_node(self, node):
         self._active_floor_node = node
