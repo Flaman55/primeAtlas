@@ -1548,6 +1548,24 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               continuation / gap / trim planning follow the selected
                               engine
                               (unitTests/test_engine_gui_wiring.py)
+  time_model.py                 time model of one run calibrated from benchmark_log.csv:
+                              prep cost F = k(floor) * pi(L) (L = isqrt(top), pt1: B;
+                              pi exact at powers of ten, else Riemann R(x)), sieving and
+                              added write time per number; per measured floor from its
+                              runs (two widths split F and the per-number cost), other
+                              floors interpolated; estimate of one run (prep, sieve,
+                              write, run, per window, gross and net n/s), of a floor's
+                              measured runs and of a whole floor
+                              (unitTests/test_time_model.py)
+  time_simulation_window.py     TimeSimulationWindow -- Toplevel with the floor and run
+                              width sliders (log scale up to the engine's cap) bound
+                              both ways to the Quick-gen Floor/Width fields, the shared
+                              engine selector and the time_model results; reads the log
+                              once on open, never writes it
+  time_simulation_controls.py   GenerationTab mixin: the Quick-gen "Time simulation"
+                              button, one window at a time, rebinding to the Explore
+                              mode's own Floor/Width pair
+                              (unitTests/test_time_simulation.py)
 
   primeatlas/visualization/     "Visualization" tab -- a container notebook with one sub-tab
                               per visualization; each sub-tab launches the shared GPU

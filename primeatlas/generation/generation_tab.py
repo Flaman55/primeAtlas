@@ -8,7 +8,8 @@ This module builds the tab and owns the state every part shares; the parts live 
 quick_gen_panel.py (panel widgets), quick_gen_runs.py (per-engine launchers),
 quick_gen_plan.py (fields -> launch), loop_section.py, constellation_section.py and
 ktuple_section.py (Sections A-C), run_progress.py (output draining and the progress bar),
-hybrid_controls.py and run_guard_controls.py. Three pieces of the tab's state are shared
+hybrid_controls.py, run_guard_controls.py and time_simulation_controls.py (the Time
+simulation window). Three pieces of the tab's state are shared
 with code outside it:
 
   - status_var/totals_progress: the SAME StringVar/Progressbar every other tab's
@@ -48,6 +49,7 @@ from ..core.base_tab import BaseTab
 from ..core.widgets import ScrollablePage
 from .hybrid_controls import HybridControls
 from .run_guard_controls import RunGuardControls
+from .time_simulation_controls import TimeSimulationControls
 from .quick_gen_panel import QuickGenPanel
 from .quick_gen_runs import QuickGenRuns
 from .quick_gen_plan import QuickGenPlan
@@ -61,7 +63,7 @@ from .logged_runners import WslLoggedRunner
 
 class GenerationTab(QuickGenPanel, QuickGenRuns, QuickGenPlan, LoopSection,
                     ConstellationSection, KtupleSection, GenerationRunProgress,
-                    HybridControls, RunGuardControls, BaseTab):
+                    HybridControls, RunGuardControls, TimeSimulationControls, BaseTab):
     def __init__(self, parent, get_portal_folder, status_var, translator,
                  totals_progress, reload_primes_tree, reload_constellations_tree,
                  research_goldbach_tab_widget):
