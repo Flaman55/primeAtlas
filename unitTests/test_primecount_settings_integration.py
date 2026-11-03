@@ -1,6 +1,6 @@
 """
 test_primecount_settings_integration.py -- covers Settings -> Updates's primecount
-installer section (settings_tab.py) and the engine_argv.py/wsl_blocking.py plumbing it's built on
+installer section (updates_section.py) and the engine_argv.py/wsl_blocking.py plumbing it's built on
 (build_primecount_query_argv, run_primecount_wsl_blocking, run_primecount_install_wsl_
 blocking). The "primecount" data-source mode's install mechanism lives in Settings,
 alongside every other optional-component installer (sympy, CUDASieve), rather than on
@@ -15,7 +15,7 @@ which does NOT count as "in mainloop" and makes a background thread's self.after
 raise "main thread is not in main loop" -- a Tkinter testing limitation, not a bug in
 the code under test (the same WSL round-trip works through the tab's
 PersistentWorker machinery in test_research_pi_approx_tab.py and under a real
-mainloop(); only settings_tab.py's bare threading.Thread(daemon=True).start() +
+mainloop(); only updates_section.py's bare threading.Thread(daemon=True).start() +
 self.after() pattern, shared with CUDASieve's status/build checks, hits this
 test-harness artifact). So: test _on_primecount_status_
 result/_on_primecount_install_result directly (the synchronous halves), and separately
@@ -116,25 +116,25 @@ def _test_settings_tab_primecount_status_and_install():
 
         # --- attribution: GitHub links for primecount AND primesieve (neither is --------
         # authored by this project -- both are Kim Walisch's own independent BSD-
-        # licensed libraries, see settings_tab.py's own PRIMECOUNT_REPO_URL/
+        # licensed libraries, see updates_section.py's own PRIMECOUNT_REPO_URL/
         # PRIMESIEVE_REPO_URL comment) --------------------------------------------------
         import webbrowser
-        import primeatlas.settings.settings_tab as settings_tab_mod
+        import primeatlas.settings.updates_section as updates_section_mod
         opened_urls = []
         webbrowser.open = lambda url: opened_urls.append(url)
 
         settings_tab._on_open_primecount_github_clicked()
-        check(opened_urls == [settings_tab_mod.PRIMECOUNT_REPO_URL],
+        check(opened_urls == [updates_section_mod.PRIMECOUNT_REPO_URL],
               f"the primecount GitHub button opens primecount's own real repo URL "
-              f"(got {opened_urls!r}, expected {[settings_tab_mod.PRIMECOUNT_REPO_URL]!r})")
+              f"(got {opened_urls!r}, expected {[updates_section_mod.PRIMECOUNT_REPO_URL]!r})")
 
         opened_urls.clear()
         settings_tab._on_open_primesieve_github_clicked()
-        check(opened_urls == [settings_tab_mod.PRIMESIEVE_REPO_URL],
+        check(opened_urls == [updates_section_mod.PRIMESIEVE_REPO_URL],
               f"the primesieve GitHub button (on the generic environment-setup section, "
               f"since primesieve has no dedicated installer section of its own) opens "
               f"primesieve's own real repo URL (got {opened_urls!r}, expected "
-              f"{[settings_tab_mod.PRIMESIEVE_REPO_URL]!r})")
+              f"{[updates_section_mod.PRIMESIEVE_REPO_URL]!r})")
 
         # --- initial state: not checked yet, install button enabled from the start ----
         check(settings_tab.T("settings.primecount_status_not_checked")

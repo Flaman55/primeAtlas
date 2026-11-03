@@ -662,7 +662,7 @@ def section_f():
     webbrowser.open = lambda url: opened_urls.append(url)
 
     import prime_atlas_v2
-    import primeatlas.settings.settings_tab as settings_tab_mod
+    import primeatlas.settings.updates_section as updates_section_mod
 
     portal = tempfile.mkdtemp(prefix="cudasieve_settingstab_test_")
     try:
@@ -679,7 +679,7 @@ def section_f():
         # --- _on_open_cudasieve_github_clicked: opens the real repo URL. ---
         opened_urls.clear()
         settings_tab._on_open_cudasieve_github_clicked()
-        check(opened_urls == [settings_tab_mod.CUDASIEVE_REPO_URL],
+        check(opened_urls == [updates_section_mod.CUDASIEVE_REPO_URL],
               f"the GitHub link button must open CUDASieve's own repo URL, no copy kept "
               f"in this project (got {opened_urls!r})")
 

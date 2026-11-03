@@ -2,8 +2,8 @@
 benchmark.py -- pure-logic backend for the Benchmark tab: reading/normalizing
 benchmark_log.csv, reducing its rows into chart series and per-floor stats, and
 rendering the standalone PDF report. No tkinter dependency -- exercisable/unit-tested
-without a display, same convention as every other module in this package except
-settings_tab.py/benchmark_tab.py (see this package's __init__.py's docstring).
+without a display, same convention as every non-GUI module in this package (the
+tkinter code lives in the tab, section and widget modules).
 
 primeatlas/benchmark/benchmark_tab.py (the UI half, built on top of this module) is the ONLY
 caller of everything below except read_benchmark_log(), which

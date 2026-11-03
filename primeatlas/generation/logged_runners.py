@@ -193,9 +193,9 @@ class LocalLoggedRunner:
 
     Same output contract as WslLoggedRunner (plain text chunks on `output_queue`, then a
     final ("__exit__", returncode) sentinel) so callers that already know how to drain
-    that queue (see settings_tab.py's _poll_restore_queue) don't need a second shape to
+    that queue (see restore_section.py's _poll_restore_queue) don't need a second shape to
     handle -- this class is used for exactly one thing so far (the sympy installer, see
-    settings_tab.py's _on_install_sympy), but kept generically named/shaped in case a
+    updates_section.py's _on_install_sympy), but kept generically named/shaped in case a
     future feature needs another local (non-WSL) subprocess with live output.
 
     No tkinter dependency -- exercised directly against a trivial local command (e.g.
@@ -207,7 +207,7 @@ class LocalLoggedRunner:
         self.proc = None
         self._thread = None
         # Opt-in only -- every existing caller
-        # (e.g. settings_tab.py's sympy installer) keeps stdin inherited/
+        # (e.g. updates_section.py's sympy installer) keeps stdin inherited/
         # default exactly as before. RingsTab is the first caller that
         # needs a way to send commands INTO the running subprocess (see
         # send_line() below) -- visualization/shared/renderer.py's own PAUSE/RESUME

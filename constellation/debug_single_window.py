@@ -25,7 +25,7 @@ Usage (run directly inside WSL):
 
     portal_folder: the WSL-side path (e.g. /mnt/h/Goldbach)
     base_exponent: the floor number (e.g. 25)
-    filename: exactly as printed in a constellation_finder_v1.py log line, e.g.
+    filename: exactly as printed in a constellation_finder_v2_1.py log line, e.g.
               PRIME_WINDOW_10p25_off_2345678901237987900M.bin -- this script finds it
               itself among the floor's shard_NNNNN subfolders (window_sharding.py), no
               need to work out which shard by hand.
@@ -51,7 +51,7 @@ import prime_sieve_v1  # noqa: E402
 import window_sharding  # noqa: E402
 
 try:
-    import resource  # POSIX-only -- see constellation_finder_v1.py's own import guard
+    import resource  # POSIX-only -- see constellation_finder_v2_1.py's own import guard
 except ImportError:
     resource = None
 

@@ -241,7 +241,7 @@ def _floor_window_count(base_power, window=QUICK_GEN_MAX_WINDOW_WIDTH):
 
 
 def recommended_digit_sweep_n_locations(base_exponent, window_m, target_windows_per_branch=40):
-    """Mirrors ktuple_sieve_v1.digit_sweep_positions()'s own p_min search (duplicated,
+    """Mirrors ktuple_sieve_v2.digit_sweep_positions()'s own p_min search (duplicated,
     not imported -- that module runs standalone inside WSL, this native-Windows GUI
     process must not depend on it, same "duplicated rather than imported" pattern
     as PRIMESIEVE_MAX_STOP below).

@@ -9,8 +9,8 @@ B. Console grip drag: height follows the pointer in whole lines, clamped to [min
 C. Settings tab: the six logs (restore, full backup, storage integrate, libs, primecount,
    CUDASieve) are visible consoles with Clear/detach/grip; their log methods write into
    every mirror, Clear empties every mirror.
-D. Source: settings_tab.py builds no bare ScrolledText log any more (only the license
-   text in the CUDASieve consent dialog).
+D. Source: the Settings tab (settings_tab.py and its *_section.py mixins) builds no bare
+   ScrolledText log any more (only the license text in the CUDASieve consent dialog).
 E. HeightGrip on value lists: Listbox and Treeview targets, several targets at once, a
    callable target (a widget rebuilt later), clamping, on_change on release.
 F. Height bars are grips everywhere: the Generation tab and the Records table tab build
@@ -235,7 +235,9 @@ def _test_source():
     def read(*rel):
         with open(os.path.join(_REPO_ROOT, "primeatlas", *rel), encoding="utf-8") as f:
             return f.read()
-    src = read("settings", "settings_tab.py")
+    settings_dir = os.path.join(_REPO_ROOT, "primeatlas", "settings")
+    src = "".join(read("settings", name) for name in sorted(os.listdir(settings_dir))
+                  if name == "settings_tab.py" or name.endswith("_section.py"))
     check(src.count("ScrolledText(") == 1,
           f"only the consent dialog builds a bare ScrolledText (found {src.count('ScrolledText(')})")
     for rel in (("generation", "generation_tab.py"),

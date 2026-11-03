@@ -11,9 +11,8 @@ only the widgets and the tkinter-specific on-screen chart drawing (_draw_growth_
 below). All the pure-logic reduction/PDF-rendering work lives in
 primeatlas/benchmark/benchmark.py.
 
-This is one of only two files in primeatlas/ that import tkinter -- the other is
-settings_tab.py (see that module's own docstring for the general "pure logic
-elsewhere" convention this package follows).
+This module imports tkinter; the pure logic it shows lives in benchmark.py, the
+"pure logic elsewhere" convention the package follows.
 
 BenchmarkTab does not know how PORTAL_FOLDER is stored or how the app's shared status
 bar/translator are constructed -- it receives everything it needs at construction time

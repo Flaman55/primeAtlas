@@ -71,7 +71,7 @@ def build_wsl_logged_command(argv, windows_log_path, windows_exit_path, portal_f
     same env-prefix mechanism -- see prime_sieve_v4_1.py's own __main__ block (where it's
     read) and count_sieving_primes_cached()'s docstring for what it does. Every call site
     launches a DIFFERENT script (orchestrator_loop_v2.py, orchestrator_v3.py directly,
-    prime_sieve_primesieve.py, ktuple_sieve_v1.py, constellation_finder_v1.py) and only the
+    prime_sieve_primesieve.py, ktuple_sieve_v2.py, constellation_finder_v2_1.py) and only the
     first two ever read this var -- the others simply ignore an env var they don't check, so
     it's harmless to leave at its False default for every call site that doesn't pass it
     explicitly (only the Generation tab's classic-engine Pipeline/Loop launches do).

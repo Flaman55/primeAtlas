@@ -19,9 +19,9 @@ Courier, Courier-Bold), so no font embedding is needed. WinAnsiEncoding (the def
 for these fonts) doesn't cover Polish diacritics -- static labels drawn via these helpers
 stick to plain ASCII; see _pdf_ascii_fold()'s own docstring for how callers handle that.
 
-Pure logic, no tkinter dependency -- exercisable without a display, same as every other
-module in this package except settings_tab.py/benchmark_tab.py (see this package's
-__init__.py for the general convention).
+Pure logic, no tkinter dependency -- exercisable without a display, same as every
+non-GUI module in this package (the tkinter code lives in the tab, section and widget
+modules).
 """
 import math
 

@@ -20,8 +20,8 @@ tab's quick-gen panel, the Goldbach research tab): list_floors()/list_source_fil
 format_bytes()/format_duration()/digit_count_floor() etc.
 
 Pure logic (no tkinter dependency) -- exercisable/unit-tested without a display, same
-convention as every other module in this package except settings_tab.py/benchmark_tab.py/
-primes_tab.py/widgets.py (see this package's __init__.py's own docstring).
+convention as every non-GUI module in this package (the tkinter code lives in the tab,
+section and widget modules).
 """
 import bisect
 import json

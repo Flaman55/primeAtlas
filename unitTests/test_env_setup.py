@@ -734,7 +734,7 @@ def section_d():
 # Section E -- AppSettings.env_status / set_env_status (on-demand status readback)
 # ============================================================================================
 #
-# Not exercised by env_setup.py itself -- this is the persistence layer settings_tab.py's
+# Not exercised by env_setup.py itself -- this is the persistence layer updates_section.py's
 # on-demand environment-status label and env_setup_wizard.py's _on_check_done() both depend
 # on: the wizard window can close before its own check result is read, so the last known
 # status must be persisted rather than kept only in the wizard's transient state. Mirrors

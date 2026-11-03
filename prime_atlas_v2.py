@@ -11,7 +11,7 @@ import os
 # On-disk data lives under a folder/environment-variable named CONSTELLATION_PORTAL /
 # CONSTELLATION_PORTAL_DIR, read directly by the sieve/orchestrator/constellation scripts
 # this app launches (prime_sieve_v1.py/v3.py, orchestrator_v3.py, orchestrator_loop_v2.py,
-# constellation_finder_v1.py); that naming is independent of the application's display name.
+# constellation_finder_v2_1.py); that naming is independent of the application's display name.
 #
 # Purpose: browse what the scanner/orchestrator/constellation finder have actually
 # produced without opening a terminal. Five tabs:
@@ -24,7 +24,7 @@ import os
 #      offsets); plus a search box that reports whether a given number participates in any
 #      recorded constellation and at which position of its structure.
 #   3) "Generation" -- launches orchestrator_loop_v2.py (the generation pipeline) and
-#      constellation_finder_v1.py (k-tuple search) directly from this GUI, via WSL, instead
+#      constellation_finder_v2_1.py (k-tuple search) directly from this GUI, via WSL, instead
 #      of a manual WSL terminal + hand-typed CLI args. Two independent forms (one per
 #      script), each exposing every CLI parameter those scripts have -- including
 #      workers/batches_per_worker/window_count_per_run -- with live streamed output and a
@@ -57,13 +57,12 @@ import os
 #                                                  says is missing from the CURRENT disk
 #        - PortalWiper                           (delete_manager.py)  -- the "delete
 #                                                  everything" button's actual logic
-#      settings_tab.py (same package) is the only module that imports tkinter, wiring the
-#      classes above into the actual Settings tab widgets. This file (prime_atlas_v2.py)
-#      owns the other four tabs' UI code directly.
+#      settings_tab.py (same package) and its *_section.py mixins wire the classes above
+#      into the actual Settings tab widgets.
 #
 # The chosen storage path also has to reach the scripts this app launches as separate WSL
 # processes (prime_sieve_v3.py, orchestrator_v3.py, orchestrator_loop_v2.py,
-# constellation_finder_v1.py). All four check a CONSTELLATION_PORTAL_DIR environment
+# constellation_finder_v2_1.py). All four check a CONSTELLATION_PORTAL_DIR environment
 # variable first (see each file's own __main__/module-level comment) --
 # build_wsl_logged_command() below prepends it to every WSL command this app launches, so
 # choosing a custom path in Settings transparently affects the Generation tab's
@@ -202,12 +201,10 @@ def _build_gui():
     from tkinter import ttk
     # The Settings tab's widgets live in their own package (primeatlas/) as a
     # proper class (SettingsTab), not more nested functions on PortalBrowserApp -- see
-    # this file's module docstring and settings_tab.py's own docstring for the full
-    # rationale. Imported here (inside _build_gui(), not at module top level) for the
-    # same reason tkinter itself is: it keeps this module's top-level prefix (everything
-    # above _build_gui) importable/testable without tkinter installed. GenerationConsole
-    # is no longer imported here -- its only user (the Generation tab) now imports it
-    # directly in its section modules in primeatlas/generation/.
+    # this file's module docstring for the rationale. Imported here (inside _build_gui(),
+    # not at module top level) for the same reason tkinter itself is: it keeps this
+    # module's top-level prefix (everything above _build_gui) importable/testable without
+    # tkinter installed.
     from primeatlas.settings.settings_tab import SettingsTab
     from primeatlas.core.totals_search_coordinator import TotalsSearchCoordinator
     from primeatlas.primes.primes_tree_coordinator import PrimesTreeCoordinator
@@ -917,7 +914,7 @@ def _build_gui():
             if not participation:
                 # Empty result is genuinely ambiguous -- see
                 # _offer_generate_missing_constellation()'s own docstring: no hit FILES at
-                # all for this floor means constellation_finder_v1.py simply never ran
+                # all for this floor means constellation_finder_v2_1.py simply never ran
                 # here, not that this specific number was checked and excluded.
                 if (not list_constellation_hits(PORTAL_FOLDER, base_exponent)
                         and self._offer_generate_missing_constellation(base_exponent, number)):
@@ -1261,9 +1258,9 @@ def _build_gui():
                 "WslLoggedRunner": WslLoggedRunner,
                 "generation_log_paths": generation_log_paths,
                 # For the restore driver's own RAM-based "auto width" and low-floor
-                # (0-6) cascade-aware batching -- see restore_job.py / settings_tab.py's
+                # (0-6) cascade-aware batching -- see restore_job.py / restore_section.py's
                 # _drive_windows_phase() docstring. Passed through rather than imported
-                # directly in settings_tab.py, same reasoning as every other entry here
+                # directly in restore_section.py, same reasoning as every other entry here
                 # (see this method's own docstring).
                 "low_floor_cutoff": LOW_FLOOR_CUTOFF,
                 "estimate_wsl_available_ram_bytes": estimate_wsl_available_ram_bytes,
@@ -1319,7 +1316,7 @@ def _build_gui():
                 "run_primecount_install_wsl_blocking":
                     lambda timeout=300:
                         run_primecount_install_wsl_blocking(PORTAL_FOLDER, timeout),
-                # The theme/language auto-restart feature (settings_tab.py's
+                # The theme/language auto-restart feature (general_section.py's
                 # _has_running_job()) uses this to tell whether a Generation-tab pipeline/
                 # constellation-finder/k-tuple run is currently in flight before
                 # replacing the whole process via os.execv -- SettingsTab has no direct

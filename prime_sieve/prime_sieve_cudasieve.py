@@ -16,11 +16,7 @@ from floor_meta_store import append_benchmark_row_to_floor_meta
 VERSION = "v0.1"
 
 # ==========================================================================================
-# prime_sieve_cudasieve.py -- "cudasieve mode" (GPU engine, `cudasieve` branch only)
-#
-# Forked alongside prime_atlas_v2.py/orchestrator_v4.py/settings_tab_v2.py on the
-# `cudasieve` branch -- see those files' own header notes. This module does NOT exist on
-# main; it is new, not a version bump of any production file.
+# prime_sieve_cudasieve.py -- "cudasieve mode" (GPU engine)
 #
 # Modeled on prime_sieve_primesieve.py (SAME folder): like that file, this mode bypasses
 # this project's own batched engine/orchestrator machinery entirely and calls a fast,
@@ -49,7 +45,7 @@ VERSION = "v0.1"
 #   plain stdout -- the same "mere aggregation via exec" boundary FSF's own GPL FAQ
 #   describes as NOT creating a derivative/combined work. PrimeAtlas's own source stays
 #   under its own license regardless of whether the user has CUDASieve installed.
-#   The user builds/installs `cudasieve` themselves (see settings_tab_v2.py's installer,
+#   The user builds/installs `cudasieve` themselves (see updates_section.py's installer,
 #   which fetches it from CUDASieve's own GitHub repo -- never a vendored copy -- and
 #   shows its License text for the user to accept before first use, exactly like this
 #   project's existing sympy installer shows nothing since sympy is MIT, but unlike that
@@ -259,7 +255,7 @@ CUDASIEVE_REPO_URL = "https://github.com/curtisseizert/CUDASieve"
 
 
 def default_install_dir():
-    """Where the installer (settings_tab_v2.py, via the --fetch-license/--build CLI modes
+    """Where the installer (updates_section.py, via the --fetch-license/--build CLI modes
     below) clones and builds CUDASieve: a dotfolder under the WSL user's own home
     directory -- deliberately OUTSIDE this git repository (never vendored -- see module
     header) and OUTSIDE CONSTELLATION_PORTAL_DIR (that is data storage, this is a
@@ -289,7 +285,7 @@ def find_cudasieve_binary():
 def require_cudasieve_binary():
     """Same as find_cudasieve_binary() but raises a clear, actionable RuntimeError instead
     of returning None -- the one call site every generation entry point below should use,
-    so a missing install fails with a message pointing at settings_tab_v2.py's installer
+    so a missing install fails with a message pointing at updates_section.py's installer
     rather than a bare FileNotFoundError from subprocess."""
     path = find_cudasieve_binary()
     if not path:
@@ -465,14 +461,14 @@ def generate_floor_windows(base_power, target_idx_start, target_idx_count, windo
 
 # ------------------------------------------------------------------------------------------
 # Installer CLI modes -- --status / --fetch-license / --build -- called from
-# settings_tab_v2.py (Updates tab) via a WSL subprocess, same as this file's own
+# updates_section.py (Updates tab) via a WSL subprocess, same as this file's own
 # floor-generation CLI below. Kept in THIS file (not split into the Windows-side GUI code)
 # so all CUDASieve-specific logic -- including the git clone / make invocation -- lives in
 # exactly one place, consistent with this folder's "every engine file stays independently
 # runnable" convention (see module header). Deliberately three separate steps, not one
 # "--install" that does everything, so the GUI can show the ACTUAL License text (read back
 # from the just-cloned repo, not a copy embedded in this project) and get the user's
-# explicit consent BEFORE the longer `make` build step ever runs -- see settings_tab_v2.py's
+# explicit consent BEFORE the longer `make` build step ever runs -- see updates_section.py's
 # own installer section for that consent-gate flow.
 # ------------------------------------------------------------------------------------------
 
@@ -499,13 +495,13 @@ def cmd_status(install_dir):
 def cmd_fetch_license(install_dir):
     """Clones CUDASieve (or fast-forwards an existing clone) into install_dir, then prints
     the ACTUAL, current text of its own `License` file as one JSON line -- this is what
-    settings_tab_v2.py shows the user for consent before --build ever runs, precisely so
+    updates_section.py shows the user for consent before --build ever runs, precisely so
     the consent step reflects the real file in the real repository, not a string this
     project would otherwise have to keep in sync by hand. Cloning source code onto disk is
     not itself a use requiring prior consent (equivalent to `git clone` of any public repo)
     -- see module header, "PROCESS BOUNDARY, NOT LINKING" -- the consent gate belongs at
     "before build/before this becomes a usable engine", which is exactly where
-    settings_tab_v2.py places it."""
+    updates_section.py places it."""
     try:
         os.makedirs(os.path.dirname(install_dir), exist_ok=True)
         if not os.path.isdir(os.path.join(install_dir, ".git")):
