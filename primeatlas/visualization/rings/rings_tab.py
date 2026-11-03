@@ -87,7 +87,7 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
     GL_POINT_SIZE_RANGE hardware/driver limit.
 
     `track_primes` -- an iterable of prime
-    values (any order/dupes as typed by the user, see ring_geometry.py's
+    values (any order/dupes as typed by the user, see ring_tracked.py's
     own filter_active_tracked docstring for why order is preserved) chosen
     once at launch time via the "Track P" field, forwarded as-is to
     renderer.py's --track-primes. `auto_orbit` mirrors the JS's auto-orbit
@@ -133,7 +133,7 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
     --viz-mode doc-comment). `pattern_seed_k`/`pattern_seed_start` -- both
     None (default) omits --pattern-seed-k/--pattern-seed-start entirely;
     given together, they derive the "line" mode's optional sliding k-tuple
-    pattern (see ring_geometry.pattern_offsets_from_seed). Not int()-cast
+    pattern (see line_geometry.pattern_offsets_from_seed). Not int()-cast
     here for the same reason track_primes isn't above -- renderer.py's own
     argparse does the real validation.
 
@@ -365,8 +365,8 @@ class RingsTab(VizTabBase):
         # horizontal row of real primes (from Load Range above, which this
         # requires) instead of the default ring-per-modulus display, with an
         # optional k-tuple pattern slid along it by N (see renderer.py's own
-        # --viz-mode/--pattern-seed-* flags and ring_geometry.py's "line
-        # viz-mode" section for the full design). k/p0 derive the pattern's
+        # --viz-mode/--pattern-seed-* flags and line_geometry.py for the full
+        # design). k/p0 derive the pattern's
         # offsets from k real consecutive primes >= p0 -- see
         # pattern_offsets_from_seed's own doc-comment for why that's always
         # an admissible pattern.

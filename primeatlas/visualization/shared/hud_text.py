@@ -94,7 +94,7 @@ def rasterize_hud_text(lines, font_size=_HUD_FONT_SIZE_DEFAULT, line_colors=None
     `line_colors` -- optional list of (r, g, b) tuples,
     one per entry in `lines`, drawn instead of the flat _HUD_TEXT_RGB for
     that line (see hud_line_colors, which builds this list from
-    ring_geometry.window_label_colors so the Bertrand/Legendre/General Law
+    ring_windows.window_label_colors so the Bertrand/Legendre/General Law
     window-range lines get their own family color). None (the default) draws
     every line in _HUD_TEXT_RGB; a line
     index beyond len(line_colors) also falls back to _HUD_TEXT_RGB, so a

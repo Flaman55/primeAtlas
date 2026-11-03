@@ -1,7 +1,7 @@
 """
 test_ring_viz_pattern_mode.py -- tests for the "line" viz-mode k-tuple
 pattern-slide feature added to the ring visualization: the pure
-offset-derivation/geometry functions in ring_geometry.py, the vertex-data
+offset-derivation/geometry functions in line_geometry.py, the vertex-data
 builder in line_draw.py, and RenderSession's line-mode state in
 session.py. No moderngl/glfw import anywhere -- same "pure logic, GPU-free"
 convention as every other ring_viz test in this folder.
@@ -106,7 +106,7 @@ def _test_line_positions_archive_scale_precision():
 
 
 def _test_value_to_ring_axis_xy():
-    """Spec for ring_geometry.value_to_ring_axis_xy -- a purely visual
+    """Spec for line_geometry.value_to_ring_axis_xy -- a purely visual
     curved-axis layout: values keep their exact linear order, only the
     on-screen shape bends into a circle, with a red vertical line at the
     start/end seam. t=0 (value==lo) and t=1 (value==lo+span) must coincide at
@@ -137,7 +137,7 @@ def _test_value_to_ring_axis_xy():
 
 
 def _test_line_positions_windowed_ring():
-    """Spec for ring_geometry.line_positions_windowed_ring: same [lo, lo+span]
+    """Spec for line_geometry.line_positions_windowed_ring: same [lo, lo+span]
     binary-search filter as line_positions_windowed, but each surviving
     value is placed via value_to_ring_axis_xy's circular math instead of a
     straight y=0 row."""
@@ -164,7 +164,7 @@ def _test_line_positions_windowed_ring():
 
 
 def _test_value_to_spiral_xy():
-    """Spec for ring_geometry.value_to_spiral_xy: each `period`-sized chunk of
+    """Spec for line_geometry.value_to_spiral_xy: each `period`-sized chunk of
     the axis gets its own
     lap at a bigger radius; every lap's own phase-zero point (value ≡ lo
     mod period) lands at the SAME angle (-pi/2) regardless of which lap,
@@ -1821,7 +1821,7 @@ def _test_build_line_vertex_data_curved():
 
 
 def _test_line_view_bounds():
-    """Spec for ring_geometry.line_view_bounds (wrapping the axis into a local
+    """Spec for line_geometry.line_view_bounds (wrapping the axis into a local
     coordinate around the anchor, for the float32 GPU-vertex-buffer precision
     ceiling): stay in 'full' whole-window mode
     below LINE_PRECISION_SAFE_SPAN, switch to a 'local', anchor-centered,
@@ -1853,7 +1853,7 @@ def _test_line_view_bounds():
 
 
 def _test_line_positions_windowed():
-    """Spec for ring_geometry.line_positions_windowed: filters an ascending
+    """Spec for line_geometry.line_positions_windowed: filters an ascending
     array down to [lo, lo+span] via binary search and maps ONLY that
     slice, using the caller-supplied lo/span rather than the array's own
     min/max -- the piece line_view_bounds' local mode actually needs to

@@ -48,7 +48,7 @@ def split_hit_normal_vertex_data(data, hit_mask):
 # triggerResonanceFlash trio.
 #
 # All of the ANCHOR/COLOR math these draw calls need (compute_tracked_colors)
-# already lives in ring_geometry.py -- the only new pure-math surface here is
+# already lives in ring_window_colors.py -- the only new pure-math surface here is
 # the small amount below that is specific to the GL layer itself (unit-circle
 # geometry, screen-space marker offsets, flash decay/alpha), kept as plain
 # functions so it can be unit-tested without a GPU (see run()'s own GL

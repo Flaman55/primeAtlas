@@ -749,7 +749,7 @@ though the blend arithmetic was doing exactly what it was designed to -- confirm
 directly against real portal data (18 primes strictly inside Legendre's window but
 outside General Law's at n=2,520,000, theta=0.4, rendering (255,255,224) instead of a
 recognizable color). Averaging means each contributing family's color visibly pulls the
-result toward itself instead of washing to white (`ring_geometry._blend_family_colors`,
+result toward itself instead of washing to white (`ring_window_colors._blend_family_colors`,
 used by both `compute_highlight_colors` -- per-ring -- and `compute_tracked_colors`).
 
 The HUD's own three window-range lines ("Bertrand window: ...", etc.) are a SEPARATE
@@ -761,7 +761,7 @@ describing what a blended ring looks like. That job belongs to a separate, dynam
 sized color LEGEND instead (Artur's own follow-up request) -- one extra HUD line per
 distinct NESTED SHELL among the enabled families (e.g. "Bertrand + Legendre:", then
 "Bertrand + Legendre + General Law:"), each in that shell's own averaged color.
-`ring_geometry.nested_shell_colors` derives these from a key structural fact: every
+`ring_windows.nested_shell_colors` derives these from a key structural fact: every
 window family here shares the exact same right edge n, so any two enabled windows are
 never a partial, crossing overlap -- one is always a strict superset of the other (or
 they coincide exactly), a total order by `lo`. Sorting enabled families by `lo` and
@@ -773,7 +773,7 @@ General Law at theta=0.5, provably identical to Legendre) open the same shell to
 one legend line, not a separate boundary between them.
 
 Legendre's (and General Law's rigid `'legendre'` mode's) own ring highlight also has a
-fade-continuity layer on top of plain window membership, `ring_geometry.
+fade-continuity layer on top of plain window membership, `ring_windows.
 is_legendre_highlighted`/`is_general_law_highlighted` -- [ADDED 2026-09-26, Artur's own
 live bug report against this exact module, screenshots at N=144/145/169] plain strict
 membership alone extinguishes an ENTIRE Legendre level's worth of highlighted primes in
@@ -806,7 +806,7 @@ smoothly continuous by construction (confirmed by live-testing the equivalent
 RelationalMathematics website feature this same session).
 
 General Law's `'stepped'` mode [ADDED 2026-09-26, same-day follow-up] gets the SAME
-fade queue as `'legendre'` (shared via `ring_geometry._fade_previous_level`), with one
+fade queue as `'legendre'` (shared via `ring_windows._fade_previous_level`), with one
 crucial difference: the retirement pace (`exposure_count`) is NOT `'stepped'`'s own live
 count. `'stepped'` scales its window narrower than Legendre's via a tent factor, and
 unlike Legendre's raw test -- which, once a prime satisfies `(k*k, n]`, can never fail it
@@ -856,16 +856,16 @@ Load Range in the tab) replaces the ring-per-modulus display with a literal numb
 a fixed horizontal row of real primes from the chosen Load Range, plus an optional
 sliding k-tuple pattern -- enter a pattern size `k` and a starting prime `p0` (> 2) and
 the pattern's offsets are derived from `k` real consecutive primes >= `p0`
-(`ring_geometry.pattern_offsets_from_seed`, always admissible since it's read off a real
+(`line_geometry.pattern_offsets_from_seed`, always admissible since it's read off a real
 occurrence). N becomes the pattern's anchor, moved with the exact same playback/scrub
 controls as ring mode; every member (`n + offset`) is drawn as an oversized marker
 (reusing the existing hit-point-size mechanism), green when it lands on a real prime and
 red when it doesn't, with a full-screen flash and an on-canvas HUD line when every member
-matches at once. Unrelated to the ring/gear math above -- see ring_geometry.py's own
-"line viz-mode" section and `RenderSession.rebuild_line` for the separate code path.
+matches at once. Unrelated to the ring/gear math above -- see line_geometry.py and
+`RenderSession.rebuild_line` for the separate code path.
 
 Scrubbing/playback in line mode skip straight to the next position that can EVER match --
-a "wheel" (`ring_geometry.pattern_wheel_residues`, CRT over small primes) rules out every N
+a "wheel" (`line_geometry.pattern_wheel_residues`, CRT over small primes) rules out every N
 a small-prime divisibility check alone already forces composite, so a LEFT/RIGHT press or a
 playback tick jumps whole periods ahead instead of testing every integer one at a time; the
 HUD line shows the resulting candidate density (e.g. `wheel=30030 (24/30030 candidates/
@@ -881,7 +881,7 @@ matches on the way) when unchecked -- turning a manual step-by-step browse into 
 one-keypress jump to the next genuine occurrence, or to the next miss.
 
 Line mode's coordinate mapping self-adjusts for real archive-scale windows
-(`ring_geometry.line_view_bounds`): a loaded span under ~20,000 maps straight to the whole
+(`line_geometry.line_view_bounds`): a loaded span under ~20,000 maps straight to the whole
 window (unchanged from the mode's original behavior), but a real archive-scale span (a
 --load-range many orders of magnitude wider than a single k-tuple's own internal spacing)
 switches to a small, FIXED-width viewport camera-anchored on the current pattern anchor N
@@ -897,7 +897,7 @@ real 2,000,000-prime archive load's own per-frame rebuild time from ~410ms to un
 The HUD's `Pattern:` line shows `[view: local]` whenever this fallback is active.
 
 An optional "Curved axis" checkbox (`--line-axis-curved`) bends line mode's straight dot-row
-into a circle instead -- a PURELY visual choice (`ring_geometry.value_to_ring_axis_xy`/
+into a circle instead -- a PURELY visual choice (`line_geometry.value_to_ring_axis_xy`/
 `line_positions_windowed_ring`, `geometry_draw.build_line_vertex_data`'s own `curved`
 parameter): every value keeps its exact linear position/order, only the on-screen shape
 changes, and nothing about matching, navigation, or the wheel/seek logic is affected. Since
@@ -909,7 +909,7 @@ look like a real wraparound that isn't there -- a red boundary line (drawn throu
 
 Once a real pattern (with a genuine wheel, `pattern_wheel_modulus > 1`) is active, the same
 "Curved axis" checkbox automatically promotes the single circle into a SPIRAL instead
-(`ring_geometry.value_to_spiral_xy`/`line_positions_windowed_spiral`/`spiral_outer_radius`,
+(`line_geometry.value_to_spiral_xy`/`line_positions_windowed_spiral`/`spiral_outer_radius`,
 `build_line_vertex_data`'s own `wheel_modulus` parameter): every full wheel-period-sized chunk
 of the loaded window gets its own lap, at a bigger radius than the last, so a window spanning
 several wheel periods shows that structure directly (a window narrower than one period still
@@ -1666,11 +1666,20 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               arguments (--windows, --general-law-*, --track-primes,
                               --auto-orbit; a Load Range of at most 500 primes is tracked
                               in full)
-      ring_geometry.py             ring/drum placement math, Bertrand/Legendre/General Law
-                              highlight-window membership and blended colors, tracked-
-                              prime LCM/resonance, resonance events -- ported from the
-                              standalone Structural Sieve HTML tool's own SieveModel.js;
-                              pure functions, no OpenGL or subprocess code
+      ring_geometry.py             ring/drum placement math (radius, tooth phase and
+                              angle per ring) -- ported, like the five modules below,
+                              from the standalone Structural Sieve HTML tool's own
+                              SieveModel.js; pure functions, no OpenGL or subprocess code
+      ring_windows.py              Bertrand/Legendre/General Law window bounds, per-ring
+                              membership, the fade-continuity highlight layer, family
+                              registries, HUD label and nested-shell colors
+      ring_window_anchors.py       each window family's anchor prime, the cyclic
+                              Legendre/General Law anchor, the per-frame anchor list
+      ring_window_colors.py        blended per-ring highlight and tracked colors
+      ring_resonance.py            resonance events in a range of n, resonance-log and
+                              surviving-primes panel text
+      ring_tracked.py              tracked primes: active filter, per-ring mask, LCM /
+                              resonance state for the HUD
       ring_draw.py                 per-ring vertex color/position data, tracked-ring
                               outline draws, ring-mode flash colors
       ring_hud.py                  hud_lines_for_n, per-line window-family coloring, the
