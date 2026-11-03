@@ -37,7 +37,7 @@ DEFAULT_GENERATION_SETTINGS = {
     },
     "constellation": {
         "base_exponent": "",  # blank = auto (every floor with source data -- see
-                               # constellation_windows_v2_2.list_floors_with_data())
+                               # constellation_windows_v2_3.list_floors_with_data())
     },
     "ktuple": {
         "base_exponent": "",
@@ -45,7 +45,7 @@ DEFAULT_GENERATION_SETTINGS = {
         "variant_id": "",
         "n_locations": "1000",
         "window_m": "10000000",
-        "strategy": "concentrated",  # see ktuple_sieve_v2_1.py's own module docstring for
+        "strategy": "concentrated",  # see ktuple_sieve_v2_2.py's own module docstring for
                                       # what each strategy means
         "step": "",  # blank = auto-computed per strategy (required for manual_step)
         "fragment_width": "",  # blank = auto-sized from Hardy-Littlewood density
@@ -58,7 +58,7 @@ DEFAULT_GENERATION_SETTINGS = {
         "reset_checkpoint": False,
         "pass_counter": "0",  # strategy=digit_sweep only -- starting pass (0, 1, 2, ...)
                                # used only when no checkpoint exists yet or after a
-                               # reset -- see ktuple_locations_v2_1.py's digit_sweep_locations()
+                               # reset -- see ktuple_locations_v2_2.py's digit_sweep_locations()
                                # docstring (PATH VARIETY section)
     },
 }

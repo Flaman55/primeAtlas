@@ -175,7 +175,7 @@ comparisons with primesieve and PARI/GP are in `BENCHMARK.md`.
     `PROVISIONAL_HITS_*` log until the exhaustive scan reaches them. This mode never touches the
     constellation finder's own `CHECKPOINT.txt` -- its own checkpoint is a completely
     separate file, since these locations are not tied to any pre-existing prime
-    window at all (see `ktuple_sieve_v2_1.py`'s own module docstring).
+    window at all (see `ktuple_sieve_v2_2.py`'s own module docstring).
 - **Visualization** -- a seventh top-level tab (between Generation and Benchmark)
   holding one sub-tab per visualization. Its **Rings** sub-tab opens an interactive,
   GPU-rendered view of prime rings around a chosen `n`, fed from whatever is already in
@@ -1450,11 +1450,11 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               form (Advanced, engine fields), its console, Run/finish/
                               poll handlers and the floor-totals bump after a run
   constellation_section.py      ConstellationSection mixin: Section B, the
-                              constellation_finder_v2_2.py form and console, batched
+                              constellation_finder_v2_3.py form and console, batched
                               launches, graceful Stop via STOP_REQUEST.txt,
                               checkpoint-verified auto-retry (its CONSTELLATION_*
                               constants live here)
-  ktuple_section.py             KtupleSection mixin: Section C, the ktuple_sieve_v2_1.py
+  ktuple_section.py             KtupleSection mixin: Section C, the ktuple_sieve_v2_2.py
                               form (pattern, strategy, Advanced), Run/Auto/Stop/finish
   run_progress.py               GenerationRunProgress mixin: output-queue draining into
                               consoles, the shared progress bar and status text
@@ -2067,26 +2067,33 @@ constellation/
   constellation_finder_v1.py  k-tuple pattern search over generated prime data
   constellation_finder_v2_1.py v2's code unchanged in one file (comments and start
                               banner differ only; guarded by
-                              test_constellation_finder_v2_1.py); kept for
+                              test_constellation_finder_v2_1.py); kept for the frozen
                               ktuple_hit_store_v2_1, which imports it
-  constellation_finder_v2_2.py the k-tuple search the GUI launches: v2's code split into
-                              eight modules, unchanged (start banner differs only;
-                              guarded by test_constellation_finder_v2_2.py). This file
-                              keeps the floor boundary check, process_floor() and the
-                              command line
-  constellation_const_v2_2.py  its fixed shared values: per-floor state file names,
+  constellation_finder_v2_2.py v2's code split into eight modules, unchanged (start
+                              banner differs only; guarded by
+                              test_constellation_finder_v2_2.py), with the portal in a
+                              module global (constellation_dynamic_v2_2.py) and sys.path
+                              set by import order; kept as the step before v2_3
+  constellation_finder_v2_3.py the k-tuple search the GUI launches: the v2_2 split with the
+                              portal folder passed explicitly -- every disk-touching
+                              function takes `portal` first, the CLI resolves it once
+                              (guarded by test_constellation_finder_v2_3.py: v2's code
+                              unchanged once `portal` is read as PORTAL_FOLDER, same
+                              output and files as v2). This file keeps the floor
+                              boundary check, process_floor(), the command line, and is
+                              the only one that puts ../prime_sieve on sys.path
+  constellation_const_v2_3.py  its fixed shared values: per-floor state file names,
                               the STOP_REQUEST.txt marker, the diagnostics switch
-  constellation_dynamic_v2_2.py its import-time shared values: PORTAL_FOLDER (from
-                              CONSTELLATION_PORTAL_DIR) and the ../prime_sieve path;
-                              the other modules read both as module attributes
-  constellation_diag_v2_2.py   its crash-diagnosis helpers (RSS/open FDs, fsynced print)
-  constellation_windows_v2_2.py its source window list, WINDOW_INDEX.tsv cache, floors
+  constellation_portal_v2_3.py default_portal_folder(): CONSTELLATION_PORTAL_DIR, else
+                              ../CONSTELLATION_PORTAL; called once per CLI run
+  constellation_diag_v2_3.py   its crash-diagnosis helpers (RSS/open FDs, fsynced print)
+  constellation_windows_v2_3.py its source window list, WINDOW_INDEX.tsv cache, floors
                               with data
-  constellation_progress_v2_2.py its scan progress: DONE_WINDOWS.txt, CHECKPOINT.txt
+  constellation_progress_v2_3.py its scan progress: DONE_WINDOWS.txt, CHECKPOINT.txt
                               ranges, BOUNDARY_CHECKED.txt, the stop request
-  constellation_hits_v2_2.py   its hit storage: HITS_* layout, LAST_VALUES.tsv cache,
+  constellation_hits_v2_3.py   its hit storage: HITS_* layout, LAST_VALUES.tsv cache,
                               appends with auto-migration to pages, deduped merge
-  constellation_match_v2_2.py  its vectorized pattern matching (numpy, no file I/O)
+  constellation_match_v2_3.py  its vectorized pattern matching (numpy, no file I/O)
   constellation_finder_v2.py  the k-tuple search engine (PGS2 streaming, k=2..21,
                               --max-windows batches). Windows may be generated
                               anywhere on a floor, in any order: DONE_WINDOWS.txt lists
@@ -2107,17 +2114,24 @@ constellation/
                               beyond constellation_finder_v2's exhaustive frontier go
                               to a PROVISIONAL_HITS_* log instead of the shared hit
                               file; checkpointed strategies incl. digit_sweep (frozen)
-  ktuple_sieve_v2_1.py        the targeted sieve the GUI launches: v2's code split into
-                              four modules, unchanged (start banner differs only;
-                              guarded by test_ktuple_sieve_v2_1.py). This file keeps
-                              the scan drivers (scan_locations, run_ktuple_job) and
-                              the command line
-  ktuple_wheel_v2_1.py        its arithmetic: Miller-Rabin, CRT residue wheel,
+  ktuple_sieve_v2_1.py        v2's code split into four modules, unchanged (start banner
+                              differs only; guarded by test_ktuple_sieve_v2_1.py), on
+                              constellation_finder_v2_1; with ktuple_wheel_v2_1.py,
+                              ktuple_locations_v2_1.py and ktuple_hit_store_v2_1.py
+                              kept as the step before v2_2
+  ktuple_sieve_v2_2.py        the targeted sieve the GUI launches: the v2_1 split on
+                              constellation_*_v2_3 with the portal passed explicitly
+                              (guarded by test_ktuple_sieve_v2_2.py: v2's code unchanged
+                              once `portal` is read as PORTAL_FOLDER, same output and
+                              files as v2). This file keeps the scan drivers
+                              (scan_locations, run_ktuple_job), the command line and the
+                              sys.path setup
+  ktuple_wheel_v2_2.py        its arithmetic: Miller-Rabin, CRT residue wheel,
                               candidate scan, Hardy-Littlewood fragment sizing
-  ktuple_locations_v2_1.py    its location strategies: striding (even/concentrated/
+  ktuple_locations_v2_2.py    its location strategies: striding (even/concentrated/
                               manual_step), manual_list, the nested digit sweep
-  ktuple_hit_store_v2_1.py    its on-disk state: KTUPLE_CHECKPOINT_*, the exhaustive
-                              frontier read from constellation_finder_v2_1, gap-safe
+  ktuple_hit_store_v2_2.py    its on-disk state: KTUPLE_CHECKPOINT_*, the exhaustive
+                              frontier read from constellation_progress_v2_3, gap-safe
                               routing of confirmed hits (shared HITS_* vs PROVISIONAL)
   pattern_catalog_v1.py       catalog of supported k-tuple patterns, shared by the
                               constellation finder, the ktuple sieves, and the

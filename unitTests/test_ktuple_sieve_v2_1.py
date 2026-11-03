@@ -144,16 +144,6 @@ def main():
             n = source.count("\n")
             check(n <= MAX_LINES, f"{os.path.basename(path)} has {n} lines (<= {MAX_LINES})")
 
-    generation_dir = os.path.join(os.path.dirname(_SCRIPT_DIR), "primeatlas", "generation")
-    with open(os.path.join(generation_dir, "engine_argv.py"), encoding="utf-8") as f:
-        engine_argv_source = f.read()
-    with open(os.path.join(generation_dir, "ktuple_section.py"), encoding="utf-8") as f:
-        ktuple_section_source = f.read()
-    check('os.path.join(_SCRIPT_DIR, "constellation", "ktuple_sieve_v2_1.py")' in engine_argv_source,
-          "the GUI launches ktuple_sieve_v2_1.py (engine_argv.KTUPLE_SIEVE_SCRIPT)")
-    check('kill_pattern="ktuple_sieve_v2_1.py"' in ktuple_section_source,
-          "Stop kills ktuple_sieve_v2_1.py, the script the GUI launches")
-
     portal_v2 = tempfile.mkdtemp(prefix="primeatlas_ktuple_v2_cli_")
     portal_v2_1 = tempfile.mkdtemp(prefix="primeatlas_ktuple_v2_1_cli_")
     try:

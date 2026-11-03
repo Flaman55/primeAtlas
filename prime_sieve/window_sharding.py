@@ -22,9 +22,9 @@ Lives in prime_sieve/ specifically so both sides can import it identically: ever
 engine script in this same folder can bare `import window_sharding` (same directory), and
 every Windows-side primeatlas/*.py module can do the same via prime_atlas_v2.py's existing
 sys.path.insert(0, ".../prime_sieve") (the same mechanism already used there for
-prime_sieve_v1 itself), and constellation_dynamic_v2_2.py already does its own
-sys.path.insert(0, "../prime_sieve") to reach prime_sieve_v1, so this rides along for
-free.
+prime_sieve_v1 itself), and the constellation entry scripts (constellation_finder_v2_3.py,
+ktuple_sieve_v2_2.py) already do their own sys.path.insert(0, "../prime_sieve") to reach
+prime_sieve_v1, so this rides along for free.
 
 Unsharded floors are NOT handled here -- prime_sieve/migrate_shard_source_primes.py
 migrates them. Every reader in this codebase assumes ALL floors are sharded; there is

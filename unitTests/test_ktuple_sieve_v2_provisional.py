@@ -1,6 +1,8 @@
 """
 test_ktuple_sieve_v2_provisional.py -- integration tests for the gap-safe hit routing of
-ktuple_sieve_v2.py and ktuple_sieve_v2_1.py (the same scenario runs against each), using REAL temporary storage and REAL PGS2 window files (via
+ktuple_sieve_v2.py, ktuple_sieve_v2_1.py and ktuple_sieve_v2_2.py (the same scenario runs
+against each; v2_2 takes the portal folder as an explicit first argument instead of a
+module global), using REAL temporary storage and REAL PGS2 window files (via
 prime_sieve_v1.write_prime_window), no mocking of either module.
 
 ktuple_sieve_v1.py wrote every confirmed hit straight into the SAME cumulative hit file
@@ -27,6 +29,7 @@ Usage (Windows, real Python -- pure Python, no Tk/display dependency):
 Usage (this sandbox, headless):
     python3 unitTests/test_ktuple_sieve_v2_provisional.py
 """
+import functools
 import os
 import shutil
 import sys
@@ -48,19 +51,60 @@ def check(condition, message):
         print(f"ok:   {message}")
 
 
-def run_scenario(label, ks, store, cf):
-    """Runs the three layers against one version: `ks` is the script module (scan
-    drivers), `store` the module holding the frontier and hit routing, `cf` the
-    constellation finder module `store` reads its PORTAL_FOLDER from."""
+class _PortalBound:
+    """Exposes the given functions with `portal` bound as their first
+    argument, so the explicit-portal v2_2 API reads like the module-global one."""
+
+    def __init__(self, portal, **functions):
+        self._functions = {name: functools.partial(fn, portal) for name, fn in functions.items()}
+
+    def __getattr__(self, name):
+        return self._functions[name]
+
+
+def bind_module_global(ks, store, cf):
+    """v2 / v2_1: the portal is constellation_finder's module-level PORTAL_FOLDER."""
+    def bind(tmp_portal):
+        cf.PORTAL_FOLDER = tmp_portal  # store's own _cf2 is the SAME module object (single
+                                        # entry in sys.modules), so this is visible to it
+                                        # too without any separate patching.
+        return ks, store, cf
+    return bind
+
+
+def bind_explicit_portal(tmp_portal):
+    """v2_2: every disk-touching function takes the portal as its first argument."""
+    import constellation_hits_v2_3
+    import constellation_progress_v2_3
+    import constellation_windows_v2_3
+    import ktuple_hit_store_v2_2
+    import ktuple_sieve_v2_2
+    ks = _PortalBound(tmp_portal, scan_locations=ktuple_sieve_v2_2.scan_locations)
+    store = _PortalBound(
+        tmp_portal,
+        _exhaustive_frontier_value=ktuple_hit_store_v2_2._exhaustive_frontier_value,
+        _record_confirmed_hits=ktuple_hit_store_v2_2._record_confirmed_hits,
+        read_provisional_hits=ktuple_hit_store_v2_2.read_provisional_hits)
+    cf = _PortalBound(
+        tmp_portal,
+        hit_file_path=constellation_hits_v2_3.hit_file_path,
+        list_source_windows=constellation_windows_v2_3.list_source_windows,
+        write_done_ranges=constellation_progress_v2_3.write_done_ranges)
+    return ks, store, cf
+
+
+def run_scenario(label, bind):
+    """Runs the three layers against one version. bind(tmp_portal) returns (ks, store,
+    cf): `ks` exposes the scan drivers, `store` the frontier and hit routing, `cf` the
+    constellation finder's window list, done ranges and hit file paths -- all working in
+    tmp_portal."""
     import prime_sieve_v1
     import window_sharding
 
     print(f"--- {label} ---")
     tmp_portal = tempfile.mkdtemp(prefix=f"primeatlas_ktuple_{label}_provisional_test_")
     try:
-        cf.PORTAL_FOLDER = tmp_portal  # store's own _cf2 is the SAME module object (single
-                                        # entry in sys.modules), so this is visible to it
-                                        # too without any separate patching.
+        ks, store, cf = bind(tmp_portal)
 
         def _write_source_window(floor, name, primes):
             source_dir = os.path.join(tmp_portal, f"10p{floor}", "source_primes")
@@ -179,8 +223,10 @@ def main():
     import ktuple_sieve_v2_1
     import ktuple_hit_store_v2_1
 
-    run_scenario("v2", ktuple_sieve_v2, ktuple_sieve_v2, constellation_finder_v2)
-    run_scenario("v2_1", ktuple_sieve_v2_1, ktuple_hit_store_v2_1, constellation_finder_v2_1)
+    run_scenario("v2", bind_module_global(ktuple_sieve_v2, ktuple_sieve_v2, constellation_finder_v2))
+    run_scenario("v2_1", bind_module_global(ktuple_sieve_v2_1, ktuple_hit_store_v2_1,
+                                            constellation_finder_v2_1))
+    run_scenario("v2_2", bind_explicit_portal)
 
     if failures:
         print(f"\n{len(failures)} FAILURE(S)")
