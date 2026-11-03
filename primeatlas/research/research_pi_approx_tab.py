@@ -41,7 +41,7 @@ libprimecount is a WSL apt package (primecount, libprimecount8,
 libprimecount-dev, libprimecount-dev-common) NOT part of env_setup.py's
 REQUIRED_APT_PACKAGES -- research-module-specific optional C libraries get an
 on-demand install mechanism instead of a blanket first-run install everyone
-pays for. The INSTALL mechanism belongs in Settings -> Updates (see settings_tab.py's
+pays for. The INSTALL mechanism belongs in Settings -> Updates (see updates_section.py's
 own primecount section) alongside every other optional-component installer
 in this app, not duplicated here -- this tab only ever OFFERS to install
 (a small Install/Cancel dialog, triggered the moment a "primecount"-mode
@@ -353,7 +353,7 @@ class ResearchPiApproxTab(BaseTab):
         instead of a generic error message. A plain tkinter messagebox.askyesno can't carry custom
         button labels (Tk supplies its own stock Yes/No text), so this is a
         small dedicated Toplevel, same "own modal dialog for a two-choice
-        prompt" idea as settings_tab.py's CUDASieve license-consent dialog,
+        prompt" idea as updates_section.py's CUDASieve license-consent dialog,
         just without any license text to show. The Install button's own
         handler is a separate, PLAIN instance method (_start_primecount_
         install() below), not a closure kept only inside this dialog -- same

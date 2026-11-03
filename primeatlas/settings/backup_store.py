@@ -17,7 +17,7 @@ BACKUPS_SUBDIR = "_backups"
 class BackupStore:
     """Pure Python, no tkinter dependency -- see manifest.py's own docstring for why this
     whole feature is built this way (exercised directly by unit tests, wired into the GUI
-    by settings_tab.py)."""
+    by restore_section.py)."""
 
     def __init__(self, storage_path):
         self.storage_path = storage_path
@@ -79,7 +79,7 @@ class BackupStore:
 
     def delete(self, name):
         """Removes one backup's manifest file. Does NOT touch any in-progress restore
-        checkpoint for this backup (settings_tab.py's incomplete-restores list has its own
+        checkpoint for this backup (restore_section.py's incomplete-restores list has its own
         separate delete button for that -- a backup and a restore-in-progress against it
         are deliberately independent lifecycles, e.g. the user may want to keep resuming a
         restore after pruning the backup list). Silently no-ops if the file is already
@@ -109,6 +109,6 @@ class BackupStore:
         method's own docstring for what it actually restores (floor_meta.json rows,
         totals-cache entries, sieving-prime-count caches) and why it's safe to run before
         window regeneration. Kept as its own BackupStore method, called right alongside
-        restore_csv() (see settings_tab.py's _on_start_restore()), so both cache-scope
+        restore_csv() (see restore_section.py's _on_start_restore()), so both cache-scope
         restores read the same way at the call site."""
         return manifest.restore_floor_metadata(self.storage_path)

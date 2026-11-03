@@ -7,7 +7,7 @@ promise (see the PDF-writer module's own header comment in prime_atlas_v2.py) --
 factorize() will use sympy.factorint() INSTEAD whenever sympy happens to be importable
 in this same Python environment (materially faster and complete for numbers the
 pure-Python path might time out on), via the optional-library installer in the
-Settings tab (see settings_tab.py's own "Optional libraries" section). Nothing here
+Settings tab (see updates_section.py's "Optional libraries" section). Nothing here
 needs tkinter -- this module runs in the same native-Windows Python process the GUI
 itself does (unlike the primesieve calculator, which has to cross into WSL because
 libprimesieve is a Linux shared library -- see prime_sieve_primesieve.py's own module

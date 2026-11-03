@@ -3,18 +3,18 @@ test_constellation_auto_retry.py -- tests for the floor-25-scale fix, spread acr
 primeatlas/generation/engine_argv.py (read_constellation_checkpoint, build_constellation_finder_
 argv's own max_windows) and primeatlas/generation/constellation_section.py (GenerationTab._maybe_auto_
 retry_constellation, _maybe_continue_constellation_batch, _scan_const_chunk_for_batch_
-marker). Pure-logic batching of constellation_finder_v1.process_floor() itself
+marker). Pure-logic batching of constellation_finder_v2_1.process_floor() itself
 (max_windows/remaining-count/BATCH DONE marker) is covered separately, in
 test_constellation_finder_engine.py -- this file is specifically the GUI-side wiring
 around it.
 
-Background: running constellation_finder_v1.py against floor 25 (545,000 source
+Background: running constellation_finder_v2_1.py against floor 25 (545,000 source
 windows) makes the WSL wrapper process die silently partway through a run -- no
 Python traceback, no exit code written (see WslLoggedRunner's own docstring for
 this exact failure shape), confirmed on a SECOND run to die with literally zero
 progress each time. Two complementary fixes:
 
-  1. REACTIVE: since constellation_finder_v1.py's own process_floor() writes
+  1. REACTIVE: since constellation_finder_v2_1.py's own process_floor() writes
      CHECKPOINT.txt after every successfully processed window, a bare relaunch of the
      identical command resumes right where a crash left off -- GenerationTab does this
      automatically (bounded by a retry cap and a real-progress check against the
@@ -24,7 +24,7 @@ progress each time. Two complementary fixes:
      fresh WSL process for the next slice on a clean exit, so no single process ever
      has to carry the whole floor.
 
-Never drives a REAL WSL process or a real long-running constellation_finder_v1.py --
+Never drives a REAL WSL process or a real long-running constellation_finder_v2_1.py --
 _start_constellation_runner is monkeypatched out in every test that exercises the
 retry/batching decision logic, same "test the synchronous decision logic directly,
 never the real background/subprocess path" convention as test_cudasieve_integration.py

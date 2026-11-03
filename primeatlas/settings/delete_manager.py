@@ -6,7 +6,7 @@ point of offering this button safely at all.
 
 Also FloorWiper, for two narrower, per-floor variants of the same idea, since sometimes
 only ONE floor needs clearing (to force a clean re-generation) or only that floor's
-constellation hits need clearing (to re-run constellation_finder_v1.py against an
+constellation hits need clearing (to re-run constellation_finder_v2_1.py against an
 unchanged pattern catalog, or a changed one, without touching the -- expensive to
 regenerate -- prime data underneath it):
   - delete_floor(): removes the WHOLE 10p{N} folder (source_primes AND constellations
@@ -16,7 +16,7 @@ regenerate -- prime data underneath it):
     10p{N}/source_primes/ (and that floor's benchmark_log.csv rows, which are about
     prime generation, not constellation-finding) untouched.
 
-The warning/confirmation dialogs themselves live in settings_tab.py (needs tkinter);
+The warning/confirmation dialogs themselves live in delete_section.py (needs tkinter);
 this module is the pure logic behind them -- plan() for what a dialog should show,
 execute() for what OK actually does. A destructive wipe action is only offered behind
 an explicit warning and a recommendation to back up first.

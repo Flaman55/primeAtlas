@@ -123,7 +123,7 @@ def _run_wsl_blocking_via_logfile(argv, portal_folder, log_prefix, timeout):
     Returns (True, payload)/(False, error_message), same two-tuple contract as
     run_primesieve_query_wsl() -- `payload` is the FULL parsed JSON dict on success (not
     just its "result" field), matching this function's own existing callers (e.g.
-    settings_tab.py's CUDASieve status handler reads specific keys off of it). See
+    updates_section.py's CUDASieve status handler reads specific keys off of it). See
     run_primecount_wsl_blocking() below for a DIFFERENT contract (unwrapped result,
     structured failure) -- the two contracts are kept as separate functions."""
     log_path, exit_path, _run_id = generation_log_paths(portal_folder, log_prefix)

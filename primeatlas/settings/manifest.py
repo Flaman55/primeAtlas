@@ -8,7 +8,7 @@ snapshot of what SHOULD exist on disk (which floors, which source-window filenam
 which constellation k/variant hit files, what each floor's constellation CHECKPOINT.txt
 said) plus a copy of benchmark_log.csv's text. Restoring a backup means comparing this
 manifest against the CURRENT disk state and, if anything is missing, optionally
-regenerating it via the existing orchestrator_loop_v2.py / constellation_finder_v1.py
+regenerating it via the existing orchestrator_loop_v2.py / constellation_finder_v2_1.py
 pipelines -- see restore_job.py for the checkpointed/pausable job that drives that.
 
 Also snapshotted per floor: the two on-disk caches that exist purely to speed up
@@ -173,7 +173,7 @@ class FloorSnapshot:
 class ConstellationSnapshot:
     """What one floor's constellations/ folder looked like: which (k, variant) hit files
     exist (as "k{K}/variant{V}/HITS_....bin" relative paths), plus the floor-level
-    CHECKPOINT.txt text (constellation_finder_v1.py writes ONE checkpoint per floor, not
+    CHECKPOINT.txt text (constellation_finder_v2_1.py writes ONE checkpoint per floor, not
     per k/variant -- see that file's own module docstring)."""
 
     def __init__(self, base_exponent, hit_files, checkpoint_text):
@@ -293,7 +293,7 @@ class BackupManifest:
         floor's totals_cache_entry into the root .portal_totals_cache.json, and restores
         sieving_primes_count_cache.json, for every floor in this manifest. Called once at
         the START of a restore, right alongside BackupStore.restore_csv() (see
-        settings_tab.py's _on_start_restore()).
+        restore_section.py's _on_start_restore()).
 
         These three are pure speed-of-display caches, not data -- a totals_cache_entry
         that's briefly stale relative to files not yet regenerated self-heals the next
@@ -340,7 +340,7 @@ class BackupManifest:
         regenerate-it path) and its mirror, current.missing_from(snap) (disk has it,
         backup doesn't -- the extra_windows/extra_hits fields, which the caller can
         offer to delete, always with an explicit confirm/cancel prompt -- see
-        restore_job.py's delete_extra_files() and settings_tab.py's
+        restore_job.py's delete_extra_files() and restore_section.py's
         _on_start_restore()). This also covers a floor entirely absent from the
         backup (e.g. one added to the storage after the backup was taken, with no
         entry in self.floors at all): its snapshot is treated as empty, so ALL of its

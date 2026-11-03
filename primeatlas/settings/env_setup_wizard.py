@@ -9,7 +9,7 @@ features can require a reboot, so nothing downstream should even try to run firs
 
 Flow: on open, silently runs check_environment() in a background thread (see
 _start_check() -- threading.Thread + self.after(0, ...), same pattern
-settings_tab.py's _on_check_cudasieve_status() uses, for the same reason: this is a real
+updates_section.py's _on_check_cudasieve_status() uses, for the same reason: this is a real
 multi-second WSL round-trip, not something to block Tk's mainloop on). If everything is
 already OK, marks AppSettings.setup_completed True and closes itself almost immediately --
 a user on an already-set-up machine should barely see this window flash by. If something
@@ -19,7 +19,7 @@ another background thread, then re-checks automatically.
 
 Same UI shown twice: once automatically on a fresh/incomplete install (gated on
 AppSettings.setup_completed, as a standalone tk.Tk() root -- see _EnvSetupWizardRoot), and
-again on demand from Settings' own environment-verification button (settings_tab.py),
+again on demand from Settings' own environment-verification button (updates_section.py),
 which runs it as a tk.Toplevel of the ALREADY-alive app instead (see
 _EnvSetupWizardToplevel) -- creating a second, independent tk.Tk() root while one is
 already running is unreliable across platforms (window-manager focus, event-loop
@@ -159,7 +159,7 @@ class _EnvSetupWizardMixin:
 
         def worker():
             # try/except is load-bearing here (same reasoning as every WSL-touching
-            # worker() in settings_tab.py): an uncaught exception would silently kill
+            # worker() in updates_section.py): an uncaught exception would silently kill
             # this daemon thread, and self.after(...) below would never fire, leaving
             # the wizard stuck on "Checking environment..." forever.
             try:
@@ -179,7 +179,7 @@ class _EnvSetupWizardMixin:
         # would just be a redundant WSL round-trip; see run_install()'s own docstring.
         self._last_report = report
         # Persisted on EVERY check (ready or missing), not just the ready branch below --
-        # settings_tab.py's on-demand button reads this back once this window closes, so
+        # updates_section.py's on-demand button reads this back once this window closes, so
         # it can keep showing a real status line instead of nothing (see AppSettings.
         # env_status's own docstring).
         self.app_settings.set_env_status(report)
@@ -304,11 +304,11 @@ def maybe_run_first_run_wizard(app_settings, translator, distro=env_setup.DEFAUL
     that restart, no separate 'which step was I on' state needed).
 
     force=True re-shows the wizard even when AppSettings.setup_completed is already True
-    -- used by Settings' environment-verification button (settings_tab.py), which also
+    -- used by Settings' environment-verification button (updates_section.py), which also
     passes master=<the already-running PortalBrowserApp instance> so this runs as a
     Toplevel of the live app instead of spinning up a second tk.Tk() root (see
     _EnvSetupWizardToplevel) -- one implementation either way, not a second, divergent one
-    living in settings_tab.py itself."""
+    living in updates_section.py itself."""
     if not force and app_settings.setup_completed:
         return True
     if master is not None:

@@ -156,7 +156,7 @@ def integrate_floor(destination_path, external_path, base_exponent,
     compression (both sides are live storages, not a backup archive).
 
     `progress_cb(phase, name, index, total)` / `should_stop()` -- identical shape to
-    full_backup.py's copy_floor_increment(), so settings_tab.py can drive both with the
+    full_backup.py's copy_floor_increment(), so the Settings tab can drive both with the
     same worker/queue/poll pattern.
 
     CHECKPOINT.txt/BOUNDARY_CHECKED.txt: only copied from the external side if the

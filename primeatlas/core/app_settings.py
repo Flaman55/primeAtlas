@@ -49,7 +49,7 @@ class AppSettings:
     alongside the language choice. Kept as a class (not a bare dict/function pair) so
     it's a natural single object to pass around the Settings tab and to the
     subprocess-launching code that needs to know the CURRENT storage path to set
-    CONSTELLATION_PORTAL_DIR for orchestrator_loop_v2.py/constellation_finder_v1.py."""
+    CONSTELLATION_PORTAL_DIR for orchestrator_loop_v2.py/constellation_finder_v2_1.py."""
 
     def __init__(self, script_dir):
         self.script_dir = script_dir
@@ -87,7 +87,7 @@ class AppSettings:
         """Last-used destination folder for the full-data (compressed) backup feature
         (primeatlas/settings/full_backup.py) -- remembered purely as a UI convenience (so the
         Settings tab's folder picker doesn't reset to nothing every restart), NOT
-        trusted as-is: settings_tab.py still re-runs validate_destination_path() against
+        trusted as-is: full_backup_section.py still re-runs validate_destination_path() against
         the CURRENT storage_path before every backup/restore/list action, since the
         storage path itself may have changed since this was last saved. Returns None if
         never set."""
@@ -222,7 +222,7 @@ class AppSettings:
     @property
     def cudasieve_status(self):
         """Last known result of the Settings > Updates CUDASieve status probe
-        (see settings_tab.py's _on_check_cudasieve_status()) -- {"ok": bool,
+        (see updates_section.py's _on_check_cudasieve_status()) -- {"ok": bool,
         "payload": dict-or-error-string}, or None if never checked on this install.
 
         Not re-probed automatically at app startup: a WSL status check from the
@@ -234,7 +234,7 @@ class AppSettings:
         return self._data.get("cudasieve_status") or None
 
     def set_cudasieve_status(self, ok, payload):
-        """Persists the (ok, payload) pair settings_tab.py's cudasieve probe callers
+        """Persists the (ok, payload) pair updates_section.py's cudasieve probe callers
         already produce, so it survives an app restart -- see cudasieve_status's own
         docstring for why this replaces querying WSL on every launch. Called after every
         real probe (manual status check, post-download, post-build), never
@@ -252,7 +252,7 @@ class AppSettings:
         genuinely fresh one) means the wizard runs. Deliberately NOT re-verified against
         a live WSL probe on every launch, same "cache the last real result, don't pay a
         round-trip every startup" reasoning as cudasieve_status above -- Settings >
-        Updates's 'Verify environment' button (settings_tab.py) re-runs the real
+        Updates's 'Verify environment' button (updates_section.py) re-runs the real
         check on demand if something changes later (e.g. Ubuntu gets uninstalled)."""
         return bool(self._data.get("setup_completed", False))
 

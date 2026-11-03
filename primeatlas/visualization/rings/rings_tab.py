@@ -11,7 +11,7 @@ WHY LocalLoggedRunner AND NOT WslLoggedRunner: renderer.py is a plain native Win
 Python script (moderngl+glfw, no WSL involved anywhere) -- LocalLoggedRunner
 (primeatlas/generation/logged_runners.py) already exists for exactly this "ordinary local subprocess,
 live stdout capture on a background thread" shape (its only prior caller is the sympy
-installer in settings_tab.py). GenerationConsole (the collapsible live-output pane
+installer in updates_section.py). GenerationConsole (the collapsible live-output pane
 widget) is reused as-is for the actual UI, since it has no WSL-specific assumption
 baked in at all.
 

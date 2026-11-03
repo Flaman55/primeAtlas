@@ -4,7 +4,7 @@ and get its result (or an error) back safely, instead of hand-rolling a fresh
 thread+queue+self.after()-poll block per feature.
 
 Used for slow work that would otherwise run SYNCHRONOUSLY on the GUI thread and freeze
-the window (e.g. settings_tab.py's _on_check_diff, _on_preview_storage_integrate, and the
+the window (e.g. restore_section.py's _on_check_diff, _on_preview_storage_integrate, and the
 backup/full-backup/floor-delete list refreshes).
 
 Design: exactly one moving part, run_in_background(). No class to instantiate, no

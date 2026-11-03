@@ -1,6 +1,6 @@
 """
 test_app_restart.py -- covers primeatlas/settings/app_restart.py, the os.execv()-based in-place
-relaunch used by settings_tab.py's automatic restart-after-theme/language-change feature.
+relaunch used by general_section.py's automatic restart-after-theme/language-change feature.
 
 os.execv() genuinely replaces the calling process -- calling it for real here would kill the
 test runner itself, so this file never calls the real thing. Two sections:

@@ -25,9 +25,8 @@ called by PrimesTreeCoordinator._on_scan_done (primeatlas/primes/primes_tree_coo
 and TotalsSearchCoordinator._on_floor_total_ready instead of those handlers reaching
 into this tab's tree/state attributes directly.
 
-This is one of only a few files in primeatlas/ that import tkinter -- see
-settings_tab.py's own docstring for the general "pure logic elsewhere" convention this
-package otherwise follows.
+This module imports tkinter; the pure logic it shows lives in its own modules (the
+package's "pure logic elsewhere" convention).
 """
 import os
 

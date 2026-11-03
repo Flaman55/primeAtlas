@@ -4,10 +4,9 @@ ring_geometry.py -- pure numpy port of Structural Sieve's drum/ring geometry
 repo), independent of the browser app. This is the math half only: given a
 sorted array of primes and a step N, compute where every ring's single "hit
 tooth" sits in 2D space. No rendering, no I/O, no tkinter dependency -- same
-convention as every other module in this package except settings_tab.py/
-benchmark_tab.py/primes_tab.py/widgets.py (see this package's __init__.py's
-own docstring) -- see primeatlas/visualization/shared/renderer.py for the GPU-rendered
-interactive consumer of this module's output.
+convention as every non-GUI module in this package (the tkinter code lives in
+the tab, section and widget modules) -- see primeatlas/visualization/shared/renderer.py
+for the GPU-rendered interactive consumer of this module's output.
 
 This module lets PrimeAtlas's own prime storage plus native compute/GPU drive the ring
 visualization at a scale a browser tab cannot (target: ~20 million rings, interactive

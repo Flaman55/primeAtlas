@@ -173,7 +173,7 @@ comparisons with primesieve and PARI/GP are in `BENCHMARK.md`.
     needs no changes at all to pick them up, and this mode never touches the
     constellation finder's own `CHECKPOINT.txt` -- its own checkpoint is a completely
     separate file, since these locations are not tied to any pre-existing prime
-    window at all (see `ktuple_sieve_v1.py`'s own module docstring).
+    window at all (see `ktuple_sieve_v2.py`'s own module docstring).
 - **Visualization** -- a seventh top-level tab (between Generation and Benchmark)
   holding one sub-tab per visualization. Its **Rings** sub-tab opens an interactive,
   GPU-rendered view of prime rings around a chosen `n`, fed from whatever is already in
@@ -297,7 +297,7 @@ comparisons with primesieve and PARI/GP are in `BENCHMARK.md`.
     repository (primesieve's own attribution button lives on the "Srodowisko WSL"
     section instead, since it's installed unconditionally as part of the mandatory
     first-run environment check rather than through its own dedicated section here).
-    Also hosts PrimeAtlas's own self-update (`primeatlas/app_update.py`): since the app runs
+    Also hosts PrimeAtlas's own self-update (`primeatlas/settings/app_update.py`): since the app runs
     directly out of its own git checkout rather than a packaged install, "check for
     update" resolves `origin`'s branch HEAD via the GitHub REST API first (no local git
     or network fetch needed for the check itself), falling back to a real `git fetch` +
@@ -463,7 +463,7 @@ specifically matters for a GPLv3 dependency: it is invoked purely as a separate 
 subprocess, never vendored into this repository.
 
 Installing it is entirely optional and opt-in, from Settings > Aktualizacje
-(`primeatlas/settings_tab.py`): the installer clones/builds it fresh from its own GitHub
+(`primeatlas/settings/updates_section.py`): the installer clones/builds it fresh from its own GitHub
 repository into your WSL home folder and shows you its ACTUAL, just-fetched `License` file
 text, requiring explicit acceptance before the build step ever runs -- not a copy of the
 license kept in this project. Requires an Nvidia GPU and the CUDA Toolkit (`nvcc`) inside
@@ -1416,11 +1416,11 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               form (Advanced, engine fields), its console, Run/finish/
                               poll handlers and the floor-totals bump after a run
   constellation_section.py      ConstellationSection mixin: Section B, the
-                              constellation_finder_v1.py form and console, batched
+                              constellation_finder_v2_1.py form and console, batched
                               launches, graceful Stop via STOP_REQUEST.txt,
                               checkpoint-verified auto-retry (its CONSTELLATION_*
                               constants live here)
-  ktuple_section.py             KtupleSection mixin: Section C, the ktuple_sieve_v1.py
+  ktuple_section.py             KtupleSection mixin: Section C, the ktuple_sieve_v2.py
                               form (pattern, strategy, Advanced), Run/Auto/Stop/finish
   run_progress.py               GenerationRunProgress mixin: output-queue draining into
                               consoles, the shared progress bar and status text
@@ -1810,11 +1810,24 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               package, before it grew into every other tab too -- see
                               this package's own __init__.py docstring)
   settings_tab.py             SettingsTab -- the Settings tab (Ogolne/Backup/
-                              Aktualizacje sub-tabs, each independently scrollable),
-                              incl. the optional-library (sympy), primecount, and
-                              CUDASieve installers, plus GitHub attribution buttons for
-                              every third-party library this app calls into (sympy,
-                              primecount, primesieve, CUDASieve)
+                              Aktualizacje sub-tabs, each independently scrollable):
+                              shared state, the Notebook and the Backup sub-tab
+                              layout, composed from the six mixins below
+  general_section.py            GeneralSection mixin: language and theme pickers with
+                              the restart-to-apply guard, ScrollPad width,
+                              brightness/font size, storage path
+  restore_section.py            RestoreSection mixin: metadata backup list, diff
+                              against disk, the pausable/resumable restore job
+  delete_section.py             DeleteSection mixin: full-database and per-floor deletes
+  full_backup_section.py        FullBackupSection mixin: full-data (compressed) backup
+                              and restore
+  storage_integrate_section.py  StorageIntegrateSection mixin: integrate an external
+                              storage folder (preview, then copy)
+  updates_section.py            UpdatesSection mixin: the optional-library (sympy),
+                              primecount and CUDASieve installers, GitHub attribution
+                              buttons for every third-party library this app calls
+                              into (sympy, primecount, primesieve, CUDASieve), the
+                              WSL environment re-check, and the self-update section
   manifest.py, backup_store.py, restore_job.py, floor_meta.py, full_backup.py,
   storage_integrate.py, delete_manager.py -- see "Backup manifest contents" /
   "Moving floor data between storages" / "Full-data backup" / "Integrating an

@@ -1,6 +1,6 @@
 """
 ktuple_section.py -- KtupleSection, Section C of the Generation tab: the
-ktuple_sieve_v1.py form (pattern, strategy, Advanced fields), its console, and the
+ktuple_sieve_v2.py form (pattern, strategy, Advanced fields), its console, and the
 Run/Auto/Stop/finish handlers.
 
 A GenerationTab mixin: it uses the widgets, Variables and runner state that GenerationTab
@@ -22,11 +22,11 @@ from .wsl_command import generation_log_paths, build_wsl_logged_command
 class KtupleSection:
     def _build_ktuple_section(self, sections):
         """Section C: the k-tuple sieve form, its Run/Auto/Stop row and its console."""
-        # --- Section C: ktuple_sieve_v1.py (targeted k-tuple candidate sieve) -----
+        # --- Section C: ktuple_sieve_v2.py (targeted k-tuple candidate sieve) -----
         # Complementary to Section B: that one pattern-matches against windows
         # already fully sieved by prime_sieve; this one hunts a single, sparse
         # pattern (e.g. k=15) directly, via a residue wheel + trial division +
-        # Miller-Rabin, across scattered window locations -- see ktuple_sieve_v1.py's
+        # Miller-Rabin, across scattered window locations -- see ktuple_sieve_v2.py's
         # own module docstring for why that's a fundamentally different (and, for a
         # sparse-enough pattern, far cheaper) approach than fully sieving a wide
         # enough span for Section B to find the same thing.
@@ -98,7 +98,7 @@ class KtupleSection:
             if _saved_strategy in _KTUPLE_STRATEGY_KEYS else 1)
 
         # "step": optional override for even/concentrated (both auto-compute their
-        # own step otherwise -- see ktuple_sieve_v1.step_for_even()/
+        # own step otherwise -- see ktuple_sieve_v2.step_for_even()/
         # step_for_concentrated()), REQUIRED for manual_step. Visible in the
         # primary form (not tucked behind Advanced) since it's central to how
         # every non-manual_list strategy now behaves -- see the checkpoint/step
@@ -141,7 +141,7 @@ class KtupleSection:
         # once more with every drilled position committing to a DIFFERENT digit
         # than the pass before (a different rate per position, so the explored path
         # looks scrambled/varied rather than a single repeated digit -- see
-        # ktuple_sieve_v1.py's digit_sweep_locations() PATH VARIETY note). Kept in
+        # ktuple_sieve_v2.py's digit_sweep_locations() PATH VARIETY note). Kept in
         # Advanced alongside the other rarely-touched fields since the default
         # is already the intended starting value.
         add_ktuple_advanced_field(2, 0, "pass_counter", self.T("gen.ktuple_field_pass_counter"))
@@ -159,7 +159,7 @@ class KtupleSection:
             command=lambda: self._launch_ktuple(auto=False))
         self.ktuple_run_btn.pack(side="left")
         # "Auto": same launch path as Run, only auto=True differs -- keeps looping
-        # batch after batch (checkpointing after each, see ktuple_sieve_v1.
+        # batch after batch (checkpointing after each, see ktuple_sieve_v2.
         # run_ktuple_job()'s own docstring) inside the SAME WSL process until a
         # confirmed hit, Stop, or the floor is exhausted, rather than requiring a
         # fresh Run click per batch.
@@ -293,10 +293,10 @@ class KtupleSection:
 
     def _launch_ktuple(self, auto):
         """Shared by both the Run button (auto=False -- one batch, checkpointed,
-        per click) and the Auto button (auto=True -- ktuple_sieve_v1.py itself
+        per click) and the Auto button (auto=True -- ktuple_sieve_v2.py itself
         keeps looping batch after batch inside this one WSL process until a
         confirmed hit, Stop, or the floor is exhausted -- see
-        ktuple_sieve_v1.run_ktuple_job()'s own docstring). Everything below the
+        ktuple_sieve_v2.run_ktuple_job()'s own docstring). Everything below the
         auto-specific argv flag is identical between the two."""
         if self._ktuple_runner is not None and self._ktuple_runner.is_running():
             return

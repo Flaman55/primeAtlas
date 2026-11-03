@@ -1,16 +1,15 @@
 """
 theme.py -- THEMES: the color palette for each of the app's two visual themes
 (light/dark). Pure data, no tkinter import here -- same "no tkinter" invariant as the
-rest of this package (see __init__.py's docstring; settings_tab.py stays the only
-tkinter-importing module in primeatlas/), so this is testable without a display the
-same way every other module here is. prime_atlas_v2.py's PortalBrowserApp._apply_theme()
+package's other pure-logic modules (see __init__.py's docstring), so this is testable
+without a display the same way they are. prime_atlas_v2.py's PortalBrowserApp._apply_theme()
 is the one place that actually turns a palette from here into ttk.Style() calls and Tk
 option-database entries -- applying a theme needs a live Tk root/ttk.Style instance,
 which this "pure logic" package deliberately never touches, so the data (here) and the
 application logic (there) are deliberately split across the tkinter boundary.
 
 Two themes only, "light" and "dark" (default), picked from Settings > General (see
-settings_tab.py's _build_general_tab) -- same restart-required UX as the language
+general_section.py's _build_general_tab) -- same restart-required UX as the language
 switch (i18n.py), for the same reason: re-styling every already-built widget live
 would be a much larger, riskier change than re-applying colors once at the next
 startup.

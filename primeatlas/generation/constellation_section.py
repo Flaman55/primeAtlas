@@ -1,6 +1,6 @@
 """
 constellation_section.py -- ConstellationSection, Section B of the Generation tab: the
-constellation_finder_v1.py search form and console, batched launches
+constellation_finder_v2_1.py search form and console, batched launches
 (CONSTELLATION_BATCH_SIZE windows per WSL process), graceful Stop through a sentinel file,
 checkpoint-verified auto-retry, and the finish handler.
 
@@ -33,7 +33,7 @@ CONSTELLATION_AUTO_RETRY_DELAY_MS = 2000
 # a crash, every specific-floor run is capped to this many windows per WSL invocation
 # from the start (see
 # build_constellation_finder_argv()'s own max_windows parameter and
-# constellation_finder_v1.process_floor()'s own docstring), with
+# constellation_finder_v2_1.process_floor()'s own docstring), with
 # _maybe_continue_constellation_batch() chaining a fresh WSL process for the next slice
 # automatically on a clean exit. Matches window_sharding.SHARD_SIZE (the existing
 # per-directory chunking granularity already established for this same floor-25 scaling
@@ -60,7 +60,7 @@ CONSTELLATION_STOP_GRACE_MS = 10_000
 
 # Elapsed-time/ETA display. Rate is measured
 # on the GUI's own wall clock (elapsed real time / floor-wide windows actually done)
-# rather than parsed from constellation_finder_v1.py's own per-window "(X.XXs)" timing
+# rather than parsed from constellation_finder_v2_1.py's own per-window "(X.XXs)" timing
 # -- a single window's own duration swings wildly (tiny vs. huge windows, occasional
 # WSL/DrvFs slowdowns), while a wall-clock rate averaged over many windows smooths that
 # out AND naturally folds in the real cost of chaining a fresh WSL process for every
@@ -75,7 +75,7 @@ CONSTELLATION_ETA_MIN_WINDOWS = 3
 class ConstellationSection:
     def _build_constellation_section(self, sections):
         """Section B: the constellation search form, its Run/Stop row and its console."""
-        # --- Section B: constellation_finder_v1.py (k-tuple search) --------------
+        # --- Section B: constellation_finder_v2_1.py (k-tuple search) --------------
         const_outer = ttk.Labelframe(
             sections, text=self.T("gen.section_const"))
         const_outer.pack(fill="x", pady=(6, 0))
@@ -187,7 +187,7 @@ class ConstellationSection:
         self._generation_settings["constellation"] = {"base_exponent": base_exponent}
         save_generation_settings(self._get_portal_folder(), self._generation_settings)
 
-        # constellation_finder_v1.py DOES print granular per-file progress lines --
+        # constellation_finder_v2_1.py DOES print granular per-file progress lines --
         # see _reset_gen_progress_bar_for_new_run()'s own docstring: without this, a
         # previous run's leftover bar state (e.g. a prime-generation run that just
         # finished at 100%) stays on screen until the first FLOOR PROGRESS line
@@ -212,7 +212,7 @@ class ConstellationSection:
         self._start_constellation_runner(base_exponent)
 
     def _start_constellation_runner(self, base_exponent):
-        """Builds and launches the actual constellation_finder_v1.py WSL command --
+        """Builds and launches the actual constellation_finder_v2_1.py WSL command --
         shared by _on_run_constellation() (the Run button), _maybe_auto_retry_
         constellation() (an automatic relaunch after a crash) and _maybe_continue_
         constellation_batch() (chaining the next batch after a clean one), so every
@@ -221,7 +221,7 @@ class ConstellationSection:
 
         Every SPECIFIC-floor run (base_exponent non-empty) is capped to
         CONSTELLATION_BATCH_SIZE windows via build_constellation_finder_argv()'s own
-        max_windows -- see that function's and constellation_finder_v1.process_floor()'s
+        max_windows -- see that function's and constellation_finder_v2_1.process_floor()'s
         own docstrings for why. The "process every floor with data" mode (base_exponent
         blank) stays uncapped -- there's no single floor/checkpoint for the batch-
         continuation logic to track progress against there.
@@ -372,7 +372,7 @@ class ConstellationSection:
 
     def _scan_const_chunk_for_batch_marker(self, chunk):
         """chunk_hook passed to _drain_output_queue() for the constellation queue only
-        -- records the "N window(s) still remain" count from constellation_finder_v1.
+        -- records the "N window(s) still remain" count from constellation_finder_v2_1.
         py's own process_floor() when a --max-windows-capped batch didn't reach the
         end of the floor's own windows (see that function's and build_constellation_
         finder_argv()'s own docstrings). _maybe_continue_constellation_batch() reads
@@ -422,7 +422,7 @@ class ConstellationSection:
         mirrors _on_loop_finished's reload_primes_tree() call, but for the
         Constellations tab: re-runs reload_constellations_tree() so newly found hits
         show up there the moment a run finishes, without a manual Refresh click.
-        constellation_finder_v1.py has no dual-purpose button label to reset (unlike
+        constellation_finder_v2_1.py has no dual-purpose button label to reset (unlike
         the Quick-gen 'Generate'/'Stop' one _on_loop_finished handles), so this is
         otherwise a much shorter version of that method.
 

@@ -4,10 +4,8 @@ shared by more than one tab (e.g. FlowRow, used by the Prime numbers and Constel
 tabs and imported by prime_atlas_v2.py as `from primeatlas.core.widgets import FlowRow
 as _FlowRow`).
 
-This is one of a small number of files in primeatlas/ that import tkinter -- see
-settings_tab.py's own docstring for the general "pure logic elsewhere" convention this
-package otherwise follows; FlowRow is UI-only by nature (it lays out already-built
-widgets), so there is no non-tkinter half to split it into.
+This module imports tkinter, unlike the package's pure-logic modules; FlowRow is UI-only
+by nature (it lays out already-built widgets), so there is no non-tkinter half to split it into.
 """
 import tkinter as tk
 import tkinter.font as tkfont

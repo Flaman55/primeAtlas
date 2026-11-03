@@ -13,17 +13,16 @@ only -- no ctypes/mmap/multiprocessing) rather than duplicated per file, unlike 
 codebase's usual convention for small helpers (e.g. storage.py's own format_duration()
 docstring on why THAT one is a local copy per module). The difference: format_duration
 is self-contained pure formatting with no cross-file contract. The shard boundary here
-is a hard CONTRACT between every writer (prime_sieve_v1.py/v3.py/v4.py/v4_1.py/
-prime_sieve_primesieve.py) and every reader (primeatlas/storage.py,
-constellation/constellation_finder_v1.py, primeatlas/delete_manager.py,
-primeatlas/full_backup.py, primeatlas/manifest.py, primeatlas/restore_job.py,
-primeatlas/storage_integrate.py, primeatlas/settings_tab.py) -- a mismatched copy in
-just one of those files would silently misplace or "lose" files. Lives in prime_sieve/
-specifically so both sides can import it identically: every WSL engine script in this
-same folder can bare `import window_sharding` (same directory), and every Windows-side
-primeatlas/*.py module can do the same via prime_atlas_v2.py's existing
+is a hard CONTRACT between every writer (prime_sieve_v*.py, prime_sieve_primesieve.py,
+prime_sieve_cudasieve.py, hybrid_sieve.py) and every reader (primeatlas/core/storage.py,
+the constellation finders, primeatlas/settings/delete_manager.py, full_backup.py,
+manifest.py, restore_job.py, storage_integrate.py, the visualization sources) -- a
+mismatched copy in just one of those files would silently misplace or "lose" files.
+Lives in prime_sieve/ specifically so both sides can import it identically: every WSL
+engine script in this same folder can bare `import window_sharding` (same directory), and
+every Windows-side primeatlas/*.py module can do the same via prime_atlas_v2.py's existing
 sys.path.insert(0, ".../prime_sieve") (the same mechanism already used there for
-prime_sieve_v1 itself), and constellation_finder_v1.py already does its own
+prime_sieve_v1 itself), and constellation_finder_v2_1.py already does its own
 sys.path.insert(0, "../prime_sieve") to reach prime_sieve_v1, so this rides along for
 free.
 

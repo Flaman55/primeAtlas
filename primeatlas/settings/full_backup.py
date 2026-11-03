@@ -40,7 +40,7 @@ Design:
 
 Like every other module in this package, this is pure logic -- no tkinter import, no
 dependency on prime_atlas_v2.py (which imports FROM this package, not the other way
-around) -- exercised directly by standalone tests, wired into the GUI by settings_tab.py.
+around) -- exercised directly by standalone tests, wired into the GUI by full_backup_section.py.
 """
 import os
 import csv
@@ -74,7 +74,7 @@ GZ_SUFFIX = ".gz"
 def validate_destination_path(storage_path, destination_root):
     """Returns None if `destination_root` is a legitimate, independent location for a
     full-data backup of `storage_path`; otherwise one of the short reason codes below,
-    for the caller (settings_tab.py) to turn into a translated error message. A HARD
+    for the caller (full_backup_section.py) to turn into a translated error message. A HARD
     condition, not just a warning: a backup living inside (or wrapping) the very
     thing it protects isn't a backup.
 
@@ -539,7 +539,7 @@ def suggest_full_backup_floors(storage_path, threshold_seconds=3600):
     one hour): a floor costing more than an hour to regenerate is worth trading disk
     space for restore speed -- a measured cost, not a guess from the floor's exponent.
     Returns a sorted list of base_exponent ints -- the caller
-    (settings_tab.py) uses this to pre-check/highlight those floors in the per-floor
+    (full_backup_section.py) uses this to pre-check/highlight those floors in the per-floor
     picker, not to force anything -- the person can still pick differently."""
     rows = _read_benchmark_rows(storage_path)
     totals = aggregate_generation_seconds_by_floor(rows)
