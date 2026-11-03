@@ -41,7 +41,7 @@ class PortalBrowserApp(ThemeMixin, PrimesSectionMixin, ConstellationsSectionMixi
         apply_tk_icon(self)
         self._apply_font_scale(_dyn.APP_SETTINGS.font_scale)
         self._apply_theme(_dyn.APP_SETTINGS.theme)
-        # APP_VERSION plus the checked-out commit, see version.py.
+        # Release, merges since it and the checked-out commit, see version.py.
         self.title(f"{_dyn.T('app.title')} {version_label(_dyn.REPO_DIR)}")
         self.geometry("1050x680")
 

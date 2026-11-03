@@ -76,6 +76,8 @@ tests, Known gaps).
   ([ADR 0004](../adr/0004-shared-values-and-explicit-portal.md)).
 - k-tuple sieve finds ahead of the exhaustive search never enter the shared hit file
   ([ADR 0005](../adr/0005-gap-safe-provisional-hits.md)).
+- The version is read from `CHANGELOG.md`: release plus one numbered entry per merge since it
+  ([ADR 0006](../adr/0006-version-from-changelog.md)).
 - One file = one purpose, at most 1000 lines (`unitTests/test_line_ceiling.py`; frozen versions are the
   listed exceptions).
 - One control per UI role (HeightGrip, ScrollPad, GenerationConsole), app-wide.

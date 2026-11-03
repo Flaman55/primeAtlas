@@ -1,10 +1,183 @@
 # Changelog
 
 Versions follow [Semantic Versioning](https://semver.org/): a new feature raises the minor
-number, a fix-only release the patch number. The number lives in
-`primeatlas/core/version.py` (`APP_VERSION`); the app shows it with the checked-out commit,
-e.g. `1.1.0 (f59ce41)`, because Settings → Updates moves every copy along `main` between
-releases.
+number, a fix-only release the patch number. This file is the version's single source
+(`primeatlas/core/version.py` reads it): the release is the newest `## X.Y.Z — date`
+heading, and every merge into `main` after it appends one entry `### +N — title` to the
+`## Since X.Y.Z` section, English first, then Polish. Entries are never edited; a
+correction is a new entry. The app shows release, merge count and commit, e.g.
+`1.2.0+24 (f59ce41)`, because Settings → Updates moves every copy along `main` between
+releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA.B.C`.
+
+## Since 1.2.0
+
+### +1 — Engine pt1: partial sieve + BPSW, separate D/P window stores (#6)
+
+- English: New sieve engine pt1 for deep floors: each window is sieved only up to B
+  (default N^1/4) and the survivors are proved by BPSW, so the fixed cost of generating
+  every sieving prime up to sqrt(N) disappears. Its windows go to their own D/P stores.
+- Polski: Nowy silnik sita pt1 dla głębokich pięter: każde okno jest przesiewane tylko do
+  B (domyślnie N^1/4), a pozostałe liczby potwierdza test BPSW, więc znika stały koszt
+  generowania wszystkich liczb pierwszych do sqrt(N). Jego okna trafiają do osobnych
+  magazynów D/P.
+
+### +2 — Close guard: save-point stop on close, Stop button, start-up recovery (#7)
+
+- English: Closing the app during a Generation job no longer kills it mid-write: it asks
+  the job to stop at its next save point, a Stop button does the same, and the next start
+  settles a run that was cut off.
+- Polski: Zamknięcie aplikacji w trakcie generowania nie przerywa już zapisu w połowie:
+  zadanie zatrzymuje się w najbliższym punkcie zapisu, to samo robi przycisk Stop, a
+  kolejne uruchomienie porządkuje przerwany przebieg.
+
+### +3 — Benchmark charts: pin a y-axis bound from a point's menu (#8)
+
+- English: Right-clicking a benchmark chart point sets its value as the max or min of
+  that point's y-axis, with resets per axis and for the whole chart.
+- Polski: Prawy klik na punkcie wykresu benchmarku ustawia jego wartość jako maksimum lub
+  minimum osi Y tego punktu; są też resety dla każdej osi i całego wykresu.
+
+### +4 — Polish locale: leftover English labels translated, diacritics restored (#9)
+
+- English: The Polish UI no longer shows English column headers, and the WSL setup wizard
+  has its Polish diacritics back.
+- Polski: Polski interfejs nie pokazuje już angielskich nagłówków kolumn, a kreator
+  konfiguracji WSL ma z powrotem polskie znaki.
+
+### +5 — Benchmark PDF: logical tables, one-metric charts, no truncated cells (#10)
+
+- English: The benchmark PDF splits the log into readable tables and draws one metric per
+  chart; no cell is cut short. The Constellation records PDF no longer truncates cells.
+- Polski: PDF benchmarku dzieli log na czytelne tabele i rysuje jedną miarę na wykres;
+  żadna komórka nie jest ucinana. PDF rekordów konstelacji też nie ucina już komórek.
+
+### +6 — GUI tests isolated from the real storage (#11)
+
+- English: Every test that builds the app runs on its own temporary storage and never
+  saves the user's settings.
+- Polski: Każdy test budujący aplikację działa na własnym tymczasowym magazynie i nie
+  zapisuje ustawień użytkownika.
+
+### +7 — benchmark_log.csv header defined once (#12)
+
+- English: All engine writers take the benchmark_log.csv header from one module,
+  `prime_sieve/benchmark_log_schema.py`.
+- Polski: Wszystkie silniki biorą nagłówek benchmark_log.csv z jednego modułu,
+  `prime_sieve/benchmark_log_schema.py`.
+
+### +8 — floor_meta.json rows written by one module (#13)
+
+- English: The four drifted copies that append a row to a floor's floor_meta.json are
+  replaced by `prime_sieve/floor_meta_store.py`; the Hybrid mode now writes it too.
+- Polski: Cztery rozbieżne kopie dopisywania wiersza do floor_meta.json piętra zastępuje
+  `prime_sieve/floor_meta_store.py`; tryb Hybrid też go teraz zapisuje.
+
+### +9 — pt1 writes a slab while the next one is sieved (#14)
+
+- English: pt1 overlaps writing slab k with sieving slab k+1: about 23 % less wall time on
+  a 100,000-window floor-27 run.
+- Polski: pt1 zapisuje porcję k w trakcie przesiewania porcji k+1: około 23 % krócej na
+  przebiegu 100 000 okien na piętrze 27.
+
+### +10 — Auto RAM budget as an adjustable field (#15)
+
+- English: The share of free WSL RAM that Auto and Restore size v4.1/v5 runs against is a
+  field (default 50 %), so a large host can run more windows per run.
+- Polski: Udział wolnego RAM-u WSL, do którego Auto i Przywracanie dopasowują przebiegi
+  v4.1/v5, jest polem (domyślnie 50 %), więc duży komputer może liczyć więcej okien na
+  przebieg.
+
+### +11 — generation_tab.py split into section modules (#16)
+
+- English: The Generation tab's code is split by section; no change in behavior.
+- Polski: Kod zakładki Generowanie podzielony na moduły według sekcji; bez zmian w
+  działaniu.
+
+### +12 — Generation backend split; constellation_finder_v2_1 (#17)
+
+- English: The Generation backend is split into nine modules, and the GUI launches
+  constellation_finder_v2_1, an unchanged copy of the frozen v2; no change in behavior.
+- Polski: Zaplecze generowania podzielone na dziewięć modułów, a GUI uruchamia
+  constellation_finder_v2_1, niezmienioną kopię zamrożonego v2; bez zmian w działaniu.
+
+### +13 — Settings tab split into six modules (#18)
+
+- English: The Settings tab's code is split by area; no change in behavior.
+- Polski: Kod zakładki Ustawienia podzielony według obszarów; bez zmian w działaniu.
+
+### +14 — Goldbach research tab split into three modules (#19)
+
+- English: The Goldbach research tab's code is split by concern; no change in behavior.
+- Polski: Kod zakładki badań Goldbacha podzielony według zadań; bez zmian w działaniu.
+
+### +15 — Ring geometry split into six modules (#20)
+
+- English: The Rings geometry code is split by topic; no change in behavior.
+- Polski: Kod geometrii pierścieni podzielony według tematów; bez zmian w działaniu.
+
+### +16 — Renderer split into four modules (#21)
+
+- English: The visualization renderer is split by responsibility; no change in behavior.
+- Polski: Renderer wizualizacji podzielony według odpowiedzialności; bez zmian w
+  działaniu.
+
+### +17 — Ring sound survives a Python switch (#22)
+
+- English: sounddevice is listed in requirements.txt, so the start-up check offers it for
+  whichever Python runs the app and the Rings sound keeps working.
+- Polski: sounddevice jest w requirements.txt, więc kontrola przy starcie proponuje jego
+  instalację dla Pythona, który uruchamia aplikację, i dźwięk pierścieni dalej działa.
+
+### +18 — k-tuple sieve split: ktuple_sieve_v2_1 (#23)
+
+- English: The k-tuple sieve is split into ktuple_sieve_v2_1 and three modules; the GUI
+  launches it; the frozen v2 is kept; no change in behavior.
+- Polski: Sito k-tupli podzielone na ktuple_sieve_v2_1 i trzy moduły; GUI je uruchamia;
+  zamrożone v2 zostaje; bez zmian w działaniu.
+
+### +19 — Constellation search split: constellation_finder_v2_2 (#24)
+
+- English: The constellation search is split into constellation_finder_v2_2 and seven
+  modules; the GUI launches it; no change in behavior.
+- Polski: Szukanie konstelacji podzielone na constellation_finder_v2_2 i siedem modułów;
+  GUI je uruchamia; bez zmian w działaniu.
+
+### +20 — Main window split into primeatlas/app/ (#25)
+
+- English: prime_atlas_v2.py is the entry point only; the main window lives in
+  primeatlas/app/, one module per tab section; no change in behavior.
+- Polski: prime_atlas_v2.py jest tylko punktem startowym; główne okno jest w
+  primeatlas/app/, jeden moduł na sekcję zakładek; bez zmian w działaniu.
+
+### +21 — Oversized test files split (#26)
+
+- English: Five test files over 1000 lines are split by tested module, and a new test
+  keeps every code file under the ceiling.
+- Polski: Pięć plików testów ponad 1000 linii podzielonych według testowanego modułu, a
+  nowy test pilnuje limitu dla każdego pliku kodu.
+
+### +22 — constellation_finder_v2_3 + ktuple_sieve_v2_2: storage folder passed explicitly (#27)
+
+- English: The constellation search and the k-tuple sieve take the storage folder as a
+  parameter instead of a module global; the GUI launches the new versions; same output.
+- Polski: Szukanie konstelacji i sito k-tupli dostają folder magazynu jako parametr zamiast
+  zmiennej globalnej; GUI uruchamia nowe wersje; wynik ten sam.
+
+### +23 — docs/design and docs/adr (#28)
+
+- English: Design documentation (overview, data, flows, a page per module, generated
+  parameter tables) and the architecture decision records.
+- Polski: Dokumentacja projektu (przegląd, dane, przepływy, strona na moduł, generowane
+  tabele parametrów) i zapisy decyzji architektonicznych.
+
+### +24 — Version from CHANGELOG.md with a merge counter
+
+- English: The app shows the release plus the number of merges since it (e.g. 1.2.0+24),
+  and the About tab lists the changes since the last release in the UI language, with a
+  link to the full CHANGELOG.md.
+- Polski: Aplikacja pokazuje wydanie i liczbę zmian od niego (np. 1.2.0+24), a zakładka
+  O programie wypisuje zmiany od ostatniego wydania w języku interfejsu, z linkiem do
+  pełnego CHANGELOG.md.
 
 ## 1.2.0 — 2026-11-01
 

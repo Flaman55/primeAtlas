@@ -29,10 +29,10 @@
 ; Contract pinned by unitTests/test_installer_script.py.
 
 #define AppName "PrimeAtlas"
-; AppVersion comes from primeatlas\core\version.py (APP_VERSION), passed in by
-; build_installer.py as /DAppVersion=... -- one version number for the app and the installer.
+; AppVersion is the release number from CHANGELOG.md (newest "## X.Y.Z" heading), passed in
+; by build_installer.py as /DAppVersion=... -- one version number for the app and the installer.
 #ifndef AppVersion
-  #error Build with installer\build_installer.py: it passes /DAppVersion from primeatlas\core\version.py
+  #error Build with installer\build_installer.py: it passes /DAppVersion from CHANGELOG.md
 #endif
 #define RepoUrl "https://github.com/Flaman55/primeAtlas.git"
 #define RepoBranch "main"
