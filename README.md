@@ -1538,11 +1538,17 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               subprocess host, the interactive session, and the Tk-side
                               launcher base class
     renderer.py                  moderngl/GLFW window/main-loop entrypoint, run as a plain
-                              script path (see its own docstring) -- generic CLI
-                              arguments, data loading (--source/--load-range), the GLFW
-                              callbacks and main loop; every mode-specific step (CLI
-                              arguments, launch preparation, geometry, overlays, HUD
-                              lines) is delegated to the active mode
+                              script path (see its own docstring) -- the sys.path
+                              bootstrap, the GLFW window, its callbacks and main loop;
+                              every mode-specific step (CLI arguments, launch
+                              preparation, geometry, overlays, HUD lines) is delegated
+                              to the active mode
+    renderer_cli.py              renderer.py's command line: generic arguments, each
+                              mode's own arguments, fail-fast validation
+    renderer_launch.py           data loading (--source/--load-range), each mode's launch
+                              config, RenderSession construction
+    renderer_frame.py            one frame's draw calls (points, segments, markers,
+                              outlines, center marker, flashes, labels, HUD quad)
     mode.py                       VizMode -- the mode interface: rebuild (vertex data +
                               HUD snapshot for the current N), outline_draws/
                               axis_boundary_radius/flash_overlays/hud_line_colors (what

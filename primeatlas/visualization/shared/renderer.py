@@ -70,6 +70,11 @@ Architecture:
     cost.
   - FPS and ring count are both written to the window title every frame.
 
+Module layout: renderer_cli.py parses and validates the command line,
+renderer_launch.py loads the primes and builds the RenderSession,
+renderer_frame.py issues one frame's draw calls; this file keeps the sys.path
+bootstrap, the GLFW window, its input callbacks and the main loop.
+
 Usage -- run as a PLAIN SCRIPT PATH, not `python -m primeatlas.visualization.shared.renderer`:
     pip install moderngl glfw numpy
     pip install Pillow   # optional -- enables the on-canvas HUD text overlay;
@@ -147,12 +152,10 @@ other ring -- defaults to 40.0, or falls back to --point-size's own value
 if you pass an explicit empty override some other way.
 """
 
-import argparse
 import os
 import queue
 import sys
 import time
-from types import SimpleNamespace
 
 # Allow `python primeatlas/visualization/shared/renderer.py` (not just `python -m
 # primeatlas.visualization.shared.renderer`) to work by ensuring the repo root is on
@@ -174,26 +177,19 @@ _PRIME_SIEVE_DIR = os.path.join(_REPO_ROOT, "prime_sieve")
 if _PRIME_SIEVE_DIR not in sys.path:
     sys.path.insert(0, _PRIME_SIEVE_DIR)
 
-from primeatlas.visualization.shared.bigint import parse_big_int
-from primeatlas.visualization.shared.sources import load_synthetic, load_sieve, load_archive, load_none
-from primeatlas.visualization.shared.range_data import load_prime_range_slice, initial_n_for_source
-from primeatlas.visualization.shared.draw_primitives import (
-    marker_device_scale, build_center_marker_vertex_data, build_flash_quad_vertex_data,
-    _FIT_MARGIN,
-)
-from primeatlas.visualization.shared.playback import _TEMPO_MS_DEFAULT, _RANGE_STEP_ORBIT_TICKS
-from primeatlas.visualization.shared.hud_text import _HUD_FONT_SIZE_DEFAULT, hud_quad_vertex_data
+from primeatlas.visualization.shared.hud_text import hud_quad_vertex_data
 from primeatlas.visualization.shared.world_labels import build_label_atlas, LabelLayout
 from primeatlas.visualization.shared.stdin_commands import start_stdin_command_reader
-from primeatlas.visualization.shared.session import RenderSession
 from primeatlas.visualization.shared.gl_setup import setup_gl_resources
-from primeatlas.visualization.shared.mode import LaunchAborted
+from primeatlas.visualization.shared.renderer_cli import parse_args
+from primeatlas.visualization.shared.renderer_launch import build_session
 from primeatlas.visualization.mode_registry import MODES
 
 # Shaders (shaders.py), GL resources (gl_setup.py), pure geometry
 # (draw_primitives.py, the modes' own *_draw.py), HUD text (hud_text.py and the
 # modes' *_hud.py) and playback rules (playback.py) contain no GL calls outside
-# gl_setup.py; this file wires them into the GLFW callbacks and main loop.
+# gl_setup.py and renderer_frame.py; this file wires them into the GLFW
+# callbacks and main loop.
 
 
 def run(args):
@@ -219,187 +215,16 @@ def _run_visualization(args, audio=None):
     import glfw
     import moderngl
 
+    from primeatlas.visualization.shared.renderer_frame import draw_frame
+
     # Window/context/every shader program/VAO/VBO live on one GLResources
     # instance, `gl`, built by setup_gl_resources(). Every reference to
     # those objects below is `gl.xxx`.
     gl = setup_gl_resources(args, MODES[args.viz_mode].window_title)
 
-    # For --source sieve/archive, the view OPENS exactly at N=args.upto (see
-    # initial_n_for_source's own docstring) -- but sequential playback needs
-    # somewhere to advance TO, and loading only up to that exact N leaves
-    # zero headroom: N would already equal the load ceiling on frame one, so
-    # Space would silently refuse to start every time. `load_upto` pads
-    # the underlying LOAD by a modest +5% (at least 1000) past the
-    # requested N so there is room to play forward and actually see
-    # auto-orbit cycle; the DISPLAY still opens at the user's exact
-    # args.upto below (n = initial_n_for_source(..., args.upto, ...), not
-    # load_upto) -- only the loaded prime array itself is padded.
-    load_upto = args.upto
-    if args.source in ("sieve", "archive"):
-        load_upto = args.upto + max(1000, args.upto // 20)
-
-    # For --source archive with an explicit --load-range, loading [0,
-    # load_upto] in full before load_range's post-hoc slice runs is
-    # infeasible once the requested range sits at a high floor, since every
-    # floor below it
-    # would be read first for nothing. Loading directly via `from_n=FROM`
-    # instead reuses load_archive's own already-existing cheap floor-skip
-    # (see that function's own `from_n` doc-comment) to jump straight to the
-    # requested floor, capped by --max-load-count so an accidentally huge
-    # span still can't stall the whole load (truncated from the top -- see
-    # load_archive's own doc-comment on that point). `primes` IS the range
-    # here already, so the load_range block further below (which still
-    # handles synthetic/sieve the old, unbounded way) is told to skip its
-    # own redundant re-slice via `archive_range_preload`.
-    archive_range_preload = None
-    if args.source == "archive" and args.load_range:
-        archive_range_preload = tuple(parse_big_int(p) for p in args.load_range.split(","))
-
-    print(f"Loading primes via --source={args.source} ...")
-    t0 = time.perf_counter()
-    if args.source == "none":
-        primes = load_none()
-    elif args.source == "synthetic":
-        primes = load_synthetic(args.count)
-    elif args.source == "sieve":
-        primes = load_sieve(load_upto)
-    elif args.source == "archive":
-        if archive_range_preload is not None:
-            preload_from, preload_to = archive_range_preload
-            primes = load_archive(args.portal_folder, preload_to, from_n=preload_from,
-                                   max_load_count=args.max_load_count)
-        else:
-            primes = load_archive(args.portal_folder, load_upto)
-    else:
-        raise ValueError(f"unknown --source {args.source!r}")
-    t1 = time.perf_counter()
-    print(f"Loaded {len(primes):,} values in {t1 - t0:.2f}s")
-
-    n = initial_n_for_source(args.source, args.upto, primes)
-    # See fit_zoom_for_viewport's own doc-comment for why this uses the
-    # shared _FIT_MARGIN constant rather than a second, independent 0.45
-    # literal -- it keeps "the view as it opens" and "the view after an
-    # explicit re-fit (F11 / middle-click)" provably the same computation.
-    max_radius = min(args.width, args.height) * _FIT_MARGIN
-
-    # Playback state -- ports #isRunning, #tempoMs,
-    # #autoOrbitIndex/#autoOrbitCounter/#trackedPrimes (the auto-orbit
-    # half). `ceiling` mirrors the JS's own PrimeDataSource ceiling check
-    # inside #tick/#toggleRunning (sequential mode only -- range mode has no
-    # ceiling, same as tick_next_n/can_start_playback's own `range_mode`
-    # bypass).
-    #
-    # `ceiling` must be load_upto, not `int(primes[-1])` (the largest ACTUAL
-    # prime found): the real boundary of trustworthy data is how far
-    # loading went, not where the last prime happened to land (primes can
-    # be sparse near the boundary, e.g. load_upto=100 with primes[-1]=97
-    # would wrongly refuse 3 perfectly safe ticks). Using load_upto also
-    # gives the load-time headroom padding above something real to advance
-    # into instead of refusing on frame one.
-    ceiling = load_upto if args.source in ("sieve", "archive") else (int(primes[-1]) if len(primes) else -1)
-
-    # Reuses the same margin figure as load_upto's own launch-time pad just
-    # above, instead of inventing a second, different margin concept.
-    #
-    # Scoped to --source archive only: synthetic/sieve are both bounded by
-    # their own launch-time argument with nothing further to ever fetch
-    # (see load_archive's own module-level docstring point 1) -- archive is
-    # the one real, always-possibly-larger data source this module has (a
-    # disk portal that can simply have more window files than were loaded
-    # at launch). See extend_buffer_if_needed (below, near n_holder) for
-    # the actual extension call.
-    buffer_margin = max(1000, args.upto // 20)
-    can_extend_buffer = args.source == "archive" and bool(args.portal_folder)
-    # Extension-exhausted, tempo/playback, orbit and cyclic-anchor state are
-    # RenderSession fields (self.extend_exhausted, self.tempo_ms/playback_running,
-    # self.orbit_*, self.cyclic_anchor_state), constructed further down once
-    # `range_mode`/`range_primes`/`range_step`/`track_primes`/`auto_orbit` below are
-    # known -- see session.py's RenderSession docstring.
-
-    # Load Range -- ports #loadPrimeRange: switch
-    # to a FIXED ring set (range_primes), independent of N from here on
-    # (rebuild_buffer below uses it verbatim instead of `primes[primes <=
-    # n_value]` whenever range_mode is True -- see load_prime_range_slice's
-    # own doc-comment for why `primes` itself is the ceiling here, unlike
-    # the JS's separate always-larger PrimeDataSource). Failures are
-    # reported the same friendly way the JS's #loadPrimeRange does (a plain
-    # printed line, this module's only "info" surface -- see
-    # hud_lines_for_n's own doc-comment for why stdout and not a GL overlay)
-    # rather than crashing the whole subprocess over a bad --load-range.
-    range_mode = False
-    range_primes = None
-    # Range mode's per-tick N-advance, dynamically sized to the largest
-    # currently-loaded prime once range_primes is known below; stays at
-    # this default (1) for sequential mode and for a range that fails to
-    # load at all -- see tick_next_n's own doc-comment for the full
-    # rationale.
-    range_step = 1
-    if args.load_range:
-        load_from, load_to = (parse_big_int(p) for p in args.load_range.split(","))
-        try:
-            if archive_range_preload is not None:
-                # `primes` was already loaded directly as this exact (possibly
-                # --max-load-count-truncated) range above -- re-slicing it
-                # here would be redundant, and load_prime_range_slice's own
-                # "does TO fit under what got loaded" check would wrongly
-                # raise whenever truncation legitimately left primes[-1]
-                # short of load_to.
-                range_primes = primes
-            else:
-                range_primes = load_prime_range_slice(primes, load_from, load_to)
-            range_mode = True
-            n = 0  # mirrors the JS's own `this.#n = 0` on a successful range load
-            range_count = len(range_primes)
-            # Without this, playback would look frozen at a real
-            # archive-floor-scale range, since a fixed step of 1 is
-            # imperceptible against prime gaps of that size. See
-            # tick_next_n's own doc-comment -- naturally settles back to `1`
-            # at low floors (where a full orbit already fits inside
-            # _RANGE_STEP_ORBIT_TICKS).
-            if range_count:
-                range_step = max(1, int(range_primes[-1]) // _RANGE_STEP_ORBIT_TICKS)
-            # A range of at most 500 primes is tracked in full by the rings mode
-            # (see RingMode.prepare_launch).
-            if 0 < range_count <= 500:
-                print(f"Range [{load_from:,}, {load_to:,}] loaded: {range_count:,} primes, all tracked")
-            elif range_count and int(range_primes[-1]) < load_to:
-                print(f"Range [{load_from:,}, {load_to:,}] capped at --max-load-count="
-                      f"{args.max_load_count:,}: only [{load_from:,}, {int(range_primes[-1]):,}] "
-                      f"loaded ({range_count:,} primes)")
-            else:
-                print(f"Range [{load_from:,}, {load_to:,}] loaded: {range_count:,} primes")
-        except ValueError as e:
-            print(f"Load Range failed: {e}")
-
-    # Each registered mode turns its own CLI arguments into its RenderSession
-    # config (every mode's config is needed: reset() returns to the rings mode).
-    # A mode may move the opening N (line mode's pattern anchor) or refuse to
-    # open the window (LaunchAborted).
-    launch = SimpleNamespace(primes=primes, n=n, range_mode=range_mode, range_primes=range_primes)
-    mode_config = {}
-    try:
-        for mode_cls in MODES.values():
-            mode_config.update(mode_cls.prepare_launch(args, launch))
-    except LaunchAborted as e:
-        print(e)
+    session = build_session(args)
+    if session is None:
         return
-    n = launch.n
-
-    # Everything from here down operates on one RenderSession object (see
-    # session.py); `session.n` is the current N, and every GLFW callback and the main
-    # loop below call session.* methods.
-    session = RenderSession(
-        primes=primes, n=n, ceiling=ceiling, range_mode=range_mode,
-        range_primes=range_primes, range_step=range_step,
-        max_radius=max_radius, tempo_ms=args.tempo_ms,
-        buffer_margin=buffer_margin, can_extend_buffer=can_extend_buffer,
-        portal_folder=args.portal_folder,
-        viz_mode=args.viz_mode,
-        range_load_from=load_from if range_mode else None,
-        range_load_to=load_to if range_mode else None,
-        chunk_size=args.slide_chunk_size, sliding_enabled=args.slide_load_range,
-        **mode_config,
-    )
 
     def _apply_hud_refresh():
         """Prints the HUD JSON snapshot and uploads a fresh on-canvas HUD
@@ -759,138 +584,8 @@ def _run_visualization(args, audio=None):
             _upload_mode_draw_data()
 
         width, height = glfw.get_framebuffer_size(gl.window)
-        gl.ctx.viewport = (0, 0, width, height)
-        gl.ctx.clear(0.05, 0.05, 0.07)
-
-        pan_x = session.cam_pan[0] + width / 2
-        pan_y = session.cam_pan[1] + height / 2
-        gl.prog["u_pan"].value = (pan_x, pan_y)
-        gl.prog["u_zoom"].value = session.cam_zoom
-        gl.prog["u_viewport"].value = (width, height)
-
-        # vertices=ring_count(_hit) explicitly, rather than letting
-        # moderngl infer the count from the vbo's own byte size -- needed
-        # because a 0-ring buffer is padded to a 1-vertex placeholder
-        # reservation instead of a true zero-length allocation (inferring
-        # from buffer size would otherwise draw that bogus placeholder
-        # vertex at the origin).
-        #
-        # TWO draw calls, one per split buffer from rebuild_buffer (see
-        # that function's own hit/normal split comment), each with its own
-        # u_point_size uniform value -- this is what actually makes
-        # --hit-point-size independent of --point-size on screen. Normal
-        # rings drawn first, hit rings drawn last so they stay visually on
-        # top of anything they'd otherwise overlap.
-        # The mode's own world-space segments, under every point.
-        if mode_draw["segment_vao"] is not None:
-            gl.prog_segment["u_pan"].value = (pan_x, pan_y)
-            gl.prog_segment["u_zoom"].value = session.cam_zoom
-            gl.prog_segment["u_viewport"].value = (width, height)
-            mode_draw["segment_vao"].render(moderngl.LINES, vertices=mode_draw["segment_count"])
-
-        gl.prog["u_point_size"].value = args.point_size
-        vao_normal.render(moderngl.POINTS, vertices=ring_count - ring_count_hit)
-        gl.prog["u_point_size"].value = gl.hit_point_size
-        vao_hit.render(moderngl.POINTS, vertices=ring_count_hit)
-
-        # The mode's own striped markers (each carries its own pixel size).
-        if mode_draw["marker_vao"] is not None:
-            gl.prog_marker["u_pan"].value = (pan_x, pan_y)
-            gl.prog_marker["u_zoom"].value = session.cam_zoom
-            gl.prog_marker["u_viewport"].value = (width, height)
-            mode_draw["marker_vao"].render(moderngl.POINTS, vertices=mode_draw["marker_count"])
-
-        # Tracked-ring outline circles -- one LINE_LOOP draw call per
-        # tracked-and-active ring over the shared unit-circle buffer,
-        # scaled/positioned/colored per ring via per-draw-call uniforms
-        # (see unit_circle_vertices' own doc-comment for why a shared
-        # buffer rather than one per ring). Tracked-ring counts are always
-        # small (user-typed or capped, see tracked_resonance_state), so a
-        # few extra draw calls per frame here is negligible next to the
-        # single GL_POINTS call above carrying the real ring count.
-        outline_draws = session.mode.outline_draws()
-        if outline_draws:
-            gl.prog_outline["u_pan"].value = (pan_x, pan_y)
-            gl.prog_outline["u_zoom"].value = session.cam_zoom
-            gl.prog_outline["u_viewport"].value = (width, height)
-            for radius, color in outline_draws:
-                gl.prog_outline["u_radius"].value = radius
-                gl.prog_outline["u_color"].value = color
-                gl.unit_circle_vao.render(moderngl.LINE_LOOP)
-
-        # The mode's radial boundary marker (line mode's curved axis) -- a single red
-        # LINE from the circle's own center out to its "12 o'clock" edge,
-        # over the SAME prog_outline program/uniforms as the tracked-ring
-        # outlines just above (see line_draw.axis_boundary_marker_vertices' own
-        # doc-comment for why this needs marking at all: the loaded
-        # window's own start and end coincide on screen once bent into a
-        # circle, but are NOT actually the same value the way a real
-        # periodic wraparound would be). session.mode.axis_boundary_radius() is
-        # exactly the radius build_line_vertex_data itself used for this
-        # frame's own layout -- world_width/2 for a plain circle, or the
-        # spiral's own bigger outer-lap radius once a real wheel promotes
-        # it to a spiral (see that function's own `boundary_radius`
-        # doc-comment) -- so this single line always reaches all the way
-        # out to the LAST lap actually drawn, crossing every lap's own
-        # phase-zero point along the way (value_to_spiral_xy's own
-        # doc-comment explains why one straight radial line does that for
-        # every lap at once, with no separate per-lap marker needed).
-        boundary_radius = session.mode.axis_boundary_radius()
-        if boundary_radius:
-            gl.prog_outline["u_pan"].value = (pan_x, pan_y)
-            gl.prog_outline["u_zoom"].value = session.cam_zoom
-            gl.prog_outline["u_viewport"].value = (width, height)
-            gl.prog_outline["u_radius"].value = boundary_radius
-            gl.prog_outline["u_color"].value = (1.0, 0.0, 0.0, 1.0)
-            gl.axis_boundary_vao.render(moderngl.LINES)
-
-        # Center marker -- fixed decorative triangle + glow line at the
-        # ring field's own screen-space origin (pan_x, pan_y; see
-        # build_center_marker_vertex_data's own doc-comment for why this is
-        # the same point as u_pan above, not further scaled by zoom).
-        gl.prog_screen["u_viewport"].value = (width, height)
-        if session.mode.draws_center_marker:
-            s = marker_device_scale(width, height)
-            triangle_data, line_data = build_center_marker_vertex_data(pan_x, pan_y, s)
-            gl.marker_triangle_vbo.write(triangle_data.tobytes())
-            gl.marker_line_vbo.write(line_data.tobytes())
-            gl.marker_triangle_vao.render(moderngl.TRIANGLES)
-            gl.marker_line_vao.render(moderngl.LINES)
-
-        # Flash overlays -- full-screen washes that decay over subsequent
-        # frames after a trigger (see the active mode's rebuild for the trigger
-        # conditions). session.mode.flash_overlays() lists only the overlays
-        # not yet fully decayed (none, the overwhelming majority of frames),
-        # so this skips the draw call entirely rather than drawing an alpha-0
-        # quad every frame -- each decay only advances AFTER its draw.
-        for flash_color, decay in session.mode.flash_overlays():
-            quad = build_flash_quad_vertex_data(width, height, flash_color)
-            gl.flash_quad_vbo.write(quad.tobytes())
-            gl.flash_quad_vao.render(moderngl.TRIANGLE_FAN)
-            decay()
-
-        # World-anchored labels: screen quads recomputed from the camera every frame
-        # (pan/zoom never re-rasterizes text), drawn under the HUD.
-        if mode_draw["labels"] is not None and gl.label_tex_holder["tex"] is not None:
-            quads = mode_draw["labels"].quads((pan_x, pan_y), session.cam_zoom, (width, height))
-            if len(quads):
-                mode_draw["label_vbo"].write(quads.tobytes())
-                gl.label_tex_holder["tex"].use(location=0)
-                gl.prog_text["u_tex"].value = 0
-                gl.prog_text["u_viewport"].value = (width, height)
-                mode_draw["label_vao"].render(moderngl.TRIANGLES, vertices=len(quads))
-
-        # On-canvas HUD text quad -- drawn LAST (after
-        # rings/outlines/marker/flash, right before the swap) so it always
-        # sits on top, same as DrumRenderer's own #drawHud being the final
-        # call in its own #renderFrame. hud_tex_holder is only ever
-        # non-None when Pillow is installed AND the current HUD text is
-        # non-empty (see _apply_hud_refresh's own early-outs).
-        if gl.hud_tex_holder["tex"] is not None:
-            gl.hud_tex_holder["tex"].use(location=0)
-            gl.prog_text["u_tex"].value = 0
-            gl.prog_text["u_viewport"].value = (width, height)
-            gl.hud_quad_vao.render(moderngl.TRIANGLES)
+        draw_frame(gl, session, mode_draw, args.point_size, (width, height),
+                   vao_normal, vao_hit, ring_count, ring_count_hit)
 
         glfw.swap_buffers(gl.window)
 
@@ -909,163 +604,7 @@ def _run_visualization(args, audio=None):
 
 
 def main():
-    from primeatlas.visualization.shared.audio import INSTRUMENTS
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('--audio', action='store_true', help='enable optional live sound (requires sounddevice)')
-    parser.add_argument('--sound-low', choices=INSTRUMENTS, default='sine')
-    parser.add_argument('--sound-prime', choices=INSTRUMENTS, default='triangle')
-    parser.add_argument('--sound-lcm', choices=INSTRUMENTS, default='choir')
-    # none: no primes at all, for a mode that computes its own data (tree, assembly); opens at --upto.
-    parser.add_argument("--source", choices=["synthetic", "sieve", "archive", "none"], default="synthetic")
-    parser.add_argument("--count", type=int, default=1_000_000, help="ring count for --source synthetic")
-    # Accepts parse_big_int's flexible forms (plain digits, a*10**b, a*10^b,
-    # aEb) in addition to a bare int -- see that function's own doc-comment.
-    # A real archive floor's own magnitude (floor 25 alone is 26 digits) is
-    # exactly why this exists.
-    parser.add_argument("--upto", type=parse_big_int, default=1_000_000,
-                         help="upper bound for --source sieve/archive -- accepts plain digits, "
-                              "a*10**b, a*10^b, or scientific notation (aEb)")
-    parser.add_argument("--portal-folder", type=str, default=None, help="PrimeAtlas portal folder for --source archive")
-    parser.add_argument("--width", type=int, default=1600)
-    parser.add_argument("--height", type=int, default=1000)
-    parser.add_argument("--point-size", type=float, default=3.0)
-    # Independent point size for rings ON the vertical reference line
-    # (pos["is_hit"] -- real divisors of N), separate from every other
-    # ring, e.g. to spot factors of N at a glance without the rest of the
-    # field growing too. Defaults to 40
-    # so the axis rings are readably distinct even when this flag isn't
-    # passed explicitly -- rings_tab.py's own GUI field is pre-filled with
-    # "40" to match (see that file's own comment) -- the
-    # None-fallback-to-point-size behavior in run()'s hit_point_size
-    # computation still applies if a caller explicitly passes an
-    # empty/omitted value some other way.
-    parser.add_argument("--hit-point-size", type=float, default=40.0,
-                         help="point size for rings on the vertical reference line "
-                              "(divisors of N); defaults to 40.0")
-    # Font size (pixels) for the on-canvas HUD text. rasterize_hud_text
-    # derives margin/line-spacing from this value too, so scaling it up
-    # keeps the whole HUD block proportional instead of just the glyphs.
-    parser.add_argument("--hud-font-size", type=int, default=_HUD_FONT_SIZE_DEFAULT,
-                         help="pixel size of the on-canvas HUD text, default 35")
-    parser.add_argument("--n-step", type=int, default=1000)
-    # Load Range -- comma-separated FROM,TO (two non-negative integers,
-    # FROM <= TO checked here; the "does TO actually fit under what got
-    # loaded" check needs the real loaded `primes` array, so that half
-    # happens in run() via load_prime_range_slice instead).
-    parser.add_argument("--load-range", type=str, default="",
-                         help="comma-separated FROM,TO (each accepts plain digits, a*10**b, a*10^b, "
-                              "or aEb -- see --upto) -- switch to a fixed range mode showing exactly "
-                              "the primes in [FROM,TO], auto-tracking all of them if there aren't too many")
-    # Viewing a high floor (e.g. 30) must not require loading every floor
-    # below it first. For --source archive with --load-range, this caps how
-    # many primes actually get materialized -- see load_archive's own
-    # `max_load_count` doc-comment for why it's a plain configurable number
-    # here, not a hardcoded guess.
-    parser.add_argument("--max-load-count", type=parse_big_int, default=2_000_000,
-                         help="safety cap on primes materialized for an archive --load-range load; "
-                              "the range is truncated from the top if it holds more than this "
-                              "(accepts plain digits, a*10**b, a*10^b, or aEb -- see --upto)")
-    # Bidirectional sliding window over --load-range -- OFF by default (enabled
-    # explicitly); without it a plain --load-range is a fixed slice of
-    # --max-load-count primes.
-    parser.add_argument("--slide-load-range", action="store_true",
-                         help="--load-range only: instead of a fixed slice stuck wherever "
-                              "--max-load-count first landed, keep a bounded chunk that SLIDES "
-                              "(both directions) as N/the pattern cursor moves, so the whole "
-                              "--load-range span becomes reachable a chunk at a time. Off by "
-                              "default -- turn on deliberately, since the extra disk I/O on each "
-                              "chunk swap may not suit every machine")
-    # `--slide-chunk-size` defaults to None and is resolved to --max-load-count's
-    # value right after argument parsing (an explicit --slide-chunk-size still
-    # overrides it), so the first chunk and every chunk loaded later by sliding use
-    # the same "how much is loaded at once" number unless the user sets them apart.
-    # A bigger chunk also means a slower blocking load whenever a swap outruns the
-    # background prefetch.
-    parser.add_argument("--slide-chunk-size", type=parse_big_int, default=None,
-                         help="--slide-load-range only: how many primes each of the back/current/"
-                              "forward chunks holds -- defaults to --max-load-count's own value "
-                              "when not given, so leaving this blank keeps ONE consistent load size; "
-                              "give a real value here to deliberately use a DIFFERENT size while "
-                              "sliding than the initial load (accepts plain digits, a*10**b, a*10^b, "
-                              "or aEb -- see --upto)")
-    # Playback speed -- ports #tempoMs's own default (120ms/tick) and
-    # clamp range ([30,2000], see clamp_tempo_ms's own doc-comment); Space
-    # starts/stops playback at this rate, ]/[ adjust it live by +/-10ms per
-    # press.
-    parser.add_argument("--tempo-ms", type=int, default=_TEMPO_MS_DEFAULT,
-                         help="playback speed in ms/tick, clamped to [30,2000] "
-                              "(Space starts/stops playback, ]/[ adjust it live)")
-    # Which viz-mode runs in this window -- see mode_registry.MODES. Each mode adds
-    # its own arguments below (VizMode.add_arguments).
-    parser.add_argument("--viz-mode", choices=list(MODES), default="rings",
-                         help="rings (default): one ring per active small prime, phase = n%%p. "
-                              "line: a fixed row of real primes from --load-range, with an optional "
-                              "--pattern-seed-k/--pattern-seed-start k-tuple pattern slid along it by N. "
-                              "tree: the prime tree on the real n axis (use with --source none). "
-                              "assembly: the wheel assembled level by level, q copies of the period "
-                              "minus the multiples of q (use with --source none). "
-                              "sphere: the first K primes as rings on a sphere through one node, "
-                              "N's divisors meet at it (use with --source none; --portal-folder "
-                              "gives primality and the prime jumps)")
-    # Opt-in live pause/resume protocol -- OFF by default, so running this
-    # file directly from a terminal keeps the plain behavior: closing the
-    # window (Esc / titlebar X) exits. Only rings_tab.py passes
-    # this flag, since it's the only caller that pipes stdin (see
-    # LocalLoggedRunner.send_line()) and can actually act on the PAUSED/
-    # RESUMED lines this prints -- see start_stdin_command_reader's own
-    # doc-comment for the full protocol.
-    parser.add_argument("--pipe-stdin-commands", action="store_true",
-                         help="read RESUME commands from stdin and, instead of "
-                              "exiting on window-close, hide the window and idle "
-                              "until one arrives (used by rings_tab.py for live "
-                              "pause/resume; harmless but pointless when running "
-                              "this file directly from a terminal)")
-    for mode_cls in MODES.values():
-        mode_cls.add_arguments(parser)
-    args = parser.parse_args()
-
-    if args.source == "archive" and not args.portal_folder:
-        parser.error("--source archive requires --portal-folder")
-
-    # Same fail-fast format validation as the modes' own argument checks:
-    # catch a malformed --load-range before run() ever starts loading
-    # primes, rather than raising an uncaught ValueError/unpack error
-    # later. The "exceeds what got loaded" case cannot be checked here (no
-    # `primes` array yet) -- see run()'s own call to load_prime_range_slice
-    # for that half.
-    if args.load_range:
-        parts = args.load_range.split(",")
-        if len(parts) != 2:
-            parser.error(f"--load-range must be exactly two comma-separated FROM,TO values, "
-                         f"got {args.load_range!r}")
-        try:
-            load_from, load_to = (parse_big_int(p) for p in parts)
-        except ValueError as e:
-            parser.error(f"--load-range: {e}")
-        if load_from < 0 or load_to < 0:
-            parser.error(f"--load-range FROM/TO must be non-negative, got {args.load_range!r}")
-        if load_from > load_to:
-            parser.error(f"--load-range FROM must be <= TO, got {args.load_range!r}")
-
-    # Resolve --slide-chunk-size's own inherit-from-max-load-count default
-    # (see that argument's own doc-comment above) once, right after
-    # parsing -- args.slide_chunk_size is reassigned here so every reader
-    # further down (including RenderSession's own construction) sees the
-    # already-resolved real number, never has to re-derive the fallback.
-    if args.slide_chunk_size is None:
-        args.slide_chunk_size = args.max_load_count
-    if args.slide_load_range:
-        if not args.load_range:
-            parser.error("--slide-load-range requires --load-range")
-        if args.source != "archive":
-            parser.error("--slide-load-range requires --source archive (needs real disk I/O to load neighbor chunks)")
-        if not args.slide_chunk_size or args.slide_chunk_size <= 0:
-            parser.error(f"--slide-chunk-size (or --max-load-count, its own default source) must be "
-                         f"> 0, got {args.slide_chunk_size}")
-    for mode_cls in MODES.values():
-        mode_cls.validate_arguments(parser, args)
-
-    run(args)
+    run(parse_args(__doc__))
 
 
 if __name__ == "__main__":
