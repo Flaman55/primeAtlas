@@ -6,7 +6,7 @@ point of offering this button safely at all.
 
 Also FloorWiper, for two narrower, per-floor variants of the same idea, since sometimes
 only ONE floor needs clearing (to force a clean re-generation) or only that floor's
-constellation hits need clearing (to re-run constellation_finder_v2_2.py against an
+constellation hits need clearing (to re-run constellation_finder_v2_3.py against an
 unchanged pattern catalog, or a changed one, without touching the -- expensive to
 regenerate -- prime data underneath it):
   - delete_floor(): removes the WHOLE 10p{N} folder (source_primes AND constellations

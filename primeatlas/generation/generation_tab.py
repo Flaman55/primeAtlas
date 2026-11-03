@@ -1,6 +1,6 @@
 """
 generation_tab.py -- GenerationTab, the Generation tab: the Quick generation panel, the
-orchestrator_loop_v2.py pipeline form (Section A), the constellation_finder_v2_2.py search
+orchestrator_loop_v2.py pipeline form (Section A), the constellation_finder_v2_3.py search
 form (Section B) and the k-tuple sieve form (Section C), each with its Run/Stop buttons
 and console, plus the shared bottom progress bar.
 
@@ -140,7 +140,7 @@ class GenerationTab(QuickGenPanel, QuickGenRuns, QuickGenPlan, LoopSection,
     def _build_generation_tab(self):
         """Two independent sections ("Separate calls and parameterization"):
         orchestrator_loop_v2.py's full generation pipeline on
-        top, constellation_finder_v2_2.py's k-tuple search below -- each with its own
+        top, constellation_finder_v2_3.py's k-tuple search below -- each with its own
         form (every CLI parameter those scripts expose, including the ones that used
         to require editing source files -- see orchestrator_v3.py's/orchestrator_
         loop_v2.py's workers/batches_per_worker/window_count_per_run CLI-exposure

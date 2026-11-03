@@ -1,0 +1,348 @@
+"""
+test_constellation_finder_v2_3.py -- constellation_finder_v2_3.py and its sibling modules
+(constellation_const/_portal/_diag/_windows/_progress/_hits/_match_v2_3.py) run the same
+code as the single-file constellation_finder_v2.py, with the portal folder passed down
+explicitly instead of read from a module global:
+
+  - every top-level function, constant and the __main__ block of v2 is defined in exactly
+    one v2_3 module with the same syntax tree, once docstrings are set aside, the
+    `_const.NAME` module references are read as the bare NAME, the leading `portal`
+    parameter / argument is dropped and the remaining `portal` names are read as v2's
+    PORTAL_FOLDER, and the start banner's version is mapped back; no v2_3 module defines
+    anything v2 does not;
+  - v2's module-level PORTAL_FOLDER is constellation_portal_v2_3.default_portal_folder():
+    CONSTELLATION_PORTAL_DIR when set, else ../CONSTELLATION_PORTAL;
+  - shared values live only in constellation_const_v2_3.py: no other v2_3 module assigns a
+    module-level value (each file's own _SCRIPT_DIR aside), no module holds a
+    PORTAL_FOLDER, and only the entry script constellation_finder_v2_3.py touches
+    sys.path;
+  - a mutated copy of v2 (one changed constant) is reported as different, so the check
+    cannot pass by comparing nothing;
+  - every v2_3 file stays under the 1000-line ceiling;
+  - the GUI launches and stops constellation_finder_v2_3.py;
+  - the same two runs (a --max-windows batch, then the rest) over the same two-floor
+    portal, run as a script through v2 and v2_3, print the same lines and write the same
+    files (write timestamps, timings and the portal path set aside).
+
+Run (no WSL needed):
+    python unitTests\\test_constellation_finder_v2_3.py
+"""
+import ast
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+_REPO_ROOT = os.path.dirname(_SCRIPT_DIR)
+_CONSTELLATION_DIR = os.path.join(_REPO_ROOT, "constellation")
+sys.path.insert(0, os.path.join(_REPO_ROOT, "prime_sieve"))
+V2 = os.path.join(_CONSTELLATION_DIR, "constellation_finder_v2.py")
+V2_3_FILES = [os.path.join(_CONSTELLATION_DIR, f"constellation_{name}_v2_3.py") for name in (
+    "finder", "const", "portal", "diag", "windows", "progress", "hits", "match")]
+SHARED_VALUE_MODULES = ("constellation_const_v2_3.py",)
+SHARED_MODULE_ALIASES = ("_const",)
+MAX_LINES = 1000
+BANNER_PREFIX = "[*] CONSTELLATION FINDER -- v2"
+
+failures = []
+
+
+def check(condition, message):
+    if not condition:
+        failures.append(message)
+        print(f"FAIL: {message}")
+    else:
+        print(f"ok:   {message}")
+
+
+class _Unqualify(ast.NodeTransformer):
+    """Reads `_const.NAME` as the bare NAME v2 uses, drops the leading `portal` parameter
+    and argument, reads any other `portal` as v2's PORTAL_FOLDER, and drops the
+    `portal = default_portal_folder()` line of the __main__ block."""
+
+    def visit_Attribute(self, node):
+        self.generic_visit(node)
+        if isinstance(node.value, ast.Name) and node.value.id in SHARED_MODULE_ALIASES:
+            return ast.Name(id=node.attr, ctx=node.ctx)
+        return node
+
+    def visit_arguments(self, node):
+        if node.args and node.args[0].arg == "portal":
+            node.args = node.args[1:]
+        return self.generic_visit(node)
+
+    def visit_Call(self, node):
+        # Only calls of this engine's own functions take the portal first; os.path.join()
+        # and the like keep it as an argument (read as PORTAL_FOLDER below).
+        if (isinstance(node.func, ast.Name) and node.func.id in ENGINE_FUNCTIONS
+                and node.args and isinstance(node.args[0], ast.Name)
+                and node.args[0].id == "portal"):
+            node.args = node.args[1:]
+        return self.generic_visit(node)
+
+    def visit_Name(self, node):
+        if node.id == "portal":
+            return ast.Name(id="PORTAL_FOLDER", ctx=node.ctx)
+        return node
+
+    def visit_Assign(self, node):
+        if (len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
+                and node.targets[0].id == "portal"):
+            return None
+        return self.generic_visit(node)
+
+
+def _engine_functions():
+    """Names of v2's own top-level functions -- the callees that take `portal` in v2_3."""
+    with open(V2, encoding="utf-8") as f:
+        return {n.name for n in ast.parse(f.read()).body if isinstance(n, ast.FunctionDef)}
+
+
+ENGINE_FUNCTIONS = _engine_functions()
+
+
+def _normalize(node):
+    """Drops docstrings, unqualifies shared values and blanks the start banner's version."""
+    node = _Unqualify().visit(node)
+    for sub in ast.walk(node):
+        body = getattr(sub, "body", None)
+        if (isinstance(sub, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+                and body and isinstance(body[0], ast.Expr)
+                and isinstance(body[0].value, ast.Constant)
+                and isinstance(body[0].value.value, str)):
+            sub.body = body[1:] or [ast.Pass()]
+        if (isinstance(sub, ast.Constant) and isinstance(sub.value, str)
+                and sub.value.startswith(BANNER_PREFIX)):
+            sub.value = BANNER_PREFIX
+    return ast.dump(node, include_attributes=False)
+
+
+def _is_main_block(node):
+    return (isinstance(node, ast.If) and isinstance(node.test, ast.Compare)
+            and isinstance(node.test.left, ast.Name) and node.test.left.id == "__name__")
+
+
+def top_level_units(source):
+    """{name: normalized dump} for every def, simple assignment and the __main__ block."""
+    units = {}
+    for node in ast.parse(source).body:
+        if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
+            units[node.name] = _normalize(node)
+        elif (isinstance(node, ast.Assign) and len(node.targets) == 1
+              and isinstance(node.targets[0], ast.Name)
+              and node.targets[0].id not in ("_SCRIPT_DIR", "PORTAL_FOLDER")):
+            units[node.targets[0].id] = _normalize(node)
+        elif _is_main_block(node):
+            units["__main__"] = _normalize(node)
+    return units
+
+
+def compare_units(v2_source, v2_3_sources):
+    """Returns the list of mismatch descriptions between v2 and the v2_3 modules."""
+    v2_units = top_level_units(v2_source)
+    problems = []
+    found = {}
+    for path, source in v2_3_sources.items():
+        for name, dump in top_level_units(source).items():
+            if name == "default_portal_folder":
+                continue  # v2's PORTAL_FOLDER assignment, checked by check_default_portal()
+            if name in found:
+                problems.append(f"{name} is defined in both {found[name][0]} and {path}")
+            found[name] = (path, dump)
+    for name, dump in v2_units.items():
+        if name not in found:
+            problems.append(f"{name} is missing from v2_3")
+        elif found[name][1] != dump:
+            problems.append(f"{name} differs ({os.path.basename(found[name][0])})")
+    for name in found:
+        if name not in v2_units:
+            problems.append(f"{name} is new in v2_3")
+    return problems
+
+
+def module_level_assignments(source):
+    """Names assigned at module level, `_SCRIPT_DIR` and try/except import fallbacks aside."""
+    names = []
+    for node in ast.parse(source).body:
+        if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            names += [t.id for t in targets if isinstance(t, ast.Name) and t.id != "_SCRIPT_DIR"]
+    return names
+
+
+def sys_path_writers(source):
+    """True when the module calls sys.path.insert/append anywhere."""
+    for sub_node in ast.walk(ast.parse(source)):
+        if (isinstance(sub_node, ast.Attribute) and sub_node.attr in ("insert", "append")
+                and isinstance(sub_node.value, ast.Attribute) and sub_node.value.attr == "path"):
+            return True
+    return False
+
+
+def check_default_portal():
+    """default_portal_folder() is v2's PORTAL_FOLDER: the env override, else the fallback."""
+    sys.path.insert(0, _CONSTELLATION_DIR)
+    import constellation_portal_v2_3 as portal_mod
+    saved = os.environ.get("CONSTELLATION_PORTAL_DIR")
+    try:
+        os.environ["CONSTELLATION_PORTAL_DIR"] = os.path.join("x", "custom_portal")
+        check(portal_mod.default_portal_folder() == os.path.join("x", "custom_portal"),
+              "default_portal_folder() returns CONSTELLATION_PORTAL_DIR when set")
+        del os.environ["CONSTELLATION_PORTAL_DIR"]
+        expected = os.path.abspath(os.path.join(_CONSTELLATION_DIR, "..", "CONSTELLATION_PORTAL"))
+        check(portal_mod.default_portal_folder() == expected,
+              f"default_portal_folder() falls back to {expected}")
+    finally:
+        if saved is None:
+            os.environ.pop("CONSTELLATION_PORTAL_DIR", None)
+        else:
+            os.environ["CONSTELLATION_PORTAL_DIR"] = saved
+
+
+def _build_portal(portal):
+    """Two floors of real PGS2 source windows: 10^2 in three windows reaching the floor
+    boundary, 10^3 in one window, so batching, the boundary check and its NOTE all run."""
+    import prime_sieve_v1
+    import window_sharding
+
+    def primes_between(lo, hi):
+        return [n for n in range(max(lo, 2), hi)
+                if all(n % d for d in range(2, int(n ** 0.5) + 1))]
+
+    layout = {2: [("PRIME_WINDOW_A.bin", 100, 400), ("PRIME_WINDOW_B.bin", 400, 700),
+                  ("PRIME_WINDOW_C.bin", 700, 1000)],
+              3: [("PRIME_WINDOW_A.bin", 1000, 1300)]}
+    for floor, windows in layout.items():
+        shard = window_sharding.shard_dir(os.path.join(portal, f"10p{floor}", "source_primes"), 0)
+        os.makedirs(shard, exist_ok=True)
+        for name, lo, hi in windows:
+            prime_sieve_v1.write_prime_window(os.path.join(shard, name), primes_between(lo, hi))
+
+
+_VOLATILE_LINE = re.compile(r"^(updated_at|checked_at)=.*$", re.MULTILINE)
+
+
+def run_twice(script, portal):
+    """A --max-windows 2 batch, then an uncapped run; returns (exit codes, lines, files)."""
+    import prime_sieve_v1
+
+    _build_portal(portal)
+    env = dict(os.environ, CONSTELLATION_PORTAL_DIR=portal)
+    codes, out_lines = [], []
+    for args in (["--max-windows", "2"], []):
+        result = subprocess.run([sys.executable, script] + args, capture_output=True,
+                                text=True, env=env, timeout=120)
+        if result.returncode != 0:
+            print(result.stderr)
+        codes.append(result.returncode)
+        for line in result.stdout.splitlines():
+            if line.startswith(("Start time:", "[*] Portal:", BANNER_PREFIX)):
+                continue
+            out_lines.append(re.sub(r"\(\d+\.\d+s\)", "(t)", line.replace(portal, "<portal>")))
+    files = {}
+    for root, _dirs, names in os.walk(portal):
+        for name in names:
+            path = os.path.join(root, name)
+            with open(path, "rb") as f:
+                data = f.read()
+            if name.endswith(".txt"):
+                data = _VOLATILE_LINE.sub("", data.decode("utf-8")).encode("utf-8")
+            elif name.endswith(".bin"):
+                # The PGS2 header carries the write time; compare base_prime, count and
+                # the decoded values instead.
+                header = prime_sieve_v1.read_prime_window_header(path)
+                data = (header["base_prime"], header["count"],
+                        tuple(prime_sieve_v1.read_prime_window(path)))
+            files[os.path.relpath(path, portal)] = data
+    return codes, out_lines, files
+
+
+def main():
+    with open(V2, encoding="utf-8") as f:
+        v2_source = f.read()
+    v2_3_sources = {}
+    for path in V2_3_FILES:
+        check(os.path.exists(path), f"{os.path.basename(path)} exists")
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as f:
+                v2_3_sources[path] = f.read()
+
+    if len(v2_3_sources) == len(V2_3_FILES):
+        problems = compare_units(v2_source, v2_3_sources)
+        for problem in problems:
+            print(f"      {problem}")
+        check(not problems, "every function, constant and the __main__ block of "
+                            "constellation_finder_v2.py is in exactly one v2_3 module, unchanged")
+        check(len(top_level_units(v2_source)) > 40,
+              "the comparison covers v2's top-level definitions (sanity)")
+
+        check(all("PORTAL_FOLDER" not in module_level_assignments(src)
+                  for src in v2_3_sources.values()),
+              "no v2_3 module holds a module-level PORTAL_FOLDER")
+        path_writers = sorted(os.path.basename(p) for p, src in v2_3_sources.items()
+                              if sys_path_writers(src))
+        check(path_writers == ["constellation_finder_v2_3.py"],
+              f"only the entry script changes sys.path (found {path_writers})")
+        check_default_portal()
+
+        stray = {os.path.basename(path): module_level_assignments(source)
+                 for path, source in v2_3_sources.items()
+                 if os.path.basename(path) not in SHARED_VALUE_MODULES}
+        stray = {name: values for name, values in stray.items() if values}
+        check(not stray, f"only constellation_const_v2_3.py assigns module-level "
+                         f"values (others: {stray})")
+
+        mutated = v2_source.replace('DONE_LOG_FILENAME = "DONE_WINDOWS.txt"',
+                                    'DONE_LOG_FILENAME = "DONE_WINDOWS_X.txt"')
+        check(mutated != v2_source and compare_units(mutated, v2_3_sources),
+              "a mutated copy of v2 is reported as different")
+
+        for path, source in v2_3_sources.items():
+            n = source.count("\n")
+            check(n <= MAX_LINES, f"{os.path.basename(path)} has {n} lines (<= {MAX_LINES})")
+
+    gui_sources = {}
+    for rel in (("generation", "engine_argv.py"), ("generation", "constellation_section.py"),
+                ("settings", "restore_section.py")):
+        with open(os.path.join(_REPO_ROOT, "primeatlas", *rel), encoding="utf-8") as f:
+            gui_sources[rel[1]] = f.read()
+    check('os.path.join(_SCRIPT_DIR, "constellation", "constellation_finder_v2_3.py")'
+          in gui_sources["engine_argv.py"],
+          "the GUI launches constellation_finder_v2_3.py (engine_argv)")
+    for name in ("constellation_section.py", "restore_section.py"):
+        check('kill_pattern="constellation_finder_v2_3.py"' in gui_sources[name],
+              f"{name} stops constellation_finder_v2_3.py, the script the GUI launches")
+
+    portal_v2 = tempfile.mkdtemp(prefix="primeatlas_cf_v2_cli_")
+    portal_v2_3 = tempfile.mkdtemp(prefix="primeatlas_cf_v2_3_cli_")
+    try:
+        codes_a, out_a, files_a = run_twice(V2, portal_v2)
+        codes_b, out_b, files_b = run_twice(V2_3_FILES[0], portal_v2_3)
+        check(codes_a == [0, 0] and codes_b == [0, 0],
+              f"both scripts exit 0 on both runs (v2={codes_a}, v2_3={codes_b})")
+        if out_a != out_b:
+            for a, b in zip(out_a, out_b):
+                if a != b:
+                    print(f"      v2:   {a}\n      v2_3: {b}")
+                    break
+        check(out_a == out_b and any("BATCH DONE" in line for line in out_a),
+              "v2 and v2_3 print the same lines for the same batched runs")
+        check(files_a == files_b and any("HITS_" in name for name in files_a),
+              f"v2 and v2_3 write the same files with the same bytes "
+              f"({len(files_a)} vs {len(files_b)} files)")
+    finally:
+        shutil.rmtree(portal_v2, ignore_errors=True)
+        shutil.rmtree(portal_v2_3, ignore_errors=True)
+
+    if failures:
+        print(f"\n{len(failures)} FAILURE(S)")
+        return 1
+    print("\nALL CHECKS PASSED")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -158,7 +158,7 @@ class DeleteSection:
         """Deletes ONLY the selected floor's constellations/ subfolder -- its
         source_primes/ (and that floor's own benchmark_log.csv rows, which describe
         prime generation, not constellation-finding) are left untouched. Useful to
-        force a clean re-run of constellation_finder_v2_2.py -- e.g. after the pattern
+        force a clean re-run of constellation_finder_v2_3.py -- e.g. after the pattern
         catalog changes -- without regenerating that floor's (often much more
         expensive to produce) prime data."""
         base_exponent = self._selected_delete_floor()

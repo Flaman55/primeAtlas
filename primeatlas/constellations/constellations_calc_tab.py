@@ -13,7 +13,7 @@ searches itself -- the Search button reuses the SIBLING Storage tab's own search
 against whichever row is currently selected, since that search already covers BOTH
 things the calculator needs to verify: is this number prime at all (offering to
 generate the missing prime window if not) AND does it actually participate in a
-tracked constellation pattern (offering to run constellation_finder_v2_2.py if the floor
+tracked constellation pattern (offering to run constellation_finder_v2_3.py if the floor
 has genuinely never been scanned). Searching all k numbers automatically in one click
 was considered (matching the literal "one button searches every number" framing this
 feature was requested with) but rejected: that search path already has its own async

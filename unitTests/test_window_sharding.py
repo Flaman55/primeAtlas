@@ -150,7 +150,7 @@ def main():
         found_names2 = sorted(name for name, _path in storage_module.list_source_filenames(portal_dir, 7))
         check(found_names2 == ["PRIME_WINDOW_x.bin", "PRIME_WINDOW_y.bin"],
               f"storage.list_source_filenames() (the cheap no-I/O listing used by "
-              f"constellation_finder_v2_2.py and manifest.py) also finds windows across "
+              f"constellation_finder_v2_3.py and manifest.py) also finds windows across "
               f"BOTH shards (got {found_names2!r})")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

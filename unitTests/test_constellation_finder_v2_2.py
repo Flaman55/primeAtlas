@@ -13,7 +13,6 @@ code as the single-file constellation_finder_v2.py:
   - a mutated copy of v2 (one changed constant) is reported as different, so the check
     cannot pass by comparing nothing;
   - every v2_2 file stays under the 1000-line ceiling;
-  - the GUI launches and stops constellation_finder_v2_2.py;
   - the same two runs (a --max-windows batch, then the rest) over the same two-floor
     portal, run as a script through v2 and v2_2, print the same lines and write the same
     files (write timestamps, timings and the portal path set aside).
@@ -221,18 +220,6 @@ def main():
         for path, source in v2_2_sources.items():
             n = source.count("\n")
             check(n <= MAX_LINES, f"{os.path.basename(path)} has {n} lines (<= {MAX_LINES})")
-
-    gui_sources = {}
-    for rel in (("generation", "engine_argv.py"), ("generation", "constellation_section.py"),
-                ("settings", "restore_section.py")):
-        with open(os.path.join(_REPO_ROOT, "primeatlas", *rel), encoding="utf-8") as f:
-            gui_sources[rel[1]] = f.read()
-    check('os.path.join(_SCRIPT_DIR, "constellation", "constellation_finder_v2_2.py")'
-          in gui_sources["engine_argv.py"],
-          "the GUI launches constellation_finder_v2_2.py (engine_argv)")
-    for name in ("constellation_section.py", "restore_section.py"):
-        check('kill_pattern="constellation_finder_v2_2.py"' in gui_sources[name],
-              f"{name} stops constellation_finder_v2_2.py, the script the GUI launches")
 
     portal_v2 = tempfile.mkdtemp(prefix="primeatlas_cf_v2_cli_")
     portal_v2_2 = tempfile.mkdtemp(prefix="primeatlas_cf_v2_2_cli_")

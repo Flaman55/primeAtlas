@@ -288,7 +288,7 @@ class SettingsTab(GeneralSection, RestoreSection, DeleteSection, FullBackupSecti
         # Per-floor delete -- narrower than the whole-database delete below: clears
         # ONE floor (source_primes + constellations together) to force a clean
         # regeneration, or ONLY that floor's constellations (keeping its prime data)
-        # to force a clean constellation_finder_v2_2.py re-run. Shares ONE floor picker
+        # to force a clean constellation_finder_v2_3.py re-run. Shares ONE floor picker
         # between both buttons -- see _selected_delete_floor()'s own docstring.
         floor_delete_frame = ttk.Labelframe(outer, text=self.T("settings.delete_floor_frame"))
         floor_delete_frame.pack(fill="x", pady=(0, 8))

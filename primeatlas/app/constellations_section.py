@@ -177,7 +177,7 @@ class ConstellationsSectionMixin:
         if not participation:
             # Empty result is genuinely ambiguous -- see
             # _offer_generate_missing_constellation()'s own docstring: no hit FILES at
-            # all for this floor means constellation_finder_v2_2.py simply never ran
+            # all for this floor means constellation_finder_v2_3.py simply never ran
             # here, not that this specific number was checked and excluded.
             if (not list_constellation_hits(_dyn.PORTAL_FOLDER, base_exponent)
                     and self._offer_generate_missing_constellation(base_exponent, number)):
