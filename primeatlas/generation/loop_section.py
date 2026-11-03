@@ -18,10 +18,10 @@ from ..benchmark.benchmark import read_benchmark_log
 from .generation_console import GenerationConsole
 from . import engine_options
 from .engine_fields import EngineFields
-from .generation import (
-    compute_totals_bumps_from_new_rows, save_generation_settings, build_loop_argv,
-    generation_log_paths, build_wsl_logged_command,
-)
+from .engine_argv import build_loop_argv
+from .generation_settings import save_generation_settings
+from .window_planning import compute_totals_bumps_from_new_rows
+from .wsl_command import generation_log_paths, build_wsl_logged_command
 
 
 class LoopSection:
@@ -103,7 +103,7 @@ class LoopSection:
         # (see _collect_loop_settings_from_form()/_on_run_orchestrator_direct()) --
         # "count sieving primes" means "full recount, no seed", "use Wikipedia seed" means
         # "count, but seeded" -- see count_sieving_primes_cached()'s own docstring
-        # (prime_sieve_v4_1.py) and build_wsl_logged_command()'s docstring (generation.py)
+        # (prime_sieve_v4_1.py) and build_wsl_logged_command()'s docstring (wsl_command.py)
         # for the full mechanism.
         use_pi_seed_initial = bool(loop_settings.get("use_known_pi_seed", False))
         self._loop_count_sieving_var = tk.BooleanVar(

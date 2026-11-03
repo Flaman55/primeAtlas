@@ -10,12 +10,11 @@ and its other mixins set up, so it is never instantiated on its own.
 from tkinter import messagebox
 
 from ..core.storage import digit_count_floor, LOW_FLOOR_CUTOFF
-from .generation import (
-    QUICK_GEN_MAX_WINDOW_WIDTH, count_existing_windows, find_continuation_target_idx,
-    find_highest_populated_floor, _eval_quick_number, _round_range_to_window,
-    _floor_window_count, PRIMESIEVE_MAX_STOP, CUDASIEVE_MIN_PRINTABLE_TOP,
-    CUDASIEVE_MAX_STOP,
-)
+from .quick_number import _eval_quick_number
+from .window_planning import (QUICK_GEN_MAX_WINDOW_WIDTH, count_existing_windows,
+                              find_continuation_target_idx, find_highest_populated_floor,
+                              _round_range_to_window, _floor_window_count, PRIMESIEVE_MAX_STOP,
+                              CUDASIEVE_MIN_PRINTABLE_TOP, CUDASIEVE_MAX_STOP)
 
 
 class QuickGenPlan:

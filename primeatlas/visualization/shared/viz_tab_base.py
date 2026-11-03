@@ -21,7 +21,7 @@ from tkinter import ttk
 
 from ...core.base_tab import BaseTab
 from ...core.widgets import ScrollablePage
-from ...generation.generation import _eval_quick_number
+from ...generation.quick_number import _eval_quick_number
 from .window_mode import center_tk_window
 
 # Must match renderer.py's own emit_hud_state()

@@ -16,7 +16,7 @@ Plus a caller-supplied CUSTOM f(n) formula for exploring other polynomials --
 this module never evaluates user-typed text itself (no eval() anywhere here);
 the tab layer turns a typed formula into a plain Python callable first (same
 "restricted eval lives at the UI layer" split as squares_window.py's own
-_eval_formula in research_squares_tab.py, and generation.py's
+_eval_formula in research_squares_tab.py, and quick_number.py's
 _eval_quick_number).
 
 Unlike squares_window.py's "does [a(n),b(n)] contain ENOUGH primes" covering

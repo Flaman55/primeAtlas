@@ -2,8 +2,8 @@
 env_setup.py -- first-run environment check/installer for PrimeAtlas.
 
 PrimeAtlas's backend scripts (prime_sieve/*, constellation/*) actually run INSIDE WSL,
-launched from this native-Windows GUI via wsl.exe (see generation.py's
-build_wsl_logged_command()/WslLoggedRunner). On a machine that already has WSL + Ubuntu +
+launched from this native-Windows GUI via wsl.exe (see wsl_command.py's
+build_wsl_logged_command() and logged_runners.py's WslLoggedRunner). On a machine that already has WSL + Ubuntu +
 the right system packages set up, that's invisible. On a FRESH machine it is not: the
 WSL/VirtualMachinePlatform Windows features must be enabled (which requires a reboot),
 Ubuntu must be installed, and python3-full, python3-numpy, libprimesieve12/-dev must be
@@ -38,7 +38,7 @@ test against); see env_setup_wizard.py's own hand-off note.
 
 Pure Python, no tkinter dependency -- exercised directly by unit tests (see
 unitTests/test_env_setup.py), same "backend has zero UI dependency" split as every other
-primeatlas/ module (app_settings.py, generation.py, ...). All subprocess-touching functions
+primeatlas/ module (app_settings.py, window_planning.py, ...). All subprocess-touching functions
 are thin and separately named specifically so tests can monkeypatch them without needing a
 real Windows/WSL environment.
 """
@@ -80,8 +80,8 @@ _WINDOWS_DRIVE_PATH_RE = re.compile(r'^([A-Za-z]):[\\/](.*)$')
 
 
 def _windows_path_to_wsl(path):
-    """Same mapping as generation.py's windows_path_to_wsl() -- duplicated rather than
-    imported, matching this app's established pattern (see generation.py's own
+    """Same mapping as wsl_command.py's windows_path_to_wsl() -- duplicated rather than
+    imported, matching this app's established pattern (see window_planning.py's own
     CUDASIEVE_MIN_PRINTABLE_TOP-style comments) of small, stable constants/helpers being
     copied across the native/WSL boundary rather than cross-imported, so this module stays
     usable standalone (it may run before anything else in the app has decided a portal
@@ -106,7 +106,7 @@ def _popen_kwargs_no_window():
 # so unit tests can monkeypatch exactly one of them without needing a real Windows/WSL
 # environment. None of these use subprocess.run(..., timeout=...) directly against a pipe
 # that wraps wsl.exe's own Linux-side process -- see run_cudasieve_wsl_blocking()'s docstring
-# in generation.py for the confirmed hang bug that pattern hits. Plain Windows-only commands
+# in wsl_blocking.py for the confirmed hang bug that pattern hits. Plain Windows-only commands
 # (dism.exe, wsl.exe --status/-l, powershell.exe) are NOT wrapping a Linux-side process and
 # do not exhibit that bug, so they use the simpler subprocess.run(..., timeout=...) form;
 # anything that runs a command INSIDE the WSL distro uses the same Popen+poll-loop pattern
@@ -134,7 +134,7 @@ def _run_inside_wsl_blocking(distro, bash_command, timeout=120):
     """Runs `bash_command` inside `distro` AS ROOT (see this module's own docstring for
     why root, not a per-user sudo flow -- this also conveniently means apt installs never
     need a password prompt). Uses the same Popen()+manual poll()-loop+file-redirected-
-    output pattern as generation.py's run_cudasieve_wsl_blocking(), for the exact same
+    output pattern as wsl_blocking.py's run_cudasieve_wsl_blocking(), for the exact same
     documented reason (subprocess.run's own timeout handling can hang forever against
     wsl.exe's stdout pipe -- see that function's docstring). Returns
     (returncode_or_None, stdout_text). returncode is None on launch failure or timeout (in

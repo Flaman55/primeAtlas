@@ -23,7 +23,7 @@ sys.path.insert(0, os.path.join(ROOT, "prime_sieve"))
 sys.path.insert(0, os.path.join(ROOT, "constellation"))
 
 from primeatlas.generation import engine_options as eo  # noqa: E402
-from primeatlas.generation import generation, run_budget  # noqa: E402
+from primeatlas.generation import generation_settings, run_budget, wsl_command, wsl_resources  # noqa: E402
 import pt1_plan  # noqa: E402
 import work_plan_v5  # noqa: E402
 
@@ -144,7 +144,7 @@ def check_caps_and_recommend():
                     f"recommendation never exceeds the cap ({rec.windows})")
     v41 = eo.resolve({"engine": "v4.1"})
     passed &= check(eo.recommend(64 * GB, v41, 25, W).windows
-                    == generation.recommended_max_windows(64 * GB),
+                    == wsl_resources.recommended_max_windows(64 * GB),
                     "v4.1 recommendation matches the old Auto button")
     passed &= check(eo.recommend(None, v5, 25, W) is None, "no RAM reading -> None")
     pt1 = eo.resolve({"engine": "pt1"})
@@ -205,12 +205,12 @@ def check_env():
 
 def check_wsl_command():
     passed = True
-    base = generation.build_wsl_logged_command(["python3", "x.py"], "C:\\l.log", "C:\\e.txt",
+    base = wsl_command.build_wsl_logged_command(["python3", "x.py"], "C:\\l.log", "C:\\e.txt",
                                                "C:\\portal")
-    passed &= check(base == generation.build_wsl_logged_command(
+    passed &= check(base == wsl_command.build_wsl_logged_command(
         ["python3", "x.py"], "C:\\l.log", "C:\\e.txt", "C:\\portal", extra_env=()),
         "no extra env -> command unchanged")
-    cmd = generation.build_wsl_logged_command(
+    cmd = wsl_command.build_wsl_logged_command(
         ["python3", "x.py"], "C:\\l.log", "C:\\e.txt", "C:\\portal",
         extra_env=[("PRIMEATLAS_SCANNER_VERSION", "v5"), ("PRIMEATLAS_V5_BUCKET_MB", "a b")])
     bash = cmd[-1]
@@ -219,12 +219,12 @@ def check_wsl_command():
                     and bash.index("PRIMEATLAS_SCANNER_VERSION") < bash.index("python3"),
                     f"env goes before the argv, quoted ({bash[:120]}...)")
     try:
-        generation.build_wsl_logged_command(["python3"], "C:\\l", "C:\\e", "C:\\p",
+        wsl_command.build_wsl_logged_command(["python3"], "C:\\l", "C:\\e", "C:\\p",
                                             extra_env=[("BAD; rm", "1")])
         passed &= check(False, "malformed env name rejected")
     except ValueError:
         passed &= check(True, "malformed env name rejected")
-    loop = generation.DEFAULT_GENERATION_SETTINGS["loop"]
+    loop = generation_settings.DEFAULT_GENERATION_SETTINGS["loop"]
     passed &= check(loop.get("engine") == eo.DEFAULT_ENGINE
                     and all(loop.get(k) == str(v) for k, v in eo.DEFAULT_KNOBS.items()),
                     "persisted loop settings carry the engine and knob defaults")

@@ -12,7 +12,7 @@ PortalBrowserApp._apply_theme(), which needs a live Tk root this module delibera
 never touches) plus primality testing and the Goldbach structural-window backend.
 Every name re-exported here is independently unit-testable without a display. The
 package as a whole is much larger now -- one GUI tab class plus, for the bigger tabs,
-one pure-logic module per feature (generation.py/generation_tab.py,
+one pure-logic module per feature (window_planning.py, engine_argv.py, ... /generation_tab.py,
 benchmark.py/benchmark_tab.py, constellations.py/constellations_*_tab.py,
 research_goldbach.py/research_goldbach_tab.py) -- see each module's own docstring for
 details, and README.md for the overall picture.

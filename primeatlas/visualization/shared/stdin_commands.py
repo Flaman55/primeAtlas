@@ -13,7 +13,7 @@ def start_stdin_command_reader():
     `sys.stdin.readline()` in a loop, pushing each stripped non-empty line
     into a thread-safe queue.Queue the main GLFW loop polls NON-blockingly
     (queue.get_nowait()) once per frame -- same producer/thread-consumer-
-    queue shape as generation.py's own LocalLoggedRunner._read_loop, just
+    queue shape as logged_runners.py's own LocalLoggedRunner._read_loop, just
     the opposite direction (that one reads the subprocess's stdOUT into a
     queue for Tkinter to drain; this one reads OUR stdIN, fed by
     LocalLoggedRunner.send_line() on the Tkinter side, into a queue this

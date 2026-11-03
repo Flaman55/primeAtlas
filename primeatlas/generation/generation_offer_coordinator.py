@@ -44,7 +44,7 @@ class GenerationOfferCoordinator:
         status_var/translator: same dependency-injection pattern as every other
         extracted tab/coordinator -- see primeatlas/primes/primes_tab.py's own docstring.
 
-        quick_gen_max_window_width/primesieve_max_stop: primeatlas.generation.generation's own
+        quick_gen_max_window_width/primesieve_max_stop: primeatlas.generation.window_planning's own
         QUICK_GEN_MAX_WINDOW_WIDTH/PRIMESIEVE_MAX_STOP constants, passed through
         rather than imported directly here -- keeps this module's only import a
         plain stdlib one (tkinter.messagebox), matching totals_search_coordinator.py's
@@ -199,7 +199,7 @@ class GenerationOfferCoordinator:
         on_finished(success) is called once the whole plan finished or stopped.
         Returns False, launching nothing, while another Generation run is in flight
         (already reported with the Quick-gen "already running" message)."""
-        from .generation import plan_storage_fill
+        from .window_planning import plan_storage_fill
         gen = self._get_generation_tab_widget()
         launches = plan_storage_fill(start, end_inclusive + 1)
         if not gen.start_storage_fill(launches, on_finished):

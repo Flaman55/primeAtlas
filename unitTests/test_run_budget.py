@@ -1,6 +1,6 @@
 """run_budget picks how many windows one sieve run takes, from the floor and the RAM free in WSL.
 
-Checks: the v4.1 recommendation (and generation.recommended_max_windows, which delegates
+Checks: the v4.1 recommendation (and wsl_resources.recommended_max_windows, which delegates
 here) is exactly the formula the Generation tab's Auto button used
 so far (half the free RAM over window_m // 8 bytes, clamped to [1, 1000]); the v5 target
 grows with the floor (1000 windows at shallow floors, the knob's value at floor 25, more
@@ -19,7 +19,7 @@ sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "prime_sieve"))
 sys.path.insert(0, os.path.join(ROOT, "constellation"))
 
-from primeatlas.generation import generation, run_budget  # noqa: E402
+from primeatlas.generation import run_budget, wsl_resources  # noqa: E402
 
 GB = 10 ** 9
 MIB = 2 ** 20
@@ -47,12 +47,12 @@ def check_v41_unchanged():
                 got = run_budget.recommend_run(available, "v4.1", floor, window_m)
                 if got.windows != old_recommendation(available, window_m):
                     mismatches.append((available, window_m, floor, got.windows))
-            if generation.recommended_max_windows(available, window_m) !=                     old_recommendation(available, window_m):
+            if wsl_resources.recommended_max_windows(available, window_m) !=                     old_recommendation(available, window_m):
                 mismatches.append(("generation", available, window_m))
     passed &= check(not mismatches, f"v4.1 matches the old Auto formula everywhere "
                                     f"(mismatches: {mismatches[:3]})")
-    passed &= check(generation.recommended_max_windows(None) is None,
-                    "generation.recommended_max_windows: no RAM reading -> None")
+    passed &= check(wsl_resources.recommended_max_windows(None) is None,
+                    "wsl_resources.recommended_max_windows: no RAM reading -> None")
     passed &= check(run_budget.recommend_run(None, "v4.1", 25, W) is None,
                     "v4.1: no RAM reading -> no recommendation")
     passed &= check(run_budget.recommend_run(0, "v5", 25, W) is None,

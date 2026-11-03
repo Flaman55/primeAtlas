@@ -14,12 +14,10 @@ from tkinter import messagebox
 
 from ..core.progress_bar_owner import claim_progress_bar
 from .constellation_section import CONSTELLATION_BATCH_SIZE, CONSTELLATION_ETA_MIN_WINDOWS
-from .generation import (
-    format_duration_short, _LOOP_SESSION_DONE_RE, _LOOP_SESSION_START_RE,
-    _LOOP_ITERATION_START_RE, _GEN_SIEVE_DONE_RE, _GEN_SIEVE_PROGRESS_RE,
-    _GEN_CONST_PROGRESS_RE, _GEN_CONST_FLOOR_PROGRESS_RE, _GEN_PREP_DONE_RE,
-    _GEN_HYBRID_STAGE_RE, _GEN_HYBRID_DONE_RE,
-)
+from .run_output import (format_duration_short, _LOOP_SESSION_DONE_RE, _LOOP_SESSION_START_RE,
+                         _LOOP_ITERATION_START_RE, _GEN_SIEVE_DONE_RE, _GEN_SIEVE_PROGRESS_RE,
+                         _GEN_CONST_PROGRESS_RE, _GEN_CONST_FLOOR_PROGRESS_RE, _GEN_PREP_DONE_RE,
+                         _GEN_HYBRID_STAGE_RE, _GEN_HYBRID_DONE_RE)
 
 
 class GenerationRunProgress:
@@ -327,7 +325,7 @@ class GenerationRunProgress:
                                           # until its own first batch-progress line
 
         # _GEN_CONST_DONE_RE deliberately does NOT join the check below:
-        # constellation_finder_v2.py's process_floor() prints its "Done. New hits this
+        # constellation_finder_v2_1.py's process_floor() prints its "Done. New hits this
         # run" line at the end of EVERY batch (a fresh WSL subprocess per
         # --max-windows-capped batch, see build_constellation_finder_argv()), not once
         # the whole floor is finished. Treated like _GEN_SIEVE_DONE_RE, it would snap
@@ -382,7 +380,7 @@ class GenerationRunProgress:
 
         floor_progress_match = _GEN_CONST_FLOOR_PROGRESS_RE.search(chunk)
         if floor_progress_match:
-            # See _GEN_CONST_FLOOR_PROGRESS_RE's own comment in generation.py -- printed
+            # See _GEN_CONST_FLOOR_PROGRESS_RE's own comment in run_output.py -- printed
             # once near the start of every process_floor() call, so this just records
             # the floor-wide totals; deliberately no `return` here, since the SAME chunk
             # may also carry this batch's own first per-window line (handled below),

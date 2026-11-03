@@ -1,7 +1,7 @@
 """
 test_cudasieve_integration.py -- covers the `cudasieve-v2` branch's GPU-engine port
-(tasks #457-464): the engine file's window_sharding integration, generation.py's argv
-builders/constants and its Popen()+poll()-loop WSL launcher (run_cudasieve_wsl_blocking),
+(tasks #457-464): the engine file's window_sharding integration, engine_argv.py's argv
+builders, window_planning.py's constants, wsl_blocking.py's Popen()+poll()-loop WSL launcher (run_cudasieve_wsl_blocking),
 AppSettings' cudasieve_status cache, GenerationTab's cudasieve Quick-gen mode, and
 SettingsTab's cudasieve installer state machine.
 
@@ -10,8 +10,8 @@ binary, no CUDA hardware anywhere in this sandbox -- every WSL-launching or subp
 boundary is stubbed with a recorder/fake, same approach test_generation_launch_planning.py
 uses for _apply_primesieve_params_and_run/_apply_orchestrator_direct_params_and_run):
 
-  A. generation.py -- pure argv builders + constants (no I/O at all)
-  B. generation.py -- run_cudasieve_wsl_blocking's Popen()+poll() timeout loop, the exact
+  A. engine_argv.py/window_planning.py -- pure argv builders + constants (no I/O at all)
+  B. wsl_blocking.py -- run_cudasieve_wsl_blocking's Popen()+poll() timeout loop, the exact
      fix for the real Windows subprocess.run(timeout=...) hang documented in that
      function's own docstring -- verifies wait()/communicate() are NEVER called (that is
      precisely the historical bug) and that the timeout path actually returns instead of
@@ -70,25 +70,25 @@ def check(condition, message):
 
 
 # ============================================================================================
-# Section A -- generation.py: pure argv builders + constants
+# Section A -- engine_argv.py/window_planning.py: pure argv builders + constants
 # ============================================================================================
 
 def section_a():
-    print("\n--- Section A: generation.py argv builders + constants ---")
-    from primeatlas.generation import generation as gen_mod
+    print("\n--- Section A: engine_argv.py argv builders + window_planning.py constants ---")
+    from primeatlas.generation import engine_argv, window_planning
 
-    check(gen_mod.CUDASIEVE_MIN_PRINTABLE_TOP == 2 ** 40,
+    check(window_planning.CUDASIEVE_MIN_PRINTABLE_TOP == 2 ** 40,
           f"CUDASIEVE_MIN_PRINTABLE_TOP must be exactly 2**40 (CUDASieve's own documented "
-          f"-p/--print floor) (got {gen_mod.CUDASIEVE_MIN_PRINTABLE_TOP!r})")
-    check(gen_mod.CUDASIEVE_MAX_STOP == 2 ** 64 - 1,
+          f"-p/--print floor) (got {window_planning.CUDASIEVE_MIN_PRINTABLE_TOP!r})")
+    check(window_planning.CUDASIEVE_MAX_STOP == 2 ** 64 - 1,
           f"CUDASIEVE_MAX_STOP must match libprimesieve's own uint64 domain (2**64-1) "
-          f"(got {gen_mod.CUDASIEVE_MAX_STOP!r})")
-    expected_width_mult = gen_mod.CUDASIEVE_MAX_STOP // gen_mod.QUICK_GEN_MAX_WINDOW_WIDTH + 1
-    check(gen_mod.CUDASIEVE_MAX_WIDTH_MULT == expected_width_mult,
+          f"(got {window_planning.CUDASIEVE_MAX_STOP!r})")
+    expected_width_mult = window_planning.CUDASIEVE_MAX_STOP // window_planning.QUICK_GEN_MAX_WINDOW_WIDTH + 1
+    check(window_planning.CUDASIEVE_MAX_WIDTH_MULT == expected_width_mult,
           f"CUDASIEVE_MAX_WIDTH_MULT must be CUDASIEVE_MAX_STOP // QUICK_GEN_MAX_WINDOW_WIDTH "
-          f"+ 1 (got {gen_mod.CUDASIEVE_MAX_WIDTH_MULT!r}, expected {expected_width_mult!r})")
+          f"+ 1 (got {window_planning.CUDASIEVE_MAX_WIDTH_MULT!r}, expected {expected_width_mult!r})")
 
-    status_argv = gen_mod.build_cudasieve_status_argv()
+    status_argv = engine_argv.build_cudasieve_status_argv()
     check(status_argv[0] == "python3" and status_argv[-1] == "--status",
           f"build_cudasieve_status_argv() must run python3 ... --status "
           f"(got {status_argv!r})")
@@ -96,31 +96,31 @@ def section_a():
           f"build_cudasieve_status_argv()'s script path must point at "
           f"prime_sieve_cudasieve.py (got {status_argv[1]!r})")
 
-    fetch_argv = gen_mod.build_cudasieve_fetch_license_argv()
+    fetch_argv = engine_argv.build_cudasieve_fetch_license_argv()
     check(fetch_argv[0] == "python3" and fetch_argv[-1] == "--fetch-license",
           f"build_cudasieve_fetch_license_argv() must run python3 ... --fetch-license "
           f"(got {fetch_argv!r})")
 
-    build_argv = gen_mod.build_cudasieve_build_argv()
+    build_argv = engine_argv.build_cudasieve_build_argv()
     check(build_argv[:2] == ["python3", "-u"] and build_argv[-1] == "--build",
           f"build_cudasieve_build_argv() must run python3 -u ... --build, unbuffered so "
           f"WslLoggedRunner sees live progress lines (got {build_argv!r})")
 
-    run_argv_write = gen_mod.build_cudasieve_argv(13, 5, 2, 10_000_000, True)
+    run_argv_write = engine_argv.build_cudasieve_argv(13, 5, 2, 10_000_000, True)
     check(run_argv_write[0] == "python3" and run_argv_write[1] == "-u",
           f"build_cudasieve_argv() must run python3 -u ... (got {run_argv_write!r})")
     check(run_argv_write[-5:] == ["13", "5", "2", "10000000", "1"],
           f"build_cudasieve_argv(13, 5, 2, 10_000_000, True) must produce the positional "
           f"CLI contract <base_exponent> <target_idx_start> <target_idx_count> <window_m> "
           f"<write_files=1> (got tail {run_argv_write[-5:]!r})")
-    run_argv_nowrite = gen_mod.build_cudasieve_argv(13, 5, 2, 10_000_000, False)
+    run_argv_nowrite = engine_argv.build_cudasieve_argv(13, 5, 2, 10_000_000, False)
     check(run_argv_nowrite[-1] == "0",
           f"write_files=False must produce a trailing '0' (count-only mode) "
           f"(got {run_argv_nowrite[-1]!r})")
 
 
 # ============================================================================================
-# Section B -- generation.py: run_cudasieve_wsl_blocking's Popen()+poll() loop
+# Section B -- wsl_blocking.py: run_cudasieve_wsl_blocking's Popen()+poll() loop
 # ============================================================================================
 
 class _FakePopen:
@@ -163,7 +163,7 @@ class _FakePopen:
 
 def section_b():
     print("\n--- Section B: run_cudasieve_wsl_blocking Popen()+poll() loop ---")
-    from primeatlas.generation import generation as gen_mod
+    from primeatlas.generation import wsl_blocking
 
     portal = tempfile.mkdtemp(prefix="cudasieve_wslblock_test_")
     try:
@@ -185,19 +185,19 @@ def section_b():
         def fake_build_wsl_logged_command(argv, log_path, exit_path, portal_folder):
             return ["wsl.exe", "-e", "true"]  # never actually exec'd -- Popen is faked
 
-        orig_gen_log_paths = gen_mod.generation_log_paths
-        orig_build_cmd = gen_mod.build_wsl_logged_command
-        orig_popen = gen_mod.subprocess.Popen
-        gen_mod.generation_log_paths = fake_generation_log_paths
-        gen_mod.build_wsl_logged_command = fake_build_wsl_logged_command
-        gen_mod.subprocess.Popen = lambda cmd, **kw: _FakePopen([None, 0])
+        orig_gen_log_paths = wsl_blocking.generation_log_paths
+        orig_build_cmd = wsl_blocking.build_wsl_logged_command
+        orig_popen = wsl_blocking.subprocess.Popen
+        wsl_blocking.generation_log_paths = fake_generation_log_paths
+        wsl_blocking.build_wsl_logged_command = fake_build_wsl_logged_command
+        wsl_blocking.subprocess.Popen = lambda cmd, **kw: _FakePopen([None, 0])
         try:
-            ok, payload = gen_mod.run_cudasieve_wsl_blocking(["python3", "x", "--status"],
+            ok, payload = wsl_blocking.run_cudasieve_wsl_blocking(["python3", "x", "--status"],
                                                                portal, timeout=5)
         finally:
-            gen_mod.generation_log_paths = orig_gen_log_paths
-            gen_mod.build_wsl_logged_command = orig_build_cmd
-            gen_mod.subprocess.Popen = orig_popen
+            wsl_blocking.generation_log_paths = orig_gen_log_paths
+            wsl_blocking.build_wsl_logged_command = orig_build_cmd
+            wsl_blocking.subprocess.Popen = orig_popen
 
         check(ok is True,
               f"success path (poll() eventually non-None, real log content) must return "
@@ -214,8 +214,8 @@ def section_b():
         # ever calling wait()/communicate(), must call kill(), and must clean up the log/
         # exit files. Uses a tiny real timeout (0.3s) so this test stays fast. ---
         _FakePopen.instances.clear()
-        gen_mod.generation_log_paths = fake_generation_log_paths
-        gen_mod.build_wsl_logged_command = fake_build_wsl_logged_command
+        wsl_blocking.generation_log_paths = fake_generation_log_paths
+        wsl_blocking.build_wsl_logged_command = fake_build_wsl_logged_command
         fake_proc_holder = {}
 
         def _make_never_returning_popen(cmd, **kw):
@@ -223,16 +223,16 @@ def section_b():
             fake_proc_holder["proc"] = p
             return p
 
-        gen_mod.subprocess.Popen = _make_never_returning_popen
+        wsl_blocking.subprocess.Popen = _make_never_returning_popen
         try:
             t0 = time.time()
-            ok2, payload2 = gen_mod.run_cudasieve_wsl_blocking(
+            ok2, payload2 = wsl_blocking.run_cudasieve_wsl_blocking(
                 ["python3", "x", "--status"], portal, timeout=0.3)
             elapsed = time.time() - t0
         finally:
-            gen_mod.generation_log_paths = orig_gen_log_paths
-            gen_mod.build_wsl_logged_command = orig_build_cmd
-            gen_mod.subprocess.Popen = orig_popen
+            wsl_blocking.generation_log_paths = orig_gen_log_paths
+            wsl_blocking.build_wsl_logged_command = orig_build_cmd
+            wsl_blocking.subprocess.Popen = orig_popen
 
         check(ok2 is False,
               f"a process whose poll() never returns must time out with ok=False "
@@ -508,7 +508,7 @@ def section_e():
 
     import prime_atlas_v2
     import primeatlas.generation.generation_tab as generation_tab_mod
-    from primeatlas.generation.generation import CUDASIEVE_MIN_PRINTABLE_TOP
+    from primeatlas.generation.window_planning import CUDASIEVE_MIN_PRINTABLE_TOP
 
     error_calls = []
     messagebox.showerror = lambda title, msg, *a, **k: error_calls.append((title, msg))
@@ -581,7 +581,7 @@ def section_e():
               f"(got {len(error_calls)} calls: {error_calls!r})")
 
         # --- Dispatch: beyond-ceiling request (start > CUDASIEVE_MAX_STOP) is rejected. ---
-        from primeatlas.generation.generation import CUDASIEVE_MAX_STOP
+        from primeatlas.generation.window_planning import CUDASIEVE_MAX_STOP
         recorder_calls.clear()
         error_calls.clear()
         gen.quick_cudasieve_from_var.set(str(CUDASIEVE_MAX_STOP + 1))

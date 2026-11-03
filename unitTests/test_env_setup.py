@@ -13,7 +13,7 @@ for run_cudasieve_wsl_blocking's own Popen()+poll() loop. Four sections:
   C. run_install() -- restart-required / full-success / elevation-declined / real-failure
      paths, via monkeypatched _run_elevated_ps1().
   D. _run_inside_wsl_blocking()'s own Popen()+poll() loop -- verifies wait()/communicate()
-     are NEVER called (the documented Windows hang cause -- see generation.py's
+     are NEVER called (the documented Windows hang cause -- see wsl_blocking.py's
      run_cudasieve_wsl_blocking docstring, which this function's implementation
      deliberately mirrors) and that the timeout path actually returns instead of hanging.
 
@@ -611,7 +611,7 @@ class _FakePopen:
         raise AssertionError(
             "wait() must NEVER be called by _run_inside_wsl_blocking -- exactly the "
             "untimed fallback call documented as the real Windows hang cause in "
-            "generation.py's run_cudasieve_wsl_blocking, which this mirrors")
+            "wsl_blocking.py's run_cudasieve_wsl_blocking, which this mirrors")
 
     def communicate(self, timeout=None):
         self.communicate_called = True

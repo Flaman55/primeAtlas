@@ -25,8 +25,9 @@ import window_integrity
 from ..core.storage import (load_totals_cache, save_totals_cache, bump_floor_total,
                             update_floor_totals_cache)
 from ..benchmark.benchmark import read_benchmark_log
-from .generation import (GENERATION_LOGS_DIRNAME, _GEN_CONST_PROGRESS_RE, _GEN_SIEVE_PROGRESS_RE,
-                         _popen_kwargs_no_window, compute_totals_bumps_from_new_rows)
+from .run_output import _GEN_CONST_PROGRESS_RE, _GEN_SIEVE_PROGRESS_RE
+from .window_planning import compute_totals_bumps_from_new_rows
+from .wsl_command import GENERATION_LOGS_DIRNAME, _popen_kwargs_no_window
 
 ACTIVE_RUN_FILENAME = "ACTIVE_RUN.json"
 STAGE_LINE_MAX = 80

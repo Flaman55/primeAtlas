@@ -17,10 +17,9 @@ from tkinter import ttk, messagebox
 
 from ..core.progress_bar_owner import release_progress_bar
 from .generation_console import GenerationConsole
-from .generation import (
-    save_generation_settings, build_constellation_finder_argv,
-    read_constellation_checkpoint, generation_log_paths, build_wsl_logged_command,
-)
+from .engine_argv import build_constellation_finder_argv, read_constellation_checkpoint
+from .generation_settings import save_generation_settings
+from .wsl_command import generation_log_paths, build_wsl_logged_command
 
 # The constellation finder's WSL process can die mid-run WITHOUT writing an exit code on
 # a large floor (hundreds of thousands of source windows), most likely the
@@ -55,7 +54,7 @@ _GEN_CONST_BATCH_REMAINING_RE = re.compile(
 # Filename must match the finder's STOP_REQUEST_FILENAME exactly -- a separate literal
 # here (not imported) since this module only launches that script as a WSL subprocess
 # (same reasoning as read_constellation_checkpoint()'s separate CHECKPOINT.txt parsing
-# in generation.py).
+# in engine_argv.py).
 CONSTELLATION_STOP_REQUEST_FILENAME = "STOP_REQUEST.txt"
 CONSTELLATION_STOP_GRACE_MS = 10_000
 
@@ -128,7 +127,7 @@ class ConstellationSection:
         self._const_batch_remaining = None
         # Floor-wide progress state, set by _update_shared_progress_from_generation_
         # chunk() the moment a run's own "FLOOR PROGRESS" line arrives -- see
-        # _GEN_CONST_FLOOR_PROGRESS_RE's own comment in generation.py. None until then
+        # _GEN_CONST_FLOOR_PROGRESS_RE's own comment in run_output.py. None until then
         # (and reset to None at the start of every fresh launch, in
         # _start_constellation_runner()) so a stale value from a PREVIOUS run's floor
         # can never be mistaken for the current one's.
@@ -262,7 +261,7 @@ class ConstellationSection:
         self._const_output_queue = queue.Queue()
         self._const_runner = self._new_wsl_runner(
             cmd, log_path, exit_path, self._const_output_queue,
-            kill_pattern="constellation_finder_v2.py")
+            kill_pattern="constellation_finder_v2_1.py")
         self._const_runner.start()
         self.const_run_btn.configure(state="disabled")
         self.const_stop_btn.configure(state="normal")

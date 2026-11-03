@@ -21,7 +21,9 @@ import sys
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-from ...generation.generation import LocalLoggedRunner, _eval_quick_number, find_highest_populated_floor
+from ...generation.logged_runners import LocalLoggedRunner
+from ...generation.quick_number import _eval_quick_number
+from ...generation.window_planning import find_highest_populated_floor
 from ...generation.generation_console import GenerationConsole
 from ..assembly.assembly_argv import build_assembly_argv
 from ..shared.viz_tab_base import VizTabBase

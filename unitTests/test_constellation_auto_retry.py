@@ -1,6 +1,6 @@
 """
 test_constellation_auto_retry.py -- tests for the floor-25-scale fix, spread across
-primeatlas/generation/generation.py (read_constellation_checkpoint, build_constellation_finder_
+primeatlas/generation/engine_argv.py (read_constellation_checkpoint, build_constellation_finder_
 argv's own max_windows) and primeatlas/generation/constellation_section.py (GenerationTab._maybe_auto_
 retry_constellation, _maybe_continue_constellation_batch, _scan_const_chunk_for_batch_
 marker). Pure-logic batching of constellation_finder_v1.process_floor() itself
@@ -70,7 +70,7 @@ def _write_checkpoint(portal, base_exponent, filename):
 
 
 def _test_read_constellation_checkpoint():
-    from primeatlas.generation.generation import read_constellation_checkpoint
+    from primeatlas.generation.engine_argv import read_constellation_checkpoint
 
     tmp = tempfile.mkdtemp(prefix="primeatlas_const_checkpoint_test_")
     try:
@@ -341,7 +341,7 @@ def _test_graceful_stop_falls_back_to_hard_kill_after_grace_period():
 
 
 def _test_floor_progress_scales_bar_to_run_relative_progress():
-    """_GEN_CONST_FLOOR_PROGRESS_RE's own line (see generation.py) must make the shared
+    """_GEN_CONST_FLOOR_PROGRESS_RE's own line (see run_output.py) must make the shared
     bar/status track THIS RUN's own start-to-finish progress -- not the floor's whole
     checkpoint history -- so a floor resumed from a much earlier session (already
     99%+ done) doesn't make the bar snap straight to "full" the moment the first FLOOR
@@ -583,7 +583,7 @@ def _test_eta_baseline_resets_on_new_run_not_on_chained_batch():
 
 
 def _test_build_constellation_finder_argv_max_windows():
-    from primeatlas.generation.generation import build_constellation_finder_argv
+    from primeatlas.generation.engine_argv import build_constellation_finder_argv
 
     argv_plain = build_constellation_finder_argv("25")
     check("--max-windows" not in argv_plain,

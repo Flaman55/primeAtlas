@@ -23,9 +23,9 @@ companion library to primesieve, already used elsewhere in this project
 (see prime_sieve/prime_sieve_primesieve.py) -- via ctypes, through the exact
 same wsl.exe-subprocess SHAPE primesieve_calc_tab.py's calculator sub-tab
 established (build_primesieve_query_argv/run_primesieve_query_wsl there;
-build_primecount_query_argv/run_primecount_wsl_blocking here, both living in
-primeatlas/generation/generation.py alongside their CUDASieve counterparts -- see that
-module's own docstrings). Unlike the sieve/storage modes, this one needs no
+build_primecount_query_argv/run_primecount_wsl_blocking here, living in
+primeatlas/generation/engine_argv.py and wsl_blocking.py alongside their CUDASieve
+counterparts -- see those modules' own docstrings). Unlike the sieve/storage modes, this one needs no
 is_prime array at all -- primecount computes pi(x) directly via a
 combinatorial algorithm (see prime_sieve/prime_count_primecount.py's own
 module docstring), so it reaches x far past MAX_SIEVE_BOUND (e.g. pi(10**15) in
@@ -46,7 +46,7 @@ own primecount section) alongside every other optional-component installer
 in this app, not duplicated here -- this tab only ever OFFERS to install
 (a small Install/Cancel dialog, triggered the moment a "primecount"-mode
 query actually fails because the library isn't there yet, see
-_offer_install_primecount below), reusing that exact same generation.py
+_offer_install_primecount below), reusing that exact same wsl_blocking.py
 install function rather than a second copy of it."""
 import csv
 import datetime
@@ -57,10 +57,9 @@ from tkinter import ttk, messagebox, filedialog
 from ..core import background
 from ..core.base_tab import BaseTab
 from ..core.widgets import StripedTreeview
-from ..generation.generation import (
-    build_primecount_query_argv, run_primecount_wsl_blocking,
-    run_primecount_install_wsl_blocking,
-)
+from ..generation.engine_argv import build_primecount_query_argv
+from ..generation.wsl_blocking import (run_primecount_wsl_blocking,
+                                       run_primecount_install_wsl_blocking)
 from .pi_approx_window import (
     check_pi_approx_range, check_pi_approx_range_from_source,
     check_pi_approx_range_with_pi_func, MAX_SIEVE_BOUND,
@@ -386,7 +385,7 @@ class ResearchPiApproxTab(BaseTab):
                    command=on_cancel).pack(side="right")
 
     def _start_primecount_install(self, pending_job):
-        """Actually starts the install job -- reuses the SAME generation.py install
+        """Actually starts the install job -- reuses the SAME wsl_blocking.py install
         function Settings -> Updates's own primecount section calls (see that
         module's own docstring), remembering `pending_job` (the exact "run" job that
         just failed) so a successful install can automatically retry it, see

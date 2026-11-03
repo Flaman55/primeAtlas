@@ -73,7 +73,7 @@ def main():
         gen = app.generation_tab_widget
         fields = gen._engine_fields
 
-        from primeatlas.generation.generation import DEFAULT_GENERATION_SETTINGS
+        from primeatlas.generation.generation_settings import DEFAULT_GENERATION_SETTINGS
         default_loop = DEFAULT_GENERATION_SETTINGS["loop"]
         passed &= check(engine_options.resolve(default_loop).engine
                         == engine_options.DEFAULT_ENGINE == "v5",
