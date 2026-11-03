@@ -22,8 +22,7 @@ from .goldbach_window import (
     sieve_is_prime as goldbach_sieve_is_prime,
 )
 from .research_goldbach import read_is_prime_from_storage, MissingStorageRangeError
-from .goldbach_viz_section import GOLDBACH_CASCADE_ROW_CAP
-from .goldbach_decompose_section import GOLDBACH_DECOMPOSE_ROW_CAP
+from .goldbach_paging import GOLDBACH_CASCADE_ROW_CAP, GOLDBACH_DECOMPOSE_ROW_CAP
 
 
 class GoldbachWorkerSection:
@@ -154,19 +153,17 @@ class GoldbachWorkerSection:
         self._goldbach_viz_progress_set(value=payload)
 
     def _on_goldbach_worker_result(self, payload, error):
-        """Main-thread callback for _goldbach_job -- same shape as the old
-        _poll_goldbach_results, just delivered via PersistentWorker instead of a
-        bespoke queue.Queue + self.after() pair. Wrapped in its own try/except
+        """Main-thread callback for _goldbach_job, delivered via PersistentWorker.
+        Wrapped in its own try/except
         (Exception, not just letting it propagate) so that ONE bad message -- e.g.
         a result arriving for a Toplevel (Visualize or decompose) the user
         already closed -- can never raise up through PersistentWorker's own
         _poll() and skip ITS self.widget.after() reschedule, which would silently
         kill polling for the rest of the session (background.PersistentWorker._poll
         does not wrap on_result itself -- see _goldbach_widget_configure's own
-        docstring for the specific bug this same reasoning was originally
-        covering for). `error` is only non-None for a genuine PersistentWorker-
-        framework bug (_goldbach_job already catches its own exceptions -- see its
-        docstring)."""
+        docstring for the same failure mode on a closed Toplevel's widgets).
+        `error` is only non-None for a genuine PersistentWorker-framework bug
+        (_goldbach_job already catches its own exceptions -- see its docstring)."""
         T = self.T
         try:
             self._goldbach_set_busy(False)

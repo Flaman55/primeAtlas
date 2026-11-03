@@ -12,12 +12,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 
 from ..core.widgets import StripedTreeview
-
-GOLDBACH_DECOMPOSE_ROW_CAP = 300  # defensive cap on how many (p, q) pairs the "Decompose
-    # number" detail window displays (see goldbach_all_decompositions + _goldbach_show_
-    # decomposition_detail) -- the old_base_sufficient verdict and total count are
-    # always computed over the FULL scan regardless of this cap, only the displayed
-    # rows are truncated.
+from .goldbach_paging import GOLDBACH_DECOMPOSE_ROW_CAP
 
 
 class GoldbachDecomposeSection:

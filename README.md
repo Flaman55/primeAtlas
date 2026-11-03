@@ -1363,6 +1363,8 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
   goldbach_worker_section.py    GoldbachWorkerSection mixin: the tab's PersistentWorker
                               job (window/viz/decompose ops) and its result/progress
                               callbacks
+  goldbach_paging.py            page sizes shared by the Goldbach views and the job
+                              (rows per Visualize page, pairs per decompose page)
   goldbach_window.py            Goldbach strong-window check/visualization core
                               arithmetic (see "Features" above) -- reads primes from
                               the on-disk archive via the same source_primes format

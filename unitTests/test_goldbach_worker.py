@@ -156,11 +156,13 @@ def main():
             raise RuntimeError("fake failure for this test")
 
         goldbach_worker_module.goldbach_sieve_is_prime = fake_raise
-        shown.clear()
-        _set_entry(goldbach.goldbach_n_entry, "10")
-        goldbach._on_goldbach_run()
-        _pump(app, 3.0)
-        goldbach_worker_module.goldbach_sieve_is_prime = original_sieve_is_prime
+        try:
+            shown.clear()
+            _set_entry(goldbach.goldbach_n_entry, "10")
+            goldbach._on_goldbach_run()
+            _pump(app, 3.0)
+        finally:
+            goldbach_worker_module.goldbach_sieve_is_prime = original_sieve_is_prime
         check(not goldbach._goldbach_busy, "'window' job settles even after an internal exception")
         check(any("fake failure for this test" in str(call) for call in shown),
               f"the fake exception was surfaced via messagebox.showerror (got: {shown})")

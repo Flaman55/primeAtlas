@@ -30,9 +30,9 @@ from tkinter import ttk, messagebox, filedialog
 from ..core import background
 from ..core.base_tab import BaseTab
 from ..core.widgets import StripedTreeview
-from .goldbach_viz_section import GoldbachVizSection, GOLDBACH_CASCADE_ROW_CAP
-from .goldbach_decompose_section import (GoldbachDecomposeSection,
-                                         GOLDBACH_DECOMPOSE_ROW_CAP)
+from .goldbach_paging import GOLDBACH_CASCADE_ROW_CAP, GOLDBACH_DECOMPOSE_ROW_CAP
+from .goldbach_viz_section import GoldbachVizSection
+from .goldbach_decompose_section import GoldbachDecomposeSection
 from .goldbach_worker_section import GoldbachWorkerSection
 
 GOLDBACH_LEAN_REPO_URL = (
@@ -262,9 +262,8 @@ class ResearchGoldbachTab(GoldbachVizSection, GoldbachDecomposeSection,
         this tab each time (see _goldbach_ensure_viz_window). "od" is left at
         whatever the Toplevel's own field already holds (its own default is 4,
         set once at window creation) -- only "do" is overwritten from this tab's
-        n, matching how it always worked before the od/do merge (see
-        _goldbach_queue_viz's own docstring for why od/do are no longer
-        optional)."""
+        n (see _goldbach_queue_viz's own docstring for why od/do form one
+        validated range)."""
         T = self.T
         try:
             n = self._goldbach_parse_n()

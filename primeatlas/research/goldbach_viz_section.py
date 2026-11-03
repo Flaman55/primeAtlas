@@ -11,23 +11,10 @@ and its other mixins set up, so it is never instantiated on its own.
 import tkinter as tk
 from tkinter import ttk, messagebox
 
+from .goldbach_paging import (
+    GOLDBACH_CASCADE_ROW_CAP, GOLDBACH_VIZ_MAX_COLS, GOLDBACH_VIZ_ROWS_PER_COL)
 
-GOLDBACH_VIZ_ROWS_PER_COL = 14  # per-n decomposition cards drawn in ONE column of the
-                                  # Visualize diagram before wrapping to a new
-                                  # column -- see _goldbach_show_window_visualization's
-                                  # multi-column layout, which fills the window's width
-                                  # instead of piling every row into one narrow strip
-                                  # with empty space beside it.
-GOLDBACH_VIZ_MAX_COLS = 3  # cap on how many columns the card grid wraps into, so a
-                             # huge window doesn't stretch the diagram absurdly wide.
-GOLDBACH_CASCADE_ROW_CAP = GOLDBACH_VIZ_ROWS_PER_COL * GOLDBACH_VIZ_MAX_COLS
-    # PAGE SIZE for the per-n decomposition rows, one backend goldbach_window_rows()
-    # call per page (see row_offset there) -- the coverage verdict and counterexample
-    # list are always computed over the FULL window regardless of which page is
-    # requested. Prev/Next buttons in the Visualize window (see
-    # _on_goldbach_viz_row_prev/_next) step through pages of this size, matching the
-    # pagination pattern used elsewhere for large lists (Primes tab preview,
-    # benchmark log, etc. -- see _update_nav_controls).
+
 GOLDBACH_VIZ_CHIP_ROWS_PER_PAGE = 6  # old-base prime chips: how many CHIP ROWS (not
     # individual chips -- chip_cols varies with Pmax's digit count) are shown per page
     # before Prev/Next must be used. Purely a client-side page (old_base_primes is
@@ -39,8 +26,8 @@ class GoldbachVizSection:
     def _on_goldbach_viz_refresh(self):
         """The Visualize Toplevel's OWN "Check window" button -- reads "do"
         from ITS OWN field (self.goldbach_viz_n_entry, still validated via
-        _goldbach_parse_n_from -- "do" plays exactly the role the old standalone
-        "n" field used to), not the main tab's, so the window is self-sufficient
+        _goldbach_parse_n_from -- "do" is the n that Pmax is derived from), not the
+        main tab's, so the window is self-sufficient
         once open. "od" is read/validated inside _goldbach_queue_viz itself
         (shared with the row Prev/Next/goto handlers, which also need it re-
         checked on every call -- see that method's own docstring)."""
@@ -56,8 +43,8 @@ class GoldbachVizSection:
     def _goldbach_queue_viz(self, n, reset_page=True):
         """Queues a "viz" worker job for the range [od, n] -- "n" here is the
         SAME value the "do" field holds, i.e. it plays two roles at once: it's
-        what Pmax is derived from (largest prime <= n, exactly like the old
-        standalone "n" field), AND it's the scan's own upper bound. reset_page=
+        what Pmax is derived from (largest prime <= n, as in the main tab's n
+        field), AND it's the scan's own upper bound. reset_page=
         True (the default, used by a fresh "Check window" click from either the
         main tab or the Visualize window's own button) starts back at
         row/chip page 0, since a different n means a different window and a
@@ -401,15 +388,10 @@ class GoldbachVizSection:
         chip_gap = 6
 
         # chip_cols (and therefore the "OLD BASE" box width) is derived from
-        # chip_w, not hardcoded -- a fixed 6-column grid at a fixed 230px box width
-        # was sized for 1-2 digit primes; once Pmax grew multi-digit (chip_w scaled
-        # up above), 6 columns no longer fit inside 230px and the overflow chips
-        # were drawn PAST the box's right edge, straight on top of the row grid
-        # beside it (e.g. at n=997, the "11 13" / "31 37" / "59 61" / "83 89"
-        # fragments overlapping the n=6/8/10/12 rows were
-        # literally chips 5 and 6 of each chip row spilling out). box_w is now
-        # computed to fit chip_cols columns EXACTLY, so there is no overflow at any
-        # digit count -- chip_cols itself narrows for big primes instead.
+        # chip_w, not hardcoded: chip_w grows with Pmax's digit count, so a fixed
+        # column count in a fixed-width box would draw the overflow chips past the
+        # box's right edge, on top of the row grid beside it. box_w fits chip_cols
+        # columns EXACTLY, and chip_cols narrows for big primes instead.
         chip_cols_target_w = 210  # desired inner width for the chip grid
         chip_cols = max(3, chip_cols_target_w // (chip_w + chip_gap))
         box_w = 24 + chip_cols * chip_w + (chip_cols - 1) * chip_gap
@@ -433,18 +415,17 @@ class GoldbachVizSection:
             self.goldbach_viz_chip_next_btn)
 
         # Rows fan out into up to GOLDBACH_VIZ_MAX_COLS columns instead of one long
-        # strip -- a single column left the diagram pinned to the top-left with a
-        # large blank area beside it once the window was sized to fit its content
-        # rather than stretched to fill the Toplevel (see _goldbach_ensure_viz_
-        # window's own note on why the canvas is no longer packed with fill/expand).
+        # strip: the window is sized to fit its content (see _goldbach_ensure_viz_
+        # window's note on why the canvas is not packed with fill/expand), so a
+        # single column would leave a narrow diagram with a large blank area beside it.
         rows_per_col = GOLDBACH_VIZ_ROWS_PER_COL
         header_h = 106
         footer_h = 60
 
         # Cap rows_per_col to what actually fits ON SCREEN VERTICALLY, mirroring
-        # the column-width cap just below: adding the mode
-        # toggle row (_goldbach_ensure_viz_window) can push a full 3x14-row page
-        # (both_base mode, n=1000) tall enough that the canvas -- and with it the
+        # the column-width cap just below: the controls packed above the canvas
+        # (_goldbach_ensure_viz_window) can make a full 3x14-row page (n=1000) tall
+        # enough that the canvas -- and with it the
         # "segment covered" / counterexamples summary drawn at its very bottom --
         # runs off the bottom of the screen with no scrollbar to reach it. Unlike
         # the width cap (which drops whole COLUMNS), this shrinks how many ROWS
@@ -495,8 +476,7 @@ class GoldbachVizSection:
         # rows_drawn) is always correct: it's rows_per_col once there's enough to
         # fill a full column, or just rows_drawn for a single partial column (e.g.
         # a small window with only a handful of rows total -- reserving a full
-        # page's height for those would leave a large empty gap below them, the
-        # same "wasted space" complaint this diagram had before).
+        # page's height for those would leave a large empty gap below them).
         rows_per_col_used = max(1, min(rows_per_col, rows_drawn))
         rows_h = 26 + rows_per_col_used * 36 + (18 if rows_truncated else 0)
         canvas_h = header_h + max(chips_h, rows_h) + footer_h
@@ -569,11 +549,8 @@ class GoldbachVizSection:
             # q is drawn in the SAME blue as p -- both_base_window_rows only ever
             # records a witness with q <= Pmax too (matching Lean's
             # additiveSelfContained_of_hasGoldbachRep), so q is exactly as much
-            # "in the base" as p is here, not just informational. (An amber/
-            # warning-orange coloring for q > Pmax briefly existed when this
-            # diagram tracked buildableFromBase, which only bounds p -- removed
-            # since it's now moot: q > Pmax is never
-            # a witness this mode returns at all.)
+            # "in the base" as p is here, not just informational: q > Pmax is
+            # never a witness this window returns.
             q_fill, q_outline = "#dbeafe", "#2563eb"
             canvas.create_rectangle(x, cy, x + q_box_w, cy + 26,
                                      outline=q_outline, width=1.5, fill=q_fill)
