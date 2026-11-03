@@ -705,8 +705,9 @@ message.
 Configurable before launch: point size and a separate hit-ring point size (the axis
 rings), HUD font size, and three independent audio channels (rings `<= 7`, rings `> 7`,
 and the LCM ring) each assignable to one of seven instruments (sine/triangle/square/
-sawtooth/bell/choir/mute) -- audio requires the optional `sounddevice` package and is
-otherwise silently unavailable with a clear console message, never a crash. Window
+sawtooth/bell/choir/mute) -- audio requires the `sounddevice` package (offered at launch
+with the other visualization packages, see `startup_dependency_check.py`) and is
+otherwise unavailable with a clear console message, never a crash. Window
 highlight checkboxes for the Bertrand, Legendre, and General Law windows (the same three
 families the standalone Structural Sieve HTML tool defines) can be enabled together,
 with the General Law family's own theta and mode fields. [CHANGED 2026-09-26, ported
@@ -2146,14 +2147,14 @@ GUI:
   Pollard's rho implementation. Installable from inside the app itself (Settings tab's
   optional-library installer, runs `pip install sympy` natively on Windows, no
   WSL involved).
-- `numpy` (required to start at all), plus `moderngl` and `glfw` for Ring visualization --
-  all listed in `requirements.txt`. On launch the app checks for them and offers to
+- `numpy` (required to start at all), plus `moderngl` and `glfw` for Ring visualization,
+  `Pillow` for its text and `sounddevice` for the Rings sound -- all listed in `requirements.txt`. On launch the app checks for them and offers to
   `pip install` whatever is missing (see `startup_dependency_check.py`), so a fresh Python
   needs no manual setup beyond an internet connection.
 - For Ring visualization: `numpy`, `moderngl`, and `glfw`, installed into the same native
   Windows Python that runs `prime_atlas_v2.py` (the renderer is launched as a plain
-  subprocess of that same interpreter, not through WSL). Optional: `sounddevice`, for the
-  tab's live audio -- without it, audio is silently unavailable with a clear message in
+  subprocess of that same interpreter, not through WSL). `sounddevice` gives the tab's
+  live audio; when it is declined at launch, audio is unavailable with a clear message in
   the console, never a crash.
 
 Generation pipeline (only needed to generate new data; browsing existing data needs
