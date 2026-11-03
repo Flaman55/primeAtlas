@@ -12,10 +12,9 @@ from primeatlas.visualization.shared.hud_text import _HUD_FONT_SIZE_DEFAULT
 from primeatlas.visualization.mode_registry import MODES
 
 
-def parse_args(description, argv=None):
-    """Parses and validates `argv` (sys.argv[1:] when None); `description` is
-    the --help text (renderer.py's module docstring). Exits through
-    parser.error on an invalid combination."""
+def build_parser(description=None):
+    """The renderer's argparse parser: the shared arguments and every registered mode's
+    own. Also read by tools/gen_design_parameters.py for docs/design/parameters/."""
     from primeatlas.visualization.shared.audio import INSTRUMENTS
     parser = argparse.ArgumentParser(description=description, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--audio', action='store_true', help='enable optional live sound (requires sounddevice)')
@@ -130,6 +129,14 @@ def parse_args(description, argv=None):
                               "this file directly from a terminal)")
     for mode_cls in MODES.values():
         mode_cls.add_arguments(parser)
+    return parser
+
+
+def parse_args(description, argv=None):
+    """Parses and validates `argv` (sys.argv[1:] when None); `description` is
+    the --help text (renderer.py's module docstring). Exits through
+    parser.error on an invalid combination."""
+    parser = build_parser(description)
     args = parser.parse_args(argv)
 
     if args.source == "archive" and not args.portal_folder:
