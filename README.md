@@ -2154,6 +2154,10 @@ unitTests/                   plain test scripts, `python unitTests/test_x.py` (n
                               user's real storage or app_settings.json
                               (unitTests/test_app_sandbox.py also checks that every test
                               calling _build_gui() calls isolate_app() first)
+  ring_viz_fixtures.py        write_floor() (a synthetic floor of real PGS2 window files) and
+                              sieve_primes_upto(), shared by the ring visualization tests
+  test_line_ceiling.py        every tracked .py file stays under 1000 lines; frozen
+                              numbered versions are the listed exceptions
 .github/workflows/
   installer.yml               builds the installer on a Windows runner; a pushed vX.Y.Z tag
                               (must match APP_VERSION) publishes it as that GitHub
