@@ -9,9 +9,10 @@ the targeted k-tuple sieve (Section C). Only one engine runs at a time.
 | Part | Files |
 |---|---|
 | Tab | `primeatlas/generation/generation_tab.py` (`GenerationTab`, WSL runner factory) |
-| Sections (mixins) | `quick_gen_panel.py`, `quick_gen_runs.py`, `loop_section.py`, `constellation_section.py`, `ktuple_section.py`, `run_progress.py`, `run_guard_controls.py`, `hybrid_controls.py`, `engine_fields.py` |
+| Sections (mixins) | `quick_gen_panel.py`, `quick_gen_runs.py`, `loop_section.py`, `constellation_section.py`, `ktuple_section.py`, `run_progress.py`, `run_guard_controls.py`, `hybrid_controls.py`, `engine_fields.py`, `time_simulation_controls.py` |
 | Launching | `engine_argv.py` (argv of every script), `wsl_command.py` (wsl.exe command, logs), `logged_runners.py` (`WslLoggedRunner`, `LocalLoggedRunner`), `wsl_blocking.py`, `wsl_resources.py` |
 | Planning | `window_planning.py`, `quick_gen_plan.py`, `run_budget.py`, `engine_options.py`, `quick_number.py` |
+| Time simulation | `time_model.py` (run time model calibrated from benchmark_log.csv), `time_simulation_window.py` (`TimeSimulationWindow`) |
 | Following and settling | `run_output.py` (log parsing), `run_guard.py` (stop request, active-run marker, recovery), `close_guard.py` |
 | Settings | `generation_settings.py` (form defaults and persistence), `generation_console.py` (`GenerationConsole`) |
 | Offers | `generation_offer_coordinator.py` ("generate the missing fragment" for other tabs) |
@@ -26,10 +27,40 @@ Never imports engine code: names and defaults the engines also use are mirrored 
 tests (`test_engine_options`). Log lines are parsed by their stable prefixes (`[CONSTELLATIONS v2]`,
 `[KTUPLE SIEVE v2]`, `[+] Progress:`).
 
+## Time simulation
+
+The Quick-gen "Time simulation" button opens one window with two sliders: the floor (7-35) and
+the run width in windows of 10^7 (log scale up to the engine's per-run cap), plus the engine
+selector. They are the Quick-gen Floor and Width fields (Explore: its own pair) and the pipeline
+form's engine var themselves, so a slider fills the form and a form edit moves the slider; what
+Generate runs is what the window shows. The window width `window_m` is not a slider: it is the
+storage unit (changing it on a floor with data breaks resume), and speed depends on the run span.
+
+`time_model.py` models one run of span S ending at `top` at floor f as
+`prep = k(f) * pi(L)`, `sieve = m(f) * S`, `write = w(f) * S`, with L = isqrt(top) (v4.1, v5) or the
+pt1 bound B. prep is the per-run fixed cost F (every sieving prime up to L, about 3x more per floor).
+The storage folder's `benchmark_log.csv` is read once per opening (never written); its completed
+rows give, per measured floor:
+
+- two or more widths on the floor: F and m by least squares of the sieve time against the span;
+- one width: m from a baseline fit over all the engine's rows (relative-error least squares over
+  subsets of run, prime * pi(L), number * S, number * S * ln ln L), F as the rest of the time;
+- w: the wall time the floor's file-writing runs took beyond prep and sieving (writing may overlap
+  sieving, so the engines' write busy time is not added).
+
+A run's measured time is `total_seconds` without `base_gen_seconds` (the optional pi(L) count).
+Other floors interpolate k, m and w log-linearly and hold the nearest measured floor's values
+outside them. The window shows pi(L) (exact at powers of ten, else R(x)), prep, sieving, added
+write time, run and per-window time, gross speed (span / run time) and net sieving speed (span /
+sieving time) with the unit scaled to the value, the floor's measured runs next to the model's
+time for the same runs, and the whole floor's time (9 * 10^f numbers, start to end), plus the rows,
+floors and worst error of the fit; outside the measured floors and spans it says the times are
+extrapolated, and with fewer than two rows of the engine it shows only pi(L).
+
 ## Parameters and texts
 
 [generation-loop](../parameters/generation-loop.md), [generation-constellation](../parameters/generation-constellation.md),
-[generation-ktuple](../parameters/generation-ktuple.md); texts `gen.*`, `quick.*`, `close.*`.
+[generation-ktuple](../parameters/generation-ktuple.md); texts `gen.*`, `quick.*`, `close.*`, `timesim.*`.
 
 ## Kept data
 
@@ -41,8 +72,13 @@ tests (`test_engine_options`). Log lines are parsed by their stable prefixes (`[
 `test_generation_launch_planning`, `test_generation_window_arithmetic`, `test_engine_options`,
 `test_engine_gui_wiring`, `test_run_budget`, `test_run_guard`, `test_close_guard`, `test_close_guard_wiring`,
 `test_cross_engine_run_lock`, `test_gen_progress_bar_engine_gating`, `test_progress_bar_owner`,
-`test_console_controls`, `test_constellation_auto_retry`, `test_storage_fill`, `test_pi_seed_checkbox_exclusivity`.
+`test_console_controls`, `test_constellation_auto_retry`, `test_storage_fill`, `test_pi_seed_checkbox_exclusivity`,
+`test_time_model`, `test_time_simulation`.
 
 ## Known gaps
 
-- Prep cost (sieving primes up to sqrt(N)) is not yet an ETA unit.
+- The run-progress ETA does not use the time model yet; the model is shown only in the Time
+  simulation window.
+- The time model is linear in the span per floor: a run much shorter than the floor's measured ones
+  (process start-up dominates) or one whose buffer outgrows the caches deviates; the worst error
+  is shown in the window. Several parallel instances (`n_instances`) are not modelled.

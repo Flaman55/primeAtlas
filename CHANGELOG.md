@@ -179,6 +179,17 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   O programie wypisuje zmiany od ostatniego wydania w języku interfejsu, z linkiem do
   pełnego CHANGELOG.md.
 
+### +25 — Time simulation window
+
+- English: A "Time simulation" window on the Generation tab shows how the run width and the
+  floor set the prep cost (sieving primes up to sqrt of the run's end), the speed and the
+  total time, calibrated from your own benchmark_log.csv; its sliders fill the Quick
+  generation Floor and Width fields.
+- Polski: Okno „Symulacja czasu” w zakładce Generacja pokazuje, jak szerokość przebiegu
+  i piętro wyznaczają koszt przygotowania (liczby pierwsze do pierwiastka z końca
+  przebiegu), prędkość i łączny czas, na podstawie Twojego benchmark_log.csv; suwaki
+  wypełniają pola Piętro i Szerokość Szybkiej generacji.
+
 ## 1.2.0 — 2026-11-01
 
 ### English

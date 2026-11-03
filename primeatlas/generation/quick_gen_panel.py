@@ -168,6 +168,7 @@ class QuickGenPanel:
             btn_row, text=self.T("quick.generate_button"),
             command=self._on_quick_generate_or_stop_clicked)
         generate_btn.pack(side="left")
+        self._build_time_simulation_button(btn_row)
         ttk.Label(btn_row, textvariable=self.quick_status_var).pack(side="left", padx=(12, 0))
 
         panel = {"mode_frames": mode_frames, "floor_entry": floor_entry,
@@ -789,6 +790,7 @@ class QuickGenPanel:
             "cudasieve": self.T("quick.hint_cudasieve"),
         }
         self.quick_hint_var.set(hints.get(self.quick_mode_var.get(), ""))
+        self._rebind_time_simulation()
 
     def _build_detached_quick_panel(self, parent):
         """extra_controls_builder callback for self.loop_console (see
