@@ -75,7 +75,7 @@ def _test_basic_multi_floor_load():
               f"load_archive(upto=30) across two floors returns every prime "
               f"<=30 in ascending order (got {list(result)!r})")
         # uint64, not int64 -- see to_prime_array's own doc-comment
-        # (ring_geometry.py): the fast path doubled its ceiling from int64's
+        # (shared/bigint.py): the fast path doubled its ceiling from int64's
         # ~9.2e18 to uint64's ~1.8e19 by dropping the sign bit primes never
         # used, since a real archive floor (10p25/10p27) needs every bit of
         # headroom before falling back to the slow `object` path.
@@ -610,7 +610,7 @@ def _test_build_vertex_data_no_windows_matches_old_behavior():
 
 def _test_build_vertex_data_bertrand_highlight():
     from primeatlas.visualization.rings.ring.ring_draw import build_vertex_data
-    from primeatlas.visualization.rings.ring.ring_geometry import compute_highlight_colors
+    from primeatlas.visualization.rings.ring.ring_window_colors import compute_highlight_colors
 
     primes = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37], dtype=np.int64)
     n = 40  # bertrand window (20, 40] -- matches 23,29,31,37 among these primes
@@ -641,7 +641,7 @@ def _test_build_vertex_data_track_primes_white_dot():
     instantly identifiable regardless of the window color around it. Covers
     the new `track_primes` param build_vertex_data now takes."""
     from primeatlas.visualization.rings.ring.ring_draw import build_vertex_data
-    from primeatlas.visualization.rings.ring.ring_geometry import compute_highlight_colors
+    from primeatlas.visualization.rings.ring.ring_window_colors import compute_highlight_colors
 
     primes = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37], dtype=np.int64)
     n = 40  # same fixture as the Bertrand-highlight test above: window (20,40]
@@ -766,9 +766,8 @@ def _test_split_hit_normal_vertex_data():
 def _test_hud_lines_for_n():
     from primeatlas.visualization.rings.ring.ring_hud import hud_lines_for_n
     from primeatlas.visualization.rings.ring.ring_draw import build_vertex_data
-    from primeatlas.visualization.rings.ring.ring_geometry import (
-        legendre_level_at, general_law_window_bounds,
-    )
+    from primeatlas.visualization.rings.ring.ring_windows import (
+        general_law_window_bounds, legendre_level_at)
 
     primes = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37], dtype=np.int64)
     n = 30  # divisible by 2, 3, 5 among these primes -- a real "factors of N" case
@@ -801,7 +800,7 @@ def _test_hud_lines_for_n():
           f"General Law window range text uses general_law_window_bounds' own lo/hi "
           f"(got lines={lines!r})")
 
-    # A nested-shell color-legend line (see ring_geometry.nested_shell_colors)
+    # A nested-shell color-legend line (see ring_windows.nested_shell_colors)
     # is appended too. At n=30, theta=0.5, stepped: General Law is provably
     # identical to Legendre's own window (both lo=25), so they tie into the
     # SAME shell as Bertrand -- exactly ONE legend line covering all three,
@@ -1023,7 +1022,7 @@ def _test_filter_active_tracked():
     """filter_active_tracked's own docstring: preserves tracked's order (not
     active_primes's), keeps duplicates as typed, drops anything not yet
     active."""
-    from primeatlas.visualization.rings.ring.ring_geometry import filter_active_tracked
+    from primeatlas.visualization.rings.ring.ring_tracked import filter_active_tracked
 
     active = np.array([2, 3, 5, 7, 11], dtype=np.int64)
 
@@ -1061,7 +1060,7 @@ def _test_hud_lines_for_n_tracked_state():
     for the numeric values."""
     from primeatlas.visualization.rings.ring.ring_hud import hud_lines_for_n
     from primeatlas.visualization.rings.ring.ring_draw import build_vertex_data
-    from primeatlas.visualization.rings.ring.ring_geometry import tracked_resonance_state
+    from primeatlas.visualization.rings.ring.ring_tracked import tracked_resonance_state
 
     primes = np.array([2, 3, 5, 7, 11, 13], dtype=np.int64)
     n = 41
@@ -1102,7 +1101,7 @@ def _test_lcm_of_list():
     product-based LCM otherwise (duplicates
     and non-coprime values handled correctly, not just pairwise-coprime
     primes)."""
-    from primeatlas.visualization.rings.ring.ring_geometry import lcm_of_list
+    from primeatlas.visualization.rings.ring.ring_tracked import lcm_of_list
 
     check(lcm_of_list([]) == 0, f"empty list -> 0, not 1 (matches JS's lcmOfList/lcmOfListBig) (got {lcm_of_list([])!r})")
     check(lcm_of_list([2, 3, 5]) == 30, f"LCM of pairwise-coprime primes is their product (got {lcm_of_list([2, 3, 5])!r})")
@@ -1119,7 +1118,7 @@ def _test_tracked_resonance_state():
     None-return conditions (auto_orbit,
     empty tracked, none active), too_large case, and the phase/to_resonance
     math itself."""
-    from primeatlas.visualization.rings.ring.ring_geometry import tracked_resonance_state
+    from primeatlas.visualization.rings.ring.ring_tracked import tracked_resonance_state
 
     active = [2, 3, 5, 7, 11]
 
@@ -1213,10 +1212,10 @@ def _test_format_big():
 # ---------------------------------------------------------------------------
 
 def _test_tracked_ring_mask():
-    """ring_geometry.tracked_ring_mask -- plain per-ring list membership
+    """ring_tracked.tracked_ring_mask -- plain per-ring list membership
     (DrumRenderer's `ring.tracked`), a different question from
     filter_active_tracked (which returns tracked VALUES, not a mask)."""
-    from primeatlas.visualization.rings.ring.ring_geometry import tracked_ring_mask
+    from primeatlas.visualization.rings.ring.ring_tracked import tracked_ring_mask
 
     active = np.array([2, 3, 5, 7, 11], dtype=np.int64)
     mask = tracked_ring_mask(active, [7, 2])
@@ -1346,9 +1345,9 @@ def _test_build_tracked_outline_draws():
     unmatched/no-window -> gray; see that function's own doc-comment for
     the change dropping the old ">1 window family" requirement)."""
     from primeatlas.visualization.rings.ring.ring_draw import build_tracked_outline_draws
-    from primeatlas.visualization.rings.ring.ring_geometry import (
-        ring_positions, bertrand_anchor_at, WINDOW_FAMILY_COLORS,
-    )
+    from primeatlas.visualization.rings.ring.ring_geometry import ring_positions
+    from primeatlas.visualization.rings.ring.ring_window_anchors import bertrand_anchor_at
+    from primeatlas.visualization.rings.ring.ring_windows import WINDOW_FAMILY_COLORS
 
     primes = np.array([2, 3, 5, 7, 11], dtype=np.int64)
     n = 10
@@ -1733,7 +1732,7 @@ def _test_advance_auto_orbit():
 
 def _test_update_resonance_log():
     from primeatlas.visualization.rings.ring.ring_playback import update_resonance_log
-    from primeatlas.visualization.rings.ring.ring_geometry import resonance_log_lines
+    from primeatlas.visualization.rings.ring.ring_resonance import resonance_log_lines
 
     primes = np.array([2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47], dtype=np.int64)
 
@@ -1837,7 +1836,7 @@ def _test_hud_line_colors():
     default _HUD_TEXT_RGB."""
     from primeatlas.visualization.rings.ring.ring_hud import hud_line_colors
     from primeatlas.visualization.shared.hud_text import _HUD_TEXT_RGB
-    from primeatlas.visualization.rings.ring.ring_geometry import window_label_colors
+    from primeatlas.visualization.rings.ring.ring_windows import window_label_colors
 
     window_colors = window_label_colors({"bertrand", "legendre"}, 141)
     lines = [
@@ -1878,7 +1877,7 @@ def _test_hud_line_colors():
     # legend lines each get their own averaged color, and a line that
     # DOESN'T match any known family or shell still falls through to the
     # flat default.
-    from primeatlas.visualization.rings.ring.ring_geometry import nested_shell_colors
+    from primeatlas.visualization.rings.ring.ring_windows import nested_shell_colors
     shell_colors = nested_shell_colors({"bertrand", "legendre", "generalLaw"}, 141, theta=0.4, mode="stepped")
     shell_lines = ["Bertrand + Legendre:", "Bertrand + Legendre + General Law:", "Unrelated line"]
     shell_line_colors = hud_line_colors(shell_lines, {}, shell_colors)

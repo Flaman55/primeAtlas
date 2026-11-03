@@ -87,7 +87,7 @@ def build_line_vertex_data(range_primes, n, offsets, world_width=1600.0, primes_
     logic -- those operate on the same `n`/`offsets`/`primes_set` either way.
 
     `wheel_modulus` -- when `curved` AND this is a real wheel modulus
-    (> 1, i.e. ring_geometry.pattern_wheel_residues actually found one --
+    (> 1, i.e. line_geometry.pattern_wheel_residues actually found one --
     see RenderSession's own `self.pattern_wheel_modulus`), the curved
     layout becomes a SPIRAL instead of a single circle
     (line_positions_windowed_spiral/value_to_spiral_xy): each full

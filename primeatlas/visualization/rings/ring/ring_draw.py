@@ -23,9 +23,10 @@ _PRIME_SIEVE_DIR = os.path.join(_REPO_ROOT, "prime_sieve")
 if _PRIME_SIEVE_DIR not in sys.path:
     sys.path.insert(0, _PRIME_SIEVE_DIR)
 
-from primeatlas.visualization.rings.ring.ring_geometry import (
-    ring_positions, compute_highlight_colors, compute_tracked_colors, tracked_ring_mask,
-)
+from primeatlas.visualization.rings.ring.ring_geometry import ring_positions
+from primeatlas.visualization.rings.ring.ring_tracked import tracked_ring_mask
+from primeatlas.visualization.rings.ring.ring_window_colors import (
+    compute_highlight_colors, compute_tracked_colors)
 from primeatlas.visualization.shared.bigint import to_prime_array
 
 
@@ -42,7 +43,7 @@ def build_vertex_data(primes, n, max_radius, enabled_ids=(), theta=0.5, mode="st
 
     Colors are layered in priority order: base cyan, then hit rings recolor
     to gold/orange, then a matched window-highlight color (via
-    ring_geometry.compute_highlight_colors -- Bertrand pink / Legendre green
+    ring_window_colors.compute_highlight_colors -- Bertrand pink / Legendre green
     / General Law violet additive blend) OVERRIDES whatever came before, hit
     or not. `enabled_ids` empty reproduces the plain cyan/gold-only behavior
     since compute_highlight_colors returns matched=all-False for an empty
@@ -63,12 +64,12 @@ def build_vertex_data(primes, n, max_radius, enabled_ids=(), theta=0.5, mode="st
     ring actually being tracked/anchored instantly identifiable at a
     glance, regardless of whatever window color its surroundings carry.
     Empty (the default) reproduces the exact prior behavior --
-    tracked_ring_mask (ring_geometry.py) already returns all-False for an
+    tracked_ring_mask (ring_tracked.py) already returns all-False for an
     empty `track_primes`, so this is a no-op then, same convention as
     `enabled_ids=()` above.
 
     `resonance_track_primes` -- the caller's
-    ring_geometry.tracked_resonance_state()["tracked"] list, but ONLY when
+    ring_tracked.tracked_resonance_state()["tracked"] list, but ONLY when
     that state's own `to_resonance == 0` (this exact N IS the tracked set's
     LCM/resonance step -- every one of them is hit here, all sitting on the
     same vertical line), empty otherwise. Gets its dot forced to the same
@@ -126,7 +127,7 @@ def tracked_outline_color(matched, tracked_color_rgb):
     that function's own doc-comment).
 
     `tracked_color_rgb` is a plain 0..255 (r, g, b) triple, already summed by
-    ring_geometry.compute_tracked_colors for this ring -- this function only
+    ring_window_colors.compute_tracked_colors for this ring -- this function only
     decides WHETHER to use it (via the `matched` flag from that same call):
     a real "no family matched" zero vector and a genuinely matched color are
     otherwise indistinguishable by value alone, so `matched` (not a

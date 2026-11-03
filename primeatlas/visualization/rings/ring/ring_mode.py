@@ -27,10 +27,12 @@ from primeatlas.visualization.shared.mode import VizMode
 from primeatlas.visualization.shared.draw_primitives import (
     split_hit_normal_vertex_data, decay_flash, flash_overlay_rgba,
 )
-from primeatlas.visualization.rings.ring.ring_geometry import (
-    tracked_resonance_state, window_anchor_primes, cyclic_window_anchor_at,
-    format_log_panel_text, window_label_colors, nested_shell_colors,
-)
+from primeatlas.visualization.rings.ring.ring_resonance import format_log_panel_text
+from primeatlas.visualization.rings.ring.ring_tracked import tracked_resonance_state
+from primeatlas.visualization.rings.ring.ring_window_anchors import (
+    cyclic_window_anchor_at, window_anchor_primes)
+from primeatlas.visualization.rings.ring.ring_windows import (
+    nested_shell_colors, window_label_colors)
 from primeatlas.visualization.rings.ring.ring_draw import (
     build_vertex_data, resolve_effective_track_primes, build_tracked_outline_draws,
     _FLASH_RESONANCE_RGB, _FLASH_PRIME_RGB, resonance_is_active,
@@ -81,7 +83,7 @@ class RingMode(VizMode):
     def add_arguments(cls, parser):
         # Window-highlight-color parity with the browser version's
         # Bertrand/Legendre/General Law toggles -- comma list of family ids
-        # among the three ring_geometry.WINDOW_FAMILY_COLORS keys.
+        # among the three ring_windows.WINDOW_FAMILY_COLORS keys.
         parser.add_argument("--windows", type=str, default="",
                              help="comma-separated window families to highlight: bertrand,legendre,generalLaw")
         parser.add_argument("--general-law-theta", type=float, default=0.5)

@@ -22,7 +22,7 @@ _PRIME_SIEVE_DIR = os.path.join(_REPO_ROOT, "prime_sieve")
 if _PRIME_SIEVE_DIR not in sys.path:
     sys.path.insert(0, _PRIME_SIEVE_DIR)
 
-from primeatlas.visualization.rings.ring.ring_geometry import resonance_log_lines
+from primeatlas.visualization.rings.ring.ring_resonance import resonance_log_lines
 
 
 def update_resonance_log(state, active, n_value, range_mode, advancing):
@@ -32,7 +32,7 @@ def update_resonance_log(state, active, n_value, range_mode, advancing):
     caller owns and persists this dict across calls, same convention as
     `flash_state`/`orbit_state` elsewhere in renderer.py).
 
-    A full O(from_n..n_value) recompute via ring_geometry.resonance_log_lines
+    A full O(from_n..n_value) recompute via ring_resonance.resonance_log_lines
     only runs on a JUMP: the first call ever (`state["last_n"] is None`), a
     sequential<->range mode switch, or any call that isn't a simple forward
     playback tick -- exactly StructuralSieveApp.js's own #renderFrame

@@ -8,7 +8,7 @@ def pattern_hud_line(n, offsets, all_match, wheel_modulus=None, wheel_residue_co
     """The single HUD text line for "line" viz-mode's k-tuple pattern
     status: the anchor N, its offsets, whether every member currently
     lands on a real prime, (when a wheel is active, see
-    ring_geometry.pattern_wheel_residues) the candidate density the wheel
+    line_geometry.pattern_wheel_residues) the candidate density the wheel
     skip is scanning at -- `wheel_residue_count=0` prints the "can never
     repeat" case rather than a silent 0/M -- and the current Manual/Auto +
     MATCH! regime (see LineMode._pattern_uses_seek's own doc-comment
@@ -19,7 +19,7 @@ def pattern_hud_line(n, offsets, all_match, wheel_modulus=None, wheel_residue_co
     `self.hud_lines` -- compose_hud_canvas_lines below already just
     appends whatever strings that list holds.
 
-    `view_mode` -- ring_geometry.line_view_bounds' own "full"/"local" flag
+    `view_mode` -- line_geometry.line_view_bounds' own "full"/"local" flag
     (build_line_vertex_data's return value, forwarded verbatim by
     LineMode.rebuild) -- printed only when "local", showing that the
     renderer switched to the anchor-centered viewport (float32-precision fallback

@@ -24,9 +24,8 @@ if _PRIME_SIEVE_DIR not in sys.path:
     sys.path.insert(0, _PRIME_SIEVE_DIR)
 
 from primeatlas.visualization.shared.bigint import format_big
-from primeatlas.visualization.rings.ring.ring_geometry import (
-    legendre_level_at, general_law_window_bounds, nested_shell_colors, WINDOW_FAMILY_COLORS,
-)
+from primeatlas.visualization.rings.ring.ring_windows import (
+    WINDOW_FAMILY_COLORS, general_law_window_bounds, legendre_level_at, nested_shell_colors)
 
 from primeatlas.visualization.shared.hud_text import _HUD_TEXT_RGB
 
@@ -40,7 +39,7 @@ def hud_lines_for_n(primes_active, n, pos, enabled_ids, theta, mode, tracked_sta
     atlas, per-glyph quads) is needed.
 
     `tracked_state` -- the already-computed result of
-    ring_geometry.tracked_resonance_state(...)
+    ring_tracked.tracked_resonance_state(...)
     (computed once in run(), not per-call here -- mirrors the JS's own
     "no longer computed a second time here" note on #buildLcmLines, which
     takes the already-computed #trackedResonanceState result rather than
@@ -105,7 +104,7 @@ def hud_lines_for_n(primes_active, n, pos, enabled_ids, theta, mode, tracked_sta
         else:
             lines.append(f"General Law window (theta={theta}): ({lo_floor:,}, {hi:,}]")
 
-    # A small color LEGEND (see ring_geometry.nested_shell_colors) -- one line
+    # A small color LEGEND (see ring_windows.nested_shell_colors) -- one line
     # per distinct NESTING SHELL among currently-enabled families (not every
     # pairwise combination), in that shell's own averaged color, so a viewer
     # can look up what a blended ring's color actually means. No numeric
@@ -147,7 +146,7 @@ def _shell_line_prefix(family_ids):
     same "single shared helper" reasoning _HUD_WINDOW_LINE_PREFIXES's own
     docstring gives for the single-family case. `family_ids` is expected
     pre-sorted into registry order by the caller (see
-    ring_geometry.nested_shell_colors' own doc-comment) and to have at least
+    ring_windows.nested_shell_colors' own doc-comment) and to have at least
     2 entries (a 1-family "shell" is just that family's own existing line,
     never built here)."""
     return " + ".join(_FAMILY_DISPLAY_NAMES[fid] for fid in family_ids) + ":"
@@ -163,7 +162,7 @@ def hud_line_colors(lines, window_colors, shell_colors=None):
     Every line defaults to _HUD_TEXT_RGB EXCEPT a window-range line
     (identified by its own fixed leading text, see
     _HUD_WINDOW_LINE_PREFIXES), which gets that family's own plain,
-    unconditional color from `window_colors` (ring_geometry.
+    unconditional color from `window_colors` (ring_windows.
     window_label_colors' output, a plain per-family lookup with no blending --
     blending is shown by the nested-shell legend lines below).
 
@@ -172,7 +171,7 @@ def hud_line_colors(lines, window_colors, shell_colors=None):
     count changes later -- the window-range lines are always identifiable
     by their own fixed leading text regardless of what precedes them.
 
-    `shell_colors` -- optional dict from ring_geometry.
+    `shell_colors` -- optional dict from ring_windows.
     nested_shell_colors (frozenset(family ids) -> (r,g,b)), matched the same
     prefix-text way via _shell_line_prefix -- colors the nested-shell
     color-legend lines hud_lines_for_n appends. None (the default)
