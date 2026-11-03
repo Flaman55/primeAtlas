@@ -229,7 +229,8 @@ def _build_app(font_scale=100, brightness=(0, 0)):
     messagebox.showerror = lambda *a, **k: None
     from app_sandbox import isolate_app
     prime_atlas_v2, _portal = isolate_app()
-    settings = prime_atlas_v2.APP_SETTINGS
+    from primeatlas.app import app_dynamic
+    settings = app_dynamic.APP_SETTINGS
     settings.save = lambda: None
     settings.set_font_scale(font_scale)
     settings.set_theme_brightness(settings.theme, *brightness)

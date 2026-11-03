@@ -5,7 +5,7 @@ the `wsl.exe -e bash -c "... > log 2>&1; echo $? > exit"` wrapper with its envir
 prefix, and the console-less Popen keyword arguments.
 
 Every WSL-launching function takes an explicit `portal_folder` argument: the storage path
-can change at runtime (prime_atlas_v2.py's _set_portal_folder rebinds its own module
+can change at runtime (PortalBrowserApp's _set_portal_folder rebinds its own module
 global), so the caller passes the CURRENT value at each call site.
 """
 import os
@@ -82,7 +82,7 @@ def build_wsl_logged_command(argv, windows_log_path, windows_exit_path, portal_f
     log_wsl = windows_path_to_wsl(windows_log_path)
     exit_wsl = windows_path_to_wsl(windows_exit_path)
     inner = " ".join(shlex.quote(str(t)) for t in argv)
-    # CONSTELLATION_PORTAL_DIR, set via prime_atlas_v2.py's Settings tab: a plain
+    # CONSTELLATION_PORTAL_DIR, set via PortalBrowserApp's Settings tab: a plain
     # os.environ[...] set in THIS (Windows) process does NOT automatically cross into
     # wsl.exe's Linux environment (that needs WSLENV, which this app doesn't otherwise use)
     # -- so the override is prepended directly to the bash -c command line instead, the one

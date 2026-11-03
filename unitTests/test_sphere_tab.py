@@ -122,8 +122,9 @@ def section_bc_app():
 
     from app_sandbox import isolate_app
     prime_atlas_v2, _portal = isolate_app()
+    from primeatlas.app import app_dynamic
     import primeatlas.visualization.sphere.sphere_tab as sphere_tab_module
-    settings = prime_atlas_v2.APP_SETTINGS
+    settings = app_dynamic.APP_SETTINGS
     settings.save = lambda: None
     settings._data.pop("sphere_viz_params", None)
     from primeatlas.settings.settings_tab import SettingsTab
@@ -142,7 +143,7 @@ def section_bc_app():
 
     app = prime_atlas_v2._build_gui()()
     app.update()
-    T = prime_atlas_v2.TRANSLATOR.t
+    T = app_dynamic.TRANSLATOR.t
     sub = app.visualization_sub_notebook
     sub_tabs = [sub.tab(t, "text") for t in sub.tabs()]
     check(sub_tabs[:3] == [T("tabs.visualization_rings"), T("tabs.visualization_tree"),
@@ -188,7 +189,7 @@ def section_bc_app():
           f"the launch carries the tab's values (got {argv})")
     check(_value(argv, "--viz-mode") == "sphere" and "--sphere-fibers" not in argv
           and "--sphere-pair-cap" not in argv, "the rings mode sends no fibers arguments")
-    check(_value(argv, "--portal-folder") == str(prime_atlas_v2.PORTAL_FOLDER),
+    check(_value(argv, "--portal-folder") == str(app_dynamic.PORTAL_FOLDER),
           f"the storage folder is passed (got {_value(argv, '--portal-folder')!r})")
     check(str(tab.n_entry["state"]) == "disabled" and str(tab.open_button["state"]) == "disabled"
           and str(tab.mode_combo["state"]) == "disabled" and str(tab.step_combo["state"]) == "disabled",

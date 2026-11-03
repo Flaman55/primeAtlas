@@ -269,10 +269,10 @@ def section_c():
     with open(os.path.join(_REPO_ROOT, "prime_atlas_v2.py"), encoding="utf-8") as f:
         src = f.read()
     call_idx = src.find("startup_dependency_check.ensure_dependencies(")
-    import_idx = src.find("from primeatlas import (")
+    import_idx = src.find("from primeatlas")
     check(call_idx != -1, "prime_atlas_v2.py calls startup_dependency_check.ensure_dependencies")
     check(call_idx != -1 and call_idx < import_idx,
-          "the check runs BEFORE prime_atlas_v2.py's first `from primeatlas import`")
+          "the check runs BEFORE prime_atlas_v2.py's first `from primeatlas` import")
     guard_idx = src.rfind('if __name__ == "__main__":', 0, call_idx)
     check(guard_idx != -1 and guard_idx < call_idx and src.count("\n", guard_idx, call_idx) <= 3,
           "the check is guarded by __name__ == '__main__' so importing prime_atlas_v2 "

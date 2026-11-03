@@ -2,7 +2,7 @@
 theme.py -- THEMES: the color palette for each of the app's two visual themes
 (light/dark). Pure data, no tkinter import here -- same "no tkinter" invariant as the
 package's other pure-logic modules (see __init__.py's docstring), so this is testable
-without a display the same way they are. prime_atlas_v2.py's PortalBrowserApp._apply_theme()
+without a display the same way they are. PortalBrowserApp._apply_theme()
 is the one place that actually turns a palette from here into ttk.Style() calls and Tk
 option-database entries -- applying a theme needs a live Tk root/ttk.Style instance,
 which this "pure logic" package deliberately never touches, so the data (here) and the

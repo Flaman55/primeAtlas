@@ -141,7 +141,7 @@ def section_wiring():
     print("\n--- Wiring ---")
     main_src = read("prime_atlas_v2.py")
     check("set_app_user_model_id()" in main_src, "prime_atlas_v2.py sets the AppUserModelID")
-    check("apply_tk_icon(self)" in main_src, "the main window gets the icon")
+    check("apply_tk_icon(self)" in read("primeatlas/app/app_window.py"), "the main window gets the icon")
     check("apply_tk_icon(self)" in read("primeatlas/settings/env_setup_wizard.py"),
           "the first-run WSL wizard window gets the icon")
     check("primeatlas.ico" in read("startup_dependency_check.py"),

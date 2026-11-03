@@ -169,14 +169,15 @@ def main():
 
         sys.argv = ["prime_atlas_v2.py"]
         import prime_atlas_v2
+        from primeatlas.app import app_const
 
         # Small page sizes so the fixture above (10 primes / 7 files) actually exercises
         # multi-page pagination without needing hundreds of real files on disk. Both
         # constants are read by PrimesTab.__init__ as plain values at _build_primes_tab()
         # call time (see that method's own docstring), so this MUST happen before the
         # app is constructed -- same reasoning as the PORTAL_FOLDER redirection below.
-        prime_atlas_v2.PAGE_SIZE = 5
-        prime_atlas_v2.FLOOR_PAGE_SIZE = 3
+        app_const.PAGE_SIZE = 5
+        app_const.FLOOR_PAGE_SIZE = 3
 
         from app_sandbox import isolate_app
         isolate_app(tmp_portal)

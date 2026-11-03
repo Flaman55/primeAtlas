@@ -4,7 +4,7 @@ loop over log/exit files, never wait()/communicate()): CUDASieve --status/--fetc
 primecount queries, and the primecount apt install.
 
 Every WSL-launching function takes an explicit `portal_folder` argument: the storage path
-can change at runtime (prime_atlas_v2.py's _set_portal_folder rebinds its own module
+can change at runtime (PortalBrowserApp's _set_portal_folder rebinds its own module
 global), so the caller passes the CURRENT value at each call site.
 """
 import json

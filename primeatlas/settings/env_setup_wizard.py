@@ -65,7 +65,7 @@ class _EnvSetupWizardMixin:
         # Deferred via after(), not called directly from __init__ -- lets the window
         # actually paint (title bar, initial "Checking environment..." label) before the
         # first real WSL round-trip starts, same "let something render before the first
-        # slow step" reasoning as prime_atlas_v2.py's own loading_frame.update() call.
+        # slow step" reasoning as PortalBrowserApp's own loading_frame.update() call.
         self.after(150, self._start_check)
 
     def _build_widgets(self):

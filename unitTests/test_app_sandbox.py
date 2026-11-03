@@ -1,7 +1,7 @@
 """
 test_app_sandbox.py -- GUI tests never run the app against the user's real storage.
 
-A. isolate_app() (app_sandbox.py): prime_atlas_v2.PORTAL_FOLDER and
+A. isolate_app() (app_sandbox.py): app_dynamic.PORTAL_FOLDER and
    APP_SETTINGS.storage_path both name a new, empty temp folder, and
    primeatlas/locales/app_settings.json is left byte-for-byte unchanged.
    isolate_app(portal) points both at the test's own seeded folder and keeps its files.
@@ -50,13 +50,14 @@ def _test_isolate():
     settings_file = os.path.join(app_settings.LOCALES_DIR, app_settings.SETTINGS_FILENAME)
     before = _read(settings_file)
     prime_atlas_v2, portal = isolate_app()
+    from primeatlas.app import app_dynamic
     temp_root = os.path.realpath(tempfile.gettempdir())
     check(os.path.realpath(portal).startswith(temp_root), f"portal is under the temp folder ({portal})")
     check(os.path.isdir(portal) and not os.listdir(portal), "portal is a new, empty folder")
-    check(prime_atlas_v2.PORTAL_FOLDER == portal, "PORTAL_FOLDER names the portal")
-    check(os.path.realpath(prime_atlas_v2.APP_SETTINGS.storage_path) == os.path.realpath(portal),
+    check(app_dynamic.PORTAL_FOLDER == portal, "PORTAL_FOLDER names the portal")
+    check(os.path.realpath(app_dynamic.APP_SETTINGS.storage_path) == os.path.realpath(portal),
           "APP_SETTINGS.storage_path names the portal")
-    prime_atlas_v2.APP_SETTINGS.save()
+    app_dynamic.APP_SETTINGS.save()
     check(_read(settings_file) == before, "app_settings.json is unchanged")
     seeded = tempfile.mkdtemp(prefix="app_sandbox_seeded_")
     try:
@@ -64,7 +65,7 @@ def _test_isolate():
         with open(marker, "w", encoding="utf-8") as f:
             f.write("run_timestamp_utc\n")
         _, given = isolate_app(seeded)
-        check(given == seeded and prime_atlas_v2.PORTAL_FOLDER == seeded,
+        check(given == seeded and app_dynamic.PORTAL_FOLDER == seeded,
               "isolate_app(portal) uses the given folder")
         check(os.path.isfile(marker), "the given folder keeps its seeded files")
     finally:

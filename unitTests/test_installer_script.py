@@ -198,8 +198,10 @@ def main():
     build = open(os.path.join(_REPO_ROOT, "installer", "build_installer.py"), encoding="utf-8").read()
     check("/DAppVersion=" in build and "version.py" in build,
           "build_installer.py passes /DAppVersion read from primeatlas/core/version.py")
-    main_src = open(os.path.join(_REPO_ROOT, "prime_atlas_v2.py"), encoding="utf-8").read()
-    check("APP_VERSION" in main_src, "the main window shows the version (title bar)")
+    main_src = open(os.path.join(_REPO_ROOT, "primeatlas", "app", "app_window.py"),
+                    encoding="utf-8").read()
+    check("version_label(" in main_src and "self.title(" in main_src,
+          "the main window shows the version (title bar)")
 
     license_path = os.path.join(_REPO_ROOT, "LICENSE.md")
     check(os.path.isfile(license_path), "LICENSE.md exists at the repo root")
