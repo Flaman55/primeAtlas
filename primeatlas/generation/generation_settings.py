@@ -37,7 +37,7 @@ DEFAULT_GENERATION_SETTINGS = {
     },
     "constellation": {
         "base_exponent": "",  # blank = auto (every floor with source data -- see
-                               # constellation_finder_v2_1.list_floors_with_data())
+                               # constellation_windows_v2_2.list_floors_with_data())
     },
     "ktuple": {
         "base_exponent": "",

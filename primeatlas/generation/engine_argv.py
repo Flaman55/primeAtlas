@@ -2,7 +2,7 @@
 engine_argv.py -- the script paths and Linux-side argv builders for every engine and tool
 the app launches in WSL (orchestrator_loop_v2.py, orchestrator_v3.py direct,
 prime_sieve_primesieve.py, hybrid_sieve.py, prime_sieve_cudasieve.py,
-constellation_finder_v2_1.py, ktuple_sieve_v2_1.py, primecount_query.py), the Windows-side
+constellation_finder_v2_2.py, ktuple_sieve_v2_1.py, primecount_query.py), the Windows-side
 read of a constellation checkpoint, and the local pip-install argv. The builders return
 plain argv lists; wsl_command.build_wsl_logged_command() wraps them for wsl.exe.
 """
@@ -21,7 +21,7 @@ ORCHESTRATOR_LOOP_SCRIPT = os.path.abspath(
 ORCHESTRATOR_DIRECT_SCRIPT = os.path.abspath(
     os.path.join(_SCRIPT_DIR, "prime_sieve", "orchestrator_v3.py"))
 CONSTELLATION_FINDER_SCRIPT = os.path.abspath(
-    os.path.join(_SCRIPT_DIR, "constellation", "constellation_finder_v2_1.py"))
+    os.path.join(_SCRIPT_DIR, "constellation", "constellation_finder_v2_2.py"))
 KTUPLE_SIEVE_SCRIPT = os.path.abspath(
     os.path.join(_SCRIPT_DIR, "constellation", "ktuple_sieve_v2_1.py"))
 
@@ -235,7 +235,7 @@ def build_orchestrator_direct_argv(base_exponent, target_idx_start, window_count
 
 
 def build_constellation_finder_argv(base_exponent=None, max_windows=None, script_path=None):
-    """Returns the LINUX-side argv for constellation_finder_v2_1.py, whose CLI is
+    """Returns the LINUX-side argv for constellation_finder_v2_2.py, whose CLI is
     `[<base_exponent>] [--max-windows N]` -- base_exponent is a single OPTIONAL
     positional arg, omitted entirely (not passed as an empty string) when it's
     None/blank, matching that script's own auto-detect-every-populated-floor behavior
@@ -244,7 +244,7 @@ def build_constellation_finder_argv(base_exponent=None, max_windows=None, script
     stdout) for the same reason build_loop_argv() does (see its docstring); with this
     script's low per-window print volume, full buffering would hold output back for long.
 
-    max_windows (see constellation_finder_v2_1.process_floor() for why a run is capped):
+    max_windows (see constellation_finder_v2_2.process_floor() for why a run is capped):
     omitted
     entirely when None, same "don't pass what wasn't explicitly set" shape as
     base_exponent -- callers use this to bound a single run's own file-open volume,
@@ -262,12 +262,12 @@ def build_constellation_finder_argv(base_exponent=None, max_windows=None, script
 
 def read_constellation_checkpoint(portal_folder, base_exponent):
     """Windows-side read of a floor's own CHECKPOINT.txt (last fully-processed PGS2
-    source window -- constellation_finder_v2_1.py's own write_done_ranges() still writes
+    source window -- constellation_progress_v2_2.py's write_done_ranges() still writes
     this same "last_processed_file=" line alongside its own done_range= ones, see that
     function's docstring) -- same parsing as that script's own read_checkpoint(), kept
     as a small separate copy here rather than imported cross-language: this runs from
     the GUI's own Windows-side process (generation_tab.py), never inside WSL, and
-    constellation_finder_v2_1.py's module-level PORTAL_FOLDER is fixed at import time
+    constellation_dynamic_v2_2.py's PORTAL_FOLDER is fixed at import time
     from CONSTELLATION_PORTAL_DIR -- which, on the Linux side, is a /mnt/-style path,
     not the Windows-style path this app's own get_portal_folder() returns -- so calling
     into that module directly would need faking its environment rather than just

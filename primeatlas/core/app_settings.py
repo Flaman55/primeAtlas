@@ -49,7 +49,7 @@ class AppSettings:
     alongside the language choice. Kept as a class (not a bare dict/function pair) so
     it's a natural single object to pass around the Settings tab and to the
     subprocess-launching code that needs to know the CURRENT storage path to set
-    CONSTELLATION_PORTAL_DIR for orchestrator_loop_v2.py/constellation_finder_v2_1.py."""
+    CONSTELLATION_PORTAL_DIR for orchestrator_loop_v2.py/constellation_finder_v2_2.py."""
 
     def __init__(self, script_dir):
         self.script_dir = script_dir

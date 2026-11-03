@@ -144,7 +144,7 @@ class GenerationOfferCoordinator:
         (its window exists and find_prime_in_floor() found it) but
         find_constellation_participation() came back with zero matches -- ambiguous
         on its own: either this number genuinely isn't the base/offset-member of any
-        tracked pattern at this floor, OR constellation_finder_v2_1.py has simply never
+        tracked pattern at this floor, OR constellation_finder_v2_2.py has simply never
         been run for floor 10p{base_exponent} at all, so there's nothing recorded to
         match against either way. That caller checks list_constellation_hits()
         returning an empty list (no hit FILES at all for this floor, for any pattern
@@ -171,7 +171,7 @@ class GenerationOfferCoordinator:
         "launched"/"composite"/"skipped" string, since there's no equivalent of
         "composite" here -- an empty hit-file list is ALWAYS ambiguous, never a
         confirmed answer, so there's nothing finer to distinguish), but
-        drives constellation_finder_v2_1.py's own runner/queue (self._const_runner) via
+        drives constellation_finder_v2_2.py's own runner/queue (self._const_runner) via
         _on_run_constellation()'s exact launch path instead of the prime-window one --
         see _on_constellation_finished() for the completion/re-search side."""
         gen = self._get_generation_tab_widget()

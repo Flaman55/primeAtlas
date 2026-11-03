@@ -11,7 +11,7 @@ import os
 # On-disk data lives under a folder/environment-variable named CONSTELLATION_PORTAL /
 # CONSTELLATION_PORTAL_DIR, read directly by the sieve/orchestrator/constellation scripts
 # this app launches (prime_sieve_v1.py/v3.py, orchestrator_v3.py, orchestrator_loop_v2.py,
-# constellation_finder_v2_1.py); that naming is independent of the application's display name.
+# constellation_finder_v2_2.py); that naming is independent of the application's display name.
 #
 # Purpose: browse what the scanner/orchestrator/constellation finder have actually
 # produced without opening a terminal. Five tabs:
@@ -24,7 +24,7 @@ import os
 #      offsets); plus a search box that reports whether a given number participates in any
 #      recorded constellation and at which position of its structure.
 #   3) "Generation" -- launches orchestrator_loop_v2.py (the generation pipeline) and
-#      constellation_finder_v2_1.py (k-tuple search) directly from this GUI, via WSL, instead
+#      constellation_finder_v2_2.py (k-tuple search) directly from this GUI, via WSL, instead
 #      of a manual WSL terminal + hand-typed CLI args. Two independent forms (one per
 #      script), each exposing every CLI parameter those scripts have -- including
 #      workers/batches_per_worker/window_count_per_run -- with live streamed output and a
@@ -62,7 +62,7 @@ import os
 #
 # The chosen storage path also has to reach the scripts this app launches as separate WSL
 # processes (prime_sieve_v3.py, orchestrator_v3.py, orchestrator_loop_v2.py,
-# constellation_finder_v2_1.py). All four check a CONSTELLATION_PORTAL_DIR environment
+# constellation_finder_v2_2.py). All four check a CONSTELLATION_PORTAL_DIR environment
 # variable first (see each file's own __main__/module-level comment) --
 # build_wsl_logged_command() below prepends it to every WSL command this app launches, so
 # choosing a custom path in Settings transparently affects the Generation tab's
@@ -914,7 +914,7 @@ def _build_gui():
             if not participation:
                 # Empty result is genuinely ambiguous -- see
                 # _offer_generate_missing_constellation()'s own docstring: no hit FILES at
-                # all for this floor means constellation_finder_v2_1.py simply never ran
+                # all for this floor means constellation_finder_v2_2.py simply never ran
                 # here, not that this specific number was checked and excluded.
                 if (not list_constellation_hits(PORTAL_FOLDER, base_exponent)
                         and self._offer_generate_missing_constellation(base_exponent, number)):

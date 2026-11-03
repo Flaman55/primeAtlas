@@ -8,7 +8,7 @@ snapshot of what SHOULD exist on disk (which floors, which source-window filenam
 which constellation k/variant hit files, what each floor's constellation CHECKPOINT.txt
 said) plus a copy of benchmark_log.csv's text. Restoring a backup means comparing this
 manifest against the CURRENT disk state and, if anything is missing, optionally
-regenerating it via the existing orchestrator_loop_v2.py / constellation_finder_v2_1.py
+regenerating it via the existing orchestrator_loop_v2.py / constellation_finder_v2_2.py
 pipelines -- see restore_job.py for the checkpointed/pausable job that drives that.
 
 Also snapshotted per floor: the two on-disk caches that exist purely to speed up
@@ -173,7 +173,7 @@ class FloorSnapshot:
 class ConstellationSnapshot:
     """What one floor's constellations/ folder looked like: which (k, variant) hit files
     exist (as "k{K}/variant{V}/HITS_....bin" relative paths), plus the floor-level
-    CHECKPOINT.txt text (constellation_finder_v2_1.py writes ONE checkpoint per floor, not
+    CHECKPOINT.txt text (constellation_finder_v2_2.py writes ONE checkpoint per floor, not
     per k/variant -- see that file's own module docstring)."""
 
     def __init__(self, base_exponent, hit_files, checkpoint_text):

@@ -1430,7 +1430,7 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               form (Advanced, engine fields), its console, Run/finish/
                               poll handlers and the floor-totals bump after a run
   constellation_section.py      ConstellationSection mixin: Section B, the
-                              constellation_finder_v2_1.py form and console, batched
+                              constellation_finder_v2_2.py form and console, batched
                               launches, graceful Stop via STOP_REQUEST.txt,
                               checkpoint-verified auto-retry (its CONSTELLATION_*
                               constants live here)
@@ -2045,9 +2045,28 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               in size, so readers use page_start()/page_file()
 constellation/
   constellation_finder_v1.py  k-tuple pattern search over generated prime data
-  constellation_finder_v2_1.py the k-tuple search the GUI launches: v2's code unchanged
-                              (comments and start banner differ only; guarded by
-                              test_constellation_finder_v2_1.py)
+  constellation_finder_v2_1.py v2's code unchanged in one file (comments and start
+                              banner differ only; guarded by
+                              test_constellation_finder_v2_1.py); kept for
+                              ktuple_hit_store_v2_1, which imports it
+  constellation_finder_v2_2.py the k-tuple search the GUI launches: v2's code split into
+                              eight modules, unchanged (start banner differs only;
+                              guarded by test_constellation_finder_v2_2.py). This file
+                              keeps the floor boundary check, process_floor() and the
+                              command line
+  constellation_const_v2_2.py  its fixed shared values: per-floor state file names,
+                              the STOP_REQUEST.txt marker, the diagnostics switch
+  constellation_dynamic_v2_2.py its import-time shared values: PORTAL_FOLDER (from
+                              CONSTELLATION_PORTAL_DIR) and the ../prime_sieve path;
+                              the other modules read both as module attributes
+  constellation_diag_v2_2.py   its crash-diagnosis helpers (RSS/open FDs, fsynced print)
+  constellation_windows_v2_2.py its source window list, WINDOW_INDEX.tsv cache, floors
+                              with data
+  constellation_progress_v2_2.py its scan progress: DONE_WINDOWS.txt, CHECKPOINT.txt
+                              ranges, BOUNDARY_CHECKED.txt, the stop request
+  constellation_hits_v2_2.py   its hit storage: HITS_* layout, LAST_VALUES.tsv cache,
+                              appends with auto-migration to pages, deduped merge
+  constellation_match_v2_2.py  its vectorized pattern matching (numpy, no file I/O)
   constellation_finder_v2.py  the k-tuple search engine (PGS2 streaming, k=2..21,
                               --max-windows batches). Windows may be generated
                               anywhere on a floor, in any order: DONE_WINDOWS.txt lists
