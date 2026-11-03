@@ -147,20 +147,20 @@ def main():
         # module-level function so it raises exercises the exact path _goldbach_job's
         # docstring documents (catches its own exception, returns (op, False, str(e))
         # instead of relying on PersistentWorker's last-resort net). Patched on
-        # primeatlas.research.research_goldbach_tab, where _goldbach_job lives and imports
-        # goldbach_sieve_is_prime from.
-        import primeatlas.research.research_goldbach_tab as research_goldbach_tab_module
-        original_sieve_is_prime = research_goldbach_tab_module.goldbach_sieve_is_prime
+        # primeatlas.research.goldbach_worker_section, where _goldbach_job lives and
+        # imports goldbach_sieve_is_prime from.
+        import primeatlas.research.goldbach_worker_section as goldbach_worker_module
+        original_sieve_is_prime = goldbach_worker_module.goldbach_sieve_is_prime
 
         def fake_raise(n):
             raise RuntimeError("fake failure for this test")
 
-        research_goldbach_tab_module.goldbach_sieve_is_prime = fake_raise
+        goldbach_worker_module.goldbach_sieve_is_prime = fake_raise
         shown.clear()
         _set_entry(goldbach.goldbach_n_entry, "10")
         goldbach._on_goldbach_run()
         _pump(app, 3.0)
-        research_goldbach_tab_module.goldbach_sieve_is_prime = original_sieve_is_prime
+        goldbach_worker_module.goldbach_sieve_is_prime = original_sieve_is_prime
         check(not goldbach._goldbach_busy, "'window' job settles even after an internal exception")
         check(any("fake failure for this test" in str(call) for call in shown),
               f"the fake exception was surfaced via messagebox.showerror (got: {shown})")

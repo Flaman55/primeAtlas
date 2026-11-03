@@ -1354,6 +1354,15 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
   research_goldbach_tab.py, research_goldbach.py
                               ResearchGoldbachTab (UI) / storage-bridging layer over
                               goldbach_window.py's pure arithmetic -- Research -> Goldbach
+                              ("Check window" field, results table, CSV export)
+  goldbach_viz_section.py       GoldbachVizSection mixin: the Visualize Toplevel (od/do
+                              range, OLD BASE chip and sums-grid row pagination, Canvas
+                              diagram of the both-base window)
+  goldbach_decompose_section.py GoldbachDecomposeSection mixin: "Show all
+                              decompositions" detail Toplevel, paged prime pairs of one n
+  goldbach_worker_section.py    GoldbachWorkerSection mixin: the tab's PersistentWorker
+                              job (window/viz/decompose ops) and its result/progress
+                              callbacks
   goldbach_window.py            Goldbach strong-window check/visualization core
                               arithmetic (see "Features" above) -- reads primes from
                               the on-disk archive via the same source_primes format
