@@ -2,7 +2,7 @@
 engine_argv.py -- the script paths and Linux-side argv builders for every engine and tool
 the app launches in WSL (orchestrator_loop_v2.py, orchestrator_v3.py direct,
 prime_sieve_primesieve.py, hybrid_sieve.py, prime_sieve_cudasieve.py,
-constellation_finder_v2_1.py, ktuple_sieve_v2.py, primecount_query.py), the Windows-side
+constellation_finder_v2_1.py, ktuple_sieve_v2_1.py, primecount_query.py), the Windows-side
 read of a constellation checkpoint, and the local pip-install argv. The builders return
 plain argv lists; wsl_command.build_wsl_logged_command() wraps them for wsl.exe.
 """
@@ -23,7 +23,7 @@ ORCHESTRATOR_DIRECT_SCRIPT = os.path.abspath(
 CONSTELLATION_FINDER_SCRIPT = os.path.abspath(
     os.path.join(_SCRIPT_DIR, "constellation", "constellation_finder_v2_1.py"))
 KTUPLE_SIEVE_SCRIPT = os.path.abspath(
-    os.path.join(_SCRIPT_DIR, "constellation", "ktuple_sieve_v2.py"))
+    os.path.join(_SCRIPT_DIR, "constellation", "ktuple_sieve_v2_1.py"))
 
 
 PRIMESIEVE_SCRIPT = os.path.abspath(
@@ -293,7 +293,7 @@ def build_ktuple_sieve_argv(base_exponent, k, variant_id, n_locations=1000, wind
                              fragment_start=None, manual_offsets=None, deep_prime_limit=2000,
                              mr_rounds=40, auto=False, reset_checkpoint=False, pass_counter=None,
                              script_path=None):
-    """Returns the LINUX-side argv for ktuple_sieve_v2.py -- see that script's own
+    """Returns the LINUX-side argv for ktuple_sieve_v2_1.py -- see that script's own
     argparse block for the exact CLI shape (three required positionals: base_exponent,
     k, variant_id; the rest are optional flags with the same defaults this function
     uses). `-u` for the same unbuffered-stdout reason build_constellation_finder_argv()
@@ -302,14 +302,14 @@ def build_ktuple_sieve_argv(base_exponent, k, variant_id, n_locations=1000, wind
     buffering would hide live progress even more than that script's own case did.
 
     Unlike build_constellation_finder_argv(), base_exponent/k/variant_id are all
-    REQUIRED here (ktuple_sieve_v2.py has no auto-detect-every-floor mode -- a k-tuple
+    REQUIRED here (ktuple_sieve_v2_1.py has no auto-detect-every-floor mode -- a k-tuple
     hunt is always FOR one specific pattern, at a caller-chosen floor, never implicit).
 
     `strategy` -- one of "even", "concentrated", "manual_list", "manual_step",
-    "digit_sweep" (see ktuple_sieve_v2.py's own module docstring for what each means;
+    "digit_sweep" (see ktuple_sieve_v2_1.py's own module docstring for what each means;
     all but manual_list share a checkpoint-driven continuation mechanism, manual_list
     is a one-shot with no checkpoint). `step`/`fragment_start` are left OUT of argv
-    entirely when None -- ktuple_sieve_v2.py's own CLI defaults (auto-computed step per
+    entirely when None -- ktuple_sieve_v2_1.py's own CLI defaults (auto-computed step per
     strategy, fragment_start=0) then apply, same "don't pass what wasn't explicitly
     set" shape as `fragment_width`/`manual_offsets`/`pass_counter` already had.
     `pass_counter` only matters for strategy=digit_sweep (default 0 on the script side
