@@ -7,19 +7,19 @@ tkinter code lives in the tab, section and widget modules).
 
 primeatlas/benchmark/benchmark_tab.py (the UI half, built on top of this module) is the ONLY
 caller of everything below except read_benchmark_log(), which
-prime_atlas_v2.py's own reload_primes_tree()/_primes_tree_scan() also calls directly
+PortalBrowserApp's own reload_primes_tree()/_primes_tree_scan() also calls directly
 (for the "Prime numbers" tab's own generation-time column) -- see that function's own
 docstring.
 
 The low-level PDF-writing primitives (_pdf_text_op/_pdf_line_op/_pdf_rect_op/
 _pdf_dot_op/_write_pdf/_pdf_ascii_fold) live in primeatlas/core/pdf_writer.py instead of
 here -- they're shared with render_constellation_records_pdf (still in
-prime_atlas_v2.py, the Constellations tab's own PDF export), so neither renderer
+primeatlas/app/, the Constellations tab's own PDF export), so neither renderer
 "owns" them; see that module's own docstring.
 
 QUICK_GEN_MAX_WINDOW_WIDTH below is a deliberately DUPLICATED constant, not imported
-from prime_atlas_v2.py -- same precedent as that file's own LOW_FLOOR_CUTOFF comment
-("duplicated rather than imported"): importing it back from prime_atlas_v2.py would be
+from primeatlas/app/ -- same precedent as that file's own LOW_FLOOR_CUTOFF comment
+("duplicated rather than imported"): importing it back from primeatlas/app/ would be
 circular (that file imports BenchmarkTab, which imports this module), and it's a
 single stable literal (the fixed window width every generation engine in this project
 uses), not logic that could drift out of sync in a way worth the import wiring.
@@ -41,7 +41,7 @@ from .reference_points import REFERENCES, reference_series
 
 QUICK_GEN_MAX_WINDOW_WIDTH = 10_000_000  # see this module's own docstring for why this
                                           # is a duplicate, not an import, of
-                                          # prime_atlas_v2.py's own constant of the
+                                          # PortalBrowserApp's own constant of the
                                           # same name.
 
 BENCHMARK_PDF_KEY_COLUMNS = ("run_timestamp_utc", "base_exponent", "engine")  # first in
@@ -77,7 +77,7 @@ BENCHMARK_TREE_HIDDEN_COLUMNS = {"base_exponent", "run_timestamp_utc"}  # column
 
 BENCHMARK_PAGE_SIZE = 200  # benchmark_log.csv rows shown per page when a floor node is
                             # expanded in the Benchmark tab's tree -- same reasoning as
-                            # FLOOR_PAGE_SIZE in prime_atlas_v2.py. benchmark_log.csv now
+                            # FLOOR_PAGE_SIZE in app_const.py. benchmark_log.csv now
                             # gets a row per orchestrator run (including count-only/
                             # no-write benchmarking runs, which are cheap to run
                             # repeatedly), so it grows much faster than one row per floor

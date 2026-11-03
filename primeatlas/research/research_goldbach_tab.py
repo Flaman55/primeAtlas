@@ -54,7 +54,7 @@ class ResearchGoldbachTab(GoldbachVizSection, GoldbachDecomposeSection,
         constellations_records_tab.py's for why totals_progress (a shared widget) is
         passed directly rather than via a deferred lambda.
 
-        offer_generate_missing_range: prime_atlas_v2.py's own
+        offer_generate_missing_range: PortalBrowserApp's own
         _goldbach_offer_generate_missing_range(op, payload) -- see this module's own
         docstring for why launching that specific generation run stays app-level.
         """
@@ -108,7 +108,7 @@ class ResearchGoldbachTab(GoldbachVizSection, GoldbachDecomposeSection,
         self._build_widgets()
 
     def retry_viz(self):
-        """Called by prime_atlas_v2.py's _on_loop_finished once a "generate the
+        """Called by PortalBrowserApp's _on_loop_finished once a "generate the
         missing range" run it launched for a "viz" job (see
         _goldbach_offer_generate_missing_range) completes -- re-reads n/row-page/
         od-do fresh from the still-open Visualize Toplevel's own entries via

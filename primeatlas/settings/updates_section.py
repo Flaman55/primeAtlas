@@ -53,7 +53,7 @@ class UpdatesSection:
         background thread -- same "daemon thread + self.after(0, ...) callback" shape
         every other network/WSL-touching probe in this file uses, since a real network
         round-trip must never block the GUI thread. Reused for BOTH the manual 'Check
-        now' button (_on_check_app_update_clicked above) and prime_atlas_v2.py's own
+        now' button (_on_check_app_update_clicked above) and PortalBrowserApp's own
         startup hook (which only calls this at all when AppSettings.auto_update_check is
         on) -- single code path, so the status label always reflects the most recent
         check regardless of which one triggered it.

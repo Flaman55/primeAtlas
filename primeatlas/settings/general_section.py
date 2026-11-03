@@ -56,7 +56,7 @@ class GeneralSection:
         is_any_job_running callback in wsl_helpers, the Generation tab's three runners --
         this tab has no direct reference to GenerationTab itself (see this module's own
         docstring on wsl_helpers), so that cross-tab check has to be threaded through from
-        prime_atlas_v2.py the same way every other cross-tab capability here is."""
+        primeatlas/app/ the same way every other cross-tab capability here is."""
         if self._active_job is not None and self._active_job.status == STATUS_RUNNING:
             return True
         if self._full_backup_job_running:
@@ -192,7 +192,7 @@ class GeneralSection:
                   style="Hint.TLabel").grid(row=0, column=2, sticky="w", padx=(0, 6), pady=6)
 
         # Theme picker -- same restart-required pattern as language above (see
-        # prime_atlas_v2.py's PortalBrowserApp._apply_theme() docstring for why a
+        # PortalBrowserApp._apply_theme() docstring for why a
         # live re-theme of every already-built widget is a much larger, riskier
         # change than re-applying colors once at the next startup). Only two
         # options, so no need for language's available()-style discovery list --

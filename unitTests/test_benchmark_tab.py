@@ -151,6 +151,7 @@ def main():
 
         sys.argv = ["prime_atlas_v2.py"]
         import prime_atlas_v2
+        from primeatlas.app import app_dynamic
 
         # Redirect PORTAL_FOLDER BEFORE constructing the app -- __init__'s own startup
         # call to self.benchmark_tab_widget.reload_benchmark_log() reads the module
@@ -303,7 +304,7 @@ def main():
         # theme. See BenchmarkTab.__init__'s own docstring and primeatlas/core/theme.py's
         # tree_group_bg/tree_stat_bg docstring for the palette contract this relies on.
         from primeatlas.core.theme import palette_for
-        theme_palette = palette_for(prime_atlas_v2.APP_SETTINGS.theme)
+        theme_palette = palette_for(app_dynamic.APP_SETTINGS.theme)
         # str(...) -- tag_configure's single-option query form can hand back a Tcl
         # color/font object rather than a plain str depending on the Tcl/Tk version
         # (same reason every OTHER tk-value comparison in this file already goes

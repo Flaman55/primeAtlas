@@ -1211,21 +1211,11 @@ the node -- with the same phases, plus fibers between orbit points (`--sphere-fi
 prime_atlas_v1.py           compatibility entry point: installed shortcuts and the in-app
                               restart name this file; it only runs prime_atlas_v2.py as
                               __main__
-prime_atlas_v2.py           thin composition root (tkinter); builds the main window and
-                              its seven top-level tabs (three of which -- Prime numbers,
-                              Constellations, Research -- are themselves inner
-                              notebooks of sub-tabs, see "Features" above; a further one,
-                              Visualization, holds sub-tabs that each launch a separate
-                              GPU-rendered subprocess rather than building tkinter widgets
-                              of their own -- see "Ring visualization" above), owns the
-                              handful of
-                              genuinely CROSS-tab pieces (module globals
-                              PORTAL_FOLDER/TRANSLATOR/T/APP_SETTINGS; the totals-cache
-                              and search PersistentWorkers, shared by more than one
-                              tab; the Prime-numbers/Constellations background tree
-                              scans; the three "generate missing data, then retry"
-                              methods), and otherwise just instantiates and wires each
-                              tab class below
+prime_atlas_v2.py           entry point: sys.path setup, the startup dependency check,
+                              the first-run wizard, then PortalBrowserApp
+                              (primeatlas/app/); holds no application state.
+                              _build_gui() returns the window class, imported there so
+                              importing this file needs no tkinter
 primeatlas/                 backend + GUI-tab package, split into one subdirectory per
                               functional block (each with its own `__init__.py`); the
                               package's own `primeatlas/__init__.py` stays at the top
@@ -1233,6 +1223,36 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               built for the Settings tab, plus primality testing and
                               the Goldbach structural-window backend -- see that file's
                               own docstring
+
+  primeatlas/app/              PortalBrowserApp, the main window, split by tab: it builds
+                              the seven top-level tabs (Prime numbers, Constellations
+                              and Research are inner notebooks of sub-tabs; the
+                              Visualization sub-tabs each launch a GPU-rendered
+                              subprocess), owns the CROSS-tab pieces and otherwise
+                              instantiates and wires each tab class below
+  app_const.py                  shared fixed values: PAGE_SIZE / FLOOR_PAGE_SIZE (preview
+                              paging), APP_UPDATE_STARTUP_CHECK_DELAY_MS
+  app_dynamic.py                shared startup values: REPO_DIR, APP_SETTINGS,
+                              PORTAL_FOLDER (rebound by _set_portal_folder, read by every
+                              tab through a `lambda: _dyn.PORTAL_FOLDER` getter),
+                              TRANSLATOR / T
+  app_window.py                 PortalBrowserApp(tk.Tk + the mixins below): loading screen,
+                              main notebook, the totals/search and both tree-scan
+                              coordinators, the "generate missing data, then retry"
+                              coordinator, close guard and update auto-check at startup
+  app_theme.py                  ThemeMixin: font scale and ttk/Tk color palette
+  paging.py                     render_page / update_nav_controls, injected into the
+                              tabs with paged preview lists
+  primes_section.py             PrimesSectionMixin: Prime numbers tab + its sub-tabs,
+                              primes-tree reload, "generate missing" delegates
+  constellations_section.py     ConstellationsSectionMixin: Constellations tab + sub-tabs,
+                              jumps between Storage and Records table, the app-level
+                              "const" search completion handler
+  research_section.py           ResearchSectionMixin: Research tab + its five sub-tabs
+  visualization_section.py      VisualizationSectionMixin: Rings / Tree / Sphere sub-tabs
+  single_tabs_section.py        SingleTabsSectionMixin: Generation, Benchmark, About tabs
+  settings_wiring.py            SettingsWiringMixin: Settings tab and its wsl_helpers
+                              bundle, _set_portal_folder
 
   primeatlas/core/             shared infrastructure used across most other blocks
   base_tab.py                   BaseTab(ttk.Frame) -- common base class for every GUI
@@ -2103,8 +2123,8 @@ constellation/
                               constellation finder, the ktuple sieves, and the
                               Constellation calculator / Records table sub-tabs
 startup_dependency_check.py  pre-import check of requirements.txt's native-Windows
-                              packages, run by prime_atlas_v2.py BEFORE `from primeatlas
-                              import` (primeatlas/__init__.py itself needs numpy); offers
+                              packages, run by prime_atlas_v2.py BEFORE its first `from
+                              primeatlas` import (primeatlas/__init__.py itself needs numpy); offers
                               a live-logged `pip install` of whatever is missing.
                               Only numpy blocks startup; moderngl/glfw (visualizations)
                               and Pillow (their HUD/label text) don't.

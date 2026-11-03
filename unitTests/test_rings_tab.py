@@ -404,8 +404,9 @@ def main():
 
     from app_sandbox import isolate_app
     prime_atlas_v2, _portal = isolate_app()
+    from primeatlas.app import app_dynamic
     import primeatlas.visualization.rings.rings_tab as rings_tab_module
-    _patch_app_settings(prime_atlas_v2.APP_SETTINGS)
+    _patch_app_settings(app_dynamic.APP_SETTINGS)
     _stub_app_update_check()
     _install_launch_recorder(rings_tab_module)
     # The launch flows below use an empty temp folder as the portal; they test what
@@ -420,7 +421,7 @@ def main():
     tmp_portal = tempfile.mkdtemp(prefix="primeatlas_rings_tab_test_portal_")
 
     # --- placement: Visualization top-level tab -> Rings sub-tab -------------------
-    T = prime_atlas_v2.TRANSLATOR.t
+    T = app_dynamic.TRANSLATOR.t
     main_tabs = [app.main_notebook.tab(t, "text") for t in app.main_notebook.tabs()]
     check(T("tabs.visualization") in main_tabs and T("tabs.visualization_rings") not in main_tabs,
           f"the main notebook has a Visualization tab and no top-level Rings tab (got {main_tabs})")

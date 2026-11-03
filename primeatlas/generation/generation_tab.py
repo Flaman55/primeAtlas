@@ -23,19 +23,19 @@ with code outside it:
     retry_decompose() methods once a Goldbach-triggered "generate the missing range" run
     finishes (see research_goldbach_tab.py's own docstring for the other half of this
     pair) -- safe to inject directly (not via a generic callback) since the Research tab
-    is built BEFORE the Generation tab (see prime_atlas_v2.py's __init__ tab-build order),
+    is built BEFORE the Generation tab (see PortalBrowserApp's __init__ tab-build order),
     so this widget already exists by the time GenerationTab's constructor runs.
 
 The REVERSE direction -- app-level code (search-miss handlers in the Prime numbers/
 Constellations tabs, and the Goldbach tab's own missing-range offer) reaching INTO this
 tab to launch a generation run -- stays app-level by necessity (search misses/Goldbach
 gaps aren't this tab's own concern) and reaches through the constructed
-GenerationTab instance directly (self.generation_tab_widget.X in prime_atlas_v2.py) for:
+GenerationTab instance directly (self.generation_tab_widget.X in primeatlas/app/) for:
 _quick_gen_plan_literal_range, _launch_direct_window_range,
 _apply_primesieve_params_and_run, _apply_orchestrator_direct_params_and_run,
 _on_run_constellation, _loop_runner, _const_runner, _const_base_exponent_var, and the
 three pending-retry slots (_pending_search_after_prime_gen, _pending_search_after_const_
-gen, _pending_goldbach_retry_op) -- see prime_atlas_v2.py's own
+gen, _pending_goldbach_retry_op) -- see PortalBrowserApp's own
 _offer_generate_missing_prime_window/_offer_generate_missing_constellation/
 _goldbach_offer_generate_missing_range docstrings for the full reasoning on why those
 three specific methods stay at the app level rather than moving here.
@@ -85,13 +85,13 @@ class GenerationTab(QuickGenPanel, QuickGenRuns, QuickGenPlan, LoopSection,
         self.reload_constellations_tree = reload_constellations_tree
         self.research_goldbach_tab_widget = research_goldbach_tab_widget
 
-        # "Generate missing fragment, then re-search" state -- set by prime_atlas_v2.py's
+        # "Generate missing fragment, then re-search" state -- set by PortalBrowserApp's
         # own _offer_generate_missing_prime_window()/_offer_generate_missing_constellation()
         # (reaching in as self.generation_tab_widget._pending_search_after_prime_gen, etc.)
         # right before launching a generation run in response to a search miss, and
         # consumed (cleared + the original search re-run) by _on_loop_finished()/
         # _on_constellation_finished() below once that SPECIFIC run's exit sentinel
-        # arrives. See prime_atlas_v2.py's own _offer_generate_missing_prime_window
+        # arrives. See PortalBrowserApp's own _offer_generate_missing_prime_window
         # docstring for the full two-slot reasoning (a "const" search miss can set the
         # prime-window slot first, then the constellation slot on a later re-search).
         self._pending_search_after_prime_gen = None
@@ -99,7 +99,7 @@ class GenerationTab(QuickGenPanel, QuickGenRuns, QuickGenPlan, LoopSection,
 
         # Same idea, one more slot: a Visualize/decompose job that hit
         # MissingStorageRangeError and whose "generate this range?" offer was accepted --
-        # see prime_atlas_v2.py's own _goldbach_offer_generate_missing_range docstring.
+        # see PortalBrowserApp's own _goldbach_offer_generate_missing_range docstring.
         # Records WHICH op to retry ("viz" or "decompose", None = nothing pending).
         self._pending_goldbach_retry_op = None
         # A multi-step "fill this range into storage" plan (see start_storage_fill):

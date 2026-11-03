@@ -11,7 +11,7 @@ otherwise affects the embedded pane's content.
 extra_controls_builder, if given, is called once each time the detached window opens, with
 the window itself as parent, to add extra widgets above the mirrored output (used by the
 pipeline section to duplicate its Quick-gen panel so a run can be launched from the
-detached window too -- see prime_atlas_v2.py's _build_detached_quick_panel). It may return
+detached window too -- see PortalBrowserApp's _build_detached_quick_panel). It may return
 a no-argument cleanup callable, invoked when the window closes.
 
 A drag grip under the embedded output sets its height in whole lines, clamped to
@@ -96,7 +96,7 @@ class GenerationConsole:
     def clear(self):
         """Clears every currently-registered mirror (embedded pane + detached copy, if
         open). Only ever called explicitly, via the Clear button -- a new run does NOT
-        call this (see prime_atlas_v2.py's _on_run_loop/_on_run_constellation, which
+        call this (see PortalBrowserApp's _on_run_loop/_on_run_constellation, which
         append a separator line instead), so several runs' output can stay stacked in
         the console for comparison until the person clears it themselves."""
         for widget in self._mirrors:

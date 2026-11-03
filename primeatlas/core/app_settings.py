@@ -146,7 +146,7 @@ class AppSettings:
 
     @property
     def language(self):
-        """Read once at startup (see prime_atlas_v2.py's TRANSLATOR construction) to
+        """Read once at startup (see primeatlas/app/app_dynamic.py's TRANSLATOR) to
         build the Translator that every T(...) call in this app's GUI uses. Falls back
         to DEFAULT_LANGUAGE ("en") if unset.
 
@@ -291,7 +291,7 @@ class AppSettings:
         the user having to click Settings > Updates's manual 'Check now' button.
         Defaults to True -- an unattended install that never re-checks would silently miss
         every future bugfix, which is worse than a brief, non-blocking background check
-        every launch (see prime_atlas_v2.py's own startup hook for why this is dispatched
+        every launch (see PortalBrowserApp's own startup hook for why this is dispatched
         on a background thread rather than blocking mainloop() startup)."""
         return bool(self._data.get("auto_update_check", True))
 

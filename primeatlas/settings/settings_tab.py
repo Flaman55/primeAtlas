@@ -12,9 +12,9 @@ Updates; see _build_widgets) composed from one mixin per area:
 This class owns the shared state (__init__) and the Notebook layout; the Backup sub-tab's
 layout lives here because it stacks four of the mixins' sections.
 
-SettingsTab does not launch WSL jobs on its own: prime_atlas_v2.py owns that machinery
+SettingsTab does not launch WSL jobs on its own: primeatlas/app/ owns that machinery
 and hands it in as a dict of callables (`wsl_helpers`) at construction time, so this
-package never imports prime_atlas_v2.py (which imports SettingsTab). Keys used here:
+package never imports primeatlas/app/ (which imports SettingsTab). Keys used here:
   - get_portal_folder() -> str           current storage path, read at call time
   - set_portal_folder(path) -> None      rebinds the app's global + status label
   - get_loop_defaults() -> dict          current Generation-tab loop form values
@@ -24,7 +24,7 @@ package never imports prime_atlas_v2.py (which imports SettingsTab). Keys used h
   - is_any_job_running() -> bool         True if a Generation-tab runner is active; read by
                                          the theme/language auto-restart guard
   - repo_dir                             str, the git checkout root, for app_update.py
-(prime_atlas_v2.py's _build_settings_tab() holds the full set.)
+(PortalBrowserApp's _build_settings_tab() holds the full set.)
 
 Every user-visible string goes through self.T(key, **kwargs) (core/i18n.py). The language
 and theme pickers only write AppSettings and then restart the app (app_restart.py), since

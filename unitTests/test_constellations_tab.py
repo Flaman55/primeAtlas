@@ -123,8 +123,9 @@ def main():
 
         sys.argv = ["prime_atlas_v2.py"]
         import prime_atlas_v2
+        from primeatlas.app import app_const
 
-        prime_atlas_v2.PAGE_SIZE = 50
+        app_const.PAGE_SIZE = 50
         from app_sandbox import isolate_app
         isolate_app(tmp_portal)
 
@@ -371,7 +372,7 @@ def main():
         # against an ACTUALLY migrated (paged) pattern -- floor 5's k=2/v=1,
         # hit_paging page_size=60, 130 values -> hit-file pages [60,60,10]. Each
         # hit-file page is bigger than the UI's own page_size (50, set via
-        # prime_atlas_v2.PAGE_SIZE above) so it spans multiple on-screen pages --
+        # app_const.PAGE_SIZE above) so it spans multiple on-screen pages --
         # needed to prove that "export pages from/to" scopes to ON-SCREEN pages,
         # not the much coarser hit-file page a single "page" used to mean. ===
         floor5_dir = os.path.join(tmp_portal, "10p5", "constellations", f"k{k}", f"variant{vid}")

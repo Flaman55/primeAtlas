@@ -32,10 +32,11 @@ def isolate_app(portal=None, prefix="primeatlas_test_portal_"):
             sys.path.insert(0, path)
     sys.argv = ["prime_atlas_v2.py"]
     import prime_atlas_v2
+    from primeatlas.app import app_dynamic
     if portal is None:
         portal = tempfile.mkdtemp(prefix=prefix)
         atexit.register(shutil.rmtree, portal, True)
-    prime_atlas_v2.APP_SETTINGS.save = lambda: None
-    prime_atlas_v2.APP_SETTINGS.set_storage_path(portal)
-    prime_atlas_v2.PORTAL_FOLDER = portal
+    app_dynamic.APP_SETTINGS.save = lambda: None
+    app_dynamic.APP_SETTINGS.set_storage_path(portal)
+    app_dynamic.PORTAL_FOLDER = portal
     return prime_atlas_v2, portal

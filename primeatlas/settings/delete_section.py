@@ -84,7 +84,7 @@ class DeleteSection:
         self._scan_incomplete_restores()
         # Refresh the Prime numbers / Constellations trees after a full-database delete,
         # otherwise they keep showing the deleted floors until a manual Refresh. See
-        # wsl_helpers' comment in prime_atlas_v2.py for why these two callables are passed
+        # wsl_helpers' comment in primeatlas/app/ for why these two callables are passed
         # in rather than imported directly.
         self.wsl["reload_primes_tree"]()
         self.wsl["reload_constellations_tree"]()
