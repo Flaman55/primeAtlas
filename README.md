@@ -168,12 +168,14 @@ comparisons with primesieve and PARI/GP are in `BENCHMARK.md`.
     button instead keeps the same WSL process scanning batch after batch,
     checkpointing after each, until a confirmed hit, Stop, or the floor is exhausted
     -- a "Resetuj checkpoint" checkbox restarts from the Fragment-start field instead
-    of continuing. Confirmed hits are written into the exact same per-`(k, variant)`
-    hit file the constellation finder itself writes to, so the Constellations tab
-    needs no changes at all to pick them up, and this mode never touches the
+    of continuing. Confirmed hits below the constellation finder's exhaustive
+    frontier are written into the exact same per-`(k, variant)` hit file the
+    constellation finder itself writes to, so the Constellations tab needs no changes
+    at all to pick them up; hits beyond that frontier go to a
+    `PROVISIONAL_HITS_*` log until the exhaustive scan reaches them. This mode never touches the
     constellation finder's own `CHECKPOINT.txt` -- its own checkpoint is a completely
     separate file, since these locations are not tied to any pre-existing prime
-    window at all (see `ktuple_sieve_v2.py`'s own module docstring).
+    window at all (see `ktuple_sieve_v2_1.py`'s own module docstring).
 - **Visualization** -- a seventh top-level tab (between Generation and Benchmark)
   holding one sub-tab per visualization. Its **Rings** sub-tab opens an interactive,
   GPU-rendered view of prime rings around a chosen `n`, fed from whatever is already in
@@ -1432,7 +1434,7 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               launches, graceful Stop via STOP_REQUEST.txt,
                               checkpoint-verified auto-retry (its CONSTELLATION_*
                               constants live here)
-  ktuple_section.py             KtupleSection mixin: Section C, the ktuple_sieve_v2.py
+  ktuple_section.py             KtupleSection mixin: Section C, the ktuple_sieve_v2_1.py
                               form (pattern, strategy, Advanced), Run/Auto/Stop/finish
   run_progress.py               GenerationRunProgress mixin: output-queue draining into
                               consoles, the shared progress bar and status text
@@ -2062,8 +2064,24 @@ constellation/
   ktuple_sieve_v1.py          targeted k-tuple candidate sieve (wheel + trial
                               division + Miller-Rabin) over scattered window
                               locations -- see "Targeted k-tuple sieve" above
+  ktuple_sieve_v2.py          the targeted sieve with gap-safe hit recording: finds
+                              beyond constellation_finder_v2's exhaustive frontier go
+                              to a PROVISIONAL_HITS_* log instead of the shared hit
+                              file; checkpointed strategies incl. digit_sweep (frozen)
+  ktuple_sieve_v2_1.py        the targeted sieve the GUI launches: v2's code split into
+                              four modules, unchanged (start banner differs only;
+                              guarded by test_ktuple_sieve_v2_1.py). This file keeps
+                              the scan drivers (scan_locations, run_ktuple_job) and
+                              the command line
+  ktuple_wheel_v2_1.py        its arithmetic: Miller-Rabin, CRT residue wheel,
+                              candidate scan, Hardy-Littlewood fragment sizing
+  ktuple_locations_v2_1.py    its location strategies: striding (even/concentrated/
+                              manual_step), manual_list, the nested digit sweep
+  ktuple_hit_store_v2_1.py    its on-disk state: KTUPLE_CHECKPOINT_*, the exhaustive
+                              frontier read from constellation_finder_v2_1, gap-safe
+                              routing of confirmed hits (shared HITS_* vs PROVISIONAL)
   pattern_catalog_v1.py       catalog of supported k-tuple patterns, shared by the
-                              constellation finder, ktuple_sieve_v1.py, and the
+                              constellation finder, the ktuple sieves, and the
                               Constellation calculator / Records table sub-tabs
 startup_dependency_check.py  pre-import check of requirements.txt's native-Windows
                               packages, run by prime_atlas_v2.py BEFORE `from primeatlas
