@@ -99,7 +99,7 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
     renderer.py's --load-range. As with track_primes, the string values are
     NOT int()-cast here -- an empty or malformed field just omits
     --load-range entirely rather than raising inside the GUI thread;
-    renderer.py's own main() does the real format validation (same
+    renderer_cli.parse_args does the real format validation (same
     parser.error() convention as --track-primes/--windows).
 
     `hit_point_size`
@@ -178,7 +178,7 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
     # Deliberately str(p) here, NOT int(p) -- track_primes may come straight
     # from the Track P text field's raw (unvalidated) split, and forcing an
     # int() cast here would raise ValueError inside the GUI thread itself on
-    # a typo. renderer.py's own --track-primes parsing (main()'s parser.error()
+    # a typo. renderer.py's own --track-primes parsing (the parser.error()
     # path, same convention as --windows) is where a bad entry surfaces, as a
     # normal subprocess-launch error visible in the console pane -- not a
     # crash of this tab.
