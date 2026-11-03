@@ -22,7 +22,7 @@ Lives in prime_sieve/ specifically so both sides can import it identically: ever
 engine script in this same folder can bare `import window_sharding` (same directory), and
 every Windows-side primeatlas/*.py module can do the same via prime_atlas_v2.py's existing
 sys.path.insert(0, ".../prime_sieve") (the same mechanism already used there for
-prime_sieve_v1 itself), and constellation_finder_v2_1.py already does its own
+prime_sieve_v1 itself), and constellation_dynamic_v2_2.py already does its own
 sys.path.insert(0, "../prime_sieve") to reach prime_sieve_v1, so this rides along for
 free.
 

@@ -4,7 +4,7 @@ manifest.py's BackupManifest.diff_against_disk()) into an ordered, checkpointed,
 pausable/resumable/cancellable job.
 
 Deliberately does NOT know how to actually launch orchestrator_loop_v2.py /
-constellation_finder_v2_1.py itself -- that stays in the UI layer (restore_section.py), which
+constellation_finder_v2_2.py itself -- that stays in the UI layer (restore_section.py), which
 already has the WslLoggedRunner subprocess-streaming machinery from the Generation tab.
 This class only tracks WHAT needs doing and WHAT's been done, one floor at a time, and
 persists that to its own small checkpoint file so an interrupted restore resumes from the

@@ -23,7 +23,7 @@ Builds the real PortalBrowserApp() end to end against a real on-disk portal fold
 seeded with ONE real prime window (containing an actual prime P) and ONE real
 constellation hit file (pattern k=2/id=1, twin primes, offsets [0, 2]) recording P
 itself as a hit base -- so a "const" search for P finds both a real prime_result AND
-real participation without needing constellation_finder_v2_1.py to actually run.
+real participation without needing constellation_finder_v2_2.py to actually run.
 
 Usage (Windows, real display):
     python unitTests\\test_constellations_tab.py
@@ -94,7 +94,7 @@ def main():
         # hit file for k=2/id=1 (twin primes, offsets [0, 2]) recording P as a hit BASE
         # (position 0, offset 0) -- so a "const" search for P finds both a genuine
         # prime_result and genuine participation without ever running
-        # constellation_finder_v2_1.py.
+        # constellation_finder_v2_2.py.
         P = 1009
         primes_1000_1100 = _primes_in(1000, 1100)
         check(P in primes_1000_1100, f"fixture sanity: {P} is prime (got primes: {primes_1000_1100[:5]}...)")

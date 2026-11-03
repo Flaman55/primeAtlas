@@ -30,7 +30,7 @@ from ..core.i18n import Translator, DEFAULT_LANGUAGE
 
 
 def hit_file_path(portal_folder, base_exponent, k, variant_id):
-    """Same layout as constellation_finder_v2_1.hit_file_path() -- not imported from there
+    """Same layout as constellation_hits_v2_2.hit_file_path() -- not imported from there
     directly (a browsing tool depending on the heavy analysis script felt backwards); this
     is deliberately kept in sync with that function instead."""
     return os.path.join(
@@ -162,7 +162,7 @@ def read_hit_pattern_page(portal_folder, base_exponent, k, variant_id, page_inde
 
 def list_constellation_hits(portal_folder, base_exponent):
     """Returns [(pattern_dict, path, header_or_None), ...] for every catalog pattern that
-    has an existing hit file for this floor (i.e. constellation_finder_v2_1 has found at
+    has an existing hit file for this floor (i.e. constellation_finder_v2_2 has found at
     least one match), sorted by (k, id). `path` still points at the (possibly no-longer-
     existing, once migrated -- see hit_paging.py) single-file location: callers display
     it as a label/tooltip and pass it to hit_file_path()-shaped code elsewhere, but
@@ -206,7 +206,7 @@ def build_constellation_records_table(portal_folder, k, floor_min=None, floor_ma
     a pzktupel.de-style exp x variant table: for each floor and each of k's catalog
     variants, the SMALLEST offset above that floor's own 10**base_exponent found among
     this project's own hits so far (hit files store sorted ascending starting values --
-    see constellation_finder_v2_1.py's own module header -- so the smallest is simply the
+    see constellation_finder_v2_2.py's own module header -- so the smallest is simply the
     first stored value, no need to read/compare the whole file by hand).
 
     `floor_min`/`floor_max` (both optional, inclusive): scope the scan to a floor range
@@ -423,7 +423,7 @@ def build_constellation_records_detail_rows(portal_folder, k, floor_min=None, fl
               "position_in_file": int, "count_in_file": int, "is_record_floor": bool},
              ...] sorted by (base_exponent, variant_id, offset) ascending -- offset
       ascending is automatic since hit files store values sorted ascending (see
-      constellation_finder_v2_1.py's own module header) and offset = number - floor's
+      constellation_finder_v2_2.py's own module header) and offset = number - floor's
       10**base_exponent preserves that ordering."""
     variants = pattern_catalog_v1.patterns_for_k(k)
     variant_ids = [w["id"] for w in variants]

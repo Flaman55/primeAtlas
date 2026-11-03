@@ -325,7 +325,7 @@ class GenerationRunProgress:
                                           # until its own first batch-progress line
 
         # _GEN_CONST_DONE_RE deliberately does NOT join the check below:
-        # constellation_finder_v2_1.py's process_floor() prints its "Done. New hits this
+        # constellation_finder_v2_2.py's process_floor() prints its "Done. New hits this
         # run" line at the end of EVERY batch (a fresh WSL subprocess per
         # --max-windows-capped batch, see build_constellation_finder_argv()), not once
         # the whole floor is finished. Treated like _GEN_SIEVE_DONE_RE, it would snap

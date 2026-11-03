@@ -302,7 +302,7 @@ class RestoreSection:
 
         Two strict phases, not one step (floor) fully finished before the next starts: EVERY
         floor's missing prime windows are restored first, in ascending floor order, before
-        ANY floor's constellation hits are touched -- constellation_finder_v2_1.py reads the
+        ANY floor's constellation hits are touched -- constellation_finder_v2_2.py reads the
         source_primes files that are already on disk (see that script), so running it against
         a floor whose own windows aren't fully back yet would either fail outright or (worse)
         record hits against an incomplete prime set and silently miss some. Only once no step
@@ -533,7 +533,7 @@ class RestoreSection:
         cmd = self.wsl["build_wsl_logged_command"](argv, log_path, exit_path)
         q = queue.Queue()
         runner = self.wsl["WslLoggedRunner"](
-            cmd, log_path, exit_path, q, kill_pattern="constellation_finder_v2_1.py")
+            cmd, log_path, exit_path, q, kill_pattern="constellation_finder_v2_2.py")
         self._restore_runner = runner
         self._restore_queue = q
         runner.start()
@@ -554,7 +554,7 @@ class RestoreSection:
 
     def _on_step_stage_done(self, step, kind):
         """Called once a single subprocess stage (one orchestrator_loop_v2.py run for
-        "loop", one constellation_finder_v2_1.py run for "constellation") has finished for
+        "loop", one constellation_finder_v2_2.py run for "constellation") has finished for
         one step. Handles ONLY that stage's own retry-or-give-up decision -- it never
         decides what runs next itself. Control always goes back to _drive_restore() at
         the end (the one place that decides: this step's other aspect, another floor's
