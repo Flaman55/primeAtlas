@@ -1207,6 +1207,9 @@ the node -- with the same phases, plus fibers between orbit points (`--sphere-fi
 
 ## Architecture
 
+How the parts work together, what they keep and the parameters by area: `docs/design/overview.md`;
+why: `docs/adr/`.
+
 ```
 prime_atlas_v1.py           compatibility entry point: installed shortcuts and the in-app
                               restart name this file; it only runs prime_atlas_v2.py as
@@ -1566,8 +1569,9 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               every mode-specific step (CLI arguments, launch
                               preparation, geometry, overlays, HUD lines) is delegated
                               to the active mode
-    renderer_cli.py              renderer.py's command line: generic arguments, each
-                              mode's own arguments, fail-fast validation
+    renderer_cli.py              renderer.py's command line: build_parser() (generic
+                              arguments, each mode's own; also read by
+                              tools/gen_design_parameters.py), fail-fast validation
     renderer_launch.py           data loading (--source/--load-range), each mode's launch
                               config, RenderSession construction
     renderer_frame.py            one frame's draw calls (points, segments, markers,
@@ -2172,6 +2176,7 @@ unitTests/                   plain test scripts, `python unitTests/test_x.py` (n
                               sieve_primes_upto(), shared by the ring visualization tests
   test_line_ceiling.py        every tracked .py file stays under 1000 lines; frozen
                               numbered versions are the listed exceptions
+  test_design_parameters.py   docs/design/parameters/ is current with the code's defaults
 .github/workflows/
   installer.yml               builds the installer on a Windows runner; a pushed vX.Y.Z tag
                               (must match APP_VERSION) publishes it as that GitHub
@@ -2181,6 +2186,17 @@ CHANGELOG.md                 what changed per version (English, then Polish); th
 BENCHMARK.md                 measured sieve throughput, RAM and disk use per floor of
                               engines v4.1 and v5, the F(N) + delta * m(N) cost model,
                               primesieve / PARI/GP comparison and sources
+docs/
+  design/                     overview.md (processes, modules, design rules), data.md (every
+                              file the app keeps: where, owner, format, validity), flows/ (one
+                              page per main flow), modules/ (one page per module),
+                              parameters/ (generated, never edited by hand)
+  adr/                        decisions costly to reverse, and why (NNNN-title.md)
+tools/
+  gen_design_parameters.py    writes docs/design/parameters/ from the Generation form defaults
+                              and the visualization renderer's argparse definitions;
+                              --check exits 1 when a page is stale
+                              (unitTests/test_design_parameters.py)
 benchmarks/                  the measurements behind BENCHMARK.md, one folder per run
   2026-10-29/                 engine v4.1 against the primesieve CLI
     bench_atlas.py            times orchestrator_v3 against the primesieve CLI per floor,
