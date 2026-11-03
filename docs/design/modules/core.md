@@ -12,7 +12,7 @@ app-wide widgets and the background coordinators for floor totals and search. GU
 | Storage reads | `storage.py` (floor listing, totals cache, `LOW_FLOOR_CUTOFF`) |
 | Widgets | `widgets.py` (HeightGrip, ScrollPad, ScrollablePage, FlowRow), `base_tab.py` (`BaseTab`) |
 | Background work | `totals_search_coordinator.py` (floor totals and prime/constellation search workers), `background.py` |
-| Other | `version.py` (`APP_VERSION`, commit label), `pdf_writer.py` (dependency-free PDF) |
+| Other | `version.py` (version from CHANGELOG.md: release + merge count, commit label), `pdf_writer.py` (dependency-free PDF) |
 
 ## Contract
 

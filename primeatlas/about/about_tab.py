@@ -1,15 +1,17 @@
 """
 about_tab.py -- AboutTab(BaseTab), the last main notebook tab.
 
-Shows the app name with version_label() (APP_VERSION plus the checked-out commit), a short
-description, what the visualizations show, the author with e-mail and GitHub links, the
-license, the related projects and NOTICE.md (third-party components) read-only below.
+Shows the app name with version_label() (release, merges since it and the checked-out
+commit), a short description, what the visualizations show, the author with e-mail and
+GitHub links, the license, the related projects, then two read-only boxes: the CHANGELOG.md
+entries since the last release (newest first, in the UI language) with a link to the full
+file, and NOTICE.md (third-party components).
 
 Links are Link.TLabel labels (styled in PortalBrowserApp._apply_theme) that open their URL
-with webbrowser on click; `links` maps "email"/"repo"/"license" to them.
+with webbrowser on click; `links` maps "email"/"repo"/"license"/"changelog" to them.
 
 The page does not scroll as a whole, so it has no ScrollPad: the header is a few lines and
-NOTICE.md, the only long content, sits in its own scrolled text box filling the rest.
+the two long contents sit in their own scrolled text boxes sharing the rest.
 """
 import os
 import webbrowser
@@ -17,12 +19,13 @@ from tkinter import ttk
 from tkinter.scrolledtext import ScrolledText
 
 from primeatlas.core.base_tab import BaseTab
-from primeatlas.core.version import version_label
+from primeatlas.core.version import read_changelog, version_label
 
 AUTHOR_NAME = "Artur Flamandzki"
 AUTHOR_EMAIL = "flamandzki.artur@gmail.com"
 REPO_URL = "https://github.com/Flaman55/primeAtlas"
 LICENSE_URL = "https://polyformproject.org/licenses/noncommercial/1.0.0"
+CHANGELOG_URL = f"{REPO_URL}/blob/main/CHANGELOG.md"
 
 
 class AboutTab(BaseTab):
@@ -71,12 +74,31 @@ class AboutTab(BaseTab):
         header.bind("<Configure>", lambda e: [w.configure(wraplength=max(e.width, 200))
                                               for w in wrapped])
 
+        changelog = read_changelog(self._repo_root)
+        changes = ttk.LabelFrame(self, text=T("about.changes_frame", release=changelog.release))
+        changes.pack(fill="both", expand=True, padx=16, pady=(8, 0))
+        full = ttk.Label(changes, text=T("about.changes_full"), style="Link.TLabel",
+                         cursor="hand2")
+        full.pack(anchor="w", padx=4, pady=(4, 0))
+        full.bind("<Button-1>", lambda _e: webbrowser.open(CHANGELOG_URL))
+        self.links["changelog"] = full
+        self.changes_text = ScrolledText(changes, height=8, wrap="word", font=("Consolas", 9))
+        self.changes_text.pack(fill="both", expand=True, padx=4, pady=4)
+        self.changes_text.insert("1.0", self._changes_text(changelog))
+        self.changes_text.configure(state="disabled")
+
         notice = ttk.LabelFrame(self, text=T("about.notice_frame"))
         notice.pack(fill="both", expand=True, padx=16, pady=(8, 16))
         self.notice_text = ScrolledText(notice, height=10, wrap="word", font=("Consolas", 9))
         self.notice_text.pack(fill="both", expand=True, padx=4, pady=4)
         self.notice_text.insert("1.0", self._read_notice())
         self.notice_text.configure(state="disabled")
+
+    def _changes_text(self, changelog):
+        polish = getattr(self.T, "language", None) == "pl"
+        lines = [f"+{e.number} — {e.title}\n{e.polish if polish else e.english}"
+                 for e in reversed(changelog.entries)]
+        return "\n\n".join(lines) if lines else self.T("about.changes_none")
 
     def _read_notice(self):
         try:

@@ -188,16 +188,17 @@ def main():
 
 
     print("\n--- Release 1.0.0: one version source, licenses, notes ---")
-    version_src = open(os.path.join(_REPO_ROOT, "primeatlas", "core", "version.py"),
-                       encoding="utf-8").read()
-    m = re.search(r'^APP_VERSION\s*=\s*"(\d+\.\d+\.\d+)"\s*$', version_src, re.MULTILINE)
-    check(m is not None, "primeatlas/core/version.py defines APP_VERSION as X.Y.Z")
+    sys.path.insert(0, os.path.join(_REPO_ROOT, "installer"))
+    import build_installer
+    release = build_installer.read_app_version()
+    check(re.fullmatch(r"\d+\.\d+\.\d+", release) is not None,
+          f"build_installer.read_app_version() reads X.Y.Z from CHANGELOG.md ({release})")
     check(re.search(r'^#define\s+AppVersion\s+"', text, re.MULTILINE) is None
           and "#ifndef AppVersion" in text and "#error" in text,
           "the .iss never hard-codes AppVersion; built without /DAppVersion it refuses to compile")
     build = open(os.path.join(_REPO_ROOT, "installer", "build_installer.py"), encoding="utf-8").read()
-    check("/DAppVersion=" in build and "version.py" in build,
-          "build_installer.py passes /DAppVersion read from primeatlas/core/version.py")
+    check("/DAppVersion=" in build and "CHANGELOG" in build,
+          "build_installer.py passes /DAppVersion read from CHANGELOG.md")
     main_src = open(os.path.join(_REPO_ROOT, "primeatlas", "app", "app_window.py"),
                     encoding="utf-8").read()
     check("version_label(" in main_src and "self.title(" in main_src,
@@ -234,8 +235,8 @@ def main():
               encoding="utf-8").read()
     check("release_notes.md" in wf, "the workflow publishes installer/release_notes.md")
     check("--prerelease" in wf, "a tag with a suffix (v1.0.0-rc1) becomes a pre-release")
-    check("APP_VERSION" in wf or "version.py" in wf,
-          "the workflow refuses a tag that does not match APP_VERSION")
+    check("read_app_version" in wf and "exit 1" in wf,
+          "the workflow refuses a tag that does not match the CHANGELOG.md release")
 
     print("\n--- Languages ---")
     langs = sec.get("languages", "")

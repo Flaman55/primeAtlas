@@ -15,8 +15,8 @@ Steps:
      right hash, verify sha256, refuse on mismatch,
   3. extract to installer/vendor/python and installer/vendor/git (skipped when a stamp file
      shows that exact ZIP is already extracted),
-  4. run ISCC.exe (Inno Setup 6) on the script, passing /DAppVersion from
-     primeatlas/core/version.py (the app's single version number).
+  4. run ISCC.exe (Inno Setup 6) on the script, passing /DAppVersion: the release number,
+     the newest "## X.Y.Z — date" heading of CHANGELOG.md (see primeatlas/core/version.py).
 
 Usage (Windows, from the repo root or anywhere):
     python installer/build_installer.py [--iscc PATH_TO_ISCC.exe]
@@ -35,7 +35,7 @@ import zipfile
 INSTALLER_DIR = os.path.dirname(os.path.abspath(__file__))
 ISS_PATH = os.path.join(INSTALLER_DIR, "PrimeAtlasSetup.iss")
 VENDOR_DIR = os.path.join(INSTALLER_DIR, "vendor")
-VERSION_PY = os.path.join(os.path.dirname(INSTALLER_DIR), "primeatlas", "core", "version.py")
+CHANGELOG_MD = os.path.join(os.path.dirname(INSTALLER_DIR), "CHANGELOG.md")
 
 ISCC_CANDIDATES = (
     os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs", "Inno Setup 6", "ISCC.exe"),
@@ -44,13 +44,14 @@ ISCC_CANDIDATES = (
 )
 
 
-def read_app_version(path=VERSION_PY):
-    """APP_VERSION from primeatlas/core/version.py, by regex -- importing the primeatlas
-    package would need numpy, which a build machine doesn't have to have."""
+def read_app_version(path=CHANGELOG_MD):
+    """The release number from CHANGELOG.md's newest "## X.Y.Z — date" heading, by the same
+    regex as primeatlas/core/version.py -- importing the primeatlas package would need numpy,
+    which a build machine doesn't have to have."""
     with open(path, encoding="utf-8") as f:
-        m = re.search(r'^APP_VERSION\s*=\s*"([^"]+)"', f.read(), re.MULTILINE)
+        m = re.search(r"^## (\d+\.\d+\.\d+) — ", f.read(), re.MULTILINE)
     if not m:
-        sys.exit(f"APP_VERSION not found in {path}")
+        sys.exit(f"no release heading found in {path}")
     return m.group(1)
 
 

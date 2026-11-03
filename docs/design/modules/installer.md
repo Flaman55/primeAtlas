@@ -17,7 +17,7 @@ MinGit, which clones this repository into `{app}\app` and installs `requirements
 
 | In | Out |
 |---|---|
-| pinned versions in the `.iss`; `APP_VERSION` (`primeatlas/core/version.py`) | installer exe; shortcuts running `pythonw.exe prime_atlas_v2.py` |
+| pinned versions in the `.iss`; the release heading of `CHANGELOG.md` | installer exe; shortcuts running `pythonw.exe prime_atlas_v2.py` |
 
 The startup check imports nothing from `primeatlas`; only numpy blocks startup.
 

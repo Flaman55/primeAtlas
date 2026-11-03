@@ -2,7 +2,8 @@
 
 Settings: language, theme and storage path (General), metadata and full-data backups, restore, storage
 integration and deletes (Backup), optional-library installers and self-update (Updates), and the
-first-run WSL setup. About: version, links and NOTICE.md.
+first-run WSL setup. About: version (release + merges since it), links, the CHANGELOG.md
+entries since the last release in the UI language, and NOTICE.md.
 
 ## Files
 
