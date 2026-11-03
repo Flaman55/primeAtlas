@@ -1,6 +1,6 @@
 """
 startup_dependency_check.py -- checks the native-Windows Python packages PrimeAtlas needs
-(requirements.txt: numpy, moderngl, glfw, Pillow) BEFORE prime_atlas_v2.py imports the primeatlas
+(requirements.txt: numpy, moderngl, glfw, Pillow, sounddevice) BEFORE prime_atlas_v2.py imports the primeatlas
 package, and offers to pip-install whatever is missing.
 
 Why this lives at the repo root and not inside primeatlas/: primeatlas/__init__.py itself
@@ -12,8 +12,8 @@ re-implements the one-line pip argv instead of reusing engine_argv.py's
 build_pip_install_argv().
 
 Only numpy is startup-blocking (REQUIRED_FOR_STARTUP); moderngl/glfw are needed only by the
-visualization renderer and Pillow only for its text (HUD, labels), so declining them (or a
-failed install) still lets the app start. Nothing missing => no Tk window is created at all,
+visualization renderer, Pillow only for its text (HUD, labels) and sounddevice only for the
+Rings sound, so declining them (or a failed install) still lets the app start. Nothing missing => no Tk window is created at all,
 so a normal launch pays only a few importlib.util.find_spec() calls.
 
 The decision flow (ensure_dependencies) takes every UI/subprocess boundary as an injectable
@@ -39,7 +39,7 @@ LANGUAGE_SETTINGS_PATH = os.path.join(LOCALES_DIR, "language_settings.json")
 ICON_PATH = os.path.join(_REPO_ROOT, "primeatlas", "core", "assets", "primeatlas.ico")
 
 # Used only if requirements.txt is missing (e.g. a partial copy of the repo).
-DEFAULT_REQUIREMENTS = ("numpy", "moderngl", "glfw", "Pillow")
+DEFAULT_REQUIREMENTS = ("numpy", "moderngl", "glfw", "Pillow", "sounddevice")
 # Without these the primeatlas package cannot even be imported.
 REQUIRED_FOR_STARTUP = ("numpy",)
 
