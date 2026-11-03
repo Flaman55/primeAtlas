@@ -55,7 +55,8 @@ from .loop_section import LoopSection
 from .constellation_section import ConstellationSection
 from .ktuple_section import KtupleSection
 from .run_progress import GenerationRunProgress
-from .generation import load_generation_settings, WslLoggedRunner
+from .generation_settings import load_generation_settings
+from .logged_runners import WslLoggedRunner
 
 
 class GenerationTab(QuickGenPanel, QuickGenRuns, QuickGenPlan, LoopSection,

@@ -1000,7 +1000,7 @@ class SettingsTab(BaseTab):
         cmd = self.wsl["build_wsl_logged_command"](argv, log_path, exit_path)
         q = queue.Queue()
         runner = self.wsl["WslLoggedRunner"](
-            cmd, log_path, exit_path, q, kill_pattern="constellation_finder_v2.py")
+            cmd, log_path, exit_path, q, kill_pattern="constellation_finder_v2_1.py")
         self._restore_runner = runner
         self._restore_queue = q
         runner.start()

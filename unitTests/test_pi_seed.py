@@ -17,7 +17,7 @@ Covers:
      are monkeypatched at module level for this since the real ones need libprimesieve.
   3. The cache file records seeded_from (power_of_ten/value/source) only when a seed was
      actually used, so a cached count's provenance is always inspectable.
-  4. build_wsl_logged_command() (generation.py) -- use_known_pi_seed=True adds
+  4. build_wsl_logged_command() (wsl_command.py) -- use_known_pi_seed=True adds
      PRIMEATLAS_USE_KNOWN_PI_SEED=1 to the env prefix; False (default) leaves it out
      entirely.
 
@@ -199,7 +199,7 @@ def test_count_sieving_primes_cached_seeding(tmp_portal):
 
 
 def test_build_wsl_logged_command_env_var():
-    import primeatlas.generation.generation as gen
+    from primeatlas.generation import wsl_command
 
     argv = ["python3", "orchestrator_v3.py", "20", "5"]
     with tempfile.TemporaryDirectory() as tmp:
@@ -207,13 +207,13 @@ def test_build_wsl_logged_command_env_var():
         exit_path = os.path.join(tmp, "run.exit")
         portal = os.path.join(tmp, "portal")
 
-        cmd_off = gen.build_wsl_logged_command(argv, log_path, exit_path, portal)
+        cmd_off = wsl_command.build_wsl_logged_command(argv, log_path, exit_path, portal)
         bash_cmd_off = cmd_off[-1]
         check("PRIMEATLAS_USE_KNOWN_PI_SEED" not in bash_cmd_off,
               "build_wsl_logged_command's default (use_known_pi_seed omitted) does not set "
               "PRIMEATLAS_USE_KNOWN_PI_SEED at all -- unchanged from before this feature")
 
-        cmd_on = gen.build_wsl_logged_command(argv, log_path, exit_path, portal,
+        cmd_on = wsl_command.build_wsl_logged_command(argv, log_path, exit_path, portal,
                                                use_known_pi_seed=True)
         bash_cmd_on = cmd_on[-1]
         check("PRIMEATLAS_USE_KNOWN_PI_SEED=1 " in bash_cmd_on,
@@ -222,7 +222,7 @@ def test_build_wsl_logged_command_env_var():
         check("CONSTELLATION_PORTAL_DIR=" in bash_cmd_on,
               "CONSTELLATION_PORTAL_DIR is still set alongside the new var, unaffected")
 
-        cmd_explicit_off = gen.build_wsl_logged_command(argv, log_path, exit_path, portal,
+        cmd_explicit_off = wsl_command.build_wsl_logged_command(argv, log_path, exit_path, portal,
                                                           use_known_pi_seed=False)
         check(cmd_explicit_off == cmd_off,
               "explicitly passing use_known_pi_seed=False produces byte-identical output to "

@@ -1391,8 +1391,8 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
   generation_tab.py             GenerationTab -- the Generation tab: builds the Quick-gen
                               panel and Sections A-C, owns the state they share and
                               the WSL runner factory (_new_wsl_runner); the parts
-                              below are its mixins, generation.py the pure-logic
-                              backend. The three independent engines (loop/quick-gen
+                              below are its mixins, window_planning.py ...
+                              run_output.py the pure-logic backend. The three independent engines (loop/quick-gen
                               family, constellation search, k-tuple sieve) share one
                               totals_progress bar and one output-parsing pipeline, so
                               only one may run at a time: starting any engine
@@ -1426,13 +1426,30 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               consoles, the shared progress bar and status text
                               (_update_shared_progress_from_generation_chunk), the
                               cross-engine Run lock, constellation elapsed/ETA
-  generation.py                 window/floor arithmetic, generation-settings
-                              persistence, argv builders for every launch engine,
-                              WslLoggedRunner/LocalLoggedRunner, WSL RAM/CPU probing,
-                              plus the hang-safe Popen()+poll()-loop WSL callers shared
-                              by CUDASieve's and primecount's own status/install/query
-                              calls (run_cudasieve_wsl_blocking, run_primecount_wsl_
+  window_planning.py            window/floor arithmetic: continuation point, first gap
+                              and edge trimming per engine store, range -> whole
+                              windows and per-floor launches (plan_storage_fill),
+                              one-window Hybrid targets, totals bumps from new
+                              benchmark rows, primesieve/CUDASieve range limits
+  quick_number.py               _eval_quick_number, the parser of every numeric field
+  generation_settings.py        .portal_generation_settings.json load/save over
+                              DEFAULT_GENERATION_SETTINGS
+  wsl_command.py                Windows -> WSL paths, .generation_logs/ log/exit files,
+                              the logged `wsl.exe -e bash -c` wrapper with its env
+                              prefix (build_wsl_logged_command)
+  logged_runners.py             WslLoggedRunner (log-file tailing) and
+                              LocalLoggedRunner (piped local subprocess)
+  engine_argv.py                script paths and argv builders for every engine and
+                              tool launched in WSL, constellation checkpoint read,
+                              pip-install argv
+  wsl_blocking.py               hang-safe Popen()+poll()-loop WSL calls for CUDASieve's
+                              and primecount's status/install/query
+                              (run_cudasieve_wsl_blocking, run_primecount_wsl_
                               blocking, run_primecount_install_wsl_blocking)
+  wsl_resources.py              WSL RAM/CPU probes and the window/worker Auto
+                              recommendations
+  run_output.py                 regexes for the engines' progress lines and the short
+                              ETA duration format
   close_guard.py                closing the main window while a Generation-tab job
                               runs: Yes/No dialog (default No) with each job's stage,
                               on Yes the save-point stop of every job, a Stopping
@@ -1986,7 +2003,10 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               in size, so readers use page_start()/page_file()
 constellation/
   constellation_finder_v1.py  k-tuple pattern search over generated prime data
-  constellation_finder_v2.py  the active k-tuple search (PGS2 streaming, k=2..21,
+  constellation_finder_v2_1.py the k-tuple search the GUI launches: v2's code unchanged
+                              (comments and start banner differ only; guarded by
+                              test_constellation_finder_v2_1.py)
+  constellation_finder_v2.py  the k-tuple search engine (PGS2 streaming, k=2..21,
                               --max-windows batches). Windows may be generated
                               anywhere on a floor, in any order: DONE_WINDOWS.txt lists
                               every searched window by name (new = not listed; the

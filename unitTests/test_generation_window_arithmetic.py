@@ -12,7 +12,7 @@ sieve/WSL subprocess. Pins down three properties (see each test's own docstring)
      outward (instead of only the far end) must not add a window beyond what a width
      BUDGET asked for (1001 windows for Width=1000).
 
-These target primeatlas/generation/generation.py, not the compiled C sieve engine itself -- see this
+These target primeatlas/generation/window_planning.py and engine_argv.py, not the compiled C sieve engine itself -- see this
 file's own module docstring reasoning for why: the engine (prime_sieve_engine_v*.so,
 ctypes-loaded, linked against libprimesieve.so.12) cannot run in a plain Linux sandbox
 without that exact shared library, which is not installable here without root.
@@ -27,7 +27,7 @@ Every check() call states the SPECIFIC expected vs. actual value in its message,
 pass/fail, so a future regression points straight at what went wrong instead of just
 "something in Generation broke".
 
-Imports from primeatlas/generation/generation.py directly (no GUI dependency), so no
+Imports from primeatlas/generation/window_planning.py and engine_argv.py directly (no GUI dependency), so no
 tkinter/Xvfb is needed.
 
 Usage (Windows, real Python -- no Tk/display dependency, these are plain functions):
@@ -84,7 +84,7 @@ def _test_compute_totals_bumps_from_new_rows():
     own module docstring for the persisted-totals feature this belongs to). No temp
     directory needed -- this function only ever looks at plain row dicts, the exact
     shape read_benchmark_log()/csv.DictReader hands back, never touching disk itself."""
-    import primeatlas.generation.generation as m
+    from primeatlas.generation import window_planning
 
     rows = [
         {"base_exponent": "5", "total_primes": "100", "windows_written": "1",
@@ -100,17 +100,17 @@ def _test_compute_totals_bumps_from_new_rows():
         {"base_exponent": "5", "total_primes": "12", "windows_written": "1",
          "bytes_written": "96", "write_files": "1"},  # row 5: NEW, real write, SAME floor as row 0
     ]
-    bumps = m.compute_totals_bumps_from_new_rows(rows, before_count=1)
+    bumps = window_planning.compute_totals_bumps_from_new_rows(rows, before_count=1)
     check(bumps == [(7, 40, 2, 500), (5, 12, 1, 96)],
           f"compute_totals_bumps_from_new_rows skips the pre-existing row (index 0, "
           f"before before_count=1), the count-only row (write_files='0'), the malformed "
           f"row (non-numeric total_primes), and the genuinely-zero row, keeping only the "
           f"two real new writes in order (got {bumps!r})")
 
-    check(m.compute_totals_bumps_from_new_rows(rows, before_count=len(rows)) == [],
+    check(window_planning.compute_totals_bumps_from_new_rows(rows, before_count=len(rows)) == [],
           "before_count == len(rows) (nothing written since the snapshot) returns an "
           "empty list, not an error")
-    check(m.compute_totals_bumps_from_new_rows([], before_count=0) == [],
+    check(window_planning.compute_totals_bumps_from_new_rows([], before_count=0) == [],
           "an empty benchmark_log.csv returns an empty list")
 
     pt1_rows = [
@@ -123,7 +123,7 @@ def _test_compute_totals_bumps_from_new_rows():
         {"base_exponent": "26", "total_primes": "5", "windows_written": "1",
          "bytes_written": "40", "write_files": "1", "engine": "v5"},    # D
     ]
-    bumps = m.compute_totals_bumps_from_new_rows(pt1_rows, before_count=0)
+    bumps = window_planning.compute_totals_bumps_from_new_rows(pt1_rows, before_count=0)
     check(bumps == [(22, 7, 1, 50), (26, 5, 1, 40)],
           f"pt1 rows from floor 24 on (P store, not the D total) are not bumped ({bumps!r})")
 
@@ -133,21 +133,21 @@ def _test_compute_totals_bumps_from_new_rows():
     # before this column existed have it blank"). row.get("write_files") returns None,
     # which never equals the string "1", so this is skipped -- the SAFE default (never
     # silently trust an unmarked-legacy row as a confirmed real write).
-    check(m.compute_totals_bumps_from_new_rows(legacy_row, before_count=0) == [],
+    check(window_planning.compute_totals_bumps_from_new_rows(legacy_row, before_count=0) == [],
           "a legacy row with no write_files column at all is treated as NOT a confirmed "
           "real write (skipped), not silently trusted")
 
 
 def main():
-    import primeatlas.generation.generation as m
     from primeatlas.core.storage import digit_count_floor
+    from primeatlas.generation import engine_argv, window_planning
 
     _test_compute_totals_bumps_from_new_rows()
 
     # === Hybrid argv contract: pure GUI-to-WSL command construction =====================
     # The backend itself lands in a later phase.  Pin the argument order now so neither
     # side can silently reinterpret the explicit Width or k_adv.
-    hybrid_argv = m.build_hybrid_argv(
+    hybrid_argv = engine_argv.build_hybrid_argv(
         17, 3, 9, 10_000, True,
         script_path=r"C:\PrimeAtlas\prime_sieve\hybrid_sieve.py")
     check(hybrid_argv == [
@@ -155,13 +155,13 @@ def main():
         "17", "3", "9", "10000", "1",
     ], f"build_hybrid_argv keeps the fixed CLI contract "
        f"<floor> <iterations> <width_windows> <filter_prime_count> <write_files>, got {hybrid_argv!r}")
-    hybrid_count_only_argv = m.build_hybrid_argv(
+    hybrid_count_only_argv = engine_argv.build_hybrid_argv(
         21, 1, 2, 7, False,
         script_path=r"D:\work\hybrid_sieve.py")
     check(hybrid_count_only_argv[-5:] == ["21", "1", "2", "7", "0"],
           f"build_hybrid_argv preserves independent Width, k_adv and count-only values "
           f"(got {hybrid_count_only_argv!r}")
-    narrow_argv = m.build_hybrid_narrow_argv(12, 34, 997, 10_000, True,
+    narrow_argv = engine_argv.build_hybrid_narrow_argv(12, 34, 997, 10_000, True,
                                               script_path=r"C:\PrimeAtlas\prime_sieve\hybrid_sieve.py")
     check(narrow_argv[-6:] == ["narrow", "12", "34", "997", "10000", "1"],
           "narrow hybrid argv carries literal range and explicit MAIN/filter bounds")
@@ -171,57 +171,57 @@ def main():
         W = 10_000_000
 
         # === _round_range_to_window: plain floor/ceil rounding =========================
-        check(m._round_range_to_window(12_000_000, 309_000_000) == (10_000_000, 310_000_000),
+        check(window_planning._round_range_to_window(12_000_000, 309_000_000) == (10_000_000, 310_000_000),
               "round_range_to_window widens a mid-window span out to whole windows")
-        check(m._round_range_to_window(10_000_000, 20_000_000) == (10_000_000, 20_000_000),
+        check(window_planning._round_range_to_window(10_000_000, 20_000_000) == (10_000_000, 20_000_000),
               "round_range_to_window leaves an already-aligned span untouched")
-        check(m._round_range_to_window(0, 1) == (0, 10_000_000),
+        check(window_planning._round_range_to_window(0, 1) == (0, 10_000_000),
               "round_range_to_window rounds a tiny span up to one full window, never zero")
-        hybrid_one = m.plan_hybrid_narrow_range(12_000_000, 12_000_500)
+        hybrid_one = window_planning.plan_hybrid_narrow_range(12_000_000, 12_000_500)
         check(hybrid_one == {"rounded_start": 10_000_000, "rounded_end": 20_000_000,
                              "use_hybrid": True},
               "narrow hybrid range rounds a sub-window request to its one PGS2 window")
-        hybrid_wide = m.plan_hybrid_narrow_range(12_000_000, 20_000_500)
+        hybrid_wide = window_planning.plan_hybrid_narrow_range(12_000_000, 20_000_500)
         check(not hybrid_wide["use_hybrid"] and hybrid_wide["rounded_end"] == 30_000_000,
               "hybrid range crossing two standard windows is delegated to Range/v4.1")
-        check(m.hybrid_window_for_number(12_000_500) == (10_000_000, 20_000_000),
+        check(window_planning.hybrid_window_for_number(12_000_500) == (10_000_000, 20_000_000),
               "a concrete n resolves to its one canonical Hybrid PGS2 window")
-        check(m.hybrid_window_for_floor_index(9, 500) == (6_000_000_000, 6_010_000_000),
+        check(window_planning.hybrid_window_for_floor_index(9, 500) == (6_000_000_000, 6_010_000_000),
               "an explicit floor/index resolves without backfilling earlier windows")
 
         # === _floor_window_count: LOW_FLOOR_CUTOFF boundary + exact division ===========
-        check(m._floor_window_count(6) is None,
-              f"floor 6 (below LOW_FLOOR_CUTOFF={m.LOW_FLOOR_CUTOFF}) has no window-count "
-              f"concept (got {m._floor_window_count(6)!r}, expected None)")
-        check(m._floor_window_count(7) == 9,
+        check(window_planning._floor_window_count(6) is None,
+              f"floor 6 (below LOW_FLOOR_CUTOFF={window_planning.LOW_FLOOR_CUTOFF}) has no window-count "
+              f"concept (got {window_planning._floor_window_count(6)!r}, expected None)")
+        check(window_planning._floor_window_count(7) == 9,
               f"floor 7 = [10**7, 10**8), width 9*10**7 = 9 windows of 10**7 each "
-              f"(got {m._floor_window_count(7)!r})")
-        check(m._floor_window_count(8) == 90,
+              f"(got {window_planning._floor_window_count(7)!r})")
+        check(window_planning._floor_window_count(8) == 90,
               f"floor 8 = [10**8, 10**9), width 9*10**8 = 90 windows "
-              f"(got {m._floor_window_count(8)!r})")
+              f"(got {window_planning._floor_window_count(8)!r})")
 
         # === find_continuation_target_idx / count_existing_windows / gap detection =====
         _touch_window(portal, 10, 0)
         _touch_window(portal, 10, 1)
         _touch_window(portal, 10, 2)
-        check(m.find_continuation_target_idx(portal, 10, W) == 3,
+        check(window_planning.find_continuation_target_idx(portal, 10, W) == 3,
               "continuation target_idx is highest existing + 1 on a contiguous floor")
-        check(m.count_existing_windows(portal, 10) == 3,
+        check(window_planning.count_existing_windows(portal, 10) == 3,
               "count_existing_windows is the real file count on a contiguous floor")
-        check(m.find_first_gap_target_idx(portal, 10, W) == 3,
+        check(window_planning.find_first_gap_target_idx(portal, 10, W) == 3,
               "first-gap target_idx equals continuation target_idx when there is no gap")
 
         _touch_window(portal, 11, 0)
         _touch_window(portal, 11, 1)
         _touch_window(portal, 11, 4)  # windows 2,3 missing -- an interior gap
-        check(m.find_continuation_target_idx(portal, 11, W) == 5,
+        check(window_planning.find_continuation_target_idx(portal, 11, W) == 5,
               "continuation target_idx follows the HIGHEST file even past an interior gap")
-        check(m.count_existing_windows(portal, 11) == 3,
+        check(window_planning.count_existing_windows(portal, 11) == 3,
               "count_existing_windows is the real file COUNT (3), not the continuation "
               "position (5) -- these must diverge once an interior gap exists (see "
               "count_existing_windows's own docstring on the 234-quintillion display bug "
               "this distinction was added to fix)")
-        check(m.find_first_gap_target_idx(portal, 11, W) == 2,
+        check(window_planning.find_first_gap_target_idx(portal, 11, W) == 2,
               "first-gap target_idx finds the FIRST missing window (2), not the last (5)")
 
         # === _trim_existing_from_target_idx_range: edge trimming only ==================
@@ -229,7 +229,7 @@ def main():
         # leave the interior gap (2,3) and the tail's already-existing window (4)
         # untouched in the MIDDLE -- trimming is edge-only by design (see the function's
         # own docstring: an interior overlap is harmlessly rewritten, not skipped).
-        trimmed_start, trimmed_count = m._trim_existing_from_target_idx_range(
+        trimmed_start, trimmed_count = window_planning._trim_existing_from_target_idx_range(
             portal, 11, 0, 6, W)
         check((trimmed_start, trimmed_count) == (2, 4),
               f"trim skips the front run {{0,1}} (start 0->2) but does NOT skip past the "
@@ -237,13 +237,13 @@ def main():
               f"(got start={trimmed_start}, count={trimmed_count}, expected start=2, "
               f"count=4 i.e. covering [2,6))")
         # request fully inside the existing front run -> nothing left to generate
-        trimmed_start2, trimmed_count2 = m._trim_existing_from_target_idx_range(
+        trimmed_start2, trimmed_count2 = window_planning._trim_existing_from_target_idx_range(
             portal, 11, 0, 2, W)
         check(trimmed_count2 == 0,
               f"a request fully covered by existing windows trims to count=0 "
               f"(got start={trimmed_start2}, count={trimmed_count2})")
         # empty floor: nothing to trim
-        trimmed_start3, trimmed_count3 = m._trim_existing_from_target_idx_range(
+        trimmed_start3, trimmed_count3 = window_planning._trim_existing_from_target_idx_range(
             portal, 99, 5, 3, W)
         check((trimmed_start3, trimmed_count3) == (5, 3),
               f"an empty floor trims nothing (got start={trimmed_start3}, "

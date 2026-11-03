@@ -49,7 +49,7 @@ W = 10_000_000
 
 def section_a_plan():
     print("\n--- A: plan_storage_fill ---")
-    from primeatlas.generation.generation import plan_storage_fill, PRIMESIEVE_MAX_STOP
+    from primeatlas.generation.window_planning import plan_storage_fill, PRIMESIEVE_MAX_STOP
     check(plan_storage_fill(2, 1001) == [(0, 0, 1)], "2..1000 is the single low-floor launch")
     check(plan_storage_fill(2, 10**7 + 1) == [(0, 0, 1), (7, 0, 1)],
           f"2..10**7 adds floor 7's first window (got {plan_storage_fill(2, 10**7 + 1)})")

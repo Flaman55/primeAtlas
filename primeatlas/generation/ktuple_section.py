@@ -13,11 +13,10 @@ from tkinter import ttk, messagebox
 import pattern_catalog_v1
 
 from .generation_console import GenerationConsole
-from .generation import (
-    _KTUPLE_STRATEGY_KEYS, save_generation_settings,
-    recommended_digit_sweep_n_locations, build_ktuple_sieve_argv, generation_log_paths,
-    build_wsl_logged_command,
-)
+from .engine_argv import build_ktuple_sieve_argv
+from .generation_settings import _KTUPLE_STRATEGY_KEYS, save_generation_settings
+from .window_planning import recommended_digit_sweep_n_locations
+from .wsl_command import generation_log_paths, build_wsl_logged_command
 
 
 class KtupleSection:

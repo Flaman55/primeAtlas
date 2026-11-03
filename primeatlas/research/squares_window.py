@@ -24,7 +24,7 @@ Plus a caller-supplied CUSTOM (a(n), b(n)) pair for exploring other formulas --
 this module never evaluates user-typed text itself (no eval() anywhere here);
 the tab layer is responsible for turning a typed formula into a plain Python
 callable first (same "restricted eval lives at the UI layer" split as
-generation.py's _eval_quick_number, which also never reaches into this module).
+quick_number.py's _eval_quick_number, which also never reaches into this module).
 
 Mirrors goldbach_window.py's own shape (sieve_is_prime + a *_window_rows()-style
 range function returning a {"covered", "counterexamples", "rows", ...} dict)

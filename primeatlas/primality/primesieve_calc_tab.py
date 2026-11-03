@@ -8,7 +8,7 @@ run_primesieve_query_wsl's own docstrings below for that CLI's exact contract.
 
 build_primesieve_query_argv/run_primesieve_query_wsl live here since this calculator
 sub-tab is their only caller. run_primesieve_query_wsl() takes an explicit `translator`
-parameter instead of reading a module global (same reasoning as generation.py's
+parameter instead of reading a module global (same reasoning as wsl_command.py's
 build_wsl_logged_command taking an explicit `portal_folder` param), so this stays a
 self-contained, circularity-free leaf module: prime_atlas_v2.py imports FROM here, never
 the other way around.
@@ -33,7 +33,9 @@ from tkinter import ttk, messagebox
 
 from ..core.background import PersistentWorker
 from ..core.base_tab import BaseTab
-from ..generation.generation import PRIMESIEVE_QUERY_SCRIPT, windows_path_to_wsl, _eval_quick_number
+from ..generation.engine_argv import PRIMESIEVE_QUERY_SCRIPT
+from ..generation.quick_number import _eval_quick_number
+from ..generation.wsl_command import windows_path_to_wsl
 
 
 def build_primesieve_query_argv(op, *args, script_path=None):

@@ -9,7 +9,7 @@ the full reasoning.
 
 WHY LocalLoggedRunner AND NOT WslLoggedRunner: renderer.py is a plain native Windows
 Python script (moderngl+glfw, no WSL involved anywhere) -- LocalLoggedRunner
-(primeatlas/generation/generation.py) already exists for exactly this "ordinary local subprocess,
+(primeatlas/generation/logged_runners.py) already exists for exactly this "ordinary local subprocess,
 live stdout capture on a background thread" shape (its only prior caller is the sympy
 installer in settings_tab.py). GenerationConsole (the collapsible live-output pane
 widget) is reused as-is for the actual UI, since it has no WSL-specific assumption
@@ -30,7 +30,9 @@ import sys
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-from ...generation.generation import LocalLoggedRunner, _eval_quick_number, find_highest_populated_floor
+from ...generation.logged_runners import LocalLoggedRunner
+from ...generation.quick_number import _eval_quick_number
+from ...generation.window_planning import find_highest_populated_floor
 from ...generation.generation_console import GenerationConsole
 from ...core import storage
 from ..shared.audio import INSTRUMENTS

@@ -111,7 +111,7 @@ def section_a():
     check(argv == ["C:\\Py\\python.exe", "-m", "pip", "install", "--disable-pip-version-check",
                    "--no-warn-script-location", "numpy", "glfw"],
           f"pip argv never forces --user and never scans PATH (got {argv!r})")
-    from primeatlas.generation.generation import build_pip_install_argv
+    from primeatlas.generation.engine_argv import build_pip_install_argv
     sympy_argv = build_pip_install_argv("sympy")
     check("--no-warn-script-location" in sympy_argv and "--user" not in sympy_argv
           and sympy_argv[-1] == "sympy",

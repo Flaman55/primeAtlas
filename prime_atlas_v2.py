@@ -115,20 +115,24 @@ from primeatlas.constellations.constellations import list_constellation_hits  # 
 from primeatlas.core.storage import LOW_FLOOR_CUTOFF  # noqa: E402
 # Only the names _offer_generate_missing_prime_window/_offer_generate_missing_constellation/
 # ConstellationsCalcTab/ConstellationsRecordsTab construction (_eval_quick_number) and
-# _build_settings_tab's wsl_helpers dict call directly are imported from
-# primeatlas.generation.generation here; everything else the Generation tab itself needs is
-# imported by the Generation tab's own modules in primeatlas/generation/.
-from primeatlas.generation.generation import (  # noqa: E402
-    QUICK_GEN_MAX_WINDOW_WIDTH, PRIMESIEVE_MAX_STOP, _eval_quick_number,
-    build_loop_argv, build_constellation_finder_argv, build_wsl_logged_command,
-    build_primesieve_argv, generation_log_paths, WslLoggedRunner, LocalLoggedRunner,
-    build_pip_install_argv, estimate_wsl_available_ram_bytes,
-    find_continuation_target_idx,
-    build_cudasieve_status_argv, build_cudasieve_fetch_license_argv,
-    build_cudasieve_build_argv, run_cudasieve_wsl_blocking,
-    build_primecount_query_argv, run_primecount_wsl_blocking,
-    run_primecount_install_wsl_blocking,
+# _build_settings_tab's wsl_helpers dict call directly are imported from the
+# primeatlas.generation backend modules here; everything else the Generation tab itself
+# needs is imported by the Generation tab's own modules in primeatlas/generation/.
+from primeatlas.generation.engine_argv import (  # noqa: E402
+    build_loop_argv, build_constellation_finder_argv, build_primesieve_argv,
+    build_pip_install_argv, build_cudasieve_status_argv, build_cudasieve_fetch_license_argv,
+    build_cudasieve_build_argv, build_primecount_query_argv,
 )
+from primeatlas.generation.logged_runners import WslLoggedRunner, LocalLoggedRunner  # noqa: E402
+from primeatlas.generation.quick_number import _eval_quick_number  # noqa: E402
+from primeatlas.generation.window_planning import (  # noqa: E402
+    QUICK_GEN_MAX_WINDOW_WIDTH, PRIMESIEVE_MAX_STOP, find_continuation_target_idx,
+)
+from primeatlas.generation.wsl_blocking import (  # noqa: E402
+    run_cudasieve_wsl_blocking, run_primecount_wsl_blocking, run_primecount_install_wsl_blocking,
+)
+from primeatlas.generation.wsl_command import build_wsl_logged_command, generation_log_paths  # noqa: E402
+from primeatlas.generation.wsl_resources import estimate_wsl_available_ram_bytes  # noqa: E402
 
 # AppSettings persists the chosen storage path OUTSIDE the portal folder itself (see
 # app_settings.py's docstring for the chicken-and-egg reason). Loaded once here, at module
@@ -1237,7 +1241,7 @@ def _build_gui():
             method) from .portal_generation_settings.json.
 
             build_wsl_logged_command here is wrapped in a lambda supplying the current
-            PORTAL_FOLDER explicitly -- primeatlas/generation/generation.py's own copy of this
+            PORTAL_FOLDER explicitly -- primeatlas/generation/wsl_command.py's own copy of this
             function takes portal_folder as an explicit argument instead of reading a
             bare module global (see that module's own docstring for why), but
             settings_tab.py still calls this entry with the original 3-arg shape
@@ -1285,11 +1289,11 @@ def _build_gui():
                 "build_pip_install_argv": build_pip_install_argv,
                 "LocalLoggedRunner": LocalLoggedRunner,
                 # CUDASieve (optional GPU engine) installer -- see
-                # primeatlas/generation/generation.py's own run_cudasieve_wsl_blocking() docstring
+                # primeatlas/generation/wsl_blocking.py's own run_cudasieve_wsl_blocking() docstring
                 # for why it's NOT the plain subprocess.run(timeout=...) shape
                 # run_primesieve_query_wsl() uses. Wrapped in a lambda supplying the
                 # current PORTAL_FOLDER, same as build_wsl_logged_command above, since
-                # generation.py's own copy takes portal_folder as an explicit argument
+                # wsl_blocking.py's own copy takes portal_folder as an explicit argument
                 # rather than reading a bare module global.
                 "build_cudasieve_status_argv": build_cudasieve_status_argv,
                 "build_cudasieve_fetch_license_argv": build_cudasieve_fetch_license_argv,
@@ -1304,7 +1308,7 @@ def _build_gui():
                 # libraries get an on-demand button there rather than a blanket
                 # first-run install. Also
                 # used by research_pi_approx_tab.py's own "primecount" data-source mode
-                # (imported there directly from primeatlas.generation.generation, not through this
+                # (imported there directly from primeatlas.generation.wsl_blocking, not through this
                 # dict -- that tab has no wsl_helpers-style injection of its own, see
                 # that module's own docstring) for the actual pi(x) queries; only the
                 # INSTALL button itself lives in Settings.

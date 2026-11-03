@@ -23,7 +23,7 @@ from tkinter import ttk, messagebox
 from ..core.background import PersistentWorker
 from ..core.base_tab import BaseTab
 from ..core.widgets import HeightGrip, StripedTreeview
-from ..generation.generation import _eval_quick_number
+from ..generation.quick_number import _eval_quick_number
 from .primality import run_all_tests as primality_run_all_tests, factorize as primality_factorize
 
 

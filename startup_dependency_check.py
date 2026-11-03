@@ -8,7 +8,7 @@ imports numpy (via research/goldbach_window.py), so on a fresh machine without n
 `import primeatlas.<anything>` dies with a bare ImportError before a single window is shown.
 This module therefore must not import primeatlas at all -- it reads the language choice and
 its locale strings straight from primeatlas/core/locales/*.json with plain json, and
-re-implements the one-line pip argv instead of reusing generation.py's
+re-implements the one-line pip argv instead of reusing engine_argv.py's
 build_pip_install_argv().
 
 Only numpy is startup-blocking (REQUIRED_FOR_STARTUP); moderngl/glfw are needed only by the

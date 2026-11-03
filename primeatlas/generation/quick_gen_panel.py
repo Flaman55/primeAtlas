@@ -12,13 +12,13 @@ from tkinter import ttk, messagebox
 
 from ..core.storage import digit_count_floor, LOW_FLOOR_CUTOFF
 from . import engine_options
-from .generation import (
-    QUICK_GEN_MAX_WINDOW_WIDTH, count_existing_windows, find_continuation_target_idx,
-    find_highest_populated_floor, _eval_quick_number, PRIMESIEVE_MAX_WIDTH_MULT,
-    CUDASIEVE_MIN_PRINTABLE_TOP, CUDASIEVE_MAX_WIDTH_MULT,
-    estimate_wsl_available_ram_bytes, estimate_wsl_available_cpu_count,
-    recommended_worker_count,
-)
+from .quick_number import _eval_quick_number
+from .window_planning import (QUICK_GEN_MAX_WINDOW_WIDTH, count_existing_windows,
+                              find_continuation_target_idx, find_highest_populated_floor,
+                              PRIMESIEVE_MAX_WIDTH_MULT, CUDASIEVE_MIN_PRINTABLE_TOP,
+                              CUDASIEVE_MAX_WIDTH_MULT)
+from .wsl_resources import (estimate_wsl_available_ram_bytes, estimate_wsl_available_cpu_count,
+                            recommended_worker_count)
 
 
 class QuickGenPanel:
@@ -296,7 +296,7 @@ class QuickGenPanel:
         """validatecommand for cudasieve mode's OWN Width spinbox -- same shape as
         _validate_primesieve_width_spinbox, bounded to CUDASIEVE_MAX_WIDTH_MULT (same
         uint64_t domain as libprimesieve's own PRIMESIEVE_MAX_STOP -- see that constant's
-        own docstring in generation.py)."""
+        own docstring in window_planning.py)."""
         if proposed == "":
             return True
         return proposed.isdigit() and 1 <= int(proposed) <= CUDASIEVE_MAX_WIDTH_MULT

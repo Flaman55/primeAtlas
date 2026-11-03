@@ -32,7 +32,7 @@ unrelated one.
 Custom-formula evaluation (_eval_formula below) is a RESTRICTED eval (no
 builtins, only a bound `n`) -- same "personal desktop tool, not a network-
 facing service, but no reason to allow arbitrary code execution just to
-parse a typed formula" reasoning as generation.py's own _eval_quick_number,
+parse a typed formula" reasoning as quick_number.py's own _eval_quick_number,
 which this module does not reuse directly since that helper has no `n`
 variable to substitute.
 """

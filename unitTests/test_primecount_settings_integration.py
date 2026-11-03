@@ -1,6 +1,6 @@
 """
 test_primecount_settings_integration.py -- covers Settings -> Updates's primecount
-installer section (settings_tab.py) and the generation.py plumbing it's built on
+installer section (settings_tab.py) and the engine_argv.py/wsl_blocking.py plumbing it's built on
 (build_primecount_query_argv, run_primecount_wsl_blocking, run_primecount_install_wsl_
 blocking). The "primecount" data-source mode's install mechanism lives in Settings,
 alongside every other optional-component installer (sympy, CUDASieve), rather than on
@@ -46,7 +46,7 @@ def check(condition, message):
 
 
 def _test_build_primecount_query_argv():
-    from primeatlas.generation.generation import build_primecount_query_argv
+    from primeatlas.generation.engine_argv import build_primecount_query_argv
 
     argv = build_primecount_query_argv("pi_batch", 1000, 1000000)
     check(argv[0] == "python3" and argv[1] == "-u",
@@ -61,7 +61,7 @@ def _test_run_primecount_wsl_blocking_contract():
     test_cudasieve_integration.py's own Section B) -- no real wsl.exe involved, a fake
     Popen stands in, proving the timeout branch returns the documented {"message",
     "kind": None} shape rather than hanging or crashing."""
-    import primeatlas.generation.generation as gen
+    from primeatlas.generation import wsl_blocking
 
     class _FakeNeverEndingProc:
         def poll(self):
@@ -70,11 +70,11 @@ def _test_run_primecount_wsl_blocking_contract():
         def kill(self):
             pass
 
-    orig_popen = gen.subprocess.Popen
-    gen.subprocess.Popen = lambda *a, **k: _FakeNeverEndingProc()
+    orig_popen = wsl_blocking.subprocess.Popen
+    wsl_blocking.subprocess.Popen = lambda *a, **k: _FakeNeverEndingProc()
     portal = tempfile.mkdtemp(prefix="primecount_settings_test_")
     try:
-        ok, result = gen.run_primecount_wsl_blocking(["python3", "-c", "pass"], portal, timeout=0.3)
+        ok, result = wsl_blocking.run_primecount_wsl_blocking(["python3", "-c", "pass"], portal, timeout=0.3)
         check(not ok, "a process that never exits is reported as a failure, not a hang")
         check(isinstance(result, dict) and "message" in result and "kind" in result,
               f"the failure payload has the documented {{'message','kind'}} shape "
@@ -84,7 +84,7 @@ def _test_run_primecount_wsl_blocking_contract():
         check("Timed out" in result.get("message", ""),
               f"the message names the timeout explicitly (got {result!r})")
     finally:
-        gen.subprocess.Popen = orig_popen
+        wsl_blocking.subprocess.Popen = orig_popen
         import shutil
         shutil.rmtree(portal, ignore_errors=True)
 

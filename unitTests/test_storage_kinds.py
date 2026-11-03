@@ -94,7 +94,7 @@ def check_kind_rule():
 def check_views(tmp):
     import storage_kinds as sk
     import orchestrator_loop_helpers as helpers
-    from primeatlas.generation import generation as gen
+    from primeatlas.generation import window_planning
     passed = True
     # floor 25: D windows 0..2, P windows 0, 5, 6
     for i in (0, 1, 2):
@@ -106,16 +106,16 @@ def check_views(tmp):
     passed &= check(helpers.find_auto_start(25, tmp, W, engine="v5") == 3
                     and helpers.find_auto_start(25, tmp, W, engine="pt1") == 7,
                     "find_auto_start continues each engine from its own store")
-    passed &= check(gen.find_continuation_target_idx(tmp, 25, W, engine="v5") == 3
-                    and gen.find_continuation_target_idx(tmp, 25, W, engine="pt1") == 7,
+    passed &= check(window_planning.find_continuation_target_idx(tmp, 25, W, engine="v5") == 3
+                    and window_planning.find_continuation_target_idx(tmp, 25, W, engine="pt1") == 7,
                     "GUI continuation per engine")
-    passed &= check(gen.find_first_gap_target_idx(tmp, 25, W, engine="v5") == 3
-                    and gen.find_first_gap_target_idx(tmp, 25, W, engine="pt1") == 1,
+    passed &= check(window_planning.find_first_gap_target_idx(tmp, 25, W, engine="v5") == 3
+                    and window_planning.find_first_gap_target_idx(tmp, 25, W, engine="pt1") == 1,
                     "GUI first gap per engine")
-    passed &= check(gen._trim_existing_from_target_idx_range(tmp, 25, 0, 4, W, engine="pt1") == (1, 3)
-                    and gen._trim_existing_from_target_idx_range(tmp, 25, 0, 4, W, engine="v5") == (3, 1),
+    passed &= check(window_planning._trim_existing_from_target_idx_range(tmp, 25, 0, 4, W, engine="pt1") == (1, 3)
+                    and window_planning._trim_existing_from_target_idx_range(tmp, 25, 0, 4, W, engine="v5") == (3, 1),
                     "GUI trim of an existing edge per engine")
-    passed &= check(gen.find_continuation_target_idx(tmp, 25, W) == 3,
+    passed &= check(window_planning.find_continuation_target_idx(tmp, 25, W) == 3,
                     "GUI default engine (v5) sees D")
     # floor 24: the bound sits at offset b - 10^24; D windows below and above it, one P above
     base = 10 ** 24
@@ -144,8 +144,8 @@ def check_views(tmp):
     passed &= check(len(sk.read_proven_tags(tmp, 26)) == 3, "add_proven_tags merges (union)")
     # a floor with P only is a populated floor for pt1, not for v5
     _touch(tmp, 27, 0, "P")
-    passed &= check(gen.find_highest_populated_floor(tmp, engine="pt1") == 27
-                    and gen.find_highest_populated_floor(tmp, engine="v5") == 26,
+    passed &= check(window_planning.find_highest_populated_floor(tmp, engine="pt1") == 27
+                    and window_planning.find_highest_populated_floor(tmp, engine="v5") == 26,
                     "highest populated floor per engine")
     return passed
 

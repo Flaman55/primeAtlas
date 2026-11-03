@@ -90,7 +90,7 @@ class _LaunchRecorder:
 
 def main():
     import prime_atlas_v2
-    from primeatlas.generation.generation import _floor_window_count
+    from primeatlas.generation.window_planning import _floor_window_count
 
     W = 10_000_000
     portal = tempfile.mkdtemp(prefix="primeatlas_gen_launch_test_")

@@ -20,7 +20,7 @@ import tkinter as tk
 from datetime import datetime, timezone
 from tkinter import messagebox, ttk
 
-from .generation import GENERATION_LOGS_DIRNAME
+from .wsl_command import GENERATION_LOGS_DIRNAME
 from .run_guard import job_stage
 
 # (job key, runner attribute, console attribute) of the jobs the guard watches.
