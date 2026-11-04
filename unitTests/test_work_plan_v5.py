@@ -2,8 +2,10 @@
 
 Checks: slices are 64-bit-word aligned, disjoint and cover the odd-only buffer exactly;
 the segmented prime range ends where the batched one starts; the equal-cost batches match
-prime_sieve_v4_1's when they start at 2 and stay contiguous from any start; the segment size
-setting parses its environment variable and rejects bad values. Pure Python, runs on
+prime_sieve_v4_1's when they start at 2 and stay contiguous from any start; the segment,
+region, bucket and pieces-per-thread settings parse their environment variables and reject
+bad values; the defaults are the measured v5.1 ones (2 MiB segments, 1 MiB regions, 8 GiB
+buckets, 16 pieces per thread); plan_pieces() follows the pieces-per-thread knob. Pure Python, runs on
 Windows and WSL:
     python unitTests/test_work_plan_v5.py
 """
@@ -147,17 +149,42 @@ def check_pieces():
                               (3_162_277_661, 10 ** 10, 1_048_576), (100_001, 10 ** 10, 8_192)):
         for n_threads in (1, 24):
             pieces = work_plan_v5.plan_pieces(L_final, size, lo, n_threads)
-            ok = (1 <= len(pieces) <= n_threads * work_plan_v5.PIECES_PER_THREAD
+            ok = (1 <= len(pieces) <= n_threads * work_plan_v5.DEFAULT_PIECES_PER_THREAD
                   and pieces[0][0] == lo and pieces[-1][1] == L_final
                   and all(a < b for a, b in pieces)
                   and all(a[1] == b[0] for a, b in zip(pieces, pieces[1:])))
             passed &= check(ok, f"plan_pieces({L_final}, lo={lo}, {n_threads} threads): "
                                 f"{len(pieces)} ascending pieces covering [lo, L_final)")
     deep = work_plan_v5.plan_pieces(3_162_277_660_169, 5 * 10 ** 10, 1_048_576, 24)
-    passed &= check(len(deep) == 24 * work_plan_v5.PIECES_PER_THREAD,
-                    f"deep floor, 24 threads: {24 * work_plan_v5.PIECES_PER_THREAD} pieces")
+    passed &= check(len(deep) == 24 * work_plan_v5.DEFAULT_PIECES_PER_THREAD,
+                    f"deep floor, 24 threads: {24 * work_plan_v5.DEFAULT_PIECES_PER_THREAD} pieces")
     passed &= check(work_plan_v5.plan_pieces(100_001, 10 ** 10, 100_001, 24) == [],
                     "plan_pieces with lo = L_final is empty")
+    four = work_plan_v5.plan_pieces(3_162_277_660_169, 5 * 10 ** 10, 1_048_576, 24,
+                                    pieces_per_thread=4)
+    passed &= check(len(four) == 24 * 4 and four[0][0] == 1_048_576
+                    and four[-1][1] == 3_162_277_660_169,
+                    f"pieces_per_thread=4, 24 threads: 96 pieces ({len(four)})")
+    return passed
+
+
+def check_pieces_setting():
+    passed = True
+    name = work_plan_v5.PIECES_PER_THREAD_ENV
+    passed &= check(name == "PRIMEATLAS_V5_PIECES_PER_THREAD", f"env name {name}")
+    passed &= check(work_plan_v5.pieces_per_thread_from_env({}) == 16
+                    and work_plan_v5.pieces_per_thread_from_env({name: "4"}) == 4,
+                    "pieces per thread: unset -> 16, 4 -> 4")
+    for bad in ("0", "-1", "x"):
+        try:
+            work_plan_v5.pieces_per_thread_from_env({name: bad})
+            raised = False
+        except ValueError:
+            raised = True
+        passed &= check(raised, f"{name}={bad!r} raises ValueError")
+    passed &= check((work_plan_v5.DEFAULT_SEGMENT_KB, work_plan_v5.DEFAULT_REGION_KB,
+                     work_plan_v5.DEFAULT_BUCKET_MB) == (2048, 1024, 8192),
+                    "v5.1 defaults: 2048 KiB segments, 1024 KiB regions, 8192 MiB buckets")
     return passed
 
 
@@ -169,6 +196,7 @@ def main():
     passed &= check_bucket_setting()
     passed &= check_region_setting()
     passed &= check_pieces()
+    passed &= check_pieces_setting()
     print("ALL CHECKS PASSED" if passed else "SOME CHECKS FAILED")
     return 0 if passed else 1
 

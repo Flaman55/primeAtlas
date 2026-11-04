@@ -22,20 +22,21 @@ from benchmark_log_schema import (BENCHMARK_FIELDNAMES, RUN_STATUS_COMPLETED,
 import window_integrity
 
 # ------------------------------------------------------------------------------------------
-# ENGINE SWITCH -- the one flag selecting which scanner (v3, v4, v4.1 or v5) this orchestrator
+# ENGINE SWITCH -- the one flag selecting which scanner (v3, v4, v4.1, v5, v6 or pt1) this orchestrator
 # drives; it sets both SCRIPT_NAME and the scanner module import below, so the two can't
 # disagree. All scanners write the SAME PGS2 format/filename convention and share
 # benchmark_log.csv, so switching is safe at any time, including mid-floor.
 # v4 = v3 plus an inlined fast-path modulo for the per-sieving-prime phase computation (see
 # prime_sieve_v4.py's header). v4.1 = v4 plus base-gen/sieve/write timing and a
 # bytes-written counter in four benchmark_log.csv columns (base_gen_seconds/sieve_seconds/
-# write_seconds/bytes_written, see benchmark_log_schema.py). v5 = the default engine
-# (prime_sieve_v5.py), output identical to v4.1. pt1 = partial sieve + primality test
+# write_seconds/bytes_written, see benchmark_log_schema.py). v5 = prime_sieve_v5.py (code
+# version v5.1), output identical to v4.1. v6 = the default engine (prime_sieve_v6.py,
+# wheel-30 buffer), output identical to v5. pt1 = partial sieve + primality test
 # (prime_sieve_pt1.py): D windows identical to v5, BPSW windows from MR_DET_BOUND on go to
 # the P store (see storage_kinds.py).
 # PRIMEATLAS_SCANNER_VERSION, when set, overrides the default (benchmarks compare engines
 # without editing this file).
-SCANNER_VERSION = os.environ.get("PRIMEATLAS_SCANNER_VERSION") or "v5"
+SCANNER_VERSION = os.environ.get("PRIMEATLAS_SCANNER_VERSION") or "v6"
 
 if SCANNER_VERSION == "v3":
     import prime_sieve_v3 as prime_sieve_module  # noqa: E402
@@ -45,10 +46,12 @@ elif SCANNER_VERSION == "v4.1":
     import prime_sieve_v4_1 as prime_sieve_module  # noqa: E402
 elif SCANNER_VERSION == "v5":
     import prime_sieve_v5 as prime_sieve_module  # noqa: E402
+elif SCANNER_VERSION == "v6":
+    import prime_sieve_v6 as prime_sieve_module  # noqa: E402
 elif SCANNER_VERSION == "pt1":
     import prime_sieve_pt1 as prime_sieve_module  # noqa: E402
 else:
-    raise ValueError(f"SCANNER_VERSION must be 'v3', 'v4', 'v4.1', 'v5' or 'pt1', "
+    raise ValueError(f"SCANNER_VERSION must be 'v3', 'v4', 'v4.1', 'v5', 'v6' or 'pt1', "
                      f"got {SCANNER_VERSION!r}")
 # The GUI's save-point stop kills processes by this name (generation_stop.py).
 SCRIPT_NAME = generation_stop.scanner_script(SCANNER_VERSION)
@@ -95,15 +98,17 @@ def find_auto_start(base_exponent, portal_folder, window_m, engine=None):
     return max(idxs) + 1 if idxs else None
 
 
-def reconcile_batch(portal_folder, base_exponent, target_idx_start, target_idx_stop, window_m):
-    """D proves P (dp_verify.py) for every D window of the batch that has a P counterpart;
-    returns the {status: count} of the comparisons made."""
+def reconcile_batch(portal_folder, base_exponent, target_idx_start, target_idx_stop, window_m,
+                    workers=None):
+    """D proves P (dp_verify.py) for every D window of the batch that has a P counterpart,
+    compared by `workers` threads (default WORKERS); returns the {status: count} of the
+    comparisons made."""
     import dp_verify
-    summary = {}
     base = 10 ** base_exponent
     p_dir = storage_kinds.source_dir(portal_folder, base_exponent, storage_kinds.KIND_P)
     if not os.path.isdir(p_dir):
-        return summary
+        return {}
+    p_paths = []
     for target_idx in range(target_idx_start, target_idx_stop + 1):
         offset = target_idx * window_m
         lo = base + offset
@@ -111,11 +116,15 @@ def reconcile_batch(portal_folder, base_exponent, target_idx_start, target_idx_s
             continue
         d_path = storage_kinds.window_path(portal_folder, base_exponent, offset, window_m,
                                            prime_sieve_module.format_offset(offset))
-        if not os.path.exists(d_path):
-            continue
-        status = dp_verify.reconcile_d(portal_folder, base_exponent, d_path).status
-        if status != "no_p":
-            summary[status] = summary.get(status, 0) + 1
+        p_paths.append(dp_verify.counterpart_p_path(d_path))
+    if not p_paths:
+        return {}
+    print(f"[*] D proves P: comparing {len(p_paths):,} windows with their P counterparts...",
+          flush=True)
+    summary = dp_verify.reconcile_many(portal_folder, base_exponent, p_paths,
+                                       WORKERS if workers is None else workers,
+                                       progress=lambda line: print(line, flush=True))
+    summary = {k: v for k, v in summary.items() if k not in ("no_p", "no_d")}
     if summary:
         print(f"[*] D proves P for target_idx {target_idx_start}..{target_idx_stop}: "
               + ", ".join(f"{k}={v}" for k, v in sorted(summary.items())))
@@ -200,7 +209,8 @@ def print_benchmark_summary(base_exponent, start_idx, end_idx, total_seconds, po
                              write_files=True, total_primes_found=None, windows_processed=None,
                              window_m=None, base_gen_seconds=None, sieve_seconds=None,
                              write_seconds=None, bytes_written=None, numbers_processed=None,
-                             workers=None, run_status=RUN_STATUS_COMPLETED):
+                             workers=None, run_status=RUN_STATUS_COMPLETED,
+                             verify_seconds=None):
     """Logs to the SAME benchmark_log.csv used by every orchestrator variant (see this file's
     header for why that's deliberately shared, not forked).
 
@@ -214,7 +224,8 @@ def print_benchmark_summary(base_exponent, start_idx, end_idx, total_seconds, po
     each read is one file open over WSL's /mnt drive, latency-bound, so the threads
     overlap the waits. With bytes_written None the sizes of the windows read are summed
     instead (a stopped run has no scanner handoff). A stopped run with no window found
-    logs no row."""
+    logs no row. verify_seconds is the D-proves-P time of the run (reconcile_batch()),
+    part of total_seconds; it gets its own column so charts can tell it from the engine."""
     window_m = WINDOW_M if window_m is None else window_m
     workers = WORKERS if workers is None else workers
     if write_files:
@@ -282,6 +293,8 @@ def print_benchmark_summary(base_exponent, start_idx, end_idx, total_seconds, po
             parts.append(f"write {write_seconds:.2f}s")
             if bytes_written and write_seconds > 0:
                 parts.append(f"({bytes_written / write_seconds / 1e6:.1f} MB/s)")
+        if verify_seconds:
+            parts.append(f"D proves P {verify_seconds:.2f}s")
         print(f"[BENCHMARK] phase breakdown: {' | '.join(parts)}")
     print(f"{'='*60}")
 
@@ -316,6 +329,7 @@ def print_benchmark_summary(base_exponent, start_idx, end_idx, total_seconds, po
                 "write_seconds": f"{write_seconds:.3f}" if write_seconds is not None else "",
                 "bytes_written": bytes_written if bytes_written is not None else "",
                 "run_status": run_status,
+                "verify_seconds": f"{verify_seconds:.3f}" if verify_seconds is not None else "",
             }
             writer.writerow(row)
         print(f"[BENCHMARK] logged to {log_path} (for cross-floor growth analysis)")
@@ -412,6 +426,7 @@ def run_orchestrator(base_exponent=None, window_count=None, start_auto=None, sta
     current = actual_start_window
     interrupted = False
     stopped = False
+    verify_seconds = 0.0
     while current < end_at:
         if generation_stop.stop_requested(portal_folder):
             # Stop requested before this batch's scanner existed for the GUI to kill.
@@ -433,7 +448,9 @@ def run_orchestrator(base_exponent=None, window_count=None, start_auto=None, sta
             interrupted = True
             break
         if write_files:
-            reconcile_batch(portal_folder, base_exponent, current, batch_stop, window_m)
+            t_verify = time.perf_counter()
+            reconcile_batch(portal_folder, base_exponent, current, batch_stop, window_m, workers)
+            verify_seconds += time.perf_counter() - t_verify
         current = batch_stop + 1
 
     t_end_orchestrator = time.perf_counter()
@@ -497,7 +514,8 @@ def run_orchestrator(base_exponent=None, window_count=None, start_auto=None, sta
                                  base_gen_seconds=base_gen_seconds, sieve_seconds=sieve_seconds,
                                  write_seconds=write_seconds, bytes_written=bytes_written,
                                  numbers_processed=metrics.get("numbers_processed"),
-                                 workers=workers)
+                                 workers=workers,
+                                 verify_seconds=verify_seconds if write_files else None)
 
     return not interrupted
 

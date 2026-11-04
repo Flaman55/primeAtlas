@@ -232,7 +232,7 @@ class LoopSection:
         # _build_loop_section for why these are alternatives, not independent toggles.
         parsed["compute_sieving_primes_count"] = (
             self._loop_count_sieving_var.get() or parsed["use_known_pi_seed"])
-        choice, bad_key = self._engine_fields.choice()
+        choice, bad_key = self._engine_fields.choice(parsed["window_count_per_run"])
         if choice is None:
             messagebox.showerror(
                 self.T("gen.dialog_title"), self.T("gen.error_field_int", field=bad_key))

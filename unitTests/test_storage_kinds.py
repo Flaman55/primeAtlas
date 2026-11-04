@@ -83,7 +83,7 @@ def check_kind_rule():
     passed &= check(sk.kind_for_window(b - 10, b + 1) == "P", "window straddling the bound is P")
     passed &= check(sk.kind_for_window(b, b + 10) == "P", "window from the bound on is P")
     passed &= check(sk.kind_for_window(10 ** 19, 10 ** 19 + W) == "D", "floor 19 is D")
-    for engine in ("v3", "v4", "v4.1", "v5"):
+    for engine in ("v3", "v4", "v4.1", "v5", "v6"):
         passed &= check(sk.written_kind(engine, 10 ** 25, 10 ** 25 + W) == "D",
                         f"{engine} writes D even above the bound")
     passed &= check(sk.written_kind("pt1", 10 ** 22, 10 ** 22 + W) == "D", "pt1 below the bound -> D")

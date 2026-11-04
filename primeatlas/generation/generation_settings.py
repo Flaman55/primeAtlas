@@ -6,7 +6,7 @@ DEFAULT_GENERATION_SETTINGS so a file from an older schema still yields every ke
 import json
 import os
 
-from . import engine_options
+from . import engine_options, engine_presets
 
 
 GENERATION_SETTINGS_FILENAME = ".portal_generation_settings.json"
@@ -31,9 +31,11 @@ DEFAULT_GENERATION_SETTINGS = {
         "window_m": "10000000",  # mirrors orchestrator_loop_helpers.py's own
                                   # WINDOW_M -- see build_loop_argv()'s docstring for the
                                   # cross-floor-consistency caveat before changing this.
-        # Sieve engine and v5 perf knobs -- see engine_options.py.
+        # Sieve engine and v5/v6 perf knobs -- see engine_options.py.
         "engine": engine_options.DEFAULT_ENGINE,
         **{key: str(value) for key, value in engine_options.DEFAULT_KNOBS.items()},
+        **{engine_presets.preset_key(e): engine_presets.DEFAULT_PRESET
+           for e in engine_presets.PRESET_ENGINES},
     },
     "constellation": {
         "base_exponent": "",  # blank = auto (every floor with source data -- see

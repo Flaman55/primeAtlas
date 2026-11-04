@@ -69,6 +69,14 @@ class EngineLinesTests(unittest.TestCase):
         names = [s.name for s in chart_series.legend_series(sieve + refs, write)]
         self.assertEqual(names, ["unknown", "v4.1", "v5"] + [r.name for r in refs])
 
+    def test_v6_has_its_own_color_after_v5(self):
+        order = chart_series.ENGINE_DRAW_ORDER
+        self.assertEqual(order.index("v6"), order.index("v5") + 1)
+        self.assertIn("v6", chart_series.ENGINE_COLORS)
+        series = chart_series.engine_series({"v6": [(25, 1.5e9)], "v5": [(25, 7e8)]})
+        self.assertEqual([s.name for s in series], ["v5", "v6"])
+        self.assertNotEqual(series[0].color, series[1].color)
+
     def test_every_drawn_color_is_far_from_the_others(self):
         colors = dict(chart_series.ENGINE_COLORS, other=chart_series.OTHER_ENGINE_COLOR)
         colors.update({r.tag: r.color for r in reference_points.REFERENCES})

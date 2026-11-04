@@ -489,6 +489,9 @@ class RestoreSection:
 
         log_path, exit_path, _run_id = self.wsl["generation_log_paths"](
             portal_folder, "restore_loop")
+        # The knob profile's auto choice depends on the run width, known only now.
+        engine_choice = engine_options.EngineChoice(engine_choice.engine, engine_options.resolve(
+            dict(defaults, engine=engine_choice.engine), window_count_per_run).knobs)
         extra_env = () if use_primesieve else engine_options.launch_env(engine_choice, bucket_mb)
         cmd = self.wsl["build_wsl_logged_command"](argv, log_path, exit_path, extra_env=extra_env)
         q = queue.Queue()

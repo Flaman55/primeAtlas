@@ -40,6 +40,7 @@ LIVE_HEADER = [
     "max_child_rss_mb", "instance_of_n", "loop_session_seconds", "loop_numbers_per_second",
     "loop_seconds_per_window", "write_files", "base_gen_seconds", "sieve_seconds",
     "write_seconds", "bytes_written", "engine", "numbers_processed", "run_status",
+    "verify_seconds",
 ]
 OLD_ROW = {"run_timestamp_utc": "2026-01-01 00:00:00 UTC", "base_exponent": "12",
            "windows_written": "7", "total_primes": "70", "total_seconds": "3.5"}

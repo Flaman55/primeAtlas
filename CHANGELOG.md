@@ -190,6 +190,41 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   przebiegu), prędkość i łączny czas, na podstawie Twojego benchmark_log.csv; suwaki
   wypełniają pola Piętro i Szerokość Szybkiej generacji.
 
+### +26 — Engine v6.0 (wheel-30 buffer) as default, engine v5.1, knob profiles and info tips
+
+- English: New default engine v6.0 stores 30 numbers per byte instead of 16, so one run
+  in the same RAM covers 1.875 times as many numbers and pays the per-run generation of
+  the sieving primes less often; its windows are byte-identical to v5's. Engine v5 runs
+  as v5.1 with measured defaults (2 MiB segments, 8 GiB buckets, longer runs): on floor
+  25 a run of 2e11 numbers sieves 43 % faster. In the same RAM, v6.0 is about 2x v5.1 on
+  floors 25-27. Each engine has its own knobs, now shown only for the selected engine and
+  each with an "i" tip saying how it affects the run. A "Knob profile" list sets v5's or
+  v6's knobs in one choice: Old, New (long runs), Intermediate (short runs), Custom, and
+  Auto (default), which picks segment and bucket sizes by the run's window count, per
+  engine (v6's short runs are fastest with 128 KiB segments). v6 writes its window files
+  natively and with several threads (new field "v6 write threads", default 8): 1,000
+  windows on a /mnt drive take 2.3 s instead of 29 s, and the console shows the write
+  progress. The D-proves-P check after a run compares windows in parallel and updates its
+  lists once per batch, with progress lines (60,000 windows: minutes instead of over an
+  hour); its time is logged in the new benchmark column verify_seconds.
+- Polski: Nowy domyślny silnik v6.0 zapisuje 30 liczb w bajcie zamiast 16, więc jedno
+  uruchomienie w tym samym RAM obejmuje 1,875 razy więcej liczb i rzadziej płaci za
+  generowanie liczb pierwszych situjących; jego okna są identyczne bajt w bajt z oknami
+  v5. Silnik v5 działa jako v5.1 ze zmierzonymi ustawieniami domyślnymi (segmenty 2 MiB,
+  kubełki 8 GiB, dłuższe uruchomienia): na piętrze 25 uruchomienie 2e11 liczb sitowało się
+  o 43 % szybciej. W tym samym RAM v6.0 jest około 2x szybszy od v5.1 na piętrach 25-27.
+  Każdy silnik ma własne pokrętła, widoczne teraz tylko dla wybranego silnika, każde z
+  dymkiem „i” mówiącym, jak wpływa na generowanie. Lista „Profil pokręteł” ustawia
+  pokrętła v5 lub v6 jednym wyborem: Stare, Nowe (długie przebiegi), Pośrednie (krótkie
+  przebiegi), Własne oraz Auto (domyślnie), które dobiera segment i kubełki do liczby
+  okien w przebiegu, osobno dla każdego silnika (krótkie przebiegi v6 są najszybsze z
+  segmentami 128 KiB). v6 zapisuje pliki okien natywnie i kilkoma wątkami (nowe pole
+  „Wątki zapisu v6”, domyślnie 8): 1000 okien na dysku /mnt zajmuje 2,3 s zamiast 29 s,
+  a konsola pokazuje postęp zapisu. Sprawdzenie „D dowodzi P” po przebiegu porównuje okna
+  równolegle i aktualizuje swoje listy raz na porcję, z liniami postępu (60 000 okien:
+  minuty zamiast ponad godziny); jego czas trafia do nowej kolumny benchmarku
+  verify_seconds.
+
 ## 1.2.0 — 2026-11-01
 
 ### English

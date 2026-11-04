@@ -1,14 +1,16 @@
-"""engine_options turns the Generation tab's engine choice and v5 perf knobs into a run plan.
+"""engine_options turns the Generation tab's engine choice and v5/v6 perf knobs into a run plan.
 
 Checks: the engine names, knob defaults and environment variable names mirror
-orchestrator_v3.py / work_plan_v5.py and run_budget.py; the default engine is v5 in both the
-GUI and orchestrator_v3.py run without PRIMEATLAS_SCANNER_VERSION; an unknown engine falls
+orchestrator_v3.py / work_plan_v5.py / work_plan_v6.py and run_budget.py; v5 and v6 have
+their own knob sets with their own defaults; the default engine is v6 in both the GUI and
+orchestrator_v3.py run without PRIMEATLAS_SCANNER_VERSION; an unknown engine falls
 back to the default; knob parsing accepts blanks (default) and positive integers and names the first bad
 field; the RAM budget knob is a percentage 1..100 (default from run_budget.py) read by
 v4.1 and v5, never by pt1, and reaches run_budget as safety_fraction; resolve() never fails (Restore has no form to report errors in); the per-run window
 cap is 1000 for v4.1 and higher for v5; recommend() passes the engine, floor and knobs on to
-run_budget and respects the cap; launch_env() always names the engine and adds the three v5
-knobs only for v5, with a bucket override; build_wsl_logged_command() puts that env in front
+run_budget and respects the cap; launch_env() always names the engine and adds the
+engine's own four knobs (segment, region, buckets, pieces per thread) for v5 and v6, plus v6's
+write threads, with a bucket override (which only lowers the buckets); every knob and the engine selector have an info text in both locales; build_wsl_logged_command() puts that env in front
 of the command, quoted, and rejects malformed names; the persisted Generation settings carry
 the engine and knob defaults. Pure Python, runs on Windows and WSL:
     python unitTests/test_engine_options.py
@@ -26,6 +28,7 @@ from primeatlas.generation import engine_options as eo  # noqa: E402
 from primeatlas.generation import generation_settings, run_budget, wsl_command, wsl_resources  # noqa: E402
 import pt1_plan  # noqa: E402
 import work_plan_v5  # noqa: E402
+import work_plan_v6  # noqa: E402
 
 GB = 10 ** 9
 W = 10_000_000
@@ -38,8 +41,8 @@ def check(value, message):
 
 def check_mirrors():
     passed = True
-    passed &= check(eo.ENGINES == ("v4.1", "v5", "pt1"), f"engines offered: {eo.ENGINES}")
-    passed &= check(eo.DEFAULT_ENGINE == "v5", f"default engine {eo.DEFAULT_ENGINE}")
+    passed &= check(eo.ENGINES == ("v4.1", "v5", "v6", "pt1"), f"engines offered: {eo.ENGINES}")
+    passed &= check(eo.DEFAULT_ENGINE == "v6", f"default engine {eo.DEFAULT_ENGINE}")
     # orchestrator_v3.py imports WSL-only engine modules, so its default is read from source.
     with open(os.path.join(ROOT, "prime_sieve", "orchestrator_v3.py"), encoding="utf-8") as f:
         src = f.read()
@@ -50,17 +53,31 @@ def check_mirrors():
                     f"{match.group(1) if match else None} matches the GUI default")
     passed &= check(eo.SCANNER_VERSION_ENV == "PRIMEATLAS_SCANNER_VERSION",
                     "engine env name matches orchestrator_v3.py")
-    passed &= check((eo.SEGMENT_KB_ENV, eo.REGION_KB_ENV, eo.BUCKET_MB_ENV)
-                    == (work_plan_v5.SEGMENT_KB_ENV, work_plan_v5.REGION_KB_ENV,
-                        work_plan_v5.BUCKET_MB_ENV),
-                    "knob env names match work_plan_v5.py")
     d = eo.DEFAULT_KNOBS
+    for engine, plan in (("v5", work_plan_v5), ("v6", work_plan_v6)):
+        passed &= check(eo.KNOB_ENVS[engine] == {
+            f"{engine}_segment_kb": plan.SEGMENT_KB_ENV,
+            f"{engine}_region_kb": plan.REGION_KB_ENV,
+            f"{engine}_bucket_mb": plan.BUCKET_MB_ENV,
+            f"{engine}_pieces_per_thread": plan.PIECES_PER_THREAD_ENV,
+            **({"v6_write_threads": plan.WRITE_THREADS_ENV} if engine == "v6" else {})},
+            f"{engine} knob env names match {plan.__name__}.py")
+        passed &= check((d[f"{engine}_segment_kb"], d[f"{engine}_region_kb"],
+                         d[f"{engine}_bucket_mb"], d[f"{engine}_pieces_per_thread"])
+                        == (plan.DEFAULT_SEGMENT_KB, plan.DEFAULT_REGION_KB,
+                            plan.DEFAULT_BUCKET_MB, plan.DEFAULT_PIECES_PER_THREAD),
+                        f"{engine} knob defaults match {plan.__name__}.py")
+        passed &= check(d[f"{engine}_windows_at_25"]
+                        == run_budget.DEFAULT_TARGET_WINDOWS_AT_25[engine],
+                        f"{engine} windows-at-25 default matches run_budget.py")
+    passed &= check(d["v6_write_threads"] == work_plan_v6.DEFAULT_WRITE_THREADS,
+                    "v6 write-threads default matches work_plan_v6.py")
     passed &= check((d["v5_segment_kb"], d["v5_region_kb"], d["v5_bucket_mb"])
-                    == (work_plan_v5.DEFAULT_SEGMENT_KB, work_plan_v5.DEFAULT_REGION_KB,
-                        work_plan_v5.DEFAULT_BUCKET_MB),
-                    f"knob defaults match work_plan_v5.py ({d})")
-    passed &= check(d["v5_windows_at_25"] == run_budget.DEFAULT_TARGET_WINDOWS_AT_25,
-                    "windows-at-25 default matches run_budget.py")
+                    == (2048, 1024, 8192),
+                    "v5.1 defaults: 2 MiB segments, 1 MiB regions, 8 GiB buckets (measured)")
+    passed &= check(eo.ENGINE_VERSIONS == {"v4.1": "v4.1", "v5": "v5.1", "v6": "v6.0",
+                                           "pt1": "pt1"},
+                    f"engine versions shown in the GUI ({eo.ENGINE_VERSIONS})")
     passed &= check(set(d) == set(eo.KNOB_KEYS), "DEFAULT_KNOBS covers exactly KNOB_KEYS")
     passed &= check(re.search(r'^elif SCANNER_VERSION == "pt1":$', src, re.MULTILINE) is not None,
                     "orchestrator_v3.py has a pt1 branch")
@@ -71,6 +88,10 @@ def check_mirrors():
     passed &= check(eo.engine_knob_keys("pt1") == ("pt1_b", "pt1_chunk_kb")
                     and eo.engine_knob_keys("v5") == ("v5_segment_kb", "v5_region_kb",
                                                       "v5_bucket_mb", "v5_windows_at_25",
+                                                      "v5_pieces_per_thread", "ram_budget_pct")
+                    and eo.engine_knob_keys("v6") == ("v6_segment_kb", "v6_region_kb",
+                                                      "v6_bucket_mb", "v6_windows_at_25",
+                                                      "v6_pieces_per_thread", "v6_write_threads",
                                                       "ram_budget_pct")
                     and eo.engine_knob_keys("v4.1") == ("ram_budget_pct",),
                     "knobs per engine")
@@ -93,10 +114,8 @@ def check_parsing():
     passed &= check(bad is None and knobs == eo.DEFAULT_KNOBS, "empty mapping -> defaults")
     knobs, bad = eo.parse_knobs({"v5_segment_kb": " 256 ", "v5_region_kb": "",
                                  "v5_bucket_mb": 512, "v5_windows_at_25": "2000"})
-    passed &= check(bad is None and knobs == {"v5_segment_kb": 256, "v5_region_kb": 1024,
-                                              "v5_bucket_mb": 512, "v5_windows_at_25": 2000,
-                                              "pt1_b": 0, "pt1_chunk_kb": 4096,
-                                              "ram_budget_pct": 50},
+    passed &= check(bad is None and knobs == dict(eo.DEFAULT_KNOBS, v5_segment_kb=256,
+                                                  v5_bucket_mb=512, v5_windows_at_25=2000),
                     f"strings, ints and blanks parse ({knobs})")
     for raw, want in (("", 0), ("0", 0), (" 5000 ", 5000)):
         knobs, bad = eo.parse_knobs({"pt1_b": raw})
@@ -114,8 +133,8 @@ def check_parsing():
         knobs, bad = eo.parse_knobs({"v5_region_kb": raw, "v5_bucket_mb": "x"})
         passed &= check(knobs is None and bad == "v5_region_kb",
                         f"region {raw!r} rejected, first bad field named ({bad})")
-    choice = eo.resolve({"engine": "v5", "v5_bucket_mb": "nonsense", "v5_segment_kb": "64"})
-    passed &= check(choice.engine == "v5" and choice.knobs["v5_bucket_mb"] == 1024
+    choice = eo.resolve({"engine": "v5", "v5_preset": "custom", "v5_bucket_mb": "nonsense", "v5_segment_kb": "64"})
+    passed &= check(choice.engine == "v5" and choice.knobs["v5_bucket_mb"] == 8192
                     and choice.knobs["v5_segment_kb"] == 64,
                     f"resolve keeps valid knobs and defaults the bad one ({choice})")
     passed &= check(eo.resolve({}) == eo.EngineChoice(eo.DEFAULT_ENGINE, eo.DEFAULT_KNOBS),
@@ -126,15 +145,28 @@ def check_parsing():
 def check_caps_and_recommend():
     passed = True
     passed &= check(eo.max_windows_per_run("v4.1") == 1000, "v4.1 cap is 1000 windows")
-    passed &= check(eo.max_windows_per_run("v5") >= run_budget.target_windows("v5", 27, W),
-                    f"v5 cap {eo.max_windows_per_run('v5')} holds the floor-27 target")
+    for engine in ("v5", "v6"):
+        passed &= check(eo.max_windows_per_run(engine) == 100_000,
+                        f"{engine} cap {eo.max_windows_per_run(engine)}")
+    v6 = eo.resolve({"engine": "v6"})
+    rec = eo.recommend(64 * GB, v6, 25, W)
+    passed &= check(rec == run_budget.recommend_run(
+        64 * GB, "v6", 25, W, bucket_mb=8192,
+        target_at_25=run_budget.DEFAULT_TARGET_WINDOWS_AT_25["v6"], max_windows=100_000),
+        f"v6 @25 reads its own knobs ({rec})")
+    tuned = eo.resolve({"engine": "v6", "v6_preset": "custom", "v6_bucket_mb": "256", "v6_windows_at_25": "2000",
+                        "v5_windows_at_25": "9"})
+    rec = eo.recommend(64 * GB, tuned, 25, W)
+    passed &= check(rec.windows == 2000 and rec.bucket_mb == 256,
+                    f"v6 knobs reach run_budget, v5's do not ({rec})")
     passed &= check(eo.max_windows_per_run("bogus") == eo.max_windows_per_run(eo.DEFAULT_ENGINE),
                     "unknown engine -> default engine's cap")
     v5 = eo.resolve({"engine": "v5"})
     rec = eo.recommend(64 * GB, v5, 25, W)
-    passed &= check(rec == run_budget.recommend_run(64 * GB, "v5", 25, W),
+    passed &= check(rec == run_budget.recommend_run(64 * GB, "v5", 25, W,
+                                                    max_windows=100_000),
                     f"v5 @25, 64 GB: same as run_budget ({rec})")
-    tuned = eo.resolve({"engine": "v5", "v5_bucket_mb": "256", "v5_windows_at_25": "2000"})
+    tuned = eo.resolve({"engine": "v5", "v5_preset": "custom", "v5_bucket_mb": "256", "v5_windows_at_25": "2000"})
     rec = eo.recommend(64 * GB, tuned, 25, W)
     passed &= check(rec.windows == 2000 and rec.bucket_mb == 256,
                     f"knobs reach run_budget ({rec})")
@@ -155,7 +187,7 @@ def check_caps_and_recommend():
                     "pt1 recommendation is not RAM-capped")
     passed &= check(eo.recommend(64 * GB, v5, None, W).windows == run_budget.BASE_WINDOWS,
                     "unknown floor -> base target")
-    for engine, floor in (("v5", 25), ("v5", 27), ("v4.1", 25)):
+    for engine, floor in (("v5", 25), ("v5", 27), ("v6", 27), ("v4.1", 25)):
         choice = eo.resolve({"engine": engine, "ram_budget_pct": "80"})
         for ram in (8 * GB, 64 * GB):
             rec = eo.recommend(ram, choice, floor, W)
@@ -179,13 +211,27 @@ def check_env():
     v41 = eo.launch_env(eo.resolve({"engine": "v4.1", "v5_bucket_mb": "64"}))
     passed &= check(v41 == [("PRIMEATLAS_SCANNER_VERSION", "v4.1")],
                     f"v4.1 env names only the engine ({v41})")
-    v5 = eo.resolve({"engine": "v5", "v5_segment_kb": "256", "ram_budget_pct": "80"})
+    v5 = eo.resolve({"engine": "v5", "v5_preset": "custom", "v5_segment_kb": "256", "ram_budget_pct": "80"})
     env = eo.launch_env(v5)
     passed &= check(env == [("PRIMEATLAS_SCANNER_VERSION", "v5"),
                             ("PRIMEATLAS_V5_SEGMENT_KB", "256"),
                             ("PRIMEATLAS_V5_REGION_KB", "1024"),
-                            ("PRIMEATLAS_V5_BUCKET_MB", "1024")],
-                    f"v5 env carries the three knobs ({env})")
+                            ("PRIMEATLAS_V5_BUCKET_MB", "8192"),
+                            ("PRIMEATLAS_V5_PIECES_PER_THREAD", "16")],
+                    f"v5 env carries its four knobs ({env})")
+    v6 = eo.resolve({"engine": "v6", "v6_preset": "custom", "v6_segment_kb": "1024", "v5_segment_kb": "64"})
+    env6 = eo.launch_env(v6, bucket_mb=300)
+    passed &= check(env6 == [("PRIMEATLAS_SCANNER_VERSION", "v6"),
+                             ("PRIMEATLAS_V6_SEGMENT_KB", "1024"),
+                             ("PRIMEATLAS_V6_REGION_KB", "1024"),
+                             ("PRIMEATLAS_V6_BUCKET_MB", "300"),
+                             ("PRIMEATLAS_V6_PIECES_PER_THREAD", "16"),
+                             ("PRIMEATLAS_V6_WRITE_THREADS", "8")],
+                    f"v6 env carries its own five knobs, bucket override wins ({env6})")
+    passed &= check(work_plan_v6.segment_kb_from_env(dict(env6)) == 1024
+                    and work_plan_v6.pieces_per_thread_from_env(dict(env6)) == 16
+                    and work_plan_v6.write_threads_from_env(dict(env6)) == 8,
+                    "work_plan_v6 reads the env back")
     env = dict(eo.launch_env(v5, bucket_mb=417))
     passed &= check(env["PRIMEATLAS_V5_BUCKET_MB"] == "417", "bucket override wins")
     env = eo.launch_env(eo.resolve({"engine": "pt1", "pt1_b": "7000", "v5_bucket_mb": "64"}))
@@ -198,7 +244,8 @@ def check_env():
                     "pt1_plan reads the env back (missing B -> auto)")
     env = dict(eo.launch_env(v5))
     passed &= check(work_plan_v5.segment_kb_from_env(env) == 256
-                    and work_plan_v5.bucket_mb_from_env(env) == 1024,
+                    and work_plan_v5.bucket_mb_from_env(env) == 8192
+                    and work_plan_v5.pieces_per_thread_from_env(env) == 16,
                     "work_plan_v5 reads the env back")
     return passed
 
@@ -231,8 +278,23 @@ def check_wsl_command():
     return passed
 
 
+def check_info_texts():
+    import json
+    passed = True
+    for lang in ("en", "pl"):
+        path = os.path.join(ROOT, "primeatlas", "core", "locales", f"strings_{lang}.json")
+        with open(path, encoding="utf-8") as f:
+            strings = json.load(f)
+        missing = [k for k in eo.KNOB_KEYS + ("engine",)
+                   if not strings.get(f"gen.info_{k}", "").strip()]
+        passed &= check(not missing, f"{lang}: every knob and the engine selector have an "
+                                     f"info text (missing {missing})")
+    return passed
+
+
 def main():
     passed = check_mirrors()
+    passed &= check_info_texts()
     passed &= check_parsing()
     passed &= check_caps_and_recommend()
     passed &= check_env()

@@ -133,6 +133,13 @@ def main():
         close_guard.request_close(root, tab, T, close_app=lambda: None,
                                   ask=lambda title, msg: asked.append(msg) or False)
         check(asked and "close.v5_sieve_note" in asked[0], "v5 in the sieve stage adds the v5 note")
+        tab.loop_run_info = {"engine": "v6"}
+        asked = []
+        close_guard.request_close(root, tab, T, close_app=lambda: None,
+                                  ask=lambda title, msg: asked.append(msg) or False)
+        check(asked and "close.v5_sieve_note" in asked[0],
+              "v6 (also writes after sieving) adds the same note")
+        tab.loop_run_info = {"engine": "v5"}
         sieve_tail = tab._loop_runner.tail_lines
         tab._loop_runner.tail_lines = [
             "[*] Counting the primes of the written windows (10 headers, 4 threads)..."]
