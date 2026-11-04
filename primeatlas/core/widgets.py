@@ -392,15 +392,20 @@ class ScrollPad:
 
 # Widgets that scroll themselves on the mouse wheel through their own class bindings.
 _SELF_SCROLLING_WIDGETS = (tk.Text, tk.Listbox, ttk.Treeview)
+# Fields whose Tk class binding (Tk 8.6 and 9) steps their value on the wheel while enabled.
+_WHEEL_VALUE_WIDGETS = (ttk.Spinbox, ttk.Combobox)
 
 
 def event_over_own_scroller(event):
     """True if a mouse-wheel event happened over (or inside) a widget that scrolls itself,
-    e.g. a ScrolledText log. A page-level wheel handler bound with bind_all also fires for
-    wheel events over those widgets and must leave them alone, or the page and the widget
-    would scroll together. event.widget can be a plain string for Tk-internal windows
-    (e.g. a combobox popdown) -- never raises."""
+    e.g. a ScrolledText log, or over an enabled spinbox or drop-down list, whose class
+    binding steps its value on the wheel. A page-level wheel handler bound with bind_all also
+    fires for wheel events over those widgets and must leave them alone, or the page and
+    the widget would move together. event.widget can be a plain string for Tk-internal
+    windows (e.g. a combobox popdown) -- never raises."""
     widget = getattr(event, "widget", None)
+    if isinstance(widget, _WHEEL_VALUE_WIDGETS):
+        return not widget.instate(["disabled"])
     while widget is not None and not isinstance(widget, str):
         if isinstance(widget, _SELF_SCROLLING_WIDGETS):
             return True

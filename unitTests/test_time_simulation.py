@@ -67,6 +67,39 @@ def _find_buttons(widget, text):
     return found
 
 
+def _bound_widgets(widget, var):
+    found = []
+    for child in widget.winfo_children():
+        try:
+            if str(child.cget("textvariable")) == str(var):
+                found.append(child)
+        except Exception:  # noqa: BLE001 -- widgets without a textvariable option
+            pass
+        found.extend(_bound_widgets(child, var))
+    return found
+
+
+def check_floor_spinboxes(gen):
+    """Every Quick-gen Floor field is a Spinbox (arrows and the mouse wheel step the floor);
+    a starting point makes the Floor-only field read-only, and clearing it gives it back."""
+    from tkinter import ttk
+    passed = True
+    for name in ("quick_floor_var", "quick_explore_floor_var", "quick_hybrid_target_floor_var",
+                 "quick_primesieve_floor_var", "quick_cudasieve_floor_var"):
+        widgets = _bound_widgets(gen, getattr(gen, name))
+        passed &= check(widgets and all(isinstance(w, ttk.Spinbox) for w in widgets),
+                        f"{name}: every field is a Spinbox ({[type(w).__name__ for w in widgets]})")
+    floor_fields = _bound_widgets(gen, gen.quick_floor_var)
+    gen.quick_floor_start_var.set("10**17")
+    passed &= check(gen.quick_floor_var.get() == "17"
+                    and all(str(w.cget("state")) == "readonly" for w in floor_fields),
+                    "a starting point fills the Floor spinbox and makes it read-only")
+    gen.quick_floor_start_var.set("")
+    passed &= check(all(str(w.cget("state")) == "normal" for w in floor_fields),
+                    "clearing the starting point gives the Floor spinbox back")
+    return passed
+
+
 def check_formats():
     from primeatlas.core.i18n import Translator
     from primeatlas.generation.time_simulation_window import format_long_duration, format_rate
@@ -106,6 +139,7 @@ def main():
         passed &= check(len(buttons) >= 1, "Quick-gen panel has the Time simulation button")
         if not buttons:
             return 1
+        passed &= check_floor_spinboxes(gen)
         gen._engine_fields.engine_var.set("v5")
         gen.quick_mode_var.set("floor")
         gen._on_quick_mode_changed()
@@ -168,6 +202,28 @@ def main():
                         and v["run"].get() == "?", "engine without rows -> no-data note, no times")
         gen._engine_fields.engine_var.set("v5")
 
+        # a run finishing while the window is open: the run's end reloads the log
+        gen.quick_floor_var.set("26")
+        app.update()
+        passed &= check(not any("_poll" in name for name in dir(win)),
+                        "the window does not poll the log")
+        from benchmark_log_schema import BENCHMARK_FIELDNAMES
+        with open(log_path, "a", newline="") as f:
+            csv.DictWriter(f, fieldnames=BENCHMARK_FIELDNAMES).writerow(
+                {k: {"engine": "v5", "base_exponent": "26", "windows_written": "3333",
+                     "numbers_processed": str(3333 * W), "target_idx_start": "0",
+                     "sieve_seconds": "700.0", "write_seconds": "1.0", "write_files": "1",
+                     "run_status": "completed"}.get(k, "") for k in BENCHMARK_FIELDNAMES})
+        with open(log_path, "rb") as f:
+            log_before = f.read()
+        passed &= check("3,333" not in v["measured"].get(), "the new row is not read before the run ends")
+        gen._on_loop_finished(0)
+        app.update()
+        passed &= check("3,333" in v["measured"].get(),
+                        f"a row added while open shows when the run ends ({v['measured'].get()!r})")
+        gen.quick_floor_var.set("25")
+        app.update()
+
         gen.quick_mode_var.set("explore")
         gen._on_quick_mode_changed()
         app.update()
@@ -181,6 +237,10 @@ def main():
         app.update()
         passed &= check(len(gen.quick_explore_floor_var.trace_info()) == before - 1,
                         "closing removes the window's trace")
+        gen._on_loop_finished(0)
+        app.update()
+        passed &= check(gen._time_simulation_window is None or not gen._time_simulation_is_open(),
+                        "a run ending with the window closed reopens nothing")
         with open(log_path, "rb") as f:
             passed &= check(f.read() == log_before, "benchmark_log.csv untouched")
     finally:

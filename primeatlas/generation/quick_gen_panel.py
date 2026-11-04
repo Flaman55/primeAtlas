@@ -16,9 +16,15 @@ from .quick_number import _eval_quick_number
 from .window_planning import (QUICK_GEN_MAX_WINDOW_WIDTH, count_existing_windows,
                               find_continuation_target_idx, find_highest_populated_floor,
                               PRIMESIEVE_MAX_WIDTH_MULT, CUDASIEVE_MIN_PRINTABLE_TOP,
-                              CUDASIEVE_MAX_WIDTH_MULT)
+                              CUDASIEVE_MAX_WIDTH_MULT, QUICK_FLOOR_MAX, UINT64_FLOOR_MAX)
 from .wsl_resources import (estimate_wsl_available_ram_bytes, estimate_wsl_available_cpu_count,
                             recommended_worker_count)
+
+
+def _floor_spinbox(parent, var, width, to=QUICK_FLOOR_MAX):
+    """A Floor field: the arrows and the mouse wheel step the floor through [0, to]; any
+    text can still be typed (Quick-gen evaluates expressions such as 10**3)."""
+    return ttk.Spinbox(parent, from_=0, to=to, increment=1, textvariable=var, width=width)
 
 
 class QuickGenPanel:
@@ -196,7 +202,7 @@ class QuickGenPanel:
         _on_quick_floor_start_changed, wired via a trace on quick_floor_start_var
         (added once, in _init_quick_generation_state).
 
-        Returns the Floor Entry widget so the caller can track it per-panel-instance
+        Returns the Floor spinbox so the caller can track it per-panel-instance
         (see _on_quick_floor_start_changed).
 
         Second row: a "fill gaps first" checkbox, relevant ONLY to the blank-starting-
@@ -218,7 +224,7 @@ class QuickGenPanel:
         frame = ttk.Frame(outer)
         frame.grid(row=0, column=0, sticky="w")
         ttk.Label(frame, text=self.T("quick.field_floor")).pack(side="left")
-        floor_entry = ttk.Entry(frame, textvariable=self.quick_floor_var, width=10)
+        floor_entry = _floor_spinbox(frame, self.quick_floor_var, 10)
         floor_entry.pack(side="left", padx=(6, 20))
         ttk.Label(frame, text=self.T("quick.field_width")).pack(side="left")
         width_vcmd = (self.register(self._validate_quick_width_spinbox), "%P")
@@ -377,7 +383,7 @@ class QuickGenPanel:
         frame = ttk.Frame(outer)
         frame.grid(row=0, column=0, sticky="w")
         ttk.Label(frame, text=self.T("quick.field_floor")).pack(side="left")
-        ttk.Entry(frame, textvariable=self.quick_explore_floor_var, width=10).pack(
+        _floor_spinbox(frame, self.quick_explore_floor_var, 10).pack(
             side="left", padx=(6, 4))
         ttk.Button(frame, text=self.T("quick.explore_auto_floor_button"),
                    command=self._on_explore_auto_floor_clicked).pack(
@@ -431,7 +437,7 @@ class QuickGenPanel:
         ttk.Entry(value_group, textvariable=self.quick_hybrid_value_var, width=20).pack(side="left", padx=(6, 12))
         floor_group = ttk.Frame(frame)
         ttk.Label(floor_group, text=self.T("quick.field_floor")).pack(side="left")
-        ttk.Entry(floor_group, textvariable=self.quick_hybrid_target_floor_var, width=7).pack(side="left", padx=(6, 12))
+        _floor_spinbox(floor_group, self.quick_hybrid_target_floor_var, 7).pack(side="left", padx=(6, 12))
         ttk.Label(frame, text="MAIN <=").pack(side="left")
         ttk.Entry(frame, textvariable=self.quick_hybrid_main_cap_var, width=8).pack(side="left", padx=(6, 12))
         ttk.Label(frame, text=self.T("quick.field_filter_prime_count")).pack(side="left")
@@ -496,7 +502,7 @@ class QuickGenPanel:
         row1 = ttk.Frame(frame)
         row1.pack(anchor="w")
         ttk.Label(row1, text=self.T("quick.field_floor")).pack(side="left")
-        ttk.Entry(row1, textvariable=self.quick_primesieve_floor_var, width=10).pack(
+        _floor_spinbox(row1, self.quick_primesieve_floor_var, 10, to=UINT64_FLOOR_MAX).pack(
             side="left", padx=(6, 20))
         ttk.Label(row1, text=self.T("quick.field_from")).pack(side="left")
         ttk.Entry(row1, textvariable=self.quick_primesieve_from_var, width=24).pack(
@@ -578,7 +584,7 @@ class QuickGenPanel:
         row1 = ttk.Frame(frame)
         row1.pack(anchor="w")
         ttk.Label(row1, text=self.T("quick.field_floor")).pack(side="left")
-        ttk.Entry(row1, textvariable=self.quick_cudasieve_floor_var, width=10).pack(
+        _floor_spinbox(row1, self.quick_cudasieve_floor_var, 10, to=UINT64_FLOOR_MAX).pack(
             side="left", padx=(6, 20))
         ttk.Label(row1, text=self.T("quick.field_from")).pack(side="left")
         ttk.Entry(row1, textvariable=self.quick_cudasieve_from_var, width=24).pack(

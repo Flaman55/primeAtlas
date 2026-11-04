@@ -3,6 +3,7 @@ import sys
 import os
 import csv
 import json
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -80,13 +81,25 @@ def _parse_bool_arg(value):
 
 
 def format_duration(seconds):
+    """Whole seconds from a minute up; one decimal below it, where a low floor's run lasts
+    a few seconds."""
+    if seconds < 60:
+        return f"{seconds:.1f}s"
     hours, rest = divmod(int(seconds), 3600)
     minutes, secs = divmod(rest, 60)
     if hours:
         return f"{hours}h {minutes}m {secs}s"
-    if minutes:
-        return f"{minutes}m {secs}s"
-    return f"{secs}s"
+    return f"{minutes}m {secs}s"
+
+
+def format_per_window(seconds):
+    """Time per window: milliseconds below a second, so a fast floor's run does not read
+    0.00 s/window."""
+    if seconds != seconds:
+        return "n/a s/window"
+    if seconds < 1:
+        return f"{seconds * 1000:.2f} ms/window"
+    return f"{seconds:.2f} s/window"
 
 
 def find_auto_start(base_exponent, portal_folder, window_m, engine=None):
@@ -153,8 +166,51 @@ COMPUTE_SIEVING_PRIMES_COUNT = False
 # ==============================================================================
 
 
+# The scanners' closing report; a low-floor run reports floors, not windows, and does not match.
+_ENGINE_TOTAL_RE = re.compile(
+    rb"\[\*\] TOTAL PRIMES FOUND this run: ([\d,]+) across (\d+) windows")
+
+
+def _engine_total(line):
+    m = _ENGINE_TOTAL_RE.search(line)
+    return (int(m.group(1).replace(b",", b"")), int(m.group(2))) if m else None
+
+
+def _run_teed(cmd):
+    """Runs cmd with its stdout copied through to ours as it arrives; returns (exit code,
+    (total primes, windows) of the scanner's closing report or None). The report comes from
+    the scanner's own stdout, so parallel instances never read each other's (unlike the
+    shared scan-metrics handoff file)."""
+    sys.stdout.flush()
+    out = getattr(sys.stdout, "buffer", None)
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+    totals = None
+    pending = b""
+    fd = proc.stdout.fileno()
+    while True:
+        chunk = os.read(fd, 65536)
+        if not chunk:
+            break
+        if out is not None:
+            out.write(chunk)
+            out.flush()
+        else:
+            sys.stdout.write(chunk.decode("utf-8", errors="replace"))
+            sys.stdout.flush()
+        *lines, pending = (pending + chunk).split(b"\n")
+        for line in lines:
+            totals = _engine_total(line) or totals
+    totals = _engine_total(pending) or totals
+    proc.stdout.close()
+    return proc.wait(), totals
+
+
 def run_batch(scanner_path, base_exponent, target_idx_start, target_idx_stop, workers,
-              batches_per_worker, write_files, compute_sieving_primes_count, window_m):
+              batches_per_worker, write_files, compute_sieving_primes_count, window_m,
+              engine_totals=None):
+    """Runs one scanner batch; True on exit code 0. With engine_totals (a list) the scanner's
+    stdout passes through _run_teed() and its (total primes, windows) report, when it prints
+    one, is appended."""
     cmd = [
         sys.executable,
         scanner_path,
@@ -171,10 +227,15 @@ def run_batch(scanner_path, base_exponent, target_idx_start, target_idx_stop, wo
           f"{target_idx_start}..{target_idx_stop} "
           f"({target_idx_stop - target_idx_start + 1} windows)"
           + ("" if write_files else ", WRITE_FILES=False (count-only)") + "...")
-    result = subprocess.run(cmd)
-    if result.returncode != 0:
+    if engine_totals is None:
+        returncode = subprocess.run(cmd).returncode
+    else:
+        returncode, totals = _run_teed(cmd)
+        if totals is not None:
+            engine_totals.append(totals)
+    if returncode != 0:
         print(f"[-] ERROR: batch {target_idx_start}..{target_idx_stop} exited with code "
-              f"{result.returncode} -- stopping.")
+              f"{returncode} -- stopping.")
         return False
     print(f"[{datetime.now().strftime('%H:%M:%S')}] Batch {target_idx_start}..{target_idx_stop} "
           f"DONE.")
@@ -210,7 +271,7 @@ def print_benchmark_summary(base_exponent, start_idx, end_idx, total_seconds, po
                              window_m=None, base_gen_seconds=None, sieve_seconds=None,
                              write_seconds=None, bytes_written=None, numbers_processed=None,
                              workers=None, run_status=RUN_STATUS_COMPLETED,
-                             verify_seconds=None):
+                             verify_seconds=None, engine_counted=None):
     """Logs to the SAME benchmark_log.csv used by every orchestrator variant (see this file's
     header for why that's deliberately shared, not forked).
 
@@ -225,10 +286,16 @@ def print_benchmark_summary(base_exponent, start_idx, end_idx, total_seconds, po
     overlap the waits. With bytes_written None the sizes of the windows read are summed
     instead (a stopped run has no scanner handoff). A stopped run with no window found
     logs no row. verify_seconds is the D-proves-P time of the run (reconcile_batch()),
-    part of total_seconds; it gets its own column so charts can tell it from the engine."""
+    part of total_seconds; it gets its own column so charts can tell it from the engine.
+    engine_counted, (total primes, windows) reported by the scanners for the whole range,
+    replaces the header pass of a written run (one file open per window)."""
     window_m = WINDOW_M if window_m is None else window_m
     workers = WORKERS if workers is None else workers
-    if write_files:
+    if write_files and engine_counted is not None:
+        total_primes, windows_found = engine_counted
+        print(f"[*] Prime count from the scanner's report ({windows_found:,} windows), "
+              f"headers not re-read.")
+    elif write_files:
         # Counts are re-derived from disk (the store each window was written into, see
         # storage_kinds.written_kind()) rather than taken from write_scan_metrics_handoff():
         # parallel instances share that file (orchestrator_loop_v2.py header).
@@ -272,7 +339,7 @@ def print_benchmark_summary(base_exponent, start_idx, end_idx, total_seconds, po
     print(f"[BENCHMARK] 10^{base_exponent}, target_idx {start_idx}..{end_idx - 1} "
           f"({windows_found} {windows_label})")
     print(f"[BENCHMARK] total time: {format_duration(total_seconds)} "
-          f"({seconds_per_window:.3f} s/window)")
+          f"({format_per_window(seconds_per_window)})")
     print(f"[BENCHMARK] total primes found: {total_primes:,} "
           f"(avg {avg_primes_per_window:,.0f}/window, {primes_per_second:,.0f} primes/sec)")
     if sieving_primes_count is not None:
@@ -316,7 +383,7 @@ def print_benchmark_summary(base_exponent, start_idx, end_idx, total_seconds, po
                 "target_idx_end": end_idx - 1,
                 "windows_written": windows_found,
                 "total_seconds": f"{total_seconds:.3f}",
-                "seconds_per_window": f"{seconds_per_window:.4f}",
+                "seconds_per_window": f"{seconds_per_window:.6f}",
                 "total_primes": total_primes,
                 "avg_primes_per_window": f"{avg_primes_per_window:.1f}",
                 "primes_per_second": f"{primes_per_second:.2f}",
@@ -427,16 +494,19 @@ def run_orchestrator(base_exponent=None, window_count=None, start_auto=None, sta
     interrupted = False
     stopped = False
     verify_seconds = 0.0
+    engine_totals = [] if write_files else None
+    batches_launched = 0
     while current < end_at:
         if generation_stop.stop_requested(portal_folder):
             # Stop requested before this batch's scanner existed for the GUI to kill.
             stopped = True
             break
         batch_stop = min(current + batch_size, end_at) - 1
+        batches_launched += 1
         ok = run_batch(scanner_path, base_exponent, current, batch_stop, workers,
                         batches_per_worker=batches_per_worker, write_files=write_files,
                         compute_sieving_primes_count=compute_sieving_primes_count,
-                        window_m=window_m)
+                        window_m=window_m, engine_totals=engine_totals)
         if not ok and generation_stop.stop_requested(portal_folder):
             stopped = True
             if write_files:
@@ -471,13 +541,13 @@ def run_orchestrator(base_exponent=None, window_count=None, start_auto=None, sta
               f"({windows_done} windows completed before the error).")
         print(f"[!] Orchestrator run time: {total_duration} "
               f"({clock_start} -> {datetime.now().strftime('%H:%M:%S')}) "
-              f"-- {seconds_per_window:.2f} s/window")
+              f"-- {format_per_window(seconds_per_window)}")
     else:
         print(f"[!] ALL JOBS DONE. target_idx {actual_start_window}..{end_at - 1} "
               f"({window_count} windows, {window_count * 10} million).")
         print(f"[!] Total orchestrator run time: {total_duration} "
               f"({clock_start} -> {datetime.now().strftime('%H:%M:%S')}) "
-              f"-- {seconds_per_window:.2f} s/window")
+              f"-- {format_per_window(seconds_per_window)}")
     print(f"{'='*60}")
 
     if stopped:
@@ -505,6 +575,13 @@ def run_orchestrator(base_exponent=None, window_count=None, start_auto=None, sta
         write_seconds = metrics.get("write_seconds")
         bytes_written = metrics.get("bytes_written")
         max_rss_mb = peak_child_rss_mb()
+        # The scanners' own reports replace the header pass when every batch printed one
+        # and their windows add up to the range.
+        engine_counted = None
+        if write_files and engine_totals and len(engine_totals) == batches_launched:
+            counted = (sum(p for p, _w in engine_totals), sum(w for _p, w in engine_totals))
+            if counted[1] == current - actual_start_window:
+                engine_counted = counted
         print_benchmark_summary(base_exponent, actual_start_window, current,
                                  total_seconds, portal_folder,
                                  l_final=l_final, sieving_primes_count=sieving_primes_count,
@@ -515,7 +592,8 @@ def run_orchestrator(base_exponent=None, window_count=None, start_auto=None, sta
                                  write_seconds=write_seconds, bytes_written=bytes_written,
                                  numbers_processed=metrics.get("numbers_processed"),
                                  workers=workers,
-                                 verify_seconds=verify_seconds if write_files else None)
+                                 verify_seconds=verify_seconds if write_files else None,
+                                 engine_counted=engine_counted)
 
     return not interrupted
 

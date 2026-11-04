@@ -5,8 +5,9 @@ Two sliders: the floor and the run width in windows of 10^7 (the Quick-gen Width
 scale up to the engine's per-run cap), plus the engine selector. The window writes and
 reads the very StringVars of the Generation form it was opened from, so a slider move fills
 the form and a form edit moves the slider; the vars belong to the form, the window only
-traces them and removes its traces when it closes. The log is read once when the window
-opens; it is never written.
+traces them and removes its traces when it closes. The log is read when the window opens
+and again by reload_log(), which the Generation tab calls when a run ends, so a run finishing
+meanwhile recalibrates the model; it is never written.
 """
 import math
 import tkinter as tk
@@ -14,9 +15,10 @@ from tkinter import ttk
 
 from . import engine_options, time_model
 from .run_output import format_duration_short
+from .window_planning import QUICK_FLOOR_MAX
 
 FLOOR_MIN = time_model.LOW_FLOOR_CUTOFF
-FLOOR_MAX = 35
+FLOOR_MAX = QUICK_FLOOR_MAX
 _DAY = 86400.0
 _YEAR = 365.25 * _DAY
 
@@ -71,6 +73,7 @@ class TimeSimulationWindow(tk.Toplevel):
         self._width_cap = width_cap
         self._write_files = write_files
         self._pt1_b = pt1_b
+        self._log_path = log_path
         self._samples = time_model.read_samples(log_path)
         self._calibrations = {}
         self._syncing = False
@@ -120,6 +123,12 @@ class TimeSimulationWindow(tk.Toplevel):
                   wraplength=560, justify="left").grid(
             row=5, column=0, columnspan=3, sticky="w", pady=(8, 0))
         body.columnconfigure(1, weight=1)
+
+    def reload_log(self):
+        """Rereads the log (a run has just added its row) and recalibrates."""
+        self._samples = time_model.read_samples(self._log_path)
+        self._calibrations = {}
+        self.refresh()
 
     def close(self):
         for var, trace_id in self._traces:

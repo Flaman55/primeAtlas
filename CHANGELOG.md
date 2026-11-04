@@ -225,6 +225,26 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   minuty zamiast ponad godziny); jego czas trafia do nowej kolumny benchmarku
   verify_seconds.
 
+### +27 — UI polish: ms/window, engine prime count, live time simulation, Floor spinboxes
+
+- English: A fast run's console summary shows its time per window in milliseconds
+  (3.00 ms/window instead of 0.00 s/window) and a run under a minute in tenths of a
+  second. After a run that writes files, the prime count comes from the engine's own
+  report instead of re-reading every window header, so a long run's summary no longer
+  waits on thousands of file opens. The Time simulation window reloads the benchmark log
+  when a run finishes while it is open. Every Quick-gen Floor field is a spinbox, and the
+  mouse wheel over any enabled spinbox or drop-down list changes its value without
+  scrolling the page.
+- Polski: Podsumowanie szybkiego przebiegu w konsoli podaje czas na okno w milisekundach
+  (3,00 ms/okno zamiast 0,00 s/okno), a przebieg krótszy niż minuta w dziesiątych
+  częściach sekundy. Po przebiegu zapisującym pliki liczba liczb pierwszych pochodzi z
+  raportu samego silnika, a nie z ponownego odczytu nagłówka każdego okna, więc
+  podsumowanie długiego przebiegu nie czeka już na tysiące otwarć plików. Okno symulacji
+  czasu wczytuje log benchmarku ponownie, gdy przebieg skończy się przy otwartym oknie.
+  Każde pole Piętro w Szybkiej generacji jest polem ze strzałkami, a kółko myszy nad
+  dowolnym aktywnym takim polem lub listą rozwijaną zmienia wartość bez przewijania
+  strony.
+
 ## 1.2.0 — 2026-11-01
 
 ### English
