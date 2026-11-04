@@ -44,6 +44,7 @@ from tkinter import ttk, messagebox, filedialog
 
 from ..core import background
 from ..core.base_tab import BaseTab
+from ..core.ui_state import remember
 from ..core.widgets import StripedTreeview
 from .squares_window import (
     check_interval_range, check_interval_range_from_source, MAX_SIEVE_BOUND, PRESETS,
@@ -166,6 +167,15 @@ class ResearchSquaresTab(BaseTab):
         ttk.Radiobutton(
             source_row, text=T("research_squares.source_storage"),
             variable=self.squares_source_var, value="storage").pack(side="left", padx=(10, 0))
+        # the preset first: its handler resets the required count, restored after it
+        remember("research.squares.preset", self.squares_preset_combo, choices=list(_PRESET_IDS))
+        self._set_custom_fields_visible(self._current_preset_id() == "custom")
+        remember("research.squares.required_count", self.squares_required_count_entry)
+        remember("research.squares.n_from", self.squares_n_from_entry)
+        remember("research.squares.n_to", self.squares_n_to_entry)
+        remember("research.squares.custom_a", self.squares_custom_a_entry)
+        remember("research.squares.custom_b", self.squares_custom_b_entry)
+        remember("research.squares.source", self.squares_source_var)
 
         button_row = ttk.Frame(self)
         button_row.pack(fill="x", padx=6, pady=(0, 8))

@@ -5,12 +5,14 @@ SettingsTab reuses the Generation tab's WSL launch machinery.
 """
 from primeatlas.app import app_dynamic as _dyn
 from primeatlas import try_import_sympy as primality_try_import_sympy
+from primeatlas.core import ui_state_dynamic
 from primeatlas.core.storage import LOW_FLOOR_CUTOFF
 from primeatlas.generation.engine_argv import (
     build_loop_argv, build_constellation_finder_argv, build_primesieve_argv,
     build_pip_install_argv, build_cudasieve_status_argv, build_cudasieve_fetch_license_argv,
     build_cudasieve_build_argv, build_primecount_query_argv,
 )
+from primeatlas.generation.generation_settings import load_generation_settings
 from primeatlas.generation.logged_runners import WslLoggedRunner, LocalLoggedRunner
 from primeatlas.generation.window_planning import (
     PRIMESIEVE_MAX_STOP, find_continuation_target_idx,
@@ -54,9 +56,8 @@ class SettingsWiringMixin:
         build_constellation_finder_argv, build_wsl_logged_command, WslLoggedRunner,
         generation_log_paths) via this small callable bundle, rather than
         reimplementing a second copy inside primeatlas/settings/. get_loop_defaults() reads
-        self.generation_tab_widget._generation_settings, populated by GenerationTab's
-        own construction (primeatlas/generation/generation_tab.py, called just before this
-        method) from .portal_generation_settings.json.
+        the Generation pipeline form's current values from the remembered-fields store
+        (primeatlas/generation/generation_settings.py).
 
         build_wsl_logged_command here is wrapped in a lambda supplying the current
         _dyn.PORTAL_FOLDER explicitly -- primeatlas/generation/wsl_command.py's own copy of this
@@ -69,7 +70,7 @@ class SettingsWiringMixin:
             "get_portal_folder": lambda: _dyn.PORTAL_FOLDER,
             "set_portal_folder": self._set_portal_folder,
             "get_loop_defaults":
-                lambda: self.generation_tab_widget._generation_settings.get("loop", {}),
+                lambda: load_generation_settings(ui_state_dynamic.STORE)["loop"],
             "build_loop_argv": build_loop_argv,
             "build_constellation_finder_argv": build_constellation_finder_argv,
             "build_wsl_logged_command":

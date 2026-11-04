@@ -57,6 +57,7 @@ from .loop_section import LoopSection
 from .constellation_section import ConstellationSection
 from .ktuple_section import KtupleSection
 from .run_progress import GenerationRunProgress
+from primeatlas.core import ui_state_dynamic
 from .generation_settings import load_generation_settings
 from .logged_runners import WslLoggedRunner
 
@@ -147,11 +148,12 @@ class GenerationTab(QuickGenPanel, QuickGenRuns, QuickGenPlan, LoopSection,
         to require editing source files -- see orchestrator_v3.py's/orchestrator_
         loop_v2.py's workers/batches_per_worker/window_count_per_run CLI-exposure
         changes), its own Run/Stop pair, and its own live output pane. Form
-        values are loaded from .portal_generation_settings.json once here and
-        persisted again every time Run is pressed (see _on_run_loop/
-        _on_run_constellation) -- so the next app start reopens with
-        whatever was last used, no re-typing needed."""
-        self._generation_settings = load_generation_settings(self._get_portal_folder())
+        values come from the remembered-fields store (generation_settings.py, after a
+        one-time copy of the storage folder's .portal_generation_settings.json) and
+        every field saves its own changes, so the next app start reopens the forms as
+        they were left."""
+        self._generation_settings = load_generation_settings(
+            ui_state_dynamic.STORE, self._get_portal_folder())
 
         # Scrollable wrapper (see _build_scrollable_container's own docstring) --
         # everything below packs into `generation_body`, not into
@@ -164,6 +166,7 @@ class GenerationTab(QuickGenPanel, QuickGenRuns, QuickGenPlan, LoopSection,
         quick_outer = ttk.Labelframe(generation_body, text=self.T("quick.section_title"))
         quick_outer.pack(fill="x", padx=6, pady=(6, 0))
         self._build_quick_generation_panel(quick_outer)
+        self._on_quick_mode_changed()  # the hint of the restored mode
 
         # Sections stack at their natural height; each console's own HeightGrip sets
         # how tall its output is.

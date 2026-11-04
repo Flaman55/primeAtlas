@@ -16,7 +16,7 @@ Visualization tabs (`generation_offer_coordinator.py`); a restore job (Settings 
 
 | Step (module) | Runs when | Reads | Writes / does |
 |---|---|---|---|
-| Form parse and save (`loop_section.py`) | Run clicked, no other engine running | form fields | `.portal_generation_settings.json` |
+| Form parse and save (`loop_section.py`) | Run clicked, no other engine running | form fields | parsed values into `ui_state.json` (each field also saves its own changes) |
 | Run sizing (`engine_options.py`, `run_budget.py`) | v6 / v5 / v4.1 | free WSL RAM (`wsl_resources.py`), RAM budget knob | window count per run |
 | Command (`engine_argv.py`, `wsl_command.py`) | always | storage path, engine, knobs | `wsl.exe` command with `CONSTELLATION_PORTAL_DIR` and `PRIMEATLAS_*` env; log/exit paths |
 | Active-run marker (`run_guard.py`) | every launch | | `.generation_logs/ACTIVE_RUN.json` |

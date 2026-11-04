@@ -44,6 +44,7 @@ import pattern_catalog_v1
 from ..core import background
 from ..core.base_tab import BaseTab
 from ..core.progress_bar_owner import claim_progress_bar
+from ..core.ui_state import remember
 import hit_paging
 
 from .constellations import (
@@ -261,6 +262,10 @@ class ConstellationsRecordsTab(BaseTab):
 
         if pattern_catalog_v1.all_k():
             self.k_combo.current(0)
+        # the export page range stays unremembered: it refers to the cell last drilled into
+        remember("constellations.records.k", self.k_combo)
+        remember("constellations.records.floor_from", self.floor_from_entry)
+        remember("constellations.records.floor_to", self.floor_to_entry)
 
     def _rebuild_tree(self, variant_ids, row_count=0):
         """(Re)builds self.tree with one column per variant id, plus the fixed

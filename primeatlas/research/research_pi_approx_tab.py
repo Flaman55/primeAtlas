@@ -56,6 +56,7 @@ from tkinter import ttk, messagebox, filedialog
 
 from ..core import background
 from ..core.base_tab import BaseTab
+from ..core.ui_state import remember
 from ..core.widgets import StripedTreeview
 from ..generation.engine_argv import build_primecount_query_argv
 from ..generation.wsl_blocking import (run_primecount_wsl_blocking,
@@ -139,6 +140,10 @@ class ResearchPiApproxTab(BaseTab):
         ttk.Radiobutton(
             source_row, text=T("research_pi_approx.source_primecount"),
             variable=self.pi_source_var, value="primecount").pack(side="left", padx=(10, 0))
+        remember("research.pi.x_from", self.pi_x_from_entry)
+        remember("research.pi.x_to", self.pi_x_to_entry)
+        remember("research.pi.step", self.pi_step_entry)
+        remember("research.pi.source", self.pi_source_var)
 
         button_row = ttk.Frame(self)
         button_row.pack(fill="x", padx=6, pady=(0, 8))

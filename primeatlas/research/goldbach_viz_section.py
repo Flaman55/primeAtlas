@@ -11,6 +11,7 @@ and its other mixins set up, so it is never instantiated on its own.
 import tkinter as tk
 from tkinter import ttk, messagebox
 
+from ..core.ui_state import remember
 from .goldbach_paging import (
     GOLDBACH_CASCADE_ROW_CAP, GOLDBACH_VIZ_MAX_COLS, GOLDBACH_VIZ_ROWS_PER_COL)
 
@@ -204,6 +205,8 @@ class GoldbachVizSection:
         self.goldbach_viz_n_entry.insert(0, self.goldbach_n_entry.get() or "1000")
         self.goldbach_viz_n_entry.bind(
             "<Return>", lambda _e: self._on_goldbach_viz_refresh())
+        remember("research.goldbach_viz.range_from", self.goldbach_viz_range_from_entry)
+        remember("research.goldbach_viz.n", self.goldbach_viz_n_entry)
         self.goldbach_viz_check_button = ttk.Button(
             top, text=T("research_goldbach.run_button"),
             command=self._on_goldbach_viz_refresh)
@@ -244,6 +247,7 @@ class GoldbachVizSection:
         self.goldbach_viz_decompose_entry.pack(side="left", padx=(6, 12))
         self.goldbach_viz_decompose_entry.bind(
             "<Return>", lambda _e: self._on_goldbach_viz_decompose())
+        remember("research.goldbach_viz.decompose", self.goldbach_viz_decompose_entry)
         self.goldbach_viz_decompose_button = ttk.Button(
             decompose_row, text=T("research_goldbach.viz_decompose_button"),
             command=self._on_goldbach_viz_decompose)

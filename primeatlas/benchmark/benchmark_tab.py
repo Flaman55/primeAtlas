@@ -32,6 +32,7 @@ from tkinter import ttk, messagebox, filedialog
 from tkinter import font as tkfont
 
 from ..core.base_tab import BaseTab
+from ..core.ui_state import remember
 from ..core.widgets import StripedTreeview
 from .benchmark import (
     BENCHMARK_PAGE_SIZE, BENCHMARK_TREE_HIDDEN_COLUMNS,
@@ -491,6 +492,8 @@ class BenchmarkTab(BaseTab):
         self._y_pins = {"run": {}, "sieve": {}}
         self.log_scale_var = tk.BooleanVar(value=False)
         self.references_var = tk.BooleanVar(value=False)
+        remember("benchmark.log_scale", self.log_scale_var)
+        remember("benchmark.show_references", self.references_var)
         ttk.Checkbutton(top, text=T("bench.log_scale"), variable=self.log_scale_var,
                         command=self._redraw_charts).pack(side="right")
         ttk.Checkbutton(top, text=T("bench.show_references"), variable=self.references_var,

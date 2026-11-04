@@ -11,7 +11,9 @@ harmless, and the test's timing no longer depends on the size of the real storag
 
 AppSettings.save() is replaced by a no-op, so the redirected storage_path and any setting
 a test changes never reach primeatlas/locales/app_settings.json. A test that counts
-saves replaces save() again after this. Message boxes stay the caller's business: tests
+saves replaces save() again after this. The remembered-fields store
+(primeatlas/core/ui_state_dynamic.STORE) is replaced by an in-memory one, so the user's
+ui_state.json is neither read nor written; a test of persistence installs its own. Message boxes stay the caller's business: tests
 patch them their own way (some record what was shown).
 """
 import atexit
@@ -36,6 +38,9 @@ def isolate_app(portal=None, prefix="primeatlas_test_portal_"):
     if portal is None:
         portal = tempfile.mkdtemp(prefix=prefix)
         atexit.register(shutil.rmtree, portal, True)
+    from primeatlas.core import ui_state_dynamic
+    from primeatlas.core.ui_state import UiStateStore
+    ui_state_dynamic.STORE = UiStateStore(None)
     app_dynamic.APP_SETTINGS.save = lambda: None
     app_dynamic.APP_SETTINGS.set_storage_path(portal)
     app_dynamic.PORTAL_FOLDER = portal

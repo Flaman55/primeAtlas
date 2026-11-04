@@ -23,6 +23,7 @@ from tkinter import ttk, messagebox, filedialog
 
 from ..core import background
 from ..core.base_tab import BaseTab
+from ..core.ui_state import remember
 from ..core.widgets import StripedTreeview
 from .gaps_window import check_gap_range, check_gap_range_from_source, MAX_SIEVE_BOUND
 from .research_gaps import read_is_prime_from_storage, MissingStorageRangeError
@@ -89,6 +90,10 @@ class ResearchGapsTab(BaseTab):
         ttk.Radiobutton(
             source_row, text=T("research_gaps.source_storage"),
             variable=self.gaps_source_var, value="storage").pack(side="left", padx=(10, 0))
+        remember("research.gaps.overlay", self.gaps_overlay_combo, choices=list(_OVERLAY_IDS))
+        remember("research.gaps.n_from", self.gaps_n_from_entry)
+        remember("research.gaps.n_to", self.gaps_n_to_entry)
+        remember("research.gaps.source", self.gaps_source_var)
 
         button_row = ttk.Frame(self)
         button_row.pack(fill="x", padx=6, pady=(0, 8))

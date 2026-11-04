@@ -23,6 +23,7 @@ from primeatlas.app.settings_wiring import SettingsWiringMixin
 from primeatlas.app.single_tabs_section import SingleTabsSectionMixin
 from primeatlas.app.visualization_section import VisualizationSectionMixin
 from primeatlas.constellations.constellations_tree_coordinator import ConstellationsTreeCoordinator
+from primeatlas.core import ui_state_dynamic
 from primeatlas.core.app_icon import apply_tk_icon
 from primeatlas.core.totals_search_coordinator import TotalsSearchCoordinator
 from primeatlas.core.version import version_label
@@ -38,6 +39,7 @@ class PortalBrowserApp(ThemeMixin, PrimesSectionMixin, ConstellationsSectionMixi
                        SingleTabsSectionMixin, SettingsWiringMixin, tk.Tk):
     def __init__(self):
         super().__init__()
+        ui_state_dynamic.STORE.attach(self)
         apply_tk_icon(self)
         self._apply_font_scale(_dyn.APP_SETTINGS.font_scale)
         self._apply_theme(_dyn.APP_SETTINGS.theme)
@@ -277,6 +279,12 @@ class PortalBrowserApp(ThemeMixin, PrimesSectionMixin, ConstellationsSectionMixi
         if _dyn.APP_SETTINGS.auto_update_check:
             self.after(_const.APP_UPDATE_STARTUP_CHECK_DELAY_MS,
                        self.settings_tab._check_for_app_update)
+
+    def destroy(self):
+        """Writes a pending remembered-fields change (ui_state.SAVE_DELAY_MS debounce)
+        before the window goes."""
+        ui_state_dynamic.STORE.flush()
+        super().destroy()
 
     def _finish_loading_screen(self):
         """Reveals the real UI (status_frame + notebook) and tears down the loading

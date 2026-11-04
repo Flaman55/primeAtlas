@@ -45,10 +45,16 @@ from tkinter import ttk, messagebox
 
 import pattern_catalog_v1
 
+from ..core import ui_state_dynamic
 from ..core.base_tab import BaseTab
 from ..core.widgets import StripedTreeview
 from ..core.storage import digit_count_floor, list_floors
+from ..core.ui_state import remember
 from .constellations import list_constellation_hits
+
+
+# The selected variant's id (the combo shows translated labels of the current k's variants).
+_VARIANT_KEY = "constellations.calc.variant_id"
 
 
 class ConstellationsCalcTab(BaseTab):
@@ -141,6 +147,8 @@ class ConstellationsCalcTab(BaseTab):
         ttk.Label(input_row, text=T("const_calc.field_offset")).pack(side="left")
         self.offset_entry = ttk.Entry(input_row, width=24)
         self.offset_entry.pack(side="left", padx=(6, 16))
+        remember("constellations.calc.exp", self.exp_entry)
+        remember("constellations.calc.offset", self.offset_entry)
         self.compute_button = ttk.Button(
             input_row, text=T("const_calc.compute_button"), command=self._on_compute)
         self.compute_button.pack(side="left")
@@ -171,8 +179,20 @@ class ConstellationsCalcTab(BaseTab):
                                       # retroactively change what a search believes it's
                                       # looking for
         if self._k_values:
+            # read before _on_k_changed() selects (and saves) the first variant
+            saved_variant = ui_state_dynamic.STORE.get(_VARIANT_KEY)
             self.k_combo.current(0)
+            remember("constellations.calc.k", self.k_combo)
             self._on_k_changed()
+            self._select_variant_id(saved_variant)
+
+    def _select_variant_id(self, variant_id):
+        """Selects the variant with this id when the current k has one."""
+        for idx, w in enumerate(self._variants):
+            if str(w["id"]) == str(variant_id):
+                self.variant_combo.current(idx)
+                self._on_variant_changed()
+                return
 
     def _on_k_changed(self, _event=None):
         k_str = self.k_combo.get()
@@ -194,6 +214,7 @@ class ConstellationsCalcTab(BaseTab):
             self.pattern_info_var.set("")
             return
         w = self._variants[idx]
+        ui_state_dynamic.STORE.set(_VARIANT_KEY, str(w["id"]))
         offsets_str = ", ".join(str(o) for o in w["offsets"])
         if w["record_digits"] is not None:
             self.pattern_info_var.set(T(

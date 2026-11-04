@@ -46,6 +46,17 @@ Every Quick-gen Floor field (Floor only, Explore, Hybrid, primesieve, CUDASieve)
 arrows and the mouse wheel step the floor through 0 to `QUICK_FLOOR_MAX` (35; primesieve and
 CUDASieve stop at `UINT64_FLOOR_MAX`, 19), and a typed value or expression is not capped.
 
+## Remembered fields
+
+Every Quick-gen input and every field of the pipeline, constellation and k-tuple forms is remembered
+per install (`core/ui_state.py`, keys `quick.*` and `generation.<section>.<field>`): restored at
+start, saved on each change, no Run click needed. The forms read their values through
+`load_generation_settings()`, which first copies the storage folder's legacy
+`.portal_generation_settings.json` once per install; Run still saves the parsed values (the k,
+variant and strategy combos in their canonical form). Never remembered: Quick-gen's starting point
+(a run consumes it; the Floor it filled is restored as an ordinary value) and the k-tuple reset
+checkpoint box (unchecked at every start).
+
 ## Time simulation
 
 The Quick-gen "Time simulation" button opens one window with two sliders: the floor (7-35) and
@@ -85,7 +96,8 @@ extrapolated, and with fewer than two rows of the engine it shows only pi(L).
 
 ## Kept data
 
-`.portal_generation_settings.json`, `.generation_logs/` (logs, exit codes, `ACTIVE_RUN.json`),
+Form values in `ui_state.json` (per install; a storage folder's legacy `.portal_generation_settings.json`
+is copied in once), `.generation_logs/` (logs, exit codes, `ACTIVE_RUN.json`),
 `GENERATION_STOP_REQUEST.txt`, `STOP_REQUEST.txt` ([data.md](../data.md)).
 
 ## Specs and tests
@@ -94,7 +106,7 @@ extrapolated, and with fewer than two rows of the engine it shows only pi(L).
 `test_engine_presets`, `test_engine_gui_wiring`, `test_run_budget`, `test_run_guard`, `test_close_guard`, `test_close_guard_wiring`,
 `test_cross_engine_run_lock`, `test_gen_progress_bar_engine_gating`, `test_progress_bar_owner`,
 `test_console_controls`, `test_constellation_auto_retry`, `test_storage_fill`, `test_pi_seed_checkbox_exclusivity`,
-`test_time_model`, `test_time_simulation`.
+`test_time_model`, `test_time_simulation`, `test_ui_state_app`.
 
 ## Known gaps
 

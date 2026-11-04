@@ -245,6 +245,26 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   dowolnym aktywnym takim polem lub listą rozwijaną zmienia wartość bez przewijania
   strony.
 
+### +28 — Atlas remembers its forms across restarts
+
+- English: Form fields keep their last value when Atlas is closed and opened again:
+  Quick-gen (every mode), the Generation pipeline, constellation and k-tuple forms (no
+  Run needed any more), Research, Constellations, Primality, the primesieve calculator and
+  the Benchmark chart options. One file per install (`ui_state.json`, next to
+  `app_settings.json`) holds them, so switching the storage folder keeps the forms; the
+  values the Generation forms kept per storage folder are carried over once. Fields that
+  would act on their own at the next start stay empty: Quick-gen's starting point and the
+  k-tuple "reset checkpoint" box start blank every time.
+- Polski: Pola formularzy zachowują ostatnią wartość po zamknięciu i ponownym
+  otwarciu Atlasa: Szybkie generowanie (wszystkie tryby), formularze potoku generowania,
+  konstelacji i k-krotek (bez potrzeby klikania Uruchom), Badania, Konstelacje,
+  Pierwszość, kalkulator primesieve i opcje wykresów Benchmarku. Trzyma je jeden plik na
+  instalację (`ui_state.json`, obok `app_settings.json`), więc zmiana folderu magazynu nie
+  zmienia formularzy; wartości, które formularze generowania trzymały dotąd w magazynie,
+  są przenoszone raz. Pola, które przy następnym starcie zadziałałyby same, zostają
+  puste: punkt startowy Szybkiego generowania i pole „reset checkpointu” k-krotek
+  startują zawsze niezaznaczone.
+
 ## 1.2.0 — 2026-11-01
 
 ### English
