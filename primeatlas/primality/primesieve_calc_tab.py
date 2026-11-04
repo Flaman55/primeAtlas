@@ -33,6 +33,7 @@ from tkinter import ttk, messagebox
 
 from ..core.background import PersistentWorker
 from ..core.base_tab import BaseTab
+from ..core.ui_state import remember
 from ..generation.engine_argv import PRIMESIEVE_QUERY_SCRIPT
 from ..generation.quick_number import _eval_quick_number
 from ..generation.wsl_command import windows_path_to_wsl
@@ -175,6 +176,11 @@ class PrimesieveCalcTab(BaseTab):
         self._primesieve_calc_x_frame.grid(row=0, column=0, sticky="w")
         self._primesieve_calc_nth_frame.grid_remove()
         self._primesieve_calc_x_frame.grid_remove()
+        remember("primesieve_calc.operation", self.primesieve_calc_op_combo,
+                 choices=[code for code, _label in self._primesieve_calc_ops])
+        self._on_primesieve_calc_operation_changed()
+        for name in ("lo", "hi", "n", "start", "x"):
+            remember(f"primesieve_calc.{name}", getattr(self, f"primesieve_calc_{name}_entry"))
 
         button_row = ttk.Frame(container)
         button_row.pack(fill="x", pady=(0, 10))

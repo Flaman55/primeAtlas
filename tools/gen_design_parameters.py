@@ -129,8 +129,8 @@ def form_page(title, section, intro, labels, engine_options, generation_settings
         label = labels.get(FORM_LABELS[section].get(key, ""), "")
         rows.append(f"| `{key}` | {_form_default(default)} | {_cell(kind)} | `{owner}` | "
                     f"{_cell(label) or '(no form label)'} |")
-    return (HEADER + f"# Parameters: {title}\n\n{intro}. Saved per storage folder in "
-            "`.portal_generation_settings.json` (data.md); a key missing there takes the default "
+    return (HEADER + f"# Parameters: {title}\n\n{intro}. Remembered per install in "
+            "`ui_state.json` (data.md); a key missing there takes the default "
             "below. \"What it does\" is the form's own label.\n\n" + "\n".join(rows) + "\n")
 
 

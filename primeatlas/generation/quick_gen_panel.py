@@ -11,6 +11,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 
 from ..core.storage import digit_count_floor, LOW_FLOOR_CUTOFF
+from ..core.ui_state import remember
 from . import engine_options
 from .quick_number import _eval_quick_number
 from .window_planning import (QUICK_GEN_MAX_WINDOW_WIDTH, count_existing_windows,
@@ -25,6 +26,19 @@ def _floor_spinbox(parent, var, width, to=QUICK_FLOOR_MAX):
     """A Floor field: the arrows and the mouse wheel step the floor through [0, to]; any
     text can still be typed (Quick-gen evaluates expressions such as 10**3)."""
     return ttk.Spinbox(parent, from_=0, to=to, increment=1, textvariable=var, width=width)
+
+
+# Every Quick-gen input variable ui_state remembers (see _remember_quick_fields).
+_REMEMBERED_QUICK_VARS = (
+    "quick_mode_var", "quick_floor_var", "quick_floor_width_var", "quick_floor_fill_gaps_var",
+    "quick_from_var", "quick_to_var",
+    "quick_explore_floor_var", "quick_iterations_var", "quick_explore_width_var",
+    "quick_hybrid_floor_var", "quick_hybrid_iterations_var", "quick_hybrid_width_var",
+    "quick_hybrid_filter_prime_count_var", "quick_hybrid_from_var", "quick_hybrid_to_var",
+    "quick_hybrid_main_cap_var", "quick_hybrid_value_var", "quick_hybrid_target_floor_var",
+    "quick_primesieve_floor_var", "quick_primesieve_from_var", "quick_primesieve_width_var",
+    "quick_cudasieve_floor_var", "quick_cudasieve_from_var", "quick_cudasieve_width_var",
+)
 
 
 class QuickGenPanel:
@@ -51,10 +65,7 @@ class QuickGenPanel:
         # (continue past the highest existing file) rather than True, so enabling
         # gap-filling is an explicit,
         # conscious choice rather than a surprising default for a person who has
-        # never left a gap and doesn't need to think about this at all. Not
-        # persisted across restarts, same as every other Quick-gen field (Width,
-        # Starting point) -- see _apply_loop_params_and_run's own docstring for why
-        # only the low-level orchestrator form persists.
+        # never left a gap and doesn't need to think about this at all.
         self.quick_floor_fill_gaps_var = tk.BooleanVar(value=False)
         self.quick_from_var = tk.StringVar(value="")
         self.quick_to_var = tk.StringVar(value="")
@@ -105,6 +116,20 @@ class QuickGenPanel:
         self.quick_hint_var = tk.StringVar(value="")
         self.quick_status_var = tk.StringVar(value="")
         self._quick_panels = []
+        self._remember_quick_fields()
+
+    def _remember_quick_fields(self):
+        """Restores and keeps saving every Quick-gen input (ui_state.remember) except the
+        Floor mode's starting point: a run consumes it, and a remembered one would aim the
+        next run at numbers already generated. The Floor field it fills is restored on its
+        own. Called before any panel is built, so the panels show the restored values."""
+        for name in _REMEMBERED_QUICK_VARS:
+            remember(f"quick.{name[len('quick_'):-len('_var')]}", getattr(self, name))
+        remember("quick.hybrid_target", self.quick_hybrid_target_var, choices={
+            "n": "n",
+            "continue_floor": self.T("quick.hybrid_target_continue_floor"),
+            "fill_gap": self.T("quick.hybrid_target_fill_gap"),
+            "exact_window": self.T("quick.hybrid_target_exact_window")})
 
     def _build_quick_generation_panel(self, parent):
         """Higher-level "just tell me the floor / range" panel above the raw

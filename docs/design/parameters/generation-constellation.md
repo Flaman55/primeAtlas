@@ -2,7 +2,7 @@
 
 # Parameters: generation-constellation
 
-Generation tab, Section B: the k-tuple search (constellation_finder_v2_3.py). Saved per storage folder in `.portal_generation_settings.json` (data.md); a key missing there takes the default below. "What it does" is the form's own label.
+Generation tab, Section B: the k-tuple search (constellation_finder_v2_3.py). Remembered per install in `ui_state.json` (data.md); a key missing there takes the default below. "What it does" is the form's own label.
 
 | Parameter | Default | Type and bounds | Owner | What it does |
 |---|---|---|---|---|

@@ -1,7 +1,14 @@
 """
-generation_settings.py -- persistence of the Generation tab's form values
-(.portal_generation_settings.json in the storage folder), merged over
-DEFAULT_GENERATION_SETTINGS so a file from an older schema still yields every key.
+generation_settings.py -- the Generation tab's form values in the remembered-fields store
+(primeatlas/core/ui_state.py), one key per field ("generation.<section>.<field>"), merged
+over DEFAULT_GENERATION_SETTINGS so a store from an older schema still yields every field.
+
+The form's widgets save each change themselves (remember(..., restore=False)); the Run
+handlers also save the values they parsed, which covers the pattern combos (k, variant,
+strategy) in their canonical form. The values used to live per storage folder in
+.portal_generation_settings.json: load_generation_settings() copies that file of the
+storage folder it is given into the store once (MIGRATED_KEY), then never reads it again.
+reset_checkpoint is never stored: a checkpoint reset applies to the run it is ticked for.
 """
 import json
 import os
@@ -68,43 +75,67 @@ DEFAULT_GENERATION_SETTINGS = {
 
 _KTUPLE_STRATEGY_KEYS = ["even", "concentrated", "manual_list", "manual_step", "digit_sweep"]
 
+KEY_PREFIX = "generation"
+MIGRATED_KEY = "generation._migrated_portal_settings"
+NOT_STORED = {("ktuple", "reset_checkpoint")}
 
-def _generation_settings_path(portal_folder):
-    return os.path.join(portal_folder, GENERATION_SETTINGS_FILENAME)
+
+def generation_key(section, field):
+    return f"{KEY_PREFIX}.{section}.{field}"
 
 
-def load_generation_settings(portal_folder):
-    """Returns the persisted Generation-tab form values, merged over
-    DEFAULT_GENERATION_SETTINGS so a settings file saved before some field existed (schema
-    grew since) or a missing/corrupt file still yields a complete dict with every key
-    present -- same defensive shape as load_totals_cache(). Never raises."""
-    merged = {section: dict(values) for section, values in DEFAULT_GENERATION_SETTINGS.items()}
-    path = _generation_settings_path(portal_folder)
-    if not os.path.exists(path):
-        return merged
+def _load_portal_file(portal_folder):
+    """The legacy per-storage-folder file as {section: {field: value}}, or {} when it is
+    missing or unreadable."""
+    path = os.path.join(portal_folder, GENERATION_SETTINGS_FILENAME)
     try:
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
     except (OSError, ValueError):
-        return merged
-    if not isinstance(data, dict):
-        return merged
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def migrate_portal_settings(store, portal_folder):
+    """Copies the storage folder's .portal_generation_settings.json into `store` once per
+    install; later calls, and the file of any other storage folder, are ignored."""
+    if store.get(MIGRATED_KEY):
+        return
+    legacy = _load_portal_file(portal_folder) if portal_folder else {}
+    for section, defaults in DEFAULT_GENERATION_SETTINGS.items():
+        values = legacy.get(section)
+        if not isinstance(values, dict):
+            continue
+        for field, value in values.items():
+            if field in defaults and (section, field) not in NOT_STORED                     and not store.has(generation_key(section, field)):
+                store.set(generation_key(section, field), value)
+    store.set(MIGRATED_KEY, True)
+
+
+def load_generation_settings(store, portal_folder=None):
+    """{section: {field: value}}: DEFAULT_GENERATION_SETTINGS overlaid with the store's
+    values, after migrating `portal_folder`'s legacy file when given. Never raises."""
+    if portal_folder is not None:
+        migrate_portal_settings(store, portal_folder)
+    merged = {section: dict(values) for section, values in DEFAULT_GENERATION_SETTINGS.items()}
     for section, values in merged.items():
-        loaded = data.get(section)
-        if isinstance(loaded, dict):
-            values.update(loaded)
+        for field in values:
+            key = generation_key(section, field)
+            if (section, field) not in NOT_STORED and store.has(key):
+                values[field] = store.get(key)
     return merged
 
 
-def save_generation_settings(portal_folder, settings):
-    """Atomic write (temp file + os.replace()), same pattern as save_totals_cache()."""
-    path = _generation_settings_path(portal_folder)
-    tmp_path = f"{path}.tmp{os.getpid()}"
-    try:
-        os.makedirs(portal_folder, exist_ok=True)
-        with open(tmp_path, "w", encoding="utf-8") as f:
-            json.dump(settings, f, indent=2, ensure_ascii=False)
-        os.replace(tmp_path, path)
-    except OSError:
-        pass  # best-effort -- a failed settings save just means the next launch reuses
-              # whatever was last persisted (or the defaults, if nothing ever saved)
+def save_generation_settings(store, settings):
+    """Stores every field of `settings` ({section: {field: value}}) except NOT_STORED."""
+    for section, values in settings.items():
+        for field, value in values.items():
+            if (section, field) not in NOT_STORED:
+                store.set(generation_key(section, field), value)
+
+
+def remember_generation_field(section, field, var, store=None, widget=None, choices=None):
+    """Saves later changes of a form widget whose value came from load_generation_settings()."""
+    from primeatlas.core.ui_state import remember
+    return remember(generation_key(section, field), var, store=store, restore=False,
+                    widget=widget, choices=choices)

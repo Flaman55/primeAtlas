@@ -14,7 +14,9 @@ import pattern_catalog_v1
 
 from .generation_console import GenerationConsole
 from .engine_argv import build_ktuple_sieve_argv
-from .generation_settings import _KTUPLE_STRATEGY_KEYS, save_generation_settings
+from primeatlas.core import ui_state_dynamic
+from .generation_settings import (
+    _KTUPLE_STRATEGY_KEYS, generation_key, remember_generation_field, save_generation_settings)
 from .window_planning import recommended_digit_sweep_n_locations
 from .wsl_command import generation_log_paths, build_wsl_logged_command
 
@@ -69,6 +71,7 @@ class KtupleSection:
             ttk.Entry(ktuple_form, textvariable=var, width=width).grid(
                 row=row, column=col * 2 + 1, sticky="w", padx=(0, 20), pady=2)
             self._ktuple_vars[key] = var
+            remember_generation_field("ktuple", key, var)
 
         add_ktuple_field(0, 0, "base_exponent", self.T("gen.ktuple_field_base_exponent"))
         add_ktuple_field(0, 1, "n_locations", self.T("gen.ktuple_field_n_locations"))
@@ -96,6 +99,8 @@ class KtupleSection:
         self.ktuple_strategy_combo.current(
             _KTUPLE_STRATEGY_KEYS.index(_saved_strategy)
             if _saved_strategy in _KTUPLE_STRATEGY_KEYS else 1)
+        remember_generation_field("ktuple", "strategy", self.ktuple_strategy_combo,
+                                  choices=_KTUPLE_STRATEGY_KEYS)
 
         # "step": optional override for even/concentrated (both auto-compute their
         # own step otherwise -- see ktuple_locations_v2_2.step_for_even()/
@@ -128,6 +133,7 @@ class KtupleSection:
             ttk.Entry(ktuple_advanced_form, textvariable=var, width=width).grid(
                 row=row, column=col * 2 + 1, sticky="w", padx=(0, 20), pady=2)
             self._ktuple_vars[key] = var
+            remember_generation_field("ktuple", key, var)
 
         add_ktuple_advanced_field(
             0, 0, "fragment_width", self.T("gen.ktuple_field_fragment_width"), width=18)
@@ -151,6 +157,7 @@ class KtupleSection:
         ttk.Entry(ktuple_advanced_form, textvariable=_manual_offsets_var, width=50).grid(
             row=3, column=1, columnspan=3, sticky="w", padx=(0, 20), pady=2)
         self._ktuple_vars["manual_offsets"] = _manual_offsets_var
+        remember_generation_field("ktuple", "manual_offsets", _manual_offsets_var)
 
         ktuple_btn_row = ttk.Frame(ktuple_outer)
         ktuple_btn_row.pack(fill="x", padx=8, pady=(4, 4))
@@ -179,11 +186,10 @@ class KtupleSection:
         # checked, it adds --reset-checkpoint to whichever of Run/Auto is clicked
         # next (see _launch_ktuple), so resetting never needs its own separate WSL
         # round trip just to delete one small text file. Left checked afterward
-        # (not auto-unchecked) -- deliberately, so a person who wants to restart a
-        # SEQUENCE of runs from scratch doesn't have to re-check it before every
-        # click.
-        self._ktuple_reset_checkpoint_var = tk.BooleanVar(
-            value=bool(ktuple_settings.get("reset_checkpoint", False)))
+        # (not auto-unchecked), so a SEQUENCE of runs can restart from scratch without
+        # re-checking it before every click; unchecked at every app start (never
+        # remembered), so a restart never wipes a checkpoint on its own.
+        self._ktuple_reset_checkpoint_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(
             ktuple_outer, text=self.T("gen.ktuple_check_reset_checkpoint"),
             variable=self._ktuple_reset_checkpoint_var).pack(anchor="w", padx=8, pady=(0, 4))
@@ -239,6 +245,8 @@ class KtupleSection:
             self.ktuple_pattern_info_var.set("")
             return
         w = self._ktuple_variants[idx]
+        ui_state_dynamic.STORE.set(generation_key("ktuple", "k"), self.ktuple_k_combo.get())
+        ui_state_dynamic.STORE.set(generation_key("ktuple", "variant_id"), str(w["id"]))
         offsets_str = ", ".join(str(o) for o in w["offsets"])
         if w["record_digits"] is not None:
             self.ktuple_pattern_info_var.set(self.T(
@@ -363,7 +371,7 @@ class KtupleSection:
             "mr_rounds": mr_rounds, "reset_checkpoint": reset_checkpoint,
             "pass_counter": pass_counter,
         }
-        save_generation_settings(self._get_portal_folder(), self._generation_settings)
+        save_generation_settings(ui_state_dynamic.STORE, self._generation_settings)
 
         argv = build_ktuple_sieve_argv(
             base_exponent, pattern["k"], pattern["id"],

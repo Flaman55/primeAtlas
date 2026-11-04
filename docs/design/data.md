@@ -47,7 +47,7 @@ used as it was written.
 | Active-run marker | `.generation_logs/ACTIVE_RUN.json` | `primeatlas/generation/run_guard.py` | JSON of the launched run | settled at the next start (`recover_unfinished_run`) | Generation tab at startup |
 | Closed-console log | `.generation_logs/closed_{key}_{stamp}.log` | `primeatlas/generation/close_guard.py` | text | none | the user |
 | Generation stop request | `GENERATION_STOP_REQUEST.txt` | `prime_sieve/generation_stop.py` (GUI writes, orchestrators read) | empty marker | deleted by the GUI after the run and before every launch | orchestrators |
-| Generation form values | `.portal_generation_settings.json` | `primeatlas/generation/generation_settings.py` | JSON sections `loop`, `constellation`, `ktuple`; merged over the defaults | a missing key takes its default ([parameters](parameters/README.md)) | Generation tab |
+| Legacy Generation form values | `.portal_generation_settings.json` | `primeatlas/generation/generation_settings.py` | JSON sections `loop`, `constellation`, `ktuple` | copied once into `ui_state.json` (below), then never read or written | Generation tab, once |
 
 ## Backups
 
@@ -60,8 +60,8 @@ used as it was written.
 ## Defaults, texts and translations (in git)
 
 - Generation form defaults: `primeatlas/generation/generation_settings.py` (`DEFAULT_GENERATION_SETTINGS`)
-  and `engine_options.py` (`DEFAULT_ENGINE`, `DEFAULT_KNOBS`, bounds). A saved value in
-  `.portal_generation_settings.json` wins over the default.
+  and `engine_options.py` (`DEFAULT_ENGINE`, `DEFAULT_KNOBS`, bounds). A remembered value in
+  `ui_state.json` wins over the default.
 - Visualization renderer defaults: each mode's `add_arguments` (argparse), listed in
   [parameters/visualization-renderer.md](parameters/visualization-renderer.md).
 - Texts: `primeatlas/core/locales/strings_en.json` and `strings_pl.json`, read through `Translator`
@@ -73,6 +73,7 @@ used as it was written.
 |---|---|---|---|---|
 | App settings | `primeatlas/core/locales/app_settings.json` (gitignored) | `primeatlas/core/app_settings.py` | JSON: storage path, theme, font scale, viz parameters, update and setup flags | a legacy `.portal_app_settings.json` next to the app is migrated once |
 | Language | `primeatlas/core/locales/language_settings.json` | `primeatlas/core/i18n.py` | JSON | read before the window exists |
+| Remembered form fields | `primeatlas/core/locales/ui_state.json` (gitignored) | `primeatlas/core/ui_state.py` | flat JSON `{key: value}`, keys `quick.*`, `generation.<section>.<field>`, `research.*`, `constellations.*`, `primality.*`, `primesieve_calc.*`, `benchmark.*`; translated drop-downs stored by id | a missing, corrupt or wrong-typed value leaves the field's default; written 500 ms after a change and on close |
 
 ## Secrets
 

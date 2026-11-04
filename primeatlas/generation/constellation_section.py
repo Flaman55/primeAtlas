@@ -18,7 +18,8 @@ from tkinter import ttk, messagebox
 from ..core.progress_bar_owner import release_progress_bar
 from .generation_console import GenerationConsole
 from .engine_argv import build_constellation_finder_argv, read_constellation_checkpoint
-from .generation_settings import save_generation_settings
+from primeatlas.core import ui_state_dynamic
+from .generation_settings import remember_generation_field, save_generation_settings
 from .wsl_command import generation_log_paths, build_wsl_logged_command
 
 # The constellation finder's WSL process can die mid-run WITHOUT writing an exit code on
@@ -89,6 +90,7 @@ class ConstellationSection:
             value=str(const_settings.get("base_exponent", "")))
         ttk.Entry(const_form, textvariable=self._const_base_exponent_var, width=10).pack(
             side="left", padx=(6, 0))
+        remember_generation_field("constellation", "base_exponent", self._const_base_exponent_var)
 
         const_btn_row = ttk.Frame(const_outer)
         const_btn_row.pack(fill="x", padx=8, pady=(0, 4))
@@ -185,7 +187,7 @@ class ConstellationSection:
             return
 
         self._generation_settings["constellation"] = {"base_exponent": base_exponent}
-        save_generation_settings(self._get_portal_folder(), self._generation_settings)
+        save_generation_settings(ui_state_dynamic.STORE, self._generation_settings)
 
         # constellation_finder_v2_3.py DOES print granular per-file progress lines --
         # see _reset_gen_progress_bar_for_new_run()'s own docstring: without this, a

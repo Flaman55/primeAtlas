@@ -2,7 +2,7 @@
 
 # Parameters: generation-loop
 
-Generation tab, Section A: the generation pipeline run (orchestrator_loop_v2.py; engine and knobs reach it as PRIMEATLAS_* environment variables). Saved per storage folder in `.portal_generation_settings.json` (data.md); a key missing there takes the default below. "What it does" is the form's own label.
+Generation tab, Section A: the generation pipeline run (orchestrator_loop_v2.py; engine and knobs reach it as PRIMEATLAS_* environment variables). Remembered per install in `ui_state.json` (data.md); a key missing there takes the default below. "What it does" is the form's own label.
 
 | Parameter | Default | Type and bounds | Owner | What it does |
 |---|---|---|---|---|

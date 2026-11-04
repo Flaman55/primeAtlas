@@ -17,6 +17,7 @@ from tkinter import ttk
 
 from ..core.info_tip import InfoTip
 from . import engine_options, engine_presets
+from .generation_settings import remember_generation_field
 
 _KNOB_LABEL_KEYS = {key: f"gen.field_{key}" for key in engine_options.KNOB_KEYS}
 
@@ -35,6 +36,7 @@ class EngineFields:
         selector.grid(row=row, column=1, columnspan=3, sticky="w", pady=(6, 2))
         ttk.Combobox(selector, textvariable=self.engine_var, values=engine_options.ENGINES,
                      state="readonly", width=8).pack(side="left")
+        remember_generation_field("loop", "engine", self.engine_var)
         self.version_var = tk.StringVar()
         ttk.Label(selector, textvariable=self.version_var).pack(side="left", padx=(6, 0))
         self.engine_info = InfoTip(selector, lambda: T("gen.info_engine"))
@@ -45,6 +47,8 @@ class EngineFields:
             engine: tk.StringVar(value=engine_presets.normalize_preset(
                 loop_settings.get(engine_presets.preset_key(engine))))
             for engine in engine_presets.PRESET_ENGINES}
+        for engine, var in self.preset_vars.items():
+            remember_generation_field("loop", engine_presets.preset_key(engine), var)
         self._preset_frame = ttk.Frame(selector)
         ttk.Label(self._preset_frame, text=T("gen.field_preset")).pack(side="left", padx=(16, 4))
         self._preset_labels = {name: T(f"gen.preset_{name}") for name in engine_presets.PRESETS}
@@ -72,6 +76,7 @@ class EngineFields:
             info = InfoTip(cell, lambda key=key: T(f"gen.info_{key}"))
             info.label.pack(side="left", padx=(4, 0))
             self.knob_vars[key] = var
+            remember_generation_field("loop", key, var)
             self.knob_entries[key] = entry
             self.knob_infos[key] = info
             self._knob_widgets[key] = (label, cell)

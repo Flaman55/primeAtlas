@@ -19,7 +19,8 @@ from .generation_console import GenerationConsole
 from . import engine_options
 from .engine_fields import EngineFields
 from .engine_argv import build_loop_argv
-from .generation_settings import save_generation_settings
+from primeatlas.core import ui_state_dynamic
+from .generation_settings import remember_generation_field, save_generation_settings
 from .window_planning import compute_totals_bumps_from_new_rows
 from .wsl_command import generation_log_paths, build_wsl_logged_command
 
@@ -70,6 +71,7 @@ class LoopSection:
             ttk.Entry(loop_form, textvariable=var, width=width).grid(
                 row=row, column=col * 2 + 1, sticky="w", padx=(0, 20), pady=2)
             self._loop_vars[key] = var
+            remember_generation_field("loop", key, var)
 
         add_loop_field(0, 0, "base_exponent", self.T("gen.field_base_exponent"))
         add_loop_field(0, 1, "run_count", self.T("gen.field_run_count"))
@@ -133,6 +135,10 @@ class LoopSection:
         # which sees its own condition (get() and other.get()) already false and no-ops.
         self._loop_count_sieving_var.trace_add("write", _on_count_sieving_toggle)
         self._loop_use_pi_seed_var.trace_add("write", _on_use_pi_seed_toggle)
+        remember_generation_field("loop", "write_files", self._loop_write_files_var)
+        remember_generation_field(
+            "loop", "compute_sieving_primes_count", self._loop_count_sieving_var)
+        remember_generation_field("loop", "use_known_pi_seed", self._loop_use_pi_seed_var)
 
         # Sieve engine and its knobs (rows 6-10); the Quick-gen Width cap follows the engine.
         self._engine_fields = EngineFields(loop_form, self.T, loop_settings, row=6)
@@ -269,7 +275,7 @@ class LoopSection:
                 "window_m": str(parsed["window_m"]),
                 **self._engine_fields.settings(),
             }
-            save_generation_settings(self._get_portal_folder(), self._generation_settings)
+            save_generation_settings(ui_state_dynamic.STORE, self._generation_settings)
 
             argv = build_loop_argv(
                 parsed["base_exponent"], parsed["run_count"], parsed["n_instances"],

@@ -638,9 +638,9 @@ copied from another machine -- the way GIMPS grows from many contributors' parti
 results. Copying a whole external storage's root with a generic file-copy tool forces
 resolving conflicts on files that were never meant to be merged that way: blindly
 overwriting `benchmark_log.csv` silently discards whichever side's rows aren't picked
-(there's no way to file-level "merge" two CSVs), and `.portal_totals_cache.json`/
-`.portal_generation_settings.json` are just self-healing/local-install convenience
-files with no real merge semantics either way.
+(there's no way to file-level "merge" two CSVs), and `.portal_totals_cache.json`
+(and a legacy `.portal_generation_settings.json`) are just self-healing/local-install
+convenience files with no real merge semantics either way.
 
 Settings tab -> Backup -> "Integruj zewnetrzny magazyn" does this correctly: point it at
 an external storage folder, click Podglad (preview) to see, PER FLOOR, whether it's a
@@ -1238,7 +1238,8 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
   app_dynamic.py                shared startup values: REPO_DIR, APP_SETTINGS,
                               PORTAL_FOLDER (rebound by _set_portal_folder, read by every
                               tab through a `lambda: _dyn.PORTAL_FOLDER` getter),
-                              TRANSLATOR / T
+                              TRANSLATOR / T; opens locales/ui_state.json into
+                              core/ui_state_dynamic.STORE
   app_window.py                 PortalBrowserApp(tk.Tk + the mixins below): loading screen,
                               main notebook, the totals/search and both tree-scan
                               coordinators, the "generate missing data, then retry"
@@ -1344,6 +1345,16 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               docstring for why), plus the per-install UI preferences
                               (language, theme, per-theme brightness, font size,
                               scroll-area width, update checks)
+  ui_state.py                   UiStateStore + remember(): every remembered form field
+                              (Quick-gen, Generation forms, Research, Constellations,
+                              Primality, primesieve calculator, Benchmark) in one
+                              per-install locales/ui_state.json, restored when a tab is
+                              built, saved on change (debounced), flushed on close
+  ui_state_dynamic.py           STORE -- the app's UiStateStore (in memory until
+                              app_dynamic opens the per-install file)
+  ui_state_store.py             UiStateStore -- the flat {key: value} JSON file, debounced
+                              atomic writes; no tkinter import (app_dynamic opens it
+                              before any window exists)
   totals_search_coordinator.py TotalsSearchCoordinator -- the two PersistentWorkers
                               (floor-totals scanning, prime/constellation search) that
                               used to live directly on PortalBrowserApp itself in
@@ -1476,8 +1487,10 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               one-window Hybrid targets, totals bumps from new
                               benchmark rows, primesieve/CUDASieve range limits
   quick_number.py               _eval_quick_number, the parser of every numeric field
-  generation_settings.py        .portal_generation_settings.json load/save over
-                              DEFAULT_GENERATION_SETTINGS
+  generation_settings.py        the Generation forms' values in the remembered-fields
+                              store (generation.<section>.<field>) over
+                              DEFAULT_GENERATION_SETTINGS; one-time copy of a storage
+                              folder's legacy .portal_generation_settings.json
   wsl_command.py                Windows -> WSL paths, .generation_logs/ log/exit files,
                               the logged `wsl.exe -e bash -c` wrapper with its env
                               prefix (build_wsl_logged_command)
@@ -2246,7 +2259,9 @@ unitTests/                   plain test scripts, `python unitTests/test_x.py` (n
                               pointed at the test's own seeded folder (or a new empty temp
                               folder) and AppSettings.save() switched off, so a test that
                               builds the full app never scans, recovers or rewrites the
-                              user's real storage or app_settings.json
+                              user's real storage or app_settings.json; the
+                              remembered-fields store is swapped for an in-memory one,
+                              so ui_state.json is neither read nor written
                               (unitTests/test_app_sandbox.py also checks that every test
                               calling _build_gui() calls isolate_app() first)
   ring_viz_fixtures.py        write_floor() (a synthetic floor of real PGS2 window files) and

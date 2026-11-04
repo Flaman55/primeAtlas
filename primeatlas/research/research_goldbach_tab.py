@@ -29,6 +29,7 @@ from tkinter import ttk, messagebox, filedialog
 
 from ..core import background
 from ..core.base_tab import BaseTab
+from ..core.ui_state import remember
 from ..core.widgets import StripedTreeview
 from .goldbach_paging import GOLDBACH_CASCADE_ROW_CAP, GOLDBACH_DECOMPOSE_ROW_CAP
 from .goldbach_viz_section import GoldbachVizSection
@@ -156,6 +157,8 @@ class ResearchGoldbachTab(GoldbachVizSection, GoldbachDecomposeSection,
         ttk.Checkbutton(
             top, text=T("research_goldbach.touch_once_checkbox"),
             variable=self.goldbach_touch_once_var).pack(side="left")
+        remember("research.goldbach.n", self.goldbach_n_entry)
+        remember("research.goldbach.touch_once", self.goldbach_touch_once_var)
 
         button_row = ttk.Frame(self)
         button_row.pack(fill="x", padx=6, pady=(0, 8))

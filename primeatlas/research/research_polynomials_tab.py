@@ -35,6 +35,7 @@ from tkinter import ttk, messagebox, filedialog
 
 from ..core import background
 from ..core.base_tab import BaseTab
+from ..core.ui_state import remember
 from ..core.widgets import StripedTreeview
 from .polynomials_window import (
     check_polynomial_range, check_polynomial_range_from_source, MAX_SIEVE_BOUND,
@@ -137,6 +138,12 @@ class ResearchPolynomialsTab(BaseTab):
         ttk.Radiobutton(
             source_row, text=T("research_polynomials.source_storage"),
             variable=self.poly_source_var, value="storage").pack(side="left", padx=(10, 0))
+        remember("research.polynomials.preset", self.poly_preset_combo, choices=list(_PRESET_IDS))
+        self._on_poly_preset_changed()
+        remember("research.polynomials.n_from", self.poly_n_from_entry)
+        remember("research.polynomials.n_to", self.poly_n_to_entry)
+        remember("research.polynomials.custom_formula", self.poly_custom_formula_entry)
+        remember("research.polynomials.source", self.poly_source_var)
 
         button_row = ttk.Frame(self)
         button_row.pack(fill="x", padx=6, pady=(0, 8))
