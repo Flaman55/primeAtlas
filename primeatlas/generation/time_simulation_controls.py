@@ -5,7 +5,7 @@ The window is bound to the Floor and Width fields of the selected Quick-gen mode
 has its own pair; every other mode uses the Floor-only pair) and to the pipeline form's
 engine selector, so what the sliders set is what Generate runs. Switching the Quick-gen
 mode reopens an open window on the new mode's pair. benchmark_log.csv is read from the
-storage folder each time the window opens.
+storage folder each time the window opens and, while it is open, when a run ends.
 """
 import os
 from tkinter import ttk
@@ -51,6 +51,11 @@ class TimeSimulationControls:
             write_files=lambda: bool(self._loop_write_files_var.get()),
             pt1_b=self._time_simulation_pt1_b)
         return self._time_simulation_window
+
+    def _reload_time_simulation_log(self):
+        """Called when a run ends: an open window rereads the log with the run's new row."""
+        if self._time_simulation_is_open():
+            self._time_simulation_window.reload_log()
 
     def _time_simulation_pt1_b(self):
         knobs, bad = engine_options.parse_knobs(

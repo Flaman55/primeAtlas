@@ -37,6 +37,22 @@ def check(condition, message):
         print(f"ok:   {message}")
 
 
+def check_time_formats(orchestrator_v3):
+    """A run of 1,000 windows in 3 s reads 3.00 ms/window, not 0.00 s/window; a minute
+    or more stays whole seconds, below it the duration keeps one decimal."""
+    per_window = orchestrator_v3.format_per_window
+    for seconds, expected in ((1.2345, "1.23 s/window"), (12.5, "12.50 s/window"),
+                              (0.003, "3.00 ms/window"), (0.0004, "0.40 ms/window"),
+                              (0.9996, "999.60 ms/window"), (float("nan"), "n/a s/window")):
+        got = per_window(seconds)
+        check(got == expected, f"format_per_window({seconds}) == {expected!r} (got {got!r})")
+    duration = orchestrator_v3.format_duration
+    for seconds, expected in ((3.44, "3.4s"), (0.05, "0.1s"), (59.9, "59.9s"),
+                              (61.7, "1m 1s"), (3725, "1h 2m 5s")):
+        got = duration(seconds)
+        check(got == expected, f"format_duration({seconds}) == {expected!r} (got {got!r})")
+
+
 def main():
     import prime_sieve_v1
     import window_sharding
@@ -88,7 +104,7 @@ def main():
               f"(got {row['total_primes']!r})")
         check(row["verify_seconds"] == "1.250",
               f"verify_seconds logged as its own column (got {row.get('verify_seconds')!r})")
-        check(row["seconds_per_window"] == "6.2500",
+        check(row["seconds_per_window"] == "6.250000",
               f"seconds_per_window = 12.5s / 2 windows, not nan (got "
               f"{row['seconds_per_window']!r})")
 
@@ -128,6 +144,8 @@ def main():
             shutil.rmtree(tmp_portal2, ignore_errors=True)
     finally:
         shutil.rmtree(tmp_portal, ignore_errors=True)
+
+    check_time_formats(orchestrator_v3)
 
     if failures:
         print(f"\n{len(failures)} FAILURE(S)")

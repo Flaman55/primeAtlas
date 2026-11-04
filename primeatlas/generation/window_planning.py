@@ -341,3 +341,8 @@ CUDASIEVE_MIN_PRINTABLE_TOP = 2 ** 40
 # same ceiling/truncation-note logic applies.
 CUDASIEVE_MAX_STOP = 2 ** 64 - 1
 CUDASIEVE_MAX_WIDTH_MULT = CUDASIEVE_MAX_STOP // QUICK_GEN_MAX_WINDOW_WIDTH + 1
+
+# Range the Floor spinboxes step through with their arrows and the mouse wheel; a typed
+# value is not capped by it. primesieve and CUDASieve stop at the floor holding 2**64 - 1.
+QUICK_FLOOR_MAX = 35
+UINT64_FLOOR_MAX = len(str(PRIMESIEVE_MAX_STOP)) - 1

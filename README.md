@@ -1281,7 +1281,10 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               mouse wheel always scrolls the page itself -- as does the
                               wheel over the scrollbar; its width is a user setting
                               (Settings > General > User interface) that
-                              set_scroll_pad_width() applies live to every pad;
+                              set_scroll_pad_width() applies live to every pad; the
+                              wheel over an enabled spinbox or drop-down list steps
+                              its value and leaves the page still
+                              (event_over_own_scroller);
                               StripedTreeview is the app's one table class (every
                               second visible row striped, restriped after inserts and
                               node open/close); RevealFrame keeps a preview list and
@@ -1444,7 +1447,8 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
   quick_gen_panel.py            QuickGenPanel mixin: the Quick-gen panel's shared
                               Variables, per-mode frames (Floor only/Range/
                               Exploration/Hybrid/primesieve/cudasieve), width caps
-                              and validators, RAM/CPU/storage Auto buttons
+                              and validators, RAM/CPU/storage Auto buttons; every
+                              Floor field is a spinbox (_floor_spinbox)
   quick_gen_runs.py             QuickGenRuns mixin: Generate/Stop and one apply-and-run
                               launcher per engine (loop, primesieve, Hybrid,
                               cudasieve, orchestrator-direct window range), gap
@@ -1574,7 +1578,8 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               width sliders (log scale up to the engine's cap) bound
                               both ways to the Quick-gen Floor/Width fields, the shared
                               engine selector and the time_model results; reads the log
-                              once on open, never writes it
+                              on open and again when a run ends (reload_log(), called
+                              from _on_loop_finished), never writes it
   time_simulation_controls.py   GenerationTab mixin: the Quick-gen "Time simulation"
                               button, one window at a time, rebinding to the Explore
                               mode's own Floor/Width pair
@@ -2103,9 +2108,14 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               from the store the engine writes into and, after each
                               batch, lets every new D window prove its P counterpart
                               (dp_verify.py, time logged as verify_seconds); the
-                              benchmark row's prime count is
-                              re-read from the written windows' headers by `workers`
-                              threads; a batch failing while the GUI's stop request
+                              benchmark row's prime count comes from the scanner's
+                              own closing report (its stdout is copied through and
+                              read per process, so parallel instances never mix
+                              reports) or, when a batch printed none, from the
+                              written windows' headers read by `workers` threads
+                              (unitTests/test_orchestrator_engine_totals.py); per
+                              window times print in ms below a second; a batch
+                              failing while the GUI's stop request
                               exists is a stop: windows cut by the scanner kill are
                               deleted and the row (run_status=stopped) covers the
                               windows kept (unitTests/test_orchestrator_stop.py)

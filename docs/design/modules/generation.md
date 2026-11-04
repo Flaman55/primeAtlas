@@ -40,6 +40,12 @@ windows, 2 MiB / 4 GiB below 4,000; v6: 128 KiB / 1 GiB below 3,000, 2 MiB / 4 G
 to Custom when one of them is typed in; a RAM-reduced bucket memory only lowers the profile's
 value. Windows-at-25 and the RAM budget size the run, so no profile sets them.
 
+## Floor fields
+
+Every Quick-gen Floor field (Floor only, Explore, Hybrid, primesieve, CUDASieve) is a spinbox: its
+arrows and the mouse wheel step the floor through 0 to `QUICK_FLOOR_MAX` (35; primesieve and
+CUDASieve stop at `UINT64_FLOOR_MAX`, 19), and a typed value or expression is not capped.
+
 ## Time simulation
 
 The Quick-gen "Time simulation" button opens one window with two sliders: the floor (7-35) and
@@ -52,8 +58,10 @@ storage unit (changing it on a floor with data breaks resume), and speed depends
 `time_model.py` models one run of span S ending at `top` at floor f as
 `prep = k(f) * pi(L)`, `sieve = m(f) * S`, `write = w(f) * S`, with L = isqrt(top) (v4.1, v5, v6) or the
 pt1 bound B. prep is the per-run fixed cost F (every sieving prime up to L, about 3x more per floor).
-The storage folder's `benchmark_log.csv` is read once per opening (never written); its completed
-rows give, per measured floor:
+The storage folder's `benchmark_log.csv` is read when the window opens and again when a run
+started from the Generation tab ends (`_on_loop_finished()` calls `reload_log()`), so a run
+finishing while the window is open recalibrates it; a run started outside the app shows on the
+next opening. The log is never written. Its completed rows give, per measured floor:
 
 - two or more widths on the floor: F and m by least squares of the sieve time against the span;
 - one width: m from a baseline fit over all the engine's rows (relative-error least squares over

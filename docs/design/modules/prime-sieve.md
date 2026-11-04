@@ -64,6 +64,14 @@ is compared again. 2,000 pairs of 160 KB on a /mnt drive with 30,000 listed D/P 
 when the list was rewritten per window, 21 s on one thread, 8 s on 24. The time goes to the
 benchmark row as `verify_seconds`, inside `total_seconds`.
 
+The row's prime count comes from the scanner's closing line (`TOTAL PRIMES FOUND this run: N
+across W windows`): `run_batch()` copies the scanner's stdout through and reads that line from
+the process's own output, so parallel instances never take each other's count (the scan-metrics
+handoff file is shared). When a batch printed no such line (a low-floor run reports floors) or
+the reported windows do not add up to the range, the headers of the written windows are read
+instead, one file open each (about 13 ms on a /mnt drive, overlapped by `workers` threads).
+Per-window times print in ms below a second.
+
 ## Kept data
 
 Prime windows, `benchmark_log.csv`, `floor_meta.json`, `last_scan_metrics.json`, sieving-prime cache,

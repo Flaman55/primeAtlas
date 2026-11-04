@@ -368,6 +368,7 @@ class LoopSection:
         # hasn't relinquished it yet.
         release_progress_bar(self.totals_progress, self)
         self.reload_primes_tree()
+        self._reload_time_simulation_log()
 
         # A search-triggered "generate the missing window" run (see
         # _offer_generate_missing_prime_window()) just finished -- re-run the SAME

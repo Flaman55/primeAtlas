@@ -62,6 +62,37 @@ def main():
         check(over(FakeEvent(str(log))) is False and over(FakeEvent(None)) is False,
               "a string/None event.widget (Tk-internal popdowns) never raises")
 
+        # a numeric spinbox takes the wheel (its class binding steps the value), the page
+        # stays put; a disabled one cannot step, so the page scrolls
+        var = tk.StringVar(value="5")
+        spin = ttk.Spinbox(page, from_=1, to=10, textvariable=var)
+        check(over(FakeEvent(spin)) is True, "wheel over a Spinbox is left to it")
+        spin.pack()
+        page.pack()
+        root.update()
+        spin.event_generate("<MouseWheel>", delta=120)
+        root.update()
+        check(var.get() == "6", f"wheel up over a Spinbox steps its value up ({var.get()})")
+        spin.event_generate("<MouseWheel>", delta=-120)
+        spin.event_generate("<MouseWheel>", delta=-120)
+        root.update()
+        check(var.get() == "4", f"wheel down steps it down ({var.get()})")
+        spin.state(["disabled"])
+        check(over(FakeEvent(spin)) is False, "a disabled Spinbox leaves the wheel to the page")
+
+        # a drop-down list (also read-only, like the engine selector) steps its choice
+        choice = tk.StringVar(value="v5")
+        combo = ttk.Combobox(page, values=("v4.1", "v5", "v6"), textvariable=choice,
+                             state="readonly")
+        combo.pack()
+        root.update()
+        check(over(FakeEvent(combo)) is True, "wheel over a read-only Combobox is left to it")
+        combo.event_generate("<MouseWheel>", delta=-120)
+        root.update()
+        check(choice.get() == "v6", f"wheel down over a Combobox picks the next value ({choice.get()})")
+        combo.state(["disabled"])
+        check(over(FakeEvent(combo)) is False, "a disabled Combobox leaves the wheel to the page")
+
         import inspect
         handler = inspect.getsource(widgets.ScrollablePage.on_mousewheel)
         check("event_over_own_scroller(event)" in handler,
