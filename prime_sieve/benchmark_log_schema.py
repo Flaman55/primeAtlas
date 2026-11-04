@@ -16,6 +16,8 @@ Column notes:
 - engine, numbers_processed: which engine wrote the row and how many integers it covered.
 - run_status: RUN_STATUS_COMPLETED, or RUN_STATUS_STOPPED for a run ended by the GUI's stop
   request (generation_stop.py), whose counts cover the windows written before the stop.
+- verify_seconds: the D-proves-P comparison time (dp_verify.py) included in total_seconds;
+  blank in rows from writers that do not compare and in rows from before the column.
 Rows written before a column existed keep it blank: a migration never guesses old values,
 and a blank run_status means completed.
 
@@ -32,6 +34,7 @@ BENCHMARK_FIELDNAMES = [
     "max_child_rss_mb", "instance_of_n", "loop_session_seconds", "loop_numbers_per_second",
     "loop_seconds_per_window", "write_files", "base_gen_seconds", "sieve_seconds",
     "write_seconds", "bytes_written", "engine", "numbers_processed", "run_status",
+    "verify_seconds",
 ]
 
 RUN_STATUS_COMPLETED = "completed"

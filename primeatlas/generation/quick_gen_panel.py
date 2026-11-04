@@ -696,7 +696,7 @@ class QuickGenPanel:
         for the person to factor into their own From/To choice.
 
         The recommendation follows the engine selected in the pipeline form
-        (engine_options.recommend()): v5 scales the window count with base_exponent
+        (engine_options.recommend()): v5 and v6 scale the window count with base_exponent
         (None = unknown floor, sized like a shallow one) and, when RAM is short, lowers
         the bucket-memory field to what fits."""
         choice, bad_key = self._engine_fields.choice()
@@ -719,17 +719,19 @@ class QuickGenPanel:
                 "quick.auto_result_pt1", recommended=f"{recommended:,}",
                 numbers_total=f"{numbers_total:,}"))
             return
-        if choice.engine != engine_options.ENGINE_V5:
+        bucket_key = engine_options.bucket_knob(choice.engine)
+        if bucket_key is None:
             messagebox.showinfo(self.T("quick.dialog_title"), self.T(
                 "quick.auto_ram_result", available_gb=f"{available / 1e9:.1f}",
                 budget_pct=choice.knobs[engine_options.RAM_BUDGET_KNOB],
                 recommended=f"{recommended:,}", numbers_total=f"{numbers_total:,}"))
             return
-        if budget.bucket_mb != choice.knobs["v5_bucket_mb"]:
-            self._engine_fields.set_bucket_mb(budget.bucket_mb)
+        if budget.bucket_mb != choice.knobs[bucket_key]:
+            self._engine_fields.set_bucket_mb(budget.bucket_mb, choice.engine)
         messagebox.showinfo(self.T("quick.dialog_title"), self.T(
             "quick.auto_ram_result_v5", available_gb=f"{available / 1e9:.1f}",
             budget_pct=choice.knobs[engine_options.RAM_BUDGET_KNOB],
+            engine=engine_options.ENGINE_VERSIONS[choice.engine],
             floor="?" if base_exponent is None else base_exponent,
             recommended=f"{recommended:,}", numbers_total=f"{numbers_total:,}",
             bucket_mb=f"{budget.bucket_mb:,}"))

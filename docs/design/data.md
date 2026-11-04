@@ -21,7 +21,7 @@ used as it was written.
 
 | Data | Where | Owner module | Format (version) | Validity | Who may read it |
 |---|---|---|---|---|---|
-| Benchmark log | `benchmark_log.csv` | header: `prime_sieve/benchmark_log_schema.py` (`BENCHMARK_FIELDNAMES`); writers: `orchestrator_v3.py`, `orchestrator_loop_helpers.py`, `prime_sieve_primesieve.py`, `prime_sieve_cudasieve.py`, `hybrid_sieve.py` | CSV, one row per run; new columns only at the end, older rows keep them blank | a writer migrates an old header in place, never guesses old values | Benchmark tab, totals, floor_meta |
+| Benchmark log | `benchmark_log.csv` | header: `prime_sieve/benchmark_log_schema.py` (`BENCHMARK_FIELDNAMES`); writers: `orchestrator_v3.py`, `orchestrator_loop_helpers.py`, `prime_sieve_primesieve.py`, `prime_sieve_cudasieve.py`, `hybrid_sieve.py` | CSV, one row per run; new columns only at the end, older rows keep them blank; `verify_seconds` is the D-proves-P part of `total_seconds` | a writer migrates an old header in place, never guesses old values | Benchmark tab, totals, floor_meta |
 | Floor history copy | `10p{N}/floor_meta.json` | `prime_sieve/floor_meta_store.py` | JSON list of the floor's benchmark rows, deduped by `ROW_KEY_FIELDS` | none | `primeatlas/settings/floor_meta.py` imports it into another storage's log |
 | Floor totals cache | `.portal_totals_cache.json` | `primeatlas/core/storage.py` | JSON per floor (prime count, generation time) | rebuilt by a floor rescan (Refresh, after a run) | Primes tab, status bar, backup manifest |
 

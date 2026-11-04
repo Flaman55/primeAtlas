@@ -11,7 +11,7 @@ the targeted k-tuple sieve (Section C). Only one engine runs at a time.
 | Tab | `primeatlas/generation/generation_tab.py` (`GenerationTab`, WSL runner factory) |
 | Sections (mixins) | `quick_gen_panel.py`, `quick_gen_runs.py`, `loop_section.py`, `constellation_section.py`, `ktuple_section.py`, `run_progress.py`, `run_guard_controls.py`, `hybrid_controls.py`, `engine_fields.py`, `time_simulation_controls.py` |
 | Launching | `engine_argv.py` (argv of every script), `wsl_command.py` (wsl.exe command, logs), `logged_runners.py` (`WslLoggedRunner`, `LocalLoggedRunner`), `wsl_blocking.py`, `wsl_resources.py` |
-| Planning | `window_planning.py`, `quick_gen_plan.py`, `run_budget.py`, `engine_options.py`, `quick_number.py` |
+| Planning | `window_planning.py`, `quick_gen_plan.py`, `run_budget.py`, `engine_options.py`, `engine_presets.py`, `quick_number.py` |
 | Time simulation | `time_model.py` (run time model calibrated from benchmark_log.csv), `time_simulation_window.py` (`TimeSimulationWindow`) |
 | Following and settling | `run_output.py` (log parsing), `run_guard.py` (stop request, active-run marker, recovery), `close_guard.py` |
 | Settings | `generation_settings.py` (form defaults and persistence), `generation_console.py` (`GenerationConsole`) |
@@ -27,6 +27,19 @@ Never imports engine code: names and defaults the engines also use are mirrored 
 tests (`test_engine_options`). Log lines are parsed by their stable prefixes (`[CONSTELLATIONS v2]`,
 `[KTUPLE SIEVE v2]`, `[+] Progress:`).
 
+## Knob profiles
+
+`engine_presets.py` names the measured sets of v5's and v6's four sieve knobs (segment,
+bucket region, bucket memory, pieces per thread): Old (128 KiB / 1 GiB buckets), New (2 MiB /
+8 GiB, long runs), Intermediate (2 MiB / 1 GiB, short runs), Auto and Custom. Each engine
+keeps its own profile (`v5_preset`, `v6_preset`, default Auto). `engine_options.resolve()`
+applies the selected engine's profile with the run's window count: Auto steps the segment and
+bucket memory up with the width, per engine (`AUTO_STEPS`; v5: 2 MiB / 1 GiB below 1,500
+windows, 2 MiB / 4 GiB below 4,000; v6: 128 KiB / 1 GiB below 3,000, 2 MiB / 4 GiB below
+8,000; then New), New's values when the width is not known yet (the Auto RAM button). The form fills the profile fields when a profile is picked and switches
+to Custom when one of them is typed in; a RAM-reduced bucket memory only lowers the profile's
+value. Windows-at-25 and the RAM budget size the run, so no profile sets them.
+
 ## Time simulation
 
 The Quick-gen "Time simulation" button opens one window with two sliders: the floor (7-35) and
@@ -37,7 +50,7 @@ Generate runs is what the window shows. The window width `window_m` is not a sli
 storage unit (changing it on a floor with data breaks resume), and speed depends on the run span.
 
 `time_model.py` models one run of span S ending at `top` at floor f as
-`prep = k(f) * pi(L)`, `sieve = m(f) * S`, `write = w(f) * S`, with L = isqrt(top) (v4.1, v5) or the
+`prep = k(f) * pi(L)`, `sieve = m(f) * S`, `write = w(f) * S`, with L = isqrt(top) (v4.1, v5, v6) or the
 pt1 bound B. prep is the per-run fixed cost F (every sieving prime up to L, about 3x more per floor).
 The storage folder's `benchmark_log.csv` is read once per opening (never written); its completed
 rows give, per measured floor:
@@ -70,7 +83,7 @@ extrapolated, and with fewer than two rows of the engine it shows only pi(L).
 ## Specs and tests
 
 `test_generation_launch_planning`, `test_generation_window_arithmetic`, `test_engine_options`,
-`test_engine_gui_wiring`, `test_run_budget`, `test_run_guard`, `test_close_guard`, `test_close_guard_wiring`,
+`test_engine_presets`, `test_engine_gui_wiring`, `test_run_budget`, `test_run_guard`, `test_close_guard`, `test_close_guard_wiring`,
 `test_cross_engine_run_lock`, `test_gen_progress_bar_engine_gating`, `test_progress_bar_owner`,
 `test_console_controls`, `test_constellation_auto_retry`, `test_storage_fill`, `test_pi_seed_checkbox_exclusivity`,
 `test_time_model`, `test_time_simulation`.
@@ -82,3 +95,7 @@ extrapolated, and with fewer than two rows of the engine it shows only pi(L).
 - The time model is linear in the span per floor: a run much shorter than the floor's measured ones
   (process start-up dominates) or one whose buffer outgrows the caches deviates; the worst error
   is shown in the window. Several parallel instances (`n_instances`) are not modelled.
+- v5 rows logged before v5.1 (128 KiB segments, 1 GiB buckets) calibrate v5.1 too, since the
+  engine name stays `v5`: their per-number cost on long runs is the old bucket stage's (the
+  floor-29 "251 Mn/s" net speed comes from two such rows), so the window overestimates v5.1
+  until new rows replace them.

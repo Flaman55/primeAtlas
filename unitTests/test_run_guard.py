@@ -86,6 +86,7 @@ def stop_request_case(tmp):
           "write_stop_request into an unreachable folder returns False")
 
     check(generation_stop.scanner_script("v5") == "prime_sieve_v5.py", "v5 scanner script")
+    check(generation_stop.scanner_script("v6") == "prime_sieve_v6.py", "v6 scanner script")
     check(generation_stop.scanner_script("pt1") == "prime_sieve_pt1.py", "pt1 scanner script")
     check(generation_stop.scanner_script("v4.1") == "prime_sieve_v4_1.py", "v4.1 scanner script")
     import orchestrator_v3

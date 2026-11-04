@@ -18,7 +18,7 @@ from engine_v5_lib import load_lib as _load_lib
 # is a fixed cost on each run, paid again by orchestrator_v3.py, which imports this file.
 
 
-VERSION = "v5"     # bump this whenever this file changes, so console output alone identifies
+VERSION = "v5.1"   # bump this whenever this file changes, so console output alone identifies
                     # exactly which iteration of the code produced it.
 
 MAX_WORKERS = 24
@@ -269,7 +269,8 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
                         compute_sieving_primes_count=True, use_known_pi_seed=False,
                         segment_kb=work_plan_v5.DEFAULT_SEGMENT_KB,
                         region_kb=work_plan_v5.DEFAULT_REGION_KB,
-                        bucket_mb=work_plan_v5.DEFAULT_BUCKET_MB):
+                        bucket_mb=work_plan_v5.DEFAULT_BUCKET_MB,
+                        pieces_per_thread=work_plan_v5.DEFAULT_PIECES_PER_THREAD):
     target_idx_list = sorted(target_idx_list)
     BASE = 10 ** base_power
     windows = [(BASE + idx * window_m, window_m) for idx in target_idx_list]
@@ -330,7 +331,8 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
     seg_bits = work_plan_v5.segment_bits(segment_kb)
     small_stop = work_plan_v5.small_prime_stop(seg_bits, L_final)
     slices = work_plan_v5.plan_slices(n_odd, n_batches, min_slice_bits=seg_bits)
-    pieces = work_plan_v5.plan_pieces(L_final, combined_size, small_stop, MAX_WORKERS)
+    pieces = work_plan_v5.plan_pieces(L_final, combined_size, small_stop, MAX_WORKERS,
+                                      pieces_per_thread)
     jobs = [(process_slice, (lo, hi, first_odd, small_stop, seg_bits // 64))
             for lo, hi in slices]
     # A fork-context pool starts all its processes up front, so a buffer of a few segments
@@ -624,14 +626,16 @@ if __name__ == "__main__":
     # with no new positional CLI argument threaded through three separate scripts' argv
     # parsing. See count_sieving_primes_cached()'s own docstring for what this flag does.
     USE_KNOWN_PI_SEED = bool(int(os.environ.get("PRIMEATLAS_USE_KNOWN_PI_SEED", "0")))
-    # PRIMEATLAS_V5_SEGMENT_KB / _REGION_KB / _BUCKET_MB: segment size, bucket region size
-    # and bucket memory, same env-var route.
+    # PRIMEATLAS_V5_SEGMENT_KB / _REGION_KB / _BUCKET_MB / _PIECES_PER_THREAD: segment size,
+    # bucket region size, bucket memory and bucketed pieces per thread, same env-var route.
     SEGMENT_KB = work_plan_v5.segment_kb_from_env(os.environ)
     REGION_KB = work_plan_v5.region_kb_from_env(os.environ)
     BUCKET_MB = work_plan_v5.bucket_mb_from_env(os.environ)
+    PIECES_PER_THREAD = work_plan_v5.pieces_per_thread_from_env(os.environ)
 
     print("Start time:", datetime.datetime.now().strftime("%H:%M:%S"))
     main_batch_scanner(base_exponent, target_idx_list, WINDOW_M, write_files=WRITE_FILES,
                         compute_sieving_primes_count=COMPUTE_SIEVING_PRIMES_COUNT,
                         use_known_pi_seed=USE_KNOWN_PI_SEED, segment_kb=SEGMENT_KB,
-                        region_kb=REGION_KB, bucket_mb=BUCKET_MB)
+                        region_kb=REGION_KB, bucket_mb=BUCKET_MB,
+                        pieces_per_thread=PIECES_PER_THREAD)

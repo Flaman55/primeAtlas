@@ -1261,6 +1261,9 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
   base_tab.py                   BaseTab(ttk.Frame) -- common base class for every GUI
                               tab class in this package (shared self.T assignment,
                               totals_progress spinner toggle, clipboard-copy helper)
+  info_tip.py                   InfoTip -- the app's one "i" marker next to a field:
+                              hovering it shows how the field affects the run (the
+                              Generation tab's engine selector and every engine knob)
   widgets.py                    small generic tkinter helpers (e.g. FlowRow) with no
                               application-specific state; HeightGrip is the app's one
                               height control -- a drag handle under a terminal, list or
@@ -1531,20 +1534,30 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               engine_options.recommend() and by
                               recommended_max_windows (v4.1)
                               (unitTests/test_run_budget.py)
-  engine_options.py             sieve engine choice (v4.1 / v5 / pt1, default v5) and perf
-                              knobs (v5: segment KiB, bucket region KiB, bucket memory
-                              MiB, windows per run at floor 25; pt1: sieve limit B,
-                              chunk KiB; v4.1 and v5: RAM budget %) as persisted in the
-                              Generation settings: parsing, per-run window cap (v4.1
-                              1000, v5 and pt1 100,000), run sizing for the Auto button and
-                              Restore, and the launch env (PRIMEATLAS_SCANNER_VERSION,
-                              PRIMEATLAS_V5_*, PRIMEATLAS_PT1_*) that build_wsl_logged_command puts in
+  engine_options.py             sieve engine choice (v4.1 / v5 / v6 / pt1, default v6) and
+                              perf knobs (v5 and v6 each: segment KiB, bucket region KiB,
+                              bucket memory MiB, windows per run at floor 25, pieces per
+                              thread; pt1: sieve limit B, chunk KiB; v4.1, v5, v6: RAM
+                              budget %) as persisted in the Generation settings: parsing,
+                              the knob profile applied for the run's width, per-run
+                              window cap (v4.1 1000, others 100,000), run sizing for the
+                              Auto button and Restore, and the launch env
+                              (PRIMEATLAS_SCANNER_VERSION, PRIMEATLAS_V5_*,
+                              PRIMEATLAS_V6_*, PRIMEATLAS_PT1_*) that build_wsl_logged_command puts in
                               front of every orchestrator launch -- the same variables
                               are the CLI for runs started by hand
                               (unitTests/test_engine_options.py)
-  engine_fields.py              EngineFields -- the pipeline form's engine Combobox and
-                              knob Entries (each enabled only under the engine that
-                              reads it); the Quick-gen Width cap and the
+  engine_presets.py             knob profiles of v5 and v6 (Auto, Old, New, Intermediate,
+                              Custom): the measured segment / region / bucket /
+                              pieces sets, Auto's per-engine segment and bucket steps
+                              by the run's window count
+                              (unitTests/test_engine_presets.py)
+  engine_fields.py              EngineFields -- the pipeline form's engine Combobox
+                              (with the engine's code version, e.g. v5 -> v5.1) and
+                              the knob Entries of the selected engine only, each with
+                              an InfoTip; v5 and v6 have separate knob sets (their
+                              best values differ) and a profile list per engine; the
+                              Quick-gen Width cap and the
                               continuation / gap / trim planning follow the selected
                               engine
                               (unitTests/test_engine_gui_wiring.py)
@@ -1930,7 +1943,34 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
   prime_sieve_v4_1.py        same as v4, plus base-gen/sieve/write phase timing and
                               bytes-written tracking, feeding the Benchmark tab's
                               second (sieve-speed/write-speed) chart
-  prime_sieve_v5.py          default engine: shared buffer holds odd
+  prime_sieve_v6.py          default engine (code v6.0): v5's pipeline on a
+                              wheel-30 buffer (wheel30_layout.py), 8 bits per
+                              30 numbers, so a run of the same RAM covers 1.875
+                              times v5's numbers and pays the per-run generation
+                              of the sieving primes below sqrt(N) less often;
+                              reuses v5's planners, low-floor split and metrics
+                              handoff; output identical to v5
+                              (unitTests/test_engine_v6_identity.py)
+  wheel30_layout.py          the v6 buffer layout (byte b = 30 numbers, bit j =
+                              residue j coprime to 30) and its window unpacking:
+                              popcount for counts, only the unmarked bits turned
+                              into prime offsets (unitTests/test_wheel30_layout.py)
+  wheel30_writer.py          v6's write phase: each window's PGS2 bytes from the
+                              native gap encoder (wheel_window_gaps() in
+                              prime_sieve_engine_v6.c; NumPy path below 7), files
+                              written by a thread pool (PRIMEATLAS_V6_WRITE_THREADS,
+                              default 8) with each shard folder created once and
+                              progress lines while it writes
+                              (unitTests/test_wheel30_writer.py)
+  engine_v6_lib.py           ctypes binding of prime_sieve_engine_v6.so, loaded
+                              on first use
+  work_plan_v6.py            v6's knobs (env PRIMEATLAS_V6_SEGMENT_KB, _REGION_KB,
+                              _BUCKET_MB, _PIECES_PER_THREAD, _WRITE_THREADS;
+                              defaults 2048 / 1024 / 8192 / 16 / 8) and where its segmented primes
+                              end (half a segment's numbers); slices and pieces
+                              come from work_plan_v5.py
+                              (unitTests/test_work_plan_v6.py)
+  prime_sieve_v5.py          engine v5 (code v5.1): shared buffer holds odd
                               numbers only (half the RAM, p = 2 never sieved),
                               small primes sieve cache-sized segments of
                               buffer slices (work_plan_v5.py), larger primes
@@ -1974,7 +2014,9 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               the same offset -- equal removes P and lists the D
                               window as D/P, a difference
                               keeps both, prints an ERROR and lists the window in
-                              10p{N}/DP_MISMATCH.txt (unitTests/test_dp_verify.py)
+                              10p{N}/DP_MISMATCH.txt; a batch compares in a thread
+                              pool with progress lines and writes each list once
+                              (unitTests/test_dp_verify.py)
   sieving_prime_count_v5.py  pi(L_final) of a v5 run (diagnostic only): libprimesieve
                               count through the v5 engine, per-floor cache, optional
                               seed from known pi(10^n) values
@@ -1995,11 +2037,12 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               segmented small-prime path and
                               equal-cost pieces of the remaining sieving primes
                               for the bucketed pass; segment size from env
-                              PRIMEATLAS_V5_SEGMENT_KB (default 128), bucket
+                              PRIMEATLAS_V5_SEGMENT_KB (default 2048), bucket
                               region size from env PRIMEATLAS_V5_REGION_KB
                               (default 1024), bucket memory from env
-                              PRIMEATLAS_V5_BUCKET_MB (default 1024, all threads
-                              together)
+                              PRIMEATLAS_V5_BUCKET_MB (default 8192, all threads
+                              together), pieces per thread from env
+                              PRIMEATLAS_V5_PIECES_PER_THREAD (default 16)
                               (unitTests/test_work_plan_v5.py)
   prime_sieve_primesieve.py  "primesieve mode" -- calls libprimesieve's own public C API
                               (primesieve_generate_primes()) directly via ctypes, no custom
@@ -2040,6 +2083,11 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
   prime_sieve_engine_v1.c    C sieve core for prime_sieve_v1.py (ctypes)
   prime_sieve_engine_v3.c    C sieve core for prime_sieve_v3.py (ctypes)
   prime_sieve_engine_v4.c    C sieve core for prime_sieve_v4.py/v4_1.py (ctypes)
+  prime_sieve_engine_v6.c    C sieve core for prime_sieve_v6.py (ctypes): v5's
+                              segmented + bucketed marking and double-precision
+                              phase on the wheel-30 buffer; a prime p marks p*k
+                              for k coprime to 30 only, stepping k by the wheel's
+                              gaps; presieve pattern for 7..17
   prime_sieve_engine_v5.c    C sieve core for prime_sieve_v5.py (ctypes); the
                               per-prime phase first_odd mod p comes from a
                               double-precision quotient with an exact one-p
@@ -2047,14 +2095,15 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               checks it against exact integer arithmetic)
   orchestrator_v3.py         single-run driver; a single SCANNER_VERSION flag near
                               the top selects the active engine ("v3", "v4", "v4.1",
-                              "v5" or "pt1" -- default v5) instead of separate settings
+                              "v5", "v6" or "pt1" -- default v6) instead of separate settings
                               that could drift out of sync with each other; the env
                               var PRIMEATLAS_SCANNER_VERSION overrides the default
                               (the Generation tab always sets it from its engine
                               selector, see engine_options.py); continues a floor
                               from the store the engine writes into and, after each
                               batch, lets every new D window prove its P counterpart
-                              (dp_verify.py); the benchmark row's prime count is
+                              (dp_verify.py, time logged as verify_seconds); the
+                              benchmark row's prime count is
                               re-read from the written windows' headers by `workers`
                               threads; a batch failing while the GUI's stop request
                               exists is a stop: windows cut by the scanner kill are
@@ -2293,6 +2342,7 @@ gcc -O3 -shared -fPIC prime_sieve_engine_v1.c -o prime_sieve_engine_v1.so -lprim
 gcc -O3 -shared -fPIC prime_sieve_engine_v3.c -o prime_sieve_engine_v3.so -lprimesieve -lstdc++ -lm
 gcc -O3 -shared -fPIC prime_sieve_engine_v4.c -o prime_sieve_engine_v4.so -lprimesieve -lstdc++ -lm
 gcc -O3 -shared -fPIC prime_sieve_engine_v5.c -o prime_sieve_engine_v5.so -lprimesieve -lstdc++ -lm
+gcc -O3 -shared -fPIC prime_sieve_engine_v6.c -o prime_sieve_engine_v6.so -lprimesieve -lstdc++ -lm
 ```
 
 Prebuilt `.so` files are included; rebuild if the WSL environment's glibc/architecture

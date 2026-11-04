@@ -126,9 +126,16 @@ def add_proven_tags(portal_folder, base_exponent, tags):
 
 
 def discard_proven_tag(portal_folder, base_exponent, tag):
+    update_proven_tags(portal_folder, base_exponent, discard={tag})
+
+
+def update_proven_tags(portal_folder, base_exponent, add=(), discard=()):
+    """Adds `add` and drops `discard` from DP_PROVEN.txt in one read and at most one write
+    (a batch of comparisons updates the list once, not once per window)."""
     current = read_proven_tags(portal_folder, base_exponent)
-    if tag in current:
-        _write_proven_tags(portal_folder, base_exponent, current - {tag})
+    updated = (current | set(add)) - set(discard)
+    if updated != current:
+        _write_proven_tags(portal_folder, base_exponent, updated)
 
 
 def display_kind(name, proven_tags):

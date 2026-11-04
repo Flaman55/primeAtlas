@@ -18,17 +18,27 @@ idempotent: a run interrupted between writing D and removing P redoes it next ti
 
 Two PGS2 files hold the same primes exactly when their bytes agree outside the 4-byte
 generation timestamp, so the common case compares bytes; only a mismatch decodes the gap
-streams. Pure Python: orchestrator_v3.py calls reconcile_d() after each batch and the
-Storage tab's "Verify P against D" calls verify_floor().
+streams. A batch compares its windows in a thread pool (every comparison only reads) and
+then writes DP_PROVEN.txt and DP_MISMATCH.txt once, before it removes the proven P files:
+rewriting the lists per window costs time quadratic in the floor's window count. Pure
+Python: orchestrator_v3.py calls reconcile_many() after each batch and the Storage tab's
+"Verify P against D" calls verify_floor().
 """
 import os
+import time
 from collections import namedtuple
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import prime_sieve_v1
 import storage_kinds
 import window_sharding
 
 MISMATCH_FILENAME = "DP_MISMATCH.txt"
+PROGRESS_PREFIX = "[*] D proves P:"
+# Threads comparing windows: each comparison waits on two file reads (WSL /mnt latency),
+# so they overlap well past the core count; 8 matches the v6 writer's default (arbitrary).
+DEFAULT_WORKERS = 8
+_PROGRESS_SECONDS = 2.0
 
 Result = namedtuple("Result", "status first_difference")
 # status: "equal", "mismatch", "no_d" (P without D), "no_p" (D without P)
@@ -101,58 +111,99 @@ def _write_mismatch_lines(path, lines):
     os.replace(tmp, path)
 
 
-def _update_mismatch_list(portal_folder, base_exponent, tag, line):
-    """Drops tag's line from DP_MISMATCH.txt, then adds `line` when it is not None."""
+def _read(path):
+    try:
+        with open(path, "rb") as f:
+            return f.read()
+    except FileNotFoundError:
+        return None
+
+
+def _compare(p_path):
+    """(status, tag, mismatch) of the P window at p_path against its D counterpart, where
+    mismatch is (first difference, D count, P count) for a differing pair; reads only, so
+    comparisons of different windows run in parallel."""
+    p_data = _read(p_path)
+    if p_data is None:
+        return "no_p", None, None
+    d_path = counterpart_d_path(p_path)
+    d_data = _read(d_path)
+    if d_data is None:
+        return "no_d", None, None
+    tag = _window_tag(p_path)
+    if _without_timestamp(d_data) == _without_timestamp(p_data):
+        return "equal", tag, None
+    return "mismatch", tag, (_first_difference(d_path, p_path),
+                             prime_sieve_v1.read_prime_window_header(d_path)["count"],
+                             prime_sieve_v1.read_prime_window_header(p_path)["count"])
+
+
+def _apply(portal_folder, base_exponent, outcomes):
+    """Writes the outcomes [((status, tag, mismatch), p_path), ...] of a batch: each list
+    once, then the proven P files removed, so an interruption leaves at worst a P window
+    that is compared again."""
+    equal = [(tag, p) for (status, tag, _m), p in outcomes if status == "equal"]
+    mismatches = [(tag, m) for (status, tag, m), _p in outcomes if status == "mismatch"]
+    if not equal and not mismatches:
+        return
+    new_lines = []
+    for tag, (first, d_count, p_count) in mismatches:
+        print(f"[ERROR] D/P mismatch in {tag}: first differing number {first} "
+              f"(D {d_count} primes, P {p_count}); both files kept, listed in "
+              f"10p{base_exponent}/{MISMATCH_FILENAME}")
+        new_lines.append(f"{tag} first_difference={first} d_count={d_count} p_count={p_count}")
+    proven = {tag for tag, _p in equal}
+    refuted = {tag for tag, _m in mismatches}
+    storage_kinds.update_proven_tags(portal_folder, base_exponent, add=proven, discard=refuted)
     path = _mismatch_path(portal_folder, base_exponent)
-    lines = [ln for ln in _read_mismatch_lines(path) if ln.split(" ", 1)[0] != tag]
-    if line is not None:
-        lines.append(line)
-    _write_mismatch_lines(path, lines)
+    kept = [ln for ln in _read_mismatch_lines(path) if ln.split(" ", 1)[0] not in proven | refuted]
+    _write_mismatch_lines(path, kept + new_lines)
+    for _tag, p_path in equal:
+        os.remove(p_path)
 
 
 def reconcile(portal_folder, base_exponent, p_path):
     """Compares the P window at p_path with its D counterpart (see the module docstring)."""
-    d_path = counterpart_d_path(p_path)
-    if not os.path.exists(p_path):
-        return Result("no_p", None)
-    if not os.path.exists(d_path):
-        return Result("no_d", None)
-    with open(d_path, "rb") as f:
-        d_data = f.read()
-    with open(p_path, "rb") as f:
-        p_data = f.read()
-    tag = _window_tag(p_path)
-    if _without_timestamp(d_data) == _without_timestamp(p_data):
-        storage_kinds.add_proven_tags(portal_folder, base_exponent, {tag})
-        os.remove(p_path)
-        _update_mismatch_list(portal_folder, base_exponent, tag, None)
-        return Result("equal", None)
-    first = _first_difference(d_path, p_path)
-    d_count = prime_sieve_v1.read_prime_window_header(d_path)["count"]
-    p_count = prime_sieve_v1.read_prime_window_header(p_path)["count"]
-    line = f"{tag} first_difference={first} d_count={d_count} p_count={p_count}"
-    print(f"[ERROR] D/P mismatch in {tag}: first differing number {first} "
-          f"(D {d_count} primes, P {p_count}); both files kept, listed in "
-          f"10p{base_exponent}/{MISMATCH_FILENAME}")
-    _update_mismatch_list(portal_folder, base_exponent, tag, line)
-    storage_kinds.discard_proven_tag(portal_folder, base_exponent, tag)
-    return Result("mismatch", first)
+    outcome = _compare(p_path)
+    _apply(portal_folder, base_exponent, [(outcome, p_path)])
+    status, _tag, mismatch = outcome
+    return Result(status, mismatch[0] if mismatch else None)
 
 
 def reconcile_d(portal_folder, base_exponent, d_path):
     """reconcile() for a freshly written D window; "no_p" when it has no P counterpart."""
-    p_path = counterpart_p_path(d_path)
-    if not os.path.exists(p_path):
-        return Result("no_p", None)
-    return reconcile(portal_folder, base_exponent, p_path)
+    return reconcile(portal_folder, base_exponent, counterpart_p_path(d_path))
 
 
-def verify_floor(portal_folder, base_exponent):
-    """reconcile() over every P window of the floor; {status: count} of the outcomes."""
+def reconcile_many(portal_folder, base_exponent, p_paths, workers=DEFAULT_WORKERS,
+                   progress=print):
+    """reconcile() over every path of p_paths, compared by `workers` threads (each pair is
+    two file reads, latency-bound on WSL's /mnt drives); DP_PROVEN.txt and
+    DP_MISMATCH.txt are written once for the whole batch. Progress lines go to `progress`
+    (None: silent). Returns {status: count}."""
+    p_paths = list(p_paths)
+    outcomes = [None] * len(p_paths)
+    total = len(p_paths)
+    t_start = last = time.perf_counter()
+    with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+        futures = {pool.submit(_compare, p): i for i, p in enumerate(p_paths)}
+        for done, future in enumerate(as_completed(futures), 1):
+            outcomes[futures[future]] = future.result()
+            now = time.perf_counter()
+            if progress is not None and (done == total or now - last >= _PROGRESS_SECONDS):
+                last = now
+                progress(f"{PROGRESS_PREFIX} {done}/{total} ({100 * done / total:.1f}%) | "
+                         f"time: {now - t_start:.1f}s")
+    _apply(portal_folder, base_exponent, list(zip(outcomes, p_paths)))
     summary = {}
-    p_dir = storage_kinds.source_dir(portal_folder, base_exponent, storage_kinds.KIND_P)
-    for name, path in window_sharding.list_sharded_files(
-            p_dir, predicate=lambda n: storage_kinds.is_window_name(n, storage_kinds.KIND_P)):
-        status = reconcile(portal_folder, base_exponent, path).status
+    for status, _tag, _line in outcomes:
         summary[status] = summary.get(status, 0) + 1
     return summary
+
+
+def verify_floor(portal_folder, base_exponent, workers=DEFAULT_WORKERS, progress=None):
+    """reconcile_many() over every P window of the floor; {status: count} of the outcomes."""
+    p_dir = storage_kinds.source_dir(portal_folder, base_exponent, storage_kinds.KIND_P)
+    paths = [path for _name, path in window_sharding.list_sharded_files(
+        p_dir, predicate=lambda n: storage_kinds.is_window_name(n, storage_kinds.KIND_P))]
+    return reconcile_many(portal_folder, base_exponent, paths, workers, progress)

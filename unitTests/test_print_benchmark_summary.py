@@ -6,6 +6,7 @@ filename, which must use the SHARDED location (source_primes/shard_NNNNN/, see
 window_sharding.py), not a flat "source_dir/PRIME_WINDOW_....bin" path -- otherwise a
 correctly written run logs windows_written=0 / total_primes=0 to benchmark_log.csv. The
 headers are read by `workers` threads: the same totals for 1 and for several threads.
+verify_seconds (the D-proves-P time) goes to its own column, blank when not given.
 
 Pure logic, no tkinter, no real prime data needed beyond a couple of tiny PGS2 fixture
 windows written via prime_sieve_v1.write_prime_window() into the CORRECT sharded location
@@ -67,7 +68,8 @@ def main():
             base_exponent, start_idx, end_idx, total_seconds=12.5, portal_folder=tmp_portal,
             l_final=1000, sieving_primes_count=168, max_child_rss_mb=256.0,
             write_files=True, window_m=window_m,
-            base_gen_seconds=0.1, sieve_seconds=10.0, write_seconds=2.4, bytes_written=4096)
+            base_gen_seconds=0.1, sieve_seconds=10.0, write_seconds=2.4, bytes_written=4096,
+            verify_seconds=1.25)
 
         log_path = os.path.join(tmp_portal, "benchmark_log.csv")
         check(os.path.exists(log_path), "benchmark_log.csv was written")
@@ -84,6 +86,8 @@ def main():
         check(row["total_primes"] == "3",
               f"total_primes sums the real per-window PGS2 header counts (2+1=3) "
               f"(got {row['total_primes']!r})")
+        check(row["verify_seconds"] == "1.250",
+              f"verify_seconds logged as its own column (got {row.get('verify_seconds')!r})")
         check(row["seconds_per_window"] == "6.2500",
               f"seconds_per_window = 12.5s / 2 windows, not nan (got "
               f"{row['seconds_per_window']!r})")
@@ -99,6 +103,8 @@ def main():
                     workers=workers)
                 with open(os.path.join(tmp_portal3, "benchmark_log.csv"), newline="") as f:
                     row3 = list(csv.DictReader(f))[0]
+                check(row3["verify_seconds"] == "",
+                      f"no verify_seconds given -> blank (got {row3['verify_seconds']!r})")
                 check(row3["windows_written"] == "2" and row3["total_primes"] == "3",
                       f"{workers} header-reading thread(s): 2 windows, 3 primes (got "
                       f"{row3['windows_written']!r}, {row3['total_primes']!r})")

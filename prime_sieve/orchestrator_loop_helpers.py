@@ -37,7 +37,7 @@ def find_auto_start(base_exponent, portal_folder, window_m, engine=None):
     None if there is none (caller should then use the fallback). engine defaults to
     PRIMEATLAS_SCANNER_VERSION, as orchestrator_v3.py's SCANNER_VERSION does."""
     if engine is None:
-        engine = os.environ.get("PRIMEATLAS_SCANNER_VERSION") or "v5"
+        engine = os.environ.get("PRIMEATLAS_SCANNER_VERSION") or "v6"
     idxs = storage_kinds.engine_target_idxs(portal_folder, base_exponent, window_m, engine)
     return max(idxs) + 1 if idxs else None
 

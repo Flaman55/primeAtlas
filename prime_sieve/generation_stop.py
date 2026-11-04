@@ -18,6 +18,7 @@ SCANNER_SCRIPTS = {
     "v4": "prime_sieve_v4.py",
     "v4.1": "prime_sieve_v4_1.py",
     "v5": "prime_sieve_v5.py",
+    "v6": "prime_sieve_v6.py",
     "pt1": "prime_sieve_pt1.py",
 }
 

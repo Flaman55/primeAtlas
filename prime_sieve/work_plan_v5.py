@@ -9,24 +9,31 @@ Two job kinds cover the run together:
     [small_prime_stop(), L_final), split by the Mertens/li cost model below and marked by one
     multi-threaded sieve_odd_bucketed() call, which buckets the hits by buffer region.
 
-Perf knobs (environment variables; the defaults are arbitrary, picked by measurement):
-  - PRIMEATLAS_V5_SEGMENT_KB: segment size, sized for a per-core L2 cache shared by two SMT
-    threads;
+Perf knobs (environment variables; the defaults are arbitrary, picked by measurement on a
+12-core Zen 3 with 64 GB, floor 25, 2e11 numbers per run):
+  - PRIMEATLAS_V5_SEGMENT_KB: segment size. Every prime below half a segment's numbers is
+    sieved in the cache-resident segmented stage instead of the buckets; 2048 KiB measured
+    fastest (128 KiB: +19 %, 8192 KiB: +94 %, the 24 private segments overflow L3);
   - PRIMEATLAS_V5_REGION_KB: bucket region size. Larger regions mean fewer buckets per
     thread, so the scatter's open bucket lines stay in cache; smaller regions keep the
-    apply step's ORs inside L2/L3;
-  - PRIMEATLAS_V5_BUCKET_MB: bucket memory of all threads together; more memory means more
-    hits per region per round, so fewer rounds.
+    apply step's ORs inside L2/L3; 1024 KiB measured fastest (256 KiB: bucket stage +45 %);
+  - PRIMEATLAS_V5_BUCKET_MB: bucket memory of all threads together. Every round's apply step
+    touches most lines of the buffer, and the number of rounds is the hits over the bucket
+    memory, so the bucket stage grows with the square of the run length at a fixed bucket
+    memory; 8192 MiB against 1024 MiB: -32 %. run_budget.py lowers it when RAM is short;
+  - PRIMEATLAS_V5_PIECES_PER_THREAD: bucketed prime pieces per thread, claimed one at a time,
+    so the last pieces even out thread speeds.
 """
 import math
 
 SEGMENT_KB_ENV = "PRIMEATLAS_V5_SEGMENT_KB"
-DEFAULT_SEGMENT_KB = 128
+DEFAULT_SEGMENT_KB = 2048
 REGION_KB_ENV = "PRIMEATLAS_V5_REGION_KB"
 DEFAULT_REGION_KB = 1024
 BUCKET_MB_ENV = "PRIMEATLAS_V5_BUCKET_MB"
-DEFAULT_BUCKET_MB = 1024
-PIECES_PER_THREAD = 16   # claimed one at a time: the last pieces even out thread speeds
+DEFAULT_BUCKET_MB = 8192
+PIECES_PER_THREAD_ENV = "PRIMEATLAS_V5_PIECES_PER_THREAD"
+DEFAULT_PIECES_PER_THREAD = 16
 
 
 def _positive_int_from_env(environ, name, default, unit):
@@ -58,6 +65,13 @@ def bucket_mb_from_env(environ):
     """Bucket memory in MiB from `environ` (a mapping), DEFAULT_BUCKET_MB when unset.
     Raises ValueError unless the value is a positive integer."""
     return _positive_int_from_env(environ, BUCKET_MB_ENV, DEFAULT_BUCKET_MB, "MiB")
+
+
+def pieces_per_thread_from_env(environ):
+    """Bucketed pieces per thread from `environ` (a mapping), DEFAULT_PIECES_PER_THREAD when
+    unset. Raises ValueError unless the value is a positive integer."""
+    return _positive_int_from_env(environ, PIECES_PER_THREAD_ENV, DEFAULT_PIECES_PER_THREAD,
+                                  "pieces")
 
 
 def segment_bits(segment_kb):
@@ -156,12 +170,13 @@ def build_equal_cost_batches(L_final, combined_size, n_batches, lo=2):
     return batches or [[(lo, L_final)]]
 
 
-def plan_pieces(L_final, combined_size, lo, n_threads):
+def plan_pieces(L_final, combined_size, lo, n_threads,
+                pieces_per_thread=DEFAULT_PIECES_PER_THREAD):
     """Ascending, contiguous (piece_lo, piece_hi) ranges covering the bucketed primes
-    [lo, L_final), n_threads * PIECES_PER_THREAD of them at most, of equal estimated cost.
+    [lo, L_final), n_threads * pieces_per_thread of them at most, of equal estimated cost.
     sieve_odd_bucketed() threads claim them in order. Empty when lo >= L_final."""
     if lo >= L_final:
         return []
     batches = build_equal_cost_batches(L_final, combined_size,
-                                       max(1, n_threads) * PIECES_PER_THREAD, lo=lo)
+                                       max(1, n_threads) * max(1, pieces_per_thread), lo=lo)
     return [r for batch in batches for r in batch]

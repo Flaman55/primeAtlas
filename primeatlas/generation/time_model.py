@@ -86,7 +86,7 @@ def prime_count(x):
 
 
 def prep_limit(engine, top, pt1_b=0):
-    """Largest sieving prime bound of a run ending at `top`: isqrt(top) for v4.1 and v5;
+    """Largest sieving prime bound of a run ending at `top`: isqrt(top) for v4.1, v5 and v6;
     for pt1 the B knob, or floor(top^(1/4)) when the knob is 0."""
     if engine == ENGINE_PT1:
         return pt1_b if pt1_b > 0 else math.isqrt(math.isqrt(top))

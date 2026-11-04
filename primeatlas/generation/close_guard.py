@@ -41,6 +41,8 @@ STRING_KEYS = (
 )
 
 POLL_MS = 200
+# Engines that write a batch's windows only after sieving all of it (close.v5_sieve_note).
+SIEVE_THEN_WRITE_ENGINES = ("v5", "v6")
 
 _active = None  # the open StoppingWindow, if any
 
@@ -74,7 +76,7 @@ def close_message(gen_tab, jobs, T):
         stage = _stage(runner)
         lines.append(T(f"close.job_{key}", stage=_stage_text(stage, T)))
         if (key == "generation" and stage[0] == "sieving"
-                and (gen_tab.loop_run_info or {}).get("engine") == "v5"):
+                and (gen_tab.loop_run_info or {}).get("engine") in SIEVE_THEN_WRITE_ENGINES):
             lines.append(T("close.v5_sieve_note"))
     return "\n".join(lines) + "\n\n" + T("close.kept_note") + "\n\n" + T("close.question")
 

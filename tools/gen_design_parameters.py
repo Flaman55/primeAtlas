@@ -35,13 +35,15 @@ FORM_LABELS = {
         "batches_per_worker": "gen.field_batches",
         "window_m": "gen.field_window_m",
         "engine": "gen.field_engine",
-        "v5_segment_kb": "gen.field_v5_segment_kb",
-        "v5_region_kb": "gen.field_v5_region_kb",
-        "v5_bucket_mb": "gen.field_v5_bucket_mb",
-        "v5_windows_at_25": "gen.field_v5_windows_at_25",
+        **{f"{engine}_{knob}": f"gen.field_{engine}_{knob}" for engine in ("v5", "v6")
+           for knob in ("segment_kb", "region_kb", "bucket_mb", "windows_at_25",
+                        "pieces_per_thread")},
+        "v6_write_threads": "gen.field_v6_write_threads",
         "pt1_b": "gen.field_pt1_b",
         "pt1_chunk_kb": "gen.field_pt1_chunk_kb",
         "ram_budget_pct": "gen.field_ram_budget_pct",
+        "v5_preset": "gen.field_preset",
+        "v6_preset": "gen.field_preset",
     },
     "constellation": {
         "base_exponent": "gen.field_base_exponent",
@@ -94,6 +96,9 @@ def _form_type(key, default, engine_options, generation_settings):
     """(type and bounds, owner file) of one Generation form field."""
     if key == "engine":
         return "one of " + ", ".join(engine_options.ENGINES), "engine_options.py"
+    if key.endswith("_preset"):
+        from primeatlas.generation import engine_presets
+        return "one of " + ", ".join(engine_presets.PRESETS), "engine_presets.py"
     if key in engine_options.KNOB_KEYS:
         lowest = 0 if key in engine_options._ZERO_ALLOWED else 1
         highest = engine_options._MAX_VALUES.get(key)

@@ -90,6 +90,7 @@ def check_prep_limit():
     passed = True
     top = 10 ** 25 + 12345
     passed &= check(tm.prep_limit("v5", top) == math.isqrt(top), "v5 limit = isqrt(top)")
+    passed &= check(tm.prep_limit("v6", top) == math.isqrt(top), "v6 limit = isqrt(top)")
     passed &= check(tm.prep_limit("v4.1", top) == math.isqrt(top), "v4.1 limit = isqrt(top)")
     root4 = tm.prep_limit("pt1", top)
     passed &= check(root4 ** 4 <= top < (root4 + 1) ** 4, "pt1 default limit = 4th root of top")

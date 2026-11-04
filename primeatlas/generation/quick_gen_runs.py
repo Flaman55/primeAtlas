@@ -304,7 +304,7 @@ class QuickGenRuns:
 
         workers = _positive_int_or("workers", 1)
         batches_per_worker = _positive_int_or("batches_per_worker", 1)
-        choice, bad_key = self._engine_fields.choice()
+        choice, bad_key = self._engine_fields.choice(window_count_per_run)
         if choice is None:
             messagebox.showerror(
                 self.T("gen.dialog_title"), self.T("gen.error_field_int", field=bad_key))
