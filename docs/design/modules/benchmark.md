@@ -23,7 +23,7 @@ Reads only; the log's header belongs to `prime_sieve/benchmark_log_schema.py`.
 Three charts, one line per engine, last row per floor and line: the whole run (`loop_numbers_per_second`,
 write MB/s), the sieve phase (sieve n/s, s/window, reference points), and RAM (`max_child_rss_mb`, the
 largest process's peak, and that divided by `windows_written`, so runs of different widths compare). RAM
-has its own chart so its megabytes do not share an axis with a speed. Each chart keeps its own hidden
+has its own chart so its megabytes do not share an axis with a speed; it shares a row with the sieve chart, half the width each, so the page still fits the default 1050x680 window. Each chart keeps its own hidden
 lines and pinned axes; the PDF draws the RAM pair on its own page when any row measured it.
 
 Zoom and pan follow the visualizations: the wheel over a chart zooms the floor axis around the
@@ -58,6 +58,6 @@ None of its own.
 
 ## Known gaps
 
-- `benchmark_tab.py` has 959 lines; a fourth chart needs the three redraw methods folded into
+- `benchmark_tab.py` has 966 lines; a fourth chart needs the three redraw methods folded into
   one chart table first.
 - Primesieve and cudasieve rows log no RAM, so they have no RAM points.
