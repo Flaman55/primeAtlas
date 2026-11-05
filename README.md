@@ -2074,7 +2074,11 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               (unitTests/test_work_plan_v5.py)
   prime_sieve_primesieve.py  "primesieve mode" -- calls libprimesieve's own public C API
                               (primesieve_generate_primes()) directly via ctypes, no custom
-                              engine or batching pipeline; see "The primesieve mode" above
+                              engine or batching pipeline; see "The primesieve mode" above;
+                              its benchmark row carries the sieve/write phases, bytes,
+                              range and peak RSS like the other engines' rows, so it
+                              charts next to them
+                              (unitTests/test_primesieve_benchmark_row.py)
   prime_sieve_cudasieve.py   "cudasieve mode" (optional, opt-in) -- shells out to the
                               third-party CUDASieve GPU CLI as a separate OS process
                               (never linked, GPLv3 process boundary); see "The cudasieve

@@ -282,6 +282,18 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   wartość: swapowaniem, zabiciem uruchomienia z braku pamięci, zawieszeniem systemu.
   Szerokość wpisana powyżej budżetu nadal się uruchomi, a linia RAM to oznacza.
 
+### +30 — primesieve mode on the Benchmark charts
+
+- English: Runs in primesieve mode now log their sieving and writing time, the bytes
+  written, the range covered and their peak RAM, the same columns the other engines log. Their points
+  appear on the Benchmark charts next to v5 and v6, and the logged total time now also
+  includes writing the windows, as for every other engine.
+- Polski: Uruchomienia w trybie primesieve zapisują teraz czas przesiewania i zapisu,
+  liczbę zapisanych bajtów, pokryty zakres i szczytowy RAM, czyli te same kolumny co
+  pozostałe silniki.
+  Ich punkty pojawiają się na wykresach Benchmarku obok v5 i v6, a zapisywany czas
+  całkowity obejmuje teraz także zapis okien, jak u każdego innego silnika.
+
 ## 1.2.0 — 2026-11-01
 
 ### English

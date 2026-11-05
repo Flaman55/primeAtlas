@@ -72,6 +72,12 @@ the reported windows do not add up to the range, the headers of the written wind
 instead, one file open each (about 13 ms on a /mnt drive, overlapped by `workers` threads).
 Per-window times print in ms below a second.
 
+Primesieve mode (`prime_sieve_primesieve.py`) logs one row per call like the other engines:
+`total_seconds` is the wall time of `primesieve_generate_primes()` plus splitting and writing the
+windows, `sieve_seconds` and `write_seconds` the two phases, `bytes_written` the files' size on disk,
+`numbers_processed` the range, `max_child_rss_mb` the process's peak RSS (the whole prime list is in
+it), and `loop_numbers_per_second` / `loop_seconds_per_window` from the wall time, so its runs appear on the Benchmark charts and calibrate the time model next to v5/v6.
+
 ## Kept data
 
 Prime windows, `benchmark_log.csv`, `floor_meta.json`, `last_scan_metrics.json`, sieving-prime cache,
@@ -84,7 +90,8 @@ hit pages ([data.md](../data.md)).
 `test_engine_v6_identity`, `test_wheel30_layout`, `test_wheel30_writer`, `test_work_plan_v6`,
 `test_engine_pt1`, `test_work_plan_v5`, `test_overlap_pipeline`, `test_orchestrator_stop`,
 `test_hybrid_*`, `test_cudasieve_integration`, `test_hit_paging`, `test_floor_meta_store`,
-`test_benchmark_log_schema`, `test_print_benchmark_summary`, `test_pi_seed`. See also BENCHMARK.md.
+`test_benchmark_log_schema`, `test_print_benchmark_summary`, `test_primesieve_benchmark_row`,
+`test_pi_seed`. See also BENCHMARK.md.
 
 ## Known gaps
 
