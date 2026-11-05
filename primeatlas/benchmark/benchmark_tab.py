@@ -520,20 +520,27 @@ class BenchmarkTab(BenchmarkExport, BaseTab):
         # "no data yet" placeholder when both series are empty, so a project that hasn't
         # re-benchmarked with v4.1 yet just sees that placeholder rather than the tab
         # silently hiding/showing a whole section.
-        chart_frame2 = ttk.Frame(self)
-        chart_frame2.pack(fill="x", padx=6, pady=(0, 4))
-        ttk.Label(chart_frame2, text=T("bench.chart2_hint")).pack(anchor="w")
-        self.benchmark_chart2 = tk.Canvas(chart_frame2, height=180, background=p["console_bg"],
+        # The sieve and RAM charts share one row, half the width each, so the third chart
+        # costs the page no height (it fits the default 1050x680 window).
+        lower_row = ttk.Frame(self)
+        lower_row.pack(fill="x", padx=6, pady=(0, 4))
+        lower_row.columnconfigure((0, 1), weight=1, uniform="lower_charts")
+        chart_frame2 = ttk.Frame(lower_row)
+        chart_frame2.grid(row=0, column=0, sticky="nsew", padx=(0, 3))
+        ttk.Label(chart_frame2, text=T("bench.chart2_hint"), wraplength=480,
+                  justify="left").pack(anchor="w")
+        self.benchmark_chart2 = tk.Canvas(chart_frame2, height=165, background=p["console_bg"],
                                            highlightthickness=1, highlightbackground=p["border"])
         self.benchmark_chart2.pack(fill="x")
         self.benchmark_chart2.bind("<Configure>", lambda _e: self._redraw_benchmark_chart2())
 
         # Third chart: each run's peak RAM and RAM per window (max_child_rss_mb), on its
         # own canvas so the two speed charts keep their scales.
-        chart_frame3 = ttk.Frame(self)
-        chart_frame3.pack(fill="x", padx=6, pady=(0, 4))
-        ttk.Label(chart_frame3, text=T("bench.chart3_hint")).pack(anchor="w")
-        self.benchmark_chart3 = tk.Canvas(chart_frame3, height=160, background=p["console_bg"],
+        chart_frame3 = ttk.Frame(lower_row)
+        chart_frame3.grid(row=0, column=1, sticky="nsew", padx=(3, 0))
+        ttk.Label(chart_frame3, text=T("bench.chart3_hint"), wraplength=480,
+                  justify="left").pack(anchor="w")
+        self.benchmark_chart3 = tk.Canvas(chart_frame3, height=165, background=p["console_bg"],
                                            highlightthickness=1, highlightbackground=p["border"])
         self.benchmark_chart3.pack(fill="x")
         self.benchmark_chart3.bind("<Configure>", lambda _e: self._redraw_benchmark_chart3())
@@ -732,7 +739,7 @@ class BenchmarkTab(BenchmarkExport, BaseTab):
         if width <= 1:
             width = 900
         if height <= 1:
-            height = 180
+            height = 165
         p = self._theme_palette
         _draw_growth_chart(self.benchmark_chart2, self._benchmark_sieve_nps_points, width,
                             height, label_key1="bench.axis_sieve_nps",
@@ -753,8 +760,8 @@ class BenchmarkTab(BenchmarkExport, BaseTab):
         """The RAM chart: peak MB per run (left axis) and MB per window (right axis)."""
         width = self.benchmark_chart3.winfo_width()
         height = self.benchmark_chart3.winfo_height()
-        width = 900 if width <= 1 else width
-        height = 160 if height <= 1 else height
+        width = 450 if width <= 1 else width
+        height = 165 if height <= 1 else height
         p = self._theme_palette
         _draw_growth_chart(self.benchmark_chart3, [], width, height,
                             label_key1="bench.axis_ram_mb",
