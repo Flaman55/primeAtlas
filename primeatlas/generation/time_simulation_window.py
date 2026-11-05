@@ -8,14 +8,23 @@ the form and a form edit moves the slider; the vars belong to the form, the wind
 traces them and removes its traces when it closes. The log is read when the window opens
 and again by reload_log(), which the Generation tab calls when a run ends, so a run finishing
 meanwhile recalibrates the model; it is never written.
+
+The RAM line predicts the run's peak memory (run_ram.py) in GB and as a share of the RAM free
+in WSL, which the opener reads in the background and hands over with set_available_ram().
+The width slider ends at the widest run that fits the pipeline form's RAM budget (or the
+engine's cap when that is smaller, for pt1, or while the free RAM is unknown); the window
+also traces the form's budget and bucket fields, so editing them moves the cap. A width typed
+into the form above the budget is kept and flagged: the form still runs what it holds.
 """
 import math
 import tkinter as tk
 from tkinter import ttk
 
-from . import engine_options, time_model
+from primeatlas.core.info_tip import InfoTip
+
+from . import engine_options, run_budget, run_ram, time_model
 from .run_output import format_duration_short
-from .window_planning import QUICK_FLOOR_MAX
+from .window_planning import QUICK_FLOOR_MAX, QUICK_GEN_MAX_WINDOW_WIDTH
 
 FLOOR_MIN = time_model.LOW_FLOOR_CUTOFF
 FLOOR_MAX = QUICK_FLOOR_MAX
@@ -60,10 +69,12 @@ def _int_or_none(text):
 class TimeSimulationWindow(tk.Toplevel):
     """Toplevel bound to the form's vars: floor_var and width_var (windows per run),
     engine_var; width_cap() gives the engine's per-run cap, write_files() whether runs write
-    files, pt1_b() the pt1 B knob (0 = automatic)."""
+    files, pt1_b() the pt1 B knob (0 = automatic), engine_choice(windows) the EngineChoice a
+    run of that width launches with (None while a knob is invalid); budget_vars are the
+    form's vars that change it (RAM budget, bucket memory, knob profiles)."""
 
     def __init__(self, master, T, log_path, floor_var, width_var, engine_var, width_cap,
-                 write_files, pt1_b):
+                 write_files, pt1_b, engine_choice, budget_vars=()):
         super().__init__(master)
         self.T = T
         self.title(T("timesim.title"))
@@ -73,16 +84,19 @@ class TimeSimulationWindow(tk.Toplevel):
         self._width_cap = width_cap
         self._write_files = write_files
         self._pt1_b = pt1_b
+        self._engine_choice = engine_choice
+        self.available_ram = None
+        self._ram_read = False
         self._log_path = log_path
         self._samples = time_model.read_samples(log_path)
         self._calibrations = {}
         self._syncing = False
         self.result_vars = {key: tk.StringVar(value="") for key in (
             "floor", "width", "primes", "prep", "sieve", "write", "run", "window", "speed",
-            "speed_net", "measured", "floor_total", "model")}
+            "speed_net", "ram", "measured", "floor_total", "model")}
         self._build()
         self._traces = [(var, var.trace_add("write", lambda *_: self._on_form_changed()))
-                        for var in (floor_var, width_var, engine_var)]
+                        for var in (floor_var, width_var, engine_var, *budget_vars)]
         self.protocol("WM_DELETE_WINDOW", self.close)
         self._on_form_changed()
 
@@ -114,15 +128,46 @@ class TimeSimulationWindow(tk.Toplevel):
         results = ttk.LabelFrame(body, text=T("timesim.results_frame"), padding=8)
         results.grid(row=4, column=0, columnspan=3, sticky="we", pady=(8, 0))
         for row, key in enumerate(("primes", "prep", "sieve", "write", "run", "window", "speed",
-                                   "speed_net", "measured", "floor_total")):
+                                   "speed_net", "ram", "measured", "floor_total")):
             ttk.Label(results, text=T(f"timesim.label_{key}")).grid(
                 row=row, column=0, sticky="w", padx=(0, 12), pady=1)
-            ttk.Label(results, textvariable=self.result_vars[key]).grid(
-                row=row, column=1, sticky="w", pady=1)
+            cell = ttk.Frame(results)
+            cell.grid(row=row, column=1, sticky="w", pady=1)
+            ttk.Label(cell, textvariable=self.result_vars[key], wraplength=520,
+                      justify="left").pack(side="left")
+            if key == "ram":
+                self.ram_info = InfoTip(cell, self._ram_info_text)
+                self.ram_info.label.pack(side="left", padx=(6, 0))
         ttk.Label(body, textvariable=self.result_vars["model"], style="Hint.TLabel",
                   wraplength=560, justify="left").grid(
             row=5, column=0, columnspan=3, sticky="w", pady=(8, 0))
         body.columnconfigure(1, weight=1)
+
+    def _ram_info_text(self):
+        T = self.T
+        return T("timesim.info_ram", field=T("gen.field_ram_budget_pct").rstrip(":"),
+                 advanced=T("gen.advanced_show").replace("[+] ", ""),
+                 default=round(run_budget.DEFAULT_SAFETY_FRACTION * 100))
+
+    def set_available_ram(self, available_ram_bytes):
+        """The RAM free in WSL (bytes), or None when it could not be read."""
+        self.available_ram = available_ram_bytes
+        self._ram_read = True
+        self._on_form_changed()
+
+    def _ram_fit(self):
+        """Widest run in the RAM budget, None when the budget sets no limit (pt1, free RAM
+        unknown, invalid knob)."""
+        if self._engine_choice(1) is None:
+            return None
+        return run_ram.max_windows_in_budget(self._engine_choice, self.available_ram,
+                                             self._width_cap(), QUICK_GEN_MAX_WINDOW_WIDTH)
+
+    def slider_cap(self):
+        """Right end of the width slider: the engine's cap, lowered to the RAM budget."""
+        cap = self._width_cap()
+        fit = self._ram_fit()
+        return cap if fit is None else max(1, min(cap, fit))
 
     def reload_log(self):
         """Rereads the log (a run has just added its row) and recalibrates."""
@@ -157,8 +202,8 @@ class TimeSimulationWindow(tk.Toplevel):
         return min(self._width_cap(), max(1, value)) if value else 1
 
     def _width_position(self, windows):
-        cap = self._width_cap()
-        return math.log(windows) / math.log(cap) if cap > 1 else 0.0
+        cap = self.slider_cap()
+        return min(1.0, math.log(windows) / math.log(cap)) if cap > 1 else 1.0
 
     def _on_floor_slider(self, value):
         if self._syncing:
@@ -170,8 +215,8 @@ class TimeSimulationWindow(tk.Toplevel):
     def _on_width_slider(self, value):
         if self._syncing:
             return
-        cap = self._width_cap()
-        windows = max(1, min(cap, int(round(cap ** float(value)))))
+        cap = self.slider_cap()
+        windows = max(1, min(cap, int(round(cap ** min(1.0, float(value))))))
         if _int_or_none(self.width_var.get()) != windows:
             self.width_var.set(str(windows))
 
@@ -193,6 +238,27 @@ class TimeSimulationWindow(tk.Toplevel):
         return T("timesim.measured_value", count=runs.count, windows=f"{runs.windows:,}",
                  time=format_long_duration(runs.seconds, T), speed=format_rate(speed),
                  model=format_long_duration(runs.model_seconds, T))
+
+    def _ram_text(self, windows):
+        T = self.T
+        choice = self._engine_choice(windows)
+        if choice is None:
+            return "?"
+        ram = run_ram.run_ram_bytes(choice, windows, QUICK_GEN_MAX_WINDOW_WIDTH)
+        if ram is None:
+            return T("timesim.ram_pt1")
+        gb = f"{ram / 1e9:.1f}"
+        if not self._ram_read:
+            return T("timesim.ram_without_free", ram=gb, reason=T("timesim.ram_free_reading"))
+        if not self.available_ram:
+            return T("timesim.ram_without_free", ram=gb, reason=T("timesim.ram_free_unknown"))
+        fit = self._ram_fit()
+        text = T("timesim.ram_value", ram=gb, pct=f"{ram / self.available_ram * 100:.0f}",
+                 free=f"{self.available_ram / 1e9:.1f}",
+                 budget=choice.knobs[engine_options.RAM_BUDGET_KNOB], max=f"{fit:,}")
+        if ram > run_ram.budget_bytes(choice, self.available_ram):
+            text += " -- " + T("timesim.ram_over_budget")
+        return text
 
     def refresh(self):
         T = self.T
@@ -225,6 +291,7 @@ class TimeSimulationWindow(tk.Toplevel):
         runs = -(-time_model.floor_windows(floor) // windows)
         v["floor_total"].set(T("timesim.floor_total_value", time=format_long_duration(total, T),
                                runs=f"{runs:,}", numbers=f"{9 * 10 ** floor:.0e}"))
+        v["ram"].set(self._ram_text(windows))
         v["measured"].set(self._measured_text(engine, floor, pt1_b))
         if cal is None:
             v["model"].set(T("timesim.model_none", engine=engine))

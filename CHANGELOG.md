@@ -265,6 +265,23 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   puste: punkt startowy Szybkiego generowania i pole „reset checkpointu” k-krotek
   startują zawsze niezaznaczone.
 
+### +29 — Time simulation: predicted RAM, width capped by the RAM budget
+
+- English: The Time simulation window shows how much RAM the run will take, in GB and as
+  a share of the RAM free in WSL. The width slider stops at the widest run that fits the
+  RAM budget set in the pipeline form's advanced settings, and moves as soon as that
+  budget or the bucket memory changes. An info tip next to the RAM line says where to
+  change the budget, that 50 % is the recommended value, and what a higher one risks:
+  swapping, the run killed for lack of memory, a system that stops responding. A width
+  typed above the budget still runs, and the RAM line flags it.
+- Polski: Okno symulacji czasu pokazuje, ile RAM zajmie uruchomienie, w GB i jako część
+  wolnego RAM w WSL. Suwak szerokości zatrzymuje się na najszerszym uruchomieniu, które
+  mieści się w budżecie RAM ustawionym w ustawieniach zaawansowanych formularza
+  pipeline, i przesuwa się od razu po zmianie budżetu albo pamięci kubełków. Dymek przy
+  linii RAM mówi, gdzie zmienić budżet, że zalecane jest 50 % i czym grozi wyższa
+  wartość: swapowaniem, zabiciem uruchomienia z braku pamięci, zawieszeniem systemu.
+  Szerokość wpisana powyżej budżetu nadal się uruchomi, a linia RAM to oznacza.
+
 ## 1.2.0 — 2026-11-01
 
 ### English

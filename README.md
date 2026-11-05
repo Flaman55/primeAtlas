@@ -1587,15 +1587,25 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               write, run, per window, gross and net n/s), of a floor's
                               measured runs and of a whole floor
                               (unitTests/test_time_model.py)
+  run_ram.py                    predicted peak RAM of one run (run_budget footprint with
+                              the knobs the run launches with; pt1: none) and the
+                              widest run that fits the RAM budget, which caps the
+                              Time simulation's width slider
+                              (unitTests/test_run_ram.py)
   time_simulation_window.py     TimeSimulationWindow -- Toplevel with the floor and run
-                              width sliders (log scale up to the engine's cap) bound
-                              both ways to the Quick-gen Floor/Width fields, the shared
-                              engine selector and the time_model results; reads the log
-                              on open and again when a run ends (reload_log(), called
-                              from _on_loop_finished), never writes it
+                              width sliders (log scale up to the engine's cap, lowered
+                              to the widest run in the RAM budget) bound both ways to
+                              the Quick-gen Floor/Width fields, the shared engine
+                              selector, the time_model results and the predicted RAM
+                              (GB, % of the free WSL RAM, an over-budget flag and an
+                              InfoTip on the budget); reads the log on open and again
+                              when a run ends (reload_log(), called from
+                              _on_loop_finished), never writes it
   time_simulation_controls.py   GenerationTab mixin: the Quick-gen "Time simulation"
                               button, one window at a time, rebinding to the Explore
-                              mode's own Floor/Width pair
+                              mode's own Floor/Width pair; reads the free WSL RAM on a
+                              background thread when the window opens and when a run
+                              ends
                               (unitTests/test_time_simulation.py)
 
   primeatlas/visualization/     "Visualization" tab -- a container notebook with one sub-tab
