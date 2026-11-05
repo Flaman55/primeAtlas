@@ -8,13 +8,14 @@ a PDF report.
 | Part | Files |
 |---|---|
 | Tab | `primeatlas/benchmark/benchmark_tab.py` and its mixins `benchmark_filter.py` (Filter window), `benchmark_ram_chart.py` (RAM chart) |
-| Backend | `benchmark.py` (reading and normalizing rows, D/P kind, PDF report), `line_names.py` (a row's line and charts), `chart_filter.py` (which runs the charts compare), `sieve_measure.py` (which time the sieve chart measures), `chart_series.py`, `chart_pdf.py`, `reference_points.py` |
+| Exports | `benchmark_export.py` (tab mixin: Save PDF, Export menu), `report_export.py` (CSV, SVG, HTML page, HTML snippet), `chart_svg.py` (SVG backend of `chart_pdf.chart_ops()`) |
+| Backend | `benchmark.py` (reading and normalizing rows, D/P kind, PDF report, `report_chart_pages()`), `line_names.py` (a row's line and charts), `chart_filter.py` (which runs the charts compare), `sieve_measure.py` (which time the sieve chart measures), `chart_series.py`, `chart_pdf.py`, `reference_points.py` |
 
 ## Contract
 
 | In | Out |
 |---|---|
-| `benchmark_log.csv` | charts (linear/log, pinned axes, per-line toggles), table, PDF |
+| `benchmark_log.csv` | charts (linear/log, pinned axes, per-line toggles), table, PDF, CSV, SVG, HTML page, HTML snippet |
 
 Reads only; the log's header belongs to `prime_sieve/benchmark_log_schema.py`.
 
@@ -65,6 +66,18 @@ between setup and sieve to measure from outside). PARI/GP references go with tho
 measures too. A change clears the chart's y pins; the summary and the PDF subtitle name a measure other than the default, the PDF
 sieve page heading always names it.
 
+Reports: `report_chart_pages()` lists the report's charts (one metric each: the whole run, the
+sieve in the chosen measure when there is sieve data or the references are on, RAM when a row
+measured it), and every format draws them with the tab's view: the runs the Filter window keeps
+(charts and tables), the sieve measure, toggles, hidden lines and pins. `chart_pdf.chart_ops()` lays a chart out once and
+draws through a backend, PDF content ops or SVG elements (`chart_svg.py`, y flipped, Unicode text),
+so the PDF and SVG/HTML charts match. The HTML page and the snippet hold the charts inline and the
+PDF's logical tables (`benchmark_pdf_tables()`), every cell escaped; the snippet is one
+`<div class="primeatlas-benchmark">` whose style rules are all scoped to that class; like the PDF,
+the HTML names the filter under the title, the sieve measure over the sieve charts and the floors of
+mixed widths over a page's charts (`report_mixed_note()`). CSV writes the kept rows as the tab read
+them (with the D/P `kind` column).
+
 ## Parameters and texts
 
 Texts `bench.*`, `pdf.*`.
@@ -75,13 +88,14 @@ None of its own.
 
 ## Specs and tests
 
-`test_benchmark_tab`, `test_benchmark_chart_series`, `test_benchmark_actual_range`,
+`test_benchmark_tab`, `test_benchmark_chart_series`, `test_benchmark_report_export`,
+`test_benchmark_actual_range`,
 `test_benchmark_run_status`, `test_benchmark_main_compatibility`, `test_benchmark_log_schema`,
 `test_benchmark_line_names`, `test_benchmark_auto_reload`, `test_benchmark_filter`,
 `test_benchmark_sieve_measure`; `test_orchestrator_sieve_wall` (prime-sieve).
 
 ## Known gaps
 
-- `benchmark_tab.py` is near the 1000-line ceiling (985 lines); a fourth chart needs the three
-  redraw methods folded into one chart table first.
+- `benchmark_tab.py` has 951 lines; a fourth chart needs the three redraw methods folded into
+  one chart table first.
 - Primesieve and cudasieve rows log no RAM, so they have no RAM points.

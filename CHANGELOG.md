@@ -368,6 +368,23 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   wykres sita zamiast dolnego wykresu. Strona jest wyższa niż domyślne okno i się przewija.
   Raport PDF dostaje stronę z tymi samymi dwoma wykresami.
 
+### +33 — Benchmark: export as CSV, SVG, HTML page and HTML snippet
+
+- English: Next to "Save PDF", the Benchmark tab has an "Export" menu: CSV (the log's
+  rows), SVG (the charts), an HTML page (charts and tables in one file to open in a
+  browser) and an HTML snippet (the same content as one block to paste into another
+  web page). Every export shows what the tab shows: the runs the Filter window keeps, the
+  sieve measure, log scale, reference points, hidden lines and pinned axes, and the charts
+  look like the PDF's; the HTML names the filter, the measure and the floors whose points
+  differ in range width, as the PDF does.
+- Polski: Obok „Zapisz PDF” zakładka Benchmark ma menu „Eksport”: CSV (wiersze logu),
+  SVG (wykresy), strona HTML (wykresy i tabele w jednym pliku do otwarcia w
+  przeglądarce) oraz fragment HTML (ta sama treść jako jeden blok do wklejenia na inną
+  stronę). Każdy eksport pokazuje to, co zakładka: przebiegi, które zostawia okno Filtr,
+  miarę sita, skalę logarytmiczną, punkty odniesienia, ukryte linie i przypięte osie,
+  a wykresy wyglądają jak w PDF; HTML podaje filtr, miarę i piętra, na których punkty
+  mają różną szerokość zakresu, tak jak PDF.
+
 ## 1.2.0 — 2026-11-01
 
 ### English

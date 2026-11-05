@@ -24,11 +24,10 @@ pagination (Prime numbers, Constellations, Goldbach, ...) -- it stays put there 
 than being duplicated or promoted to its own module just for this one extraction, and
 is passed in exactly like SettingsTab's wsl_helpers callables are.
 """
-import datetime
 import re
 
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
+from tkinter import ttk
 from tkinter import font as tkfont
 
 from ..core.base_tab import BaseTab
@@ -39,13 +38,14 @@ from .benchmark import (
     _order_benchmark_tree_columns, aggregate_benchmark_fair_spw,
     aggregate_benchmark_growth, aggregate_benchmark_sieve_nps,
     aggregate_benchmark_write_mbps, benchmark_row_stats, benchmark_series, mixed_width_floors,
-    group_benchmark_rows_by_floor, read_benchmark_log, render_benchmark_pdf,
+    group_benchmark_rows_by_floor, read_benchmark_log,
 )
 from ..core.i18n import Translator, DEFAULT_LANGUAGE
 from .chart_series import (
     axis_pins, clear_pins, clip_polyline, in_view, legend_entries, line_key,
     pin_bound, plain_series, point_label, series_xs, toggle_lines, visible_series, y_scale,
 )
+from .benchmark_export import BenchmarkExport
 from .benchmark_filter import BenchmarkFilter
 from .benchmark_ram_chart import BenchmarkRamChart
 from . import sieve_measure
@@ -458,7 +458,7 @@ def _bind_pin_menu(canvas, hover_points, on_pin_menu):
     canvas.bind("<Button-3>", _on_right_click)
 
 
-class BenchmarkTab(BenchmarkFilter, BenchmarkRamChart, BaseTab):
+class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkRamChart, BaseTab):
     def __init__(self, parent, get_portal_folder, status_var, translator, update_nav_controls,
                  theme_palette):
         """
@@ -488,7 +488,7 @@ class BenchmarkTab(BenchmarkFilter, BenchmarkRamChart, BaseTab):
         # "Points of different widths on floor N" under each chart, set by its redraw.
         self.mixed_widths_vars = {"run": tk.StringVar(), "sieve": tk.StringVar(),
                                   "ram": tk.StringVar()}
-        # Chart view toggles, kept for the session only; the PDF export follows them, the
+        # Chart view toggles, kept for the session only; every export follows them, the
         # lines hidden from each chart's legend ({chart: set of line_key()}) and the pinned
         # y-axis bounds ({chart: {axis: (min, max)}}, set from the right-click menu).
         self._hidden_lines = {"run": set(), "sieve": set(), "ram": set()}
@@ -504,8 +504,7 @@ class BenchmarkTab(BenchmarkFilter, BenchmarkRamChart, BaseTab):
         ttk.Checkbutton(top, text=T("bench.show_references"), variable=self.references_var,
                         command=self._redraw_charts).pack(side="right", padx=(0, 8))
         ttk.Button(top, text=T("common.refresh"), command=self.reload_benchmark_log).pack(side="left")
-        ttk.Button(top, text=T("bench.save_pdf"), command=self._export_benchmark_pdf).pack(
-            side="left", padx=(6, 0))
+        self._build_export_controls(top)
         ttk.Button(top, text=T("bench.filter_button"), command=self._open_filter_window).pack(
             side="left", padx=(6, 0))
         ttk.Label(top, textvariable=self.filter_summary_var, style="Status.TLabel").pack(
@@ -931,42 +930,3 @@ class BenchmarkTab(BenchmarkFilter, BenchmarkRamChart, BaseTab):
         node = self._active_benchmark_node
         if node is not None and self._benchmark_floor_state.get(node):
             self._show_benchmark_page(node, int(raw) - 1)
-
-    def _export_benchmark_pdf(self):
-        T = self.T
-        if not self._benchmark_fieldnames or not self._benchmark_rows:
-            messagebox.showinfo(
-                T("bench.save_pdf"),
-                T("bench.no_data_dialog"))
-            return
-        default_name = f"benchmark_report_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-        path = filedialog.asksaveasfilename(
-            title=T("bench.save_dialog_title"),
-            initialdir=self._get_portal_folder(),
-            initialfile=default_name,
-            defaultextension=".pdf",
-            filetypes=[("PDF", "*.pdf"), (T("common.all_files"), "*.*")])
-        if not path:
-            return
-        try:
-            self._render_pdf(path)
-        except Exception as exc:
-            messagebox.showerror(T("bench.save_pdf"), T("bench.save_error", error=exc))
-            return
-        self.status.set(T("bench.status_saved", path=path))
-        messagebox.showinfo(T("bench.save_pdf"), T("bench.saved_dialog", path=path))
-
-    def _render_pdf(self, path):
-        """The report of what the tab shows: the filtered runs (charts and tables), the
-        toggles, hidden lines and pins, the sieve measure; the subtitle names the filter."""
-        render_benchmark_pdf(path, self._benchmark_growth_points,
-                             self._benchmark_fieldnames, self._filtered_rows(),
-                             points2=self._benchmark_fair_spw_points,
-                             translator=self.T,
-                             sieve_points=self._benchmark_sieve_nps_points,
-                             write_points=self._benchmark_write_mbps_points,
-                             references=self.references_var.get(),
-                             log_y=self.log_scale_var.get(),
-                             hidden_lines=self._hidden_lines,
-                             y_pins=self._y_pins, filter_note=self._filter_note(),
-                             measure=self._sieve_measure)
