@@ -28,7 +28,9 @@ class SingleTabsSectionMixin:
             totals_progress=self.totals_progress,
             reload_primes_tree=self.reload_primes_tree,
             reload_constellations_tree=self.reload_constellations_tree,
-            research_goldbach_tab_widget=self.research_goldbach_tab_widget)
+            research_goldbach_tab_widget=self.research_goldbach_tab_widget,
+            # The Benchmark tab is built after this one; resolved when a run ends.
+            reload_benchmark_log=lambda: self.benchmark_tab_widget.reload_benchmark_log())
         self.generation_tab_widget.pack(fill="both", expand=True)
 
     # --- Tab 4: Benchmark ---------------------------------------------------------
