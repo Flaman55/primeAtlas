@@ -30,8 +30,8 @@ import window_integrity
 # v4 = v3 plus an inlined fast-path modulo for the per-sieving-prime phase computation (see
 # prime_sieve_v4.py's header). v4.1 = v4 plus base-gen/sieve/write timing and a
 # bytes-written counter in four benchmark_log.csv columns (base_gen_seconds/sieve_seconds/
-# write_seconds/bytes_written, see benchmark_log_schema.py). v5 = prime_sieve_v5.py (code
-# version v5.1), output identical to v4.1. v6 = the default engine (prime_sieve_v6.py,
+# write_seconds/bytes_written, see benchmark_log_schema.py). v5 = prime_sieve_v5_2.py (code
+# version v5.2: v5.1's sieve, parallel window writer), output identical to v4.1. v6 = the default engine (prime_sieve_v6.py,
 # wheel-30 buffer), output identical to v5. pt1 = partial sieve + primality test
 # (prime_sieve_pt1.py): D windows identical to v5, BPSW windows from MR_DET_BOUND on go to
 # the P store (see storage_kinds.py).
@@ -46,7 +46,7 @@ elif SCANNER_VERSION == "v4":
 elif SCANNER_VERSION == "v4.1":
     import prime_sieve_v4_1 as prime_sieve_module  # noqa: E402
 elif SCANNER_VERSION == "v5":
-    import prime_sieve_v5 as prime_sieve_module  # noqa: E402
+    import prime_sieve_v5_2 as prime_sieve_module  # noqa: E402
 elif SCANNER_VERSION == "v6":
     import prime_sieve_v6 as prime_sieve_module  # noqa: E402
 elif SCANNER_VERSION == "pt1":

@@ -60,7 +60,7 @@ def check_mirrors():
             f"{engine}_region_kb": plan.REGION_KB_ENV,
             f"{engine}_bucket_mb": plan.BUCKET_MB_ENV,
             f"{engine}_pieces_per_thread": plan.PIECES_PER_THREAD_ENV,
-            **({"v6_write_threads": plan.WRITE_THREADS_ENV} if engine == "v6" else {})},
+            f"{engine}_write_threads": plan.WRITE_THREADS_ENV},
             f"{engine} knob env names match {plan.__name__}.py")
         passed &= check((d[f"{engine}_segment_kb"], d[f"{engine}_region_kb"],
                          d[f"{engine}_bucket_mb"], d[f"{engine}_pieces_per_thread"])
@@ -70,12 +70,13 @@ def check_mirrors():
         passed &= check(d[f"{engine}_windows_at_25"]
                         == run_budget.DEFAULT_TARGET_WINDOWS_AT_25[engine],
                         f"{engine} windows-at-25 default matches run_budget.py")
-    passed &= check(d["v6_write_threads"] == work_plan_v6.DEFAULT_WRITE_THREADS,
-                    "v6 write-threads default matches work_plan_v6.py")
+    passed &= check(d["v6_write_threads"] == work_plan_v6.DEFAULT_WRITE_THREADS
+                    and d["v5_write_threads"] == work_plan_v5.DEFAULT_WRITE_THREADS,
+                    "v5/v6 write-threads defaults match the work plans")
     passed &= check((d["v5_segment_kb"], d["v5_region_kb"], d["v5_bucket_mb"])
                     == (2048, 1024, 8192),
                     "v5.1 defaults: 2 MiB segments, 1 MiB regions, 8 GiB buckets (measured)")
-    passed &= check(eo.ENGINE_VERSIONS == {"v4.1": "v4.1", "v5": "v5.1", "v6": "v6.0",
+    passed &= check(eo.ENGINE_VERSIONS == {"v4.1": "v4.1", "v5": "v5.2", "v6": "v6.0",
                                            "pt1": "pt1"},
                     f"engine versions shown in the GUI ({eo.ENGINE_VERSIONS})")
     passed &= check(set(d) == set(eo.KNOB_KEYS), "DEFAULT_KNOBS covers exactly KNOB_KEYS")
@@ -88,7 +89,8 @@ def check_mirrors():
     passed &= check(eo.engine_knob_keys("pt1") == ("pt1_b", "pt1_chunk_kb")
                     and eo.engine_knob_keys("v5") == ("v5_segment_kb", "v5_region_kb",
                                                       "v5_bucket_mb", "v5_windows_at_25",
-                                                      "v5_pieces_per_thread", "ram_budget_pct")
+                                                      "v5_pieces_per_thread", "v5_write_threads",
+                                                      "ram_budget_pct")
                     and eo.engine_knob_keys("v6") == ("v6_segment_kb", "v6_region_kb",
                                                       "v6_bucket_mb", "v6_windows_at_25",
                                                       "v6_pieces_per_thread", "v6_write_threads",
@@ -217,8 +219,9 @@ def check_env():
                             ("PRIMEATLAS_V5_SEGMENT_KB", "256"),
                             ("PRIMEATLAS_V5_REGION_KB", "1024"),
                             ("PRIMEATLAS_V5_BUCKET_MB", "8192"),
-                            ("PRIMEATLAS_V5_PIECES_PER_THREAD", "16")],
-                    f"v5 env carries its four knobs ({env})")
+                            ("PRIMEATLAS_V5_PIECES_PER_THREAD", "16"),
+                            ("PRIMEATLAS_V5_WRITE_THREADS", "8")],
+                    f"v5 env carries its five knobs ({env})")
     v6 = eo.resolve({"engine": "v6", "v6_preset": "custom", "v6_segment_kb": "1024", "v5_segment_kb": "64"})
     env6 = eo.launch_env(v6, bucket_mb=300)
     passed &= check(env6 == [("PRIMEATLAS_SCANNER_VERSION", "v6"),

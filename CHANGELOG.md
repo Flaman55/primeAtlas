@@ -282,6 +282,19 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   wartość: swapowaniem, zabiciem uruchomienia z braku pamięci, zawieszeniem systemu.
   Szerokość wpisana powyżej budżetu nadal się uruchomi, a linia RAM to oznacza.
 
+### +30 — Engine v5.2: parallel window writer
+
+- English: Engine v5 runs as v5.2: the same sieve as v5.1, but its windows are written
+  by a pool of threads, the one v6 uses, set by the new "v5 write threads" field
+  (default 8). On a /mnt drive, 1,000 windows at floor 19 now write in about 4.8 s
+  instead of 25 s, and the whole run takes about 8 s instead of 29 s. The files are
+  byte for byte the ones v5.1 writes; v5.1 stays in the tree for comparison.
+- Polski: Silnik v5 działa jako v5.2: to samo sito co v5.1, ale okna zapisuje pula
+  wątków, ta sama co w v6, ustawiana nowym polem „Wątki zapisu v5” (domyślnie 8). Na
+  dysku /mnt 1000 okien na piętrze 19 zapisuje się teraz w około 4,8 s zamiast 25 s,
+  a całe uruchomienie trwa około 8 s zamiast 29 s. Pliki są bajt w bajt takie, jakie
+  zapisuje v5.1; v5.1 zostaje w drzewie do porównań.
+
 ## 1.2.0 — 2026-11-01
 
 ### English

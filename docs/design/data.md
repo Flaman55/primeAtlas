@@ -10,12 +10,12 @@ used as it was written.
 
 | Data | Where | Owner module | Format (version) | Validity | Who may read it |
 |---|---|---|---|---|---|
-| Prime window (D, proven) | `10p{N}/source_primes/shard_NNNNN/PRIME_WINDOW_10p{N}_off_{OFFSET}.bin` | `prime_sieve/` engines (`prime_sieve_v5.py` default, `prime_sieve_pt1.py`, `prime_sieve_primesieve.py`, `prime_sieve_cudasieve.py`, `hybrid_sieve.py`) | PGS2: magic `PGS2`, header (base prime, count, generation time), then count-1 LEB128 varint gaps (`prime_sieve_v1.write_prime_window`) | magic bytes; `window_integrity.py` checks payload = exactly count-1 gaps | engines, every GUI reader, `constellation/` |
+| Prime window (D, proven) | `10p{N}/source_primes/shard_NNNNN/PRIME_WINDOW_10p{N}_off_{OFFSET}.bin` | `prime_sieve/` engines (`prime_sieve_v6.py` default, `prime_sieve_v5_2.py`, `prime_sieve_pt1.py`, `prime_sieve_primesieve.py`, `prime_sieve_cudasieve.py`, `hybrid_sieve.py`) | PGS2: magic `PGS2`, header (base prime, count, generation time), then count-1 LEB128 varint gaps (`prime_sieve_v1.write_prime_window`) | magic bytes; `window_integrity.py` checks payload = exactly count-1 gaps | engines, every GUI reader, `constellation/` |
 | Shard layout | `shard_NNNNN/`, 5000 windows each | `prime_sieve/window_sharding.py` (`SHARD_SIZE`) | folder name from the window index | every reader assumes all floors are sharded; `migrate_shard_source_primes.py` converts old floors | engines and GUI alike |
 | Probable-prime window (P) | `10p{N}/source_primes_P/shard_NNNNN/PRIME_WINDOW_10p{N}_off_{OFFSET}_P.bin` | `prime_sieve/storage_kinds.py` (pt1 P runs) | PGS2 | proven by D through `dp_verify.py` | Primes tab, Benchmark |
 | D-proves-P marks | `10p{N}/DP_PROVEN.txt`, `10p{N}/DP_MISMATCH.txt` | `storage_kinds.py`, `dp_verify.py` | text | written by "Verify P against D" | Primes tab |
 | Sieving-prime count cache | `10p{N}/sieving_primes_count_cache.json` | `prime_sieve/sieving_prime_count_v5.py` | JSON | none (diagnostic) | engines, backup manifest |
-| Last scan metrics | `last_scan_metrics.json` | engines (`prime_sieve_v5.py`, primesieve, cudasieve) | JSON | overwritten per run | GUI run summary |
+| Last scan metrics | `last_scan_metrics.json` | engines (`prime_sieve_v5_2.py`, `prime_sieve_v6.py`, primesieve, cudasieve) | JSON | overwritten per run | GUI run summary |
 
 ## Run history and totals
 
