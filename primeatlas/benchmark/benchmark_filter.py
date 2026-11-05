@@ -5,7 +5,7 @@ width); checking one shows that dimension's values from the log, each with its o
 all selected at first. Every change applies at once: the charts, the mixed-width note and the
 PDF export use chart_filter.apply() of the log, and the summary next to the Filter button (and
 the PDF subtitle) names the selection. Below the dimensions, "Sieve measure" picks the time
-the lower chart measures (sieve_measure.py): a change redraws it and clears its y-axis pins,
+the sieve chart measures (sieve_measure.py): a change redraws it and clears its y-axis pins,
 whose units may differ; the summary and the PDF name a measure other than the default. The
 tab's table keeps the whole log. Kept for the session, like the chart toggles.
 """

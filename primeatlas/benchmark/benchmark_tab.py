@@ -47,6 +47,7 @@ from .chart_series import (
     pin_bound, plain_series, point_label, series_xs, toggle_lines, visible_series, y_scale,
 )
 from .benchmark_filter import BenchmarkFilter
+from .benchmark_ram_chart import BenchmarkRamChart
 from . import sieve_measure
 from .reference_points import reference_series
 
@@ -457,7 +458,7 @@ def _bind_pin_menu(canvas, hover_points, on_pin_menu):
     canvas.bind("<Button-3>", _on_right_click)
 
 
-class BenchmarkTab(BenchmarkFilter, BaseTab):
+class BenchmarkTab(BenchmarkFilter, BenchmarkRamChart, BaseTab):
     def __init__(self, parent, get_portal_folder, status_var, translator, update_nav_controls,
                  theme_palette):
         """
@@ -485,18 +486,19 @@ class BenchmarkTab(BenchmarkFilter, BaseTab):
         top = ttk.Frame(self)
         top.pack(fill="x", padx=6, pady=4)
         # "Points of different widths on floor N" under each chart, set by its redraw.
-        self.mixed_widths_vars = {"run": tk.StringVar(), "sieve": tk.StringVar()}
+        self.mixed_widths_vars = {"run": tk.StringVar(), "sieve": tk.StringVar(),
+                                  "ram": tk.StringVar()}
         # Chart view toggles, kept for the session only; the PDF export follows them, the
         # lines hidden from each chart's legend ({chart: set of line_key()}) and the pinned
         # y-axis bounds ({chart: {axis: (min, max)}}, set from the right-click menu).
-        self._hidden_lines = {"run": set(), "sieve": set()}
-        self._y_pins = {"run": {}, "sieve": {}}
+        self._hidden_lines = {"run": set(), "sieve": set(), "ram": set()}
+        self._y_pins = {"run": {}, "sieve": {}, "ram": {}}
         self.log_scale_var = tk.BooleanVar(value=False)
         self.references_var = tk.BooleanVar(value=False)
         remember("benchmark.log_scale", self.log_scale_var)
         remember("benchmark.show_references", self.references_var)
-        # The toggles are packed first: when the row is too narrow, pack cuts the labels packed
-        # after them (filter summary, chart hint), not the toggles.
+        # The toggles are packed first: when the row is too narrow, pack cuts the filter
+        # summary packed after them, not the toggles.
         ttk.Checkbutton(top, text=T("bench.log_scale"), variable=self.log_scale_var,
                         command=self._redraw_charts).pack(side="right")
         ttk.Checkbutton(top, text=T("bench.show_references"), variable=self.references_var,
@@ -508,44 +510,36 @@ class BenchmarkTab(BenchmarkFilter, BaseTab):
             side="left", padx=(6, 0))
         ttk.Label(top, textvariable=self.filter_summary_var, style="Status.TLabel").pack(
             side="left", padx=(6, 12))
-        ttk.Label(top, text=T("bench.chart_hint")).pack(side="left")
 
-        chart_frame = ttk.Frame(self)
-        chart_frame.pack(fill="x", padx=6, pady=(0, 4))
-        # Canvas colors come from the CURRENT theme (console_bg/border -- same keys the
-        # app's other canvas-like widgets already use for their own dark/light styling)
-        # instead of being hardcoded to white/light-grey -- otherwise the dark theme
-        # would leave this chart looking unchanged (light chart on an otherwise dark
-        # window). _draw_growth_chart's own bg_color/fg_color/grid_color params
-        # (see _redraw_benchmark_chart/_redraw_benchmark_chart2 below) keep the drawn
-        # content -- ticks, axis titles -- readable against whichever background this is.
+        # The charts stand one under another, full width: the sieve, the whole run (sieve
+        # + write), RAM. Canvas colors come from the CURRENT theme (console_bg/border, the
+        # keys the app's other canvas-like widgets use) so the dark theme does not keep a
+        # light chart; _draw_growth_chart's bg_color/fg_color/grid_color (passed by
+        # _draw_chart below) keep ticks and axis titles readable on it. Each chart is
+        # always shown: _draw_growth_chart() draws a "no data yet" placeholder when its
+        # series are empty. A mixed-width note is packed under its chart only while it
+        # has text, so an empty one takes no height.
         p = self._theme_palette
-        self.benchmark_chart = tk.Canvas(chart_frame, height=220, background=p["console_bg"],
-                                          highlightthickness=1, highlightbackground=p["border"])
-        self.benchmark_chart.pack(fill="x")
-        self.benchmark_chart.bind("<Configure>", lambda _e: self._redraw_benchmark_chart())
-        # Packed only while it has text, so an empty one takes no height.
-        self._mixed_widths_labels = {"run": (ttk.Label(chart_frame, style="Status.TLabel",
-                                                       textvariable=self.mixed_widths_vars["run"]),
-                                             self.benchmark_chart)}
-
-        # Second chart: sieve-numbers/s + write-MB/s -- the phase-breakdown counterpart
-        # to the growth chart above, populated only from v4.1 and v5 engine rows (see
-        # aggregate_benchmark_sieve_nps()/aggregate_benchmark_write_mbps()). Always
-        # visible, same as the first chart -- _draw_growth_chart() already shows its own
-        # "no data yet" placeholder when both series are empty, so a project that hasn't
-        # re-benchmarked with v4.1 yet just sees that placeholder rather than the tab
-        # silently hiding/showing a whole section.
-        chart_frame2 = ttk.Frame(self)
-        chart_frame2.pack(fill="x", padx=6, pady=(0, 4))
-        ttk.Label(chart_frame2, text=T("bench.chart2_hint")).pack(anchor="w")
-        self.benchmark_chart2 = tk.Canvas(chart_frame2, height=180, background=p["console_bg"],
+        self._mixed_widths_labels = {}
+        chart_frame2 = self._chart_frame("bench.chart2_hint")
+        self.benchmark_chart2 = tk.Canvas(chart_frame2, height=220, background=p["console_bg"],
                                            highlightthickness=1, highlightbackground=p["border"])
         self.benchmark_chart2.pack(fill="x")
         self.benchmark_chart2.bind("<Configure>", lambda _e: self._redraw_benchmark_chart2())
         self._mixed_widths_labels["sieve"] = (
             ttk.Label(chart_frame2, style="Status.TLabel",
                       textvariable=self.mixed_widths_vars["sieve"]), self.benchmark_chart2)
+
+        chart_frame = self._chart_frame("bench.chart_hint")
+        self.benchmark_chart = tk.Canvas(chart_frame, height=180, background=p["console_bg"],
+                                          highlightthickness=1, highlightbackground=p["border"])
+        self.benchmark_chart.pack(fill="x")
+        self.benchmark_chart.bind("<Configure>", lambda _e: self._redraw_benchmark_chart())
+        self._mixed_widths_labels["run"] = (
+            ttk.Label(chart_frame, style="Status.TLabel",
+                      textvariable=self.mixed_widths_vars["run"]), self.benchmark_chart)
+
+        self._build_ram_chart(self._chart_frame("bench.chart3_hint"))
 
         tree_frame = ttk.Frame(self)
         tree_frame.pack(fill="both", expand=True, padx=6, pady=4)
@@ -578,10 +572,10 @@ class BenchmarkTab(BenchmarkFilter, BaseTab):
         ttk.Button(benchmark_nav, text=T("common.goto"), command=self._goto_benchmark_page).pack(
             side="left", padx=(4, 0))
 
-        # height is the tree's minimum when the page has to scroll; while the page fits,
-        # pack(expand=True) gives it the rest of the window. Tk's default of 10 rows
-        # makes the page taller than the default 1050x680 window.
-        self.benchmark_tree = StripedTreeview(tree_frame, show="tree headings", height=3)
+        # height is the tree's height when the page has to scroll, as it does under the three
+        # stacked charts at the default 1050x680; while the page fits, pack(expand=True)
+        # gives it the rest of the window.
+        self.benchmark_tree = StripedTreeview(tree_frame, show="tree headings", height=10)
         self.benchmark_tree.heading("#0", text=T("bench.col_floor"))
         self.benchmark_tree.column("#0", width=170, stretch=False)
         # Horizontal scrollbar -- with 11 data columns + #0, the row is wider than the
@@ -635,6 +629,13 @@ class BenchmarkTab(BenchmarkFilter, BaseTab):
         self._active_benchmark_node = None    # which floor's page the nav buttons above
                                                # currently operate on
 
+    def _chart_frame(self, hint_key):
+        """A full-width frame under the previous chart, its hint label on top."""
+        frame = ttk.Frame(self)
+        frame.pack(fill="x", padx=6, pady=(0, 4))
+        ttk.Label(frame, text=self.T(hint_key), wraplength=1000, justify="left").pack(anchor="w")
+        return frame
+
     def _redraw_benchmark_chart(self):
         # Before the window has actually been mapped/laid out by the OS window manager
         # (e.g. the very first draw, triggered from reload_benchmark_log() during
@@ -642,28 +643,30 @@ class BenchmarkTab(BenchmarkFilter, BaseTab):
         # <Configure> will fire and redraw properly once real geometry is assigned, but
         # falling back to a reasonable size here means the chart doesn't sit blank in
         # the meantime.
-        width = self.benchmark_chart.winfo_width()
-        height = self.benchmark_chart.winfo_height()
-        if width <= 1:
-            width = 900
-        if height <= 1:
-            height = 220
         self._show_mixed_widths("run", ("growth", "write"))
+        self._draw_chart("run", self.benchmark_chart, self._benchmark_growth_points, (900, 180),
+                         points2=self._benchmark_write_mbps_points,
+                         label_key1="bench.axis_total_nps",
+                         label_key2="bench.axis_write_mbps", fmt2="{:,.1f}",
+                         series1=self._chart_series("growth"),
+                         series2=self._chart_series("write"))
+
+    def _draw_chart(self, chart, canvas, points, default_size, **kwargs):
+        """_draw_growth_chart() on `canvas` with the view state of `chart` ("run", "sieve",
+        "ram"): log scale, hidden lines, pinned axes, theme colors; `default_size` (width,
+        height) stands in while the canvas is not laid out yet."""
+        width, height = canvas.winfo_width(), canvas.winfo_height()
+        width = default_size[0] if width <= 1 else width
+        height = default_size[1] if height <= 1 else height
         p = self._theme_palette
-        _draw_growth_chart(self.benchmark_chart, self._benchmark_growth_points, width, height,
-                            points2=self._benchmark_write_mbps_points, translator=self.T,
-                            label_key1="bench.axis_total_nps",
-                            label_key2="bench.axis_write_mbps", fmt2="{:,.1f}",
-                            series1=self._chart_series("growth"),
-                            series2=self._chart_series("write"),
-                            log_y=self.log_scale_var.get(),
-                            hidden=self._hidden_lines["run"],
-                            on_toggle=lambda keys: self._toggle_lines("run", keys),
-                            pins1=axis_pins(self._y_pins["run"], "primary"),
-                            pins2=axis_pins(self._y_pins["run"], "secondary"),
-                            on_pin_menu=lambda *a: self._on_pin_menu("run", *a),
-                            bg_color=p["console_bg"], fg_color=p["console_fg"],
-                            grid_color=p["border"])
+        _draw_growth_chart(canvas, points, width, height, translator=self.T,
+                           log_y=self.log_scale_var.get(), hidden=self._hidden_lines[chart],
+                           on_toggle=lambda keys: self._toggle_lines(chart, keys),
+                           pins1=axis_pins(self._y_pins[chart], "primary"),
+                           pins2=axis_pins(self._y_pins[chart], "secondary"),
+                           on_pin_menu=lambda *a: self._on_pin_menu(chart, *a),
+                           bg_color=p["console_bg"], fg_color=p["console_fg"],
+                           grid_color=p["border"], **kwargs)
 
     def _chart_series(self, metric, references=False):
         """One Series per engine for a chart metric; with references=True, the reference
@@ -675,19 +678,22 @@ class BenchmarkTab(BenchmarkFilter, BaseTab):
         return series
 
     def _toggle_lines(self, chart, keys):
-        """Legend click on the "run" or "sieve" chart: hides or shows those lines."""
+        """Legend click on the "run", "sieve" or "ram" chart: hides or shows those lines."""
         self._hidden_lines[chart] = toggle_lines(self._hidden_lines[chart], keys)
         self._redraw_chart(chart)
 
     def _redraw_chart(self, chart):
         if chart == "run":
             self._redraw_benchmark_chart()
+        elif chart == "ram":
+            self._redraw_benchmark_chart3()
         else:
             self._redraw_benchmark_chart2()
 
     def _redraw_charts(self):
         self._redraw_benchmark_chart()
         self._redraw_benchmark_chart2()
+        self._redraw_benchmark_chart3()
 
     def _show_mixed_widths(self, chart, metrics):
         floors = sorted({f for m in metrics
@@ -745,29 +751,14 @@ class BenchmarkTab(BenchmarkFilter, BaseTab):
         """Same fallback-size handling as _redraw_benchmark_chart() (see that method's own
         comment) -- draws the sieve chart of the Filter window's sieve measure
         (sieve_measure.chart(): n/s and s/window, with reference points, or the startup
-        overhead) onto its own canvas, right below the whole-run chart."""
-        width = self.benchmark_chart2.winfo_width()
-        height = self.benchmark_chart2.winfo_height()
-        if width <= 1:
-            width = 900
-        if height <= 1:
-            height = 180
-        p = self._theme_palette
+        overhead) onto its own canvas, the top one, above the whole-run chart."""
         spec = sieve_measure.chart(self._sieve_measure)
         self._show_mixed_widths("sieve", (spec.metric1, spec.metric2))
-        _draw_growth_chart(self.benchmark_chart2, self._benchmark_sieve_nps_points, width,
-                            height, label_key1=spec.label_key1, label_key2=spec.label_key2,
-                            fmt1=spec.fmt1, fmt2=spec.fmt2, translator=self.T,
-                            series1=self._chart_series(spec.metric1, spec.references),
-                            series2=self._chart_series(spec.metric2),
-                            log_y=self.log_scale_var.get(),
-                            hidden=self._hidden_lines["sieve"],
-                            on_toggle=lambda keys: self._toggle_lines("sieve", keys),
-                            pins1=axis_pins(self._y_pins["sieve"], "primary"),
-                            pins2=axis_pins(self._y_pins["sieve"], "secondary"),
-                            on_pin_menu=lambda *a: self._on_pin_menu("sieve", *a),
-                            bg_color=p["console_bg"], fg_color=p["console_fg"],
-                            grid_color=p["border"])
+        self._draw_chart("sieve", self.benchmark_chart2, self._benchmark_sieve_nps_points,
+                         (900, 220), label_key1=spec.label_key1, label_key2=spec.label_key2,
+                         fmt1=spec.fmt1, fmt2=spec.fmt2,
+                         series1=self._chart_series(spec.metric1, spec.references),
+                         series2=self._chart_series(spec.metric2))
 
     def reload_benchmark_log(self):
         T = self.T
@@ -787,6 +778,7 @@ class BenchmarkTab(BenchmarkFilter, BaseTab):
         self._benchmark_sieve_nps_points = aggregate_benchmark_sieve_nps(rows)
         self._benchmark_write_mbps_points = aggregate_benchmark_write_mbps(rows)
         self._redraw_benchmark_chart2()
+        self._redraw_benchmark_chart3()
 
         self.benchmark_tree.delete(*self.benchmark_tree.get_children())
         self._benchmark_floor_state = {}

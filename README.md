@@ -1912,13 +1912,16 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               NOTICE.md read-only
 
   primeatlas/benchmark/         "Benchmark" tab
-  benchmark_tab.py             BenchmarkTab -- the Benchmark tab (charts, right-click
-                              y-axis pin menu, PDF export;
+  benchmark_tab.py             BenchmarkTab -- the Benchmark tab (three charts: whole run
+                              n/s + write MB/s, sieve n/s + s/window, RAM per run +
+                              RAM per window, one under another with the sieve on top;
+                              right-click y-axis pin menu, PDF export;
                               benchmark.py below is the pure-logic backend)
   benchmark.py                  reading/normalizing benchmark_log.csv rows; each row
                               gets a "kind" (D, P, or D+P on floor 24) from its
                               engine and window range, shown next to "engine";
-                              the PDF report (one-metric charts, logical tables)
+                              the PDF report (one-metric charts, a RAM page when a row
+                              logged max_child_rss_mb, logical tables)
   chart_series.py               chart Series (one color per engine, a P run of pt1
                               on its own "pt1 P" line), linear/log
                               y-scales with pinned y-axis bounds and line clipping
@@ -1933,6 +1936,9 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               measure radio and their summary;
                               charts and the PDF export follow it, the table keeps the
                               whole log (unitTests/test_benchmark_filter.py)
+  benchmark_ram_chart.py        BenchmarkRamChart mixin of the tab: the RAM chart, the
+                              lowest of the three (peak MB per run, MB per window,
+                              mixed-width note; unitTests/test_benchmark_chart_series.py)
   chart_filter.py               which runs the charts compare: a run's value per
                               dimension, the values in the log, the selection, its
                               summary -- pure, no tkinter

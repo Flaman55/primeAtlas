@@ -349,6 +349,25 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   Zakładka Benchmark wczytuje log ponownie po zakończeniu generowania, więc nowy przebieg
   widać bez klikania Odśwież.
 
+### +32 — Benchmark: RAM per run chart
+
+- English: The Benchmark tab's charts stand one under another: the sieve chart on top, the
+  whole run below it, and a new third chart at the bottom: the peak RAM of each run in MB
+  and the RAM per window, one line per engine build and thread setup, with
+  the same legend toggles, log scale and pinned axes as the other charts. Native primesieve
+  runs log the program's peak RAM but write no Atlas windows, so they show MB per run only.
+  The Filter window's sieve measure now names the sieve chart instead of the lower chart.
+  The page is taller than the default window and scrolls. The PDF report adds a page with
+  the same two charts.
+- Polski: Wykresy zakładki Benchmark stoją jeden pod drugim: na górze wykres sita, pod nim
+  cały przebieg, a na dole nowy, trzeci wykres: szczytowy RAM każdego uruchomienia w MB
+  i RAM na okno, jedna linia na wersję silnika i układ wątków, z tymi
+  samymi przełącznikami legendy, skalą logarytmiczną i przypinaniem osi co pozostałe
+  wykresy. Natywne przebiegi primesieve zapisują szczytowy RAM programu, ale nie zapisują
+  okien Atlasa, więc mają tylko MB na uruchomienie. Miara sita w oknie Filtr wskazuje teraz
+  wykres sita zamiast dolnego wykresu. Strona jest wyższa niż domyślne okno i się przewija.
+  Raport PDF dostaje stronę z tymi samymi dwoma wykresami.
+
 ## 1.2.0 — 2026-11-01
 
 ### English

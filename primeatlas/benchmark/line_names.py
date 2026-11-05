@@ -11,7 +11,8 @@ wrapper converts the library's result into Atlas windows ("primesieve (Atlas for
 native program counts ("primesieve count (native)") or prints ("primesieve print (native)").
 A native count sieves the range and counts the bits -- an engine's sieve phase -- so it is
 on the sieve charts only; a native print sieves and outputs every prime with no split
-between the two -- a whole run -- so it is on the whole-run chart only (CHART_METRICS). A
+between the two -- a whole run -- so it is on the whole-run chart only (CHART_METRICS). Both
+log the program's peak RAM and write no Atlas windows: they are on RAM per run, not per window. A
 native count is one process timed from outside, startup included (WHOLE_PROCESS_SIEVE): its
 one time is both its sieve phase and its sieve with startup, and it has no startup/sieve
 split, so it is not on the startup-overhead measure.
@@ -35,8 +36,8 @@ WHOLE_PROCESS_SIEVE = frozenset({schema.ENGINE_PRIMESIEVE_COUNT})
 # Metrics a row's engine is drawn on; engines not listed are on every chart.
 CHART_METRICS = {
     schema.ENGINE_PRIMESIEVE_COUNT: frozenset({"sieve", "sieve_spw", "sieve_wall",
-                                               "sieve_wall_spw"}),
-    schema.ENGINE_PRIMESIEVE_PRINT: frozenset({"growth"}),
+                                               "sieve_wall_spw", "ram"}),
+    schema.ENGINE_PRIMESIEVE_PRINT: frozenset({"growth", "ram"}),
 }
 
 

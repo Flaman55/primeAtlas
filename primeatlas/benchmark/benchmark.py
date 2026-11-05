@@ -379,11 +379,29 @@ def _wall_field(row):
             else "sieve_wall_seconds")
 
 
+def _row_ram_mb(row):
+    """The run's peak RAM: max_child_rss_mb (the largest child process's RSS); None when
+    the writer did not measure it."""
+    return _metric_value(row, "max_child_rss_mb")
+
+
+def _row_ram_mb_per_window(row):
+    """Peak RAM per window of the run, so runs of different widths compare."""
+    ram = _row_ram_mb(row)
+    try:
+        windows = int(row.get("windows_written", ""))
+    except (TypeError, ValueError):
+        return None
+    return ram / windows if ram is not None and windows > 0 else None
+
+
 _LINE_VALUES = {
     "growth": lambda row: _metric_value(row, "loop_numbers_per_second"),
     "write": _row_write_mbps,
     "sieve": _row_sieve_nps,
     "sieve_spw": _row_sieve_spw,
+    "ram": _row_ram_mb,
+    "ram_per_window": _row_ram_mb_per_window,
     "sieve_wall": lambda row: _row_sieve_nps(row, _wall_field(row)),
     "sieve_wall_spw": lambda row: _row_sieve_spw(row, _wall_field(row)),
     "sieve_overhead": _overhead_part(0),
@@ -393,7 +411,8 @@ _LINE_VALUES = {
 
 def benchmark_engine_lines(rows, metric):
     """{line name: [(base_exponent, value)]} for one chart metric ("growth", "write",
-    "sieve", "sieve_spw", and the other sieve measures of sieve_measure.py): the same per-row value as the matching aggregate_* reduction, but
+    "sieve", "sieve_spw", the other sieve measures of sieve_measure.py, "ram",
+    "ram_per_window"): the same per-row value as the matching aggregate_* reduction, but
     the last row per floor AND line (line_names.line_name(): engine or version, the store
     for P runs, threads), so each engine build and thread setup gets its own chart line.
     Rows whose engine is not drawn on this metric (line_names.on_chart()) are left out."""
@@ -500,7 +519,8 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
     Charts: one metric per chart, two charts per page, one line per engine from `rows`
     (benchmark_engine_lines()): the whole run (loop n/s), its write speed (MB/s), and --
     when sieve_points is non-empty or references is on -- the sieve phase alone (sieve n/s)
-    and its seconds per window. The tab's two-axis charts are split in two here so that
+    and its seconds per window, then -- when a row measured it -- each run's peak RAM and
+    its RAM per window. The tab's two-axis charts are split in two here so that
     each chart has room for its value labels (chart_pdf.place_labels()).
 
     Tables: BENCHMARK_PDF_TABLES, one logical table per question, each starting on its own
@@ -513,9 +533,9 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
     footnote line per reference (full name and source). A page whose charts set points of
     different range widths on one floor says so next to its heading (mixed_width_floors()).
     log_y: log10 y-axes on every chart -- the Benchmark tab's two toggles.
-    hidden_lines: {"run" | "sieve": set of chart_series.line_key()} -- the lines switched
+    hidden_lines: {"run" | "sieve" | "ram": set of chart_series.line_key()} -- the lines switched
     off in the tab's legends, left out of the charts and their scales.
-    y_pins: {"run" | "sieve": {axis: (min, max)}} -- the tab's pinned y-axis bounds
+    y_pins: {"run" | "sieve" | "ram": {axis: (min, max)}} -- the tab's pinned y-axis bounds
     (chart_series.pin_bound()); each axis' pins apply to the chart of that metric.
 
     points: aggregate_benchmark_growth(), for the subtitle's floor count. points2 and
@@ -589,6 +609,17 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
                    ("sieve", "primary", spec.metric1, spec.label_key1, spec.fmt1),
                    ("sieve", "secondary", spec.metric2, spec.label_key2, spec.fmt2),
                    extra=reference_series(t) if references else ())
+        pages.append(ops)
+
+    # --- the RAM page: each run's peak RAM and its RAM per window ---
+    if benchmark_engine_lines(rows, "ram"):
+        ops = [_pdf_text_op(content_left, content_top - 12, 10, "Helvetica-Bold",
+                            _pdf_ascii_fold(t("bench.pdf_continued", page=len(pages) + 1)
+                                            + mixed_note(("ram", "ram_per_window"))))]
+        chart_pair(ops, content_top - 22, content_bottom,
+                   ("ram", "primary", "ram", "bench.axis_ram_mb", "{:,.0f}"),
+                   ("ram", "secondary", "ram_per_window", "bench.axis_ram_mb_window",
+                    "{:,.2f}"))
         pages.append(ops)
 
     # --- the logical tables, each from a new page ---

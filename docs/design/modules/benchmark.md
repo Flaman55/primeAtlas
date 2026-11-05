@@ -7,7 +7,7 @@ a PDF report.
 
 | Part | Files |
 |---|---|
-| Tab | `primeatlas/benchmark/benchmark_tab.py` and its mixin `benchmark_filter.py` (Filter window) |
+| Tab | `primeatlas/benchmark/benchmark_tab.py` and its mixins `benchmark_filter.py` (Filter window), `benchmark_ram_chart.py` (RAM chart) |
 | Backend | `benchmark.py` (reading and normalizing rows, D/P kind, PDF report), `line_names.py` (a row's line and charts), `chart_filter.py` (which runs the charts compare), `sieve_measure.py` (which time the sieve chart measures), `chart_series.py`, `chart_pdf.py`, `reference_points.py` |
 
 ## Contract
@@ -18,6 +18,15 @@ a PDF report.
 
 Reads only; the log's header belongs to `prime_sieve/benchmark_log_schema.py`.
 
+Three charts one under another, full width, one line per engine build and thread setup, last row per
+floor and line: on top the sieve (sieve n/s, s/window, reference points; the measure below), then the
+whole run (`loop_numbers_per_second`, write MB/s), then RAM (`max_child_rss_mb`, the largest process's
+peak, and that divided by `windows_written`, so runs of different widths compare). RAM has its own
+chart so its megabytes do not share an axis with a speed. Each chart has its hint above it; the page
+is taller than the default 1050x680 window and scrolls (ScrollablePage), the table below the charts
+10 rows high. Each chart keeps its own hidden lines and pinned axes and names the floors where it
+sets points of different widths; the PDF draws the RAM pair on its own page when any row measured it.
+
 A chart line is one engine build on one thread setup (`line_names.line_name()`): the version when
 it names the engine (`v6.0`), else the engine label and version, the store kind of P runs, then the
 sieve threads (`24 thr`, `2x24 thr` for two instances side by side, `GPU`) and the write threads
@@ -26,9 +35,10 @@ keep the bare engine name. The color and draw order follow the engine. Last row 
 wins. primesieve rows say how they were measured: `primesieve (Atlas format)` (wrapper, conversion
 into Atlas windows in its time), `primesieve count (native)` and `primesieve print (native)` (the
 program). A native count sieves the range and counts the bits, the work of an engine's sieve phase:
-it is on the sieve charts only, its seconds per window over 10^7-number windows. A native print
+it is on the sieve charts, its seconds per window over 10^7-number windows. A native print
 sieves and outputs every prime with no split between the two, a whole run: it is on the whole-run
-chart only. No static primesieve reference is kept (a figure from another range length misleads:
+chart. Both log the program's peak RAM and write no Atlas windows: they are on RAM per run, not per
+window. No static primesieve reference is kept (a figure from another range length misleads:
 primesieve's ~0.7 s setup at floor 19 dominates a short range); PARI/GP stays on the sieve chart.
 The PDF run table lists `engine_version`, `threads` and `write_threads`. A writing row from before
 `write_threads` reads `write ?`. Each point names the range it was measured on (`@ 10^11`,
@@ -44,7 +54,7 @@ width compares every engine on that width. Changes apply at once; the summary ne
 button and the PDF subtitle name the selection; the PDF tables list the kept runs, the tab's table
 the whole log. Session only, like the other chart toggles.
 
-Its "Sieve measure" radio (`sieve_measure.py`, with an info tip) sets what the lower chart and the
+Its "Sieve measure" radio (`sieve_measure.py`, with an info tip) sets what the sieve chart and the
 PDF's sieve page measure: the engine's sieve phase (`sieve_seconds`, default), the sieve with
 startup overhead (`sieve_wall_seconds`), or the overhead alone (the sieve speed the startup
 takes: phase n/s minus wall n/s, and on the second axis that as % of the phase n/s). A row
@@ -72,4 +82,6 @@ None of its own.
 
 ## Known gaps
 
-None.
+- `benchmark_tab.py` is near the 1000-line ceiling (985 lines); a fourth chart needs the three
+  redraw methods folded into one chart table first.
+- Primesieve and cudasieve rows log no RAM, so they have no RAM points.
