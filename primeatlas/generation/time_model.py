@@ -64,10 +64,12 @@ _POWER_OF_TEN = {10 ** n: value for n, value in KNOWN_PI_10N.items()}
 TERMS = ("run", "prime", "number", "number_lnln")
 
 Sample = namedtuple(
-    "Sample", "engine floor span top sieve_seconds write_seconds write_files total_seconds")
+    "Sample", "engine floor span top sieve_seconds write_seconds write_files total_seconds "
+    "version", defaults=("",))
 FloorPoint = namedtuple("FloorPoint",
                         "floor prime_seconds number_seconds write_seconds_per_number")
-Calibration = namedtuple("Calibration", "engine points rows floors spans max_error")
+Calibration = namedtuple("Calibration", "engine points rows floors spans max_error version",
+                         defaults=(None,))
 MeasuredRuns = namedtuple("MeasuredRuns", "count windows seconds model_seconds")
 Estimate = namedtuple(
     "Estimate",
@@ -150,7 +152,8 @@ def _sample(row):
         total -= _float_or_none(row.get("base_gen_seconds")) or 0.0
     top = 10 ** floor + idx_start * (span // windows) + span
     return Sample(engine, floor, span, top, sieve, write,
-                  (row.get("write_files") or "").strip() == "1", total)
+                  (row.get("write_files") or "").strip() == "1", total,
+                  (row.get("engine_version") or "").strip())
 
 
 def _solve(matrix, rhs):
@@ -230,9 +233,23 @@ def _write_extra(group, prep, m):
     return max(0.0, extra / sum(s.span for s in written))
 
 
-def calibrate(samples, engine, pt1_b=0):
-    """Calibration of `engine` from its samples, or None with fewer than two of them."""
+def calibration_rows(samples, engine):
+    """(rows, version) that calibrate `engine`: the rows of its newest version (the version
+    of its last row; the log is appended in run order) once that version has two rows, so
+    a faster release is not averaged with the old one; else every row of the engine, with
+    version None."""
     own = [s for s in samples if s.engine == engine]
+    newest = own[-1].version if own else ""
+    if newest:
+        same = [s for s in own if s.version == newest]
+        if len(same) >= 2:
+            return same, newest
+    return own, None
+
+
+def calibrate(samples, engine, pt1_b=0):
+    """Calibration of `engine` from calibration_rows(), or None with fewer than two rows."""
+    own, version = calibration_rows(samples, engine)
     if len(own) < 2:
         return None
     baseline = _baseline(own, engine, pt1_b)
@@ -252,7 +269,8 @@ def calibrate(samples, engine, pt1_b=0):
             .write_seconds_per_number) for p in points]
     calibration = Calibration(engine, tuple(points), len(own),
                               (min(s.floor for s in own), max(s.floor for s in own)),
-                              (min(s.span for s in own), max(s.span for s in own)), 0.0)
+                              (min(s.span for s in own), max(s.span for s in own)), 0.0,
+                              version)
     error = 0.0
     for s in own:
         est = estimate(calibration, engine, s.floor, s.span // WINDOW_WIDTH, s.write_files,

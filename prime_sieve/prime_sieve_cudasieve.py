@@ -10,7 +10,7 @@ import sys
 import time
 
 import window_sharding
-from benchmark_log_schema import BENCHMARK_FIELDNAMES, ensure_benchmark_log_schema
+from benchmark_log_schema import BENCHMARK_FIELDNAMES, THREADS_GPU, ensure_benchmark_log_schema
 from floor_meta_store import append_benchmark_row_to_floor_meta
 
 VERSION = "v0.1"
@@ -215,6 +215,9 @@ def write_benchmark_row(base_exponent, target_idx_start, target_idx_count, total
                 writer.writeheader()
             row = {
                 "engine": "cuda",
+                "engine_version": VERSION,
+                "threads": THREADS_GPU,
+                "write_threads": 1,
                 "run_status": "completed",
                 "run_timestamp_utc": datetime.datetime.now(datetime.timezone.utc).strftime(
                     "%Y-%m-%d %H:%M:%S UTC"),
