@@ -1939,7 +1939,13 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               primecount and CUDASieve installers, GitHub attribution
                               buttons for every third-party library this app calls
                               into (sympy, primecount, primesieve, CUDASieve), the
-                              WSL environment re-check, and the self-update section
+                              WSL environment re-check with its "Component versions"
+                              button (prime_sieve/env_versions.py over WSL), and the
+                              self-update section
+  env_versions_view.py          renders env_versions.py's report into the component
+                              versions text and its duplicate-copy / engines-load-
+                              another-copy warning -- pure, no tkinter
+                              (unitTests/test_env_versions.py)
   manifest.py, backup_store.py, restore_job.py, floor_meta.py, full_backup.py,
   storage_integrate.py, delete_manager.py -- see "Backup manifest contents" /
   "Moving floor data between storages" / "Full-data backup" / "Integrating an
@@ -2108,6 +2114,12 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
   primecount_query.py        one-shot standalone libprimecount queries (pi/pi_batch/
                               nth/version) behind the Research tab's Przyblizenia pi(x)
                               sub-tab's "primecount" data-source mode
+  env_versions.py            one-shot probe behind Settings -> WSL environment ->
+                              Component versions: distro, Python, numpy, gcc, and for
+                              libprimesieve/libprimecount the version, the file Python
+                              loads (/proc/self/maps), the file each built engine .so
+                              resolves (ldd), and every distinct copy in the linker
+                              cache (ldconfig -p); one JSON line on stdout
   prime_sieve_engine_v1.c    C sieve core for prime_sieve_v1.py (ctypes)
   prime_sieve_engine_v3.c    C sieve core for prime_sieve_v3.py (ctypes)
   prime_sieve_engine_v4.c    C sieve core for prime_sieve_v4.py/v4_1.py (ctypes)

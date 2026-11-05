@@ -10,7 +10,7 @@ from primeatlas.core.storage import LOW_FLOOR_CUTOFF
 from primeatlas.generation.engine_argv import (
     build_loop_argv, build_constellation_finder_argv, build_primesieve_argv,
     build_pip_install_argv, build_cudasieve_status_argv, build_cudasieve_fetch_license_argv,
-    build_cudasieve_build_argv, build_primecount_query_argv,
+    build_cudasieve_build_argv, build_primecount_query_argv, build_env_versions_argv,
 )
 from primeatlas.generation.generation_settings import load_generation_settings
 from primeatlas.generation.logged_runners import WslLoggedRunner, LocalLoggedRunner
@@ -19,6 +19,7 @@ from primeatlas.generation.window_planning import (
 )
 from primeatlas.generation.wsl_blocking import (
     run_cudasieve_wsl_blocking, run_primecount_wsl_blocking, run_primecount_install_wsl_blocking,
+    run_env_versions_wsl_blocking,
 )
 from primeatlas.generation.wsl_command import build_wsl_logged_command, generation_log_paths
 from primeatlas.generation.wsl_resources import estimate_wsl_available_ram_bytes
@@ -138,6 +139,11 @@ class SettingsWiringMixin:
             "run_primecount_install_wsl_blocking":
                 lambda timeout=300:
                     run_primecount_install_wsl_blocking(_dyn.PORTAL_FOLDER, timeout),
+            # Settings -> WSL environment's component versions probe (env_versions.py).
+            "build_env_versions_argv": build_env_versions_argv,
+            "run_env_versions_wsl_blocking":
+                lambda argv, timeout=60:
+                    run_env_versions_wsl_blocking(argv, _dyn.PORTAL_FOLDER, timeout),
             # The theme/language auto-restart feature (general_section.py's
             # _has_running_job()) uses this to tell whether a Generation-tab pipeline/
             # constellation-finder/k-tuple run is currently in flight before

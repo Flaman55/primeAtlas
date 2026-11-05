@@ -13,6 +13,7 @@ entries since the last release in the UI language, and NOTICE.md.
 | Backups | `manifest.py`, `backup_store.py`, `restore_job.py`, `full_backup.py`, `floor_meta.py`, `storage_integrate.py`, `delete_manager.py` |
 | Updates and restart | `app_update.py`, `app_restart.py` |
 | First-run setup | `env_setup.py`, `env_setup_wizard.py` |
+| Component versions | `prime_sieve/env_versions.py` (WSL-side probe), `env_versions_view.py` (report text and warnings) |
 | About | `primeatlas/about/about_tab.py` |
 
 ## Contract
@@ -22,6 +23,16 @@ entries since the last release in the UI language, and NOTICE.md.
 | user choices; `wsl_helpers` from `primeatlas/app/settings_wiring.py` (launch machinery, reload hooks) | settings saved, backups and restores ([backup-restore](../flows/backup-restore.md)), app updated and restarted |
 
 SettingsTab launches WSL jobs only through the injected `wsl_helpers`; it never imports the app.
+
+Component versions: the "Component versions" button in the WSL environment section runs
+`prime_sieve/env_versions.py` in WSL (`wsl_blocking.run_env_versions_wsl_blocking`, on a background
+thread, only on a click). The probe reports the distro, Python, numpy and gcc, and for libprimesieve
+and libprimecount the version from the library's own `*_version()` call, the file the Python process
+maps, the file every built `prime_sieve_engine_*.so` resolves (`ldd`) and every distinct file behind
+the linker cache's entries (`ldconfig -p`, symlinks collapsed). `env_versions_view.format_report`
+turns it into the text and a warning line: a library with more than one copy (an apt package next to
+a build under `/usr/local`: the cache order picks one, so installing or removing either changes what
+the engines run on), and an engine that resolves another copy than Python.
 
 ## Parameters and texts
 
@@ -36,7 +47,7 @@ SettingsTab launches WSL jobs only through the injected `wsl_helpers`; it never 
 
 `test_app_update`, `test_app_update_locks`, `test_app_restart`, `test_env_setup`, `test_delete_manager`,
 `test_full_backup_hit_paging`, `test_storage_integrate`, `test_dp_settings`,
-`test_primecount_settings_integration`, `test_about_tab`.
+`test_primecount_settings_integration`, `test_env_versions`, `test_about_tab`.
 
 ## Known gaps
 
