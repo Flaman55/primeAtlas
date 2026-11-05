@@ -346,17 +346,35 @@ def _row_sieve_spw(row):
     return sieve_seconds / windows
 
 
+def _row_ram_mb(row):
+    """The run's peak RAM: max_child_rss_mb (the largest child process's RSS); None when
+    the writer did not measure it."""
+    return _metric_value(row, "max_child_rss_mb")
+
+
+def _row_ram_mb_per_window(row):
+    """Peak RAM per window of the run, so runs of different widths compare."""
+    ram = _row_ram_mb(row)
+    try:
+        windows = int(row.get("windows_written", ""))
+    except (TypeError, ValueError):
+        return None
+    return ram / windows if ram is not None and windows > 0 else None
+
+
 _LINE_VALUES = {
     "growth": lambda row: _metric_value(row, "loop_numbers_per_second"),
     "write": _row_write_mbps,
     "sieve": _row_sieve_nps,
     "sieve_spw": _row_sieve_spw,
+    "ram": _row_ram_mb,
+    "ram_per_window": _row_ram_mb_per_window,
 }
 
 
 def benchmark_engine_lines(rows, metric):
     """{engine: [(base_exponent, value)]} for one chart metric ("growth", "write",
-    "sieve", "sieve_spw"): the same per-row value as the matching aggregate_* reduction, but
+    "sieve", "sieve_spw", "ram", "ram_per_window"): the same per-row value as the matching aggregate_* reduction, but
     the last row per floor AND line (_row_line(): engine, plus the store for P runs), so
     each engine gets its own chart line and a P run one apart from D."""
     return engine_lines(rows, _LINE_VALUES[metric], _row_line)
@@ -426,7 +444,8 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
     Charts: one metric per chart, two charts per page, one line per engine from `rows`
     (benchmark_engine_lines()): the whole run (loop n/s), its write speed (MB/s), and --
     when sieve_points is non-empty or references is on -- the sieve phase alone (sieve n/s)
-    and its seconds per window. The tab's two-axis charts are split in two here so that
+    and its seconds per window, then -- when a row measured it -- each run's peak RAM and
+    its RAM per window. The tab's two-axis charts are split in two here so that
     each chart has room for its value labels (chart_pdf.place_labels()).
 
     Tables: BENCHMARK_PDF_TABLES, one logical table per question, each starting on its own
@@ -438,9 +457,9 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
     and primesieve sieve or iterate in memory and write nothing, so they compare with the
     sieve phase -- with a footnote line per reference (full name and source).
     log_y: log10 y-axes on every chart -- the Benchmark tab's two toggles.
-    hidden_lines: {"run" | "sieve": set of chart_series.line_key()} -- the lines switched
+    hidden_lines: {"run" | "sieve" | "ram": set of chart_series.line_key()} -- the lines switched
     off in the tab's legends, left out of the charts and their scales.
-    y_pins: {"run" | "sieve": {axis: (min, max)}} -- the tab's pinned y-axis bounds
+    y_pins: {"run" | "sieve" | "ram": {axis: (min, max)}} -- the tab's pinned y-axis bounds
     (chart_series.pin_bound()); each axis' pins apply to the chart of that metric.
 
     points: aggregate_benchmark_growth(), for the subtitle's floor count. points2 and
@@ -498,6 +517,16 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
                    ("sieve", "primary", "sieve", "bench.axis_sieve_nps", "{:,.0f}"),
                    ("sieve", "secondary", "sieve_spw", "bench.axis_sieve_spw", "{:,.4f}"),
                    extra=reference_series(t) if references else ())
+        pages.append(ops)
+
+    # --- the RAM page: each run's peak RAM and its RAM per window ---
+    if benchmark_engine_lines(rows, "ram"):
+        ops = [_pdf_text_op(content_left, content_top - 12, 10, "Helvetica-Bold",
+                            _pdf_ascii_fold(t("bench.pdf_continued", page=len(pages) + 1)))]
+        chart_pair(ops, content_top - 22, content_bottom,
+                   ("ram", "primary", "ram", "bench.axis_ram_mb", "{:,.0f}"),
+                   ("ram", "secondary", "ram_per_window", "bench.axis_ram_mb_window",
+                    "{:,.2f}"))
         pages.append(ops)
 
     # --- the logical tables, each from a new page ---

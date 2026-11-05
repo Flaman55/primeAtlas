@@ -488,8 +488,8 @@ class BenchmarkTab(BaseTab):
         # Chart view toggles, kept for the session only; the PDF export follows them, the
         # lines hidden from each chart's legend ({chart: set of line_key()}) and the pinned
         # y-axis bounds ({chart: {axis: (min, max)}}, set from the right-click menu).
-        self._hidden_lines = {"run": set(), "sieve": set()}
-        self._y_pins = {"run": {}, "sieve": {}}
+        self._hidden_lines = {"run": set(), "sieve": set(), "ram": set()}
+        self._y_pins = {"run": {}, "sieve": {}, "ram": {}}
         self.log_scale_var = tk.BooleanVar(value=False)
         self.references_var = tk.BooleanVar(value=False)
         remember("benchmark.log_scale", self.log_scale_var)
@@ -528,6 +528,16 @@ class BenchmarkTab(BaseTab):
                                            highlightthickness=1, highlightbackground=p["border"])
         self.benchmark_chart2.pack(fill="x")
         self.benchmark_chart2.bind("<Configure>", lambda _e: self._redraw_benchmark_chart2())
+
+        # Third chart: each run's peak RAM and RAM per window (max_child_rss_mb), on its
+        # own canvas so the two speed charts keep their scales.
+        chart_frame3 = ttk.Frame(self)
+        chart_frame3.pack(fill="x", padx=6, pady=(0, 4))
+        ttk.Label(chart_frame3, text=T("bench.chart3_hint")).pack(anchor="w")
+        self.benchmark_chart3 = tk.Canvas(chart_frame3, height=160, background=p["console_bg"],
+                                           highlightthickness=1, highlightbackground=p["border"])
+        self.benchmark_chart3.pack(fill="x")
+        self.benchmark_chart3.bind("<Configure>", lambda _e: self._redraw_benchmark_chart3())
 
         tree_frame = ttk.Frame(self)
         tree_frame.pack(fill="both", expand=True, padx=6, pady=4)
@@ -663,12 +673,15 @@ class BenchmarkTab(BaseTab):
     def _redraw_chart(self, chart):
         if chart == "run":
             self._redraw_benchmark_chart()
+        elif chart == "ram":
+            self._redraw_benchmark_chart3()
         else:
             self._redraw_benchmark_chart2()
 
     def _redraw_charts(self):
         self._redraw_benchmark_chart()
         self._redraw_benchmark_chart2()
+        self._redraw_benchmark_chart3()
 
     def _set_pins(self, chart, pins):
         self._y_pins[chart] = pins
@@ -737,6 +750,28 @@ class BenchmarkTab(BaseTab):
                             bg_color=p["console_bg"], fg_color=p["console_fg"],
                             grid_color=p["border"])
 
+    def _redraw_benchmark_chart3(self):
+        """The RAM chart: peak MB per run (left axis) and MB per window (right axis)."""
+        width = self.benchmark_chart3.winfo_width()
+        height = self.benchmark_chart3.winfo_height()
+        width = 900 if width <= 1 else width
+        height = 160 if height <= 1 else height
+        p = self._theme_palette
+        _draw_growth_chart(self.benchmark_chart3, [], width, height,
+                            label_key1="bench.axis_ram_mb",
+                            label_key2="bench.axis_ram_mb_window",
+                            fmt1="{:,.0f}", fmt2="{:,.2f}", translator=self.T,
+                            series1=self._chart_series("ram"),
+                            series2=self._chart_series("ram_per_window"),
+                            log_y=self.log_scale_var.get(),
+                            hidden=self._hidden_lines["ram"],
+                            on_toggle=lambda keys: self._toggle_lines("ram", keys),
+                            pins1=axis_pins(self._y_pins["ram"], "primary"),
+                            pins2=axis_pins(self._y_pins["ram"], "secondary"),
+                            on_pin_menu=lambda *a: self._on_pin_menu("ram", *a),
+                            bg_color=p["console_bg"], fg_color=p["console_fg"],
+                            grid_color=p["border"])
+
     def reload_benchmark_log(self):
         T = self.T
         fieldnames, rows = read_benchmark_log(self._get_portal_folder())
@@ -755,6 +790,7 @@ class BenchmarkTab(BaseTab):
         self._benchmark_sieve_nps_points = aggregate_benchmark_sieve_nps(rows)
         self._benchmark_write_mbps_points = aggregate_benchmark_write_mbps(rows)
         self._redraw_benchmark_chart2()
+        self._redraw_benchmark_chart3()
 
         self.benchmark_tree.delete(*self.benchmark_tree.get_children())
         self._benchmark_floor_state = {}

@@ -530,7 +530,7 @@ class TabPinTests(unittest.TestCase):
                 entries[t("bench.pin_reset_chart")][0]()
                 self.assertEqual(points(chart, "secondary"), [1.0, 2.0, 2.0])
                 self.assertFalse(any(t("bench.axis_pinned") in x for x in texts(chart)))
-                self.assertEqual(tab._y_pins, {"run": {}, "sieve": {}})
+                self.assertEqual(tab._y_pins, {"run": {}, "sieve": {}, "ram": {}})
             finally:
                 root.destroy()
                 benchmark_tab._bind_chart_hover = original_hover
@@ -663,6 +663,82 @@ class TabTests(unittest.TestCase):
                 filedialog.asksaveasfilename = original_save
                 for name, fn in originals.items():
                     setattr(messagebox, name, fn)
+
+
+RAM_ROWS = [
+    {**_row(25, "v5", nps="1e8"), "max_child_rss_mb": "4096", "windows_written": "1000"},
+    {**_row(25, "v6", nps="2e8"), "max_child_rss_mb": "30537", "windows_written": "70000"},
+    {**_row(26, "v6", nps="2e8"), "max_child_rss_mb": "", "windows_written": "70000"},
+    {**_row(27, "v6", nps="2e8"), "max_child_rss_mb": "nan", "windows_written": "70000"},
+]
+
+
+class RamChartTests(unittest.TestCase):
+    """The third chart: each run's peak RAM (max_child_rss_mb) and RAM per window."""
+
+    def test_ram_lines_per_engine(self):
+        lines = benchmark.benchmark_engine_lines(RAM_ROWS, "ram")
+        self.assertEqual(lines, {"v5": [(25, 4096.0)], "v6": [(25, 30537.0)]})
+        per_window = benchmark.benchmark_engine_lines(RAM_ROWS, "ram_per_window")
+        self.assertAlmostEqual(per_window["v5"][0][1], 4.096)
+        self.assertAlmostEqual(per_window["v6"][0][1], 30537 / 70000)
+        self.assertEqual(benchmark.benchmark_engine_lines(ROWS, "ram"), {})
+
+    def test_locales_have_the_ram_keys(self):
+        for lang in ("en", "pl"):
+            path = ROOT / "primeatlas" / "core" / "locales" / f"strings_{lang}.json"
+            strings = json.loads(path.read_text(encoding="utf-8"))
+            for key in ("bench.chart3_hint", "bench.axis_ram_mb", "bench.axis_ram_mb_window"):
+                self.assertTrue(strings.get(key), f"{lang}: {key}")
+
+    def test_report_has_a_ram_page_only_with_ram_rows(self):
+        def report(rows):
+            with tempfile.TemporaryDirectory() as folder:
+                path = os.path.join(folder, "r.pdf")
+                benchmark.render_benchmark_pdf(path, [], list(rows[0]), rows,
+                                               translator=Translator("en"))
+                return Path(path).read_bytes().decode("latin-1")
+        t = Translator("en").t
+        with_ram = report(RAM_ROWS)
+        self.assertIn(f"({t('bench.axis_ram_mb')}) Tj", with_ram)
+        self.assertIn(f"({t('bench.axis_ram_mb_window')}) Tj", with_ram)
+        self.assertIn("(30,537 [v6]) Tj", with_ram)
+        self.assertNotIn(f"({t('bench.axis_ram_mb')}) Tj", report(ROWS))
+
+    def test_tab_draws_the_ram_chart(self):
+        import tkinter as tk
+        from primeatlas.benchmark import benchmark_tab
+        from primeatlas.core.theme import palette_for
+
+        captured = {}
+        original_hover = benchmark_tab._bind_chart_hover
+        benchmark_tab._bind_chart_hover = (
+            lambda canvas, points, *a: captured.__setitem__(str(canvas), list(points)))
+        with tempfile.TemporaryDirectory() as portal:
+            fields = sorted({k for r in RAM_ROWS for k in r})
+            with open(os.path.join(portal, "benchmark_log.csv"), "w", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=fields)
+                writer.writeheader()
+                writer.writerows(RAM_ROWS)
+            root = tk.Tk()
+            try:
+                tab = benchmark_tab.BenchmarkTab(
+                    root, lambda: portal, tk.StringVar(master=root), Translator("en"),
+                    lambda *a, **k: None, palette_for("light"))
+                tab.pack()
+                tab.reload_benchmark_log()
+                root.update()
+                tab._redraw_charts()
+                texts = [p[4] for p in captured.get(str(tab.benchmark_chart3), [])]
+                self.assertIn("30,537 [v6]", texts)
+                self.assertIn("4,096 [v5]", texts)
+                self.assertEqual(set(tab._hidden_lines), {"run", "sieve", "ram"})
+                tab._toggle_lines("ram", [chart_series.line_key("primary", "v6")])
+                texts = [p[4] for p in captured.get(str(tab.benchmark_chart3), [])]
+                self.assertNotIn("30,537 [v6]", texts)
+            finally:
+                root.destroy()
+                benchmark_tab._bind_chart_hover = original_hover
 
 
 if __name__ == "__main__":

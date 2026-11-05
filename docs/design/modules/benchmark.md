@@ -18,6 +18,12 @@ a PDF report.
 
 Reads only; the log's header belongs to `prime_sieve/benchmark_log_schema.py`.
 
+Three charts, one line per engine, last row per floor and line: the whole run (`loop_numbers_per_second`,
+write MB/s), the sieve phase (sieve n/s, s/window, reference points), and RAM (`max_child_rss_mb`, the
+largest process's peak, and that divided by `windows_written`, so runs of different widths compare). RAM
+has its own chart so its megabytes do not share an axis with a speed. Each chart keeps its own hidden
+lines and pinned axes; the PDF draws the RAM pair on its own page when any row measured it.
+
 ## Parameters and texts
 
 Texts `bench.*`, `pdf.*`.
@@ -33,4 +39,6 @@ None of its own.
 
 ## Known gaps
 
-None.
+- `benchmark_tab.py` is near the 1000-line ceiling (978 lines); a fourth chart needs the three
+  redraw methods folded into one chart table first.
+- Primesieve and cudasieve rows log no RAM, so they have no RAM points.

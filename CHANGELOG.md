@@ -282,6 +282,17 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   wartość: swapowaniem, zabiciem uruchomienia z braku pamięci, zawieszeniem systemu.
   Szerokość wpisana powyżej budżetu nadal się uruchomi, a linia RAM to oznacza.
 
+### +30 — Benchmark: RAM per run chart
+
+- English: The Benchmark tab has a third chart, below the two speed charts: the peak
+  RAM of each run in MB and the RAM per window, one line per engine, with the same
+  legend toggles, log scale and pinned axes as the other charts. The PDF report adds
+  a page with the same two charts.
+- Polski: Zakładka Benchmark ma trzeci wykres pod dwoma wykresami prędkości:
+  szczytowy RAM każdego uruchomienia w MB i RAM na okno, jedna linia na silnik, z tymi
+  samymi przełącznikami legendy, skalą logarytmiczną i przypinaniem osi co pozostałe
+  wykresy. Raport PDF dostaje stronę z tymi samymi dwoma wykresami.
+
 ## 1.2.0 — 2026-11-01
 
 ### English
