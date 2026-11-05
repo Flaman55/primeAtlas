@@ -376,6 +376,7 @@ def print_benchmark_summary(base_exponent, start_idx, end_idx, total_seconds, po
                 writer.writeheader()
             row = {
                 "engine": SCANNER_VERSION,
+                "engine_version": prime_sieve_module.VERSION,
                 "numbers_processed": numbers_processed if numbers_processed is not None else "",
                 "run_timestamp_utc": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
                 "base_exponent": base_exponent,
