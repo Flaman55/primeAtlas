@@ -433,6 +433,36 @@ def benchmark_row_stats(rows):
     }
 
 
+# A report chart: (tab chart key, axis, metric of benchmark_engine_lines(), axis title key,
+# value format). The report draws one metric per chart, two charts per page.
+_RUN_CHARTS = (("run", "primary", "growth", "bench.axis_total_nps", "{:,.0f}"),
+               ("run", "secondary", "write", "bench.axis_write_mbps", "{:,.1f}"))
+_SIEVE_CHARTS = (("sieve", "primary", "sieve", "bench.axis_sieve_nps", "{:,.0f}"),
+                 ("sieve", "secondary", "sieve_spw", "bench.axis_sieve_spw", "{:,.4f}"))
+_RAM_CHARTS = (("ram", "primary", "ram", "bench.axis_ram_mb", "{:,.0f}"),
+               ("ram", "secondary", "ram_per_window", "bench.axis_ram_mb_window", "{:,.2f}"))
+
+
+def report_chart_pages(rows, sieve_points=None, references=False):
+    """[(page kind, (first chart, second chart))] of the report (PDF, SVG, HTML): the whole
+    run always; the sieve phase when sieve_points is non-empty or references is on (the
+    reference series go on its first chart); RAM when any row measured it."""
+    pages = [("run", _RUN_CHARTS)]
+    if sieve_points or references:
+        pages.append(("sieve", _SIEVE_CHARTS))
+    if benchmark_engine_lines(rows, "ram"):
+        pages.append(("ram", _RAM_CHARTS))
+    return pages
+
+
+def report_chart_series(rows, chart, hidden_lines=None, extra=()):
+    """The visible Series of one report chart (see report_chart_pages()), its reference
+    series (`extra`) included, the lines hidden in the tab's legend left out."""
+    chart_key, axis, metric = chart[:3]
+    series = engine_series(benchmark_engine_lines(rows, metric)) + list(extra)
+    return visible_series(series, (hidden_lines or {}).get(chart_key), axis)
+
+
 def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translator=None,
                           sieve_points=None, write_points=None, references=False,
                           log_y=False, hidden_lines=None, y_pins=None):
@@ -478,17 +508,19 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
     hidden_lines = hidden_lines or {}
     y_pins = y_pins or {}
 
-    def chart(chart_key, axis, metric, label_key, fmt, y0, h, extra=()):
-        series = engine_series(benchmark_engine_lines(rows, metric)) + list(extra)
+    def chart(spec, y0, h, extra=()):
+        chart_key, axis, _metric, label_key, fmt = spec
         return chart_ops(content_left, y0, content_width, h,
-                         visible_series(series, hidden_lines.get(chart_key), axis),
+                         report_chart_series(rows, spec, hidden_lines, extra),
                          translator=translator, label_key1=label_key, fmt1=fmt,
                          log_y=log_y, pins1=axis_pins(y_pins.get(chart_key), axis))
 
-    def chart_pair(ops, top, bottom, first, second, extra=()):
+    def chart_pair(ops, top, bottom, charts, extra=()):
         h = (top - bottom - chart_gap) / 2
-        ops.extend(chart(*first, y0=top - h, h=h, extra=extra))
-        ops.extend(chart(*second, y0=bottom, h=h))
+        ops.extend(chart(charts[0], top - h, h, extra=extra))
+        ops.extend(chart(charts[1], bottom, h))
+
+    pages_charts = dict(report_chart_pages(rows, sieve_points, references))
 
     # --- page 1: title, the whole run's two charts ---
     ops = []
@@ -498,13 +530,11 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
     ops.append(_pdf_text_op(content_left, content_top - 30, 9, "Helvetica",
                              _pdf_ascii_fold(t("bench.pdf_subtitle", now=now_str,
                                                runs=len(rows), depths=len(points)))))
-    chart_pair(ops, content_top - 40, content_bottom,
-               ("run", "primary", "growth", "bench.axis_total_nps", "{:,.0f}"),
-               ("run", "secondary", "write", "bench.axis_write_mbps", "{:,.1f}"))
+    chart_pair(ops, content_top - 40, content_bottom, pages_charts["run"])
     pages = [ops]
 
     # --- page 2: the sieve phase's two charts, reference footnotes below them ---
-    if sieve_points or references:
+    if "sieve" in pages_charts:
         ops = [_pdf_text_op(content_left, content_top - 12, 10, "Helvetica-Bold",
                             _pdf_ascii_fold(t("bench.pdf_continued", page=2)))]
         bottom = content_bottom
@@ -513,20 +543,15 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
                 ops.append(_pdf_text_op(content_left, content_bottom + 8 * i, 6, "Helvetica",
                                         _pdf_ascii_fold(f"{ref.tag}: {ref.name} -- {ref.source}")))
             bottom = content_bottom + 8 * len(REFERENCES) + 4
-        chart_pair(ops, content_top - 22, bottom,
-                   ("sieve", "primary", "sieve", "bench.axis_sieve_nps", "{:,.0f}"),
-                   ("sieve", "secondary", "sieve_spw", "bench.axis_sieve_spw", "{:,.4f}"),
+        chart_pair(ops, content_top - 22, bottom, pages_charts["sieve"],
                    extra=reference_series(t) if references else ())
         pages.append(ops)
 
     # --- the RAM page: each run's peak RAM and its RAM per window ---
-    if benchmark_engine_lines(rows, "ram"):
+    if "ram" in pages_charts:
         ops = [_pdf_text_op(content_left, content_top - 12, 10, "Helvetica-Bold",
                             _pdf_ascii_fold(t("bench.pdf_continued", page=len(pages) + 1)))]
-        chart_pair(ops, content_top - 22, content_bottom,
-                   ("ram", "primary", "ram", "bench.axis_ram_mb", "{:,.0f}"),
-                   ("ram", "secondary", "ram_per_window", "bench.axis_ram_mb_window",
-                    "{:,.2f}"))
+        chart_pair(ops, content_top - 22, content_bottom, pages_charts["ram"])
         pages.append(ops)
 
     # --- the logical tables, each from a new page ---

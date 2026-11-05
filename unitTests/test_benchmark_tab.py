@@ -280,7 +280,8 @@ def main():
               f"the 'no data yet' dialog was shown instead of opening a file dialog (got: {shown})")
 
         # --- PDF export: a raising renderer surfaces messagebox.showerror ----------
-        import primeatlas.benchmark.benchmark_tab as benchmark_tab_module
+        # The export handlers live in the tab's BenchmarkExport mixin.
+        import primeatlas.benchmark.benchmark_export as benchmark_tab_module
         original_render = benchmark_tab_module.render_benchmark_pdf
 
         def _fake_raise(*a, **k):

@@ -293,6 +293,19 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   samymi przełącznikami legendy, skalą logarytmiczną i przypinaniem osi co pozostałe
   wykresy. Raport PDF dostaje stronę z tymi samymi dwoma wykresami.
 
+### +31 — Benchmark: export as CSV, SVG, HTML page and HTML snippet
+
+- English: Next to "Save PDF", the Benchmark tab has an "Export" menu: CSV (the log's
+  rows), SVG (the charts), an HTML page (charts and tables in one file to open in a
+  browser) and an HTML snippet (the same content as one block to paste into another
+  web page). Every export shows what the tab shows: log scale, reference points, hidden
+  lines and pinned axes, and the charts look like the PDF's.
+- Polski: Obok „Zapisz PDF” zakładka Benchmark ma menu „Eksport”: CSV (wiersze logu),
+  SVG (wykresy), strona HTML (wykresy i tabele w jednym pliku do otwarcia w
+  przeglądarce) oraz fragment HTML (ta sama treść jako jeden blok do wklejenia na inną
+  stronę). Każdy eksport pokazuje to, co zakładka: skalę logarytmiczną, punkty
+  odniesienia, ukryte linie i przypięte osie, a wykresy wyglądają jak w PDF.
+
 ## 1.2.0 — 2026-11-01
 
 ### English

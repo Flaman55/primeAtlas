@@ -1890,21 +1890,35 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
   primeatlas/benchmark/         "Benchmark" tab
   benchmark_tab.py             BenchmarkTab -- the Benchmark tab (three charts: whole run
                               n/s + write MB/s, sieve n/s + s/window, RAM per run +
-                              RAM per window; right-click y-axis pin menu, PDF export;
+                              RAM per window; right-click y-axis pin menu;
                               benchmark.py below is the pure-logic backend)
+  benchmark_export.py           BenchmarkExport mixin of the tab: "Save PDF" and the
+                              "Export" menu (CSV, SVG, HTML page, HTML snippet), each
+                              following the tab's view (log scale, references, hidden
+                              lines, pinned axes)
+  report_export.py              the report as CSV (the log's rows), SVG (every report
+                              chart stacked), a UTF-8 HTML page (charts inline + the
+                              logical tables) or one <div class="primeatlas-benchmark">
+                              snippet with a style scoped to it -- pure, no tkinter
+                              (unitTests/test_benchmark_report_export.py)
+  chart_svg.py                  SVG backend of chart_pdf.chart_ops(): the same chart
+                              layout as the PDF, y flipped, Unicode text
   benchmark.py                  reading/normalizing benchmark_log.csv rows; each row
                               gets a "kind" (D, P, or D+P on floor 24) from its
                               engine and window range, shown next to "engine";
                               the PDF report (one-metric charts, a RAM page when a row
-                              logged max_child_rss_mb, logical tables)
+                              logged max_child_rss_mb, logical tables);
+                              report_chart_pages() is the chart list every report
+                              format shares
   chart_series.py               chart Series (one color per engine, a P run of pt1
                               on its own "pt1 P" line), linear/log
                               y-scales with pinned y-axis bounds and line clipping
                               at the plot edge, per-line hide/show keys -- shared by
                               the canvas and the PDF renderer
-  chart_pdf.py                  PDF content ops of one Benchmark chart (axes, lines,
+  chart_pdf.py                  one Benchmark chart's layout (axes, lines,
                               non-overlapping value labels with engine tags, legend,
-                              pinned axes)
+                              pinned axes) drawn through a backend: PDF content ops
+                              by default, SVG via chart_svg.py
   reference_points.py           reference throughput of PARI/GP and primesieve with
                               sources, for the "Reference points" toggle
 

@@ -24,14 +24,14 @@ pagination (Prime numbers, Constellations, Goldbach, ...) -- it stays put there 
 than being duplicated or promoted to its own module just for this one extraction, and
 is passed in exactly like SettingsTab's wsl_helpers callables are.
 """
-import datetime
 import re
 
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
+from tkinter import ttk
 from tkinter import font as tkfont
 
 from ..core.base_tab import BaseTab
+from .benchmark_export import BenchmarkExport
 from ..core.ui_state import remember
 from ..core.widgets import StripedTreeview
 from .benchmark import (
@@ -39,7 +39,7 @@ from .benchmark import (
     _order_benchmark_tree_columns, aggregate_benchmark_fair_spw,
     aggregate_benchmark_growth, aggregate_benchmark_sieve_nps,
     aggregate_benchmark_write_mbps, benchmark_engine_lines, benchmark_row_stats,
-    group_benchmark_rows_by_floor, read_benchmark_log, render_benchmark_pdf,
+    group_benchmark_rows_by_floor, read_benchmark_log,
 )
 from ..core.i18n import Translator, DEFAULT_LANGUAGE
 from .chart_series import (
@@ -455,7 +455,7 @@ def _bind_pin_menu(canvas, hover_points, on_pin_menu):
     canvas.bind("<Button-3>", _on_right_click)
 
 
-class BenchmarkTab(BaseTab):
+class BenchmarkTab(BenchmarkExport, BaseTab):
     def __init__(self, parent, get_portal_folder, status_var, translator, update_nav_controls,
                  theme_palette):
         """
@@ -482,10 +482,9 @@ class BenchmarkTab(BaseTab):
         top = ttk.Frame(self)
         top.pack(fill="x", padx=6, pady=4)
         ttk.Button(top, text=T("common.refresh"), command=self.reload_benchmark_log).pack(side="left")
-        ttk.Button(top, text=T("bench.save_pdf"), command=self._export_benchmark_pdf).pack(
-            side="left", padx=(6, 0))
+        self._build_export_controls(top)
         ttk.Label(top, text=T("bench.chart_hint")).pack(side="left")
-        # Chart view toggles, kept for the session only; the PDF export follows them, the
+        # Chart view toggles, kept for the session only; every export follows them, the
         # lines hidden from each chart's legend ({chart: set of line_key()}) and the pinned
         # y-axis bounds ({chart: {axis: (min, max)}}, set from the right-click menu).
         self._hidden_lines = {"run": set(), "sieve": set(), "ram": set()}
@@ -943,36 +942,3 @@ class BenchmarkTab(BaseTab):
         node = self._active_benchmark_node
         if node is not None and self._benchmark_floor_state.get(node):
             self._show_benchmark_page(node, int(raw) - 1)
-
-    def _export_benchmark_pdf(self):
-        T = self.T
-        if not self._benchmark_fieldnames or not self._benchmark_rows:
-            messagebox.showinfo(
-                T("bench.save_pdf"),
-                T("bench.no_data_dialog"))
-            return
-        default_name = f"benchmark_report_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-        path = filedialog.asksaveasfilename(
-            title=T("bench.save_dialog_title"),
-            initialdir=self._get_portal_folder(),
-            initialfile=default_name,
-            defaultextension=".pdf",
-            filetypes=[("PDF", "*.pdf"), (T("common.all_files"), "*.*")])
-        if not path:
-            return
-        try:
-            render_benchmark_pdf(path, self._benchmark_growth_points,
-                                  self._benchmark_fieldnames, self._benchmark_rows,
-                                  points2=self._benchmark_fair_spw_points,
-                                  translator=self.T,
-                                  sieve_points=self._benchmark_sieve_nps_points,
-                                  write_points=self._benchmark_write_mbps_points,
-                                  references=self.references_var.get(),
-                                  log_y=self.log_scale_var.get(),
-                                  hidden_lines=self._hidden_lines,
-                                  y_pins=self._y_pins)
-        except Exception as exc:
-            messagebox.showerror(T("bench.save_pdf"), T("bench.save_error", error=exc))
-            return
-        self.status.set(T("bench.status_saved", path=path))
-        messagebox.showinfo(T("bench.save_pdf"), T("bench.saved_dialog", path=path))
