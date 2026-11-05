@@ -2152,7 +2152,8 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               run_status values) and its migration: an older subset
                               header gains the missing columns (blank), a foreign
                               column leaves the file untouched; imported by every
-                              writer and by floor_meta.py
+                              writer and by floor_meta.py; engine_version holds the
+                              writing script's VERSION (v5.1, v6.0, ...)
                               (unitTests/test_benchmark_log_schema.py)
   floor_meta_store.py        reads and appends a floor's 10p{N}/floor_meta.json (the
                               copy of its benchmark_log.csv rows); every engine's

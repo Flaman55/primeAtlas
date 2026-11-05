@@ -282,6 +282,19 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   wartość: swapowaniem, zabiciem uruchomienia z braku pamięci, zawieszeniem systemu.
   Szerokość wpisana powyżej budżetu nadal się uruchomi, a linia RAM to oznacza.
 
+### +30 — Engine version in the benchmark log, time simulation calibrated per version
+
+- English: Every benchmark_log.csv row now records the full engine version (for example
+  v5.1 or v6.0) next to the engine name. The Time simulation calibrates each engine from
+  the rows of its newest version once there are two of them, so a faster release is no
+  longer averaged with the slower one, and the model note names that version. Older rows
+  without a version still count until two new rows exist.
+- Polski: Każdy wiersz benchmark_log.csv zapisuje teraz pełną wersję silnika (np. v5.1
+  albo v6.0) obok nazwy silnika. Symulacja czasu kalibruje każdy silnik z wierszy jego
+  najnowszej wersji, gdy są co najmniej dwa, więc szybsze wydanie nie jest już uśredniane
+  z wolniejszym, a notka modelu podaje tę wersję. Starsze wiersze bez wersji liczą się,
+  dopóki nie ma dwóch nowych.
+
 ## 1.2.0 — 2026-11-01
 
 ### English
