@@ -108,6 +108,11 @@ class EngineFields:
                 return None, bad
         return engine_options.resolve(self.settings(), windows), None
 
+    def choice_for_windows(self, windows):
+        """The EngineChoice a run of `windows` windows launches with, None while a knob field
+        of the selected engine is invalid."""
+        return self.choice(windows)[0]
+
     def settings(self):
         """Values to persist in the Generation settings' "loop" section."""
         values = {key: var.get().strip() for key, var in self.knob_vars.items()}

@@ -12,7 +12,7 @@ the targeted k-tuple sieve (Section C). Only one engine runs at a time.
 | Sections (mixins) | `quick_gen_panel.py`, `quick_gen_runs.py`, `loop_section.py`, `constellation_section.py`, `ktuple_section.py`, `run_progress.py`, `run_guard_controls.py`, `hybrid_controls.py`, `engine_fields.py`, `time_simulation_controls.py` |
 | Launching | `engine_argv.py` (argv of every script), `wsl_command.py` (wsl.exe command, logs), `logged_runners.py` (`WslLoggedRunner`, `LocalLoggedRunner`), `wsl_blocking.py`, `wsl_resources.py` |
 | Planning | `window_planning.py`, `quick_gen_plan.py`, `run_budget.py`, `engine_options.py`, `engine_presets.py`, `quick_number.py` |
-| Time simulation | `time_model.py` (run time model calibrated from benchmark_log.csv), `time_simulation_window.py` (`TimeSimulationWindow`) |
+| Time simulation | `time_model.py` (run time model calibrated from benchmark_log.csv), `run_ram.py` (predicted RAM of a run, widest run in the RAM budget), `time_simulation_window.py` (`TimeSimulationWindow`) |
 | Following and settling | `run_output.py` (log parsing), `run_guard.py` (stop request, active-run marker, recovery), `close_guard.py` |
 | Settings | `generation_settings.py` (form defaults and persistence), `generation_console.py` (`GenerationConsole`) |
 | Offers | `generation_offer_coordinator.py` ("generate the missing fragment" for other tabs) |
@@ -60,7 +60,7 @@ checkpoint box (unchecked at every start).
 ## Time simulation
 
 The Quick-gen "Time simulation" button opens one window with two sliders: the floor (7-35) and
-the run width in windows of 10^7 (log scale up to the engine's per-run cap), plus the engine
+the run width in windows of 10^7 (log scale up to its cap, see RAM below), plus the engine
 selector. They are the Quick-gen Floor and Width fields (Explore: its own pair) and the pipeline
 form's engine var themselves, so a slider fills the form and a form edit moves the slider; what
 Generate runs is what the window shows. The window width `window_m` is not a slider: it is the
@@ -89,6 +89,19 @@ time for the same runs, and the whole floor's time (9 * 10^f numbers, start to e
 floors and worst error of the fit; outside the measured floors and spans it says the times are
 extrapolated, and with fewer than two rows of the engine it shows only pi(L).
 
+RAM: `run_ram.py` predicts the run's peak memory as `run_budget.run_footprint_bytes()` with the
+knobs the run launches with (`EngineFields.choice_for_windows()`: an Auto profile picks the bucket
+memory by width), unlike the Auto button's `engine_options.recommend()`, which may lower the bucket
+memory to fit. The window shows it in GB and as a share of the RAM free in WSL (`MemAvailable`, read
+on a background thread when the window opens and when a run ends). The width slider ends at the
+widest run that fits the pipeline form's RAM budget (`ram_budget_pct` of the free RAM; binary search,
+since the footprint grows with the width), or at the engine's cap when that is smaller, for pt1 (no
+run-sized buffer) and while the free RAM is unknown. The window traces the budget, bucket-memory and
+profile fields, so an edit there moves the cap at once. A width typed into the Width field above the
+budget is kept (the form runs what it holds) and the RAM line flags it; its info tip names the budget
+field, the recommended value (the 50 % default) and what a higher budget risks (swapping, the run
+killed out of memory, an unresponsive system).
+
 ## Parameters and texts
 
 [generation-loop](../parameters/generation-loop.md), [generation-constellation](../parameters/generation-constellation.md),
@@ -106,10 +119,12 @@ is copied in once), `.generation_logs/` (logs, exit codes, `ACTIVE_RUN.json`),
 `test_engine_presets`, `test_engine_gui_wiring`, `test_run_budget`, `test_run_guard`, `test_close_guard`, `test_close_guard_wiring`,
 `test_cross_engine_run_lock`, `test_gen_progress_bar_engine_gating`, `test_progress_bar_owner`,
 `test_console_controls`, `test_constellation_auto_retry`, `test_storage_fill`, `test_pi_seed_checkbox_exclusivity`,
-`test_time_model`, `test_time_simulation`, `test_ui_state_app`.
+`test_time_model`, `test_run_ram`, `test_time_simulation`, `test_ui_state_app`.
 
 ## Known gaps
 
+- The RAM budget caps only the Time simulation slider: Generate does not refuse a typed width
+  above it.
 - The run-progress ETA does not use the time model yet; the model is shown only in the Time
   simulation window.
 - The time model is linear in the span per floor: a run much shorter than the floor's measured ones
