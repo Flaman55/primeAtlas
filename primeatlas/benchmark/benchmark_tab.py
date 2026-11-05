@@ -38,14 +38,16 @@ from .benchmark import (
     BENCHMARK_PAGE_SIZE, BENCHMARK_TREE_HIDDEN_COLUMNS,
     _order_benchmark_tree_columns, aggregate_benchmark_fair_spw,
     aggregate_benchmark_growth, aggregate_benchmark_sieve_nps,
-    aggregate_benchmark_write_mbps, benchmark_engine_lines, benchmark_row_stats,
+    aggregate_benchmark_write_mbps, benchmark_row_stats, benchmark_series, mixed_width_floors,
     group_benchmark_rows_by_floor, read_benchmark_log, render_benchmark_pdf,
 )
 from ..core.i18n import Translator, DEFAULT_LANGUAGE
 from .chart_series import (
-    axis_pins, clear_pins, clip_polyline, engine_series, in_view, legend_entries, line_key,
+    axis_pins, clear_pins, clip_polyline, in_view, legend_entries, line_key,
     pin_bound, plain_series, point_label, series_xs, toggle_lines, visible_series, y_scale,
 )
+from .benchmark_filter import BenchmarkFilter
+from . import sieve_measure
 from .reference_points import reference_series
 
 
@@ -426,7 +428,7 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
                                         width=2 if s.dashed else 0,
                                         fill=bg_color if s.dashed else s.color)
                 hover_points.append((cx, cy, x_val, y_val,
-                                     point_label(fmt, y_val, s, show_unknown=True)
+                                     point_label(fmt, y_val, s, show_unknown=True, x=x_val)
                                      .replace("{", "{{").replace("}", "}}"),
                                      s.color, label_key,
                                      "secondary" if secondary else "primary"))
@@ -455,7 +457,7 @@ def _bind_pin_menu(canvas, hover_points, on_pin_menu):
     canvas.bind("<Button-3>", _on_right_click)
 
 
-class BenchmarkTab(BaseTab):
+class BenchmarkTab(BenchmarkFilter, BaseTab):
     def __init__(self, parent, get_portal_folder, status_var, translator, update_nav_controls,
                  theme_palette):
         """
@@ -473,6 +475,7 @@ class BenchmarkTab(BaseTab):
         self.status = status_var
         self._update_nav_controls = update_nav_controls
         self._theme_palette = theme_palette
+        self._init_filter()
 
         self._build_widgets()
 
@@ -481,10 +484,8 @@ class BenchmarkTab(BaseTab):
 
         top = ttk.Frame(self)
         top.pack(fill="x", padx=6, pady=4)
-        ttk.Button(top, text=T("common.refresh"), command=self.reload_benchmark_log).pack(side="left")
-        ttk.Button(top, text=T("bench.save_pdf"), command=self._export_benchmark_pdf).pack(
-            side="left", padx=(6, 0))
-        ttk.Label(top, text=T("bench.chart_hint")).pack(side="left")
+        # "Points of different widths on floor N" under each chart, set by its redraw.
+        self.mixed_widths_vars = {"run": tk.StringVar(), "sieve": tk.StringVar()}
         # Chart view toggles, kept for the session only; the PDF export follows them, the
         # lines hidden from each chart's legend ({chart: set of line_key()}) and the pinned
         # y-axis bounds ({chart: {axis: (min, max)}}, set from the right-click menu).
@@ -494,10 +495,20 @@ class BenchmarkTab(BaseTab):
         self.references_var = tk.BooleanVar(value=False)
         remember("benchmark.log_scale", self.log_scale_var)
         remember("benchmark.show_references", self.references_var)
+        # The toggles are packed first: when the row is too narrow, pack cuts the labels packed
+        # after them (filter summary, chart hint), not the toggles.
         ttk.Checkbutton(top, text=T("bench.log_scale"), variable=self.log_scale_var,
                         command=self._redraw_charts).pack(side="right")
         ttk.Checkbutton(top, text=T("bench.show_references"), variable=self.references_var,
                         command=self._redraw_charts).pack(side="right", padx=(0, 8))
+        ttk.Button(top, text=T("common.refresh"), command=self.reload_benchmark_log).pack(side="left")
+        ttk.Button(top, text=T("bench.save_pdf"), command=self._export_benchmark_pdf).pack(
+            side="left", padx=(6, 0))
+        ttk.Button(top, text=T("bench.filter_button"), command=self._open_filter_window).pack(
+            side="left", padx=(6, 0))
+        ttk.Label(top, textvariable=self.filter_summary_var, style="Status.TLabel").pack(
+            side="left", padx=(6, 12))
+        ttk.Label(top, text=T("bench.chart_hint")).pack(side="left")
 
         chart_frame = ttk.Frame(self)
         chart_frame.pack(fill="x", padx=6, pady=(0, 4))
@@ -513,6 +524,10 @@ class BenchmarkTab(BaseTab):
                                           highlightthickness=1, highlightbackground=p["border"])
         self.benchmark_chart.pack(fill="x")
         self.benchmark_chart.bind("<Configure>", lambda _e: self._redraw_benchmark_chart())
+        # Packed only while it has text, so an empty one takes no height.
+        self._mixed_widths_labels = {"run": (ttk.Label(chart_frame, style="Status.TLabel",
+                                                       textvariable=self.mixed_widths_vars["run"]),
+                                             self.benchmark_chart)}
 
         # Second chart: sieve-numbers/s + write-MB/s -- the phase-breakdown counterpart
         # to the growth chart above, populated only from v4.1 and v5 engine rows (see
@@ -528,6 +543,9 @@ class BenchmarkTab(BaseTab):
                                            highlightthickness=1, highlightbackground=p["border"])
         self.benchmark_chart2.pack(fill="x")
         self.benchmark_chart2.bind("<Configure>", lambda _e: self._redraw_benchmark_chart2())
+        self._mixed_widths_labels["sieve"] = (
+            ttk.Label(chart_frame2, style="Status.TLabel",
+                      textvariable=self.mixed_widths_vars["sieve"]), self.benchmark_chart2)
 
         tree_frame = ttk.Frame(self)
         tree_frame.pack(fill="both", expand=True, padx=6, pady=4)
@@ -630,6 +648,7 @@ class BenchmarkTab(BaseTab):
             width = 900
         if height <= 1:
             height = 220
+        self._show_mixed_widths("run", ("growth", "write"))
         p = self._theme_palette
         _draw_growth_chart(self.benchmark_chart, self._benchmark_growth_points, width, height,
                             points2=self._benchmark_write_mbps_points, translator=self.T,
@@ -648,9 +667,9 @@ class BenchmarkTab(BaseTab):
 
     def _chart_series(self, metric, references=False):
         """One Series per engine for a chart metric; with references=True, the reference
-        lines too while the "Reference points" toggle is on. PARI/GP and primesieve write
-        nothing, so the references go on the sieve chart."""
-        series = engine_series(benchmark_engine_lines(self._benchmark_rows, metric))
+        lines too while the "Reference points" toggle is on. PARI/GP writes nothing, so the
+        references go on the sieve chart."""
+        series = benchmark_series(self._filtered_rows(), metric)
         if references and self.references_var.get():
             series += reference_series(self.T)
         return series
@@ -669,6 +688,17 @@ class BenchmarkTab(BaseTab):
     def _redraw_charts(self):
         self._redraw_benchmark_chart()
         self._redraw_benchmark_chart2()
+
+    def _show_mixed_widths(self, chart, metrics):
+        floors = sorted({f for m in metrics
+                         for f in mixed_width_floors(self._filtered_rows(), m)})
+        self.mixed_widths_vars[chart].set(
+            self.T("bench.mixed_widths", floors=", ".join(map(str, floors))) if floors else "")
+        label, canvas = self._mixed_widths_labels[chart]
+        if floors:
+            label.pack(anchor="w", after=canvas)
+        else:
+            label.pack_forget()
 
     def _set_pins(self, chart, pins):
         self._y_pins[chart] = pins
@@ -713,8 +743,9 @@ class BenchmarkTab(BaseTab):
 
     def _redraw_benchmark_chart2(self):
         """Same fallback-size handling as _redraw_benchmark_chart() (see that method's own
-        comment) -- draws the sieve-phase chart (sieve n/s, sieve s/window, reference
-        points) onto its own canvas, right below the whole-run chart."""
+        comment) -- draws the sieve chart of the Filter window's sieve measure
+        (sieve_measure.chart(): n/s and s/window, with reference points, or the startup
+        overhead) onto its own canvas, right below the whole-run chart."""
         width = self.benchmark_chart2.winfo_width()
         height = self.benchmark_chart2.winfo_height()
         if width <= 1:
@@ -722,12 +753,13 @@ class BenchmarkTab(BaseTab):
         if height <= 1:
             height = 180
         p = self._theme_palette
+        spec = sieve_measure.chart(self._sieve_measure)
+        self._show_mixed_widths("sieve", (spec.metric1, spec.metric2))
         _draw_growth_chart(self.benchmark_chart2, self._benchmark_sieve_nps_points, width,
-                            height, label_key1="bench.axis_sieve_nps",
-                            label_key2="bench.axis_sieve_spw",
-                            fmt1="{:,.0f}", fmt2="{:,.4f}", translator=self.T,
-                            series1=self._chart_series("sieve", references=True),
-                            series2=self._chart_series("sieve_spw"),
+                            height, label_key1=spec.label_key1, label_key2=spec.label_key2,
+                            fmt1=spec.fmt1, fmt2=spec.fmt2, translator=self.T,
+                            series1=self._chart_series(spec.metric1, spec.references),
+                            series2=self._chart_series(spec.metric2),
                             log_y=self.log_scale_var.get(),
                             hidden=self._hidden_lines["sieve"],
                             on_toggle=lambda keys: self._toggle_lines("sieve", keys),
@@ -925,18 +957,24 @@ class BenchmarkTab(BaseTab):
         if not path:
             return
         try:
-            render_benchmark_pdf(path, self._benchmark_growth_points,
-                                  self._benchmark_fieldnames, self._benchmark_rows,
-                                  points2=self._benchmark_fair_spw_points,
-                                  translator=self.T,
-                                  sieve_points=self._benchmark_sieve_nps_points,
-                                  write_points=self._benchmark_write_mbps_points,
-                                  references=self.references_var.get(),
-                                  log_y=self.log_scale_var.get(),
-                                  hidden_lines=self._hidden_lines,
-                                  y_pins=self._y_pins)
+            self._render_pdf(path)
         except Exception as exc:
             messagebox.showerror(T("bench.save_pdf"), T("bench.save_error", error=exc))
             return
         self.status.set(T("bench.status_saved", path=path))
         messagebox.showinfo(T("bench.save_pdf"), T("bench.saved_dialog", path=path))
+
+    def _render_pdf(self, path):
+        """The report of what the tab shows: the filtered runs (charts and tables), the
+        toggles, hidden lines and pins, the sieve measure; the subtitle names the filter."""
+        render_benchmark_pdf(path, self._benchmark_growth_points,
+                             self._benchmark_fieldnames, self._filtered_rows(),
+                             points2=self._benchmark_fair_spw_points,
+                             translator=self.T,
+                             sieve_points=self._benchmark_sieve_nps_points,
+                             write_points=self._benchmark_write_mbps_points,
+                             references=self.references_var.get(),
+                             log_y=self.log_scale_var.get(),
+                             hidden_lines=self._hidden_lines,
+                             y_pins=self._y_pins, filter_note=self._filter_note(),
+                             measure=self._sieve_measure)

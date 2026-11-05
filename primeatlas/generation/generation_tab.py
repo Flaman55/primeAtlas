@@ -20,6 +20,8 @@ with code outside it:
     OTHER two tabs' trees -- called from _on_loop_finished()/_on_constellation_finished()
     once a generation run completes, so newly-written windows/hits show up there without
     a manual Refresh click.
+  - reload_benchmark_log: rereads the Benchmark tab's log when a run ends, so the run's
+    row shows on its charts without a manual Refresh click.
   - research_goldbach_tab_widget: _on_loop_finished() calls back into its retry_viz()/
     retry_decompose() methods once a Goldbach-triggered "generate the missing range" run
     finishes (see research_goldbach_tab.py's own docstring for the other half of this
@@ -67,7 +69,7 @@ class GenerationTab(QuickGenPanel, QuickGenRuns, QuickGenPlan, LoopSection,
                     HybridControls, RunGuardControls, TimeSimulationControls, BaseTab):
     def __init__(self, parent, get_portal_folder, status_var, translator,
                  totals_progress, reload_primes_tree, reload_constellations_tree,
-                 research_goldbach_tab_widget):
+                 research_goldbach_tab_widget, reload_benchmark_log=None):
         """
         get_portal_folder/status_var/translator/totals_progress: same dependency-
         injection pattern as every other extracted tab -- see primeatlas/primes/primes_tab.py's
@@ -87,6 +89,7 @@ class GenerationTab(QuickGenPanel, QuickGenRuns, QuickGenPlan, LoopSection,
         self.reload_primes_tree = reload_primes_tree
         self.reload_constellations_tree = reload_constellations_tree
         self.research_goldbach_tab_widget = research_goldbach_tab_widget
+        self.reload_benchmark_log = reload_benchmark_log or (lambda: None)
 
         # "Generate missing fragment, then re-search" state -- set by PortalBrowserApp's
         # own _offer_generate_missing_prime_window()/_offer_generate_missing_constellation()

@@ -10,6 +10,7 @@ and its other mixins set up, so it is never instantiated on its own.
 import tkinter as tk
 from tkinter import ttk, messagebox
 
+from ..core.info_tip import InfoTip
 from ..core.storage import digit_count_floor, LOW_FLOOR_CUTOFF
 from ..core.ui_state import remember
 from . import engine_options
@@ -37,6 +38,7 @@ _REMEMBERED_QUICK_VARS = (
     "quick_hybrid_filter_prime_count_var", "quick_hybrid_from_var", "quick_hybrid_to_var",
     "quick_hybrid_main_cap_var", "quick_hybrid_value_var", "quick_hybrid_target_floor_var",
     "quick_primesieve_floor_var", "quick_primesieve_from_var", "quick_primesieve_width_var",
+    "quick_primesieve_native_var", "quick_primesieve_native_mode_var",
     "quick_cudasieve_floor_var", "quick_cudasieve_from_var", "quick_cudasieve_width_var",
 )
 
@@ -105,6 +107,10 @@ class QuickGenPanel:
         self.quick_primesieve_floor_var = tk.StringVar(value="")
         self.quick_primesieve_from_var = tk.StringVar(value="")
         self.quick_primesieve_width_var = tk.StringVar(value="1")
+        # Native: run the primesieve program itself ("print" text output or "count" of
+        # pi(x)) instead of the wrapper that converts its result into Atlas windows.
+        self.quick_primesieve_native_var = tk.BooleanVar(value=False)
+        self.quick_primesieve_native_mode_var = tk.StringVar(value="print")
         # cudasieve mode (optional GPU engine):
         # own Floor/From/Width variables, same reasoning as primesieve mode's own three
         # just above (see _build_quick_mode_primesieve's docstring) -- kept entirely
@@ -541,10 +547,48 @@ class QuickGenPanel:
                     textvariable=self.quick_primesieve_width_var,
                     width=14, validate="key", validatecommand=width_vcmd).pack(
             side="left", padx=(6, 0))
+        row2 = ttk.Frame(frame)
+        row2.pack(anchor="w", pady=(4, 0))
+        ttk.Checkbutton(row2, text=self.T("quick.field_primesieve_native"),
+                        variable=self.quick_primesieve_native_var).pack(side="left")
+        InfoTip(row2, lambda: self.T("quick.info_primesieve_native"
+                                     if self.quick_primesieve_native_var.get()
+                                     else "quick.info_primesieve_wrapper")).label.pack(
+            side="left", padx=(4, 12))
+        modes = {"print": self.T("quick.primesieve_mode_print"),
+                 "count": self.T("quick.primesieve_mode_count")}
+        shown = tk.StringVar(value=modes.get(self.quick_primesieve_native_mode_var.get(),
+                                             modes["print"]))
+        combo = ttk.Combobox(row2, textvariable=shown, values=list(modes.values()),
+                             state="disabled", width=36)
+        combo.pack(side="left")
+        # One combo per built panel (the embedded one and a detached copy).
+        self.quick_primesieve_native_mode_combo = combo
+        self._primesieve_native_combos = getattr(self, "_primesieve_native_combos", []) + [combo]
+        shown.trace_add("write", lambda *_: self.quick_primesieve_native_mode_var.set(
+            next(k for k, v in modes.items() if v == shown.get())))
+        for var in (self.quick_primesieve_native_var, self.quick_mode_var):
+            var.trace_add("write", lambda *_: self._sync_primesieve_native_controls())
         ttk.Label(frame, text=self.T("quick.attribution_primesieve"), style="Hint.TLabel",
                   font=("TkDefaultFont", 8), wraplength=860, justify="left").pack(
             anchor="w", pady=(4, 0))
         mode_frames["primesieve"] = frame
+        self._sync_primesieve_native_controls()
+
+    def _sync_primesieve_native_controls(self):
+        """print/count usable only with Native on; "write files" disabled while native
+        primesieve mode is selected, since print always writes and count never does."""
+        native_var = getattr(self, "quick_primesieve_native_var", None)
+        if native_var is None:
+            return
+        native = native_var.get()
+        for combo in getattr(self, "_primesieve_native_combos", ()):
+            if combo.winfo_exists():
+                combo.configure(state="readonly" if native else "disabled")
+        write_cb = getattr(self, "_loop_write_files_cb", None)
+        if write_cb is not None:
+            locked = native and self.quick_mode_var.get() == "primesieve"
+            write_cb.configure(state="disabled" if locked else "normal")
 
     def _on_primesieve_auto_from_clicked(self):
         """primesieve mode's OWN Auto button -- unlike every other mode's Auto (RAM-

@@ -393,6 +393,30 @@ format and folder layout as every other engine, so a floor generated through thi
 indistinguishable, from the rest of the application's point of view, from one generated any
 other way.
 
+That mapping is Atlas work inside the measured time: the library fills its array on one
+thread, and copying it into Python and encoding the windows slow the run down (floor 19, 10^10
+numbers: about 298 M numbers/s, against about 835 M/s for the primesieve program's own
+`--print` and 3.4 G/s for its multi-threaded `--count`). Its benchmark rows are therefore
+called "primesieve (Atlas format)", never plain primesieve. The **Native** checkbox runs the
+primesieve program itself instead (`prime_sieve/primesieve_native.py`), timed from its start
+to its exit:
+- **print** -- `primesieve --print` sieves the range and writes every prime as its own text,
+  one per line, into `primesieve/10pN/<start>_<stop>.txt` under the storage root. That folder
+  is not Atlas storage (Atlas does not read it; the text is about 20 times larger than Atlas
+  windows), and primesieve prints on one thread. Sieve plus output is a whole run, so these
+  runs appear on the whole-run chart as "primesieve print (native)".
+- **count** -- `primesieve --count` sieves the range and counts the primes on the threads
+  primesieve picks, and writes nothing. That is the work of an Atlas engine's sieve phase (a
+  bitmap of the range, no primes extracted), so these runs appear on the sieve charts as
+  "primesieve count (native)".
+Compare at the same width: primesieve first prepares the primes up to the square root of the
+range's end (about 0.7 s at floor 19), which dominates a short range. Measured on the same
+ranges at floor 19: v6.0's sieve phase 6.69 G numbers/s on 2*10^11 numbers with 24 threads
+against primesieve --count 8.99 G/s (24 threads); 0.66 against 1.25 G/s on 10^10 numbers with
+1 thread. Every benchmark row records its sieve and write threads, so the charts name each
+line's engine build and thread setup (for example "v6.0, 24 thr, write 8",
+"primesieve count (native) 12.15, 24 thr").
+
 The trade is libprimesieve's own domain limit: it operates on the `uint64_t` range, so
 nothing above `primesieve_get_max_stop()` (currently `2**64 - 1` =
 18,446,744,073,709,551,615, which falls in the middle of floor 19, not at a floor boundary)
@@ -400,7 +424,7 @@ can be generated this way. A request that would cross that ceiling is truncated 
 the run still launches for whatever part of the request is reachable, and both the Quick
 generation panel (before launching) and the console output (while running) explain the
 truncation and point at Floor/Range/Exploration mode for anything past it, since those three
-have no such ceiling (at the cost of being slower). A request entirely past the ceiling is
+have no such ceiling. A request entirely past the ceiling is
 rejected outright before anything launches.
 
 primesieve mode's Quick generation fields differ from the other three: instead of a From/To
@@ -1903,8 +1927,30 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
   chart_pdf.py                  PDF content ops of one Benchmark chart (axes, lines,
                               non-overlapping value labels with engine tags, legend,
                               pinned axes)
-  reference_points.py           reference throughput of PARI/GP and primesieve with
-                              sources, for the "Reference points" toggle
+  benchmark_filter.py           BenchmarkFilter mixin of the tab: the "Filter..." window
+                              (engine build, sieve threads, write threads, range width,
+                              each a checkbox with the log's values), the sieve
+                              measure radio and their summary;
+                              charts and the PDF export follow it, the table keeps the
+                              whole log (unitTests/test_benchmark_filter.py)
+  chart_filter.py               which runs the charts compare: a run's value per
+                              dimension, the values in the log, the selection, its
+                              summary -- pure, no tkinter
+  sieve_measure.py              which time the sieve chart measures: engine sieve
+                              phase, sieve with startup overhead
+                              (sieve_wall_seconds) or the overhead alone; metrics,
+                              axis labels, notes -- pure, no tkinter
+                              (unitTests/test_benchmark_sieve_measure.py)
+  line_names.py                 a log row's chart line: engine build (version), store
+                              kind and threads ("v6.0, 24 thr"), primesieve wrapper
+                              vs native labels, which charts an engine is on (native
+                              count on the sieve charts, native print on the whole-run
+                              chart), each point's range width ("@ 10^11") and the
+                              floors whose points differ in width
+                              (unitTests/test_benchmark_line_names.py)
+  reference_points.py           reference throughput of PARI/GP with sources, for the
+                              "Reference points" toggle (primesieve is measured live
+                              by primesieve mode, Native)
 
   primeatlas/primality/         "Prime numbers" tab's primesieve-calculator and
                               primality-test sub-tabs
@@ -2075,10 +2121,17 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
   prime_sieve_primesieve.py  "primesieve mode" -- calls libprimesieve's own public C API
                               (primesieve_generate_primes()) directly via ctypes, no custom
                               engine or batching pipeline; see "The primesieve mode" above;
-                              its benchmark row carries the sieve/write phases, bytes,
-                              range and peak RSS like the other engines' rows, so it
-                              charts next to them
+                              its benchmark row ("primesieve (Atlas format)") carries the
+                              sieve/write phases, bytes, range, peak RSS and threads,
+                              conversion into Atlas windows included
                               (unitTests/test_primesieve_benchmark_row.py)
+  primesieve_native.py       primesieve mode with Native: runs the primesieve program
+                              itself, print (its text into primesieve/10pN/, one thread)
+                              or count (sieve + bit count, threads it picks), times its
+                              process and
+                              logs primesieve_print / primesieve_count rows
+                              (unitTests/test_primesieve_native.py,
+                              unitTests/test_primesieve_native_controls.py)
   prime_sieve_cudasieve.py   "cudasieve mode" (optional, opt-in) -- shells out to the
                               third-party CUDASieve GPU CLI as a separate OS process
                               (never linked, GPLv3 process boundary); see "The cudasieve
@@ -2140,7 +2193,11 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               read per process, so parallel instances never mix
                               reports) or, when a batch printed none, from the
                               written windows' headers read by `workers` threads
-                              (unitTests/test_orchestrator_engine_totals.py); per
+                              (unitTests/test_orchestrator_engine_totals.py); the
+                              sieve timed from the scanner's launch to its sieve-done
+                              line, read on its stdout, is logged as
+                              sieve_wall_seconds (unitTests/
+                              test_orchestrator_sieve_wall.py); per
                               window times print in ms below a second; a batch
                               failing while the GUI's stop request
                               exists is a stop: windows cut by the scanner kill are

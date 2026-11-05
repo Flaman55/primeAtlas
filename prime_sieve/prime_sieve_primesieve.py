@@ -9,7 +9,8 @@ import sys
 import time
 
 import window_sharding
-from benchmark_log_schema import BENCHMARK_FIELDNAMES, ensure_benchmark_log_schema
+from benchmark_log_schema import (BENCHMARK_FIELDNAMES, ENGINE_PRIMESIEVE_ATLAS,
+                                  ensure_benchmark_log_schema)
 from floor_meta_store import append_benchmark_row_to_floor_meta
 
 VERSION = "v1.0"
@@ -24,16 +25,15 @@ VERSION = "v1.0"
 #
 # THIS file is different on purpose: it calls libprimesieve's own PUBLIC, top-level C API
 # function -- primesieve_generate_primes() -- DIRECTLY, with no custom engine, no batching,
-# no orchestrator in between. primesieve's own segmented-sieve-of-Eratosthenes-plus-wheel-
-# factorization implementation is, on its own declared domain (the uint64_t range), about as
-# fast as this kind of thing gets -- faster than what this project's own batched engines
-# achieve at the same depth, since those pay real overhead (per-batch jump_to() bootstrap
-# calls, Python-side ProcessPoolExecutor coordination) that primesieve's own internal
-# multi-threading avoids entirely by never leaving C in the first place. The trade a person
-# makes by choosing THIS mode over Floor/Range/Exploration is exactly that domain limit: once
-# a request would need to go past primesieve_get_max_stop() (2**64 - 1), this mode simply
-# cannot follow it there (see generate_floor_windows()'s ceiling-clamp/WARNING) -- the other
-# three modes have no such ceiling, at the cost of being slower.
+# no orchestrator in between, and converts the result into Atlas windows. Its benchmark rows
+# carry engine tag ENGINE_PRIMESIEVE_ATLAS ("primesieve (Atlas format)" on the charts) and
+# are NOT primesieve's own speed: primesieve_generate_primes() fills its array on one thread,
+# and copying that array into a Python list and encoding the windows add to the sieve time
+# (floor 19, 10^10 numbers: ~298 Mn/s here against ~835 Mn/s for the native program's
+# --print and ~3.4 Gn/s for its multi-threaded --count). primesieve_native.py (this folder)
+# runs the native program for those measurements. The mode's domain limit is
+# primesieve_get_max_stop() (2**64 - 1): past it this mode cannot follow (see
+# generate_floor_windows()'s ceiling-clamp/WARNING), the other modes have no such ceiling.
 #
 # The main thing this file adds beyond calling straight into libprimesieve is mapping its
 # result onto this project's own on-disk format and folder layout -- write_prime_window()
@@ -239,8 +239,11 @@ def write_benchmark_row(base_exponent, target_idx_start, target_idx_count, total
             if is_new:
                 writer.writeheader()
             row = {
-                "engine": "primesieve",
+                "engine": ENGINE_PRIMESIEVE_ATLAS,
                 "engine_version": VERSION,
+                # primesieve_generate_primes() fills its array on one thread.
+                "threads": 1,
+                "write_threads": 1,
                 "run_status": "completed",
                 "run_timestamp_utc": datetime.datetime.now(datetime.timezone.utc).strftime(
                     "%Y-%m-%d %H:%M:%S UTC"),

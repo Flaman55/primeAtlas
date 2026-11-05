@@ -64,7 +64,7 @@ def write_hybrid_benchmark_row(portal_folder, base_exponent, target_idx_start, w
             "avg_primes_per_window": f"{total_primes / windows_written:.1f}",
             "primes_per_second": f"{total_primes / total_seconds:.2f}" if total_seconds else "",
             "l_final": "", "sieving_primes_count": "", "max_child_rss_mb": "",
-            "engine": "hybrid", "engine_version": VERSION,
+            "engine": "hybrid", "engine_version": VERSION, "threads": 1, "write_threads": 1,
             "instance_of_n": "1/1", "run_status": "completed",
             "numbers_processed": numbers_processed if numbers_processed is not None else "",
             "loop_session_seconds": f"{total_seconds:.6f}",

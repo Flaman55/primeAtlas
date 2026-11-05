@@ -295,17 +295,59 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   z wolniejszym, a notka modelu podaje tę wersję. Starsze wiersze bez wersji liczą się,
   dopóki nie ma dwóch nowych.
 
-### +31 — primesieve mode on the Benchmark charts
+### +31 — primesieve mode: native runs, honest labels, threads in every row
 
-- English: Runs in primesieve mode now log their sieving and writing time, the bytes
-  written, the range covered and their peak RAM, the same columns the other engines log. Their points
-  appear on the Benchmark charts next to v5 and v6, and the logged total time now also
-  includes writing the windows, as for every other engine.
-- Polski: Uruchomienia w trybie primesieve zapisują teraz czas przesiewania i zapisu,
-  liczbę zapisanych bajtów, pokryty zakres i szczytowy RAM, czyli te same kolumny co
-  pozostałe silniki.
-  Ich punkty pojawiają się na wykresach Benchmarku obok v5 i v6, a zapisywany czas
-  całkowity obejmuje teraz także zapis okien, jak u każdego innego silnika.
+- English: primesieve mode gets a Native checkbox. With it, Atlas runs the primesieve
+  program itself and times only its process: "count" sieves the range and counts the
+  primes on the threads primesieve picks (shown on the sieve charts, the same work as an
+  engine's sieve phase), "print" sieves and writes every prime as primesieve's own text
+  into a primesieve folder next to Atlas storage (one thread, shown on the whole-run
+  chart; Atlas does not read these files). Without it, the mode works as before and fills
+  Atlas storage, but its time includes converting primesieve's result into Atlas windows,
+  so the charts now call it "primesieve (Atlas format)" instead of primesieve. Every
+  benchmark row records its sieve and write threads, and each chart line names its engine
+  version and threads. The static primesieve reference points are gone: they came from a
+  shorter range, where primesieve's fixed setup weighs more, and made a comparison look
+  better than it is; measure primesieve natively at the same width instead (floor 19, same
+  ranges: primesieve count 8.99 G numbers/s against v6.0's sieve phase 6.69 G/s, 24
+  threads). The wrapper rows also log their sieve/write phases, bytes, range and peak RAM.
+  Every chart point names the range it was measured on ("@ 10^11"), and a chart that sets
+  points of different widths on one floor says so under it and in the PDF. A Filter window
+  chooses the runs the charts compare by engine build, sieve threads, write threads and
+  range width; the PDF follows it and names it. Its "Sieve measure" choice switches the
+  sieve chart between the engine's own sieve phase (default), the sieve with startup
+  overhead (timed by the orchestrator from launching the scanner process to the end of its
+  sieve: Python start, imports, buffer allocation, library load; read once per run outside
+  the engine, so it does not slow it; a new sieve_wall_seconds column) and that overhead
+  alone (the numbers/s the startup takes, and that as % of the engine-phase speed), so
+  both figures can be shown side by side. The Benchmark tab rereads the log when a
+  generation run ends, so the new run shows without Refresh.
+- Polski: Tryb primesieve dostaje checkbox Natywny. Z nim Atlas uruchamia sam program
+  primesieve i mierzy tylko jego proces: "count" przesiewa zakres i liczy liczby pierwsze
+  na tylu wątkach, ile dobierze primesieve (na wykresach sitowania, to ta sama praca co
+  faza sita silnika), "print" przesiewa i zapisuje każdą liczbę pierwszą własnym tekstem
+  primesieve do katalogu primesieve obok magazynu Atlasa (jeden wątek, na wykresie całego
+  przebiegu; Atlas tych plików nie czyta). Bez niego tryb działa jak dotąd i wypełnia
+  magazyn Atlasa, ale jego czas obejmuje przekształcenie wyniku primesieve w okna Atlasa,
+  więc wykresy nazywają go teraz "primesieve (Atlas format)", a nie primesieve. Każdy
+  wiersz benchmarku zapisuje wątki sita i zapisu, a każda linia wykresu podaje wersję
+  silnika i wątki. Statyczne punkty odniesienia primesieve zniknęły: pochodziły z
+  krótszego zakresu, na którym stały koszt startu primesieve waży więcej, i zawyżały
+  porównanie; mierz primesieve natywnie przy tej samej szerokości (piętro 19, te same
+  zakresy: primesieve count 8,99 G liczb/s wobec fazy sita v6.0 6,69 G/s, 24 wątki).
+  Wiersze nakładki zapisują też fazy sita i zapisu, bajty, zakres i szczytowy RAM.
+  Każdy punkt wykresu podaje zakres, na którym go zmierzono ("@ 10^11"), a wykres, który
+  na jednym piętrze zestawia punkty różnej szerokości, mówi o tym pod spodem i w PDF.
+  Okno Filtr wybiera przebiegi do porównania według wersji silnika, wątków sita, wątków
+  zapisu i szerokości zakresu; PDF idzie za filtrem i go podaje. Jego wybór "Miara sita"
+  przełącza wykres sita między własną fazą sita silnika (domyślnie), sitem z narzutem
+  startowym (mierzonym przez orchestrator od uruchomienia procesu skanera do końca jego
+  sita: start Pythona, importy, alokacja bufora, ładowanie biblioteki; odczyt raz na
+  przebieg poza silnikiem, więc go nie spowalnia; nowa kolumna sieve_wall_seconds) i samym
+  narzutem (liczby/s, które zabiera start, i to w % prędkości fazy sita), więc oba wyniki
+  można pokazać obok siebie.
+  Zakładka Benchmark wczytuje log ponownie po zakończeniu generowania, więc nowy przebieg
+  widać bez klikania Odśwież.
 
 ## 1.2.0 — 2026-11-01
 

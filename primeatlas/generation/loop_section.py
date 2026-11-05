@@ -95,9 +95,11 @@ class LoopSection:
 
         self._loop_write_files_var = tk.BooleanVar(
             value=bool(loop_settings.get("write_files", True)))
-        ttk.Checkbutton(loop_form, text=self.T("gen.check_write_files"),
-                         variable=self._loop_write_files_var).grid(
-            row=4, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        self._loop_write_files_cb = ttk.Checkbutton(
+            loop_form, text=self.T("gen.check_write_files"), variable=self._loop_write_files_var)
+        self._loop_write_files_cb.grid(row=4, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        if hasattr(self, "_sync_primesieve_native_controls"):
+            self._sync_primesieve_native_controls()
         # These two checkboxes are mutually exclusive ALTERNATIVES for computing
         # pi(L_final), not an independent base+modifier pair (picking
         # one must uncheck the other; both off means "don't compute pi(L_final) at all").
@@ -375,6 +377,7 @@ class LoopSection:
         release_progress_bar(self.totals_progress, self)
         self.reload_primes_tree()
         self._reload_time_simulation_log()
+        self.reload_benchmark_log()
 
         # A search-triggered "generate the missing window" run (see
         # _offer_generate_missing_prime_window()) just finished -- re-run the SAME

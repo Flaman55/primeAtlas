@@ -42,6 +42,15 @@ value. Windows-at-25 and the RAM budget size the run, so no profile sets them.
 
 ## Floor fields
 
+When a run ends, the Primes tree, an open Time simulation window and the Benchmark tab reread the
+storage (`reload_benchmark_log`, injected by the app), so the run's row is on the charts at once.
+
+primesieve mode has a Native checkbox (`quick.primesieve_native`, remembered). Off, it runs the
+wrapper `prime_sieve_primesieve.py` (Atlas windows into storage; the info tip names the conversion
+overhead in its time). On, a print/count list becomes usable and Generate runs
+`primesieve_native.py` with that mode; the shared write-files checkbox is disabled while native
+primesieve mode is selected, since print always writes its text and count never writes.
+
 Every Quick-gen Floor field (Floor only, Explore, Hybrid, primesieve, CUDASieve) is a spinbox: its
 arrows and the mouse wheel step the floor through 0 to `QUICK_FLOOR_MAX` (35; primesieve and
 CUDASieve stop at `UINT64_FLOOR_MAX`, 19), and a typed value or expression is not capped.

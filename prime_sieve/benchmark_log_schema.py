@@ -21,6 +21,25 @@ Column notes:
 - engine_version: the writing script's own VERSION (v5.1, v6.0, primesieve mode v1.0, ...),
   while `engine` keeps the selector name (v5, v6, primesieve); the time model calibrates
   each engine from the rows of its newest version.
+- threads: the CPU threads (or processes) one run of the engine sieved on -- the worker
+  count of v4.1/v5/v6/pt1, the count primesieve reports for a native count, 1 for runs that
+  sieve on one thread (native print, the primesieve wrapper, hybrid), THREADS_GPU for GPU
+  engines. Several instances of orchestrator_loop_v2 each log their own count;
+  instance_of_n says how many ran side by side.
+- write_threads: the threads that wrote the output -- v6's write-thread knob, 1 for every
+  other writer; blank for runs that write nothing (native count).
+- engine tags of primesieve mode: ENGINE_PRIMESIEVE_ATLAS for the wrapper that converts the
+  library's result into Atlas windows (its time includes that conversion),
+  ENGINE_PRIMESIEVE_PRINT and ENGINE_PRIMESIEVE_COUNT for the native primesieve program
+  (primesieve_native.py): its own --print text output (sieve + every prime printed, a
+  whole run), or its --count (sieve + bit count, the work of an engine's sieve phase).
+- sieve_wall_seconds: the sieve timed from outside the engine -- orchestrator_v3 takes the
+  time from launching the scanner process to its "Batch sieve done" line (Python start,
+  imports, buffer allocation, library load and sieving primes included; the optional
+  base_gen_seconds diagnostic left out), while sieve_seconds is the engine's own timer
+  around the sieve alone. Blank for engines with no such line (pt1 overlaps sieve and
+  write) and for other writers, native primesieve included: its one process has no split
+  between setup and sieve to measure.
 Rows written before a column existed keep it blank: a migration never guesses old values,
 and a blank run_status means completed.
 
@@ -37,8 +56,13 @@ BENCHMARK_FIELDNAMES = [
     "max_child_rss_mb", "instance_of_n", "loop_session_seconds", "loop_numbers_per_second",
     "loop_seconds_per_window", "write_files", "base_gen_seconds", "sieve_seconds",
     "write_seconds", "bytes_written", "engine", "numbers_processed", "run_status",
-    "verify_seconds", "engine_version",
+    "verify_seconds", "engine_version", "threads", "write_threads", "sieve_wall_seconds",
 ]
+
+ENGINE_PRIMESIEVE_ATLAS = "primesieve"
+ENGINE_PRIMESIEVE_PRINT = "primesieve_print"
+ENGINE_PRIMESIEVE_COUNT = "primesieve_count"
+THREADS_GPU = "GPU"
 
 RUN_STATUS_COMPLETED = "completed"
 RUN_STATUS_STOPPED = "stopped"

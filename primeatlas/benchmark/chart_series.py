@@ -16,16 +16,21 @@ No tkinter here: benchmark_tab.py and benchmark.py both render from these object
 import math
 from collections import namedtuple
 
-# name: legend text; tag: short text after a point's value ("v5"), "" for none.
-Series = namedtuple("Series", "name tag points color dashed")
+# name: legend text; tag: short text after a point's value ("v5"), "" for none;
+# engine: the color and draw-order key of the line ("v6", "pt1 P"), "" = name;
+# notes: {x: text} shown after a point's tag ("10^11", the range it was measured on).
+Series = namedtuple("Series", "name tag points color dashed engine notes",
+                    defaults=("", None))
 
 # Drawing order: later engines on top.
-ENGINE_DRAW_ORDER = ("unknown", "hybrid", "v4.1", "v5", "v6", "pt1", "pt1 D+P", "pt1 P")
+ENGINE_DRAW_ORDER = ("unknown", "primesieve", "primesieve_print", "primesieve_count", "hybrid",
+                     "v4.1", "v5", "v6", "pt1", "pt1 D+P", "pt1 P")
 
-ENGINE_COLORS = {"unknown": "#8c8c8c", "hybrid": "#009e73", "v4.1": "#e69f00", "v5": "#2f7fe0",
-                 "v6": "#7f00ff",
+ENGINE_COLORS = {"unknown": "#8c8c8c", "primesieve": "#b5e61d", "primesieve_print": "#00c8c8",
+                 "primesieve_count": "#802080",
+                 "hybrid": "#009e73", "v4.1": "#e69f00", "v5": "#2f7fe0", "v6": "#7f00ff",
                  "pt1": "#e0a0e0", "pt1 D+P": "#608000", "pt1 P": "#00e000"}
-OTHER_ENGINE_COLOR = "#b5e61d"
+OTHER_ENGINE_COLOR = "#ff8080"
 
 AXIS_COLOR = {"primary": "#2f7fe0", "secondary": "#e69f00"}
 
@@ -49,11 +54,20 @@ def _engine_rank(engine):
     return (ENGINE_DRAW_ORDER.index(engine) if engine in ENGINE_DRAW_ORDER else 1.5, engine)
 
 
-def engine_series(lines):
-    """[Series] for engine_lines() output, in ENGINE_DRAW_ORDER, in the engine's color."""
-    return [Series(engine, "" if engine == "unknown" else engine, points,
-                   ENGINE_COLORS.get(engine, OTHER_ENGINE_COLOR), False)
-            for engine, points in sorted(lines.items(), key=lambda kv: _engine_rank(kv[0]))
+def engine_series(lines, engines=None, notes=None):
+    """[Series] for engine_lines() output, in ENGINE_DRAW_ORDER, in the engine's color.
+    engines: {line name: engine key} when the names are not the engine keys themselves;
+    notes: {line name: {x: text}} for the points' notes."""
+    engines = engines or {}
+    notes = notes or {}
+
+    def key(name):
+        return engines.get(name, name)
+    return [Series(name, "" if name == "unknown" else name, points,
+                   ENGINE_COLORS.get(key(name), OTHER_ENGINE_COLOR), False, key(name),
+                   notes.get(name))
+            for name, points in sorted(lines.items(),
+                                       key=lambda kv: (_engine_rank(key(kv[0])), kv[0]))
             if points]
 
 
@@ -70,7 +84,8 @@ def legend_series(*series_lists):
         if s.name and s.name not in seen:
             seen.add(s.name)
             out.append(s)
-    return sorted(out, key=lambda s: (s.dashed, (0, "") if s.dashed else _engine_rank(s.name)))
+    return sorted(out, key=lambda s: (s.dashed, (0, "") if s.dashed
+                                      else (_engine_rank(s.engine or s.name), s.name)))
 
 
 def legend_entries(series1, series2):
@@ -101,10 +116,11 @@ def series_xs(*series_lists):
     return sorted({x for series in series_lists for s in series for x, _ in s.points})
 
 
-def point_label(fmt, value, series, show_unknown=False):
-    """Value text with the series tag: "1,234 [v5]"."""
+def point_label(fmt, value, series, show_unknown=False, x=None):
+    """Value text with the series tag and the point's note: "1,234 [v5] @ 10^11"."""
     tag = series.tag or ("unknown" if show_unknown and not series.dashed else "")
-    return fmt.format(value) + (" [" + tag + "]" if tag else "")
+    note = (series.notes or {}).get(x, "")
+    return fmt.format(value) + (" [" + tag + "]" if tag else "") + (" @ " + note if note else "")
 
 
 class YScale:

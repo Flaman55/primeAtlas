@@ -184,8 +184,10 @@ class ReferenceTests(unittest.TestCase):
         t = Translator("pl").t
         series = reference_points.reference_series(t)
         self.assertTrue(all(s.dashed for s in series))
-        self.assertTrue(series[0].name.endswith("(" + t("bench.ref_public") + ")"))
-        self.assertTrue(series[-1].name.endswith("(" + t("bench.ref_own") + ")"))
+        kinds = {"public": t("bench.ref_public"), "own": t("bench.ref_own")}
+        self.assertEqual(len(series), len(reference_points.REFERENCES))
+        for s, ref in zip(series, reference_points.REFERENCES):
+            self.assertTrue(s.name.endswith("(" + kinds[ref.kind] + ")"), s.name)
 
     def test_locales_have_the_new_keys(self):
         for lang in ("en", "pl"):
@@ -241,8 +243,8 @@ class PdfTests(unittest.TestCase):
 
     def test_report_follows_the_toggles(self):
         plain = self._report()
-        self.assertIn("[v4.1]", plain)
-        self.assertIn("200 [v5]", plain)       # sieve chart, v5 line
+        self.assertIn("[v4.1] @ 10^2", plain)
+        self.assertIn("200 [v5] @ 10^2", plain)       # sieve chart, v5 line
         self.assertNotIn("PARI forprime", plain)
         self.assertNotIn("(1e8) Tj", plain)
         toggled = self._report(references=True, log_y=True)
@@ -304,9 +306,9 @@ class LineToggleTests(unittest.TestCase):
                                         chart_series.line_key("primary",
                                                               self.refs[0].name)}})
             text = path.read_bytes().decode("latin-1")
-        self.assertNotIn("(200 [v5]) Tj", text)          # sieve n/s of v5: hidden
-        self.assertIn("(0.0500 [v5]) Tj", text)          # its sieve s/window: shown
-        self.assertIn("(350,000,000 [v5]) Tj", text)     # whole-run chart: untouched
+        self.assertNotIn("(200 [v5] @ 10^2) Tj", text)          # sieve n/s of v5: hidden
+        self.assertIn("(0.0500 [v5] @ 10^2) Tj", text)          # its sieve s/window: shown
+        self.assertIn("(350,000,000 [v5] @ 10^2) Tj", text)     # whole-run chart: untouched
         self.assertNotIn("[" + self.refs[0].tag + "]) Tj", text)
         self.assertIn("[" + self.refs[1].tag + "]) Tj", text)
 
@@ -407,9 +409,9 @@ class PinTests(unittest.TestCase):
                 sieve_points=benchmark.aggregate_benchmark_sieve_nps(ROWS),
                 y_pins={"run": {"primary": (None, 5e7)}})
             text = path.read_bytes().decode("latin-1")
-        self.assertNotIn("(350,000,000 [v5]) Tj", text)
-        self.assertIn("(50,000,000 [v4.1]) Tj", text)
-        self.assertIn("(200 [v5]) Tj", text)                    # sieve chart: not pinned
+        self.assertNotIn("(350,000,000 [v5] @ 10^2) Tj", text)
+        self.assertIn("(50,000,000 [v4.1] @ 10^2) Tj", text)
+        self.assertIn("(200 [v5] @ 10^2) Tj", text)                    # sieve chart: not pinned
 
     def test_locales_have_the_pin_keys(self):
         for lang in ("en", "pl"):
@@ -480,9 +482,9 @@ class TabPinTests(unittest.TestCase):
                 sieve_before = points(chart2, "primary")
                 self.assertEqual(points(chart, "primary"), [4e7, 5e7, 1.4e8, 3.5e8])
                 entries = right_click(chart, 5e7, "primary")
-                pin_max = t("bench.pin_max", value="50,000,000 [v4.1]")
+                pin_max = t("bench.pin_max", value="50,000,000 [v4.1] @ 10^2")
                 self.assertIn(pin_max, entries)
-                self.assertIn(t("bench.pin_min", value="50,000,000 [v4.1]"), entries)
+                self.assertIn(t("bench.pin_min", value="50,000,000 [v4.1] @ 10^2"), entries)
                 self.assertFalse(entries[t("bench.pin_reset_chart")][1], "nothing pinned yet")
                 entries[pin_max][0]()
                 self.assertEqual(points(chart, "primary"), [4e7, 5e7])
@@ -493,7 +495,7 @@ class TabPinTests(unittest.TestCase):
 
                 # Right axis of the same chart: pinned on its own.
                 entries = right_click(chart, 1.0, "secondary")
-                entries[t("bench.pin_max", value="1.0 [v5]")][0]()
+                entries[t("bench.pin_max", value="1.0 [v5] @ 10^2")][0]()
                 self.assertEqual(points(chart, "secondary"), [1.0])
                 self.assertEqual(points(chart, "primary"), [4e7, 5e7])
 
@@ -517,9 +519,9 @@ class TabPinTests(unittest.TestCase):
                 self.assertEqual(points(chart, "primary"), [4e7, 5e7])
                 tab._export_benchmark_pdf()
                 text = Path(pdf_path).read_bytes().decode("latin-1")
-                self.assertNotIn("(350,000,000 [v5]) Tj", text)
-                self.assertIn("(50,000,000 [v4.1]) Tj", text)
-                self.assertNotIn("(2.0 [v4.1]) Tj", text)
+                self.assertNotIn("(350,000,000 [v5] @ 10^2) Tj", text)
+                self.assertIn("(50,000,000 [v4.1] @ 10^2) Tj", text)
+                self.assertNotIn("(2.0 [v4.1] @ 10^2) Tj", text)
 
                 # Reset the left axis, then the whole chart.
                 entries = right_click(chart, 5e7, "primary")
@@ -574,9 +576,9 @@ class TabTests(unittest.TestCase):
 
                 tab._redraw_benchmark_chart()
                 texts = hover_texts(tab.benchmark_chart)
-                self.assertTrue(any(x.endswith("[v4.1]") for x in texts), texts)
-                self.assertTrue(any(x.endswith("[v5]") for x in texts), texts)
-                self.assertTrue(any(x.endswith("[unknown]") for x in texts), texts)
+                self.assertTrue(any(x.endswith("[v4.1] @ 10^2") for x in texts), texts)
+                self.assertTrue(any(x.endswith("[v5] @ 10^2") for x in texts), texts)
+                self.assertTrue(any(x.endswith("[unknown] @ 10^2") for x in texts), texts)
                 self.assertFalse(any("PARI" in x for x in texts), texts)
 
                 chart = tab.benchmark_chart
@@ -588,7 +590,7 @@ class TabTests(unittest.TestCase):
 
                 tab._redraw_benchmark_chart2()
                 texts2 = hover_texts(tab.benchmark_chart2)
-                self.assertTrue(any(x.endswith("[v5]") for x in texts2), texts2)
+                self.assertTrue(any(x.endswith("[v5] @ 10^2") for x in texts2), texts2)
 
                 self.assertFalse(any("PARI" in x for x in texts2), texts2)
 
@@ -628,7 +630,7 @@ class TabTests(unittest.TestCase):
 
                 def v5_hover(canvas):
                     return sorted(p[6] for p in captured.get(str(canvas), [])
-                                  if p[4].endswith("[v5]"))
+                                  if p[4].endswith("[v5] @ 10^2"))
 
                 self.assertEqual(v5_hover(chart2), ["bench.axis_sieve_nps"] * 2
                                  + ["bench.axis_sieve_spw"] * 2)
@@ -647,16 +649,16 @@ class TabTests(unittest.TestCase):
                 click(chart2, "legend:name:v5")
                 self.assertEqual(len(v5_hover(chart2)), 4)
                 self.assertEqual(len([p for p in captured[str(tab.benchmark_chart)]
-                                      if p[4].endswith("[v5]")]), 3)
+                                      if p[4].endswith("[v5] @ 10^2")]), 3)
                 # Hidden lines survive a reload and leave the PDF.
                 tab.reload_benchmark_log()
                 tab._redraw_charts()
-                self.assertFalse(any(p[4].endswith("[v4.1]")
+                self.assertFalse(any(p[4].endswith("[v4.1] @ 10^2")
                                      for p in captured.get(str(chart2), [])))
                 tab._export_benchmark_pdf()
                 text = Path(pdf_path).read_bytes().decode("latin-1")
-                self.assertIn("(200 [v5]) Tj", text)
-                self.assertNotIn("(100 [v4.1]) Tj", text)
+                self.assertIn("(200 [v5] @ 10^2) Tj", text)
+                self.assertNotIn("(100 [v4.1] @ 10^2) Tj", text)
             finally:
                 root.destroy()
                 benchmark_tab._bind_chart_hover = original_hover
