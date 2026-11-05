@@ -1,9 +1,12 @@
 """Benchmark report formats beside the PDF: CSV, SVG, a standalone HTML page and an HTML
 snippet to embed in another page. Pure functions, no tkinter.
 
-All of them follow the Benchmark tab's view like the PDF does: the report charts of
-benchmark.report_chart_pages() (one metric per chart), log scale, pinned axes, reference
-series and the lines hidden in the legends. The charts are chart_svg.chart_svg() drawings,
+All of them follow the Benchmark tab's view like the PDF does: the rows it is given (the
+tab passes the runs its Filter window keeps), the report charts of
+benchmark.report_chart_pages() (one metric per chart, the sieve in the chosen measure), log
+scale, pinned axes, reference series and the lines hidden in the legends. The HTML names
+the filter under its title, the sieve measure over the sieve charts and, over a page's
+charts, the floors where they set points of different range widths. The charts are chart_svg.chart_svg() drawings,
 the same layout as the PDF's; the tables are benchmark.benchmark_pdf_tables(), one per
 question, every cell in full and HTML-escaped.
 
@@ -19,7 +22,9 @@ import datetime
 from html import escape
 
 from ..core.i18n import Translator, DEFAULT_LANGUAGE
-from .benchmark import benchmark_pdf_tables, report_chart_pages, report_chart_series
+from . import sieve_measure
+from .benchmark import (benchmark_pdf_tables, report_chart_pages, report_chart_series,
+                        report_mixed_note, report_references)
 from .chart_series import axis_pins
 from .chart_svg import chart_svg
 from .reference_points import reference_series
@@ -42,21 +47,27 @@ _STYLE = """
 """
 
 
-def report_charts_svg(rows, translator=None, sieve_points=None, references=False, log_y=False,
-                      hidden_lines=None, y_pins=None):
-    """[<svg> element] of every report chart, in report order."""
+def report_pages_svg(rows, translator=None, sieve_points=None, references=False, log_y=False,
+                     hidden_lines=None, y_pins=None, measure=sieve_measure.DEFAULT):
+    """[(page heading, [<svg> element])] of the report pages, in report order: the heading
+    names the sieve measure on the sieve page and the floors of mixed widths, "" otherwise."""
     t = (translator or Translator(DEFAULT_LANGUAGE)).t
     y_pins = y_pins or {}
+    with_refs = report_references(references, measure)
     out = []
-    for kind, charts in report_chart_pages(rows, sieve_points, references):
+    for kind, charts in report_chart_pages(rows, sieve_points, references, measure):
+        svgs = []
         for i, spec in enumerate(charts):
             chart_key, axis, _metric, label_key, fmt = spec
-            extra = reference_series(t) if kind == "sieve" and references and i == 0 else ()
-            out.append(chart_svg(
+            extra = reference_series(t) if kind == "sieve" and with_refs and i == 0 else ()
+            svgs.append(chart_svg(
                 CHART_WIDTH, CHART_HEIGHT,
                 series1=report_chart_series(rows, spec, hidden_lines, extra),
                 translator=translator, label_key1=label_key, fmt1=fmt, log_y=log_y,
                 pins1=axis_pins(y_pins.get(chart_key), axis)))
+        parts = [sieve_measure.heading(measure, t)] if kind == "sieve" else []
+        parts += [note for note in (report_mixed_note(rows, charts, t),) if note]
+        out.append(("  |  ".join(parts), svgs))
     return out
 
 
@@ -83,18 +94,23 @@ def _tables_html(fieldnames, rows, t):
     return "".join(parts)
 
 
-def _content(fieldnames, rows, t, charts):
+def _content(fieldnames, rows, t, pages, filter_note):
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     floors = len({row.get("base_exponent") for row in rows})
+    subtitle = t("bench.pdf_subtitle", now=now, runs=len(rows), depths=floors)
+    if filter_note:
+        subtitle += "  |  " + filter_note
     return (f'<div class="primeatlas-benchmark"><style>{_STYLE}</style>'
             f"<h1>{escape(t('bench.pdf_title'))}</h1>"
-            f"<p>{escape(t('bench.pdf_subtitle', now=now, runs=len(rows), depths=floors))}</p>"
-            + "".join(charts)
+            f"<p>{escape(subtitle)}</p>"
+            + "".join((f"<p>{escape(heading)}</p>" if heading else "") + "".join(svgs)
+                      for heading, svgs in pages)
             + f'<div class="tables">{_tables_html(fieldnames, rows, t)}</div></div>')
 
 
 def render(kind, fieldnames, rows, translator=None, sieve_points=None, references=False,
-           log_y=False, hidden_lines=None, y_pins=None):
+           log_y=False, hidden_lines=None, y_pins=None, filter_note="",
+           measure=sieve_measure.DEFAULT):
     """The report in `kind` (one of KINDS) as text."""
     t = (translator or Translator(DEFAULT_LANGUAGE)).t
     if kind == "csv":
@@ -109,11 +125,11 @@ def render(kind, fieldnames, rows, translator=None, sieve_points=None, reference
         writer.writeheader()
         writer.writerows(rows)
         return "".join(lines)
-    charts = report_charts_svg(rows, translator, sieve_points, references, log_y,
-                               hidden_lines, y_pins)
+    pages = report_pages_svg(rows, translator, sieve_points, references, log_y, hidden_lines,
+                             y_pins, measure)
     if kind == "svg":
-        return _svg_report(charts)
-    content = _content(fieldnames, rows, t, charts)
+        return _svg_report([svg for _heading, svgs in pages for svg in svgs])
+    content = _content(fieldnames, rows, t, pages, filter_note)
     if kind == "snippet":
         return content + "\n"
     if kind == "html":

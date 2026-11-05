@@ -17,7 +17,8 @@ B. The app: every page uses it -- Primes (Storage, primesieve, Primality), Const
    (Storage, Calculator, Records), Research (five sub-tabs), Benchmark, About, the three
    Settings sub-tabs, Generation and the visualization tabs; the three old copies of the
    canvas/scrollbar code are gone; at 1050x680 each shown page has its scrollbar exactly
-   when its content is taller than the viewport, and the Benchmark page fits; in a short
+   when its content is taller than the viewport, and the Benchmark page (three charts one
+   under another) scrolls; in a short
    window the About page scrolls and keeps the NOTICE box at its natural height.
 
 Usage:
@@ -244,7 +245,7 @@ def _test_app():
         if bench is not None:
             _show_tab(bench.frame)
             _settle(app)
-            check(not bench.scrolls(), "Benchmark fits the default 1050x680 window "
+            check(bench.scrolls(), "Benchmark's three stacked charts scroll at 1050x680 "
                   f"(content {bench.body.winfo_reqheight()}px, viewport {bench.canvas.winfo_height()}px)")
         about = pages.get("about_tab")
         if about is not None:

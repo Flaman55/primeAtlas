@@ -107,8 +107,9 @@ def _write_log(path, rows):
 
 
 def _row(engine, floor, windows, idx_start, sieve, write="1.0", status="completed",
-         write_files="1"):
-    return {"engine": engine, "base_exponent": str(floor), "windows_written": str(windows),
+         write_files="1", version=""):
+    return {"engine": engine, "engine_version": version,
+            "base_exponent": str(floor), "windows_written": str(windows),
             "numbers_processed": str(windows * W), "target_idx_start": str(idx_start),
             "sieve_seconds": str(sieve), "write_seconds": write, "run_status": status,
             "write_files": write_files}
@@ -142,6 +143,9 @@ def check_read_samples():
     passed &= check(abs(samples[1].total_seconds - 150.0) < 1e-9,
                     "total_seconds read without base_gen_seconds (the optional pi(L) count)")
     passed &= check(samples[1].engine == "pt1", "blank run_status counts as completed")
+    passed &= check(s.version == "", "a row without engine_version has a blank version")
+    _write_log(path, [_row("v5", 20, 1000, 2000, 3.5, version="v5.1")])
+    passed &= check(tm.read_samples(path)[0].version == "v5.1", "engine_version is read")
     with open(path, "w") as f:
         f.write("garbage\n\x00\x01")
     passed &= check(tm.read_samples(path) == [], "malformed log -> no samples")
@@ -281,6 +285,32 @@ def check_floor_seconds():
     return passed
 
 
+def check_version_calibration():
+    """The engine's newest version (the version of its last row in the log) calibrates alone
+    once it has two rows; otherwise every row of the engine does."""
+    passed = True
+    old = [s._replace(version="v5.0", sieve_seconds=s.sieve_seconds * 3,
+                      total_seconds=s.total_seconds * 3)
+           for s in _synthetic("v5", {"run": 2.0, "prime": 1e-9, "number": 2e-9}, 5e8)]
+    new = [s._replace(version="v5.1")
+           for s in _synthetic("v5", {"run": 2.0, "prime": 1e-9, "number": 2e-9}, 5e8)]
+    cal = tm.calibrate(old + new, "v5")
+    passed &= check(cal.version == "v5.1" and cal.rows == len(new),
+                    f"newest version calibrates alone ({cal.version}, {cal.rows} rows)")
+    passed &= check(cal.max_error < 0.01,
+                    f"older version's slower rows do not skew it ({cal.max_error:.4f})")
+    cal = tm.calibrate(old + new[:1], "v5")
+    passed &= check(cal.version is None and cal.rows == len(old) + 1,
+                    "one row of the newest version -> every row of the engine, no version")
+    blank = _synthetic("v5", {"run": 2.0, "prime": 1e-9, "number": 2e-9}, 5e8)
+    cal = tm.calibrate(new + blank, "v5")
+    passed &= check(cal.version is None and cal.rows == len(new) + len(blank),
+                    "a newest row without a version -> every row of the engine")
+    cal = tm.calibrate(blank, "v5")
+    passed &= check(cal.version is None, "rows without versions calibrate with version None")
+    return passed
+
+
 def main():
     passed = check_prime_count()
     passed &= check_prep_limit()
@@ -289,6 +319,7 @@ def main():
     passed &= check_estimate()
     passed &= check_local_calibration()
     passed &= check_floor_seconds()
+    passed &= check_version_calibration()
     print("ALL CHECKS PASSED" if passed else "SOME CHECKS FAILED")
     return 0 if passed else 1
 

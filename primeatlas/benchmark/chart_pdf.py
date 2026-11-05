@@ -209,7 +209,7 @@ def chart_ops(x0, y0, w, h, series1=(), series2=(), translator=None,
                 last = i == len(pts) - 1
                 above, below = cy + label_dy, cy - 22 - label_dy
                 steps = range(_LAST_LABEL_STEPS if last else 1)
-                text = b.fold(point_label(fmt, y_val, s))
+                text = b.fold(point_label(fmt, y_val, s, x=x_val))
                 lx = max(x0 + 2, min(cx - 10, x0 + w - 2 - len(text) * _LABEL_CHAR_W))
                 positions = [(lx, y) for k in steps
                              for y in (above + k * (_LABEL_SIZE + 2),

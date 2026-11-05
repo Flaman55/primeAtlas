@@ -13,7 +13,7 @@ from tkinter import messagebox
 
 from ..core.storage import digit_count_floor, LOW_FLOOR_CUTOFF
 from . import engine_options
-from .engine_argv import (build_primesieve_argv, build_hybrid_argv, build_hybrid_narrow_argv,
+from .engine_argv import (build_primesieve_argv, build_primesieve_native_argv, build_hybrid_argv, build_hybrid_narrow_argv,
                           build_cudasieve_argv, build_orchestrator_direct_argv)
 from .quick_number import _eval_quick_number
 from .window_planning import (QUICK_GEN_MAX_WINDOW_WIDTH, count_existing_windows,
@@ -87,16 +87,26 @@ class QuickGenRuns:
         # inactive for this engine rather than faked.
         self._gen_progress_bar_active = False
         write_files = self._loop_write_files_var.get()
+        native = self.quick_primesieve_native_var.get()
         try:
-            argv = build_primesieve_argv(
-                base_exponent, target_idx_start, window_count_per_run,
-                QUICK_GEN_MAX_WINDOW_WIDTH, write_files)
+            if native:
+                # The primesieve program itself (print or count); write_files does not
+                # apply: print always writes its text file, count never writes.
+                argv = build_primesieve_native_argv(
+                    base_exponent, target_idx_start, window_count_per_run,
+                    QUICK_GEN_MAX_WINDOW_WIDTH, self.quick_primesieve_native_mode_var.get())
+                script = "primesieve_native.py"
+            else:
+                argv = build_primesieve_argv(
+                    base_exponent, target_idx_start, window_count_per_run,
+                    QUICK_GEN_MAX_WINDOW_WIDTH, write_files)
+                script = "prime_sieve_primesieve.py"
             log_path, exit_path, _run_id = generation_log_paths(self._get_portal_folder(), "primesieve")
             cmd = build_wsl_logged_command(argv, log_path, exit_path, self._get_portal_folder())
 
             self.loop_console.append(self._new_run_separator())
             self._loop_output_queue = queue.Queue()
-            self._start_loop_runner(cmd, log_path, exit_path, "prime_sieve_primesieve.py",
+            self._start_loop_runner(cmd, log_path, exit_path, script,
                                     base_exponent, first_target_idx=target_idx_start,
                                     window_m=QUICK_GEN_MAX_WINDOW_WIDTH)
         except Exception as e:  # noqa: BLE001 -- see _on_run_loop's own comment on

@@ -9,7 +9,8 @@ import sys
 import time
 
 import window_sharding
-from benchmark_log_schema import BENCHMARK_FIELDNAMES, ensure_benchmark_log_schema
+from benchmark_log_schema import (BENCHMARK_FIELDNAMES, ENGINE_PRIMESIEVE_ATLAS,
+                                  ensure_benchmark_log_schema)
 from floor_meta_store import append_benchmark_row_to_floor_meta
 
 VERSION = "v1.0"
@@ -24,16 +25,15 @@ VERSION = "v1.0"
 #
 # THIS file is different on purpose: it calls libprimesieve's own PUBLIC, top-level C API
 # function -- primesieve_generate_primes() -- DIRECTLY, with no custom engine, no batching,
-# no orchestrator in between. primesieve's own segmented-sieve-of-Eratosthenes-plus-wheel-
-# factorization implementation is, on its own declared domain (the uint64_t range), about as
-# fast as this kind of thing gets -- faster than what this project's own batched engines
-# achieve at the same depth, since those pay real overhead (per-batch jump_to() bootstrap
-# calls, Python-side ProcessPoolExecutor coordination) that primesieve's own internal
-# multi-threading avoids entirely by never leaving C in the first place. The trade a person
-# makes by choosing THIS mode over Floor/Range/Exploration is exactly that domain limit: once
-# a request would need to go past primesieve_get_max_stop() (2**64 - 1), this mode simply
-# cannot follow it there (see generate_floor_windows()'s ceiling-clamp/WARNING) -- the other
-# three modes have no such ceiling, at the cost of being slower.
+# no orchestrator in between, and converts the result into Atlas windows. Its benchmark rows
+# carry engine tag ENGINE_PRIMESIEVE_ATLAS ("primesieve (Atlas format)" on the charts) and
+# are NOT primesieve's own speed: primesieve_generate_primes() fills its array on one thread,
+# and copying that array into a Python list and encoding the windows add to the sieve time
+# (floor 19, 10^10 numbers: ~298 Mn/s here against ~835 Mn/s for the native program's
+# --print and ~3.4 Gn/s for its multi-threaded --count). primesieve_native.py (this folder)
+# runs the native program for those measurements. The mode's domain limit is
+# primesieve_get_max_stop() (2**64 - 1): past it this mode cannot follow (see
+# generate_floor_windows()'s ceiling-clamp/WARNING), the other modes have no such ceiling.
 #
 # The main thing this file adds beyond calling straight into libprimesieve is mapping its
 # result onto this project's own on-disk format and folder layout -- write_prime_window()
@@ -192,7 +192,9 @@ def _low_floor_segments(base_power, combined_lo, combined_hi):
 
 
 def write_benchmark_row(base_exponent, target_idx_start, target_idx_count, total_seconds,
-                         total_primes, windows_written, write_files, portal_folder):
+                         total_primes, windows_written, write_files, portal_folder,
+                         sieve_seconds=None, write_seconds=None, bytes_written=None,
+                         numbers_processed=None, max_rss_mb=None):
     """Appends one row to the SAME benchmark_log.csv every other engine in this folder logs
     to -- mirrors orchestrator_v3.py's print_benchmark_summary(), minus the console-printed
     summary (this engine already prints its own progress above) and minus every column that
@@ -208,6 +210,13 @@ def write_benchmark_row(base_exponent, target_idx_start, target_idx_count, total
     request that fills floors 0-6 in one call is credited to whichever floor was actually
     asked for, exactly like the orchestrator pipeline already does.
 
+    total_seconds is the run's wall time; sieve_seconds (primesieve_generate_primes()),
+    write_seconds (splitting into windows and writing them), bytes_written and
+    numbers_processed fill the columns the Benchmark charts and the time model read, so the
+    mode shows next to the other engines; max_rss_mb (this process's peak RSS, the whole
+    prime list sits in it) goes into max_child_rss_mb for the RAM chart. A value passed as
+    None stays blank.
+
     No-ops (nothing to log) when windows_written is 0 -- mirrors run_orchestrator() only
     calling print_benchmark_summary() when `current > actual_start_window`."""
     if windows_written <= 0:
@@ -216,6 +225,9 @@ def write_benchmark_row(base_exponent, target_idx_start, target_idx_count, total
     seconds_per_window = total_seconds / windows_written if windows_written else float("nan")
     primes_per_second = total_primes / total_seconds if total_seconds > 0 else float("nan")
     avg_primes_per_window = total_primes / windows_written if windows_written else float("nan")
+
+    def _blank_or(value, fmt):
+        return "" if value is None else format(value, fmt)
 
     log_path = os.path.join(portal_folder, "benchmark_log.csv")
     try:
@@ -227,7 +239,11 @@ def write_benchmark_row(base_exponent, target_idx_start, target_idx_count, total
             if is_new:
                 writer.writeheader()
             row = {
-                "engine": "primesieve",
+                "engine": ENGINE_PRIMESIEVE_ATLAS,
+                "engine_version": VERSION,
+                # primesieve_generate_primes() fills its array on one thread.
+                "threads": 1,
+                "write_threads": 1,
                 "run_status": "completed",
                 "run_timestamp_utc": datetime.datetime.now(datetime.timezone.utc).strftime(
                     "%Y-%m-%d %H:%M:%S UTC"),
@@ -242,12 +258,18 @@ def write_benchmark_row(base_exponent, target_idx_start, target_idx_count, total
                 "primes_per_second": f"{primes_per_second:.2f}",
                 "l_final": "",
                 "sieving_primes_count": "",
-                "max_child_rss_mb": "",
+                "max_child_rss_mb": _blank_or(max_rss_mb, ".1f"),
                 "instance_of_n": "",
-                "loop_session_seconds": "",
-                "loop_numbers_per_second": "",
-                "loop_seconds_per_window": "",
+                "loop_session_seconds": f"{total_seconds:.6f}",
+                "loop_numbers_per_second": (
+                    f"{numbers_processed / total_seconds:.2f}"
+                    if numbers_processed is not None and total_seconds > 0 else ""),
+                "loop_seconds_per_window": f"{seconds_per_window:.6f}",
                 "write_files": "1" if write_files else "0",
+                "sieve_seconds": _blank_or(sieve_seconds, ".6f"),
+                "write_seconds": _blank_or(write_seconds, ".6f"),
+                "bytes_written": "" if bytes_written is None else int(bytes_written),
+                "numbers_processed": "" if numbers_processed is None else int(numbers_processed),
             }
             writer.writerow(row)
         print(f"[BENCHMARK] logged to {log_path} (for cross-floor growth analysis)")
@@ -429,6 +451,16 @@ def prev_prime(x):
     return result
 
 
+def _peak_rss_mb():
+    """This process's peak resident set size in MB (Linux ru_maxrss is in KiB); None where
+    the resource module is missing."""
+    try:
+        import resource
+    except ImportError:
+        return None
+    return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
+
+
 def generate_floor_windows(base_power, target_idx_start, target_idx_count, window_m,
                             write_files=True, portal_folder=None):
     """Primesieve-direct equivalent of prime_sieve_v3.py's main_batch_scanner(): generates
@@ -490,6 +522,8 @@ def generate_floor_windows(base_power, target_idx_start, target_idx_count, windo
     t_gen = time.perf_counter() - t_start
     print(f"[*] libprimesieve generated {len(primes):,} primes in {t_gen:.2f}s.")
 
+    t_write_start = time.perf_counter()
+    bytes_written = 0
     generated_at = int(time.time())
     total_primes_found = 0
     windows_processed = 0
@@ -510,6 +544,7 @@ def generate_floor_windows(base_power, target_idx_start, target_idx_count, windo
                 os.makedirs(shard_folder, exist_ok=True)
                 path = os.path.join(shard_folder, f"PRIME_WINDOW_10p{floor}_off_0.bin")
                 write_prime_window(path, segment, generated_at=generated_at)
+                bytes_written += os.path.getsize(path)
             total_primes_found += count
             windows_processed += 1
             print(f"    10p{floor}: {count:,} primes")
@@ -537,6 +572,7 @@ def generate_floor_windows(base_power, target_idx_start, target_idx_count, windo
                 os.makedirs(shard_folder, exist_ok=True)
                 path = os.path.join(shard_folder, f"PRIME_WINDOW_{target_tag}.bin")
                 write_prime_window(path, segment, generated_at=generated_at)
+                bytes_written += os.path.getsize(path)
             total_primes_found += len(segment)
             windows_processed += 1
             window_lo = window_hi
@@ -546,8 +582,13 @@ def generate_floor_windows(base_power, target_idx_start, target_idx_count, windo
           + ("" if write_files else "  (NO FILES WRITTEN -- count-only mode)"))
     write_scan_metrics_handoff(portal_folder, total_primes_found=total_primes_found,
                                 windows_processed=windows_processed, write_files=write_files)
-    write_benchmark_row(base_power, target_idx_start, target_idx_count, t_gen,
-                         total_primes_found, windows_processed, write_files, portal_folder)
+    t_write = time.perf_counter() - t_write_start
+    write_benchmark_row(base_power, target_idx_start, target_idx_count, t_gen + t_write,
+                         total_primes_found, windows_processed, write_files, portal_folder,
+                         sieve_seconds=t_gen, write_seconds=t_write,
+                         bytes_written=bytes_written,
+                         numbers_processed=combined_hi - combined_lo,
+                         max_rss_mb=_peak_rss_mb())
     print("=" * 70)
 
 

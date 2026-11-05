@@ -1,7 +1,8 @@
 """BenchmarkExport -- the Benchmark tab's report exports: the PDF (benchmark.
 render_benchmark_pdf()) and, from the "Export" menu, CSV, SVG, an HTML page and an HTML
-snippet (report_export.py). Every export follows the tab's view: log scale, references,
-hidden lines and pinned axes.
+snippet (report_export.py). Every export follows the tab's view: the runs the Filter window
+keeps (charts and tables; the subtitle names the filter), the sieve measure, log scale,
+references, hidden lines and pinned axes.
 
 A BenchmarkTab mixin: it uses the tab's rows, points, view toggles, status variable and
 translator, so it is never instantiated on its own.
@@ -35,7 +36,8 @@ class BenchmarkExport:
     def _view_options(self):
         return {"translator": self.T, "sieve_points": self._benchmark_sieve_nps_points,
                 "references": self.references_var.get(), "log_y": self.log_scale_var.get(),
-                "hidden_lines": self._hidden_lines, "y_pins": self._y_pins}
+                "hidden_lines": self._hidden_lines, "y_pins": self._y_pins,
+                "filter_note": self._filter_note(), "measure": self._sieve_measure}
 
     def _ask_report_path(self, title, extension, filetype):
         T = self.T
@@ -58,16 +60,18 @@ class BenchmarkExport:
         path = self._ask_report_path(title, ".pdf", ("PDF", "*.pdf"))
         if not path:
             return
-        options = self._view_options()
         try:
-            render_benchmark_pdf(path, self._benchmark_growth_points,
-                                  self._benchmark_fieldnames, self._benchmark_rows,
-                                  points2=self._benchmark_fair_spw_points,
-                                  write_points=self._benchmark_write_mbps_points, **options)
+            self._render_pdf(path)
         except Exception as exc:
             messagebox.showerror(title, T("bench.save_error", error=exc))
             return
         self._report_saved(title, path)
+
+    def _render_pdf(self, path):
+        render_benchmark_pdf(path, self._benchmark_growth_points, self._benchmark_fieldnames,
+                             self._filtered_rows(), points2=self._benchmark_fair_spw_points,
+                             write_points=self._benchmark_write_mbps_points,
+                             **self._view_options())
 
     def _export_report(self, kind):
         """Writes the report as `kind` (report_export.KINDS) to a path the user picks."""
@@ -77,7 +81,7 @@ class BenchmarkExport:
         if not path:
             return
         try:
-            report_export.export(kind, path, self._benchmark_fieldnames, self._benchmark_rows,
+            report_export.export(kind, path, self._benchmark_fieldnames, self._filtered_rows(),
                                  **self._view_options())
         except Exception as exc:
             messagebox.showerror(title, T("bench.save_error", error=exc))

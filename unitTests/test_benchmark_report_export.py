@@ -12,6 +12,7 @@ Benchmark tab's export menu writes each format to the chosen path. Windows, real
     python unitTests/test_benchmark_report_export.py
 """
 import csv
+from html import escape
 import os
 from pathlib import Path
 import sys
@@ -87,12 +88,30 @@ class ExportTests(unittest.TestCase):
 
     def test_svg_report_leaves_out_hidden_lines(self):
         plain = self._export("svg", ROWS)
-        self.assertIn("[v4.1]", plain)
+        self.assertIn("50,000,000 [v4.1] @ 10^2", plain)
+        self.assertIn("1,024 [v4.1] @ 10^2", plain)
         hidden = self._export("svg", ROWS, hidden_lines={
             "run": {chart_series.line_key("primary", "v4.1")},
             "ram": {chart_series.line_key("primary", "v4.1")}})
-        self.assertNotIn("50,000,000 [v4.1]", hidden)
-        self.assertNotIn("1,024 [v4.1]", hidden)
+        self.assertNotIn("50,000,000 [v4.1] @ 10^2", hidden)
+        self.assertNotIn("1,024 [v4.1] @ 10^2", hidden)
+
+    def test_html_names_filter_measure_and_mixed_widths(self):
+        # Like the PDF: the filter under the title, the sieve measure over the sieve charts,
+        # the floors of mixed widths over a page's charts; the sieve charts use the measure.
+        t = Translator("en").t
+        rows = [dict(ROWS[0], sieve_wall_seconds="2"),
+                dict(ROWS[1], numbers_processed="1000", sieve_wall_seconds="2")]
+        page = self._export("html", rows, sieve_points=[(20, 1.0)], measure="wall",
+                            filter_note="threads: 24 thr")
+        self.assertIn("  |  threads: 24 thr</p>", page)
+        self.assertIn(t("bench.measure_heading", measure=t("bench.measure_wall")), page)
+        self.assertIn(t("bench.axis_sieve_wall_nps"), page)
+        self.assertNotIn(t("bench.axis_sieve_nps") + "<", page)
+        self.assertIn(escape(t("bench.mixed_widths", floors="20")), page)
+        plain = self._export("html", ROWS, sieve_points=[(20, 1.0)])
+        self.assertNotIn(t("bench.mixed_widths", floors="20")[:20], plain)
+        self.assertIn(t("bench.axis_sieve_nps"), plain)
 
     def test_html_page(self):
         page = self._export("html", ROWS)
@@ -158,6 +177,21 @@ class TabExportTests(unittest.TestCase):
                     tab._export_report(kind)
                     self.assertTrue(os.path.getsize(path) > 0, kind)
                     self.assertIn(path, tab.status.get())
+                # The exports follow the Filter window like the PDF: only the kept runs.
+                window = tab._open_filter_window()
+                window.enabled["engine"].set(True)
+                for value, var in window.values["engine"].items():
+                    var.set(value == "v5")
+                window.apply()
+                path = os.path.join(portal, "filtered.csv")
+                filedialog.asksaveasfilename = lambda **kw: path
+                tab._export_report("csv")
+                kept = list(csv.DictReader(Path(path).read_text(encoding="utf-8").splitlines()))
+                self.assertEqual([r["engine"] for r in kept], ["v5", "v5"])
+                path = os.path.join(portal, "filtered.html")
+                filedialog.asksaveasfilename = lambda **kw: path
+                tab._export_report("html")
+                self.assertIn(escape(tab._filter_note()), Path(path).read_text(encoding="utf-8"))
             finally:
                 root.destroy()
                 filedialog.asksaveasfilename = original_save
