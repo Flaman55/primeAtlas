@@ -117,7 +117,7 @@ class ExportTests(unittest.TestCase):
         page = self._export("html", ROWS)
         self.assertTrue(page.startswith("<!DOCTYPE html>"))
         self.assertIn('<meta charset="utf-8">', page)
-        self.assertEqual(page.count("<svg"), 4)   # whole run and RAM; no sieve data
+        self.assertEqual(page.split("<script", 1)[0].count("<svg"), 4)   # whole run and RAM; no sieve data
         self.assertGreaterEqual(page.count("<table"), 1)
         for column in ROWS[0]:
             self.assertIn(f"<th>{column}</th>", page)

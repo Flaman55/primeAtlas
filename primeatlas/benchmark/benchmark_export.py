@@ -2,7 +2,8 @@
 render_benchmark_pdf()) and, from the "Export" menu, CSV, SVG, an HTML page and an HTML
 snippet (report_export.py). Every export follows the tab's view: the runs the Filter window
 keeps (charts and tables; the subtitle names the filter), the sieve measure, log scale,
-references, hidden lines and pinned axes.
+references, hidden lines, pinned axes and the zoomed floor range. The HTML page and snippet
+get every run with the filter as their starting selection, so their own filter can widen it.
 
 A BenchmarkTab mixin: it uses the tab's rows, points, view toggles, status variable and
 translator, so it is never instantiated on its own.
@@ -37,7 +38,9 @@ class BenchmarkExport:
         return {"translator": self.T, "sieve_points": self._benchmark_sieve_nps_points,
                 "references": self.references_var.get(), "log_y": self.log_scale_var.get(),
                 "hidden_lines": self._hidden_lines, "y_pins": self._y_pins,
-                "filter_note": self._filter_note(), "measure": self._sieve_measure}
+                "filter_note": self._filter_note(), "measure": self._sieve_measure,
+                "x_view": self._x_view, "y_views": dict(self._y_views),
+                "zoom_levels": (self._x_level, self._x_base, dict(self._y_levels))}
 
     def _ask_report_path(self, title, extension, filetype):
         T = self.T
@@ -68,10 +71,11 @@ class BenchmarkExport:
         self._report_saved(title, path)
 
     def _render_pdf(self, path):
+        options = self._view_options()
+        del options["zoom_levels"]   # the notch levels matter to the interactive page only
         render_benchmark_pdf(path, self._benchmark_growth_points, self._benchmark_fieldnames,
                              self._filtered_rows(), points2=self._benchmark_fair_spw_points,
-                             write_points=self._benchmark_write_mbps_points,
-                             **self._view_options())
+                             write_points=self._benchmark_write_mbps_points, **options)
 
     def _export_report(self, kind):
         """Writes the report as `kind` (report_export.KINDS) to a path the user picks."""
@@ -81,8 +85,8 @@ class BenchmarkExport:
         if not path:
             return
         try:
-            report_export.export(kind, path, self._benchmark_fieldnames, self._filtered_rows(),
-                                 **self._view_options())
+            report_export.export(kind, path, self._benchmark_fieldnames, self._benchmark_rows,
+                                 selection=self._filter_selection, **self._view_options())
         except Exception as exc:
             messagebox.showerror(title, T("bench.save_error", error=exc))
             return

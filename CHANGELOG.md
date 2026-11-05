@@ -385,6 +385,36 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   a wykresy wyglądają jak w PDF; HTML podaje filtr, miarę i piętra, na których punkty
   mają różną szerokość zakresu, tak jak PDF.
 
+### +34 — Benchmark: zoom, charts in their own windows, interactive HTML
+
+- English: The Benchmark charts zoom like a picture: unzoomed, a chart shows all of
+  itself; the mouse wheel zooms into the part under the pointer, dragging with the left
+  button moves over the chart, and a double click or a middle click shows the whole
+  charts again. Lines run on to the edge, so a zoomed part between two floors shows the
+  line passing through. All three charts follow the same floors, each zooms its own Y
+  axis, and the exports draw what is in view. A tooltip lists every point drawn on the
+  same spot, so a right-axis square on another line's circle can still be read.
+  "Open in new window" above each chart shows it in a window of
+  its own, which zooms, filters and toggles together with the tab. The exported HTML
+  page and snippet are interactive: zoom and pan, legend entries that hide and show
+  lines, the Filter window's dimensions, log scale, reference points and a chart text
+  size, with the tables following the filter; the wheel zooms only over a chart, beside
+  it the page scrolls; they open in the tab's view.
+- Polski: Wykresy Benchmarku przybliża się jak obraz: bez zoomu wykres pokazuje się
+  cały; kółko myszy przybliża fragment pod kursorem, przeciąganie lewym przyciskiem
+  przesuwa po wykresie, a dwuklik lub środkowy klik znowu pokazuje całe wykresy. Linie
+  biegną do krawędzi, więc przybliżony fragment między dwoma piętrami pokazuje
+  przechodzącą przez niego linię. Wszystkie trzy wykresy pokazują te same piętra, każdy
+  przybliża własną oś Y, a eksporty rysują to, co widać. Dymek pokazuje wszystkie
+  punkty narysowane w jednym miejscu, więc kwadrat prawej osi leżący na kółku innej linii
+  też da się odczytać. „Otwórz w nowym oknie” nad każdym wykresem pokazuje go
+  w osobnym oknie, które przybliża się, filtruje i przełącza razem z zakładką.
+  Eksportowana strona HTML i fragment HTML są interaktywne: przybliżanie i
+  przesuwanie, wpisy legendy ukrywające i pokazujące linie, wymiary okna Filtr, skala
+  logarytmiczna, punkty odniesienia i rozmiar tekstu wykresów, a tabele idą za filtrem;
+  kółko przybliża tylko nad wykresem, obok niego przewija stronę; otwierają się w
+  widoku zakładki.
+
 ## 1.2.0 — 2026-11-01
 
 ### English

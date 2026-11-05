@@ -1916,17 +1916,45 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               n/s + write MB/s, sieve n/s + s/window, RAM per run +
                               RAM per window, one under another with the sieve on top;
                               right-click y-axis pin menu; PDF and Export menu in
-                              benchmark_export.py;
+                              benchmark_export.py; zoom in chart_zoom_controls.py,
+                              chart windows in benchmark_chart_windows.py;
                               benchmark.py below is the pure-logic backend)
+  chart_view.py                 the charts' zoom, as of a picture: the visible part of
+                              the shared floor axis and of each chart's y axis, zoom
+                              around the pointer, pan, zoomed floor ticks -- pure,
+                              no tkinter
+  chart_hover.py                the tab charts' hover tooltip: the point under the
+                              pointer, points drawn on the same spot (a right-axis
+                              square on another line's circle) in one tooltip, where
+                              it fits on the canvas
+  chart_zoom_controls.py        BenchmarkChartZoom mixin of the tab: wheel zooms the
+                              part under the pointer (floors of all three charts, y
+                              of that chart), a left drag moves it, a double or
+                              middle click shows the whole charts
+                              (unitTests/test_benchmark_chart_zoom.py)
+  benchmark_chart_windows.py    BenchmarkChartWindows mixin of the tab: "Open in new
+                              window" above each chart, a resizable window drawing
+                              the same chart state (zoom, toggles, pins, filter)
+                              (unitTests/test_benchmark_chart_windows.py)
   benchmark_export.py           BenchmarkExport mixin of the tab: "Save PDF" and the
                               "Export" menu (CSV, SVG, HTML page, HTML snippet), each
                               following the tab's view (filtered runs, sieve measure,
-                              log scale, references, hidden lines, pinned axes)
+                              log scale, references, hidden lines, pinned axes,
+                              zoom)
   report_export.py              the report as CSV (the log's rows), SVG (every report
                               chart stacked), a UTF-8 HTML page (charts inline + the
                               logical tables) or one <div class="primeatlas-benchmark">
-                              snippet with a style scoped to it -- pure, no tkinter
-                              (unitTests/test_benchmark_report_export.py)
+                              snippet with a style scoped to it; the page and the
+                              snippet are interactive (report_html.py) -- pure, no
+                              tkinter (unitTests/test_benchmark_report_export.py)
+  report_html.py                the interactive HTML report's data: every run with its
+                              filter values, per chart the line records, the tab's
+                              view as the starting state; inlines report_chart.js
+  report_chart.js               the page's script: filter, log/reference toggles,
+                              chart text size, legend toggles, zoom and pan over the
+                              chart pictures; redraws with a port of
+                              chart_pdf.chart_ops() (docs/adr/0007;
+                              unitTests/test_benchmark_report_html.py, via node)
   chart_svg.py                  SVG backend of chart_pdf.chart_ops(): the same chart
                               layout as the PDF, y flipped, Unicode text
   benchmark.py                  reading/normalizing benchmark_log.csv rows; each row

@@ -21,6 +21,7 @@ class BenchmarkRamChart:
                                           highlightbackground=p["border"])
         self.benchmark_chart3.pack(fill="x")
         self.benchmark_chart3.bind("<Configure>", lambda _e: self._redraw_benchmark_chart3())
+        self._bind_chart_zoom(self.benchmark_chart3, "ram")
         self._mixed_widths_labels["ram"] = (
             ttk.Label(parent, style="Status.TLabel", textvariable=self.mixed_widths_vars["ram"]),
             self.benchmark_chart3)

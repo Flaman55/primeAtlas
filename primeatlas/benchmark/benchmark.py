@@ -35,6 +35,7 @@ import storage_kinds
 from ..core.i18n import Translator, DEFAULT_LANGUAGE
 from ..core.pdf_table import TableLayout, table_pages
 from ..core.pdf_writer import _pdf_ascii_fold, _pdf_text_op, _write_pdf
+from . import chart_view
 from .chart_pdf import chart_ops
 from .chart_series import axis_pins, engine_lines, engine_series, visible_series
 from . import line_names, sieve_measure
@@ -448,6 +449,25 @@ def mixed_width_floors(rows, metric):
     return sorted(floor for floor, found in widths.items() if len(found) > 1)
 
 
+def benchmark_line_records(rows, metric):
+    """[(row index, line name, floor, value, width label)] of every row with a value on the
+    chart of `metric`, in log order: what benchmark_engine_lines() reduces to the last row
+    per floor and line, for a report that repeats that reduction after its own filter (the
+    interactive HTML page)."""
+    value = _LINE_VALUES[metric]
+    records = []
+    for i, row in enumerate(rows):
+        try:
+            floor = int(row.get("base_exponent", ""))
+        except (TypeError, ValueError):
+            continue
+        y = value(row) if line_names.on_chart(row, metric) else None
+        if y is not None:
+            records.append((i, line_names.line_name(row), floor, y,
+                            line_names.width_label(row.get("numbers_processed"))))
+    return records
+
+
 def benchmark_series(rows, metric):
     """[Series] of one chart metric, colored by engine, each point noting its width."""
     return engine_series(benchmark_engine_lines(rows, metric), benchmark_line_engines(rows),
@@ -548,16 +568,18 @@ def report_chart_series(rows, chart, hidden_lines=None, extra=()):
     return visible_series(series, (hidden_lines or {}).get(chart_key), axis)
 
 
-def report_mixed_note(rows, charts, t):
-    """The "points of different widths" note of a report page's charts, "" when none."""
-    floors = sorted({f for chart in charts for f in mixed_width_floors(rows, chart[2])})
+def report_mixed_note(rows, charts, t, x_view=None):
+    """The "points of different widths" note of a report page's charts, "" when none; only
+    the floors in the zoomed view count."""
+    floors = sorted({f for chart in charts for f in mixed_width_floors(rows, chart[2])
+                     if chart_view.contains(x_view, f)})
     return t("bench.mixed_widths", floors=", ".join(map(str, floors))) if floors else ""
 
 
 def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translator=None,
                           sieve_points=None, write_points=None, references=False,
                           log_y=False, hidden_lines=None, y_pins=None, filter_note="",
-                          measure=sieve_measure.DEFAULT):
+                          measure=sieve_measure.DEFAULT, x_view=None, y_views=None):
     """Writes a standalone PDF report -- the Benchmark tab's charts plus the FULL
     benchmark_log.csv (every row, every column, every cell in full) -- to `path`, A4
     landscape. Pure function (no tkinter): the GUI layer (BenchmarkTab._export_benchmark_pdf)
@@ -592,6 +614,8 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
     when the rows are a filtered selection of the log.
     measure: the time the sieve page charts (sieve_measure.py), named in its heading; the
     references go on it only for the n/s measures.
+    x_view/y_views: the tab's zoom (chart_view.py): the shared floor range and {"run" |
+    "sieve" | "ram": y view}; None for the whole charts.
 
     translator (optional): a primeatlas.core.i18n.Translator instance for every title,
     axis label and continuation header -- DEFAULT_LANGUAGE if not given."""
@@ -611,7 +635,8 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
         return chart_ops(content_left, y0, content_width, h,
                          report_chart_series(rows, spec, hidden_lines, extra),
                          translator=translator, label_key1=label_key, fmt1=fmt,
-                         log_y=log_y, pins1=axis_pins(y_pins.get(chart_key), axis))
+                         log_y=log_y, pins1=axis_pins(y_pins.get(chart_key), axis),
+                         x_view=x_view, y_view=(y_views or {}).get(chart_key))
 
     def chart_pair(ops, top, bottom, charts, extra=()):
         h = (top - bottom - chart_gap) / 2
@@ -619,7 +644,7 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
         ops.extend(chart(charts[1], bottom, h))
 
     def mixed_note(charts):
-        note = report_mixed_note(rows, charts, t)
+        note = report_mixed_note(rows, charts, t, x_view)
         return "  |  " + note if note else ""
 
     pages_charts = dict(report_chart_pages(rows, sieve_points, references, measure))

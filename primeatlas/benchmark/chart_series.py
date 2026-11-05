@@ -9,10 +9,12 @@ dashed with hollow markers on the primary axis. Hues are far apart in RGB and re
 the light and dark theme backgrounds. YScale maps values to a 0..1 fraction of the plot
 height, linear from zero or log10 fitted to the data; a pinned bound (pin_bound(), one
 (min, max) pair per axis) replaces the fitted one exactly, like matplotlib's set_ylim, and
-clip_polyline() cuts the lines at the plot edge. A line is one series on one axis; each one
+clip_polyline() cuts the lines at the plot edge (also the left and right edges of a zoomed
+chart, YScale.zoomed() its visible part, chart_view.py). A line is one series on one axis; each one
 can be hidden on its own (line_key(), a set of hidden keys per chart).
 No tkinter here: benchmark_tab.py and benchmark.py both render from these objects.
 """
+import copy
 import math
 from collections import namedtuple
 
@@ -173,6 +175,16 @@ class YScale:
             return pin_lo, max(hi, pin_lo + pad)
         return lo, hi
 
+    def zoomed(self, view):
+        """This scale narrowed to `view` = (lo, hi), fractions of its full range
+        (chart_view.py); the scale itself for None."""
+        if view is None:
+            return self
+        out = copy.copy(self)
+        span = self.hi - self.lo
+        out.lo, out.hi = self.lo + view[0] * span, self.lo + view[1] * span
+        return out
+
     def usable(self, value):
         return value > 0 if self.log else True
 
@@ -245,20 +257,21 @@ def in_view(frac):
     return -VIEW_EPSILON <= frac <= 1 + VIEW_EPSILON
 
 
-def clip_polyline(points):
-    """Runs of a polyline [(x, frac), ...] inside 0 <= frac <= 1: a segment leaving the plot
-    ends on the edge it crosses and the line resumes where it comes back in."""
+def _clip(points, k, lo, hi, inside):
+    """Runs of a polyline inside lo <= coordinate k <= hi (inside() tests a point's own
+    coordinate): a segment leaving the band ends on the edge it crosses."""
     runs, run = [], []
 
     def cross(a, b, edge):
-        t = (edge - a[1]) / (b[1] - a[1])
-        return (a[0] + (b[0] - a[0]) * t, float(edge))
+        t = (edge - a[k]) / (b[k] - a[k])
+        other = a[1 - k] + (b[1 - k] - a[1 - k]) * t
+        return (float(edge), other) if k == 0 else (other, float(edge))
 
     for i, p in enumerate(points):
         if i:
             a = points[i - 1]
-            edges = sorted({e for e in (0, 1) if min(a[1], p[1]) < e < max(a[1], p[1])},
-                           reverse=a[1] > p[1])
+            edges = sorted({e for e in (lo, hi) if min(a[k], p[k]) < e < max(a[k], p[k])},
+                           reverse=a[k] > p[k])
             for edge in edges:
                 q = cross(a, p, edge)
                 if run:
@@ -267,7 +280,7 @@ def clip_polyline(points):
                     run = []
                 else:
                     run = [q]
-        if in_view(p[1]):
+        if inside(p[k]):
             run.append(p)
         elif run:
             runs.append(run)
@@ -275,3 +288,14 @@ def clip_polyline(points):
     if run:
         runs.append(run)
     return runs
+
+
+def clip_polyline(points, x_lo=None, x_hi=None):
+    """Runs of a polyline [(x, frac), ...] inside 0 <= frac <= 1 and, when given, inside
+    x_lo <= x <= x_hi: a segment leaving the plot ends on the edge it crosses and the line
+    resumes where it comes back in."""
+    runs = _clip(points, 1, 0, 1, in_view)
+    if x_lo is None:
+        return runs
+    return [cut for run in runs
+            for cut in _clip(run, 0, x_lo, x_hi, lambda x: x_lo <= x <= x_hi)]

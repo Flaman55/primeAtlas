@@ -46,10 +46,14 @@ def dimension_values(rows, dimension):
     return sorted(values, key=lambda v: _order(dimension, v))
 
 
+def keeps(row, selection):
+    """True when the row's value is selected in every enabled dimension of `selection`."""
+    return all(row_value(row, dim) in chosen for dim, chosen in selection.items())
+
+
 def apply(rows, selection):
     """The rows whose value is selected in every enabled dimension of `selection`."""
-    return [row for row in rows
-            if all(row_value(row, dim) in chosen for dim, chosen in selection.items())]
+    return [row for row in rows if keeps(row, selection)]
 
 
 def summary(selection, t):
