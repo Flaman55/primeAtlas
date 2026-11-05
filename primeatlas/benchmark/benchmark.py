@@ -38,6 +38,7 @@ from ..core.pdf_writer import _pdf_ascii_fold, _pdf_text_op, _write_pdf
 from . import chart_view
 from .chart_pdf import chart_ops
 from .chart_series import axis_pins, engine_lines, engine_series, visible_series
+from . import line_names, sieve_measure
 from .reference_points import REFERENCES, reference_series
 
 QUICK_GEN_MAX_WINDOW_WIDTH = 10_000_000  # see this module's own docstring for why this
@@ -51,14 +52,14 @@ BENCHMARK_PDF_KEY_COLUMNS = ("run_timestamp_utc", "base_exponent", "engine")  # 
 # was run, how fast, where the time and memory went, what the sieve found. A log column
 # in none of them goes to a final "other" table (benchmark_pdf_tables()).
 BENCHMARK_PDF_TABLES = (
-    ("bench.pdf_table_run", ("kind", "run_status", "instance_of_n", "target_idx_start",
-                             "target_idx_end", "windows_written", "numbers_processed",
-                             "write_files")),
+    ("bench.pdf_table_run", ("engine_version", "threads", "kind", "run_status",
+                             "instance_of_n", "target_idx_start", "target_idx_end",
+                             "windows_written", "numbers_processed", "write_files")),
     ("bench.pdf_table_speed", ("total_seconds", "seconds_per_window", "loop_session_seconds",
                                "loop_seconds_per_window", "loop_numbers_per_second",
                                "primes_per_second")),
-    ("bench.pdf_table_phases", ("base_gen_seconds", "sieve_seconds", "write_seconds",
-                                "bytes_written", "max_child_rss_mb")),
+    ("bench.pdf_table_phases", ("base_gen_seconds", "sieve_seconds", "sieve_wall_seconds",
+                                "write_seconds", "bytes_written", "max_child_rss_mb")),
     ("bench.pdf_table_results", ("total_primes", "avg_primes_per_window", "l_final",
                                  "sieving_primes_count", "sieve_count_basis")),
 )
@@ -188,9 +189,9 @@ def _row_engine(row):
     return row.get("engine") or ("hybrid" if row.get("instance_of_n") == "hybrid" else "unknown")
 
 
-def _row_line(row):
-    """Chart line of a row: the engine for D runs, "engine kind" otherwise ("pt1 P"), so
-    D and P measurements never share a line."""
+def _row_line_engine(row):
+    """Color/draw-order key of a row's line: the engine for D runs, "engine kind" otherwise
+    ("pt1 P"), so D and P measurements never share a line."""
     kind = row.get("kind") or storage_kinds.KIND_D
     engine = _row_engine(row)
     return engine if kind == storage_kinds.KIND_D else f"{engine} {kind}"
@@ -300,9 +301,11 @@ def aggregate_benchmark_sieve_nps(rows):
     return _aggregate_last_per_floor(rows, _row_sieve_nps)
 
 
-def _row_sieve_nps(row):
+def _row_sieve_nps(row, field="sieve_seconds"):
+    """Numbers swept per second of `field`: the engine's sieve_seconds, or
+    sieve_wall_seconds (the sieve timed from the scanner's launch)."""
     try:
-        sieve_seconds = float(row.get("sieve_seconds", ""))
+        sieve_seconds = float(row.get(field, ""))
     except (TypeError, ValueError):
         return None
     numbers_processed, _ = benchmark_sieve_count(row)
@@ -335,16 +338,46 @@ def _aggregate_last_per_floor(rows, row_value):
     return sorted(latest.items())
 
 
-def _row_sieve_spw(row):
-    """Sieve-phase seconds per window: sieve_seconds / windows_written."""
+def _row_sieve_spw(row, field="sieve_seconds"):
+    """Sieve seconds (`field`, as in _row_sieve_nps()) per window: / windows_written; a row
+    that wrote no Atlas windows (native primesieve count) counts windows of
+    QUICK_GEN_MAX_WINDOW_WIDTH numbers over its numbers_processed."""
     try:
-        sieve_seconds = float(row.get("sieve_seconds", ""))
+        sieve_seconds = float(row.get(field, ""))
         windows = int(row.get("windows_written", ""))
     except (TypeError, ValueError):
         return None
+    if windows <= 0 and line_names.row_engine(row) in line_names.NO_WINDOW_ENGINES:
+        numbers, _ = benchmark_sieve_count(row)
+        windows = numbers / QUICK_GEN_MAX_WINDOW_WIDTH if numbers else 0
     if not math.isfinite(sieve_seconds) or sieve_seconds <= 0 or windows <= 0:
         return None
     return sieve_seconds / windows
+
+
+def _row_sieve_overhead(row):
+    """(n/s, % of the engine-phase n/s) the startup takes from the sieve speed: the speed
+    over the engine's own sieve timer minus the speed over the sieve timed from the
+    scanner's launch; None without both times."""
+    phase = _row_sieve_nps(row)
+    wall = _row_sieve_nps(row, "sieve_wall_seconds")
+    if phase is None or wall is None:
+        return None
+    return phase - wall, (phase - wall) / phase * 100
+
+
+def _overhead_part(index):
+    def value(row):
+        overhead = _row_sieve_overhead(row)
+        return None if overhead is None else overhead[index]
+    return value
+
+
+def _wall_field(row):
+    """The column holding a row's sieve time with startup: sieve_seconds for an engine timed
+    as one whole process (line_names.WHOLE_PROCESS_SIEVE), else sieve_wall_seconds."""
+    return ("sieve_seconds" if line_names.row_engine(row) in line_names.WHOLE_PROCESS_SIEVE
+            else "sieve_wall_seconds")
 
 
 def _row_ram_mb(row):
@@ -370,15 +403,75 @@ _LINE_VALUES = {
     "sieve_spw": _row_sieve_spw,
     "ram": _row_ram_mb,
     "ram_per_window": _row_ram_mb_per_window,
+    "sieve_wall": lambda row: _row_sieve_nps(row, _wall_field(row)),
+    "sieve_wall_spw": lambda row: _row_sieve_spw(row, _wall_field(row)),
+    "sieve_overhead": _overhead_part(0),
+    "sieve_overhead_pct": _overhead_part(1),
 }
 
 
 def benchmark_engine_lines(rows, metric):
-    """{engine: [(base_exponent, value)]} for one chart metric ("growth", "write",
-    "sieve", "sieve_spw", "ram", "ram_per_window"): the same per-row value as the matching aggregate_* reduction, but
-    the last row per floor AND line (_row_line(): engine, plus the store for P runs), so
-    each engine gets its own chart line and a P run one apart from D."""
-    return engine_lines(rows, _LINE_VALUES[metric], _row_line)
+    """{line name: [(base_exponent, value)]} for one chart metric ("growth", "write",
+    "sieve", "sieve_spw", the other sieve measures of sieve_measure.py, "ram",
+    "ram_per_window"): the same per-row value as the matching aggregate_* reduction, but
+    the last row per floor AND line (line_names.line_name(): engine or version, the store
+    for P runs, threads), so each engine build and thread setup gets its own chart line.
+    Rows whose engine is not drawn on this metric (line_names.on_chart()) are left out."""
+    value = _LINE_VALUES[metric]
+    return engine_lines(rows, lambda row: value(row) if line_names.on_chart(row, metric)
+                        else None, line_names.line_name)
+
+
+def benchmark_line_engines(rows):
+    """{line name: color/draw-order key} for the rows' lines."""
+    return {line_names.line_name(row): _row_line_engine(row) for row in rows}
+
+
+def benchmark_line_widths(rows, metric):
+    """{line name: {floor: width label}} of the points benchmark_engine_lines() draws: the
+    range of the row each point comes from (line_names.width_label())."""
+    value = _LINE_VALUES[metric]
+    lines = engine_lines(
+        rows, lambda row: (line_names.width_label(row.get("numbers_processed"))
+                           if line_names.on_chart(row, metric) and value(row) is not None
+                           else None), line_names.line_name)
+    return {name: dict(points) for name, points in lines.items()}
+
+
+def mixed_width_floors(rows, metric):
+    """Floors where the chart of `metric` sets points of different range widths side by
+    side, so their speeds do not compare on an equal range."""
+    widths = {}
+    for points in benchmark_line_widths(rows, metric).values():
+        for floor, width in points.items():
+            if width:
+                widths.setdefault(floor, set()).add(width)
+    return sorted(floor for floor, found in widths.items() if len(found) > 1)
+
+
+def benchmark_line_records(rows, metric):
+    """[(row index, line name, floor, value, width label)] of every row with a value on the
+    chart of `metric`, in log order: what benchmark_engine_lines() reduces to the last row
+    per floor and line, for a report that repeats that reduction after its own filter (the
+    interactive HTML page)."""
+    value = _LINE_VALUES[metric]
+    records = []
+    for i, row in enumerate(rows):
+        try:
+            floor = int(row.get("base_exponent", ""))
+        except (TypeError, ValueError):
+            continue
+        y = value(row) if line_names.on_chart(row, metric) else None
+        if y is not None:
+            records.append((i, line_names.line_name(row), floor, y,
+                            line_names.width_label(row.get("numbers_processed"))))
+    return records
+
+
+def benchmark_series(rows, metric):
+    """[Series] of one chart metric, colored by engine, each point noting its width."""
+    return engine_series(benchmark_engine_lines(rows, metric), benchmark_line_engines(rows),
+                         benchmark_line_widths(rows, metric))
 
 
 def aggregate_benchmark_write_mbps(rows):
@@ -438,37 +531,55 @@ def benchmark_row_stats(rows):
 # value format). The report draws one metric per chart, two charts per page.
 _RUN_CHARTS = (("run", "primary", "growth", "bench.axis_total_nps", "{:,.0f}"),
                ("run", "secondary", "write", "bench.axis_write_mbps", "{:,.1f}"))
-_SIEVE_CHARTS = (("sieve", "primary", "sieve", "bench.axis_sieve_nps", "{:,.0f}"),
-                 ("sieve", "secondary", "sieve_spw", "bench.axis_sieve_spw", "{:,.4f}"))
 _RAM_CHARTS = (("ram", "primary", "ram", "bench.axis_ram_mb", "{:,.0f}"),
                ("ram", "secondary", "ram_per_window", "bench.axis_ram_mb_window", "{:,.2f}"))
 
 
-def report_chart_pages(rows, sieve_points=None, references=False):
+def _sieve_charts(measure):
+    spec = sieve_measure.chart(measure)
+    return (("sieve", "primary", spec.metric1, spec.label_key1, spec.fmt1),
+            ("sieve", "secondary", spec.metric2, spec.label_key2, spec.fmt2))
+
+
+def report_chart_pages(rows, sieve_points=None, references=False,
+                       measure=sieve_measure.DEFAULT):
     """[(page kind, (first chart, second chart))] of the report (PDF, SVG, HTML): the whole
-    run always; the sieve phase when sieve_points is non-empty or references is on (the
-    reference series go on its first chart); RAM when any row measured it."""
+    run always; the sieve, in `measure`, when sieve_points is non-empty or references is on;
+    RAM when any row measured it."""
     pages = [("run", _RUN_CHARTS)]
     if sieve_points or references:
-        pages.append(("sieve", _SIEVE_CHARTS))
+        pages.append(("sieve", _sieve_charts(measure)))
     if benchmark_engine_lines(rows, "ram"):
         pages.append(("ram", _RAM_CHARTS))
     return pages
 
 
-def report_chart_series(rows, chart, hidden_lines=None, extra=(), x_view=None):
+def report_references(references, measure=sieve_measure.DEFAULT):
+    """Whether the reference series go on the sieve page's first chart: the toggle is on and
+    the measure is a sieve speed (sieve_measure.chart().references)."""
+    return bool(references) and sieve_measure.chart(measure).references
+
+
+def report_chart_series(rows, chart, hidden_lines=None, extra=()):
     """The visible Series of one report chart (see report_chart_pages()), its reference
-    series (`extra`) included, the lines hidden in the tab's legend left out, only the floors
-    of the tab's zoomed view (chart_view.py; None: every floor)."""
+    series (`extra`) included, the lines hidden in the tab's legend left out."""
     chart_key, axis, metric = chart[:3]
-    series = engine_series(benchmark_engine_lines(rows, metric)) + list(extra)
-    return chart_view.in_view(
-        visible_series(series, (hidden_lines or {}).get(chart_key), axis), x_view)
+    series = benchmark_series(rows, metric) + list(extra)
+    return visible_series(series, (hidden_lines or {}).get(chart_key), axis)
+
+
+def report_mixed_note(rows, charts, t, x_view=None):
+    """The "points of different widths" note of a report page's charts, "" when none; only
+    the floors in the zoomed view count."""
+    floors = sorted({f for chart in charts for f in mixed_width_floors(rows, chart[2])
+                     if chart_view.contains(x_view, f)})
+    return t("bench.mixed_widths", floors=", ".join(map(str, floors))) if floors else ""
 
 
 def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translator=None,
                           sieve_points=None, write_points=None, references=False,
-                          log_y=False, hidden_lines=None, y_pins=None, x_view=None):
+                          log_y=False, hidden_lines=None, y_pins=None, filter_note="",
+                          measure=sieve_measure.DEFAULT, x_view=None, y_views=None):
     """Writes a standalone PDF report -- the Benchmark tab's charts plus the FULL
     benchmark_log.csv (every row, every column, every cell in full) -- to `path`, A4
     landscape. Pure function (no tkinter): the GUI layer (BenchmarkTab._export_benchmark_pdf)
@@ -487,17 +598,24 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
     tab's tree.
 
     references: also draw reference_points.py's series on the sieve n/s chart -- PARI/GP
-    and primesieve sieve or iterate in memory and write nothing, so they compare with the
-    sieve phase -- with a footnote line per reference (full name and source).
+    iterates in memory and writes nothing, so it compares with the sieve phase -- with a
+    footnote line per reference (full name and source). A page whose charts set points of
+    different range widths on one floor says so next to its heading (mixed_width_floors()).
     log_y: log10 y-axes on every chart -- the Benchmark tab's two toggles.
     hidden_lines: {"run" | "sieve" | "ram": set of chart_series.line_key()} -- the lines switched
     off in the tab's legends, left out of the charts and their scales.
     y_pins: {"run" | "sieve" | "ram": {axis: (min, max)}} -- the tab's pinned y-axis bounds
     (chart_series.pin_bound()); each axis' pins apply to the chart of that metric.
-    x_view: the tab's zoomed floor range (chart_view.py), None for every floor.
 
     points: aggregate_benchmark_growth(), for the subtitle's floor count. points2 and
     write_points are kept for the callers' symmetry.
+
+    filter_note: the tab's filter summary (chart_filter.summary()), added to the subtitle
+    when the rows are a filtered selection of the log.
+    measure: the time the sieve page charts (sieve_measure.py), named in its heading; the
+    references go on it only for the n/s measures.
+    x_view/y_views: the tab's zoom (chart_view.py): the shared floor range and {"run" |
+    "sieve" | "ram": y view}; None for the whole charts.
 
     translator (optional): a primeatlas.core.i18n.Translator instance for every title,
     axis label and continuation header -- DEFAULT_LANGUAGE if not given."""
@@ -515,16 +633,21 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
     def chart(spec, y0, h, extra=()):
         chart_key, axis, _metric, label_key, fmt = spec
         return chart_ops(content_left, y0, content_width, h,
-                         report_chart_series(rows, spec, hidden_lines, extra, x_view),
+                         report_chart_series(rows, spec, hidden_lines, extra),
                          translator=translator, label_key1=label_key, fmt1=fmt,
-                         log_y=log_y, pins1=axis_pins(y_pins.get(chart_key), axis))
+                         log_y=log_y, pins1=axis_pins(y_pins.get(chart_key), axis),
+                         x_view=x_view, y_view=(y_views or {}).get(chart_key))
 
     def chart_pair(ops, top, bottom, charts, extra=()):
         h = (top - bottom - chart_gap) / 2
         ops.extend(chart(charts[0], top - h, h, extra=extra))
         ops.extend(chart(charts[1], bottom, h))
 
-    pages_charts = dict(report_chart_pages(rows, sieve_points, references))
+    def mixed_note(charts):
+        note = report_mixed_note(rows, charts, t, x_view)
+        return "  |  " + note if note else ""
+
+    pages_charts = dict(report_chart_pages(rows, sieve_points, references, measure))
 
     # --- page 1: title, the whole run's two charts ---
     ops = []
@@ -533,14 +656,19 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
                              _pdf_ascii_fold(t("bench.pdf_title"))))
     ops.append(_pdf_text_op(content_left, content_top - 30, 9, "Helvetica",
                              _pdf_ascii_fold(t("bench.pdf_subtitle", now=now_str,
-                                               runs=len(rows), depths=len(points)))))
+                                               runs=len(rows), depths=len(points))
+                                             + ("  |  " + filter_note if filter_note else "")
+                                             + mixed_note(pages_charts["run"]))))
     chart_pair(ops, content_top - 40, content_bottom, pages_charts["run"])
     pages = [ops]
 
-    # --- page 2: the sieve phase's two charts, reference footnotes below them ---
+    # --- page 2: the sieve's two charts, reference footnotes below them ---
     if "sieve" in pages_charts:
+        references = report_references(references, measure)
         ops = [_pdf_text_op(content_left, content_top - 12, 10, "Helvetica-Bold",
-                            _pdf_ascii_fold(t("bench.pdf_continued", page=2)))]
+                            _pdf_ascii_fold(t("bench.pdf_continued", page=2)
+                                            + "  |  " + sieve_measure.heading(measure, t)
+                                            + mixed_note(pages_charts["sieve"])))]
         bottom = content_bottom
         if references:
             for i, ref in enumerate(reversed(REFERENCES)):
@@ -554,7 +682,8 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
     # --- the RAM page: each run's peak RAM and its RAM per window ---
     if "ram" in pages_charts:
         ops = [_pdf_text_op(content_left, content_top - 12, 10, "Helvetica-Bold",
-                            _pdf_ascii_fold(t("bench.pdf_continued", page=len(pages) + 1)))]
+                            _pdf_ascii_fold(t("bench.pdf_continued", page=len(pages) + 1)
+                                            + mixed_note(pages_charts["ram"])))]
         chart_pair(ops, content_top - 22, content_bottom, pages_charts["ram"])
         pages.append(ops)
 

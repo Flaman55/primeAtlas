@@ -7,39 +7,113 @@ a PDF report.
 
 | Part | Files |
 |---|---|
-| Tab | `primeatlas/benchmark/benchmark_tab.py` and its mixins `chart_zoom_controls.py` (zoom and pan), `benchmark_export.py` |
-| View | `chart_view.py` (zoomed floor range) |
-| Exports | `benchmark_export.py` (tab mixin: Save PDF, Export menu), `report_export.py` (CSV, SVG, HTML page, HTML snippet), `chart_svg.py` (SVG backend of `chart_pdf.chart_ops()`) |
-| Backend | `benchmark.py` (reading and normalizing rows, D/P kind, PDF report, `report_chart_pages()`), `chart_series.py`, `chart_pdf.py`, `reference_points.py` |
+| Tab | `primeatlas/benchmark/benchmark_tab.py` and its mixins `benchmark_filter.py` (Filter window), `benchmark_ram_chart.py` (RAM chart), `chart_zoom_controls.py` (zoom and pan), `chart_hover.py` (hover tooltip), `benchmark_chart_windows.py` (a chart in its own window) |
+| Exports | `benchmark_export.py` (tab mixin: Save PDF, Export menu), `report_export.py` (CSV, SVG, HTML page, HTML snippet), `report_html.py` + `report_chart.js` (the interactive HTML), `chart_svg.py` (SVG backend of `chart_pdf.chart_ops()`) |
+| Backend | `benchmark.py` (reading and normalizing rows, D/P kind, PDF report, `report_chart_pages()`, `benchmark_line_records()`), `line_names.py` (a row's line and charts), `chart_filter.py` (which runs the charts compare), `sieve_measure.py` (which time the sieve chart measures), `chart_view.py` (the zoomed part of a chart), `chart_series.py`, `chart_pdf.py`, `reference_points.py` |
 
 ## Contract
 
 | In | Out |
 |---|---|
-| `benchmark_log.csv` | charts (linear/log, pinned axes, per-line toggles), table, PDF, CSV, SVG, HTML page, HTML snippet |
+| `benchmark_log.csv` | charts (linear/log, pinned axes, per-line toggles, zoom, own windows), table, PDF, CSV, SVG, interactive HTML page and snippet |
 
 Reads only; the log's header belongs to `prime_sieve/benchmark_log_schema.py`.
 
-Three charts, one line per engine, last row per floor and line: the whole run (`loop_numbers_per_second`,
-write MB/s), the sieve phase (sieve n/s, s/window, reference points), and RAM (`max_child_rss_mb`, the
-largest process's peak, and that divided by `windows_written`, so runs of different widths compare). RAM
-has its own chart so its megabytes do not share an axis with a speed; it shares a row with the sieve chart, half the width each, so the page still fits the default 1050x680 window. Each chart keeps its own hidden
-lines and pinned axes; the PDF draws the RAM pair on its own page when any row measured it.
+Three charts one under another, full width, one line per engine build and thread setup, last row per
+floor and line: on top the sieve (sieve n/s, s/window, reference points; the measure below), then the
+whole run (`loop_numbers_per_second`, write MB/s), then RAM (`max_child_rss_mb`, the largest process's
+peak, and that divided by `windows_written`, so runs of different widths compare). RAM has its own
+chart so its megabytes do not share an axis with a speed. Each chart has its hint above it; the page
+is taller than the default 1050x680 window and scrolls (ScrollablePage), the table below the charts
+10 rows high. Each chart keeps its own hidden lines and pinned axes and names the floors where it
+sets points of different widths; the PDF draws the RAM pair on its own page when any row measured it.
 
-Zoom and pan follow the visualizations: the wheel over a chart zooms the floor axis around the
-floor under the pointer (factor 0.8 a notch, at least one floor wide, never past the data), a left
-drag pans, a middle or double click shows every floor. The three charts share one floor range;
-only its points are drawn and the y axes refit to them (pinned bounds still win). The bindings sit
-on the canvases and return "break", so the wheel over a chart does not scroll the page.
+A chart line is one engine build on one thread setup (`line_names.line_name()`): the version when
+it names the engine (`v6.0`), else the engine label and version, the store kind of P runs, then the
+sieve threads (`24 thr`, `2x24 thr` for two instances side by side, `GPU`) and the write threads
+(`write 8`). Names are ASCII, the PDF font has no other characters. Rows from before those columns
+keep the bare engine name. The color and draw order follow the engine. Last row per floor and line
+wins. primesieve rows say how they were measured: `primesieve (Atlas format)` (wrapper, conversion
+into Atlas windows in its time), `primesieve count (native)` and `primesieve print (native)` (the
+program). A native count sieves the range and counts the bits, the work of an engine's sieve phase:
+it is on the sieve charts, its seconds per window over 10^7-number windows. A native print
+sieves and outputs every prime with no split between the two, a whole run: it is on the whole-run
+chart. Both log the program's peak RAM and write no Atlas windows: they are on RAM per run, not per
+window. No static primesieve reference is kept (a figure from another range length misleads:
+primesieve's ~0.7 s setup at floor 19 dominates a short range); PARI/GP stays on the sieve chart.
+The PDF run table lists `engine_version`, `threads` and `write_threads`. A writing row from before
+`write_threads` reads `write ?`. Each point names the range it was measured on (`@ 10^11`,
+`line_names.width_label()`); since the last row per floor wins, a chart can set points of different
+widths side by side, and `mixed_width_floors()` lists those floors: the tab shows them under the
+chart, the PDF next to the page heading.
+
+The charts zoom like a picture (`chart_view.py`, `chart_zoom_controls.py`): unzoomed, a chart
+shows all of itself, the furthest zoom out; the wheel zooms the part under the pointer on both
+axes, a left drag moves the visible part, a double or middle click shows the whole charts. Zoom
+goes in notches (`chart_view.zoom_step()`): a level counts them from the whole chart (0) to 18,
+and the width is the whole chart's times 0.8 per level, so a notch out undoes a notch in exactly
+and as many notches out as in are the whole chart again. The floor axis is shared: one floor
+range for the three charts, zoomed from the floors of the chart zoomed first; the floors of all
+their points (references included while on) bound its panning. Each chart has its own y view
+and level, fractions of its full y scale (pins included), on both of its axes
+(`YScale.zoomed()`). Lines run on to the plot edges and are cut there (`clip_polyline()` with x
+bounds), so a part between two logged floors shows the line passing through; points outside it
+are not drawn, a zoomed floor axis ticks the whole floors in view, and the mixed-width notes
+count only the floors in it. A drag can move the view past the data until its far edge reaches
+the opposite edge (the last floor at the left edge, the first at the right; the highest value at
+the bottom edge, the lowest at the top, `chart_view.data_fracs()` -- a linear scale starts at
+zero, and the part below the data is empty), so any part can be centred and the data never leaves
+the view on either axis. The canvas bindings return "break", so the wheel over a chart does not
+scroll the page. A point's tooltip (`chart_hover.py`) lists every point drawn on the same spot,
+so a right-axis square lying on another line's circle can still be read: one line each in its
+color, ● left axis, ■ right axis. "Open in new window" above each chart
+(`benchmark_chart_windows.py`) opens a resizable window with a second canvas of that chart, raised
+instead of doubled on another click; `_draw_chart()` draws both canvases with one state, so zoom,
+legend toggles, pins, filter and toggles act on both, and zooming in the window zooms the tab.
+
+The Filter window picks the runs the charts compare (`chart_filter.py`): each dimension -- engine
+build, sieve threads, write threads, range width -- is a checkbox; checked, its values from the log
+appear, all selected at first, each with its own checkbox. A run stays when its value is selected in
+every checked dimension; the last row per floor and line is then taken among the kept runs, so one
+width compares every engine on that width. Changes apply at once; the summary next to the Filter
+button and the PDF subtitle name the selection; the PDF tables list the kept runs, the tab's table
+the whole log. Session only, like the other chart toggles.
+
+Its "Sieve measure" radio (`sieve_measure.py`, with an info tip) sets what the sieve chart and the
+PDF's sieve page measure: the engine's sieve phase (`sieve_seconds`, default), the sieve with
+startup overhead (`sieve_wall_seconds`), or the overhead alone (the sieve speed the startup
+takes: phase n/s minus wall n/s, and on the second axis that as % of the phase n/s). A row
+without the time a measure needs has no point on it. Native primesieve count is timed as one
+whole process, its ~0.7 s setup at floor 19 included: the same time is its point under the
+engine phase and the sieve with startup, and it has no point under the overhead (no split
+between setup and sieve to measure from outside). PARI/GP references go with those two
+measures too. A change clears the chart's y pins; the summary and the PDF subtitle name a measure other than the default, the PDF
+sieve page heading always names it.
 
 Reports: `report_chart_pages()` lists the report's charts (one metric each: the whole run, the
-sieve phase when there is sieve data or the references are on, RAM when a row measured it), and
-every format draws them with the tab's view. `chart_pdf.chart_ops()` lays a chart out once and
+sieve in the chosen measure when there is sieve data or the references are on, RAM when a row
+measured it), and every format draws them with the tab's view: the runs the Filter window keeps
+(charts and tables), the sieve measure, toggles, hidden lines, pins and the zoom. `chart_pdf.chart_ops()` lays a chart out once and
 draws through a backend, PDF content ops or SVG elements (`chart_svg.py`, y flipped, Unicode text),
-so the PDF and SVG/HTML charts match; they draw only the zoomed floors. The HTML page and the snippet hold the charts inline and the
+so the PDF and SVG/HTML charts match. The HTML page and the snippet hold the charts inline and the
 PDF's logical tables (`benchmark_pdf_tables()`), every cell escaped; the snippet is one
-`<div class="primeatlas-benchmark">` whose style rules are all scoped to that class. CSV writes the
-rows as the tab read them (with the D/P `kind` column).
+`<div class="primeatlas-benchmark">` whose style rules are all scoped to that class; like the PDF,
+the HTML names the filter under the title, the sieve measure over the sieve charts and the floors of
+mixed widths over a page's charts (`report_mixed_note()`). CSV writes the kept rows as the tab read
+them (with the D/P `kind` column).
+
+The HTML page and snippet are interactive (`report_html.py`, `report_chart.js`, ADR 0007). They carry
+every run: its floor and filter values, and per chart the records of `benchmark_line_records()`
+(run, line, floor, value, width). The script repeats the reduction in the browser -- the runs its
+filter keeps, then the last row per floor and line -- and redraws with a port of `chart_ops()`; it
+starts from the tab's view (selection, log scale, references, hidden lines, pins, zoom). The page
+has the Filter window's dimensions as checkboxes, log scale and reference toggles, "All runs" and
+"All floors", a chart text size (100-200 %, the chart drawn on a canvas 1/k as large and shown at
+its usual width), legend toggles per chart and the tab's zoom gestures over all charts at once,
+taken only over a chart's picture (the wheel beside it scrolls the page); the
+headings and the subtitle follow, and the tables hide the rows of dropped runs. The sieve measure,
+pins and the set of pages stay as exported. Without scripts the page shows the tab's view as
+exported (the Python SVG, the kept rows).
 
 ## Parameters and texts
 
@@ -52,12 +126,17 @@ None of its own.
 ## Specs and tests
 
 `test_benchmark_tab`, `test_benchmark_chart_series`, `test_benchmark_report_export`,
-`test_benchmark_chart_zoom`,
+`test_benchmark_report_html` (the script through node), `test_benchmark_chart_zoom`,
+`test_benchmark_chart_windows`,
 `test_benchmark_actual_range`,
-`test_benchmark_run_status`, `test_benchmark_main_compatibility`, `test_benchmark_log_schema`.
+`test_benchmark_run_status`, `test_benchmark_main_compatibility`, `test_benchmark_log_schema`,
+`test_benchmark_line_names`, `test_benchmark_auto_reload`, `test_benchmark_filter`,
+`test_benchmark_sieve_measure`; `test_orchestrator_sieve_wall` (prime-sieve).
 
 ## Known gaps
 
-- `benchmark_tab.py` has 966 lines; a fourth chart needs the three redraw methods folded into
+- `benchmark_tab.py` has 799 lines; a fourth chart needs the three redraw methods folded into
   one chart table first.
+- The chart layout exists twice, `chart_pdf.chart_ops()` and its port in `report_chart.js`; the
+  parity test in `test_benchmark_report_html` holds them together (ADR 0007).
 - Primesieve and cudasieve rows log no RAM, so they have no RAM points.

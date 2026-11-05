@@ -290,6 +290,21 @@ def main():
         app.update()
         passed &= check("3,333" in v["measured"].get(),
                         f"a row added while open shows when the run ends ({v['measured'].get()!r})")
+        with open(log_path, "a", newline="") as f:
+            for floor, windows, sieve in ((25, 5000, 150.0), (27, 5000, 700.0)):
+                csv.DictWriter(f, fieldnames=BENCHMARK_FIELDNAMES).writerow(
+                    {k: {"engine": "v5", "engine_version": "v5.1", "base_exponent": str(floor),
+                         "windows_written": str(windows),
+                         "numbers_processed": str(windows * W), "target_idx_start": "0",
+                         "sieve_seconds": str(sieve), "write_seconds": "1.0",
+                         "write_files": "1", "run_status": "completed"}.get(k, "")
+                     for k in BENCHMARK_FIELDNAMES})
+        gen._on_loop_finished(0)
+        app.update()
+        passed &= check("v5.1" in v["model"].get() and "2" in v["model"].get(),
+                        f"note names the newest version and its own rows ({v['model'].get()!r})")
+        with open(log_path, "rb") as f:
+            log_before = f.read()
         gen.quick_floor_var.set("25")
         app.update()
 

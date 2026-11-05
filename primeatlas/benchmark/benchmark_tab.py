@@ -31,186 +31,29 @@ from tkinter import ttk
 from tkinter import font as tkfont
 
 from ..core.base_tab import BaseTab
-from . import chart_view
-from .benchmark_export import BenchmarkExport
-from .chart_zoom_controls import BenchmarkChartZoom
 from ..core.ui_state import remember
 from ..core.widgets import StripedTreeview
 from .benchmark import (
     BENCHMARK_PAGE_SIZE, BENCHMARK_TREE_HIDDEN_COLUMNS,
     _order_benchmark_tree_columns, aggregate_benchmark_fair_spw,
     aggregate_benchmark_growth, aggregate_benchmark_sieve_nps,
-    aggregate_benchmark_write_mbps, benchmark_engine_lines, benchmark_row_stats,
+    aggregate_benchmark_write_mbps, benchmark_row_stats, benchmark_series, mixed_width_floors,
     group_benchmark_rows_by_floor, read_benchmark_log,
 )
 from ..core.i18n import Translator, DEFAULT_LANGUAGE
 from .chart_series import (
-    axis_pins, clear_pins, clip_polyline, engine_series, in_view, legend_entries, line_key,
+    axis_pins, clear_pins, clip_polyline, in_view, legend_entries, line_key,
     pin_bound, plain_series, point_label, series_xs, toggle_lines, visible_series, y_scale,
 )
+from . import chart_view
+from .benchmark_chart_windows import BenchmarkChartWindows
+from .benchmark_export import BenchmarkExport
+from .benchmark_filter import BenchmarkFilter
+from .benchmark_ram_chart import BenchmarkRamChart
+from .chart_hover import _bind_chart_hover, _nearest_point
+from .chart_zoom_controls import BenchmarkChartZoom
+from . import sieve_measure
 from .reference_points import reference_series
-
-
-def _nearest_point(hover_points, x, y, max_distance=14.0):
-    """The whole hover_points tuple closest to (x, y) within max_distance pixels, or None."""
-    best = None
-    best_d2 = max_distance ** 2
-    for point in hover_points:
-        d2 = (x - point[0]) ** 2 + (y - point[1]) ** 2
-        if d2 <= best_d2:
-            best_d2 = d2
-            best = point
-    return best
-
-
-def _nearest_hover_point(hover_points, x, y, max_distance=14.0):
-    """Picks which (if any) of hover_points the cursor at (x, y) is "over" -- the one
-    decision _bind_chart_hover's <Motion> handler needs to make, pulled out as a
-    plain function with no canvas/tkinter dependency so it's directly unit-testable.
-    (Driving this through a real OS-level synthetic mouse event in a test behaves
-    inconsistently across platforms/Tk versions -- e.g. Windows Python 3.13 delivers
-    <Motion> coordinates that don't reliably land within max_distance of a dot even
-    when targeted at its exact pixel center -- whereas this pure function is
-    deterministic and needs no live display at all.)
-
-    hover_points: see _bind_chart_hover's own docstring for the tuple shape.
-    Returns (px, py, x_val, y_val, fmt, color) for the closest point within
-    max_distance pixels, or None if every point is farther than that (or the list
-    is empty)."""
-    best = _nearest_point(hover_points, x, y, max_distance)
-    return tuple(best[:6]) if best else None
-
-
-def _hover_label_position(px, py, text_w, text_h, canvas_width, canvas_height, pad=4):
-    """Decides where _on_motion (below) should anchor its tooltip TEXT item so it stays
-    inside [0, canvas_width] x [0, canvas_height], given the point being labeled
-    (px, py), the label's own already-measured pixel size (text_w, text_h -- see
-    tkfont.Font.measure()/metrics("linespace") at the call site), and the canvas's
-    LOGICAL size (the same width/height _draw_growth_chart's caller already computed,
-    not a live canvas.winfo_width()/height() query -- see _bind_chart_hover's own
-    docstring for why that distinction matters).
-
-    Returns (tx, ty, anchor) ready for canvas.create_text(). Default placement is to
-    the upper-right of the point (anchor="w", text growing rightward); flips to the
-    LEFT (anchor="e") if the label wouldn't fit on the right, and flips from above to
-    below the point if it wouldn't fit above -- without this, the tooltip for a point
-    near the chart's right edge (the highest floor plotted, exactly where a user is
-    most likely to hover) gets pushed off the visible canvas and clipped.
-
-    Pulled out as a plain function (mirroring _nearest_hover_point above) specifically
-    so this decision is directly unit-testable without a real Tk canvas or event loop:
-    driving it through a synthetic <Motion> event on a probe canvas is as unreliable
-    as _nearest_hover_point's own docstring describes for
-    real OS-level mouse events, and for the same underlying reason here too -- a probe
-    canvas packed onto an already-fully-laid-out test window may never actually become
-    mapped/viewable, and Tk does not reliably deliver pointer events to an unmapped
-    widget regardless of how the event is generated."""
-    if px + 12 + text_w + pad <= canvas_width:
-        tx, anchor = px + 12, "w"
-    elif px - 12 - text_w - pad >= 0:
-        tx, anchor = px - 12, "e"
-    else:
-        # Neither side fully fits (a very narrow canvas) -- pick the right side; the
-        # bbox-clamp safety net in _on_motion pulls it back on-screen either way.
-        tx, anchor = px + 12, "w"
-
-    if py - 12 - text_h - pad >= 0:
-        ty = py - 12
-    elif py + 12 + text_h + pad <= canvas_height:
-        ty = py + 12
-    else:
-        ty = py - 12
-
-    return tx, ty, anchor
-
-
-def _bind_chart_hover(canvas, hover_points, t, fg_color, bg_color, width, height):
-    """Wires a single-tooltip hover interaction onto `canvas` instead of drawing every
-    point's value permanently next to its dot -- with a couple dozen closely-spaced
-    floors, the always-on labels used to stack on top of each other into an unreadable
-    smear. Only the point nearest the cursor
-    (within a small pixel radius) gets a label, drawn fresh on every mouse move and
-    cleared on <Leave>, so exactly one value is legible at a time no matter how dense
-    the series is.
-
-    hover_points: a flat list of (px, py, x_val, y_val, fmt, color, label_key, axis)
-    tuples in CANVAS pixel space, built by the caller from whichever series (primary
-    and/or secondary) it already computed pixel coordinates for -- this function itself
-    has no notion of axes/scales, just "here are some labeled dots".
-
-    width/height: the SAME logical canvas size _draw_growth_chart's caller already
-    computed and used for every other pad_left/plot_w/etc. calculation -- used here to
-    keep the tooltip text on-screen instead of querying canvas.winfo_width()/winfo_height(). Those reflect the widget's
-    actual REALIZED on-screen geometry, which can be stale or 1x1 whenever the canvas
-    hasn't been mapped/redrawn yet at the moment a test (or a very fast resize) fires a
-    motion event -- the caller's own width/height are always trustworthy since they're
-    exactly what was just used to place every point on the canvas in the first place.
-
-    Rebinding on every redraw (this is called once per _draw_growth_chart invocation,
-    i.e. every resize/data refresh) is intentional and cheap: tkinter's bind() replaces
-    the previous callback for the same event sequence on the same widget rather than
-    stacking a new one alongside it, so this never leaks handlers, and each new callback
-    closes over the CURRENT hover_points/scale rather than a stale one."""
-
-    def _clear_tip():
-        canvas.delete("hover_tip")
-
-    def _on_leave(_event):
-        _clear_tip()
-
-    hover_font = ("Consolas", 9, "bold")
-    _hover_font_metrics = tkfont.Font(family="Consolas", size=9, weight="bold")
-
-    def _on_motion(event):
-        _clear_tip()
-        best = _nearest_hover_point(hover_points, event.x, event.y)
-        if best is None:
-            return
-        px, py, x_val, y_val, fmt, color = best
-        text = f"{t('bench.axis_floor')} {x_val}: {fmt.format(y_val)}"
-        canvas.create_oval(px - 6, py - 6, px + 6, py + 6, outline=color, width=2,
-                            tags="hover_tip")
-
-        # Measuring the text's pixel width up front with the SAME font used to draw it
-        # (via tkfont, already imported for the axis-tick font above) lets
-        # _hover_label_position decide the anchor/position analytically instead of
-        # draw-measure-redraw. Passes width/height straight through from
-        # _bind_chart_hover's own parameters (see that function's docstring), NOT
-        # canvas.winfo_width()/height() -- those can read back stale/1x1 values if the
-        # canvas hasn't been mapped/idle-processed since its last resize, while
-        # width/height are exactly what was just used to place every point here.
-        pad = 4
-        text_w = _hover_font_metrics.measure(text)
-        text_h = _hover_font_metrics.metrics("linespace")
-        tx, ty, anchor_x = _hover_label_position(px, py, text_w, text_h, width, height, pad)
-
-        text_id = canvas.create_text(tx, ty, text=text, anchor=anchor_x, fill=color,
-                                      font=hover_font, tags="hover_tip")
-        bbox = canvas.bbox(text_id)
-        if bbox:
-            # Clamp the drawn bbox back onto the canvas as a final safety net --
-            # covers any residual overflow the estimate above didn't quite catch
-            # (font metrics vs. actual glyph rendering can differ by a pixel or two).
-            dx = 0
-            if bbox[0] - pad < 0:
-                dx = -(bbox[0] - pad)
-            elif bbox[2] + pad > width:
-                dx = width - (bbox[2] + pad)
-            dy = 0
-            if bbox[1] - pad < 0:
-                dy = -(bbox[1] - pad)
-            elif bbox[3] + pad > height:
-                dy = height - (bbox[3] + pad)
-            if dx or dy:
-                canvas.move(text_id, dx, dy)
-                bbox = canvas.bbox(text_id)
-            box_id = canvas.create_rectangle(
-                bbox[0] - pad, bbox[1] - pad, bbox[2] + pad, bbox[3] + pad,
-                fill=bg_color, outline=color, tags="hover_tip")
-            canvas.tag_lower(box_id, text_id)
-
-    canvas.bind("<Motion>", _on_motion)
-    canvas.bind("<Leave>", _on_leave)
 
 
 def _mix(color_a, color_b):
@@ -268,7 +111,7 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
                         bg_color="#ffffff", fg_color="#000000", grid_color="#666666",
                         series1=None, series2=None, log_y=False, hidden=None,
                         on_toggle=None, pins1=None, pins2=None, on_pin_menu=None,
-                        x_view=None):
+                        x_view=None, y_view=None):
     """Draws a floor-depth chart onto `canvas`: x = floor, y = one or two axes of
     chart_series.Series (one line per engine, plus dashed reference lines). Plain
     tk.Canvas drawing, no charting library: the app is zero-extra-installs. Clears the
@@ -295,24 +138,28 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
     the PDF and this chart stay consistent. translator: a primeatlas.core.i18n.Translator,
     DEFAULT_LANGUAGE when omitted. bg_color/fg_color/grid_color: the theme's colors.
 
-    x_view: the zoomed (lo, hi) floor range (chart_view.py) or None for every floor; only its
-    points are drawn and scaled, and its bounds are the x axis' ends. canvas.chart_geometry
-    keeps (x of the first floor, its pixel width, first floor, last floor) for the zoom and
-    pan bindings, None while nothing is plotted."""
+    x_view/y_view: the zoomed part of the chart (chart_view.py): (lo, hi) in floors, and
+    (lo, hi) as fractions of the full y scales (pins included); None for the whole axis. The
+    axes show that part, the lines are cut at the plot edges, the points outside it are not
+    drawn. canvas.chart_geometry keeps (x of the first floor, its pixel width, first floor,
+    last floor, y of the plot top, plot height, y_view, the data's (lowest, highest) fraction
+    of the full y scales, the chart's own (first, last) floor unzoomed) for the zoom and pan
+    bindings, None while nothing is plotted."""
     t = (translator or Translator(DEFAULT_LANGUAGE)).t
     canvas.configure(background=bg_color)
     canvas.delete("all")
     canvas.chart_geometry = None
     if width <= 1 or height <= 1:
         return  # not yet realized/sized
-    series1 = [s for s in chart_view.in_view(
-        series1 if series1 is not None else plain_series(points or []), x_view) if s.points]
-    series2 = [s for s in chart_view.in_view(
-        series2 if series2 is not None else plain_series(points2 or [], "secondary"), x_view)
-        if s.points]
+    series1 = [s for s in (series1 if series1 is not None else plain_series(points or []))
+               if s.points]
+    series2 = [s for s in (series2 if series2 is not None
+                           else plain_series(points2 or [], "secondary")) if s.points]
     if not series1 and not series2:
         canvas.create_text(width / 2, height / 2, text=t("bench.no_data_chart"),
                             fill="#888888")
+        _bind_chart_hover(canvas, [], t, fg_color, bg_color, width, height)
+        _bind_pin_menu(canvas, [], on_pin_menu)
         return
     hidden = hidden or set()
     # A fixed legend origin keeps every toggle under the pointer while the axes refit.
@@ -336,8 +183,10 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
     if x_min == x_max:
         x_min -= 1
         x_max += 1
-    scale1 = y_scale(series1, log_y, pins1) if series1 else None
-    scale2 = y_scale(series2, log_y, pins2) if has_secondary else None
+    full1 = y_scale(series1, log_y, pins1) if series1 else None
+    full2 = y_scale(series2, log_y, pins2) if has_secondary else None
+    scale1 = full1.zoomed(y_view) if full1 else None
+    scale2 = full2.zoomed(y_view) if full2 else None
 
     # pad_left/pad_right are measured from the actual tick label strings with the real
     # font: throughput reaches 10-13 digit n/s figures, which a fixed pad would clip.
@@ -359,7 +208,16 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
     def sx(x):
         return pad_left + inset_x + (x - x_min) / (x_max - x_min) * (plot_w - 2 * inset_x)
 
-    canvas.chart_geometry = (pad_left + inset_x, plot_w - 2 * inset_x, x_min, x_max)
+    canvas.chart_geometry = (pad_left + inset_x, plot_w - 2 * inset_x, x_min, x_max,
+                             pad_top, plot_h, y_view,
+                             chart_view.data_fracs((full1, series1), (full2, series2)),
+                             (min(all_xs), max(all_xs)))
+    # A zoomed axis ticks the whole floors across the plot, insets included.
+    margin = inset_x / max(1.0, plot_w - 2 * inset_x) * (x_max - x_min)
+    x_ticks = all_xs if x_view is None else chart_view.tick_floors(x_min, x_max, margin)
+
+    def on_plot(x_px):
+        return pad_left <= x_px <= pad_left + plot_w
 
     def sy(scale, y):
         return pad_top + plot_h - scale.frac(y) * plot_h
@@ -391,7 +249,7 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
             canvas.create_text(pad_left + plot_w + 8, y_px, text=scale2.tick_label(y_val, fmt2),
                                 anchor="w", font=("Consolas", 8), fill=fg_color)
 
-    for x_val in all_xs:
+    for x_val in x_ticks:
         x_px = sx(x_val)
         canvas.create_line(x_px, pad_top + plot_h, x_px, pad_top + plot_h + 4, fill=grid_color)
         canvas.create_text(x_px, pad_top + plot_h + 8, text=str(x_val), anchor="n",
@@ -421,13 +279,14 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
         r = 4
         for s in series:
             pts = [(x, y) for x, y in s.points if scale.usable(y)]
-            for run in clip_polyline([(sx(x), scale.frac(y)) for x, y in pts]):
+            for run in clip_polyline([(sx(x), scale.frac(y)) for x, y in pts],
+                                     pad_left, pad_left + plot_w):
                 if len(run) > 1:
                     coords = [(x, pad_top + plot_h - f * plot_h) for x, f in run]
                     canvas.create_line(*[c for xy in coords for c in xy], fill=s.color,
                                         width=1 if secondary else 3,
                                         dash=(5, 3) if s.dashed else None)
-            pts = [(x, y) for x, y in pts if in_view(scale.frac(y))]
+            pts = [(x, y) for x, y in pts if in_view(scale.frac(y)) and on_plot(sx(x))]
             coords = [(sx(x), sy(scale, y)) for x, y in pts]
             for (x_val, y_val), (cx, cy) in zip(pts, coords):
                 if secondary:
@@ -438,7 +297,7 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
                                         width=2 if s.dashed else 0,
                                         fill=bg_color if s.dashed else s.color)
                 hover_points.append((cx, cy, x_val, y_val,
-                                     point_label(fmt, y_val, s, show_unknown=True)
+                                     point_label(fmt, y_val, s, show_unknown=True, x=x_val)
                                      .replace("{", "{{").replace("}", "}}"),
                                      s.color, label_key,
                                      "secondary" if secondary else "primary"))
@@ -467,7 +326,8 @@ def _bind_pin_menu(canvas, hover_points, on_pin_menu):
     canvas.bind("<Button-3>", _on_right_click)
 
 
-class BenchmarkTab(BenchmarkExport, BenchmarkChartZoom, BaseTab):
+class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkRamChart, BenchmarkChartZoom,
+                   BenchmarkChartWindows, BaseTab):
     def __init__(self, parent, get_portal_folder, status_var, translator, update_nav_controls,
                  theme_palette):
         """
@@ -485,6 +345,9 @@ class BenchmarkTab(BenchmarkExport, BenchmarkChartZoom, BaseTab):
         self.status = status_var
         self._update_nav_controls = update_nav_controls
         self._theme_palette = theme_palette
+        self._init_filter()
+        self._init_chart_windows()
+        self._init_chart_zoom()
 
         self._build_widgets()
 
@@ -493,9 +356,9 @@ class BenchmarkTab(BenchmarkExport, BenchmarkChartZoom, BaseTab):
 
         top = ttk.Frame(self)
         top.pack(fill="x", padx=6, pady=4)
-        ttk.Button(top, text=T("common.refresh"), command=self.reload_benchmark_log).pack(side="left")
-        self._build_export_controls(top)
-        ttk.Label(top, text=T("bench.chart_hint")).pack(side="left")
+        # "Points of different widths on floor N" under each chart, set by its redraw.
+        self.mixed_widths_vars = {"run": tk.StringVar(), "sieve": tk.StringVar(),
+                                  "ram": tk.StringVar()}
         # Chart view toggles, kept for the session only; every export follows them, the
         # lines hidden from each chart's legend ({chart: set of line_key()}) and the pinned
         # y-axis bounds ({chart: {axis: (min, max)}}, set from the right-click menu).
@@ -505,60 +368,50 @@ class BenchmarkTab(BenchmarkExport, BenchmarkChartZoom, BaseTab):
         self.references_var = tk.BooleanVar(value=False)
         remember("benchmark.log_scale", self.log_scale_var)
         remember("benchmark.show_references", self.references_var)
+        # The toggles are packed first: when the row is too narrow, pack cuts the filter
+        # summary packed after them, not the toggles.
         ttk.Checkbutton(top, text=T("bench.log_scale"), variable=self.log_scale_var,
                         command=self._redraw_charts).pack(side="right")
         ttk.Checkbutton(top, text=T("bench.show_references"), variable=self.references_var,
                         command=self._redraw_charts).pack(side="right", padx=(0, 8))
+        ttk.Button(top, text=T("common.refresh"), command=self.reload_benchmark_log).pack(side="left")
+        self._build_export_controls(top)
+        ttk.Button(top, text=T("bench.filter_button"), command=self._open_filter_window).pack(
+            side="left", padx=(6, 0))
+        ttk.Label(top, textvariable=self.filter_summary_var, style="Status.TLabel").pack(
+            side="left", padx=(6, 12))
 
-        chart_frame = ttk.Frame(self)
-        chart_frame.pack(fill="x", padx=6, pady=(0, 4))
-        # Canvas colors come from the CURRENT theme (console_bg/border -- same keys the
-        # app's other canvas-like widgets already use for their own dark/light styling)
-        # instead of being hardcoded to white/light-grey -- otherwise the dark theme
-        # would leave this chart looking unchanged (light chart on an otherwise dark
-        # window). _draw_growth_chart's own bg_color/fg_color/grid_color params
-        # (see _redraw_benchmark_chart/_redraw_benchmark_chart2 below) keep the drawn
-        # content -- ticks, axis titles -- readable against whichever background this is.
+        # The charts stand one under another, full width: the sieve, the whole run (sieve
+        # + write), RAM. Canvas colors come from the CURRENT theme (console_bg/border, the
+        # keys the app's other canvas-like widgets use) so the dark theme does not keep a
+        # light chart; _draw_growth_chart's bg_color/fg_color/grid_color (passed by
+        # _draw_chart below) keep ticks and axis titles readable on it. Each chart is
+        # always shown: _draw_growth_chart() draws a "no data yet" placeholder when its
+        # series are empty. A mixed-width note is packed under its chart only while it
+        # has text, so an empty one takes no height.
         p = self._theme_palette
-        self.benchmark_chart = tk.Canvas(chart_frame, height=220, background=p["console_bg"],
-                                          highlightthickness=1, highlightbackground=p["border"])
-        self.benchmark_chart.pack(fill="x")
-        self.benchmark_chart.bind("<Configure>", lambda _e: self._redraw_benchmark_chart())
-        self._bind_chart_zoom(self.benchmark_chart)
-
-        # Second chart: sieve-numbers/s + write-MB/s -- the phase-breakdown counterpart
-        # to the growth chart above, populated only from v4.1 and v5 engine rows (see
-        # aggregate_benchmark_sieve_nps()/aggregate_benchmark_write_mbps()). Always
-        # visible, same as the first chart -- _draw_growth_chart() already shows its own
-        # "no data yet" placeholder when both series are empty, so a project that hasn't
-        # re-benchmarked with v4.1 yet just sees that placeholder rather than the tab
-        # silently hiding/showing a whole section.
-        # The sieve and RAM charts share one row, half the width each, so the third chart
-        # costs the page no height (it fits the default 1050x680 window).
-        lower_row = ttk.Frame(self)
-        lower_row.pack(fill="x", padx=6, pady=(0, 4))
-        lower_row.columnconfigure((0, 1), weight=1, uniform="lower_charts")
-        chart_frame2 = ttk.Frame(lower_row)
-        chart_frame2.grid(row=0, column=0, sticky="nsew", padx=(0, 3))
-        ttk.Label(chart_frame2, text=T("bench.chart2_hint"), wraplength=480,
-                  justify="left").pack(anchor="w")
-        self.benchmark_chart2 = tk.Canvas(chart_frame2, height=165, background=p["console_bg"],
+        self._mixed_widths_labels = {}
+        chart_frame2 = self._chart_frame("sieve")
+        self.benchmark_chart2 = tk.Canvas(chart_frame2, height=220, background=p["console_bg"],
                                            highlightthickness=1, highlightbackground=p["border"])
         self.benchmark_chart2.pack(fill="x")
         self.benchmark_chart2.bind("<Configure>", lambda _e: self._redraw_benchmark_chart2())
-        self._bind_chart_zoom(self.benchmark_chart2)
+        self._bind_chart_zoom(self.benchmark_chart2, "sieve")
+        self._mixed_widths_labels["sieve"] = (
+            ttk.Label(chart_frame2, style="Status.TLabel",
+                      textvariable=self.mixed_widths_vars["sieve"]), self.benchmark_chart2)
 
-        # Third chart: each run's peak RAM and RAM per window (max_child_rss_mb), on its
-        # own canvas so the two speed charts keep their scales.
-        chart_frame3 = ttk.Frame(lower_row)
-        chart_frame3.grid(row=0, column=1, sticky="nsew", padx=(3, 0))
-        ttk.Label(chart_frame3, text=T("bench.chart3_hint"), wraplength=480,
-                  justify="left").pack(anchor="w")
-        self.benchmark_chart3 = tk.Canvas(chart_frame3, height=165, background=p["console_bg"],
-                                           highlightthickness=1, highlightbackground=p["border"])
-        self.benchmark_chart3.pack(fill="x")
-        self.benchmark_chart3.bind("<Configure>", lambda _e: self._redraw_benchmark_chart3())
-        self._bind_chart_zoom(self.benchmark_chart3)
+        chart_frame = self._chart_frame("run")
+        self.benchmark_chart = tk.Canvas(chart_frame, height=180, background=p["console_bg"],
+                                          highlightthickness=1, highlightbackground=p["border"])
+        self.benchmark_chart.pack(fill="x")
+        self.benchmark_chart.bind("<Configure>", lambda _e: self._redraw_benchmark_chart())
+        self._bind_chart_zoom(self.benchmark_chart, "run")
+        self._mixed_widths_labels["run"] = (
+            ttk.Label(chart_frame, style="Status.TLabel",
+                      textvariable=self.mixed_widths_vars["run"]), self.benchmark_chart)
+
+        self._build_ram_chart(self._chart_frame("ram"))
 
         tree_frame = ttk.Frame(self)
         tree_frame.pack(fill="both", expand=True, padx=6, pady=4)
@@ -591,10 +444,10 @@ class BenchmarkTab(BenchmarkExport, BenchmarkChartZoom, BaseTab):
         ttk.Button(benchmark_nav, text=T("common.goto"), command=self._goto_benchmark_page).pack(
             side="left", padx=(4, 0))
 
-        # height is the tree's minimum when the page has to scroll; while the page fits,
-        # pack(expand=True) gives it the rest of the window. Tk's default of 10 rows
-        # makes the page taller than the default 1050x680 window.
-        self.benchmark_tree = StripedTreeview(tree_frame, show="tree headings", height=3)
+        # height is the tree's height when the page has to scroll, as it does under the three
+        # stacked charts at the default 1050x680; while the page fits, pack(expand=True)
+        # gives it the rest of the window.
+        self.benchmark_tree = StripedTreeview(tree_frame, show="tree headings", height=10)
         self.benchmark_tree.heading("#0", text=T("bench.col_floor"))
         self.benchmark_tree.column("#0", width=170, stretch=False)
         # Horizontal scrollbar -- with 11 data columns + #0, the row is wider than the
@@ -655,39 +508,45 @@ class BenchmarkTab(BenchmarkExport, BenchmarkChartZoom, BaseTab):
         # <Configure> will fire and redraw properly once real geometry is assigned, but
         # falling back to a reasonable size here means the chart doesn't sit blank in
         # the meantime.
-        width = self.benchmark_chart.winfo_width()
-        height = self.benchmark_chart.winfo_height()
-        if width <= 1:
-            width = 900
-        if height <= 1:
-            height = 220
+        self._show_mixed_widths("run", ("growth", "write"))
+        self._draw_chart("run", self.benchmark_chart, self._benchmark_growth_points, (900, 180),
+                         points2=self._benchmark_write_mbps_points,
+                         label_key1="bench.axis_total_nps",
+                         label_key2="bench.axis_write_mbps", fmt2="{:,.1f}",
+                         series1=self._chart_series("growth"),
+                         series2=self._chart_series("write"))
+
+    def _draw_chart(self, chart, canvas, points, default_size, **kwargs):
+        """_draw_growth_chart() on `canvas` and on the chart's open window
+        (benchmark_chart_windows.py) with the view state of `chart` ("run", "sieve", "ram"):
+        log scale, hidden lines, pinned axes, the zoomed floor range, theme colors;
+        `default_size` (width, height) stands in while a canvas is not laid out yet."""
         p = self._theme_palette
-        _draw_growth_chart(self.benchmark_chart, self._benchmark_growth_points, width, height,
-                            points2=self._benchmark_write_mbps_points, translator=self.T,
-                            label_key1="bench.axis_total_nps",
-                            label_key2="bench.axis_write_mbps", fmt2="{:,.1f}",
-                            series1=self._chart_series("growth"),
-                            series2=self._chart_series("write"),
-                            log_y=self.log_scale_var.get(),
-                            hidden=self._hidden_lines["run"],
-                            on_toggle=lambda keys: self._toggle_lines("run", keys),
-                            pins1=axis_pins(self._y_pins["run"], "primary"),
-                            pins2=axis_pins(self._y_pins["run"], "secondary"),
-                            on_pin_menu=lambda *a: self._on_pin_menu("run", *a),
-                            bg_color=p["console_bg"], fg_color=p["console_fg"],
-                            grid_color=p["border"], x_view=self._x_view)
+        for target in [canvas] + self._chart_window_canvases(chart):
+            width, height = target.winfo_width(), target.winfo_height()
+            width = default_size[0] if width <= 1 else width
+            height = default_size[1] if height <= 1 else height
+            _draw_growth_chart(target, points, width, height, translator=self.T,
+                               log_y=self.log_scale_var.get(), hidden=self._hidden_lines[chart],
+                               on_toggle=lambda keys: self._toggle_lines(chart, keys),
+                               pins1=axis_pins(self._y_pins[chart], "primary"),
+                               pins2=axis_pins(self._y_pins[chart], "secondary"),
+                               on_pin_menu=lambda *a: self._on_pin_menu(chart, *a),
+                               bg_color=p["console_bg"], fg_color=p["console_fg"],
+                               grid_color=p["border"], x_view=self._x_view,
+                               y_view=self._y_views[chart], **kwargs)
 
     def _chart_series(self, metric, references=False):
         """One Series per engine for a chart metric; with references=True, the reference
-        lines too while the "Reference points" toggle is on. PARI/GP and primesieve write
-        nothing, so the references go on the sieve chart."""
-        series = engine_series(benchmark_engine_lines(self._benchmark_rows, metric))
+        lines too while the "Reference points" toggle is on. PARI/GP writes nothing, so the
+        references go on the sieve chart."""
+        series = benchmark_series(self._filtered_rows(), metric)
         if references and self.references_var.get():
             series += reference_series(self.T)
         return series
 
     def _toggle_lines(self, chart, keys):
-        """Legend click on the "run" or "sieve" chart: hides or shows those lines."""
+        """Legend click on the "run", "sieve" or "ram" chart: hides or shows those lines."""
         self._hidden_lines[chart] = toggle_lines(self._hidden_lines[chart], keys)
         self._redraw_chart(chart)
 
@@ -703,6 +562,18 @@ class BenchmarkTab(BenchmarkExport, BenchmarkChartZoom, BaseTab):
         self._redraw_benchmark_chart()
         self._redraw_benchmark_chart2()
         self._redraw_benchmark_chart3()
+
+    def _show_mixed_widths(self, chart, metrics):
+        floors = sorted({f for m in metrics
+                         for f in mixed_width_floors(self._filtered_rows(), m)
+                         if chart_view.contains(self._x_view, f)})
+        self.mixed_widths_vars[chart].set(
+            self.T("bench.mixed_widths", floors=", ".join(map(str, floors))) if floors else "")
+        label, canvas = self._mixed_widths_labels[chart]
+        if floors:
+            label.pack(anchor="w", after=canvas)
+        else:
+            label.pack_forget()
 
     def _set_pins(self, chart, pins):
         self._y_pins[chart] = pins
@@ -747,51 +618,16 @@ class BenchmarkTab(BenchmarkExport, BenchmarkChartZoom, BaseTab):
 
     def _redraw_benchmark_chart2(self):
         """Same fallback-size handling as _redraw_benchmark_chart() (see that method's own
-        comment) -- draws the sieve-phase chart (sieve n/s, sieve s/window, reference
-        points) onto its own canvas, right below the whole-run chart."""
-        width = self.benchmark_chart2.winfo_width()
-        height = self.benchmark_chart2.winfo_height()
-        if width <= 1:
-            width = 900
-        if height <= 1:
-            height = 165
-        p = self._theme_palette
-        _draw_growth_chart(self.benchmark_chart2, self._benchmark_sieve_nps_points, width,
-                            height, label_key1="bench.axis_sieve_nps",
-                            label_key2="bench.axis_sieve_spw",
-                            fmt1="{:,.0f}", fmt2="{:,.4f}", translator=self.T,
-                            series1=self._chart_series("sieve", references=True),
-                            series2=self._chart_series("sieve_spw"),
-                            log_y=self.log_scale_var.get(),
-                            hidden=self._hidden_lines["sieve"],
-                            on_toggle=lambda keys: self._toggle_lines("sieve", keys),
-                            pins1=axis_pins(self._y_pins["sieve"], "primary"),
-                            pins2=axis_pins(self._y_pins["sieve"], "secondary"),
-                            on_pin_menu=lambda *a: self._on_pin_menu("sieve", *a),
-                            bg_color=p["console_bg"], fg_color=p["console_fg"],
-                            grid_color=p["border"], x_view=self._x_view)
-
-    def _redraw_benchmark_chart3(self):
-        """The RAM chart: peak MB per run (left axis) and MB per window (right axis)."""
-        width = self.benchmark_chart3.winfo_width()
-        height = self.benchmark_chart3.winfo_height()
-        width = 450 if width <= 1 else width
-        height = 165 if height <= 1 else height
-        p = self._theme_palette
-        _draw_growth_chart(self.benchmark_chart3, [], width, height,
-                            label_key1="bench.axis_ram_mb",
-                            label_key2="bench.axis_ram_mb_window",
-                            fmt1="{:,.0f}", fmt2="{:,.2f}", translator=self.T,
-                            series1=self._chart_series("ram"),
-                            series2=self._chart_series("ram_per_window"),
-                            log_y=self.log_scale_var.get(),
-                            hidden=self._hidden_lines["ram"],
-                            on_toggle=lambda keys: self._toggle_lines("ram", keys),
-                            pins1=axis_pins(self._y_pins["ram"], "primary"),
-                            pins2=axis_pins(self._y_pins["ram"], "secondary"),
-                            on_pin_menu=lambda *a: self._on_pin_menu("ram", *a),
-                            bg_color=p["console_bg"], fg_color=p["console_fg"],
-                            grid_color=p["border"], x_view=self._x_view)
+        comment) -- draws the sieve chart of the Filter window's sieve measure
+        (sieve_measure.chart(): n/s and s/window, with reference points, or the startup
+        overhead) onto its own canvas, the top one, above the whole-run chart."""
+        spec = sieve_measure.chart(self._sieve_measure)
+        self._show_mixed_widths("sieve", (spec.metric1, spec.metric2))
+        self._draw_chart("sieve", self.benchmark_chart2, self._benchmark_sieve_nps_points,
+                         (900, 220), label_key1=spec.label_key1, label_key2=spec.label_key2,
+                         fmt1=spec.fmt1, fmt2=spec.fmt2,
+                         series1=self._chart_series(spec.metric1, spec.references),
+                         series2=self._chart_series(spec.metric2))
 
     def reload_benchmark_log(self):
         T = self.T

@@ -296,7 +296,9 @@ class TimeSimulationWindow(tk.Toplevel):
         if cal is None:
             v["model"].set(T("timesim.model_none", engine=engine))
         else:
-            text = T("timesim.model_info", engine=engine, rows=cal.rows, floor_lo=cal.floors[0],
+            # The newest version's own rows calibrate once it has two (time_model.calibration_rows).
+            text = T("timesim.model_info", engine=cal.version or engine, rows=cal.rows,
+                     floor_lo=cal.floors[0],
                      floor_hi=cal.floors[1], error=f"{cal.max_error * 100:.0f}")
             if est.extrapolated:
                 text += "\n" + T("timesim.model_extrapolated")
