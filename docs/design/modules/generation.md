@@ -81,6 +81,10 @@ next opening. The log is never written. Its completed rows give, per measured fl
   sieving, so the engines' write busy time is not added).
 
 A run's measured time is `total_seconds` without `base_gen_seconds` (the optional pi(L) count).
+Rows calibrate per engine version (`time_model.calibration_rows()`): the version of the engine's
+last row in the log (`engine_version`, the writing script's `VERSION`, e.g. v5.1) calibrates from
+its own rows once it has two, so a faster release is not averaged with the old one; until then, and
+for rows logged before the column, every row of the engine does. The window names the version.
 Other floors interpolate k, m and w log-linearly and hold the nearest measured floor's values
 outside them. The window shows pi(L) (exact at powers of ten, else R(x)), prep, sieving, added
 write time, run and per-window time, gross speed (span / run time) and net sieving speed (span /
@@ -130,7 +134,6 @@ is copied in once), `.generation_logs/` (logs, exit codes, `ACTIVE_RUN.json`),
 - The time model is linear in the span per floor: a run much shorter than the floor's measured ones
   (process start-up dominates) or one whose buffer outgrows the caches deviates; the worst error
   is shown in the window. Several parallel instances (`n_instances`) are not modelled.
-- v5 rows logged before v5.1 (128 KiB segments, 1 GiB buckets) calibrate v5.1 too, since the
-  engine name stays `v5`: their per-number cost on long runs is the old bucket stage's (the
-  floor-29 "251 Mn/s" net speed comes from two such rows), so the window overestimates v5.1
-  until new rows replace them.
+- Rows logged before the `engine_version` column carry no version: v5 rows from before v5.1
+  still calibrate v5 until two v5.1 rows exist. Recent rows are not weighted above older rows
+  of the same version.

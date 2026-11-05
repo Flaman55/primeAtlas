@@ -13,6 +13,8 @@ C. ensure_benchmark_log_schema(): a missing log stays missing (True); the curren
    byte-for-byte (False).
 D. floor_meta.merge_floor_meta_into_benchmark_log() growing a log from scratch writes
    exactly BENCHMARK_FIELDNAMES as its header.
+E. Every row writer fills engine_version; orchestrator_v3 takes it from the scanner
+   module's own VERSION (v5.1, v6.0, ...), so the engine files stay untouched.
 
 Usage:
     python unitTests/test_benchmark_log_schema.py
@@ -40,7 +42,7 @@ LIVE_HEADER = [
     "max_child_rss_mb", "instance_of_n", "loop_session_seconds", "loop_numbers_per_second",
     "loop_seconds_per_window", "write_files", "base_gen_seconds", "sieve_seconds",
     "write_seconds", "bytes_written", "engine", "numbers_processed", "run_status",
-    "verify_seconds",
+    "verify_seconds", "engine_version",
 ]
 OLD_ROW = {"run_timestamp_utc": "2026-01-01 00:00:00 UTC", "base_exponent": "12",
            "windows_written": "7", "total_primes": "70", "total_seconds": "3.5"}
@@ -76,7 +78,7 @@ def _read_log(path):
 def _test_header(schema):
     print("\n--- A. the header the live log has ---")
     check(schema.BENCHMARK_FIELDNAMES == LIVE_HEADER,
-          f"BENCHMARK_FIELDNAMES = the live 25-column header ({len(schema.BENCHMARK_FIELDNAMES)})")
+          f"BENCHMARK_FIELDNAMES = the live 27-column header ({len(schema.BENCHMARK_FIELDNAMES)})")
     check(schema.RUN_STATUS_COMPLETED == "completed" and schema.RUN_STATUS_STOPPED == "stopped",
           "run_status values completed / stopped")
 
@@ -159,6 +161,20 @@ def _test_floor_meta_new_log(schema):
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def _test_engine_version_writers():
+    print("\n--- E. every row writer fills engine_version ---")
+    for name in ("orchestrator_v3.py", "prime_sieve_primesieve.py", "prime_sieve_cudasieve.py",
+                 "hybrid_sieve.py"):
+        with open(os.path.join(_REPO_ROOT, "prime_sieve", name), encoding="utf-8") as f:
+            text = f.read()
+        check('"engine_version":' in text, f"{name} writes engine_version in its row")
+    with open(os.path.join(_REPO_ROOT, "prime_sieve", "orchestrator_v3.py"),
+              encoding="utf-8") as f:
+        text = f.read()
+    check('"engine_version": prime_sieve_module.VERSION' in text,
+          "orchestrator_v3 logs the scanner module's own VERSION")
+
+
 def main():
     try:
         import benchmark_log_schema as schema
@@ -169,6 +185,7 @@ def main():
         _test_single_source(schema)
         _test_migration(schema)
         _test_floor_meta_new_log(schema)
+        _test_engine_version_writers()
     print()
     if failures:
         print(f"{len(failures)} FAILURE(S)")

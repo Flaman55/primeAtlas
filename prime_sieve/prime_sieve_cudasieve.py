@@ -215,6 +215,7 @@ def write_benchmark_row(base_exponent, target_idx_start, target_idx_count, total
                 writer.writeheader()
             row = {
                 "engine": "cuda",
+                "engine_version": VERSION,
                 "run_status": "completed",
                 "run_timestamp_utc": datetime.datetime.now(datetime.timezone.utc).strftime(
                     "%Y-%m-%d %H:%M:%S UTC"),
