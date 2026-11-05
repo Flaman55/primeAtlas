@@ -1890,7 +1890,7 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
   primeatlas/benchmark/         "Benchmark" tab
   benchmark_tab.py             BenchmarkTab -- the Benchmark tab (three charts: whole run
                               n/s + write MB/s, sieve n/s + s/window, RAM per run +
-                              RAM per window; right-click y-axis pin menu, PDF export;
+                              RAM per window, the last two side by side; right-click y-axis pin menu, PDF export;
                               benchmark.py below is the pure-logic backend)
   benchmark.py                  reading/normalizing benchmark_log.csv rows; each row
                               gets a "kind" (D, P, or D+P on floor 24) from its
