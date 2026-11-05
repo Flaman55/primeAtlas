@@ -31,7 +31,9 @@ from tkinter import ttk
 from tkinter import font as tkfont
 
 from ..core.base_tab import BaseTab
+from . import chart_view
 from .benchmark_export import BenchmarkExport
+from .chart_zoom_controls import BenchmarkChartZoom
 from ..core.ui_state import remember
 from ..core.widgets import StripedTreeview
 from .benchmark import (
@@ -265,7 +267,8 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
                         fmt1="{:,.0f}", fmt2="{:,.3f}",
                         bg_color="#ffffff", fg_color="#000000", grid_color="#666666",
                         series1=None, series2=None, log_y=False, hidden=None,
-                        on_toggle=None, pins1=None, pins2=None, on_pin_menu=None):
+                        on_toggle=None, pins1=None, pins2=None, on_pin_menu=None,
+                        x_view=None):
     """Draws a floor-depth chart onto `canvas`: x = floor, y = one or two axes of
     chart_series.Series (one line per engine, plus dashed reference lines). Plain
     tk.Canvas drawing, no charting library: the app is zero-extra-installs. Clears the
@@ -290,16 +293,23 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
 
     label_key1/label_key2/fmt1/fmt2: same meaning as chart_pdf.chart_ops()'s parameters, so
     the PDF and this chart stay consistent. translator: a primeatlas.core.i18n.Translator,
-    DEFAULT_LANGUAGE when omitted. bg_color/fg_color/grid_color: the theme's colors."""
+    DEFAULT_LANGUAGE when omitted. bg_color/fg_color/grid_color: the theme's colors.
+
+    x_view: the zoomed (lo, hi) floor range (chart_view.py) or None for every floor; only its
+    points are drawn and scaled, and its bounds are the x axis' ends. canvas.chart_geometry
+    keeps (x of the first floor, its pixel width, first floor, last floor) for the zoom and
+    pan bindings, None while nothing is plotted."""
     t = (translator or Translator(DEFAULT_LANGUAGE)).t
     canvas.configure(background=bg_color)
     canvas.delete("all")
+    canvas.chart_geometry = None
     if width <= 1 or height <= 1:
         return  # not yet realized/sized
-    series1 = [s for s in (series1 if series1 is not None else plain_series(points or []))
-               if s.points]
-    series2 = [s for s in (series2 if series2 is not None
-                           else plain_series(points2 or [], "secondary")) if s.points]
+    series1 = [s for s in chart_view.in_view(
+        series1 if series1 is not None else plain_series(points or []), x_view) if s.points]
+    series2 = [s for s in chart_view.in_view(
+        series2 if series2 is not None else plain_series(points2 or [], "secondary"), x_view)
+        if s.points]
     if not series1 and not series2:
         canvas.create_text(width / 2, height / 2, text=t("bench.no_data_chart"),
                             fill="#888888")
@@ -322,7 +332,7 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
     pad_top, pad_bottom = 40, 40
 
     all_xs = series_xs(series1, series2)
-    x_min, x_max = min(all_xs), max(all_xs)
+    x_min, x_max = x_view if x_view is not None else (min(all_xs), max(all_xs))
     if x_min == x_max:
         x_min -= 1
         x_max += 1
@@ -348,6 +358,8 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
 
     def sx(x):
         return pad_left + inset_x + (x - x_min) / (x_max - x_min) * (plot_w - 2 * inset_x)
+
+    canvas.chart_geometry = (pad_left + inset_x, plot_w - 2 * inset_x, x_min, x_max)
 
     def sy(scale, y):
         return pad_top + plot_h - scale.frac(y) * plot_h
@@ -455,7 +467,7 @@ def _bind_pin_menu(canvas, hover_points, on_pin_menu):
     canvas.bind("<Button-3>", _on_right_click)
 
 
-class BenchmarkTab(BenchmarkExport, BaseTab):
+class BenchmarkTab(BenchmarkExport, BenchmarkChartZoom, BaseTab):
     def __init__(self, parent, get_portal_folder, status_var, translator, update_nav_controls,
                  theme_palette):
         """
@@ -512,6 +524,7 @@ class BenchmarkTab(BenchmarkExport, BaseTab):
                                           highlightthickness=1, highlightbackground=p["border"])
         self.benchmark_chart.pack(fill="x")
         self.benchmark_chart.bind("<Configure>", lambda _e: self._redraw_benchmark_chart())
+        self._bind_chart_zoom(self.benchmark_chart)
 
         # Second chart: sieve-numbers/s + write-MB/s -- the phase-breakdown counterpart
         # to the growth chart above, populated only from v4.1 and v5 engine rows (see
@@ -527,6 +540,7 @@ class BenchmarkTab(BenchmarkExport, BaseTab):
                                            highlightthickness=1, highlightbackground=p["border"])
         self.benchmark_chart2.pack(fill="x")
         self.benchmark_chart2.bind("<Configure>", lambda _e: self._redraw_benchmark_chart2())
+        self._bind_chart_zoom(self.benchmark_chart2)
 
         # Third chart: each run's peak RAM and RAM per window (max_child_rss_mb), on its
         # own canvas so the two speed charts keep their scales.
@@ -537,6 +551,7 @@ class BenchmarkTab(BenchmarkExport, BaseTab):
                                            highlightthickness=1, highlightbackground=p["border"])
         self.benchmark_chart3.pack(fill="x")
         self.benchmark_chart3.bind("<Configure>", lambda _e: self._redraw_benchmark_chart3())
+        self._bind_chart_zoom(self.benchmark_chart3)
 
         tree_frame = ttk.Frame(self)
         tree_frame.pack(fill="both", expand=True, padx=6, pady=4)
@@ -653,7 +668,7 @@ class BenchmarkTab(BenchmarkExport, BaseTab):
                             pins2=axis_pins(self._y_pins["run"], "secondary"),
                             on_pin_menu=lambda *a: self._on_pin_menu("run", *a),
                             bg_color=p["console_bg"], fg_color=p["console_fg"],
-                            grid_color=p["border"])
+                            grid_color=p["border"], x_view=self._x_view)
 
     def _chart_series(self, metric, references=False):
         """One Series per engine for a chart metric; with references=True, the reference
@@ -747,7 +762,7 @@ class BenchmarkTab(BenchmarkExport, BaseTab):
                             pins2=axis_pins(self._y_pins["sieve"], "secondary"),
                             on_pin_menu=lambda *a: self._on_pin_menu("sieve", *a),
                             bg_color=p["console_bg"], fg_color=p["console_fg"],
-                            grid_color=p["border"])
+                            grid_color=p["border"], x_view=self._x_view)
 
     def _redraw_benchmark_chart3(self):
         """The RAM chart: peak MB per run (left axis) and MB per window (right axis)."""
@@ -769,7 +784,7 @@ class BenchmarkTab(BenchmarkExport, BaseTab):
                             pins2=axis_pins(self._y_pins["ram"], "secondary"),
                             on_pin_menu=lambda *a: self._on_pin_menu("ram", *a),
                             bg_color=p["console_bg"], fg_color=p["console_fg"],
-                            grid_color=p["border"])
+                            grid_color=p["border"], x_view=self._x_view)
 
     def reload_benchmark_log(self):
         T = self.T

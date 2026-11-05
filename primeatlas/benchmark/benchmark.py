@@ -35,6 +35,7 @@ import storage_kinds
 from ..core.i18n import Translator, DEFAULT_LANGUAGE
 from ..core.pdf_table import TableLayout, table_pages
 from ..core.pdf_writer import _pdf_ascii_fold, _pdf_text_op, _write_pdf
+from . import chart_view
 from .chart_pdf import chart_ops
 from .chart_series import axis_pins, engine_lines, engine_series, visible_series
 from .reference_points import REFERENCES, reference_series
@@ -455,17 +456,19 @@ def report_chart_pages(rows, sieve_points=None, references=False):
     return pages
 
 
-def report_chart_series(rows, chart, hidden_lines=None, extra=()):
+def report_chart_series(rows, chart, hidden_lines=None, extra=(), x_view=None):
     """The visible Series of one report chart (see report_chart_pages()), its reference
-    series (`extra`) included, the lines hidden in the tab's legend left out."""
+    series (`extra`) included, the lines hidden in the tab's legend left out, only the floors
+    of the tab's zoomed view (chart_view.py; None: every floor)."""
     chart_key, axis, metric = chart[:3]
     series = engine_series(benchmark_engine_lines(rows, metric)) + list(extra)
-    return visible_series(series, (hidden_lines or {}).get(chart_key), axis)
+    return chart_view.in_view(
+        visible_series(series, (hidden_lines or {}).get(chart_key), axis), x_view)
 
 
 def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translator=None,
                           sieve_points=None, write_points=None, references=False,
-                          log_y=False, hidden_lines=None, y_pins=None):
+                          log_y=False, hidden_lines=None, y_pins=None, x_view=None):
     """Writes a standalone PDF report -- the Benchmark tab's charts plus the FULL
     benchmark_log.csv (every row, every column, every cell in full) -- to `path`, A4
     landscape. Pure function (no tkinter): the GUI layer (BenchmarkTab._export_benchmark_pdf)
@@ -491,6 +494,7 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
     off in the tab's legends, left out of the charts and their scales.
     y_pins: {"run" | "sieve" | "ram": {axis: (min, max)}} -- the tab's pinned y-axis bounds
     (chart_series.pin_bound()); each axis' pins apply to the chart of that metric.
+    x_view: the tab's zoomed floor range (chart_view.py), None for every floor.
 
     points: aggregate_benchmark_growth(), for the subtitle's floor count. points2 and
     write_points are kept for the callers' symmetry.
@@ -511,7 +515,7 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
     def chart(spec, y0, h, extra=()):
         chart_key, axis, _metric, label_key, fmt = spec
         return chart_ops(content_left, y0, content_width, h,
-                         report_chart_series(rows, spec, hidden_lines, extra),
+                         report_chart_series(rows, spec, hidden_lines, extra, x_view),
                          translator=translator, label_key1=label_key, fmt1=fmt,
                          log_y=log_y, pins1=axis_pins(y_pins.get(chart_key), axis))
 

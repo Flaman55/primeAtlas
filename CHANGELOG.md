@@ -306,6 +306,19 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   stronę). Każdy eksport pokazuje to, co zakładka: skalę logarytmiczną, punkty
   odniesienia, ukryte linie i przypięte osie, a wykresy wyglądają jak w PDF.
 
+### +32 — Benchmark: zoom and pan the charts
+
+- English: The Benchmark charts zoom and pan like the visualizations: the mouse wheel
+  zooms the floor axis around the pointer, dragging with the left button moves along
+  the floors, and a double click or a middle click shows every floor again. All three
+  charts follow the same floors, their Y axes fit the visible points, and the exports
+  draw what is in view.
+- Polski: Wykresy Benchmarku przybliża się i przesuwa jak wizualizacje: kółko myszy
+  przybliża oś pięter wokół kursora, przeciąganie lewym przyciskiem przesuwa po
+  piętrach, a dwuklik lub środkowy klik znowu pokazuje wszystkie piętra. Wszystkie trzy
+  wykresy pokazują te same piętra, ich osie Y dopasowują się do widocznych punktów, a
+  eksporty rysują to, co widać.
+
 ## 1.2.0 — 2026-11-01
 
 ### English

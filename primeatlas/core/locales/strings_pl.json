@@ -621,7 +621,7 @@
   "bench.export_svg": "SVG (wykresy)",
   "bench.export_html": "Strona HTML (wykresy i tabele)",
   "bench.export_snippet": "Fragment HTML (do osadzenia na stronie)",
-  "bench.chart_hint": "   Cały przebieg (sito + zapis): liczby/s i prędkość zapisu, ostatni pomiar na piętro i silnik; prawy klik na punkcie przypina oś Y",
+  "bench.chart_hint": "   Cały przebieg (sito + zapis): liczby/s i prędkość zapisu, ostatni pomiar na piętro i silnik; prawy klik na punkcie przypina oś Y; kółko przybliża piętra, przeciąganie przesuwa, dwuklik lub środkowy klik pokazuje wszystko",
   "bench.col_floor": "Piętro / bieg",
   "bench.no_data_row": "Brak jeszcze benchmark_log.csv -- najpierw uruchom orchestrator.",
   "bench.floor_measurements": "10p{base_exponent} ({count} pomiar(ów))",

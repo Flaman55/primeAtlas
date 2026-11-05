@@ -1,7 +1,7 @@
 """BenchmarkExport -- the Benchmark tab's report exports: the PDF (benchmark.
 render_benchmark_pdf()) and, from the "Export" menu, CSV, SVG, an HTML page and an HTML
 snippet (report_export.py). Every export follows the tab's view: log scale, references,
-hidden lines and pinned axes.
+hidden lines, pinned axes and the zoomed floor range.
 
 A BenchmarkTab mixin: it uses the tab's rows, points, view toggles, status variable and
 translator, so it is never instantiated on its own.
@@ -35,7 +35,8 @@ class BenchmarkExport:
     def _view_options(self):
         return {"translator": self.T, "sieve_points": self._benchmark_sieve_nps_points,
                 "references": self.references_var.get(), "log_y": self.log_scale_var.get(),
-                "hidden_lines": self._hidden_lines, "y_pins": self._y_pins}
+                "hidden_lines": self._hidden_lines, "y_pins": self._y_pins,
+                "x_view": self._x_view}
 
     def _ask_report_path(self, title, extension, filetype):
         T = self.T

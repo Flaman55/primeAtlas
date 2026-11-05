@@ -1892,10 +1892,17 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               n/s + write MB/s, sieve n/s + s/window, RAM per run +
                               RAM per window; right-click y-axis pin menu;
                               benchmark.py below is the pure-logic backend)
+  chart_zoom_controls.py        BenchmarkChartZoom mixin of the tab: wheel zooms the
+                              floor axis around the pointer, a left drag pans, a
+                              middle or double click shows every floor; one view for
+                              all three charts
+  chart_view.py                 the zoomed floor range: zoom around a floor, pan, the
+                              series inside it -- pure, no tkinter
+                              (unitTests/test_benchmark_chart_zoom.py)
   benchmark_export.py           BenchmarkExport mixin of the tab: "Save PDF" and the
                               "Export" menu (CSV, SVG, HTML page, HTML snippet), each
                               following the tab's view (log scale, references, hidden
-                              lines, pinned axes)
+                              lines, pinned axes, zoomed floors)
   report_export.py              the report as CSV (the log's rows), SVG (every report
                               chart stacked), a UTF-8 HTML page (charts inline + the
                               logical tables) or one <div class="primeatlas-benchmark">

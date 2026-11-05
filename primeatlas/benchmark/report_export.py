@@ -3,7 +3,8 @@ snippet to embed in another page. Pure functions, no tkinter.
 
 All of them follow the Benchmark tab's view like the PDF does: the report charts of
 benchmark.report_chart_pages() (one metric per chart), log scale, pinned axes, reference
-series and the lines hidden in the legends. The charts are chart_svg.chart_svg() drawings,
+series, the lines hidden in the legends and the zoomed floor range (the CSV keeps every
+row). The charts are chart_svg.chart_svg() drawings,
 the same layout as the PDF's; the tables are benchmark.benchmark_pdf_tables(), one per
 question, every cell in full and HTML-escaped.
 
@@ -43,7 +44,7 @@ _STYLE = """
 
 
 def report_charts_svg(rows, translator=None, sieve_points=None, references=False, log_y=False,
-                      hidden_lines=None, y_pins=None):
+                      hidden_lines=None, y_pins=None, x_view=None):
     """[<svg> element] of every report chart, in report order."""
     t = (translator or Translator(DEFAULT_LANGUAGE)).t
     y_pins = y_pins or {}
@@ -54,7 +55,7 @@ def report_charts_svg(rows, translator=None, sieve_points=None, references=False
             extra = reference_series(t) if kind == "sieve" and references and i == 0 else ()
             out.append(chart_svg(
                 CHART_WIDTH, CHART_HEIGHT,
-                series1=report_chart_series(rows, spec, hidden_lines, extra),
+                series1=report_chart_series(rows, spec, hidden_lines, extra, x_view),
                 translator=translator, label_key1=label_key, fmt1=fmt, log_y=log_y,
                 pins1=axis_pins(y_pins.get(chart_key), axis)))
     return out
@@ -94,7 +95,7 @@ def _content(fieldnames, rows, t, charts):
 
 
 def render(kind, fieldnames, rows, translator=None, sieve_points=None, references=False,
-           log_y=False, hidden_lines=None, y_pins=None):
+           log_y=False, hidden_lines=None, y_pins=None, x_view=None):
     """The report in `kind` (one of KINDS) as text."""
     t = (translator or Translator(DEFAULT_LANGUAGE)).t
     if kind == "csv":
@@ -110,7 +111,7 @@ def render(kind, fieldnames, rows, translator=None, sieve_points=None, reference
         writer.writerows(rows)
         return "".join(lines)
     charts = report_charts_svg(rows, translator, sieve_points, references, log_y,
-                               hidden_lines, y_pins)
+                               hidden_lines, y_pins, x_view)
     if kind == "svg":
         return _svg_report(charts)
     content = _content(fieldnames, rows, t, charts)
