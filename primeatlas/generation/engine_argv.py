@@ -28,6 +28,8 @@ KTUPLE_SIEVE_SCRIPT = os.path.abspath(
 
 PRIMESIEVE_SCRIPT = os.path.abspath(
     os.path.join(_SCRIPT_DIR, "prime_sieve", "prime_sieve_primesieve.py"))
+PRIMESIEVE_NATIVE_SCRIPT = os.path.abspath(
+    os.path.join(_SCRIPT_DIR, "prime_sieve", "primesieve_native.py"))
 HYBRID_SIEVE_SCRIPT = os.path.abspath(
     os.path.join(_SCRIPT_DIR, "prime_sieve", "hybrid_sieve.py"))
 PRIMESIEVE_QUERY_SCRIPT = os.path.abspath(
@@ -156,6 +158,15 @@ def build_primesieve_argv(base_exponent, target_idx_start, window_count_per_run,
         str(base_exponent), str(target_idx_start), str(window_count_per_run), str(window_m),
         "1" if write_files else "0",
     ]
+
+
+def build_primesieve_native_argv(base_exponent, target_idx_start, window_count_per_run,
+                                  window_m, mode, script_path=None):
+    """Linux argv of primesieve_native.py (the primesieve program itself, mode "print" or
+    "count"): <base_exponent> <target_idx_start> <target_idx_count> <window_m> <mode>."""
+    script = script_path if script_path is not None else PRIMESIEVE_NATIVE_SCRIPT
+    return ["python3", "-u", windows_path_to_wsl(script), str(base_exponent),
+            str(target_idx_start), str(window_count_per_run), str(window_m), mode]
 
 
 def build_hybrid_argv(base_exponent, iterations, width_windows, filter_prime_count, write_files,

@@ -96,10 +96,12 @@ def snapshot(portal):
     return files, metrics
 
 
-def compare_case(tmp, label, floor, idx_lo, idx_hi, window_m, write_files, extra_env=None):
+def compare_case(tmp, label, floor, idx_lo, idx_hi, window_m, write_files, extra_env=None,
+                 scripts=("prime_sieve_v4_1.py", "prime_sieve_v5.py")):
+    """Runs the reference and the new scanner of `scripts` on one case and compares them."""
     passed = True
     snaps = {}
-    for script in ("prime_sieve_v4_1.py", "prime_sieve_v5.py"):
+    for script in scripts:
         portal = os.path.join(tmp, f"{label.replace(' ', '_')}_{script}")
         os.makedirs(portal)
         if not os.path.exists(os.path.join(SIEVE_DIR, script)):
@@ -112,7 +114,7 @@ def compare_case(tmp, label, floor, idx_lo, idx_hi, window_m, write_files, extra
         snaps[script] = snapshot(portal)
     (ref_files, ref_metrics), (new_files, new_metrics) = snaps.values()
     if write_files:
-        passed &= check(len(ref_files) > 0, f"{label}: v4.1 wrote output files")
+        passed &= check(len(ref_files) > 0, f"{label}: {scripts[0]} wrote output files")
     passed &= check(sorted(new_files) == sorted(ref_files),
                     f"{label}: same file set ({len(ref_files)} files)")
     differing = [p for p in ref_files if new_files.get(p) != ref_files[p]]
@@ -120,7 +122,7 @@ def compare_case(tmp, label, floor, idx_lo, idx_hi, window_m, write_files, extra
         print(f"       differing files: {differing[:5]}")
     passed &= check(not differing, f"{label}: every file byte-identical")
     passed &= check(ref_metrics.get("total_primes_found") is not None,
-                    f"{label}: v4.1 reported total_primes_found")
+                    f"{label}: {scripts[0]} reported total_primes_found")
     passed &= check(new_metrics == ref_metrics, f"{label}: handoff result fields equal "
                     f"(total_primes_found={ref_metrics.get('total_primes_found')})")
     return passed

@@ -30,8 +30,8 @@ import window_integrity
 # v4 = v3 plus an inlined fast-path modulo for the per-sieving-prime phase computation (see
 # prime_sieve_v4.py's header). v4.1 = v4 plus base-gen/sieve/write timing and a
 # bytes-written counter in four benchmark_log.csv columns (base_gen_seconds/sieve_seconds/
-# write_seconds/bytes_written, see benchmark_log_schema.py). v5 = prime_sieve_v5.py (code
-# version v5.1), output identical to v4.1. v6 = the default engine (prime_sieve_v6.py,
+# write_seconds/bytes_written, see benchmark_log_schema.py). v5 = prime_sieve_v5_2.py (code
+# version v5.2: v5.1's sieve, parallel window writer), output identical to v4.1. v6 = the default engine (prime_sieve_v6.py,
 # wheel-30 buffer), output identical to v5. pt1 = partial sieve + primality test
 # (prime_sieve_pt1.py): D windows identical to v5, BPSW windows from MR_DET_BOUND on go to
 # the P store (see storage_kinds.py).
@@ -46,7 +46,7 @@ elif SCANNER_VERSION == "v4":
 elif SCANNER_VERSION == "v4.1":
     import prime_sieve_v4_1 as prime_sieve_module  # noqa: E402
 elif SCANNER_VERSION == "v5":
-    import prime_sieve_v5 as prime_sieve_module  # noqa: E402
+    import prime_sieve_v5_2 as prime_sieve_module  # noqa: E402
 elif SCANNER_VERSION == "v6":
     import prime_sieve_v6 as prime_sieve_module  # noqa: E402
 elif SCANNER_VERSION == "pt1":
@@ -171,6 +171,10 @@ _ENGINE_TOTAL_RE = re.compile(
     rb"\[\*\] TOTAL PRIMES FOUND this run: ([\d,]+) across (\d+) windows")
 
 
+# The line every scanner but pt1 prints once, right after its sieve phase.
+_SIEVE_DONE = b"[*] Batch sieve done in "
+
+
 def _engine_total(line):
     m = _ENGINE_TOTAL_RE.search(line)
     return (int(m.group(1).replace(b",", b"")), int(m.group(2))) if m else None
@@ -178,17 +182,25 @@ def _engine_total(line):
 
 def _run_teed(cmd):
     """Runs cmd with its stdout copied through to ours as it arrives; returns (exit code,
-    (total primes, windows) of the scanner's closing report or None). The report comes from
-    the scanner's own stdout, so parallel instances never read each other's (unlike the
-    shared scan-metrics handoff file)."""
+    (total primes, windows) of the scanner's closing report or None, seconds from launch
+    to the scanner's _SIEVE_DONE line or None). The report comes from the scanner's own
+    stdout, so parallel instances never read each other's (unlike the shared scan-metrics
+    handoff file). The scanner runs with PYTHONUNBUFFERED=1 so each line arrives when
+    printed (v4.1 and v5 do not flush the sieve line; a scanner prints a few dozen lines
+    per run, none per window); the time is read in this process, the scanner's code and
+    argv are unchanged."""
     sys.stdout.flush()
     out = getattr(sys.stdout, "buffer", None)
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+    t_launch = time.perf_counter()
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                            env=dict(os.environ, PYTHONUNBUFFERED="1"))
     totals = None
+    sieve_wall = None
     pending = b""
     fd = proc.stdout.fileno()
     while True:
         chunk = os.read(fd, 65536)
+        t_chunk = time.perf_counter()
         if not chunk:
             break
         if out is not None:
@@ -200,17 +212,19 @@ def _run_teed(cmd):
         *lines, pending = (pending + chunk).split(b"\n")
         for line in lines:
             totals = _engine_total(line) or totals
+            if sieve_wall is None and _SIEVE_DONE in line:
+                sieve_wall = t_chunk - t_launch
     totals = _engine_total(pending) or totals
     proc.stdout.close()
-    return proc.wait(), totals
+    return proc.wait(), totals, sieve_wall
 
 
 def run_batch(scanner_path, base_exponent, target_idx_start, target_idx_stop, workers,
               batches_per_worker, write_files, compute_sieving_primes_count, window_m,
-              engine_totals=None):
-    """Runs one scanner batch; True on exit code 0. With engine_totals (a list) the scanner's
-    stdout passes through _run_teed() and its (total primes, windows) report, when it prints
-    one, is appended."""
+              engine_totals=None, sieve_walls=None):
+    """Runs one scanner batch through _run_teed(); True on exit code 0. The scanner's
+    (total primes, windows) report is appended to engine_totals and its launch-to-sieve-
+    done seconds to sieve_walls, for the lists given and the lines it prints."""
     cmd = [
         sys.executable,
         scanner_path,
@@ -227,12 +241,11 @@ def run_batch(scanner_path, base_exponent, target_idx_start, target_idx_stop, wo
           f"{target_idx_start}..{target_idx_stop} "
           f"({target_idx_stop - target_idx_start + 1} windows)"
           + ("" if write_files else ", WRITE_FILES=False (count-only)") + "...")
-    if engine_totals is None:
-        returncode = subprocess.run(cmd).returncode
-    else:
-        returncode, totals = _run_teed(cmd)
-        if totals is not None:
-            engine_totals.append(totals)
+    returncode, totals, sieve_wall = _run_teed(cmd)
+    if engine_totals is not None and totals is not None:
+        engine_totals.append(totals)
+    if sieve_walls is not None and sieve_wall is not None:
+        sieve_walls.append(sieve_wall)
     if returncode != 0:
         print(f"[-] ERROR: batch {target_idx_start}..{target_idx_stop} exited with code "
               f"{returncode} -- stopping.")
@@ -265,13 +278,28 @@ def peak_child_rss_mb():
     return ru.ru_maxrss / 1024
 
 
+def scanner_write_threads(scanner_version, environ):
+    """Threads the scanner writes its windows with: v6 and v5 (v5.2) use their own
+    write-thread knobs (work_plan_v6, work_plan_v5, read from the environment the scanner
+    inherits); v3, v4, v4.1 and pt1 write on one thread (pt1 overlaps it with sieving,
+    still one writer)."""
+    if scanner_version == "v6":
+        import work_plan_v6
+        return work_plan_v6.write_threads_from_env(environ)
+    if scanner_version == "v5":
+        import work_plan_v5
+        return work_plan_v5.write_threads_from_env(environ)
+    return 1
+
+
 def print_benchmark_summary(base_exponent, start_idx, end_idx, total_seconds, portal_folder,
                              l_final=None, sieving_primes_count=None, max_child_rss_mb=None,
                              write_files=True, total_primes_found=None, windows_processed=None,
                              window_m=None, base_gen_seconds=None, sieve_seconds=None,
                              write_seconds=None, bytes_written=None, numbers_processed=None,
                              workers=None, run_status=RUN_STATUS_COMPLETED,
-                             verify_seconds=None, engine_counted=None):
+                             verify_seconds=None, engine_counted=None,
+                             sieve_wall_seconds=None):
     """Logs to the SAME benchmark_log.csv used by every orchestrator variant (see this file's
     header for why that's deliberately shared, not forked).
 
@@ -288,7 +316,9 @@ def print_benchmark_summary(base_exponent, start_idx, end_idx, total_seconds, po
     logs no row. verify_seconds is the D-proves-P time of the run (reconcile_batch()),
     part of total_seconds; it gets its own column so charts can tell it from the engine.
     engine_counted, (total primes, windows) reported by the scanners for the whole range,
-    replaces the header pass of a written run (one file open per window)."""
+    replaces the header pass of a written run (one file open per window).
+    sieve_wall_seconds: the sieve timed from the scanner's launch (_run_teed()), logged
+    next to the engine's own sieve_seconds."""
     window_m = WINDOW_M if window_m is None else window_m
     workers = WORKERS if workers is None else workers
     if write_files and engine_counted is not None:
@@ -356,6 +386,8 @@ def print_benchmark_summary(base_exponent, start_idx, end_idx, total_seconds, po
             parts.append(f"base-gen {base_gen_seconds:.2f}s")
         if sieve_seconds is not None:
             parts.append(f"sieve {sieve_seconds:.2f}s")
+        if sieve_wall_seconds is not None:
+            parts.append(f"sieve from launch {sieve_wall_seconds:.2f}s")
         if write_seconds is not None:
             parts.append(f"write {write_seconds:.2f}s")
             if bytes_written and write_seconds > 0:
@@ -376,6 +408,9 @@ def print_benchmark_summary(base_exponent, start_idx, end_idx, total_seconds, po
                 writer.writeheader()
             row = {
                 "engine": SCANNER_VERSION,
+                "engine_version": prime_sieve_module.VERSION,
+                "threads": workers,
+                "write_threads": scanner_write_threads(SCANNER_VERSION, os.environ),
                 "numbers_processed": numbers_processed if numbers_processed is not None else "",
                 "run_timestamp_utc": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
                 "base_exponent": base_exponent,
@@ -397,6 +432,8 @@ def print_benchmark_summary(base_exponent, start_idx, end_idx, total_seconds, po
                 "bytes_written": bytes_written if bytes_written is not None else "",
                 "run_status": run_status,
                 "verify_seconds": f"{verify_seconds:.3f}" if verify_seconds is not None else "",
+                "sieve_wall_seconds": (f"{sieve_wall_seconds:.3f}"
+                                       if sieve_wall_seconds is not None else ""),
             }
             writer.writerow(row)
         print(f"[BENCHMARK] logged to {log_path} (for cross-floor growth analysis)")
@@ -495,6 +532,7 @@ def run_orchestrator(base_exponent=None, window_count=None, start_auto=None, sta
     stopped = False
     verify_seconds = 0.0
     engine_totals = [] if write_files else None
+    sieve_walls = []
     batches_launched = 0
     while current < end_at:
         if generation_stop.stop_requested(portal_folder):
@@ -506,7 +544,8 @@ def run_orchestrator(base_exponent=None, window_count=None, start_auto=None, sta
         ok = run_batch(scanner_path, base_exponent, current, batch_stop, workers,
                         batches_per_worker=batches_per_worker, write_files=write_files,
                         compute_sieving_primes_count=compute_sieving_primes_count,
-                        window_m=window_m, engine_totals=engine_totals)
+                        window_m=window_m, engine_totals=engine_totals,
+                        sieve_walls=sieve_walls)
         if not ok and generation_stop.stop_requested(portal_folder):
             stopped = True
             if write_files:
@@ -582,6 +621,11 @@ def run_orchestrator(base_exponent=None, window_count=None, start_auto=None, sta
             counted = (sum(p for p, _w in engine_totals), sum(w for _p, w in engine_totals))
             if counted[1] == current - actual_start_window:
                 engine_counted = counted
+        # Launch-to-sieve-done of every batch, without the optional pi(L_final) diagnostic
+        # (base_gen_seconds), which the scanner runs before sieving and which is no sieve work.
+        sieve_wall_seconds = None
+        if len(sieve_walls) == batches_launched:
+            sieve_wall_seconds = sum(sieve_walls) - (base_gen_seconds or 0.0)
         print_benchmark_summary(base_exponent, actual_start_window, current,
                                  total_seconds, portal_folder,
                                  l_final=l_final, sieving_primes_count=sieving_primes_count,
@@ -593,7 +637,8 @@ def run_orchestrator(base_exponent=None, window_count=None, start_auto=None, sta
                                  numbers_processed=metrics.get("numbers_processed"),
                                  workers=workers,
                                  verify_seconds=verify_seconds if write_files else None,
-                                 engine_counted=engine_counted)
+                                 engine_counted=engine_counted,
+                                 sieve_wall_seconds=sieve_wall_seconds)
 
     return not interrupted
 

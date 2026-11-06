@@ -26,7 +26,7 @@ library and not a server: one user, one machine, one storage folder at a time.
 
 ```
  Windows                                              WSL (Ubuntu)
- prime_atlas_v2.py ── PortalBrowserApp (tkinter) ──wsl.exe──> orchestrator_loop_v2.py ─> orchestrator_v3.py ─> prime_sieve_v5.py (.so)
+ prime_atlas_v2.py ── PortalBrowserApp (tkinter) ──wsl.exe──> orchestrator_loop_v2.py ─> orchestrator_v3.py ─> prime_sieve_v6.py / v5_2 (.so)
         │                │                          │       constellation_finder_v2_3.py
         │                │                          │       ktuple_sieve_v2_2.py
         │                │ log tail (.generation_logs/), stop request files, exit code

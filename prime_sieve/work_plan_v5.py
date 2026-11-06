@@ -22,7 +22,9 @@ Perf knobs (environment variables; the defaults are arbitrary, picked by measure
     memory, so the bucket stage grows with the square of the run length at a fixed bucket
     memory; 8192 MiB against 1024 MiB: -32 %. run_budget.py lowers it when RAM is short;
   - PRIMEATLAS_V5_PIECES_PER_THREAD: bucketed prime pieces per thread, claimed one at a time,
-    so the last pieces even out thread speeds.
+    so the last pieces even out thread speeds;
+  - PRIMEATLAS_V5_WRITE_THREADS: threads of v5.2's write phase (parallel_window_writer.py);
+    8 as in v6, where 4-8 threads measured the same on a /mnt drive. v5.1 ignores it.
 """
 import math
 
@@ -34,6 +36,8 @@ BUCKET_MB_ENV = "PRIMEATLAS_V5_BUCKET_MB"
 DEFAULT_BUCKET_MB = 8192
 PIECES_PER_THREAD_ENV = "PRIMEATLAS_V5_PIECES_PER_THREAD"
 DEFAULT_PIECES_PER_THREAD = 16
+WRITE_THREADS_ENV = "PRIMEATLAS_V5_WRITE_THREADS"
+DEFAULT_WRITE_THREADS = 8
 
 
 def _positive_int_from_env(environ, name, default, unit):
@@ -180,3 +184,9 @@ def plan_pieces(L_final, combined_size, lo, n_threads,
     batches = build_equal_cost_batches(L_final, combined_size,
                                        max(1, n_threads) * max(1, pieces_per_thread), lo=lo)
     return [r for batch in batches for r in batch]
+
+
+def write_threads_from_env(environ):
+    """Write threads of v5.2 from `environ` (a mapping), DEFAULT_WRITE_THREADS when unset.
+    Raises ValueError unless the value is a positive integer."""
+    return _positive_int_from_env(environ, WRITE_THREADS_ENV, DEFAULT_WRITE_THREADS, "threads")

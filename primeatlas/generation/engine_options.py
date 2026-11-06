@@ -3,7 +3,7 @@
 The engine (v4.1, v5, v6 or pt1) and its knobs are form fields persisted in the Generation
 settings' "loop" section. They reach the WSL side as environment variables in front of the
 launched command (see generation.build_wsl_logged_command()): orchestrator_v3.py reads
-PRIMEATLAS_SCANNER_VERSION, prime_sieve_v5.py the PRIMEATLAS_V5_* knobs through
+PRIMEATLAS_SCANNER_VERSION, prime_sieve_v5_2.py the PRIMEATLAS_V5_* knobs through
 work_plan_v5.py, prime_sieve_v6.py the PRIMEATLAS_V6_* knobs through work_plan_v6.py,
 prime_sieve_pt1.py the PRIMEATLAS_PT1_* knobs through pt1_plan.py. v5 and v6 have separate
 knob sets: their best values differ. The same variables are the command-line interface for
@@ -28,7 +28,7 @@ ENGINE_PT1 = run_budget.ENGINE_PT1
 ENGINES = (ENGINE_V41, ENGINE_V5, ENGINE_V6, ENGINE_PT1)
 DEFAULT_ENGINE = ENGINE_V6
 BUCKETED_ENGINES = run_budget.BUCKETED_ENGINES
-ENGINE_VERSIONS = {ENGINE_V41: "v4.1", ENGINE_V5: "v5.1", ENGINE_V6: "v6.0", ENGINE_PT1: "pt1"}
+ENGINE_VERSIONS = {ENGINE_V41: "v4.1", ENGINE_V5: "v5.2", ENGINE_V6: "v6.0", ENGINE_PT1: "pt1"}
 
 SCANNER_VERSION_ENV = "PRIMEATLAS_SCANNER_VERSION"
 PT1_B_ENV = "PRIMEATLAS_PT1_B"
@@ -37,23 +37,22 @@ PT1_CHUNK_KB_ENV = "PRIMEATLAS_PT1_CHUNK_KB"
 RAM_BUDGET_KNOB = "ram_budget_pct"
 
 
-# v6 writes its windows with a thread pool (wheel30_writer.py); v5's write phase is serial.
-_WRITE_THREADS_KNOB = "v6_write_threads"
+# v5.2 and v6 write their windows with a thread pool (parallel_window_writer.py).
 _DEFAULT_WRITE_THREADS = 8
 
 
 def _bucketed_knobs(engine):
-    return ((f"{engine}_segment_kb", f"{engine}_region_kb", f"{engine}_bucket_mb",
-             f"{engine}_windows_at_25", f"{engine}_pieces_per_thread")
-            + ((_WRITE_THREADS_KNOB,) if engine == ENGINE_V6 else ()))
+    return (f"{engine}_segment_kb", f"{engine}_region_kb", f"{engine}_bucket_mb",
+            f"{engine}_windows_at_25", f"{engine}_pieces_per_thread",
+            f"{engine}_write_threads")
 
 
 # Per bucketed engine: knob -> environment variable (work_plan_v5.py / work_plan_v6.py). The
 # windows-at-25 knob only sizes the run on this side, so it has none.
 KNOB_ENVS = {
     engine: {f"{engine}_{knob}": f"PRIMEATLAS_{engine.upper()}_{knob.upper()}"
-             for knob in ("segment_kb", "region_kb", "bucket_mb", "pieces_per_thread")
-             + (("write_threads",) if engine == ENGINE_V6 else ())}
+             for knob in ("segment_kb", "region_kb", "bucket_mb", "pieces_per_thread",
+                          "write_threads")}
     for engine in BUCKETED_ENGINES
 }
 _PT1_KNOBS = ("pt1_b", "pt1_chunk_kb")
