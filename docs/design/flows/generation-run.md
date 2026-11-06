@@ -7,7 +7,7 @@ Visualization tabs (`generation_offer_coordinator.py`); a restore job (Settings 
 
 ```
  _on_run_loop ─> engine_argv.build_loop_argv ─> wsl_command.build_wsl_logged_command
-   └─> WslLoggedRunner (wsl.exe) ─> orchestrator_loop_v2.py ─> orchestrator_v3.py ─> engine (prime_sieve_v6.py by default)
+   └─> WslLoggedRunner (wsl.exe) ─> orchestrator_loop_v2.py ─> orchestrator_v3.py ─> engine (prime_sieve_v6_1.py by default)
  GUI: _poll_loop_output tails .generation_logs/{run_id}.log ─> progress bar, console
  exit ─> _on_loop_finished ─> totals bump, reload_primes_tree
 ```
@@ -21,7 +21,7 @@ Visualization tabs (`generation_offer_coordinator.py`); a restore job (Settings 
 | Command (`engine_argv.py`, `wsl_command.py`) | always | storage path, engine, knobs | `wsl.exe` command with `CONSTELLATION_PORTAL_DIR` and `PRIMEATLAS_*` env; log/exit paths |
 | Active-run marker (`run_guard.py`) | every launch | | `.generation_logs/ACTIVE_RUN.json` |
 | Orchestration (`prime_sieve/orchestrator_loop_v2.py`, `orchestrator_v3.py`) | WSL | `GENERATION_STOP_REQUEST.txt` before each iteration | runs the scanner per batch |
-| Sieve (`prime_sieve_v6.py`, or the engine chosen) | WSL | sieving primes | PGS2 windows in `10p{N}/source_primes/shard_*/`; `benchmark_log.csv` row, `10p{N}/floor_meta.json` |
+| Sieve (`prime_sieve_v6_1.py`, or the engine chosen) | WSL | sieving primes | PGS2 windows in `10p{N}/source_primes/shard_*/`; `benchmark_log.csv` row, `10p{N}/floor_meta.json` |
 | Follow (`run_progress.py`, `run_output.py`) | while running | log tail | consoles, shared progress bar, status |
 | Stop (`run_guard.py`, `generation_stop.py`) | Stop clicked | | stop request file; scanner processes killed, orchestrator logs what was written |
 | Finish (`loop_section._on_loop_finished`) | exit file appears | new benchmark rows | totals bump (`.portal_totals_cache.json`), Primes tree reload, marker cleared |
