@@ -1594,7 +1594,7 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               by the run's window count
                               (unitTests/test_engine_presets.py)
   engine_fields.py              EngineFields -- the pipeline form's engine Combobox
-                              (with the engine's code version, e.g. v5 -> v5.1) and
+                              (with the engine's code version, e.g. v5 -> v5.2) and
                               the knob Entries of the selected engine only, each with
                               an InfoTip; v5 and v6 have separate knob sets (their
                               best values differ) and a profile list per engine; the
@@ -2081,10 +2081,14 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
   wheel30_writer.py          v6's write phase: each window's PGS2 bytes from the
                               native gap encoder (wheel_window_gaps() in
                               prime_sieve_engine_v6.c; NumPy path below 7), files
-                              written by a thread pool (PRIMEATLAS_V6_WRITE_THREADS,
-                              default 8) with each shard folder created once and
-                              progress lines while it writes
+                              written through parallel_window_writer.py
+                              (PRIMEATLAS_V6_WRITE_THREADS, default 8)
                               (unitTests/test_wheel30_writer.py)
+  parallel_window_writer.py  thread-pool write phase shared by v5.2 and v6:
+                              write_jobs(jobs, encode, n_threads) encodes and
+                              writes every (path, lo, hi) window, each shard folder
+                              created once, progress lines while it writes
+                              (unitTests/test_parallel_window_writer.py)
   engine_v6_lib.py           ctypes binding of prime_sieve_engine_v6.so, loaded
                               on first use
   work_plan_v6.py            v6's knobs (env PRIMEATLAS_V6_SEGMENT_KB, _REGION_KB,
@@ -2093,7 +2097,13 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               end (half a segment's numbers); slices and pieces
                               come from work_plan_v5.py
                               (unitTests/test_work_plan_v6.py)
-  prime_sieve_v5.py          engine v5 (code v5.1): shared buffer holds odd
+  prime_sieve_v5_2.py        engine v5 (code v5.2): the frozen prime_sieve_v5.py
+                              with its write phase on parallel_window_writer.py
+                              (PRIMEATLAS_V5_WRITE_THREADS, default 8); output
+                              identical to v5.1 for any thread count
+                              (unitTests/test_engine_v5_2_identity.py)
+  prime_sieve_v5.py          frozen engine v5.1 (imported by v6 and pt1 for its
+                              shared helpers): shared buffer holds odd
                               numbers only (half the RAM, p = 2 never sieved),
                               small primes sieve cache-sized segments of
                               buffer slices (work_plan_v5.py), larger primes
@@ -2145,7 +2155,8 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               seed from known pi(10^n) values
   pgs2_vector.py             NumPy PGS2 writer: encodes a window's whole gap stream
                               in one vectorized pass from int64 prime offsets, byte-
-                              identical to the per-prime writer; read_window_count()
+                              identical to the per-prime writer (encode_prime_window_
+                              offsets() gives the bytes, v5.2's thread pool writes them); read_window_count()
                               reads only a header's prime count, unbuffered
                               (read_window_count_and_size(): plus the file size)
                               (unitTests/test_pgs2_vector.py)

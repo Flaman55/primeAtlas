@@ -185,6 +185,11 @@ def check_pieces_setting():
     passed &= check((work_plan_v5.DEFAULT_SEGMENT_KB, work_plan_v5.DEFAULT_REGION_KB,
                      work_plan_v5.DEFAULT_BUCKET_MB) == (2048, 1024, 8192),
                     "v5.1 defaults: 2048 KiB segments, 1024 KiB regions, 8192 MiB buckets")
+    passed &= check(work_plan_v5.WRITE_THREADS_ENV == "PRIMEATLAS_V5_WRITE_THREADS"
+                    and work_plan_v5.write_threads_from_env({}) == 8
+                    and work_plan_v5.write_threads_from_env(
+                        {"PRIMEATLAS_V5_WRITE_THREADS": "3"}) == 3,
+                    "write threads (v5.2): PRIMEATLAS_V5_WRITE_THREADS, default 8")
     return passed
 
 

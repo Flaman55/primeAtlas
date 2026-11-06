@@ -30,8 +30,8 @@ import window_integrity
 # v4 = v3 plus an inlined fast-path modulo for the per-sieving-prime phase computation (see
 # prime_sieve_v4.py's header). v4.1 = v4 plus base-gen/sieve/write timing and a
 # bytes-written counter in four benchmark_log.csv columns (base_gen_seconds/sieve_seconds/
-# write_seconds/bytes_written, see benchmark_log_schema.py). v5 = prime_sieve_v5.py (code
-# version v5.1), output identical to v4.1. v6 = the default engine (prime_sieve_v6.py,
+# write_seconds/bytes_written, see benchmark_log_schema.py). v5 = prime_sieve_v5_2.py (code
+# version v5.2: v5.1's sieve, parallel window writer), output identical to v4.1. v6 = the default engine (prime_sieve_v6.py,
 # wheel-30 buffer), output identical to v5. pt1 = partial sieve + primality test
 # (prime_sieve_pt1.py): D windows identical to v5, BPSW windows from MR_DET_BOUND on go to
 # the P store (see storage_kinds.py).
@@ -46,7 +46,7 @@ elif SCANNER_VERSION == "v4":
 elif SCANNER_VERSION == "v4.1":
     import prime_sieve_v4_1 as prime_sieve_module  # noqa: E402
 elif SCANNER_VERSION == "v5":
-    import prime_sieve_v5 as prime_sieve_module  # noqa: E402
+    import prime_sieve_v5_2 as prime_sieve_module  # noqa: E402
 elif SCANNER_VERSION == "v6":
     import prime_sieve_v6 as prime_sieve_module  # noqa: E402
 elif SCANNER_VERSION == "pt1":
@@ -279,12 +279,16 @@ def peak_child_rss_mb():
 
 
 def scanner_write_threads(scanner_version, environ):
-    """Threads the scanner writes its windows with: v6 uses its write-thread knob
-    (work_plan_v6, read from the environment the scanner inherits); v3, v4, v4.1, v5 and
-    pt1 write on one thread (pt1 overlaps it with sieving, still one writer)."""
+    """Threads the scanner writes its windows with: v6 and v5 (v5.2) use their own
+    write-thread knobs (work_plan_v6, work_plan_v5, read from the environment the scanner
+    inherits); v3, v4, v4.1 and pt1 write on one thread (pt1 overlaps it with sieving,
+    still one writer)."""
     if scanner_version == "v6":
         import work_plan_v6
         return work_plan_v6.write_threads_from_env(environ)
+    if scanner_version == "v5":
+        import work_plan_v5
+        return work_plan_v5.write_threads_from_env(environ)
     return 1
 
 

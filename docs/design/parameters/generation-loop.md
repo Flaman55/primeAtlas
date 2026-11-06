@@ -22,6 +22,7 @@ Generation tab, Section A: the generation pipeline run (orchestrator_loop_v2.py;
 | `v5_bucket_mb` | `8192` | integer >= 1 | `engine_options.py` | v5 bucket memory (MiB): |
 | `v5_windows_at_25` | `20000` | integer >= 1 | `engine_options.py` | v5 windows / run @ floor 25: |
 | `v5_pieces_per_thread` | `16` | integer >= 1 | `engine_options.py` | v5 prime pieces / thread: |
+| `v5_write_threads` | `8` | integer >= 1 | `engine_options.py` | v5 write threads: |
 | `v6_segment_kb` | `2048` | integer >= 1 | `engine_options.py` | v6 segment (KiB): |
 | `v6_region_kb` | `1024` | integer >= 1 | `engine_options.py` | v6 bucket region (KiB): |
 | `v6_bucket_mb` | `8192` | integer >= 1 | `engine_options.py` | v6 bucket memory (MiB): |

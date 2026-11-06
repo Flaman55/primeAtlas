@@ -69,13 +69,18 @@ def read_window_count_and_size(path):
     return int.from_bytes(header[pos:pos + 4], "big"), size
 
 
+def encode_prime_window_offsets(lo, offsets, generated_at):
+    """PGS2 file bytes of the primes lo + offsets (offsets: ascending int64 array)."""
+    count = len(offsets)
+    base = lo + int(offsets[0]) if count else 0
+    gaps = np.diff(offsets).astype(np.uint64) if count > 1 else np.empty(0, dtype=np.uint64)
+    return pgs2_header(base, count, generated_at) + encode_varints(gaps)
+
+
 def write_prime_window_offsets(path, lo, offsets, generated_at=None):
     """Writes the primes lo + offsets (offsets: ascending int64 array) to `path` in PGS2
     format with one write call. `generated_at` defaults to now (unix seconds)."""
     if generated_at is None:
         generated_at = int(time.time())
-    count = len(offsets)
-    base = lo + int(offsets[0]) if count else 0
-    gaps = np.diff(offsets).astype(np.uint64) if count > 1 else np.empty(0, dtype=np.uint64)
     with open(path, "wb") as f:
-        f.write(pgs2_header(base, count, generated_at) + encode_varints(gaps))
+        f.write(encode_prime_window_offsets(lo, offsets, generated_at))

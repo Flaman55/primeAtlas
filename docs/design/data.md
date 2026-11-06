@@ -16,7 +16,7 @@ used as it was written.
 | D-proves-P marks | `10p{N}/DP_PROVEN.txt`, `10p{N}/DP_MISMATCH.txt` | `storage_kinds.py`, `dp_verify.py` | text | written by "Verify P against D" | Primes tab |
 | Sieving-prime count cache | `10p{N}/sieving_primes_count_cache.json` | `prime_sieve/sieving_prime_count_v5.py` | JSON | none (diagnostic) | engines, backup manifest |
 | primesieve text output | `primesieve/10p{N}/<start>_<stop>.txt` | `prime_sieve/primesieve_native.py` (Native, print) | primesieve's own `--print` text, one prime per line; not Atlas storage, no reader in the app | none | none |
-| Last scan metrics | `last_scan_metrics.json` | engines (`prime_sieve_v5.py`, primesieve, cudasieve) | JSON | overwritten per run | GUI run summary |
+| Last scan metrics | `last_scan_metrics.json` | engines (`prime_sieve_v5_2.py`, `prime_sieve_v6.py`, primesieve, cudasieve) | JSON | overwritten per run | GUI run summary |
 
 ## Run history and totals
 
