@@ -428,6 +428,21 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   a całe uruchomienie trwa około 8 s zamiast 29 s. Pliki są bajt w bajt takie, jakie
   zapisuje v5.1; v5.1 zostaje w drzewie do porównań.
 
+### +36 — Settings: WSL component versions, duplicate-copy warning
+
+- English: Settings → Updates → WSL environment has a "Component versions" button. It
+  reads from WSL the distribution, Python, numpy, gcc, and the versions of libprimesieve
+  and libprimecount together with the file each one is loaded from. When a library is
+  installed twice (for example the apt package next to a build under /usr/local), a
+  warning lists every copy with its version and says which one PrimeAtlas loads; a
+  second warning appears when the engines load a different copy than Python.
+- Polski: Ustawienia → Aktualizacje → Środowisko WSL mają przycisk „Wersje
+  komponentów”. Odczytuje z WSL dystrybucję, Pythona, numpy, gcc oraz wersje
+  libprimesieve i libprimecount razem z plikiem, z którego każda jest ładowana. Gdy
+  biblioteka jest zainstalowana dwa razy (np. pakiet apt obok buildu w /usr/local),
+  ostrzeżenie wymienia każdą kopię z wersją i mówi, którą ładuje PrimeAtlas; drugie
+  ostrzeżenie pojawia się, gdy silniki ładują inną kopię niż Python.
+
 ## 1.2.0 — 2026-11-01
 
 ### English

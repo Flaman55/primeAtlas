@@ -36,6 +36,8 @@ PRIMESIEVE_QUERY_SCRIPT = os.path.abspath(
     os.path.join(_SCRIPT_DIR, "prime_sieve", "primesieve_query.py"))
 PRIMECOUNT_QUERY_SCRIPT = os.path.abspath(
     os.path.join(_SCRIPT_DIR, "prime_sieve", "primecount_query.py"))
+ENV_VERSIONS_SCRIPT = os.path.abspath(
+    os.path.join(_SCRIPT_DIR, "prime_sieve", "env_versions.py"))
 
 
 # ------------------------------------------------------------------------------------------
@@ -48,6 +50,12 @@ PRIMECOUNT_QUERY_SCRIPT = os.path.abspath(
 
 CUDASIEVE_SCRIPT = os.path.abspath(
     os.path.join(_SCRIPT_DIR, "prime_sieve", "prime_sieve_cudasieve.py"))
+
+
+def build_env_versions_argv():
+    """LINUX-side argv for env_versions.py, the Settings -> WSL environment component
+    versions probe."""
+    return ["python3", windows_path_to_wsl(ENV_VERSIONS_SCRIPT)]
 
 
 def build_cudasieve_status_argv():

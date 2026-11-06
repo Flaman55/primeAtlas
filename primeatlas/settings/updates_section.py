@@ -17,6 +17,7 @@ from tkinter.scrolledtext import ScrolledText
 
 from ..generation.generation_console import GenerationConsole
 from . import app_update
+from .env_versions_view import format_report
 
 # Same URL prime_sieve_cudasieve.py's own CUDASIEVE_REPO_URL clones from -- duplicated
 # here (not imported -- that module is WSL-side, this is the Windows GUI process) purely
@@ -555,6 +556,37 @@ class UpdatesSection:
         self.env_status_var.set(self.T(
             "settings.env_status_missing", missing=", ".join(missing_labels)))
 
+    def _on_check_env_versions(self):
+        """Runs env_versions.py in WSL on a background thread; the result lands in
+        _on_env_versions_result()."""
+        if self._env_versions_running:
+            return
+        self._env_versions_running = True
+        self.env_versions_var.set(self.T("settings.env_versions_checking"))
+        self.env_versions_warning_var.set("")
+
+        def worker():
+            # Always resolves the guard flag, same as _on_check_primecount_status().
+            try:
+                ok, payload = self.wsl["run_env_versions_wsl_blocking"](
+                    self.wsl["build_env_versions_argv"](), 60)
+            except Exception as e:  # noqa: BLE001
+                ok, payload = False, f"{type(e).__name__}: {e}"
+            self.after(0, lambda: self._on_env_versions_result(ok, payload))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_env_versions_result(self, ok, payload):
+        self._env_versions_running = False
+        if not ok:
+            self.env_versions_var.set(
+                self.T("settings.env_versions_error", error=str(payload)[:300]))
+            self.env_versions_warning_var.set("")
+            return
+        text, warning = format_report(payload, self.T)
+        self.env_versions_var.set(text)
+        self.env_versions_warning_var.set(warning)
+
     def _build_updates_tab(self, parent):
         outer = ttk.Frame(parent)
         outer.pack(fill="both", expand=True, padx=6, pady=6)
@@ -675,6 +707,22 @@ class UpdatesSection:
         # startup) -- AppSettings.env_status is a plain local JSON read with no subprocess
         # involved, so there's no such race to avoid here.
         self._show_cached_env_status()
+
+        # Component versions (env_versions.py): a real WSL round trip, so only on a click.
+        versions_row = ttk.Frame(env_frame)
+        versions_row.pack(fill="x", padx=6, pady=(0, 6))
+        ttk.Button(versions_row, text=self.T("settings.env_versions_button"),
+                   command=self._on_check_env_versions).pack(side="left", anchor="n")
+        versions_text = ttk.Frame(versions_row)
+        versions_text.pack(side="left", fill="x", expand=True, padx=(10, 0))
+        self.env_versions_var = tk.StringVar(
+            value=self.T("settings.env_versions_not_checked"))
+        ttk.Label(versions_text, textvariable=self.env_versions_var, justify="left",
+                  wraplength=640).pack(anchor="w")
+        self.env_versions_warning_var = tk.StringVar(value="")
+        ttk.Label(versions_text, textvariable=self.env_versions_warning_var, justify="left",
+                  wraplength=640, style="Status.TLabel").pack(anchor="w", pady=(4, 0))
+        self._env_versions_running = False
 
         # PrimeAtlas's own self-update -- checks GitHub (via `git fetch` against this
         # checkout's own `origin` remote) for newer commits on main and, on request,

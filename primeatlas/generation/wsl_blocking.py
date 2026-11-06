@@ -60,6 +60,12 @@ def run_cudasieve_wsl_blocking(argv, portal_folder, timeout=120):
     return _run_wsl_blocking_via_logfile(argv, portal_folder, "cudasieve_query", timeout)
 
 
+def run_env_versions_wsl_blocking(argv, portal_folder, timeout=60):
+    """env_versions.py's blocking WSL call; (True, full report dict) or (False, message),
+    the _run_wsl_blocking_via_logfile() contract."""
+    return _run_wsl_blocking_via_logfile(argv, portal_folder, "env_versions", timeout)
+
+
 def _wait_for_wsl_process(proc, timeout, cleanup_paths):
     """Polls an already-started Popen `proc` until it exits or `timeout` elapses, NEVER
     calling wait()/communicate() (see run_cudasieve_wsl_blocking's own docstring for the
