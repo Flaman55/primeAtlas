@@ -2072,7 +2072,10 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
   prime_sieve_v4_1.py        same as v4, plus base-gen/sieve/write phase timing and
                               bytes-written tracking, feeding the Benchmark tab's
                               second (sieve-speed/write-speed) chart
-  prime_sieve_v6.py          default engine (code v6.0): v5's pipeline on a
+  prime_sieve_v6_1.py        default engine (code v6.1): prime_sieve_v6.py on
+                              prime_sieve_engine_v6_1.so; output identical to
+                              v6.0 (unitTests/test_engine_v6_1_identity.py)
+  prime_sieve_v6.py          engine v6.0, kept for comparison: v5's pipeline on a
                               wheel-30 buffer (wheel30_layout.py), 8 bits per
                               30 numbers, so a run of the same RAM covers 1.875
                               times v5's numbers and pays the per-run generation
@@ -2095,8 +2098,9 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               writes every (path, lo, hi) window, each shard folder
                               created once, progress lines while it writes
                               (unitTests/test_parallel_window_writer.py)
-  engine_v6_lib.py           ctypes binding of prime_sieve_engine_v6.so, loaded
-                              on first use
+  engine_v6_lib.py           ctypes binding of prime_sieve_engine_v6.so (v6.0)
+                              and prime_sieve_engine_v6_1.so (v6.1, same
+                              functions), each loaded on first use
   work_plan_v6.py            v6's knobs (env PRIMEATLAS_V6_SEGMENT_KB, _REGION_KB,
                               _BUCKET_MB, _PIECES_PER_THREAD, _WRITE_THREADS;
                               defaults 2048 / 1024 / 8192 / 16 / 8) and where its segmented primes
@@ -2245,6 +2249,11 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               phase on the wheel-30 buffer; a prime p marks p*k
                               for k coprime to 30 only, stepping k by the wheel's
                               gaps; presieve pattern for 7..17
+  prime_sieve_engine_v6_1.c  C sieve core for prime_sieve_v6_1.py (ctypes): v6.0's,
+                              with the segmented primes marking a whole wheel
+                              turn (8 fixed byte offsets, p bytes apart) per
+                              step and the bucket hits staged in one 64-byte
+                              line per region, written with non-temporal stores
   prime_sieve_engine_v5.c    C sieve core for prime_sieve_v5.py (ctypes); the
                               per-prime phase first_odd mod p comes from a
                               double-precision quotient with an exact one-p
@@ -2512,6 +2521,7 @@ gcc -O3 -shared -fPIC prime_sieve_engine_v3.c -o prime_sieve_engine_v3.so -lprim
 gcc -O3 -shared -fPIC prime_sieve_engine_v4.c -o prime_sieve_engine_v4.so -lprimesieve -lstdc++ -lm
 gcc -O3 -shared -fPIC prime_sieve_engine_v5.c -o prime_sieve_engine_v5.so -lprimesieve -lstdc++ -lm
 gcc -O3 -shared -fPIC prime_sieve_engine_v6.c -o prime_sieve_engine_v6.so -lprimesieve -lstdc++ -lm
+gcc -O3 -shared -fPIC prime_sieve_engine_v6_1.c -o prime_sieve_engine_v6_1.so -lprimesieve -lstdc++ -lm
 ```
 
 Prebuilt `.so` files are included; rebuild if the WSL environment's glibc/architecture

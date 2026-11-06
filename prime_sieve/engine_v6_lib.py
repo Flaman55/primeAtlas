@@ -1,20 +1,26 @@
-"""ctypes binding of prime_sieve_engine_v6.so, loaded on first use (a forked worker process
-loads its own copy unless the parent loaded it before the fork)."""
+"""ctypes binding of the v6 engines, prime_sieve_engine_v6.so (v6.0, the default) and
+prime_sieve_engine_v6_1.so (v6.1): both export the same functions with the same signatures.
+Each is loaded on first use (a forked worker process loads its own copy unless the parent
+loaded it before the fork)."""
 import ctypes
 import os
 
-_LIB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "prime_sieve_engine_v6.so")
-_lib = None  # lazily loaded, SEPARATELY in each worker process
+_DIR = os.path.dirname(os.path.abspath(__file__))
+V6_0 = "prime_sieve_engine_v6.so"
+V6_1 = "prime_sieve_engine_v6_1.so"
+_libs = {}  # file name -> CDLL, lazily loaded, SEPARATELY in each worker process
 
 
-def load_lib():
-    global _lib
-    if _lib is None:
-        if not os.path.exists(_LIB_PATH):
+def load_lib(name=V6_0):
+    lib = _libs.get(name)
+    if lib is None:
+        path = os.path.join(_DIR, name)
+        if not os.path.exists(path):
+            source = name[:-len(".so")] + ".c"
             raise RuntimeError(
-                f"Missing {_LIB_PATH} -- build it first: gcc -O3 -shared -fPIC "
-                f"prime_sieve_engine_v6.c -o prime_sieve_engine_v6.so -lprimesieve -lstdc++ -lm")
-        lib = ctypes.CDLL(_LIB_PATH)
+                f"Missing {path} -- build it first: gcc -O3 -shared -fPIC "
+                f"{source} -o {name} -lprimesieve -lstdc++ -lm")
+        lib = ctypes.CDLL(path)
         lib.sieve_wheel_bucketed.argtypes = [
             ctypes.POINTER(ctypes.c_uint64),  # piece_lo
             ctypes.POINTER(ctypes.c_uint64),  # piece_hi
@@ -57,5 +63,5 @@ def load_lib():
             ctypes.POINTER(ctypes.c_uint64),  # first_out
         ]
         lib.wheel_window_gaps.restype = ctypes.c_int64
-        _lib = lib
-    return _lib
+        _libs[name] = lib
+    return lib

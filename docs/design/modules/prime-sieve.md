@@ -10,7 +10,7 @@ standard-library helpers.
 | Part | Files |
 |---|---|
 | Format | `prime_sieve_v1.py` (PGS2 read/write, varints), `pgs2_vector.py`, `window_integrity.py` |
-| Engines | `prime_sieve_v6.py` + `engine_v6_lib.py` + `work_plan_v6.py` + `wheel30_layout.py` + `wheel30_writer.py` (default, code v6.0), `prime_sieve_v5_2.py` + `engine_v5_lib.py` + `work_plan_v5.py` (code v5.2), `parallel_window_writer.py` (write phase of v5.2 and v6), `prime_sieve_pt1.py` + `pt1_plan.py`, `prime_sieve_primesieve.py`, `prime_sieve_cudasieve.py`, `hybrid_*.py`; frozen `prime_sieve_v3.py`, `prime_sieve_v4.py`, `prime_sieve_v4_1.py`, `prime_sieve_v5.py` (v5.1, still the home of helpers v6 and pt1 import) |
+| Engines | `prime_sieve_v6_1.py` + `engine_v6_lib.py` + `work_plan_v6.py` + `wheel30_layout.py` + `wheel30_writer.py` (default, code v6.1; `prime_sieve_v6.py`, v6.0, kept for comparison), `prime_sieve_v5_2.py` + `engine_v5_lib.py` + `work_plan_v5.py` (code v5.2), `parallel_window_writer.py` (write phase of v5.2 and v6), `prime_sieve_pt1.py` + `pt1_plan.py`, `prime_sieve_primesieve.py`, `prime_sieve_cudasieve.py`, `hybrid_*.py`; frozen `prime_sieve_v3.py`, `prime_sieve_v4.py`, `prime_sieve_v4_1.py`, `prime_sieve_v5.py` (v5.1, still the home of helpers v6 and pt1 import) |
 | Orchestrators | `orchestrator_loop_v2.py`, `orchestrator_v3.py`, `orchestrator_loop_helpers.py`, `overlap_pipeline.py` |
 | Shared storage helpers | `window_sharding.py`, `storage_kinds.py` (D/P stores), `dp_verify.py`, `benchmark_log_schema.py`, `floor_meta_store.py`, `hit_paging.py`, `generation_stop.py`, `sieving_prime_count_v5.py` |
 | Queries | `primesieve_query.py`, `primecount_query.py`, `prime_count_primecount.py` |
@@ -47,6 +47,34 @@ Measured on a 12-core Zen 3 with 64 GB (count-only, 24 threads, same peak RAM 20
 |---|---|---|---|
 | floor 25 | about 0.48 G numbers/s | 0.75 G | 1.47 G |
 | floor 27 | about 0.05 G | 0.20 G | 0.37 G |
+
+v6.1 (`prime_sieve_engine_v6_1.c`, run by `prime_sieve_v6_1.py`, which is v6.0's script on
+the new engine) changes how the marks are made, not which: its output is v6.0's bit for bit
+(`test_engine_v6_1_identity` compares whole runs and both engine calls on boundary inputs).
+On floor 19 the segmented primes took most of v6.0's sieve (10 of 18 s per 1e11 numbers),
+about 4 ns per mark: each mark divided its offset by 30 and looked up its bit. One wheel
+turn of a prime p (30p numbers) moves each of its 8 marks by exactly p bytes and keeps its
+bit, so v6.1 computes the 8 byte offsets and masks once per prime and segment and marks a
+whole turn with 8 byte ORs (primes below a segment's numbers / 32; the larger ones have few
+marks per segment and keep the per-mark loop). In the bucket stage the slot writes cost more
+than computing the hits (floor 19: hits 1.1 s, slot writes 3.3 s, apply 2.0 s, measured by
+switching parts off): every write missed the cache and first read the line it overwrote.
+v6.1 stages each region's hits in one 64-byte line and writes full lines with non-temporal
+stores. Measured (count-only, 24 threads, 4096 MiB buckets, interleaved rounds):
+
+| | v6.0 | v6.1 |
+|---|---|---|
+| floor 19, 1e11 numbers, sieve | 15.4-18.5 s | 13.2-14.2 s |
+| floor 25, 2e11 numbers, sieve | 147-155 s | 134-141 s |
+
+The gain shrinks with the floor: the unrolled loop speeds up the segmented primes, and the
+higher the floor, the more of the sieve is the bucket stage. In full generation runs from
+the GUI (store empty, same floor for both) v6.1 is faster on the low floors and practically
+equal to v6.0 from floor 26 up.
+
+Tried and left out (no gain beyond noise on floor 19): presieve tables up to 167, L1/L2 tiles
+for the small primes inside a segment (-10 % of the segmented part before the unrolled loop,
+nothing after it), huge pages for the bucket slots.
 
 v6 writes its windows in parallel (`wheel30_writer.py` on `parallel_window_writer.py`): the native
 `wheel_window_gaps()` turns a window's bytes into the PGS2 gap stream in one pass, and a thread pool
@@ -115,8 +143,8 @@ hit pages ([data.md](../data.md)).
 
 `test_prime_window`, `test_pgs2_vector`, `test_window_integrity`, `test_window_sharding`,
 `test_storage_kinds`, `test_dp_verify`, `test_engine_v5_identity`, `test_engine_v5_phase`,
-`test_engine_v6_identity`, `test_engine_v5_2_identity`, `test_parallel_window_writer`,
-`test_wheel30_layout`, `test_wheel30_writer`, `test_work_plan_v6`,
+`test_engine_v6_identity`, `test_engine_v6_1_identity`, `test_engine_v5_2_identity`,
+`test_parallel_window_writer`, `test_wheel30_layout`, `test_wheel30_writer`, `test_work_plan_v6`,
 `test_engine_pt1`, `test_work_plan_v5`, `test_overlap_pipeline`, `test_orchestrator_stop`,
 `test_hybrid_*`, `test_cudasieve_integration`, `test_hit_paging`, `test_floor_meta_store`,
 `test_benchmark_log_schema`, `test_print_benchmark_summary`, `test_primesieve_benchmark_row`,
@@ -124,10 +152,14 @@ hit pages ([data.md](../data.md)).
 
 ## Known gaps
 
-- The bucket stage still needs more bucket memory for a longer run (v6.1 plan: L3-sized chunks of
-  the buffer with carried per-prime state for the medium primes, one round per chunk).
-- Presieve stops at 17 in v6 (19 fits L2 too); the wheel is fixed at 30 (210 / 2310 would hold
-  1.17 / 1.28 times more numbers per byte).
+- The bucket stage is now the larger part of a floor-19 sieve and nearly all of a floor-25 one.
+  Each prime streams its hits across the whole buffer, so a thread writes to every region's
+  bucket at once and every hit goes to RAM and back. The next step: per-slice buckets that
+  hold each medium prime for the segment of its next hit (primesieve's scheme), RAM per
+  thread growing with the primes kept (primesieve's floor-19 count peaks at 19 GB).
+- Presieve stops at 17 (measured: tables up to 167 gain nothing once the wheel turn is
+  unrolled); the wheel is fixed at 30 (210 / 2310 would hold 1.17 / 1.28 times more numbers
+  per byte).
 - v5.2 encodes each window through NumPy on the write threads; v6's native gap encoder is not
   ported to the odd-only buffer.
 - The write phase starts after the sieve; overlapping it with the next run's sieve (pt1 does this)

@@ -443,6 +443,27 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   ostrzeżenie wymienia każdą kopię z wersją i mówi, którą ładuje PrimeAtlas; drugie
   ostrzeżenie pojawia się, gdy silniki ładują inną kopię niż Python.
 
+### +37 — Engine v6.1: faster marking, same output
+
+- English: The default engine v6 runs as v6.1. It finds exactly the same primes and writes
+  byte for byte the same windows as v6.0, but marks the multiples of the small sieving primes
+  a whole turn of the wheel at a time instead of one by one, and writes the bucket hits of the
+  larger primes in full cache lines without first reading them from memory. Count-only on 24
+  threads: floor 19, 10^11 numbers, the sieve takes 13.2-14.2 s instead of 15.4-18.5 s; floor
+  25, 2*10^11 numbers, 134-141 s instead of 147-155 s. The gain shrinks with the floor: in
+  full runs from the GUI v6.1 is faster on the low floors and practically equal to v6.0 from
+  floor 26 up. v6.0 stays in the tree for comparison, and benchmark rows name the version,
+  so the charts keep the two apart.
+- Polski: Domyślny silnik v6 działa jako v6.1. Znajduje dokładnie te same liczby pierwsze i
+  zapisuje bajt w bajt te same okna co v6.0, ale wielokrotności małych liczb pierwszych
+  zaznacza całym obrotem koła naraz zamiast po jednej, a trafienia większych liczb pierwszych
+  zapisuje do kubełków pełnymi liniami cache, bez wcześniejszego czytania ich z pamięci. Samo
+  liczenie na 24 wątkach: piętro 19, 10^11 liczb, sito trwa 13,2-14,2 s zamiast 15,4-18,5 s;
+  piętro 25, 2*10^11 liczb, 134-141 s zamiast 147-155 s. Zysk maleje z piętrem: w pełnych
+  przebiegach z GUI v6.1 jest szybszy na niskich piętrach, a od piętra 26 praktycznie równy
+  v6.0. v6.0 zostaje w drzewie do porównań, a wiersze benchmarku podają wersję, więc wykresy
+  je rozdzielają.
+
 ## 1.2.0 — 2026-11-01
 
 ### English
