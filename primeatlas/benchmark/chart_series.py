@@ -9,23 +9,30 @@ dashed with hollow markers on the primary axis. Hues are far apart in RGB and re
 the light and dark theme backgrounds. YScale maps values to a 0..1 fraction of the plot
 height, linear from zero or log10 fitted to the data; a pinned bound (pin_bound(), one
 (min, max) pair per axis) replaces the fitted one exactly, like matplotlib's set_ylim, and
-clip_polyline() cuts the lines at the plot edge. A line is one series on one axis; each one
+clip_polyline() cuts the lines at the plot edge (also the left and right edges of a zoomed
+chart, YScale.zoomed() its visible part, chart_view.py). A line is one series on one axis; each one
 can be hidden on its own (line_key(), a set of hidden keys per chart).
 No tkinter here: benchmark_tab.py and benchmark.py both render from these objects.
 """
+import copy
 import math
 from collections import namedtuple
 
-# name: legend text; tag: short text after a point's value ("v5"), "" for none.
-Series = namedtuple("Series", "name tag points color dashed")
+# name: legend text; tag: short text after a point's value ("v5"), "" for none;
+# engine: the color and draw-order key of the line ("v6", "pt1 P"), "" = name;
+# notes: {x: text} shown after a point's tag ("10^11", the range it was measured on).
+Series = namedtuple("Series", "name tag points color dashed engine notes",
+                    defaults=("", None))
 
 # Drawing order: later engines on top.
-ENGINE_DRAW_ORDER = ("unknown", "hybrid", "v4.1", "v5", "v6", "pt1", "pt1 D+P", "pt1 P")
+ENGINE_DRAW_ORDER = ("unknown", "primesieve", "primesieve_print", "primesieve_count", "hybrid",
+                     "v4.1", "v5", "v6", "pt1", "pt1 D+P", "pt1 P")
 
-ENGINE_COLORS = {"unknown": "#8c8c8c", "hybrid": "#009e73", "v4.1": "#e69f00", "v5": "#2f7fe0",
-                 "v6": "#7f00ff",
+ENGINE_COLORS = {"unknown": "#8c8c8c", "primesieve": "#b5e61d", "primesieve_print": "#00c8c8",
+                 "primesieve_count": "#802080",
+                 "hybrid": "#009e73", "v4.1": "#e69f00", "v5": "#2f7fe0", "v6": "#7f00ff",
                  "pt1": "#e0a0e0", "pt1 D+P": "#608000", "pt1 P": "#00e000"}
-OTHER_ENGINE_COLOR = "#b5e61d"
+OTHER_ENGINE_COLOR = "#ff8080"
 
 AXIS_COLOR = {"primary": "#2f7fe0", "secondary": "#e69f00"}
 
@@ -49,11 +56,20 @@ def _engine_rank(engine):
     return (ENGINE_DRAW_ORDER.index(engine) if engine in ENGINE_DRAW_ORDER else 1.5, engine)
 
 
-def engine_series(lines):
-    """[Series] for engine_lines() output, in ENGINE_DRAW_ORDER, in the engine's color."""
-    return [Series(engine, "" if engine == "unknown" else engine, points,
-                   ENGINE_COLORS.get(engine, OTHER_ENGINE_COLOR), False)
-            for engine, points in sorted(lines.items(), key=lambda kv: _engine_rank(kv[0]))
+def engine_series(lines, engines=None, notes=None):
+    """[Series] for engine_lines() output, in ENGINE_DRAW_ORDER, in the engine's color.
+    engines: {line name: engine key} when the names are not the engine keys themselves;
+    notes: {line name: {x: text}} for the points' notes."""
+    engines = engines or {}
+    notes = notes or {}
+
+    def key(name):
+        return engines.get(name, name)
+    return [Series(name, "" if name == "unknown" else name, points,
+                   ENGINE_COLORS.get(key(name), OTHER_ENGINE_COLOR), False, key(name),
+                   notes.get(name))
+            for name, points in sorted(lines.items(),
+                                       key=lambda kv: (_engine_rank(key(kv[0])), kv[0]))
             if points]
 
 
@@ -70,7 +86,8 @@ def legend_series(*series_lists):
         if s.name and s.name not in seen:
             seen.add(s.name)
             out.append(s)
-    return sorted(out, key=lambda s: (s.dashed, (0, "") if s.dashed else _engine_rank(s.name)))
+    return sorted(out, key=lambda s: (s.dashed, (0, "") if s.dashed
+                                      else (_engine_rank(s.engine or s.name), s.name)))
 
 
 def legend_entries(series1, series2):
@@ -101,10 +118,11 @@ def series_xs(*series_lists):
     return sorted({x for series in series_lists for s in series for x, _ in s.points})
 
 
-def point_label(fmt, value, series, show_unknown=False):
-    """Value text with the series tag: "1,234 [v5]"."""
+def point_label(fmt, value, series, show_unknown=False, x=None):
+    """Value text with the series tag and the point's note: "1,234 [v5] @ 10^11"."""
     tag = series.tag or ("unknown" if show_unknown and not series.dashed else "")
-    return fmt.format(value) + (" [" + tag + "]" if tag else "")
+    note = (series.notes or {}).get(x, "")
+    return fmt.format(value) + (" [" + tag + "]" if tag else "") + (" @ " + note if note else "")
 
 
 class YScale:
@@ -156,6 +174,16 @@ class YScale:
         if pin_lo is not None:
             return pin_lo, max(hi, pin_lo + pad)
         return lo, hi
+
+    def zoomed(self, view):
+        """This scale narrowed to `view` = (lo, hi), fractions of its full range
+        (chart_view.py); the scale itself for None."""
+        if view is None:
+            return self
+        out = copy.copy(self)
+        span = self.hi - self.lo
+        out.lo, out.hi = self.lo + view[0] * span, self.lo + view[1] * span
+        return out
 
     def usable(self, value):
         return value > 0 if self.log else True
@@ -229,20 +257,21 @@ def in_view(frac):
     return -VIEW_EPSILON <= frac <= 1 + VIEW_EPSILON
 
 
-def clip_polyline(points):
-    """Runs of a polyline [(x, frac), ...] inside 0 <= frac <= 1: a segment leaving the plot
-    ends on the edge it crosses and the line resumes where it comes back in."""
+def _clip(points, k, lo, hi, inside):
+    """Runs of a polyline inside lo <= coordinate k <= hi (inside() tests a point's own
+    coordinate): a segment leaving the band ends on the edge it crosses."""
     runs, run = [], []
 
     def cross(a, b, edge):
-        t = (edge - a[1]) / (b[1] - a[1])
-        return (a[0] + (b[0] - a[0]) * t, float(edge))
+        t = (edge - a[k]) / (b[k] - a[k])
+        other = a[1 - k] + (b[1 - k] - a[1 - k]) * t
+        return (float(edge), other) if k == 0 else (other, float(edge))
 
     for i, p in enumerate(points):
         if i:
             a = points[i - 1]
-            edges = sorted({e for e in (0, 1) if min(a[1], p[1]) < e < max(a[1], p[1])},
-                           reverse=a[1] > p[1])
+            edges = sorted({e for e in (lo, hi) if min(a[k], p[k]) < e < max(a[k], p[k])},
+                           reverse=a[k] > p[k])
             for edge in edges:
                 q = cross(a, p, edge)
                 if run:
@@ -251,7 +280,7 @@ def clip_polyline(points):
                     run = []
                 else:
                     run = [q]
-        if in_view(p[1]):
+        if inside(p[k]):
             run.append(p)
         elif run:
             runs.append(run)
@@ -259,3 +288,14 @@ def clip_polyline(points):
     if run:
         runs.append(run)
     return runs
+
+
+def clip_polyline(points, x_lo=None, x_hi=None):
+    """Runs of a polyline [(x, frac), ...] inside 0 <= frac <= 1 and, when given, inside
+    x_lo <= x <= x_hi: a segment leaving the plot ends on the edge it crosses and the line
+    resumes where it comes back in."""
+    runs = _clip(points, 1, 0, 1, in_view)
+    if x_lo is None:
+        return runs
+    return [cut for run in runs
+            for cut in _clip(run, 0, x_lo, x_hi, lambda x: x_lo <= x <= x_hi)]

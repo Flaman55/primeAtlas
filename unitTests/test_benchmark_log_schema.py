@@ -13,6 +13,8 @@ C. ensure_benchmark_log_schema(): a missing log stays missing (True); the curren
    byte-for-byte (False).
 D. floor_meta.merge_floor_meta_into_benchmark_log() growing a log from scratch writes
    exactly BENCHMARK_FIELDNAMES as its header.
+E. Every row writer fills engine_version; orchestrator_v3 takes it from the scanner
+   module's own VERSION (v5.1, v6.0, ...), so the engine files stay untouched.
 
 Usage:
     python unitTests/test_benchmark_log_schema.py
@@ -40,7 +42,7 @@ LIVE_HEADER = [
     "max_child_rss_mb", "instance_of_n", "loop_session_seconds", "loop_numbers_per_second",
     "loop_seconds_per_window", "write_files", "base_gen_seconds", "sieve_seconds",
     "write_seconds", "bytes_written", "engine", "numbers_processed", "run_status",
-    "verify_seconds",
+    "verify_seconds", "engine_version", "threads", "write_threads", "sieve_wall_seconds",
 ]
 OLD_ROW = {"run_timestamp_utc": "2026-01-01 00:00:00 UTC", "base_exponent": "12",
            "windows_written": "7", "total_primes": "70", "total_seconds": "3.5"}
@@ -76,7 +78,7 @@ def _read_log(path):
 def _test_header(schema):
     print("\n--- A. the header the live log has ---")
     check(schema.BENCHMARK_FIELDNAMES == LIVE_HEADER,
-          f"BENCHMARK_FIELDNAMES = the live 25-column header ({len(schema.BENCHMARK_FIELDNAMES)})")
+          f"BENCHMARK_FIELDNAMES = the live 30-column header ({len(schema.BENCHMARK_FIELDNAMES)})")
     check(schema.RUN_STATUS_COMPLETED == "completed" and schema.RUN_STATUS_STOPPED == "stopped",
           "run_status values completed / stopped")
 
@@ -159,6 +161,43 @@ def _test_floor_meta_new_log(schema):
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def _test_engine_version_writers():
+    print("\n--- E. every row writer fills engine_version ---")
+    for name in ("orchestrator_v3.py", "prime_sieve_primesieve.py", "prime_sieve_cudasieve.py",
+                 "hybrid_sieve.py"):
+        with open(os.path.join(_REPO_ROOT, "prime_sieve", name), encoding="utf-8") as f:
+            text = f.read()
+        check('"engine_version":' in text, f"{name} writes engine_version in its row")
+    with open(os.path.join(_REPO_ROOT, "prime_sieve", "orchestrator_v3.py"),
+              encoding="utf-8") as f:
+        text = f.read()
+    check('"engine_version": prime_sieve_module.VERSION' in text,
+          "orchestrator_v3 logs the scanner module's own VERSION")
+    check('"threads": workers' in text, "orchestrator_v3 logs its worker count as threads")
+    check('"write_threads": scanner_write_threads(' in text,
+          "orchestrator_v3 logs the scanner's write threads")
+    import orchestrator_v3
+    check(orchestrator_v3.scanner_write_threads("v6", {}) == 8
+          and orchestrator_v3.scanner_write_threads(
+              "v6", {"PRIMEATLAS_V6_WRITE_THREADS": "3"}) == 3,
+          "v6 writes on its write-thread knob (default 8)")
+    check(orchestrator_v3.scanner_write_threads("v5", {}) == 8
+          and orchestrator_v3.scanner_write_threads(
+              "v5", {"PRIMEATLAS_V5_WRITE_THREADS": "3"}) == 3
+          and orchestrator_v3.scanner_write_threads(
+              "v5", {"PRIMEATLAS_V6_WRITE_THREADS": "3"}) == 8,
+          "v5 (v5.2) writes on its own write-thread knob (default 8), not v6's")
+    check(all(orchestrator_v3.scanner_write_threads(v, {}) == 1
+              for v in ("v3", "v4", "v4.1", "pt1")),
+          "v3/v4/v4.1/pt1 write on one thread")
+    for name in ("prime_sieve_primesieve.py", "prime_sieve_cudasieve.py", "hybrid_sieve.py",
+                 "primesieve_native.py"):
+        with open(os.path.join(_REPO_ROOT, "prime_sieve", name), encoding="utf-8") as f:
+            text = f.read()
+        check('"threads":' in text and '"write_threads":' in text,
+              f"{name} writes threads and write_threads in its row")
+
+
 def main():
     try:
         import benchmark_log_schema as schema
@@ -169,6 +208,7 @@ def main():
         _test_single_source(schema)
         _test_migration(schema)
         _test_floor_meta_new_log(schema)
+        _test_engine_version_writers()
     print()
     if failures:
         print(f"{len(failures)} FAILURE(S)")

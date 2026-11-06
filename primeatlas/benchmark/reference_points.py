@@ -1,12 +1,13 @@
-"""Reference throughput of well-known prime tools, drawn on the Benchmark tab's n/s chart.
+"""Reference throughput of PARI/GP, drawn on the Benchmark tab's sieve n/s chart.
 
-Values are copied from published results or from the project's own benchmark of
-2026-10-29 (BENCHMARK.md), not computed by the app. Each Reference keeps its source and the
-conditions it was measured under; hardware, thread count and what is measured (counting,
-iterating, sieving) differ between entries and from a PrimeAtlas run, so the points are an
-order-of-magnitude reference, not a like-for-like comparison.
+Values are copied from published results, not computed by the app. Each Reference keeps
+its source and the conditions it was measured under; hardware, thread count and range differ
+from a PrimeAtlas run, so the points are an order-of-magnitude reference, not a like-for-like
+comparison.
 
 points: (base_exponent, numbers per second) -- numbers of the range divided by seconds.
+No primesieve entry: Atlas measures the primesieve program itself on the requested range
+(primesieve mode, Native), which compares on equal ranges and thread counts.
 kind: "public" (published by the tool's authors or a public result database) or "own"
 (measured on the reference desktop, Ryzen 9 5900X, with the published tool).
 """
@@ -36,19 +37,6 @@ REFERENCES = (
         "https://pari.math.u-bordeaux.fr/archives/pari-dev-2409/msg00016.html",
         "#e7298a",
         ((25, 1e9 / 11.3),)),
-    Reference(
-        "primesieve 12.6, count 2..10^13, Ryzen 9 9900X", "primesieve PTS", "public",
-        "OpenBenchmarking.org pts/primesieve, length 1e13, 97 s (retrieved 2026-10-30): "
-        "https://openbenchmarking.org/test/pts/primesieve",
-        "#7b2d8e",
-        ((13, 1e13 / 97),)),
-    Reference(
-        "primesieve 12.15, 24 threads, count 10^10 numbers, Ryzen 9 5900X", "primesieve",
-        "own",
-        "PrimeAtlas benchmark 2026-10-29, series A (BENCHMARK.md): primesieve's own "
-        "reported seconds, 0.10 / 0.22 / 0.69 / 3.0 s",
-        "#00d0d0",
-        ((10, 1e10 / 0.10), (13, 1e10 / 0.22), (16, 1e10 / 0.69), (19, 1e10 / 3.0))),
 )
 
 

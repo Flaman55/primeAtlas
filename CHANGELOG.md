@@ -282,7 +282,140 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   wartość: swapowaniem, zabiciem uruchomienia z braku pamięci, zawieszeniem systemu.
   Szerokość wpisana powyżej budżetu nadal się uruchomi, a linia RAM to oznacza.
 
-### +30 — Engine v5.2: parallel window writer
+### +30 — Engine version in the benchmark log, time simulation calibrated per version
+
+- English: Every benchmark_log.csv row now records the full engine version (for example
+  v5.1 or v6.0) next to the engine name. The Time simulation calibrates each engine from
+  the rows of its newest version once there are two of them, so a faster release is no
+  longer averaged with the slower one, and the model note names that version. Older rows
+  without a version still count until two new rows exist.
+- Polski: Każdy wiersz benchmark_log.csv zapisuje teraz pełną wersję silnika (np. v5.1
+  albo v6.0) obok nazwy silnika. Symulacja czasu kalibruje każdy silnik z wierszy jego
+  najnowszej wersji, gdy są co najmniej dwa, więc szybsze wydanie nie jest już uśredniane
+  z wolniejszym, a notka modelu podaje tę wersję. Starsze wiersze bez wersji liczą się,
+  dopóki nie ma dwóch nowych.
+
+### +31 — primesieve mode: native runs, honest labels, threads in every row
+
+- English: primesieve mode gets a Native checkbox. With it, Atlas runs the primesieve
+  program itself and times only its process: "count" sieves the range and counts the
+  primes on the threads primesieve picks (shown on the sieve charts, the same work as an
+  engine's sieve phase), "print" sieves and writes every prime as primesieve's own text
+  into a primesieve folder next to Atlas storage (one thread, shown on the whole-run
+  chart; Atlas does not read these files). Without it, the mode works as before and fills
+  Atlas storage, but its time includes converting primesieve's result into Atlas windows,
+  so the charts now call it "primesieve (Atlas format)" instead of primesieve. Every
+  benchmark row records its sieve and write threads, and each chart line names its engine
+  version and threads. The static primesieve reference points are gone: they came from a
+  shorter range, where primesieve's fixed setup weighs more, and made a comparison look
+  better than it is; measure primesieve natively at the same width instead (floor 19, same
+  ranges: primesieve count 8.99 G numbers/s against v6.0's sieve phase 6.69 G/s, 24
+  threads). The wrapper rows also log their sieve/write phases, bytes, range and peak RAM.
+  Every chart point names the range it was measured on ("@ 10^11"), and a chart that sets
+  points of different widths on one floor says so under it and in the PDF. A Filter window
+  chooses the runs the charts compare by engine build, sieve threads, write threads and
+  range width; the PDF follows it and names it. Its "Sieve measure" choice switches the
+  sieve chart between the engine's own sieve phase (default), the sieve with startup
+  overhead (timed by the orchestrator from launching the scanner process to the end of its
+  sieve: Python start, imports, buffer allocation, library load; read once per run outside
+  the engine, so it does not slow it; a new sieve_wall_seconds column) and that overhead
+  alone (the numbers/s the startup takes, and that as % of the engine-phase speed), so
+  both figures can be shown side by side. The Benchmark tab rereads the log when a
+  generation run ends, so the new run shows without Refresh.
+- Polski: Tryb primesieve dostaje checkbox Natywny. Z nim Atlas uruchamia sam program
+  primesieve i mierzy tylko jego proces: "count" przesiewa zakres i liczy liczby pierwsze
+  na tylu wątkach, ile dobierze primesieve (na wykresach sitowania, to ta sama praca co
+  faza sita silnika), "print" przesiewa i zapisuje każdą liczbę pierwszą własnym tekstem
+  primesieve do katalogu primesieve obok magazynu Atlasa (jeden wątek, na wykresie całego
+  przebiegu; Atlas tych plików nie czyta). Bez niego tryb działa jak dotąd i wypełnia
+  magazyn Atlasa, ale jego czas obejmuje przekształcenie wyniku primesieve w okna Atlasa,
+  więc wykresy nazywają go teraz "primesieve (Atlas format)", a nie primesieve. Każdy
+  wiersz benchmarku zapisuje wątki sita i zapisu, a każda linia wykresu podaje wersję
+  silnika i wątki. Statyczne punkty odniesienia primesieve zniknęły: pochodziły z
+  krótszego zakresu, na którym stały koszt startu primesieve waży więcej, i zawyżały
+  porównanie; mierz primesieve natywnie przy tej samej szerokości (piętro 19, te same
+  zakresy: primesieve count 8,99 G liczb/s wobec fazy sita v6.0 6,69 G/s, 24 wątki).
+  Wiersze nakładki zapisują też fazy sita i zapisu, bajty, zakres i szczytowy RAM.
+  Każdy punkt wykresu podaje zakres, na którym go zmierzono ("@ 10^11"), a wykres, który
+  na jednym piętrze zestawia punkty różnej szerokości, mówi o tym pod spodem i w PDF.
+  Okno Filtr wybiera przebiegi do porównania według wersji silnika, wątków sita, wątków
+  zapisu i szerokości zakresu; PDF idzie za filtrem i go podaje. Jego wybór "Miara sita"
+  przełącza wykres sita między własną fazą sita silnika (domyślnie), sitem z narzutem
+  startowym (mierzonym przez orchestrator od uruchomienia procesu skanera do końca jego
+  sita: start Pythona, importy, alokacja bufora, ładowanie biblioteki; odczyt raz na
+  przebieg poza silnikiem, więc go nie spowalnia; nowa kolumna sieve_wall_seconds) i samym
+  narzutem (liczby/s, które zabiera start, i to w % prędkości fazy sita), więc oba wyniki
+  można pokazać obok siebie.
+  Zakładka Benchmark wczytuje log ponownie po zakończeniu generowania, więc nowy przebieg
+  widać bez klikania Odśwież.
+
+### +32 — Benchmark: RAM per run chart
+
+- English: The Benchmark tab's charts stand one under another: the sieve chart on top, the
+  whole run below it, and a new third chart at the bottom: the peak RAM of each run in MB
+  and the RAM per window, one line per engine build and thread setup, with
+  the same legend toggles, log scale and pinned axes as the other charts. Native primesieve
+  runs log the program's peak RAM but write no Atlas windows, so they show MB per run only.
+  The Filter window's sieve measure now names the sieve chart instead of the lower chart.
+  The page is taller than the default window and scrolls. The PDF report adds a page with
+  the same two charts.
+- Polski: Wykresy zakładki Benchmark stoją jeden pod drugim: na górze wykres sita, pod nim
+  cały przebieg, a na dole nowy, trzeci wykres: szczytowy RAM każdego uruchomienia w MB
+  i RAM na okno, jedna linia na wersję silnika i układ wątków, z tymi
+  samymi przełącznikami legendy, skalą logarytmiczną i przypinaniem osi co pozostałe
+  wykresy. Natywne przebiegi primesieve zapisują szczytowy RAM programu, ale nie zapisują
+  okien Atlasa, więc mają tylko MB na uruchomienie. Miara sita w oknie Filtr wskazuje teraz
+  wykres sita zamiast dolnego wykresu. Strona jest wyższa niż domyślne okno i się przewija.
+  Raport PDF dostaje stronę z tymi samymi dwoma wykresami.
+
+### +33 — Benchmark: export as CSV, SVG, HTML page and HTML snippet
+
+- English: Next to "Save PDF", the Benchmark tab has an "Export" menu: CSV (the log's
+  rows), SVG (the charts), an HTML page (charts and tables in one file to open in a
+  browser) and an HTML snippet (the same content as one block to paste into another
+  web page). Every export shows what the tab shows: the runs the Filter window keeps, the
+  sieve measure, log scale, reference points, hidden lines and pinned axes, and the charts
+  look like the PDF's; the HTML names the filter, the measure and the floors whose points
+  differ in range width, as the PDF does.
+- Polski: Obok „Zapisz PDF” zakładka Benchmark ma menu „Eksport”: CSV (wiersze logu),
+  SVG (wykresy), strona HTML (wykresy i tabele w jednym pliku do otwarcia w
+  przeglądarce) oraz fragment HTML (ta sama treść jako jeden blok do wklejenia na inną
+  stronę). Każdy eksport pokazuje to, co zakładka: przebiegi, które zostawia okno Filtr,
+  miarę sita, skalę logarytmiczną, punkty odniesienia, ukryte linie i przypięte osie,
+  a wykresy wyglądają jak w PDF; HTML podaje filtr, miarę i piętra, na których punkty
+  mają różną szerokość zakresu, tak jak PDF.
+
+### +34 — Benchmark: zoom, charts in their own windows, interactive HTML
+
+- English: The Benchmark charts zoom like a picture: unzoomed, a chart shows all of
+  itself; the mouse wheel zooms into the part under the pointer, dragging with the left
+  button moves over the chart, and a double click or a middle click shows the whole
+  charts again. Lines run on to the edge, so a zoomed part between two floors shows the
+  line passing through. All three charts follow the same floors, each zooms its own Y
+  axis, and the exports draw what is in view. A tooltip lists every point drawn on the
+  same spot, so a right-axis square on another line's circle can still be read.
+  "Open in new window" above each chart shows it in a window of
+  its own, which zooms, filters and toggles together with the tab. The exported HTML
+  page and snippet are interactive: zoom and pan, legend entries that hide and show
+  lines, the Filter window's dimensions, log scale, reference points and a chart text
+  size, with the tables following the filter; the wheel zooms only over a chart, beside
+  it the page scrolls; they open in the tab's view.
+- Polski: Wykresy Benchmarku przybliża się jak obraz: bez zoomu wykres pokazuje się
+  cały; kółko myszy przybliża fragment pod kursorem, przeciąganie lewym przyciskiem
+  przesuwa po wykresie, a dwuklik lub środkowy klik znowu pokazuje całe wykresy. Linie
+  biegną do krawędzi, więc przybliżony fragment między dwoma piętrami pokazuje
+  przechodzącą przez niego linię. Wszystkie trzy wykresy pokazują te same piętra, każdy
+  przybliża własną oś Y, a eksporty rysują to, co widać. Dymek pokazuje wszystkie
+  punkty narysowane w jednym miejscu, więc kwadrat prawej osi leżący na kółku innej linii
+  też da się odczytać. „Otwórz w nowym oknie” nad każdym wykresem pokazuje go
+  w osobnym oknie, które przybliża się, filtruje i przełącza razem z zakładką.
+  Eksportowana strona HTML i fragment HTML są interaktywne: przybliżanie i
+  przesuwanie, wpisy legendy ukrywające i pokazujące linie, wymiary okna Filtr, skala
+  logarytmiczna, punkty odniesienia i rozmiar tekstu wykresów, a tabele idą za filtrem;
+  kółko przybliża tylko nad wykresem, obok niego przewija stronę; otwierają się w
+  widoku zakładki.
+
+### +35 — Engine v5.2: parallel window writer
 
 - English: Engine v5 runs as v5.2: the same sieve as v5.1, but its windows are written
   by a pool of threads, the one v6 uses, set by the new "v5 write threads" field

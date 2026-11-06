@@ -280,7 +280,8 @@ def main():
               f"the 'no data yet' dialog was shown instead of opening a file dialog (got: {shown})")
 
         # --- PDF export: a raising renderer surfaces messagebox.showerror ----------
-        import primeatlas.benchmark.benchmark_tab as benchmark_tab_module
+        # The export handlers live in the tab's BenchmarkExport mixin.
+        import primeatlas.benchmark.benchmark_export as benchmark_tab_module
         original_render = benchmark_tab_module.render_benchmark_pdf
 
         def _fake_raise(*a, **k):
@@ -380,7 +381,7 @@ def main():
         # _nearest_hover_point is deterministic and needs no live display, so it
         # tests the actual logic (dense/overlapping labels) without inheriting that
         # platform noise.
-        from primeatlas.benchmark.benchmark_tab import _nearest_hover_point
+        from primeatlas.benchmark.chart_hover import _nearest_hover_point
         dot_center = None
         for item_id in probe_canvas.find_all():
             if probe_canvas.type(item_id) == "oval":
@@ -419,7 +420,7 @@ def main():
         # Tk does not deliver pointer events to an unmapped widget -- exactly the
         # platform-dependent flakiness _nearest_hover_point's docstring already
         # describes for real OS-level mouse events.
-        from primeatlas.benchmark.benchmark_tab import _hover_label_position
+        from primeatlas.benchmark.chart_hover import _hover_label_position
 
         # A point near the RIGHT edge: default placement (px+12) would overflow, so
         # this must flip to anchor="e" (label grows LEFTWARD from tx) and stay on-screen.

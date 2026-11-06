@@ -12,10 +12,32 @@ the chart's box, between the x axis and the legend. Left-axis points are circles
 thick line, right-axis points squares on a thin line, as on the canvas. A pinned axis
 (chart_series.pin_bound()) cuts its lines at the plot edge and leaves out the points and
 labels beyond it, and its title says so.
+
+chart_ops() draws through a backend: PDF_BACKEND (the default) gives PDF content-stream
+ops, chart_svg.SvgBackend SVG elements of the same layout, so the report's PDF, SVG and
+HTML charts are one drawing.
 """
 from ..core.i18n import Translator, DEFAULT_LANGUAGE
 from ..core.pdf_writer import _pdf_ascii_fold, _pdf_dot_op, _pdf_line_op, _pdf_rect_op, _pdf_text_op
+from . import chart_view
 from .chart_series import clip_polyline, in_view, legend_series, point_label, series_xs, y_scale
+
+
+class _PdfBackend:
+    """chart_ops()'s drawing calls as PDF content-stream ops; text is ASCII-folded for the
+    PDF base fonts."""
+    rect = staticmethod(_pdf_rect_op)
+    line = staticmethod(_pdf_line_op)
+    dot = staticmethod(_pdf_dot_op)
+    text = staticmethod(_pdf_text_op)
+    fold = staticmethod(_pdf_ascii_fold)
+
+    @staticmethod
+    def dashed(op):
+        return "[3 2] 0 d " + op + " [] 0 d"
+
+
+PDF_BACKEND = _PdfBackend()
 
 _AXIS_GRAY = (0.4, 0.4, 0.4)
 _GUIDE_GRAY = (0.88, 0.88, 0.88)
@@ -47,13 +69,10 @@ def _rgb(hex_color):
     return tuple(int(hex_color[i:i + 2], 16) / 255 for i in (1, 3, 5))
 
 
-def _dashed(op):
-    return "[3 2] 0 d " + op + " [] 0 d"
-
-
 def chart_ops(x0, y0, w, h, series1=(), series2=(), translator=None,
               label_key1="bench.axis_nps", label_key2="bench.axis_spw",
-              fmt1="{:,.0f}", fmt2="{:,.3f}", log_y=False, pins1=None, pins2=None):
+              fmt1="{:,.0f}", fmt2="{:,.3f}", log_y=False, pins1=None, pins2=None,
+              backend=PDF_BACKEND, x_view=None, y_view=None):
     """Ops drawing the chart inside the box [x0, x0+w] x [y0, y0+h].
 
     series1/series2: [chart_series.Series] on the left (primary) and right (secondary)
@@ -64,19 +83,23 @@ def chart_ops(x0, y0, w, h, series1=(), series2=(), translator=None,
 
     label_key1/label_key2: i18n keys of the axis titles; fmt1/fmt2: str.format() templates
     of the value labels and linear ticks. pins1/pins2: the axes' pinned (min, max), see
-    chart_series.axis_pins(). Text is ASCII-folded for the PDF base fonts."""
+    chart_series.axis_pins(). backend: PDF_BACKEND or a chart_svg.SvgBackend. x_view/y_view:
+    the zoomed part of the chart (chart_view.py), as on the tab's canvas: the axes show it,
+    lines are cut at the plot edges, points outside it are left out; a zoomed floor axis
+    ticks the whole floors."""
+    b = backend
     t = (translator or Translator(DEFAULT_LANGUAGE)).t
     series1 = [s for s in series1 if s.points]
     series2 = [s for s in series2 if s.points]
-    ops = [_pdf_rect_op(x0, y0, w, h, stroke_rgb=(0.8, 0.8, 0.8), width=0.5)]
+    ops = [b.rect(x0, y0, w, h, stroke_rgb=(0.8, 0.8, 0.8), width=0.5)]
     if not series1 and not series2:
-        ops.append(_pdf_text_op(x0 + w / 2 - 60, y0 + h / 2, 10, "Helvetica",
-                                 _pdf_ascii_fold(t("bench.no_data_chart"))))
+        ops.append(b.text(x0 + w / 2 - 60, y0 + h / 2, 10, "Helvetica",
+                                 b.fold(t("bench.no_data_chart"))))
         return ops
 
     has_secondary = bool(series2)
-    scale1 = y_scale(series1, log_y, pins1) if series1 else None
-    scale2 = y_scale(series2, log_y, pins2) if has_secondary else None
+    scale1 = y_scale(series1, log_y, pins1).zoomed(y_view) if series1 else None
+    scale2 = y_scale(series2, log_y, pins2).zoomed(y_view) if has_secondary else None
     # The left margin fits the longest tick label (7 pt Courier) left of the axis.
     tick_chars = max((len(scale1.tick_label(v, fmt1)) for v in scale1.ticks()),
                      default=0) if scale1 else 0
@@ -89,7 +112,7 @@ def chart_ops(x0, y0, w, h, series1=(), series2=(), translator=None,
     plot_h = max(1, h - pad_top - pad_bottom)
 
     all_xs = series_xs(series1, series2)
-    x_min, x_max = min(all_xs), max(all_xs)
+    x_min, x_max = x_view if x_view is not None else (min(all_xs), max(all_xs))
     if x_min == x_max:
         x_min -= 1
         x_max += 1
@@ -106,62 +129,68 @@ def chart_ops(x0, y0, w, h, series1=(), series2=(), translator=None,
     def sy(scale, y):
         return plot_y0 + scale.frac(y) * plot_h
 
+    margin = inset_x / max(1.0, plot_w - 2 * inset_x) * (x_max - x_min)
+    x_ticks = all_xs if x_view is None else chart_view.tick_floors(x_min, x_max, margin)
+
+    def on_plot(x_px):
+        return plot_x0 <= x_px <= plot_x0 + plot_w
+
     def sf(frac):
         return plot_y0 + frac * plot_h
 
     if scale1:
         for y_val in scale1.ticks():
-            ops.append(_pdf_line_op(plot_x0, sy(scale1, y_val), plot_x0 + plot_w,
+            ops.append(b.line(plot_x0, sy(scale1, y_val), plot_x0 + plot_w,
                                      sy(scale1, y_val), width=0.4, rgb=_GUIDE_GRAY))
-    ops.append(_pdf_line_op(plot_x0, plot_y0, plot_x0, plot_y0 + plot_h, rgb=_AXIS_GRAY))
-    ops.append(_pdf_line_op(plot_x0, plot_y0, plot_x0 + plot_w, plot_y0, rgb=_AXIS_GRAY))
+    ops.append(b.line(plot_x0, plot_y0, plot_x0, plot_y0 + plot_h, rgb=_AXIS_GRAY))
+    ops.append(b.line(plot_x0, plot_y0, plot_x0 + plot_w, plot_y0, rgb=_AXIS_GRAY))
     if has_secondary:
-        ops.append(_pdf_line_op(plot_x0 + plot_w, plot_y0, plot_x0 + plot_w, plot_y0 + plot_h,
+        ops.append(b.line(plot_x0 + plot_w, plot_y0, plot_x0 + plot_w, plot_y0 + plot_h,
                                  rgb=_AXIS_GRAY))
 
     if scale1:
         for y_val in scale1.ticks():
             y_px = sy(scale1, y_val)
-            ops.append(_pdf_line_op(plot_x0 - 3, y_px, plot_x0, y_px, rgb=_AXIS_GRAY))
+            ops.append(b.line(plot_x0 - 3, y_px, plot_x0, y_px, rgb=_AXIS_GRAY))
             text = scale1.tick_label(y_val, fmt1)
-            ops.append(_pdf_text_op(plot_x0 - 5 - len(text) * 0.6 * 7, y_px - 3, 7, "Courier",
+            ops.append(b.text(plot_x0 - 5 - len(text) * 0.6 * 7, y_px - 3, 7, "Courier",
                                      text))
     if scale2:
         for y_val in scale2.ticks():
             y_px = sy(scale2, y_val)
-            ops.append(_pdf_line_op(plot_x0 + plot_w, y_px, plot_x0 + plot_w + 3, y_px,
+            ops.append(b.line(plot_x0 + plot_w, y_px, plot_x0 + plot_w + 3, y_px,
                                      rgb=_AXIS_GRAY))
-            ops.append(_pdf_text_op(plot_x0 + plot_w + 5, y_px - 3, 7, "Courier",
+            ops.append(b.text(plot_x0 + plot_w + 5, y_px - 3, 7, "Courier",
                                      scale2.tick_label(y_val, fmt2)))
 
-    for x_val in all_xs:
+    for x_val in x_ticks:
         x_px = sx(x_val)
-        ops.append(_pdf_line_op(x_px, plot_y0, x_px, plot_y0 - 3, rgb=_AXIS_GRAY))
-        ops.append(_pdf_text_op(x_px - 8, plot_y0 - 14, 7, "Courier", str(x_val)))
+        ops.append(b.line(x_px, plot_y0, x_px, plot_y0 - 3, rgb=_AXIS_GRAY))
+        ops.append(b.text(x_px - 8, plot_y0 - 14, 7, "Courier", str(x_val)))
 
-    ops.append(_pdf_text_op(plot_x0 + plot_w / 2 - 30, y0 + 4, 8, "Helvetica-Bold",
-                             _pdf_ascii_fold(t("bench.axis_floor"))))
+    ops.append(b.text(plot_x0 + plot_w / 2 - 30, y0 + 4, 8, "Helvetica-Bold",
+                             b.fold(t("bench.axis_floor"))))
     if series1:
-        ops.append(_pdf_dot_op(x0 + 4, y0 + h - 7.5, 2.2, rgb=_AXIS_GRAY))
-        ops.append(_pdf_text_op(x0 + 9, y0 + h - 10, 8, "Helvetica-Bold",
-                                 _pdf_ascii_fold(title1)))
+        ops.append(b.dot(x0 + 4, y0 + h - 7.5, 2.2, rgb=_AXIS_GRAY))
+        ops.append(b.text(x0 + 9, y0 + h - 10, 8, "Helvetica-Bold",
+                                 b.fold(title1)))
     if has_secondary:
-        ops.append(_pdf_rect_op(x0 + w - 6, y0 + h - 9.5, 4, 4, fill_rgb=_AXIS_GRAY))
+        ops.append(b.rect(x0 + w - 6, y0 + h - 9.5, 4, 4, fill_rgb=_AXIS_GRAY))
         # Helvetica-Bold at 8 pt averages ~4.4 pt per character; the title ends at the marker.
-        ops.append(_pdf_text_op(x0 + w - 68 - 4.4 * (len(title2) - len(t(label_key2))),
-                                 y0 + h - 10, 8, "Helvetica-Bold", _pdf_ascii_fold(title2)))
+        ops.append(b.text(x0 + w - 68 - 4.4 * (len(title2) - len(t(label_key2))),
+                                 y0 + h - 10, 8, "Helvetica-Bold", b.fold(title2)))
 
     legend_x = x0 + 90
     for s in legend_series(series1, series2):
         rgb = _rgb(s.color)
-        line = _pdf_line_op(legend_x - 5, y0 + h - 8, legend_x + 5, y0 + h - 8, width=1.5,
+        line = b.line(legend_x - 5, y0 + h - 8, legend_x + 5, y0 + h - 8, width=1.5,
                             rgb=rgb)
-        ops.append(_dashed(line) if s.dashed else line)
-        ops.append(_pdf_dot_op(legend_x, y0 + h - 8, 2.5, rgb=rgb))
+        ops.append(b.dashed(line) if s.dashed else line)
+        ops.append(b.dot(legend_x, y0 + h - 8, 2.5, rgb=rgb))
         if s.dashed:
-            ops.append(_pdf_dot_op(legend_x, y0 + h - 8, 1.3, rgb=(1, 1, 1)))
-        text = _pdf_ascii_fold(s.name)
-        ops.append(_pdf_text_op(legend_x + 8, y0 + h - 10.5, 6.5, "Helvetica-Bold", text,
+            ops.append(b.dot(legend_x, y0 + h - 8, 1.3, rgb=(1, 1, 1)))
+        text = b.fold(s.name)
+        ops.append(b.text(legend_x + 8, y0 + h - 10.5, 6.5, "Helvetica-Bold", text,
                                  rgb=rgb))
         legend_x += 22 + 6.5 * 0.55 * len(text)
 
@@ -173,24 +202,25 @@ def chart_ops(x0, y0, w, h, series1=(), series2=(), translator=None,
         for s in series:
             pts = [(x, y) for x, y in s.points if scale.usable(y)]
             rgb = _rgb(s.color)
-            for run in clip_polyline([(sx(x), scale.frac(y)) for x, y in pts]):
+            for run in clip_polyline([(sx(x), scale.frac(y)) for x, y in pts],
+                                     plot_x0, plot_x0 + plot_w):
                 for (xa, fa), (xb, fb) in zip(run, run[1:]):
-                    op = _pdf_line_op(xa, sf(fa), xb, sf(fb), width=0.7 if secondary else 1.8,
+                    op = b.line(xa, sf(fa), xb, sf(fb), width=0.7 if secondary else 1.8,
                                       rgb=rgb)
-                    ops.append(_dashed(op) if s.dashed else op)
-            pts = [(x, y) for x, y in pts if in_view(scale.frac(y))]
+                    ops.append(b.dashed(op) if s.dashed else op)
+            pts = [(x, y) for x, y in pts if in_view(scale.frac(y)) and on_plot(sx(x))]
             coords = [(sx(x), sy(scale, y)) for x, y in pts]
             for i, ((x_val, y_val), (cx, cy)) in enumerate(zip(pts, coords)):
                 if secondary:
-                    ops.append(_pdf_rect_op(cx - 2.3, cy - 2.3, 4.6, 4.6, fill_rgb=rgb))
+                    ops.append(b.rect(cx - 2.3, cy - 2.3, 4.6, 4.6, fill_rgb=rgb))
                 else:
-                    ops.append(_pdf_dot_op(cx, cy, 2.5, rgb=rgb))
+                    ops.append(b.dot(cx, cy, 2.5, rgb=rgb))
                 if s.dashed:
-                    ops.append(_pdf_dot_op(cx, cy, 1.3, rgb=(1, 1, 1)))
+                    ops.append(b.dot(cx, cy, 1.3, rgb=(1, 1, 1)))
                 last = i == len(pts) - 1
                 above, below = cy + label_dy, cy - 22 - label_dy
                 steps = range(_LAST_LABEL_STEPS if last else 1)
-                text = _pdf_ascii_fold(point_label(fmt, y_val, s))
+                text = b.fold(point_label(fmt, y_val, s, x=x_val))
                 lx = max(x0 + 2, min(cx - 10, x0 + w - 2 - len(text) * _LABEL_CHAR_W))
                 positions = [(lx, y) for k in steps
                              for y in (above + k * (_LABEL_SIZE + 2),
@@ -203,6 +233,6 @@ def chart_ops(x0, y0, w, h, series1=(), series2=(), translator=None,
     if scale2:
         draw(series2, scale2, fmt2, -14, secondary=True)
     for x, y, text, rgb in place_labels(candidates):
-        ops.append(_pdf_text_op(x, y, _LABEL_SIZE, "Courier", text, rgb=rgb))
+        ops.append(b.text(x, y, _LABEL_SIZE, "Courier", text, rgb=rgb))
     return ops
 

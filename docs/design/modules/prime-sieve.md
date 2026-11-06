@@ -75,6 +75,37 @@ the reported windows do not add up to the range, the headers of the written wind
 instead, one file open each (about 13 ms on a /mnt drive, overlapped by `workers` threads).
 Per-window times print in ms below a second.
 
+`sieve_wall_seconds` times the sieve from outside the engine: `_run_teed()` takes the clock
+before launching the scanner and again when its `[*] Batch sieve done in` line arrives on the
+pipe, in the orchestrator process; the batches' sum minus `base_gen_seconds` (the optional
+pi(L_final) diagnostic, no sieve work) goes to the row next to the engine's own `sieve_seconds`,
+so the gap is the startup the engine's timer leaves out (Python start, imports, buffer
+allocation, library load, sieving primes). The scanner's code and argv are unchanged; it runs with
+`PYTHONUNBUFFERED=1` so the line arrives when printed (v4.1 and v5 do not flush it), which costs
+nothing measurable at a few dozen lines per run. Count-only runs are read the same way. pt1
+prints no such line (it overlaps sieve and write) and keeps the column blank; a stopped run too.
+
+Every row records `threads` (sieve): the worker count of v4.1/v5/v6/pt1 (`orchestrator_v3.py`), 1
+for hybrid and the primesieve wrapper, `GPU` for cudasieve, the count primesieve reports for a
+native count; and `write_threads`: the write-thread knob of v6 or v5.2 (`scanner_write_threads()`
+reads it from the environment the scanner inherits), 1 for every other writer, blank for a native
+count.
+
+Primesieve mode has two paths. The wrapper (`prime_sieve_primesieve.py`, engine tag `primesieve`,
+"primesieve (Atlas format)" on the charts) logs one row per call: `total_seconds` is the wall time of
+`primesieve_generate_primes()` plus splitting and writing the windows, `sieve_seconds` and
+`write_seconds` the two phases, `bytes_written` the files' size on disk, `numbers_processed` the
+range, `max_child_rss_mb` the process's peak RSS (the whole prime list is in it), `threads` 1. Its
+sieve time includes copying the library's array into a Python list, so it is not primesieve's own
+speed. Native (`primesieve_native.py`) runs the primesieve program: `print` sends `primesieve
+--print` into `primesieve/10p{N}/<start>_<stop>.txt` (primesieve's text, not Atlas storage, one
+thread), `count` runs `primesieve --count --time` (sieve + bit count, threads parsed from its
+report). The timed part is the primesieve process alone; its row (`primesieve_print` /
+`primesieve_count`) has the program's version and no windows. count: the wall time is total and
+sieve time (the work of a sieve phase), no `loop_*` columns. print: the wall time is total and loop
+time (`loop_numbers_per_second`, a whole run), no sieve time. SIGTERM (the Stop button) ends the
+child too.
+
 ## Kept data
 
 Prime windows, `benchmark_log.csv`, `floor_meta.json`, `last_scan_metrics.json`, sieving-prime cache,
@@ -88,7 +119,8 @@ hit pages ([data.md](../data.md)).
 `test_wheel30_layout`, `test_wheel30_writer`, `test_work_plan_v6`,
 `test_engine_pt1`, `test_work_plan_v5`, `test_overlap_pipeline`, `test_orchestrator_stop`,
 `test_hybrid_*`, `test_cudasieve_integration`, `test_hit_paging`, `test_floor_meta_store`,
-`test_benchmark_log_schema`, `test_print_benchmark_summary`, `test_pi_seed`. See also BENCHMARK.md.
+`test_benchmark_log_schema`, `test_print_benchmark_summary`, `test_primesieve_benchmark_row`,
+`test_primesieve_native`, `test_pi_seed`. See also BENCHMARK.md.
 
 ## Known gaps
 
