@@ -181,9 +181,15 @@ def _test_engine_version_writers():
           and orchestrator_v3.scanner_write_threads(
               "v6", {"PRIMEATLAS_V6_WRITE_THREADS": "3"}) == 3,
           "v6 writes on its write-thread knob (default 8)")
+    check(orchestrator_v3.scanner_write_threads("v5", {}) == 8
+          and orchestrator_v3.scanner_write_threads(
+              "v5", {"PRIMEATLAS_V5_WRITE_THREADS": "3"}) == 3
+          and orchestrator_v3.scanner_write_threads(
+              "v5", {"PRIMEATLAS_V6_WRITE_THREADS": "3"}) == 8,
+          "v5 (v5.2) writes on its own write-thread knob (default 8), not v6's")
     check(all(orchestrator_v3.scanner_write_threads(v, {}) == 1
-              for v in ("v3", "v4", "v4.1", "v5", "pt1")),
-          "v3/v4/v4.1/v5/pt1 write on one thread")
+              for v in ("v3", "v4", "v4.1", "pt1")),
+          "v3/v4/v4.1/pt1 write on one thread")
     for name in ("prime_sieve_primesieve.py", "prime_sieve_cudasieve.py", "hybrid_sieve.py",
                  "primesieve_native.py"):
         with open(os.path.join(_REPO_ROOT, "prime_sieve", name), encoding="utf-8") as f:

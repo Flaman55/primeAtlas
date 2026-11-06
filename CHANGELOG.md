@@ -415,6 +415,34 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   kółko przybliża tylko nad wykresem, obok niego przewija stronę; otwierają się w
   widoku zakładki.
 
+### +35 — Engine v5.2: parallel window writer
+
+- English: Engine v5 runs as v5.2: the same sieve as v5.1, but its windows are written
+  by a pool of threads, the one v6 uses, set by the new "v5 write threads" field
+  (default 8). On a /mnt drive, 1,000 windows at floor 19 now write in about 4.8 s
+  instead of 25 s, and the whole run takes about 8 s instead of 29 s. The files are
+  byte for byte the ones v5.1 writes; v5.1 stays in the tree for comparison.
+- Polski: Silnik v5 działa jako v5.2: to samo sito co v5.1, ale okna zapisuje pula
+  wątków, ta sama co w v6, ustawiana nowym polem „Wątki zapisu v5” (domyślnie 8). Na
+  dysku /mnt 1000 okien na piętrze 19 zapisuje się teraz w około 4,8 s zamiast 25 s,
+  a całe uruchomienie trwa około 8 s zamiast 29 s. Pliki są bajt w bajt takie, jakie
+  zapisuje v5.1; v5.1 zostaje w drzewie do porównań.
+
+### +36 — Settings: WSL component versions, duplicate-copy warning
+
+- English: Settings → Updates → WSL environment has a "Component versions" button. It
+  reads from WSL the distribution, Python, numpy, gcc, and the versions of libprimesieve
+  and libprimecount together with the file each one is loaded from. When a library is
+  installed twice (for example the apt package next to a build under /usr/local), a
+  warning lists every copy with its version and says which one PrimeAtlas loads; a
+  second warning appears when the engines load a different copy than Python.
+- Polski: Ustawienia → Aktualizacje → Środowisko WSL mają przycisk „Wersje
+  komponentów”. Odczytuje z WSL dystrybucję, Pythona, numpy, gcc oraz wersje
+  libprimesieve i libprimecount razem z plikiem, z którego każda jest ładowana. Gdy
+  biblioteka jest zainstalowana dwa razy (np. pakiet apt obok buildu w /usr/local),
+  ostrzeżenie wymienia każdą kopię z wersją i mówi, którą ładuje PrimeAtlas; drugie
+  ostrzeżenie pojawia się, gdy silniki ładują inną kopię niż Python.
+
 ### +37 — Engine v6.1: faster marking, same output
 
 - English: The default engine v6 runs as v6.1. It finds exactly the same primes and writes
@@ -422,15 +450,19 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   a whole turn of the wheel at a time instead of one by one, and writes the bucket hits of the
   larger primes in full cache lines without first reading them from memory. Count-only on 24
   threads: floor 19, 10^11 numbers, the sieve takes 13.2-14.2 s instead of 15.4-18.5 s; floor
-  25, 2*10^11 numbers, 134-141 s instead of 147-155 s. v6.0 stays in the tree for comparison,
-  and benchmark rows name the version, so the charts keep the two apart.
+  25, 2*10^11 numbers, 134-141 s instead of 147-155 s. The gain shrinks with the floor: in
+  full runs from the GUI v6.1 is faster on the low floors and practically equal to v6.0 from
+  floor 26 up. v6.0 stays in the tree for comparison, and benchmark rows name the version,
+  so the charts keep the two apart.
 - Polski: Domyślny silnik v6 działa jako v6.1. Znajduje dokładnie te same liczby pierwsze i
   zapisuje bajt w bajt te same okna co v6.0, ale wielokrotności małych liczb pierwszych
   zaznacza całym obrotem koła naraz zamiast po jednej, a trafienia większych liczb pierwszych
   zapisuje do kubełków pełnymi liniami cache, bez wcześniejszego czytania ich z pamięci. Samo
   liczenie na 24 wątkach: piętro 19, 10^11 liczb, sito trwa 13,2-14,2 s zamiast 15,4-18,5 s;
-  piętro 25, 2*10^11 liczb, 134-141 s zamiast 147-155 s. v6.0 zostaje w drzewie do porównań,
-  a wiersze benchmarku podają wersję, więc wykresy je rozdzielają.
+  piętro 25, 2*10^11 liczb, 134-141 s zamiast 147-155 s. Zysk maleje z piętrem: w pełnych
+  przebiegach z GUI v6.1 jest szybszy na niskich piętrach, a od piętra 26 praktycznie równy
+  v6.0. v6.0 zostaje w drzewie do porównań, a wiersze benchmarku podają wersję, więc wykresy
+  je rozdzielają.
 
 ## 1.2.0 — 2026-11-01
 

@@ -10,7 +10,7 @@ standard-library helpers.
 | Part | Files |
 |---|---|
 | Format | `prime_sieve_v1.py` (PGS2 read/write, varints), `pgs2_vector.py`, `window_integrity.py` |
-| Engines | `prime_sieve_v6_1.py` + `engine_v6_lib.py` + `work_plan_v6.py` + `wheel30_layout.py` + `wheel30_writer.py` (default, code v6.1; `prime_sieve_v6.py`, v6.0, kept for comparison), `prime_sieve_v5.py` + `engine_v5_lib.py` + `work_plan_v5.py` (code v5.1), `prime_sieve_pt1.py` + `pt1_plan.py`, `prime_sieve_primesieve.py`, `prime_sieve_cudasieve.py`, `hybrid_*.py`; frozen `prime_sieve_v3.py`, `prime_sieve_v4.py`, `prime_sieve_v4_1.py` |
+| Engines | `prime_sieve_v6_1.py` + `engine_v6_lib.py` + `work_plan_v6.py` + `wheel30_layout.py` + `wheel30_writer.py` (default, code v6.1; `prime_sieve_v6.py`, v6.0, kept for comparison), `prime_sieve_v5_2.py` + `engine_v5_lib.py` + `work_plan_v5.py` (code v5.2), `parallel_window_writer.py` (write phase of v5.2 and v6), `prime_sieve_pt1.py` + `pt1_plan.py`, `prime_sieve_primesieve.py`, `prime_sieve_cudasieve.py`, `hybrid_*.py`; frozen `prime_sieve_v3.py`, `prime_sieve_v4.py`, `prime_sieve_v4_1.py`, `prime_sieve_v5.py` (v5.1, still the home of helpers v6 and pt1 import) |
 | Orchestrators | `orchestrator_loop_v2.py`, `orchestrator_v3.py`, `orchestrator_loop_helpers.py`, `overlap_pipeline.py` |
 | Shared storage helpers | `window_sharding.py`, `storage_kinds.py` (D/P stores), `dp_verify.py`, `benchmark_log_schema.py`, `floor_meta_store.py`, `hit_paging.py`, `generation_stop.py`, `sieving_prime_count_v5.py` |
 | Queries | `primesieve_query.py`, `primecount_query.py`, `prime_count_primecount.py` |
@@ -67,17 +67,25 @@ stores. Measured (count-only, 24 threads, 4096 MiB buckets, interleaved rounds):
 | floor 19, 1e11 numbers, sieve | 15.4-18.5 s | 13.2-14.2 s |
 | floor 25, 2e11 numbers, sieve | 147-155 s | 134-141 s |
 
+The gain shrinks with the floor: the unrolled loop speeds up the segmented primes, and the
+higher the floor, the more of the sieve is the bucket stage. In full generation runs from
+the GUI (store empty, same floor for both) v6.1 is faster on the low floors and practically
+equal to v6.0 from floor 26 up.
+
 Tried and left out (no gain beyond noise on floor 19): presieve tables up to 167, L1/L2 tiles
 for the small primes inside a segment (-10 % of the segmented part before the unrolled loop,
 nothing after it), huge pages for the bucket slots.
 
-v6 writes its windows in parallel (`wheel30_writer.py`): the native `wheel_window_gaps()` turns a
-window's bytes into the PGS2 gap stream in one pass, and a thread pool overlaps the encoding
+v6 writes its windows in parallel (`wheel30_writer.py` on `parallel_window_writer.py`): the native
+`wheel_window_gaps()` turns a window's bytes into the PGS2 gap stream in one pass, and a thread pool
+overlaps the encoding
 with the per-file latency of the /mnt drives (about 13 ms a file). Each shard folder is created
 once and the written size comes from the encoded bytes, so a window costs one open, write and
 close. 1,000 windows at floor 19 on a /mnt drive: 29 s with the NumPy path and a stat and
 mkdir per window, 7.6 s with the native encoder on one thread, 2.3 s on 8 threads (ext4:
-0.9 s). v5's write phase is still serial NumPy.
+0.9 s). v5.2 runs v5.1's NumPy encoder on the same thread pool (`PRIMEATLAS_V5_WRITE_THREADS`,
+default 8): 1,000 windows at floor 19 on a /mnt drive, four interleaved rounds each, write phase
+about 25 s in v5.1 and 4.8 s in v5.2, whole run about 29 s and 7.9 s, same bytes.
 
 After each batch `orchestrator_v3.py` lets every new D window prove its P counterpart
 (`dp_verify.reconcile_many()`, also behind the Storage tab's "Verify P against D"). The pairs
@@ -107,8 +115,9 @@ prints no such line (it overlaps sieve and write) and keeps the column blank; a 
 
 Every row records `threads` (sieve): the worker count of v4.1/v5/v6/pt1 (`orchestrator_v3.py`), 1
 for hybrid and the primesieve wrapper, `GPU` for cudasieve, the count primesieve reports for a
-native count; and `write_threads`: v6's write-thread knob (`scanner_write_threads()` reads it from
-the environment the scanner inherits), 1 for every other writer, blank for a native count.
+native count; and `write_threads`: the write-thread knob of v6 or v5.2 (`scanner_write_threads()`
+reads it from the environment the scanner inherits), 1 for every other writer, blank for a native
+count.
 
 Primesieve mode has two paths. The wrapper (`prime_sieve_primesieve.py`, engine tag `primesieve`,
 "primesieve (Atlas format)" on the charts) logs one row per call: `total_seconds` is the wall time of
@@ -134,7 +143,8 @@ hit pages ([data.md](../data.md)).
 
 `test_prime_window`, `test_pgs2_vector`, `test_window_integrity`, `test_window_sharding`,
 `test_storage_kinds`, `test_dp_verify`, `test_engine_v5_identity`, `test_engine_v5_phase`,
-`test_engine_v6_identity`, `test_engine_v6_1_identity`, `test_wheel30_layout`, `test_wheel30_writer`, `test_work_plan_v6`,
+`test_engine_v6_identity`, `test_engine_v6_1_identity`, `test_engine_v5_2_identity`,
+`test_parallel_window_writer`, `test_wheel30_layout`, `test_wheel30_writer`, `test_work_plan_v6`,
 `test_engine_pt1`, `test_work_plan_v5`, `test_overlap_pipeline`, `test_orchestrator_stop`,
 `test_hybrid_*`, `test_cudasieve_integration`, `test_hit_paging`, `test_floor_meta_store`,
 `test_benchmark_log_schema`, `test_print_benchmark_summary`, `test_primesieve_benchmark_row`,
@@ -150,7 +160,8 @@ hit pages ([data.md](../data.md)).
 - Presieve stops at 17 (measured: tables up to 167 gain nothing once the wheel turn is
   unrolled); the wheel is fixed at 30 (210 / 2310 would hold 1.17 / 1.28 times more numbers
   per byte).
-- v5 writes its windows serially through NumPy; v6's native parallel writer is not ported to it.
+- v5.2 encodes each window through NumPy on the write threads; v6's native gap encoder is not
+  ported to the odd-only buffer.
 - The write phase starts after the sieve; overlapping it with the next run's sieve (pt1 does this)
   is not built for v6.
 - D proves P runs inside the generation run; a detached verifier draining a per-floor queue

@@ -1594,7 +1594,7 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               by the run's window count
                               (unitTests/test_engine_presets.py)
   engine_fields.py              EngineFields -- the pipeline form's engine Combobox
-                              (with the engine's code version, e.g. v5 -> v5.1) and
+                              (with the engine's code version, e.g. v5 -> v5.2) and
                               the knob Entries of the selected engine only, each with
                               an InfoTip; v5 and v6 have separate knob sets (their
                               best values differ) and a profile list per engine; the
@@ -2034,7 +2034,13 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               primecount and CUDASieve installers, GitHub attribution
                               buttons for every third-party library this app calls
                               into (sympy, primecount, primesieve, CUDASieve), the
-                              WSL environment re-check, and the self-update section
+                              WSL environment re-check with its "Component versions"
+                              button (prime_sieve/env_versions.py over WSL), and the
+                              self-update section
+  env_versions_view.py          renders env_versions.py's report into the component
+                              versions text and its duplicate-copy / engines-load-
+                              another-copy warning -- pure, no tkinter
+                              (unitTests/test_env_versions.py)
   manifest.py, backup_store.py, restore_job.py, floor_meta.py, full_backup.py,
   storage_integrate.py, delete_manager.py -- see "Backup manifest contents" /
   "Moving floor data between storages" / "Full-data backup" / "Integrating an
@@ -2084,10 +2090,14 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
   wheel30_writer.py          v6's write phase: each window's PGS2 bytes from the
                               native gap encoder (wheel_window_gaps() in
                               prime_sieve_engine_v6.c; NumPy path below 7), files
-                              written by a thread pool (PRIMEATLAS_V6_WRITE_THREADS,
-                              default 8) with each shard folder created once and
-                              progress lines while it writes
+                              written through parallel_window_writer.py
+                              (PRIMEATLAS_V6_WRITE_THREADS, default 8)
                               (unitTests/test_wheel30_writer.py)
+  parallel_window_writer.py  thread-pool write phase shared by v5.2 and v6:
+                              write_jobs(jobs, encode, n_threads) encodes and
+                              writes every (path, lo, hi) window, each shard folder
+                              created once, progress lines while it writes
+                              (unitTests/test_parallel_window_writer.py)
   engine_v6_lib.py           ctypes binding of prime_sieve_engine_v6.so (v6.0)
                               and prime_sieve_engine_v6_1.so (v6.1, same
                               functions), each loaded on first use
@@ -2097,7 +2107,13 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               end (half a segment's numbers); slices and pieces
                               come from work_plan_v5.py
                               (unitTests/test_work_plan_v6.py)
-  prime_sieve_v5.py          engine v5 (code v5.1): shared buffer holds odd
+  prime_sieve_v5_2.py        engine v5 (code v5.2): the frozen prime_sieve_v5.py
+                              with its write phase on parallel_window_writer.py
+                              (PRIMEATLAS_V5_WRITE_THREADS, default 8); output
+                              identical to v5.1 for any thread count
+                              (unitTests/test_engine_v5_2_identity.py)
+  prime_sieve_v5.py          frozen engine v5.1 (imported by v6 and pt1 for its
+                              shared helpers): shared buffer holds odd
                               numbers only (half the RAM, p = 2 never sieved),
                               small primes sieve cache-sized segments of
                               buffer slices (work_plan_v5.py), larger primes
@@ -2149,7 +2165,8 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               seed from known pi(10^n) values
   pgs2_vector.py             NumPy PGS2 writer: encodes a window's whole gap stream
                               in one vectorized pass from int64 prime offsets, byte-
-                              identical to the per-prime writer; read_window_count()
+                              identical to the per-prime writer (encode_prime_window_
+                              offsets() gives the bytes, v5.2's thread pool writes them); read_window_count()
                               reads only a header's prime count, unbuffered
                               (read_window_count_and_size(): plus the file size)
                               (unitTests/test_pgs2_vector.py)
@@ -2218,6 +2235,12 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
   primecount_query.py        one-shot standalone libprimecount queries (pi/pi_batch/
                               nth/version) behind the Research tab's Przyblizenia pi(x)
                               sub-tab's "primecount" data-source mode
+  env_versions.py            one-shot probe behind Settings -> WSL environment ->
+                              Component versions: distro, Python, numpy, gcc, and for
+                              libprimesieve/libprimecount the version, the file Python
+                              loads (/proc/self/maps), the file each built engine .so
+                              resolves (ldd), and every distinct copy in the linker
+                              cache (ldconfig -p); one JSON line on stdout
   prime_sieve_engine_v1.c    C sieve core for prime_sieve_v1.py (ctypes)
   prime_sieve_engine_v3.c    C sieve core for prime_sieve_v3.py (ctypes)
   prime_sieve_engine_v4.c    C sieve core for prime_sieve_v4.py/v4_1.py (ctypes)

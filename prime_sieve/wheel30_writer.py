@@ -5,27 +5,21 @@ wheel_window_gaps() (prime_sieve_engine_v6.c), one pass over the window's bytes;
 starting below 7 (2, 3 and 5 have no bit, 1 is never marked) goes through the NumPy path of
 wheel30_layout.py and pgs2_vector.py. Both give the same bytes as pgs2_vector's writer.
 
-write_windows() writes many windows with a thread pool: the native call and the file write
-both release the GIL, so encoding and the per-file latency of WSL's /mnt drives (about 13 ms
-a file on drvfs, against a fraction of that on ext4) overlap across threads. Each shard folder
-is created once, before the threads start, and the written size comes from the encoded bytes,
-so a window costs one open, write and close. Progress lines go to `progress` as the windows
-complete.
+write_windows() writes many windows through parallel_window_writer.write_jobs(), the
+thread pool v5.2 shares: the native call and the file write both release the GIL, so encoding
+and the per-file latency of WSL's /mnt drives overlap across threads.
 """
 import ctypes
-import os
 import threading
-import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import numpy as np
 
 import engine_v6_lib
+import parallel_window_writer
 import wheel30_layout
+from parallel_window_writer import PROGRESS_PREFIX  # noqa: F401 -- part of this module's API
 from pgs2_vector import encode_varints, pgs2_header
 
-PROGRESS_PREFIX = "[*] Writing windows:"
-_PROGRESS_SECONDS = 2.0
 _local = threading.local()
 
 
@@ -74,28 +68,6 @@ def encode_window(buf, base, lo, hi, generated_at):
 def write_windows(buf, base, jobs, generated_at, n_threads, progress=print):
     """Writes every (path, lo, hi) of `jobs` as a PGS2 file with `n_threads` threads;
     returns (bytes written, primes written)."""
-    for folder in {os.path.dirname(path) for path, _lo, _hi in jobs}:
-        os.makedirs(folder, exist_ok=True)
-
-    def _write(path, lo, hi):
-        data, count = encode_window(buf, base, lo, hi, generated_at)
-        with open(path, "wb") as f:
-            f.write(data)
-        return len(data), count
-
-    total = len(jobs)
-    total_bytes = total_primes = done = 0
-    t_start = last = time.perf_counter()
-    with ThreadPoolExecutor(max_workers=max(1, n_threads)) as pool:
-        futures = [pool.submit(_write, *job) for job in jobs]
-        for future in as_completed(futures):
-            size, count = future.result()
-            total_bytes += size
-            total_primes += count
-            done += 1
-            now = time.perf_counter()
-            if done == total or now - last >= _PROGRESS_SECONDS:
-                last = now
-                progress(f"{PROGRESS_PREFIX} {done}/{total} ({100 * done / total:.1f}%) | "
-                         f"time: {now - t_start:.1f}s")
-    return total_bytes, total_primes
+    return parallel_window_writer.write_jobs(
+        jobs, lambda lo, hi: encode_window(buf, base, lo, hi, generated_at), n_threads,
+        progress=progress)
