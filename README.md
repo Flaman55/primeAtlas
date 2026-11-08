@@ -2075,6 +2075,11 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
   prime_sieve_v6_1.py        default engine (code v6.1): prime_sieve_v6.py on
                               prime_sieve_engine_v6_1.so; output identical to
                               v6.0 (unitTests/test_engine_v6_1_identity.py)
+  prime_sieve_v7_0.py        engine v7 (code v7.0): prime_sieve_v6_1.py with the
+                              jump gear for the bucketed primes from
+                              work_plan_v7.jump_from() up, on
+                              prime_sieve_engine_v7_0.so; output identical to
+                              v6.1 (unitTests/test_engine_v7_0_identity.py)
   prime_sieve_v6.py          engine v6.0, kept for comparison: v5's pipeline on a
                               wheel-30 buffer (wheel30_layout.py), 8 bits per
                               30 numbers, so a run of the same RAM covers 1.875
@@ -2101,6 +2106,15 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
   engine_v6_lib.py           ctypes binding of prime_sieve_engine_v6.so (v6.0)
                               and prime_sieve_engine_v6_1.so (v6.1, same
                               functions), each loaded on first use
+  engine_v7_lib.py           ctypes binding of prime_sieve_engine_v7_0.so: v6.1's
+                              functions, sieve_wheel_bucketed() with the jump
+                              gear's jump_from and block factor
+  work_plan_v7.py            v7's knobs (env PRIMEATLAS_V7_*: v6's five, defaults
+                              equal, plus _JUMP_PCT, threshold factor K in %,
+                              0 = off, default 100, and _JUMP_BLOCK_PCT, default
+                              50), the gear's lowest prime p* = K * span * ln p*
+                              and the split of the bucketed primes into classic
+                              and jump pieces (unitTests/test_work_plan_v7.py)
   work_plan_v6.py            v6's knobs (env PRIMEATLAS_V6_SEGMENT_KB, _REGION_KB,
                               _BUCKET_MB, _PIECES_PER_THREAD, _WRITE_THREADS;
                               defaults 2048 / 1024 / 8192 / 16 / 8) and where its segmented primes
@@ -2254,6 +2268,14 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               turn (8 fixed byte offsets, p bytes apart) per
                               step and the bucket hits staged in one 64-byte
                               line per region, written with non-temporal stores
+  prime_sieve_engine_v7_0.c  C sieve core for prime_sieve_v7_0.py (ctypes): v6.1's,
+                              with bucketed pieces from jump_from up walked by
+                              the jump gear instead of prime by prime
+  engine_jump_gear.h         the jump gear: blocks q = Q + 30 j, first / q as a
+                              64.64 line with a bounded error, the j whose one
+                              multiple lands in the buffer found by a Euclid-like
+                              search and three-gap steps, each checked exactly;
+                              composite q land too and change no bit
   prime_sieve_engine_v5.c    C sieve core for prime_sieve_v5.py (ctypes); the
                               per-prime phase first_odd mod p comes from a
                               double-precision quotient with an exact one-p
@@ -2522,6 +2544,7 @@ gcc -O3 -shared -fPIC prime_sieve_engine_v4.c -o prime_sieve_engine_v4.so -lprim
 gcc -O3 -shared -fPIC prime_sieve_engine_v5.c -o prime_sieve_engine_v5.so -lprimesieve -lstdc++ -lm
 gcc -O3 -shared -fPIC prime_sieve_engine_v6.c -o prime_sieve_engine_v6.so -lprimesieve -lstdc++ -lm
 gcc -O3 -shared -fPIC prime_sieve_engine_v6_1.c -o prime_sieve_engine_v6_1.so -lprimesieve -lstdc++ -lm
+gcc -O3 -shared -fPIC prime_sieve_engine_v7_0.c -o prime_sieve_engine_v7_0.so -lprimesieve -lstdc++ -lm
 ```
 
 Prebuilt `.so` files are included; rebuild if the WSL environment's glibc/architecture

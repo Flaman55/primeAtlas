@@ -464,6 +464,38 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   v6.0. v6.0 zostaje w drzewie do porównań, a wiersze benchmarku podają wersję, więc wykresy
   je rozdzielają.
 
+### +38 — Engine v7: jump gear for the deep-floor sieving primes
+
+- English: New engine v7 in the engine list (code v7.0), next to the default v6. It finds
+  exactly the same primes and writes byte for byte the same windows as v6.1. On deep floors
+  most sieving primes have no multiple in a run's numbers at all, yet v6 computes where each
+  one would hit. v7's jump gear walks the large primes' range in blocks and finds only those
+  whose multiple lands in the run, so that stage costs in proportion to the run's width, not
+  to the number of primes below sqrt(N). Two new knobs: the jump threshold (where the gear
+  takes over, 0 = off) and the jump block length. Count-only, 2*10^11 numbers, 24 threads,
+  sieve time v6.1 -> v7: floor 26 330 -> 241 s, floor 27 927 -> 320 s, floor 28 3206 ->
+  604 s (5.3 times faster); at that width the gear stays off at floor 25. With 1000
+  windows (10^10 numbers) the gear is on from floor 25 and sieves about 2 times faster;
+  a higher threshold gains more there (floor 28: 2514 -> 756 s at threshold 3000 %).
+  Under the Auto knob profile (v5, v6, v7) the segment and bucket fields now show the
+  values the next run gets, for the width edited last; before, they showed 2 MiB / 8 GiB
+  whatever the width.
+- Polski: Nowy silnik v7 na liście silników (kod v7.0), obok domyślnego v6. Znajduje
+  dokładnie te same liczby pierwsze i zapisuje bajt w bajt te same okna co v6.1. Na
+  głębokich piętrach większość liczb pierwszych situjących nie ma w liczbach uruchomienia
+  żadnej wielokrotności, a v6 i tak liczy dla każdej, gdzie by trafiła. Bieg skokowy v7
+  przechodzi zakres dużych liczb pierwszych blokami i znajduje tylko te, których
+  wielokrotność wpada w uruchomienie, więc ten etap kosztuje proporcjonalnie do szerokości
+  uruchomienia, a nie do liczby liczb pierwszych poniżej sqrt(N). Dwa nowe pokrętła: próg
+  biegu skokowego (od którego miejsca bieg przejmuje pracę, 0 = wyłączony) i długość bloku.
+  Samo zliczanie, 2*10^11 liczb, 24 wątki, czas sita v6.1 -> v7: piętro 26 330 -> 241 s,
+  piętro 27 927 -> 320 s, piętro 28 3206 -> 604 s (5,3 raza szybciej); przy tej
+  szerokości na piętrze 25 bieg jest wyłączony. Przy 1000 oknach (10^10 liczb) bieg działa
+  od piętra 25 i sito jest około 2 razy szybsze; wyższy próg daje tam więcej (piętro 28:
+  2514 -> 756 s przy progu 3000 %). Przy profilu pokręteł Auto (v5, v6, v7) pola segmentu
+  i kubełków pokazują teraz wartości, które dostanie następny przebieg, dla ostatnio
+  zmienionej szerokości; wcześniej pokazywały 2 MiB / 8 GiB niezależnie od szerokości.
+
 ## 1.2.0 — 2026-11-01
 
 ### English

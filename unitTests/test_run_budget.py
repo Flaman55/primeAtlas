@@ -67,7 +67,7 @@ def check_target():
     t = run_budget.target_windows
     passed &= check(t("v4.1", 25, W) == 1000, "v4.1 target stays 1000 at floor 25")
     defaults = run_budget.DEFAULT_TARGET_WINDOWS_AT_25
-    passed &= check(defaults == {"v5": 20_000, "v6": 40_000},
+    passed &= check(defaults == {"v5": 20_000, "v6": 40_000, "v7": 40_000},
                     f"floor-25 target defaults per engine ({defaults})")
     passed &= check(t("v5", 25, W) == 20_000 and t("v6", 25, W) == 40_000,
                     f"targets at floor 25 are the engines' defaults "
@@ -107,6 +107,9 @@ def check_footprint():
     passed &= check(fp("v6", 1000, W, 1024) == -(-1000 * W // 30) + 1024 * MIB
                     + run_budget.V5_OVERHEAD_BYTES,
                     "v6 footprint = wheel-30 buffer + buckets + overhead")
+    passed &= check(all(fp("v7", w, W, mb) == fp("v6", w, W, mb)
+                        for w, mb in ((1, 64), (1000, 1024), (37500, 8192))),
+                    "v7 footprint = v6's (same buffer; the gear adds 512 KiB per thread)")
     # Peak RSS measured on floor 25 (night 2026-11-04): (engine, windows, bucket MiB, MB).
     measured = [("v6", 20000, 8192, 14945196 / 1024), ("v6", 37500, 8192, 20676044 / 1024),
                 ("v6", 37500, 4096, 16481568 / 1024), ("v5", 20000, 8192, 20673032 / 1024)]

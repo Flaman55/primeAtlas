@@ -1,6 +1,6 @@
 # Module: prime-sieve (sieve engines and orchestrators, WSL)
 
-`prime_sieve/` produces the prime windows: the sieve engines (v6 by default, v5, pt1, primesieve,
+`prime_sieve/` produces the prime windows: the sieve engines (v6 by default, v7, v5, pt1, primesieve,
 cudasieve, Hybrid; older numbered versions kept), the orchestrators that run them in batches, and the
 storage helpers both the engines and the GUI import. Runs under WSL; the GUI imports only the
 standard-library helpers.
@@ -10,7 +10,7 @@ standard-library helpers.
 | Part | Files |
 |---|---|
 | Format | `prime_sieve_v1.py` (PGS2 read/write, varints), `pgs2_vector.py`, `window_integrity.py` |
-| Engines | `prime_sieve_v6_1.py` + `engine_v6_lib.py` + `work_plan_v6.py` + `wheel30_layout.py` + `wheel30_writer.py` (default, code v6.1; `prime_sieve_v6.py`, v6.0, kept for comparison), `prime_sieve_v5_2.py` + `engine_v5_lib.py` + `work_plan_v5.py` (code v5.2), `parallel_window_writer.py` (write phase of v5.2 and v6), `prime_sieve_pt1.py` + `pt1_plan.py`, `prime_sieve_primesieve.py`, `prime_sieve_cudasieve.py`, `hybrid_*.py`; frozen `prime_sieve_v3.py`, `prime_sieve_v4.py`, `prime_sieve_v4_1.py`, `prime_sieve_v5.py` (v5.1, still the home of helpers v6 and pt1 import) |
+| Engines | `prime_sieve_v6_1.py` + `engine_v6_lib.py` + `work_plan_v6.py` + `wheel30_layout.py` + `wheel30_writer.py` (default, code v6.1; `prime_sieve_v6.py`, v6.0, kept for comparison), `prime_sieve_v7_0.py` + `engine_v7_lib.py` + `work_plan_v7.py` (`prime_sieve_engine_v7_0.c` + `engine_jump_gear.h`, code v7.0), `prime_sieve_v5_2.py` + `engine_v5_lib.py` + `work_plan_v5.py` (code v5.2), `parallel_window_writer.py` (write phase of v5.2, v6 and v7), `prime_sieve_pt1.py` + `pt1_plan.py`, `prime_sieve_primesieve.py`, `prime_sieve_cudasieve.py`, `hybrid_*.py`; frozen `prime_sieve_v3.py`, `prime_sieve_v4.py`, `prime_sieve_v4_1.py`, `prime_sieve_v5.py` (v5.1, still the home of helpers v6 and pt1 import) |
 | Orchestrators | `orchestrator_loop_v2.py`, `orchestrator_v3.py`, `orchestrator_loop_helpers.py`, `overlap_pipeline.py` |
 | Shared storage helpers | `window_sharding.py`, `storage_kinds.py` (D/P stores), `dp_verify.py`, `benchmark_log_schema.py`, `floor_meta_store.py`, `hit_paging.py`, `generation_stop.py`, `sieving_prime_count_v5.py` |
 | Queries | `primesieve_query.py`, `primecount_query.py`, `prime_count_primecount.py` |
@@ -134,6 +134,67 @@ sieve time (the work of a sieve phase), no `loop_*` columns. print: the wall tim
 time (`loop_numbers_per_second`, a whole run), no sieve time. SIGTERM (the Stop button) ends the
 child too.
 
+## How v7 finds the deep-floor hits
+
+On deep floors the bucket stage is nearly the whole sieve, and nearly all of it goes to primes
+that never hit: at floor 25 a run of 2e11 numbers sieves with the 1.1e11 primes below
+sqrt(top) = 3.2e12, and every prime above the run's width has at most one multiple in it.
+v6 computes first mod p for each of them anyway (primesieve generates them at about 7 ns a
+prime, the phase adds the rest), so this stage costs in proportion to the primes below
+sqrt(top), whatever the run's width.
+
+v7.0 (`prime_sieve_engine_v7_0.c`, run by `prime_sieve_v7_0.py`) keeps v6.1's engine and adds
+the jump gear (`engine_jump_gear.h`) for the bucketed primes from p* up. It asks which q land
+in the run instead of where each p lands:
+
+- q runs over blocks Q + 30 j of the numbers coprime to 30 in one residue class, composites
+  included; a composite q's multiple is composite with a prime factor >= 7 below sqrt(top),
+  which marks it too, so the extra marks change no bit;
+- over a block first / q is a line X0 - S j (64.64 fixed point) plus an error >= 0 below
+  first d^2 / Q^3 (d = 30 j); a q lands when frac(-first / q) < span / q, so every landing has
+  (A + B j) mod 2^64 < T, with T covering span / Q, the error and the truncations;
+- the first such j comes from a Euclid-like search, the next ones from the three-gap theorem
+  (consecutive solutions differ by one of three fixed steps); each candidate is checked exactly
+  with one multiply and at most two corrections, no division;
+- the gear is used only where it is exact: q >= 2 * span (one multiple at most) and
+  first / q < 2^62.
+
+A classic prime costs one phase whether it hits or not; a jump costs per landing candidate,
+about span / q per q (block setup included). The two meet at a q proportional to span * ln q,
+so `work_plan_v7.jump_from()` puts p* = K * span * ln p*, K the threshold knob (default 1.0,
+`PRIMEATLAS_V7_JUMP_PCT` = 100; 0 turns the gear off). The bucketed primes are split at p*:
+v6's cost-equal pieces below it, pieces of equal ratio hi / lo above it (equal jump cost); the
+gear's hits go through v6.1's staged buckets like any other.
+
+Measured in a C prototype of the gear (12 bands sieved at once on a 12-core Zen 3, 2e11 numbers
+per run, the prototype's classic path cheaper than v6.1's): p* about 5e12 at floor 26, 5.7e12 at
+27, 7e12 at 28 (single-threaded about 2.5e12: under full load the gear's marks wait on memory
+more); bucket stage on 12 threads:
+
+| | classic only | with the gear |
+|---|---|---|
+| floor 26 | 541 s | 446 s (1.2x) |
+| floor 27 | 1986 s | 981 s (2.0x) |
+| floor 28 | 5297 s | 1304 s (4.1x) |
+
+Real engines, count-only, 2e11 numbers, 24 threads, empty store, v6.1 then v7.0 on the same
+run (whole sieve):
+
+| | v6.1 | v7.0 |
+|---|---|---|
+| floor 25 | 141.1 s | 143.2 s (gear off: p* 5.4e12 above sqrt(top)) |
+| floor 26 | 330.5 s | 240.7 s (1.37x) |
+| floor 27 | 926.7 s | 320.3 s (2.89x) |
+| floor 28 | 3206.5 s | 603.8 s (5.31x) |
+
+The real gain exceeds the prototype's because v6.1's classic path costs more per prime than
+the prototype's. When p* lies above sqrt(top) (floor 25 at 2e11 numbers; with 1e10 numbers p* is 2.6e11
+and the gear is on there too) a v7 run is v6.1's. On narrow runs the default threshold is too
+low: at 1e10 numbers the best K was 3 at floor 26, 10 at 27, 30 or more at 28. Its output is v6.1's bit for
+bit (`test_engine_v7_0_identity`: whole runs with the gear forced on; engine calls whose pieces
+cover every sieving prime, buffer equal; engine calls on partial pieces at floors 16-30, every
+v6.1 bit marked and every extra bit a composite, the multiple of a composite q).
+
 ## Kept data
 
 Prime windows, `benchmark_log.csv`, `floor_meta.json`, `last_scan_metrics.json`, sieving-prime cache,
@@ -143,7 +204,8 @@ hit pages ([data.md](../data.md)).
 
 `test_prime_window`, `test_pgs2_vector`, `test_window_integrity`, `test_window_sharding`,
 `test_storage_kinds`, `test_dp_verify`, `test_engine_v5_identity`, `test_engine_v5_phase`,
-`test_engine_v6_identity`, `test_engine_v6_1_identity`, `test_engine_v5_2_identity`,
+`test_engine_v6_identity`, `test_engine_v6_1_identity`, `test_engine_v7_0_identity`,
+`test_work_plan_v7`, `test_engine_v5_2_identity`,
 `test_parallel_window_writer`, `test_wheel30_layout`, `test_wheel30_writer`, `test_work_plan_v6`,
 `test_engine_pt1`, `test_work_plan_v5`, `test_overlap_pipeline`, `test_orchestrator_stop`,
 `test_hybrid_*`, `test_cudasieve_integration`, `test_hit_paging`, `test_floor_meta_store`,
@@ -152,6 +214,8 @@ hit pages ([data.md](../data.md)).
 
 ## Known gaps
 
+- v7's threshold depends only on the run's width and the knob; its best value also depends on
+  the floor and the thread count, so on narrow runs the knob has to be raised by hand.
 - The bucket stage is now the larger part of a floor-19 sieve and nearly all of a floor-25 one.
   Each prime streams its hits across the whole buffer, so a thread writes to every region's
   bucket at once and every hit goes to RAM and back. The next step: per-slice buckets that

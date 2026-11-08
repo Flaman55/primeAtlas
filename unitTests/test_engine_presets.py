@@ -46,7 +46,7 @@ def check_names():
     passed &= check(ep.normalize_preset(" mid ") == "mid", "names are trimmed")
     passed &= check(ep.preset_key("v5") == "v5_preset" and ep.preset_key("v6") == "v6_preset",
                     "persisted under <engine>_preset")
-    passed &= check(ep.PRESET_ENGINES == ("v5", "v6"), "only v5 and v6 have profiles")
+    passed &= check(ep.PRESET_ENGINES == ("v5", "v6", "v7"), "only v5, v6 and v7 have profiles")
     return passed
 
 
@@ -85,6 +85,7 @@ def check_auto():
         "v6": [(1, 128, 1024), (2999, 128, 1024), (3000, 2048, 4096), (7999, 2048, 4096),
                (8000, 2048, 8192), (10 ** 6, 2048, 8192), (None, 2048, 8192)],
     }
+    expected["v7"] = expected["v6"]   # v7 runs on v6's buffer: v6's measured steps
     for engine in ep.PRESET_ENGINES:
         for windows, segment, bucket in expected[engine]:
             got = ep.preset_knobs(engine, "auto", windows)

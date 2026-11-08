@@ -33,7 +33,8 @@ import window_integrity
 # write_seconds/bytes_written, see benchmark_log_schema.py). v5 = prime_sieve_v5_2.py (code
 # version v5.2: v5.1's sieve, parallel window writer), output identical to v4.1. v6 = the
 # default engine (prime_sieve_v6_1.py, code version v6.1, wheel-30 buffer), output identical
-# to v5; v6.0's prime_sieve_v6.py stays for comparison. pt1 = partial sieve + primality test
+# to v5; v6.0's prime_sieve_v6.py stays for comparison. v7 = prime_sieve_v7_0.py (code version
+# v7.0): v6.1 plus the jump gear for the deep-floor sieving primes, output identical to v6. pt1 = partial sieve + primality test
 # (prime_sieve_pt1.py): D windows identical to v5, BPSW windows from MR_DET_BOUND on go to
 # the P store (see storage_kinds.py).
 # PRIMEATLAS_SCANNER_VERSION, when set, overrides the default (benchmarks compare engines
@@ -50,10 +51,12 @@ elif SCANNER_VERSION == "v5":
     import prime_sieve_v5_2 as prime_sieve_module  # noqa: E402
 elif SCANNER_VERSION == "v6":
     import prime_sieve_v6_1 as prime_sieve_module  # noqa: E402
+elif SCANNER_VERSION == "v7":
+    import prime_sieve_v7_0 as prime_sieve_module  # noqa: E402
 elif SCANNER_VERSION == "pt1":
     import prime_sieve_pt1 as prime_sieve_module  # noqa: E402
 else:
-    raise ValueError(f"SCANNER_VERSION must be 'v3', 'v4', 'v4.1', 'v5', 'v6' or 'pt1', "
+    raise ValueError(f"SCANNER_VERSION must be 'v3', 'v4', 'v4.1', 'v5', 'v6', 'v7' or 'pt1', "
                      f"got {SCANNER_VERSION!r}")
 # The GUI's save-point stop kills processes by this name (generation_stop.py).
 SCRIPT_NAME = generation_stop.scanner_script(SCANNER_VERSION)
@@ -280,13 +283,16 @@ def peak_child_rss_mb():
 
 
 def scanner_write_threads(scanner_version, environ):
-    """Threads the scanner writes its windows with: v6 and v5 (v5.2) use their own
-    write-thread knobs (work_plan_v6, work_plan_v5, read from the environment the scanner
+    """Threads the scanner writes its windows with: v7, v6 and v5 (v5.2) use their own
+    write-thread knobs (work_plan_v7, work_plan_v6, work_plan_v5, read from the environment the scanner
     inherits); v3, v4, v4.1 and pt1 write on one thread (pt1 overlaps it with sieving,
     still one writer)."""
     if scanner_version == "v6":
         import work_plan_v6
         return work_plan_v6.write_threads_from_env(environ)
+    if scanner_version == "v7":
+        import work_plan_v7
+        return work_plan_v7.write_threads_from_env(environ)
     if scanner_version == "v5":
         import work_plan_v5
         return work_plan_v5.write_threads_from_env(environ)

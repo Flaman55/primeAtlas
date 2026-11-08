@@ -26,11 +26,11 @@ Series = namedtuple("Series", "name tag points color dashed engine notes",
 
 # Drawing order: later engines on top.
 ENGINE_DRAW_ORDER = ("unknown", "primesieve", "primesieve_print", "primesieve_count", "hybrid",
-                     "v4.1", "v5", "v6", "pt1", "pt1 D+P", "pt1 P")
+                     "v4.1", "v5", "v6", "v7", "pt1", "pt1 D+P", "pt1 P")
 
 ENGINE_COLORS = {"unknown": "#8c8c8c", "primesieve": "#b5e61d", "primesieve_print": "#00c8c8",
                  "primesieve_count": "#802080",
-                 "hybrid": "#009e73", "v4.1": "#e69f00", "v5": "#2f7fe0", "v6": "#7f00ff",
+                 "hybrid": "#009e73", "v4.1": "#e69f00", "v5": "#2f7fe0", "v6": "#7f00ff", "v7": "#ff00ff",
                  "pt1": "#e0a0e0", "pt1 D+P": "#608000", "pt1 P": "#00e000"}
 OTHER_ENGINE_COLOR = "#ff8080"
 

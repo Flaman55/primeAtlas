@@ -7,8 +7,8 @@ label/entry column pairs, each entry followed by an InfoTip saying how the knob 
 run; switching the engine hides the old engine's fields (they keep their values and are
 disabled) and shows the new ones. For v5 and v6 a second Combobox picks the knob profile
 (engine_presets.py), one per engine: picking old, new or mid fills that engine's profile
-fields (auto shows new, the long-run set, since the width is known only at launch); typing
-in one of those fields switches the profile to custom. Parsing, defaults, profile values and
+fields (auto shows the set for the run width last given to set_windows(), new while none
+is known); typing in one of those fields switches the profile to custom. Parsing, defaults, profile values and
 the launch env live in engine_options.py and engine_presets.py; this module only owns the
 widgets.
 """
@@ -61,6 +61,7 @@ class EngineFields:
         self.preset_info = InfoTip(self._preset_frame, lambda: T("gen.info_preset"))
         self.preset_info.label.pack(side="left", padx=(4, 0))
         self._filling = False
+        self._windows = None
 
         self.knob_vars = {}
         self.knob_entries = {}
@@ -140,8 +141,20 @@ class EngineFields:
         if key is not None:
             self.knob_vars[key].set(str(bucket_mb))
 
+    def set_windows(self, windows):
+        """Sets the run width (windows per run) Auto sizes the profile fields for and refills
+        every engine on Auto; a blank or non-positive value changes nothing."""
+        text = str(windows).strip()
+        if not text.isdigit() or int(text) <= 0:
+            return
+        self._windows = int(text)
+        for engine, var in self.preset_vars.items():
+            if var.get() == engine_presets.PRESET_AUTO:
+                self._fill_preset(engine)
+
     def _fill_preset(self, engine):
-        values = engine_presets.preset_knobs(engine, self.preset_vars[engine].get(), None)
+        values = engine_presets.preset_knobs(engine, self.preset_vars[engine].get(),
+                                             self._windows)
         if values is None:
             return
         self._filling = True
