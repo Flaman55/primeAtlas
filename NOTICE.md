@@ -16,6 +16,12 @@ is part of PrimeAtlas's own source code, and each keeps its own license.
 - **primecount** -- Kim Walisch, https://github.com/kimwalisch/primecount, BSD 2-Clause
   License. Optional; the pi(x) approximations tab's "primecount" data source calls
   `libprimecount`, installed on request inside WSL; not included in this repository.
+- **Pseudosquares Prime Sieve** -- Kim Walisch,
+  https://github.com/kimwalisch/Pseudosquares-Prime-Sieve, BSD 2-Clause License.
+  Optional; built inside WSL on request from its own repository at a pinned commit (with
+  its vendored copy of primesieve and its CMake dependencies) and run only as a separate
+  program by the Pseudosquares generation mode; its LICENSE stays in that clone; not
+  included in this repository.
 - **CUDASieve** -- Curtis Seizert, https://github.com/curtisseizert/CUDASieve, GNU GPLv3.
   Optional; built from its own repository on request (after showing its license) and run
   only as a separate process, never linked into or distributed with PrimeAtlas.

@@ -54,6 +54,7 @@ from .run_guard_controls import RunGuardControls
 from .time_simulation_controls import TimeSimulationControls
 from .quick_gen_panel import QuickGenPanel
 from .quick_gen_runs import QuickGenRuns
+from .quick_gen_pseudosquares import QuickGenPseudosquares
 from .quick_gen_plan import QuickGenPlan
 from .loop_section import LoopSection
 from .constellation_section import ConstellationSection
@@ -64,8 +65,8 @@ from .generation_settings import load_generation_settings
 from .logged_runners import WslLoggedRunner
 
 
-class GenerationTab(QuickGenPanel, QuickGenRuns, QuickGenPlan, LoopSection,
-                    ConstellationSection, KtupleSection, GenerationRunProgress,
+class GenerationTab(QuickGenPanel, QuickGenRuns, QuickGenPseudosquares, QuickGenPlan,
+                    LoopSection, ConstellationSection, KtupleSection, GenerationRunProgress,
                     HybridControls, RunGuardControls, TimeSimulationControls, BaseTab):
     def __init__(self, parent, get_portal_folder, status_var, translator,
                  totals_progress, reload_primes_tree, reload_constellations_tree,

@@ -8,9 +8,10 @@ thread columns keep the bare engine name. width_label() names a point's range ("
 the last row per floor wins, so a chart can set points of different widths side by side. Names are ASCII:
 the PDF font has no other characters. primesieve rows say how they were measured: the
 wrapper converts the library's result into Atlas windows ("primesieve (Atlas format)"), the
-native program counts ("primesieve count (native)") or prints ("primesieve print (native)").
-A native count sieves the range and counts the bits -- an engine's sieve phase -- so it is
-on the sieve charts only; a native print sieves and outputs every prime with no split
+native program counts ("primesieve count (native)") or prints ("primesieve print (native)");
+the Pseudosquares Prime Sieve program has the same two native modes ("Pseudosquares count
+(native)", "Pseudosquares print (native)"). A native count sieves the range and counts the
+primes -- an engine's sieve phase -- so it is on the sieve charts only; a native print sieves and outputs every prime with no split
 between the two -- a whole run -- so it is on the whole-run chart only (CHART_METRICS). Both
 log the program's peak RAM and write no Atlas windows: they are on RAM per run, not per window. A
 native count is one process timed from outside, startup included (WHOLE_PROCESS_SIEVE): its
@@ -25,19 +26,27 @@ ENGINE_LABELS = {
     schema.ENGINE_PRIMESIEVE_ATLAS: "primesieve (Atlas format)",
     schema.ENGINE_PRIMESIEVE_PRINT: "primesieve print (native)",
     schema.ENGINE_PRIMESIEVE_COUNT: "primesieve count (native)",
+    schema.ENGINE_PSEUDOSQUARES_PRINT: "Pseudosquares print (native)",
+    schema.ENGINE_PSEUDOSQUARES_COUNT: "Pseudosquares count (native)",
 }
 
+# Native programs counting a range: one process, no Atlas windows, nothing written.
+NATIVE_COUNT_ENGINES = frozenset({schema.ENGINE_PRIMESIEVE_COUNT,
+                                  schema.ENGINE_PSEUDOSQUARES_COUNT})
+NATIVE_PRINT_ENGINES = frozenset({schema.ENGINE_PRIMESIEVE_PRINT,
+                                  schema.ENGINE_PSEUDOSQUARES_PRINT})
+
 # Engines that write no Atlas windows: their seconds per window count 10^7-number windows.
-NO_WINDOW_ENGINES = frozenset({schema.ENGINE_PRIMESIEVE_COUNT})
+NO_WINDOW_ENGINES = NATIVE_COUNT_ENGINES
 
 # Engines whose sieve_seconds is one whole process timed from outside, startup included.
-WHOLE_PROCESS_SIEVE = frozenset({schema.ENGINE_PRIMESIEVE_COUNT})
+WHOLE_PROCESS_SIEVE = NATIVE_COUNT_ENGINES
 
 # Metrics a row's engine is drawn on; engines not listed are on every chart.
 CHART_METRICS = {
-    schema.ENGINE_PRIMESIEVE_COUNT: frozenset({"sieve", "sieve_spw", "sieve_wall",
-                                               "sieve_wall_spw", "ram"}),
-    schema.ENGINE_PRIMESIEVE_PRINT: frozenset({"growth", "ram"}),
+    **{engine: frozenset({"sieve", "sieve_spw", "sieve_wall", "sieve_wall_spw", "ram"})
+       for engine in NATIVE_COUNT_ENGINES},
+    **{engine: frozenset({"growth", "ram"}) for engine in NATIVE_PRINT_ENGINES},
 }
 
 
@@ -70,7 +79,7 @@ def write_threads_label(row):
     """"8", "?" for a writing row from before the column, "" for a run that writes nothing
     or a row without thread columns."""
     write = str(row.get("write_threads") or "").strip()
-    if not write and sieve_threads_label(row) and row_engine(row) != schema.ENGINE_PRIMESIEVE_COUNT:
+    if not write and sieve_threads_label(row) and row_engine(row) not in NATIVE_COUNT_ENGINES:
         write = "?"
     return write
 

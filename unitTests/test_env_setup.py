@@ -824,6 +824,102 @@ def section_f():
         check(step in doc, f"the guide covers the installer step '{step}'")
 
 
+def section_g():
+    """The wizard's optional Pseudosquares Prime Sieve step: the build tools as root, then
+    pseudosquares_install.py --build as the distro's default user, after the required
+    packages; never in the script unless asked; asked alone it still elevates once."""
+    from primeatlas.settings import env_setup as es
+    import pseudosquares_const
+    print("\n--- G. optional Pseudosquares Prime Sieve step ---")
+    plain = es._build_install_ps1_text("Ubuntu")
+    check("pseudosquares" not in plain.lower(), "not asked: no Pseudosquares step")
+    script = es._build_install_ps1_text("Ubuntu", pseudosquares=True)
+    check("STEP:pseudosquares" in script, "asked: Pseudosquares step logged")
+    tools = " ".join(pseudosquares_const.APT_PACKAGES)
+    check(f"-u root -e bash -c \"apt-get update -y && apt-get install -y {tools}\"" in script,
+          "asked: build tools installed as root")
+    build_line = next((l for l in script.splitlines() if "pseudosquares_install.py" in l), "")
+    check("--build" in build_line and "-u root" not in build_line
+          and "/mnt/" in build_line, "asked: the build runs as the default user, WSL path")
+    check("PSEUDOSQUARES_FAILED" in script, "asked: a failure has its own marker")
+    check(script.index("STEP:apt_packages") < script.index("STEP:pseudosquares")
+          < script.index("STEP:done"), "after the required packages, before done")
+
+    all_ok = {"all_ok": True, "distro": "Ubuntu",
+              "checks": [{"id": i, "ok": True}
+                         for i in ("wsl_present", "distro_present", "packages")]}
+    scripts = []
+    orig = es._run_elevated_ps1
+
+    def capture(ps1_path, timeout=1800):
+        with open(ps1_path, encoding="utf-8") as f:
+            scripts.append(f.read())
+        return 0, "STEP:done\n"
+    es._run_elevated_ps1 = capture
+    tmp = tempfile.mkdtemp()
+    try:
+        es.run_install(report=all_ok, work_dir=tmp)
+        check(not scripts, "everything present, not asked: no elevation")
+        result = es.run_install(report=all_ok, work_dir=tmp, pseudosquares=True)
+        check(len(scripts) == 1 and "STEP:pseudosquares" in scripts[0]
+              and "STEP:apt_packages" not in scripts[0] and result["ok"],
+              "everything present, asked: one elevated run with only the Pseudosquares step")
+    finally:
+        es._run_elevated_ps1 = orig
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    # The wizard's checkbox: off by default; with everything present Install is usable
+    # only while it is checked; the install passes it to run_install().
+    import tkinter as tk
+    from primeatlas.settings import env_setup_wizard as wiz
+
+    class _Settings:
+        def set_env_status(self, report):
+            pass
+
+        def set_setup_completed(self, done):
+            pass
+
+    orig_start = wiz._EnvSetupWizardMixin._start_check
+    wiz._EnvSetupWizardMixin._start_check = lambda self: None
+    root = tk.Tk()
+    root.withdraw()
+    try:
+        w = wiz._EnvSetupWizardToplevel(root, _Settings(), lambda key, **kw: key)
+        check(w.pseudosquares_var.get() is False, "wizard: Pseudosquares off by default")
+        w._on_check_done(all_ok)
+        check(str(w.install_btn.cget("state")) == "disabled",
+              "wizard: everything present, unchecked -> Install disabled")
+        w.pseudosquares_var.set(True)
+        w._sync_install_btn()
+        check(str(w.install_btn.cget("state")) == "normal",
+              "wizard: checked -> Install usable")
+        asked = []
+        orig_install = wiz.env_setup.run_install
+        wiz.env_setup.run_install = lambda **kw: asked.append(kw.get("pseudosquares")) or {
+            "ok": True, "restart_required": False, "transcript": "", "error": None}
+        orig_thread = wiz.threading.Thread
+
+        class _Inline:
+            def __init__(self, target, daemon=None):
+                self.target = target
+
+            def start(self):
+                self.target()
+        wiz.threading.Thread = _Inline
+        w.after = lambda ms, fn=None, *a: None
+        try:
+            w._on_install_clicked()
+        finally:
+            wiz.env_setup.run_install = orig_install
+            wiz.threading.Thread = orig_thread
+        check(asked == [True], "wizard: install passes pseudosquares=True")
+        w.destroy()
+    finally:
+        wiz._EnvSetupWizardMixin._start_check = orig_start
+        root.destroy()
+
+
 # ============================================================================================
 
 if __name__ == "__main__":
@@ -833,6 +929,7 @@ if __name__ == "__main__":
     section_d()
     section_e()
     section_f()
+    section_g()
     print(f"\n{'=' * 78}")
     if failures:
         print(f"{len(failures)} FAILURE(S):")

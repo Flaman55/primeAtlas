@@ -103,7 +103,8 @@ def part_a():
           "print row: one thread, the text file's bytes, no Atlas windows")
     check(row["max_child_rss_mb"] == "", "print row: unknown RSS stays blank")
     check(row["write_threads"] == "1", "print row: written by the same single thread")
-    check(row["run_purpose"] == "storage", "print row: a storage run (its text into the storage)")
+    check(row["run_purpose"] == "benchmark",
+          "print row: a benchmark run (the program's own format, not Atlas storage)")
     check(row["total_seconds"] == row["loop_session_seconds"] == "1.200"
           and row["sieve_seconds"] == row["sieve_wall_seconds"] == "",
           "print row: wall time is total and loop time, no sieve/write split")
@@ -113,6 +114,7 @@ def part_a():
 
 def part_b():
     import benchmark_log_schema as schema
+    import native_tool_run
     import primesieve_native as nat
 
     check(schema.BENCHMARK_FIELDNAMES[-4:] == ["threads", "write_threads",
@@ -127,9 +129,10 @@ def part_b():
             w = csv.DictWriter(f, fieldnames=old)
             w.writeheader()
             w.writerow({c: "" for c in old} | {"engine": "v6", "base_exponent": "19"})
-        nat.append_row(tmp, nat.benchmark_row("count", 19, 0, 1, W, wall_seconds=0.7,
-                                              primes=228609, threads=1, version="12.15",
-                                              bytes_written=None, max_rss_mb=None))
+        native_tool_run.append_row(tmp, nat.benchmark_row("count", 19, 0, 1, W, wall_seconds=0.7,
+                                                          primes=228609, threads=1,
+                                                          version="12.15", bytes_written=None,
+                                                          max_rss_mb=None))
         with open(path, newline="") as f:
             rows = list(csv.DictReader(f))
         check(len(rows) == 2 and rows[0]["engine"] == "v6" and rows[0]["threads"] == "",

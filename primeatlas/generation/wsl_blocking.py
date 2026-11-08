@@ -1,7 +1,8 @@
 """
 wsl_blocking.py -- blocking WSL calls with a hang-safe timeout (Popen plus a manual poll
 loop over log/exit files, never wait()/communicate()): CUDASieve --status/--fetch-license,
-primecount queries, and the primecount apt install.
+primecount queries, the primecount apt install, and the Pseudosquares Prime Sieve status
+probe and build-tool install.
 
 Every WSL-launching function takes an explicit `portal_folder` argument: the storage path
 can change at runtime (PortalBrowserApp's _set_portal_folder rebinds its own module
@@ -225,14 +226,35 @@ def run_primecount_install_wsl_blocking(portal_folder, timeout=300):
     already work). Research-module-specific optional C libraries get an on-demand
     install button in Settings -> Updates, next to whichever Research sub-tab first
     needs them, not a blanket first-run install everyone pays for."""
-    log_path, exit_path, _run_id = generation_log_paths(portal_folder, "primecount_install")
+    return _run_root_shell_wsl_blocking(
+        portal_folder, "primecount_install",
+        "apt-get update -y && apt-get install -y primecount libprimecount8 "
+        "libprimecount-dev libprimecount-dev-common && ldconfig", timeout)
+
+
+def run_pseudosquares_status_wsl_blocking(argv, portal_folder, timeout=60):
+    """pseudosquares_install.py --status; (True, report dict) or (False, message), the
+    _run_wsl_blocking_via_logfile() contract."""
+    return _run_wsl_blocking_via_logfile(argv, portal_folder, "pseudosquares_status", timeout)
+
+
+def run_pseudosquares_tools_install_wsl_blocking(portal_folder, timeout=600):
+    """Installs the Pseudosquares Prime Sieve build tools as root
+    (pseudosquares_install.apt_command()); (True, None) or (False, detail)."""
+    from pseudosquares_install import apt_command
+    return _run_root_shell_wsl_blocking(portal_folder, "pseudosquares_tools", apt_command(),
+                                        timeout)
+
+
+def _run_root_shell_wsl_blocking(portal_folder, log_prefix, shell_command, timeout):
+    """Runs `shell_command` (with shell operators such as &&) as root inside WSL through
+    `wsl.exe -u root`, on the hang-safe Popen/poll pattern; judged by its exit code.
+    Returns (True, None) on success, (False, output tail or exit code) otherwise."""
+    log_path, exit_path, _run_id = generation_log_paths(portal_folder, log_prefix)
     log_wsl = windows_path_to_wsl(log_path)
     exit_wsl = windows_path_to_wsl(exit_path)
-    bash_cmd = (
-        "apt-get update -y && apt-get install -y primecount libprimecount8 "
-        "libprimecount-dev libprimecount-dev-common && ldconfig "
-        f"> {shlex.quote(log_wsl)} 2>&1; echo $? > {shlex.quote(exit_wsl)}"
-    )
+    bash_cmd = (f"{{ {shell_command}; }} > {shlex.quote(log_wsl)} 2>&1; "
+                f"echo $? > {shlex.quote(exit_wsl)}")
     cmd = ["wsl.exe", "-u", "root", "-e", "bash", "-c", bash_cmd]
     try:
         proc = subprocess.Popen(cmd, **_popen_kwargs_no_window())
@@ -244,4 +266,4 @@ def run_primecount_install_wsl_blocking(portal_folder, timeout=300):
     if exit_code == 0:
         return True, None
     detail = (output or "")[-1000:]
-    return False, detail or f"apt-get install failed (exit code {exit_code})"
+    return False, detail or f"{log_prefix} failed (exit code {exit_code})"

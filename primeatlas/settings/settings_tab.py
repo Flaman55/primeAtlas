@@ -44,10 +44,11 @@ from .delete_section import DeleteSection
 from .full_backup_section import FullBackupSection
 from .storage_integrate_section import StorageIntegrateSection
 from .updates_section import UpdatesSection
+from .pseudosquares_section import PseudosquaresSection
 
 
 class SettingsTab(GeneralSection, RestoreSection, DeleteSection, FullBackupSection,
-                  StorageIntegrateSection, UpdatesSection, BaseTab):
+                  StorageIntegrateSection, UpdatesSection, PseudosquaresSection, BaseTab):
     def __init__(self, parent, app_settings, wsl_helpers, translator):
         super().__init__(parent, translator)
         self.app_settings = app_settings

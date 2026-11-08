@@ -57,6 +57,7 @@ class _EnvSetupWizardMixin:
         self.T = T
         self.distro = distro
         self.result = "pending"  # "ready" | "skip" | "closed" | "restart"
+        self._installing = False
         self.title(T("wizard.title"))
         self.geometry("640x480")
         self.minsize(560, 420)
@@ -76,6 +77,12 @@ class _EnvSetupWizardMixin:
             anchor="w", padx=12)
         self.checklist_frame = ttk.Frame(self)
         self.checklist_frame.pack(fill="x", padx=12, pady=(6, 6))
+        # Optional extra, off by default: the Pseudosquares Prime Sieve program built in
+        # the same elevated run (env_setup.run_install(pseudosquares=True)).
+        self.pseudosquares_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(self, text=self.T("wizard.option_pseudosquares"),
+                        variable=self.pseudosquares_var,
+                        command=self._sync_install_btn).pack(anchor="w", padx=12, pady=(0, 6))
         self.progress = ttk.Progressbar(self, mode="indeterminate")
         self.progress.pack(fill="x", padx=12, pady=(0, 6))
         self._progress_busy()
@@ -137,6 +144,15 @@ class _EnvSetupWizardMixin:
         original_text = self.copy_log_btn.cget("text")
         self.copy_log_btn.configure(text=self.T("wizard.copy_log_done"))
         self.after(1200, lambda: self.copy_log_btn.configure(text=original_text))
+
+    def _sync_install_btn(self):
+        """Install is usable when something required is missing, or when the optional
+        Pseudosquares build is asked for; never before the first check finishes."""
+        report = getattr(self, "_last_report", None)
+        if report is None or self._installing:
+            return
+        wanted = not report["all_ok"] or self.pseudosquares_var.get()
+        self.install_btn.configure(state="normal" if wanted else "disabled")
 
     def _render_checklist(self, report):
         for child in self.checklist_frame.winfo_children():
@@ -200,11 +216,12 @@ class _EnvSetupWizardMixin:
                 self.skip_btn.configure(text=self.T("wizard.close_button"))
         else:
             self.status_var.set(self.T("wizard.status_missing"))
-            self.install_btn.configure(state="normal")
+        self._sync_install_btn()
 
     # ---- install --------------------------------------------------------------------
 
     def _on_install_clicked(self):
+        self._installing = True
         self.install_btn.configure(state="disabled")
         self.recheck_btn.configure(state="disabled")
         self.skip_btn.configure(state="disabled")
@@ -215,7 +232,8 @@ class _EnvSetupWizardMixin:
         def worker():
             try:
                 result = env_setup.run_install(
-                    distro=self.distro, report=getattr(self, "_last_report", None))
+                    distro=self.distro, report=getattr(self, "_last_report", None),
+                    pseudosquares=self.pseudosquares_var.get())
             except Exception as e:  # noqa: BLE001 -- same reasoning as _start_check's worker
                 result = {"ok": False, "restart_required": False, "transcript": "",
                           "error": str(e)}
@@ -224,6 +242,7 @@ class _EnvSetupWizardMixin:
         threading.Thread(target=worker, daemon=True).start()
 
     def _on_install_done(self, result):
+        self._installing = False
         self._progress_idle()
         if result.get("transcript"):
             self._log(result["transcript"])
@@ -236,6 +255,7 @@ class _EnvSetupWizardMixin:
             self.skip_btn.configure(text=self.T("wizard.close_button"), state="normal")
             return
         if result["ok"]:
+            self.pseudosquares_var.set(False)  # built; a re-check must not offer it again
             self._log(self.T("wizard.log_install_done"))
             self.skip_btn.configure(state="normal")
             self._start_check()

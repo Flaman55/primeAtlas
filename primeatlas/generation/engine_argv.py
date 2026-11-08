@@ -1,7 +1,8 @@
 """
 engine_argv.py -- the script paths and Linux-side argv builders for every engine and tool
 the app launches in WSL (orchestrator_loop_v2.py, orchestrator_v3.py direct,
-prime_sieve_primesieve.py, hybrid_sieve.py, prime_sieve_cudasieve.py,
+prime_sieve_primesieve.py, primesieve_native.py, pseudosquares_native.py,
+pseudosquares_install.py, hybrid_sieve.py, prime_sieve_cudasieve.py,
 constellation_finder_v2_3.py, ktuple_sieve_v2_2.py, primecount_query.py), the Windows-side
 read of a constellation checkpoint, and the local pip-install argv. The builders return
 plain argv lists; wsl_command.build_wsl_logged_command() wraps them for wsl.exe.
@@ -30,6 +31,10 @@ PRIMESIEVE_SCRIPT = os.path.abspath(
     os.path.join(_SCRIPT_DIR, "prime_sieve", "prime_sieve_primesieve.py"))
 PRIMESIEVE_NATIVE_SCRIPT = os.path.abspath(
     os.path.join(_SCRIPT_DIR, "prime_sieve", "primesieve_native.py"))
+PSEUDOSQUARES_NATIVE_SCRIPT = os.path.abspath(
+    os.path.join(_SCRIPT_DIR, "prime_sieve", "pseudosquares_native.py"))
+PSEUDOSQUARES_INSTALL_SCRIPT = os.path.abspath(
+    os.path.join(_SCRIPT_DIR, "prime_sieve", "pseudosquares_install.py"))
 HYBRID_SIEVE_SCRIPT = os.path.abspath(
     os.path.join(_SCRIPT_DIR, "prime_sieve", "hybrid_sieve.py"))
 PRIMESIEVE_QUERY_SCRIPT = os.path.abspath(
@@ -167,6 +172,24 @@ def build_primesieve_native_argv(base_exponent, target_idx_start, window_count_p
     script = script_path if script_path is not None else PRIMESIEVE_NATIVE_SCRIPT
     return ["python3", "-u", windows_path_to_wsl(script), str(base_exponent),
             str(target_idx_start), str(window_count_per_run), str(window_m), mode]
+
+
+def build_pseudosquares_native_argv(base_exponent, target_idx_start, window_count_per_run,
+                                    window_m, mode, threads, script_path=None):
+    """Linux argv of pseudosquares_native.py (the Pseudosquares Prime Sieve program, mode
+    "print" or "count"): <base_exponent> <target_idx_start> <target_idx_count> <window_m>
+    <mode> <threads, 0 = the program's own choice>."""
+    script = script_path if script_path is not None else PSEUDOSQUARES_NATIVE_SCRIPT
+    return ["python3", "-u", windows_path_to_wsl(script), str(base_exponent),
+            str(target_idx_start), str(window_count_per_run), str(window_m), mode,
+            str(threads)]
+
+
+def build_pseudosquares_install_argv(command, script_path=None):
+    """Linux argv of pseudosquares_install.py: command "--status" (one JSON line) or
+    "--build" (clone/check out the pinned commit and build it, live text)."""
+    script = script_path if script_path is not None else PSEUDOSQUARES_INSTALL_SCRIPT
+    return ["python3", "-u", windows_path_to_wsl(script), command]
 
 
 def build_hybrid_argv(base_exponent, iterations, width_windows, filter_prime_count, write_files,

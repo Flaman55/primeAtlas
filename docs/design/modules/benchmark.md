@@ -87,8 +87,9 @@ Its "Sieve measure" radio (`sieve_measure.py`, with an info tip) sets what the s
 PDF's sieve page measure: the engine's sieve phase (`sieve_seconds`, default), the sieve with
 startup overhead (`sieve_wall_seconds`), or the overhead alone (the sieve speed the startup
 takes: phase n/s minus wall n/s, and on the second axis that as % of the phase n/s). A row
-without the time a measure needs has no point on it. Native primesieve count is timed as one
-whole process, its ~0.7 s setup at floor 19 included: the same time is its point under the
+without the time a measure needs has no point on it. A native count (primesieve, Pseudosquares;
+`line_names.NATIVE_COUNT_ENGINES`) is timed as one whole process, primesieve's ~0.7 s setup at
+floor 19 included: the same time is its point under the
 engine phase and the sieve with startup, and it has no point under the overhead (no split
 between setup and sieve to measure from outside). PARI/GP references go with those two
 measures too. A change clears the chart's y pins; the summary and the PDF subtitle name a measure other than the default, the PDF

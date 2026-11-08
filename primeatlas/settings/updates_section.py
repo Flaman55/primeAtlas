@@ -678,6 +678,8 @@ class UpdatesSection:
             window_title=self.T("settings.cudasieve_frame"))
         self.cudasieve_output = self.cudasieve_console.text
 
+        self._build_pseudosquares_section(outer)  # pseudosquares_section.py
+
         # Environment setup re-check -- reuses the exact same
         # check_environment()/run_install() flow the first-run wizard (env_setup.py,
         # env_setup_wizard.py) runs automatically at startup, opened here on demand as a

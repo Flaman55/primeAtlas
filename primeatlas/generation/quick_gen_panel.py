@@ -40,6 +40,9 @@ _REMEMBERED_QUICK_VARS = (
     "quick_primesieve_floor_var", "quick_primesieve_from_var", "quick_primesieve_width_var",
     "quick_primesieve_native_var", "quick_primesieve_native_mode_var",
     "quick_cudasieve_floor_var", "quick_cudasieve_from_var", "quick_cudasieve_width_var",
+    "quick_pseudosquares_floor_var", "quick_pseudosquares_from_var",
+    "quick_pseudosquares_width_var", "quick_pseudosquares_mode_var",
+    "quick_pseudosquares_threads_var",
 )
 
 
@@ -124,6 +127,7 @@ class QuickGenPanel:
         self.quick_cudasieve_floor_var = tk.StringVar(value="")
         self.quick_cudasieve_from_var = tk.StringVar(value="")
         self.quick_cudasieve_width_var = tk.StringVar(value="1")
+        self._init_pseudosquares_state()  # quick_gen_pseudosquares.py
         self.quick_hint_var = tk.StringVar(value="")
         self.quick_status_var = tk.StringVar(value="")
         self._quick_panels = []
@@ -176,6 +180,7 @@ class QuickGenPanel:
             ("hybrid", self.T("quick.mode_hybrid")),
             ("primesieve", self.T("quick.mode_primesieve")),
             ("cudasieve", self.T("quick.mode_cudasieve")),
+            ("pseudosquares", self.T("quick.mode_pseudosquares")),
         ]
         for value, label in quick_modes:
             ttk.Radiobutton(mode_row, text=label, value=value, variable=self.quick_mode_var,
@@ -194,6 +199,7 @@ class QuickGenPanel:
         self._build_quick_mode_hybrid(fields_container, mode_frames)
         self._build_quick_mode_primesieve(fields_container, mode_frames)
         self._build_quick_mode_cudasieve(fields_container, mode_frames)
+        self._build_quick_mode_pseudosquares(fields_container, mode_frames)
 
         ttk.Label(parent, textvariable=self.quick_hint_var, style="Hint.TLabel",
                   wraplength=900, justify="left").pack(anchor="w", padx=8, pady=(0, 4))
@@ -218,7 +224,7 @@ class QuickGenPanel:
         InfoTip(btn_row, lambda: self.T("gen.info_benchmark")).label.pack(
             side="left", padx=(4, 0))
         self._benchmark_checkbuttons.append(benchmark_cb)
-        self._sync_primesieve_native_controls()
+        self._sync_benchmark_lock()
         ttk.Label(btn_row, textvariable=self.quick_status_var).pack(side="left", padx=(12, 0))
 
         panel = {"mode_frames": mode_frames, "floor_entry": floor_entry,
@@ -589,9 +595,7 @@ class QuickGenPanel:
         self._sync_primesieve_native_controls()
 
     def _sync_primesieve_native_controls(self):
-        """print/count usable only with Native on; Benchmark disabled while native
-        primesieve mode is selected, since print always writes into the storage and count
-        never does."""
+        """print/count usable only with Native on; the Benchmark lock follows."""
         native_var = getattr(self, "quick_primesieve_native_var", None)
         if native_var is None:
             return
@@ -599,10 +603,26 @@ class QuickGenPanel:
         for combo in getattr(self, "_primesieve_native_combos", ()):
             if combo.winfo_exists():
                 combo.configure(state="readonly" if native else "disabled")
-        locked = native and self.quick_mode_var.get() == "primesieve"
+        self._sync_benchmark_lock()
+
+    def _sync_benchmark_lock(self):
+        """While a native program's mode is selected (native primesieve, Pseudosquares; count
+        and print) Benchmark is disabled and shows checked: a native run measures the program
+        in its own format, so it is always a benchmark. The checkbox then shows a fixed
+        Variable instead of the shared write_files one, so the user's setting for the Atlas
+        modes stays as it was and shows again in them."""
+        mode = self.quick_mode_var.get()
+        native_var = getattr(self, "quick_primesieve_native_var", None)
+        locked = (mode == "pseudosquares"
+                  or mode == "primesieve" and native_var is not None and native_var.get())
+        if not hasattr(self, "_benchmark_shown_checked_var"):
+            # onvalue=False: the box is checked while this Variable is False.
+            self._benchmark_shown_checked_var = tk.BooleanVar(value=False)
+        variable = self._benchmark_shown_checked_var if locked else self._loop_write_files_var
         for benchmark_cb in getattr(self, "_benchmark_checkbuttons", ()):
             if benchmark_cb.winfo_exists():
-                benchmark_cb.configure(state="disabled" if locked else "normal")
+                benchmark_cb.configure(variable=variable,
+                                       state="disabled" if locked else "normal")
 
     def _on_primesieve_auto_from_clicked(self):
         """primesieve mode's OWN Auto button -- unlike every other mode's Auto (RAM-
@@ -879,6 +899,7 @@ class QuickGenPanel:
             "hybrid": self.T("quick.hint_hybrid"),
             "primesieve": self.T("quick.hint_primesieve"),
             "cudasieve": self.T("quick.hint_cudasieve"),
+            "pseudosquares": self.T("quick.hint_pseudosquares"),
         }
         self.quick_hint_var.set(hints.get(self.quick_mode_var.get(), ""))
         self._rebind_time_simulation()

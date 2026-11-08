@@ -6,8 +6,8 @@ Checks: the checkbox sits next to Generate in every Quick-gen panel copy, and th
 form no longer has a write-files checkbox (one control per role); checked means the shared
 write_files setting is off, in both directions and there-and-back; the choice is remembered
 under generation.loop.write_files, so an install that had files switched off opens in
-benchmark mode; it is disabled while native primesieve mode is selected (print always
-writes into the storage, count never does) and usable again in another mode or with Native
+benchmark mode; it is disabled and shows checked while native primesieve mode is selected (a
+native run is always a benchmark) and usable again in another mode or with Native
 off; a run launched with it checked passes write_files 0 to the engine, unchecked 1; the
 label and its info text exist in English and Polish and the old "PGS2 files" wording is gone.
 

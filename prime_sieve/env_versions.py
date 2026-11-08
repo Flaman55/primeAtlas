@@ -1,7 +1,8 @@
 """env_versions.py -- one-shot WSL-side probe of the component versions PrimeAtlas runs on
 (Settings -> WSL environment -> "Component versions"): distro, Python, numpy, gcc, and for
 libprimesieve and libprimecount the version, the file this Python process loads, the file
-every built engine .so resolves (ldd), and every distinct copy in the linker cache.
+every built engine .so resolves (ldd), and every distinct copy in the linker cache; for the
+Pseudosquares Prime Sieve program its path, version and build commit.
 
 Two copies of one library (an apt package next to a build under /usr/local) are reported
 as a duplicate: the loader picks one by linker-cache order, so an install or removal of
@@ -23,6 +24,9 @@ import platform
 import re
 import subprocess
 import sys
+
+import pseudosquares_const
+import pseudosquares_native
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 LIBRARIES = ("primesieve", "primecount")
@@ -149,6 +153,24 @@ def _numpy_version():
     return numpy.__version__
 
 
+def pseudosquares_entry(binary, version, commit):
+    """The Pseudosquares Prime Sieve program: its path, version, the commit of the
+    installer's clone it was built from (None for a binary from elsewhere) and whether
+    that is the pinned build; None when no program is found."""
+    if not binary:
+        return None
+    return {"path": binary, "version": version, "commit": commit,
+            "at_pin": commit == pseudosquares_const.PIN_SHORT}
+
+
+def _pseudosquares():
+    binary = pseudosquares_native.find_binary()
+    if not binary:
+        return None
+    version = pseudosquares_native.parse_version(_run([binary, "--version"]))
+    return pseudosquares_entry(binary, version, pseudosquares_native.build_commit(binary))
+
+
 def collect():
     ldconfig = _run(["ldconfig", "-p"])
     versions = {lib: _library_version(lib) for lib in LIBRARIES}
@@ -173,6 +195,7 @@ def collect():
         "gcc": gcc,
         "libs": libs,
         "duplicates": duplicates(libs),
+        "pseudosquares": _pseudosquares(),
     }
 
 
