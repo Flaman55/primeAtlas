@@ -179,10 +179,7 @@ class TabExportTests(unittest.TestCase):
                     self.assertIn(path, tab.status.get())
                 # The exports follow the Filter window like the PDF: only the kept runs.
                 window = tab._open_filter_window()
-                window.enabled["engine"].set(True)
-                for value, var in window.values["engine"].items():
-                    var.set(value == "v5")
-                window.apply()
+                window.value_buttons["engine"]["v5"].invoke()
                 path = os.path.join(portal, "filtered.csv")
                 filedialog.asksaveasfilename = lambda **kw: path
                 tab._export_report("csv")

@@ -3,7 +3,7 @@ test_primesieve_native_controls.py -- Quick-gen primesieve mode's "Native" check
 print/count choice, on the real Generation tab (isolated app, no WSL).
 
 Checks: the checkbox starts off and the print/count list is disabled until it is on; with
-primesieve mode selected and Native on, the "write files" checkbox is disabled (print
+primesieve mode selected and Native on, the Benchmark checkbox is disabled (print
 always writes, count never does) and it comes back when Native is off or another mode is
 chosen; Generate launches primesieve_native.py with the chosen mode when Native is on and
 prime_sieve_primesieve.py otherwise; both info texts exist in English and Polish, the native
@@ -77,17 +77,17 @@ def main():
         app.update()
         check(str(gen.quick_primesieve_native_mode_combo.cget("state")) == "readonly",
               "print/count list usable when Native is on")
-        check(str(gen._loop_write_files_cb.cget("state")) == "disabled",
-              "write files disabled for native primesieve")
+        check(str(gen._benchmark_checkbuttons[0].cget("state")) == "disabled",
+              "Benchmark disabled for native primesieve")
         gen.quick_mode_var.set("floor")
         app.update()
-        check(str(gen._loop_write_files_cb.cget("state")) == "normal",
-              "write files back in another mode")
+        check(str(gen._benchmark_checkbuttons[0].cget("state")) == "normal",
+              "Benchmark back in another mode")
         gen.quick_mode_var.set("primesieve")
         gen.quick_primesieve_native_var.set(False)
         app.update()
-        check(str(gen._loop_write_files_cb.cget("state")) == "normal",
-              "write files back with Native off")
+        check(str(gen._benchmark_checkbuttons[0].cget("state")) == "normal",
+              "Benchmark back with Native off")
 
         import primeatlas.generation.generation_tab as generation_tab_mod
         import primeatlas.generation.quick_gen_runs as runs_mod

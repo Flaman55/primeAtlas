@@ -1,13 +1,14 @@
 """The interactive part of the Benchmark HTML report: the data its script redraws the charts
 from, and the script (report_chart.js). Pure functions, no tkinter.
 
-The page carries every logged run, not only the ones the tab's Filter window keeps: per run
-its floor and its value in each filter dimension (chart_filter.py), and per chart the records
-of benchmark.benchmark_line_records() -- (run, line, floor, value, width). The script repeats
-the charts' reduction in the browser: the runs the page's filter keeps, then the last row per
-floor and line, so the page's filter compares runs as the tab's does. The page opens in the
-tab's view: filter selection, log scale, references, hidden lines, pinned axes and zoomed
-floors. The sieve measure, the pinned axes and the set of report pages stay as exported.
+The page carries the runs it is given -- report_export passes the ones the tab's Filter
+window keeps: per run its floor and its value in each filter dimension (chart_filter.py, with
+the label the tab shows), and per chart the records of benchmark.benchmark_line_records() --
+(run, line, floor, value, width). The script repeats the charts' reduction in the browser: the
+runs the page's filter keeps, then the last row per floor and line, so the page's filter
+compares runs as the tab's does, with the same clicks (All or single values,
+chart_filter.toggle_value()/select_all()). The page opens in the tab's view: log scale,
+references, hidden lines, pinned axes and zoomed floors. The sieve measure, the pinned axes and the set of report pages stay as exported.
 """
 import json
 import math
@@ -62,6 +63,7 @@ def report_data(rows, pages, t, width, height, selection=None, references=False,
         values = chart_filter.dimension_values(rows, dim)
         position = {v: i for i, v in enumerate(values)}
         dims.append({"key": dim, "label": t(chart_filter.DIMENSION_KEYS[dim]), "values": values,
+                     "labels": [chart_filter.value_label(dim, v, t) for v in values],
                      "of_run": [position[chart_filter.row_value(row, dim)] for row in rows]})
     refs_available = report_references(True, measure)
     out_pages = []
@@ -85,6 +87,7 @@ def report_data(rows, pages, t, width, height, selection=None, references=False,
         ("floor", "bench.axis_floor"), ("pinned", "bench.axis_pinned"),
         ("no_data", "bench.no_data_chart"), ("all_hidden", "bench.all_lines_hidden"),
         ("filter_off", "bench.filter_off"), ("blank", "bench.filter_blank"),
+        ("all", "bench.filter_all"),
         ("log", "bench.log_scale"), ("refs", "bench.show_references"),
         ("all_runs", "bench.html_all_runs"), ("all_floors", "bench.html_all_floors"),
         ("text_size", "bench.html_text_size"),

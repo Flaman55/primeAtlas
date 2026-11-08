@@ -1,6 +1,7 @@
 # 0007. The interactive HTML report redraws its charts in the browser with a port of chart_ops
 
-Date: 2026-11-05. Status: accepted.
+Date: 2026-11-05. Status: accepted; what the page carries amended by
+[0008](0008-html-report-holds-the-filtered-runs.md).
 
 ## Context
 The Benchmark HTML page and snippet were static: SVG charts of the tab's view. A reader of the

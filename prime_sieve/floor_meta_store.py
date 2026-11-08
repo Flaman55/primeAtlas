@@ -1,7 +1,8 @@
 """
 floor_meta_store.py -- reading and appending a floor's 10p{N}/floor_meta.json.
 
-floor_meta.json holds a copy of every benchmark_log.csv row a floor has produced, so the
+floor_meta.json holds a copy of every benchmark_log.csv storage row a floor has produced
+(benchmark rows stay in the log alone), so the
 floor's generation history travels with its own directory when the directory is copied
 into another storage (primeatlas/settings/floor_meta.py imports the rows back into that
 storage's benchmark_log.csv). The engines (orchestrator_v3.py, prime_sieve_primesieve.py,
@@ -12,6 +13,8 @@ prime_sieve/ on sys.path.
 """
 import json
 import os
+
+from benchmark_log_schema import RUN_PURPOSE_BENCHMARK, row_purpose
 
 FLOOR_META_FILENAME = "floor_meta.json"
 
@@ -79,10 +82,15 @@ def append_benchmark_row_to_floor_meta(storage_path, base_exponent, row):
     """Appends `row` (the dict just written to benchmark_log.csv) to the floor's
     floor_meta.json. Returns True when the row was added, False otherwise.
 
+    A benchmark row (row_purpose()) is refused: a measuring run leaves the storage as it was,
+    floor folder included, and its row stays in benchmark_log.csv alone.
+
     Idempotent: a row whose row_key() is already present is skipped. An existing file that
     cannot be read is left untouched, since rewriting it would drop the history it holds.
     Never raises: callers run this after benchmark_log.csv is written, and a failure here
     must not turn a logged run into a failed one."""
+    if row_purpose(row) == RUN_PURPOSE_BENCHMARK:
+        return False
     path = floor_meta_path(storage_path, base_exponent)
     try:
         rows = list(_read_file(path).get("benchmark_rows", [])) if os.path.exists(path) else []

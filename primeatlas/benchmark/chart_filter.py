@@ -1,22 +1,31 @@
 """Which logged runs the Benchmark charts compare.
 
-A selection is {dimension: set of values} for the enabled dimensions: a run stays when its
-value is selected in every one of them; a dimension left out filters nothing, an enabled one
-with nothing selected keeps nothing. The charts then take the last row per floor and line
+A selection is {dimension: set of values} for the filtered dimensions: a run stays when its
+value is selected in every one of them; a dimension left out is at All and filters nothing,
+one with nothing selected keeps nothing. The Filter window edits it with toggle_value() and
+select_all(): All or single values, never All minus some. The charts then take the last row per floor and line
 from the kept runs, so choosing one width compares every engine on that width. Values come
 from line_names, so they read like the chart lines ("v6.0", "15 thr", "2x24 thr", write "8",
-width "10^11"); "" is a run from before that column. No tkinter here.
+width "10^11"); "" is a run from before that column. The run purpose (benchmark_log_schema
+.row_purpose(): a benchmark run that only measured, or a storage run) is shown translated
+(value_label()). No tkinter here.
 """
 import re
 
+import benchmark_log_schema as schema
+
 from . import line_names
 
-DIMENSIONS = ("engine", "threads", "write_threads", "width")
-DIMENSION_KEYS = {"engine": "bench.filter_dim_engine", "threads": "bench.filter_dim_threads",
+DIMENSIONS = ("purpose", "engine", "threads", "write_threads", "width")
+PURPOSE_LABEL_KEYS = {schema.RUN_PURPOSE_BENCHMARK: "bench.purpose_benchmark",
+                      schema.RUN_PURPOSE_STORAGE: "bench.purpose_storage"}
+DIMENSION_KEYS = {"purpose": "bench.filter_dim_purpose",
+                  "engine": "bench.filter_dim_engine", "threads": "bench.filter_dim_threads",
                   "write_threads": "bench.filter_dim_write_threads",
                   "width": "bench.filter_dim_width"}
 
 _VALUE = {
+    "purpose": schema.row_purpose,
     "engine": line_names.base_name,
     "threads": line_names.sieve_threads_label,
     "write_threads": line_names.write_threads_label,
@@ -40,6 +49,13 @@ def _order(dimension, value):
     return (0, value)
 
 
+def value_label(dimension, value, t):
+    """How the Filter window and the summary show `value` of `dimension`."""
+    if dimension == "purpose" and value in PURPOSE_LABEL_KEYS:
+        return t(PURPOSE_LABEL_KEYS[value])
+    return value or t("bench.filter_blank")
+
+
 def dimension_values(rows, dimension):
     """The values `rows` hold for `dimension`, in numeric order ("" and "?" first)."""
     values = {row_value(row, dimension) for row in rows}
@@ -49,6 +65,27 @@ def dimension_values(rows, dimension):
 def keeps(row, selection):
     """True when the row's value is selected in every enabled dimension of `selection`."""
     return all(row_value(row, dim) in chosen for dim, chosen in selection.items())
+
+
+def toggle_value(selection, dimension, value):
+    """The selection after `value` of `dimension` is clicked: from All (dimension absent)
+    only that value; otherwise the value is added or removed, and removing the last one
+    goes back to All. Returns a new selection; the given one is not changed."""
+    result = {dim: set(chosen) for dim, chosen in selection.items()}
+    if dimension not in result:
+        result[dimension] = {value}
+    elif value in result[dimension]:
+        result[dimension].discard(value)
+        if not result[dimension]:
+            del result[dimension]
+    else:
+        result[dimension].add(value)
+    return result
+
+
+def select_all(selection, dimension):
+    """The selection with `dimension` back at All (no filter on it)."""
+    return {dim: set(chosen) for dim, chosen in selection.items() if dim != dimension}
 
 
 def apply(rows, selection):
@@ -64,6 +101,6 @@ def summary(selection, t):
     for dim in DIMENSIONS:
         if dim in selection:
             chosen = sorted(selection[dim], key=lambda v: _order(dim, v))
-            shown = ", ".join(v or t("bench.filter_blank") for v in chosen)
+            shown = ", ".join(value_label(dim, v, t) for v in chosen)
             parts.append(f"{t(DIMENSION_KEYS[dim])}: {shown or '-'}")
     return t("bench.filter_on", parts="; ".join(parts))

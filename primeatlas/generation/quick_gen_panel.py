@@ -52,6 +52,11 @@ class QuickGenPanel:
         visible panels showing identical values without any manual syncing: typing in
         either copy's Entry widget updates both immediately."""
         self.quick_mode_var = tk.StringVar(value="floor")
+        # write_files of every mode's run; the Benchmark checkbox shows it inverted
+        # (checked = measure only, nothing written into the storage).
+        self._loop_write_files_var = tk.BooleanVar(
+            value=bool(self._generation_settings["loop"].get("write_files", True)))
+        self._benchmark_checkbuttons = []  # every panel copy's Benchmark checkbox
         self.quick_floor_var = tk.StringVar(value="")
         self.quick_floor_width_var = tk.StringVar(value="1")
         self._quick_width_spinboxes = []  # Floor/Exploration Width, every panel copy
@@ -206,6 +211,14 @@ class QuickGenPanel:
             command=self._on_quick_generate_or_stop_clicked)
         generate_btn.pack(side="left")
         self._build_time_simulation_button(btn_row)
+        benchmark_cb = ttk.Checkbutton(btn_row, text=self.T("gen.check_benchmark"),
+                                       variable=self._loop_write_files_var,
+                                       onvalue=False, offvalue=True)
+        benchmark_cb.pack(side="left", padx=(12, 0))
+        InfoTip(btn_row, lambda: self.T("gen.info_benchmark")).label.pack(
+            side="left", padx=(4, 0))
+        self._benchmark_checkbuttons.append(benchmark_cb)
+        self._sync_primesieve_native_controls()
         ttk.Label(btn_row, textvariable=self.quick_status_var).pack(side="left", padx=(12, 0))
 
         panel = {"mode_frames": mode_frames, "floor_entry": floor_entry,
@@ -576,8 +589,9 @@ class QuickGenPanel:
         self._sync_primesieve_native_controls()
 
     def _sync_primesieve_native_controls(self):
-        """print/count usable only with Native on; "write files" disabled while native
-        primesieve mode is selected, since print always writes and count never does."""
+        """print/count usable only with Native on; Benchmark disabled while native
+        primesieve mode is selected, since print always writes into the storage and count
+        never does."""
         native_var = getattr(self, "quick_primesieve_native_var", None)
         if native_var is None:
             return
@@ -585,10 +599,10 @@ class QuickGenPanel:
         for combo in getattr(self, "_primesieve_native_combos", ()):
             if combo.winfo_exists():
                 combo.configure(state="readonly" if native else "disabled")
-        write_cb = getattr(self, "_loop_write_files_cb", None)
-        if write_cb is not None:
-            locked = native and self.quick_mode_var.get() == "primesieve"
-            write_cb.configure(state="disabled" if locked else "normal")
+        locked = native and self.quick_mode_var.get() == "primesieve"
+        for benchmark_cb in getattr(self, "_benchmark_checkbuttons", ()):
+            if benchmark_cb.winfo_exists():
+                benchmark_cb.configure(state="disabled" if locked else "normal")
 
     def _on_primesieve_auto_from_clicked(self):
         """primesieve mode's OWN Auto button -- unlike every other mode's Auto (RAM-

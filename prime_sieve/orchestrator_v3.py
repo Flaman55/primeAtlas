@@ -19,7 +19,8 @@ import generation_stop
 from floor_meta_store import append_benchmark_row_to_floor_meta
 import storage_kinds
 from benchmark_log_schema import (BENCHMARK_FIELDNAMES, RUN_STATUS_COMPLETED,
-                                  RUN_STATUS_STOPPED, ensure_benchmark_log_schema)
+                                  RUN_STATUS_STOPPED, ensure_benchmark_log_schema,
+                                  run_purpose)
 import window_integrity
 
 # ------------------------------------------------------------------------------------------
@@ -441,6 +442,7 @@ def print_benchmark_summary(base_exponent, start_idx, end_idx, total_seconds, po
                 "verify_seconds": f"{verify_seconds:.3f}" if verify_seconds is not None else "",
                 "sieve_wall_seconds": (f"{sieve_wall_seconds:.3f}"
                                        if sieve_wall_seconds is not None else ""),
+                "run_purpose": run_purpose(write_files),
             }
             writer.writerow(row)
         print(f"[BENCHMARK] logged to {log_path} (for cross-floor growth analysis)")

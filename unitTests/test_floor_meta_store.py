@@ -9,8 +9,14 @@ B. load_floor_meta(): None for a missing or corrupt file, the stored rows otherw
 C. The GUI's floor_meta.py uses the same functions (the same objects), and no file outside
    floor_meta_store.py defines its own appender.
 D. Every engine's benchmark writer (orchestrator_v3, prime_sieve_primesieve,
-   prime_sieve_cudasieve, hybrid_sieve) puts the row it logs into floor_meta.json too, equal
-   to the row in benchmark_log.csv.
+   prime_sieve_cudasieve, hybrid_sieve, primesieve_native) tags the row it logs with
+   run_purpose: a storage run (files written; native print) and a benchmark run (count-only;
+   native count). An Atlas engine's storage row goes into floor_meta.json too, equal to the
+   row in benchmark_log.csv; its benchmark run leaves the storage without a floor folder.
+   Native primesieve has no Atlas floor folder either way.
+E. append_benchmark_row_to_floor_meta() refuses a benchmark row (run_purpose, or a legacy
+   row with write_files 0), and every script in prime_sieve/ that writes benchmark log rows
+   sets run_purpose, so an engine added later cannot log without it.
 
 Usage:
     python unitTests/test_floor_meta_store.py
@@ -123,39 +129,94 @@ def _test_single_source(store):
     check(not copies, f"no floor_meta appender outside floor_meta_store.py ({copies})")
 
 
-def _test_engines():
-    print("\n--- D. every engine's benchmark writer fills floor_meta.json ---")
+def _writers():
     import orchestrator_v3
     import prime_sieve_primesieve
     import prime_sieve_cudasieve
     import hybrid_sieve
-    writers = {
-        "orchestrator_v3": lambda tmp: orchestrator_v3.print_benchmark_summary(
-            13, 0, 2, 10.0, tmp, write_files=False, total_primes_found=50, windows_processed=2),
-        "prime_sieve_primesieve": lambda tmp: prime_sieve_primesieve.write_benchmark_row(
-            13, 0, 2, 10.0, 50, 2, False, tmp),
-        "prime_sieve_cudasieve": lambda tmp: prime_sieve_cudasieve.write_benchmark_row(
-            13, 0, 2, 10.0, 50, 2, False, tmp),
-        "hybrid_sieve": lambda tmp: hybrid_sieve.write_hybrid_benchmark_row(
-            tmp, 13, 0, 2, 10.0, 50, False, 0.1, 5.0, 1.0, 100),
+    import primesieve_native
+
+    def native(mode):
+        def write(tmp, write_files):
+            primesieve_native.append_row(tmp, primesieve_native.benchmark_row(
+                mode, 13, 0, 2, 10_000_000, 10.0, 50, 4, "test", None, None))
+        return write
+    return {
+        "orchestrator_v3": lambda tmp, wf: orchestrator_v3.print_benchmark_summary(
+            13, 0, 2, 10.0, tmp, write_files=wf, total_primes_found=50, windows_processed=2),
+        "prime_sieve_primesieve": lambda tmp, wf: prime_sieve_primesieve.write_benchmark_row(
+            13, 0, 2, 10.0, 50, 2, wf, tmp),
+        "prime_sieve_cudasieve": lambda tmp, wf: prime_sieve_cudasieve.write_benchmark_row(
+            13, 0, 2, 10.0, 50, 2, wf, tmp),
+        "hybrid_sieve": lambda tmp, wf: hybrid_sieve.write_hybrid_benchmark_row(
+            tmp, 13, 0, 2, 10.0, 50, wf, 0.1, 5.0, 1.0, 100),
+        "primesieve_native print": native("print"),
+        "primesieve_native count": native("count"),
     }
-    for name, write in writers.items():
-        tmp = tempfile.mkdtemp(prefix=f"primeatlas_floor_meta_{name}_")
-        try:
-            with contextlib.redirect_stdout(io.StringIO()):
-                write(tmp)
-            with open(os.path.join(tmp, "benchmark_log.csv"), newline="") as f:
-                logged = list(csv.DictReader(f))
+
+
+def _test_engines():
+    print("\n--- D. every engine tags its row; only storage runs fill floor_meta.json ---")
+    for name, write in _writers().items():
+        purposes = ((True, "storage"), (False, "benchmark"))
+        if name.startswith("primesieve_native"):
+            purposes = ((name.endswith("print"), "storage" if name.endswith("print") else "benchmark"),)
+        for write_files, purpose in purposes:
+            tmp = tempfile.mkdtemp(prefix="primeatlas_floor_meta_engine_")
             try:
-                stored = _stored_rows(tmp, 13)
-            except OSError:
-                stored = None
-            check(stored is not None and len(stored) == 1 and len(logged) == 1
-                  and {k: str(v) for k, v in stored[0].items()}
-                  == {k: v for k, v in logged[0].items() if k in stored[0]},
-                  f"{name}: floor_meta.json holds the logged row")
-        finally:
-            shutil.rmtree(tmp, ignore_errors=True)
+                with contextlib.redirect_stdout(io.StringIO()):
+                    write(tmp, write_files)
+                with open(os.path.join(tmp, "benchmark_log.csv"), newline="") as f:
+                    logged = list(csv.DictReader(f))
+                check(len(logged) == 1 and logged[0].get("run_purpose") == purpose,
+                      f"{name}, write_files={write_files}: logged row has run_purpose={purpose}")
+                if name.startswith("primesieve_native"):
+                    continue
+                if purpose == "storage":
+                    try:
+                        stored = _stored_rows(tmp, 13)
+                    except OSError:
+                        stored = None
+                    check(stored is not None and len(stored) == 1
+                          and {k: str(v) for k, v in stored[0].items()}
+                          == {k: v for k, v in logged[0].items() if k in stored[0]},
+                          f"{name}: floor_meta.json holds the logged storage row")
+                else:
+                    check(not os.path.exists(os.path.join(tmp, "10p13")),
+                          f"{name}: a benchmark run leaves no floor folder in the storage")
+            finally:
+                shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _test_benchmark_rows_refused(store):
+    print("\n--- E. benchmark rows never reach floor_meta.json ---")
+    tmp = tempfile.mkdtemp(prefix="primeatlas_floor_meta_purpose_")
+    try:
+        for label, row in (("run_purpose benchmark", dict(ROW_A, run_purpose="benchmark")),
+                           ("legacy write_files 0", dict(ROW_A, write_files="0")),
+                           ("legacy write_files 0 as int", dict(ROW_A, write_files=0))):
+            check(store.append_benchmark_row_to_floor_meta(tmp, 12, row) is False
+                  and not os.path.exists(os.path.join(tmp, "10p12")),
+                  f"{label}: refused, no floor folder created")
+        check(store.append_benchmark_row_to_floor_meta(
+                  tmp, 12, dict(ROW_A, run_purpose="storage", write_files="1")) is True,
+              "run_purpose storage: appended")
+        check(store.append_benchmark_row_to_floor_meta(tmp, 12, dict(ROW_B)) is True,
+              "legacy row without run_purpose or write_files: appended (storage)")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    frozen = re.compile(r"^(prime_sieve_v\d|repair_)")
+    writes_rows = re.compile(r"DictWriter\([^)]*BENCHMARK_FIELDNAMES")
+    missing = []
+    for path in sorted(glob.glob(os.path.join(_REPO_ROOT, "prime_sieve", "*.py"))):
+        if frozen.match(os.path.basename(path)):
+            continue
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+        if writes_rows.search(text) and "run_purpose" not in text:
+            missing.append(os.path.basename(path))
+    check(not missing, f"every benchmark log writer in prime_sieve/ sets run_purpose ({missing})")
 
 
 def main():
@@ -167,6 +228,7 @@ def main():
         _test_append(store)
         _test_load(store)
         _test_single_source(store)
+        _test_benchmark_rows_refused(store)
     _test_engines()
     print()
     if failures:

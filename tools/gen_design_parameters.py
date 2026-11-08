@@ -27,7 +27,7 @@ FORM_LABELS = {
         "base_exponent": "gen.field_base_exponent",
         "run_count": "gen.field_run_count",
         "n_instances": "gen.field_n_instances",
-        "write_files": "gen.check_write_files",
+        "write_files": "gen.check_benchmark",
         "compute_sieving_primes_count": "gen.check_count_sieving",
         "use_known_pi_seed": "gen.check_use_pi_seed",
         "window_count_per_run": "gen.field_window_count",

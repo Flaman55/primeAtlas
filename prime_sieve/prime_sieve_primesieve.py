@@ -9,7 +9,7 @@ import sys
 import time
 
 import window_sharding
-from benchmark_log_schema import (BENCHMARK_FIELDNAMES, ENGINE_PRIMESIEVE_ATLAS,
+from benchmark_log_schema import (BENCHMARK_FIELDNAMES, run_purpose, ENGINE_PRIMESIEVE_ATLAS,
                                   ensure_benchmark_log_schema)
 from floor_meta_store import append_benchmark_row_to_floor_meta
 
@@ -266,6 +266,7 @@ def write_benchmark_row(base_exponent, target_idx_start, target_idx_count, total
                     if numbers_processed is not None and total_seconds > 0 else ""),
                 "loop_seconds_per_window": f"{seconds_per_window:.6f}",
                 "write_files": "1" if write_files else "0",
+                "run_purpose": run_purpose(write_files),
                 "sieve_seconds": _blank_or(sieve_seconds, ".6f"),
                 "write_seconds": _blank_or(write_seconds, ".6f"),
                 "bytes_written": "" if bytes_written is None else int(bytes_written),

@@ -71,13 +71,17 @@ color, ● left axis, ■ right axis. "Open in new window" above each chart
 instead of doubled on another click; `_draw_chart()` draws both canvases with one state, so zoom,
 legend toggles, pins, filter and toggles act on both, and zooming in the window zooms the tab.
 
-The Filter window picks the runs the charts compare (`chart_filter.py`): each dimension -- engine
-build, sieve threads, write threads, range width -- is a checkbox; checked, its values from the log
-appear, all selected at first, each with its own checkbox. A run stays when its value is selected in
-every checked dimension; the last row per floor and line is then taken among the kept runs, so one
-width compares every engine on that width. Changes apply at once; the summary next to the Filter
-button and the PDF subtitle name the selection; the PDF tables list the kept runs, the tab's table
-the whole log. Session only, like the other chart toggles.
+The Filter window picks the runs the charts compare (`chart_filter.py`): each dimension -- run
+purpose (benchmark or storage, `benchmark_log_schema.row_purpose()`, shown translated), engine
+build, sieve threads, write threads, range width -- lists an All checkbox and its values from the
+log, all clickable at once. A dimension is at All until a value is clicked: that value alone is
+kept, further clicks add or remove values, removing the last one or clicking All goes back to All
+(`toggle_value()`, `select_all()`): All or single values, never All minus some. A run stays when
+its value is selected in every filtered dimension; the last row per floor and line is then taken
+among the kept runs, so one width compares every engine on that width. Changes apply at once;
+the summary next to the Filter button and the PDF subtitle name the selection; the PDF tables
+and the tab's table list the kept runs (a floor with none is left out; nothing kept shows one
+explanatory row), rebuilt on every change. Session only, like the other chart toggles.
 
 Its "Sieve measure" radio (`sieve_measure.py`, with an info tip) sets what the sieve chart and the
 PDF's sieve page measure: the engine's sieve phase (`sieve_seconds`, default), the sieve with
@@ -102,12 +106,14 @@ the HTML names the filter under the title, the sieve measure over the sieve char
 mixed widths over a page's charts (`report_mixed_note()`). CSV writes the kept rows as the tab read
 them (with the D/P `kind` column).
 
-The HTML page and snippet are interactive (`report_html.py`, `report_chart.js`, ADR 0007). They carry
-every run: its floor and filter values, and per chart the records of `benchmark_line_records()`
-(run, line, floor, value, width). The script repeats the reduction in the browser -- the runs its
-filter keeps, then the last row per floor and line -- and redraws with a port of `chart_ops()`; it
-starts from the tab's view (selection, log scale, references, hidden lines, pins, zoom). The page
-has the Filter window's dimensions as checkboxes, log scale and reference toggles, "All runs" and
+The HTML page and snippet are interactive (`report_html.py`, `report_chart.js`, ADR 0007, 0008). They
+carry the runs the tab's filter keeps (All everywhere exports the whole log): per run its floor and
+filter values (with the tab's labels), and per chart the records of `benchmark_line_records()`
+(run, line, floor, value, width); the tables list those runs. The script repeats the reduction in
+the browser -- the runs its filter keeps, then the last row per floor and line -- and redraws with a
+port of `chart_ops()`; it starts from the tab's view (log scale, references, hidden lines, pins,
+zoom) with its own filter at All. The page has the Filter window's dimensions, clicked like the tab's
+(All or single values, `toggleValue()`/`selectAll()`), log scale and reference toggles, "All runs" and
 "All floors", a chart text size (100-200 %, the chart drawn on a canvas 1/k as large and shown at
 its usual width), legend toggles per chart and the tab's zoom gestures over all charts at once,
 taken only over a chart's picture (the wheel beside it scrolls the page); the

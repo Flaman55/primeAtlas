@@ -1,13 +1,16 @@
 """The interactive Benchmark HTML report (primeatlas/benchmark/report_html.py, report_chart.js).
 
-Checks, Python side: the page's data carries every run with its filter values and floor, and
-the records of each chart reduce (last row per floor and line among the runs a selection
-keeps) to exactly the Series the tab draws for that selection; the page starts in the tab's
-view (selection, log scale, references, hidden lines, pins, zoom); the tables hold every run
-and hide the dropped ones; "</" in the data cannot close its script element.
+Checks, Python side: the page's data carries every run it is given with its filter values
+(purpose values translated) and floor, and the records of each chart reduce (last row per
+floor and line among the runs a selection keeps) to exactly the Series the tab draws for that
+selection; the page starts in the tab's view (log scale, references, hidden lines, pins,
+zoom); an exported page holds only the runs the tab's filter keeps, its own filter starting
+at All over them, and its tables list exactly those runs; "</" in the data cannot close its
+script element.
 
 Through node (skipped without it): the script's reduction gives the Python Series for several
-selections; its chart drawing is the SVG chart_svg.chart_svg() writes for the same series
+selections; its filter clicks follow chart_filter.toggle_value()/select_all() (All or single
+values, there and back) and its summary shows the translated values; its chart drawing is the SVG chart_svg.chart_svg() writes for the same series
 (linear, log and pinned axes), apart from the legend's click groups and the points' hover
 titles; its zoom, pan and zoomed floor ticks match chart_view.py; zoomed
 charts (both axes, lines cut at every plot edge) match too.
@@ -78,7 +81,13 @@ def _node(task):
               " if (c.kind === 'svg') return m.chartSvg(c.w, c.h, c.opts).svg;"
               " if (c.kind === 'zoom') return m.zoomStep(c.view, c.level, c.base, c.anchor, c.steps, c.span);"
               " if (c.kind === 'pan') return m.pan(c.view, c.span, c.delta);"
-              " if (c.kind === 'ticks') return m.tickFloors(...c.args); }")
+              " if (c.kind === 'ticks') return m.tickFloors(...c.args);"
+              " if (c.kind === 'toggle') { let sel = {}; return c.ops.map(op => {"
+              "  sel = op[0] === 'all' ? m.selectAll(sel, op[1]) : m.toggleValue(sel, op[1], op[2]);"
+              "  const o = {}; for (const k in sel) o[k] = [...sel[k]].sort(); return o; }); }"
+              " if (c.kind === 'summary') { const sel = {};"
+              "  for (const k in c.selection) sel[k] = new Set(c.selection[k]);"
+              "  return m.filterSummary(c.data, sel); } }")
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "driver.js"
         path.write_text(driver, encoding="utf-8")
@@ -124,7 +133,7 @@ class DataTests(unittest.TestCase):
         self.assertEqual((data["x_level"], data["x_base"]), (3, [18, 24]),
                          "the page zooms on from the tab's notch")
         self.assertEqual([c["y_level"] for c in data["pages"][0]["charts"]], [2, 2])
-        self.assertEqual(data["selection"], {"engine": ["v6"]})
+        self.assertEqual(data["selection"], {"engine": ["v6"]}, "report_data keeps a given selection")
         self.assertTrue(data["log"])
         self.assertFalse(data["refs_on"])
         self.assertTrue(data["refs_available"])
@@ -137,7 +146,7 @@ class DataTests(unittest.TestCase):
         self.assertEqual(engine["values"], ["v4.1", "v5", "v6"])
 
     def test_page_tables_and_escaping(self):
-        rows = ROWS + [dict(_row(26, "v5", 1e9), run_status="</script><b>")]
+        rows = ROWS + [dict(_row(26, "v6", 1e9), run_status="</script><b>")]   # kept by the filter
         page = report_export.render("html", FIELDNAMES, rows, translator=Translator("en"),
                                     selection={"engine": {"v6"}}, **OPTIONS)
         root = page.split("<body>", 1)[1]
@@ -147,18 +156,38 @@ class DataTests(unittest.TestCase):
         payload = re.search(r'class="pa-data">(.*?)</script>', root, re.S).group(1)
         self.assertNotIn("</", payload)
         data = json.loads(payload)
-        self.assertEqual(data["runs"], len(rows), "every run, not only the kept ones")
+        kept = [r for r in rows if r["engine"] == "v6"]
+        self.assertEqual(data["runs"], len(kept), "only the runs the tab's filter keeps")
+        self.assertEqual(data["selection"], {}, "the page's own filter starts at All")
+        engine = [d for d in data["dims"] if d["key"] == "engine"][0]
+        self.assertEqual(engine["values"], ["v6"], "the page's filter offers the kept values")
         visible = re.findall(r'<tr data-run="(\d+)">', page)
         hidden = re.findall(r'<tr data-run="(\d+)" hidden>', page)
-        tables = len(set(re.findall(r"<h2>", page)))
-        self.assertEqual(len(visible) + len(hidden), len(rows) * page.count("<h2>"))
-        self.assertTrue(all(rows[int(i)]["engine"] == "v6" for i in visible))
-        self.assertTrue(tables)
+        self.assertEqual(hidden, [], "no dropped run hidden in the tables")
+        self.assertEqual(len(visible), len(kept) * page.count("<h2>"))
+        self.assertTrue(all(kept[int(i)]["engine"] == "v6" for i in visible))
+        self.assertTrue(page.count("<h2>"))
+        whole = report_export.render("html", FIELDNAMES, rows, translator=Translator("en"),
+                                     **OPTIONS)
+        whole_data = json.loads(re.search(r'class="pa-data">(.*?)</script>', whole, re.S).group(1))
+        self.assertEqual(whole_data["runs"], len(rows), "no filter in the tab: every run")
         self.assertIn("&lt;/script&gt;&lt;b&gt;", page)
         self.assertNotIn("</script><b>", page)
         csv_text = report_export.render("csv", FIELDNAMES, rows, selection={"engine": {"v6"}})
         self.assertEqual(len(csv_text.strip().splitlines()) - 1,
                          sum(r["engine"] == "v6" for r in rows), "CSV: the kept runs")
+
+    def test_purpose_labels(self):
+        rows = [dict(ROWS[0], run_purpose="benchmark"), dict(ROWS[1], run_purpose="storage")]
+        for lang, words in (("en", ["Benchmark", "Storage"]), ("pl", ["Benchmark", "Magazyn"])):
+            t = Translator(lang).t
+            pages = report_chart_pages(rows, [(18, 1.0)], True)
+            data = report_html.report_data(rows, pages, t, 900, 260)
+            purpose = [d for d in data["dims"] if d["key"] == "purpose"][0]
+            self.assertEqual(purpose["values"], ["benchmark", "storage"])
+            self.assertEqual(purpose["labels"], words, lang)
+            threads = [d for d in data["dims"] if d["key"] == "threads"][0]
+            self.assertEqual(threads["labels"], threads["values"])
 
     def test_data_script_escapes_closing_tags(self):
         html = report_html.data_script({"a": "</script><script>alert(1)</script>"})
@@ -189,6 +218,32 @@ class ScriptTests(unittest.TestCase):
             spec = pages[case["page"]][1][case["chart"]]
             self.assertEqual(_js_series(data, case["page"], case["chart"], reduced),
                              _python_series(ROWS, selection, spec[2]), (selection, spec[2]))
+
+    def test_filter_clicks_match_python(self):
+        sequences = [
+            [["value", "width", "10^11"], ["value", "width", "10^10"], ["value", "width", "10^11"],
+             ["value", "width", "10^10"]],
+            [["value", "width", "10^10"], ["all", "width"], ["all", "width"]],
+            [["value", "threads", "15 thr"], ["value", "width", "10^11"], ["all", "threads"],
+             ["value", "width", "2x10^11"], ["value", "width", "10^11"]],
+        ]
+        results = _node({"cases": [{"kind": "toggle", "ops": ops} for ops in sequences]})
+        for ops, got in zip(sequences, results):
+            sel, want = {}, []
+            for op in ops:
+                sel = (chart_filter.select_all(sel, op[1]) if op[0] == "all"
+                       else chart_filter.toggle_value(sel, op[1], op[2]))
+                want.append({k: sorted(v) for k, v in sel.items()})
+            self.assertEqual(got, want, ops)
+
+    def test_summary_shows_labels(self):
+        rows = [dict(ROWS[0], run_purpose="benchmark"), dict(ROWS[1], run_purpose="storage")]
+        t = Translator("pl").t
+        pages = report_chart_pages(rows, [(18, 1.0)], True)
+        data = report_html.report_data(rows, pages, t, 900, 260)
+        got = _node({"cases": [{"kind": "summary", "data": data,
+                                "selection": {"purpose": ["storage"]}}]})[0]
+        self.assertEqual(got, chart_filter.summary({"purpose": {"storage"}}, t))
 
     def test_chart_matches_python_svg(self):
         t = Translator("en")

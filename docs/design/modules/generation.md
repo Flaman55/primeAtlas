@@ -51,8 +51,21 @@ storage (`reload_benchmark_log`, injected by the app), so the run's row is on th
 primesieve mode has a Native checkbox (`quick.primesieve_native`, remembered). Off, it runs the
 wrapper `prime_sieve_primesieve.py` (Atlas windows into storage; the info tip names the conversion
 overhead in its time). On, a print/count list becomes usable and Generate runs
-`primesieve_native.py` with that mode; the shared write-files checkbox is disabled while native
+`primesieve_native.py` with that mode; the Benchmark checkbox is disabled while native
 primesieve mode is selected, since print always writes its text and count never writes.
+
+## Benchmark runs
+
+"Benchmark (no storage writes)" sits next to Generate in every Quick-gen panel copy and applies
+to every mode: it is the shared `write_files` setting shown inverted (checked = `write_files`
+off, remembered as `generation.loop.write_files`), passed to every engine's argv. A benchmark
+run sieves and counts and leaves the storage as it was: no windows, no floor folder, no
+`floor_meta.json` row (`floor_meta_store` refuses rows whose `row_purpose()` is benchmark); its
+only trace is its `benchmark_log.csv` row with `run_purpose = benchmark`. Every script in
+`prime_sieve/` that writes log rows sets `run_purpose` (`run_purpose()` of
+`benchmark_log_schema.py`), which `test_floor_meta_store` checks for every such script, so an
+engine added later logs it too. The engines' own `last_scan_metrics.json` hand-off is still
+written: the frozen scanners write it.
 
 Every Quick-gen Floor field (Floor only, Explore, Hybrid, primesieve, CUDASieve) is a spinbox: its
 arrows and the mouse wheel step the floor through 0 to `QUICK_FLOOR_MAX` (35; primesieve and

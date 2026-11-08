@@ -83,6 +83,7 @@ def part_a():
           "count row: wall time is total and sieve time")
     check(row["sieve_wall_seconds"] == "",
           "count row: no sieve-with-startup time (one process, no split to measure)")
+    check(row["run_purpose"] == "benchmark", "count row: a benchmark run (writes nothing)")
     check(row["windows_written"] == 0 and row["write_files"] == "0"
           and row["write_seconds"] == "" and row["bytes_written"] == "",
           "count row: no windows, nothing written")
@@ -102,6 +103,7 @@ def part_a():
           "print row: one thread, the text file's bytes, no Atlas windows")
     check(row["max_child_rss_mb"] == "", "print row: unknown RSS stays blank")
     check(row["write_threads"] == "1", "print row: written by the same single thread")
+    check(row["run_purpose"] == "storage", "print row: a storage run (its text into the storage)")
     check(row["total_seconds"] == row["loop_session_seconds"] == "1.200"
           and row["sieve_seconds"] == row["sieve_wall_seconds"] == "",
           "print row: wall time is total and loop time, no sieve/write split")
@@ -113,9 +115,9 @@ def part_b():
     import benchmark_log_schema as schema
     import primesieve_native as nat
 
-    check(schema.BENCHMARK_FIELDNAMES[-3:] == ["threads", "write_threads",
-                                               "sieve_wall_seconds"],
-          "log header ends with threads, write_threads, sieve_wall_seconds")
+    check(schema.BENCHMARK_FIELDNAMES[-4:] == ["threads", "write_threads",
+                                               "sieve_wall_seconds", "run_purpose"],
+          "log header ends with threads, write_threads, sieve_wall_seconds, run_purpose")
     check(schema.THREADS_GPU == "GPU", "GPU engines log threads as GPU")
     tmp = tempfile.mkdtemp()
     try:

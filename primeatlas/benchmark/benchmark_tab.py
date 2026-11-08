@@ -630,13 +630,11 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkRamChart, Benchmar
                          series2=self._chart_series(spec.metric2))
 
     def reload_benchmark_log(self):
-        T = self.T
         fieldnames, rows = read_benchmark_log(self._get_portal_folder())
         self._benchmark_fieldnames = fieldnames  # FULL list -- PDF export/growth chart
                                                    # still use every column, unaffected
                                                    # by what the tree itself displays
         self._benchmark_rows = rows
-        self._benchmark_rows_by_floor = group_benchmark_rows_by_floor(rows)
         self._benchmark_tree_fieldnames = _order_benchmark_tree_columns(
             [c for c in fieldnames if c not in BENCHMARK_TREE_HIDDEN_COLUMNS])
 
@@ -649,19 +647,32 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkRamChart, Benchmar
         self._redraw_benchmark_chart2()
         self._redraw_benchmark_chart3()
 
+        tree_fieldnames = self._benchmark_tree_fieldnames
+        self.benchmark_tree.delete(*self.benchmark_tree.get_children())
+        self.benchmark_tree["columns"] = tree_fieldnames
+        for col in tree_fieldnames:
+            self.benchmark_tree.heading(col, text=col)
+            self.benchmark_tree.column(col, width=120, anchor="center", stretch=False)
+        self._rebuild_benchmark_tree()
+
+    def _rebuild_benchmark_tree(self):
+        """Lists the runs the Filter window keeps (_filtered_rows()), grouped per floor; a
+        floor with no kept run is left out. Called on reload and on every filter change, which
+        keeps the columns and their widths."""
+        T = self.T
+        fieldnames = self._benchmark_fieldnames
+        self._benchmark_rows_by_floor = group_benchmark_rows_by_floor(self._filtered_rows())
         self.benchmark_tree.delete(*self.benchmark_tree.get_children())
         self._benchmark_floor_state = {}
         self._active_benchmark_node = None
         self._refresh_benchmark_nav_controls()
 
         tree_fieldnames = self._benchmark_tree_fieldnames
-        self.benchmark_tree["columns"] = tree_fieldnames
-        for col in tree_fieldnames:
-            self.benchmark_tree.heading(col, text=col)
-            self.benchmark_tree.column(col, width=120, anchor="center", stretch=False)
-
-        if not fieldnames or not self._benchmark_rows_by_floor:
+        if not fieldnames or not self._benchmark_rows:
             self.benchmark_tree.insert("", "end", text=T("bench.no_data_row"))
+            return
+        if not self._benchmark_rows_by_floor:
+            self.benchmark_tree.insert("", "end", text=T("bench.filter_no_rows"))
             return
 
         for base_exponent in sorted(self._benchmark_rows_by_floor):

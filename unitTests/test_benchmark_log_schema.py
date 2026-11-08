@@ -13,6 +13,8 @@ C. ensure_benchmark_log_schema(): a missing log stays missing (True); the curren
    byte-for-byte (False).
 D. floor_meta.merge_floor_meta_into_benchmark_log() growing a log from scratch writes
    exactly BENCHMARK_FIELDNAMES as its header.
+A also: run_purpose()/row_purpose() -- an explicit run_purpose wins, a row from before the
+   column is a benchmark when write_files is 0 and a storage run otherwise.
 E. Every row writer fills engine_version; orchestrator_v3 takes it from the scanner
    module's own VERSION (v5.1, v6.0, ...), so the engine files stay untouched.
 
@@ -43,6 +45,7 @@ LIVE_HEADER = [
     "loop_seconds_per_window", "write_files", "base_gen_seconds", "sieve_seconds",
     "write_seconds", "bytes_written", "engine", "numbers_processed", "run_status",
     "verify_seconds", "engine_version", "threads", "write_threads", "sieve_wall_seconds",
+    "run_purpose",
 ]
 OLD_ROW = {"run_timestamp_utc": "2026-01-01 00:00:00 UTC", "base_exponent": "12",
            "windows_written": "7", "total_primes": "70", "total_seconds": "3.5"}
@@ -78,9 +81,19 @@ def _read_log(path):
 def _test_header(schema):
     print("\n--- A. the header the live log has ---")
     check(schema.BENCHMARK_FIELDNAMES == LIVE_HEADER,
-          f"BENCHMARK_FIELDNAMES = the live 30-column header ({len(schema.BENCHMARK_FIELDNAMES)})")
+          f"BENCHMARK_FIELDNAMES = the live 31-column header ({len(schema.BENCHMARK_FIELDNAMES)})")
     check(schema.RUN_STATUS_COMPLETED == "completed" and schema.RUN_STATUS_STOPPED == "stopped",
           "run_status values completed / stopped")
+    check(schema.run_purpose(True) == "storage" and schema.run_purpose(False) == "benchmark",
+          "run_purpose(): storage for a run that writes, benchmark for one that only measures")
+    for row, expected in (({"run_purpose": "benchmark", "write_files": "1"}, "benchmark"),
+                          ({"run_purpose": "storage", "write_files": "0"}, "storage"),
+                          ({"run_purpose": "", "write_files": "0"}, "benchmark"),
+                          ({"write_files": " 0 "}, "benchmark"),
+                          ({"write_files": "1"}, "storage"),
+                          ({"run_purpose": "junk", "write_files": ""}, "storage"),
+                          ({}, "storage")):
+        check(schema.row_purpose(row) == expected, f"row_purpose({row}) = {expected}")
 
 
 def _test_single_source(schema):

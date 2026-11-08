@@ -34,7 +34,8 @@ Only one engine runs at a time: starting one locks every other Run/Generate butt
 
 - What the caller gets: the console log, a progress bar, updated floor totals and tree.
 - What is stored ([data.md](../data.md)): prime windows, benchmark row, floor_meta copy, totals cache,
-  run log and exit code.
+  run log and exit code. A benchmark run (Benchmark checkbox) stores only its benchmark row
+  (`run_purpose = benchmark`) and the run log.
 
 ## Known gaps
 

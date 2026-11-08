@@ -18,11 +18,13 @@ HTML-escaped.
   - snippet: the page's content as one <div class="primeatlas-benchmark">, with a style
     whose every rule is scoped to that class, so it can be pasted into another page.
 
-The page and the snippet are interactive (report_html.py, report_chart.js): they carry every
-run of the log, and a script redraws the charts with their own filter, log scale and
-reference toggles, legend toggles and the zoom gestures of the tab; the tables hide the rows
-of the runs the filter drops. Without scripts they show the tab's view as drawn here: the
-charts and the tables of the kept runs.
+The page and the snippet are interactive (report_html.py, report_chart.js): they carry the
+runs the tab's filter keeps, so the filter decides what a page holds (All in every dimension
+exports the whole log), and a script redraws the charts with their own filter over those runs
+(starting at All, clicked like the tab's), log scale and reference toggles, legend toggles and
+the zoom gestures of the tab; the tables hide the rows of the runs the page's filter drops.
+Without scripts they show the tab's view as drawn here: the charts and the tables of the kept
+runs.
 """
 import csv
 import datetime
@@ -102,16 +104,16 @@ def _svg_report(charts):
     return "".join(parts)
 
 
-def _tables_html(fieldnames, rows, kept, t):
-    """The tables of every run; a run the filter drops is a hidden row (data-run: its index
-    in `rows`, for the page's script)."""
+def _tables_html(fieldnames, rows, t):
+    """The tables of `rows` (data-run: a row's index in `rows`, so the page's script hides the
+    runs its filter drops)."""
     parts = []
     for title_key, columns in benchmark_pdf_tables(fieldnames):
         parts.append(f"<h2>{escape(t(title_key))}</h2><table><thead><tr>"
                      + "".join(f"<th>{escape(c)}</th>" for c in columns)
                      + "</tr></thead><tbody>")
         for i, row in enumerate(rows):
-            parts.append(f'<tr data-run="{i}"{"" if kept[i] else " hidden"}>'
+            parts.append(f'<tr data-run="{i}">'
                          + "".join(f"<td>{escape(str(row.get(c, '') or ''))}</td>"
                                    for c in columns) + "</tr>")
         parts.append("</tbody></table>")
@@ -120,8 +122,7 @@ def _tables_html(fieldnames, rows, kept, t):
 
 def _content(fieldnames, rows, selection, t, filter_note, svg_options, data_options):
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    kept_mask = [chart_filter.keeps(row, selection) for row in rows]
-    kept = [row for row, keep in zip(rows, kept_mask) if keep]
+    kept = chart_filter.apply(rows, selection)
     floors = len({row.get("base_exponent") for row in kept})
     subtitle = t("bench.pdf_subtitle", now=now, runs=len(kept), depths=floors)
     if filter_note:
@@ -130,7 +131,7 @@ def _content(fieldnames, rows, selection, t, filter_note, svg_options, data_opti
                                svg_options["measure"])
     svg_pages = report_pages_svg(kept, pages=pages, **svg_options)
     data = report_html.report_data(
-        rows, pages, t, CHART_WIDTH, CHART_HEIGHT, selection=selection,
+        kept, pages, t, CHART_WIDTH, CHART_HEIGHT,
         subtitle=t("bench.pdf_subtitle", now=now, runs="{runs}", depths="{depths}"),
         **data_options)
     charts = "".join(
@@ -142,7 +143,7 @@ def _content(fieldnames, rows, selection, t, filter_note, svg_options, data_opti
             f"<h1>{escape(t('bench.pdf_title'))}</h1>"
             f'<p class="pa-subtitle">{escape(subtitle)}</p><div class="pa-controls"></div>'
             + charts
-            + f'<div class="tables">{_tables_html(fieldnames, rows, kept_mask, t)}</div>'
+            + f'<div class="tables">{_tables_html(fieldnames, kept, t)}</div>'
             + report_html.data_script(data) + report_html.chart_script() + "</div>")
 
 
