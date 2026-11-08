@@ -29,7 +29,7 @@ from hybrid_reference import HybridReferenceError, sieve_reference_segment, writ
 from prime_sieve_primesieve import generate_primes_in_range, write_scan_metrics_handoff
 from prime_sieve_v1 import format_offset, read_prime_window
 import window_sharding
-from benchmark_log_schema import BENCHMARK_FIELDNAMES, ensure_benchmark_log_schema
+from benchmark_log_schema import BENCHMARK_FIELDNAMES, run_purpose, ensure_benchmark_log_schema
 from floor_meta_store import append_benchmark_row_to_floor_meta
 
 
@@ -70,6 +70,7 @@ def write_hybrid_benchmark_row(portal_folder, base_exponent, target_idx_start, w
             "loop_session_seconds": f"{total_seconds:.6f}",
             "loop_numbers_per_second": f"{numbers_processed / total_seconds:.2f}" if total_seconds > 0 and numbers_processed is not None else "",
             "loop_seconds_per_window": f"{total_seconds / windows_written:.6f}", "write_files": "1" if write_files else "0",
+            "run_purpose": run_purpose(write_files),
             "base_gen_seconds": f"{bootstrap_seconds:.3f}",
             "sieve_seconds": f"{sieve_seconds:.9f}", "write_seconds": f"{write_seconds:.3f}",
             "bytes_written": bytes_written,

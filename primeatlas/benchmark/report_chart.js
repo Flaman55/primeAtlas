@@ -1,6 +1,6 @@
 /* report_chart.js -- the interactive charts of the Benchmark HTML report (report_html.py).
 
-The page carries every logged run (script.pa-data, JSON) and this script redraws its charts in
+The page carries the runs the app's filter kept at export (script.pa-data, JSON) and this script redraws its charts in
 the browser: the runs the page's filter keeps, then the last row per floor and line (the
 reduction of benchmark.benchmark_engine_lines()), drawn with the layout of chart_pdf.chart_ops()
 ported line by line, so with nothing hidden and no zoom a chart is the SVG the report's Python
@@ -11,9 +11,10 @@ chart zooms the part under the pointer on both axes (the floor axis of every cha
 that chart), a left drag moves the visible part, a double or middle click shows the whole
 charts; a legend entry hides or shows its line. The wheel zooms only over a chart's picture; elsewhere
 it scrolls the page. "Chart text" sets the text size: the charts are drawn on a canvas 1/k as
-large and shown at their usual width, so text, markers and lines grow k times. The filter (one checkbox per dimension, then its values),
-log scale and reference toggles redraw the charts, the page headings and the tables (rows of
-runs the filter drops are hidden).
+large and shown at their usual width, so text, markers and lines grow k times. The filter (per
+dimension All and its values, clicked like the app's: toggleValue(), selectAll()), log scale and
+reference toggles redraw the charts, the page headings and the tables (rows of runs the filter
+drops are hidden).
 
 Pure parts (scale, labels, reduction, zoom, chart drawing) are exported for node; the page
 part runs only in a browser, on the .primeatlas-benchmark element holding this script.
@@ -24,6 +25,9 @@ part runs only in a browser, on the .primeatlas-benchmark element holding this s
   var LABEL_SIZE = 7;
   var LABEL_CHAR_W = 0.6 * LABEL_SIZE;
   var LAST_LABEL_STEPS = 5;
+  var TITLE_CHAR_W = 0.6 * 8;
+  var LEGEND_LEFT = 90;
+  var LEGEND_GAP = 14;
   var AXIS_GRAY = "#666666";
   var GUIDE_GRAY = "#e0e0e0";
   var BOX_GRAY = "#cccccc";
@@ -283,8 +287,9 @@ part runs only in a browser, on the .primeatlas-benchmark element holding this s
                    '" viewBox="0 0 ' + w + " " + h + '"><rect width="' + w + '" height="' + h +
                    '" fill="#ffffff"/>' + ops.join("") + "</svg>", geometry: geometry};
     }
-    function drawLegend() {
-      var lx = 90;
+    /* chart_pdf.legend_left(): the first entry past the title, so the two never overlap. */
+    function drawLegend(title) {
+      var lx = Math.max(LEGEND_LEFT, Math.ceil(9 + TITLE_CHAR_W * title.length + LEGEND_GAP));
       legend.forEach(function (s) {
         var line = b.line(lx - 5, h - 8, lx + 5, h - 8, 1.5, s.color);
         var parts = [s.dashed ? dashed(line) : line, b.dot(lx, h - 8, 2.5, s.color)];
@@ -299,7 +304,7 @@ part runs only in a browser, on the .primeatlas-benchmark element holding this s
       if (!legend.length) {
         ops.push(b.text(w / 2 - 60, h / 2, 10, "Helvetica", t.no_data));
       } else {
-        drawLegend();
+        drawLegend("");
         ops.push(b.text(w / 2 - 120, h / 2, 10, "Helvetica", t.all_hidden));
       }
       return done();
@@ -368,7 +373,7 @@ part runs only in a browser, on the .primeatlas-benchmark element holding this s
     ops.push(b.text(plotX0 + plotW / 2 - 30, 4, 8, "Helvetica-Bold", t.floor));
     ops.push(b.dot(4, h - 7.5, 2.2, AXIS_GRAY));
     ops.push(b.text(9, h - 10, 8, "Helvetica-Bold", title));
-    drawLegend();
+    drawLegend(title);
 
     var candidates = [];
     var labelYMin = plotY0 + 2, labelYMax = h - 22;
@@ -451,14 +456,36 @@ part runs only in a browser, on the .primeatlas-benchmark element holding this s
       .map(Number);
   }
 
+  /* chart_filter.toggle_value(): from All (key absent) only the clicked value; otherwise the
+  value is added or removed, and removing the last one goes back to All. A new selection. */
+  function toggleValue(selection, key, value) {
+    var out = {};
+    Object.keys(selection).forEach(function (k) { out[k] = new Set(selection[k]); });
+    if (!out[key]) out[key] = new Set([value]);
+    else if (out[key].has(value)) {
+      out[key].delete(value);
+      if (!out[key].size) delete out[key];
+    } else out[key].add(value);
+    return out;
+  }
+
+  /* chart_filter.select_all(): the selection with `key` back at All. */
+  function selectAll(selection, key) {
+    var out = {};
+    Object.keys(selection).forEach(function (k) {
+      if (k !== key) out[k] = new Set(selection[k]);
+    });
+    return out;
+  }
+
   function filterSummary(data, selection) {
     var t = data.text;
     var parts = [];
     data.dims.forEach(function (dim) {
       var chosen = selection[dim.key];
       if (!chosen) return;
-      var shown = dim.values.filter(function (v) { return chosen.has(v); })
-        .map(function (v) { return v || t.blank; }).join(", ");
+      var shown = dim.values.map(function (v, i) { return chosen.has(v) ? dim.labels[i] : null; })
+        .filter(function (label) { return label !== null; }).join(", ");
       parts.push(dim.label + ": " + (shown || "-"));
     });
     return parts.length ? fill(t.filter_on, {parts: parts.join("; ")}) : t.filter_off;
@@ -546,12 +573,13 @@ part runs only in a browser, on the .primeatlas-benchmark element holding this s
     html += '<button type="button" data-act="runs">' + escapeXml(t.all_runs) + "</button>" +
       '<button type="button" data-act="floors">' + escapeXml(t.all_floors) + "</button></div>";
     d.dims.forEach(function (dim) {
-      html += '<div class="pa-row pa-dim" data-dim="' + dim.key + '"><label class="pa-dim-name">' +
-        '<input type="checkbox" data-dim-on="' + dim.key + '"> ' + escapeXml(dim.label) +
-        '</label><span class="pa-values">';
+      html += '<div class="pa-row pa-dim" data-dim="' + dim.key + '"><span class="pa-dim-name">' +
+        escapeXml(dim.label) + '</span><span class="pa-values">' +
+        '<label><input type="checkbox" data-dim-all="' + dim.key + '"> ' + escapeXml(t.all) +
+        "</label>";
       dim.values.forEach(function (v, i) {
         html += '<label><input type="checkbox" data-dim-value="' + dim.key + '" data-index="' + i +
-          '"> ' + escapeXml(v || t.blank) + "</label>";
+          '"> ' + escapeXml(dim.labels[i]) + "</label>";
       });
       html += "</span></div>";
     });
@@ -562,15 +590,11 @@ part runs only in a browser, on the .primeatlas-benchmark element holding this s
       if (el.dataset.toggle === "log") self.log = el.checked;
       else if (el.dataset.toggle === "scale") self.scale = Number(el.value);
       else if (el.dataset.toggle === "refs") self.refs = el.checked;
-      else if (el.dataset.dimOn) {
-        var dim = self.dimension(el.dataset.dimOn);
-        if (el.checked) self.selection[dim.key] = new Set(dim.values);
-        else delete self.selection[dim.key];
-      } else if (el.dataset.dimValue) {
-        var dim2 = self.dimension(el.dataset.dimValue);
-        var value = dim2.values[Number(el.dataset.index)];
-        var chosen = self.selection[dim2.key];
-        if (el.checked) chosen.add(value); else chosen.delete(value);
+      else if (el.dataset.dimAll) self.selection = selectAll(self.selection, el.dataset.dimAll);
+      else if (el.dataset.dimValue) {
+        var dim = self.dimension(el.dataset.dimValue);
+        self.selection = toggleValue(self.selection, dim.key,
+                                     dim.values[Number(el.dataset.index)]);
       }
       self.render();
     });
@@ -592,8 +616,7 @@ part runs only in a browser, on the .primeatlas-benchmark element holding this s
     this.root.querySelectorAll(".pa-dim").forEach(function (row) {
       var key = row.dataset.dim, chosen = self.selection[key];
       var dim = self.dimension(key);
-      row.querySelector("[data-dim-on]").checked = !!chosen;
-      row.querySelector(".pa-values").hidden = !chosen;
+      row.querySelector("[data-dim-all]").checked = !chosen;
       row.querySelectorAll("[data-dim-value]").forEach(function (box) {
         box.checked = !!chosen && chosen.has(dim.values[Number(box.dataset.index)]);
       });
@@ -778,7 +801,7 @@ part runs only in a browser, on the .primeatlas-benchmark element holding this s
 
   var api = {YScale: YScale, clipPolyline: clipPolyline, placeLabels: placeLabels,
              chartSvg: chartSvg, keptRuns: keptRuns, reduce: reduce, mixedFloors: mixedFloors,
-             filterSummary: filterSummary, zoomStep: zoomStep, pan: pan, tickFloors: tickFloors,
+             filterSummary: filterSummary, toggleValue: toggleValue, selectAll: selectAll, zoomStep: zoomStep, pan: pan, tickFloors: tickFloors,
              formatNumber: formatNumber};
   if (typeof module === "object" && module.exports) module.exports = api;
   if (typeof document !== "undefined" && document.currentScript) {

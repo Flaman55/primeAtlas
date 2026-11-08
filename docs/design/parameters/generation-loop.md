@@ -9,7 +9,7 @@ Generation tab, Section A: the generation pipeline run (orchestrator_loop_v2.py;
 | `base_exponent` | `20` | integer | `generation_settings.py` | Floor (base_exponent, 10^N): |
 | `run_count` | `1` | integer | `generation_settings.py` | Iterations (run_count): |
 | `n_instances` | `2` | integer | `generation_settings.py` | Parallel instances (n_instances): |
-| `write_files` | on | on / off | `generation_settings.py` | Write PGS2 files (write_files) |
+| `write_files` | on | on / off | `generation_settings.py` | Benchmark (no storage writes) |
 | `compute_sieving_primes_count` | off | on / off | `generation_settings.py` | Count pi(L_final) from scratch -- compute_sieving_primes_count (slower) |
 | `use_known_pi_seed` | off | on / off | `generation_settings.py` | Count pi(L_final), seeded with a known value from Wikipedia on a floor's first count (source: en.wikipedia.org/wiki/Prime-counting_function) -- mutually exclusive with the checkbox above |
 | `window_count_per_run` | `1000` | integer | `generation_settings.py` | Windows / iteration (window_count_per_run): |

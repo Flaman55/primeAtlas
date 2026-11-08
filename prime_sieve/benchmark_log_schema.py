@@ -40,6 +40,11 @@ Column notes:
   around the sieve alone. Blank for engines with no such line (pt1 overlaps sieve and
   write) and for other writers, native primesieve included: its one process has no split
   between setup and sieve to measure.
+- run_purpose: RUN_PURPOSE_STORAGE for a run that writes into the storage (Atlas windows, or
+  native primesieve's print text), RUN_PURPOSE_BENCHMARK for a run that only measures
+  (count-only, native count): its row lives in this log alone, never in a floor's
+  floor_meta.json. Every writer sets it (run_purpose()); row_purpose() reads it, falling
+  back to write_files for rows logged before the column.
 Rows written before a column existed keep it blank: a migration never guesses old values,
 and a blank run_status means completed.
 
@@ -57,6 +62,7 @@ BENCHMARK_FIELDNAMES = [
     "loop_seconds_per_window", "write_files", "base_gen_seconds", "sieve_seconds",
     "write_seconds", "bytes_written", "engine", "numbers_processed", "run_status",
     "verify_seconds", "engine_version", "threads", "write_threads", "sieve_wall_seconds",
+    "run_purpose",
 ]
 
 ENGINE_PRIMESIEVE_ATLAS = "primesieve"
@@ -66,6 +72,23 @@ THREADS_GPU = "GPU"
 
 RUN_STATUS_COMPLETED = "completed"
 RUN_STATUS_STOPPED = "stopped"
+
+RUN_PURPOSE_STORAGE = "storage"
+RUN_PURPOSE_BENCHMARK = "benchmark"
+
+
+def run_purpose(writes_storage):
+    """The run_purpose value of a run that writes into the storage (True) or only measures."""
+    return RUN_PURPOSE_STORAGE if writes_storage else RUN_PURPOSE_BENCHMARK
+
+
+def row_purpose(row):
+    """RUN_PURPOSE_STORAGE or RUN_PURPOSE_BENCHMARK for a log or floor_meta row: its
+    run_purpose, else write_files "0" for a benchmark row and anything else for storage."""
+    value = str(row.get("run_purpose") or "").strip()
+    if value in (RUN_PURPOSE_STORAGE, RUN_PURPOSE_BENCHMARK):
+        return value
+    return RUN_PURPOSE_BENCHMARK if str(row.get("write_files", "")).strip() == "0"         else RUN_PURPOSE_STORAGE
 
 
 def ensure_benchmark_log_schema(log_path):

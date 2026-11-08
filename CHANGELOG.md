@@ -496,6 +496,46 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   i kubełków pokazują teraz wartości, które dostanie następny przebieg, dla ostatnio
   zmienionej szerokości; wcześniej pokazywały 2 MiB / 8 GiB niezależnie od szerokości.
 
+### +39 — Benchmark runs: measure without writing into the storage
+
+- English: A "Benchmark (no storage writes)" checkbox next to Generate replaces "Write PGS2
+  files" and works in every generation mode. A benchmark run sieves and counts but leaves
+  the storage as it was: no window files, no floor folder, no floor_meta.json entry; before,
+  a count-only run still added its row to the floor's floor_meta.json. Its row in
+  benchmark_log.csv carries the new run_purpose column (benchmark or storage; older
+  count-only rows count as benchmark), and the Benchmark tab's Filter window has a Run
+  purpose dimension: benchmark runs, storage runs or both. The Filter window now also
+  decides which runs the tab's table lists (before, the table always showed the whole
+  log); the charts and every export already followed it. Every value in the Filter window
+  is clickable at once: a dimension starts at All, the first value clicked leaves only it,
+  further clicks add or remove values, and All goes back to every run (before, a dimension
+  had to be switched on first and then showed every value selected). The HTML page and
+  snippet export only the runs the filter keeps (All exports the whole log; before, they held
+  every run), and their own filter works the same way. A value an engine does not log
+  (e.g. the per-window time of primesieve's count mode) shows a dash instead of an empty
+  cell in the tab's table and the HTML and PDF tables; the CSV export keeps it empty. In the
+  PDF, SVG and HTML charts the legend starts after a long chart title instead of over it
+  (e.g. the Polish RAM chart).
+- Polski: Checkbox „Benchmark (bez zapisu do magazynu)” obok przycisku Generuj zastępuje
+  „Zapisuj pliki PGS2” i działa w każdym trybie generowania. Przebieg benchmarkowy
+  przesiewa i liczy, ale zostawia magazyn bez zmian: bez plików okien, folderu piętra i
+  wpisu w floor_meta.json; wcześniej przebieg samego zliczania dopisywał swój wiersz do
+  floor_meta.json piętra. Jego wiersz w benchmark_log.csv ma nową kolumnę run_purpose
+  (benchmark albo storage; starsze wiersze samego zliczania liczą się jako benchmark), a
+  okno Filtr zakładki Benchmark ma wymiar Cel przebiegu: przebiegi benchmarkowe,
+  magazynowe albo oba. Okno Filtr decyduje teraz także o tym, które przebiegi pokazuje
+  tabela zakładki (wcześniej tabela zawsze pokazywała cały log); wykresy i każdy eksport
+  już za nim szły. Każda wartość w oknie Filtr jest od razu klikalna: wymiar zaczyna od
+  Wszystkie, pierwsza kliknięta wartość zostaje sama, kolejne kliknięcia dokładają albo
+  usuwają wartości, a Wszystkie wraca do wszystkich przebiegów (wcześniej wymiar trzeba
+  było najpierw włączyć, a potem pokazywał wszystkie wartości zaznaczone). Strona HTML i
+  fragment HTML eksportują tylko przebiegi przepuszczone przez filtr (Wszystkie eksportuje
+  cały log; wcześniej zawierały każdy przebieg), a ich własny filtr działa tak samo.
+  Wartość, której silnik nie zapisuje (np. czas na okno w trybie zliczania primesieve),
+  pokazuje kreskę zamiast pustej komórki w tabeli zakładki oraz w tabelach HTML i PDF;
+  eksport CSV zostawia ją pustą. Na wykresach PDF, SVG i HTML legenda zaczyna się za długim
+  tytułem wykresu zamiast na nim (np. polski wykres RAM).
+
 ## 1.2.0 — 2026-11-01
 
 ### English

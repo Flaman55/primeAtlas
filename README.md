@@ -99,7 +99,8 @@ comparisons with primesieve and PARI/GP are in `BENCHMARK.md`.
     while still holding a real gap.
   - **Low-level form** -- exposes every CLI parameter of the orchestrator and
     constellation finder directly (workers, batch size, window count, window width,
-    write-files toggle, sieving-prime count diagnostic) for full manual control. The
+    sieving-prime count diagnostic) for full manual control; the Benchmark checkbox
+    next to Generate (measure without writing into the storage) applies to it too. The
     "workers" field has its own Auto button, the CPU-count counterpart to Quick
     generation's RAM-based Auto button above: it probes the CPU count INSIDE WSL
     (`nproc`, not the native Windows host's own count, since WSL2 can be configured
@@ -1483,7 +1484,9 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               Variables, per-mode frames (Floor only/Range/
                               Exploration/Hybrid/primesieve/cudasieve), width caps
                               and validators, RAM/CPU/storage Auto buttons; every
-                              Floor field is a spinbox (_floor_spinbox)
+                              Floor field is a spinbox (_floor_spinbox); the
+                              Benchmark checkbox next to Generate
+                              (unitTests/test_benchmark_mode_controls.py)
   quick_gen_runs.py             QuickGenRuns mixin: Generate/Stop and one apply-and-run
                               launcher per engine (loop, primesieve, Hybrid,
                               cudasieve, orchestrator-direct window range), gap
@@ -1944,16 +1947,19 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
   report_export.py              the report as CSV (the log's rows), SVG (every report
                               chart stacked), a UTF-8 HTML page (charts inline + the
                               logical tables) or one <div class="primeatlas-benchmark">
-                              snippet with a style scoped to it; the page and the
+                              snippet with a style scoped to it; every format holds
+                              the runs the Filter window keeps; the page and the
                               snippet are interactive (report_html.py) -- pure, no
                               tkinter (unitTests/test_benchmark_report_export.py)
-  report_html.py                the interactive HTML report's data: every run with its
-                              filter values, per chart the line records, the tab's
+  report_html.py                the interactive HTML report's data: the runs it is
+                              given (the kept ones) with their filter values and
+                              labels, per chart the line records, the tab's
                               view as the starting state; inlines report_chart.js
-  report_chart.js               the page's script: filter, log/reference toggles,
+  report_chart.js               the page's script: filter (All or single values, like
+                              the tab's), log/reference toggles,
                               chart text size, legend toggles, zoom and pan over the
                               chart pictures; redraws with a port of
-                              chart_pdf.chart_ops() (docs/adr/0007;
+                              chart_pdf.chart_ops() (docs/adr/0007, 0008;
                               unitTests/test_benchmark_report_html.py, via node)
   chart_svg.py                  SVG backend of chart_pdf.chart_ops(): the same chart
                               layout as the PDF, y flipped, Unicode text
@@ -1974,17 +1980,21 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               pinned axes) drawn through a backend: PDF content ops
                               by default, SVG via chart_svg.py
   benchmark_filter.py           BenchmarkFilter mixin of the tab: the "Filter..." window
-                              (engine build, sieve threads, write threads, range width,
-                              each a checkbox with the log's values), the sieve
-                              measure radio and their summary;
-                              charts and the PDF export follow it, the table keeps the
-                              whole log (unitTests/test_benchmark_filter.py)
+                              (run purpose, engine build, sieve threads, write
+                              threads, range width: All or values clicked one by
+                              one), the sieve measure radio and their summary;
+                              charts, the table and every export follow it
+                              (unitTests/test_benchmark_filter.py)
   benchmark_ram_chart.py        BenchmarkRamChart mixin of the tab: the RAM chart, the
                               lowest of the three (peak MB per run, MB per window,
                               mixed-width note; unitTests/test_benchmark_chart_series.py)
   chart_filter.py               which runs the charts compare: a run's value per
-                              dimension, the values in the log, the selection, its
-                              summary -- pure, no tkinter
+                              dimension (run purpose, engine build, threads, write
+                              threads, width), the values in the log, the selection,
+                              its summary -- pure, no tkinter
+  table_cells.py                a log cell as the tab's table, the HTML and the PDF
+                              tables show it: a dash for a value the run's engine
+                              does not log -- pure, no tkinter
   sieve_measure.py              which time the sieve chart measures: engine sieve
                               phase, sieve with startup overhead
                               (sieve_wall_seconds) or the overhead alone; metrics,
@@ -2317,12 +2327,15 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               header gains the missing columns (blank), a foreign
                               column leaves the file untouched; imported by every
                               writer and by floor_meta.py; engine_version holds the
-                              writing script's VERSION (v5.1, v6.0, ...)
+                              writing script's VERSION (v5.1, v6.0, ...);
+                              run_purpose()/row_purpose(): a benchmark run or a
+                              storage run
                               (unitTests/test_benchmark_log_schema.py)
   floor_meta_store.py        reads and appends a floor's 10p{N}/floor_meta.json (the
                               copy of its benchmark_log.csv rows); every engine's
                               benchmark writer appends the row it logs, idempotent by
-                              row key, an unreadable file left untouched; the GUI's
+                              row key, an unreadable file left untouched, a benchmark
+                              row refused (the storage stays as it was); the GUI's
                               floor_meta.py builds its merge/import on it
                               (unitTests/test_floor_meta_store.py)
   hit_paging.py              splits a dense pattern's constellation hit file into

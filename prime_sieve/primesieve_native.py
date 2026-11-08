@@ -34,7 +34,7 @@ import subprocess
 import sys
 import time
 
-from benchmark_log_schema import (BENCHMARK_FIELDNAMES, ENGINE_PRIMESIEVE_COUNT,
+from benchmark_log_schema import (BENCHMARK_FIELDNAMES, run_purpose, ENGINE_PRIMESIEVE_COUNT,
                                   ENGINE_PRIMESIEVE_PRINT, ensure_benchmark_log_schema)
 
 MODES = ("print", "count")
@@ -95,6 +95,7 @@ def benchmark_row(mode, base_exponent, target_idx_start, target_idx_count, windo
         "primes_per_second": f"{primes / wall_seconds:.2f}" if wall_seconds > 0 else "",
         "max_child_rss_mb": "" if max_rss_mb is None else f"{max_rss_mb:.1f}",
         "write_files": "1" if mode == "print" else "0",
+        "run_purpose": run_purpose(mode == "print"),
         "bytes_written": "" if bytes_written is None else bytes_written,
         "engine": ENGINES[mode],
         "engine_version": version,

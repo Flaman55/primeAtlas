@@ -10,7 +10,7 @@ import sys
 import time
 
 import window_sharding
-from benchmark_log_schema import BENCHMARK_FIELDNAMES, THREADS_GPU, ensure_benchmark_log_schema
+from benchmark_log_schema import BENCHMARK_FIELDNAMES, run_purpose, THREADS_GPU, ensure_benchmark_log_schema
 from floor_meta_store import append_benchmark_row_to_floor_meta
 
 VERSION = "v0.1"
@@ -238,6 +238,7 @@ def write_benchmark_row(base_exponent, target_idx_start, target_idx_count, total
                 "loop_numbers_per_second": "",
                 "loop_seconds_per_window": "",
                 "write_files": "1" if write_files else "0",
+                "run_purpose": run_purpose(write_files),
             }
             writer.writerow(row)
         print(f"[BENCHMARK] logged to {log_path} (for cross-floor growth analysis)")

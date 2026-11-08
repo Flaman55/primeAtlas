@@ -93,13 +93,6 @@ class LoopSection:
         # the "only safe to change for a floor with no existing data" caveat).
         add_loop_field(3, 0, "window_m", self.T("gen.field_window_m"), width=14)
 
-        self._loop_write_files_var = tk.BooleanVar(
-            value=bool(loop_settings.get("write_files", True)))
-        self._loop_write_files_cb = ttk.Checkbutton(
-            loop_form, text=self.T("gen.check_write_files"), variable=self._loop_write_files_var)
-        self._loop_write_files_cb.grid(row=4, column=0, columnspan=2, sticky="w", pady=(6, 0))
-        if hasattr(self, "_sync_primesieve_native_controls"):
-            self._sync_primesieve_native_controls()
         # These two checkboxes are mutually exclusive ALTERNATIVES for computing
         # pi(L_final), not an independent base+modifier pair (picking
         # one must uncheck the other; both off means "don't compute pi(L_final) at all").
@@ -116,7 +109,7 @@ class LoopSection:
         ttk.Checkbutton(
             loop_form, text=self.T("gen.check_count_sieving"),
             variable=self._loop_count_sieving_var).grid(
-            row=4, column=2, columnspan=2, sticky="w", pady=(6, 0))
+            row=4, column=0, columnspan=4, sticky="w", pady=(6, 0))
         self._loop_use_pi_seed_var = tk.BooleanVar(value=use_pi_seed_initial)
         ttk.Checkbutton(
             loop_form, text=self.T("gen.check_use_pi_seed"),
