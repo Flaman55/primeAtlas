@@ -16,7 +16,7 @@ Generation tab, Section A: the generation pipeline run (orchestrator_loop_v2.py;
 | `workers` | `24` | integer | `generation_settings.py` | Workers / instance (workers): |
 | `batches_per_worker` | `2` | integer | `generation_settings.py` | Batches / worker (batches_per_worker): |
 | `window_m` | `10000000` | integer | `generation_settings.py` | Window width (window_m): |
-| `engine` | `v6` | one of v4.1, v5, v6, pt1 | `engine_options.py` | Sieve engine: |
+| `engine` | `v6` | one of v4.1, v5, v6, v7, pt1 | `engine_options.py` | Sieve engine: |
 | `v5_segment_kb` | `2048` | integer >= 1 | `engine_options.py` | v5 segment (KiB): |
 | `v5_region_kb` | `1024` | integer >= 1 | `engine_options.py` | v5 bucket region (KiB): |
 | `v5_bucket_mb` | `8192` | integer >= 1 | `engine_options.py` | v5 bucket memory (MiB): |
@@ -29,8 +29,17 @@ Generation tab, Section A: the generation pipeline run (orchestrator_loop_v2.py;
 | `v6_windows_at_25` | `40000` | integer >= 1 | `engine_options.py` | v6 windows / run @ floor 25: |
 | `v6_pieces_per_thread` | `16` | integer >= 1 | `engine_options.py` | v6 prime pieces / thread: |
 | `v6_write_threads` | `8` | integer >= 1 | `engine_options.py` | v6 write threads: |
+| `v7_segment_kb` | `2048` | integer >= 1 | `engine_options.py` | v7 segment (KiB): |
+| `v7_region_kb` | `1024` | integer >= 1 | `engine_options.py` | v7 bucket region (KiB): |
+| `v7_bucket_mb` | `8192` | integer >= 1 | `engine_options.py` | v7 bucket memory (MiB): |
+| `v7_windows_at_25` | `40000` | integer >= 1 | `engine_options.py` | v7 windows / run @ floor 25: |
+| `v7_pieces_per_thread` | `16` | integer >= 1 | `engine_options.py` | v7 prime pieces / thread: |
+| `v7_write_threads` | `8` | integer >= 1 | `engine_options.py` | v7 write threads: |
 | `pt1_b` | `0` | integer >= 0, <= 4,294,967,295 | `engine_options.py` | pt1 sieve limit B (0 = N^1/4): |
 | `pt1_chunk_kb` | `4096` | integer >= 1 | `engine_options.py` | pt1 chunk (KiB): |
+| `v7_jump_pct` | `100` | integer >= 0 | `engine_options.py` | v7 jump threshold (%): |
+| `v7_jump_block_pct` | `50` | integer >= 1 | `engine_options.py` | v7 jump block (%): |
 | `ram_budget_pct` | `50` | integer >= 1, <= 100 | `engine_options.py` | RAM budget (% of free WSL RAM): |
 | `v5_preset` | `auto` | one of auto, old, new, mid, custom | `engine_presets.py` | Knob profile: |
 | `v6_preset` | `auto` | one of auto, old, new, mid, custom | `engine_presets.py` | Knob profile: |
+| `v7_preset` | `auto` | one of auto, old, new, mid, custom | `engine_presets.py` | Knob profile: |

@@ -146,6 +146,13 @@ class LoopSection:
         self._engine_fields = EngineFields(loop_form, self.T, loop_settings, row=6)
         self._engine_fields.on_engine_change(self._sync_quick_width_caps)
         self._sync_quick_width_caps()
+        # Auto profile fields show the set of the run width edited last: Windows / iteration,
+        # or the Quick-gen Floor / Exploration Width it is copied from at launch.
+        for width_var in (self._loop_vars["window_count_per_run"],
+                          self.quick_floor_width_var, self.quick_explore_width_var):
+            width_var.trace_add(
+                "write", lambda *_, var=width_var: self._engine_fields.set_windows(var.get()))
+        self._engine_fields.set_windows(self._loop_vars["window_count_per_run"].get())
 
         loop_btn_row = ttk.Frame(loop_advanced_content)
         loop_btn_row.pack(fill="x", pady=(6, 0))

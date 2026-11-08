@@ -16,7 +16,9 @@ whatever the RAM, and its launch carries the pt1 env and no v5 knobs; the pipeli
 sizes an orchestrator floor with the persisted engine and passes the RAM-reduced bucket
 memory; the v5/v6 profile list (Auto, Old, New, Intermediate, Custom) shows only for
 those engines, fills their profile fields, switches to Custom on typing, keeps a profile per
-engine, is persisted, and Auto picks the knob set by the run's window count. Windows, real
+engine, is persisted, and Auto picks the knob set by the run's window count and shows it in
+the fields for the width edited last (pipeline or Quick-gen, there and back, bad widths
+ignored, other profiles untouched). Windows, real
 display:
     python unitTests/test_engine_gui_wiring.py
 """
@@ -54,6 +56,61 @@ class _Runner:
 
     def stop(self):
         pass
+
+
+def _shown(fields, engine):
+    return (fields.knob_vars[f"{engine}_segment_kb"].get(),
+            fields.knob_vars[f"{engine}_bucket_mb"].get())
+
+
+def _check_auto_follows_width(gen, fields, app):
+    """Under Auto the profile fields show the set the next run gets: they follow the last
+    edited width (Quick-gen Floor or Exploration Width, the pipeline's Windows / iteration),
+    there and back, for every profile engine; a blank or bad width changes nothing; another
+    profile ignores the width; the profile stays Auto."""
+    passed = True
+    loop_windows = gen._loop_vars["window_count_per_run"]
+    fields.engine_var.set("v7")
+    app.update()
+    fields.set_preset("auto")
+    for windows, want in (("1000", ("128", "1024")), ("5000", ("2048", "4096")),
+                          ("10000", ("2048", "8192")), ("1000", ("128", "1024"))):
+        loop_windows.set(windows)
+        passed &= check(_shown(fields, "v7") == want and fields.preset() == "auto",
+                        f"v7 Auto, Windows / iteration {windows}: fields {_shown(fields, 'v7')}")
+        knobs = fields.choice(int(windows))[0].knobs
+        passed &= check((str(knobs["v7_segment_kb"]), str(knobs["v7_bucket_mb"])) == want,
+                        f"v7 Auto, {windows} windows: the launch gets what the fields show")
+    gen.quick_floor_width_var.set("10000")
+    passed &= check(_shown(fields, "v7") == ("2048", "8192"),
+                    "Quick-gen Floor Width edited last: the fields follow it")
+    loop_windows.set("2000")
+    passed &= check(_shown(fields, "v7") == ("128", "1024"),
+                    "Windows / iteration edited last: the fields follow it")
+    gen.quick_explore_width_var.set("6000")
+    passed &= check(_shown(fields, "v7") == ("2048", "4096"),
+                    "Quick-gen Exploration Width edited last: the fields follow it")
+    for bad in ("", "abc", "0", "-5"):
+        gen.quick_floor_width_var.set(bad)
+        passed &= check(_shown(fields, "v7") == ("2048", "4096"),
+                        f"Width {bad!r}: the fields keep their values")
+    passed &= check(_shown(fields, "v6") == ("2048", "4096"),
+                    "v6's Auto fields follow the same width")
+    fields.engine_var.set("v6")
+    app.update()
+    loop_windows.set("1000")
+    passed &= check(_shown(fields, "v6") == ("128", "1024") and _shown(fields, "v7") == ("128", "1024"),
+                    "v6 selected: both engines' Auto fields follow")
+    fields.set_preset("new", "v6")
+    loop_windows.set("1000")
+    passed &= check(_shown(fields, "v6") == ("2048", "8192") and fields.preset("v6") == "new",
+                    "under New the width does not touch the fields")
+    fields.set_preset("auto", "v6")
+    passed &= check(_shown(fields, "v6") == ("128", "1024"),
+                    "switching back to Auto fills the set for the current width")
+    fields.engine_var.set("v5")
+    app.update()
+    return passed
 
 
 def main():
@@ -141,11 +198,13 @@ def main():
                         "typing a profile field switches to Custom")
         passed &= check(fields.preset("v6") == v6_before, "v6 keeps its own profile")
         fields.knob_vars["v5_windows_at_25"].set("20000")
+        gen._loop_vars["window_count_per_run"].set("10000")
         fields.set_preset("auto")
         passed &= check(fields.knob_vars["v5_bucket_mb"].get() == "8192"
                         and fields.choice(1000)[0].knobs["v5_bucket_mb"] == 1024
                         and fields.choice(10_000)[0].knobs["v5_bucket_mb"] == 8192,
-                        "Auto shows New and picks by the run's window count")
+                        "Auto at 10,000 windows shows New and picks by the run's window count")
+        passed &= _check_auto_follows_width(gen, fields, app)
         fields.knob_vars["v5_windows_at_25"].set(
             str(engine_options.DEFAULT_KNOBS["v5_windows_at_25"]))
         passed &= check(fields.preset() == "auto", "a sizing knob does not leave the profile")

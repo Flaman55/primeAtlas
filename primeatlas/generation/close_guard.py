@@ -42,7 +42,7 @@ STRING_KEYS = (
 
 POLL_MS = 200
 # Engines that write a batch's windows only after sieving all of it (close.v5_sieve_note).
-SIEVE_THEN_WRITE_ENGINES = ("v5", "v6")
+SIEVE_THEN_WRITE_ENGINES = ("v5", "v6", "v7")
 
 _active = None  # the open StoppingWindow, if any
 

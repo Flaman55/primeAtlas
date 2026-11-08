@@ -35,16 +35,20 @@ FORM_LABELS = {
         "batches_per_worker": "gen.field_batches",
         "window_m": "gen.field_window_m",
         "engine": "gen.field_engine",
-        **{f"{engine}_{knob}": f"gen.field_{engine}_{knob}" for engine in ("v5", "v6")
+        **{f"{engine}_{knob}": f"gen.field_{engine}_{knob}" for engine in ("v5", "v6", "v7")
            for knob in ("segment_kb", "region_kb", "bucket_mb", "windows_at_25",
                         "pieces_per_thread")},
         "v5_write_threads": "gen.field_v5_write_threads",
         "v6_write_threads": "gen.field_v6_write_threads",
+        "v7_write_threads": "gen.field_v7_write_threads",
+        "v7_jump_pct": "gen.field_v7_jump_pct",
+        "v7_jump_block_pct": "gen.field_v7_jump_block_pct",
         "pt1_b": "gen.field_pt1_b",
         "pt1_chunk_kb": "gen.field_pt1_chunk_kb",
         "ram_budget_pct": "gen.field_ram_budget_pct",
         "v5_preset": "gen.field_preset",
         "v6_preset": "gen.field_preset",
+        "v7_preset": "gen.field_preset",
     },
     "constellation": {
         "base_exponent": "gen.field_base_exponent",

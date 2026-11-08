@@ -32,11 +32,14 @@ tests (`test_engine_options`). Log lines are parsed by their stable prefixes (`[
 `engine_presets.py` names the measured sets of v5's and v6's four sieve knobs (segment,
 bucket region, bucket memory, pieces per thread): Old (128 KiB / 1 GiB buckets), New (2 MiB /
 8 GiB, long runs), Intermediate (2 MiB / 1 GiB, short runs), Auto and Custom. Each engine
-keeps its own profile (`v5_preset`, `v6_preset`, default Auto). `engine_options.resolve()`
+keeps its own profile (`v5_preset`, `v6_preset`, `v7_preset`, default Auto). `engine_options.resolve()`
 applies the selected engine's profile with the run's window count: Auto steps the segment and
 bucket memory up with the width, per engine (`AUTO_STEPS`; v5: 2 MiB / 1 GiB below 1,500
-windows, 2 MiB / 4 GiB below 4,000; v6: 128 KiB / 1 GiB below 3,000, 2 MiB / 4 GiB below
-8,000; then New), New's values when the width is not known yet (the Auto RAM button). The form fills the profile fields when a profile is picked and switches
+windows, 2 MiB / 4 GiB below 4,000; v6 and v7: 128 KiB / 1 GiB below 3,000, 2 MiB / 4 GiB below
+8,000; then New), New's values when the width is not known yet (the Auto RAM button). The form fills the profile fields when a profile is picked and,
+under Auto, whenever the run width is edited (`EngineFields.set_windows()`, fed by Windows /
+iteration and the Quick-gen Floor and Exploration Width, the last edited one wins), so the
+fields show what the next run gets; it switches
 to Custom when one of them is typed in; a RAM-reduced bucket memory only lowers the profile's
 value. Windows-at-25 and the RAM budget size the run, so no profile sets them.
 

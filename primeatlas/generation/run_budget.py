@@ -26,13 +26,14 @@ from collections import namedtuple
 ENGINE_V41 = "v4.1"
 ENGINE_V5 = "v5"
 ENGINE_V6 = "v6"
+ENGINE_V7 = "v7"                     # v6's buffer and footprint plus the jump gear
 ENGINE_PT1 = "pt1"                   # no fixed cost, no run-sized buffer: never RAM-capped
-BUCKETED_ENGINES = (ENGINE_V5, ENGINE_V6)
+BUCKETED_ENGINES = (ENGINE_V5, ENGINE_V6, ENGINE_V7)
 BASE_WINDOWS = 1000                  # target at shallow floors and v4.1's ceiling
-DEFAULT_TARGET_WINDOWS_AT_25 = {ENGINE_V5: 20_000, ENGINE_V6: 40_000}
+DEFAULT_TARGET_WINDOWS_AT_25 = {ENGINE_V5: 20_000, ENGINE_V6: 40_000, ENGINE_V7: 40_000}
 REFERENCE_WINDOW_M = 10_000_000      # window width the floor-25 knob is counted in
 DEFAULT_BUCKET_MB = 8192             # matches work_plan_v5/_v6.DEFAULT_BUCKET_MB
-WHEEL_NUMBERS_PER_BYTE = 30          # v6 buffer: one byte per 30 numbers
+WHEEL_NUMBERS_PER_BYTE = 30          # v6, v7 buffer: one byte per 30 numbers
 MIN_BUCKET_MB = 64
 BUCKET_BUDGET_SHARE = 4              # buckets take at most 1/4 of the RAM budget
 V5_OVERHEAD_BYTES = 128 * 2 ** 20    # v5, v6: peak PSS minus buffer and buckets ~70 MiB
@@ -60,7 +61,7 @@ def target_windows(engine, base_exponent, window_m, target_at_25=None):
 
 def run_footprint_bytes(engine, windows, window_m, bucket_mb):
     """Peak memory of one run with this many windows."""
-    if engine == ENGINE_V6:
+    if engine in (ENGINE_V6, ENGINE_V7):
         buffer = -(-windows * window_m // WHEEL_NUMBERS_PER_BYTE)
     elif engine == ENGINE_V5:
         buffer = windows * (window_m // 16)

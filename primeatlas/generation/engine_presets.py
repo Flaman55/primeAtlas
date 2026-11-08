@@ -1,4 +1,4 @@
-"""Knob profiles of the bucketed engines (v5, v6): named sets of the four knobs that decide
+"""Knob profiles of the bucketed engines (v5, v6, v7): named sets of the four knobs that decide
 the sieve's speed (segment, bucket region, bucket memory, pieces per thread).
 
 The best bucket memory grows with the run's width: large buckets cut the rounds of a long run
@@ -25,13 +25,14 @@ PRESET_MID = "mid"
 PRESET_CUSTOM = "custom"
 PRESETS = (PRESET_AUTO, PRESET_OLD, PRESET_NEW, PRESET_MID, PRESET_CUSTOM)
 DEFAULT_PRESET = PRESET_AUTO
-PRESET_ENGINES = ("v5", "v6")
+PRESET_ENGINES = ("v5", "v6", "v7")
 
 # Per engine: ((below this many windows per run, segment KiB, bucket MiB), ...); from the
 # last bound on, auto takes new's set. Bounds lie between the measured widths 1000 / 2000 /
 # 5000 / 10000 at floors 16-20.
 AUTO_STEPS = {"v5": ((1500, 2048, 1024), (4000, 2048, 4096)),
-              "v6": ((3000, 128, 1024), (8000, 2048, 4096))}
+              "v6": ((3000, 128, 1024), (8000, 2048, 4096)),
+              "v7": ((3000, 128, 1024), (8000, 2048, 4096))}   # v6's buffer: v6's steps
 
 _PROFILE_KNOBS = ("segment_kb", "region_kb", "bucket_mb", "pieces_per_thread")
 _VALUES = {
