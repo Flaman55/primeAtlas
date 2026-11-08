@@ -33,16 +33,19 @@ Column notes:
   ENGINE_PRIMESIEVE_PRINT and ENGINE_PRIMESIEVE_COUNT for the native primesieve program
   (primesieve_native.py): its own --print text output (sieve + every prime printed, a
   whole run), or its --count (sieve + bit count, the work of an engine's sieve phase).
+  ENGINE_PSEUDOSQUARES_PRINT and ENGINE_PSEUDOSQUARES_COUNT are the same two modes of the
+  Pseudosquares Prime Sieve program (pseudosquares_native.py, native_tool_run.py).
 - sieve_wall_seconds: the sieve timed from outside the engine -- orchestrator_v3 takes the
   time from launching the scanner process to its "Batch sieve done" line (Python start,
   imports, buffer allocation, library load and sieving primes included; the optional
   base_gen_seconds diagnostic left out), while sieve_seconds is the engine's own timer
   around the sieve alone. Blank for engines with no such line (pt1 overlaps sieve and
-  write) and for other writers, native primesieve included: its one process has no split
+  write) and for other writers, the native programs included: one process has no split
   between setup and sieve to measure.
-- run_purpose: RUN_PURPOSE_STORAGE for a run that writes into the storage (Atlas windows, or
-  native primesieve's print text), RUN_PURPOSE_BENCHMARK for a run that only measures
-  (count-only, native count): its row lives in this log alone, never in a floor's
+- run_purpose: RUN_PURPOSE_STORAGE for a run that writes Atlas windows into the storage,
+  RUN_PURPOSE_BENCHMARK for a run that only measures (count-only) and for every run of a
+  native program (NATIVE_ENGINES, print included: its text is the program's own format,
+  not Atlas storage): its row lives in this log alone, never in a floor's
   floor_meta.json. Every writer sets it (run_purpose()); row_purpose() reads it, falling
   back to write_files for rows logged before the column.
 Rows written before a column existed keep it blank: a migration never guesses old values,
@@ -68,6 +71,11 @@ BENCHMARK_FIELDNAMES = [
 ENGINE_PRIMESIEVE_ATLAS = "primesieve"
 ENGINE_PRIMESIEVE_PRINT = "primesieve_print"
 ENGINE_PRIMESIEVE_COUNT = "primesieve_count"
+ENGINE_PSEUDOSQUARES_PRINT = "pseudosquares_print"
+ENGINE_PSEUDOSQUARES_COUNT = "pseudosquares_count"
+# Native programs measured in their own format: every run is a benchmark (row_purpose()).
+NATIVE_ENGINES = frozenset({ENGINE_PRIMESIEVE_PRINT, ENGINE_PRIMESIEVE_COUNT,
+                            ENGINE_PSEUDOSQUARES_PRINT, ENGINE_PSEUDOSQUARES_COUNT})
 THREADS_GPU = "GPU"
 
 RUN_STATUS_COMPLETED = "completed"
@@ -83,8 +91,11 @@ def run_purpose(writes_storage):
 
 
 def row_purpose(row):
-    """RUN_PURPOSE_STORAGE or RUN_PURPOSE_BENCHMARK for a log or floor_meta row: its
+    """RUN_PURPOSE_STORAGE or RUN_PURPOSE_BENCHMARK for a log or floor_meta row: a native
+    program's row is always a benchmark (also an old print row logged as storage), else its
     run_purpose, else write_files "0" for a benchmark row and anything else for storage."""
+    if str(row.get("engine") or "").strip() in NATIVE_ENGINES:
+        return RUN_PURPOSE_BENCHMARK
     value = str(row.get("run_purpose") or "").strip()
     if value in (RUN_PURPOSE_STORAGE, RUN_PURPOSE_BENCHMARK):
         return value

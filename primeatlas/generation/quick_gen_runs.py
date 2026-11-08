@@ -90,8 +90,8 @@ class QuickGenRuns:
         native = self.quick_primesieve_native_var.get()
         try:
             if native:
-                # The primesieve program itself (print or count); write_files does not
-                # apply: print always writes its text file, count never writes.
+                # The primesieve program itself (print or count), always a benchmark
+                # run; write_files does not apply.
                 argv = build_primesieve_native_argv(
                     base_exponent, target_idx_start, window_count_per_run,
                     QUICK_GEN_MAX_WINDOW_WIDTH, self.quick_primesieve_native_mode_var.get())

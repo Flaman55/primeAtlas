@@ -322,7 +322,14 @@ def classify_install_failure(transcript):
     return None
 
 
-def _build_install_ps1_text(distro, need_features=True, need_distro=True, need_packages=True):
+def _pseudosquares_install_script_wsl():
+    """WSL path of prime_sieve/pseudosquares_install.py in this app's own tree."""
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    return _windows_path_to_wsl(os.path.join(root, "prime_sieve", "pseudosquares_install.py"))
+
+
+def _build_install_ps1_text(distro, need_features=True, need_distro=True, need_packages=True,
+                            pseudosquares=False):
     """Builds the PowerShell script text run (elevated) by run_install(). Pure string
     building -- no subprocess calls here, so this is directly unit-testable without any
     Windows/WSL environment (see unitTests/test_env_setup.py). Exit code contract: 0 = full
@@ -470,6 +477,29 @@ def _build_install_ps1_text(distro, need_features=True, need_distro=True, need_p
         lines.append('    exit 1')
         lines.append('}')
         lines.append('')
+    if pseudosquares:
+        # Optional, asked for in the wizard: the build tools as root, then the build as
+        # the distro's default user, so the program lands in the home the app's own WSL
+        # runs see (pseudosquares_install.py).
+        import pseudosquares_const
+        tools = " ".join(pseudosquares_const.APT_PACKAGES)
+        lines.append('Log "STEP:pseudosquares"')
+        lines.append(_NATIVE_UTF8)
+        lines.append(
+            f'wsl.exe -d {distro} -u root -e bash -c "apt-get update -y && apt-get install -y '
+            f'{tools}" 2>&1 | ForEach-Object {{ Log $_ }}')
+        lines.append('if ($LASTEXITCODE -ne 0) {')
+        lines.append('    Log "PSEUDOSQUARES_FAILED:tools:$LASTEXITCODE"')
+        lines.append('    exit 1')
+        lines.append('}')
+        lines.append(
+            f'wsl.exe -d {distro} -e python3 "{_pseudosquares_install_script_wsl()}" --build '
+            f'2>&1 | ForEach-Object {{ Log $_ }}')
+        lines.append('if ($LASTEXITCODE -ne 0) {')
+        lines.append('    Log "PSEUDOSQUARES_FAILED:build:$LASTEXITCODE"')
+        lines.append('    exit 1')
+        lines.append('}')
+        lines.append('')
     lines.append('Log "STEP:done"')
     lines.append('exit 0')
     return "\n".join(lines) + "\n"
@@ -547,7 +577,8 @@ def _run_elevated_ps1(ps1_path, timeout=1800):
     return elevated_code, transcript
 
 
-def run_install(distro=DEFAULT_WSL_DISTRO, timeout=1800, work_dir=None, report=None):
+def run_install(distro=DEFAULT_WSL_DISTRO, timeout=1800, work_dir=None, report=None,
+                pseudosquares=False):
     """Runs only the install steps check_environment() says are actually missing (Windows
     features, WSL+distro, apt packages -- any subset), behind a single UAC elevation
     prompt (or none at all if nothing is missing). Returns {"ok": bool, "restart_required":
@@ -588,7 +619,7 @@ def run_install(distro=DEFAULT_WSL_DISTRO, timeout=1800, work_dir=None, report=N
     need_features = not checks_by_id.get("wsl_present", {}).get("ok", False)
     need_distro = not checks_by_id.get("distro_present", {}).get("ok", False)
     need_packages = not checks_by_id.get("packages", {}).get("ok", False)
-    if not (need_features or need_distro or need_packages):
+    if not (need_features or need_distro or need_packages or pseudosquares):
         return {"ok": True, "restart_required": False,
                 "transcript": "STEP:nothing_to_install\n", "error": None}
 
@@ -597,7 +628,7 @@ def run_install(distro=DEFAULT_WSL_DISTRO, timeout=1800, work_dir=None, report=N
         work_dir, f"primeatlas_env_setup_{int(time.time() * 1000)}.ps1")
     script_text = _build_install_ps1_text(
         distro, need_features=need_features, need_distro=need_distro,
-        need_packages=need_packages)
+        need_packages=need_packages, pseudosquares=pseudosquares)
     try:
         with open(ps1_path, "w", encoding="utf-8") as f:
             f.write(script_text)

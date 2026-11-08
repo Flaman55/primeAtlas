@@ -134,11 +134,13 @@ def _writers():
     import prime_sieve_primesieve
     import prime_sieve_cudasieve
     import hybrid_sieve
+    import native_tool_run
     import primesieve_native
+    import pseudosquares_native
 
-    def native(mode):
+    def native(module, mode):
         def write(tmp, write_files):
-            primesieve_native.append_row(tmp, primesieve_native.benchmark_row(
+            native_tool_run.append_row(tmp, module.benchmark_row(
                 mode, 13, 0, 2, 10_000_000, 10.0, 50, 4, "test", None, None))
         return write
     return {
@@ -150,8 +152,10 @@ def _writers():
             13, 0, 2, 10.0, 50, 2, wf, tmp),
         "hybrid_sieve": lambda tmp, wf: hybrid_sieve.write_hybrid_benchmark_row(
             tmp, 13, 0, 2, 10.0, 50, wf, 0.1, 5.0, 1.0, 100),
-        "primesieve_native print": native("print"),
-        "primesieve_native count": native("count"),
+        "primesieve_native print": native(primesieve_native, "print"),
+        "primesieve_native count": native(primesieve_native, "count"),
+        "pseudosquares_native print": native(pseudosquares_native, "print"),
+        "pseudosquares_native count": native(pseudosquares_native, "count"),
     }
 
 
@@ -159,8 +163,9 @@ def _test_engines():
     print("\n--- D. every engine tags its row; only storage runs fill floor_meta.json ---")
     for name, write in _writers().items():
         purposes = ((True, "storage"), (False, "benchmark"))
-        if name.startswith("primesieve_native"):
-            purposes = ((name.endswith("print"), "storage" if name.endswith("print") else "benchmark"),)
+        native = name.startswith(("primesieve_native", "pseudosquares_native"))
+        if native:
+            purposes = ((name.endswith("print"), "benchmark"),)  # native: always a benchmark
         for write_files, purpose in purposes:
             tmp = tempfile.mkdtemp(prefix="primeatlas_floor_meta_engine_")
             try:
@@ -170,7 +175,7 @@ def _test_engines():
                     logged = list(csv.DictReader(f))
                 check(len(logged) == 1 and logged[0].get("run_purpose") == purpose,
                       f"{name}, write_files={write_files}: logged row has run_purpose={purpose}")
-                if name.startswith("primesieve_native"):
+                if native:
                     continue
                 if purpose == "storage":
                     try:

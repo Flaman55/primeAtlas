@@ -51,8 +51,20 @@ storage (`reload_benchmark_log`, injected by the app), so the run's row is on th
 primesieve mode has a Native checkbox (`quick.primesieve_native`, remembered). Off, it runs the
 wrapper `prime_sieve_primesieve.py` (Atlas windows into storage; the info tip names the conversion
 overhead in its time). On, a print/count list becomes usable and Generate runs
-`primesieve_native.py` with that mode; the Benchmark checkbox is disabled while native
-primesieve mode is selected, since print always writes its text and count never writes.
+`primesieve_native.py` with that mode; while native primesieve mode is selected the Benchmark
+checkbox is disabled and shows checked: a native run measures the program in its own format,
+so count and print are both benchmark runs (`benchmark_log_schema.NATIVE_ENGINES`).
+
+Pseudosquares mode (`quick_gen_pseudosquares.py`) is always native: Floor / From / Width,
+count or print, and Threads (Auto or a number, usable for count only; print runs on one
+thread). `pseudosquares_plan.py` turns the fields into one run without reading the storage:
+From (blank = the Floor's start) picks its floor and the window holding it, the range is cut
+at the floor's end and at 10^33, and a bad Threads value, a From past 10^33 or no From and no
+Floor stop before launch. It launches `pseudosquares_native.py` on the shared runner and
+console. One function, `_sync_benchmark_lock`, handles both native modes: the checkbox is disabled and
+bound to a fixed Variable that shows it checked, so the shared `write_files` setting of the
+Atlas modes is not changed and shows again when an Atlas mode is selected. A missing program is reported by the runner in the console (exit code 2, no row); the
+Generation tab does not hold the Settings status.
 
 ## Benchmark runs
 
@@ -152,6 +164,8 @@ is copied in once), `.generation_logs/` (logs, exit codes, `ACTIVE_RUN.json`),
 
 ## Known gaps
 
+- primesieve mode's planning still checks the requested range against the storage ("already
+  in storage") also for Native runs, which write nothing there; Pseudosquares mode does not.
 - The RAM budget caps only the Time simulation slider: Generate does not refuse a typed width
   above it.
 - The run-progress ETA does not use the time model yet; the model is shown only in the Time

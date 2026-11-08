@@ -3,8 +3,8 @@ test_primesieve_native_controls.py -- Quick-gen primesieve mode's "Native" check
 print/count choice, on the real Generation tab (isolated app, no WSL).
 
 Checks: the checkbox starts off and the print/count list is disabled until it is on; with
-primesieve mode selected and Native on, the Benchmark checkbox is disabled (print
-always writes, count never does) and it comes back when Native is off or another mode is
+primesieve mode selected and Native on, the Benchmark checkbox is disabled (a
+native run is always a benchmark) and it comes back when Native is off or another mode is
 chosen; Generate launches primesieve_native.py with the chosen mode when Native is on and
 prime_sieve_primesieve.py otherwise; both info texts exist in English and Polish, the native
 one names the storage and thread facts, the wrapper one names the overhead, and neither

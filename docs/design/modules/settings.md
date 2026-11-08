@@ -9,7 +9,7 @@ entries since the last release in the UI language, and NOTICE.md.
 
 | Part | Files |
 |---|---|
-| Tab | `primeatlas/settings/settings_tab.py` and its mixins `general_section.py`, `restore_section.py`, `delete_section.py`, `full_backup_section.py`, `storage_integrate_section.py`, `updates_section.py` |
+| Tab | `primeatlas/settings/settings_tab.py` and its mixins `general_section.py`, `restore_section.py`, `delete_section.py`, `full_backup_section.py`, `storage_integrate_section.py`, `updates_section.py`, `pseudosquares_section.py` |
 | Backups | `manifest.py`, `backup_store.py`, `restore_job.py`, `full_backup.py`, `floor_meta.py`, `storage_integrate.py`, `delete_manager.py` |
 | Updates and restart | `app_update.py`, `app_restart.py` |
 | First-run setup | `env_setup.py`, `env_setup_wizard.py` |
@@ -32,7 +32,19 @@ maps, the file every built `prime_sieve_engine_*.so` resolves (`ldd`) and every 
 the linker cache's entries (`ldconfig -p`, symlinks collapsed). `env_versions_view.format_report`
 turns it into the text and a warning line: a library with more than one copy (an apt package next to
 a build under `/usr/local`: the cache order picks one, so installing or removing either changes what
-the engines run on), and an engine that resolves another copy than Python.
+the engines run on), and an engine that resolves another copy than Python. It also names the
+Pseudosquares Prime Sieve program (path, version, build commit) and warns when that build is not
+the pinned commit.
+
+Pseudosquares Prime Sieve (`pseudosquares_section.py`, in Updates): Check status runs
+`pseudosquares_install.py --status`; Install / Rebuild probes, installs missing build tools as root
+(`wsl_blocking.run_pseudosquares_tools_install_wsl_blocking`, `wsl.exe -u root`), then runs
+`--build` on `WslLoggedRunner` with its log in the section's console, then probes again. One button
+for install, rebuild and a move to the pin. No consent step: the BSD 2-Clause License asks for the
+notice to be kept (NOTICE.md), not for acceptance. The setup wizard has an optional checkbox (off by
+default) that adds the same tools and build to its elevated script (`run_install(pseudosquares=True)`,
+build as the distro's default user); checked, it enables Install even when everything required is
+present.
 
 ## Parameters and texts
 
@@ -47,7 +59,8 @@ the engines run on), and an engine that resolves another copy than Python.
 
 `test_app_update`, `test_app_update_locks`, `test_app_restart`, `test_env_setup`, `test_delete_manager`,
 `test_full_backup_hit_paging`, `test_storage_integrate`, `test_dp_settings`,
-`test_primecount_settings_integration`, `test_env_versions`, `test_about_tab`.
+`test_primecount_settings_integration`, `test_env_versions`, `test_pseudosquares_settings`,
+`test_about_tab`.
 
 ## Known gaps
 

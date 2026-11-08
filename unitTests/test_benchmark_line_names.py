@@ -153,6 +153,52 @@ class WidthTests(unittest.TestCase):
                          "primesieve count (native) 12.15, 15 thr", "a count writes nothing")
 
 
+class PseudosquaresTests(unittest.TestCase):
+    ROWS = [
+        _row("pseudosquares_count", floor=25, version="1.2 (fccb96e)", threads="24",
+             windows_written="0", loop_numbers_per_second="", write_seconds="",
+             sieve_seconds="40", numbers_processed=str(10 ** 9)),
+        _row("pseudosquares_print", floor=25, version="1.2 (fccb96e)", threads="1",
+             write_threads="1", windows_written="0", loop_numbers_per_second="3.5e6",
+             write_seconds="", sieve_seconds=""),
+    ]
+    COUNT = "Pseudosquares count (native) 1.2 (fccb96e), 24 thr"
+    PRINT = "Pseudosquares print (native) 1.2 (fccb96e), 1 thr, write 1"
+
+    def lines(self, metric):
+        return benchmark.benchmark_engine_lines(self.ROWS, metric)
+
+    def test_labels_name_the_build_and_threads(self):
+        self.assertEqual(line_names.line_name(self.ROWS[0]), self.COUNT)
+        self.assertEqual(line_names.line_name(self.ROWS[1]), self.PRINT)
+        self.assertEqual(line_names.line_name(_row("pseudosquares_count", version="1.2",
+                                                   threads="8")),
+                         "Pseudosquares count (native) 1.2, 8 thr", "a count writes nothing")
+
+    def test_count_is_on_the_sieve_charts_with_and_without_startup(self):
+        self.assertEqual(self.lines("sieve")[self.COUNT], [(25, 10 ** 9 / 40)])
+        self.assertEqual(self.lines("sieve_spw")[self.COUNT], [(25, 40 / 100)],
+                         "s/window over 10^7-number windows")
+        self.assertEqual(self.lines("sieve_wall")[self.COUNT], [(25, 10 ** 9 / 40)],
+                         "one whole process: its time is also the sieve with startup")
+        for metric in ("growth", "write", "sieve_overhead"):
+            self.assertNotIn(self.COUNT, self.lines(metric), metric)
+
+    def test_print_is_on_the_whole_run_chart_only(self):
+        self.assertEqual(self.lines("growth")[self.PRINT], [(25, 3.5e6)])
+        for metric in ("write", "sieve", "sieve_spw", "sieve_wall"):
+            self.assertNotIn(self.PRINT, self.lines(metric), metric)
+
+    def test_own_colors(self):
+        colors = {chart_series.ENGINE_COLORS[e]
+                  for e in ("primesieve", "primesieve_print", "primesieve_count",
+                            "pseudosquares_print", "pseudosquares_count")}
+        self.assertEqual(len(colors), 5, "each native path has its own color")
+        series = {s.name: s for s in benchmark.benchmark_series(self.ROWS, "sieve")}
+        self.assertEqual(series[self.COUNT].color,
+                         chart_series.ENGINE_COLORS["pseudosquares_count"])
+
+
 class ReferenceTests(unittest.TestCase):
     def test_no_static_primesieve_reference(self):
         t = Translator("en").t

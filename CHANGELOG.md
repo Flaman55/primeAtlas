@@ -536,6 +536,42 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   eksport CSV zostawia ją pustą. Na wykresach PDF, SVG i HTML legenda zaczyna się za długim
   tytułem wykresu zamiast na nim (np. polski wykres RAM).
 
+### +40 — Pseudosquares mode: Kim Walisch's Pseudosquares Prime Sieve as a native engine
+
+- English: Quick generation has a new Pseudosquares mode that runs Kim Walisch's
+  Pseudosquares Prime Sieve program (BSD 2-Clause License) itself. The program outputs only
+  proven primes and reaches 10^33 (floor 32), past primesieve's 2^64. count finds and counts
+  the primes on Auto or a chosen number of threads and appears on the sieve charts; print
+  writes every prime as text into pseudosquares/10pN/ on one thread and appears on the
+  whole-run chart. Neither writes into the storage. Each row names the program's version and
+  build commit, e.g. "Pseudosquares count (native) 1.2 (fccb96e), 24 thr". Settings → Updates
+  builds the program inside WSL from a pinned commit of its GitHub repository (Install /
+  Rebuild, which first installs cmake, g++ and git as root when they are missing). The setup
+  wizard has an optional box for the same build. The component versions list shows the
+  program and warns when its build is not the pinned one. Every native run (Pseudosquares and
+  primesieve's Native mode, count and print) is a benchmark run: the Benchmark checkbox is
+  shown checked and locked in those modes, and the Run purpose filter lists native print runs
+  under Benchmark, older primesieve print rows included (before, they were listed under
+  Storage although their text is not Atlas storage). Root commands run from Settings now log
+  their whole output; before, the primecount install logged only its last step.
+- Polski: Szybkie generowanie ma nowy tryb Pseudosquares, który uruchamia sam program
+  Pseudosquares Prime Sieve Kima Walischa (licencja BSD 2-Clause). Program zwraca wyłącznie
+  udowodnione liczby pierwsze i sięga 10^33 (piętro 32), dalej niż 2^64 primesieve. count
+  znajduje i liczy liczby pierwsze na Auto albo na wybranej liczbie wątków i trafia na
+  wykresy sita; print zapisuje każdą liczbę pierwszą jako tekst do pseudosquares/10pN/ na
+  jednym wątku i trafia na wykres całego przebiegu. Żaden z nich nie zapisuje do magazynu.
+  Każdy wiersz podaje wersję programu i commit kompilacji, np. „Pseudosquares count (native)
+  1.2 (fccb96e), 24 thr”. Ustawienia → Aktualizacje budują program w WSL z przypiętego commita
+  jego repozytorium na GitHubie (Zainstaluj / Przebuduj; brakujące cmake, g++ i git instaluje
+  najpierw jako root). Kreator konfiguracji ma opcjonalne pole na tę samą kompilację. Lista
+  wersji komponentów pokazuje program i ostrzega, gdy jego kompilacja nie jest przypiętą.
+  Każdy przebieg natywny (Pseudosquares i tryb Native primesieve, count i print) jest
+  przebiegiem benchmarkowym: w tych trybach checkbox Benchmark jest zaznaczony i zablokowany,
+  a filtr Cel przebiegu pokazuje natywne przebiegi print w Benchmarku, także starsze wiersze
+  print primesieve (wcześniej trafiały do Magazynu, choć ich tekst nie jest magazynem
+  Atlasa). Polecenia roota uruchamiane z Ustawień zapisują teraz w logu całe swoje wyjście; wcześniej
+  instalacja primecount zapisywała tylko ostatni krok.
+
 ## 1.2.0 — 2026-11-01
 
 ### English

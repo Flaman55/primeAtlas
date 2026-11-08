@@ -174,8 +174,9 @@ def _test_view():
         report["duplicates"] = ev.duplicates(report["libs"])
         text, warning = format_report(report, T)
         check(warning == "", f"[{lang}] one copy each gives no warning")
-        check(text.count(T("settings.env_versions_missing")) == 3,
-              f"[{lang}] missing numpy, gcc and primecount each say 'not installed'")
+        check(text.count(T("settings.env_versions_missing")) == 4,
+              f"[{lang}] missing numpy, gcc, primecount and Pseudosquares each say "
+              f"'not installed'")
 
         report["libs"]["primesieve"] = ev.lib_entry(
             "12.15", "/usr/local/lib/libprimesieve.so.12.15",
@@ -185,6 +186,37 @@ def _test_view():
         text, warning = format_report(report, T)
         check("prime_sieve_engine_v6.so" in warning and "/a/libprimesieve.so.12.12" in warning,
               f"[{lang}] an engine loading another copy than Python is named in the warning")
+
+
+def _test_pseudosquares():
+    print("\n--- Pseudosquares Prime Sieve line ---")
+    import env_versions as ev
+    import pseudosquares_const as const
+    from primeatlas.core.i18n import Translator
+    from primeatlas.settings.env_versions_view import format_report
+
+    entry = ev.pseudosquares_entry("/h/.primeatlas/pseudosquares/build/pss", "1.2", "fccb96e")
+    check(entry == {"path": "/h/.primeatlas/pseudosquares/build/pss", "version": "1.2",
+                    "commit": "fccb96e", "at_pin": const.PIN_SHORT == "fccb96e"},
+          "entry: path, version, commit, at the pin")
+    check(ev.pseudosquares_entry(None, "", None) is None, "entry: no program -> None")
+    check(ev.pseudosquares_entry("/usr/bin/pss", "1.2", None)["at_pin"] is False,
+          "entry: a binary of unknown source is not the pinned build")
+    for lang in ("en", "pl"):
+        T = Translator(lang)
+        report = {"ok": True, "distro": "U", "python": "3", "numpy": "2", "gcc": "15",
+                  "libs": {}, "duplicates": [], "pseudosquares": dict(entry, at_pin=True)}
+        text, warning = format_report(report, T)
+        check("Pseudosquares Prime Sieve 1.2 (fccb96e)" in text and warning == "",
+              f"[{lang}] the pinned build: version and commit, no warning")
+        report["pseudosquares"] = dict(entry, commit="1234567", at_pin=False)
+        text, warning = format_report(report, T)
+        check("1234567" in text and const.PIN_SHORT in warning,
+              f"[{lang}] another build: the warning names the pinned commit")
+        report["pseudosquares"] = None
+        text, _warning = format_report(report, T)
+        check(f"Pseudosquares Prime Sieve {T('settings.env_versions_missing')}" in text,
+              f"[{lang}] not installed")
 
 
 def _test_argv_and_wiring():
@@ -244,6 +276,7 @@ def main():
     _test_parsers()
     _test_report()
     _test_view()
+    _test_pseudosquares()
     _test_argv_and_wiring()
 
     print()

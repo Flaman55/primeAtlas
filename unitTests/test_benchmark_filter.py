@@ -56,7 +56,7 @@ PURPOSE_ROWS = [
     dict(ROWS[1], run_timestamp_utc="p2", run_purpose="storage", write_files="1"),
     dict(ROWS[2], run_timestamp_utc="p3", write_files="0"),
     dict(ROWS[3], run_timestamp_utc="p4", write_files="1"),
-    dict(ROWS[4], run_timestamp_utc="p5"),
+    dict(ROWS[4], run_timestamp_utc="p5", engine="v4.1"),
 ]
 
 
@@ -67,6 +67,12 @@ class PurposeTests(unittest.TestCase):
         self.assertEqual(chart_filter.dimension_values(PURPOSE_ROWS, "purpose"),
                          ["benchmark", "storage"])
         self.assertEqual(chart_filter.DIMENSIONS[0], "purpose", "purpose is the first dimension")
+        native = [dict(ROWS[4], run_purpose="", write_files=""),
+                  dict(ROWS[4], engine="primesieve_print", run_purpose="storage", write_files="1"),
+                  dict(ROWS[4], engine="pseudosquares_print", run_purpose="benchmark")]
+        self.assertEqual([chart_filter.row_value(r, "purpose") for r in native],
+                         ["benchmark"] * 3,
+                         "a native program's run is a benchmark, an old print row too")
 
     def test_apply_both_ways(self):
         ts = lambda rows: [r["run_timestamp_utc"] for r in rows]

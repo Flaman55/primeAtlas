@@ -428,6 +428,8 @@ class QuickGenPlan:
                                       self.T("quick.hybrid_error_invalid_target"))
                 return
             self._prepare_hybrid(start, end, main_cap, filter_prime_count)
+        elif mode == "pseudosquares":
+            self._on_quick_generate_pseudosquares()  # quick_gen_pseudosquares.py
         elif mode == "primesieve":
             # mode == "primesieve": From + Width (NOT From/To -- see
             # _build_quick_mode_primesieve's docstring for why) determine the literal

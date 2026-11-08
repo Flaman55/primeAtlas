@@ -11,6 +11,7 @@ from primeatlas.generation.engine_argv import (
     build_loop_argv, build_constellation_finder_argv, build_primesieve_argv,
     build_pip_install_argv, build_cudasieve_status_argv, build_cudasieve_fetch_license_argv,
     build_cudasieve_build_argv, build_primecount_query_argv, build_env_versions_argv,
+    build_pseudosquares_install_argv,
 )
 from primeatlas.generation.generation_settings import load_generation_settings
 from primeatlas.generation.logged_runners import WslLoggedRunner, LocalLoggedRunner
@@ -19,7 +20,8 @@ from primeatlas.generation.window_planning import (
 )
 from primeatlas.generation.wsl_blocking import (
     run_cudasieve_wsl_blocking, run_primecount_wsl_blocking, run_primecount_install_wsl_blocking,
-    run_env_versions_wsl_blocking,
+    run_env_versions_wsl_blocking, run_pseudosquares_status_wsl_blocking,
+    run_pseudosquares_tools_install_wsl_blocking,
 )
 from primeatlas.generation.wsl_command import build_wsl_logged_command, generation_log_paths
 from primeatlas.generation.wsl_resources import estimate_wsl_available_ram_bytes
@@ -139,6 +141,15 @@ class SettingsWiringMixin:
             "run_primecount_install_wsl_blocking":
                 lambda timeout=300:
                     run_primecount_install_wsl_blocking(_dyn.PORTAL_FOLDER, timeout),
+            # Pseudosquares Prime Sieve (pseudosquares_section.py): status probe, build
+            # tools as root, then the build of the pinned commit on WslLoggedRunner.
+            "build_pseudosquares_install_argv": build_pseudosquares_install_argv,
+            "run_pseudosquares_status_wsl_blocking":
+                lambda argv, timeout=60:
+                    run_pseudosquares_status_wsl_blocking(argv, _dyn.PORTAL_FOLDER, timeout),
+            "run_pseudosquares_tools_install_wsl_blocking":
+                lambda timeout=600:
+                    run_pseudosquares_tools_install_wsl_blocking(_dyn.PORTAL_FOLDER, timeout),
             # Settings -> WSL environment's component versions probe (env_versions.py).
             "build_env_versions_argv": build_env_versions_argv,
             "run_env_versions_wsl_blocking":

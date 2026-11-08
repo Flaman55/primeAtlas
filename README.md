@@ -514,6 +514,37 @@ off-by-one count under concurrent GPU load -- worth keeping in mind for anything
 counts matter; `generate_primes_in_range()` does a strictly-increasing sanity check on the
 returned primes as a (partial) defense against a badly parsed or truncated stdout stream.
 
+## The Pseudosquares mode
+
+Quick generation's **Pseudosquares** mode runs the Pseudosquares Prime Sieve program itself
+-- J. P. Sorenson's Pseudosquares Prime Sieve as implemented by Kim Walisch
+(https://github.com/kimwalisch/Pseudosquares-Prime-Sieve, BSD 2-Clause License), which
+outputs only proven primes and reaches 10^33, past primesieve's 2^64
+(`prime_sieve/pseudosquares_native.py`). Like primesieve's Native mode it is timed from the
+program's start to its exit, writes nothing into the storage, and logs one benchmark row:
+- **count** -- finds the primes of the range and counts them, writing nothing: the work of
+  an engine's sieve phase, on the sieve charts as "Pseudosquares count (native)". Threads:
+  Auto lets the program choose (each thread gets a minimum share of the range), a number
+  sets it (capped at the CPU cores); the row logs the threads the program reports.
+- **print** -- writes every prime as the program's own text into
+  `pseudosquares/10pN/<start>_<stop>.txt` under the storage root (not Atlas storage), on one
+  thread: a whole run, on the whole-run chart as "Pseudosquares print (native)".
+
+Its fields are Floor + From + Width like primesieve mode; From blank starts at the Floor's
+start. A run stays inside its floor and ends at 10^33 at most (floor 32 is the last one).
+The Benchmark checkbox is checked and locked: a native run (here and in primesieve's Native
+mode, count and print alike) measures the program in its own format, so its row is a
+benchmark run.
+
+The program is built inside WSL on request: Settings > Updates has its own section (status,
+Install / Rebuild, GitHub link), and the setup wizard has an optional, unchecked-by-default
+box for it. `prime_sieve/pseudosquares_install.py` clones the repository into
+`~/.primeatlas/pseudosquares`, checks out the commit pinned in
+`prime_sieve/pseudosquares_const.py` (upstream has no releases) and builds it with CMake;
+missing build tools (cmake, g++, git) are installed as root first. Every row names the
+program's version and build commit (e.g. "1.2 (fccb96e)"), and the component versions list
+warns when the installed build is not the pinned one. See `NOTICE.md` for the attribution.
+
 ## The Hybrid mode
 
 Hybrid is a sixth Quick generation mode, deliberately narrower in scope than the other
@@ -1482,8 +1513,8 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               rather than isolating their state.
   quick_gen_panel.py            QuickGenPanel mixin: the Quick-gen panel's shared
                               Variables, per-mode frames (Floor only/Range/
-                              Exploration/Hybrid/primesieve/cudasieve), width caps
-                              and validators, RAM/CPU/storage Auto buttons; every
+                              Exploration/Hybrid/primesieve/cudasieve/Pseudosquares),
+                              width caps and validators, RAM/CPU/storage Auto buttons; every
                               Floor field is a spinbox (_floor_spinbox); the
                               Benchmark checkbox next to Generate
                               (unitTests/test_benchmark_mode_controls.py)
@@ -1491,6 +1522,15 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               launcher per engine (loop, primesieve, Hybrid,
                               cudasieve, orchestrator-direct window range), gap
                               filling, multi-step start_storage_fill
+  quick_gen_pseudosquares.py    QuickGenPseudosquares mixin: Quick-gen's Pseudosquares
+                              mode (Floor/From/Width, count/print, Threads Auto or a
+                              number), launches pseudosquares_native.py on the shared
+                              runner; Benchmark shown checked and locked (unitTests/
+                              test_pseudosquares_controls.py)
+  pseudosquares_plan.py         a Pseudosquares run's range from its fields: From's
+                              floor and window, kept in the floor and under 10^33;
+                              never reads the storage -- pure, no tkinter
+                              (unitTests/test_pseudosquares_plan.py)
   quick_gen_plan.py             QuickGenPlan mixin: Quick-gen fields -> one launch
                               (_quick_gen_plan_literal_range,
                               _on_quick_generate_clicked)
@@ -1526,10 +1566,13 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
   engine_argv.py                script paths and argv builders for every engine and
                               tool launched in WSL, constellation checkpoint read,
                               pip-install argv
-  wsl_blocking.py               hang-safe Popen()+poll()-loop WSL calls for CUDASieve's
-                              and primecount's status/install/query
+  wsl_blocking.py               hang-safe Popen()+poll()-loop WSL calls for CUDASieve's,
+                              primecount's and Pseudosquares Prime Sieve's
+                              status/install/query, and root shell commands
                               (run_cudasieve_wsl_blocking, run_primecount_wsl_
-                              blocking, run_primecount_install_wsl_blocking)
+                              blocking, run_primecount_install_wsl_blocking,
+                              run_pseudosquares_status_wsl_blocking,
+                              run_pseudosquares_tools_install_wsl_blocking)
   wsl_resources.py              WSL RAM/CPU probes and the window/worker Auto
                               recommendations
   run_output.py                 regexes for the engines' progress lines and the short
@@ -2040,6 +2083,10 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               and restore
   storage_integrate_section.py  StorageIntegrateSection mixin: integrate an external
                               storage folder (preview, then copy)
+  pseudosquares_section.py      PseudosquaresSection mixin: Settings > Updates block of
+                              Pseudosquares Prime Sieve -- status, Install / Rebuild
+                              (build tools as root, then the pinned build, live log),
+                              GitHub link (unitTests/test_pseudosquares_settings.py)
   updates_section.py            UpdatesSection mixin: the optional-library (sympy),
                               primecount and CUDASieve installers, GitHub attribution
                               buttons for every third-party library this app calls
@@ -2226,6 +2273,19 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               logs primesieve_print / primesieve_count rows
                               (unitTests/test_primesieve_native.py,
                               unitTests/test_primesieve_native_controls.py)
+  pseudosquares_native.py    Pseudosquares mode: runs the Pseudosquares Prime Sieve
+                              program (Kim Walisch, BSD 2-Clause), count (threads Auto
+                              or N) or print (its text into pseudosquares/10pN/, one
+                              thread), floors 0-32 up to 10^33; logs pseudosquares_count
+                              / pseudosquares_print rows with version + build commit
+                              (unitTests/test_pseudosquares_native.py)
+  pseudosquares_install.py   --status / --build of that program: clone of its GitHub
+                              repo at the pinned commit in ~/.primeatlas/pseudosquares,
+                              CMake build (unitTests/test_pseudosquares_install.py)
+  pseudosquares_const.py     the pinned commit, repo URL, 10^33 stop, last floor,
+                              install paths and build-tool packages
+  native_tool_run.py         shared by the native runners: timed child process, text
+                              line count, child peak RAM, the one benchmark_log.csv row
   prime_sieve_cudasieve.py   "cudasieve mode" (optional, opt-in) -- shells out to the
                               third-party CUDASieve GPU CLI as a separate OS process
                               (never linked, GPLv3 process boundary); see "The cudasieve

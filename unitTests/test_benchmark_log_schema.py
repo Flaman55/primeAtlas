@@ -92,8 +92,17 @@ def _test_header(schema):
                           ({"write_files": " 0 "}, "benchmark"),
                           ({"write_files": "1"}, "storage"),
                           ({"run_purpose": "junk", "write_files": ""}, "storage"),
-                          ({}, "storage")):
+                          ({}, "storage"),
+                          ({"engine": "primesieve_print", "run_purpose": "storage",
+                            "write_files": "1"}, "benchmark"),
+                          ({"engine": "pseudosquares_print", "write_files": "1"}, "benchmark"),
+                          ({"engine": "primesieve_count", "write_files": "0"}, "benchmark"),
+                          ({"engine": "primesieve", "write_files": "1"}, "storage")):
         check(schema.row_purpose(row) == expected, f"row_purpose({row}) = {expected}")
+    check(schema.NATIVE_ENGINES == {"primesieve_print", "primesieve_count",
+                                    "pseudosquares_print", "pseudosquares_count"},
+          "native engines: both modes of both programs (always a benchmark, even an old "
+          "print row logged as storage)")
 
 
 def _test_single_source(schema):
@@ -204,7 +213,7 @@ def _test_engine_version_writers():
               for v in ("v3", "v4", "v4.1", "pt1")),
           "v3/v4/v4.1/pt1 write on one thread")
     for name in ("prime_sieve_primesieve.py", "prime_sieve_cudasieve.py", "hybrid_sieve.py",
-                 "primesieve_native.py"):
+                 "native_tool_run.py"):
         with open(os.path.join(_REPO_ROOT, "prime_sieve", name), encoding="utf-8") as f:
             text = f.read()
         check('"threads":' in text and '"write_threads":' in text,

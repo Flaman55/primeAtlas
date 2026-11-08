@@ -2,6 +2,7 @@
 Settings -> WSL environment "Component versions" text and its duplicate-copy warning.
 Pure functions, no tkinter, no WSL call.
 """
+import pseudosquares_const
 
 LIBRARY_LABELS = (("primesieve", "libprimesieve"), ("primecount", "libprimecount"))
 
@@ -34,6 +35,14 @@ def format_report(report, T):
     for key, label in LIBRARY_LABELS:
         lines.append(_lib_line(label, libs.get(key), T))
     lines.append(T("settings.env_versions_line_gcc", gcc=_or_missing(report.get("gcc"), T)))
+    pss = report.get("pseudosquares")
+    if pss:
+        build = f"{pss['version']} ({pss['commit']})" if pss.get("commit") else pss["version"]
+        lines.append(T("settings.env_versions_line_pseudosquares", build=build,
+                       path=pss["path"]))
+    else:
+        lines.append(T("settings.env_versions_line_pseudosquares_missing",
+                       missing=T("settings.env_versions_missing")))
 
     warnings = []
     for key, label in LIBRARY_LABELS:
@@ -49,4 +58,7 @@ def format_report(report, T):
         if others:
             warnings.append(T("settings.env_versions_engines_differ", name=label,
                               loaded=loaded, engines=", ".join(others)))
+    if pss and not pss.get("at_pin"):
+        warnings.append(T("settings.env_versions_pseudosquares_not_pinned",
+                          pinned=pseudosquares_const.PIN_SHORT))
     return "\n".join(lines), "\n".join(warnings)

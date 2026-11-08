@@ -1,0 +1,48 @@
+"""
+pseudosquares_plan.py -- the range of a Quick-gen Pseudosquares run from its fields: From (a
+number; blank = the Floor's start), Width (windows of `window_m` numbers) and Threads.
+
+A native run writes nothing into the storage, so the plan never looks at it: From picks its
+floor (digit count) and the window holding it, rounded down to the window grid; the range
+never leaves that floor and never passes the program's 10^33 stop
+(pseudosquares_native.native_range, the runner's own clamp). No tkinter here.
+"""
+import pseudosquares_const as const
+from pseudosquares_native import native_range
+
+from ..core.storage import digit_count_floor
+
+AUTO_THREADS = 0  # the program picks its thread count
+
+
+def parse_threads(text):
+    """Threads field: blank / "Auto" / 0 -> AUTO_THREADS, a positive integer as given,
+    None for anything else."""
+    text = (text or "").strip()
+    if not text or text.lower() == "auto":
+        return AUTO_THREADS
+    if not text.isdigit():
+        return None
+    return int(text)
+
+
+def plan(start, floor, width_mult, window_m):
+    """{floor, target_idx_start, count, lo, hi, clamped} of one run, or {"error": key}:
+    from_required (no From and no Floor), range_negative (From below 1), beyond_ceiling
+    (past floor MAX_FLOOR), width_invalid (Width below 1)."""
+    if not isinstance(width_mult, int) or width_mult < 1:
+        return {"error": "width_invalid"}
+    if start is None:
+        if floor is None or floor < 0:
+            return {"error": "from_required"}
+        start = 10 ** floor
+    if start < 1:
+        return {"error": "range_negative"}
+    floor = digit_count_floor(start)
+    if floor > const.MAX_FLOOR:
+        return {"error": "beyond_ceiling"}
+    idx = (start - 10 ** floor) // window_m
+    lo, hi = native_range(floor, idx, width_mult, window_m)
+    count = -(-(hi - lo) // window_m)
+    return {"floor": floor, "target_idx_start": idx, "count": count, "lo": lo, "hi": hi,
+            "clamped": hi - lo < width_mult * window_m}

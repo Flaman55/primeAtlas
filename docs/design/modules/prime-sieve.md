@@ -134,6 +134,22 @@ sieve time (the work of a sieve phase), no `loop_*` columns. print: the wall tim
 time (`loop_numbers_per_second`, a whole run), no sieve time. SIGTERM (the Stop button) ends the
 child too.
 
+Pseudosquares mode (`pseudosquares_native.py`) runs the Pseudosquares Prime Sieve program (Kim
+Walisch, BSD 2-Clause) the same way, with rows `pseudosquares_count` / `pseudosquares_print`:
+count runs `pseudosquares_prime_sieve START STOP [--threads=N]` (threads parsed from its
+report), print adds `--print` into `pseudosquares/10p{N}/<start>_<stop>.txt` (one thread, the
+program sets it). The range stays inside its floor and under the program's 10^33 stop (floor 32
+is the last, `pseudosquares_const.MAX_FLOOR`). `engine_version` is the program's version plus
+the commit of the installer's clone ("1.2 (fccb96e)"), version alone for a binary found
+elsewhere. Both native runners share `native_tool_run.py`: the timed child (`run_timed`), the
+printed file's line count, the child's peak RSS and the row itself. The program is found at
+`$PSEUDOSQUARES_BIN`, then the installer's build, then PATH. `pseudosquares_install.py`
+`--status` prints one JSON line (missing build tools, clone and its commit, at the pin, binary
+and version); `--build` clones the repository into `~/.primeatlas/pseudosquares` (fresh
+install), fetches and checks out `pseudosquares_const.PIN_COMMIT` and builds it with CMake
+(Release, all cores). Its CMake configure fetches the program's own pinned dependencies from
+the network.
+
 ## How v7 finds the deep-floor hits
 
 On deep floors the bucket stage is nearly the whole sieve, and nearly all of it goes to primes
@@ -210,7 +226,8 @@ hit pages ([data.md](../data.md)).
 `test_engine_pt1`, `test_work_plan_v5`, `test_overlap_pipeline`, `test_orchestrator_stop`,
 `test_hybrid_*`, `test_cudasieve_integration`, `test_hit_paging`, `test_floor_meta_store`,
 `test_benchmark_log_schema`, `test_print_benchmark_summary`, `test_primesieve_benchmark_row`,
-`test_primesieve_native`, `test_pi_seed`. See also BENCHMARK.md.
+`test_primesieve_native`, `test_pseudosquares_native`, `test_pseudosquares_install`,
+`test_pi_seed`. See also BENCHMARK.md.
 
 ## Known gaps
 
