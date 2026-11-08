@@ -279,6 +279,39 @@ class ScriptTests(unittest.TestCase):
         for got, want in zip(_node({"cases": cases}), expected):
             self.assertEqual(_normalize(got), want)
 
+    def test_legend_starts_after_the_title(self):
+        series = benchmark_series(ROWS, "growth")
+        cases, expected, titles = [], [], []
+        for lang, key, pins in (("pl", "bench.axis_ram_mb", (None, None)),
+                                ("pl", "bench.axis_ram_mb", (1e8, None)),
+                                ("en", "bench.axis_total_nps", (None, None)),
+                                ("en", "bench.axis_ram_mb", (None, None))):
+            t = Translator(lang)
+            text = {"floor": t.t("bench.axis_floor"), "pinned": t.t("bench.axis_pinned"),
+                    "no_data": t.t("bench.no_data_chart"),
+                    "all_hidden": t.t("bench.all_lines_hidden")}
+            opts = {"series": [report_html.series_json(s) for s in series],
+                    "legend": [{"name": s.name, "color": s.color, "dashed": s.dashed,
+                                "hidden": False} for s in series],
+                    "title": t.t(key), "decimals": report_html.decimals("{:,.0f}"),
+                    "log": False, "pins": list(pins), "view": None, "yView": None,
+                    "text": text}
+            cases.append({"kind": "svg", "w": 900, "h": 260, "opts": opts})
+            expected.append(chart_svg(900, 260, series1=series, translator=t, label_key1=key,
+                                      fmt1="{:,.0f}", pins1=pins))
+            titles.append(t.t(key) + (" [" + t.t("bench.axis_pinned") + "]"
+                                      if pins[0] is not None else ""))
+        name = re.escape(series[0].name)
+        for svg, title in zip(expected, titles):
+            self.assertIn(f">{title}</text>", svg)
+            text_x = float(re.search(r'<text x="([\d.]+)"[^>]*>' + name + "</text>", svg).group(1))
+            # The legend line starts 13 points left of its text; the title, drawn from x 9 in
+            # 8 pt bold, averages 4.4 points per character.
+            self.assertGreater(text_x - 13, 9 + 4.4 * len(title) + 6, title)
+            self.assertGreaterEqual(text_x, 98, "a short title keeps the legend at its place")
+        for got, want in zip(_node({"cases": cases}), expected):
+            self.assertEqual(_normalize(got), want)
+
     def test_zoom_and_pan_match_chart_view(self):
         span = (10, 30)
         cases = [{"kind": "zoom", "view": None, "level": 0, "base": [10, 30], "anchor": 15,

@@ -25,6 +25,9 @@ part runs only in a browser, on the .primeatlas-benchmark element holding this s
   var LABEL_SIZE = 7;
   var LABEL_CHAR_W = 0.6 * LABEL_SIZE;
   var LAST_LABEL_STEPS = 5;
+  var TITLE_CHAR_W = 0.6 * 8;
+  var LEGEND_LEFT = 90;
+  var LEGEND_GAP = 14;
   var AXIS_GRAY = "#666666";
   var GUIDE_GRAY = "#e0e0e0";
   var BOX_GRAY = "#cccccc";
@@ -284,8 +287,9 @@ part runs only in a browser, on the .primeatlas-benchmark element holding this s
                    '" viewBox="0 0 ' + w + " " + h + '"><rect width="' + w + '" height="' + h +
                    '" fill="#ffffff"/>' + ops.join("") + "</svg>", geometry: geometry};
     }
-    function drawLegend() {
-      var lx = 90;
+    /* chart_pdf.legend_left(): the first entry past the title, so the two never overlap. */
+    function drawLegend(title) {
+      var lx = Math.max(LEGEND_LEFT, Math.ceil(9 + TITLE_CHAR_W * title.length + LEGEND_GAP));
       legend.forEach(function (s) {
         var line = b.line(lx - 5, h - 8, lx + 5, h - 8, 1.5, s.color);
         var parts = [s.dashed ? dashed(line) : line, b.dot(lx, h - 8, 2.5, s.color)];
@@ -300,7 +304,7 @@ part runs only in a browser, on the .primeatlas-benchmark element holding this s
       if (!legend.length) {
         ops.push(b.text(w / 2 - 60, h / 2, 10, "Helvetica", t.no_data));
       } else {
-        drawLegend();
+        drawLegend("");
         ops.push(b.text(w / 2 - 120, h / 2, 10, "Helvetica", t.all_hidden));
       }
       return done();
@@ -369,7 +373,7 @@ part runs only in a browser, on the .primeatlas-benchmark element holding this s
     ops.push(b.text(plotX0 + plotW / 2 - 30, 4, 8, "Helvetica-Bold", t.floor));
     ops.push(b.dot(4, h - 7.5, 2.2, AXIS_GRAY));
     ops.push(b.text(9, h - 10, 8, "Helvetica-Bold", title));
-    drawLegend();
+    drawLegend(title);
 
     var candidates = [];
     var labelYMin = plotY0 + 2, labelYMax = h - 22;

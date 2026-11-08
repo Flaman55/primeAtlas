@@ -511,7 +511,11 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   further clicks add or remove values, and All goes back to every run (before, a dimension
   had to be switched on first and then showed every value selected). The HTML page and
   snippet export only the runs the filter keeps (All exports the whole log; before, they held
-  every run), and their own filter works the same way.
+  every run), and their own filter works the same way. A value an engine does not log
+  (e.g. the per-window time of primesieve's count mode) shows a dash instead of an empty
+  cell in the tab's table and the HTML and PDF tables; the CSV export keeps it empty. In the
+  PDF, SVG and HTML charts the legend starts after a long chart title instead of over it
+  (e.g. the Polish RAM chart).
 - Polski: Checkbox „Benchmark (bez zapisu do magazynu)” obok przycisku Generuj zastępuje
   „Zapisuj pliki PGS2” i działa w każdym trybie generowania. Przebieg benchmarkowy
   przesiewa i liczy, ale zostawia magazyn bez zmian: bez plików okien, folderu piętra i
@@ -527,6 +531,10 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   było najpierw włączyć, a potem pokazywał wszystkie wartości zaznaczone). Strona HTML i
   fragment HTML eksportują tylko przebiegi przepuszczone przez filtr (Wszystkie eksportuje
   cały log; wcześniej zawierały każdy przebieg), a ich własny filtr działa tak samo.
+  Wartość, której silnik nie zapisuje (np. czas na okno w trybie zliczania primesieve),
+  pokazuje kreskę zamiast pustej komórki w tabeli zakładki oraz w tabelach HTML i PDF;
+  eksport CSV zostawia ją pustą. Na wykresach PDF, SVG i HTML legenda zaczyna się za długim
+  tytułem wykresu zamiast na nim (np. polski wykres RAM).
 
 ## 1.2.0 — 2026-11-01
 

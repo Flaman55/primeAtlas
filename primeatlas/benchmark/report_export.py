@@ -31,7 +31,7 @@ import datetime
 from html import escape
 
 from ..core.i18n import Translator, DEFAULT_LANGUAGE
-from . import chart_filter, report_html, sieve_measure
+from . import chart_filter, report_html, sieve_measure, table_cells
 from .benchmark import (benchmark_pdf_tables, report_chart_pages, report_chart_series,
                         report_mixed_note, report_references)
 from .chart_series import axis_pins
@@ -106,7 +106,7 @@ def _svg_report(charts):
 
 def _tables_html(fieldnames, rows, t):
     """The tables of `rows` (data-run: a row's index in `rows`, so the page's script hides the
-    runs its filter drops)."""
+    runs its filter drops); a value a run lacks is table_cells.MISSING."""
     parts = []
     for title_key, columns in benchmark_pdf_tables(fieldnames):
         parts.append(f"<h2>{escape(t(title_key))}</h2><table><thead><tr>"
@@ -114,7 +114,7 @@ def _tables_html(fieldnames, rows, t):
                      + "</tr></thead><tbody>")
         for i, row in enumerate(rows):
             parts.append(f'<tr data-run="{i}">'
-                         + "".join(f"<td>{escape(str(row.get(c, '') or ''))}</td>"
+                         + "".join(f"<td>{escape(table_cells.cell(row, c))}</td>"
                                    for c in columns) + "</tr>")
         parts.append("</tbody></table>")
     return "".join(parts)

@@ -34,11 +34,12 @@ _PDF_ASCII_FOLD_MAP = str.maketrans({
     "ą": "a", "Ą": "A", "ć": "c", "Ć": "C", "ę": "e", "Ę": "E",
     "ł": "l", "Ł": "L", "ń": "n", "Ń": "N", "ó": "o", "Ó": "O",
     "ś": "s", "Ś": "S", "ź": "z", "Ź": "Z", "ż": "z", "Ż": "Z",
+    "\u2014": "-", "\u2013": "-",
 })
 
 
 def _pdf_ascii_fold(text):
-    """Strips Polish diacritics down to plain ASCII -- WinAnsiEncoding (the PDF default
+    """Strips Polish diacritics (and folds dashes to "-") down to plain ASCII -- WinAnsiEncoding (the PDF default
     for the core-14 fonts this writer uses, see the module comment above) doesn't cover
     them at all, so a raw accented string would render as garbage/missing glyphs, not
     just "wrong language". Locale strings themselves (strings_pl.json) stay properly

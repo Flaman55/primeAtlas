@@ -17,6 +17,8 @@ chart_ops() draws through a backend: PDF_BACKEND (the default) gives PDF content
 ops, chart_svg.SvgBackend SVG elements of the same layout, so the report's PDF, SVG and
 HTML charts are one drawing.
 """
+import math
+
 from ..core.i18n import Translator, DEFAULT_LANGUAGE
 from ..core.pdf_writer import _pdf_ascii_fold, _pdf_dot_op, _pdf_line_op, _pdf_rect_op, _pdf_text_op
 from . import chart_view
@@ -44,6 +46,15 @@ _GUIDE_GRAY = (0.88, 0.88, 0.88)
 _LABEL_SIZE = 7
 _LABEL_CHAR_W = 0.6 * _LABEL_SIZE   # Courier advance width
 _LAST_LABEL_STEPS = 5               # stacked places tried above and below a line's last point
+_TITLE_CHAR_W = 0.6 * 8             # the 8 pt bold title, on the wide side of Helvetica-Bold
+_LEGEND_LEFT = 90                   # x of the first legend entry after a short title
+_LEGEND_GAP = 14                    # from the title's estimated end to the first entry
+
+
+def legend_left(title):
+    """x (from the chart's left edge) of the first legend entry: _LEGEND_LEFT, or past the
+    title drawn from x 9 when the title is longer (whole points), so the two never overlap."""
+    return max(_LEGEND_LEFT, math.ceil(9 + _TITLE_CHAR_W * len(title) + _LEGEND_GAP))
 
 
 def _overlaps(a, b):
@@ -180,7 +191,7 @@ def chart_ops(x0, y0, w, h, series1=(), series2=(), translator=None,
         ops.append(b.text(x0 + w - 68 - 4.4 * (len(title2) - len(t(label_key2))),
                                  y0 + h - 10, 8, "Helvetica-Bold", b.fold(title2)))
 
-    legend_x = x0 + 90
+    legend_x = x0 + legend_left(title1 if series1 else "")
     for s in legend_series(series1, series2):
         rgb = _rgb(s.color)
         line = b.line(legend_x - 5, y0 + h - 8, legend_x + 5, y0 + h - 8, width=1.5,

@@ -52,7 +52,7 @@ from .benchmark_filter import BenchmarkFilter
 from .benchmark_ram_chart import BenchmarkRamChart
 from .chart_hover import _bind_chart_hover, _nearest_point
 from .chart_zoom_controls import BenchmarkChartZoom
-from . import sieve_measure
+from . import sieve_measure, table_cells
 from .reference_points import reference_series
 
 
@@ -773,7 +773,7 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkRamChart, Benchmar
             # for every data row (target_idx_start/target_idx_end are already their own
             # columns, so #0 had nothing else useful to show).
             label = row.get("run_timestamp_utc", "") + " [" + (row.get("engine") or "unknown") + "]"
-            values = [row.get(c, "") for c in fieldnames]
+            values = [table_cells.cell(row, c) for c in fieldnames]
             self.benchmark_tree.insert(node, "end", text=label, values=values, tags=("row",))
 
         if self._active_benchmark_node == node:

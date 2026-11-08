@@ -116,6 +116,13 @@ class BenchmarkReportTests(unittest.TestCase):
                 self.assertIn(row[name], printed, name)
         self.assertFalse([t for t in texts if t[1] == "Courier" and t[5].endswith("...")])
 
+    def test_missing_value_prints_a_dash(self):
+        rows = [dict(_bench_row(0), max_child_rss_mb="", engine="")]
+        texts = _texts(_bench_pdf(rows))
+        printed = [t[5] for t in texts if t[1] == "Courier"]
+        self.assertIn("-", printed, "a value the run lacks prints a dash")
+        self.assertFalse([s for s in printed if "?" in s], "no unprintable character")
+
     def test_headers_printed_in_full(self):
         texts = _texts(_bench_pdf([_bench_row(0)]))
         header_lines = {t[5] for t in texts if t[1] == "Courier-Bold"}

@@ -1992,6 +1992,9 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               dimension (run purpose, engine build, threads, write
                               threads, width), the values in the log, the selection,
                               its summary -- pure, no tkinter
+  table_cells.py                a log cell as the tab's table, the HTML and the PDF
+                              tables show it: a dash for a value the run's engine
+                              does not log -- pure, no tkinter
   sieve_measure.py              which time the sieve chart measures: engine sieve
                               phase, sieve with startup overhead
                               (sieve_wall_seconds) or the overhead alone; metrics,

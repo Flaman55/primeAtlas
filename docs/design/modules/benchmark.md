@@ -9,7 +9,7 @@ a PDF report.
 |---|---|
 | Tab | `primeatlas/benchmark/benchmark_tab.py` and its mixins `benchmark_filter.py` (Filter window), `benchmark_ram_chart.py` (RAM chart), `chart_zoom_controls.py` (zoom and pan), `chart_hover.py` (hover tooltip), `benchmark_chart_windows.py` (a chart in its own window) |
 | Exports | `benchmark_export.py` (tab mixin: Save PDF, Export menu), `report_export.py` (CSV, SVG, HTML page, HTML snippet), `report_html.py` + `report_chart.js` (the interactive HTML), `chart_svg.py` (SVG backend of `chart_pdf.chart_ops()`) |
-| Backend | `benchmark.py` (reading and normalizing rows, D/P kind, PDF report, `report_chart_pages()`, `benchmark_line_records()`), `line_names.py` (a row's line and charts), `chart_filter.py` (which runs the charts compare), `sieve_measure.py` (which time the sieve chart measures), `chart_view.py` (the zoomed part of a chart), `chart_series.py`, `chart_pdf.py`, `reference_points.py` |
+| Backend | `benchmark.py` (reading and normalizing rows, D/P kind, PDF report, `report_chart_pages()`, `benchmark_line_records()`), `line_names.py` (a row's line and charts), `chart_filter.py` (which runs the charts compare), `sieve_measure.py` (which time the sieve chart measures), `table_cells.py` (a cell as the tables show it), `chart_view.py` (the zoomed part of a chart), `chart_series.py`, `chart_pdf.py`, `reference_points.py` |
 
 ## Contract
 
@@ -41,7 +41,7 @@ sieves and outputs every prime with no split between the two, a whole run: it is
 chart. Both log the program's peak RAM and write no Atlas windows: they are on RAM per run, not per
 window. No static primesieve reference is kept (a figure from another range length misleads:
 primesieve's ~0.7 s setup at floor 19 dominates a short range); PARI/GP stays on the sieve chart.
-The PDF run table lists `engine_version`, `threads` and `write_threads`. A writing row from before
+A cell the run leaves empty -- a value its engine does not log, e.g. the per-window time of primesieve's count mode -- shows a dash (`table_cells.MISSING`) in the tab's table and the HTML and PDF tables (folded to "-" in the PDF); the CSV export keeps it empty. The PDF run table lists `engine_version`, `threads` and `write_threads`. A writing row from before
 `write_threads` reads `write ?`. Each point names the range it was measured on (`@ 10^11`,
 `line_names.width_label()`); since the last row per floor wins, a chart can set points of different
 widths side by side, and `mixed_width_floors()` lists those floors: the tab shows them under the

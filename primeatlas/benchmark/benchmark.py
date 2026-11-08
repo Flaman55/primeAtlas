@@ -38,7 +38,7 @@ from ..core.pdf_writer import _pdf_ascii_fold, _pdf_text_op, _write_pdf
 from . import chart_view
 from .chart_pdf import chart_ops
 from .chart_series import axis_pins, engine_lines, engine_series, visible_series
-from . import line_names, sieve_measure
+from . import line_names, sieve_measure, table_cells
 from .reference_points import REFERENCES, reference_series
 
 QUICK_GEN_MAX_WINDOW_WIDTH = 10_000_000  # see this module's own docstring for why this
@@ -687,7 +687,8 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
         chart_pair(ops, content_top - 22, content_bottom, pages_charts["ram"])
         pages.append(ops)
 
-    # --- the logical tables, each from a new page ---
+    # --- the logical tables, each from a new page; a value a run lacks is a dash ---
+    rows = [{c: table_cells.cell(row, c) for c in fieldnames} for row in rows]
     for title_key, columns in benchmark_pdf_tables(fieldnames):
         title = t(title_key)
         layout = TableLayout(columns, rows, content_width, 6.5, BENCHMARK_PDF_KEY_COLUMNS)

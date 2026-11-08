@@ -124,6 +124,14 @@ class ExportTests(unittest.TestCase):
         self.assertIn("&lt;b&gt;&amp;", page)
         self.assertNotIn("<b>&", page)
 
+    def test_missing_values_show_a_dash(self):
+        page = self._export("html", NO_RAM)
+        tables = page.split('<div class="tables">', 1)[1]
+        self.assertNotIn("<td></td>", tables, "no empty cell in the tables")
+        self.assertIn("<td>\u2014</td>", tables, "a value the run lacks is a dash")
+        back = list(csv.DictReader(self._export("csv", NO_RAM).splitlines()))
+        self.assertEqual(back, NO_RAM, "the CSV keeps the empty values")
+
     def test_html_snippet(self):
         snippet = self._export("snippet", ROWS).strip()
         self.assertTrue(snippet.startswith('<div class="primeatlas-benchmark">'))
