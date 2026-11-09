@@ -5,14 +5,14 @@ settings' "loop" section. They reach the WSL side as environment variables in fr
 launched command (see generation.build_wsl_logged_command()): orchestrator_v3.py reads
 PRIMEATLAS_SCANNER_VERSION, prime_sieve_v5_2.py the PRIMEATLAS_V5_* knobs through
 work_plan_v5.py, prime_sieve_v6_1.py the PRIMEATLAS_V6_* knobs through work_plan_v6.py,
-prime_sieve_v7_0.py the PRIMEATLAS_V7_* knobs through work_plan_v7.py, prime_sieve_pt1.py
+prime_sieve_v7_1.py the PRIMEATLAS_V7_* knobs through work_plan_v7_1.py, prime_sieve_pt1.py
 the PRIMEATLAS_PT1_* knobs through pt1_plan.py. v5, v6 and v7 have separate knob sets: their best values differ. The same variables are the command-line interface for
 runs started by hand. The RAM budget knob (percent of the RAM free in WSL that a run may
 use) only sizes the run on this side (recommend()); no engine reads it, so it has no
 environment variable. ENGINE_VERSIONS is the code version each engine name runs (shown next
 to the selector); the names stay what benchmark_log.csv and the storage folder record.
 
-Names and defaults mirror orchestrator_v3.py, work_plan_v5/_v6/_v7.py, pt1_plan.py
+Names and defaults mirror orchestrator_v3.py, work_plan_v5/_v6/_v7_1.py, pt1_plan.py
 and run_budget.py instead of importing the engine modules: this module runs in the native
 Windows GUI, which must not pull in the WSL-only engine imports.
 unitTests/test_engine_options.py keeps them equal.
@@ -29,7 +29,7 @@ ENGINE_PT1 = run_budget.ENGINE_PT1
 ENGINES = (ENGINE_V41, ENGINE_V5, ENGINE_V6, ENGINE_V7, ENGINE_PT1)
 DEFAULT_ENGINE = ENGINE_V6
 BUCKETED_ENGINES = run_budget.BUCKETED_ENGINES
-ENGINE_VERSIONS = {ENGINE_V41: "v4.1", ENGINE_V5: "v5.2", ENGINE_V6: "v6.1", ENGINE_V7: "v7.0",
+ENGINE_VERSIONS = {ENGINE_V41: "v4.1", ENGINE_V5: "v5.2", ENGINE_V6: "v6.1", ENGINE_V7: "v7.1",
                    ENGINE_PT1: "pt1"}
 
 SCANNER_VERSION_ENV = "PRIMEATLAS_SCANNER_VERSION"
@@ -49,17 +49,18 @@ def _bucketed_knobs(engine):
             f"{engine}_write_threads")
 
 
-# v7's jump gear: threshold factor (percent, 0 = off) and block length factor (percent),
-# work_plan_v7.py.
-_V7_JUMP_KNOBS = ("v7_jump_pct", "v7_jump_block_pct")
+# v7's jump gear (work_plan_v7_1.py): threshold in percent of the cost model (0 = off), the
+# model's block and landing costs, block length factor (percent).
+_V7_JUMP_KNOBS = ("v7_jump_model_pct", "v7_jump_block_cost", "v7_jump_landing_cost_pct",
+                  "v7_jump_block_pct")
 
-# Per bucketed engine: knob -> environment variable (work_plan_v5/_v6/_v7.py). The
+# Per bucketed engine: knob -> environment variable (work_plan_v5/_v6/_v7_1.py). The
 # windows-at-25 knob only sizes the run on this side, so it has none.
 KNOB_ENVS = {
     engine: {f"{engine}_{knob}": f"PRIMEATLAS_{engine.upper()}_{knob.upper()}"
              for knob in ("segment_kb", "region_kb", "bucket_mb", "pieces_per_thread",
-                          "write_threads") + (("jump_pct", "jump_block_pct")
-                                              if engine == ENGINE_V7 else ())}
+                          "write_threads")
+             + (tuple(k[len("v7_"):] for k in _V7_JUMP_KNOBS) if engine == ENGINE_V7 else ())}
     for engine in BUCKETED_ENGINES
 }
 _PT1_KNOBS = ("pt1_b", "pt1_chunk_kb")
@@ -86,11 +87,13 @@ DEFAULT_KNOBS = {
                               _DEFAULT_WRITE_THREADS))},
     "pt1_b": 0,             # 0 = floor(N^(1/4)) of the run's top
     "pt1_chunk_kb": 4096,
-    "v7_jump_pct": 100,     # threshold factor K = 1.0; 0 = gear off
+    "v7_jump_model_pct": 100,        # p* = the cost model's; 0 = gear off
+    "v7_jump_block_cost": 300,       # a: one block setup, in classic primes
+    "v7_jump_landing_cost_pct": 10,  # b = 0.10: one landing, in classic primes
     "v7_jump_block_pct": 50,
     RAM_BUDGET_KNOB: round(run_budget.DEFAULT_SAFETY_FRACTION * 100),
 }
-_ZERO_ALLOWED = {"pt1_b", "v7_jump_pct"}
+_ZERO_ALLOWED = {"pt1_b", "v7_jump_model_pct", "v7_jump_landing_cost_pct"}
 PT1_MAX_B = 2 ** 32 - 1
 _MAX_VALUES = {"pt1_b": PT1_MAX_B, RAM_BUDGET_KNOB: 100}
 
@@ -183,7 +186,7 @@ def bucket_knob(engine):
 def launch_env(choice, bucket_mb=None):
     """[(name, value)] to set in front of an orchestrator launch: always the engine, plus
     the engine's own segment, region, bucket, pieces-per-thread and write-thread knobs for
-    v5, v6 and v7 (v7 also its jump gear's two), or B and the chunk size for pt1. bucket_mb lowers the bucket knob (a RAM-reduced
+    v5, v6 and v7 (v7 also its jump gear's four), or B and the chunk size for pt1. bucket_mb lowers the bucket knob (a RAM-reduced
     recommendation); it never raises it above the knob's value."""
     env = [(SCANNER_VERSION_ENV, choice.engine)]
     if choice.engine == ENGINE_PT1:

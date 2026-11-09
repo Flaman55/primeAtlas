@@ -2144,8 +2144,13 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
   prime_sieve_v6_1.py        default engine (code v6.1): prime_sieve_v6.py on
                               prime_sieve_engine_v6_1.so; output identical to
                               v6.0 (unitTests/test_engine_v6_1_identity.py)
-  prime_sieve_v7_0.py        engine v7 (code v7.0): prime_sieve_v6_1.py with the
-                              jump gear for the bucketed primes from
+  prime_sieve_v7_1.py        engine v7 (code v7.1): prime_sieve_v7_0.py with the
+                              jump threshold from work_plan_v7_1.jump_from()'s
+                              cost model and a cost-weighted progress percent,
+                              on prime_sieve_engine_v7_0.so; output identical to
+                              v6.1 (unitTests/test_engine_v7_1_identity.py)
+  prime_sieve_v7_0.py        engine v7.0, kept for comparison: prime_sieve_v6_1.py
+                              with the jump gear for the bucketed primes from
                               work_plan_v7.jump_from() up, on
                               prime_sieve_engine_v7_0.so; output identical to
                               v6.1 (unitTests/test_engine_v7_0_identity.py)
@@ -2184,6 +2189,14 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               50), the gear's lowest prime p* = K * span * ln p*
                               and the split of the bucketed primes into classic
                               and jump pieces (unitTests/test_work_plan_v7.py)
+  work_plan_v7_1.py          v7.1's threshold: p* = ln p* * (a * sqrt(first /
+                              span) + b * span), knobs PRIMEATLAS_V7_JUMP_MODEL_PCT
+                              (% of the model, 0 = off, default 100),
+                              _JUMP_BLOCK_COST (a, default 300),
+                              _JUMP_LANDING_COST_PCT (b in %, default 10); the
+                              rest of v7.0's knobs and planners re-exported;
+                              stage_weights()/progress(): the run's progress by
+                              estimated cost (unitTests/test_work_plan_v7_1.py)
   work_plan_v6.py            v6's knobs (env PRIMEATLAS_V6_SEGMENT_KB, _REGION_KB,
                               _BUCKET_MB, _PIECES_PER_THREAD, _WRITE_THREADS;
                               defaults 2048 / 1024 / 8192 / 16 / 8) and where its segmented primes

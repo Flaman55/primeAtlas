@@ -236,7 +236,9 @@ class GenerationRunProgress:
         step 0 is the pi(L_final) prep phase (which can itself run into minutes at
         extreme depth -- see prime_sieve_v4_1.py's own SKIPPED-mode comment), steps
         1..n_batches are
-        each individual sieve batch. The real n_batches isn't known until the FIRST
+        the sieve batches, filled to the line's own percent (an engine may weight it by
+        estimated cost, prime_sieve_v7_1.py does; for the others it is done / n_batches).
+        The real n_batches isn't known until the FIRST
         batch-progress line arrives, so between the prep line and that first batch line
         the bar shows a provisional 1-of-2 (half full) rather than 0-of-unknown -- it
         gets corrected to the real proportion the moment the first batch line defines the
@@ -362,18 +364,19 @@ class GenerationRunProgress:
             percent_str, done_str, total_str = sieve_matches[-1]
             done, n_batches = int(done_str), int(total_str)
             self._gen_step_total = n_batches + 1  # +1 for the prep step already done
+            filled = 1 + min(float(percent_str), 100.0) / 100 * n_batches
             if self._gen_loop_run_count is not None:
                 run_count = self._gen_loop_run_count
                 iteration = self._gen_loop_iteration or 1
                 self._set_gen_progress_bar(
                     mode="determinate", maximum=run_count * self._gen_step_total,
-                    value=(iteration - 1) * self._gen_step_total + (done + 1))
+                    value=(iteration - 1) * self._gen_step_total + filled)
                 self.status.set(self.T("gen.status_progress_loop_sieve", iteration=iteration,
                                    run_count=run_count, percent=percent_str,
                                    done=done, total=n_batches))
             else:
                 self._set_gen_progress_bar(mode="determinate",
-                                            maximum=self._gen_step_total, value=done + 1)
+                                            maximum=self._gen_step_total, value=filled)
                 self.status.set(self.T("gen.status_progress_sieve", percent=percent_str,
                                    done=done, total=n_batches))
             return
