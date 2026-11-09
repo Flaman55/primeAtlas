@@ -800,7 +800,7 @@
   "settings.restore_extra_deleted": "  10p{base_exponent}: deleted {deleted} extra files.\n",
   "settings.restore_extra_pruned": "  10p{base_exponent}: removed {pruned} empty folders.\n",
   "settings.restore_extra_delete_errors": "  Errors while deleting extra files:\n",
-  "settings.restore_csv_restored": "Restored benchmark_log.csv to the state from backup '{name}' (extra entries are gone, missing ones will reappear as generation runs).\n",
+  "settings.restore_csv_restored": "Restored benchmark_log.csv to the state from backup '{name}' (extra entries are gone, missing ones will reappear as generation runs; {kept} newer benchmark-mode measurements kept).\n",
   "settings.restore_metadata_restored": "Restored floor metadata from backup '{name}' (floor_meta.json, totals/sieving caches) -- this avoids re-scanning file headers from scratch.\n",
   "settings.restore_confirm": "Start generating missing files for backup '{name}'? This will run the generation pipeline (orchestrator_loop_v2.py) and constellation search in the background, floor by floor.",
   "settings.restore_loaded_incomplete": "Loaded saved restore: {name}\n",

@@ -16,11 +16,14 @@ writing and row key, imported here), and re-imported into the local benchmark_lo
 the first time this app notices the floor (see merge_floor_meta_into_benchmark_log(), called from PortalBrowserApp's totals-cache
 background worker on every floor visit). manifest.py folds floor_meta.json's rows into
 backups too, alongside the totals/sieving caches -- see that module's own docstring.
+Benchmark-purpose rows never enter floor_meta.json; merge_rows_into_benchmark_log() and
+benchmark_purpose_rows() let integration, restore and the full-data backup carry them
+from one log to another.
 """
 import os
 import csv
 
-from benchmark_log_schema import BENCHMARK_FIELDNAMES
+from benchmark_log_schema import BENCHMARK_FIELDNAMES, RUN_PURPOSE_BENCHMARK, row_purpose
 from floor_meta_store import (  # noqa: F401
     FLOOR_META_FILENAME, append_benchmark_row_to_floor_meta, floor_meta_path,
     load_floor_meta, row_key as _row_key, save_floor_meta)
@@ -71,25 +74,33 @@ def _write_csv_rows(log_path, fieldnames, rows):
     os.replace(tmp_path, log_path)
 
 
-def merge_floor_meta_into_benchmark_log(storage_path, base_exponent):
-    """Imports this floor's floor_meta.json rows into the storage root's
-    benchmark_log.csv, skipping any row whose key (see _row_key) is already present. This
-    is what makes a floor physically copied in from another storage (bringing its own
-    floor_meta.json along) show up in THIS storage's Benchmark tab exactly as if it had
-    been generated here. Called unconditionally from PortalBrowserApp's totals-cache
-    background worker on every floor visit -- a no-op (returns 0) on the ordinary case
-    where there's nothing new to import, so it's cheap to call every time rather than
-    trying to separately detect "is this floor newly-copied-in".
+def read_benchmark_log_rows(storage_path):
+    """The rows of the storage's benchmark_log.csv as dicts, [] without a log."""
+    return _read_csv_rows(os.path.join(storage_path, "benchmark_log.csv"))[1]
 
-    Returns the number of rows actually imported (0 if none, including when this floor has
-    no floor_meta.json at all)."""
-    meta = load_floor_meta(storage_path, base_exponent)
-    if not meta or not meta["benchmark_rows"]:
+
+def benchmark_purpose_rows(rows, base_exponent=None):
+    """The rows whose row_purpose() is a benchmark, of one floor when base_exponent is given."""
+    return [r for r in rows if row_purpose(r) == RUN_PURPOSE_BENCHMARK
+            and (base_exponent is None or str(r.get("base_exponent", "")) == str(base_exponent))]
+
+
+def merge_rows_into_benchmark_log(storage_path, rows):
+    """Appends to the storage's benchmark_log.csv every row of `rows` whose key (see
+    _row_key) the log lacks, the first of equal keys only; existing rows stay as they are.
+
+    Returns the number of rows actually added (0 also when the log cannot be written)."""
+    if not rows:
         return 0
     log_path = os.path.join(storage_path, "benchmark_log.csv")
     fieldnames, existing_rows = _read_csv_rows(log_path)
     existing_keys = {_row_key(r) for r in existing_rows}
-    to_import = [r for r in meta["benchmark_rows"] if _row_key(r) not in existing_keys]
+    to_import = []
+    for row in rows:
+        key = _row_key(row)
+        if key not in existing_keys:
+            existing_keys.add(key)
+            to_import.append(row)
     if not to_import:
         return 0
     if not fieldnames:
@@ -108,10 +119,27 @@ def merge_floor_meta_into_benchmark_log(storage_path, base_exponent):
                 extra_fields.append(key)
     if extra_fields:
         fieldnames = fieldnames + sorted(extra_fields)
-    all_rows = existing_rows + to_import
     try:
         os.makedirs(storage_path, exist_ok=True)
-        _write_csv_rows(log_path, fieldnames, all_rows)
+        _write_csv_rows(log_path, fieldnames, existing_rows + to_import)
     except OSError:
         return 0
     return len(to_import)
+
+
+def merge_floor_meta_into_benchmark_log(storage_path, base_exponent):
+    """Imports this floor's floor_meta.json rows into the storage root's
+    benchmark_log.csv (merge_rows_into_benchmark_log()). This
+    is what makes a floor physically copied in from another storage (bringing its own
+    floor_meta.json along) show up in THIS storage's Benchmark tab exactly as if it had
+    been generated here. Called unconditionally from PortalBrowserApp's totals-cache
+    background worker on every floor visit -- a no-op (returns 0) on the ordinary case
+    where there's nothing new to import, so it's cheap to call every time rather than
+    trying to separately detect "is this floor newly-copied-in".
+
+    Returns the number of rows actually imported (0 if none, including when this floor has
+    no floor_meta.json at all)."""
+    meta = load_floor_meta(storage_path, base_exponent)
+    if not meta or not meta["benchmark_rows"]:
+        return 0
+    return merge_rows_into_benchmark_log(storage_path, meta["benchmark_rows"])

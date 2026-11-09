@@ -800,7 +800,7 @@
   "settings.restore_extra_deleted": "  10p{base_exponent}: usunięto {deleted} nadmiarowych plików.\n",
   "settings.restore_extra_pruned": "  10p{base_exponent}: usunięto {pruned} pustych folderów.\n",
   "settings.restore_extra_delete_errors": "  Błędy przy usuwaniu nadmiarowych plików:\n",
-  "settings.restore_csv_restored": "Przywrócono benchmark_log.csv do stanu z backupu '{name}' (nadmiarowe wpisy zniknęły, brakujące odtworzą się w trakcie generowania).\n",
+  "settings.restore_csv_restored": "Przywrócono benchmark_log.csv do stanu z backupu '{name}' (nadmiarowe wpisy zniknęły, brakujące odtworzą się w trakcie generowania; zachowano nowsze pomiary trybu benchmark: {kept}).\n",
   "settings.restore_metadata_restored": "Przywrócono metadane pięter z backupu '{name}' (floor_meta.json, cache liczników i sita) -- pozwoli to uniknąć ponownego skanowania nagłówków plików.\n",
   "settings.restore_confirm": "Rozpocząć generowanie brakujących plików dla backupu '{name}'? Uruchomi to pipeline generowania (orchestrator_loop_v2.py) i wyszukiwanie konstelacji w tle, piętro po piętrze.",
   "settings.restore_loaded_incomplete": "Wczytano zapisany restore: {name}\n",

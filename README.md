@@ -640,9 +640,12 @@ header from scratch has been measured at roughly 78 seconds for one 15,101-file 
 A floor's `10p{N}/` directory is self-contained enough to be physically copied from one
 storage location into another (e.g. building a fresh, empty storage but bringing some
 already-generated floors along from an older one) -- no backup/restore cycle is required
-for this to work correctly. Each floor also carries its own `floor_meta.json`, a full copy
-of that floor's `benchmark_log.csv` rows, updated every time a generation run logs a new
-one. Since `benchmark_log.csv` itself lives at the storage root (shared across all floors,
+for this to work correctly. Each floor also carries its own `floor_meta.json`, a copy
+of that floor's storage-run `benchmark_log.csv` rows, updated every time a generation run
+logs a new one. Benchmark-mode rows (a run that only measured, every native primesieve or
+Pseudosquares run) stay in `benchmark_log.csv` alone, since a measuring run leaves the
+storage as it was; a raw floor copy does not take them along, integration and the full-data
+backup below do. Since `benchmark_log.csv` itself lives at the storage root (shared across all floors,
 not per-floor), a raw directory copy would otherwise leave that floor's generation history
 behind in the old location. The app's totals-cache background worker (the same one that
 scans a floor's file headers the first time it is visited in the Prime numbers tab) checks
@@ -687,6 +690,11 @@ back never regresses a live floor's own, possibly further-along, progress. The
 destination is validated to be neither inside the storage nor wrapping it -- a backup
 living inside the very thing it protects isn't a backup.
 
+The floor's benchmark-mode rows, which no `floor_meta.json` holds, are kept at the
+destination too (`10p{N}/benchmark_rows.json`, the live log's rows of that floor unioned by
+row key on every backup, never dropped): restoring the floor appends the ones the live
+`benchmark_log.csv` lacks.
+
 ### Integrating an external storage
 
 Growing a local storage by folding in someone else's -- data downloaded from GitHub, or
@@ -701,12 +709,13 @@ convenience files with no real merge semantics either way.
 Settings tab -> Backup -> "Integruj zewnetrzny magazyn" does this correctly: point it at
 an external storage folder, click Podglad (preview) to see, PER FLOOR, whether it's a
 brand-new floor or one that merely gains some missing files, plus a total size estimate
--- nothing is copied until Integruj is confirmed. Only floor directories are ever
-touched; the three root-level files above are never read or written by this feature at
-all. A floor's generation history (`floor_meta.json`) is imported additively, and then
+-- nothing is copied until Integruj is confirmed. Only floor directories are copied;
+the three root-level files above are never overwritten. A floor's generation history
+(`floor_meta.json`) is imported additively, and then
 flows into the local `benchmark_log.csv` automatically the next time that floor is
-visited in the app (see "Moving floor data between storages" above) -- so the person
-never has to resolve those conflicts themselves.
+visited in the app (see "Moving floor data between storages" above); the floor's
+benchmark-mode rows are read from the external `benchmark_log.csv` and appended to the
+local one by row key -- so the person never has to resolve those conflicts themselves.
 
 ## Restore
 
@@ -714,6 +723,9 @@ Restoring from a backup (Settings tab) regenerates whatever a saved manifest say
 exist but currently does not, as a checkpointed job that can be paused, resumed, or
 cancelled and resumed again in a later session. The cheap caches described above (totals,
 sieving, `floor_meta.json`) are restored first, before any window regeneration begins.
+`benchmark_log.csv` goes back to the backup's copy, except for the current benchmark-mode
+rows the backup lacks, which are appended after it: a measuring run wrote no data the
+restore rolls back, so its row would otherwise be lost.
 
 A restore run is ordered in two strict phases across every floor named in the diff, rather
 than finishing one floor end-to-end before starting the next: every floor's missing prime
@@ -2113,7 +2125,8 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
   manifest.py, backup_store.py, restore_job.py, floor_meta.py, full_backup.py,
   storage_integrate.py, delete_manager.py -- see "Backup manifest contents" /
   "Moving floor data between storages" / "Full-data backup" / "Integrating an
-  external storage" below for what each backs
+  external storage" below for what each backs; benchmark-mode rows through
+  integration, restore and full backup: unitTests/test_benchmark_rows_safety.py
   app_restart.py                execv()-based in-place relaunch, used by the
                               theme/language auto-restart and the self-update
                               restart-after-download prompt (Settings > Ogolne /

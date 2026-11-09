@@ -182,7 +182,8 @@ class RestoreSection:
             return
         # Restore also swaps in the backup's benchmark_log.csv: its row history for
         # windows/floors that never made it into the backup (e.g. a floor added after
-        # the backup was taken) has to go away along with their files, and rows for
+        # the backup was taken) has to go away along with their files (benchmark-mode rows,
+        # which describe no files, are kept -- see BackupStore.restore_csv()), and rows for
         # anything regenerated below get freshly re-appended by that generation run
         # anyway (same WSL pipeline that writes benchmark_log.csv during ordinary
         # generation -- see orchestrator_loop_v2.py/prime_sieve_v3.py).
@@ -192,8 +193,9 @@ class RestoreSection:
         # when it was first started.
         store = self._current_backup_store()
         manifest = store.load(self._selected_backup_name)
-        store.restore_csv(manifest)
-        self._restore_log(self.T("settings.restore_csv_restored", name=self._selected_backup_name))
+        kept = store.restore_csv(manifest)
+        self._restore_log(self.T("settings.restore_csv_restored", name=self._selected_backup_name,
+                                 kept=kept))
         # Cheap, non-destructive caches (floor_meta.json rows, totals-cache entries,
         # sieving-prime-count caches) -- see BackupManifest.restore_floor_metadata()'s own
         # docstring for why this is safe to run now, before any window regeneration below.

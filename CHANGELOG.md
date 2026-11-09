@@ -633,6 +633,24 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   na oś szerokości, a ich liczba jest podana pod wykresem. Eksport PDF, SVG i HTML idzie za osią
   i wyborami, a interaktywna strona HTML ma własny wybór osi X i punktu.
 
+### +43 — Benchmark-mode measurements kept through integration, restore and full backup
+
+- English: Benchmark-mode rows (runs that only measure, every native primesieve and
+  Pseudosquares run) live only in benchmark_log.csv, not in a floor's floor_meta.json, so
+  three paths used to lose them. Integrating an external storage now appends that storage's
+  benchmark rows of each integrated floor to the local log. Restoring a backup puts the
+  backup's log back but keeps the newer benchmark rows it lacks (the Restore log says how
+  many). A full-data backup keeps the floor's benchmark rows next to its files and restoring
+  the floor brings them back. Rows are matched by their key, so nothing is added twice.
+- Polski: Wiersze trybu benchmark (przebiegi, które tylko mierzą, oraz każdy natywny przebieg
+  primesieve i Pseudosquares) są tylko w benchmark_log.csv, nie w floor_meta.json piętra,
+  więc trzy ścieżki je gubiły. Integracja zewnętrznego magazynu dopisuje teraz do lokalnego
+  logu jego wiersze benchmarków z każdego integrowanego piętra. Przywrócenie backupu wstawia
+  log z backupu, ale zachowuje nowsze wiersze benchmarków, których backup nie ma (dziennik
+  przywracania podaje ich liczbę). Pełny backup piętra przechowuje wiersze benchmarków obok
+  plików, a przywrócenie piętra je oddaje. Wiersze są porównywane po kluczu, więc nic nie
+  dochodzi dwa razy.
+
 ## 1.2.0 — 2026-11-01
 
 ### English

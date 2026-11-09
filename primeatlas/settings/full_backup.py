@@ -53,6 +53,7 @@ import window_sharding
 
 from .manifest import FloorSnapshot, ConstellationSnapshot, _save_json_atomic, _load_json_best_effort
 from . import floor_meta
+from floor_meta_store import row_key
 
 # Used ONLY to pick a shard for a window being restored onto the live side (see
 # restore_floor_from_full_backup() below) -- every engine's own actual window_m is at
@@ -64,6 +65,9 @@ from . import floor_meta
 _RESTORE_SHARD_WINDOW_M = 10_000_000
 
 FULL_BACKUP_META_FILENAME = "full_backup_meta.json"
+# The floor's benchmark rows (measuring runs, native programs): they exist only in the live
+# benchmark_log.csv, never in floor_meta.json, so the backup keeps its own copy of them.
+BENCHMARK_ROWS_FILENAME = "benchmark_rows.json"
 GZ_SUFFIX = ".gz"
 
 
@@ -118,6 +122,34 @@ def _dest_const_dir(destination_root, base_exponent):
 
 def _meta_path(destination_root, base_exponent):
     return os.path.join(_floor_dest_dir(destination_root, base_exponent), FULL_BACKUP_META_FILENAME)
+
+def _benchmark_rows_path(destination_root, base_exponent):
+    return os.path.join(_floor_dest_dir(destination_root, base_exponent), BENCHMARK_ROWS_FILENAME)
+
+
+def load_backup_benchmark_rows(destination_root, base_exponent):
+    """The floor's benchmark rows kept in the backup, [] without a readable file (never
+    raises)."""
+    data = _load_json_best_effort(_benchmark_rows_path(destination_root, base_exponent))
+    rows = data.get("benchmark_rows") if data else None
+    return [r for r in rows if isinstance(r, dict)] if isinstance(rows, list) else []
+
+
+def _backup_benchmark_rows(storage_path, destination_root, base_exponent):
+    """Unions the live log's benchmark rows of this floor into the backup's copy by row key;
+    rewrites the file only when a row was added or the file was unreadable."""
+    live = floor_meta.benchmark_purpose_rows(floor_meta.read_benchmark_log_rows(storage_path),
+                                             base_exponent)
+    kept = load_backup_benchmark_rows(destination_root, base_exponent)
+    keys = {row_key(r) for r in kept}
+    added = []
+    for row in live:
+        if row_key(row) not in keys:
+            keys.add(row_key(row))
+            added.append(dict(row))
+    path = _benchmark_rows_path(destination_root, base_exponent)
+    if added or (os.path.exists(path) and not kept):
+        _save_json_atomic(path, {"base_exponent": base_exponent, "benchmark_rows": kept + added})
 
 
 def _dest_window_path(destination_root, base_exponent, name):
@@ -280,7 +312,9 @@ def copy_floor_increment(storage_path, destination_root, base_exponent,
     markers -- scalar pointers, not append-only data, see this module's own docstring)
     are re-synced to whatever the live side currently says, and floor_meta.json's rows
     are merged in additively (never overwritten) via manifest.py's existing
-    merge_rows_into_floor_meta(). Finally writes/updates full_backup_meta.json (updated_at
+    merge_rows_into_floor_meta(); the floor's benchmark rows of the live benchmark_log.csv,
+    which no floor_meta.json holds, are unioned into BENCHMARK_ROWS_FILENAME at the
+    destination. Finally writes/updates full_backup_meta.json (updated_at
     timestamp + file counts) -- but ONLY if anything was actually copied or the meta file
     doesn't exist yet, so re-running this on an already-fully-backed-up floor is a cheap,
     genuine no-op rather than needlessly bumping updated_at.
@@ -355,6 +389,7 @@ def copy_floor_increment(storage_path, destination_root, base_exponent,
     if live_meta and live_meta["benchmark_rows"]:
         floor_meta.merge_rows_into_floor_meta(
             destination_root, base_exponent, live_meta["benchmark_rows"])
+    _backup_benchmark_rows(storage_path, destination_root, base_exponent)
 
     existing_meta = load_full_backup_meta(destination_root, base_exponent)
     if copied_windows or copied_hits or existing_meta is None:
@@ -404,7 +439,8 @@ def restore_floor_from_full_backup(storage_path, destination_root, base_exponent
     (re-scanning would still be safe if this guard were bypassed -- see
     constellation_finder_v2.py's _append_hits_deduped()). floor_meta.json rows are
     merged additively,
-    same as the backup direction.
+    same as the backup direction, and the backup's benchmark rows are appended to the live
+    benchmark_log.csv by row key (floor_meta.merge_rows_into_benchmark_log()).
 
     `progress_cb`/`should_stop` -- same shape as copy_floor_increment().
 
@@ -478,6 +514,8 @@ def restore_floor_from_full_backup(storage_path, destination_root, base_exponent
     if backup_meta and backup_meta["benchmark_rows"]:
         floor_meta.merge_rows_into_floor_meta(
             storage_path, base_exponent, backup_meta["benchmark_rows"])
+    floor_meta.merge_rows_into_benchmark_log(
+        storage_path, load_backup_benchmark_rows(destination_root, base_exponent))
 
     return {"restored_windows": restored_windows, "restored_hits": restored_hits,
             "cancelled": cancelled}

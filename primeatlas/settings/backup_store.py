@@ -9,6 +9,7 @@ moved/copied) the data it describes.
 import os
 import json
 
+from . import floor_meta
 from .manifest import BackupManifest
 
 BACKUPS_SUBDIR = "_backups"
@@ -93,16 +94,24 @@ class BackupStore:
             return False
 
     def restore_csv(self, manifest):
-        """Overwrites the CURRENT benchmark_log.csv with the backup's copy -- a separate,
-        explicit step (NOT called automatically by anything else here) since restoring the
-        CSV history is a real, visible side effect the caller should decide about
-        deliberately, same reasoning as this whole feature never touching prime/
-        constellation data without being asked."""
+        """Replaces the CURRENT benchmark_log.csv with the backup's copy, then appends the
+        current benchmark rows (floor_meta.benchmark_purpose_rows()) the backup lacks:
+        a measuring run wrote no files the restore could roll back, so its row is history
+        only this log holds. Current storage rows the backup lacks go with the files they
+        describe. A separate, explicit step (NOT called automatically by anything else
+        here) since restoring the CSV history is a real, visible side effect the caller
+        should decide about deliberately, same reasoning as this whole feature never
+        touching prime/constellation data without being asked.
+
+        Returns the number of current benchmark rows appended (kept)."""
+        current = floor_meta.benchmark_purpose_rows(
+            floor_meta.read_benchmark_log_rows(self.storage_path))
         csv_path = os.path.join(self.storage_path, "benchmark_log.csv")
         tmp_path = f"{csv_path}.tmp{os.getpid()}"
         with open(tmp_path, "w", encoding="utf-8") as f:
             f.write(manifest.benchmark_csv_text)
         os.replace(tmp_path, csv_path)
+        return floor_meta.merge_rows_into_benchmark_log(self.storage_path, current)
 
     def restore_floor_metadata(self, manifest):
         """Thin wrapper around BackupManifest.restore_floor_metadata() -- see that
