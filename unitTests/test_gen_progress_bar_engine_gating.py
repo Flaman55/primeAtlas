@@ -130,6 +130,27 @@ def main():
               f"step) and value=done+1 "
               f"(got maximum={bar['maximum']!r}, value={bar['value']!r})")
 
+        # v7.1 (prime_sieve_v7_1.py) prints a cost-weighted percent next to the real job
+        # counts: the bar follows the percent, not the count.
+        bar.configure(mode="determinate", maximum=1, value=0)
+        gen._gen_step_total = None
+        gen._update_shared_progress_from_generation_chunk(
+            "[+] Progress: 75.00% (10/100 batches) | time: 9.00s (+1.00s since last print) "
+            "| ETA ~3s")
+        check(int(bar["maximum"]) == 101 and abs(float(bar["value"]) - 76) < 1e-6,
+              f"a weighted progress line moves the bar to its percent (1 prep step + 75 % "
+              f"of 100 jobs), not to its count "
+              f"(got maximum={bar['maximum']!r}, value={bar['value']!r})")
+        gen._gen_loop_run_count, gen._gen_loop_iteration = 2, 2
+        try:
+            gen._update_shared_progress_from_generation_chunk(
+                "[+] Progress: 75.00% (10/100 batches) | time: 9.00s | ETA ~3s")
+            check(int(bar["maximum"]) == 202 and abs(float(bar["value"]) - 177) < 1e-6,
+                  f"loop iteration 2 of 2: one iteration done + 1 prep step + 75 % of 100 "
+                  f"(got maximum={bar['maximum']!r}, value={bar['value']!r})")
+        finally:
+            gen._gen_loop_run_count, gen._gen_loop_iteration = None, None
+
         # =====================================================================
         # Launcher wiring: each _on_run_*() sets the flag to match its own engine.
         # Stubs WslLoggedRunner to avoid any real subprocess/WSL dependency.

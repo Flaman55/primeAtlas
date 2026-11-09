@@ -29,7 +29,7 @@ from primeatlas.generation import generation_settings, run_budget, wsl_command, 
 import pt1_plan  # noqa: E402
 import work_plan_v5  # noqa: E402
 import work_plan_v6  # noqa: E402
-import work_plan_v7  # noqa: E402
+import work_plan_v7_1  # noqa: E402
 
 GB = 10 ** 9
 W = 10_000_000
@@ -55,8 +55,10 @@ def check_mirrors():
     passed &= check(eo.SCANNER_VERSION_ENV == "PRIMEATLAS_SCANNER_VERSION",
                     "engine env name matches orchestrator_v3.py")
     d = eo.DEFAULT_KNOBS
-    for engine, plan in (("v5", work_plan_v5), ("v6", work_plan_v6), ("v7", work_plan_v7)):
-        jump_envs = ({"v7_jump_pct": plan.JUMP_PCT_ENV,
+    for engine, plan in (("v5", work_plan_v5), ("v6", work_plan_v6), ("v7", work_plan_v7_1)):
+        jump_envs = ({"v7_jump_model_pct": plan.JUMP_MODEL_PCT_ENV,
+                      "v7_jump_block_cost": plan.JUMP_BLOCK_COST_ENV,
+                      "v7_jump_landing_cost_pct": plan.JUMP_LANDING_COST_PCT_ENV,
                       "v7_jump_block_pct": plan.JUMP_BLOCK_PCT_ENV} if engine == "v7" else {})
         passed &= check(eo.KNOB_ENVS[engine] == {
             f"{engine}_segment_kb": plan.SEGMENT_KB_ENV,
@@ -73,10 +75,16 @@ def check_mirrors():
         passed &= check(d[f"{engine}_windows_at_25"]
                         == run_budget.DEFAULT_TARGET_WINDOWS_AT_25[engine],
                         f"{engine} windows-at-25 default matches run_budget.py")
-    passed &= check((d["v7_jump_pct"], d["v7_jump_block_pct"], d["v7_write_threads"])
-                    == (work_plan_v7.DEFAULT_JUMP_PCT, work_plan_v7.DEFAULT_JUMP_BLOCK_PCT,
-                        work_plan_v7.DEFAULT_WRITE_THREADS),
-                    "v7 jump and write-threads defaults match work_plan_v7.py")
+    passed &= check((d["v7_jump_model_pct"], d["v7_jump_block_cost"],
+                     d["v7_jump_landing_cost_pct"], d["v7_jump_block_pct"], d["v7_write_threads"])
+                    == (work_plan_v7_1.DEFAULT_JUMP_MODEL_PCT,
+                        work_plan_v7_1.DEFAULT_JUMP_BLOCK_COST,
+                        work_plan_v7_1.DEFAULT_JUMP_LANDING_COST_PCT,
+                        work_plan_v7_1.DEFAULT_JUMP_BLOCK_PCT,
+                        work_plan_v7_1.DEFAULT_WRITE_THREADS),
+                    "v7 jump and write-threads defaults match work_plan_v7_1.py")
+    passed &= check("v7_jump_pct" not in eo.KNOB_KEYS,
+                    "v7.0's threshold factor is no knob of v7.1 (its meaning changed)")
     passed &= check(d["v6_write_threads"] == work_plan_v6.DEFAULT_WRITE_THREADS
                     and d["v5_write_threads"] == work_plan_v5.DEFAULT_WRITE_THREADS,
                     "v5/v6 write-threads defaults match the work plans")
@@ -84,14 +92,16 @@ def check_mirrors():
                     == (2048, 1024, 8192),
                     "v5.1 defaults: 2 MiB segments, 1 MiB regions, 8 GiB buckets (measured)")
     passed &= check(eo.ENGINE_VERSIONS == {"v4.1": "v4.1", "v5": "v5.2", "v6": "v6.1",
-                                           "v7": "v7.0", "pt1": "pt1"},
+                                           "v7": "v7.1", "pt1": "pt1"},
                     f"engine versions shown in the GUI ({eo.ENGINE_VERSIONS})")
     passed &= check(set(d) == set(eo.KNOB_KEYS), "DEFAULT_KNOBS covers exactly KNOB_KEYS")
     for engine in ("pt1", "v7"):
         passed &= check(re.search(rf'^elif SCANNER_VERSION == "{engine}":$', src, re.MULTILINE)
                         is not None, f"orchestrator_v3.py has a {engine} branch")
+    passed &= check(re.search(r'^    import prime_sieve_v7_1 as prime_sieve_module', src,
+                              re.MULTILINE) is not None, "orchestrator_v3.py: v7 runs v7.1")
     import generation_stop
-    passed &= check(generation_stop.scanner_script("v7") == "prime_sieve_v7_0.py",
+    passed &= check(generation_stop.scanner_script("v7") == "prime_sieve_v7_1.py",
                     "the save-point stop knows v7's scanner script")
     passed &= check((eo.PT1_B_ENV, eo.PT1_CHUNK_KB_ENV) == (pt1_plan.B_ENV, pt1_plan.CHUNK_KB_ENV),
                     "pt1 env names match pt1_plan.py")
@@ -109,7 +119,10 @@ def check_mirrors():
                     and eo.engine_knob_keys("v7") == ("v7_segment_kb", "v7_region_kb",
                                                       "v7_bucket_mb", "v7_windows_at_25",
                                                       "v7_pieces_per_thread", "v7_write_threads",
-                                                      "v7_jump_pct", "v7_jump_block_pct",
+                                                      "v7_jump_model_pct",
+                                                      "v7_jump_block_cost",
+                                                      "v7_jump_landing_cost_pct",
+                                                      "v7_jump_block_pct",
                                                       "ram_budget_pct")
                     and eo.engine_knob_keys("v4.1") == ("ram_budget_pct",),
                     "knobs per engine")
@@ -145,11 +158,17 @@ def check_parsing():
     for raw in ("0", "101", "-5", "50.5", "half"):
         knobs, bad = eo.parse_knobs({"ram_budget_pct": raw})
         passed &= check(knobs is None and bad == "ram_budget_pct", f"RAM budget {raw!r} rejected")
-    for raw, want in (("", 100), ("0", 0), (" 250 ", 250)):
-        knobs, bad = eo.parse_knobs({"v7_jump_pct": raw})
-        passed &= check(bad is None and knobs["v7_jump_pct"] == want,
-                        f"v7 jump threshold {raw!r} -> {want} (0 = gear off)")
-    for key, raw in (("v7_jump_pct", "-1"), ("v7_jump_pct", "1.5"), ("v7_jump_block_pct", "0"),
+    for key, raw, want in (("v7_jump_model_pct", "", 100), ("v7_jump_model_pct", "0", 0),
+                           ("v7_jump_model_pct", " 250 ", 250),
+                           ("v7_jump_landing_cost_pct", "0", 0),
+                           ("v7_jump_landing_cost_pct", "", 10),
+                           ("v7_jump_block_cost", "", 300), ("v7_jump_block_cost", "1", 1)):
+        knobs, bad = eo.parse_knobs({key: raw})
+        passed &= check(bad is None and knobs[key] == want,
+                        f"{key} {raw!r} -> {want} (model 0 % = gear off)")
+    for key, raw in (("v7_jump_model_pct", "-1"), ("v7_jump_model_pct", "1.5"),
+                     ("v7_jump_block_cost", "0"), ("v7_jump_landing_cost_pct", "-2"),
+                     ("v7_jump_block_pct", "0"),
                      ("v7_jump_block_pct", "-3"), ("v7_jump_block_pct", "x")):
         knobs, bad = eo.parse_knobs({key: raw})
         passed &= check(knobs is None and bad == key, f"{key} {raw!r} rejected")
@@ -259,8 +278,8 @@ def check_env():
                     and work_plan_v6.pieces_per_thread_from_env(dict(env6)) == 16
                     and work_plan_v6.write_threads_from_env(dict(env6)) == 8,
                     "work_plan_v6 reads the env back")
-    v7 = eo.resolve({"engine": "v7", "v7_preset": "custom", "v7_jump_pct": "0",
-                     "v6_segment_kb": "64"})
+    v7 = eo.resolve({"engine": "v7", "v7_preset": "custom", "v7_jump_model_pct": "0",
+                     "v7_jump_pct": "300", "v6_segment_kb": "64"})
     env7 = eo.launch_env(v7)
     passed &= check(env7 == [("PRIMEATLAS_SCANNER_VERSION", "v7"),
                              ("PRIMEATLAS_V7_SEGMENT_KB", "2048"),
@@ -268,13 +287,18 @@ def check_env():
                              ("PRIMEATLAS_V7_BUCKET_MB", "8192"),
                              ("PRIMEATLAS_V7_PIECES_PER_THREAD", "16"),
                              ("PRIMEATLAS_V7_WRITE_THREADS", "8"),
-                             ("PRIMEATLAS_V7_JUMP_PCT", "0"),
+                             ("PRIMEATLAS_V7_JUMP_MODEL_PCT", "0"),
+                             ("PRIMEATLAS_V7_JUMP_BLOCK_COST", "300"),
+                             ("PRIMEATLAS_V7_JUMP_LANDING_COST_PCT", "10"),
                              ("PRIMEATLAS_V7_JUMP_BLOCK_PCT", "50")],
-                    f"v7 env carries its own seven knobs, never v6's ({env7})")
-    passed &= check(work_plan_v7.jump_pct_from_env(dict(env7)) == 0
-                    and work_plan_v7.jump_block_pct_from_env(dict(env7)) == 50
-                    and work_plan_v7.segment_kb_from_env(dict(env7)) == 2048,
-                    "work_plan_v7 reads the env back (threshold 0 = gear off)")
+                    f"v7 env carries its own nine knobs, never v6's nor v7.0's threshold "
+                    f"({env7})")
+    passed &= check(work_plan_v7_1.jump_model_pct_from_env(dict(env7)) == 0
+                    and work_plan_v7_1.jump_block_cost_from_env(dict(env7)) == 300
+                    and work_plan_v7_1.jump_landing_cost_pct_from_env(dict(env7)) == 10
+                    and work_plan_v7_1.jump_block_pct_from_env(dict(env7)) == 50
+                    and work_plan_v7_1.segment_kb_from_env(dict(env7)) == 2048,
+                    "work_plan_v7_1 reads the env back (model 0 % = gear off)")
     env = dict(eo.launch_env(v5, bucket_mb=417))
     passed &= check(env["PRIMEATLAS_V5_BUCKET_MB"] == "417", "bucket override wins")
     env = eo.launch_env(eo.resolve({"engine": "pt1", "pt1_b": "7000", "v5_bucket_mb": "64"}))

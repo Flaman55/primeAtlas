@@ -47,10 +47,13 @@ SMALL_SEGMENT_ENV = {**v6_cases.SMALL_SEGMENT_ENV,
                         v6_cases.SMALL_SEGMENT_ENV.items()}}
 
 
-def compare_runs(tmp, label, floor, idx_lo, idx_hi, window_m, write_files, extra_env=None):
+def compare_runs(tmp, label, floor, idx_lo, idx_hi, window_m, write_files, extra_env=None,
+                 candidate=CANDIDATE):
+    """v6.1 and `candidate` on one case, each into its own empty portal: same file set, every
+    file byte-identical (PGS2 timestamp zeroed), equal handoff result fields."""
     passed = True
     snaps = []
-    for script in (REFERENCE, CANDIDATE):
+    for script in (REFERENCE, candidate):
         if not os.path.exists(os.path.join(SIEVE_DIR, script)):
             return check(False, f"{label}: {script} exists")
         portal = os.path.join(tmp, f"{label.replace(' ', '_')}_{script}")
