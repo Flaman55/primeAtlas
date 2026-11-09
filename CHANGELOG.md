@@ -572,6 +572,38 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   Atlasa). Polecenia roota uruchamiane z Ustawień zapisują teraz w logu całe swoje wyjście; wcześniej
   instalacja primecount zapisywała tylko ostatni krok.
 
+### +41 — Engine v7.1: jump threshold from a cost model, progress by estimated cost
+
+- English: The v7 engine now runs code v7.1. Where the jump gear takes over the large sieving
+  primes is computed from a cost model of the run's floor and width,
+  p* = ln p* * (a * sqrt(first / span) + b * span): the gear's block setups (which dominate on
+  narrow runs and deep floors) next to its landings (which dominate on wide runs). v7.0 knew
+  only the second term, so on narrow runs its default threshold was far too low. The knob
+  "v7 jump threshold (% of model)" replaces "v7 jump threshold (%)" (100 = the model, 0 =
+  off), and the model's a and b are knobs of their own (defaults 300 and 10 %, fitted to v7.0's
+  measured best thresholds at floors 26-28). The progress percent and ETA of a v7 run follow
+  the estimated cost of the finished work instead of the number of finished pieces, the
+  console shows each sieve stage's time, and the shared progress bar follows the printed
+  percent. The threshold no longer needs tuning to the run's width: at the defaults v7.1
+  sieves 1e10 numbers at floor 28 in 717 s (v7.0: 1178 s at its default, 756 s at the best
+  hand-picked threshold) and 2e11 numbers at floor 27 in 235 s (v7.0: 268 s). v7.0 stays in
+  the repository for comparison. Output is unchanged.
+- Polski: Silnik v7 uruchamia teraz kod v7.1. Miejsce, od którego bieg skokowy przejmuje duże
+  liczby pierwsze situjące, wynika z modelu kosztu dla piętra i szerokości uruchomienia,
+  p* = ln p* * (a * sqrt(first / span) + b * span): przygotowania bloków biegu (przeważają przy
+  wąskich uruchomieniach i na głębokich piętrach) obok jego trafień (przeważają przy szerokich
+  uruchomieniach). v7.0 znał tylko drugi człon, więc przy wąskich uruchomieniach jego domyślny
+  próg był o wiele za niski. Pokrętło „Próg biegu skokowego v7 (% modelu)” zastępuje „Próg
+  biegu skokowego v7 (%)” (100 = model, 0 = wyłączony), a a i b modelu mają własne pokrętła
+  (domyślnie 300 i 10 %, dopasowane do najlepszych progów zmierzonych dla v7.0 na piętrach
+  26-28). Procent postępu i ETA uruchomienia v7 idą za szacowanym kosztem wykonanej pracy
+  zamiast za liczbą skończonych kawałków, konsola pokazuje czas każdego etapu sita, a wspólny
+  pasek postępu idzie za wypisanym procentem. Progu nie trzeba już dobierać do szerokości
+  uruchomienia: przy ustawieniach domyślnych v7.1 przesiewa 1e10 liczb na piętrze 28 w 717 s
+  (v7.0: 1178 s przy domyślnym progu, 756 s przy najlepszym progu dobranym ręcznie), a 2e11
+  liczb na piętrze 27 w 235 s (v7.0: 268 s). v7.0 zostaje w repozytorium do porównań. Wynik
+  się nie zmienia.
+
 ## 1.2.0 — 2026-11-01
 
 ### English
