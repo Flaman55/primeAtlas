@@ -6,7 +6,8 @@ A. primeatlas/core/version.py: parse_changelog() takes the release from the newe
    joined) of the "## Since X.Y.Z" section only; app_version() is "X.Y.Z+N", "X.Y.Z" with no
    entries and "unknown" without CHANGELOG.md; git_commit(root) reads the checked-out commit
    straight from .git (loose ref, packed ref, detached HEAD, a .git file pointing to the git
-   dir) and returns None without a usable .git; version_label(root) is "X.Y.Z+N (abcdef1)"
+   dir; in a linked worktree the branch refs come from the main git dir named by its
+   `commondir` file) and returns None without a usable .git; version_label(root) is "X.Y.Z+N (abcdef1)"
    with a commit and the bare app_version() without one; on this repo it matches
    `git rev-parse --short=7 HEAD`.
 B. CHANGELOG.md: the release is the newest vX.Y.Z tag (pre-release tags aside); the
@@ -17,7 +18,8 @@ C. The app: the title bar shows version_label; About is the last main tab; it sh
    version, the visualization summary, the author's name, e-mail, GitHub and license links
    (each opening the right URL) and the related projects; the changes since the release are
    listed newest first in the UI language with a link to the full CHANGELOG.md; NOTICE.md
-   is shown read-only; every about.* key exists in both locales.
+   is shown read-only; a copy glyph next to the version puts the shown version line on the
+   clipboard; every about.* key exists in both locales.
 
 Usage:
     python unitTests/test_about_tab.py
@@ -148,6 +150,25 @@ def _test_version():
     linked = tempfile.mkdtemp(prefix="about_version_test_")
     _write(os.path.join(linked, ".git"), f"gitdir: {os.path.join(loose, '.git')}\n")
     check(git_commit(linked) == SHA_A, "a .git file pointing to the git dir is followed")
+    worktree = tempfile.mkdtemp(prefix="about_version_test_")
+    wt_git = os.path.join(loose, ".git", "worktrees", "wt")
+    _write(os.path.join(wt_git, "HEAD"), "ref: refs/heads/main\n")
+    _write(os.path.join(wt_git, "commondir"), "../..\n")
+    _write(os.path.join(worktree, ".git"), f"gitdir: {wt_git}\n")
+    check(git_commit(worktree) == SHA_A, "a linked worktree reads its branch from commondir")
+    wt_packed = os.path.join(packed, ".git", "worktrees", "wt")
+    _write(os.path.join(wt_packed, "HEAD"), "ref: refs/heads/main\n")
+    _write(os.path.join(wt_packed, "commondir"), os.path.join(packed, ".git") + "\n")
+    linked_packed = tempfile.mkdtemp(prefix="about_version_test_")
+    _write(os.path.join(linked_packed, ".git"), f"gitdir: {wt_packed}\n")
+    check(git_commit(linked_packed) == SHA_B,
+          "a linked worktree reads a packed ref through an absolute commondir")
+    wt_detached = os.path.join(loose, ".git", "worktrees", "det")
+    _write(os.path.join(wt_detached, "HEAD"), SHA_B + "\n")
+    _write(os.path.join(wt_detached, "commondir"), "../..\n")
+    linked_detached = tempfile.mkdtemp(prefix="about_version_test_")
+    _write(os.path.join(linked_detached, ".git"), f"gitdir: {wt_detached}\n")
+    check(git_commit(linked_detached) == SHA_B, "a detached linked worktree reads its own HEAD")
     check(git_commit(tempfile.mkdtemp(prefix="about_version_test_")) is None, "no .git -> None")
     check(git_commit(_fake_repo("ref: refs/heads/gone\n")) is None, "a missing ref -> None")
     check(git_commit(_fake_repo("garbage\n")) is None, "an unreadable HEAD -> None")
@@ -286,6 +307,18 @@ def _test_app():
         shown = about.notice_text.get("1.0", "end").strip()
         check(shown == notice, "NOTICE.md is shown in full")
         check(str(about.notice_text.cget("state")) == "disabled", "NOTICE.md is read-only")
+        copy = getattr(about, "version_copy", None)
+        check(copy is not None, "a copy glyph sits next to the version")
+        if copy is not None:
+            check(str(copy.cget("text")) == about_module.COPY_GLYPH and copy.winfo_class() == "TLabel",
+                  "it is a small glyph label, not a button")
+            app.clipboard_clear()
+            app.clipboard_append("old")
+            copy.event_generate("<Button-1>")
+            app.update()
+            want = about.T("about.version", version=label)
+            check(app.clipboard_get() == want,
+                  f"Copy puts the version line on the clipboard ({app.clipboard_get()!r})")
     finally:
         app.destroy()
     locales = os.path.join(_REPO_ROOT, "primeatlas", "core", "locales")

@@ -16,7 +16,8 @@ to "## A.B.C — date", then tags vA.B.C (or vA.B.C-rc1 for a pre-release).
 Every copy of the app is a git checkout that Settings > Updates fast-forwards along the
 default branch, and its CHANGELOG.md moves with it; version_label() adds the checked-out
 commit. git_commit() reads it from the files under .git instead of running git, which is
-not on PATH in an installed copy.
+not on PATH in an installed copy; in a linked worktree the branch refs come from the main
+git dir its `commondir` file names.
 """
 import os
 import re
@@ -110,11 +111,24 @@ def _git_dir(repo_root):
     return None
 
 
+def _common_dir(git_dir):
+    """The directory holding the shared refs: the one a linked worktree's `commondir` file
+    names (relative to git_dir or absolute), git_dir itself otherwise."""
+    common = _read(os.path.join(git_dir, "commondir"))
+    if not common:
+        return git_dir
+    return os.path.normpath(common if os.path.isabs(common) else os.path.join(git_dir, common))
+
+
 def _resolve_ref(git_dir, ref):
-    loose = _read(os.path.join(git_dir, *ref.split("/")))
-    if loose and _SHA_RE.fullmatch(loose):
-        return loose
-    packed = _read(os.path.join(git_dir, "packed-refs")) or ""
+    """A loose ref in git_dir (a worktree's own refs) or the common dir, then packed-refs of
+    the common dir."""
+    common = _common_dir(git_dir)
+    for directory in dict.fromkeys((git_dir, common)):
+        loose = _read(os.path.join(directory, *ref.split("/")))
+        if loose and _SHA_RE.fullmatch(loose):
+            return loose
+    packed = _read(os.path.join(common, "packed-refs")) or ""
     for line in packed.splitlines():
         parts = line.split()
         if len(parts) == 2 and parts[1] == ref and _SHA_RE.fullmatch(parts[0]):

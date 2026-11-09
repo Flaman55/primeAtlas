@@ -1396,6 +1396,7 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               "## X.Y.Z" heading) + merges since it ("X.Y.Z+N"), for the
                               main window title and About tab; version_label() adds the
                               checked-out commit, read from .git without running git
+                              (a linked worktree's branch refs via its commondir)
   app_settings.py               AppSettings -- configurable storage path, persisted
                               OUTSIDE the portal folder itself (see that module's
                               docstring for why), plus the per-install UI preferences
@@ -1953,9 +1954,9 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               load_archive_before)
 
   primeatlas/about/             "About" tab (last main tab)
-  about_tab.py                AboutTab -- version and commit, description, author with
-                              e-mail/GitHub/license links, related projects, and
-                              NOTICE.md read-only
+  about_tab.py                AboutTab -- version and commit (with a copy icon),
+                              description, author with e-mail/GitHub/license links,
+                              related projects, and NOTICE.md read-only
 
   primeatlas/benchmark/         "Benchmark" tab
   benchmark_tab.py             BenchmarkTab -- the Benchmark tab (three charts: whole run
