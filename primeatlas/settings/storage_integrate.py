@@ -9,16 +9,16 @@ for files that were never meant to be merged that way: `.portal_totals_cache.jso
 overwriting either way is harmless but pointless) and, more dangerously,
 `benchmark_log.csv` at the root (overwriting it wholesale silently discards whichever
 side's rows aren't picked -- there's no way to "merge" two CSVs file-for-file). This
-module never touches any of those three files directly -- it only copies/merges the
+module never overwrites any of those three files -- it copies/merges the
 FLOOR folders (10p{N}/source_primes, 10p{N}/constellations, 10p{N}/floor_meta.json),
 which is the part that's actually safe to merge (see this module's functions'
 docstrings, and constellation_finder_v2.py's _append_hits_deduped(), which makes
-re-scanning safe). benchmark_log.csv then reconciles
-itself automatically and additively the normal way -- via floor_meta.json travelling
-with each floor and PortalBrowserApp's totals-worker importing it on the next visit to
-that floor (floor_meta.merge_floor_meta_into_benchmark_log(), already wired) -- this
-module gives that mechanism an immediate push per floor too (see integrate_floor()),
-rather than waiting for a later visit.
+re-scanning safe). benchmark_log.csv then grows additively: storage rows travel in
+floor_meta.json with each floor and PortalBrowserApp's totals-worker imports them on the
+next visit to that floor (floor_meta.merge_floor_meta_into_benchmark_log()); benchmark rows
+(measuring runs, native programs) exist only in the external log, so integrate_floor()
+appends the floor's ones to the destination log by row key
+(floor_meta.merge_rows_into_benchmark_log()).
 
 Shape deliberately mirrors full_backup.py (plan_*() for a dry-run, then a per-floor
 copy function with progress_cb/should_stop for a live progress bar) -- but this is a
@@ -84,7 +84,7 @@ def plan_integration(destination_path, external_path):
 
     Never touches benchmark_log.csv / .portal_totals_cache.json /
     .portal_generation_settings.json at either root -- see this module's own docstring
-    for why those three are deliberately out of scope here."""
+    for how integrate_floor() treats them."""
     destination_floors = set(FloorWiper(destination_path).list_floors())
     result = []
     for base_exponent in list_external_floors(external_path):
@@ -174,8 +174,9 @@ def integrate_floor(destination_path, external_path, base_exponent,
     reverse), so this floor's generation history from the external storage becomes
     available locally too -- and, the next time PortalBrowserApp's totals worker
     visits this floor, those rows flow into the LOCAL benchmark_log.csv automatically
-    (merge_floor_meta_into_benchmark_log(), already wired -- see this module's own
-    docstring for why this file never touches benchmark_log.csv directly itself).
+    (merge_floor_meta_into_benchmark_log()). The floor's benchmark rows of the external
+    benchmark_log.csv, which no floor_meta.json holds, are appended to the local log
+    here; the external log is only read.
 
     Also bumps storage.py's persisted totals cache (bump_floor_total()) for every
     copied window whose prime count is already KNOWN from the external side's own
@@ -276,6 +277,10 @@ def integrate_floor(destination_path, external_path, base_exponent,
     if ext_meta and ext_meta["benchmark_rows"]:
         floor_meta.merge_rows_into_floor_meta(
             destination_path, base_exponent, ext_meta["benchmark_rows"])
+    floor_meta.merge_rows_into_benchmark_log(
+        destination_path,
+        floor_meta.benchmark_purpose_rows(floor_meta.read_benchmark_log_rows(external_path),
+                                          base_exponent))
 
     if bumped_file_count > 0:
         dest_cache = load_totals_cache(destination_path)

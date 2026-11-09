@@ -58,7 +58,7 @@ present.
 ## Specs and tests
 
 `test_app_update`, `test_app_update_locks`, `test_app_restart`, `test_env_setup`, `test_delete_manager`,
-`test_full_backup_hit_paging`, `test_storage_integrate`, `test_dp_settings`,
+`test_full_backup_hit_paging`, `test_storage_integrate`, `test_benchmark_rows_safety`, `test_dp_settings`,
 `test_primecount_settings_integration`, `test_env_versions`, `test_pseudosquares_settings`,
 `test_about_tab`.
 
