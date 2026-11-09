@@ -45,10 +45,11 @@ from .chart_series import (
     axis_pins, clear_pins, clip_polyline, in_view, legend_entries, line_key,
     pin_bound, plain_series, point_label, series_xs, toggle_lines, visible_series, y_scale,
 )
-from . import chart_view
+from . import chart_points, chart_view
 from .benchmark_chart_windows import BenchmarkChartWindows
 from .benchmark_export import BenchmarkExport
 from .benchmark_filter import BenchmarkFilter
+from .benchmark_points import BenchmarkPoints
 from .benchmark_ram_chart import BenchmarkRamChart
 from .chart_hover import _bind_chart_hover, _nearest_point
 from .chart_zoom_controls import BenchmarkChartZoom
@@ -111,9 +112,9 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
                         bg_color="#ffffff", fg_color="#000000", grid_color="#666666",
                         series1=None, series2=None, log_y=False, hidden=None,
                         on_toggle=None, pins1=None, pins2=None, on_pin_menu=None,
-                        x_view=None, y_view=None):
-    """Draws a floor-depth chart onto `canvas`: x = floor, y = one or two axes of
-    chart_series.Series (one line per engine, plus dashed reference lines). Plain
+                        x_view=None, y_view=None, x_mode=chart_points.X_FLOOR, marks=None):
+    """Draws a floor-depth chart onto `canvas`: x = floor (or the run's width, x_mode), y = one
+    or two axes of chart_series.Series (one line per engine, plus dashed reference lines). Plain
     tk.Canvas drawing, no charting library: the app is zero-extra-installs. Clears the
     canvas first, so it is safe to call again on refresh/resize (<Configure>).
 
@@ -144,7 +145,9 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
     drawn. canvas.chart_geometry keeps (x of the first floor, its pixel width, first floor,
     last floor, y of the plot top, plot height, y_view, the data's (lowest, highest) fraction
     of the full y scales, the chart's own (first, last) floor unzoomed) for the zoom and pan
-    bindings, None while nothing is plotted."""
+    bindings, None while nothing is plotted. x_mode: chart_points.X_FLOOR or X_WIDTH, which
+    names the x ticks and the axis title. marks: {(axis, line name, x, value)} of the points
+    from the run selected in the table, ringed in the foreground color (tag "selected_mark")."""
     t = (translator or Translator(DEFAULT_LANGUAGE)).t
     canvas.configure(background=bg_color)
     canvas.delete("all")
@@ -252,10 +255,11 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
     for x_val in x_ticks:
         x_px = sx(x_val)
         canvas.create_line(x_px, pad_top + plot_h, x_px, pad_top + plot_h + 4, fill=grid_color)
-        canvas.create_text(x_px, pad_top + plot_h + 8, text=str(x_val), anchor="n",
-                            font=("Consolas", 8), fill=fg_color)
+        canvas.create_text(x_px, pad_top + plot_h + 8, text=chart_points.x_label(x_val, x_mode),
+                            anchor="n", font=("Consolas", 8), fill=fg_color)
 
-    canvas.create_text(pad_left + plot_w / 2, height - 8, text=t("bench.axis_floor"),
+    canvas.create_text(pad_left + plot_w / 2, height - 8,
+                        text=t(chart_points.AXIS_TITLE_KEYS[x_mode]),
                         font=("Consolas", 8, "bold"), fill=fg_color)
     def pinned(pins):
         return (" [" + t("bench.axis_pinned") + "]"
@@ -275,8 +279,11 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
     # overlap into an unreadable smear on dense series.
     hover_points = []
 
+    marks = marks or set()
+
     def draw(series, scale, fmt, label_key, secondary=False):
         r = 4
+        axis = "secondary" if secondary else "primary"
         for s in series:
             pts = [(x, y) for x, y in s.points if scale.usable(y)]
             for run in clip_polyline([(sx(x), scale.frac(y)) for x, y in pts],
@@ -296,6 +303,9 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
                     canvas.create_oval(cx - r, cy - r, cx + r, cy + r, outline=s.color,
                                         width=2 if s.dashed else 0,
                                         fill=bg_color if s.dashed else s.color)
+                if (axis, s.name, x_val, y_val) in marks:
+                    canvas.create_oval(cx - r - 4, cy - r - 4, cx + r + 4, cy + r + 4,
+                                       outline=fg_color, width=2, tags="selected_mark")
                 hover_points.append((cx, cy, x_val, y_val,
                                      point_label(fmt, y_val, s, show_unknown=True, x=x_val)
                                      .replace("{", "{{").replace("}", "}}"),
@@ -307,7 +317,7 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
     if scale2:
         draw(series2, scale2, fmt2, label_key2, secondary=True)
 
-    _bind_chart_hover(canvas, hover_points, t, fg_color, bg_color, width, height)
+    _bind_chart_hover(canvas, hover_points, t, fg_color, bg_color, width, height, x_mode)
     _bind_pin_menu(canvas, hover_points, on_pin_menu)
 
 
@@ -326,8 +336,8 @@ def _bind_pin_menu(canvas, hover_points, on_pin_menu):
     canvas.bind("<Button-3>", _on_right_click)
 
 
-class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkRamChart, BenchmarkChartZoom,
-                   BenchmarkChartWindows, BaseTab):
+class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkPoints, BenchmarkRamChart,
+                   BenchmarkChartZoom, BenchmarkChartWindows, BaseTab):
     def __init__(self, parent, get_portal_folder, status_var, translator, update_nav_controls,
                  theme_palette):
         """
@@ -345,6 +355,7 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkRamChart, Benchmar
         self.status = status_var
         self._update_nav_controls = update_nav_controls
         self._theme_palette = theme_palette
+        self._init_points()
         self._init_filter()
         self._init_chart_windows()
         self._init_chart_zoom()
@@ -475,6 +486,7 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkRamChart, Benchmar
         self.benchmark_tree.bind("<<TreeviewOpen>>", self._on_benchmark_tree_open)
         self.benchmark_tree.bind("<<TreeviewClose>>", self._on_benchmark_tree_close)
         self.benchmark_tree.bind("<<TreeviewSelect>>", self._on_benchmark_tree_select)
+        self._bind_tree_points()
 
         self._benchmark_growth_points = []
         self._benchmark_fair_spw_points = []  # loop_seconds_per_window, second chart line
@@ -514,7 +526,8 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkRamChart, Benchmar
                          label_key1="bench.axis_total_nps",
                          label_key2="bench.axis_write_mbps", fmt2="{:,.1f}",
                          series1=self._chart_series("growth"),
-                         series2=self._chart_series("write"))
+                         series2=self._chart_series("write"),
+                         marks=self._chart_marks("growth", "write"))
 
     def _draw_chart(self, chart, canvas, points, default_size, **kwargs):
         """_draw_growth_chart() on `canvas` and on the chart's open window
@@ -534,13 +547,13 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkRamChart, Benchmar
                                on_pin_menu=lambda *a: self._on_pin_menu(chart, *a),
                                bg_color=p["console_bg"], fg_color=p["console_fg"],
                                grid_color=p["border"], x_view=self._x_view,
-                               y_view=self._y_views[chart], **kwargs)
+                               y_view=self._y_views[chart], x_mode=self._x_mode, **kwargs)
 
     def _chart_series(self, metric, references=False):
         """One Series per engine for a chart metric; with references=True, the reference
         lines too while the "Reference points" toggle is on. PARI/GP writes nothing, so the
         references go on the sieve chart."""
-        series = benchmark_series(self._filtered_rows(), metric)
+        series = benchmark_series(self._filtered_rows(), metric, self._metric_view(metric))
         if references and self.references_var.get():
             series += reference_series(self.T)
         return series
@@ -565,12 +578,14 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkRamChart, Benchmar
 
     def _show_mixed_widths(self, chart, metrics):
         floors = sorted({f for m in metrics
-                         for f in mixed_width_floors(self._filtered_rows(), m)
+                         for f in mixed_width_floors(self._filtered_rows(), m,
+                                                     self._metric_view(m))
                          if chart_view.contains(self._x_view, f)})
-        self.mixed_widths_vars[chart].set(
-            self.T("bench.mixed_widths", floors=", ".join(map(str, floors))) if floors else "")
+        notes = [self.T("bench.mixed_widths", floors=", ".join(map(str, floors)))] if floors else []
+        notes += [note for note in (self._unplaced_note(metrics),) if note]
+        self.mixed_widths_vars[chart].set("  |  ".join(notes))
         label, canvas = self._mixed_widths_labels[chart]
-        if floors:
+        if notes:
             label.pack(anchor="w", after=canvas)
         else:
             label.pack_forget()
@@ -627,7 +642,8 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkRamChart, Benchmar
                          (900, 220), label_key1=spec.label_key1, label_key2=spec.label_key2,
                          fmt1=spec.fmt1, fmt2=spec.fmt2,
                          series1=self._chart_series(spec.metric1, spec.references),
-                         series2=self._chart_series(spec.metric2))
+                         series2=self._chart_series(spec.metric2),
+                         marks=self._chart_marks(spec.metric1, spec.metric2))
 
     def reload_benchmark_log(self):
         fieldnames, rows = read_benchmark_log(self._get_portal_folder())
@@ -663,6 +679,7 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkRamChart, Benchmar
         fieldnames = self._benchmark_fieldnames
         self._benchmark_rows_by_floor = group_benchmark_rows_by_floor(self._filtered_rows())
         self.benchmark_tree.delete(*self.benchmark_tree.get_children())
+        self._tree_item_rows = {}
         self._benchmark_floor_state = {}
         self._active_benchmark_node = None
         self._refresh_benchmark_nav_controls()
@@ -712,6 +729,8 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkRamChart, Benchmar
         item = selection[0]
         if "floor" in self.benchmark_tree.item(item, "tags"):
             self._set_active_benchmark_node(item)
+        else:
+            self._on_tree_row_selected(item)
 
     def _populate_benchmark_floor_node(self, node):
         if node in self._benchmark_floor_state:
@@ -747,6 +766,8 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkRamChart, Benchmar
         page = max(0, min(page, total_pages - 1))
         state["page"] = page
 
+        for item in self.benchmark_tree.get_children(node):
+            self._tree_item_rows.pop(item, None)
         self.benchmark_tree.delete(*self.benchmark_tree.get_children(node))
         fieldnames = self._benchmark_tree_fieldnames  # display columns only -- see
                                                         # BENCHMARK_TREE_HIDDEN_COLUMNS
@@ -774,7 +795,9 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkRamChart, Benchmar
             # columns, so #0 had nothing else useful to show).
             label = row.get("run_timestamp_utc", "") + " [" + (row.get("engine") or "unknown") + "]"
             values = [table_cells.cell(row, c) for c in fieldnames]
-            self.benchmark_tree.insert(node, "end", text=label, values=values, tags=("row",))
+            item = self.benchmark_tree.insert(node, "end", text=label, values=values,
+                                              tags=("row",))
+            self._remember_tree_row(item, row)
 
         if self._active_benchmark_node == node:
             self._refresh_benchmark_nav_controls()

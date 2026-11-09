@@ -7,9 +7,9 @@ a PDF report.
 
 | Part | Files |
 |---|---|
-| Tab | `primeatlas/benchmark/benchmark_tab.py` and its mixins `benchmark_filter.py` (Filter window), `benchmark_ram_chart.py` (RAM chart), `chart_zoom_controls.py` (zoom and pan), `chart_hover.py` (hover tooltip), `benchmark_chart_windows.py` (a chart in its own window) |
+| Tab | `primeatlas/benchmark/benchmark_tab.py` and its mixins `benchmark_filter.py` (Filter window), `benchmark_points.py` (x axis, point choices, selected run), `benchmark_ram_chart.py` (RAM chart), `chart_zoom_controls.py` (zoom and pan), `chart_hover.py` (hover tooltip), `benchmark_chart_windows.py` (a chart in its own window) |
 | Exports | `benchmark_export.py` (tab mixin: Save PDF, Export menu), `report_export.py` (CSV, SVG, HTML page, HTML snippet), `report_html.py` + `report_chart.js` (the interactive HTML), `chart_svg.py` (SVG backend of `chart_pdf.chart_ops()`) |
-| Backend | `benchmark.py` (reading and normalizing rows, D/P kind, PDF report, `report_chart_pages()`, `benchmark_line_records()`), `line_names.py` (a row's line and charts), `chart_filter.py` (which runs the charts compare), `sieve_measure.py` (which time the sieve chart measures), `table_cells.py` (a cell as the tables show it), `chart_view.py` (the zoomed part of a chart), `chart_series.py`, `chart_pdf.py`, `reference_points.py` |
+| Backend | `benchmark.py` (reading and normalizing rows, D/P kind, PDF report, `report_chart_pages()`, `benchmark_line_records()`), `line_names.py` (a row's line and charts), `chart_filter.py` (which runs the charts compare), `chart_points.py` (which runs become a chart's points and where they sit on x), `sieve_measure.py` (which time the sieve chart measures), `table_cells.py` (a cell as the tables show it), `chart_view.py` (the zoomed part of a chart), `chart_series.py`, `chart_pdf.py`, `reference_points.py` |
 
 ## Contract
 
@@ -43,9 +43,28 @@ window. No static primesieve reference is kept (a figure from another range leng
 primesieve's ~0.7 s setup at floor 19 dominates a short range); PARI/GP stays on the sieve chart.
 A cell the run leaves empty -- a value its engine does not log, e.g. the per-window time of primesieve's count mode -- shows a dash (`table_cells.MISSING`) in the tab's table and the HTML and PDF tables (folded to "-" in the PDF); the CSV export keeps it empty. The PDF run table lists `engine_version`, `threads` and `write_threads`. A writing row from before
 `write_threads` reads `write ?`. Each point names the range it was measured on (`@ 10^11`,
-`line_names.width_label()`); since the last row per floor wins, a chart can set points of different
-widths side by side, and `mixed_width_floors()` lists those floors: the tab shows them under the
-chart, the PDF next to the page heading.
+`line_names.width_label()`); on the floor axis a chart can set points of different widths side by
+side, and `mixed_width_floors()` lists those floors: the tab shows them under the chart, the PDF
+next to the page heading.
+
+Points (`chart_points.py`, `benchmark_points.py`): the runs on the same line and x form a group and
+the chart's point choice picks its point -- the last run in log order (default), the lowest or the
+highest value of that chart (ties to the later run), the run selected in the tab's table
+(`SELECTED`: the selected run's group shows it, the others their last run), or every run (`ALL`:
+each its own point in log order, repeated runs one above the other, a point's note joining the
+widths of its x). The choice is per chart (whole run, sieve, RAM); the selected run is one for all
+three charts: clicking a run in the table switches every chart to `SELECTED` (one on `ALL` keeps
+it) and rings the points from that run (`selected_marks()`), since the table sits below the
+charts; the Filter window goes back to another choice. The x axis is one for all
+charts: the floor (a line per engine build and threads), or log10 of the run's width
+(`numbers_processed`; a line per engine build, threads and floor, "v7.1, 24 thr @ f28", the floors
+of one engine in shades of its hue, `chart_points.shade()`, dashes staying for the references). On
+the width axis a run without a known width has no point and the note under the chart counts those
+runs; the mixed-width note is a floor-axis note. Changing the axis shows the whole charts (the zoom
+of one axis means nothing on the other); y pins stay. In the table up/down move between runs and
+left/right turn the floor's page, selecting its first run. The Filter window sets the axis and the
+choices; its summary and the PDF subtitle name them when not the defaults; every export follows
+them.
 
 The charts zoom like a picture (`chart_view.py`, `chart_zoom_controls.py`): unzoomed, a chart
 shows all of itself, the furthest zoom out; the wheel zooms the part under the pointer on both
@@ -77,8 +96,10 @@ build, sieve threads, write threads, range width -- lists an All checkbox and it
 log, all clickable at once. A dimension is at All until a value is clicked: that value alone is
 kept, further clicks add or remove values, removing the last one or clicking All goes back to All
 (`toggle_value()`, `select_all()`): All or single values, never All minus some. A run stays when
-its value is selected in every filtered dimension; the last row per floor and line is then taken
-among the kept runs, so one width compares every engine on that width. Changes apply at once;
+its value is selected in every filtered dimension; the kept runs are then reduced to one point
+per line and x (see Points), so one width compares every engine on that width. The floor dimension
+lists the floors of the log ("28"), so floors 27-29 alone compare on the width axis.
+Changes apply at once;
 the summary next to the Filter button and the PDF subtitle name the selection; the PDF tables
 and the tab's table list the kept runs (a floor with none is left out; nothing kept shows one
 explanatory row), rebuilt on every change. Session only, like the other chart toggles.
@@ -110,10 +131,13 @@ them (with the D/P `kind` column).
 The HTML page and snippet are interactive (`report_html.py`, `report_chart.js`, ADR 0007, 0008). They
 carry the runs the tab's filter keeps (All everywhere exports the whole log): per run its floor and
 filter values (with the tab's labels), and per chart the records of `benchmark_line_records()`
-(run, line, floor, value, width); the tables list those runs. The script repeats the reduction in
-the browser -- the runs its filter keeps, then the last row per floor and line -- and redraws with a
-port of `chart_ops()`; it starts from the tab's view (log scale, references, hidden lines, pins,
-zoom) with its own filter at All. The page has the Filter window's dimensions, clicked like the tab's
+(run, line, floor, value, width, log10 of the width); the tables list those runs. The script
+repeats the reduction in the browser -- the runs its filter keeps, then one point per line and x
+by the chart's point choice -- and redraws with a port of `chart_ops()`; it starts from the tab's
+view (log scale, references, hidden lines, pins, zoom, x axis, point choices, the selected run)
+with its own filter at All, and has its own x axis and point choice selectors (`width_lines` names
+and shades the width-axis lines as the tab does).
+The page has the Filter window's dimensions, clicked like the tab's
 (All or single values, `toggleValue()`/`selectAll()`), log scale and reference toggles, "All runs" and
 "All floors", a chart text size (100-200 %, the chart drawn on a canvas 1/k as large and shown at
 its usual width), legend toggles per chart and the tab's zoom gestures over all charts at once,

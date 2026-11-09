@@ -9,13 +9,16 @@ mixed-width note, the PDF export and the tab's table use chart_filter.apply() of
 and the summary next to the Filter button (and the PDF subtitle) names the selection. Below
 the dimensions, "Sieve measure" picks the time the sieve chart measures (sieve_measure.py):
 a change redraws it and clears its y-axis pins, whose units may differ; the summary and the
-PDF name a measure other than the default. Kept for the session, like the chart toggles.
+PDF name a measure other than the default. Below it, "X axis" (floor or width) and a point
+choice per chart (benchmark_points.py); the summary names them when not the defaults. Kept for
+the session, like the chart toggles.
 """
 import tkinter as tk
 from tkinter import ttk
 
 from ..core.info_tip import InfoTip
-from . import chart_filter, sieve_measure
+from . import chart_filter, chart_points, sieve_measure
+from .benchmark_points import CHARTS
 
 VALUES_PER_ROW = 6
 
@@ -31,13 +34,19 @@ class BenchmarkFilter:
         return chart_filter.apply(self._benchmark_rows, self._filter_selection)
 
     def _filter_summary(self):
-        note = sieve_measure.note(self._sieve_measure, self.T)
-        return chart_filter.summary(self._filter_selection, self.T) + ("  |  " + note if note else "")
+        notes = [n for n in (sieve_measure.note(self._sieve_measure, self.T), self._points_note())
+                 if n]
+        return "  |  ".join([chart_filter.summary(self._filter_selection, self.T)] + notes)
 
     def _filter_note(self):
         parts = [chart_filter.summary(self._filter_selection, self.T)] if self._filter_selection else []
-        note = sieve_measure.note(self._sieve_measure, self.T)
-        return "  |  ".join(parts + ([note] if note else []))
+        notes = [n for n in (sieve_measure.note(self._sieve_measure, self.T), self._points_note())
+                 if n]
+        return "  |  ".join(parts + notes)
+
+    def _set_points_from_window(self, x_mode, choices):
+        self._set_points(x_mode, choices)
+        self.filter_summary_var.set(self._filter_summary())
 
     def _set_filter(self, selection, measure=None):
         self._filter_selection = selection
@@ -100,6 +109,7 @@ class FilterWindow(tk.Toplevel):
             ttk.Radiobutton(measures, text=T(sieve_measure.LABEL_KEYS[measure]), value=measure,
                             variable=self.measure_var, command=self.apply).pack(
                 side="left", padx=(0, 10))
+        self._build_points(body)
         buttons = ttk.Frame(body)
         buttons.pack(anchor="e", pady=(8, 0))
         ttk.Button(buttons, text=T("bench.filter_clear"), command=self._clear).pack(side="left")
@@ -124,3 +134,41 @@ class FilterWindow(tk.Toplevel):
 
     def apply(self):
         self.tab._set_filter(self.tab._filter_selection, self.measure_var.get())
+
+    def _build_points(self, body):
+        """The x axis (floor or width) and one point choice per chart, each with its tip."""
+        tab = self.tab
+        T = tab.T
+        row = ttk.Frame(body)
+        row.pack(anchor="w", pady=(10, 0))
+        ttk.Label(row, text=T("bench.x_axis_title")).pack(side="left")
+        self.x_axis_info = InfoTip(row, lambda: T("bench.x_axis_tip"))
+        self.x_axis_info.label.pack(side="left", padx=(4, 0))
+        self.x_mode_var = tk.StringVar(value=tab._x_mode)
+        modes = ttk.Frame(body)
+        modes.pack(anchor="w", padx=(20, 0))
+        for mode in chart_points.X_MODES:
+            ttk.Radiobutton(modes, text=T("bench.x_axis_" + mode), value=mode,
+                            variable=self.x_mode_var, command=self.apply_points).pack(
+                side="left", padx=(0, 10))
+        row = ttk.Frame(body)
+        row.pack(anchor="w", pady=(10, 0))
+        ttk.Label(row, text=T("bench.point_title")).pack(side="left")
+        self.point_info = InfoTip(row, lambda: T("bench.point_tip"))
+        self.point_info.label.pack(side="left", padx=(4, 0))
+        grid = ttk.Frame(body)
+        grid.pack(anchor="w", padx=(20, 0))
+        self.choice_vars = {}
+        for r, chart in enumerate(CHARTS):
+            ttk.Label(grid, text=T("bench.chart_name_" + chart)).grid(row=r, column=0, sticky="w",
+                                                                    padx=(0, 10))
+            self.choice_vars[chart] = tk.StringVar(value=tab._point_choice[chart])
+            for c, choice in enumerate(chart_points.CHOICES, 1):
+                ttk.Radiobutton(grid, text=T(chart_points.CHOICE_LABEL_KEYS[choice]), value=choice,
+                                variable=self.choice_vars[chart],
+                                command=self.apply_points).grid(row=r, column=c, sticky="w",
+                                                                padx=(0, 10))
+
+    def apply_points(self):
+        self.tab._set_points_from_window(
+            self.x_mode_var.get(), {chart: var.get() for chart, var in self.choice_vars.items()})

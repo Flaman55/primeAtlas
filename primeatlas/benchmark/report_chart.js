@@ -1,8 +1,10 @@
 /* report_chart.js -- the interactive charts of the Benchmark HTML report (report_html.py).
 
 The page carries the runs the app's filter kept at export (script.pa-data, JSON) and this script redraws its charts in
-the browser: the runs the page's filter keeps, then the last row per floor and line (the
-reduction of benchmark.benchmark_engine_lines()), drawn with the layout of chart_pdf.chart_ops()
+the browser: the runs the page's filter keeps, then one point per line and x chosen by the
+chart's point choice (the reduction of chart_points.chart_points(): last, min or max value,
+the selected run in its own group, or every run; x the floor or log10 of the run's width, a width line per
+floor), drawn with the layout of chart_pdf.chart_ops()
 ported line by line, so with nothing hidden and no zoom a chart is the SVG the report's Python
 side writes (unitTests/test_benchmark_report_html.py compares the two through node).
 
@@ -12,8 +14,9 @@ that chart), a left drag moves the visible part, a double or middle click shows 
 charts; a legend entry hides or shows its line. The wheel zooms only over a chart's picture; elsewhere
 it scrolls the page. "Chart text" sets the text size: the charts are drawn on a canvas 1/k as
 large and shown at their usual width, so text, markers and lines grow k times. The filter (per
-dimension All and its values, clicked like the app's: toggleValue(), selectAll()), log scale and
-reference toggles redraw the charts, the page headings and the tables (rows of runs the filter
+dimension All and its values, clicked like the app's: toggleValue(), selectAll()), the x axis
+(a change shows the whole charts), each chart's point choice, log scale and reference toggles
+redraw the charts, the page headings and the tables (rows of runs the filter
 drops are hidden).
 
 Pure parts (scale, labels, reduction, zoom, chart drawing) are exported for node; the page
@@ -261,6 +264,19 @@ part runs only in a browser, on the .primeatlas-benchmark element holding this s
   };
   function dashed(element) { return element.replace("/>", ' stroke-dasharray="3 2"/>'); }
 
+  // line_names.width_label(): "10^11", "2x10^11", "1.5x10^10".
+  function widthLabel(numbers) {
+    var exponent = String(numbers).length - 1;
+    var mantissa = numbers / Math.pow(10, exponent);
+    if (mantissa === 1) return "10^" + exponent;
+    return String(parseFloat(mantissa.toPrecision(3))) + "x10^" + exponent;
+  }
+
+  // chart_points.x_label(): the floor, or the width of log10 x.
+  function xLabel(x, mode) {
+    return mode === "width" ? widthLabel(Math.round(Math.pow(10, x))) : String(Math.round(x));
+  }
+
   function pointLabel(decimals, value, series, x) {
     var note = (series.notes || {})[x] || "";
     return formatNumber(decimals, value) + (series.tag ? " [" + series.tag + "]" : "") +
@@ -270,14 +286,16 @@ part runs only in a browser, on the .primeatlas-benchmark element holding this s
   /* One chart as an <svg> element of w x h points, the layout of chart_pdf.chart_ops() on
   one axis. c: {series: drawn [{name, tag, color, dashed, points: [[x, y]], notes}],
   legend: [{name, color, dashed, hidden}] (every line of the chart, hidden ones dimmed),
-  title, decimals, log, pins: [min, max], view: [lo, hi] floors | null, yView: [lo, hi]
-  fractions of the full y scale | null, text: {floor, pinned, no_data, all_hidden}}. Returns
+  title, decimals, log, pins: [min, max], view: [lo, hi] x | null, yView: [lo, hi]
+  fractions of the full y scale | null, xMode: "floor" (default) | "width", text: {floor,
+  width, pinned, no_data, all_hidden}}. Returns
   {svg, geometry: [x of the first floor, its width, first floor, last floor, y of the plot
   top, plot height, yView, the data's [lowest, highest] fraction of the full y scale, the
   chart's own [first, last] floor unzoomed] | null}, the chart_geometry of the tab's canvas. */
   function chartSvg(w, h, c) {
     var b = new Backend(h);
     var t = c.text;
+    var xMode = c.xMode || "floor";
     var series = c.series.filter(function (s) { return s.points.length; });
     var ops = [b.rect(0, 0, w, h, null, BOX_GRAY, 0.5)];
     var geometry = null;
@@ -368,9 +386,11 @@ part runs only in a browser, on the .primeatlas-benchmark element holding this s
     xTicks.forEach(function (x) {
       var xPx = sx(x);
       ops.push(b.line(xPx, plotY0, xPx, plotY0 - 3, 1, AXIS_GRAY));
-      ops.push(b.text(xPx - 8, plotY0 - 14, 7, "Courier", String(x)));
+      var label = xLabel(x, xMode);
+      ops.push(b.text(xPx - label.length * 0.6 * 7 / 2, plotY0 - 14, 7, "Courier", label));
     });
-    ops.push(b.text(plotX0 + plotW / 2 - 30, 4, 8, "Helvetica-Bold", t.floor));
+    ops.push(b.text(plotX0 + plotW / 2 - 30, 4, 8, "Helvetica-Bold",
+                    xMode === "width" ? t.width : t.floor));
     ops.push(b.dot(4, h - 7.5, 2.2, AXIS_GRAY));
     ops.push(b.text(9, h - 10, 8, "Helvetica-Bold", title));
     drawLegend(title);
@@ -392,7 +412,8 @@ part runs only in a browser, on the .primeatlas-benchmark element holding this s
       pts.forEach(function (p, i) {
         var cx = sx(p[0]), cy = sy(p[1]);
         var text = pointLabel(c.decimals, p[1], s, p[0]);
-        ops.push(b.dot(cx, cy, 2.5, s.color, "10^" + p[0] + ": " + text));
+        ops.push(b.dot(cx, cy, 2.5, s.color,
+                       (xMode === "width" ? "" : "10^") + xLabel(p[0], xMode) + ": " + text));
         if (s.dashed) ops.push(b.dot(cx, cy, 1.3, "#ffffff"));
         var last = i === pts.length - 1;
         var above = cy + 8, below = cy - 22 - 8;
@@ -427,18 +448,47 @@ part runs only in a browser, on the .primeatlas-benchmark element holding this s
     return kept;
   }
 
-  /* {line index: [[floor, value, width]] ascending}: the last record per floor and line among
-  the kept runs (records are in log order). */
-  function reduce(records, kept) {
-    var latest = {};
+  /* chart_points.pick(): the record of a group (in log order) for `choice`; ties to the later
+  record, the selected run's record in its own group. */
+  function pick(group, choice, selectedRun) {
+    if (choice === "selected") {
+      var own = group.filter(function (r) { return r[0] === selectedRun; });
+      return own.length ? own[0] : group[group.length - 1];
+    }
+    if (choice !== "min" && choice !== "max") return group[group.length - 1];
+    var best = group[0][3];
+    group.forEach(function (r) {
+      best = choice === "min" ? Math.min(best, r[3]) : Math.max(best, r[3]);
+    });
+    var ties = group.filter(function (r) { return r[3] === best; });
+    return ties[ties.length - 1];
+  }
+
+  /* {line key: [[x, value, width]] ascending}: one record per line and x among the kept runs
+  (records are in log order), chosen by pick(), every record of a group for "all". Floor axis (mode "floor", the default): key
+  the line index, x the floor; width axis: key "line index/floor", x log10 of the width, runs
+  without a width left out. */
+  function reduce(records, kept, mode, choice, selectedRun) {
+    var width = mode === "width";
+    var groups = {};
     records.forEach(function (r) {
       if (!kept[r[0]]) return;
-      (latest[r[1]] = latest[r[1]] || {})[r[2]] = [r[2], r[3], r[4]];
+      if (width && (r[5] === null || r[5] === undefined)) return;
+      var key = width ? r[1] + "/" + r[2] : String(r[1]);
+      var x = width ? r[5] : r[2];
+      var line = (groups[key] = groups[key] || {});
+      (line[x] = line[x] || []).push(r);
     });
     var out = {};
-    Object.keys(latest).forEach(function (line) {
-      out[line] = Object.keys(latest[line]).map(function (f) { return latest[line][f]; })
-        .sort(function (a, b) { return a[0] - b[0]; });
+    Object.keys(groups).forEach(function (key) {
+      var points = [];
+      Object.keys(groups[key]).map(Number).sort(function (a, b) { return a - b; })
+        .forEach(function (x) {
+          var group = groups[key][x];
+          (choice === "all" ? group : [pick(group, choice || "last", selectedRun)])
+            .forEach(function (r) { points.push([width ? r[5] : r[2], r[3], r[4]]); });
+        });
+      out[key] = points;
     });
     return out;
   }
@@ -528,12 +578,16 @@ part runs only in a browser, on the .primeatlas-benchmark element holding this s
   // --- the page -------------------------------------------------------------------------
 
   function Report(root, data) {
+    var self = this;
     this.root = root;
     this.data = data;
     var selection = {};
     Object.keys(data.selection).forEach(function (k) { selection[k] = new Set(data.selection[k]); });
     this.selection = selection;
     this.view = data.view;
+    this.xMode = data.x_mode || "floor";
+    this.choices = {};
+    Object.keys(data.choices || {}).forEach(function (k) { self.choices[k] = data.choices[k]; });
     this.xLevel = data.x_level;
     this.xBase = data.x_base;
     this.yViews = {};
@@ -542,7 +596,6 @@ part runs only in a browser, on the .primeatlas-benchmark element holding this s
     this.log = data.log;
     this.refs = data.refs_on;
     this.hidden = {};
-    var self = this;
     data.pages.forEach(function (page, i) {
       page.charts.forEach(function (chart, j) {
         self.hidden[i + "/" + j] = new Set(chart.hidden);
@@ -570,6 +623,11 @@ part runs only in a browser, on the .primeatlas-benchmark element holding this s
         return '<option value="' + k + '"' + (k === self.scale ? " selected" : "") + ">" +
           Math.round(k * 100) + "%</option>";
       }).join("") + "</select></label>";
+    html += "<label>" + escapeXml(t.x_axis) + ' <select data-toggle="xmode">' +
+      ["floor", "width"].map(function (m) {
+        return '<option value="' + m + '"' + (m === self.xMode ? " selected" : "") + ">" +
+          escapeXml(t["x_" + m]) + "</option>";
+      }).join("") + "</select></label>";
     html += '<button type="button" data-act="runs">' + escapeXml(t.all_runs) + "</button>" +
       '<button type="button" data-act="floors">' + escapeXml(t.all_floors) + "</button></div>";
     d.dims.forEach(function (dim) {
@@ -583,6 +641,19 @@ part runs only in a browser, on the .primeatlas-benchmark element holding this s
       });
       html += "</span></div>";
     });
+    var keys = [];
+    d.pages.forEach(function (page) {
+      page.charts.forEach(function (c) { if (keys.indexOf(c.key) < 0) keys.push(c.key); });
+    });
+    html += '<div class="pa-row"><span class="pa-dim-name">' + escapeXml(t.point) + "</span> ";
+    keys.forEach(function (key) {
+      html += "<label>" + escapeXml(t["chart_" + key]) + ' <select data-choice="' + key + '">' +
+        ["last", "min", "max", "selected", "all"].map(function (c) {
+          return '<option value="' + c + '"' + (c === (self.choices[key] || "last") ?
+            " selected" : "") + ">" + escapeXml(t["point_" + c]) + "</option>";
+        }).join("") + "</select></label>";
+    });
+    html += "</div>";
     html += '<p class="pa-hint">' + escapeXml(t.hint) + "</p>";
     box.innerHTML = html;
     box.addEventListener("change", function (e) {
@@ -590,6 +661,10 @@ part runs only in a browser, on the .primeatlas-benchmark element holding this s
       if (el.dataset.toggle === "log") self.log = el.checked;
       else if (el.dataset.toggle === "scale") self.scale = Number(el.value);
       else if (el.dataset.toggle === "refs") self.refs = el.checked;
+      else if (el.dataset.toggle === "xmode") {
+        self.xMode = el.value;
+        self.resetView();
+      } else if (el.dataset.choice) self.choices[el.dataset.choice] = el.value;
       else if (el.dataset.dimAll) self.selection = selectAll(self.selection, el.dataset.dimAll);
       else if (el.dataset.dimValue) {
         var dim = self.dimension(el.dataset.dimValue);
@@ -623,15 +698,27 @@ part runs only in a browser, on the .primeatlas-benchmark element holding this s
     });
   };
 
+  /* The chart's Series in benchmark.benchmark_series() order: by line, then by floor on the
+  width axis, named and shaded from data.width_lines there. */
   Report.prototype.chartSeries = function (chart, kept, reduced) {
-    var lines = this.data.lines;
-    var out = Object.keys(reduced).map(Number).sort(function (a, b) { return a - b; })
-      .map(function (i) {
-        var notes = {};
-        reduced[i].forEach(function (p) { notes[p[0]] = p[2]; });
-        return {name: lines[i].name, tag: lines[i].tag, color: lines[i].color, dashed: false,
-                points: reduced[i].map(function (p) { return [p[0], p[1]]; }), notes: notes};
+    var lines = this.data.lines, widthLines = this.data.width_lines || {};
+    function order(key) { return key.split("/").map(Number); }
+    var out = Object.keys(reduced).sort(function (a, b) {
+      var ka = order(a), kb = order(b);
+      return ka[0] - kb[0] || (ka[1] || 0) - (kb[1] || 0);
+    }).map(function (key) {
+      var line = lines[order(key)[0]], own = widthLines[key] || line;
+      // benchmark_line_widths(): the widths of one x joined, "10^10/10^11" (all runs).
+      var notes = {};
+      reduced[key].forEach(function (p) {
+        if (!p[2]) return;
+        var found = notes[p[0]] ? notes[p[0]].split("/") : [];
+        if (found.indexOf(p[2]) < 0) found.push(p[2]);
+        notes[p[0]] = found.join("/");
       });
+      return {name: own.name, tag: line.tag, color: own.color, dashed: false,
+              points: reduced[key].map(function (p) { return [p[0], p[1]]; }), notes: notes};
+    });
     if (chart.refs && this.refs) out = out.concat(this.data.refs);
     return out;
   };
@@ -654,7 +741,8 @@ part runs only in a browser, on the .primeatlas-benchmark element holding this s
 
     var pages = d.pages.map(function (page) {
       return page.charts.map(function (chart) {
-        var reduced = reduce(chart.records, kept);
+        var reduced = reduce(chart.records, kept, self.xMode, self.choices[chart.key],
+                             d.selected_run);
         return {reduced: reduced, series: self.chartSeries(chart, kept, reduced)};
       });
     });
@@ -674,9 +762,11 @@ part runs only in a browser, on the .primeatlas-benchmark element holding this s
 
     d.pages.forEach(function (page, i) {
       var mixed = {};
-      pages[i].forEach(function (c) {
-        mixedFloors(c.reduced, view).forEach(function (f) { mixed[f] = true; });
-      });
+      if (self.xMode === "floor") {
+        pages[i].forEach(function (c) {
+          mixedFloors(c.reduced, view).forEach(function (f) { mixed[f] = true; });
+        });
+      }
       var mixedList = Object.keys(mixed).map(Number).sort(function (a, b) { return a - b; });
       var heading = (page.heading ? [page.heading] : [])
         .concat(mixedList.length ? [fill(t.mixed, {floors: mixedList.join(", ")})] : []);
@@ -693,7 +783,7 @@ part runs only in a browser, on the .primeatlas-benchmark element holding this s
         var drawn = all.filter(function (s) { return !hidden.has(s.name); });
         var out = chartSvg(self.w, self.h, {series: drawn, legend: legend, title: chart.title,
                                                decimals: chart.decimals, log: self.log,
-                                               pins: chart.pins, view: view,
+                                               pins: chart.pins, view: view, xMode: self.xMode,
                                                yView: self.yViews[i + "/" + j], text: t});
         var box = self.root.querySelector('.pa-chart[data-page="' + i + '"][data-chart="' + j + '"]');
         box.innerHTML = out.svg;
@@ -801,6 +891,7 @@ part runs only in a browser, on the .primeatlas-benchmark element holding this s
 
   var api = {YScale: YScale, clipPolyline: clipPolyline, placeLabels: placeLabels,
              chartSvg: chartSvg, keptRuns: keptRuns, reduce: reduce, mixedFloors: mixedFloors,
+             pick: pick, widthLabel: widthLabel, xLabel: xLabel,
              filterSummary: filterSummary, toggleValue: toggleValue, selectAll: selectAll, zoomStep: zoomStep, pan: pan, tickFloors: tickFloors,
              formatNumber: formatNumber};
   if (typeof module === "object" && module.exports) module.exports = api;

@@ -572,6 +572,35 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   Atlasa). Polecenia roota uruchamiane z Ustawień zapisują teraz w logu całe swoje wyjście; wcześniej
   instalacja primecount zapisywała tylko ostatni krok.
 
+### +42 — Benchmark charts: width on the x axis, point choice, floor filter
+
+- English: The Filter window of the Benchmark tab sets the charts' x axis: the floor, as before,
+  or the width of the run (numbers sieved, log scale), where each engine build, thread setup and
+  floor is a line of its own ("v7.1, 24 thr @ f28") and the floors of one engine are shades of
+  its color. So the same engine compares over width floor by floor: select floors 27, 28 and 29
+  and every engine measured there shows three lines. A new filter dimension "Floor" picks the
+  floors. Each chart (whole run, sieve, RAM) chooses which run stands for several runs on the
+  same line and x: the last (default), the lowest or the highest value, the run selected in
+  the table below, or all of them as separate points (repeated runs one above the other, the
+  spread of the measurements). Clicking a run in the table switches all three charts to it and
+  rings its points; up/down in the table move between runs and left/right turn the page. Changing the axis shows the whole charts; runs
+  without a known width are left out of the width axis and counted under the chart. The PDF,
+  SVG and HTML exports follow the axis and the choices, and the interactive HTML page has its own
+  x-axis and point selectors.
+- Polski: Okno Filtr zakładki Benchmark ustawia oś X wykresów: piętro, jak dotąd, albo szerokość
+  przebiegu (przesiane liczby, skala logarytmiczna), na której każda wersja silnika, ustawienie
+  wątków i piętro to osobna linia („v7.1, 24 thr @ f28”), a piętra jednego silnika to odcienie
+  jego koloru. Ten sam silnik porównuje się więc po szerokości piętro po piętrze: zaznacz piętra
+  27, 28 i 29, a każdy silnik zmierzony na nich pokaże trzy linie. Nowy wymiar filtra „Piętro”
+  wybiera piętra. Każdy wykres (cały przebieg, sito, RAM) wybiera, który przebieg reprezentuje
+  kilka przebiegów na tej samej linii i x: ostatni (domyślnie), o najniższej albo najwyższej
+  wartości, przebieg zaznaczony w tabeli poniżej albo wszystkie jako osobne punkty (powtórzone
+  przebiegi jeden nad drugim, czyli rozrzut pomiarów). Kliknięcie przebiegu w tabeli przełącza na
+  niego wszystkie trzy wykresy i obwodzi jego punkty; strzałki góra/dół w tabeli przechodzą
+  między przebiegami, a lewo/prawo zmieniają stronę. Zmiana osi pokazuje całe wykresy; przebiegi bez znanej szerokości nie trafiają
+  na oś szerokości, a ich liczba jest podana pod wykresem. Eksport PDF, SVG i HTML idzie za osią
+  i wyborami, a interaktywna strona HTML ma własny wybór osi X i punktu.
+
 ## 1.2.0 — 2026-11-01
 
 ### English

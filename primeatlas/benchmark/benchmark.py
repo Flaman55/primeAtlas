@@ -37,8 +37,8 @@ from ..core.pdf_table import TableLayout, table_pages
 from ..core.pdf_writer import _pdf_ascii_fold, _pdf_text_op, _write_pdf
 from . import chart_view
 from .chart_pdf import chart_ops
-from .chart_series import axis_pins, engine_lines, engine_series, visible_series
-from . import line_names, sieve_measure, table_cells
+from .chart_series import axis_pins, engine_series, visible_series
+from . import chart_points, line_names, sieve_measure, table_cells
 from .reference_points import REFERENCES, reference_series
 
 QUICK_GEN_MAX_WINDOW_WIDTH = 10_000_000  # see this module's own docstring for why this
@@ -410,39 +410,65 @@ _LINE_VALUES = {
 }
 
 
-def benchmark_engine_lines(rows, metric):
-    """{line name: [(base_exponent, value)]} for one chart metric ("growth", "write",
-    "sieve", "sieve_spw", the other sieve measures of sieve_measure.py, "ram",
-    "ram_per_window"): the same per-row value as the matching aggregate_* reduction, but
-    the last row per floor AND line (line_names.line_name(): engine or version, the store
-    for P runs, threads), so each engine build and thread setup gets its own chart line.
-    Rows whose engine is not drawn on this metric (line_names.on_chart()) are left out."""
+def line_value(metric):
+    """row -> the row's value on the chart of `metric`, None when it has none there (no
+    value, or its engine is not drawn on this metric: line_names.on_chart())."""
     value = _LINE_VALUES[metric]
-    return engine_lines(rows, lambda row: value(row) if line_names.on_chart(row, metric)
-                        else None, line_names.line_name)
+    return lambda row: value(row) if line_names.on_chart(row, metric) else None
 
 
-def benchmark_line_engines(rows):
+def benchmark_engine_lines(rows, metric, view=None):
+    """{line name: [(x, value)]} for one chart metric ("growth", "write", "sieve",
+    "sieve_spw", the other sieve measures of sieve_measure.py, "ram", "ram_per_window"): the
+    same per-row value as the matching aggregate_* reduction, one point per group of runs on
+    the same line and x, chosen by `view` (chart_points.py; None: floor axis, last run), so
+    each engine build and thread setup gets its own chart line."""
+    return {name: [(x, y) for x, y, _row in points]
+            for name, points in chart_points.chart_points(
+                rows, line_value(metric), view or chart_points.DEFAULT).items()}
+
+
+def benchmark_line_engines(rows, view=None):
     """{line name: color/draw-order key} for the rows' lines."""
-    return {line_names.line_name(row): _row_line_engine(row) for row in rows}
+    x_mode = (view or chart_points.DEFAULT).x_mode
+    return {chart_points.line_name(row, x_mode): _row_line_engine(row) for row in rows
+            if chart_points.floor_of(row) is not None}
 
 
-def benchmark_line_widths(rows, metric):
-    """{line name: {floor: width label}} of the points benchmark_engine_lines() draws: the
-    range of the row each point comes from (line_names.width_label())."""
-    value = _LINE_VALUES[metric]
-    lines = engine_lines(
-        rows, lambda row: (line_names.width_label(row.get("numbers_processed"))
-                           if line_names.on_chart(row, metric) and value(row) is not None
-                           else None), line_names.line_name)
-    return {name: dict(points) for name, points in lines.items()}
+def benchmark_line_widths(rows, metric, view=None):
+    """{line name: {x: width label}} of the points benchmark_engine_lines() draws: the
+    range of the run each point comes from (line_names.width_label()); runs of different
+    widths on one x (ALL) join their labels ("10^10/10^11")."""
+    out = {}
+    for name, points in chart_points.chart_points(
+            rows, line_value(metric), view or chart_points.DEFAULT).items():
+        labels = {}
+        for x, _y, row in points:
+            label = line_names.width_label(row.get("numbers_processed"))
+            if label and label not in labels.setdefault(x, []):
+                labels[x].append(label)
+        out[name] = {x: "/".join(found) for x, found in labels.items()}
+    return out
 
 
-def mixed_width_floors(rows, metric):
-    """Floors where the chart of `metric` sets points of different range widths side by
-    side, so their speeds do not compare on an equal range."""
+def selected_marks(rows, metric, view=None):
+    """{(line name, x, value)} of the points of the chart of `metric` that come from the
+    view's selected run: the tab rings them."""
+    view = view or chart_points.DEFAULT
+    if view.selected is None:
+        return set()
+    return {(name, x, y) for name, points in chart_points.chart_points(
+                rows, line_value(metric), view).items()
+            for x, y, row in points if row is view.selected}
+
+
+def mixed_width_floors(rows, metric, view=None):
+    """Floors where the floor-axis chart of `metric` sets points of different range widths
+    side by side, so their speeds do not compare on an equal range; [] on the width axis."""
+    if (view or chart_points.DEFAULT).x_mode != chart_points.X_FLOOR:
+        return []
     widths = {}
-    for points in benchmark_line_widths(rows, metric).values():
+    for points in benchmark_line_widths(rows, metric, view).values():
         for floor, width in points.items():
             if width:
                 widths.setdefault(floor, set()).add(width)
@@ -450,28 +476,54 @@ def mixed_width_floors(rows, metric):
 
 
 def benchmark_line_records(rows, metric):
-    """[(row index, line name, floor, value, width label)] of every row with a value on the
-    chart of `metric`, in log order: what benchmark_engine_lines() reduces to the last row
-    per floor and line, for a report that repeats that reduction after its own filter (the
-    interactive HTML page)."""
-    value = _LINE_VALUES[metric]
+    """[(row index, line name, floor, value, width label, numbers)] of every row with a value
+    on the chart of `metric`, in log order: what benchmark_engine_lines() reduces to one point
+    per group, for a report that repeats that reduction after its own filter (the
+    interactive HTML page); numbers: the run's width, None when unknown."""
+    value = line_value(metric)
     records = []
     for i, row in enumerate(rows):
-        try:
-            floor = int(row.get("base_exponent", ""))
-        except (TypeError, ValueError):
+        floor = chart_points.floor_of(row)
+        if floor is None:
             continue
-        y = value(row) if line_names.on_chart(row, metric) else None
+        y = value(row)
         if y is not None:
             records.append((i, line_names.line_name(row), floor, y,
-                            line_names.width_label(row.get("numbers_processed"))))
+                            line_names.width_label(row.get("numbers_processed")),
+                            chart_points.numbers_of(row)))
     return records
 
 
-def benchmark_series(rows, metric):
-    """[Series] of one chart metric, colored by engine, each point noting its width."""
-    return engine_series(benchmark_engine_lines(rows, metric), benchmark_line_engines(rows),
-                         benchmark_line_widths(rows, metric))
+def width_floors(rows):
+    """{color/draw-order key: [floor, ...] ascending} of the runs with a known width: the
+    index of a floor in its key's list is its shade on the width axis (chart_points.shade()),
+    the same on every chart of the same rows."""
+    floors = {}
+    for row in rows:
+        floor = chart_points.floor_of(row)
+        if floor is not None and chart_points.numbers_of(row) is not None:
+            floors.setdefault(_row_line_engine(row), set()).add(floor)
+    return {key: sorted(found) for key, found in floors.items()}
+
+
+def _floor_shades(series, rows):
+    floors = width_floors(rows)
+    out = []
+    for s in series:
+        floor = int(s.name.rsplit(chart_points.floor_suffix(""), 1)[1])
+        index = floors.get(s.engine, [floor]).index(floor)
+        out.append(s._replace(color=chart_points.shade(s.color, index)))
+    return out
+
+
+def benchmark_series(rows, metric, view=None):
+    """[Series] of one chart metric, colored by engine, each point noting its width; on the
+    width axis each floor in its own shade of the engine's hue."""
+    view = view or chart_points.DEFAULT
+    series = engine_series(benchmark_engine_lines(rows, metric, view),
+                           benchmark_line_engines(rows, view),
+                           benchmark_line_widths(rows, metric, view))
+    return _floor_shades(series, rows) if view.x_mode == chart_points.X_WIDTH else series
 
 
 def aggregate_benchmark_write_mbps(rows):
@@ -560,18 +612,21 @@ def report_references(references, measure=sieve_measure.DEFAULT):
     return bool(references) and sieve_measure.chart(measure).references
 
 
-def report_chart_series(rows, chart, hidden_lines=None, extra=()):
+def report_chart_series(rows, chart, hidden_lines=None, extra=(), point_views=None):
     """The visible Series of one report chart (see report_chart_pages()), its reference
-    series (`extra`) included, the lines hidden in the tab's legend left out."""
+    series (`extra`) included, the lines hidden in the tab's legend left out; point_views:
+    {"run" | "sieve" | "ram": chart_points.PointView}, the tab's x axis and point choice."""
     chart_key, axis, metric = chart[:3]
-    series = benchmark_series(rows, metric) + list(extra)
+    series = benchmark_series(rows, metric, (point_views or {}).get(chart_key)) + list(extra)
     return visible_series(series, (hidden_lines or {}).get(chart_key), axis)
 
 
-def report_mixed_note(rows, charts, t, x_view=None):
+def report_mixed_note(rows, charts, t, x_view=None, point_views=None):
     """The "points of different widths" note of a report page's charts, "" when none; only
     the floors in the zoomed view count."""
-    floors = sorted({f for chart in charts for f in mixed_width_floors(rows, chart[2])
+    point_views = point_views or {}
+    floors = sorted({f for chart in charts
+                     for f in mixed_width_floors(rows, chart[2], point_views.get(chart[0]))
                      if chart_view.contains(x_view, f)})
     return t("bench.mixed_widths", floors=", ".join(map(str, floors))) if floors else ""
 
@@ -579,7 +634,8 @@ def report_mixed_note(rows, charts, t, x_view=None):
 def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translator=None,
                           sieve_points=None, write_points=None, references=False,
                           log_y=False, hidden_lines=None, y_pins=None, filter_note="",
-                          measure=sieve_measure.DEFAULT, x_view=None, y_views=None):
+                          measure=sieve_measure.DEFAULT, x_view=None, y_views=None,
+                          point_views=None):
     """Writes a standalone PDF report -- the Benchmark tab's charts plus the FULL
     benchmark_log.csv (every row, every column, every cell in full) -- to `path`, A4
     landscape. Pure function (no tkinter): the GUI layer (BenchmarkTab._export_benchmark_pdf)
@@ -614,8 +670,10 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
     when the rows are a filtered selection of the log.
     measure: the time the sieve page charts (sieve_measure.py), named in its heading; the
     references go on it only for the n/s measures.
-    x_view/y_views: the tab's zoom (chart_view.py): the shared floor range and {"run" |
+    x_view/y_views: the tab's zoom (chart_view.py): the shared x range and {"run" |
     "sieve" | "ram": y view}; None for the whole charts.
+    point_views: {"run" | "sieve" | "ram": chart_points.PointView}, the tab's x axis (floor
+    or width) and each chart's point choice; None for the floor axis and the last run.
 
     translator (optional): a primeatlas.core.i18n.Translator instance for every title,
     axis label and continuation header -- DEFAULT_LANGUAGE if not given."""
@@ -630,13 +688,17 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
     hidden_lines = hidden_lines or {}
     y_pins = y_pins or {}
 
+    point_views = point_views or {}
+
     def chart(spec, y0, h, extra=()):
         chart_key, axis, _metric, label_key, fmt = spec
+        view = point_views.get(chart_key) or chart_points.DEFAULT
         return chart_ops(content_left, y0, content_width, h,
-                         report_chart_series(rows, spec, hidden_lines, extra),
+                         report_chart_series(rows, spec, hidden_lines, extra, point_views),
                          translator=translator, label_key1=label_key, fmt1=fmt,
                          log_y=log_y, pins1=axis_pins(y_pins.get(chart_key), axis),
-                         x_view=x_view, y_view=(y_views or {}).get(chart_key))
+                         x_view=x_view, y_view=(y_views or {}).get(chart_key),
+                         x_mode=view.x_mode)
 
     def chart_pair(ops, top, bottom, charts, extra=()):
         h = (top - bottom - chart_gap) / 2
@@ -644,7 +706,7 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
         ops.extend(chart(charts[1], bottom, h))
 
     def mixed_note(charts):
-        note = report_mixed_note(rows, charts, t, x_view)
+        note = report_mixed_note(rows, charts, t, x_view, point_views)
         return "  |  " + note if note else ""
 
     pages_charts = dict(report_chart_pages(rows, sieve_points, references, measure))
