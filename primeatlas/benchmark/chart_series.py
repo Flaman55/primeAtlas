@@ -2,7 +2,7 @@
 
 A chart draws a list of Series per y-axis. Engine series come from benchmark_log.csv, one
 line per engine, with P runs (pt1 above MR_DET_BOUND, "pt1 P") on a line of their own
-(last row per floor and line wins), one distinct hue per line on both
+(one point per line and x, chart_points.py), one distinct hue per line on both
 axes; the renderers tell the axes apart by marker and line weight (primary: circles, thick
 line; secondary: squares, thin line). Reference series (reference_points.py) are drawn
 dashed with hollow markers on the primary axis. Hues are far apart in RGB and readable on
@@ -39,27 +39,12 @@ OTHER_ENGINE_COLOR = "#ff8080"
 AXIS_COLOR = {"primary": "#2f7fe0", "secondary": "#e69f00"}
 
 
-def engine_lines(rows, row_value, row_engine):
-    """{engine: [(base_exponent, value), ...] ascending} with the last row per floor and
-    engine whose row_value(row) is not None."""
-    latest = {}
-    for row in rows:
-        try:
-            floor = int(row.get("base_exponent", ""))
-        except (TypeError, ValueError):
-            continue
-        value = row_value(row)
-        if value is not None:
-            latest.setdefault(row_engine(row), {})[floor] = value
-    return {engine: sorted(points.items()) for engine, points in latest.items()}
-
-
 def _engine_rank(engine):
     return (ENGINE_DRAW_ORDER.index(engine) if engine in ENGINE_DRAW_ORDER else 1.5, engine)
 
 
 def engine_series(lines, engines=None, notes=None):
-    """[Series] for engine_lines() output, in ENGINE_DRAW_ORDER, in the engine's color.
+    """[Series] for {line name: [(x, value)]}, in ENGINE_DRAW_ORDER, in the engine's color.
     engines: {line name: engine key} when the names are not the engine keys themselves;
     notes: {line name: {x: text}} for the points' notes."""
     engines = engines or {}

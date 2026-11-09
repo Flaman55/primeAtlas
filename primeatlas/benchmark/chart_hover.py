@@ -4,6 +4,8 @@ points and hands their pixel positions here.
 """
 from tkinter import font as tkfont
 
+from . import chart_points
+
 
 def _nearest_point(hover_points, x, y, max_distance=14.0):
     """The whole hover_points tuple closest to (x, y) within max_distance pixels, or None."""
@@ -93,7 +95,8 @@ def _hover_label_position(px, py, text_w, text_h, canvas_width, canvas_height, p
     return tx, ty, anchor
 
 
-def _bind_chart_hover(canvas, hover_points, t, fg_color, bg_color, width, height):
+def _bind_chart_hover(canvas, hover_points, t, fg_color, bg_color, width, height,
+                      x_mode=chart_points.X_FLOOR):
     """Wires a single-tooltip hover interaction onto `canvas` instead of drawing every
     point's value permanently next to its dot -- with a couple dozen closely-spaced
     floors, the always-on labels used to stack on top of each other into an unreadable
@@ -121,7 +124,10 @@ def _bind_chart_hover(canvas, hover_points, t, fg_color, bg_color, width, height
     i.e. every resize/data refresh) is intentional and cheap: tkinter's bind() replaces
     the previous callback for the same event sequence on the same widget rather than
     stacking a new one alongside it, so this never leaks handlers, and each new callback
-    closes over the CURRENT hover_points/scale rather than a stale one."""
+    closes over the CURRENT hover_points/scale rather than a stale one.
+
+    x_mode: the chart's x axis (chart_points.X_FLOOR or X_WIDTH), which names a point's x
+    in the tooltip ("floor (10^N) 28", "numbers sieved (log) 2x10^11")."""
 
     def _clear_tip():
         canvas.delete("hover_tip")
@@ -139,7 +145,9 @@ def _bind_chart_hover(canvas, hover_points, t, fg_color, bg_color, width, height
             return
         px, py = group[0][0], group[0][1]
         lines = [(("\u25a0 " if p[7] == "secondary" else "\u25cf ")
-                  + f"{t('bench.axis_floor')} {p[2]}: {p[4].format(p[3])}", p[5]) for p in group]
+                  + f"{t(chart_points.AXIS_TITLE_KEYS[x_mode])} "
+                  + f"{chart_points.x_label(p[2], x_mode)}: {p[4].format(p[3])}", p[5])
+                 for p in group]
         for p in group:
             canvas.create_oval(p[0] - 6, p[1] - 6, p[0] + 6, p[1] + 6, outline=p[5], width=2,
                                 tags="hover_tip")

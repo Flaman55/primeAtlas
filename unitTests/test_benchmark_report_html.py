@@ -30,6 +30,7 @@ sys.path[:0] = [str(ROOT), str(ROOT / "prime_sieve"), str(ROOT / "constellation"
 
 from primeatlas.benchmark import chart_filter, chart_view, report_export, report_html  # noqa: E402
 from primeatlas.benchmark.benchmark import benchmark_series, report_chart_pages  # noqa: E402
+from primeatlas.benchmark import chart_points  # noqa: E402
 from primeatlas.benchmark.chart_svg import chart_svg  # noqa: E402
 from primeatlas.core.i18n import Translator  # noqa: E402
 
@@ -77,7 +78,8 @@ def _node(task):
               " if (c.kind === 'series') { const sel = {};"
               "  for (const k in c.selection) sel[k] = new Set(c.selection[k]);"
               "  const kept = m.keptRuns(c.data, sel);"
-              "  return m.reduce(c.data.pages[c.page].charts[c.chart].records, kept); }"
+              "  return m.reduce(c.data.pages[c.page].charts[c.chart].records, kept,"
+              "                  c.mode, c.choice, c.selected); }"
               " if (c.kind === 'svg') return m.chartSvg(c.w, c.h, c.opts).svg;"
               " if (c.kind === 'zoom') return m.zoomStep(c.view, c.level, c.base, c.anchor, c.steps, c.span);"
               " if (c.kind === 'pan') return m.pan(c.view, c.span, c.delta);"
@@ -117,7 +119,7 @@ class DataTests(unittest.TestCase):
             for (kind, charts), page in zip(pages, data["pages"]):
                 for spec, chart in zip(charts, page["charts"]):
                     latest = {}
-                    for run, line, floor, value, _width in chart["records"]:
+                    for run, line, floor, value, _width, _x in chart["records"]:
                         if keep[run]:
                             latest.setdefault(data["lines"][line]["name"], {})[floor] = value
                     got = {name: sorted([f, v] for f, v in points.items())
@@ -354,6 +356,88 @@ class ScriptTests(unittest.TestCase):
                 continue
             want = chart_view.pan(view, full, case["delta"])
             self.assertEqual(tuple(got) if got else None, want, case)
+
+# A second run of v6 24 thr on floor 22 at 10^10, slower: MIN, MAX and SELECTED pick apart.
+POINT_ROWS = ROWS + [_row(22, "v6", 1.0e8, numbers="10000000000"),
+                     _row(20, "v5", 2.0e8, numbers="")]
+POINT_CASES = [(mode, choice) for mode in chart_points.X_MODES for choice in chart_points.CHOICES]
+
+
+def _js_named(data, reduced):
+    """reduce() output by line name: the floor-axis line, or data.width_lines' own name."""
+    out = {}
+    for key, points in reduced.items():
+        own = data["width_lines"].get(key) or data["lines"][int(key.split("/")[0])]
+        out[own["name"]] = [[p[0], p[1]] for p in points]
+    return out
+
+
+@unittest.skipUnless(NODE, "node not installed")
+class PointTests(unittest.TestCase):
+    """The page's x axis and point choices reduce the records as the tab does."""
+
+    def test_reduction_matches_python_in_every_mode(self):
+        selected = POINT_ROWS[-2]
+        _pages, data = _data(POINT_ROWS)
+        pages, _ = _data(POINT_ROWS)
+        cases, wanted = [], []
+        for selection in SELECTIONS[:4]:
+            kept = chart_filter.apply(POINT_ROWS, selection)
+            for mode, choice in POINT_CASES:
+                view = chart_points.PointView(mode, choice, selected)
+                for p, (kind, charts) in enumerate(pages):
+                    for c, spec in enumerate(charts):
+                        cases.append({"kind": "series", "data": data, "page": p, "chart": c,
+                                      "selection": {k: sorted(v) for k, v in selection.items()},
+                                      "mode": mode, "choice": choice,
+                                      "selected": POINT_ROWS.index(selected)})
+                        wanted.append(_series_map(benchmark_series(kept, spec[2], view)))
+        for case, want, got in zip(cases, wanted, _node({"cases": cases})):
+            self.assertEqual(_js_named(data, got), want,
+                             (case["mode"], case["choice"], case["selection"]))
+
+    def test_width_chart_matches_python_svg(self):
+        t = Translator("en")
+        text = {"floor": t.t("bench.axis_floor"), "width": t.t("bench.axis_width"),
+                "pinned": t.t("bench.axis_pinned"), "no_data": t.t("bench.no_data_chart"),
+                "all_hidden": t.t("bench.all_lines_hidden")}
+        view = chart_points.PointView(chart_points.X_WIDTH)
+        series = benchmark_series(POINT_ROWS, "growth", view)
+        cases, expected = [], []
+        for x_view in (None, (9.8, 11.2), (10.3, 10.9)):
+            opts = {"series": [report_html.series_json(s) for s in series],
+                    "legend": [{"name": s.name, "color": s.color, "dashed": s.dashed,
+                                "hidden": False} for s in series],
+                    "title": t.t("bench.axis_total_nps"), "decimals": 0, "log": True,
+                    "pins": [None, None], "view": x_view, "yView": None, "text": text,
+                    "xMode": "width"}
+            cases.append({"kind": "svg", "w": 900, "h": 260, "opts": opts})
+            expected.append(chart_svg(900, 260, series1=series, translator=t,
+                                      label_key1="bench.axis_total_nps", fmt1="{:,.0f}",
+                                      log_y=True, x_view=x_view, x_mode=chart_points.X_WIDTH))
+        self.assertIn(">10^11</text>", expected[0], "data ticks name the widths")
+        self.assertIn(">" + t.t("bench.axis_width") + "</text>", expected[0])
+        for got, want in zip(_node({"cases": cases}), expected):
+            self.assertEqual(_normalize(got), want)
+
+    def test_data_carries_the_tab_points(self):
+        selected = POINT_ROWS[-2]
+        views = {"run": chart_points.PointView(chart_points.X_WIDTH, chart_points.MAX, selected),
+                 "sieve": chart_points.PointView(chart_points.X_WIDTH, chart_points.SELECTED,
+                                                 selected),
+                 "ram": chart_points.PointView(chart_points.X_WIDTH, chart_points.LAST, selected)}
+        _pages, data = _data(POINT_ROWS, point_views=views)
+        self.assertEqual(data["x_mode"], "width")
+        self.assertEqual(data["choices"], {"run": "max", "sieve": "selected", "ram": "last"})
+        self.assertEqual(data["selected_run"], len(POINT_ROWS) - 2)
+        self.assertEqual({c["key"] for p in data["pages"] for c in p["charts"]},
+                         {"run", "sieve", "ram"})
+        width_less = [r[5] for p in data["pages"] for c in p["charts"] for r in c["records"]
+                      if r[0] == len(POINT_ROWS) - 1]
+        self.assertTrue(width_less and all(x is None for x in width_less))
+        _pages, plain = _data(POINT_ROWS)
+        self.assertEqual((plain["x_mode"], plain["selected_run"]), ("floor", None))
+
 
 if __name__ == "__main__":
     unittest.main()

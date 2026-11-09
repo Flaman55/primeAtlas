@@ -2023,18 +2023,30 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               pinned axes) drawn through a backend: PDF content ops
                               by default, SVG via chart_svg.py
   benchmark_filter.py           BenchmarkFilter mixin of the tab: the "Filter..." window
-                              (run purpose, engine build, sieve threads, write
+                              (run purpose, floor, engine build, sieve threads, write
                               threads, range width: All or values clicked one by
-                              one), the sieve measure radio and their summary;
-                              charts, the table and every export follow it
+                              one), the sieve measure radio, the x axis and the
+                              point choices, and their summary; charts, the table
+                              and every export follow it
                               (unitTests/test_benchmark_filter.py)
+  benchmark_points.py           BenchmarkPoints mixin of the tab: the x axis (floor or
+                              width), each chart's point choice, the run selected in
+                              the table (all three charts switched to it, its points
+                              ringed) and the left/right page keys
+                              (unitTests/test_benchmark_chart_points.py)
   benchmark_ram_chart.py        BenchmarkRamChart mixin of the tab: the RAM chart, the
                               lowest of the three (peak MB per run, MB per window,
                               mixed-width note; unitTests/test_benchmark_chart_series.py)
   chart_filter.py               which runs the charts compare: a run's value per
-                              dimension (run purpose, engine build, threads, write
-                              threads, width), the values in the log, the selection,
-                              its summary -- pure, no tkinter
+                              dimension (run purpose, floor, engine build, threads,
+                              write threads, width), the values in the log, the
+                              selection, its summary -- pure, no tkinter
+  chart_points.py               which runs become a chart's points: one per line and
+                              x, chosen last / min / max / selected, or every run;
+                              x the floor or log10 of the width (a line per floor,
+                              shaded), x labels
+                              -- pure, no tkinter
+                              (unitTests/test_benchmark_chart_points.py)
   table_cells.py                a log cell as the tab's table, the HTML and the PDF
                               tables show it: a dash for a value the run's engine
                               does not log -- pure, no tkinter

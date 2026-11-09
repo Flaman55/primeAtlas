@@ -21,7 +21,7 @@ import math
 
 from ..core.i18n import Translator, DEFAULT_LANGUAGE
 from ..core.pdf_writer import _pdf_ascii_fold, _pdf_dot_op, _pdf_line_op, _pdf_rect_op, _pdf_text_op
-from . import chart_view
+from . import chart_points, chart_view
 from .chart_series import clip_polyline, in_view, legend_series, point_label, series_xs, y_scale
 
 
@@ -83,7 +83,7 @@ def _rgb(hex_color):
 def chart_ops(x0, y0, w, h, series1=(), series2=(), translator=None,
               label_key1="bench.axis_nps", label_key2="bench.axis_spw",
               fmt1="{:,.0f}", fmt2="{:,.3f}", log_y=False, pins1=None, pins2=None,
-              backend=PDF_BACKEND, x_view=None, y_view=None):
+              backend=PDF_BACKEND, x_view=None, y_view=None, x_mode=chart_points.X_FLOOR):
     """Ops drawing the chart inside the box [x0, x0+w] x [y0, y0+h].
 
     series1/series2: [chart_series.Series] on the left (primary) and right (secondary)
@@ -97,7 +97,8 @@ def chart_ops(x0, y0, w, h, series1=(), series2=(), translator=None,
     chart_series.axis_pins(). backend: PDF_BACKEND or a chart_svg.SvgBackend. x_view/y_view:
     the zoomed part of the chart (chart_view.py), as on the tab's canvas: the axes show it,
     lines are cut at the plot edges, points outside it are left out; a zoomed floor axis
-    ticks the whole floors."""
+    ticks the whole floors. x_mode: the x axis (chart_points.X_FLOOR or X_WIDTH), which
+    names the ticks and the axis title."""
     b = backend
     t = (translator or Translator(DEFAULT_LANGUAGE)).t
     series1 = [s for s in series1 if s.points]
@@ -177,10 +178,11 @@ def chart_ops(x0, y0, w, h, series1=(), series2=(), translator=None,
     for x_val in x_ticks:
         x_px = sx(x_val)
         ops.append(b.line(x_px, plot_y0, x_px, plot_y0 - 3, rgb=_AXIS_GRAY))
-        ops.append(b.text(x_px - 8, plot_y0 - 14, 7, "Courier", str(x_val)))
+        text = chart_points.x_label(x_val, x_mode)
+        ops.append(b.text(x_px - len(text) * 0.6 * 7 / 2, plot_y0 - 14, 7, "Courier", text))
 
     ops.append(b.text(plot_x0 + plot_w / 2 - 30, y0 + 4, 8, "Helvetica-Bold",
-                             b.fold(t("bench.axis_floor"))))
+                             b.fold(t(chart_points.AXIS_TITLE_KEYS[x_mode]))))
     if series1:
         ops.append(b.dot(x0 + 4, y0 + h - 7.5, 2.2, rgb=_AXIS_GRAY))
         ops.append(b.text(x0 + 9, y0 + h - 10, 8, "Helvetica-Bold",

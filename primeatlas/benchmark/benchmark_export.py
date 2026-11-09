@@ -40,6 +40,7 @@ class BenchmarkExport:
                 "hidden_lines": self._hidden_lines, "y_pins": self._y_pins,
                 "filter_note": self._filter_note(), "measure": self._sieve_measure,
                 "x_view": self._x_view, "y_views": dict(self._y_views),
+                "point_views": self._point_views(),
                 "zoom_levels": (self._x_level, self._x_base, dict(self._y_levels))}
 
     def _ask_report_path(self, title, extension, filetype):

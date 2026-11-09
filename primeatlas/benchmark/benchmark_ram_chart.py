@@ -32,4 +32,5 @@ class BenchmarkRamChart:
                          label_key1="bench.axis_ram_mb", label_key2="bench.axis_ram_mb_window",
                          fmt1="{:,.0f}", fmt2="{:,.2f}",
                          series1=self._chart_series("ram"),
-                         series2=self._chart_series("ram_per_window"))
+                         series2=self._chart_series("ram_per_window"),
+                         marks=self._chart_marks("ram", "ram_per_window"))

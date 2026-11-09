@@ -5,7 +5,7 @@ its version when that names the engine, "v6.0"), the store kind of P runs, the s
 threads ("24 thr", "2x24 thr" for two instances side by side, "GPU") and the write threads
 ("write 8", "write ?" for a writing row from before that column); rows from before the
 thread columns keep the bare engine name. width_label() names a point's range ("@ 10^11"):
-the last row per floor wins, so a chart can set points of different widths side by side. Names are ASCII:
+on the floor axis a chart can set points of different widths side by side. Names are ASCII:
 the PDF font has no other characters. primesieve rows say how they were measured: the
 wrapper converts the library's result into Atlas windows ("primesieve (Atlas format)"), the
 native program counts ("primesieve count (native)") or prints ("primesieve print (native)");

@@ -31,7 +31,7 @@ import datetime
 from html import escape
 
 from ..core.i18n import Translator, DEFAULT_LANGUAGE
-from . import chart_filter, report_html, sieve_measure, table_cells
+from . import chart_filter, chart_points, report_html, sieve_measure, table_cells
 from .benchmark import (benchmark_pdf_tables, report_chart_pages, report_chart_series,
                         report_mixed_note, report_references)
 from .chart_series import axis_pins
@@ -67,12 +67,14 @@ _STYLE = """
 
 def report_pages_svg(rows, translator=None, sieve_points=None, references=False, log_y=False,
                      hidden_lines=None, y_pins=None, measure=sieve_measure.DEFAULT,
-                     x_view=None, y_views=None, pages=None):
+                     x_view=None, y_views=None, pages=None, point_views=None):
     """[(page heading, [<svg> element])] of the report pages, in report order: the heading
     names the sieve measure on the sieve page and the floors of mixed widths, "" otherwise.
-    pages: the report_chart_pages() to draw, those of `rows` when omitted."""
+    pages: the report_chart_pages() to draw, those of `rows` when omitted; point_views: as in
+    benchmark.render_benchmark_pdf()."""
     t = (translator or Translator(DEFAULT_LANGUAGE)).t
     y_pins = y_pins or {}
+    point_views = point_views or {}
     with_refs = report_references(references, measure)
     if pages is None:
         pages = report_chart_pages(rows, sieve_points, references, measure)
@@ -84,12 +86,13 @@ def report_pages_svg(rows, translator=None, sieve_points=None, references=False,
             extra = reference_series(t) if kind == "sieve" and with_refs and i == 0 else ()
             svgs.append(chart_svg(
                 CHART_WIDTH, CHART_HEIGHT,
-                series1=report_chart_series(rows, spec, hidden_lines, extra),
+                series1=report_chart_series(rows, spec, hidden_lines, extra, point_views),
                 translator=translator, label_key1=label_key, fmt1=fmt, log_y=log_y,
                 pins1=axis_pins(y_pins.get(chart_key), axis),
-                x_view=x_view, y_view=(y_views or {}).get(chart_key)))
+                x_view=x_view, y_view=(y_views or {}).get(chart_key),
+                x_mode=(point_views.get(chart_key) or chart_points.DEFAULT).x_mode))
         parts = [sieve_measure.heading(measure, t)] if kind == "sieve" else []
-        parts += [note for note in (report_mixed_note(rows, charts, t, x_view),) if note]
+        parts += [note for note in (report_mixed_note(rows, charts, t, x_view, point_views),) if note]
         out.append(("  |  ".join(parts), svgs))
     return out
 
@@ -150,11 +153,12 @@ def _content(fieldnames, rows, selection, t, filter_note, svg_options, data_opti
 def render(kind, fieldnames, rows, translator=None, sieve_points=None, references=False,
            log_y=False, hidden_lines=None, y_pins=None, filter_note="",
            measure=sieve_measure.DEFAULT, selection=None, x_view=None, y_views=None,
-           zoom_levels=None):
+           zoom_levels=None, point_views=None):
     """The report in `kind` (one of KINDS) as text. rows: the log's rows; selection: the
     tab's filter (chart_filter.apply()), None for every run; x_view/y_views: the tab's zoom
     (chart_view.py), None for the whole charts; zoom_levels: their notch levels for the
-    interactive page (report_html.report_data())."""
+    interactive page (report_html.report_data()); point_views: the tab's x axis and point
+    choices (benchmark.render_benchmark_pdf())."""
     t = (translator or Translator(DEFAULT_LANGUAGE)).t
     selection = selection or {}
     kept = chart_filter.apply(rows, selection)
@@ -172,7 +176,7 @@ def render(kind, fieldnames, rows, translator=None, sieve_points=None, reference
         return "".join(lines)
     svg_options = dict(translator=translator, sieve_points=sieve_points, references=references,
                        log_y=log_y, hidden_lines=hidden_lines, y_pins=y_pins, measure=measure,
-                       x_view=x_view, y_views=y_views)
+                       x_view=x_view, y_views=y_views, point_views=point_views)
     if kind == "svg":
         pages = report_pages_svg(kept, **svg_options)
         return _svg_report([svg for _heading, svgs in pages for svg in svgs])
@@ -180,7 +184,7 @@ def render(kind, fieldnames, rows, translator=None, sieve_points=None, reference
     content = _content(fieldnames, rows, selection, t, filter_note, svg_options,
                        dict(references=references, measure=measure, log_y=log_y,
                             hidden_lines=hidden_lines, y_pins=y_pins, x_view=x_view,
-                            y_views=y_views, zoom_levels=zoom_levels,
+                            y_views=y_views, zoom_levels=zoom_levels, point_views=point_views,
                             measure_note=sieve_note))
     if kind == "snippet":
         return content + "\n"
