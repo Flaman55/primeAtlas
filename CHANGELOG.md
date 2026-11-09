@@ -633,6 +633,17 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   na oś szerokości, a ich liczba jest podana pod wykresem. Eksport PDF, SVG i HTML idzie za osią
   i wyborami, a interaktywna strona HTML ma własny wybór osi X i punktu.
 
+### +43 — About: copy the version, commit shown in worktrees
+
+- English: The About tab has a copy icon next to the version line, which puts the line
+  ("Version 1.2.0+43 (abcdef1)") on the clipboard for bug reports. The commit in the version
+  label and the title bar is now shown also when the app runs from a linked git worktree,
+  whose branch refs live in the main repository's git directory.
+- Polski: Zakładka O programie ma ikonkę kopiowania obok wiersza wersji, która kładzie ten wiersz
+  („Wersja 1.2.0+43 (abcdef1)”) do schowka, np. do zgłoszenia błędu. Commit w etykiecie wersji
+  i na pasku tytułu jest teraz widoczny także wtedy, gdy aplikacja działa z dołączonego
+  worktree gita, którego gałęzie są zapisane w katalogu git głównego repozytorium.
+
 ## 1.2.0 — 2026-11-01
 
 ### English

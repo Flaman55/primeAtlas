@@ -2,7 +2,8 @@
 about_tab.py -- AboutTab(BaseTab), the last main notebook tab.
 
 Shows the app name with version_label() (release, merges since it and the checked-out
-commit), a short description, what the visualizations show, the author with e-mail and
+commit) with a copy glyph that puts that version line on the clipboard, a short
+description, what the visualizations show, the author with e-mail and
 GitHub links, the license, the related projects, then two read-only boxes: the CHANGELOG.md
 entries since the last release (newest first, in the UI language) with a link to the full
 file, and NOTICE.md (third-party components).
@@ -19,6 +20,7 @@ from tkinter import ttk
 from tkinter.scrolledtext import ScrolledText
 
 from primeatlas.core.base_tab import BaseTab
+from primeatlas.core.info_tip import InfoTip
 from primeatlas.core.version import read_changelog, version_label
 
 AUTHOR_NAME = "Artur Flamandzki"
@@ -26,6 +28,7 @@ AUTHOR_EMAIL = "flamandzki.artur@gmail.com"
 REPO_URL = "https://github.com/Flaman55/primeAtlas"
 LICENSE_URL = "https://polyformproject.org/licenses/noncommercial/1.0.0"
 CHANGELOG_URL = f"{REPO_URL}/blob/main/CHANGELOG.md"
+COPY_GLYPH = "⧉"  # two joined squares
 
 
 class AboutTab(BaseTab):
@@ -40,8 +43,16 @@ class AboutTab(BaseTab):
         header = ttk.Frame(self)
         header.pack(fill="x", padx=16, pady=(16, 8))
         ttk.Label(header, text=T("app.title"), style="Title.TLabel").pack(anchor="w")
-        ttk.Label(header, text=T("about.version", version=version_label(self._repo_root)),
-                  style="Hint.TLabel").pack(anchor="w", pady=(0, 8))
+        version_row = ttk.Frame(header)
+        version_row.pack(anchor="w", pady=(0, 8))
+        version_text = T("about.version", version=version_label(self._repo_root))
+        ttk.Label(version_row, text=version_text, style="Hint.TLabel").pack(side="left")
+        # A copy glyph, not a button: hovering names it (InfoTip popup), a click copies.
+        copy_tip = InfoTip(version_row, lambda: T("common.copy"))
+        self.version_copy = copy_tip.label
+        self.version_copy.configure(text=COPY_GLYPH, cursor="hand2")
+        self.version_copy.bind("<Button-1>", lambda _e: self._copy_to_clipboard(version_text))
+        self.version_copy.pack(side="left", padx=(6, 0))
         wrapped = [ttk.Label(header, text=T("about.description"), justify="left")]
         wrapped[-1].pack(anchor="w", fill="x", pady=(0, 8))
         wrapped.append(ttk.Label(header, text=T("about.visualization"), justify="left"))
