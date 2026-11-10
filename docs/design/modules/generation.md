@@ -26,7 +26,7 @@ the targeted k-tuple sieve (Section C). Only one engine runs at a time.
 Never imports engine code: names and defaults the engines also use are mirrored and kept equal by
 tests (`test_engine_options`). Log lines are parsed by their stable prefixes (`[CONSTELLATIONS v2]`,
 `[KTUPLE SIEVE v2]`, `[+] Progress:`). The shared bar fills a run's sieve steps to the progress
-line's own percent, not to its job count: v7.1 weights the percent by estimated cost, the other
+line's own percent, not to its job count: v7 weights the percent by estimated cost, the other
 engines print done / total.
 
 ## Knob profiles

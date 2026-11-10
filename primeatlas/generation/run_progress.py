@@ -237,7 +237,7 @@ class GenerationRunProgress:
         extreme depth -- see prime_sieve_v4_1.py's own SKIPPED-mode comment), steps
         1..n_batches are
         the sieve batches, filled to the line's own percent (an engine may weight it by
-        estimated cost, prime_sieve_v7_1.py does; for the others it is done / n_batches).
+        estimated cost, prime_sieve_v7_2.py does; for the others it is done / n_batches).
         The real n_batches isn't known until the FIRST
         batch-progress line arrives, so between the prep line and that first batch line
         the bar shows a provisional 1-of-2 (half full) rather than 0-of-unknown -- it
