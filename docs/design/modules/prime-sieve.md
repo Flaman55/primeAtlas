@@ -251,28 +251,40 @@ is v6.1's bit for bit (`test_engine_v7_1_identity`: whole runs with the gear for
 defaults and with small segments).
 
 v7.2 (`prime_sieve_v7_2.py`, `work_plan_v7_2.py`, `prime_sieve_engine_v7_2.c`) is what the GUI's
-`v7` runs. Its gear plans for a gear span V that need not be the buffer's: it walks
-[first, first + V) from the buffer's first number, V at least the buffer span, and marks only the
-landings inside the buffer. The gear's cost per q, a * sqrt(first / V) + b * V, is smallest at
+`v7` runs. It sets the gear's block factor f from the model instead of v7.0's fixed 0.5. A block
+f times longer means 1 / f as many block setups; its linear estimate drifts by up to
+f^2 * span / 2 numbers, and the candidate window is the buffer plus that drift, so candidates grow
+as span * (1 + f^2 / 2). With a and b fitted at f = 0.5:
 
-    V* = (a / (2 b))^(2/3) * first^(1/3),
+    cost(f) = a * sqrt(first / span) * 0.5 / f + b * span * (1 + f^2 / 2) / 1.125,
+    f* = (0.5625 * a * sqrt(first / span) / (b * span))^(1/3).
 
-about 2.8e10 at floor 25, 6.1e10 at 26, 1.3e11 at 27, 2.8e11 at 28 with the default a and b. A run
-narrower than V* lets the gear plan for V* (fewer, longer blocks, more candidates); its buffer,
-segmented slices and classic pieces keep the run's size, and p* is v7.1's fixed point priced at V
-and at least 2 V (one multiple at most in the gear span). A run at least V* wide keeps V = span,
-v7.1's gear. The knob is V in percent of V* (`PRIMEATLAS_V7_GEAR_SPAN_PCT`, default 100, 0 = the
-buffer span). Measured on narrow runs (1e10 numbers, count-only, 24 threads, same machine as
-above), v7.1 -> v7.2 at the defaults: floor 26 95 -> 59 s, floor 27 253 -> 133 s, floor 28
-717 -> 312 s, the same prime counts; floor 25 27 s (v7.1 about 33 s), floor 29 741 s (v7.1 about
-2260 s, the count equal to pt1's and Pseudosquares'). A wide run keeps its gain small: 2e11
-numbers at floor 28, V = 1.4 x the buffer, 446 -> 431 s. The knob around the model at floor 28,
-1e10 numbers: 50 % 388 s, 100 % 312 s, 200 % 332 s.
-Output is v6.1's bit for bit (`test_engine_v7_2_identity`: engine calls on gear spans of 1, 7
-and 100 times the buffer, full pieces bit-identical, partial pieces at floors 16-30 with every
-v6.1 bit marked, every extra bit composite and nothing past the buffer; whole runs with the gear
-on every bucketed prime and a gear span of about 10 to 100 times the buffer, with the span off,
-at the defaults and with small segments).
+f* is about 0.47 for 2e11 numbers at floor 25 (the prototype's best was 0.5), 1.24 for 2e11 at
+floor 28, 2.6 for 1e10 at floor 26 and 5.5 for 1e10 at floor 28. p* is v7.1's fixed point with
+cost(f*) (as v7.1's form with a' = a * 0.5 / f, b' = b * (1 + f^2 / 2) / 1.125), so the cheaper
+gear takes more primes, and at least 2 * span * (1 + f^2 / 2), where the candidate window stays
+below half a turn of q. The knob is f in percent of f* (`PRIMEATLAS_V7_BLOCK_MODEL_PCT`, default
+100); v7.0's fixed `PRIMEATLAS_V7_JUMP_BLOCK_PCT` is not read. Longer blocks leave the block setup a
+larger share, so the engine sets blocks up with `jump_block_quick()` (`engine_jump_gear.h`): the
+same landings, the first-solution search in 64-bit arithmetic and both three-gap steps from one
+subtractive Euclid walk, about a third cheaper per block. Measured (count-only, 24 threads, same
+machine as above), v7.1 -> v7.2 at the defaults, the same prime counts:
+
+| run | v7.1 | v7.2 |
+|---|---|---|
+| 1e10 numbers, floor 25 | about 33 s | 17.7 s |
+| 1e10 numbers, floor 26 | 95 s | 32.0 s |
+| 1e10 numbers, floor 27 | 253 s | 64.8 s |
+| 1e10 numbers, floor 28 | 717 s | 140.0 s |
+| 1e10 numbers, floor 29 | about 2260 s | 312.1 s |
+| 2e11 numbers, floor 28 | 446 s | 312.5 s |
+
+The floor 29 count equals pt1's and Pseudosquares' on the same range. The knob around the model
+at floor 28, 1e10 numbers: 50 % 167 s, 100 % 140 s, 200 % 264 s.
+Output is v6.1's bit for bit (`test_engine_v7_2_identity`: engine calls with block factors 0.05
+to 20, full pieces bit-identical, partial pieces at floors 16-30 with every v6.1 bit marked,
+every extra bit composite and nothing past the buffer; whole runs with the gear on nearly every
+bucketed prime at the model's factor and at 4 times it, at the defaults and with small segments).
 
 ## Kept data
 

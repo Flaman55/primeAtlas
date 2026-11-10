@@ -662,27 +662,27 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   plików, a przywrócenie piętra je oddaje. Wiersze są porównywane po kluczu, więc nic nie
   dochodzi dwa razy.
 
-### +45 — Engine v7.2: the jump gear plans for a wider, virtual span
+### +45 — Engine v7.2: jump gear blocks sized by the cost model
 
-- English: The v7 engine now runs code v7.2. On a run narrower than the cost model's best gear
-  span (about 2.8e10 numbers at floor 25 up to 6.1e11 at floor 29), the jump gear walks that
-  wider span from the run's first number and keeps only the landings inside the run: fewer,
-  longer blocks for the same primes. The buffer, the small primes and the classic primes keep
-  the run's size, and the output is the same as before. Measured on runs of 1e10 numbers
-  (count only, 24 threads): floor 26 95 -> 59 s, floor 27 253 -> 133 s, floor 28 717 -> 312 s,
-  floor 29 about 2260 -> 741 s; wide runs (2e11 numbers at floor 28) stay as they were. New
-  field "v7 gear span (% of model)" (default 100, 0 = the run's own span as in v7.1); v7.1 stays
-  in the repository for comparison.
-- Polski: Silnik v7 działa teraz na kodzie v7.2. Przy przebiegu węższym niż najlepszy zasięg
-  biegu skokowego według modelu kosztu (od około 2,8e10 liczb na piętrze 25 do 6,1e11 na
-  piętrze 29) bieg przechodzi ten szerszy zasięg od pierwszej liczby przebiegu i zostawia tylko
-  lądowania w przebiegu: mniej, dłuższych bloków dla tych samych liczb pierwszych. Bufor, małe
-  liczby pierwsze i klasyczne liczby pierwsze zostają w rozmiarze przebiegu, a wynik jest taki
-  sam jak wcześniej. Zmierzone na przebiegach 1e10 liczb (tylko liczenie, 24 wątki): piętro 26
-  95 -> 59 s, piętro 27 253 -> 133 s, piętro 28 717 -> 312 s, piętro 29 około 2260 -> 741 s;
-  szerokie przebiegi (2e11 liczb na piętrze 28) bez zmian. Nowe pole „Zasięg biegu skokowego v7
-  (% modelu)” (domyślnie 100, 0 = własna szerokość przebiegu jak w v7.1); v7.1 zostaje w
-  repozytorium do porównań.
+- English: The v7 engine now runs code v7.2. The jump gear's block length is no longer fixed:
+  the cost model picks the length that balances block setups against landing candidates for
+  the run's floor and width (longer blocks on narrow runs and deep floors), and each block is
+  set up about a third faster. The threshold where the gear takes over follows the cheaper
+  gear. The output is the same as before. Measured on runs of 1e10 numbers (count only, 24
+  threads): floor 25 about 33 -> 18 s, floor 26 95 -> 32 s, floor 27 253 -> 65 s, floor 28
+  717 -> 140 s, floor 29 about 2260 -> 312 s; 2e11 numbers at floor 28 446 -> 312 s. The field
+  "v7 jump block (%)" becomes "v7 jump block (% of model)" (default 100); v7.1 stays in the
+  repository for comparison.
+- Polski: Silnik v7 działa teraz na kodzie v7.2. Długość bloku biegu skokowego nie jest już
+  stała: model kosztu dobiera ją tak, by zrównoważyć przygotowania bloków i kandydatów
+  lądowania dla piętra i szerokości przebiegu (dłuższe bloki przy wąskich przebiegach
+  i głębokich piętrach), a każdy blok przygotowuje się o około jedną trzecią szybciej. Próg,
+  od którego działa bieg skokowy, idzie za tańszym biegiem. Wynik jest taki sam jak wcześniej.
+  Zmierzone na przebiegach 1e10 liczb (tylko liczenie, 24 wątki): piętro 25 około 33 -> 18 s,
+  piętro 26 95 -> 32 s, piętro 27 253 -> 65 s, piętro 28 717 -> 140 s, piętro 29 około
+  2260 -> 312 s; 2e11 liczb na piętrze 28 446 -> 312 s. Pole „Blok biegu skokowego v7 (%)”
+  staje się „Blok biegu skokowego v7 (% modelu)” (domyślnie 100); v7.1 zostaje w repozytorium
+  do porównań.
 
 ## 1.2.0 — 2026-11-01
 

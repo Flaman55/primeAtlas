@@ -2159,11 +2159,10 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               prime_sieve_engine_v6_1.so; output identical to
                               v6.0 (unitTests/test_engine_v6_1_identity.py)
   prime_sieve_v7_2.py        engine v7 (code v7.2): prime_sieve_v7_1.py with the
-                              jump gear on a virtual gear span
-                              (work_plan_v7_2.gear_span(), wider than a narrow
-                              run's buffer), on prime_sieve_engine_v7_2.so;
-                              output identical to v6.1
-                              (unitTests/test_engine_v7_2_identity.py)
+                              jump gear's block factor from the cost model
+                              (work_plan_v7_2.block_factor()), on
+                              prime_sieve_engine_v7_2.so; output identical to
+                              v6.1 (unitTests/test_engine_v7_2_identity.py)
   prime_sieve_v7_1.py        engine v7.1, kept for comparison: prime_sieve_v7_0.py
                               with the jump threshold from
                               work_plan_v7_1.jump_from()'s cost model and a
@@ -2201,11 +2200,12 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
   engine_v6_lib.py           ctypes binding of prime_sieve_engine_v6.so (v6.0)
                               and prime_sieve_engine_v6_1.so (v6.1, same
                               functions), each loaded on first use
-  engine_v7_lib.py           ctypes binding of prime_sieve_engine_v7_0.so: v6.1's
-                              functions, sieve_wheel_bucketed() with the jump
-                              gear's jump_from and block factor
-  engine_v7_2_lib.py         ctypes binding of prime_sieve_engine_v7_2.so: as
-                              engine_v7_lib.py, plus the gear span after jump_from
+  engine_v7_lib.py           ctypes binding of prime_sieve_engine_v7_0.so (or any
+                              .so with its signatures): v6.1's functions,
+                              sieve_wheel_bucketed() with the jump gear's
+                              jump_from and block factor
+  engine_v7_2_lib.py         loads prime_sieve_engine_v7_2.so through
+                              engine_v7_lib.py (same signatures)
   work_plan_v7.py            v7's knobs (env PRIMEATLAS_V7_*: v6's five, defaults
                               equal, plus _JUMP_PCT, threshold factor K in %,
                               0 = off, default 100, and _JUMP_BLOCK_PCT, default
@@ -2220,12 +2220,12 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               rest of v7.0's knobs and planners re-exported;
                               stage_weights()/progress(): the run's progress by
                               estimated cost (unitTests/test_work_plan_v7_1.py)
-  work_plan_v7_2.py          v7.2's gear span: V = PRIMEATLAS_V7_GEAR_SPAN_PCT % (0 =
-                              the buffer span, default 100) of the model's
-                              optimum V* = (a / 2b)^(2/3) * first^(1/3), never
-                              below the buffer span; p* priced at V and at least
-                              2 V; v7.1's knobs and planners re-exported
-                              (unitTests/test_work_plan_v7_2.py)
+  work_plan_v7_2.py          v7.2's block factor: PRIMEATLAS_V7_BLOCK_MODEL_PCT %
+                              (default 100) of the model's optimum f* =
+                              (0.5625 a sqrt(first / span) / (b span))^(1/3);
+                              p* from the gear's cost at that factor and at least
+                              2 span (1 + f^2 / 2); v7.1's knobs and planners
+                              re-exported (unitTests/test_work_plan_v7_2.py)
   work_plan_v6.py            v6's knobs (env PRIMEATLAS_V6_SEGMENT_KB, _REGION_KB,
                               _BUCKET_MB, _PIECES_PER_THREAD, _WRITE_THREADS;
                               defaults 2048 / 1024 / 8192 / 16 / 8) and where its segmented primes
@@ -2396,14 +2396,15 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               with bucketed pieces from jump_from up walked by
                               the jump gear instead of prime by prime
   prime_sieve_engine_v7_2.c  C sieve core for prime_sieve_v7_2.py (ctypes): v7.0's,
-                              with the gear planning its blocks for a gear span
-                              from the buffer's first number and marking only
-                              the landings inside the buffer
+                              with the blocks set up by jump_block_quick()
   engine_jump_gear.h         the jump gear: blocks q = Q + 30 j, first / q as a
                               64.64 line with a bounded error, the j whose one
                               multiple lands in the buffer found by a Euclid-like
                               search and three-gap steps, each checked exactly;
-                              composite q land too and change no bit
+                              composite q land too and change no bit;
+                              jump_block_quick() (v7.2): the same landings with
+                              the search in 64-bit arithmetic and both three-gap
+                              steps from one subtractive Euclid walk
   prime_sieve_engine_v5.c    C sieve core for prime_sieve_v5.py (ctypes); the
                               per-prime phase first_odd mod p comes from a
                               double-precision quotient with an exact one-p

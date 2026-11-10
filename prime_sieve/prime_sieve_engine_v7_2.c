@@ -1,28 +1,25 @@
 /* ==========================================================================================
  * prime_sieve_engine_v7_2.c -- sieve-generation core, v7.2.
  *
- * Loaded by prime_sieve_v7_2.py. v7.0's engine (prime_sieve_engine_v7_0.c) with a virtual gear
- * span: sieve_wheel_bucketed() takes gear_span, the numbers the jump gear plans its blocks and
- * candidates for. The gear walks [first, first + gear_span), a range at least as wide as the
- * buffer and starting where it starts, and keeps only the landings inside the buffer. Its
- * block count falls with sqrt(gear_span) while its candidates grow with gear_span, so a span
- * wider than a narrow run's buffer costs less in total (prime_sieve_v7_2.py picks it); the
- * buffer, the segmented slices and the classic pieces stay the run's own size. gear_span <=
- * the buffer span gives v7.0's gear. The rest of this header is v7.0's.
+ * Loaded by prime_sieve_v7_2.py. v7.0's engine (prime_sieve_engine_v7_0.c, same functions and
+ * signatures) with the jump gear's blocks set up by jump_block_quick() (engine_jump_gear.h):
+ * jump_block()'s landings with a cheaper setup, which matters because v7.2's longer blocks
+ * (the block factor comes from work_plan_v7_2.py's model) leave the setup a large share. The
+ * rest of this header is v7.0's.
  *
  * v6.1's engine (prime_sieve_engine_v6_1.c) plus the jump
  * gear (engine_jump_gear.h) in the bucketed path, output bit for bit the same:
- *   - sieve_wheel_bucketed() takes jump_from, gear_span and block_factor: a piece of sieving primes
+ *   - sieve_wheel_bucketed() takes jump_from and block_factor: a piece of sieving primes
  *     whose lower end is >= jump_from is not walked prime by prime; its range is walked in
  *     blocks of numbers coprime to 30 and only the q whose one multiple lands in the buffer
  *     are found and marked (see engine_jump_gear.h). jump_from = 0 turns the gear off, and
  *     the engine is v6.1's;
- *   - the gear is used only where it is exact: jump_from is raised to at least 2 * gear_span
- *     (one multiple at most in the gear span, candidate window below half a turn) and to
- *     first / 2^62 + 1 (first / q fits the 64.64 fixed point).
+ *   - the gear is used only where it is exact: jump_from is raised to at least 2 * span (one
+ *     multiple at most, candidate window below half a turn) and to first / 2^62 + 1 (first / q
+ *     fits the 64.64 fixed point).
  * A classic piece costs one phase per prime (most deep-floor primes do not hit at all); a
- * jump piece costs per landing candidate, about gear_span / q of them per q, so the gear wins from
- * a q that grows with the gear span (prime_sieve_v7_2.py computes it).
+ * jump piece costs per landing candidate, about span / q of them per q, so the gear wins from
+ * a q that grows with the buffer span (prime_sieve_v7_2.py computes it).
  *
  * Everything else is v6.1's (prime_sieve_engine_v6_1.c header): the wheel-30 bitmap, the
  * segmented path with the unrolled wheel-turn loop, the staged bucket writes, the counting
@@ -347,9 +344,8 @@ struct bucket_shared {
     uint64_t n_pieces, n_threads;
     phase_ctx phase;
     uint64_t n_bits, span;
-    uint64_t gear_span;      /* numbers the gear plans for, >= span; landings >= span dropped */
     uint64_t jump_from;      /* pieces with piece_lo >= jump_from use the jump gear */
-    double jump_c;           /* block length per Q: factor * sqrt(gear_span / (2 first)) */
+    double jump_c;           /* block length per Q: factor * sqrt(span / (2 first)) */
     unsigned shift;
     uint64_t n_regions, cap;
     unsigned char *out;
@@ -394,7 +390,7 @@ static inline uint64_t jump_class_start(uint64_t lo, unsigned ri) {
  * class. Returns 1 when the piece is finished, 0 when the round ends first (the state stays
  * in th for the next round). */
 static int jump_scatter(bucket_shared *sh, bucket_thread *th) {
-    const uint64_t hi = sh->piece_hi[th->piece], span = sh->span, gear_span = sh->gear_span;
+    const uint64_t hi = sh->piece_hi[th->piece], span = sh->span;
     const u128 first = sh->phase.first;
     for (;;) {
         while (th->jump_i < th->jump_n) {
@@ -411,10 +407,9 @@ static int jump_scatter(bucket_shared *sh, bucket_thread *th) {
             continue;
         }
         uint64_t Q = th->jump_Q, J = jump_block_len(Q, hi, sh->jump_c);
-        uint64_t n = jump_block(first, gear_span, Q, J, th->jump_bits), kept = 0;
+        uint64_t n = jump_block_quick(first, span, Q, J, th->jump_bits), kept = 0;
         for (uint64_t i = 0; i < n; i++) {
             uint64_t g = th->jump_bits[i], b = g / 30;
-            if (g >= span) continue;   /* landed in the virtual part of the gear span */
             uint8_t bit = BIT_OF[g - 30 * b];
             if (bit != 0xFF) th->jump_bits[kept++] = (b << 3) | bit;   /* k coprime to 30 */
         }
@@ -569,8 +564,7 @@ static void *bucket_worker(void *arg) {
 int sieve_wheel_bucketed(const uint64_t *piece_lo, const uint64_t *piece_hi, uint64_t n_pieces,
                          uint64_t base_hi, uint64_t base_lo, uint64_t n_bits,
                          uint64_t region_bits, uint64_t n_threads, uint64_t bucket_bytes,
-                         uint64_t jump_from, uint64_t gear_span, double block_factor,
-                         unsigned char *out_bits,
+                         uint64_t jump_from, double block_factor, unsigned char *out_bits,
                          uint64_t *pieces_done) {
     if (n_pieces == 0 || n_bits == 0) return 0;
     if (n_threads == 0) n_threads = 1;
@@ -585,18 +579,17 @@ int sieve_wheel_bucketed(const uint64_t *piece_lo, const uint64_t *piece_hi, uin
     phase_init(&sh.phase, ((u128)base_hi << 64) | (u128)base_lo);
     sh.n_bits = n_bits;
     sh.span = 30 * ((n_bits + 7) >> 3);
-    sh.gear_span = gear_span > sh.span ? gear_span : sh.span;
-    /* The gear needs q >= 2 gear_span (one multiple at most) and first / q < 2^62 (64.64 fixed
+    /* The gear needs q >= 2 span (one multiple at most) and first / q < 2^62 (64.64 fixed
      * point); below that, and with jump_from = 0, every piece is classic. */
     sh.jump_from = UINT64_MAX;
     if (jump_from && !(sh.phase.first >> 126)) {
         u128 lowest = (sh.phase.first >> 62) + 1;
-        if ((u128)2 * sh.gear_span > lowest) lowest = (u128)2 * sh.gear_span;
+        if ((u128)2 * sh.span > lowest) lowest = (u128)2 * sh.span;
         if ((u128)jump_from > lowest) lowest = jump_from;
         if (!(lowest >> 64)) sh.jump_from = (uint64_t)lowest;
     }
     sh.jump_c = (block_factor > 0 ? block_factor : 0.5) *
-                sqrt((double)sh.gear_span / (2.0 * (double)sh.phase.first));
+                sqrt((double)sh.span / (2.0 * (double)sh.phase.first));
     sh.shift = 6;
     while (sh.shift < 32 && (2ull << sh.shift) <= region_bits) sh.shift++;
     sh.n_regions = ((n_bits - 1) >> sh.shift) + 1;

@@ -50,10 +50,9 @@ def _bucketed_knobs(engine):
 
 
 # v7's jump gear (work_plan_v7_2.py): threshold in percent of the cost model (0 = off), the
-# model's block and landing costs, block length factor (percent), gear span in percent of the
-# model's optimum (0 = the buffer span).
+# model's block and landing costs, block length in percent of the model's optimum.
 _V7_JUMP_KNOBS = ("v7_jump_model_pct", "v7_jump_block_cost", "v7_jump_landing_cost_pct",
-                  "v7_jump_block_pct", "v7_gear_span_pct")
+                  "v7_block_model_pct")
 
 # Per bucketed engine: knob -> environment variable (work_plan_v5/_v6/_v7_2.py). The
 # windows-at-25 knob only sizes the run on this side, so it has none.
@@ -91,12 +90,10 @@ DEFAULT_KNOBS = {
     "v7_jump_model_pct": 100,        # p* = the cost model's; 0 = gear off
     "v7_jump_block_cost": 300,       # a: one block setup, in classic primes
     "v7_jump_landing_cost_pct": 10,  # b = 0.10: one landing, in classic primes
-    "v7_jump_block_pct": 50,
-    "v7_gear_span_pct": 100,         # gear span = the model's optimum V*; 0 = buffer span
+    "v7_block_model_pct": 100,       # block factor = the model's optimum f*
     RAM_BUDGET_KNOB: round(run_budget.DEFAULT_SAFETY_FRACTION * 100),
 }
-_ZERO_ALLOWED = {"pt1_b", "v7_jump_model_pct", "v7_jump_landing_cost_pct",
-                 "v7_gear_span_pct"}
+_ZERO_ALLOWED = {"pt1_b", "v7_jump_model_pct", "v7_jump_landing_cost_pct"}
 PT1_MAX_B = 2 ** 32 - 1
 _MAX_VALUES = {"pt1_b": PT1_MAX_B, RAM_BUDGET_KNOB: 100}
 

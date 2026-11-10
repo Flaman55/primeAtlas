@@ -33,12 +33,11 @@ COMPUTE_SIEVING_PRIMES_COUNT = False
 # prime_sieve_v7_2.py
 #
 # Batch scanner for engine v7.2, driven by orchestrator_v3.py when SCANNER_VERSION = "v7". It is
-# prime_sieve_v7_1.py (v7.1) on engine v7.2 (prime_sieve_engine_v7_2.c) with a virtual gear span:
-# the jump gear plans its blocks and landing candidates for V = work_plan_v7_2.gear_span() numbers
-# from the buffer's first one, V >= the buffer span, and marks only the landings inside the
-# buffer. A run narrower than the model's V* thus pays for fewer, longer blocks; the buffer, the
-# slices and the classic pieces keep the run's size, and p* is priced at V. Knob:
-# PRIMEATLAS_V7_GEAR_SPAN_PCT (0 = the buffer span, v7.1's gear).
+# prime_sieve_v7_1.py (v7.1) on engine v7.2 (prime_sieve_engine_v7_2.c: v7.0's with a cheaper
+# block setup) with the jump gear's block factor from work_plan_v7_2.block_factor(), the
+# optimum of the gear's cost between block setups and candidates, instead of the fixed 0.5;
+# p* and the progress weights use the gear's cost at that factor. Knob:
+# PRIMEATLAS_V7_BLOCK_MODEL_PCT (the factor in percent of the model's).
 #
 # v7.1 is prime_sieve_v7_0.py (v7.0) with two changes:
 #   - the jump threshold p* comes from work_plan_v7_2.jump_from(): a cost model with the gear's
@@ -54,7 +53,7 @@ COMPUTE_SIEVING_PRIMES_COUNT = False
 # prime by prime; the gear walks their range in blocks and finds only the q whose one multiple
 # lands in the run's buffer. The classic primes below keep v6.1's path. Knobs: work_plan_v7_2.py
 # (v7.0's PRIMEATLAS_V7_* knobs plus _JUMP_MODEL_PCT, _JUMP_BLOCK_COST, _JUMP_LANDING_COST_PCT,
-# _GEAR_SPAN_PCT).
+# _BLOCK_MODEL_PCT; v7.0's fixed _JUMP_BLOCK_PCT is not read).
 #
 # The rest is v6.1's (see prime_sieve_v6_1.py): the wheel-30 buffer, segmented slices in
 # forked worker processes, one multi-threaded sieve_wheel_bucketed() call, the parallel
@@ -97,12 +96,12 @@ def process_slice(bit_lo, bit_hi, base, small_stop, segment_words):
     return code != 0
 
 
-def _run_bucketed(pieces, base, n_bits, region_bits, n_threads, bucket_mb, jump_lo, gear,
+def _run_bucketed(pieces, base, n_bits, region_bits, n_threads, bucket_mb, jump_lo,
                   block_factor, on_progress, poll_seconds=0.5):
     """Marks the sieving primes of `pieces` with one sieve_wheel_bucketed() call in a helper
     thread (ctypes releases the GIL), reporting on_progress(finished_pieces) meanwhile.
-    Pieces from jump_lo up go to the jump gear (jump_lo = 0: none), which plans for `gear`
-    numbers. Returns True on an engine error. No other job may write the buffer meanwhile."""
+    Pieces from jump_lo up go to the jump gear (jump_lo = 0: none). Returns True on an
+    engine error. No other job may write the buffer meanwhile."""
     if not pieces:
         return False
     lib = _load_lib()
@@ -118,7 +117,7 @@ def _run_bucketed(pieces, base, n_bits, region_bits, n_threads, bucket_mb, jump_
         buf = (ctypes.c_ubyte * _shm_size).from_buffer(_shm_mmap)
         result["code"] = lib.sieve_wheel_bucketed(
             piece_lo, piece_hi, n, *_split128(base), n_bits, region_bits, n_threads,
-            bucket_mb * 1024 * 1024, jump_lo, gear, block_factor, buf, done)
+            bucket_mb * 1024 * 1024, jump_lo, block_factor, buf, done)
 
     worker = threading.Thread(target=_call, daemon=True)
     worker.start()
@@ -135,7 +134,7 @@ def _run_bucketed(pieces, base, n_bits, region_bits, n_threads, bucket_mb, jump_
 
 def _run_sieve(base, n_bits, L_final, combined_size, segment_kb, region_kb, bucket_mb,
                pieces_per_thread, jump_model_pct, jump_block_cost, jump_landing_cost_pct,
-               jump_block_pct, gear_span_pct):
+               block_model_pct):
     """Sieves the whole buffer: segmented slices in worker processes, then the bucketed
     primes. Returns the number of jobs that reported an engine error."""
     n_batches = max(1, MAX_WORKERS * BATCHES_PER_WORKER)
@@ -143,10 +142,12 @@ def _run_sieve(base, n_bits, L_final, combined_size, segment_kb, region_kb, buck
     small_stop = work_plan_v7_2.small_prime_stop(seg_bits, L_final)
     slices = work_plan_v7_2.plan_slices(n_bits, n_batches, min_slice_bits=seg_bits)
     span = 30 * ((n_bits + 7) // 8)   # numbers the buffer covers, as the engine counts them
-    gear = work_plan_v7_2.gear_span(base, span, gear_span_pct, jump_block_cost,
-                                    jump_landing_cost_pct)
-    jump_lo = work_plan_v7_2.jump_from_v7_2(base, span, gear, jump_model_pct, jump_block_cost,
-                                            jump_landing_cost_pct)
+    factor = work_plan_v7_2.block_factor(base, span, block_model_pct, jump_block_cost,
+                                         jump_landing_cost_pct)
+    eff_block, eff_landing = work_plan_v7_2.effective_costs(factor, jump_block_cost,
+                                                            jump_landing_cost_pct)
+    jump_lo = work_plan_v7_2.jump_from_v7_2(base, span, jump_model_pct, factor,
+                                            jump_block_cost, jump_landing_cost_pct)
     classic, jumped = work_plan_v7_2.plan_bucketed(L_final, combined_size, small_stop,
                                                  MAX_WORKERS, pieces_per_thread, jump_lo)
     pieces = classic + jumped
@@ -155,21 +156,21 @@ def _run_sieve(base, n_bits, L_final, combined_size, segment_kb, region_kb, buck
     n_processes = max(1, min(MAX_WORKERS, len(jobs)))
     n_total = len(jobs) + len(pieces)
     slice_weights, piece_weights = work_plan_v7_2.stage_weights(
-        len(jobs), classic, jumped, combined_size, small_stop, L_final, base, gear,
-        jump_block_cost, jump_landing_cost_pct)
+        len(jobs), classic, jumped, combined_size, small_stop, L_final, base, span,
+        eff_block, eff_landing)
     weights = slice_weights + piece_weights
 
     print(f"[*] Segmented slices: {len(slices)} ({segment_kb} KiB segments, primes "
           f"7..{small_stop - 1:,}, {n_processes} parallel processes); bucketed pieces: "
           f"{len(pieces)} (primes {small_stop:,}..{L_final - 1:,}, {MAX_WORKERS} threads, "
           f"{region_kb} KiB regions, {bucket_mb} MiB buckets)", flush=True)
-    gain = work_plan_v7_2.gear_gain(base, span, gear, jump_block_cost, jump_landing_cost_pct)
+    gain = work_plan_v7_2.gear_gain(base, span, factor, jump_block_cost, jump_landing_cost_pct)
     model = (f"{jump_model_pct} % of the model, block cost {jump_block_cost}, landing cost "
-             f"{jump_landing_cost_pct} %, gear span {gear:,} = {gear / span:.1f} x the buffer "
-             f"({gear_span_pct} % of the model), {gain:.2f} x cheaper per q")
+             f"{jump_landing_cost_pct} %, block factor {factor:.2f} ({block_model_pct} % of the "
+             f"model), {gain:.2f} x cheaper per q than at 0.5")
     if jumped:
         print(f"[*] Jump gear: {len(jumped)} of the pieces, primes {jump_lo:,}..{L_final - 1:,} "
-              f"({model}, block factor {jump_block_pct} %); estimated cost share "
+              f"({model}); estimated cost share "
               f"{sum(piece_weights[len(classic):]) * 100:.1f} %", flush=True)
     else:
         print(f"[*] Jump gear: off for this run ({model})", flush=True)
@@ -213,7 +214,7 @@ def _run_sieve(base, n_bits, L_final, combined_size, segment_kb, region_kb, buck
             _print_progress(count)
 
     if _run_bucketed(pieces, base, n_bits, work_plan_v7_2.region_bits(region_kb), MAX_WORKERS,
-                     bucket_mb, jump_lo, gear, jump_block_pct / 100, _on_pieces):
+                     bucket_mb, jump_lo, factor, _on_pieces):
         errors += 1
     print(f"[*] Bucketed pieces done in {time.perf_counter() - t_start - t_slices:.2f}s",
           flush=True)
@@ -230,8 +231,7 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
                        jump_model_pct=work_plan_v7_2.DEFAULT_JUMP_MODEL_PCT,
                        jump_block_cost=work_plan_v7_2.DEFAULT_JUMP_BLOCK_COST,
                        jump_landing_cost_pct=work_plan_v7_2.DEFAULT_JUMP_LANDING_COST_PCT,
-                       jump_block_pct=work_plan_v7_2.DEFAULT_JUMP_BLOCK_PCT,
-                       gear_span_pct=work_plan_v7_2.DEFAULT_GEAR_SPAN_PCT):
+                       block_model_pct=work_plan_v7_2.DEFAULT_BLOCK_MODEL_PCT):
     target_idx_list = sorted(target_idx_list)
     BASE = 10 ** base_power
     windows = [(BASE + idx * window_m, window_m) for idx in target_idx_list]
@@ -282,7 +282,7 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
     t_start = time.perf_counter()
     errors = _run_sieve(base, n_bits, L_final, combined_size, segment_kb, region_kb, bucket_mb,
                         pieces_per_thread, jump_model_pct, jump_block_cost,
-                        jump_landing_cost_pct, jump_block_pct, gear_span_pct)
+                        jump_landing_cost_pct, block_model_pct)
     t_sieve = time.perf_counter() - t_start
     print(f"\n[*] Batch sieve done in {t_sieve:.2f}s. Unpacking result and writing windows...",
           flush=True)
@@ -399,8 +399,7 @@ if __name__ == "__main__":
     JUMP_MODEL_PCT = work_plan_v7_2.jump_model_pct_from_env(os.environ)
     JUMP_BLOCK_COST = work_plan_v7_2.jump_block_cost_from_env(os.environ)
     JUMP_LANDING_COST_PCT = work_plan_v7_2.jump_landing_cost_pct_from_env(os.environ)
-    JUMP_BLOCK_PCT = work_plan_v7_2.jump_block_pct_from_env(os.environ)
-    GEAR_SPAN_PCT = work_plan_v7_2.gear_span_pct_from_env(os.environ)
+    BLOCK_MODEL_PCT = work_plan_v7_2.block_model_pct_from_env(os.environ)
 
     print("Start time:", datetime.datetime.now().strftime("%H:%M:%S"))
     main_batch_scanner(base_exponent, target_idx_list, WINDOW_M, write_files=WRITE_FILES,
@@ -410,4 +409,4 @@ if __name__ == "__main__":
                        pieces_per_thread=PIECES_PER_THREAD, write_threads=WRITE_THREADS,
                        jump_model_pct=JUMP_MODEL_PCT, jump_block_cost=JUMP_BLOCK_COST,
                        jump_landing_cost_pct=JUMP_LANDING_COST_PCT,
-                       jump_block_pct=JUMP_BLOCK_PCT, gear_span_pct=GEAR_SPAN_PCT)
+                       block_model_pct=BLOCK_MODEL_PCT)
