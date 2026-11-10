@@ -201,7 +201,10 @@ comparisons with primesieve and PARI/GP are in `BENCHMARK.md`.
   iterate in memory and write nothing; published results plus one own measurement, each
   with its source) and a log10 y-axis fitted to the data range. The legend switches each
   line on its own (circle: left-axis line, square: right-axis line, name: both), and the
-  axes refit to the lines left. A right-click on a point pins its value as that axis'
+  axes refit to the lines left. A right-click on a legend entry sets the color of that
+  engine's lines (every chart; remembered between sessions, per theme) or brings the
+  default back. Each theme has its own default palette, readable on its background; the
+  exports have a white background and use the light theme's colors. A right-click on a point pins its value as that axis'
   maximum or minimum (the axis title then says "pinned"), so floors far below another
   floor's peak can be compared without being flattened: lines are cut at the pinned edge
   and points beyond it are not drawn, and each axis of each chart is pinned and reset on
@@ -398,25 +401,25 @@ That mapping is Atlas work inside the measured time: the library fills its array
 thread, and copying it into Python and encoding the windows slow the run down (floor 19, 10^10
 numbers: about 298 M numbers/s, against about 835 M/s for the primesieve program's own
 `--print` and 3.4 G/s for its multi-threaded `--count`). Its benchmark rows are therefore
-called "primesieve (Atlas format)", never plain primesieve. The **Native** checkbox runs the
+called "primesieve Atlas", never plain primesieve. The **Native** checkbox runs the
 primesieve program itself instead (`prime_sieve/primesieve_native.py`), timed from its start
 to its exit:
 - **print** -- `primesieve --print` sieves the range and writes every prime as its own text,
   one per line, into `primesieve/10pN/<start>_<stop>.txt` under the storage root. That folder
   is not Atlas storage (Atlas does not read it; the text is about 20 times larger than Atlas
   windows), and primesieve prints on one thread. Sieve plus output is a whole run, so these
-  runs appear on the whole-run chart as "primesieve print (native)".
+  runs appear on the whole-run chart as "primesieve print".
 - **count** -- `primesieve --count` sieves the range and counts the primes on the threads
   primesieve picks, and writes nothing. That is the work of an Atlas engine's sieve phase (a
   bitmap of the range, no primes extracted), so these runs appear on the sieve charts as
-  "primesieve count (native)".
+  "primesieve count".
 Compare at the same width: primesieve first prepares the primes up to the square root of the
 range's end (about 0.7 s at floor 19), which dominates a short range. Measured on the same
 ranges at floor 19: v6.0's sieve phase 6.69 G numbers/s on 2*10^11 numbers with 24 threads
 against primesieve --count 8.99 G/s (24 threads); 0.66 against 1.25 G/s on 10^10 numbers with
 1 thread. Every benchmark row records its sieve and write threads, so the charts name each
 line's engine build and thread setup (for example "v6.0, 24 thr, write 8",
-"primesieve count (native) 12.15, 24 thr").
+"primesieve count 12.15, 24 thr").
 
 The trade is libprimesieve's own domain limit: it operates on the `uint64_t` range, so
 nothing above `primesieve_get_max_stop()` (currently `2**64 - 1` =
@@ -523,12 +526,12 @@ outputs only proven primes and reaches 10^33, past primesieve's 2^64
 (`prime_sieve/pseudosquares_native.py`). Like primesieve's Native mode it is timed from the
 program's start to its exit, writes nothing into the storage, and logs one benchmark row:
 - **count** -- finds the primes of the range and counts them, writing nothing: the work of
-  an engine's sieve phase, on the sieve charts as "Pseudosquares count (native)". Threads:
+  an engine's sieve phase, on the sieve charts as "PSS count". Threads:
   Auto lets the program choose (each thread gets a minimum share of the range), a number
   sets it (capped at the CPU cores); the row logs the threads the program reports.
 - **print** -- writes every prime as the program's own text into
   `pseudosquares/10pN/<start>_<stop>.txt` under the storage root (not Atlas storage), on one
-  thread: a whole run, on the whole-run chart as "Pseudosquares print (native)".
+  thread: a whole run, on the whole-run chart as "PSS print".
 
 Its fields are Floor + From + Width like primesieve mode; From blank starts at the Floor's
 start. A run stays inside its floor and ends at 10^33 at most (floor 32 is the last one).
@@ -1421,6 +1424,9 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               built, saved on change (debounced), flushed on close
   ui_state_dynamic.py           STORE -- the app's UiStateStore (in memory until
                               app_dynamic opens the per-install file)
+  theme_dynamic.py              THEME -- the theme the app runs in (the default until
+                              app_dynamic sets it), for colors chosen per theme
+                              outside primeatlas/app/ (Benchmark line colors)
   ui_state_store.py             UiStateStore -- the flat {key: value} JSON file, debounced
                               atomic writes; no tkinter import (app_dynamic opens it
                               before any window exists)
@@ -2035,6 +2041,16 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               logged max_child_rss_mb, logical tables);
                               report_chart_pages() is the chart list every report
                               format shares
+  line_colors.py                each engine's line color: a dark and a light palette
+                              (same hue per engine, 3:1 contrast on its own
+                              background; the light one for the light theme and
+                              every export), the user's own color per theme and
+                              engine kept in the remembered-fields store -- pure,
+                              no tkinter
+                              (unitTests/test_benchmark_line_colors.py)
+  benchmark_line_colors.py      BenchmarkLineColors mixin of the tab: a legend entry's
+                              right-click menu (the engine's color, its default,
+                              every default)
   chart_series.py               chart Series (one color per engine, a P run of pt1
                               on its own "pt1 P" line, a verified one also on
                               "pt1 D proof"), linear/log
@@ -2078,9 +2094,10 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               (sieve_wall_seconds) or the overhead alone; metrics,
                               axis labels, notes -- pure, no tkinter
                               (unitTests/test_benchmark_sieve_measure.py)
-  line_names.py                 a log row's chart line: engine build (version), store
-                              kind and threads ("v6.0, 24 thr"), primesieve wrapper
-                              vs native labels, which charts an engine is on (native
+  line_names.py                 a log row's chart line: engine build (version without
+                              its build commit), store kind and threads ("v6.0, 24
+                              thr"), short native labels ("primesieve count", "PSS
+                              count"), which charts an engine is on (native
                               count on the sieve charts, native print on the whole-run
                               chart), each point's range width ("@ 10^11") and the
                               floors whose points differ in width
@@ -2346,7 +2363,7 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
   prime_sieve_primesieve.py  "primesieve mode" -- calls libprimesieve's own public C API
                               (primesieve_generate_primes()) directly via ctypes, no custom
                               engine or batching pipeline; see "The primesieve mode" above;
-                              its benchmark row ("primesieve (Atlas format)") carries the
+                              its benchmark row ("primesieve Atlas") carries the
                               sieve/write phases, bytes, range, peak RSS and threads,
                               conversion into Atlas windows included
                               (unitTests/test_primesieve_benchmark_row.py)

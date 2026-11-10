@@ -713,6 +713,27 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   (sito) i „pt1.1 D proof” (sito + dowód), a wiersze weryfikacji magazynu zostają tylko
   w tabeli.
 
+### +47 — Benchmark legend: line colors of your choice, shorter native names
+
+- English: A right-click on a Benchmark legend entry sets the color of that engine's lines
+  (every chart and the chart windows follow it, remembered between sessions, per theme) or
+  brings back one default or all of them. Each theme has its own default palette, an
+  engine keeping its hue in both, every color readable on its own background; the exports
+  have a white background and use the light theme's colors. Colors that were too dark on
+  the dark theme are brighter (Pseudosquares count, primesieve count, v6). Native lines have shorter
+  names, "PSS count", "PSS print", "primesieve count", "primesieve print" and "primesieve
+  Atlas", without the build commit (still in the table), so a legend entry takes one slot,
+  e.g. "PSS count 1.2, 24 thr".
+- Polski: Prawy klik na wpisie legendy Benchmarku ustawia kolor linii tego silnika
+  (stosują go wszystkie wykresy i okna wykresów, zapamiętany między sesjami, osobno dla
+  każdego motywu) albo przywraca jeden domyślny kolor lub wszystkie. Każdy motyw ma własną
+  domyślną paletę, silnik zachowuje w obu swój odcień, a każdy kolor jest czytelny na swoim
+  tle; eksporty mają białe tło i używają kolorów jasnego motywu. Kolory za ciemne
+  w ciemnym motywie są jaśniejsze (Pseudosquares count, primesieve count, v6). Linie
+  natywne mają krótsze nazwy, „PSS count”, „PSS print”, „primesieve count”, „primesieve
+  print” i „primesieve Atlas”, bez commita kompilacji (nadal w tabeli), więc wpis legendy
+  zajmuje jedno miejsce, np. „PSS count 1.2, 24 thr”.
+
 ## 1.2.0 — 2026-11-01
 
 ### English

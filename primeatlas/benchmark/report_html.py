@@ -21,7 +21,7 @@ import re
 
 from . import chart_filter, sieve_measure
 from . import chart_points
-from . import line_names
+from . import line_colors, line_names
 from .benchmark import (benchmark_line_engines, benchmark_line_records, report_references,
                         width_floors)
 from .chart_series import axis_pins, engine_series
@@ -79,7 +79,8 @@ def report_data(rows, pages, t, width, height, selection=None, references=False,
     x_mode = views[0].x_mode
     selected = next((v.selected for v in views if v.selected is not None), None)
     engines = benchmark_line_engines(rows)
-    ordered = engine_series({name: [(0, 0)] for name in engines}, engines)
+    ordered = engine_series({name: [(0, 0)] for name in engines}, engines,
+                            theme=line_colors.EXPORT_THEME)
     index = {s.name: i for i, s in enumerate(ordered)}
     dims = []
     for dim in chart_filter.DIMENSIONS:

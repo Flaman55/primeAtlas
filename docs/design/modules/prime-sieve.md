@@ -151,7 +151,7 @@ reads it from the environment the scanner inherits), 1 for every other writer, b
 count.
 
 Primesieve mode has two paths. The wrapper (`prime_sieve_primesieve.py`, engine tag `primesieve`,
-"primesieve (Atlas format)" on the charts) logs one row per call: `total_seconds` is the wall time of
+"primesieve Atlas" on the charts) logs one row per call: `total_seconds` is the wall time of
 `primesieve_generate_primes()` plus splitting and writing the windows, `sieve_seconds` and
 `write_seconds` the two phases, `bytes_written` the files' size on disk, `numbers_processed` the
 range, `max_child_rss_mb` the process's peak RSS (the whole prime list is in it), `threads` 1. Its

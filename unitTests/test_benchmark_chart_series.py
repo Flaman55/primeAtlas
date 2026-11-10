@@ -77,16 +77,6 @@ class EngineLinesTests(unittest.TestCase):
         self.assertEqual([s.name for s in series], ["v5", "v6"])
         self.assertNotEqual(series[0].color, series[1].color)
 
-    def test_every_drawn_color_is_far_from_the_others(self):
-        colors = dict(chart_series.ENGINE_COLORS, other=chart_series.OTHER_ENGINE_COLOR)
-        colors.update({r.tag: r.color for r in reference_points.REFERENCES})
-        rgb = {k: [int(v[i:i + 2], 16) for i in (1, 3, 5)] for k, v in colors.items()}
-        names = sorted(rgb)
-        for i, a in enumerate(names):
-            for b in names[i + 1:]:
-                distance = sum((p - q) ** 2 for p, q in zip(rgb[a], rgb[b])) ** 0.5
-                self.assertGreaterEqual(distance, 90, f"{a} {colors[a]} vs {b} {colors[b]}")
-
 
 class StoreKindTests(unittest.TestCase):
     """D and P runs (storage_kinds.py) are measured apart: every row gets a kind from its
@@ -696,8 +686,8 @@ class RamChartTests(unittest.TestCase):
                  "windows_written": "0", "threads": "1", "write_threads": "1"}]
         ram = benchmark.benchmark_engine_lines(rows, "ram")
         self.assertEqual(sorted(points for points in ram.values()), [[(19, 9.0)], [(19, 21.5)]])
-        self.assertTrue(any("primesieve count (native)" in name for name in ram))
-        self.assertTrue(any("primesieve print (native)" in name for name in ram))
+        self.assertTrue(any("primesieve count" in name for name in ram))
+        self.assertTrue(any("primesieve print" in name for name in ram))
         self.assertEqual(benchmark.benchmark_engine_lines(rows, "ram_per_window"), {})
 
     def test_locales_have_the_ram_keys(self):

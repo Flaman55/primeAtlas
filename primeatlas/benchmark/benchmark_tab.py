@@ -49,6 +49,7 @@ from . import chart_points, chart_view
 from .benchmark_chart_windows import BenchmarkChartWindows
 from .benchmark_export import BenchmarkExport
 from .benchmark_filter import BenchmarkFilter
+from .benchmark_line_colors import BenchmarkLineColors
 from .benchmark_points import BenchmarkPoints
 from .benchmark_ram_chart import BenchmarkRamChart
 from .chart_hover import _bind_chart_hover, _nearest_point
@@ -74,7 +75,8 @@ def _draw_legend(canvas, entries, hidden, on_toggle, x, bg_color, dim_color):
     """One entry per series along the top edge: a marker per line (circle: left axis,
     square: right axis) and the name. With on_toggle, a marker click toggles its line and a
     name click all lines of the series: on_toggle([line_key, ...]). A hidden line's marker
-    is a hollow dim outline; a name whose lines are all hidden is dim."""
+    is a hollow dim outline; a name whose lines are all hidden is dim. canvas.legend_series
+    maps each item's tag to its Series for the right-click (_bind_pin_menu)."""
     font = ("Consolas", 8, "bold")
     r, y = 4, 10
     for s, axes in entries:
@@ -82,6 +84,7 @@ def _draw_legend(canvas, entries, hidden, on_toggle, x, bg_color, dim_color):
         for axis, key in zip(axes, keys):
             off = key in hidden
             tag = _legend_tag(axis, s.name)
+            canvas.legend_series[tag] = s
             # The background box widens the click target beyond the 8 px marker.
             canvas.create_rectangle(x, y - 8, x + 14, y + 8, fill=bg_color, outline="",
                                     tags=("legend", tag))
@@ -94,6 +97,7 @@ def _draw_legend(canvas, entries, hidden, on_toggle, x, bg_color, dim_color):
                 canvas.tag_bind(tag, "<Button-1>", lambda _e, k=key: on_toggle([k]))
             x += 14
         tag = _legend_tag("name", s.name)
+        canvas.legend_series[tag] = s
         text_id = canvas.create_text(x + 3, y, text=s.name, anchor="w", font=font,
                                      fill=dim_color if all(k in hidden for k in keys)
                                      else s.color, tags=("legend", tag))
@@ -112,7 +116,7 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
                         bg_color="#ffffff", fg_color="#000000", grid_color="#666666",
                         series1=None, series2=None, log_y=False, hidden=None,
                         on_toggle=None, pins1=None, pins2=None, on_pin_menu=None,
-                        x_view=None, y_view=None, x_mode=chart_points.X_FLOOR, marks=None):
+                        on_color_menu=None, x_view=None, y_view=None, x_mode=chart_points.X_FLOOR, marks=None):
     """Draws a floor-depth chart onto `canvas`: x = floor (or the run's width, x_mode), y = one
     or two axes of chart_series.Series (one line per engine, plus dashed reference lines). Plain
     tk.Canvas drawing, no charting library: the app is zero-extra-installs. Clears the
@@ -134,6 +138,7 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
     the axis edge exactly, lines are cut there and the points beyond it are not drawn; the
     axis title says "pinned". on_pin_menu(target, x_root, y_root): right-click callback,
     target = (axis, value, value text) of the point under the pointer or None.
+    on_color_menu(series, x_root, y_root): right-click on an engine's legend entry instead.
 
     label_key1/label_key2/fmt1/fmt2: same meaning as chart_pdf.chart_ops()'s parameters, so
     the PDF and this chart stay consistent. translator: a primeatlas.core.i18n.Translator,
@@ -152,6 +157,7 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
     canvas.configure(background=bg_color)
     canvas.delete("all")
     canvas.chart_geometry = None
+    canvas.legend_series = {}
     if width <= 1 or height <= 1:
         return  # not yet realized/sized
     series1 = [s for s in (series1 if series1 is not None else plain_series(points or []))
@@ -162,7 +168,7 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
         canvas.create_text(width / 2, height / 2, text=t("bench.no_data_chart"),
                             fill="#888888")
         _bind_chart_hover(canvas, [], t, fg_color, bg_color, width, height)
-        _bind_pin_menu(canvas, [], on_pin_menu)
+        _bind_pin_menu(canvas, [], on_pin_menu, on_color_menu)
         return
     hidden = hidden or set()
     # A fixed legend origin keeps every toggle under the pointer while the axes refit.
@@ -174,7 +180,7 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
         canvas.create_text(width / 2, height / 2, text=t("bench.all_lines_hidden"),
                             fill="#888888")
         _bind_chart_hover(canvas, [], t, fg_color, bg_color, width, height)
-        _bind_pin_menu(canvas, [], on_pin_menu)
+        _bind_pin_menu(canvas, [], on_pin_menu, on_color_menu)
         return
 
     has_secondary = bool(series2)
@@ -318,17 +324,31 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
         draw(series2, scale2, fmt2, label_key2, secondary=True)
 
     _bind_chart_hover(canvas, hover_points, t, fg_color, bg_color, width, height, x_mode)
-    _bind_pin_menu(canvas, hover_points, on_pin_menu)
+    _bind_pin_menu(canvas, hover_points, on_pin_menu, on_color_menu)
 
 
-def _bind_pin_menu(canvas, hover_points, on_pin_menu):
-    """Right-click on the canvas: on_pin_menu((axis, value, value text) of the point under
-    the pointer, or None off every point, x_root, y_root). Rebound on every redraw, like
+def _legend_series_at(canvas, x, y):
+    """The Series of the legend item at (x, y), None off the legend."""
+    for item in reversed(canvas.find_overlapping(x, y, x, y)):
+        for tag in canvas.gettags(item):
+            if tag in getattr(canvas, "legend_series", {}):
+                return canvas.legend_series[tag]
+    return None
+
+
+def _bind_pin_menu(canvas, hover_points, on_pin_menu, on_color_menu=None):
+    """Right-click on the canvas: on_color_menu(series, x_root, y_root) on an engine's
+    legend entry, else on_pin_menu((axis, value, value text) of the point under the pointer,
+    or None off every point, x_root, y_root). Rebound on every redraw, like
     _bind_chart_hover."""
     if on_pin_menu is None:
         return
 
     def _on_right_click(event):
+        series = _legend_series_at(canvas, event.x, event.y)
+        if on_color_menu is not None and series is not None and not series.dashed:
+            on_color_menu(series, event.x_root, event.y_root)
+            return
         point = _nearest_point(hover_points, event.x, event.y)
         target = (point[7], point[3], point[4].format(point[3])) if point else None
         on_pin_menu(target, event.x_root, event.y_root)
@@ -336,8 +356,8 @@ def _bind_pin_menu(canvas, hover_points, on_pin_menu):
     canvas.bind("<Button-3>", _on_right_click)
 
 
-class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkPoints, BenchmarkRamChart,
-                   BenchmarkChartZoom, BenchmarkChartWindows, BaseTab):
+class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, BenchmarkPoints,
+                   BenchmarkRamChart, BenchmarkChartZoom, BenchmarkChartWindows, BaseTab):
     def __init__(self, parent, get_portal_folder, status_var, translator, update_nav_controls,
                  theme_palette):
         """
@@ -545,6 +565,7 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkPoints, BenchmarkR
                                pins1=axis_pins(self._y_pins[chart], "primary"),
                                pins2=axis_pins(self._y_pins[chart], "secondary"),
                                on_pin_menu=lambda *a: self._on_pin_menu(chart, *a),
+                               on_color_menu=self._on_color_menu,
                                bg_color=p["console_bg"], fg_color=p["console_fg"],
                                grid_color=p["border"], x_view=self._x_view,
                                y_view=self._y_views[chart], x_mode=self._x_mode, **kwargs)

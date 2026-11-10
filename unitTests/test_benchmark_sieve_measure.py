@@ -45,7 +45,7 @@ ROWS = [
     _row("primesieve_count", "12.15", 3.125, "", windows=0, ts="c", write=""),
 ]
 V6, V5, COUNT = "v6.0, 15 thr, write 8", "v5.1, 15 thr, write 1", \
-    "primesieve count (native) 12.15, 15 thr"
+    "primesieve count 12.15, 15 thr"
 
 
 class PureTests(unittest.TestCase):
