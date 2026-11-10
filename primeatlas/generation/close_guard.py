@@ -11,7 +11,8 @@ stopped job's console to .generation_logs/closed_<job>_<UTC>.log and closes the 
 "Close now" hard stops what is left; the next start repairs it (run_guard.py).
 
 The Generation tab is used through this interface only: _loop_runner / _const_runner /
-_ktuple_runner, loop_console / const_console / ktuple_console (get_text()),
+_ktuple_runner / _verify_runner, loop_console / const_console / ktuple_console /
+verify_console (get_text()),
 loop_run_info (dict with "engine"), stop_job_for_close(key), job_settled(key),
 _get_portal_folder().
 """
@@ -28,6 +29,7 @@ _JOBS = (
     ("generation", "_loop_runner", "loop_console"),
     ("constellation", "_const_runner", "const_console"),
     ("ktuple", "_ktuple_runner", "ktuple_console"),
+    ("verify", "_verify_runner", "verify_console"),
 )
 _STAGE_KEYS = ("idle", "sieving", "counting", "checking", "verifying", "starting_batch",
                "searching", "line")

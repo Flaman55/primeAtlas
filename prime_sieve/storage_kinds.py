@@ -164,6 +164,18 @@ def list_window_files(portal_folder, base_exponent, kind=KIND_D):
         predicate=lambda name: is_window_name(name, kind))
 
 
+def p_windows_on_grid(portal_folder, base_exponent, window_m):
+    """[(offset, path), ...] of the floor's P windows on the window_m grid, offset ascending:
+    the windows the verification P -> D takes, and how many of them."""
+    found = []
+    for name, path in list_window_files(portal_folder, base_exponent, KIND_P):
+        offset = offset_from_name(name)
+        if offset is not None and offset % window_m == 0:
+            found.append((offset, path))
+    found.sort()
+    return found
+
+
 def store_dir_for_name(portal_folder, base_exponent, name):
     """The store folder (not the shard) a window file named `name` belongs to."""
     return source_dir(portal_folder, base_exponent, kind_of_name(name))

@@ -4,7 +4,7 @@ One readonly Combobox picks the sieve engine (engine_options.ENGINES), with the 
 version next to it (engine_options.ENGINE_VERSIONS) and an InfoTip. Below it, the knobs of
 the selected engine only (engine_options.engine_knob_keys()), two per row in the form's
 label/entry column pairs, each entry followed by an InfoTip saying how the knob affects the
-run; switching the engine hides the old engine's fields (they keep their values and are
+run (a checkbox for engine_options.CHECKBOX_KNOBS); switching the engine hides the old engine's fields (they keep their values and are
 disabled) and shows the new ones. For v5 and v6 a second Combobox picks the knob profile
 (engine_presets.py), one per engine: picking old, new or mid fills that engine's profile
 fields (auto shows the set for the run width last given to set_windows(), new while none
@@ -72,7 +72,10 @@ class EngineFields:
             cell = ttk.Frame(form)
             default = engine_options.DEFAULT_KNOBS[key]
             var = tk.StringVar(value=str(loop_settings.get(key, default)))
-            entry = ttk.Entry(cell, textvariable=var, width=10)
+            if key in engine_options.CHECKBOX_KNOBS:
+                entry = ttk.Checkbutton(cell, variable=var, onvalue="1", offvalue="0")
+            else:
+                entry = ttk.Entry(cell, textvariable=var, width=10)
             entry.pack(side="left")
             info = InfoTip(cell, lambda key=key: T(f"gen.info_{key}"))
             info.label.pack(side="left", padx=(4, 0))

@@ -42,8 +42,10 @@ NO_WINDOW_ENGINES = NATIVE_COUNT_ENGINES
 # Engines whose sieve_seconds is one whole process timed from outside, startup included.
 WHOLE_PROCESS_SIEVE = NATIVE_COUNT_ENGINES
 
-# Metrics a row's engine is drawn on; engines not listed are on every chart.
+# Metrics a row's engine is drawn on; engines not listed are on every chart. A store
+# verification (pt1_verify_store.py) sieves nothing: its rows stay in the table only.
 CHART_METRICS = {
+    "pt1_verify": frozenset(),
     **{engine: frozenset({"sieve", "sieve_spw", "sieve_wall", "sieve_wall_spw", "ram"})
        for engine in NATIVE_COUNT_ENGINES},
     **{engine: frozenset({"growth", "ram"}) for engine in NATIVE_PRINT_ENGINES},

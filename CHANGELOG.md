@@ -684,6 +684,35 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   staje się „Blok biegu skokowego v7 (% modelu)” (domyślnie 100); v7.1 zostaje w repozytorium
   do porównań.
 
+### +46 — Engine pt1.1: P windows proven to D, right after sieving or later
+
+- English: pt1 now runs code pt1.1 and can turn its P windows (BPSW, from 3.3e24) into proven
+  D windows. The new pt1 checkbox "Verify P -> D after sieving" proves each P window right
+  after its sieve: the window is sieved again and every survivor is decided by the
+  pseudosquares test, a proof below about 1.8e34. A window whose proven primes equal the BPSW
+  ones is stored as D/P; a different one stays P and is listed in DP_MISMATCH.txt. Unticked,
+  pt1 writes P at full speed and the new Generation section "Verify P -> D" proves a floor's
+  P windows later: floor and window width (a power of ten) step with the mouse wheel, the
+  window count is read from the store (all by default, fewer proves only the first ones), and
+  threads are Auto (the pipeline's workers), Max or a number. The run log shows the sieve alone, the proof and how much the speed drops
+  (floor 29, 1e8 numbers, 24 threads: sieve 0.9 s, proof 8 s); the Benchmark charts draw such
+  a run twice, "pt1.1 P" (sieve) and "pt1.1 D proof" (sieve + proof), and the store
+  verification's own rows stay in the table only.
+- Polski: pt1 działa teraz na kodzie pt1.1 i potrafi zamienić swoje okna P (BPSW, od
+  3,3e24) w udowodnione okna D. Nowe pole pt1 „Weryfikuj P -> D po sitowaniu” dowodzi
+  każdego okna P zaraz po jego sitowaniu: okno jest przesiewane ponownie, a każda ocalała
+  liczba rozstrzygana testem pseudokwadratów, który jest dowodem poniżej około 1,8e34. Okno,
+  którego udowodnione liczby pierwsze są równe tym z BPSW, trafia do magazynu jako D/P; inne
+  zostaje P i jest wpisane do DP_MISMATCH.txt. Bez zaznaczenia pt1 zapisuje P z pełną
+  prędkością, a nowa sekcja Generowania „Weryfikacja P -> D” dowodzi okien P piętra później:
+  piętro i szerokość okna (potęga dziesięciu) zmienia się kółkiem myszy, liczba okien jest
+  odczytywana z magazynu (domyślnie wszystkie, mniej dowodzi tylko pierwszych), a wątki to
+  Auto (workers potoku), Max albo liczba.
+  Log pokazuje samo sitowanie, dowód i o ile spada prędkość (piętro 29, 1e8 liczb, 24 wątki:
+  sito 0,9 s, dowód 8 s); wykresy Benchmarku rysują takie uruchomienie dwa razy, „pt1.1 P”
+  (sito) i „pt1.1 D proof” (sito + dowód), a wiersze weryfikacji magazynu zostają tylko
+  w tabeli.
+
 ## 1.2.0 — 2026-11-01
 
 ### English

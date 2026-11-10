@@ -14,13 +14,15 @@ run sieved (numbers_processed) and a line is that build on one floor ("v7.1, 24 
 so the same engine's speed over width compares floor by floor; a run without a known width
 has no x and is left out (unplaced() counts those). x_label() names an x value: the floor,
 or the width ("2x10^11"). Lines of the same engine on different floors share the engine's
-hue in shades (shade()): dashes stay reserved for the reference series.
+hue in shades (shade()): dashes stay reserved for the reference series. A pt1 run with a
+verification is drawn as two runs, the sieve alone and the sieve with the proof
+(proof_rows.py); both count as the logged run for SELECTED.
 No tkinter here.
 """
 import math
 from collections import namedtuple
 
-from . import line_names
+from . import line_names, proof_rows
 
 X_FLOOR, X_WIDTH = "floor", "width"
 X_MODES = (X_FLOOR, X_WIDTH)
@@ -88,7 +90,7 @@ def pick(candidates, choice, selected=None):
     """The (row, value) of a group: candidates are its (row, value) pairs in log order."""
     if choice == SELECTED:
         for row, value in candidates:
-            if row is selected:
+            if proof_rows.source(row) is selected:
                 return row, value
         return candidates[-1]
     if choice == MIN:
@@ -105,7 +107,7 @@ def chart_points(rows, row_value, view=DEFAULT):
     row_value(row) is not None, every run of the group for ALL (module docstring)."""
     check(view)
     groups = {}
-    for row in rows:
+    for row in proof_rows.chart_rows(rows):
         if floor_of(row) is None:
             continue
         value = row_value(row)
@@ -128,7 +130,8 @@ def chart_points(rows, row_value, view=DEFAULT):
 
 def unplaced(rows, row_value, view=DEFAULT):
     """How many runs with a value have no x on this axis (a width-less run in X_WIDTH)."""
-    return sum(1 for row in rows if floor_of(row) is not None and row_value(row) is not None
+    return sum(1 for row in proof_rows.chart_rows(rows)
+               if floor_of(row) is not None and row_value(row) is not None
                and row_x(row, view.x_mode) is None)
 
 

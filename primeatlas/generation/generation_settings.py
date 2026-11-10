@@ -48,6 +48,11 @@ DEFAULT_GENERATION_SETTINGS = {
         "base_exponent": "",  # blank = auto (every floor with source data -- see
                                # constellation_windows_v2_3.list_floors_with_data())
     },
+    "verify": {
+        "base_exponent": "",
+        "width_exp": "7",     # windows of 10^7 numbers
+        "threads": "Auto",    # the pipeline form's workers (verify_plan.resolve_threads)
+    },
     "ktuple": {
         "base_exponent": "",
         "k": "",

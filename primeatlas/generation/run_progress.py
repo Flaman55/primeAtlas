@@ -107,7 +107,7 @@ class GenerationRunProgress:
         self.totals_progress.configure(**configure_kwargs)
 
     def _other_engine_is_running(self, engine):
-        """True if some engine OTHER than `engine` ('loop'/'const'/'ktuple') is
+        """True if some engine OTHER than `engine` ('loop'/'const'/'ktuple'/'verify') is
         currently mid-run. self._loop_runner (every Quick-gen/loop/hybrid/
         orchestrator-direct launch path), self._const_runner (Constellations
         search) and self._ktuple_runner (targeted k-tuple sieve) all funnel their
@@ -125,11 +125,13 @@ class GenerationRunProgress:
             return True
         if engine != "ktuple" and self._ktuple_runner is not None and self._ktuple_runner.is_running():
             return True
+        if engine != "verify" and self._verify_runner is not None and self._verify_runner.is_running():
+            return True
         return False
 
     def _lock_other_run_buttons(self, active_engine):
         """Disables the OTHER two engines' own Run buttons while `active_engine`
-        ('loop'/'const'/'ktuple') is running -- see _other_engine_is_running()'s
+        ('loop'/'const'/'ktuple'/'verify') is running -- see _other_engine_is_running()'s
         own docstring for why running two of these three at once is unsafe. Some
         non-button call paths (e.g. a search box's "generate missing window"
         auto-offer) invoke a launch method directly rather than through its own
@@ -162,6 +164,8 @@ class GenerationRunProgress:
         if active_engine != "ktuple":
             self.ktuple_run_btn.configure(state="disabled")
             self.ktuple_auto_btn.configure(state="disabled")
+        if active_engine != "verify":
+            self.verify_run_btn.configure(state="disabled")
 
     def _unlock_other_run_buttons(self):
         """Re-enables every engine's own Run button (see _lock_other_run_buttons()'s
@@ -177,6 +181,7 @@ class GenerationRunProgress:
         self.const_run_btn.configure(state="normal")
         self.ktuple_run_btn.configure(state="normal")
         self.ktuple_auto_btn.configure(state="normal")
+        self.verify_run_btn.configure(state="normal")
 
     def _reset_gen_progress_bar_for_new_run(self):
         """Called at the start of every Generation run-launch path that drives the

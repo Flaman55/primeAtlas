@@ -10,7 +10,7 @@ standard-library helpers.
 | Part | Files |
 |---|---|
 | Format | `prime_sieve_v1.py` (PGS2 read/write, varints), `pgs2_vector.py`, `window_integrity.py` |
-| Engines | `prime_sieve_v6_1.py` + `engine_v6_lib.py` + `work_plan_v6.py` + `wheel30_layout.py` + `wheel30_writer.py` (default, code v6.1; `prime_sieve_v6.py`, v6.0, kept for comparison), `prime_sieve_v7_2.py` + `work_plan_v7_2.py` + `engine_v7_2_lib.py` (`prime_sieve_engine_v7_2.c` + `engine_jump_gear.h`, code v7.2; `prime_sieve_v7_1.py` + `work_plan_v7_1.py`, v7.1, and `prime_sieve_v7_0.py` + `work_plan_v7.py` + `engine_v7_lib.py` on `prime_sieve_engine_v7_0.c`, v7.0, kept for comparison), `prime_sieve_v5_2.py` + `engine_v5_lib.py` + `work_plan_v5.py` (code v5.2), `parallel_window_writer.py` (write phase of v5.2, v6 and v7), `prime_sieve_pt1.py` + `pt1_plan.py`, `prime_sieve_primesieve.py`, `prime_sieve_cudasieve.py`, `hybrid_*.py`; frozen `prime_sieve_v3.py`, `prime_sieve_v4.py`, `prime_sieve_v4_1.py`, `prime_sieve_v5.py` (v5.1, still the home of helpers v6 and pt1 import) |
+| Engines | `prime_sieve_v6_1.py` + `engine_v6_lib.py` + `work_plan_v6.py` + `wheel30_layout.py` + `wheel30_writer.py` (default, code v6.1; `prime_sieve_v6.py`, v6.0, kept for comparison), `prime_sieve_v7_2.py` + `work_plan_v7_2.py` + `engine_v7_2_lib.py` (`prime_sieve_engine_v7_2.c` + `engine_jump_gear.h`, code v7.2; `prime_sieve_v7_1.py` + `work_plan_v7_1.py`, v7.1, and `prime_sieve_v7_0.py` + `work_plan_v7.py` + `engine_v7_lib.py` on `prime_sieve_engine_v7_0.c`, v7.0, kept for comparison), `prime_sieve_v5_2.py` + `engine_v5_lib.py` + `work_plan_v5.py` (code v5.2), `parallel_window_writer.py` (write phase of v5.2, v6 and v7), `prime_sieve_pt1.py` + `pt1_plan.py` + `pt1_lib.py` (`prime_sieve_engine_pt1.c` + `engine_pt_core.h` + `engine_pt_pss.h`, code pt1.1), `pt1_verify.py` + `pt1_verify_store.py` (the verification P -> D), `prime_sieve_primesieve.py`, `prime_sieve_cudasieve.py`, `hybrid_*.py`; frozen `prime_sieve_v3.py`, `prime_sieve_v4.py`, `prime_sieve_v4_1.py`, `prime_sieve_v5.py` (v5.1, still the home of helpers v6 and pt1 import) |
 | Orchestrators | `orchestrator_loop_v2.py`, `orchestrator_v3.py`, `orchestrator_loop_helpers.py`, `overlap_pipeline.py` |
 | Shared storage helpers | `window_sharding.py`, `storage_kinds.py` (D/P stores), `dp_verify.py`, `benchmark_log_schema.py`, `floor_meta_store.py`, `hit_paging.py`, `generation_stop.py`, `sieving_prime_count_v5.py` |
 | Queries | `primesieve_query.py`, `primecount_query.py`, `prime_count_primecount.py` |
@@ -94,6 +94,37 @@ written once and the proven P files removed; an interrupted batch leaves at wors
 is compared again. 2,000 pairs of 160 KB on a /mnt drive with 30,000 listed D/P windows: 140 s
 when the list was rewritten per window, 21 s on one thread, 8 s on 24. The time goes to the
 benchmark row as `verify_seconds`, inside `total_seconds`.
+
+## How pt1 proves its P windows
+
+pt1 tests the survivors of its partial sieve with 13 Miller-Rabin bases below `MR_DET_BOUND`
+(3.3e24, a proof: D windows) and with BPSW above it (P windows). The verification turns a P
+window into D: the window is sieved again by the primes 3..s and every survivor is decided by
+the pseudosquares test (`engine_pt_pss.h`, Lukes-Patterson-Williams with Sorenson's sieve
+bound; table L_p up to p = 373). The test needs no prime factor of n up to s and n / s < L_373
+(about 4.2e24), so s = max(B, top / L_373) and s < 2^32: numbers below about 1.8e34. The proven
+list is compared with the BPSW list window by window:
+
+| Outcome | Store | Lists |
+|---|---|---|
+| equal | the window goes to the D store | its tag in `DP_PROVEN.txt` (D/P: also counts as present in P) |
+| different | stays in the P store | `DP_MISMATCH.txt` with the first differing number; never resolved automatically |
+
+Two ways to run it:
+
+- `PRIMEATLAS_PT1_VERIFY=1` (the pt1 checkbox "Verify P -> D after sieving"): each P slab is
+  proven right after its sieve, in memory, so count-only runs verify too. The proof's time is
+  measured on its own: `proof_seconds` in the handoff and in the benchmark row, not part of
+  `sieve_seconds`; the scanner prints the sieve speed alone, with the proof, and the drop.
+  Floor 29, 1e8 numbers, 24 threads: sieve 0.9 s, proof 8 s.
+- `pt1_verify_store.py` (Generation Section D): the floor's P windows already in the store,
+  grouped into slabs of adjacent windows. Each slab's outcomes are recorded before the next
+  slab starts (the tag first, then the file move: a tag without a D file counts for nothing),
+  so a stop between slabs or a kill keeps every finished slab. A window with a D file already
+  is left to "Verify P against D"; a window whose primes reach past the window width is
+  skipped. A slab smaller than four chunks per thread gets smaller chunks
+  (`pt1_verify.MIN_CHUNK_ODD`), since the proof costs far more per number than the sieve. One
+  `pt1_verify` row per run, its proof time in `verify_seconds`.
 
 The row's prime count comes from the scanner's closing line (`TOTAL PRIMES FOUND this run: N
 across W windows`): `run_batch()` copies the scanner's stdout through and reads that line from
@@ -299,7 +330,7 @@ hit pages ([data.md](../data.md)).
 `test_work_plan_v7`, `test_engine_v7_1_identity`, `test_work_plan_v7_1`,
 `test_engine_v7_2_identity`, `test_work_plan_v7_2`, `test_engine_v5_2_identity`,
 `test_parallel_window_writer`, `test_wheel30_layout`, `test_wheel30_writer`, `test_work_plan_v6`,
-`test_engine_pt1`, `test_work_plan_v5`, `test_overlap_pipeline`, `test_orchestrator_stop`,
+`test_engine_pt1`, `test_engine_pt1_verify`, `test_work_plan_v5`, `test_overlap_pipeline`, `test_orchestrator_stop`,
 `test_hybrid_*`, `test_cudasieve_integration`, `test_hit_paging`, `test_floor_meta_store`,
 `test_benchmark_log_schema`, `test_print_benchmark_summary`, `test_primesieve_benchmark_row`,
 `test_primesieve_native`, `test_pseudosquares_native`, `test_pseudosquares_install`,
@@ -324,3 +355,6 @@ hit pages ([data.md](../data.md)).
 - D proves P runs inside the generation run; a detached verifier draining a per-floor queue
   (one per floor, since both lists are read-modify-write) is not built.
 - The Benchmark tab's total speed includes `verify_seconds`; it has no view without it.
+- The time model calibrates pt1 without `proof_seconds`; it has no estimate of the proof.
+- Above top / L_373 > B (floors 32-34) the verification sieves to s up to 2^32: up to 2e8
+  sieving primes, about 0.8 GB, and a long setup per slab.
