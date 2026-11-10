@@ -734,6 +734,29 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   print” i „primesieve Atlas”, bez commita kompilacji (nadal w tabeli), więc wpis legendy
   zajmuje jedno miejsce, np. „PSS count 1.2, 24 thr”.
 
+### +48 — Pseudosquares up to floor 33, Delete benchmarks, pi(L) notice
+
+- English: Quick-gen's Pseudosquares mode reaches the program's own stop, 1.73·10^33
+  (its code's bound; its help rounds it to 10^33), so floor 33 runs up to there; a From
+  past it is refused. Settings → Backup has "Delete benchmarks": it clears every row of
+  benchmark_log.csv (its header stays) and leaves the floors, primes and constellations
+  alone; the Benchmark tab reloads. Counting pi(L) (both pi checkboxes, still off by
+  default) now shows a notice before a run that counts it from zero on its floor (the
+  floor's first count, or a run below the floor's cached L), with the estimated extra time
+  and [Enable] / [Leave disabled]: only that run's total time holds the count, later runs on
+  the floor reuse it. With the count off, or on a floor that has its count, nothing changes.
+- Polski: Tryb Pseudosquares w Quick-gen sięga własnej granicy programu, 1,73·10^33
+  (granica z jego kodu; pomoc zaokrągla ją do 10^33), więc piętro 33 działa do tego
+  miejsca; Od powyżej niej jest odrzucane. Ustawienia → Backup ma „Usuń
+  benchmarki”: usuwa wszystkie wiersze benchmark_log.csv (nagłówek zostaje), a piętra,
+  liczby pierwsze i konstelacje zostawia; zakładka Benchmark odświeża się. Liczenie
+  π(L) (oba pola π, nadal domyślnie wyłączone) pokazuje teraz komunikat przed
+  przebiegiem, który liczy je na swoim piętrze od zera (pierwsze liczenie na piętrze albo
+  przebieg poniżej zapamiętanego L piętra), z szacowanym dodatkowym czasem i przyciskami
+  [Włącz] / [Zostaw wyłączone]: tylko czas całkowity tego przebiegu zawiera liczenie,
+  kolejne przebiegi na piętrze korzystają z wyniku. Przy wyłączonym liczeniu albo na
+  piętrze, które ma już π, nic się nie zmienia.
+
 ## 1.2.0 — 2026-11-01
 
 ### English

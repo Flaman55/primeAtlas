@@ -17,9 +17,9 @@ pt1 sieves with), Max = WSL's CPU count (probed at Run), or a number.
 | Part | Files |
 |---|---|
 | Tab | `primeatlas/generation/generation_tab.py` (`GenerationTab`, WSL runner factory) |
-| Sections (mixins) | `quick_gen_panel.py`, `quick_gen_runs.py`, `loop_section.py`, `constellation_section.py`, `ktuple_section.py`, `verify_section.py`, `run_progress.py`, `run_guard_controls.py`, `hybrid_controls.py`, `engine_fields.py`, `time_simulation_controls.py` |
+| Sections (mixins) | `quick_gen_panel.py`, `quick_gen_runs.py`, `loop_section.py`, `constellation_section.py`, `ktuple_section.py`, `verify_section.py`, `run_progress.py`, `run_guard_controls.py`, `hybrid_controls.py`, `engine_fields.py`, `time_simulation_controls.py`, `pi_count_notice_controls.py` |
 | Launching | `engine_argv.py` (argv of every script), `wsl_command.py` (wsl.exe command, logs), `logged_runners.py` (`WslLoggedRunner`, `LocalLoggedRunner`), `wsl_blocking.py`, `wsl_resources.py` |
-| Planning | `window_planning.py`, `quick_gen_plan.py`, `run_budget.py`, `engine_options.py`, `engine_presets.py`, `quick_number.py`, `verify_plan.py` |
+| Planning | `window_planning.py`, `quick_gen_plan.py`, `run_budget.py`, `engine_options.py`, `engine_presets.py`, `quick_number.py`, `verify_plan.py`, `pi_count_notice.py` (whether a run counts pi(L) from zero) |
 | Time simulation | `time_model.py` (run time model calibrated from benchmark_log.csv), `run_ram.py` (predicted RAM of a run, widest run in the RAM budget), `time_simulation_window.py` (`TimeSimulationWindow`) |
 | Following and settling | `run_output.py` (log parsing), `run_guard.py` (stop request, active-run marker, recovery), `close_guard.py` |
 | Settings | `generation_settings.py` (form defaults and persistence), `generation_console.py` (`GenerationConsole`) |
@@ -69,7 +69,8 @@ Pseudosquares mode (`quick_gen_pseudosquares.py`) is always native: Floor / From
 count or print, and Threads (Auto or a number, usable for count only; print runs on one
 thread). `pseudosquares_plan.py` turns the fields into one run without reading the storage:
 From (blank = the Floor's start) picks its floor and the window holding it, the range is cut
-at the floor's end and at 10^33, and a bad Threads value, a From past 10^33 or no From and no
+at the floor's end and at the program's stop (`MAX_STOP` = int(1.73 * 1e33), in floor 33), and a
+bad Threads value, a From past that stop or no From and no
 Floor stop before launch. It launches `pseudosquares_native.py` on the shared runner and
 console. One function, `_sync_benchmark_lock`, handles both native modes: the checkbox is disabled and
 bound to a fixed Variable that shows it checked, so the shared `write_files` setting of the
@@ -92,6 +93,19 @@ written: the frozen scanners write it.
 Every Quick-gen Floor field (Floor only, Explore, Hybrid, primesieve, CUDASieve) is a spinbox: its
 arrows and the mouse wheel step the floor through 0 to `QUICK_FLOOR_MAX` (35; primesieve and
 CUDASieve stop at `UINT64_FLOOR_MAX`, 19), and a typed value or expression is not capped.
+
+## pi(L) notice
+
+Counting pi(L) (the two pi checkboxes of the pipeline form, off by default and remembered) adds
+`base_gen_seconds` to a run's total. The engines keep the largest L counted per floor in
+`10p{N}/sieving_primes_count_cache.json`, so only a floor's first count is long: a floor without
+that file, or a run whose first batch lies below its L (`l_final` = isqrt(top) + 1; the file holds
+no prefix for a smaller L), counts from zero. Before such a run `_on_run_loop` /
+`_on_run_orchestrator_direct` show the notice (`pi_count_notice_controls.py`, decided by
+`pi_count_notice.counts_from_zero`) with the time of that count: li-based primes from 0 (or from the
+largest known pi(10^n) with the seed) at `SECONDS_PER_PRIME`, and [Enable] / [Leave disabled].
+[Leave disabled] and closing the window untick both boxes. With counting off, or on a floor that
+has its cache, nothing shows.
 
 ## Remembered fields
 
@@ -171,7 +185,8 @@ is copied in once), `.generation_logs/` (logs, exit codes, `ACTIVE_RUN.json`),
 `test_engine_presets`, `test_engine_gui_wiring`, `test_run_budget`, `test_run_guard`, `test_close_guard`, `test_close_guard_wiring`,
 `test_cross_engine_run_lock`, `test_verify_plan`, `test_gen_progress_bar_engine_gating`, `test_progress_bar_owner`,
 `test_console_controls`, `test_constellation_auto_retry`, `test_storage_fill`, `test_pi_seed_checkbox_exclusivity`,
-`test_time_model`, `test_run_ram`, `test_time_simulation`, `test_ui_state_app`.
+`test_time_model`, `test_run_ram`, `test_time_simulation`, `test_ui_state_app`, `test_pi_count_notice`,
+`test_pi_count_notice_controls`.
 
 ## Known gaps
 
@@ -184,6 +199,7 @@ is copied in once), `.generation_logs/` (logs, exit codes, `ACTIVE_RUN.json`),
 - The time model is linear in the span per floor: a run much shorter than the floor's measured ones
   (process start-up dominates) or one whose buffer outgrows the caches deviates; the worst error
   is shown in the window. Several parallel instances (`n_instances`) are not modelled.
+- A restore job's regeneration counts pi(L) with the remembered setting without the notice.
 - Rows logged before the `engine_version` column carry no version: v5 rows from before v5.1
   still calibrate v5 until two v5.1 rows exist. Recent rows are not weighted above older rows
   of the same version.

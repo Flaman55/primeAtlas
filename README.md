@@ -99,7 +99,9 @@ comparisons with primesieve and PARI/GP are in `BENCHMARK.md`.
     while still holding a real gap.
   - **Low-level form** -- exposes every CLI parameter of the orchestrator and
     constellation finder directly (workers, batch size, window count, window width,
-    sieving-prime count diagnostic) for full manual control; the Benchmark checkbox
+    sieving-prime count diagnostic, off by default: before a run that counts it from
+    zero on its floor -- the floor's first count, or a run below its cached L -- a
+    notice gives the estimated time and offers to leave it off) for full manual control; the Benchmark checkbox
     next to Generate (measure without writing into the storage) applies to it too. The
     "workers" field has its own Auto button, the CPU-count counterpart to Quick
     generation's RAM-based Auto button above: it probes the CPU count INSIDE WSL
@@ -284,7 +286,8 @@ comparisons with primesieve and PARI/GP are in `BENCHMARK.md`.
     (clears one chosen floor's primes and constellations together, or only that
     floor's constellations while leaving its primes untouched -- for a clean
     constellation-finder re-run without regenerating prime data), and the existing
-    whole-database delete. Two further sections cover moving real data (not just a
+    whole-database delete. "Delete benchmarks" clears every row of
+    benchmark_log.csv alone (floors stay), for a fresh benchmark history. Two further sections cover moving real data (not just a
     manifest) between locations -- see "Full-data backup" and "Integrating an
     external storage" below.
   - **Aktualizacje** -- an optional-library installer (currently `sympy`, used by the
@@ -522,7 +525,7 @@ returned primes as a (partial) defense against a badly parsed or truncated stdou
 Quick generation's **Pseudosquares** mode runs the Pseudosquares Prime Sieve program itself
 -- J. P. Sorenson's Pseudosquares Prime Sieve as implemented by Kim Walisch
 (https://github.com/kimwalisch/Pseudosquares-Prime-Sieve, BSD 2-Clause License), which
-outputs only proven primes and reaches 10^33, past primesieve's 2^64
+outputs only proven primes and reaches 1.73·10^33 (into floor 33), past primesieve's 2^64
 (`prime_sieve/pseudosquares_native.py`). Like primesieve's Native mode it is timed from the
 program's start to its exit, writes nothing into the storage, and logs one benchmark row:
 - **count** -- finds the primes of the range and counts them, writing nothing: the work of
@@ -534,7 +537,8 @@ program's start to its exit, writes nothing into the storage, and logs one bench
   thread: a whole run, on the whole-run chart as "PSS print".
 
 Its fields are Floor + From + Width like primesieve mode; From blank starts at the Floor's
-start. A run stays inside its floor and ends at 10^33 at most (floor 32 is the last one).
+start. A run stays inside its floor and ends at 1.73·10^33 at most, the program's own stop
+(floor 33 is the last one, up to there).
 The Benchmark checkbox is checked and locked: a native run (here and in primesieve's Native
 mode, count and print alike) measures the program in its own format, so its row is a
 benchmark run.
@@ -1541,13 +1545,20 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               launcher per engine (loop, primesieve, Hybrid,
                               cudasieve, orchestrator-direct window range), gap
                               filling, multi-step start_storage_fill
+  pi_count_notice.py            whether a run counts pi(L) from zero (no
+                              sieving-prime cache on its floor, or a run below it)
+                              and the time of that count -- pure, no tkinter
+  pi_count_notice_controls.py   PiCountNoticeControls mixin: the pi(L) notice
+                              ([Enable] / [Leave disabled]) before such a run
+                              (unitTests/test_pi_count_notice*.py)
   quick_gen_pseudosquares.py    QuickGenPseudosquares mixin: Quick-gen's Pseudosquares
                               mode (Floor/From/Width, count/print, Threads Auto or a
                               number), launches pseudosquares_native.py on the shared
                               runner; Benchmark shown checked and locked (unitTests/
                               test_pseudosquares_controls.py)
   pseudosquares_plan.py         a Pseudosquares run's range from its fields: From's
-                              floor and window, kept in the floor and under 10^33;
+                              floor and window, kept in the floor and under the
+                              program's stop (~1.73·10^33);
                               never reads the storage -- pure, no tkinter
                               (unitTests/test_pseudosquares_plan.py)
   quick_gen_plan.py             QuickGenPlan mixin: Quick-gen fields -> one launch
@@ -2133,7 +2144,8 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               brightness/font size, storage path
   restore_section.py            RestoreSection mixin: metadata backup list, diff
                               against disk, the pausable/resumable restore job
-  delete_section.py             DeleteSection mixin: full-database and per-floor deletes
+  delete_section.py             DeleteSection mixin: full-database, benchmark-log and
+                              per-floor deletes
   full_backup_section.py        FullBackupSection mixin: full-data (compressed) backup
                               and restore
   storage_integrate_section.py  StorageIntegrateSection mixin: integrate an external
@@ -2377,13 +2389,14 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
   pseudosquares_native.py    Pseudosquares mode: runs the Pseudosquares Prime Sieve
                               program (Kim Walisch, BSD 2-Clause), count (threads Auto
                               or N) or print (its text into pseudosquares/10pN/, one
-                              thread), floors 0-32 up to 10^33; logs pseudosquares_count
+                              thread), floors 0-33 up to ~1.73·10^33; logs pseudosquares_count
                               / pseudosquares_print rows with version + build commit
                               (unitTests/test_pseudosquares_native.py)
   pseudosquares_install.py   --status / --build of that program: clone of its GitHub
                               repo at the pinned commit in ~/.primeatlas/pseudosquares,
                               CMake build (unitTests/test_pseudosquares_install.py)
-  pseudosquares_const.py     the pinned commit, repo URL, 10^33 stop, last floor,
+  pseudosquares_const.py     the pinned commit, repo URL, the program's stop
+                              (int(1.73 * 1e33)), last floor (33),
                               install paths and build-tool packages
   native_tool_run.py         shared by the native runners: timed child process, text
                               line count, child peak RAM, the one benchmark_log.csv row

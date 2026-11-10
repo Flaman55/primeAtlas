@@ -16,6 +16,10 @@ regenerate -- prime data underneath it):
     10p{N}/source_primes/ (and that floor's benchmark_log.csv rows, which are about
     prime generation, not constellation-finding) untouched.
 
+count_benchmark_rows() and clear_benchmark_log() serve the "Delete benchmarks" action,
+which empties benchmark_log.csv alone; PortalWiper clears the log through the same
+function.
+
 The warning/confirmation dialogs themselves live in delete_section.py (needs tkinter);
 this module is the pure logic behind them -- plan() for what a dialog should show,
 execute() for what OK actually does. A destructive wipe action is only offered behind
@@ -43,6 +47,48 @@ _CONSTELLATION_VARIANT_RE = re.compile(r"^variant(\d+)$")
 _HITS_FILE_RE = re.compile(r"^HITS_10p\d+_k\d+_v\d+(_page\d+)?\.bin$")
 
 
+BENCHMARK_LOG_FILENAME = "benchmark_log.csv"
+
+
+def _benchmark_log_path(storage_path):
+    return os.path.join(storage_path, BENCHMARK_LOG_FILENAME)
+
+
+def count_benchmark_rows(storage_path):
+    """Data rows of the storage's benchmark_log.csv (a quoted line break stays one row);
+    0 when the file is missing or unreadable."""
+    path = _benchmark_log_path(storage_path)
+    if not os.path.exists(path):
+        return 0
+    try:
+        with open(path, newline="", encoding="utf-8") as f:
+            return sum(1 for _ in csv.DictReader(f))
+    except OSError:
+        return 0
+
+
+def clear_benchmark_log(storage_path):
+    """Leaves benchmark_log.csv with its header line alone, kept as written (line ending
+    included), through a temp file and one os.replace(). A missing file stays missing.
+    Returns None, or the error text when the log could not be rewritten (it is then
+    unchanged)."""
+    path = _benchmark_log_path(storage_path)
+    if not os.path.exists(path):
+        return None
+    tmp_path = f"{path}.tmp{os.getpid()}"
+    try:
+        with open(path, newline="", encoding="utf-8") as f:
+            header = f.readline()
+        with open(tmp_path, "w", newline="", encoding="utf-8") as f:
+            f.write(header)
+        os.replace(tmp_path, path)
+    except OSError as e:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        return f"{BENCHMARK_LOG_FILENAME}: {e}"
+    return None
+
+
 class PortalWiper:
     def __init__(self, storage_path):
         self.storage_path = storage_path
@@ -56,15 +102,7 @@ class PortalWiper:
                 if _FLOOR_DIR_RE.match(name) and os.path.isdir(os.path.join(self.storage_path, name)):
                     floors.append(name)
         floors.sort()
-        csv_path = os.path.join(self.storage_path, "benchmark_log.csv")
-        row_count = 0
-        if os.path.exists(csv_path):
-            try:
-                with open(csv_path, newline="", encoding="utf-8") as f:
-                    row_count = sum(1 for _ in csv.DictReader(f))
-            except OSError:
-                row_count = 0
-        return floors, row_count
+        return floors, count_benchmark_rows(self.storage_path)
 
     def execute(self):
         """Actually deletes. Returns (deleted_floors, errors) -- best-effort: a single
@@ -81,18 +119,9 @@ class PortalWiper:
             except OSError as e:
                 errors.append(f"{name}: {e}")
 
-        csv_path = os.path.join(self.storage_path, "benchmark_log.csv")
-        if os.path.exists(csv_path):
-            try:
-                with open(csv_path, newline="", encoding="utf-8") as f:
-                    header = next(csv.reader(f), None)
-                if header is not None:
-                    tmp_path = f"{csv_path}.tmp{os.getpid()}"
-                    with open(tmp_path, "w", newline="", encoding="utf-8") as f:
-                        csv.writer(f).writerow(header)
-                    os.replace(tmp_path, csv_path)
-            except OSError as e:
-                errors.append(f"benchmark_log.csv: {e}")
+        error = clear_benchmark_log(self.storage_path)
+        if error:
+            errors.append(error)
 
         # Every floor this wipe just removed is gone from storage.py's persisted
         # totals cache too -- see storage.py's own module docstring for that feature.

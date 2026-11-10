@@ -82,8 +82,19 @@ def part_a():
     check((lo, hi) == (10 ** 32, 10 ** 33), "range: floor 32 ends at the program's 10^33 stop")
     lo, hi = pss.native_range(32, 9 * 10 ** 25 - 1, 5, W)
     check(hi == 10 ** 33 and hi - lo == W, "range: the last window of floor 32 is clamped, not dropped")
-    check(const.MAX_FLOOR == 32, "MAX_FLOOR: 32 is the last floor under 10^33")
-    check(raises(lambda: pss.native_range(33, 0, 1, W)), "range: floor 33 refused")
+    check(const.MAX_STOP == 1729999999999999842434466854207488,
+          "MAX_STOP: the program's own bound, (double) stop <= 1.73 * 10^33")
+    check(const.MAX_FLOOR == 33, "MAX_FLOOR: floor 33 holds numbers up to the stop")
+    lo, hi = pss.native_range(33, 0, 10 ** 30, W)
+    check((lo, hi) == (10 ** 33, const.MAX_STOP + 1),
+          "range: floor 33 ends at the program's stop, inclusive")
+    last = (const.MAX_STOP - 10 ** 33) // W
+    lo, hi = pss.native_range(33, last, 5, W)
+    check(hi == const.MAX_STOP + 1 and lo <= const.MAX_STOP,
+          "range: the window holding the stop is clamped, not dropped")
+    check(raises(lambda: pss.native_range(33, last + 1, 1, W)),
+          "range: a window past the stop refused")
+    check(raises(lambda: pss.native_range(34, 0, 1, W)), "range: floor 34 refused")
     check(raises(lambda: pss.native_range(20, 0, 0, W)), "range: zero windows refused")
     check(raises(lambda: pss.native_range(3, 1, 1, W)), "range: a start past the floor's end refused")
     check(pss.native_range(0, 0, 1, W) == (1, 10), "range: floor 0 is [1, 10)")

@@ -103,6 +103,8 @@ class SettingsWiringMixin:
             # Refresh click.
             "reload_primes_tree": self.reload_primes_tree,
             "reload_constellations_tree": self.reload_constellations_tree,
+            # After "Delete benchmarks" empties benchmark_log.csv.
+            "reload_benchmark_log": lambda: self.benchmark_tab_widget.reload_benchmark_log(),
             # Optional-library installer (currently just sympy, see
             # primeatlas/primality/primality.py). LocalLoggedRunner/build_pip_install_argv are
             # plain local (non-WSL) subprocess helpers -- see their own docstrings

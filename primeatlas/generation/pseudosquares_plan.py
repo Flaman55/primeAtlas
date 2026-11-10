@@ -4,8 +4,8 @@ number; blank = the Floor's start), Width (windows of `window_m` numbers) and Th
 
 A native run writes nothing into the storage, so the plan never looks at it: From picks its
 floor (digit count) and the window holding it, rounded down to the window grid; the range
-never leaves that floor and never passes the program's 10^33 stop
-(pseudosquares_native.native_range, the runner's own clamp). No tkinter here.
+never leaves that floor and never passes the program's stop (MAX_STOP, ~1.73 * 10^33, in
+floor 33; pseudosquares_native.native_range, the runner's own clamp). No tkinter here.
 """
 import pseudosquares_const as const
 from pseudosquares_native import native_range
@@ -29,7 +29,7 @@ def parse_threads(text):
 def plan(start, floor, width_mult, window_m):
     """{floor, target_idx_start, count, lo, hi, clamped} of one run, or {"error": key}:
     from_required (no From and no Floor), range_negative (From below 1), beyond_ceiling
-    (past floor MAX_FLOOR), width_invalid (Width below 1)."""
+    (past MAX_STOP), width_invalid (Width below 1)."""
     if not isinstance(width_mult, int) or width_mult < 1:
         return {"error": "width_invalid"}
     if start is None:
@@ -39,7 +39,7 @@ def plan(start, floor, width_mult, window_m):
     if start < 1:
         return {"error": "range_negative"}
     floor = digit_count_floor(start)
-    if floor > const.MAX_FLOOR:
+    if start > const.MAX_STOP:
         return {"error": "beyond_ceiling"}
     idx = (start - 10 ** floor) // window_m
     lo, hi = native_range(floor, idx, width_mult, window_m)
