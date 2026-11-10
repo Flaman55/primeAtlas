@@ -47,6 +47,8 @@ FORM_LABELS = {
         "v7_block_model_pct": "gen.field_v7_block_model_pct",
         "pt1_b": "gen.field_pt1_b",
         "pt1_chunk_kb": "gen.field_pt1_chunk_kb",
+        "pt2_b": "gen.field_pt2_b",
+        "pt2_chunk_kb": "gen.field_pt2_chunk_kb",
         "ram_budget_pct": "gen.field_ram_budget_pct",
         "v5_preset": "gen.field_preset",
         "v6_preset": "gen.field_preset",

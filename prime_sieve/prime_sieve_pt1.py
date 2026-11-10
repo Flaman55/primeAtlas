@@ -9,26 +9,20 @@ written to the D store (byte-identical to v5's output; unitTests/test_engine_pt1
 that); any other window is tested with BPSW and written to the P store
 (10p{N}/source_primes_P/, filenames ending in _P.bin).
 
-Memory is two slab bitmaps (slab k+1 is sieved while slab k is written, overlap_pipeline.py)
-plus one flag chunk per thread, independent of the run length.
+The batch loop (slabs, progress, overlapped write, metrics) is pt_scan.py's, shared with pt2.
 Floors 0..6 (the scanners' low-floor path) and floors above 37 (n >= 2^127) are refused.
 """
 import ctypes
 import datetime
-import math
 import os
 import sys
-import threading
 import time
 
-import numpy as np
-
 import pt1_plan
+import pt_scan
 import storage_kinds
-from overlap_pipeline import run_overlapped
-from prime_sieve_v5 import (SCAN_METRICS_FILENAME, _window_prime_count,  # noqa: F401
-                            _window_prime_offsets, format_offset, read_prime_window_header,
-                            write_scan_metrics_handoff)
+from prime_sieve_v5 import (SCAN_METRICS_FILENAME, format_offset,  # noqa: F401
+                            read_prime_window_header)
 
 VERSION = "pt1"
 MAX_WORKERS = 24
@@ -68,32 +62,6 @@ def _load_lib():
     return _lib
 
 
-def _sieve_slab(ctx, lo, hi, det, n_threads, chunk_odd, on_progress, poll_seconds=0.5):
-    """(first_odd, composite bitmap as a uint8 array) for the odd numbers of [lo, hi), or
-    raises RuntimeError on an engine error. The engine call runs in a helper thread
-    (ctypes releases the GIL) so on_progress(chunks_done) can report meanwhile."""
-    lib = _load_lib()
-    first_odd = lo | 1
-    n_odd = max(0, (hi - first_odd + 1) // 2)
-    bits = np.zeros((n_odd + 7) // 8, dtype=np.uint8)
-    done = (ctypes.c_uint64 * 1)(0)
-    result = {}
-
-    def _call():
-        result["code"] = lib.pt1_sieve_odd(
-            ctx, first_odd >> 64, first_odd & 0xFFFFFFFFFFFFFFFF, n_odd, 1 if det else 0,
-            n_threads, chunk_odd, bits.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)), done)
-
-    worker = threading.Thread(target=_call, daemon=True)
-    worker.start()
-    while worker.is_alive():
-        worker.join(poll_seconds)
-        on_progress(done[0])
-    if result.get("code", -1) != 0:
-        raise RuntimeError("pt1 engine error")
-    return first_odd, bits
-
-
 def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
                         compute_sieving_primes_count=False, requested_b=0,
                         chunk_kb=pt1_plan.DEFAULT_CHUNK_KB):
@@ -103,12 +71,7 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
               f"got {base_power}; use v5 for this floor.")
         return 2
     target_idx_list = sorted(target_idx_list)
-    BASE = 10 ** base_power
-    windows = [(BASE + idx * window_m, BASE + (idx + 1) * window_m) for idx in target_idx_list]
-    for i in range(1, len(windows)):
-        assert windows[i][0] == windows[i - 1][1], (
-            f"Batch mode requires ADJACENT windows (consecutive target_idx) -- gap before "
-            f"target_idx={target_idx_list[i]}")
+    windows = pt_scan.adjacent_windows(base_power, target_idx_list, window_m)
     combined_lo, combined_hi = windows[0][0], windows[-1][1]
     if combined_hi > 2 ** 127:
         print(f"[-] ERROR: pt1 needs every number below 2^127, the range ends at {combined_hi:,}.")
@@ -117,9 +80,6 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
     kinds = [storage_kinds.written_kind(VERSION, lo, hi) for lo, hi in windows]
     chunk_odd = pt1_plan.chunk_odd(chunk_kb)
     slabs = pt1_plan.plan_slabs(windows, kinds, pt1_plan.slab_numbers(MAX_WORKERS, chunk_kb))
-    n_chunks_total = sum(
-        math.ceil(((windows[ix[-1]][1] - (windows[ix[0]][0] | 1) + 1) // 2) / chunk_odd)
-        for _kind, ix in slabs)
 
     print("\n" + "=" * 70)
     print(f"[*] BATCH {VERSION} (partial sieve to B + primality test, PGS2 binary output): "
@@ -147,72 +107,21 @@ def main_batch_scanner(base_power, target_idx_list, window_m, write_files=True,
     base_gen_seconds = time.perf_counter() - t_base
     print(f"[*] Sieving primes 3..B: {sieving_primes_count:,} ({base_gen_seconds:.3f}s)")
 
-    if write_files:
-        from pgs2_vector import write_prime_window_offsets
-    t_start = time.perf_counter()
-    bytes_written = total_primes_found = 0
-    chunks_before = 0
-    last_print = [t_start, -1]
+    def _slab_call(kind):
+        det = 1 if kind == storage_kinds.KIND_D else 0
+        return lambda first_odd, n_odd, bits, done: lib.pt1_sieve_odd(
+            ctx, first_odd >> 64, first_odd & 0xFFFFFFFFFFFFFFFF, n_odd, det, MAX_WORKERS,
+            chunk_odd, bits, done)
 
-    def _progress(done_in_slab):
-        done = chunks_before + done_in_slab
-        now = time.perf_counter()
-        if done == last_print[1] or (now - last_print[0] < 10 and done < n_chunks_total):
-            return
-        rate = done / (now - t_start) if now > t_start else 0
-        eta = (n_chunks_total - done) / rate if rate > 0 else float("inf")
-        print(f"[+] Progress: {done / n_chunks_total * 100:.2f}% ({done}/{n_chunks_total} "
-              f"chunks) | time: {now - t_start:.2f}s | ETA ~{eta:.0f}s")
-        last_print[0], last_print[1] = now, done
-
-    def _sieve(slab):
-        nonlocal chunks_before
-        kind, ix = slab
-        slab_lo, slab_hi = windows[ix[0]][0], windows[ix[-1]][1]
-        sieved = _sieve_slab(ctx, slab_lo, slab_hi, kind == storage_kinds.KIND_D, MAX_WORKERS,
-                             chunk_odd, _progress)
-        chunks_before += math.ceil(((slab_hi - sieved[0] + 1) // 2) / chunk_odd)
-        return sieved
-
-    def _write(slab, sieved):
-        nonlocal total_primes_found, bytes_written
-        kind, ix = slab
-        first_odd, bits = sieved
-        for i in ix:
-            lo, hi = windows[i]
-            if write_files:
-                offset = lo - BASE
-                path = storage_kinds.window_path(BASE_STORAGE_10PN, base_power, offset, window_m,
-                                                 format_offset(offset), kind)
-                offsets = _window_prime_offsets(bits, first_odd, lo, hi)
-                total_primes_found += len(offsets)
-                os.makedirs(os.path.dirname(path), exist_ok=True)
-                write_prime_window_offsets(path, lo, offsets, generated_at=int(time.time()))
-                bytes_written += os.path.getsize(path)
-            else:
-                total_primes_found += _window_prime_count(bits, first_odd, lo, hi)
-
-    # Slab k+1 is sieved while slab k is unpacked and written (overlap_pipeline.py).
     try:
-        timings = run_overlapped(slabs, _sieve, _write)
+        return pt_scan.run_slabs(
+            version=VERSION, portal=BASE_STORAGE_10PN, base_power=base_power, windows=windows,
+            window_m=window_m, slabs=slabs, store_kind=lambda kind: kind, slab_call=_slab_call,
+            chunk_odd=chunk_odd, b=b, sieving_primes_count=sieving_primes_count,
+            base_gen_seconds=base_gen_seconds, write_files=write_files,
+            compute_sieving_primes_count=compute_sieving_primes_count)
     finally:
         lib.pt1_ctx_free(ctx)
-    t_sieve, t_write = timings.produce_seconds, timings.consume_seconds
-    _progress(0)
-
-    print(f"\n[*] Sieve + test {t_sieve:.2f}s, unpack + write {t_write:.2f}s (overlapped with "
-          f"the sieve; {timings.wait_seconds:.2f}s not hidden)")
-    print(f"[*] TOTAL PRIMES FOUND this run: {total_primes_found:,} across {len(windows)} windows"
-          + ("" if write_files else "  (NO FILES WRITTEN -- count-only mode)"))
-    write_scan_metrics_handoff(BASE_STORAGE_10PN, b,
-                                sieving_primes_count if compute_sieving_primes_count else None,
-                                total_primes_found=total_primes_found,
-                                windows_processed=len(windows), write_files=write_files,
-                                base_gen_seconds=base_gen_seconds, sieve_seconds=t_sieve,
-                                write_seconds=t_write, bytes_written=bytes_written,
-                                numbers_processed=combined_hi - combined_lo)
-    print("=" * 70)
-    return 0
 
 
 if __name__ == "__main__":

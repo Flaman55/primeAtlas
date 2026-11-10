@@ -1,6 +1,6 @@
 # Module: prime-sieve (sieve engines and orchestrators, WSL)
 
-`prime_sieve/` produces the prime windows: the sieve engines (v6 by default, v7, v5, pt1, primesieve,
+`prime_sieve/` produces the prime windows: the sieve engines (v6 by default, v7, v5, pt1, pt2, primesieve,
 cudasieve, Hybrid; older numbered versions kept), the orchestrators that run them in batches, and the
 storage helpers both the engines and the GUI import. Runs under WSL; the GUI imports only the
 standard-library helpers.
@@ -10,7 +10,7 @@ standard-library helpers.
 | Part | Files |
 |---|---|
 | Format | `prime_sieve_v1.py` (PGS2 read/write, varints), `pgs2_vector.py`, `window_integrity.py` |
-| Engines | `prime_sieve_v6_1.py` + `engine_v6_lib.py` + `work_plan_v6.py` + `wheel30_layout.py` + `wheel30_writer.py` (default, code v6.1; `prime_sieve_v6.py`, v6.0, kept for comparison), `prime_sieve_v7_2.py` + `work_plan_v7_2.py` + `engine_v7_2_lib.py` (`prime_sieve_engine_v7_2.c` + `engine_jump_gear.h`, code v7.2; `prime_sieve_v7_1.py` + `work_plan_v7_1.py`, v7.1, and `prime_sieve_v7_0.py` + `work_plan_v7.py` + `engine_v7_lib.py` on `prime_sieve_engine_v7_0.c`, v7.0, kept for comparison), `prime_sieve_v5_2.py` + `engine_v5_lib.py` + `work_plan_v5.py` (code v5.2), `parallel_window_writer.py` (write phase of v5.2, v6 and v7), `prime_sieve_pt1.py` + `pt1_plan.py`, `prime_sieve_primesieve.py`, `prime_sieve_cudasieve.py`, `hybrid_*.py`; frozen `prime_sieve_v3.py`, `prime_sieve_v4.py`, `prime_sieve_v4_1.py`, `prime_sieve_v5.py` (v5.1, still the home of helpers v6 and pt1 import) |
+| Engines | `prime_sieve_v6_1.py` + `engine_v6_lib.py` + `work_plan_v6.py` + `wheel30_layout.py` + `wheel30_writer.py` (default, code v6.1; `prime_sieve_v6.py`, v6.0, kept for comparison), `prime_sieve_v7_2.py` + `work_plan_v7_2.py` + `engine_v7_2_lib.py` (`prime_sieve_engine_v7_2.c` + `engine_jump_gear.h`, code v7.2; `prime_sieve_v7_1.py` + `work_plan_v7_1.py`, v7.1, and `prime_sieve_v7_0.py` + `work_plan_v7.py` + `engine_v7_lib.py` on `prime_sieve_engine_v7_0.c`, v7.0, kept for comparison), `prime_sieve_v5_2.py` + `engine_v5_lib.py` + `work_plan_v5.py` (code v5.2), `parallel_window_writer.py` (write phase of v5.2, v6 and v7), `prime_sieve_pt1.py` + `pt1_plan.py` and `prime_sieve_pt2.py` + `pt2_plan.py` (both on `pt_scan.py` and `engine_pt_core.h`), `prime_sieve_primesieve.py`, `prime_sieve_cudasieve.py`, `hybrid_*.py`; frozen `prime_sieve_v3.py`, `prime_sieve_v4.py`, `prime_sieve_v4_1.py`, `prime_sieve_v5.py` (v5.1, still the home of helpers v6 and pt1 import) |
 | Orchestrators | `orchestrator_loop_v2.py`, `orchestrator_v3.py`, `orchestrator_loop_helpers.py`, `overlap_pipeline.py` |
 | Shared storage helpers | `window_sharding.py`, `storage_kinds.py` (D/P stores), `dp_verify.py`, `benchmark_log_schema.py`, `floor_meta_store.py`, `hit_paging.py`, `generation_stop.py`, `sieving_prime_count_v5.py` |
 | Queries | `primesieve_query.py`, `primecount_query.py`, `prime_count_primecount.py` |
@@ -286,6 +286,38 @@ to 20, full pieces bit-identical, partial pieces at floors 16-30 with every v6.1
 every extra bit composite and nothing past the buffer; whole runs with the gear on nearly every
 bucketed prime at the model's factor and at 4 times it, at the defaults and with small segments).
 
+## How pt2 proves its windows
+
+pt2 sieves a window's odd numbers by the primes 3..B, as pt1 does, and proves every survivor, so
+all its windows go to the D store. Below MR_DET_BOUND (3.317e24) the proof is pt1's 13
+Miller-Rabin bases. From there on it is the pseudosquares test (Lukes, Patterson and Williams,
+with Sorenson's sieve bound): a survivor n has no prime factor up to B, and when n / B is below
+the pseudosquare L_p, n is prime exactly when q^((n-1)/2) = +-1 (mod n) for every prime q <= p,
+with -1 from base 2 for n = 5 (mod 8) and from some base for n = 1 (mod 8). When every base gives
++1 for n = 1 (mod 8), further bases are tried until one decides or L_q exceeds n. The table holds
+L_p up to p = 373 (OEIS A002189, ~4.2e24), so B is raised to top / L_373 when that is larger
+than the default N^(1/4), and B < 2^32 bounds pt2 at floor 33. A survivor the table cannot
+decide fails its slab: nothing of it is written.
+
+A survivor costs one exponentiation per base, 54 bases on floor 25 and 67 on floor 29 with the
+default B. 1e9 numbers, count only, 24 threads:
+
+| | pt1 (BPSW, P store) | pt2 (proof, D store) |
+|---|---|---|
+| floor 25 | 6.5 s | 46.5 s |
+| floor 29 | 6.5 s | 62.2 s |
+| floor 33 | 6.9 s | 67.7 s |
+
+pt2's time grows with the run's width only; v7's has a fixed part per run that grows with the
+floor, so pt2 is the faster proven engine on narrow deep runs and v7 on wide ones. Floor 29, count
+only, 24 threads, same counts:
+
+| numbers | v7 (v7.2) | pt2 |
+|---|---|---|
+| 1e8 | 307 s | 7.9 s |
+| 1e9 | 335 s | 61.0 s |
+| 1e10 | 312 s | about 620 s (ten times 1e9) |
+
 ## Kept data
 
 Prime windows, `benchmark_log.csv`, `floor_meta.json`, `last_scan_metrics.json`, sieving-prime cache,
@@ -299,7 +331,7 @@ hit pages ([data.md](../data.md)).
 `test_work_plan_v7`, `test_engine_v7_1_identity`, `test_work_plan_v7_1`,
 `test_engine_v7_2_identity`, `test_work_plan_v7_2`, `test_engine_v5_2_identity`,
 `test_parallel_window_writer`, `test_wheel30_layout`, `test_wheel30_writer`, `test_work_plan_v6`,
-`test_engine_pt1`, `test_work_plan_v5`, `test_overlap_pipeline`, `test_orchestrator_stop`,
+`test_engine_pt1`, `test_engine_pt2`, `test_work_plan_v5`, `test_overlap_pipeline`, `test_orchestrator_stop`,
 `test_hybrid_*`, `test_cudasieve_integration`, `test_hit_paging`, `test_floor_meta_store`,
 `test_benchmark_log_schema`, `test_print_benchmark_summary`, `test_primesieve_benchmark_row`,
 `test_primesieve_native`, `test_pseudosquares_native`, `test_pseudosquares_install`,
@@ -321,6 +353,9 @@ hit pages ([data.md](../data.md)).
   ported to the odd-only buffer.
 - The write phase starts after the sieve; overlapping it with the next run's sieve (pt1 does this)
   is not built for v6.
+- pt2's proof is about ten times pt1's BPSW per number; proving only the BPSW primes would not
+  help much, since most of the time goes to primes. Floors 34-37 need pseudosquares beyond L_373
+  or a sieve bound above 2^32.
 - D proves P runs inside the generation run; a detached verifier draining a per-floor queue
   (one per floor, since both lists are read-modify-write) is not built.
 - The Benchmark tab's total speed includes `verify_seconds`; it has no view without it.

@@ -1,7 +1,7 @@
 """
 storage_kinds.py -- the two window stores of a floor: D (deterministic) and P (probable).
 
-D holds proven primes: every sieve engine's output, and pt1's output for windows wholly
+D holds proven primes: every sieve engine's and pt2's output, and pt1's output for windows wholly
 below MR_DET_BOUND, where its 13 Miller-Rabin bases are a proof. P holds pt1's BPSW output
 for windows that reach the bound: no BPSW counterexample is known, but none is proven
 impossible there. The two never share a file:

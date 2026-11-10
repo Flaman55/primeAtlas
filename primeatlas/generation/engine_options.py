@@ -1,18 +1,19 @@
 """Sieve engine choice and perf knobs of the Generation tab: parsing, run sizing, launch env.
 
-The engine (v4.1, v5, v6, v7 or pt1) and its knobs are form fields persisted in the Generation
+The engine (v4.1, v5, v6, v7, pt1 or pt2) and its knobs are form fields persisted in the Generation
 settings' "loop" section. They reach the WSL side as environment variables in front of the
 launched command (see generation.build_wsl_logged_command()): orchestrator_v3.py reads
 PRIMEATLAS_SCANNER_VERSION, prime_sieve_v5_2.py the PRIMEATLAS_V5_* knobs through
 work_plan_v5.py, prime_sieve_v6_1.py the PRIMEATLAS_V6_* knobs through work_plan_v6.py,
 prime_sieve_v7_2.py the PRIMEATLAS_V7_* knobs through work_plan_v7_2.py, prime_sieve_pt1.py
-the PRIMEATLAS_PT1_* knobs through pt1_plan.py. v5, v6 and v7 have separate knob sets: their best values differ. The same variables are the command-line interface for
+the PRIMEATLAS_PT1_* knobs through pt1_plan.py, prime_sieve_pt2.py the PRIMEATLAS_PT2_* knobs
+through pt2_plan.py. v5, v6 and v7 have separate knob sets: their best values differ. The same variables are the command-line interface for
 runs started by hand. The RAM budget knob (percent of the RAM free in WSL that a run may
 use) only sizes the run on this side (recommend()); no engine reads it, so it has no
 environment variable. ENGINE_VERSIONS is the code version each engine name runs (shown next
 to the selector); the names stay what benchmark_log.csv and the storage folder record.
 
-Names and defaults mirror orchestrator_v3.py, work_plan_v5/_v6/_v7_2.py, pt1_plan.py
+Names and defaults mirror orchestrator_v3.py, work_plan_v5/_v6/_v7_2.py, pt1_plan.py, pt2_plan.py
 and run_budget.py instead of importing the engine modules: this module runs in the native
 Windows GUI, which must not pull in the WSL-only engine imports.
 unitTests/test_engine_options.py keeps them equal.
@@ -26,15 +27,18 @@ ENGINE_V5 = run_budget.ENGINE_V5
 ENGINE_V6 = run_budget.ENGINE_V6
 ENGINE_V7 = run_budget.ENGINE_V7
 ENGINE_PT1 = run_budget.ENGINE_PT1
-ENGINES = (ENGINE_V41, ENGINE_V5, ENGINE_V6, ENGINE_V7, ENGINE_PT1)
+ENGINE_PT2 = run_budget.ENGINE_PT2
+ENGINES = (ENGINE_V41, ENGINE_V5, ENGINE_V6, ENGINE_V7, ENGINE_PT1, ENGINE_PT2)
 DEFAULT_ENGINE = ENGINE_V6
 BUCKETED_ENGINES = run_budget.BUCKETED_ENGINES
 ENGINE_VERSIONS = {ENGINE_V41: "v4.1", ENGINE_V5: "v5.2", ENGINE_V6: "v6.1", ENGINE_V7: "v7.2",
-                   ENGINE_PT1: "pt1"}
+                   ENGINE_PT1: "pt1", ENGINE_PT2: "pt2"}
 
 SCANNER_VERSION_ENV = "PRIMEATLAS_SCANNER_VERSION"
 PT1_B_ENV = "PRIMEATLAS_PT1_B"
 PT1_CHUNK_KB_ENV = "PRIMEATLAS_PT1_CHUNK_KB"
+PT2_B_ENV = "PRIMEATLAS_PT2_B"
+PT2_CHUNK_KB_ENV = "PRIMEATLAS_PT2_CHUNK_KB"
 
 RAM_BUDGET_KNOB = "ram_budget_pct"
 
@@ -64,16 +68,22 @@ KNOB_ENVS = {
     for engine in BUCKETED_ENGINES
 }
 _PT1_KNOBS = ("pt1_b", "pt1_chunk_kb")
-# pt1's footprint does not grow with the window count, so the RAM budget never limits it.
+_PT2_KNOBS = ("pt2_b", "pt2_chunk_kb")
+# The B knob and its environment variable per partial-sieve engine.
+_B_KNOBS = {ENGINE_PT1: ("pt1_b", PT1_B_ENV, "pt1_chunk_kb", PT1_CHUNK_KB_ENV),
+            ENGINE_PT2: ("pt2_b", PT2_B_ENV, "pt2_chunk_kb", PT2_CHUNK_KB_ENV)}
+# pt1's and pt2's footprints do not grow with the window count, so the RAM budget never
+# limits them.
 _ENGINE_KNOBS = {
     ENGINE_V41: (RAM_BUDGET_KNOB,),
     ENGINE_V5: _bucketed_knobs(ENGINE_V5) + (RAM_BUDGET_KNOB,),
     ENGINE_V6: _bucketed_knobs(ENGINE_V6) + (RAM_BUDGET_KNOB,),
     ENGINE_V7: _bucketed_knobs(ENGINE_V7) + _V7_JUMP_KNOBS + (RAM_BUDGET_KNOB,),
     ENGINE_PT1: _PT1_KNOBS,
+    ENGINE_PT2: _PT2_KNOBS,
 }
 KNOB_KEYS = (_bucketed_knobs(ENGINE_V5) + _bucketed_knobs(ENGINE_V6)
-             + _bucketed_knobs(ENGINE_V7) + _V7_JUMP_KNOBS + _PT1_KNOBS
+             + _bucketed_knobs(ENGINE_V7) + _V7_JUMP_KNOBS + _PT1_KNOBS + _PT2_KNOBS
              + (RAM_BUDGET_KNOB,))
 # Settings keys the form persists next to the engine: the knobs and each bucketed engine's
 # knob profile (engine_presets.py).
@@ -87,15 +97,17 @@ DEFAULT_KNOBS = {
                               _DEFAULT_WRITE_THREADS))},
     "pt1_b": 0,             # 0 = floor(N^(1/4)) of the run's top
     "pt1_chunk_kb": 4096,
+    "pt2_b": 0,             # 0 = floor(N^(1/4)) of the run's top, raised to the proof's minimum
+    "pt2_chunk_kb": 4096,
     "v7_jump_model_pct": 100,        # p* = the cost model's; 0 = gear off
     "v7_jump_block_cost": 300,       # a: one block setup, in classic primes
     "v7_jump_landing_cost_pct": 10,  # b = 0.10: one landing, in classic primes
     "v7_block_model_pct": 100,       # block factor = the model's optimum f*
     RAM_BUDGET_KNOB: round(run_budget.DEFAULT_SAFETY_FRACTION * 100),
 }
-_ZERO_ALLOWED = {"pt1_b", "v7_jump_model_pct", "v7_jump_landing_cost_pct"}
+_ZERO_ALLOWED = {"pt1_b", "pt2_b", "v7_jump_model_pct", "v7_jump_landing_cost_pct"}
 PT1_MAX_B = 2 ** 32 - 1
-_MAX_VALUES = {"pt1_b": PT1_MAX_B, RAM_BUDGET_KNOB: 100}
+_MAX_VALUES = {"pt1_b": PT1_MAX_B, "pt2_b": PT1_MAX_B, RAM_BUDGET_KNOB: 100}
 
 # Input ceiling of one run's window count. v4.1 gains nothing from longer tapes; for v5 and
 # v6 the RAM budget is the real limit (1e12 numbers take 62.5 GB in v5, 33 GB in v6); pt1
@@ -103,7 +115,7 @@ _MAX_VALUES = {"pt1_b": PT1_MAX_B, RAM_BUDGET_KNOB: 100}
 # duration.
 MAX_WINDOWS_PER_RUN = {ENGINE_V41: 1000, ENGINE_V5: 100_000, ENGINE_V6: 100_000,
                        ENGINE_V7: 100_000,
-                       ENGINE_PT1: 100_000}
+                       ENGINE_PT1: 100_000, ENGINE_PT2: 100_000}
 
 EngineChoice = namedtuple("EngineChoice", "engine knobs")
 
@@ -129,7 +141,7 @@ def _parse_positive(raw, zero_allowed=False):
 
 def parse_knobs(raw):
     """(knobs, None) with every KNOB_KEYS value as a positive int (pt1_b: 0 or more, at
-    most PT1_MAX_B; ram_budget_pct: at most 100; blank or missing -> default), or
+    most PT1_MAX_B, also pt2_b; ram_budget_pct: at most 100; blank or missing -> default), or
     (None, key) naming the first invalid value."""
     knobs = {}
     for key in KNOB_KEYS:
@@ -178,6 +190,12 @@ def recommend(available_ram_bytes, choice, base_exponent, window_m):
         max_windows=max_windows_per_run(choice.engine))
 
 
+def b_knob(engine):
+    """The sieve-limit knob of a partial-sieve engine (pt1, pt2), None for the others."""
+    entry = _B_KNOBS.get(engine)
+    return entry[0] if entry else None
+
+
 def bucket_knob(engine):
     """The bucket-memory knob of a bucketed engine (v5, v6, v7), None for the others."""
     return f"{engine}_bucket_mb" if engine in BUCKETED_ENGINES else None
@@ -186,12 +204,12 @@ def bucket_knob(engine):
 def launch_env(choice, bucket_mb=None):
     """[(name, value)] to set in front of an orchestrator launch: always the engine, plus
     the engine's own segment, region, bucket, pieces-per-thread and write-thread knobs for
-    v5, v6 and v7 (v7 also its jump gear's four), or B and the chunk size for pt1. bucket_mb lowers the bucket knob (a RAM-reduced
+    v5, v6 and v7 (v7 also its jump gear's four), or B and the chunk size for pt1 and pt2. bucket_mb lowers the bucket knob (a RAM-reduced
     recommendation); it never raises it above the knob's value."""
     env = [(SCANNER_VERSION_ENV, choice.engine)]
-    if choice.engine == ENGINE_PT1:
-        env += [(PT1_B_ENV, str(choice.knobs["pt1_b"])),
-                (PT1_CHUNK_KB_ENV, str(choice.knobs["pt1_chunk_kb"]))]
+    if choice.engine in _B_KNOBS:
+        b_key, b_env, chunk_key, chunk_env = _B_KNOBS[choice.engine]
+        env += [(b_env, str(choice.knobs[b_key])), (chunk_env, str(choice.knobs[chunk_key]))]
     if choice.engine in BUCKETED_ENGINES:
         values = dict(choice.knobs)
         if bucket_mb is not None:

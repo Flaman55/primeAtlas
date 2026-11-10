@@ -89,6 +89,7 @@ def stop_request_case(tmp):
     check(generation_stop.scanner_script("v6") == "prime_sieve_v6_1.py",
           "v6 scanner script is v6.1's (v6.0's prime_sieve_v6.py stays for comparison)")
     check(generation_stop.scanner_script("pt1") == "prime_sieve_pt1.py", "pt1 scanner script")
+    check(generation_stop.scanner_script("pt2") == "prime_sieve_pt2.py", "pt2 scanner script")
     check(generation_stop.scanner_script("v4.1") == "prime_sieve_v4_1.py", "v4.1 scanner script")
     import orchestrator_v3
     check(orchestrator_v3.SCRIPT_NAME == generation_stop.scanner_script(

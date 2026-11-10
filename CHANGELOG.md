@@ -684,6 +684,28 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   staje się „Blok biegu skokowego v7 (% modelu)” (domyślnie 100); v7.1 zostaje w repozytorium
   do porównań.
 
+### +46 — Engine pt2: partial sieve with a proof for every survivor
+
+- English: New engine pt2. It sieves each window up to B, as pt1 does, and proves every
+  survivor: 13 Miller-Rabin bases below 3.3e24, the pseudosquares test (Lukes, Patterson,
+  Williams, with Sorenson's sieve bound) from there to floor 33. All its windows are proven
+  and go to the D store; a pt2 window also proves pt1's P window of the same offset. Its time
+  grows with the run's width only, so it is the fast proven engine for narrow deep runs.
+  Measured at floor 29, count only, 24 threads: 1e8 numbers v7 307 s, pt2 7.9 s; 1e9 numbers
+  v7 335 s, pt2 61 s (pt1 6.5 s, probable). New fields "pt2 sieve limit B" and "pt2 chunk".
+  pt1 is unchanged; its sieve and batch loop now live in modules shared with pt2.
+  The "Parallel instances" and "Batches / worker" fields start at 1 (was 2).
+- Polski: Nowy silnik pt2. Przesiewa każde okno do B, tak jak pt1, i dowodzi pierwszości
+  każdej ocalałej liczby: 13 baz Millera-Rabina poniżej 3,3e24, test pseudokwadratów (Lukes,
+  Patterson, Williams, z granicą sita Sorensona) od tego miejsca do piętra 33. Wszystkie jego
+  okna są udowodnione i trafiają do magazynu D; okno pt2 dowodzi też okna P z pt1 o tym samym
+  przesunięciu. Jego czas rośnie tylko z szerokością przebiegu, więc to szybki silnik
+  z dowodem dla wąskich przebiegów na głębokich piętrach. Zmierzone na piętrze 29, tylko
+  liczenie, 24 wątki: 1e8 liczb v7 307 s, pt2 7,9 s; 1e9 liczb v7 335 s, pt2 61 s (pt1 6,5 s,
+  wynik prawdopodobny). Nowe pola „Granica sita pt2 B” i „Kawałek pt2”. pt1 działa bez zmian;
+  jego sito i pętla przebiegu są teraz w modułach wspólnych z pt2.
+  Pola „Instancje równoległe” i „Batche / workera” startują od 1 (wcześniej 2).
+
 ## 1.2.0 — 2026-11-01
 
 ### English

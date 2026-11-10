@@ -11,8 +11,9 @@ from . import engine_options, run_budget
 
 
 def run_ram_bytes(choice, windows, window_m):
-    """Peak memory of one run of `windows` windows with this EngineChoice; None for pt1."""
-    if choice.engine == engine_options.ENGINE_PT1:
+    """Peak memory of one run of `windows` windows with this EngineChoice; None for pt1 and
+    pt2."""
+    if choice.engine in run_budget.PARTIAL_SIEVE_ENGINES:
         return None
     bucket_key = engine_options.bucket_knob(choice.engine)
     bucket_mb = choice.knobs[bucket_key] if bucket_key else 0
@@ -26,13 +27,13 @@ def budget_bytes(choice, available_ram_bytes):
 
 def max_windows_in_budget(choice_for, available_ram_bytes, cap, window_m):
     """The widest run (at most `cap` windows) whose prediction fits the budget; 0 when not even
-    one window fits, None for pt1 or without a RAM reading. The footprint grows with the
+    one window fits, None for pt1, pt2 or without a RAM reading. The footprint grows with the
     width (an auto profile's bucket memory never shrinks as the width grows), so a binary
     search finds the edge."""
     if not available_ram_bytes or available_ram_bytes <= 0:
         return None
     first = choice_for(1)
-    if first.engine == engine_options.ENGINE_PT1:
+    if first.engine in run_budget.PARTIAL_SIEVE_ENGINES:
         return None
     budget = budget_bytes(first, available_ram_bytes)
 

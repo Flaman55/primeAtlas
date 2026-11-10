@@ -26,25 +26,25 @@ MAX_FLOOR = 37   # Montgomery arithmetic with R = 2^128 needs n < 2^127; 10^38 <
 CHUNKS_PER_THREAD_PER_SLAB = 4
 
 
-def b_from_env(environ):
-    """B from `environ` (a mapping): 0 (= default_b()) when unset or blank. Raises
-    ValueError unless the value is an integer in 0..MAX_B."""
-    raw = environ.get(B_ENV)
+def b_from_env(environ, name=B_ENV):
+    """B from `environ` (a mapping) under `name`: 0 (= default_b()) when unset or blank.
+    Raises ValueError unless the value is an integer in 0..MAX_B."""
+    raw = environ.get(name)
     if raw is None or str(raw).strip() == "":
         return 0
     try:
         value = int(raw)
     except ValueError:
-        raise ValueError(f"{B_ENV} must be an integer in 0..{MAX_B}, got {raw!r}")
+        raise ValueError(f"{name} must be an integer in 0..{MAX_B}, got {raw!r}")
     if not 0 <= value <= MAX_B:
-        raise ValueError(f"{B_ENV} must be an integer in 0..{MAX_B}, got {raw!r}")
+        raise ValueError(f"{name} must be an integer in 0..{MAX_B}, got {raw!r}")
     return value
 
 
-def chunk_kb_from_env(environ):
-    """Chunk size in KiB from `environ`, DEFAULT_CHUNK_KB when unset. Raises ValueError
-    unless the value is a positive integer."""
-    raw = environ.get(CHUNK_KB_ENV)
+def chunk_kb_from_env(environ, name=CHUNK_KB_ENV):
+    """Chunk size in KiB from `environ` under `name`, DEFAULT_CHUNK_KB when unset. Raises
+    ValueError unless the value is a positive integer."""
+    raw = environ.get(name)
     if raw is None:
         return DEFAULT_CHUNK_KB
     try:
@@ -52,7 +52,7 @@ def chunk_kb_from_env(environ):
     except ValueError:
         value = 0
     if value < 1:
-        raise ValueError(f"{CHUNK_KB_ENV} must be a positive integer (KiB), got {raw!r}")
+        raise ValueError(f"{name} must be a positive integer (KiB), got {raw!r}")
     return value
 
 

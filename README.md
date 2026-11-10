@@ -1625,7 +1625,7 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               interface close_guard.py drives, start-up recovery
                               (unitTests/test_close_guard_wiring.py)
   run_budget.py                 window count (and v5 bucket memory) of one sieve run
-                              (pt1: the per-run cap, no RAM limit):
+                              (pt1, pt2: the per-run cap, no RAM limit):
                               the smaller of a floor-scaled target (v4.1: 1000; v5:
                               grows with the run's fixed cost, knob = windows at floor
                               25, default 5000) and what fits in the RAM budget
@@ -1634,10 +1634,10 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               engine_options.recommend() and by
                               recommended_max_windows (v4.1)
                               (unitTests/test_run_budget.py)
-  engine_options.py             sieve engine choice (v4.1 / v5 / v6 / pt1, default v6) and
+  engine_options.py             sieve engine choice (v4.1 / v5 / v6 / v7 / pt1 / pt2, default v6) and
                               perf knobs (v5 and v6 each: segment KiB, bucket region KiB,
                               bucket memory MiB, windows per run at floor 25, pieces per
-                              thread; pt1: sieve limit B, chunk KiB; v4.1, v5, v6: RAM
+                              thread; pt1, pt2: sieve limit B, chunk KiB; v4.1, v5, v6: RAM
                               budget %) as persisted in the Generation settings: parsing,
                               the knob profile applied for the run's width, per-run
                               window cap (v4.1 1000, others 100,000), run sizing for the
@@ -1662,7 +1662,7 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               engine
                               (unitTests/test_engine_gui_wiring.py)
   time_model.py                 time model of one run calibrated from benchmark_log.csv:
-                              prep cost F = k(floor) * pi(L) (L = isqrt(top), pt1: B;
+                              prep cost F = k(floor) * pi(L) (L = isqrt(top), pt1, pt2: B;
                               pi exact at powers of ten, else Riemann R(x)), sieving and
                               added write time per number; per measured floor from its
                               runs (two widths split F and the per-number cost), other
@@ -1671,7 +1671,7 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               measured runs and of a whole floor
                               (unitTests/test_time_model.py)
   run_ram.py                    predicted peak RAM of one run (run_budget footprint with
-                              the knobs the run launches with; pt1: none) and the
+                              the knobs the run launches with; pt1, pt2: none) and the
                               widest run that fits the RAM budget, which caps the
                               Time simulation's width slider
                               (unitTests/test_run_ram.py)
@@ -2264,13 +2264,32 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
   pt1_plan.py                B and chunk knobs (env PRIMEATLAS_PT1_B,
                               PRIMEATLAS_PT1_CHUNK_KB), slab grouping of
                               same-kind windows
+  prime_sieve_pt2.py         engine pt2 (partial sieve + primality proof): pt1's
+                              sieve to B with every survivor proven -- 13
+                              Miller-Rabin bases below MR_DET_BOUND, the
+                              pseudosquares test from it on; every window to the
+                              D store; floors 7..33; cost grows with the run's
+                              width only (unitTests/test_engine_pt2.py)
+  pt2_plan.py                B and chunk knobs (env PRIMEATLAS_PT2_B,
+                              PRIMEATLAS_PT2_CHUNK_KB), the proof per window, B
+                              raised to the proof's minimum (top / B below L_373)
+  pt_scan.py                 batch loop of pt1 and pt2: slabs, progress lines,
+                              overlapped write, metrics handoff
   overlap_pipeline.py        run_overlapped(): produce in the caller, consume in one
                               helper thread, consume(k) overlapping produce(k+1),
-                              at most two products alive; pt1 writes slab k while
+                              at most two products alive; pt1 and pt2 write slab k while
                               it sieves slab k+1 (unitTests/test_overlap_pipeline.py)
-  prime_sieve_engine_pt1.c   C core for prime_sieve_pt1.py (ctypes, threads):
-                              chunked odd-only sieve to B, u128 Montgomery
-                              Miller-Rabin / strong Lucas
+  prime_sieve_engine_pt1.c   C core for prime_sieve_pt1.py (ctypes): the
+                              engine_pt_core.h sieve with 13 Miller-Rabin bases or
+                              BPSW per survivor
+  prime_sieve_engine_pt2.c   C core for prime_sieve_pt2.py (ctypes): the
+                              engine_pt_core.h sieve with 13 Miller-Rabin bases or
+                              the pseudosquares test (table L_p to p = 373, OEIS
+                              A002189) per survivor; a survivor the table cannot
+                              decide fails the slab
+  engine_pt_core.h           shared by pt1 and pt2: chunked odd-only sieve to B on
+                              threads, u128 Montgomery arithmetic, Miller-Rabin,
+                              strong Lucas
   storage_kinds.py           the D (proven) and P (probable prime) window stores
                               of a floor: folder and file names (_P suffix), the
                               label rule (a window reaching MR_DET_BOUND is P),
@@ -2678,6 +2697,8 @@ gcc -O3 -shared -fPIC prime_sieve_engine_v6.c -o prime_sieve_engine_v6.so -lprim
 gcc -O3 -shared -fPIC prime_sieve_engine_v6_1.c -o prime_sieve_engine_v6_1.so -lprimesieve -lstdc++ -lm
 gcc -O3 -shared -fPIC prime_sieve_engine_v7_0.c -o prime_sieve_engine_v7_0.so -lprimesieve -lstdc++ -lm
 gcc -O3 -shared -fPIC prime_sieve_engine_v7_2.c -o prime_sieve_engine_v7_2.so -lprimesieve -lstdc++ -lm
+gcc -O3 -Wall -shared -fPIC prime_sieve_engine_pt1.c -o prime_sieve_engine_pt1.so -lprimesieve -lpthread -lm
+gcc -O3 -Wall -shared -fPIC prime_sieve_engine_pt2.c -o prime_sieve_engine_pt2.so -lprimesieve -lpthread -lm
 ```
 
 Prebuilt `.so` files are included; rebuild if the WSL environment's glibc/architecture

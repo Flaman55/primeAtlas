@@ -94,7 +94,8 @@ def check_prep_limit():
     passed &= check(tm.prep_limit("v4.1", top) == math.isqrt(top), "v4.1 limit = isqrt(top)")
     root4 = tm.prep_limit("pt1", top)
     passed &= check(root4 ** 4 <= top < (root4 + 1) ** 4, "pt1 default limit = 4th root of top")
-    passed &= check(tm.prep_limit("pt1", top, pt1_b=1000) == 1000, "pt1 B knob wins when set")
+    passed &= check(tm.prep_limit("pt1", top, test_b=1000) == 1000
+                    and tm.prep_limit("pt2", top, test_b=1000) == 1000, "pt1, pt2 B knob wins when set")
     return passed
 
 

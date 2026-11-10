@@ -55,7 +55,7 @@ class TimeSimulationControls:
             floor_var, width_var, self._engine_fields.engine_var,
             width_cap=self._quick_width_cap,
             write_files=lambda: bool(self._loop_write_files_var.get()),
-            pt1_b=self._time_simulation_pt1_b,
+            test_b=self._time_simulation_test_b,
             engine_choice=self._engine_fields.choice_for_windows,
             budget_vars=self._time_simulation_budget_vars())
         self._read_time_simulation_ram()
@@ -90,10 +90,13 @@ class TimeSimulationControls:
             self._time_simulation_window.reload_log()
             self._read_time_simulation_ram()
 
-    def _time_simulation_pt1_b(self):
-        knobs, bad = engine_options.parse_knobs(
-            {"pt1_b": self._engine_fields.knob_vars["pt1_b"].get()})
-        return knobs["pt1_b"] if bad is None else 0
+    def _time_simulation_test_b(self, engine):
+        """The B knob of pt1 or pt2 (0 when invalid or for another engine)."""
+        key = engine_options.b_knob(engine)
+        if key is None:
+            return 0
+        knobs, bad = engine_options.parse_knobs({key: self._engine_fields.knob_vars[key].get()})
+        return knobs[key] if bad is None else 0
 
     def _rebind_time_simulation(self):
         """Reopens an open window on the selected mode's Floor/Width pair."""

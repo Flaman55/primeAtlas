@@ -10,7 +10,7 @@ D. A consume error stops the run: no produce starts after the one in progress, t
    reaches the caller.
 E. A produce error waits for the pending consume to finish, then reaches the caller.
 F. No items: no calls, zero timings. Timings: produce/consume seconds cover the calls.
-G. prime_sieve_pt1.py hands its slabs to run_overlapped().
+G. prime_sieve_pt1.py and prime_sieve_pt2.py hand their slabs to pt_scan.py (run_overlapped()).
 
 Usage:
     python unitTests/test_overlap_pipeline.py
@@ -149,12 +149,18 @@ def _test_empty_and_timings(pipe):
                                   f"({t.wait_seconds:.3f})")
 
 
+def _source(name):
+    with open(os.path.join(_REPO_ROOT, "prime_sieve", name), encoding="utf-8") as f:
+        return f.read()
+
+
 def _test_pt1_uses_it():
-    print("\n--- G. prime_sieve_pt1.py writes through run_overlapped() ---")
-    with open(os.path.join(_REPO_ROOT, "prime_sieve", "prime_sieve_pt1.py"), encoding="utf-8") as f:
-        source = f.read()
-    check(re.search(r"\brun_overlapped\(", source) is not None,
-          "prime_sieve_pt1.py calls run_overlapped()")
+    print("\n--- G. pt1 and pt2 write through pt_scan.py's run_overlapped() ---")
+    check(re.search(r"\brun_overlapped\(", _source("pt_scan.py")) is not None,
+          "pt_scan.py calls run_overlapped()")
+    for name in ("prime_sieve_pt1.py", "prime_sieve_pt2.py"):
+        check(re.search(r"\bpt_scan\.run_slabs\(", _source(name)) is not None,
+              f"{name} runs its slabs through pt_scan.run_slabs()")
 
 
 def main():

@@ -18,23 +18,24 @@ from . import engine_options, engine_presets
 
 GENERATION_SETTINGS_FILENAME = ".portal_generation_settings.json"
 
-# Mirrors orchestrator_loop_v2.py's own module-level defaults (WINDOW_COUNT_PER_RUN=1000,
-# WORKERS=24, BATCHES_PER_WORKER=2). Duplicated here (not imported) rather than importing
-# orchestrator_loop_v2 directly, because that module requires WSL/ctypes to actually RUN
-# (prime_sieve_v3.py, three hops down its import chain, ctypes-loads a Linux .so) -- this
-# native-Windows tkinter app must never gain that dependency just to read a constant. If
-# those scripts' defaults ever change, update both places.
+# window_count_per_run and workers mirror orchestrator_loop_v2.py's own module-level defaults
+# (WINDOW_COUNT_PER_RUN=1000, WORKERS=24), duplicated here (not imported) because that module
+# requires WSL/ctypes to actually RUN (prime_sieve_v3.py, three hops down its import chain,
+# ctypes-loads a Linux .so) -- this native-Windows tkinter app must never gain that dependency
+# just to read a constant. n_instances and batches_per_worker start at 1 in the form (one
+# orchestrator at a time, one batch per worker); the scripts' own defaults stay 2 for runs
+# started by hand.
 DEFAULT_GENERATION_SETTINGS = {
     "loop": {
         "base_exponent": "20",
         "run_count": "1",
-        "n_instances": "2",
+        "n_instances": "1",
         "write_files": True,
         "compute_sieving_primes_count": False,
         "use_known_pi_seed": False,
         "window_count_per_run": "1000",
         "workers": "24",
-        "batches_per_worker": "2",
+        "batches_per_worker": "1",
         "window_m": "10000000",  # mirrors orchestrator_loop_helpers.py's own
                                   # WINDOW_M -- see build_loop_argv()'s docstring for the
                                   # cross-floor-consistency caveat before changing this.

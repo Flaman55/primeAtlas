@@ -1,6 +1,7 @@
 """Window count (and v5/v6 bucket memory) of one sieve run, from the floor and the RAM free in WSL.
 
-pt1 (partial sieve + primality test) has neither limit: it fills the per-run cap. For v4.1,
+pt1 and pt2 (partial sieve + primality test or proof) have neither limit: they fill the
+per-run cap. For v4.1,
 v5 and v6 two limits apply, the smaller one wins:
   - target: how long a tape pays off. Each run pays a fixed cost F (generating the sieving
     primes below L_final and one 128-bit phase division per prime), so a run should cover
@@ -28,6 +29,8 @@ ENGINE_V5 = "v5"
 ENGINE_V6 = "v6"
 ENGINE_V7 = "v7"                     # v6's buffer and footprint plus the jump gear
 ENGINE_PT1 = "pt1"                   # no fixed cost, no run-sized buffer: never RAM-capped
+ENGINE_PT2 = "pt2"                   # pt1's sieve with a proof: never RAM-capped either
+PARTIAL_SIEVE_ENGINES = (ENGINE_PT1, ENGINE_PT2)
 BUCKETED_ENGINES = (ENGINE_V5, ENGINE_V6, ENGINE_V7)
 BASE_WINDOWS = 1000                  # target at shallow floors and v4.1's ceiling
 DEFAULT_TARGET_WINDOWS_AT_25 = {ENGINE_V5: 20_000, ENGINE_V6: 40_000, ENGINE_V7: 40_000}
@@ -79,7 +82,7 @@ def recommend_run(available_ram_bytes, engine, base_exponent, window_m,
     the knob's value unused. target_at_25 None: the engine's default."""
     if not available_ram_bytes or available_ram_bytes <= 0:
         return None
-    if engine == ENGINE_PT1:
+    if engine in PARTIAL_SIEVE_ENGINES:
         return RunBudget(max_windows if max_windows is not None else BASE_WINDOWS, bucket_mb)
     budget = available_ram_bytes * safety_fraction
     target = target_windows(engine, base_exponent, window_m, target_at_25)

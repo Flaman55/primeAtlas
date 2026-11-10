@@ -27,6 +27,7 @@ sys.path.insert(0, os.path.join(ROOT, "constellation"))
 from primeatlas.generation import engine_options as eo  # noqa: E402
 from primeatlas.generation import generation_settings, run_budget, wsl_command, wsl_resources  # noqa: E402
 import pt1_plan  # noqa: E402
+import pt2_plan  # noqa: E402
 import work_plan_v5  # noqa: E402
 import work_plan_v6  # noqa: E402
 import work_plan_v7_2  # noqa: E402
@@ -42,7 +43,7 @@ def check(value, message):
 
 def check_mirrors():
     passed = True
-    passed &= check(eo.ENGINES == ("v4.1", "v5", "v6", "v7", "pt1"), f"engines offered: {eo.ENGINES}")
+    passed &= check(eo.ENGINES == ("v4.1", "v5", "v6", "v7", "pt1", "pt2"), f"engines offered: {eo.ENGINES}")
     passed &= check(eo.DEFAULT_ENGINE == "v6", f"default engine {eo.DEFAULT_ENGINE}")
     # orchestrator_v3.py imports WSL-only engine modules, so its default is read from source.
     with open(os.path.join(ROOT, "prime_sieve", "orchestrator_v3.py"), encoding="utf-8") as f:
@@ -93,10 +94,10 @@ def check_mirrors():
                     == (2048, 1024, 8192),
                     "v5.1 defaults: 2 MiB segments, 1 MiB regions, 8 GiB buckets (measured)")
     passed &= check(eo.ENGINE_VERSIONS == {"v4.1": "v4.1", "v5": "v5.2", "v6": "v6.1",
-                                           "v7": "v7.2", "pt1": "pt1"},
+                                           "v7": "v7.2", "pt1": "pt1", "pt2": "pt2"},
                     f"engine versions shown in the GUI ({eo.ENGINE_VERSIONS})")
     passed &= check(set(d) == set(eo.KNOB_KEYS), "DEFAULT_KNOBS covers exactly KNOB_KEYS")
-    for engine in ("pt1", "v7"):
+    for engine in ("pt1", "pt2", "v7"):
         passed &= check(re.search(rf'^elif SCANNER_VERSION == "{engine}":$', src, re.MULTILINE)
                         is not None, f"orchestrator_v3.py has a {engine} branch")
     passed &= check(re.search(r'^    import prime_sieve_v7_2 as prime_sieve_module', src,
@@ -104,6 +105,15 @@ def check_mirrors():
     import generation_stop
     passed &= check(generation_stop.scanner_script("v7") == "prime_sieve_v7_2.py",
                     "the save-point stop knows v7's scanner script")
+    passed &= check(generation_stop.scanner_script("pt2") == "prime_sieve_pt2.py",
+                    "the save-point stop knows pt2's scanner script")
+    passed &= check((eo.PT2_B_ENV, eo.PT2_CHUNK_KB_ENV) == (pt2_plan.B_ENV, pt2_plan.CHUNK_KB_ENV),
+                    "pt2 env names match pt2_plan.py")
+    passed &= check(d["pt2_b"] == 0 and d["pt2_chunk_kb"] == pt2_plan.DEFAULT_CHUNK_KB
+                    and eo.engine_knob_keys("pt2") == ("pt2_b", "pt2_chunk_kb"),
+                    f"pt2 knobs: B auto (0), chunk {pt2_plan.DEFAULT_CHUNK_KB} KiB, nothing else")
+    passed &= check((eo.b_knob("pt1"), eo.b_knob("pt2"), eo.b_knob("v7")) == ("pt1_b", "pt2_b", None),
+                    "b_knob(): pt1_b, pt2_b, None for a sieve engine")
     passed &= check((eo.PT1_B_ENV, eo.PT1_CHUNK_KB_ENV) == (pt1_plan.B_ENV, pt1_plan.CHUNK_KB_ENV),
                     "pt1 env names match pt1_plan.py")
     passed &= check(d["pt1_b"] == 0 and d["pt1_chunk_kb"] == pt1_plan.DEFAULT_CHUNK_KB,
@@ -233,6 +243,10 @@ def check_caps_and_recommend():
     passed &= check(eo.recommend(64 * GB, pt1, 29, W).windows == cap
                     and eo.recommend(GB // 2, pt1, 29, W).windows == cap,
                     "pt1 recommendation is not RAM-capped")
+    pt2 = eo.resolve({"engine": "pt2", "ram_budget_pct": "1"})
+    passed &= check(eo.max_windows_per_run("pt2") == 100_000
+                    and eo.recommend(GB // 2, pt2, 29, W).windows == 100_000,
+                    "pt2 recommendation is not RAM-capped (cap 100000)")
     passed &= check(eo.recommend(64 * GB, v5, None, W).windows == run_budget.BASE_WINDOWS,
                     "unknown floor -> base target")
     for engine, floor in (("v5", 25), ("v5", 27), ("v6", 27), ("v4.1", 25)):
@@ -312,6 +326,14 @@ def check_env():
                     and pt1_plan.chunk_kb_from_env(dict(env)) == 4096
                     and pt1_plan.b_from_env({}) == 0,
                     "pt1_plan reads the env back (missing B -> auto)")
+    env = eo.launch_env(eo.resolve({"engine": "pt2", "pt2_b": "9000", "pt1_b": "7000"}))
+    passed &= check(env == [("PRIMEATLAS_SCANNER_VERSION", "pt2"), ("PRIMEATLAS_PT2_B", "9000"),
+                            ("PRIMEATLAS_PT2_CHUNK_KB", "4096")],
+                    f"pt2 env carries its own B and chunk only ({env})")
+    passed &= check(pt2_plan.b_from_env(dict(env)) == 9000
+                    and pt2_plan.chunk_kb_from_env(dict(env)) == 4096
+                    and pt2_plan.b_from_env({}) == 0,
+                    "pt2_plan reads the env back (missing B -> auto)")
     env = dict(eo.launch_env(v5))
     passed &= check(work_plan_v5.segment_kb_from_env(env) == 256
                     and work_plan_v5.bucket_mb_from_env(env) == 8192
@@ -345,6 +367,9 @@ def check_wsl_command():
     passed &= check(loop.get("engine") == eo.DEFAULT_ENGINE
                     and all(loop.get(k) == str(v) for k, v in eo.DEFAULT_KNOBS.items()),
                     "persisted loop settings carry the engine and knob defaults")
+    passed &= check(loop.get("n_instances") == "1" and loop.get("batches_per_worker") == "1",
+                    "parallel instances and batches per worker default to 1 "
+                    f"({loop.get('n_instances')}, {loop.get('batches_per_worker')})")
     return passed
 
 

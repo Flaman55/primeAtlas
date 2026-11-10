@@ -12,7 +12,7 @@ meanwhile recalibrates the model; it is never written.
 The RAM line predicts the run's peak memory (run_ram.py) in GB and as a share of the RAM free
 in WSL, which the opener reads in the background and hands over with set_available_ram().
 The width slider ends at the widest run that fits the pipeline form's RAM budget (or the
-engine's cap when that is smaller, for pt1, or while the free RAM is unknown); the window
+engine's cap when that is smaller, for pt1 and pt2, or while the free RAM is unknown); the window
 also traces the form's budget and bucket fields, so editing them moves the cap. A width typed
 into the form above the budget is kept and flagged: the form still runs what it holds.
 """
@@ -69,12 +69,13 @@ def _int_or_none(text):
 class TimeSimulationWindow(tk.Toplevel):
     """Toplevel bound to the form's vars: floor_var and width_var (windows per run),
     engine_var; width_cap() gives the engine's per-run cap, write_files() whether runs write
-    files, pt1_b() the pt1 B knob (0 = automatic), engine_choice(windows) the EngineChoice a
+    files, test_b(engine) the B knob of pt1 or pt2 (0 = automatic or another engine),
+    engine_choice(windows) the EngineChoice a
     run of that width launches with (None while a knob is invalid); budget_vars are the
     form's vars that change it (RAM budget, bucket memory, knob profiles)."""
 
     def __init__(self, master, T, log_path, floor_var, width_var, engine_var, width_cap,
-                 write_files, pt1_b, engine_choice, budget_vars=()):
+                 write_files, test_b, engine_choice, budget_vars=()):
         super().__init__(master)
         self.T = T
         self.title(T("timesim.title"))
@@ -83,7 +84,7 @@ class TimeSimulationWindow(tk.Toplevel):
         self.engine_var = engine_var
         self._width_cap = width_cap
         self._write_files = write_files
-        self._pt1_b = pt1_b
+        self._test_b = test_b
         self._engine_choice = engine_choice
         self.available_ram = None
         self._ram_read = False
@@ -156,7 +157,7 @@ class TimeSimulationWindow(tk.Toplevel):
         self._on_form_changed()
 
     def _ram_fit(self):
-        """Widest run in the RAM budget, None when the budget sets no limit (pt1, free RAM
+        """Widest run in the RAM budget, None when the budget sets no limit (pt1, pt2, free RAM
         unknown, invalid knob)."""
         if self._engine_choice(1) is None:
             return None
@@ -190,7 +191,7 @@ class TimeSimulationWindow(tk.Toplevel):
     def _calibration(self, engine):
         if engine not in self._calibrations:
             self._calibrations[engine] = time_model.calibrate(
-                self._samples, engine, self._pt1_b() if engine == engine_options.ENGINE_PT1 else 0)
+                self._samples, engine, self._test_b(engine))
         return self._calibrations[engine]
 
     def floor(self):
@@ -229,9 +230,9 @@ class TimeSimulationWindow(tk.Toplevel):
             self._syncing = False
         self.refresh()
 
-    def _measured_text(self, engine, floor, pt1_b):
+    def _measured_text(self, engine, floor, test_b):
         T = self.T
-        runs = time_model.measured_runs(self._samples, engine, floor, pt1_b)
+        runs = time_model.measured_runs(self._samples, engine, floor, test_b)
         if not runs.count:
             return T("timesim.measured_none")
         speed = runs.windows * time_model.WINDOW_WIDTH / runs.seconds if runs.seconds else None
@@ -246,7 +247,7 @@ class TimeSimulationWindow(tk.Toplevel):
             return "?"
         ram = run_ram.run_ram_bytes(choice, windows, QUICK_GEN_MAX_WINDOW_WIDTH)
         if ram is None:
-            return T("timesim.ram_pt1")
+            return T("timesim.ram_partial_sieve")
         gb = f"{ram / 1e9:.1f}"
         if not self._ram_read:
             return T("timesim.ram_without_free", ram=gb, reason=T("timesim.ram_free_reading"))
@@ -264,10 +265,10 @@ class TimeSimulationWindow(tk.Toplevel):
         T = self.T
         engine, floor, windows = self._engine(), self.floor(), self.windows()
         write_files = self._write_files()
-        pt1_b = self._pt1_b() if engine == engine_options.ENGINE_PT1 else 0
+        test_b = self._test_b(engine)
         cal = self._calibration(engine)
-        est = time_model.estimate(cal, engine, floor, windows, write_files, pt1_b)
-        below = time_model.estimate(None, engine, floor - 1, windows, write_files, pt1_b)
+        est = time_model.estimate(cal, engine, floor, windows, write_files, test_b)
+        below = time_model.estimate(None, engine, floor - 1, windows, write_files, test_b)
         v = self.result_vars
         v["floor"].set(T("timesim.floor_value", floor=floor))
         v["width"].set(T("timesim.width_value", windows=f"{windows:,}", span=f"{est.span:.3g}"))
@@ -287,12 +288,12 @@ class TimeSimulationWindow(tk.Toplevel):
         v["window"].set(format_long_duration(est.window_seconds, T))
         v["speed"].set(format_rate(est.numbers_per_second))
         v["speed_net"].set(format_rate(est.span / est.sieve_seconds if est.sieve_seconds else None))
-        total = time_model.floor_seconds(cal, engine, floor, windows, write_files, pt1_b)
+        total = time_model.floor_seconds(cal, engine, floor, windows, write_files, test_b)
         runs = -(-time_model.floor_windows(floor) // windows)
         v["floor_total"].set(T("timesim.floor_total_value", time=format_long_duration(total, T),
                                runs=f"{runs:,}", numbers=f"{9 * 10 ** floor:.0e}"))
         v["ram"].set(self._ram_text(windows))
-        v["measured"].set(self._measured_text(engine, floor, pt1_b))
+        v["measured"].set(self._measured_text(engine, floor, test_b))
         if cal is None:
             v["model"].set(T("timesim.model_none", engine=engine))
         else:

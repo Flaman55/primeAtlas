@@ -24,7 +24,7 @@ from benchmark_log_schema import (BENCHMARK_FIELDNAMES, RUN_STATUS_COMPLETED,
 import window_integrity
 
 # ------------------------------------------------------------------------------------------
-# ENGINE SWITCH -- the one flag selecting which scanner (v3, v4, v4.1, v5, v6 or pt1) this orchestrator
+# ENGINE SWITCH -- the one flag selecting which scanner (v3, v4, v4.1, v5, v6, v7, pt1 or pt2) this orchestrator
 # drives; it sets both SCRIPT_NAME and the scanner module import below, so the two can't
 # disagree. All scanners write the SAME PGS2 format/filename convention and share
 # benchmark_log.csv, so switching is safe at any time, including mid-floor.
@@ -36,10 +36,12 @@ import window_integrity
 # default engine (prime_sieve_v6_1.py, code version v6.1, wheel-30 buffer), output identical
 # to v5; v6.0's prime_sieve_v6.py stays for comparison. v7 = prime_sieve_v7_2.py (code version
 # v7.2): v6.1 plus the jump gear for the deep-floor sieving primes, its threshold from a cost
-# model and its span virtual (wider than a narrow run's buffer), output identical to v6;
+# model and its block length from the same model, output identical to v6;
 # v7.0's prime_sieve_v7_0.py and v7.1's prime_sieve_v7_1.py stay for comparison. pt1 = partial sieve + primality test
 # (prime_sieve_pt1.py): D windows identical to v5, BPSW windows from MR_DET_BOUND on go to
-# the P store (see storage_kinds.py).
+# the P store (see storage_kinds.py). pt2 = pt1's partial sieve with every survivor proven
+# (prime_sieve_pt2.py: 13 Miller-Rabin bases below MR_DET_BOUND, the pseudosquares test from
+# there to floor 33), all windows to the D store.
 # PRIMEATLAS_SCANNER_VERSION, when set, overrides the default (benchmarks compare engines
 # without editing this file).
 SCANNER_VERSION = os.environ.get("PRIMEATLAS_SCANNER_VERSION") or "v6"
@@ -58,8 +60,11 @@ elif SCANNER_VERSION == "v7":
     import prime_sieve_v7_2 as prime_sieve_module  # noqa: E402
 elif SCANNER_VERSION == "pt1":
     import prime_sieve_pt1 as prime_sieve_module  # noqa: E402
+elif SCANNER_VERSION == "pt2":
+    import prime_sieve_pt2 as prime_sieve_module  # noqa: E402
 else:
-    raise ValueError(f"SCANNER_VERSION must be 'v3', 'v4', 'v4.1', 'v5', 'v6', 'v7' or 'pt1', "
+    raise ValueError(f"SCANNER_VERSION must be 'v3', 'v4', 'v4.1', 'v5', 'v6', 'v7', 'pt1' or "
+                     f"'pt2', "
                      f"got {SCANNER_VERSION!r}")
 # The GUI's save-point stop kills processes by this name (generation_stop.py).
 SCRIPT_NAME = generation_stop.scanner_script(SCANNER_VERSION)
@@ -288,8 +293,8 @@ def peak_child_rss_mb():
 def scanner_write_threads(scanner_version, environ):
     """Threads the scanner writes its windows with: v7, v6 and v5 (v5.2) use their own
     write-thread knobs (work_plan_v7_2, work_plan_v6, work_plan_v5, read from the environment the scanner
-    inherits); v3, v4, v4.1 and pt1 write on one thread (pt1 overlaps it with sieving,
-    still one writer)."""
+    inherits); v3, v4, v4.1, pt1 and pt2 write on one thread (pt1 and pt2 overlap it with
+    sieving, still one writer)."""
     if scanner_version == "v6":
         import work_plan_v6
         return work_plan_v6.write_threads_from_env(environ)

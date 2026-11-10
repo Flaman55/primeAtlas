@@ -151,7 +151,7 @@ def check_ram(gen, app, win, T):
                     f"the info tip names the budget field and the recommended value ({tip!r})")
     gen._engine_fields.engine_var.set("pt1")
     app.update()
-    passed &= check(win.result_vars["ram"].get() == T("timesim.ram_pt1")
+    passed &= check(win.result_vars["ram"].get() == T("timesim.ram_partial_sieve")
                     and win.slider_cap() == gen._quick_width_cap(),
                     "pt1: no RAM prediction, the slider keeps the engine's cap")
     gen._engine_fields.engine_var.set("v5")

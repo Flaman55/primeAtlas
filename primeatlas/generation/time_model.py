@@ -4,7 +4,7 @@ per run) and the floor set the prep cost, the speed and the total time.
 A run of span S numbers ending at `top` at floor f costs
     prep  = k(f) * pi(L)      sieve = m(f) * S      write = w(f) * S (when files are written)
 where L is the largest sieving prime the engine needs (prep_limit(): isqrt(top) for v4.1
-and v5, the B bound for pt1). prep is the per-run fixed cost F (iterating every sieving
+and v5, the B bound for pt1 and pt2). prep is the per-run fixed cost F (iterating every sieving
 prime up to L and its phase), so a wider run amortizes it and a floor up multiplies it by
 about 3; m is the marking cost per number, which grows with the floor (bucketed hits of
 large primes); w is the write cost per number.
@@ -32,7 +32,7 @@ import math
 from collections import namedtuple
 
 from ..research.pi_approx_window import riemann_r
-from .run_budget import ENGINE_PT1
+from .run_budget import PARTIAL_SIEVE_ENGINES
 from .window_planning import QUICK_GEN_MAX_WINDOW_WIDTH
 
 WINDOW_WIDTH = QUICK_GEN_MAX_WINDOW_WIDTH
@@ -87,11 +87,11 @@ def prime_count(x):
     return int(round(riemann_r(x))), False
 
 
-def prep_limit(engine, top, pt1_b=0):
-    """Largest sieving prime bound of a run ending at `top`: isqrt(top) for v4.1, v5 and v6;
-    for pt1 the B knob, or floor(top^(1/4)) when the knob is 0."""
-    if engine == ENGINE_PT1:
-        return pt1_b if pt1_b > 0 else math.isqrt(math.isqrt(top))
+def prep_limit(engine, top, test_b=0):
+    """Largest sieving prime bound of a run ending at `top`: isqrt(top) for the sieve engines;
+    for pt1 and pt2 the B knob, or floor(top^(1/4)) when the knob is 0."""
+    if engine in PARTIAL_SIEVE_ENGINES:
+        return test_b if test_b > 0 else math.isqrt(math.isqrt(top))
     return math.isqrt(top)
 
 
@@ -99,8 +99,8 @@ def _lnln(limit):
     return math.log(math.log(max(limit, 16)))
 
 
-def _features(engine, span, top, pt1_b=0):
-    limit = prep_limit(engine, top, pt1_b)
+def _features(engine, span, top, test_b=0):
+    limit = prep_limit(engine, top, test_b)
     primes = prime_count(limit)[0]
     return {"run": 1.0, "prime": float(primes), "number": float(span),
             "number_lnln": span * _lnln(limit)}
@@ -178,9 +178,9 @@ def _solve(matrix, rhs):
     return [b[i] / a[i][i] / scale[i] for i in range(n)]
 
 
-def _baseline(own, engine, pt1_b):
+def _baseline(own, engine, test_b):
     """Coefficients of the all-floors fit (see the module docstring), or None."""
-    features = [_features(engine, s.span, s.top, pt1_b) for s in own]
+    features = [_features(engine, s.span, s.top, test_b) for s in own]
     times = [s.sieve_seconds for s in own]
     fits = []
     for size in range(1, min(len(TERMS), len(own) - 1) + 1):
@@ -199,7 +199,7 @@ def _baseline(own, engine, pt1_b):
                key=lambda fit: (fit[1], fit[0]))[2]
 
 
-def _floor_fit(group, baseline, engine, pt1_b):
+def _floor_fit(group, baseline, engine, test_b):
     """(F, m) of one floor's samples: least squares when they cover two or more widths,
     else m from the baseline and F as the rest of the time; both clamped to >= 0."""
     n = len(group)
@@ -215,7 +215,7 @@ def _floor_fit(group, baseline, engine, pt1_b):
         if prep < 0:
             return 0.0, sum(times) / sum(spans)
         return prep, m
-    limit = prep_limit(engine, group[0].top, pt1_b)
+    limit = prep_limit(engine, group[0].top, test_b)
     m = baseline.get("number", 0.0) + baseline.get("number_lnln", 0.0) * _lnln(limit)
     prep = sum(t - m * x for x, t in zip(spans, times)) / n
     if prep < 0:
@@ -247,19 +247,19 @@ def calibration_rows(samples, engine):
     return own, None
 
 
-def calibrate(samples, engine, pt1_b=0):
+def calibrate(samples, engine, test_b=0):
     """Calibration of `engine` from calibration_rows(), or None with fewer than two rows."""
     own, version = calibration_rows(samples, engine)
     if len(own) < 2:
         return None
-    baseline = _baseline(own, engine, pt1_b)
+    baseline = _baseline(own, engine, test_b)
     if baseline is None:
         return None
     points = []
     for floor in sorted({s.floor for s in own}):
         group = [s for s in own if s.floor == floor]
-        prep, m = _floor_fit(group, baseline, engine, pt1_b)
-        primes = sum(prime_count(prep_limit(engine, s.top, pt1_b))[0] for s in group) / len(group)
+        prep, m = _floor_fit(group, baseline, engine, test_b)
+        primes = sum(prime_count(prep_limit(engine, s.top, test_b))[0] for s in group) / len(group)
         points.append(FloorPoint(floor, prep / primes if primes else 0.0, m,
                                  _write_extra(group, prep, m)))
     known = [p for p in points if p.write_seconds_per_number is not None]
@@ -274,7 +274,7 @@ def calibrate(samples, engine, pt1_b=0):
     error = 0.0
     for s in own:
         est = estimate(calibration, engine, s.floor, s.span // WINDOW_WIDTH, s.write_files,
-                       pt1_b, start=s.top - s.span)
+                       test_b, start=s.top - s.span)
         if s.total_seconds > 0:
             error = max(error, abs(est.run_seconds / s.total_seconds - 1))
     return calibration._replace(max_error=error)
@@ -299,13 +299,13 @@ def _interpolate(points, floor, field):
     return values[-1][1]
 
 
-def estimate(calibration, engine, floor, windows, write_files, pt1_b=0, start=None):
+def estimate(calibration, engine, floor, windows, write_files, test_b=0, start=None):
     """Estimate of one run of `windows` windows from `start` (default 10^floor). Without a
     calibration only span, limit and the prime count are given; the times are None."""
     span = windows * WINDOW_WIDTH
     first = 10 ** floor if start is None else start
     top = first + span
-    limit = prep_limit(engine, top, pt1_b)
+    limit = prep_limit(engine, top, test_b)
     primes, exact = prime_count(limit)
     if calibration is None:
         return Estimate(span, limit, primes, exact, None, None, None, None, None, None,
@@ -324,15 +324,15 @@ def estimate(calibration, engine, floor, windows, write_files, pt1_b=0, start=No
                     span / run if run > 0 else None, extrapolated, write_known)
 
 
-def measured_runs(samples, engine, floor, pt1_b=0):
+def measured_runs(samples, engine, floor, test_b=0):
     """MeasuredRuns of `engine` at `floor` in the log: run count, windows, measured seconds
     and the model's seconds for the same runs (None without a calibration or runs)."""
     own = [s for s in samples if s.engine == engine and s.floor == floor]
-    calibration = calibrate(samples, engine, pt1_b)
+    calibration = calibrate(samples, engine, test_b)
     model = None
     if calibration is not None and own:
         model = sum(estimate(calibration, engine, floor, s.span // WINDOW_WIDTH, s.write_files,
-                             pt1_b, start=s.top - s.span).run_seconds for s in own)
+                             test_b, start=s.top - s.span).run_seconds for s in own)
     return MeasuredRuns(len(own), sum(s.span // WINDOW_WIDTH for s in own),
                         sum(s.total_seconds for s in own), model)
 
@@ -342,7 +342,7 @@ def floor_windows(floor):
     return 9 * 10 ** floor // WINDOW_WIDTH
 
 
-def floor_seconds(calibration, engine, floor, windows, write_files, pt1_b=0):
+def floor_seconds(calibration, engine, floor, windows, write_files, test_b=0):
     """Time to generate the whole floor in runs of `windows` windows: the sum over its runs,
     from FLOOR_SAMPLE_RUNS evenly spaced runs when there are more. None without calibration."""
     if calibration is None:
@@ -355,11 +355,11 @@ def floor_seconds(calibration, engine, floor, windows, write_files, pt1_b=0):
         total = 0.0
         for i in range(runs):
             width = min(windows, total_windows - i * windows)
-            total += estimate(calibration, engine, floor, width, write_files, pt1_b,
+            total += estimate(calibration, engine, floor, width, write_files, test_b,
                               start=base + i * windows * WINDOW_WIDTH).run_seconds
         return total
     step = runs / FLOOR_SAMPLE_RUNS
-    sampled = sum(estimate(calibration, engine, floor, windows, write_files, pt1_b,
+    sampled = sum(estimate(calibration, engine, floor, windows, write_files, test_b,
                            start=base + int((i + 0.5) * step) * windows * WINDOW_WIDTH).run_seconds
                   for i in range(FLOOR_SAMPLE_RUNS))
     return sampled * runs / FLOOR_SAMPLE_RUNS
