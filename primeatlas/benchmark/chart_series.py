@@ -5,8 +5,8 @@ line per engine, with P runs (pt1 above MR_DET_BOUND, "pt1 P") on a line of thei
 (one point per line and x, chart_points.py), one distinct hue per line on both
 axes; the renderers tell the axes apart by marker and line weight (primary: circles, thick
 line; secondary: squares, thin line). Reference series (reference_points.py) are drawn
-dashed with hollow markers on the primary axis. Hues are far apart in RGB and readable on
-the light and dark theme backgrounds. YScale maps values to a 0..1 fraction of the plot
+dashed with hollow markers on the primary axis. An engine's hue is its default or the
+user's own (line_colors.py). YScale maps values to a 0..1 fraction of the plot
 height, linear from zero or log10 fitted to the data; a pinned bound (pin_bound(), one
 (min, max) pair per axis) replaces the fitted one exactly, like matplotlib's set_ylim, and
 clip_polyline() cuts the lines at the plot edge (also the left and right edges of a zoomed
@@ -17,6 +17,8 @@ No tkinter here: benchmark_tab.py and benchmark.py both render from these object
 import copy
 import math
 from collections import namedtuple
+
+from .line_colors import ENGINE_COLORS, OTHER_ENGINE_COLOR, engine_color  # noqa: F401
 
 # name: legend text; tag: short text after a point's value ("v5"), "" for none;
 # engine: the color and draw-order key of the line ("v6", "pt1 P"), "" = name;
@@ -29,14 +31,6 @@ ENGINE_DRAW_ORDER = ("unknown", "primesieve", "primesieve_print", "primesieve_co
                      "pseudosquares_print", "pseudosquares_count", "hybrid",
                      "v4.1", "v5", "v6", "v7", "pt1", "pt1 D+P", "pt1 P", "pt1 D proof")
 
-ENGINE_COLORS = {"unknown": "#8c8c8c", "primesieve": "#b5e61d", "primesieve_print": "#00c8c8",
-                 "primesieve_count": "#802080", "pseudosquares_print": "#50c050",
-                 "pseudosquares_count": "#2020d0",
-                 "hybrid": "#009e73", "v4.1": "#e69f00", "v5": "#2f7fe0", "v6": "#7f00ff", "v7": "#ff00ff",
-                 "pt1": "#e0a0e0", "pt1 D+P": "#608000", "pt1 P": "#00e000",
-                 "pt1 D proof": "#60f0b0"}
-OTHER_ENGINE_COLOR = "#ff8080"
-
 AXIS_COLOR = {"primary": "#2f7fe0", "secondary": "#e69f00"}
 
 
@@ -44,8 +38,9 @@ def _engine_rank(engine):
     return (ENGINE_DRAW_ORDER.index(engine) if engine in ENGINE_DRAW_ORDER else 1.5, engine)
 
 
-def engine_series(lines, engines=None, notes=None):
-    """[Series] for {line name: [(x, value)]}, in ENGINE_DRAW_ORDER, in the engine's color.
+def engine_series(lines, engines=None, notes=None, theme=None):
+    """[Series] for {line name: [(x, value)]}, in ENGINE_DRAW_ORDER, in the engine's color
+    in `theme` (the app's when None, line_colors.py).
     engines: {line name: engine key} when the names are not the engine keys themselves;
     notes: {line name: {x: text}} for the points' notes."""
     engines = engines or {}
@@ -54,7 +49,7 @@ def engine_series(lines, engines=None, notes=None):
     def key(name):
         return engines.get(name, name)
     return [Series(name, "" if name == "unknown" else name, points,
-                   ENGINE_COLORS.get(key(name), OTHER_ENGINE_COLOR), False, key(name),
+                   engine_color(key(name), theme=theme), False, key(name),
                    notes.get(name))
             for name, points in sorted(lines.items(),
                                        key=lambda kv: (_engine_rank(key(kv[0])), kv[0]))

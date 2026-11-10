@@ -7,9 +7,9 @@ a PDF report.
 
 | Part | Files |
 |---|---|
-| Tab | `primeatlas/benchmark/benchmark_tab.py` and its mixins `benchmark_filter.py` (Filter window), `benchmark_points.py` (x axis, point choices, selected run), `benchmark_ram_chart.py` (RAM chart), `chart_zoom_controls.py` (zoom and pan), `chart_hover.py` (hover tooltip), `benchmark_chart_windows.py` (a chart in its own window) |
+| Tab | `primeatlas/benchmark/benchmark_tab.py` and its mixins `benchmark_filter.py` (Filter window), `benchmark_points.py` (x axis, point choices, selected run), `benchmark_ram_chart.py` (RAM chart), `chart_zoom_controls.py` (zoom and pan), `chart_hover.py` (hover tooltip), `benchmark_chart_windows.py` (a chart in its own window), `benchmark_line_colors.py` (a legend entry's color menu) |
 | Exports | `benchmark_export.py` (tab mixin: Save PDF, Export menu), `report_export.py` (CSV, SVG, HTML page, HTML snippet), `report_html.py` + `report_chart.js` (the interactive HTML), `chart_svg.py` (SVG backend of `chart_pdf.chart_ops()`) |
-| Backend | `benchmark.py` (reading and normalizing rows, D/P kind, PDF report, `report_chart_pages()`, `benchmark_line_records()`), `line_names.py` (a row's line and charts), `chart_filter.py` (which runs the charts compare), `chart_points.py` (which runs become a chart's points and where they sit on x), `proof_rows.py` (a verified pt1 run as two lines), `sieve_measure.py` (which time the sieve chart measures), `table_cells.py` (a cell as the tables show it), `chart_view.py` (the zoomed part of a chart), `chart_series.py`, `chart_pdf.py`, `reference_points.py` |
+| Backend | `benchmark.py` (reading and normalizing rows, D/P kind, PDF report, `report_chart_pages()`, `benchmark_line_records()`), `line_names.py` (a row's line and charts), `chart_filter.py` (which runs the charts compare), `chart_points.py` (which runs become a chart's points and where they sit on x), `proof_rows.py` (a verified pt1 run as two lines), `sieve_measure.py` (which time the sieve chart measures), `table_cells.py` (a cell as the tables show it), `chart_view.py` (the zoomed part of a chart), `chart_series.py`, `line_colors.py` (each engine's line color), `chart_pdf.py`, `reference_points.py` |
 
 ## Contract
 
@@ -37,11 +37,18 @@ sets points of different widths; the PDF draws the RAM pair on its own page when
 A chart line is one engine build on one thread setup (`line_names.line_name()`): the version when
 it names the engine (`v6.0`), else the engine label and version, the store kind of P runs, then the
 sieve threads (`24 thr`, `2x24 thr` for two instances side by side, `GPU`) and the write threads
-(`write 8`). Names are ASCII, the PDF font has no other characters. Rows from before those columns
-keep the bare engine name. The color and draw order follow the engine. Last row per floor and line
-wins. primesieve rows say how they were measured: `primesieve (Atlas format)` (wrapper, conversion
-into Atlas windows in its time), `primesieve count (native)` and `primesieve print (native)` (the
-program). A native count sieves the range and counts the bits, the work of an engine's sieve phase:
+(`write 8`). Names are ASCII, the PDF font has no other characters, and short enough for one legend
+slot: a version ending in its build commit (`1.2 (fccb96e)`) is named without it, so builds of one
+version share a line (the table keeps the commit). Rows from before those columns
+keep the bare engine name. The color and draw order follow the engine: `line_colors.py` keeps two palettes, dark and light,
+with one color per engine key in each (same hue, at least 3:1 contrast on its own background: the
+dark theme's canvas, or white for the light theme and every export, `EXPORT_THEME`), and the user's
+own color per theme and engine key in the remembered-fields store (`benchmark.line_colors.<theme>`),
+chosen from a legend entry's right-click menu; every line of that engine, every chart and the
+width-axis shades follow it. The tab draws in the app's theme (`core/theme_dynamic.THEME`). Last row per floor and line
+wins. primesieve rows say how they were measured: `primesieve Atlas` (wrapper, conversion
+into Atlas windows in its time), `primesieve count` and `primesieve print` (the program); the
+Pseudosquares Prime Sieve program's are `PSS count` and `PSS print`. A native count sieves the range and counts the bits, the work of an engine's sieve phase:
 it is on the sieve charts, its seconds per window over 10^7-number windows. A native print
 sieves and outputs every prime with no split between the two, a whole run: it is on the whole-run
 chart. Both log the program's peak RAM and write no Atlas windows: they are on RAM per run, not per

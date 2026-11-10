@@ -218,7 +218,7 @@ class PureTests(unittest.TestCase):
                          ["15 thr", "24 thr", "15x24 thr"])
         self.assertEqual(chart_filter.dimension_values(ROWS, "width"), ["10^10", "10^11", "2x10^11"])
         self.assertEqual(chart_filter.dimension_values(ROWS, "write_threads"), ["", "1", "8"])
-        self.assertIn("primesieve count (native) 12.15",
+        self.assertIn("primesieve count 12.15",
                       chart_filter.dimension_values(ROWS, "engine"))
 
     def test_apply(self):
@@ -231,7 +231,7 @@ class PureTests(unittest.TestCase):
     def test_last_row_per_floor_among_the_kept_runs(self):
         kept = chart_filter.apply(ROWS, {"width": {"10^10"}})
         lines = benchmark.benchmark_engine_lines(kept, "sieve")
-        self.assertEqual(lines["primesieve count (native) 12.15, 15 thr"], [(19, 10 ** 10 / 3.2)],
+        self.assertEqual(lines["primesieve count 12.15, 15 thr"], [(19, 10 ** 10 / 3.2)],
                          "the 10^10 count, not the later 10^11 one")
 
     def test_summary(self):
@@ -280,7 +280,7 @@ class TabTests(unittest.TestCase):
                 root.update()
                 self.assertEqual(tags(tab.benchmark_chart2),
                                  {"v6.0, 15 thr, write 8", "v5.1, 15 thr, write 1",
-                                  "primesieve count (native) 12.15, 15 thr"})
+                                  "primesieve count 12.15, 15 thr"})
                 self.assertIn("15 thr", tab.filter_summary_var.get())
                 self.assertEqual(tab.mixed_widths_vars["sieve"].get(), "")
 

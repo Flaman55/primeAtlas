@@ -6,29 +6,35 @@ threads ("24 thr", "2x24 thr" for two instances side by side, "GPU") and the wri
 ("write 8", "write ?" for a writing row from before that column); rows from before the
 thread columns keep the bare engine name. width_label() names a point's range ("@ 10^11"):
 on the floor axis a chart can set points of different widths side by side. Names are ASCII:
-the PDF font has no other characters. primesieve rows say how they were measured: the
-wrapper converts the library's result into Atlas windows ("primesieve (Atlas format)"), the
-native program counts ("primesieve count (native)") or prints ("primesieve print (native)");
-the Pseudosquares Prime Sieve program has the same two native modes ("Pseudosquares count
-(native)", "Pseudosquares print (native)"). A native count sieves the range and counts the
-primes -- an engine's sieve phase -- so it is on the sieve charts only; a native print sieves and outputs every prime with no split
-between the two -- a whole run -- so it is on the whole-run chart only (CHART_METRICS). Both
+the PDF font has no other characters. A name fits one legend slot: a version that ends in
+its build commit ("1.2 (fccb96e)") is named without it, so builds of one version are one
+line (the table keeps the commit). primesieve rows say how they were measured: the
+wrapper converts the library's result into Atlas windows ("primesieve Atlas"), the native
+program counts ("primesieve count") or prints ("primesieve print"); the Pseudosquares
+Prime Sieve program has the same two native modes ("PSS count", "PSS print"). A native
+count sieves the range and counts the primes -- an engine's sieve phase -- so it is on the
+sieve charts only; a native print sieves and outputs every prime with no split between the two -- a whole run -- so it is on the whole-run chart only (CHART_METRICS). Both
 log the program's peak RAM and write no Atlas windows: they are on RAM per run, not per window. A
 native count is one process timed from outside, startup included (WHOLE_PROCESS_SIEVE): its
 one time is both its sieve phase and its sieve with startup, and it has no startup/sieve
 split, so it is not on the startup-overhead measure.
 No tkinter here.
 """
+import re
+
 import benchmark_log_schema as schema
 import storage_kinds
 
 ENGINE_LABELS = {
-    schema.ENGINE_PRIMESIEVE_ATLAS: "primesieve (Atlas format)",
-    schema.ENGINE_PRIMESIEVE_PRINT: "primesieve print (native)",
-    schema.ENGINE_PRIMESIEVE_COUNT: "primesieve count (native)",
-    schema.ENGINE_PSEUDOSQUARES_PRINT: "Pseudosquares print (native)",
-    schema.ENGINE_PSEUDOSQUARES_COUNT: "Pseudosquares count (native)",
+    schema.ENGINE_PRIMESIEVE_ATLAS: "primesieve Atlas",
+    schema.ENGINE_PRIMESIEVE_PRINT: "primesieve print",
+    schema.ENGINE_PRIMESIEVE_COUNT: "primesieve count",
+    schema.ENGINE_PSEUDOSQUARES_PRINT: "PSS print",
+    schema.ENGINE_PSEUDOSQUARES_COUNT: "PSS count",
 }
+
+# A build commit at the end of a version ("1.2 (fccb96e)"), left out of line names.
+_BUILD_COMMIT = re.compile(r"\s*\([0-9a-f]{7,40}\)$")
 
 # Native programs counting a range: one process, no Atlas windows, nothing written.
 NATIVE_COUNT_ENGINES = frozenset({schema.ENGINE_PRIMESIEVE_COUNT,
@@ -112,9 +118,10 @@ def width_label(numbers):
 
 
 def base_name(row):
-    """The line name without threads: engine or its version, primesieve path, P kind."""
+    """The line name without threads: engine or its version (without a build commit),
+    primesieve path, P kind."""
     engine = row_engine(row)
-    version = (row.get("engine_version") or "").strip()
+    version = _BUILD_COMMIT.sub("", (row.get("engine_version") or "").strip())
     label = ENGINE_LABELS.get(engine, engine)
     if version and version.startswith(engine) and engine not in ENGINE_LABELS:
         name = version

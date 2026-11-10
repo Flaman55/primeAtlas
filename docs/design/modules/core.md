@@ -9,6 +9,7 @@ app-wide widgets and the background coordinators for floor totals and search. GU
 |---|---|
 | Settings and texts | `app_settings.py` (`AppSettings`), `i18n.py` (`Translator`), `locales/strings_en.json`, `locales/strings_pl.json` |
 | Remembered fields | `ui_state.py` (`remember()`), `ui_state_store.py` (`UiStateStore`, no tkinter), `ui_state_dynamic.py` (the app's store, `STORE`) |
+| Theme in use | `theme_dynamic.py` (`THEME`, set by `app_dynamic` at startup, read by `benchmark/line_colors.py`) |
 | Look | `theme.py` (palettes), `app_icon.py`, `assets/` |
 | Storage reads | `storage.py` (floor listing, totals cache, `LOW_FLOOR_CUTOFF`) |
 | Widgets | `widgets.py` (HeightGrip, ScrollPad, ScrollablePage, FlowRow), `info_tip.py` (InfoTip, the "i" marker with a hover text), `base_tab.py` (`BaseTab`) |

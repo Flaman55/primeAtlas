@@ -38,7 +38,7 @@ from ..core.pdf_writer import _pdf_ascii_fold, _pdf_text_op, _write_pdf
 from . import chart_view
 from .chart_pdf import chart_ops
 from .chart_series import axis_pins, engine_series, visible_series
-from . import chart_points, line_names, proof_rows, sieve_measure, table_cells
+from . import chart_points, line_colors, line_names, proof_rows, sieve_measure, table_cells
 from .reference_points import REFERENCES, reference_series
 
 QUICK_GEN_MAX_WINDOW_WIDTH = 10_000_000  # see this module's own docstring for why this
@@ -520,13 +520,13 @@ def _floor_shades(series, rows):
     return out
 
 
-def benchmark_series(rows, metric, view=None):
-    """[Series] of one chart metric, colored by engine, each point noting its width; on the
+def benchmark_series(rows, metric, view=None, theme=None):
+    """[Series] of one chart metric, colored by engine (in `theme`, the app's when None), each point noting its width; on the
     width axis each floor in its own shade of the engine's hue."""
     view = view or chart_points.DEFAULT
     series = engine_series(benchmark_engine_lines(rows, metric, view),
                            benchmark_line_engines(rows, view),
-                           benchmark_line_widths(rows, metric, view))
+                           benchmark_line_widths(rows, metric, view), theme)
     return _floor_shades(series, rows) if view.x_mode == chart_points.X_WIDTH else series
 
 
@@ -616,12 +616,15 @@ def report_references(references, measure=sieve_measure.DEFAULT):
     return bool(references) and sieve_measure.chart(measure).references
 
 
-def report_chart_series(rows, chart, hidden_lines=None, extra=(), point_views=None):
+def report_chart_series(rows, chart, hidden_lines=None, extra=(), point_views=None,
+                        theme=line_colors.EXPORT_THEME):
     """The visible Series of one report chart (see report_chart_pages()), its reference
     series (`extra`) included, the lines hidden in the tab's legend left out; point_views:
-    {"run" | "sieve" | "ram": chart_points.PointView}, the tab's x axis and point choice."""
+    {"run" | "sieve" | "ram": chart_points.PointView}, the tab's x axis and point choice;
+    theme: the line colors' palette, the exports' white background by default."""
     chart_key, axis, metric = chart[:3]
-    series = benchmark_series(rows, metric, (point_views or {}).get(chart_key)) + list(extra)
+    series = benchmark_series(rows, metric, (point_views or {}).get(chart_key),
+                              theme) + list(extra)
     return visible_series(series, (hidden_lines or {}).get(chart_key), axis)
 
 

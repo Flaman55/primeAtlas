@@ -3,8 +3,9 @@ primesieve whether the run went through the Atlas-format wrapper or the native p
 
 Checks: a row's line name carries the version, the sieve threads (instances when more than
 one ran) and the write threads; old rows without them keep the bare engine name; names are
-ASCII (the PDF font); primesieve wrapper rows read "primesieve (Atlas format)", native rows
-"primesieve count (native)" / "primesieve print (native)". A native count sieves the range
+ASCII (the PDF font) and short enough for one legend slot; primesieve wrapper rows read
+"primesieve Atlas", native rows "primesieve count" / "primesieve print", Pseudosquares Prime
+Sieve rows "PSS count" / "PSS print", with the version but not the build commit. A native count sieves the range
 and counts the bits, the work of an engine's sieve phase: it is on the sieve charts only
 (n/s and s/window, the window being 10^7 numbers). A native print sieves and outputs every
 prime, a whole run: it is on the whole-run chart only (no sieve/write split). The line keeps
@@ -59,13 +60,13 @@ class LineNameTests(unittest.TestCase):
         self.assertTrue(all(line_names.line_name(r).isascii() for r in rows))
 
     def test_primesieve_labels(self):
-        self.assertEqual(line_names.line_name(_row("primesieve")), "primesieve (Atlas format)")
+        self.assertEqual(line_names.line_name(_row("primesieve")), "primesieve Atlas")
         self.assertEqual(line_names.line_name(_row("primesieve", version="v1.0", threads="1",
                                                    write_threads="1")),
-                         "primesieve (Atlas format) v1.0, 1 thr, write 1")
+                         "primesieve Atlas v1.0, 1 thr, write 1")
         self.assertEqual(line_names.line_name(_row("primesieve_print", version="12.15",
                                                    threads="1", write_threads="1")),
-                         "primesieve print (native) 12.15, 1 thr, write 1")
+                         "primesieve print 12.15, 1 thr, write 1")
 
     def test_p_runs_keep_their_kind(self):
         row = _row("pt1", version="pt1", threads="24", write_threads="1", kind="P")
@@ -85,7 +86,7 @@ class ChartFilterTests(unittest.TestCase):
         return benchmark.benchmark_engine_lines(self.ROWS, metric)
 
     def test_count_is_on_the_sieve_charts_only(self):
-        name = "primesieve count (native) 12.15, 15 thr"
+        name = "primesieve count 12.15, 15 thr"
         self.assertEqual(self.lines("sieve")[name], [(19, 100 * W / 4)])
         self.assertEqual(self.lines("sieve_spw")[name], [(19, 4 / 100)],
                          "s/window over 10^7-number windows")
@@ -93,7 +94,7 @@ class ChartFilterTests(unittest.TestCase):
         self.assertNotIn(name, self.lines("write"))
 
     def test_print_is_on_the_whole_run_chart_only(self):
-        name = "primesieve print (native) 12.15, 1 thr, write 1"
+        name = "primesieve print 12.15, 1 thr, write 1"
         self.assertEqual(self.lines("growth")[name], [(19, 2.5e8)])
         for metric in ("write", "sieve", "sieve_spw"):
             self.assertNotIn(name, self.lines(metric), metric)
@@ -104,7 +105,7 @@ class ChartFilterTests(unittest.TestCase):
         self.assertEqual(by_name["v6.0, 24 thr, write 8"].color, chart_series.ENGINE_COLORS["v6"])
         self.assertEqual(by_name["v6.0, 24 thr, write 8"].tag, "v6.0, 24 thr, write 8",
                          "the point label names version and threads")
-        native = by_name["primesieve count (native) 12.15, 15 thr"]
+        native = by_name["primesieve count 12.15, 15 thr"]
         self.assertEqual(native.color, chart_series.ENGINE_COLORS["primesieve_count"])
         colors = {chart_series.ENGINE_COLORS[e]
                   for e in ("primesieve", "primesieve_print", "primesieve_count")}
@@ -150,7 +151,7 @@ class WidthTests(unittest.TestCase):
                          "v6.0, 1 thr, write ?")
         self.assertEqual(line_names.line_name(_row("primesieve_count", version="12.15",
                                                    threads="15")),
-                         "primesieve count (native) 12.15, 15 thr", "a count writes nothing")
+                         "primesieve count 12.15, 15 thr", "a count writes nothing")
 
 
 class PseudosquaresTests(unittest.TestCase):
@@ -162,8 +163,8 @@ class PseudosquaresTests(unittest.TestCase):
              write_threads="1", windows_written="0", loop_numbers_per_second="3.5e6",
              write_seconds="", sieve_seconds=""),
     ]
-    COUNT = "Pseudosquares count (native) 1.2 (fccb96e), 24 thr"
-    PRINT = "Pseudosquares print (native) 1.2 (fccb96e), 1 thr, write 1"
+    COUNT = "PSS count 1.2, 24 thr"
+    PRINT = "PSS print 1.2, 1 thr, write 1"
 
     def lines(self, metric):
         return benchmark.benchmark_engine_lines(self.ROWS, metric)
@@ -173,7 +174,31 @@ class PseudosquaresTests(unittest.TestCase):
         self.assertEqual(line_names.line_name(self.ROWS[1]), self.PRINT)
         self.assertEqual(line_names.line_name(_row("pseudosquares_count", version="1.2",
                                                    threads="8")),
-                         "Pseudosquares count (native) 1.2, 8 thr", "a count writes nothing")
+                         "PSS count 1.2, 8 thr", "a count writes nothing")
+
+    def test_build_commit_stays_out_of_the_name(self):
+        """Builds of one version are one line: the commit is in the table, not the legend."""
+        other = dict(self.ROWS[0], engine_version="1.2 (0123abc)")
+        self.assertEqual(line_names.line_name(other), self.COUNT)
+        self.assertEqual(line_names.line_name(dict(self.ROWS[0], engine_version="(fccb96e)")),
+                         "PSS count, 24 thr", "a version that is only a commit")
+        self.assertEqual(line_names.line_name(_row("v6", version="v6.0 (beta)", threads="24",
+                                                   write_threads="8")),
+                         "v6.0 (beta), 24 thr, write 8", "a non-hex suffix is kept")
+        self.assertEqual(line_names.line_name(_row("v6", version="v6.0 (fccb96e) x",
+                                                   threads="1", write_threads="1")),
+                         "v6.0 (fccb96e) x, 1 thr, write 1", "only a trailing commit goes")
+
+    def test_legend_names_are_short(self):
+        """One legend slot: the count line is no longer than a v6 line (the old name took
+        50 characters); no native or wrapper name carries a parenthesised note."""
+        v6 = line_names.line_name(_row("v6", version="v6.0", threads="24", write_threads="8"))
+        self.assertLessEqual(len(self.COUNT), len(v6))
+        for engine in ("primesieve", "primesieve_print", "primesieve_count",
+                       "pseudosquares_print", "pseudosquares_count"):
+            name = line_names.line_name(_row(engine, version="12.15 (fccb96e)", threads="24",
+                                             write_threads="1"))
+            self.assertNotIn("(", name)
 
     def test_count_is_on_the_sieve_charts_with_and_without_startup(self):
         self.assertEqual(self.lines("sieve")[self.COUNT], [(25, 10 ** 9 / 40)])
