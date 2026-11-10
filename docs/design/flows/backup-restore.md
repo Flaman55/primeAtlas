@@ -23,6 +23,7 @@ Entry points: Settings > Backup (`primeatlas/settings/settings_tab.py` and its s
 | Full backup (`full_backup.py`) | "Full backup" | window and hit files, the floor's benchmark-purpose log rows | gzip copies, `full_backup_meta.json` and `benchmark_rows.json` at the destination; restore copies them back and appends the missing rows to the log |
 | Integrate (`storage_integrate.py`) | "Integrate storage" | another storage folder, its `benchmark_log.csv` | preview, then copy floors and their metadata; the floor's benchmark-purpose rows appended to the local log |
 | Delete (`delete_manager.PortalWiper`) | full or per-floor delete, after confirmation | | removes the data; trees reload |
+| Delete benchmarks (`delete_manager.clear_benchmark_log`) | after confirmation | | benchmark_log.csv keeps its header only; the Benchmark tab reloads |
 
 ## What leaves and what is kept
 

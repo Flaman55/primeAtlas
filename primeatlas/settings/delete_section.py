@@ -1,6 +1,7 @@
 """
 delete_section.py -- DeleteSection, the delete actions of the Backup sub-tab: the
-full-database delete and the two per-floor deletes (one floor's prime+constellation
+full-database delete, the benchmark-log delete (benchmark_log.csv rows only) and the
+two per-floor deletes (one floor's prime+constellation
 data, or only that floor's constellations -- see FloorWiper in delete_manager.py), each
 behind its warning/confirmation dialog.
 
@@ -11,7 +12,7 @@ other mixins set up, so it is never instantiated on its own.
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-from .delete_manager import PortalWiper, FloorWiper
+from .delete_manager import PortalWiper, FloorWiper, clear_benchmark_log, count_benchmark_rows
 from ..core import background
 
 
@@ -88,6 +89,32 @@ class DeleteSection:
         # in rather than imported directly.
         self.wsl["reload_primes_tree"]()
         self.wsl["reload_constellations_tree"]()
+
+    # ---- delete: benchmark_log.csv rows only ----------------------------------------------
+
+    def _on_delete_benchmarks_clicked(self):
+        """Clears every benchmark_log.csv row of the current storage (its header stays);
+        floors and their caches are untouched. The Benchmark tab reloads afterwards."""
+        portal_folder = self.wsl["get_portal_folder"]()
+        rows = count_benchmark_rows(portal_folder)
+        if rows == 0:
+            messagebox.showinfo(self.T("settings.delete_title"),
+                                self.T("settings.delete_benchmarks_empty"))
+            return
+        if not messagebox.askyesno(
+                self.T("settings.delete_benchmarks_frame"),
+                self.T("settings.delete_benchmarks_confirm", rows=rows, folder=portal_folder)):
+            return
+        error = clear_benchmark_log(portal_folder)
+        if error:
+            text = self.T("settings.delete_benchmarks_error", error=error)
+            self._restore_log(text + "\n")
+            messagebox.showwarning(self.T("settings.delete_title"), text)
+            return
+        text = self.T("settings.delete_benchmarks_done", rows=rows)
+        self._restore_log(text + "\n")
+        messagebox.showinfo(self.T("settings.delete_title"), text)
+        self.wsl["reload_benchmark_log"]()
 
     # ---- delete: single floor / that floor's constellations only -------------------------
 

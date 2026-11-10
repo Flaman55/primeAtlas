@@ -36,6 +36,13 @@ the engines run on), and an engine that resolves another copy than Python. It al
 Pseudosquares Prime Sieve program (path, version, build commit) and warns when that build is not
 the pinned commit.
 
+Deletes (Backup sub-tab, `delete_section.py` over `delete_manager.py`): one floor (or only its
+constellations), the benchmarks (`count_benchmark_rows` / `clear_benchmark_log`: benchmark_log.csv
+keeps its header line as written, floors and caches stay, the Benchmark tab reloads through
+`wsl_helpers["reload_benchmark_log"]`), and the whole database (every floor, the totals cache and
+the log rows through the same `clear_benchmark_log`). Each asks first; a backup keeps a copy of the
+log.
+
 Pseudosquares Prime Sieve (`pseudosquares_section.py`, in Updates): Check status runs
 `pseudosquares_install.py --status`; Install / Rebuild probes, installs missing build tools as root
 (`wsl_blocking.run_pseudosquares_tools_install_wsl_blocking`, `wsl.exe -u root`), then runs
@@ -58,6 +65,7 @@ present.
 ## Specs and tests
 
 `test_app_update`, `test_app_update_locks`, `test_app_restart`, `test_env_setup`, `test_delete_manager`,
+`test_delete_benchmarks`,
 `test_full_backup_hit_paging`, `test_storage_integrate`, `test_benchmark_rows_safety`, `test_dp_settings`,
 `test_primecount_settings_integration`, `test_env_versions`, `test_pseudosquares_settings`,
 `test_about_tab`.

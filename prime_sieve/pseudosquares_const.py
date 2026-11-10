@@ -13,10 +13,11 @@ REPO_URL = "https://github.com/kimwalisch/Pseudosquares-Prime-Sieve"
 PIN_COMMIT = "fccb96e93c2586abd9e88dfe95977848a03bc149"
 PIN_SHORT = PIN_COMMIT[:7]
 
-# The program sieves [START, STOP] with STOP <= 10^33 (its --help).
-MAX_STOP = 10 ** 33
-# Highest Atlas floor with numbers under MAX_STOP: floor 32 is [10^32, 10^33).
-MAX_FLOOR = len(str(MAX_STOP)) - 2
+# The program sieves [START, STOP] and refuses a STOP with (double) STOP > 1.73 * 1e33
+# (its --help rounds that to 10^33); the same double product here is its largest STOP.
+MAX_STOP = int(1.73 * 1e33)
+# Highest Atlas floor with numbers up to MAX_STOP: floor 33, [10^33, MAX_STOP] of it.
+MAX_FLOOR = len(str(MAX_STOP)) - 1
 
 BINARY_NAME = "pseudosquares_prime_sieve"
 BINARY_ENV = "PSEUDOSQUARES_BIN"           # explicit binary path, wins over the install

@@ -9,7 +9,7 @@ print) the Benchmark checkbox is disabled and shows checked -- a native run is a
 benchmark -- without changing the user's own setting, which it shows and sets again in
 another mode; Generate launches pseudosquares_native.py with the
 planned floor/start/count, the mode and the thread count (0 = Auto), from From or from a
-Floor with From blank; a bad Threads value, a From past 10^33 and a blank From and Floor
+Floor with From blank; a bad Threads value, a From past the program's stop and a blank From and Floor
 launch nothing; the mode's fields are remembered; the strings exist in English and Polish,
 the attribution names Kim Walisch and the BSD 2-Clause License, and the info text names the
 text folder, one print thread and claims no speed.
@@ -128,6 +128,7 @@ def main():
 
         import primeatlas.generation.generation_tab as generation_tab_mod
         import primeatlas.generation.quick_gen_pseudosquares as pss_mod
+        pss_const = pss_mod.pseudosquares_const
 
         class _FakeRunner:
             def __init__(self, *a, **k):
@@ -170,8 +171,9 @@ def main():
             check(generate(floor="28", mode="count", threads="many") is None and errors,
                   "bad Threads: error, no launch")
             errors.clear()
-            gen.quick_pseudosquares_from_var.set(str(10 ** 33))
-            check(generate(threads="Auto") is None and errors, "From 10^33: error, no launch")
+            gen.quick_pseudosquares_from_var.set(str(pss_const.MAX_STOP + 1))
+            check(generate(threads="Auto") is None and errors,
+                  "From past the program's stop: error, no launch")
             errors.clear()
             gen.quick_pseudosquares_from_var.set("")
             check(generate(floor="") is None and errors, "blank From and Floor: error, no launch")

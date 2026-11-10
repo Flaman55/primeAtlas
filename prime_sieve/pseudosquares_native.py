@@ -47,8 +47,8 @@ def native_range(base_exponent, target_idx_start, target_idx_count, window_m):
     """[lo, hi) of the request: hi clamped to the floor's end and to the program's stop.
     ValueError for a floor past MAX_FLOOR or a range with no numbers."""
     if base_exponent > const.MAX_FLOOR:
-        raise ValueError(f"floor {base_exponent} is past the program's 10^33 stop "
-                         f"(last floor {const.MAX_FLOOR})")
+        raise ValueError(f"floor {base_exponent} is past the program's stop "
+                         f"{const.MAX_STOP} (last floor {const.MAX_FLOOR})")
     lo = 10 ** base_exponent + target_idx_start * window_m
     hi = min(lo + target_idx_count * window_m, 10 ** (base_exponent + 1), const.MAX_STOP + 1)
     if hi <= lo:

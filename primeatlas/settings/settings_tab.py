@@ -314,6 +314,14 @@ class SettingsTab(GeneralSection, RestoreSection, DeleteSection, FullBackupSecti
                    command=self._on_delete_floor_constellations_clicked).pack(
             side="left", padx=(6, 0))
 
+        bench_delete_frame = ttk.Labelframe(outer, text=self.T("settings.delete_benchmarks_frame"))
+        bench_delete_frame.pack(fill="x", pady=(0, 8))
+        ttk.Label(
+            bench_delete_frame, text=self.T("settings.delete_benchmarks_hint"),
+            wraplength=760, justify="left").pack(anchor="w", padx=6, pady=(6, 4))
+        ttk.Button(bench_delete_frame, text=self.T("settings.delete_benchmarks_button"),
+                   command=self._on_delete_benchmarks_clicked).pack(anchor="w", padx=6, pady=(0, 6))
+
         delete_frame = ttk.Labelframe(outer, text=self.T("settings.delete_frame"))
         delete_frame.pack(fill="x")
         ttk.Label(

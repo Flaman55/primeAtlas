@@ -302,6 +302,9 @@ class QuickGenRuns:
         # loop path -- re-enable and reset the shared bar, same reasoning as
         # _on_run_loop()'s own comment.
         self._reset_gen_progress_bar_for_new_run()
+        lo = 10 ** base_exponent + target_idx_start * QUICK_GEN_MAX_WINDOW_WIDTH
+        hi = lo + window_count_per_run * QUICK_GEN_MAX_WINDOW_WIDTH
+        self._pi_count_notice(base_exponent, lo, hi, hi)
         write_files = self._loop_write_files_var.get()
         use_pi_seed = self._loop_use_pi_seed_var.get()
         # Effective flag: either checkbox on means "compute pi(L_final)" -- see the

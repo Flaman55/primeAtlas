@@ -259,6 +259,7 @@ class LoopSection:
         # see _set_gen_progress_bar()'s own docstring) or left it full (a previous
         # run's own 100%-done state).
         self._reset_gen_progress_bar_for_new_run()
+        self._pi_count_notice_for_loop_form()
         parsed = self._collect_loop_settings_from_form()
         if parsed is None:
             return

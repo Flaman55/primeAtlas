@@ -169,8 +169,9 @@ Pseudosquares mode (`pseudosquares_native.py`) runs the Pseudosquares Prime Siev
 Walisch, BSD 2-Clause) the same way, with rows `pseudosquares_count` / `pseudosquares_print`:
 count runs `pseudosquares_prime_sieve START STOP [--threads=N]` (threads parsed from its
 report), print adds `--print` into `pseudosquares/10p{N}/<start>_<stop>.txt` (one thread, the
-program sets it). The range stays inside its floor and under the program's 10^33 stop (floor 32
-is the last, `pseudosquares_const.MAX_FLOOR`). `engine_version` is the program's version plus
+program sets it). The range stays inside its floor and under the program's stop, `pseudosquares_const.MAX_STOP` =
+int(1.73 * 1e33), the double bound its code checks (`--help` rounds it to 10^33); floor 33 is the
+last, `MAX_FLOOR`, up to that stop. `engine_version` is the program's version plus
 the commit of the installer's clone ("1.2 (fccb96e)"), version alone for a binary found
 elsewhere. Both native runners share `native_tool_run.py`: the timed child (`run_timed`), the
 printed file's line count, the child's peak RSS and the row itself. The program is found at
