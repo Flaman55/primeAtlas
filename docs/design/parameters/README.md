@@ -8,7 +8,8 @@ One page per area, `<area>.md`, with the columns Parameter, Default, Type and bo
 
 | Area | Parameters |
 |---|---|
-| [generation-loop](generation-loop.md) | 39 |
+| [generation-loop](generation-loop.md) | 40 |
 | [generation-constellation](generation-constellation.md) | 1 |
 | [generation-ktuple](generation-ktuple.md) | 14 |
+| [generation-verify](generation-verify.md) | 3 |
 | [visualization-renderer](visualization-renderer.md) | 72 |

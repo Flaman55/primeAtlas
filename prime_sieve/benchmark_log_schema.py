@@ -48,6 +48,11 @@ Column notes:
   not Atlas storage): its row lives in this log alone, never in a floor's
   floor_meta.json. Every writer sets it (run_purpose()); row_purpose() reads it, falling
   back to write_files for rows logged before the column.
+- proof_seconds: the time pt1's verification (PRIMEATLAS_PT1_VERIFY=1, pt1_verify.py) spent
+  proving its P windows, part of total_seconds and not of sieve_seconds: the run's sieve
+  alone and its sieve with the proof both follow from the row. Blank for runs without it.
+  A store verification run (pt1_verify_store.py, engine pt1_verify) logs its proof time in
+  verify_seconds instead: it sieves nothing.
 Rows written before a column existed keep it blank: a migration never guesses old values,
 and a blank run_status means completed.
 
@@ -65,7 +70,7 @@ BENCHMARK_FIELDNAMES = [
     "loop_seconds_per_window", "write_files", "base_gen_seconds", "sieve_seconds",
     "write_seconds", "bytes_written", "engine", "numbers_processed", "run_status",
     "verify_seconds", "engine_version", "threads", "write_threads", "sieve_wall_seconds",
-    "run_purpose",
+    "run_purpose", "proof_seconds",
 ]
 
 ENGINE_PRIMESIEVE_ATLAS = "primesieve"

@@ -38,7 +38,7 @@ from ..core.pdf_writer import _pdf_ascii_fold, _pdf_text_op, _write_pdf
 from . import chart_view
 from .chart_pdf import chart_ops
 from .chart_series import axis_pins, engine_series, visible_series
-from . import chart_points, line_names, sieve_measure, table_cells
+from . import chart_points, line_names, proof_rows, sieve_measure, table_cells
 from .reference_points import REFERENCES, reference_series
 
 QUICK_GEN_MAX_WINDOW_WIDTH = 10_000_000  # see this module's own docstring for why this
@@ -163,12 +163,15 @@ def benchmark_row_kind(row):
     """Store a run wrote into (storage_kinds.py): "D", "P", or "D+P" for a pt1 run on
     floor 24 whose windows lie on both sides of MR_DET_BOUND. Derived from the engine and
     the run's window range (fixed width QUICK_GEN_MAX_WINDOW_WIDTH; the whole floor when
-    the range is unreadable); a "kind" value already in the row wins."""
+    the range is unreadable); "D/P" for a pt1 run that proved its P windows (proof_seconds,
+    proof_rows.py); a "kind" value already in the row wins."""
     if row.get("kind"):
         return row["kind"]
     engine = _row_engine(row)
     if engine != storage_kinds.ENGINE_PT1:
         return storage_kinds.KIND_D
+    if proof_rows.proof_seconds(row) is not None:
+        return storage_kinds.KIND_DP
     try:
         floor = int(row.get("base_exponent", ""))
     except (TypeError, ValueError):
@@ -431,8 +434,8 @@ def benchmark_engine_lines(rows, metric, view=None):
 def benchmark_line_engines(rows, view=None):
     """{line name: color/draw-order key} for the rows' lines."""
     x_mode = (view or chart_points.DEFAULT).x_mode
-    return {chart_points.line_name(row, x_mode): _row_line_engine(row) for row in rows
-            if chart_points.floor_of(row) is not None}
+    return {chart_points.line_name(row, x_mode): _row_line_engine(row)
+            for row in proof_rows.chart_rows(rows) if chart_points.floor_of(row) is not None}
 
 
 def benchmark_line_widths(rows, metric, view=None):
@@ -459,7 +462,7 @@ def selected_marks(rows, metric, view=None):
         return set()
     return {(name, x, y) for name, points in chart_points.chart_points(
                 rows, line_value(metric), view).items()
-            for x, y, row in points if row is view.selected}
+            for x, y, row in points if proof_rows.source(row) is view.selected}
 
 
 def mixed_width_floors(rows, metric, view=None):
@@ -482,15 +485,16 @@ def benchmark_line_records(rows, metric):
     interactive HTML page); numbers: the run's width, None when unknown."""
     value = line_value(metric)
     records = []
-    for i, row in enumerate(rows):
-        floor = chart_points.floor_of(row)
-        if floor is None:
-            continue
-        y = value(row)
-        if y is not None:
-            records.append((i, line_names.line_name(row), floor, y,
-                            line_names.width_label(row.get("numbers_processed")),
-                            chart_points.numbers_of(row)))
+    for i, logged in enumerate(rows):
+        for row in proof_rows.split(logged):
+            floor = chart_points.floor_of(row)
+            if floor is None:
+                continue
+            y = value(row)
+            if y is not None:
+                records.append((i, line_names.line_name(row), floor, y,
+                                line_names.width_label(row.get("numbers_processed")),
+                                chart_points.numbers_of(row)))
     return records
 
 
@@ -499,7 +503,7 @@ def width_floors(rows):
     index of a floor in its key's list is its shade on the width axis (chart_points.shade()),
     the same on every chart of the same rows."""
     floors = {}
-    for row in rows:
+    for row in proof_rows.chart_rows(rows):
         floor = chart_points.floor_of(row)
         if floor is not None and chart_points.numbers_of(row) is not None:
             floors.setdefault(_row_line_engine(row), set()).add(floor)

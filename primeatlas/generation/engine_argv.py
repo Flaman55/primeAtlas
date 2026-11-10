@@ -43,6 +43,8 @@ PRIMECOUNT_QUERY_SCRIPT = os.path.abspath(
     os.path.join(_SCRIPT_DIR, "prime_sieve", "primecount_query.py"))
 ENV_VERSIONS_SCRIPT = os.path.abspath(
     os.path.join(_SCRIPT_DIR, "prime_sieve", "env_versions.py"))
+PT1_VERIFY_STORE_SCRIPT = os.path.abspath(
+    os.path.join(_SCRIPT_DIR, "prime_sieve", "pt1_verify_store.py"))
 
 
 # ------------------------------------------------------------------------------------------
@@ -377,6 +379,14 @@ def build_ktuple_sieve_argv(base_exponent, k, variant_id, n_locations=1000, wind
     if reset_checkpoint:
         argv.append("--reset-checkpoint")
     return argv
+
+
+def build_pt1_verify_argv(base_exponent, threads, window_m, max_windows=0, script_path=None):
+    """The LINUX-side argv of pt1_verify_store.py (its module docstring has the CLI):
+    proves the floor's P windows, the first max_windows of them (0 = all)."""
+    script = script_path if script_path is not None else PT1_VERIFY_STORE_SCRIPT
+    return ["python3", "-u", windows_path_to_wsl(script), str(base_exponent), str(threads),
+            str(window_m), str(max_windows)]
 
 
 def build_pip_install_argv(package, upgrade=False):

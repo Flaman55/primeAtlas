@@ -2,16 +2,24 @@
 
 Launches and follows every engine run: the generation pipeline (Section A and the Quick-gen panel,
 with orchestrator, primesieve, cudasieve and Hybrid modes), the constellation search (Section B) and
-the targeted k-tuple sieve (Section C). Only one engine runs at a time.
+the targeted k-tuple sieve (Section C) and the verification P -> D of pt1's stored windows
+(Section D, `pt1_verify_store.py`, see [prime-sieve](prime-sieve.md)). Only one engine runs at
+a time.
+
+Section D takes a floor and a window width as power-of-ten spinboxes; its Windows field is
+recounted from the floor's P store (`storage_kinds.p_windows_on_grid()`, the list the script
+proves) whenever the floor or the width changes and after a run, so it starts at "all" and a
+smaller value proves only the first windows. Threads: Auto = the pipeline form's workers (what
+pt1 sieves with), Max = WSL's CPU count (probed at Run), or a number.
 
 ## Files
 
 | Part | Files |
 |---|---|
 | Tab | `primeatlas/generation/generation_tab.py` (`GenerationTab`, WSL runner factory) |
-| Sections (mixins) | `quick_gen_panel.py`, `quick_gen_runs.py`, `loop_section.py`, `constellation_section.py`, `ktuple_section.py`, `run_progress.py`, `run_guard_controls.py`, `hybrid_controls.py`, `engine_fields.py`, `time_simulation_controls.py` |
+| Sections (mixins) | `quick_gen_panel.py`, `quick_gen_runs.py`, `loop_section.py`, `constellation_section.py`, `ktuple_section.py`, `verify_section.py`, `run_progress.py`, `run_guard_controls.py`, `hybrid_controls.py`, `engine_fields.py`, `time_simulation_controls.py` |
 | Launching | `engine_argv.py` (argv of every script), `wsl_command.py` (wsl.exe command, logs), `logged_runners.py` (`WslLoggedRunner`, `LocalLoggedRunner`), `wsl_blocking.py`, `wsl_resources.py` |
-| Planning | `window_planning.py`, `quick_gen_plan.py`, `run_budget.py`, `engine_options.py`, `engine_presets.py`, `quick_number.py` |
+| Planning | `window_planning.py`, `quick_gen_plan.py`, `run_budget.py`, `engine_options.py`, `engine_presets.py`, `quick_number.py`, `verify_plan.py` |
 | Time simulation | `time_model.py` (run time model calibrated from benchmark_log.csv), `run_ram.py` (predicted RAM of a run, widest run in the RAM budget), `time_simulation_window.py` (`TimeSimulationWindow`) |
 | Following and settling | `run_output.py` (log parsing), `run_guard.py` (stop request, active-run marker, recovery), `close_guard.py` |
 | Settings | `generation_settings.py` (form defaults and persistence), `generation_console.py` (`GenerationConsole`) |
@@ -148,7 +156,8 @@ killed out of memory, an unresponsive system).
 ## Parameters and texts
 
 [generation-loop](../parameters/generation-loop.md), [generation-constellation](../parameters/generation-constellation.md),
-[generation-ktuple](../parameters/generation-ktuple.md); texts `gen.*`, `quick.*`, `close.*`, `timesim.*`.
+[generation-ktuple](../parameters/generation-ktuple.md),
+[generation-verify](../parameters/generation-verify.md); texts `gen.*`, `quick.*`, `close.*`, `timesim.*`.
 
 ## Kept data
 
@@ -160,7 +169,7 @@ is copied in once), `.generation_logs/` (logs, exit codes, `ACTIVE_RUN.json`),
 
 `test_generation_launch_planning`, `test_generation_window_arithmetic`, `test_engine_options`,
 `test_engine_presets`, `test_engine_gui_wiring`, `test_run_budget`, `test_run_guard`, `test_close_guard`, `test_close_guard_wiring`,
-`test_cross_engine_run_lock`, `test_gen_progress_bar_engine_gating`, `test_progress_bar_owner`,
+`test_cross_engine_run_lock`, `test_verify_plan`, `test_gen_progress_bar_engine_gating`, `test_progress_bar_owner`,
 `test_console_controls`, `test_constellation_auto_retry`, `test_storage_fill`, `test_pi_seed_checkbox_exclusivity`,
 `test_time_model`, `test_run_ram`, `test_time_simulation`, `test_ui_state_app`.
 

@@ -6,7 +6,8 @@ launched command (see generation.build_wsl_logged_command()): orchestrator_v3.py
 PRIMEATLAS_SCANNER_VERSION, prime_sieve_v5_2.py the PRIMEATLAS_V5_* knobs through
 work_plan_v5.py, prime_sieve_v6_1.py the PRIMEATLAS_V6_* knobs through work_plan_v6.py,
 prime_sieve_v7_2.py the PRIMEATLAS_V7_* knobs through work_plan_v7_2.py, prime_sieve_pt1.py
-the PRIMEATLAS_PT1_* knobs through pt1_plan.py. v5, v6 and v7 have separate knob sets: their best values differ. The same variables are the command-line interface for
+the PRIMEATLAS_PT1_* knobs through pt1_plan.py and pt1_verify.py (PRIMEATLAS_PT1_VERIFY, a
+checkbox: CHECKBOX_KNOBS hold 0 or 1). v5, v6 and v7 have separate knob sets: their best values differ. The same variables are the command-line interface for
 runs started by hand. The RAM budget knob (percent of the RAM free in WSL that a run may
 use) only sizes the run on this side (recommend()); no engine reads it, so it has no
 environment variable. ENGINE_VERSIONS is the code version each engine name runs (shown next
@@ -30,11 +31,12 @@ ENGINES = (ENGINE_V41, ENGINE_V5, ENGINE_V6, ENGINE_V7, ENGINE_PT1)
 DEFAULT_ENGINE = ENGINE_V6
 BUCKETED_ENGINES = run_budget.BUCKETED_ENGINES
 ENGINE_VERSIONS = {ENGINE_V41: "v4.1", ENGINE_V5: "v5.2", ENGINE_V6: "v6.1", ENGINE_V7: "v7.2",
-                   ENGINE_PT1: "pt1"}
+                   ENGINE_PT1: "pt1.1"}
 
 SCANNER_VERSION_ENV = "PRIMEATLAS_SCANNER_VERSION"
 PT1_B_ENV = "PRIMEATLAS_PT1_B"
 PT1_CHUNK_KB_ENV = "PRIMEATLAS_PT1_CHUNK_KB"
+PT1_VERIFY_ENV = "PRIMEATLAS_PT1_VERIFY"
 
 RAM_BUDGET_KNOB = "ram_budget_pct"
 
@@ -63,7 +65,9 @@ KNOB_ENVS = {
              + (tuple(k[len("v7_"):] for k in _V7_JUMP_KNOBS) if engine == ENGINE_V7 else ())}
     for engine in BUCKETED_ENGINES
 }
-_PT1_KNOBS = ("pt1_b", "pt1_chunk_kb")
+_PT1_KNOBS = ("pt1_b", "pt1_chunk_kb", "pt1_verify")
+# Knobs shown as a checkbox: 0 (off) or 1 (on).
+CHECKBOX_KNOBS = frozenset({"pt1_verify"})
 # pt1's footprint does not grow with the window count, so the RAM budget never limits it.
 _ENGINE_KNOBS = {
     ENGINE_V41: (RAM_BUDGET_KNOB,),
@@ -87,15 +91,16 @@ DEFAULT_KNOBS = {
                               _DEFAULT_WRITE_THREADS))},
     "pt1_b": 0,             # 0 = floor(N^(1/4)) of the run's top
     "pt1_chunk_kb": 4096,
+    "pt1_verify": 0,        # 1 = prove every P window right after its sieve (P -> D)
     "v7_jump_model_pct": 100,        # p* = the cost model's; 0 = gear off
     "v7_jump_block_cost": 300,       # a: one block setup, in classic primes
     "v7_jump_landing_cost_pct": 10,  # b = 0.10: one landing, in classic primes
     "v7_block_model_pct": 100,       # block factor = the model's optimum f*
     RAM_BUDGET_KNOB: round(run_budget.DEFAULT_SAFETY_FRACTION * 100),
 }
-_ZERO_ALLOWED = {"pt1_b", "v7_jump_model_pct", "v7_jump_landing_cost_pct"}
+_ZERO_ALLOWED = {"pt1_b", "v7_jump_model_pct", "v7_jump_landing_cost_pct"} | CHECKBOX_KNOBS
 PT1_MAX_B = 2 ** 32 - 1
-_MAX_VALUES = {"pt1_b": PT1_MAX_B, RAM_BUDGET_KNOB: 100}
+_MAX_VALUES = {"pt1_b": PT1_MAX_B, RAM_BUDGET_KNOB: 100, **{k: 1 for k in CHECKBOX_KNOBS}}
 
 # Input ceiling of one run's window count. v4.1 gains nothing from longer tapes; for v5 and
 # v6 the RAM budget is the real limit (1e12 numbers take 62.5 GB in v5, 33 GB in v6); pt1
@@ -129,7 +134,8 @@ def _parse_positive(raw, zero_allowed=False):
 
 def parse_knobs(raw):
     """(knobs, None) with every KNOB_KEYS value as a positive int (pt1_b: 0 or more, at
-    most PT1_MAX_B; ram_budget_pct: at most 100; blank or missing -> default), or
+    most PT1_MAX_B; ram_budget_pct: at most 100; CHECKBOX_KNOBS: 0 or 1; blank or missing
+    -> default), or
     (None, key) naming the first invalid value."""
     knobs = {}
     for key in KNOB_KEYS:
@@ -186,12 +192,14 @@ def bucket_knob(engine):
 def launch_env(choice, bucket_mb=None):
     """[(name, value)] to set in front of an orchestrator launch: always the engine, plus
     the engine's own segment, region, bucket, pieces-per-thread and write-thread knobs for
-    v5, v6 and v7 (v7 also its jump gear's four), or B and the chunk size for pt1. bucket_mb lowers the bucket knob (a RAM-reduced
+    v5, v6 and v7 (v7 also its jump gear's four), or B, the chunk size and the
+    verification switch for pt1. bucket_mb lowers the bucket knob (a RAM-reduced
     recommendation); it never raises it above the knob's value."""
     env = [(SCANNER_VERSION_ENV, choice.engine)]
     if choice.engine == ENGINE_PT1:
         env += [(PT1_B_ENV, str(choice.knobs["pt1_b"])),
-                (PT1_CHUNK_KB_ENV, str(choice.knobs["pt1_chunk_kb"]))]
+                (PT1_CHUNK_KB_ENV, str(choice.knobs["pt1_chunk_kb"])),
+                (PT1_VERIFY_ENV, str(choice.knobs["pt1_verify"]))]
     if choice.engine in BUCKETED_ENGINES:
         values = dict(choice.knobs)
         if bucket_mb is not None:

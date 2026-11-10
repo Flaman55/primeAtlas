@@ -1,264 +1,37 @@
 /* prime_sieve_engine_pt1.c -- partial sieve + primality test (engine pt1).
  *
- * The odd numbers of a slab are cut into chunks; each thread claims chunks one at a time,
- * marks the multiples of the sieving primes 3..B in a byte-per-odd-number flag array and
- * tests every survivor:
+ * The partial sieve of engine_pt_core.h with every survivor tested:
  *   - det != 0: strong probable prime to the 13 bases 2..41 (deterministic below
  *     3.317e24, Sorenson-Webster);
  *   - det == 0: BPSW = strong probable prime to base 2 + strong Lucas test with
  *     Selfridge's method A (P = 1, Q = (1 - D) / 4, first D of 5, -7, 9, ... with
  *     Jacobi(D / n) = -1); a perfect square has no such D and is rejected.
- * Arithmetic is Montgomery with R = 2^128 for odd n < 2^127 (sums of two residues stay
- * below 2^128). The result is packed into out_bits, bit i (LSB first) = 1 when
- * first_odd + 2*i is composite, the convention of prime_sieve_engine_v5.c's buffer.
+ * The verification (pt1_verify_odd) sieves a slab the same way and decides every survivor
+ * with the pseudosquares proof of engine_pt_pss.h: its bitmap is proven, and equal to the
+ * BPSW bitmap of the slab exactly when BPSW made no error there.
  *
- * PRECONDITION: every number of the slab is larger than B and than 41, so no sieving
+ * PRECONDITION: every number of the slab is larger than B and than 41 (373 for the
+ * verification), so no sieving
  * prime or base is a member of the slab (prime_sieve_pt1.py clamps B to isqrt of the
  * lowest number).
  *
  * Build: gcc -O3 -Wall -shared -fPIC prime_sieve_engine_pt1.c -o prime_sieve_engine_pt1.so
  *        -lprimesieve -lpthread -lm
  */
-#include <math.h>
-#include <primesieve.h>
-#include <pthread.h>
-#include <stdint.h>
-#include <stdlib.h>
-#include <string.h>
 
-typedef unsigned __int128 u128;
-typedef uint64_t u64;
-typedef uint32_t u32;
+#include "engine_pt_core.h"
+#include "engine_pt_pss.h"
 
-/* ---- Montgomery arithmetic, R = 2^128, odd n < 2^127 ---- */
-typedef struct { u128 n, ninv, one, r2; } mont;
-
-static inline void mul256(u128 a, u128 b, u128 *hi, u128 *lo) {
-    u64 a0 = (u64)a, a1 = (u64)(a >> 64), b0 = (u64)b, b1 = (u64)(b >> 64);
-    u128 p00 = (u128)a0 * b0, p01 = (u128)a0 * b1, p10 = (u128)a1 * b0, p11 = (u128)a1 * b1;
-    u128 mid = (p00 >> 64) + (u64)p01 + (u64)p10;
-    *lo = (u64)p00 | (mid << 64);
-    *hi = p11 + (p01 >> 64) + (p10 >> 64) + (mid >> 64);
-}
-
-/* a * b / R mod n for a, b < n */
-static inline u128 mmul(const mont *m, u128 a, u128 b) {
-    u128 hi, lo, mh, ml;
-    mul256(a, b, &hi, &lo);
-    u128 q = lo * m->ninv;
-    mul256(q, m->n, &mh, &ml);
-    u128 t = hi + mh + (lo != 0);
-    return t >= m->n ? t - m->n : t;
-}
-
-static inline u128 madd(const mont *m, u128 a, u128 b) { u128 t = a + b; return t >= m->n ? t - m->n : t; }
-static inline u128 msub(const mont *m, u128 a, u128 b) { return a >= b ? a - b : a + m->n - b; }
-static inline u128 mhalf(const mont *m, u128 a) { return (a & 1) ? (a + m->n) >> 1 : a >> 1; }
-
-static void mont_init(mont *m, u128 n) {
-    m->n = n;
-    u128 x = n;                      /* n * n = 1 mod 8: 3 correct bits, doubled per step */
-    for (int i = 0; i < 7; i++) x *= 2 - n * x;
-    m->ninv = -x;                    /* -n^-1 mod R */
-    m->one = (-n) % n;               /* R mod n */
-    u128 r = m->one;
-    for (int i = 0; i < 128; i++) r = madd(m, r, r);
-    m->r2 = r;                       /* R^2 mod n */
-}
-
-static inline u128 to_mont(const mont *m, u128 a) { return mmul(m, a % m->n, m->r2); }
-
-static inline int bit_length(u128 x) {
-    u64 h = (u64)(x >> 64);
-    return h ? 128 - __builtin_clzll(h) : 64 - __builtin_clzll((u64)x);
-}
-
-/* strong probable prime to base a (Montgomery form am), n - 1 = d * 2^s */
-static int sprp(const mont *m, u128 am, u128 d, int s) {
-    u128 x = am;
-    for (int i = bit_length(d) - 2; i >= 0; i--) {
-        x = mmul(m, x, x);
-        if ((d >> i) & 1) x = mmul(m, x, am);
-    }
-    u128 mone = m->n - m->one;
-    if (x == m->one || x == mone) return 1;
-    for (int r = 1; r < s; r++) {
-        x = mmul(m, x, x);
-        if (x == mone) return 1;
-    }
-    return 0;
-}
-
-/* base 2: multiplying by 2 is a doubling */
-static int sprp2(const mont *m, u128 d, int s) {
-    u128 x = madd(m, m->one, m->one);
-    for (int i = bit_length(d) - 2; i >= 0; i--) {
-        x = mmul(m, x, x);
-        if ((d >> i) & 1) x = madd(m, x, x);
-    }
-    u128 mone = m->n - m->one;
-    if (x == m->one || x == mone) return 1;
-    for (int r = 1; r < s; r++) {
-        x = mmul(m, x, x);
-        if (x == mone) return 1;
-    }
-    return 0;
-}
-
-/* Jacobi symbol (a / n) for small a, odd n */
-static int jacobi_small(long a, u128 n) {
-    int t = 1;
-    if (a < 0) { a = -a; if ((u64)(n & 3) == 3) t = -t; }
-    u64 aa = (u64)a;
-    while (!(aa & 1)) { aa >>= 1; u64 r = (u64)(n & 7); if (r == 3 || r == 5) t = -t; }
-    if (aa == 1) return t;
-    if ((aa & 3) == 3 && (u64)(n & 3) == 3) t = -t;   /* reciprocity: (aa / n) = +-(n / aa) */
-    u64 x = (u64)(n % aa), y = aa;
-    while (x) {
-        while (!(x & 1)) { x >>= 1; u64 r = y & 7; if (r == 3 || r == 5) t = -t; }
-        u64 tmp = x; x = y; y = tmp;
-        if ((x & 3) == 3 && (y & 3) == 3) t = -t;
-        x %= y;
-    }
-    return y == 1 ? t : 0;
-}
-
-static int is_square(u128 n) {
-    u128 r = (u128)sqrtl((long double)n);
-    while (r * r > n) r--;
-    while ((r + 1) * (r + 1) <= n) r++;
-    return r * r == n;
-}
-
-static int strong_lucas(const mont *m) {
-    u128 n = m->n;
-    long D = 5;
-    for (int k = 0;; k++) {
-        int j = jacobi_small(D, n);
-        if (j == -1) break;
-        if (j == 0) return 0;            /* n > |D| shares a factor with D */
-        D = D > 0 ? -(D + 2) : -D + 2;
-        if (k == 20 && is_square(n)) return 0;
-    }
-    long Q = (1 - D) / 4;
-    u128 Dm = D > 0 ? to_mont(m, (u128)D) : msub(m, 0, to_mont(m, (u128)(-D)));
-    u128 Qm = Q > 0 ? to_mont(m, (u128)Q) : msub(m, 0, to_mont(m, (u128)(-Q)));
-    u128 d = n + 1;
-    int s = 0;
-    while (!(d & 1)) { d >>= 1; s++; }
-    u128 U = m->one, V = m->one, Qk = Qm;   /* index 1, P = 1 */
-    for (int i = bit_length(d) - 2; i >= 0; i--) {
-        U = mmul(m, U, V);                                    /* U_2k = U_k V_k */
-        V = msub(m, mmul(m, V, V), madd(m, Qk, Qk));          /* V_2k = V_k^2 - 2 Q^k */
-        Qk = mmul(m, Qk, Qk);
-        if ((d >> i) & 1) {                                   /* index + 1 */
-            u128 nu = mhalf(m, madd(m, U, V));                /* (P U + V) / 2 */
-            V = mhalf(m, madd(m, mmul(m, Dm, U), V));         /* (D U + P V) / 2 */
-            U = nu;
-            Qk = mmul(m, Qk, Qm);
-        }
-    }
-    if (U == 0 || V == 0) return 1;
-    for (int r = 1; r < s; r++) {
-        V = msub(m, mmul(m, V, V), madd(m, Qk, Qk));
-        if (V == 0) return 1;
-        Qk = mmul(m, Qk, Qk);
-    }
-    return 0;
-}
-
-static const u32 DET_BASES[13] = {2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41};
-
-static int is_prime_det(u128 n) {
-    mont m;
-    mont_init(&m, n);
-    u128 d = n - 1;
-    int s = 0;
-    while (!(d & 1)) { d >>= 1; s++; }
-    if (!sprp2(&m, d, s)) return 0;
-    for (int i = 1; i < 13; i++)
-        if (!sprp(&m, to_mont(&m, DET_BASES[i]), d, s)) return 0;
-    return 1;
-}
-
-static int is_prime_bpsw(u128 n) {
-    mont m;
-    mont_init(&m, n);
-    u128 d = n - 1;
-    int s = 0;
-    while (!(d & 1)) { d >>= 1; s++; }
-    return sprp2(&m, d, s) && strong_lucas(&m);
-}
-
-/* ---- sieving primes ---- */
-typedef struct { u32 *p; u64 n; } pt1_ctx;
+static int test_det(u128 n, const void *arg) { (void)arg; return is_prime_det(n); }
+static int test_bpsw(u128 n, const void *arg) { (void)arg; return is_prime_bpsw(n); }
+static int test_pss(u128 n, const void *arg) { return pss_prove(n, *(const int *)arg); }
 
 /* sieving primes 3..b (b < 2^32); NULL on allocation failure */
-void *pt1_ctx_new(u64 b) {
-    pt1_ctx *c = calloc(1, sizeof *c);
-    if (!c) return NULL;
-    if (b < 3) return c;
-    size_t n = 0;
-    u32 *p = (u32 *)primesieve_generate_primes(3, b, &n, UINT32_PRIMES);
-    if (!p) { free(c); return NULL; }
-    c->p = p;
-    c->n = n;
-    return c;
-}
+void *pt1_ctx_new(u64 b) { return pt_ctx_new(b); }
 
-u64 pt1_ctx_count(void *ctx) { return ((pt1_ctx *)ctx)->n; }
+u64 pt1_ctx_count(void *ctx) { return pt_ctx_count(ctx); }
 
-void pt1_ctx_free(void *ctx) {
-    pt1_ctx *c = ctx;
-    if (!c) return;
-    if (c->p) primesieve_free(c->p);
-    free(c);
-}
-
-/* ---- slab ---- */
-typedef struct {
-    const pt1_ctx *ctx;
-    u128 first;
-    u64 n_odd, chunk, n_chunks, next;
-    int det, error;
-    unsigned char *out;
-    volatile u64 *done;
-} job;
-
-static void *worker(void *arg) {
-    job *j = arg;
-    unsigned char *flag = malloc(j->chunk);
-    if (!flag) { __atomic_store_n(&j->error, 1, __ATOMIC_RELAXED); return NULL; }
-    for (;;) {
-        u64 c = __atomic_fetch_add(&j->next, 1, __ATOMIC_RELAXED);
-        if (c >= j->n_chunks) break;
-        u64 lo = c * j->chunk, len = j->n_odd - lo < j->chunk ? j->n_odd - lo : j->chunk;
-        u128 base = j->first + 2 * (u128)lo;       /* odd; flag[i] stands for base + 2i */
-        memset(flag, 0, len);
-        for (u64 k = 0; k < j->ctx->n; k++) {
-            u64 p = j->ctx->p[k];
-            u64 r = (u64)(base % p);
-            u64 off = r ? p - r : 0;               /* base + off is a multiple of p */
-            if (off & 1) off += p;                 /* first odd multiple */
-            for (u64 i = off >> 1; i < len; i += p) flag[i] = 1;
-        }
-        for (u64 i = 0; i < len; i++) {
-            if (flag[i]) continue;
-            u128 n = base + 2 * (u128)i;
-            if (!(j->det ? is_prime_det(n) : is_prime_bpsw(n))) flag[i] = 1;
-        }
-        unsigned char *dst = j->out + lo / 8;      /* chunk is a multiple of 8 */
-        for (u64 b = 0; b < len; b += 8) {
-            unsigned char v = 0;
-            u64 e = len - b < 8 ? len - b : 8;
-            for (u64 t = 0; t < e; t++) v |= (unsigned char)(flag[b + t] << t);
-            dst[b / 8] = v;
-        }
-        __atomic_fetch_add(j->done, 1, __ATOMIC_RELAXED);
-    }
-    free(flag);
-    return NULL;
-}
+void pt1_ctx_free(void *ctx) { pt_ctx_free(ctx); }
 
 /* Composite bitmap of the n_odd odd numbers from first_odd (u128 as hi/lo halves) into
  * out_bits ((n_odd + 7) / 8 bytes). chunk_odd is rounded up to a multiple of 8;
@@ -266,25 +39,28 @@ static void *worker(void *arg) {
  * allocation failure. */
 int pt1_sieve_odd(void *ctx, u64 first_hi, u64 first_lo, u64 n_odd, int det, u64 n_threads,
                   u64 chunk_odd, unsigned char *out_bits, volatile u64 *chunks_done) {
-    if (!ctx || !(first_lo & 1) || (first_hi >> 63) || n_threads < 1 || chunk_odd < 1) return -1;
-    job j;
-    memset(&j, 0, sizeof j);
-    j.ctx = ctx;
-    j.first = ((u128)first_hi << 64) | first_lo;
-    j.n_odd = n_odd;
-    j.chunk = (chunk_odd + 7) / 8 * 8;
-    j.n_chunks = (n_odd + j.chunk - 1) / j.chunk;
-    j.det = det;
-    j.out = out_bits;
-    j.done = chunks_done;
-    if (n_threads > j.n_chunks) n_threads = j.n_chunks ? j.n_chunks : 1;
-    pthread_t *th = malloc(sizeof *th * n_threads);
-    if (!th) return -1;
-    u64 started = 0;
-    for (; started < n_threads; started++)
-        if (pthread_create(&th[started], NULL, worker, &j)) break;
-    if (!started) { free(th); return -1; }
-    for (u64 i = 0; i < started; i++) pthread_join(th[i], NULL);
-    free(th);
-    return j.error ? -1 : 0;
+    return pt_sieve_odd(ctx, first_hi, first_lo, n_odd, det ? test_det : test_bpsw, NULL,
+                        n_threads, chunk_odd, out_bits, chunks_done);
+}
+
+/* Number of pseudosquare bases the verification needs for numbers up to top with sieve bound
+ * s; 0 when n / s reaches L_373 (s too small). */
+int pt1_verify_bases(u64 top_hi, u64 top_lo, u64 s) {
+    return pss_bases(((u128)top_hi << 64) | top_lo, s);
+}
+
+/* Smallest sieve bound s the verification of numbers up to top accepts. */
+u64 pt1_verify_min_s(u64 top_hi, u64 top_lo) { return pss_min_s(((u128)top_hi << 64) | top_lo); }
+
+/* pt1_sieve_odd() with every survivor decided by the pseudosquares proof: a proven composite
+ * bitmap. Refused (-1) when the slab's top / B reaches L_373; -1 also when a survivor is past
+ * the table (n = 1 mod 8, every base <= 373 gives +1, n > L_373), so nothing is guessed. */
+int pt1_verify_odd(void *ctx, u64 first_hi, u64 first_lo, u64 n_odd, u64 n_threads,
+                   u64 chunk_odd, unsigned char *out_bits, volatile u64 *chunks_done) {
+    if (!ctx) return -1;
+    u128 top = (((u128)first_hi << 64) | first_lo) + 2 * (u128)(n_odd ? n_odd - 1 : 0);
+    int n_bases = pss_bases(top, ((const pt_ctx *)ctx)->b);
+    if (!n_bases) return -1;
+    return pt_sieve_odd(ctx, first_hi, first_lo, n_odd, test_pss, &n_bases, n_threads, chunk_odd,
+                        out_bits, chunks_done);
 }

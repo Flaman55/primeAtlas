@@ -1557,6 +1557,14 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               constants live here)
   ktuple_section.py             KtupleSection mixin: Section C, the ktuple_sieve_v2_2.py
                               form (pattern, strategy, Advanced), Run/Auto/Stop/finish
+  verify_section.py             VerifySection mixin: Section D, pt1_verify_store.py (floor
+                              and width-exponent spinboxes, the window count recounted
+                              from the P store, threads Auto/Max/n; pt1's B and chunk
+                              from the pipeline form), Stop via the generation stop
+                              request
+  verify_plan.py                Section D's fields as the script's arguments: P window
+                              count, Windows -> max_windows, Threads Auto/Max/n
+                              (unitTests/test_verify_plan.py)
   run_progress.py               GenerationRunProgress mixin: output-queue draining into
                               consoles, the shared progress bar and status text
                               (_update_shared_progress_from_generation_chunk), the
@@ -1637,7 +1645,8 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
   engine_options.py             sieve engine choice (v4.1 / v5 / v6 / pt1, default v6) and
                               perf knobs (v5 and v6 each: segment KiB, bucket region KiB,
                               bucket memory MiB, windows per run at floor 25, pieces per
-                              thread; pt1: sieve limit B, chunk KiB; v4.1, v5, v6: RAM
+                              thread; pt1: sieve limit B, chunk KiB, the verification
+                              P -> D checkbox; v4.1, v5, v6: RAM
                               budget %) as persisted in the Generation settings: parsing,
                               the knob profile applied for the run's width, per-run
                               window cap (v4.1 1000, others 100,000), run sizing for the
@@ -2027,7 +2036,8 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               report_chart_pages() is the chart list every report
                               format shares
   chart_series.py               chart Series (one color per engine, a P run of pt1
-                              on its own "pt1 P" line), linear/log
+                              on its own "pt1 P" line, a verified one also on
+                              "pt1 D proof"), linear/log
                               y-scales with pinned y-axis bounds and line clipping
                               at the plot edge, per-line hide/show keys -- shared by
                               the canvas and the PDF renderer
@@ -2075,6 +2085,9 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               chart), each point's range width ("@ 10^11") and the
                               floors whose points differ in width
                               (unitTests/test_benchmark_line_names.py)
+  proof_rows.py                 a pt1 row with proof_seconds drawn twice: the sieve
+                              alone (P) and the sieve with the proof (D proof)
+                              (unitTests/test_benchmark_proof_rows.py)
   reference_points.py           reference throughput of PARI/GP with sources, for the
                               "Reference points" toggle (primesieve is measured live
                               by primesieve mode, Native)
@@ -2253,14 +2266,26 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               PGS2 file and the run totals against v4.1)
   engine_v5_lib.py           ctypes binding of prime_sieve_engine_v5.so, loaded
                               on first use
-  prime_sieve_pt1.py         engine pt1 (partial sieve + primality test): each
-                              window is sieved only by the primes up to B
-                              (default floor(N^(1/4))) and the survivors are
+  prime_sieve_pt1.py         engine pt1 (code pt1.1, partial sieve + primality
+                              test): each window is sieved only by the primes up to
+                              B (default floor(N^(1/4))) and the survivors are
                               tested -- 13 Miller-Rabin bases below MR_DET_BOUND
                               (D window, byte-identical to v5), BPSW from it on
                               (P window, source_primes_P/); constant throughput
-                              on every floor, no run-sized buffer; floors 7..37
-                              (unitTests/test_engine_pt1.py)
+                              on every floor, no run-sized buffer; floors 7..37;
+                              PRIMEATLAS_PT1_VERIFY=1 proves each P slab right
+                              after its sieve (pt1_verify.py) and writes the equal
+                              windows as D/P (unitTests/test_engine_pt1.py,
+                              unitTests/test_engine_pt1_verify.py)
+  pt1_lib.py                 ctypes binding of prime_sieve_engine_pt1.so and the
+                              slab call shared by the scan and the verification
+  pt1_verify.py              the verification P -> D: env switch, the sieve bound
+                              s of the pseudosquares proof (below about 1.8e34),
+                              one slab's proven bitmap, the first difference
+  pt1_verify_store.py        proves the P windows already in a floor's store
+                              (Generation Section D): equal -> D store + D/P,
+                              different -> stays P + DP_MISMATCH.txt; one
+                              pt1_verify row in benchmark_log.csv
   pt1_plan.py                B and chunk knobs (env PRIMEATLAS_PT1_B,
                               PRIMEATLAS_PT1_CHUNK_KB), slab grouping of
                               same-kind windows
@@ -2268,9 +2293,14 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               helper thread, consume(k) overlapping produce(k+1),
                               at most two products alive; pt1 writes slab k while
                               it sieves slab k+1 (unitTests/test_overlap_pipeline.py)
-  prime_sieve_engine_pt1.c   C core for prime_sieve_pt1.py (ctypes, threads):
-                              chunked odd-only sieve to B, u128 Montgomery
-                              Miller-Rabin / strong Lucas
+  prime_sieve_engine_pt1.c   C entry points of engine pt1 (ctypes): the scan
+                              (13 Miller-Rabin bases or BPSW) and the verification
+                              (pseudosquares proof) over the same sieve
+  engine_pt_core.h           pt1's C core: u128 Montgomery arithmetic, Miller-Rabin
+                              / strong Lucas, the chunked odd-only sieve to B with
+                              a per-engine test of each survivor (threads)
+  engine_pt_pss.h            the pseudosquares primality proof (Lukes-Patterson-
+                              Williams with Sorenson's bound, table L_p to p = 373)
   storage_kinds.py           the D (proven) and P (probable prime) window stores
                               of a floor: folder and file names (_P suffix), the
                               label rule (a window reaching MR_DET_BOUND is P),

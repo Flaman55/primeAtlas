@@ -138,26 +138,34 @@ def _compare(p_path):
                              prime_sieve_v1.read_prime_window_header(p_path)["count"])
 
 
+def record(portal_folder, base_exponent, proven=(), mismatches=()):
+    """Lists the outcomes of a batch of proofs: the tags of `proven` in DP_PROVEN.txt and
+    each (tag, first difference, D count, P count) of `mismatches` in DP_MISMATCH.txt (its
+    D/P entry dropped), each list written once. A later proof of a listed window removes its
+    mismatch line. Shared by the D-proves-P comparison and pt1_verify.py."""
+    if not proven and not mismatches:
+        return
+    new_lines = []
+    for tag, first, d_count, p_count in mismatches:
+        print(f"[ERROR] D/P mismatch in {tag}: first differing number {first} "
+              f"(D {d_count} primes, P {p_count}); the P window stays, listed in "
+              f"10p{base_exponent}/{MISMATCH_FILENAME}")
+        new_lines.append(f"{tag} first_difference={first} d_count={d_count} p_count={p_count}")
+    proven = set(proven)
+    refuted = {m[0] for m in mismatches}
+    storage_kinds.update_proven_tags(portal_folder, base_exponent, add=proven, discard=refuted)
+    path = _mismatch_path(portal_folder, base_exponent)
+    kept = [ln for ln in _read_mismatch_lines(path) if ln.split(" ", 1)[0] not in proven | refuted]
+    _write_mismatch_lines(path, kept + new_lines)
+
+
 def _apply(portal_folder, base_exponent, outcomes):
     """Writes the outcomes [((status, tag, mismatch), p_path), ...] of a batch: each list
     once, then the proven P files removed, so an interruption leaves at worst a P window
     that is compared again."""
     equal = [(tag, p) for (status, tag, _m), p in outcomes if status == "equal"]
-    mismatches = [(tag, m) for (status, tag, m), _p in outcomes if status == "mismatch"]
-    if not equal and not mismatches:
-        return
-    new_lines = []
-    for tag, (first, d_count, p_count) in mismatches:
-        print(f"[ERROR] D/P mismatch in {tag}: first differing number {first} "
-              f"(D {d_count} primes, P {p_count}); both files kept, listed in "
-              f"10p{base_exponent}/{MISMATCH_FILENAME}")
-        new_lines.append(f"{tag} first_difference={first} d_count={d_count} p_count={p_count}")
-    proven = {tag for tag, _p in equal}
-    refuted = {tag for tag, _m in mismatches}
-    storage_kinds.update_proven_tags(portal_folder, base_exponent, add=proven, discard=refuted)
-    path = _mismatch_path(portal_folder, base_exponent)
-    kept = [ln for ln in _read_mismatch_lines(path) if ln.split(" ", 1)[0] not in proven | refuted]
-    _write_mismatch_lines(path, kept + new_lines)
+    mismatches = [(tag,) + m for (status, tag, m), _p in outcomes if status == "mismatch"]
+    record(portal_folder, base_exponent, {tag for tag, _p in equal}, mismatches)
     for _tag, p_path in equal:
         os.remove(p_path)
 

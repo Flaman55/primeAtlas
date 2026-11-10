@@ -45,7 +45,7 @@ LIVE_HEADER = [
     "loop_seconds_per_window", "write_files", "base_gen_seconds", "sieve_seconds",
     "write_seconds", "bytes_written", "engine", "numbers_processed", "run_status",
     "verify_seconds", "engine_version", "threads", "write_threads", "sieve_wall_seconds",
-    "run_purpose",
+    "run_purpose", "proof_seconds",
 ]
 OLD_ROW = {"run_timestamp_utc": "2026-01-01 00:00:00 UTC", "base_exponent": "12",
            "windows_written": "7", "total_primes": "70", "total_seconds": "3.5"}
@@ -81,7 +81,7 @@ def _read_log(path):
 def _test_header(schema):
     print("\n--- A. the header the live log has ---")
     check(schema.BENCHMARK_FIELDNAMES == LIVE_HEADER,
-          f"BENCHMARK_FIELDNAMES = the live 31-column header ({len(schema.BENCHMARK_FIELDNAMES)})")
+          f"BENCHMARK_FIELDNAMES = the live 32-column header ({len(schema.BENCHMARK_FIELDNAMES)})")
     check(schema.RUN_STATUS_COMPLETED == "completed" and schema.RUN_STATUS_STOPPED == "stopped",
           "run_status values completed / stopped")
     check(schema.run_purpose(True) == "storage" and schema.run_purpose(False) == "benchmark",

@@ -73,9 +73,11 @@ class FakeGenTab:
         self._loop_runner = None
         self._const_runner = None
         self._ktuple_runner = None
+        self._verify_runner = None
         self.loop_console = FakeConsole("loop console text\n")
         self.const_console = FakeConsole("const console text\n")
         self.ktuple_console = FakeConsole("ktuple console text\n")
+        self.verify_console = FakeConsole("verify console text\n")
         self.loop_run_info = {"engine": "pt1"}
         self.stopped = []
 
@@ -87,7 +89,7 @@ class FakeGenTab:
 
     def job_settled(self, key):
         runner = {"generation": self._loop_runner, "constellation": self._const_runner,
-                  "ktuple": self._ktuple_runner}[key]
+                  "ktuple": self._ktuple_runner, "verify": self._verify_runner}[key]
         return runner is None or runner.is_finished()
 
 

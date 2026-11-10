@@ -93,7 +93,7 @@ def check_mirrors():
                     == (2048, 1024, 8192),
                     "v5.1 defaults: 2 MiB segments, 1 MiB regions, 8 GiB buckets (measured)")
     passed &= check(eo.ENGINE_VERSIONS == {"v4.1": "v4.1", "v5": "v5.2", "v6": "v6.1",
-                                           "v7": "v7.2", "pt1": "pt1"},
+                                           "v7": "v7.2", "pt1": "pt1.1"},
                     f"engine versions shown in the GUI ({eo.ENGINE_VERSIONS})")
     passed &= check(set(d) == set(eo.KNOB_KEYS), "DEFAULT_KNOBS covers exactly KNOB_KEYS")
     for engine in ("pt1", "v7"):
@@ -108,7 +108,11 @@ def check_mirrors():
                     "pt1 env names match pt1_plan.py")
     passed &= check(d["pt1_b"] == 0 and d["pt1_chunk_kb"] == pt1_plan.DEFAULT_CHUNK_KB,
                     f"pt1 defaults: B auto (0), chunk {pt1_plan.DEFAULT_CHUNK_KB} KiB")
-    passed &= check(eo.engine_knob_keys("pt1") == ("pt1_b", "pt1_chunk_kb")
+    import pt1_verify
+    passed &= check(eo.PT1_VERIFY_ENV == pt1_verify.VERIFY_ENV and d["pt1_verify"] == 0
+                    and eo.CHECKBOX_KNOBS == {"pt1_verify"},
+                    "pt1 verification: env name matches pt1_verify.py, off by default, a checkbox")
+    passed &= check(eo.engine_knob_keys("pt1") == ("pt1_b", "pt1_chunk_kb", "pt1_verify")
                     and eo.engine_knob_keys("v5") == ("v5_segment_kb", "v5_region_kb",
                                                       "v5_bucket_mb", "v5_windows_at_25",
                                                       "v5_pieces_per_thread", "v5_write_threads",
@@ -306,8 +310,18 @@ def check_env():
     passed &= check(env["PRIMEATLAS_V5_BUCKET_MB"] == "417", "bucket override wins")
     env = eo.launch_env(eo.resolve({"engine": "pt1", "pt1_b": "7000", "v5_bucket_mb": "64"}))
     passed &= check(env == [("PRIMEATLAS_SCANNER_VERSION", "pt1"), ("PRIMEATLAS_PT1_B", "7000"),
-                            ("PRIMEATLAS_PT1_CHUNK_KB", "4096")],
-                    f"pt1 env carries B and chunk only ({env})")
+                            ("PRIMEATLAS_PT1_CHUNK_KB", "4096"), ("PRIMEATLAS_PT1_VERIFY", "0")],
+                    f"pt1 env carries B, chunk and the verification switch ({env})")
+    import pt1_verify
+    for raw, want in (("1", True), ("0", False), ("", False)):
+        on = eo.launch_env(eo.resolve({"engine": "pt1", "pt1_verify": raw}))
+        passed &= check(pt1_verify.verify_from_env(dict(on)) is want,
+                        f"pt1_verify {raw!r} reaches the scanner as {want}")
+    for raw in ("2", "-1", "yes"):
+        knobs, bad = eo.parse_knobs({"pt1_verify": raw})
+        passed &= check(knobs is None and bad == "pt1_verify", f"pt1_verify {raw!r} is invalid")
+        resolved = eo.resolve({"engine": "pt1", "pt1_verify": raw}).knobs["pt1_verify"]
+        passed &= check(resolved == 0, f"resolve() falls back to off for {raw!r}")
     passed &= check(pt1_plan.b_from_env(dict(env)) == 7000
                     and pt1_plan.chunk_kb_from_env(dict(env)) == 4096
                     and pt1_plan.b_from_env({}) == 0,

@@ -309,7 +309,7 @@ def print_benchmark_summary(base_exponent, start_idx, end_idx, total_seconds, po
                              write_seconds=None, bytes_written=None, numbers_processed=None,
                              workers=None, run_status=RUN_STATUS_COMPLETED,
                              verify_seconds=None, engine_counted=None,
-                             sieve_wall_seconds=None):
+                             sieve_wall_seconds=None, proof_seconds=None):
     """Logs to the SAME benchmark_log.csv used by every orchestrator variant (see this file's
     header for why that's deliberately shared, not forked).
 
@@ -328,7 +328,8 @@ def print_benchmark_summary(base_exponent, start_idx, end_idx, total_seconds, po
     engine_counted, (total primes, windows) reported by the scanners for the whole range,
     replaces the header pass of a written run (one file open per window).
     sieve_wall_seconds: the sieve timed from the scanner's launch (_run_teed()), logged
-    next to the engine's own sieve_seconds."""
+    next to the engine's own sieve_seconds. proof_seconds: pt1's verification time (the
+    scanner handoff), part of total_seconds."""
     window_m = WINDOW_M if window_m is None else window_m
     workers = WORKERS if workers is None else workers
     if write_files and engine_counted is not None:
@@ -336,22 +337,18 @@ def print_benchmark_summary(base_exponent, start_idx, end_idx, total_seconds, po
         print(f"[*] Prime count from the scanner's report ({windows_found:,} windows), "
               f"headers not re-read.")
     elif write_files:
-        # Counts are re-derived from disk (the store each window was written into, see
-        # storage_kinds.written_kind()) rather than taken from write_scan_metrics_handoff():
-        # parallel instances share that file (orchestrator_loop_v2.py header).
+        # Counts are re-derived from disk (the store each window was written into,
+        # _window_paths()) rather than taken from write_scan_metrics_handoff(): parallel
+        # instances share that file (orchestrator_loop_v2.py header).
         from pgs2_vector import read_window_count_and_size
-        base = 10 ** base_exponent
 
         def _count(target_idx):
-            offset = target_idx * window_m
-            kind = storage_kinds.written_kind(SCANNER_VERSION, base + offset,
-                                              base + offset + window_m)
-            path = storage_kinds.window_path(portal_folder, base_exponent, offset, window_m,
-                                             prime_sieve_module.format_offset(offset), kind)
-            try:
-                return read_window_count_and_size(path)
-            except FileNotFoundError:
-                return None
+            for path in _window_paths(portal_folder, base_exponent, target_idx, window_m):
+                try:
+                    return read_window_count_and_size(path)
+                except FileNotFoundError:
+                    continue
+            return None
 
         print(f"[*] Counting the primes of the written windows ({end_idx - start_idx:,} "
               f"headers, {workers} threads)...")
@@ -404,6 +401,8 @@ def print_benchmark_summary(base_exponent, start_idx, end_idx, total_seconds, po
                 parts.append(f"({bytes_written / write_seconds / 1e6:.1f} MB/s)")
         if verify_seconds:
             parts.append(f"D proves P {verify_seconds:.2f}s")
+        if proof_seconds is not None:
+            parts.append(f"proof P -> D {proof_seconds:.2f}s")
         print(f"[BENCHMARK] phase breakdown: {' | '.join(parts)}")
     print(f"{'='*60}")
 
@@ -445,6 +444,7 @@ def print_benchmark_summary(base_exponent, start_idx, end_idx, total_seconds, po
                 "sieve_wall_seconds": (f"{sieve_wall_seconds:.3f}"
                                        if sieve_wall_seconds is not None else ""),
                 "run_purpose": run_purpose(write_files),
+                "proof_seconds": f"{proof_seconds:.3f}" if proof_seconds is not None else "",
             }
             writer.writerow(row)
         print(f"[BENCHMARK] logged to {log_path} (for cross-floor growth analysis)")
@@ -649,22 +649,30 @@ def run_orchestrator(base_exponent=None, window_count=None, start_auto=None, sta
                                  workers=workers,
                                  verify_seconds=verify_seconds if write_files else None,
                                  engine_counted=engine_counted,
-                                 sieve_wall_seconds=sieve_wall_seconds)
+                                 sieve_wall_seconds=sieve_wall_seconds,
+                                 proof_seconds=metrics.get("proof_seconds"))
 
     return not interrupted
+
+
+def _window_paths(portal_folder, base_exponent, target_idx, window_m):
+    """Paths a window of this run can be stored at: its written_kind() store, and for a
+    pt1 P window also the D store, where pt1's verification writes a proven window."""
+    base = 10 ** base_exponent
+    offset = target_idx * window_m
+    kind = storage_kinds.written_kind(SCANNER_VERSION, base + offset, base + offset + window_m)
+    kinds = [kind] + ([storage_kinds.KIND_D] if kind == storage_kinds.KIND_P else [])
+    return [storage_kinds.window_path(portal_folder, base_exponent, offset, window_m,
+                                      prime_sieve_module.format_offset(offset), k)
+            for k in kinds]
 
 
 def _delete_cut_windows(portal_folder, base_exponent, target_idx_start, target_idx_stop,
                         window_m, workers):
     """Deletes the windows of a stopped batch that the scanner kill cut mid-write
     (window_integrity.repair_recent(), relative to the stop request's time)."""
-    base = 10 ** base_exponent
-    paths = []
-    for target_idx in range(target_idx_start, target_idx_stop + 1):
-        offset = target_idx * window_m
-        kind = storage_kinds.written_kind(SCANNER_VERSION, base + offset, base + offset + window_m)
-        paths.append(storage_kinds.window_path(portal_folder, base_exponent, offset, window_m,
-                                               prime_sieve_module.format_offset(offset), kind))
+    paths = [path for target_idx in range(target_idx_start, target_idx_stop + 1)
+             for path in _window_paths(portal_folder, base_exponent, target_idx, window_m)]
     print(f"[*] Checking the windows written before the stop ({len(paths):,} headers)...")
     deleted = window_integrity.repair_recent(
         paths, reference_time=generation_stop.stop_request_time(portal_folder),

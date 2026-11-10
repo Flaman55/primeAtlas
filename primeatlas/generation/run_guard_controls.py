@@ -83,6 +83,8 @@ class RunGuardControls:
             self._on_stop_constellation()
         elif key == "ktuple":
             self._on_stop_ktuple()
+        elif key == "verify":
+            self._on_stop_verify()
 
     def job_settled(self, key):
         """True once the job's runner has finished and its output (exit sentinel included)
@@ -91,6 +93,7 @@ class RunGuardControls:
             "generation": (self._loop_runner, self._loop_output_queue),
             "constellation": (self._const_runner, self._const_output_queue),
             "ktuple": (self._ktuple_runner, self._ktuple_output_queue),
+            "verify": (self._verify_runner, self._verify_output_queue),
         }[key]
         return runner is None or (runner.is_finished() and q.empty())
 

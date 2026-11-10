@@ -311,9 +311,116 @@ def _test_chained_constellation_batch_keeps_lock_until_genuinely_done():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def _test_verify_section():
+    """Section D (verify_section.py): its launch locks every other engine and carries the
+    pt1 knobs and the store verification script; a bad field launches nothing; another
+    running engine blocks it; Stop writes the generation stop request; finishing unlocks
+    everything and clears the request."""
+    tmp = tempfile.mkdtemp(prefix="primeatlas_cross_engine_test_")
+    try:
+        app = _build_app(tmp)
+        tab = app.generation_tab_widget
+        import primeatlas.generation.generation_tab as generation_tab_module
+        import generation_stop
+        launched = []
+
+        class _Recorder(_FakeRunner):
+            def __init__(self, cmd, *a, **k):
+                super().__init__()
+                launched.append((cmd, k.get("kill_pattern")))
+
+        original_runner = generation_tab_module.WslLoggedRunner
+        generation_tab_module.WslLoggedRunner = _Recorder
+        try:
+            import storage_kinds
+            from tkinter import messagebox
+            errors = []
+            original_error = messagebox.showerror
+            messagebox.showerror = lambda title, msg: errors.append(msg)
+            tab._verify_vars["base_exponent"].set("x")
+            tab._on_run_verify()
+            check(tab._verify_runner is None and not launched,
+                  "verify: a bad floor launches nothing")
+            tab._verify_vars["width_exp"].set("7")
+            tab._verify_vars["base_exponent"].set("29")
+            tab._refresh_verify_count()
+            tab._on_run_verify()
+            check(tab._verify_runner is None and errors
+                  and errors[-1] == tab.T("gen.verify_error_no_windows"),
+                  "verify: a floor without P windows launches nothing")
+            for off, label in ((0, "0"), (10 ** 7, "10M"), (2 * 10 ** 7, "20M")):
+                path = storage_kinds.window_path(tmp, 29, off, 10 ** 7, label,
+                                                 storage_kinds.KIND_P)
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                open(path, "wb").close()
+            tab._refresh_verify_count()
+            check(tab._verify_vars["max_windows"].get() == "3"
+                  and "3" in tab._verify_total_text.get(),
+                  "verify: the Windows field counts the floor's P windows")
+            tab._verify_vars["width_exp"].set("8")
+            tab._refresh_verify_count()
+            check(tab._verify_vars["max_windows"].get() == "1",
+                  "verify: a wider window recounts (only offset 0 is on the 10^8 grid)")
+            tab._verify_vars["width_exp"].set("7")
+            tab._refresh_verify_count()
+            tab._verify_vars["threads"].set("0")
+            tab._on_run_verify()
+            check(tab._verify_runner is None, "verify: 0 threads launches nothing")
+            tab._verify_vars["threads"].set("Auto")
+            tab._loop_vars["workers"].set("7")
+            tab._verify_vars["max_windows"].set("2")
+            values = tab._verify_values()
+            check(values == {"base_exponent": 29, "window_m": 10 ** 7, "max_windows": 2,
+                             "threads": 7},
+                  f"verify: Auto threads = the form's workers, 2 of 3 windows ({values})")
+            tab._verify_vars["max_windows"].set("3")
+            check(tab._verify_values()["max_windows"] == 0,
+                  "verify: the full count is passed as 0 (all)")
+            messagebox.showerror = original_error
+            tab._ktuple_runner = _FakeRunner()
+            tab._on_run_verify()
+            check(tab._verify_runner is None,
+                  "verify: refuses while another engine is running")
+            tab._ktuple_runner.stop()
+            with open(generation_stop.stop_request_path(tmp), "w") as f:
+                f.write("left over")
+            tab._on_run_verify()
+            cmd = " ".join(str(t) for t in launched[-1][0]) if launched else ""
+            check(tab._verify_runner is not None and "pt1_verify_store.py" in cmd
+                  and "PRIMEATLAS_PT1_B=" in cmd and "PRIMEATLAS_PT1_CHUNK_KB=" in cmd
+                  and launched[-1][1] == "pt1_verify_store.py",
+                  f"verify: launches pt1_verify_store.py with pt1's knobs ({cmd[-160:]})")
+            check(not generation_stop.stop_requested(tmp),
+                  "verify: a stop request left over is cleared before the launch")
+            check(str(tab.verify_run_btn["state"]) == "disabled"
+                  and str(tab.loop_run_btn["state"]) == "disabled"
+                  and str(tab.const_run_btn["state"]) == "disabled"
+                  and str(tab.ktuple_run_btn["state"]) == "disabled",
+                  "verify: every other Run button is grayed out")
+            check(tab._other_engine_is_running("loop") is True,
+                  "verify: a running verification counts as 'other' for loop")
+            tab._on_stop_verify()
+            check(generation_stop.stop_requested(tmp), "verify: Stop writes the stop request")
+            tab._verify_runner.stop()
+            tab._on_verify_finished(0)
+            check(str(tab.loop_run_btn["state"]) == "normal"
+                  and str(tab.verify_run_btn["state"]) == "normal"
+                  and not generation_stop.stop_requested(tmp),
+                  "verify: finishing unlocks every engine and clears the stop request")
+            tab._lock_other_run_buttons("loop")
+            check(str(tab.verify_run_btn["state"]) == "disabled",
+                  "verify Run is grayed out while a loop run is active")
+        finally:
+            generation_tab_module.WslLoggedRunner = original_runner
+        app.destroy()
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def main():
     tkinter.messagebox.showinfo = lambda *a, **k: None
     tkinter.messagebox.showerror = lambda *a, **k: None
+    _test_verify_section()
 
     _test_other_engine_is_running_detects_each_combo()
     _test_starting_loop_run_locks_const_and_ktuple_buttons()

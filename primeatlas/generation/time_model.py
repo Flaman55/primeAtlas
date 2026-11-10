@@ -150,6 +150,8 @@ def _sample(row):
         total = sieve + (write or 0.0)
     else:
         total -= _float_or_none(row.get("base_gen_seconds")) or 0.0
+    # pt1's verification (proof_seconds) is no sieving: the model times the P run alone.
+    total -= _float_or_none(row.get("proof_seconds")) or 0.0
     top = 10 ** floor + idx_start * (span // windows) + span
     return Sample(engine, floor, span, top, sieve, write,
                   (row.get("write_files") or "").strip() == "1", total,

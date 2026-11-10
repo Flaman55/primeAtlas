@@ -166,7 +166,8 @@ class SettingsWiringMixin:
                 r is not None and r.is_running() for r in (
                     self.generation_tab_widget._loop_runner,
                     self.generation_tab_widget._const_runner,
-                    self.generation_tab_widget._ktuple_runner)),
+                    self.generation_tab_widget._ktuple_runner,
+                    self.generation_tab_widget._verify_runner)),
             # repo_dir for the app-update checker (primeatlas/settings/app_update.py) -- the
             # git checkout root this running process is executing out of, same value
             # AppSettings was constructed with (app_dynamic.py).

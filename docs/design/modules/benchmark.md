@@ -9,7 +9,7 @@ a PDF report.
 |---|---|
 | Tab | `primeatlas/benchmark/benchmark_tab.py` and its mixins `benchmark_filter.py` (Filter window), `benchmark_points.py` (x axis, point choices, selected run), `benchmark_ram_chart.py` (RAM chart), `chart_zoom_controls.py` (zoom and pan), `chart_hover.py` (hover tooltip), `benchmark_chart_windows.py` (a chart in its own window) |
 | Exports | `benchmark_export.py` (tab mixin: Save PDF, Export menu), `report_export.py` (CSV, SVG, HTML page, HTML snippet), `report_html.py` + `report_chart.js` (the interactive HTML), `chart_svg.py` (SVG backend of `chart_pdf.chart_ops()`) |
-| Backend | `benchmark.py` (reading and normalizing rows, D/P kind, PDF report, `report_chart_pages()`, `benchmark_line_records()`), `line_names.py` (a row's line and charts), `chart_filter.py` (which runs the charts compare), `chart_points.py` (which runs become a chart's points and where they sit on x), `sieve_measure.py` (which time the sieve chart measures), `table_cells.py` (a cell as the tables show it), `chart_view.py` (the zoomed part of a chart), `chart_series.py`, `chart_pdf.py`, `reference_points.py` |
+| Backend | `benchmark.py` (reading and normalizing rows, D/P kind, PDF report, `report_chart_pages()`, `benchmark_line_records()`), `line_names.py` (a row's line and charts), `chart_filter.py` (which runs the charts compare), `chart_points.py` (which runs become a chart's points and where they sit on x), `proof_rows.py` (a verified pt1 run as two lines), `sieve_measure.py` (which time the sieve chart measures), `table_cells.py` (a cell as the tables show it), `chart_view.py` (the zoomed part of a chart), `chart_series.py`, `chart_pdf.py`, `reference_points.py` |
 
 ## Contract
 
@@ -18,6 +18,12 @@ a PDF report.
 | `benchmark_log.csv` | charts (linear/log, pinned axes, per-line toggles, zoom, own windows), table, PDF, CSV, SVG, interactive HTML page and snippet |
 
 Reads only; the log's header belongs to `prime_sieve/benchmark_log_schema.py`.
+
+A pt1 row with `proof_seconds` (the verification P -> D right after the sieve) is drawn twice
+(`proof_rows.py`): "pt1.1 P" without the proof (total and loop times less `proof_seconds`) and
+"pt1.1 D proof" with it (`proof_seconds` added to the sieve time too); either line can be
+hidden. The table keeps the one logged row, kind D/P, and selecting it selects both points.
+Rows of the store verification (engine `pt1_verify`) are on no chart.
 
 Three charts one under another, full width, one line per engine build and thread setup, last row per
 floor and line: on top the sieve (sieve n/s, s/window, reference points; the measure below), then the
@@ -162,7 +168,8 @@ None of its own.
 `test_benchmark_actual_range`,
 `test_benchmark_run_status`, `test_benchmark_main_compatibility`, `test_benchmark_log_schema`,
 `test_benchmark_line_names`, `test_benchmark_auto_reload`, `test_benchmark_filter`,
-`test_benchmark_sieve_measure`; `test_orchestrator_sieve_wall` (prime-sieve).
+`test_benchmark_sieve_measure`, `test_benchmark_proof_rows`; `test_orchestrator_sieve_wall`
+(prime-sieve).
 
 ## Known gaps
 

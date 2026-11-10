@@ -59,6 +59,7 @@ from .quick_gen_plan import QuickGenPlan
 from .loop_section import LoopSection
 from .constellation_section import ConstellationSection
 from .ktuple_section import KtupleSection
+from .verify_section import VerifySection
 from .run_progress import GenerationRunProgress
 from primeatlas.core import ui_state_dynamic
 from .generation_settings import load_generation_settings
@@ -66,7 +67,8 @@ from .logged_runners import WslLoggedRunner
 
 
 class GenerationTab(QuickGenPanel, QuickGenRuns, QuickGenPseudosquares, QuickGenPlan,
-                    LoopSection, ConstellationSection, KtupleSection, GenerationRunProgress,
+                    LoopSection, ConstellationSection, KtupleSection, VerifySection,
+                    GenerationRunProgress,
                     HybridControls, RunGuardControls, TimeSimulationControls, BaseTab):
     def __init__(self, parent, get_portal_folder, status_var, translator,
                  totals_progress, reload_primes_tree, reload_constellations_tree,
@@ -179,10 +181,12 @@ class GenerationTab(QuickGenPanel, QuickGenRuns, QuickGenPseudosquares, QuickGen
         self._build_loop_section(sections)
         self._build_constellation_section(sections)
         self._build_ktuple_section(sections)
+        self._build_verify_section(sections)
 
         self.after(150, self._poll_loop_output)
         self.after(150, self._poll_constellation_output)
         self.after(150, self._poll_ktuple_output)
+        self.after(150, self._poll_verify_output)
 
     def _new_run_separator(self):
         """Appended (not clear()'d -- see _on_run_loop/_on_run_constellation) at the
