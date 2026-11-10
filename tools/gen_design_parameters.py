@@ -44,7 +44,7 @@ FORM_LABELS = {
         "v7_jump_model_pct": "gen.field_v7_jump_model_pct",
         "v7_jump_block_cost": "gen.field_v7_jump_block_cost",
         "v7_jump_landing_cost_pct": "gen.field_v7_jump_landing_cost_pct",
-        "v7_jump_block_pct": "gen.field_v7_jump_block_pct",
+        "v7_block_model_pct": "gen.field_v7_block_model_pct",
         "pt1_b": "gen.field_pt1_b",
         "pt1_chunk_kb": "gen.field_pt1_chunk_kb",
         "ram_budget_pct": "gen.field_ram_budget_pct",

@@ -40,7 +40,7 @@ Generation tab, Section A: the generation pipeline run (orchestrator_loop_v2.py;
 | `v7_jump_model_pct` | `100` | integer >= 0 | `engine_options.py` | v7 jump threshold (% of model): |
 | `v7_jump_block_cost` | `300` | integer >= 1 | `engine_options.py` | v7 jump block cost (a): |
 | `v7_jump_landing_cost_pct` | `10` | integer >= 0 | `engine_options.py` | v7 jump landing cost (b, %): |
-| `v7_jump_block_pct` | `50` | integer >= 1 | `engine_options.py` | v7 jump block (%): |
+| `v7_block_model_pct` | `100` | integer >= 1 | `engine_options.py` | v7 jump block (% of model): |
 | `ram_budget_pct` | `50` | integer >= 1, <= 100 | `engine_options.py` | RAM budget (% of free WSL RAM): |
 | `v5_preset` | `auto` | one of auto, old, new, mid, custom | `engine_presets.py` | Knob profile: |
 | `v6_preset` | `auto` | one of auto, old, new, mid, custom | `engine_presets.py` | Knob profile: |

@@ -10,7 +10,7 @@ standard-library helpers.
 | Part | Files |
 |---|---|
 | Format | `prime_sieve_v1.py` (PGS2 read/write, varints), `pgs2_vector.py`, `window_integrity.py` |
-| Engines | `prime_sieve_v6_1.py` + `engine_v6_lib.py` + `work_plan_v6.py` + `wheel30_layout.py` + `wheel30_writer.py` (default, code v6.1; `prime_sieve_v6.py`, v6.0, kept for comparison), `prime_sieve_v7_1.py` + `work_plan_v7_1.py` + `engine_v7_lib.py` (`prime_sieve_engine_v7_0.c` + `engine_jump_gear.h`, code v7.1; `prime_sieve_v7_0.py` + `work_plan_v7.py`, v7.0, kept for comparison), `prime_sieve_v5_2.py` + `engine_v5_lib.py` + `work_plan_v5.py` (code v5.2), `parallel_window_writer.py` (write phase of v5.2, v6 and v7), `prime_sieve_pt1.py` + `pt1_plan.py`, `prime_sieve_primesieve.py`, `prime_sieve_cudasieve.py`, `hybrid_*.py`; frozen `prime_sieve_v3.py`, `prime_sieve_v4.py`, `prime_sieve_v4_1.py`, `prime_sieve_v5.py` (v5.1, still the home of helpers v6 and pt1 import) |
+| Engines | `prime_sieve_v6_1.py` + `engine_v6_lib.py` + `work_plan_v6.py` + `wheel30_layout.py` + `wheel30_writer.py` (default, code v6.1; `prime_sieve_v6.py`, v6.0, kept for comparison), `prime_sieve_v7_2.py` + `work_plan_v7_2.py` + `engine_v7_2_lib.py` (`prime_sieve_engine_v7_2.c` + `engine_jump_gear.h`, code v7.2; `prime_sieve_v7_1.py` + `work_plan_v7_1.py`, v7.1, and `prime_sieve_v7_0.py` + `work_plan_v7.py` + `engine_v7_lib.py` on `prime_sieve_engine_v7_0.c`, v7.0, kept for comparison), `prime_sieve_v5_2.py` + `engine_v5_lib.py` + `work_plan_v5.py` (code v5.2), `parallel_window_writer.py` (write phase of v5.2, v6 and v7), `prime_sieve_pt1.py` + `pt1_plan.py`, `prime_sieve_primesieve.py`, `prime_sieve_cudasieve.py`, `hybrid_*.py`; frozen `prime_sieve_v3.py`, `prime_sieve_v4.py`, `prime_sieve_v4_1.py`, `prime_sieve_v5.py` (v5.1, still the home of helpers v6 and pt1 import) |
 | Orchestrators | `orchestrator_loop_v2.py`, `orchestrator_v3.py`, `orchestrator_loop_helpers.py`, `overlap_pipeline.py` |
 | Shared storage helpers | `window_sharding.py`, `storage_kinds.py` (D/P stores), `dp_verify.py`, `benchmark_log_schema.py`, `floor_meta_store.py`, `hit_paging.py`, `generation_stop.py`, `sieving_prime_count_v5.py` |
 | Queries | `primesieve_query.py`, `primecount_query.py`, `prime_count_primecount.py` |
@@ -211,7 +211,7 @@ bit (`test_engine_v7_0_identity`: whole runs with the gear forced on; engine cal
 cover every sieving prime, buffer equal; engine calls on partial pieces at floors 16-30, every
 v6.1 bit marked and every extra bit a composite, the multiple of a composite q).
 
-v7.1 (`prime_sieve_v7_1.py`, `work_plan_v7_1.py`) runs v7.0's C engine; the GUI's `v7` runs it.
+v7.1 (`prime_sieve_v7_1.py`, `work_plan_v7_1.py`) runs v7.0's C engine.
 Its threshold adds the block term v7.0's model lacks. Per integer q a classic prime costs about
 1 / ln q (one phase, prime density 1 / ln q), the gear about (a * sqrt(first / span) + b * span)
 / q in classic primes: block setups (about sqrt(first / span) per doubling of q) plus landings
@@ -250,6 +250,42 @@ percent and ETA follow that share; the job counts stay in the line. Each stage's
 is v6.1's bit for bit (`test_engine_v7_1_identity`: whole runs with the gear forced on, at the
 defaults and with small segments).
 
+v7.2 (`prime_sieve_v7_2.py`, `work_plan_v7_2.py`, `prime_sieve_engine_v7_2.c`) is what the GUI's
+`v7` runs. It sets the gear's block factor f from the model instead of v7.0's fixed 0.5. A block
+f times longer means 1 / f as many block setups; its linear estimate drifts by up to
+f^2 * span / 2 numbers, and the candidate window is the buffer plus that drift, so candidates grow
+as span * (1 + f^2 / 2). With a and b fitted at f = 0.5:
+
+    cost(f) = a * sqrt(first / span) * 0.5 / f + b * span * (1 + f^2 / 2) / 1.125,
+    f* = (0.5625 * a * sqrt(first / span) / (b * span))^(1/3).
+
+f* is about 0.47 for 2e11 numbers at floor 25 (the prototype's best was 0.5), 1.24 for 2e11 at
+floor 28, 2.6 for 1e10 at floor 26 and 5.5 for 1e10 at floor 28. p* is v7.1's fixed point with
+cost(f*) (as v7.1's form with a' = a * 0.5 / f, b' = b * (1 + f^2 / 2) / 1.125), so the cheaper
+gear takes more primes, and at least 2 * span * (1 + f^2 / 2), where the candidate window stays
+below half a turn of q. The knob is f in percent of f* (`PRIMEATLAS_V7_BLOCK_MODEL_PCT`, default
+100); v7.0's fixed `PRIMEATLAS_V7_JUMP_BLOCK_PCT` is not read. Longer blocks leave the block setup a
+larger share, so the engine sets blocks up with `jump_block_quick()` (`engine_jump_gear.h`): the
+same landings, the first-solution search in 64-bit arithmetic and both three-gap steps from one
+subtractive Euclid walk, about a third cheaper per block. Measured (count-only, 24 threads, same
+machine as above), v7.1 -> v7.2 at the defaults, the same prime counts:
+
+| run | v7.1 | v7.2 |
+|---|---|---|
+| 1e10 numbers, floor 25 | about 33 s | 17.7 s |
+| 1e10 numbers, floor 26 | 95 s | 32.0 s |
+| 1e10 numbers, floor 27 | 253 s | 64.8 s |
+| 1e10 numbers, floor 28 | 717 s | 140.0 s |
+| 1e10 numbers, floor 29 | about 2260 s | 312.1 s |
+| 2e11 numbers, floor 28 | 446 s | 312.5 s |
+
+The floor 29 count equals pt1's and Pseudosquares' on the same range. The knob around the model
+at floor 28, 1e10 numbers: 50 % 167 s, 100 % 140 s, 200 % 264 s.
+Output is v6.1's bit for bit (`test_engine_v7_2_identity`: engine calls with block factors 0.05
+to 20, full pieces bit-identical, partial pieces at floors 16-30 with every v6.1 bit marked,
+every extra bit composite and nothing past the buffer; whole runs with the gear on nearly every
+bucketed prime at the model's factor and at 4 times it, at the defaults and with small segments).
+
 ## Kept data
 
 Prime windows, `benchmark_log.csv`, `floor_meta.json`, `last_scan_metrics.json`, sieving-prime cache,
@@ -260,7 +296,8 @@ hit pages ([data.md](../data.md)).
 `test_prime_window`, `test_pgs2_vector`, `test_window_integrity`, `test_window_sharding`,
 `test_storage_kinds`, `test_dp_verify`, `test_engine_v5_identity`, `test_engine_v5_phase`,
 `test_engine_v6_identity`, `test_engine_v6_1_identity`, `test_engine_v7_0_identity`,
-`test_work_plan_v7`, `test_engine_v7_1_identity`, `test_work_plan_v7_1`, `test_engine_v5_2_identity`,
+`test_work_plan_v7`, `test_engine_v7_1_identity`, `test_work_plan_v7_1`,
+`test_engine_v7_2_identity`, `test_work_plan_v7_2`, `test_engine_v5_2_identity`,
 `test_parallel_window_writer`, `test_wheel30_layout`, `test_wheel30_writer`, `test_work_plan_v6`,
 `test_engine_pt1`, `test_work_plan_v5`, `test_overlap_pipeline`, `test_orchestrator_stop`,
 `test_hybrid_*`, `test_cudasieve_integration`, `test_hit_paging`, `test_floor_meta_store`,

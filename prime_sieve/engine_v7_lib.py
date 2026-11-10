@@ -1,19 +1,20 @@
-"""ctypes binding of engine v7.0, prime_sieve_engine_v7_0.so: v6.1's functions and signatures
-(engine_v6_lib.py) except sieve_wheel_bucketed(), which takes the jump gear's jump_from and
-block factor before the output buffer. Loaded on first use (a forked worker process loads
-its own copy unless the parent loaded it before the fork)."""
+"""ctypes binding of engine v7.0, prime_sieve_engine_v7_0.so (and of any .so with its
+signatures, such as v7.2's): v6.1's functions and signatures (engine_v6_lib.py) except
+sieve_wheel_bucketed(), which takes the jump gear's jump_from and block factor before the
+output buffer. Loaded on first use, once per .so (a forked worker process loads its own copy
+unless the parent loaded it before the fork)."""
 import ctypes
 
 import engine_v6_lib
 
 V7_0 = "prime_sieve_engine_v7_0.so"
-_lib = None
+_libs = {}
 
 
-def load_lib():
-    global _lib
-    if _lib is None:
-        lib = engine_v6_lib.load_lib(V7_0)
+def load_lib(name=V7_0):
+    lib = _libs.get(name)
+    if lib is None:
+        lib = engine_v6_lib.load_lib(name)
         lib.sieve_wheel_bucketed.argtypes = [
             ctypes.POINTER(ctypes.c_uint64),  # piece_lo
             ctypes.POINTER(ctypes.c_uint64),  # piece_hi
@@ -29,5 +30,5 @@ def load_lib():
             ctypes.POINTER(ctypes.c_ubyte),   # out_bits (SHARED buffer)
             ctypes.POINTER(ctypes.c_uint64),  # pieces_done (progress counter)
         ]
-        _lib = lib
-    return _lib
+        _libs[name] = lib
+    return lib
