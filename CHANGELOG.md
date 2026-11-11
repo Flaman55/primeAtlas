@@ -784,6 +784,27 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   Okno Filtra przewija się, gdy wybory się nie mieszczą, przyciski Wyczyść i Zamknij są
   widoczne przy każdej wysokości, a okno otwiera się w granicach ekranu.
 
+### +50 — Benchmark: selected row at the top, point and axis menus, view kept
+
+- English: Selecting a run or a floor in the Benchmark tab's table scrolls it to the top of
+  the table, directly under the column headings, so its cells line up with the headings;
+  the rest of the table still scrolls up and down. The last rows get there too: blank space
+  below the last row lets them reach the top. A right-click in the table clears the
+  selected run and the charts go back to the point choice they had before it (last, min,
+  max or all); a chart's right-click menu now sets that chart's point choice too, without
+  the Filter window, and hides or shows all its left-axis (circles) or right-axis
+  (squares) lines in one click. The filter, the sieve measure, the x axis, the point
+  choices and the hidden lines are kept across restarts.
+- Polski: Zaznaczenie przebiegu albo piętra w tabeli zakładki Benchmark przewija go na górę
+  tabeli, tuż pod nagłówki kolumn, więc jego komórki stoją przy nagłówkach; resztę tabeli
+  nadal można przewijać w górę i w dół. Ostatnie wiersze też tam trafiają: puste miejsce pod
+  ostatnim wierszem pozwala im dojść na górę. Prawy klik w tabeli odznacza przebieg, a
+  wykresy wracają do wyboru punktu sprzed zaznaczenia (ostatni, min, max albo wszystkie);
+  menu prawego kliku na wykresie ustawia teraz także wybór punktu tego wykresu, bez okna
+  Filtra, oraz jednym kliknięciem ukrywa lub pokazuje wszystkie jego linie lewej osi
+  (kółka) albo prawej osi (kwadraty). Filtr, miara sita, oś X, wybór punktów i ukryte
+  linie są zapamiętywane do następnego uruchomienia.
+
 ## 1.2.0 — 2026-11-01
 
 ### English

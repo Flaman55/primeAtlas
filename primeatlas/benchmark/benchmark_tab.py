@@ -50,6 +50,7 @@ from .benchmark_export import BenchmarkExport
 from .benchmark_filter import BenchmarkFilter
 from .benchmark_line_colors import BenchmarkLineColors
 from .benchmark_points import BenchmarkPoints
+from .benchmark_view_state import BenchmarkViewState
 from .benchmark_ram_chart import BenchmarkRamChart
 from .chart_hover import _bind_chart_hover, _nearest_point
 from .chart_zoom_controls import BenchmarkChartZoom
@@ -356,7 +357,8 @@ def _bind_pin_menu(canvas, hover_points, on_pin_menu, on_color_menu=None):
 
 
 class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, BenchmarkPoints,
-                   BenchmarkRamChart, BenchmarkChartZoom, BenchmarkChartWindows, BaseTab):
+                   BenchmarkRamChart, BenchmarkChartZoom, BenchmarkChartWindows,
+                   BenchmarkViewState, BaseTab):
     def __init__(self, parent, get_portal_folder, status_var, translator, update_nav_controls,
                  theme_palette):
         """
@@ -380,6 +382,7 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, Benchm
         self._init_chart_zoom()
 
         self._build_widgets()
+        self._load_view()
 
     def _build_widgets(self):
         T = self.T
@@ -389,9 +392,10 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, Benchm
         # "Points of different widths on floor N" under each chart, set by its redraw.
         self.mixed_widths_vars = {"run": tk.StringVar(), "sieve": tk.StringVar(),
                                   "ram": tk.StringVar()}
-        # Chart view toggles, kept for the session only; every export follows them, the
-        # lines hidden from each chart's legend ({chart: set of line_key()}) and the pinned
-        # y-axis bounds ({chart: {axis: (min, max)}}, set from the right-click menu).
+        # Chart view toggles; every export follows them, the lines hidden from each chart's
+        # legend ({chart: set of line_key()}, kept across restarts: benchmark_view_state.py)
+        # and the pinned y-axis bounds ({chart: {axis: (min, max)}}, set from the
+        # right-click menu, kept for the session).
         self._hidden_lines = {"run": set(), "sieve": set(), "ram": set()}
         self._y_pins = {"run": {}, "sieve": {}, "ram": {}}
         self.log_scale_var = tk.BooleanVar(value=False)
@@ -579,6 +583,7 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, Benchm
     def _toggle_lines(self, chart, keys):
         """Legend click on the "run", "sieve" or "ram" chart: hides or shows those lines."""
         self._hidden_lines[chart] = toggle_lines(self._hidden_lines[chart], keys)
+        self._save_view()
         self._redraw_chart(chart)
 
     def _redraw_chart(self, chart):
@@ -613,11 +618,14 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, Benchm
         self._redraw_chart(chart)
 
     def _pin_menu_entries(self, chart, target):
-        """[(label, command, enabled)] of the right-click menu, the three resets last;
+        """[(label, command, enabled) or None for a separator] of the right-click menu: the
+        chart's point choices (_point_menu_entries()), the axis toggles
+        (_axis_menu_entries()), a point's pins, the three resets;
         target: see _draw_growth_chart's on_pin_menu. A point offers its value as its axis'
         max or min; a reset is enabled while its axis has a pin."""
         T, pins = self.T, self._y_pins[chart]
-        entries = []
+        entries = (self._point_menu_entries(chart) + [None]
+                   + self._axis_menu_entries(chart) + [None])
         if target:
             axis, value, text = target
             for which in ("max", "min"):
@@ -625,6 +633,7 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, Benchm
                                 lambda w=which, a=axis: self._set_pins(
                                     chart, pin_bound(self._y_pins[chart], a, w, value)),
                                 True))
+            entries.append(None)
         for axis in ("primary", "secondary"):
             entries.append((T("bench.pin_reset_" + axis),
                             lambda a=axis: self._set_pins(
@@ -639,9 +648,11 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, Benchm
 
     def _post_menu(self, entries, x_root, y_root):
         menu = tk.Menu(self, tearoff=False)
-        for i, (label, command, enabled) in enumerate(entries):
-            if i and i == len(entries) - 3:
+        for entry in entries:
+            if entry is None:
                 menu.add_separator()
+                continue
+            label, command, enabled = entry
             menu.add_command(label=label, command=command,
                              state="normal" if enabled else "disabled")
         try:
@@ -669,6 +680,7 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, Benchm
                                                    # still use every column, unaffected
                                                    # by what the tree itself displays
         self._benchmark_rows = rows
+        self._prune_filter()
 
         self._benchmark_growth_points = aggregate_benchmark_growth(rows)
         self._benchmark_fair_spw_points = aggregate_benchmark_fair_spw(rows)
@@ -739,11 +751,13 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, Benchm
     def _on_benchmark_tree_select(self, _event):
         """Clicking a floor header (whether just opened or already expanded) makes it
         the target of the pagination controls above the tree -- same behavior as the
-        primes tab's floor nav."""
+        primes tab's floor nav. The selected row scrolls to the top, under the headings,
+        once the click or key that selected it has been handled."""
         selection = self.benchmark_tree.selection()
         if not selection:
             return
         item = selection[0]
+        self.benchmark_tree.after_idle(self.benchmark_tree.scroll_to_top, item)
         if "floor" in self.benchmark_tree.item(item, "tags"):
             self._set_active_benchmark_node(item)
         else:

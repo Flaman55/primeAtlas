@@ -8,8 +8,12 @@ of all three charts: a chart on SELECTED shows it in its own group. In the table
 between runs (the Treeview's own keys) and left/right turn the floor's page, selecting the
 page's first run, so the arrows walk the selected point through every run. Selecting a run
 switches every chart to SELECTED (a chart on ALL keeps it: the run is among its points), so a
-click shows at once; the Filter window goes back to another choice. The points from the
-selected run are ringed (_chart_marks()). Kept for the session, like the filter.
+click shows at once, and remembers each chart's choice from before the first selection. A
+right-click in the table clears the selection and puts every chart still on SELECTED back on
+its remembered choice. A chart's right-click menu (_point_menu_entries()) and the Filter
+window set any choice. The points from the selected run are ringed (_chart_marks()). The x
+axis and the choices are kept across restarts (benchmark_view_state.py), the selected run is
+not.
 """
 from . import chart_points
 from .benchmark import line_value, selected_marks
@@ -24,6 +28,7 @@ class BenchmarkPoints:
         self._x_mode = chart_points.X_FLOOR
         self._point_choice = {chart: chart_points.LAST for chart in CHARTS}
         self._selected_run = None
+        self._choices_before_select = {}
         self._tree_item_rows = {}
 
     def _point_view(self, chart):
@@ -51,6 +56,7 @@ class BenchmarkPoints:
         changed = x_mode != self._x_mode
         self._x_mode = x_mode
         self._point_choice = dict(self._point_choice, **choices)
+        self._save_view()
         if changed:
             self._reset_chart_view()
         else:
@@ -87,16 +93,56 @@ class BenchmarkPoints:
         """Makes `row` the selected run and switches the charts to SELECTED (ALL stays)."""
         if row is self._selected_run:
             return
+        if self._selected_run is None:
+            self._choices_before_select = dict(self._point_choice)
         self._selected_run = row
         self._point_choice = {chart: choice if choice == chart_points.ALL
                               else chart_points.SELECTED
                               for chart, choice in self._point_choice.items()}
+        self._show_point_choices()
+        self._redraw_charts()
+
+    def _clear_selected_run(self, _event=None):
+        """Right-click in the table: no run selected; a chart still on SELECTED goes back to
+        its choice from before the selection."""
+        tree = self.benchmark_tree
+        if self._selected_run is None and not tree.selection():
+            return
+        tree.selection_set(())
+        self._point_choice = {
+            chart: self._choices_before_select.get(chart, choice)
+            if choice == chart_points.SELECTED else choice
+            for chart, choice in self._point_choice.items()}
+        self._selected_run = None
+        self._choices_before_select = {}
+        self._show_point_choices()
+        self._redraw_charts()
+
+    def _show_point_choices(self):
+        """The point choices in an open Filter window and in the filter summary."""
         window = getattr(self, "_filter_window", None)
         if window is not None and window.winfo_exists():
             for chart, var in window.choice_vars.items():
                 var.set(self._point_choice[chart])
         self.filter_summary_var.set(self._filter_summary())
-        self._redraw_charts()
+
+    def _point_menu_entries(self, chart):
+        """[(label, command, enabled)] of `chart`'s point choices for its right-click menu:
+        the current one ticked and disabled, SELECTED disabled while no run is selected."""
+        entries = []
+        for choice in chart_points.CHOICES:
+            current = choice == self._point_choice[chart]
+            label = self.T("bench.point_menu",
+                           choice=self.T(chart_points.CHOICE_LABEL_KEYS[choice]))
+            enabled = not current and (choice != chart_points.SELECTED
+                                       or self._selected_run is not None)
+            entries.append(("\u2713 " + label if current else label,
+                            lambda c=choice: self._set_chart_choice(chart, c), enabled))
+        return entries
+
+    def _set_chart_choice(self, chart, choice):
+        self._set_points(self._x_mode, {chart: choice})
+        self._show_point_choices()
 
     def _on_tree_row_selected(self, item):
         row = self._tree_item_rows.get(item)
@@ -126,3 +172,4 @@ class BenchmarkPoints:
     def _bind_tree_points(self):
         self.benchmark_tree.bind("<Left>", lambda _e: self._turn_row_page(-1))
         self.benchmark_tree.bind("<Right>", lambda _e: self._turn_row_page(1))
+        self.benchmark_tree.bind("<Button-3>", self._clear_selected_run)

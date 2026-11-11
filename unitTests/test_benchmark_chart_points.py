@@ -199,6 +199,10 @@ class FloorFilter(unittest.TestCase):
 class TabTests(unittest.TestCase):
     """The Filter window sets the x axis and the point choices; the table selects the run."""
 
+    def setUp(self):
+        from app_sandbox import fresh_ui_store
+        fresh_ui_store()
+
     def _tab(self, rows, body):
         import csv
         import os

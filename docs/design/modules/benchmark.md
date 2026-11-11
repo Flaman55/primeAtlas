@@ -7,7 +7,7 @@ a PDF report.
 
 | Part | Files |
 |---|---|
-| Tab | `primeatlas/benchmark/benchmark_tab.py` and its mixins `benchmark_filter.py` (Filter window), `benchmark_points.py` (x axis, point choices, selected run), `benchmark_ram_chart.py` (RAM chart), `chart_zoom_controls.py` (zoom and pan), `chart_hover.py` (hover tooltip), `benchmark_chart_windows.py` (a chart in its own window), `benchmark_line_colors.py` (a legend entry's color menu) |
+| Tab | `primeatlas/benchmark/benchmark_tab.py` and its mixins `benchmark_filter.py` (Filter window), `benchmark_points.py` (x axis, point choices, selected run), `benchmark_ram_chart.py` (RAM chart), `chart_zoom_controls.py` (zoom and pan), `chart_hover.py` (hover tooltip), `benchmark_chart_windows.py` (a chart in its own window), `benchmark_line_colors.py` (a legend entry's color menu), `benchmark_view_state.py` (the view kept across restarts, `view_store.py`; the axis toggles) |
 | Exports | `benchmark_export.py` (tab mixin: Save PDF, Export menu), `report_export.py` (CSV, SVG, HTML page, HTML snippet), `report_html.py` + `report_chart.js` (the interactive HTML), `chart_svg.py` (SVG backend of `chart_pdf.chart_ops()`) |
 | Backend | `benchmark.py` (reading and normalizing rows, D/P kind, PDF report, `report_chart_pages()`, `benchmark_line_records()`), `line_names.py` (a row's line and charts), `chart_filter.py` (which runs the charts compare), `chart_points.py` (which runs become a chart's points and where they sit on x), `proof_rows.py` (a verified pt1 run as two lines), `sieve_measure.py` (which time the sieve chart measures), `table_cells.py` (the dash of a missing value), `table_columns.py` (the run table's columns), `chart_view.py` (the zoomed part of a chart), `chart_series.py`, `line_colors.py` (each engine's line color), `chart_pdf.py`, `reference_points.py` |
 
@@ -65,7 +65,9 @@ repeats a shown one under another name or is a quotient of two (`write_files`, `
 `kind`, `engine_version`, `instance_of_n`, `write_threads`, `target_idx_*`,
 `avg_primes_per_window`, `primes_per_second`, `bytes_written`, `sieve_count_basis`) and
 `base_gen_seconds` (hundredths of a second) stay in the log only. The tree groups runs by floor and
-names each by its timestamp, with a summary row of the s/window column; the reports add floor and
+names each by its timestamp, with a summary row of the s/window column; a selected row scrolls to
+the top, under the headings, the last rows too (`StripedTreeview.scroll_to_top()` adds blank pad
+rows after the last row); the reports add floor and
 run in front and split the columns into four tables (engine and speed; run; phases; results), each
 led by floor, run and engine. Headers are translated in the tree and the reports; the CSV header
 is the column keys and its values are raw (no thousands separators). A value the run lacks shows a
@@ -83,7 +85,15 @@ each its own point in log order, repeated runs one above the other, a point's no
 widths of its x). The choice is per chart (whole run, sieve, RAM); the selected run is one for all
 three charts: clicking a run in the table switches every chart to `SELECTED` (one on `ALL` keeps
 it) and rings the points from that run (`selected_marks()`), since the table sits below the
-charts; the Filter window goes back to another choice. The x axis is one for all
+charts, and remembers each chart's choice from before; a right-click in the table clears the
+selection and puts every chart still on `SELECTED` back on that choice. A chart's right-click menu
+starts with its five point choices (the current one ticked, `SELECTED` only with a selected run),
+then "Hide/Show left-axis lines (circles)" and "... right-axis lines (squares)" (every line
+the legend lists on that axis, at once), a point's pins and the resets; the Filter window sets the
+choices too. The filter, the sieve measure, the x axis, the point choices and the hidden lines are
+kept across restarts as one value in the remembered-fields store (`view_store.py`; a chart on
+`SELECTED` is kept as its choice from before, the selected run is not kept; a filter value the log
+no longer holds is dropped at reload); the pins and the zoom are kept for the session. The x axis is one for all
 charts: the floor (a line per engine build and threads), or log10 of the run's width
 (`numbers_processed`; a line per engine build, threads and floor, "v7.1, 24 thr @ f28", the floors
 of one engine in shades of its hue, `chart_points.shade()`, dashes staying for the references). On
@@ -186,7 +196,7 @@ None of its own.
 
 ## Specs and tests
 
-`test_benchmark_tab`, `test_benchmark_table_columns`, `test_benchmark_chart_series`, `test_benchmark_report_export`,
+`test_benchmark_tab`, `test_benchmark_table_columns`, `test_tree_scroll_to_top`, `test_benchmark_point_menu`, `test_benchmark_view_state`, `test_benchmark_chart_series`, `test_benchmark_report_export`,
 `test_benchmark_report_html` (the script through node), `test_benchmark_chart_zoom`,
 `test_benchmark_chart_windows`,
 `test_benchmark_actual_range`,

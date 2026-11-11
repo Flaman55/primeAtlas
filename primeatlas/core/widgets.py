@@ -556,6 +556,7 @@ STRIPE_TAG = "stripe"
 STRIPE_BACKGROUND = "#f5f5f5"
 _striped_trees = weakref.WeakSet()
 _STRIPE_BINDTAG = "StripedTreeview"
+PAD_TAG = "scroll_pad_row"
 
 
 def set_stripe_background(color):
@@ -570,6 +571,14 @@ def set_stripe_background(color):
             pass  # tree (or its Tk root) already destroyed
 
 
+def _on_striped_tree_select(event):
+    tree = event.widget
+    if isinstance(tree, StripedTreeview):
+        pads = [i for i in tree.selection() if PAD_TAG in tree.item(i, "tags")]
+        if pads:
+            tree.selection_remove(pads)
+
+
 def _on_striped_tree_toggle(event):
     tree = event.widget
     if isinstance(tree, StripedTreeview):
@@ -582,7 +591,10 @@ class StripedTreeview(ttk.Treeview):
     Restriped once per idle cycle after any insert/delete/move/detach, item tags or open
     state change, and node open/close. The open/close hook lives on its own bindtag, so a
     caller's tree.bind("<<TreeviewOpen>>", ...) does not replace it. Rows whose own tag
-    sets a background (group/stat highlights) are never striped, only counted."""
+    sets a background (group/stat highlights) are never striped, only counted.
+    scroll_to_top(item) makes a visible row the first one in view; for a row in the last
+    screenful it adds blank pad rows (PAD_TAG) after the last row, as many as the view needs,
+    never striped or selectable, dropped on the next scroll_to_top()."""
 
     def __init__(self, master=None, **kw):
         super().__init__(master, **kw)
@@ -590,6 +602,7 @@ class StripedTreeview(ttk.Treeview):
         self.tag_configure(STRIPE_TAG, background=STRIPE_BACKGROUND)
         self.bind_class(_STRIPE_BINDTAG, "<<TreeviewOpen>>", _on_striped_tree_toggle)
         self.bind_class(_STRIPE_BINDTAG, "<<TreeviewClose>>", _on_striped_tree_toggle)
+        self.bind_class(_STRIPE_BINDTAG, "<<TreeviewSelect>>", _on_striped_tree_select)
         self.bindtags(self.bindtags() + (_STRIPE_BINDTAG,))
         _striped_trees.add(self)
 
@@ -618,6 +631,44 @@ class StripedTreeview(ttk.Treeview):
             self.schedule_restripe()
         return result
 
+    def visible_rows(self):
+        """Every row not inside a closed node, in display order; pad rows left out."""
+        rows, stack = [], list(reversed(self.get_children("")))
+        while stack:
+            iid = stack.pop()
+            if PAD_TAG in super().item(iid, "tags"):
+                continue
+            rows.append(iid)
+            if super().item(iid, "open"):
+                stack.extend(reversed(self.get_children(iid)))
+        return rows
+
+    def _view_rows(self, rows):
+        """How many whole rows the view shows, from a row in view; None when none is."""
+        first = min(len(rows) - 1, int(round(float(self.yview()[0]) * len(rows))))
+        for row in rows[first:first + 2]:
+            box = self.bbox(row)
+            if box:
+                return max(1, (self.winfo_height() - box[1]) // box[3])
+        return None
+
+    def scroll_to_top(self, item):
+        """Scrolls `item` to the top of the view, adding the pad rows a row in the last
+        screenful needs. Nothing for an item inside a closed node, a pad row or an item not
+        in the tree."""
+        rows = self.visible_rows()
+        if item not in rows:
+            return
+        pads = [i for i in self.get_children("") if PAD_TAG in super().item(i, "tags")]
+        if pads:
+            super().delete(*pads)
+        self.update_idletasks()
+        index = rows.index(item)
+        missing = (self._view_rows(rows) or 0) - (len(rows) - index)
+        for _ in range(max(0, missing)):
+            super().insert("", "end", tags=(PAD_TAG,))
+        self.yview_moveto(index / (len(rows) + max(0, missing)))
+
     def schedule_restripe(self):
         if not self._restripe_pending:
             self._restripe_pending = True
@@ -638,18 +689,12 @@ class StripedTreeview(ttk.Treeview):
                         return True
             return False
 
-        index = 0
-        stack = list(reversed(self.get_children("")))
-        while stack:
-            iid = stack.pop()
+        for index, iid in enumerate(self.visible_rows()):  # pad rows come last, unstriped
             tags = tuple(t for t in super().item(iid, "tags") or () if t != STRIPE_TAG)
             if index % 2 == 1 and not has_own_background(tags):
                 tags += (STRIPE_TAG,)
             if tags != tuple(super().item(iid, "tags") or ()):
                 super().item(iid, tags=tags)
-            index += 1
-            if super().item(iid, "open"):
-                stack.extend(reversed(self.get_children(iid)))
 
 
 class RevealFrame(ttk.Frame):

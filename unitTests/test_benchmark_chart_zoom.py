@@ -26,6 +26,8 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / "prime_sieve"), str(ROOT / "constellation")]
 
+from app_sandbox import fresh_ui_store  # noqa: E402
+
 from primeatlas.benchmark import chart_view, report_export  # noqa: E402
 from primeatlas.benchmark.chart_series import YScale, clip_polyline  # noqa: E402
 from primeatlas.core.i18n import Translator  # noqa: E402
@@ -137,6 +139,7 @@ def _tab(rows, portal, root):
         writer = csv.DictWriter(f, fieldnames=list(rows[0]))
         writer.writeheader()
         writer.writerows(rows)
+    fresh_ui_store()
     tab = benchmark_tab.BenchmarkTab(root, lambda: portal, tk.StringVar(master=root),
                                      Translator("en"), lambda *a, **k: None,
                                      palette_for("light"))
