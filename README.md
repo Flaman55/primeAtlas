@@ -1337,12 +1337,22 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
   base_tab.py                   BaseTab(ttk.Frame) -- common base class for every GUI
                               tab class in this package (shared self.T assignment,
                               totals_progress spinner toggle, clipboard-copy helper)
+  heading_wrap.py               a table heading wrapped to its column: greedy lines,
+                              the narrowest width that keeps it to two lines, a
+                              column's fitted width -- pure, no tkinter
+                              (unitTests/test_heading_wrap.py)
+  wrapped_heading.py            WrappedHeading -- a Treeview's heading row drawn on a
+                              Canvas so a heading can take two lines (ttk headings
+                              show one); mirrors the tree's heading texts, commands
+                              and widths, scrolls with it, click runs the command,
+                              edge drag resizes (unitTests/test_wrapped_heading.py)
   info_tip.py                   InfoTip -- the app's one "i" marker next to a field:
                               hovering it shows how the field affects the run (the
                               Generation tab's engine selector and every engine knob);
                               with anchor= it hangs on a greyed-out field and says
                               why it cannot be changed (pt1's verify checkbox under
-                              Benchmark)
+                              Benchmark); the popup stays inside the app window
+                              (unitTests/test_info_tip.py)
   widgets.py                    small generic tkinter helpers (e.g. FlowRow) with no
                               application-specific state; HeightGrip is the app's one
                               height control -- a drag handle under a terminal, list or
@@ -2111,6 +2121,17 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               right-click menu (a hidden axis also hides lines
                               that appear on it later)
                               (unitTests/test_benchmark_view_state.py)
+  benchmark_table_layout.py     BenchmarkTableLayout mixin of the tab: the run table's
+                              WrappedHeading and its column widths, fitted to the
+                              kept runs' values or the heading on two lines
+                              (unitTests/test_benchmark_table_layout.py)
+  benchmark_table_copy.py       BenchmarkTableCopy mixin of the tab: the run table's
+                              box column (a run's box, a floor's box = all its
+                              runs, the heading = all runs); Ctrl+C copies the ticked runs (else the
+                              selection) as a Markdown table, Ctrl+Shift+C as
+                              tab-separated values, then clears the boxes; the
+                              keys' hint and its InfoTip above the table
+                              (unitTests/test_benchmark_table_copy.py)
   benchmark_ram_chart.py        BenchmarkRamChart mixin of the tab: the RAM chart, the
                               lowest of the three (peak MB per run, MB per window,
                               mixed-width note; unitTests/test_benchmark_chart_series.py)
@@ -2126,6 +2147,11 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               (unitTests/test_benchmark_chart_points.py)
   table_cells.py                the dash a table shows for a value the run's engine
                               does not log -- pure, no tkinter
+  table_copy.py                 runs ticked or selected in the run table as
+                              clipboard text: Markdown (shown values, padded
+                              columns) or TSV (raw values), empty columns left
+                              out; a floor's box state -- pure, no tkinter
+                              (unitTests/test_benchmark_table_copy.py)
   table_columns.py              the run table's columns, most used first (engine,
                               sieve n/s, run n/s, run n/s without the verification
                               after a pt1 run and the n/s it costs, time, s/window,

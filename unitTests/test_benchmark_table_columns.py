@@ -315,7 +315,8 @@ def part_e():
             tab = app.benchmark_tab_widget
             tab.reload_benchmark_log()
             tree = tab.benchmark_tree
-            check(tuple(tree["columns"]) == tc.TREE_COLUMNS, "tree columns = TREE_COLUMNS")
+            check(tuple(tree["displaycolumns"])[1:] == tc.TREE_COLUMNS,
+                  "tree columns = TREE_COLUMNS after the copy box")
             check(tree.heading("sieve_nps", "text") == tab.T(tc.header_key("sieve_nps")),
                   "tree heading translated")
             node = tree.get_children("")[0]

@@ -53,10 +53,6 @@ GROUPS = (
 TREE_COLUMNS = tuple(c for _title, columns in GROUPS for c in columns)
 EXPORT_COLUMNS = KEY_COLUMNS + TREE_COLUMNS[1:]
 
-# Tree column widths in pixels; a column not named here gets DEFAULT_WIDTH.
-WIDTHS = {ENGINE: 150, "threads": 140, "windows": 130, "sieve_nps": 130, "run_nps": 130}
-DEFAULT_WIDTH = 100
-
 # Log columns shown as they are.
 _COPIED = {"sieve_seconds": "sieve_seconds", "sieve_wall_seconds": "sieve_wall_seconds",
            "write_seconds": "write_seconds", "ram_mb": "max_child_rss_mb",
@@ -240,3 +236,11 @@ def stats(rows):
         return None
     return {"count": len(values), "avg": sum(values) / len(values),
             "min": min(values), "max": max(values)}
+
+
+def summary_text(stats, t):
+    """The floor summary's s/window cell for stats() `stats`; "" for None."""
+    if not stats:
+        return ""
+    return t("bench.stat_summary", avg=f"{stats['avg']:.4f}", min=f"{stats['min']:.4f}",
+             max=f"{stats['max']:.4f}")

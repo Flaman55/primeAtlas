@@ -50,6 +50,8 @@ from .benchmark_export import BenchmarkExport
 from .benchmark_filter import BenchmarkFilter
 from .benchmark_line_colors import BenchmarkLineColors
 from .benchmark_points import BenchmarkPoints
+from .benchmark_table_copy import BenchmarkTableCopy
+from .benchmark_table_layout import BenchmarkTableLayout
 from .benchmark_view_state import BenchmarkViewState
 from .benchmark_ram_chart import BenchmarkRamChart
 from .chart_hover import _bind_chart_hover, _nearest_point
@@ -358,7 +360,8 @@ def _bind_pin_menu(canvas, hover_points, on_pin_menu, on_color_menu=None):
 
 class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, BenchmarkPoints,
                    BenchmarkRamChart, BenchmarkChartZoom, BenchmarkChartWindows,
-                   BenchmarkViewState, BaseTab):
+                   BenchmarkViewState, BenchmarkTableCopy, BenchmarkTableLayout,
+                   BaseTab):
     def __init__(self, parent, get_portal_folder, status_var, translator, update_nav_controls,
                  theme_palette):
         """
@@ -477,6 +480,7 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, Benchm
         self.benchmark_goto_entry.bind("<Return>", lambda _e: self._goto_benchmark_page())
         ttk.Button(benchmark_nav, text=T("common.goto"), command=self._goto_benchmark_page).pack(
             side="left", padx=(4, 0))
+        self._build_table_copy_hint(benchmark_nav)
 
         # height is the tree's height when the page has to scroll, as it does under the three
         # stacked charts at the default 1050x680; while the page fits, pack(expand=True)
@@ -492,9 +496,10 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, Benchm
         # row properly wider than the view and the scrollbar actually needed/usable.
         vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=self.benchmark_tree.yview)
         hsb = ttk.Scrollbar(tree_frame, orient="horizontal", command=self.benchmark_tree.xview)
-        self.benchmark_tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
         vsb.pack(side="right", fill="y")
         hsb.pack(side="bottom", fill="x")
+        self.benchmark_tree.configure(yscrollcommand=vsb.set,
+                                      xscrollcommand=self._build_table_heading(tree_frame, hsb.set))
         self.benchmark_tree.pack(side="left", fill="both", expand=True)
 
         # Explicit foreground alongside each background -- a tag's own colors
@@ -510,6 +515,7 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, Benchm
         self.benchmark_tree.bind("<<TreeviewClose>>", self._on_benchmark_tree_close)
         self.benchmark_tree.bind("<<TreeviewSelect>>", self._on_benchmark_tree_select)
         self._bind_tree_points()
+        self._bind_table_copy()
 
         self._benchmark_growth_points = []
         self._benchmark_fair_spw_points = []  # loop_seconds_per_window, second chart line
@@ -526,6 +532,7 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, Benchm
         self._benchmark_rows_by_floor = {}   # base_exponent -> [rows...], built by
                                                # reload_benchmark_log() via
                                                # group_benchmark_rows_by_floor()
+        self._tree_floor_nodes = {}          # floor item id -> base_exponent
         self._benchmark_floor_state = {}     # tree item id -> {base_exponent, rows,
                                                # stats, page, total_pages} -- lazily
                                                # populated on <<TreeviewOpen>>, dropped on
@@ -693,25 +700,26 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, Benchm
         self._redraw_benchmark_chart3()
 
         self.benchmark_tree.delete(*self.benchmark_tree.get_children())
-        self.benchmark_tree["columns"] = table_columns.TREE_COLUMNS
+        self._set_copy_columns(table_columns.TREE_COLUMNS)
         for col in table_columns.TREE_COLUMNS:
             self.benchmark_tree.heading(col, text=self.T(table_columns.header_key(col)))
-            self.benchmark_tree.column(
-                col, width=table_columns.WIDTHS.get(col, table_columns.DEFAULT_WIDTH),
-                anchor="center", stretch=False)
+            self.benchmark_tree.column(col, anchor="center", stretch=False)
         self._rebuild_benchmark_tree()
 
     def _rebuild_benchmark_tree(self):
         """Lists the runs the Filter window keeps (_filtered_rows()), grouped per floor; a
         floor with no kept run is left out. Called on reload and on every filter change, which
-        keeps the columns and their widths."""
+        keeps the columns and fits their widths to the kept runs (benchmark_table_layout.py)."""
         T = self.T
         fieldnames = self._benchmark_fieldnames
         self._benchmark_rows_by_floor = group_benchmark_rows_by_floor(self._filtered_rows())
         self.benchmark_tree.delete(*self.benchmark_tree.get_children())
         self._tree_item_rows = {}
+        self._tree_floor_nodes = {}
         self._benchmark_floor_state = {}
+        self._copy_marks = set()
         self._active_benchmark_node = None
+        self._fit_table_columns()
         self._refresh_benchmark_nav_controls()
 
         tree_fieldnames = table_columns.TREE_COLUMNS
@@ -727,7 +735,9 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, Benchm
             node = self.benchmark_tree.insert(
                 "", "end", text=T("bench.floor_measurements", base_exponent=base_exponent, count=count),
                 values=["" for _ in tree_fieldnames], open=False, tags=("floor",))
+            self._tree_floor_nodes[node] = base_exponent
             self.benchmark_tree.insert(node, "end", text=T("common.loading"))
+        self._show_copy_marks()
 
     def _on_benchmark_tree_open(self, _event):
         node = self.benchmark_tree.focus()
@@ -771,8 +781,7 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, Benchm
         if len(children) == 1 and self.benchmark_tree.item(children[0], "text") == self.T("common.loading"):
             self.benchmark_tree.delete(children[0])
 
-        text = self.benchmark_tree.item(node, "text")  # "10p{N} (M measurement(s))"
-        base_exponent = int(text[3:].split(" ", 1)[0])
+        base_exponent = self._tree_floor_nodes[node]
         rows = self._benchmark_rows_by_floor.get(base_exponent, [])
         stats = table_columns.stats(rows)
         total_pages = max(1, (len(rows) + BENCHMARK_PAGE_SIZE - 1) // BENCHMARK_PAGE_SIZE)
@@ -807,8 +816,7 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, Benchm
         stat_values = ["" for _ in fieldnames]
         if stats and "seconds_per_window" in fieldnames:
             idx = fieldnames.index("seconds_per_window")
-            stat_values[idx] = T("bench.stat_summary", avg=f"{stats['avg']:.4f}",
-                                  min=f"{stats['min']:.4f}", max=f"{stats['max']:.4f}")
+            stat_values[idx] = table_columns.summary_text(stats, T)
             stat_text = T("bench.stat_row_label", count=stats['count'])
         else:
             stat_text = T("bench.stat_no_data")
@@ -825,6 +833,7 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, Benchm
             item = self.benchmark_tree.insert(node, "end", text=label, values=values,
                                               tags=("row",))
             self._remember_tree_row(item, row)
+        self._show_copy_marks()
 
         if self._active_benchmark_node == node:
             self._refresh_benchmark_nav_controls()

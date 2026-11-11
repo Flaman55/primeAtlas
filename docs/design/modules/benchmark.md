@@ -7,9 +7,9 @@ a PDF report.
 
 | Part | Files |
 |---|---|
-| Tab | `primeatlas/benchmark/benchmark_tab.py` and its mixins `benchmark_filter.py` (Filter window), `benchmark_points.py` (x axis, point choices, selected run), `benchmark_ram_chart.py` (RAM chart), `chart_zoom_controls.py` (zoom and pan), `chart_hover.py` (hover tooltip), `benchmark_chart_windows.py` (a chart in its own window), `benchmark_line_colors.py` (a legend entry's color menu), `benchmark_view_state.py` (the view kept across restarts, `view_store.py`; the axis toggles) |
+| Tab | `primeatlas/benchmark/benchmark_tab.py` and its mixins `benchmark_filter.py` (Filter window), `benchmark_points.py` (x axis, point choices, selected run), `benchmark_ram_chart.py` (RAM chart), `chart_zoom_controls.py` (zoom and pan), `chart_hover.py` (hover tooltip), `benchmark_chart_windows.py` (a chart in its own window), `benchmark_line_colors.py` (a legend entry's color menu), `benchmark_view_state.py` (the view kept across restarts, `view_store.py`; the axis toggles), `benchmark_table_copy.py` (Ctrl+C on the run table), `benchmark_table_layout.py` (the table's heading row and column widths) |
 | Exports | `benchmark_export.py` (tab mixin: Save PDF, Export menu), `report_export.py` (CSV, SVG, HTML page, HTML snippet), `report_html.py` + `report_chart.js` (the interactive HTML), `chart_svg.py` (SVG backend of `chart_pdf.chart_ops()`) |
-| Backend | `benchmark.py` (reading and normalizing rows, D/P kind, PDF report, `report_chart_pages()`, `benchmark_line_records()`), `line_names.py` (a row's line and charts), `chart_filter.py` (which runs the charts compare), `chart_points.py` (which runs become a chart's points and where they sit on x), `proof_rows.py` (a verified pt1 run as two lines), `sieve_measure.py` (which time the sieve chart measures), `table_cells.py` (the dash of a missing value), `table_columns.py` (the run table's columns), `chart_view.py` (the zoomed part of a chart), `chart_series.py`, `line_colors.py` (each engine's line color), `chart_pdf.py`, `reference_points.py` |
+| Backend | `benchmark.py` (reading and normalizing rows, D/P kind, PDF report, `report_chart_pages()`, `benchmark_line_records()`), `line_names.py` (a row's line and charts), `chart_filter.py` (which runs the charts compare), `chart_points.py` (which runs become a chart's points and where they sit on x), `proof_rows.py` (a verified pt1 run as two lines), `sieve_measure.py` (which time the sieve chart measures), `table_cells.py` (the dash of a missing value), `table_columns.py` (the run table's columns), `table_copy.py` (the table's selection as clipboard text), `chart_view.py` (the zoomed part of a chart), `chart_series.py`, `line_colors.py` (each engine's line color), `chart_pdf.py`, `reference_points.py` |
 
 ## Contract
 
@@ -77,7 +77,23 @@ rows after the last row); the reports add floor and
 run in front and split the columns into four tables (engine and speed; run; phases; results), each
 led by floor, run and engine. Headers are translated in the tree and the reports; the CSV header
 is the column keys and its values are raw (no thousands separators). A value the run lacks shows a
-dash (`table_cells.MISSING`, "-" in the PDF) and is empty in the CSV. A writing row from before
+dash (`table_cells.MISSING`, "-" in the PDF) and is empty in the CSV. The tree's headings are a WrappedHeading
+(`benchmark_table_layout.py`): a heading wraps onto two lines, and after every table build each
+column is as wide as its widest value among the kept runs (floor summaries included) or its
+heading on two lines, whichever is wider; #0 fits the floor and run labels at their indent. The
+tree's first column is a
+copy box per floor and run (`benchmark_table_copy.py`): a run's box ticks that run, a floor's box
+every run the filter keeps on it, open or not (PARTIAL when some are ticked); a click or Space on
+it neither selects nor scrolls the row, so runs of several floors can be collected; the column's
+heading is the same box for every run the filter keeps. The ticks
+are a set of row ids of one table build, cleared by a rebuild (reload, filter change). Ctrl+C
+copies the ticked runs as a Markdown table, Ctrl+Shift+C as tab-separated values
+(`table_copy.py`), then clears the ticks; with none ticked it copies the selection (a selected
+floor or its summary row = every run the filter keeps on it). Both use the export columns, each
+run once in table order: shown values padded to one width per column in Markdown (readable where
+a chat does not render it), raw values in TSV; a column no copied run has a value in is left
+out. The row above the tree names both keys; its InfoTip says how the copy
+is made and formatted. A writing row from before
 `write_threads` reads `write ?`. Each point names the range it was measured on (`@ 10^11`,
 `line_names.width_label()`); on the floor axis a chart can set points of different widths side by
 side, and `mixed_width_floors()` lists those floors: the tab shows them under the chart, the PDF
@@ -205,7 +221,7 @@ None of its own.
 
 ## Specs and tests
 
-`test_benchmark_tab`, `test_benchmark_table_columns`, `test_tree_scroll_to_top`, `test_benchmark_point_menu`, `test_benchmark_view_state`, `test_benchmark_chart_series`, `test_benchmark_report_export`,
+`test_benchmark_tab`, `test_benchmark_table_columns`, `test_tree_scroll_to_top`, `test_benchmark_point_menu`, `test_benchmark_view_state`, `test_benchmark_table_copy`, `test_benchmark_table_layout`, `test_benchmark_chart_series`, `test_benchmark_report_export`,
 `test_benchmark_report_html` (the script through node), `test_benchmark_chart_zoom`,
 `test_benchmark_chart_windows`,
 `test_benchmark_actual_range`,

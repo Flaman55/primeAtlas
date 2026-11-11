@@ -857,6 +857,29 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   generowaniu albo szerszy filtr nie przywraca już jej kółek ani kwadracików. Kliknięcie
   w legendzie jednej z jej linii pokazuje tylko tę linię; Pokaż przywraca wszystkie.
 
+### +53 — Benchmark: copy table rows with Ctrl+C, fitted columns; tips stay inside the window
+
+- English: The Benchmark run table gets a Copy column of boxes: tick runs, or a whole floor,
+  across several floors, or all of them from the column heading, then Ctrl+C copies them as a Markdown table, ready to paste into a
+  chat, and Ctrl+Shift+C as tab-separated values for a spreadsheet; the boxes clear after
+  the copy. Ticking does not select or scroll the row. With nothing ticked, the selected rows
+  are copied. Columns no copied run has a value in are left out. A hint above the table
+  names both keys; its (i) explains how the copy works and how it is formatted. The (i)
+  tips across the app now stay inside the window instead of running off its edge. The run
+  table's columns fit their values: a heading longer than its values wraps onto two lines
+  instead of widening the column.
+- Polski: Tabela przebiegów Benchmarku dostaje kolumnę Kopiuj z kwadracikami: zaznaczasz
+  przebiegi albo całe piętra, także z kilku pięter, albo wszystko klikiem w nagłówek
+  kolumny, a Ctrl+C kopiuje je jako tabelę
+  Markdown, gotową do wklejenia w czacie, Ctrl+Shift+C zaś jako wartości rozdzielone
+  tabulatorami do arkusza; po skopiowaniu kwadraciki się czyszczą. Zaznaczanie nie wybiera
+  ani nie przewija wiersza. Gdy nic nie jest zaznaczone, kopiują się wybrane wiersze.
+  Kolumny bez wartości w żadnym kopiowanym przebiegu są pomijane. Podpowiedź nad tabelą
+  podaje oba skróty, a jej (i) wyjaśnia, jak działa kopiowanie i jak formatuje dane.
+  Dymki (i) w całej aplikacji mieszczą się teraz w oknie, zamiast wychodzić poza jego
+  krawędź. Kolumny tabeli przebiegów dopasowują się do wartości: nagłówek dłuższy niż
+  wartości zawija się w dwa wiersze, zamiast poszerzać kolumnę.
+
 ## 1.2.0 — 2026-11-01
 
 ### English
