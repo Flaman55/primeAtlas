@@ -19,11 +19,13 @@ a PDF report.
 
 Reads only; the log's header belongs to `prime_sieve/benchmark_log_schema.py`.
 
-A pt1 row with `proof_seconds` (the verification P -> D right after the sieve) is drawn twice
-(`proof_rows.py`): "pt1.1 P" without the proof (total and loop times less `proof_seconds`) and
-"pt1.1 D proof" with it (`proof_seconds` added to the sieve time too); either line can be
+A pt1 row with `proof_seconds` (the verification P -> D that followed the run; in older rows
+the proof inside the scan) is drawn twice
+(`proof_rows.py`): "pt1.1 P" without the verification (total and loop times less
+`proof_seconds`) and "pt1.1 D proof" with it (`proof_seconds` added to the sieve time too); either line can be
 hidden. The table keeps the one logged row, kind D/P, and selecting it selects both points.
-Rows of the store verification (engine `pt1_verify`) are on no chart.
+Rows of the store verification (engines `pt1_verify` and `v73_verify`, also the ones
+logged after a pt1 run) are on no chart.
 
 Three charts one under another, full width, one line per engine build and thread setup, last row per
 floor and line: on top the sieve (sieve n/s, s/window, reference points; the measure below), then the
@@ -57,13 +59,17 @@ primesieve's ~0.7 s setup at floor 19 dominates a short range); PARI/GP stays on
 The run table (`table_columns.py`) is one column set for the tab's tree, the CSV export and the
 HTML and PDF tables, the most used for analysis on the left: engine (the legend's name with the
 build commit), sieve n/s (the sieve chart's phase value), run n/s (`loop_numbers_per_second`, the
-whole-run chart's value; numbers / `total_seconds` for a row without it), time (session, else the
+whole-run chart's value; numbers / `total_seconds` for a row without it), run n/s without the
+verification after a pt1 run (the P line's value) and the speed it costs (that speed less run
+n/s; blank for other rows), time (session, else the
 run's), s/window (session, else the run's), numbers (`10^10`), windows (`1000 (0-999)`); purpose,
 status (blank = completed), threads (`2x24 thr, write 4`); the phases (sieve, sieve with startup,
-write, write MB/s, verify, proof, peak RAM); the results (primes, pi(L), L). A log column that
+write, write MB/s, verify: `proof_seconds` when the row has one, else `verify_seconds`, peak
+RAM); the results (primes, pi(L), L). A log column that
 repeats a shown one under another name or is a quotient of two (`write_files`, `run_purpose`,
 `kind`, `engine_version`, `instance_of_n`, `write_threads`, `target_idx_*`,
-`avg_primes_per_window`, `primes_per_second`, `bytes_written`, `sieve_count_basis`) and
+`avg_primes_per_window`, `primes_per_second`, `bytes_written`, `sieve_count_basis`,
+`proof_seconds`) and
 `base_gen_seconds` (hundredths of a second) stay in the log only. The tree groups runs by floor and
 names each by its timestamp, with a summary row of the s/window column; a selected row scrolls to
 the top, under the headings, the last rows too (`StripedTreeview.scroll_to_top()` adds blank pad
@@ -202,7 +208,7 @@ None of its own.
 `test_benchmark_actual_range`,
 `test_benchmark_run_status`, `test_benchmark_main_compatibility`, `test_benchmark_log_schema`,
 `test_benchmark_line_names`, `test_benchmark_auto_reload`, `test_benchmark_filter`,
-`test_benchmark_sieve_measure`, `test_benchmark_proof_rows`; `test_orchestrator_sieve_wall`
+`test_benchmark_sieve_measure`, `test_benchmark_proof_rows`, `test_orchestrator_verify_after_run`; `test_orchestrator_sieve_wall`
 (prime-sieve).
 
 ## Known gaps

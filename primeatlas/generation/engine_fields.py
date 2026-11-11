@@ -4,7 +4,9 @@ One readonly Combobox picks the sieve engine (engine_options.ENGINES), with the 
 version next to it (engine_options.ENGINE_VERSIONS) and an InfoTip. Below it, the knobs of
 the selected engine only (engine_options.engine_knob_keys()), two per row in the form's
 label/entry column pairs, each entry followed by an InfoTip saying how the knob affects the
-run (a checkbox for engine_options.CHECKBOX_KNOBS); switching the engine hides the old engine's fields (they keep their values and are
+run (a checkbox for engine_options.CHECKBOX_KNOBS, with a link-styled hint label after it
+that another section fills and binds: knob_hint_vars, knob_hint_labels; set_knob_lock()
+greys it out with the reason in a tooltip on hover, knob_lock_tips); switching the engine hides the old engine's fields (they keep their values and are
 disabled) and shows the new ones. For v5 and v6 a second Combobox picks the knob profile
 (engine_presets.py), one per engine: picking old, new or mid fills that engine's profile
 fields (auto shows the set for the run width last given to set_windows(), new while none
@@ -66,6 +68,10 @@ class EngineFields:
         self.knob_vars = {}
         self.knob_entries = {}
         self.knob_infos = {}
+        self.knob_hint_vars = {}
+        self.knob_hint_labels = {}
+        self.knob_lock_tips = {}
+        self._knob_locks = {}
         self._knob_widgets = {}
         for key in engine_options.KNOB_KEYS:
             label = ttk.Label(form, text=T(_KNOB_LABEL_KEYS[key]))
@@ -79,6 +85,14 @@ class EngineFields:
             entry.pack(side="left")
             info = InfoTip(cell, lambda key=key: T(f"gen.info_{key}"))
             info.label.pack(side="left", padx=(4, 0))
+            if key in engine_options.CHECKBOX_KNOBS:
+                self.knob_hint_vars[key] = tk.StringVar()
+                self.knob_hint_labels[key] = ttk.Label(
+                    cell, textvariable=self.knob_hint_vars[key], style="Link.TLabel",
+                    cursor="hand2")
+                self.knob_hint_labels[key].pack(side="left", padx=(6, 0))
+                self.knob_lock_tips[key] = InfoTip(
+                    cell, lambda key=key: self._knob_locks.get(key) or "", anchor=entry)
             self.knob_vars[key] = var
             remember_generation_field("loop", key, var)
             self.knob_entries[key] = entry
@@ -186,6 +200,12 @@ class EngineFields:
         self._preset_frame.pack(side="left")
         self.preset_display.set(self._preset_labels[var.get()])
 
+    def set_knob_lock(self, key, reason):
+        """Greys `key`'s field out while `reason` (a text, shown on hover) is set; None
+        enables it again. The field keeps its value either way."""
+        self._knob_locks[key] = reason
+        self._sync_knob_state()
+
     def _sync_knob_state(self):
         engine = self.engine()
         own = engine_options.engine_knob_keys(engine)
@@ -194,7 +214,8 @@ class EngineFields:
         for key, (label, cell) in self._knob_widgets.items():
             label.grid_remove()
             cell.grid_remove()
-            self.knob_entries[key].configure(state="normal" if key in own else "disabled")
+            enabled = key in own and not self._knob_locks.get(key)
+            self.knob_entries[key].configure(state="normal" if enabled else "disabled")
         for i, key in enumerate(own):
             r, c = self._row + 1 + i // 2, (i % 2) * 2
             label, cell = self._knob_widgets[key]

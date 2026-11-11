@@ -1,25 +1,30 @@
-"""WSL test: pt1's verification P -> D (pt1_verify.py, prime_sieve_pt1.py with
-PRIMEATLAS_PT1_VERIFY=1, pt1_verify_store.py).
+"""WSL test: pt1's verification P -> D (pt1_verify.py, pt1_verify_store.py) and the
+verification after a pt1 run (run_verify.py, orchestrator_v3.py with PRIMEATLAS_PT1_VERIFY=1).
 
-A. PRIMEATLAS_PT1_VERIFY accepts 1, 0, blank and unset; anything else is an error.
+A. PRIMEATLAS_PT1_VERIFY accepts 1, 0, blank and unset; anything else is an error. The method
+   (proof by default, or sieve) and the pass width (10^11 by default, a whole number >= 1)
+   come from PRIMEATLAS_VERIFY_METHOD and PRIMEATLAS_VERIFY_PASS_NUMBERS, anything else is an
+   error. --range is taken out of a verifier's arguments; the verifier command names the
+   method's script, the pass only for the sieve.
 B. The bound s: the scan's B when that already gives top / B < L_373 (floors 25, 31), raised
    to top / L_373 when not (floor 33), None from L_373 * 2^32 (about 1.8e34, inside floor 34)
    or when s would pass isqrt(lo).
 C. The proven bitmap of pt1_verify_odd() equals gmpy2 on floors 25 and 30.
-D. A verifying scan writes every P window to the D store, lists it in DP_PROVEN.txt, leaves
-   nothing in the P store; its bytes equal the P files of a scan without the verification;
-   the handoff carries proof_seconds and windows_proven. Count-only verifies and writes
-   nothing, with the same prime count. Below the bound (floor 23) nothing is proven (D by 13
-   Miller-Rabin bases). 2e34 (floor 34) with the verification is refused (exit 2, no files),
-   without it pt1 still runs there.
+D. The pt1 scan never verifies, whatever PRIMEATLAS_PT1_VERIFY says: it writes P windows,
+   byte-equal to a scan without it, no DP_PROVEN.txt, no proof fields in the handoff; 2e34
+   (floor 34) runs either way.
 E. The store verification: equal windows move to D and become D/P; a window with a prime
    removed stays P and is listed in DP_MISMATCH.txt with that prime as first difference; a
    window with a D file already and one written with another width are skipped; the run logs
    one pt1_verify row with verify_seconds; a second run changes nothing and lists the mismatch
-   again; max_windows limits the run; a stop request before the first slab exits 3 and
-   changes nothing.
-F. orchestrator_v3.py with pt1 and the verification: the row has proof_seconds, the windows
-   are counted from the D store.
+   again; max_windows limits the run; --range proves only the windows of that target_idx
+   range; a stop request before the first slab exits 3 and changes nothing.
+F. orchestrator_v3.py with pt1 and the verification, after the whole run, on the run's own
+   windows only (a P window outside the run stays P): the proof logs a pt1_verify row and then
+   the pt1 row with the verification's time in proof_seconds (part of its total_seconds), the
+   run's windows in the D store; the sieve logs a v73_verify row instead. A count-only run says it is not verified and logs one row; a
+   bad method fails before any sieving (no row, no file); floor 23 (only D windows) ends with
+   exit 0 and one row; unticked, nothing is verified.
 
 Run inside WSL from the repo root:
     python3 unitTests/test_engine_pt1_verify.py
@@ -46,17 +51,41 @@ VERIFY = {"PRIMEATLAS_PT1_VERIFY": "1"}
 
 
 def _env_case():
-    import pt1_verify
+    import run_verify as rv
     passed = True
     for raw, want in (("1", True), ("0", False), ("", False), (None, False)):
-        env = {} if raw is None else {pt1_verify.VERIFY_ENV: raw}
-        passed &= check(pt1_verify.verify_from_env(env) is want, f"A: {raw!r} -> {want}")
+        env = {} if raw is None else {rv.VERIFY_ENV: raw}
+        passed &= check(rv.verify_from_env(env) is want, f"A: {raw!r} -> {want}")
     for raw in ("2", "yes", "-1"):
         try:
-            pt1_verify.verify_from_env({pt1_verify.VERIFY_ENV: raw})
+            rv.verify_from_env({rv.VERIFY_ENV: raw})
             passed &= check(False, f"A: {raw!r} raises")
         except ValueError:
             passed &= check(True, f"A: {raw!r} raises")
+    on = {rv.VERIFY_ENV: "1"}
+    passed &= check(rv.from_env({}) is None and rv.from_env({rv.VERIFY_ENV: "0",
+                                                           rv.METHOD_ENV: "sieve"}) is None,
+                    "A: off -> no verification")
+    passed &= check(rv.from_env(on) == ("proof", 10 ** 11), "A: on -> proof, 10^11 by default")
+    passed &= check(rv.from_env(dict(on, **{rv.METHOD_ENV: "sieve",
+                                            rv.PASS_NUMBERS_ENV: "400000"}))
+                    == ("sieve", 400_000), "A: sieve with its pass")
+    for bad in ({rv.METHOD_ENV: "gmp"}, {rv.PASS_NUMBERS_ENV: "0"},
+                {rv.PASS_NUMBERS_ENV: "1e11"}, {rv.PASS_NUMBERS_ENV: "-5"}):
+        try:
+            rv.from_env(dict(on, **bad))
+            passed &= check(False, f"A: {bad} raises")
+        except ValueError:
+            passed &= check(True, f"A: {bad} raises")
+    passed &= check(rv.pop_range(["s", "25", "--range", "3", "9", "x"]) == (["s", "25", "x"], 3, 9)
+                    and rv.pop_range(["s", "25"]) == (["s", "25"], 0, None),
+                    "A: --range taken out of the arguments")
+    proof = rv.verifier_argv("proof", 25, 8, W, 2, 5, 10 ** 11, "/d")
+    sieve = rv.verifier_argv("sieve", 25, 8, W, 2, 5, 10 ** 11, "/d")
+    passed &= check(proof == ["/d/pt1_verify_store.py", "25", "8", str(W), "0", "--range", "2", "5"]
+                    and sieve == ["/d/v73_verify_store.py", "25", "8", str(W), "0",
+                                  str(10 ** 11), "--range", "2", "5"],
+                    f"A: verifier commands ({proof}, {sieve})")
     return passed
 
 
@@ -128,55 +157,38 @@ def _proven(portal, floor):
 
 def _scan_case(tmp):
     passed = True
-    plain, verified = os.path.join(tmp, "plain"), os.path.join(tmp, "verified")
-    for portal, env in ((plain, {}), (verified, VERIFY)):
+    plain, ticked = os.path.join(tmp, "plain"), os.path.join(tmp, "ticked")
+    for portal, env in ((plain, {}), (ticked, VERIFY)):
         os.makedirs(portal)
         rc, tail = run_scanner(PT1, portal, 25, 0, 2, W, True, env)
         if rc:
             print(tail)
-        passed &= check(rc == 0, f"D: scan {'with' if env else 'without'} verification exits 0")
+        passed &= check(rc == 0, f"D: scan {'with' if env else 'without'} the switch exits 0")
     plain_d, plain_p = _stores(plain)
-    d, p = _stores(verified)
+    d, p = _stores(ticked)
     passed &= check(len(plain_p) == 3 and not plain_d, "D: plain scan writes 3 P windows")
-    passed &= check(len(d) == 3 and not p, "D: verifying scan writes 3 D windows, no P")
-    same = sorted(plain_p.values()) == sorted(d.values())
-    passed &= check(same, "D: verified D bytes equal the plain P bytes")
-    passed &= check(len(_proven(verified, 25)) == 3, "D: 3 tags in DP_PROVEN.txt")
-    m = _metrics(verified)
-    passed &= check(m.get("proof_seconds", 0) > 0 and m.get("windows_proven") == 3
-                    and m.get("proof_mismatches") == 0, f"D: handoff proof fields ({m})")
-
-    count_only = os.path.join(tmp, "count_only")
-    os.makedirs(count_only)
-    rc, _ = run_scanner(PT1, count_only, 25, 0, 2, W, False, VERIFY)
-    d, p = _stores(count_only)
-    m = _metrics(count_only)
-    passed &= check(rc == 0 and not d and not p and m.get("windows_proven") == 3
-                    and m.get("total_primes_found") == _metrics(verified).get("total_primes_found"),
-                    "D: count-only verifies 3 windows, writes nothing, same prime count")
-
-    below = os.path.join(tmp, "below")
-    os.makedirs(below)
-    rc, _ = run_scanner(PT1, below, 23, 0, 0, W, True, VERIFY)
-    d, p = _stores(below)
-    passed &= check(rc == 0 and len(d) == 1 and not p and "proof_seconds" not in _metrics(below)
-                    and not _proven(below, 23), "D: floor 23 is D without a proof")
-
+    passed &= check(len(p) == 3 and not d and sorted(p.values()) == sorted(plain_p.values()),
+                    "D: with the switch the scan writes the same 3 P windows")
+    m = _metrics(ticked)
+    passed &= check(not _proven(ticked, 25) and "proof_seconds" not in m
+                    and "windows_proven" not in m, f"D: the scan proves nothing ({m})")
     idx = 10 ** 34 // W  # 2e34
-    for env, want in ((VERIFY, 2), ({}, 0)):
+    for env in (VERIFY, {}):
         portal = os.path.join(tmp, f"f34_{bool(env)}")
         os.makedirs(portal)
         rc, _ = run_scanner(PT1, portal, 34, idx, idx, W, True, env)
         d, p = _stores(portal)
-        ok = rc == want and (bool(p) == (want == 0)) and not d
-        passed &= check(ok, f"D: 2e34 {'with' if env else 'without'} verification: rc {rc}")
+        passed &= check(rc == 0 and len(p) == 1 and not d,
+                        f"D: 2e34 {'with' if env else 'without'} the switch: rc {rc}")
     return passed
 
 
-def _store(portal, floor, max_windows=0):
+def _store(portal, floor, max_windows=0, idx_range=None):
     env = dict(os.environ, CONSTELLATION_PORTAL_DIR=portal)
-    proc = subprocess.run([sys.executable, STORE, str(floor), "8", str(W), str(max_windows)],
-                          cwd=SIEVE_DIR, env=env, capture_output=True, text=True)
+    cmd = [sys.executable, STORE, str(floor), "8", str(W), str(max_windows)]
+    if idx_range is not None:
+        cmd += ["--range", str(idx_range[0]), str(idx_range[1])]
+    proc = subprocess.run(cmd, cwd=SIEVE_DIR, env=env, capture_output=True, text=True)
     return proc.returncode, proc.stdout + proc.stderr
 
 
@@ -216,6 +228,11 @@ def _store_case(tmp):
     passed &= check(rc == 0 and os.path.exists(d_path(0)) and not os.path.exists(p_path(0))
                     and os.path.exists(p_path(1)), "E: max_windows 1 proves only window 0")
 
+    rc, out = _store(portal, 26, 0, (4, 6))
+    passed &= check(rc == 0 and os.path.exists(d_path(4)) and not os.path.exists(p_path(4))
+                    and all(os.path.exists(p_path(i)) for i in (1, 2, 3)),
+                    "E: --range 4..6 proves only window 4")
+
     rc, out = _store(portal, 26)
     if rc:
         print(out[-2000:])
@@ -236,7 +253,7 @@ def _store_case(tmp):
     passed &= check(os.path.exists(p_path(3)) and os.path.exists(odd),
                     "E: window with D and window of another width skipped, still P")
     rows = [r for r in _log_rows(portal) if r["engine"] == "pt1_verify"]
-    passed &= check(len(rows) == 2 and float(rows[-1]["verify_seconds"]) > 0
+    passed &= check(len(rows) == 3 and float(rows[-1]["verify_seconds"]) > 0
                     and rows[-1]["engine_version"] == "pt1.1", "E: pt1_verify rows logged")
 
     before = {i: os.path.exists(p_path(i)) for i in range(5)}
@@ -247,21 +264,79 @@ def _store_case(tmp):
     return passed
 
 
+def _orchestrate(portal, floor, env, write_files=True):
+    """Runs orchestrator_v3.py with pt1 over target_idx 0..1 of `floor`: (exit code, output)."""
+    full = dict(os.environ, CONSTELLATION_PORTAL_DIR=portal, PRIMEATLAS_SCANNER_VERSION="pt1",
+                **env)
+    cmd = [sys.executable, "orchestrator_v3.py", str(floor), "2", "0", "0",
+           "1" if write_files else "0", "0", "8", "1", str(W)]
+    proc = subprocess.run(cmd, cwd=SIEVE_DIR, env=full, capture_output=True, text=True)
+    return proc.returncode, proc.stdout + proc.stderr
+
+
 def _orchestrator_case(tmp):
     import storage_kinds as sk
-    portal = os.path.join(tmp, "orch")
+    from prime_sieve_v1 import format_offset
+    passed = True
+    for method, engine in (("proof", "pt1_verify"), ("sieve", "v73_verify")):
+        portal = os.path.join(tmp, f"orch_{method}")
+        os.makedirs(portal)
+        rc, _ = run_scanner(PT1, portal, 25, 5, 5, W, True, {})
+        outside = sk.window_path(portal, 25, 5 * W, W, format_offset(5 * W), sk.KIND_P)
+        rc, out = _orchestrate(portal, 25, dict(VERIFY, PRIMEATLAS_VERIFY_METHOD=method,
+                                                PRIMEATLAS_VERIFY_PASS_NUMBERS=str(10 ** 11)))
+        if rc:
+            print(out[-2000:])
+        rows = _log_rows(portal)
+        passed &= check(rc == 0, f"F: {method}: orchestrator exits 0")
+        passed &= check(len(rows) == 2 and rows[0]["engine"] == engine
+                        and rows[0]["windows_written"] == "2"
+                        and float(rows[0]["verify_seconds"]) > 0
+                        and rows[1]["engine"] == "pt1" and rows[1]["windows_written"] == "2"
+                        and float(rows[1]["proof_seconds"]) >= float(rows[0]["total_seconds"])
+                        and float(rows[1]["total_seconds"]) > float(rows[1]["proof_seconds"]),
+                        f"F: {method}: a {engine} row, then the pt1 row with its time ({rows})")
+        passed &= check("run without the verification" in out,
+                        f"F: {method}: the summary names the speed without and with it")
+        passed &= check(all(os.path.exists(sk.window_path(portal, 25, i * W, W,
+                                                          format_offset(i * W)))
+                            and not os.path.exists(sk.window_path(portal, 25, i * W, W,
+                                                                  format_offset(i * W), sk.KIND_P))
+                            for i in (0, 1)),
+                        f"F: {method}: the run's windows moved to the D store")
+        passed &= check(os.path.exists(outside) and _proven(portal, 25).isdisjoint(
+                        {sk.window_tag(os.path.basename(outside))}),
+                        f"F: {method}: the P window outside the run stays P")
+
+    portal = os.path.join(tmp, "orch_count")
     os.makedirs(portal)
-    env = dict(os.environ, CONSTELLATION_PORTAL_DIR=portal, PRIMEATLAS_SCANNER_VERSION="pt1",
-               **VERIFY)
-    cmd = [sys.executable, "orchestrator_v3.py", "25", "2", "0", "0", "1", "0", "8", "1", str(W)]
-    proc = subprocess.run(cmd, cwd=SIEVE_DIR, env=env, capture_output=True, text=True)
-    rows = _log_rows(portal)
-    passed = check(proc.returncode == 0, "F: orchestrator pt1 with verification exits 0")
-    passed &= check(len(rows) == 1 and float(rows[0]["proof_seconds"] or 0) > 0
-                    and rows[0]["windows_written"] == "2" and rows[0]["engine_version"] == "pt1.1",
-                    f"F: row has proof_seconds and 2 windows ({rows[:1]})")
-    passed &= check(os.path.exists(sk.window_path(portal, 25, W, W, "200k")),
-                    "F: proven window in the D store")
+    rc, out = _orchestrate(portal, 25, VERIFY, write_files=False)
+    d, p = _stores(portal)
+    passed &= check(rc == 0 and not d and not p and len(_log_rows(portal)) == 1
+                    and "no verification P -> D follows" in out,
+                    "F: count-only: not verified, one row, a note")
+
+    portal = os.path.join(tmp, "orch_bad")
+    os.makedirs(portal)
+    rc, out = _orchestrate(portal, 25, dict(VERIFY, PRIMEATLAS_VERIFY_METHOD="gmp"))
+    d, p = _stores(portal)
+    passed &= check(rc == 1 and not d and not p and not _log_rows(portal)
+                    and "PRIMEATLAS_VERIFY_METHOD" in out,
+                    "F: a bad method fails before sieving")
+
+    portal = os.path.join(tmp, "orch_23")
+    os.makedirs(portal)
+    rc, out = _orchestrate(portal, 23, VERIFY)
+    d, p = _stores(portal)
+    passed &= check(rc == 0 and len(d) == 2 and not p and len(_log_rows(portal)) == 1
+                    and "No P window" in out, "F: floor 23: D only, nothing to verify, exit 0")
+
+    portal = os.path.join(tmp, "orch_off")
+    os.makedirs(portal)
+    rc, out = _orchestrate(portal, 25, {"PRIMEATLAS_VERIFY_METHOD": "sieve"})
+    d, p = _stores(portal)
+    passed &= check(rc == 0 and len(p) == 2 and not d and len(_log_rows(portal)) == 1,
+                    "F: unticked: the run's windows stay P, one row")
     return passed
 
 

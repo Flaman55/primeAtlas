@@ -474,6 +474,16 @@ class ScrollablePage:
         """True while the content does not fit and the scrollbar is shown."""
         return self._shown
 
+    def scroll_to(self, widget):
+        """Scrolls so `widget` (anywhere inside body) starts at the top of the view, as far
+        as the content reaches; nothing while the content fits."""
+        self.canvas.update_idletasks()
+        if self._content_fits():
+            return
+        self._user_scrolled = True
+        top = widget.winfo_rooty() - self.body.winfo_rooty()
+        self.canvas.yview_moveto(top / self.body.winfo_reqheight())
+
     def _content_fits(self):
         canvas_h = self.canvas.winfo_height()
         return canvas_h > 1 and self.body.winfo_reqheight() <= canvas_h

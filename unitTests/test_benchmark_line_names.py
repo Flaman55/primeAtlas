@@ -152,6 +152,13 @@ class WidthTests(unittest.TestCase):
         self.assertEqual(line_names.line_name(_row("primesieve_count", version="12.15",
                                                    threads="15")),
                          "primesieve count 12.15, 15 thr", "a count writes nothing")
+        for engine, version in (("pt1_verify", "pt1.1"), ("v73_verify", "v7.3")):
+            row = _row(engine, version=version, threads="24")
+            self.assertEqual(line_names.threads_label(row), "24 thr",
+                             f"{engine} writes no window: no write threads")
+            self.assertFalse(any(line_names.on_chart(row, metric)
+                                 for metric in ("sieve", "growth", "ram")),
+                             f"{engine} is a storage run, in the table only")
 
 
 class PseudosquaresTests(unittest.TestCase):

@@ -8,7 +8,9 @@ back to the default; knob parsing accepts blanks (default) and positive integers
 field; the RAM budget knob is a percentage 1..100 (default from run_budget.py) read by
 v4.1 and v5, never by pt1, and reaches run_budget as safety_fraction; resolve() never fails (Restore has no form to report errors in); the per-run window
 cap is 1000 for v4.1 and higher for v5; recommend() passes the engine, floor and knobs on to
-run_budget and respects the cap; launch_env() always names the engine and adds the
+run_budget and respects the cap; a ticked pt1 verification carries Section D's method and
+pass (run_verify.py reads them back, an unticked one or another engine carries none);
+launch_env() always names the engine and adds the
 engine's own four knobs (segment, region, buckets, pieces per thread) for v5 and v6, plus v6's
 write threads, with a bucket override (which only lowers the buckets); every knob and the engine selector have an info text in both locales; build_wsl_logged_command() puts that env in front
 of the command, quoted, and rejects malformed names; the persisted Generation settings carry
@@ -108,10 +110,12 @@ def check_mirrors():
                     "pt1 env names match pt1_plan.py")
     passed &= check(d["pt1_b"] == 0 and d["pt1_chunk_kb"] == pt1_plan.DEFAULT_CHUNK_KB,
                     f"pt1 defaults: B auto (0), chunk {pt1_plan.DEFAULT_CHUNK_KB} KiB")
-    import pt1_verify
-    passed &= check(eo.PT1_VERIFY_ENV == pt1_verify.VERIFY_ENV and d["pt1_verify"] == 0
-                    and eo.CHECKBOX_KNOBS == {"pt1_verify"},
-                    "pt1 verification: env name matches pt1_verify.py, off by default, a checkbox")
+    import run_verify
+    passed &= check(eo.PT1_VERIFY_ENV == run_verify.VERIFY_ENV
+                    and eo.VERIFY_METHOD_ENV == run_verify.METHOD_ENV
+                    and eo.VERIFY_PASS_NUMBERS_ENV == run_verify.PASS_NUMBERS_ENV
+                    and d["pt1_verify"] == 0 and eo.CHECKBOX_KNOBS == {"pt1_verify"},
+                    "pt1 verification: env names match run_verify.py, off by default, a checkbox")
     passed &= check(eo.engine_knob_keys("pt1") == ("pt1_b", "pt1_chunk_kb", "pt1_verify")
                     and eo.engine_knob_keys("v5") == ("v5_segment_kb", "v5_region_kb",
                                                       "v5_bucket_mb", "v5_windows_at_25",
@@ -312,11 +316,36 @@ def check_env():
     passed &= check(env == [("PRIMEATLAS_SCANNER_VERSION", "pt1"), ("PRIMEATLAS_PT1_B", "7000"),
                             ("PRIMEATLAS_PT1_CHUNK_KB", "4096"), ("PRIMEATLAS_PT1_VERIFY", "0")],
                     f"pt1 env carries B, chunk and the verification switch ({env})")
-    import pt1_verify
+    import run_verify
     for raw, want in (("1", True), ("0", False), ("", False)):
         on = eo.launch_env(eo.resolve({"engine": "pt1", "pt1_verify": raw}))
-        passed &= check(pt1_verify.verify_from_env(dict(on)) is want,
-                        f"pt1_verify {raw!r} reaches the scanner as {want}")
+        passed &= check(run_verify.verify_from_env(dict(on)) is want,
+                        f"pt1_verify {raw!r} reaches the orchestrator as {want}")
+    ticked = eo.resolve({"engine": "pt1", "pt1_verify": "1"})
+    on = dict(eo.launch_env(ticked, verify=("sieve", 10 ** 12)))
+    passed &= check(run_verify.from_env(on) == ("sieve", 10 ** 12),
+                    f"Section D's method and pass reach the orchestrator ({on})")
+    on = dict(eo.launch_env(ticked, verify=("proof", 10 ** 9)))
+    passed &= check(run_verify.from_env(on) == ("proof", 10 ** 9), "the proof is passed too")
+    on = dict(eo.launch_env(ticked))
+    passed &= check(run_verify.from_env(on) == ("proof", run_verify.DEFAULT_PASS_NUMBERS),
+                    "without Section D's choice the orchestrator proves")
+    off = dict(eo.launch_env(eo.resolve({"engine": "pt1", "pt1_verify": "0"}),
+                             verify=("sieve", 10 ** 12)))
+    passed &= check(eo.VERIFY_METHOD_ENV not in off and run_verify.from_env(off) is None,
+                    "unticked: no method in the env, no verification")
+    v6_env = dict(eo.launch_env(eo.resolve({"engine": "v6"}), verify=("sieve", 10 ** 12)))
+    passed &= check(eo.VERIFY_METHOD_ENV not in v6_env,
+                    "another engine never carries the verification")
+    for bad in ({run_verify.VERIFY_ENV: "1", run_verify.METHOD_ENV: "gmp"},
+                {run_verify.VERIFY_ENV: "1", run_verify.PASS_NUMBERS_ENV: "0"},
+                {run_verify.VERIFY_ENV: "1", run_verify.PASS_NUMBERS_ENV: "1e11"},
+                {run_verify.VERIFY_ENV: "yes"}):
+        try:
+            run_verify.from_env(bad)
+            passed &= check(False, f"{bad} raises")
+        except ValueError:
+            passed &= check(True, f"{bad} raises")
     for raw in ("2", "-1", "yes"):
         knobs, bad = eo.parse_knobs({"pt1_verify": raw})
         passed &= check(knobs is None and bad == "pt1_verify", f"pt1_verify {raw!r} is invalid")

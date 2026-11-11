@@ -45,6 +45,8 @@ ENV_VERSIONS_SCRIPT = os.path.abspath(
     os.path.join(_SCRIPT_DIR, "prime_sieve", "env_versions.py"))
 PT1_VERIFY_STORE_SCRIPT = os.path.abspath(
     os.path.join(_SCRIPT_DIR, "prime_sieve", "pt1_verify_store.py"))
+V73_VERIFY_STORE_SCRIPT = os.path.abspath(
+    os.path.join(_SCRIPT_DIR, "prime_sieve", "v73_verify_store.py"))
 
 
 # ------------------------------------------------------------------------------------------
@@ -387,6 +389,16 @@ def build_pt1_verify_argv(base_exponent, threads, window_m, max_windows=0, scrip
     script = script_path if script_path is not None else PT1_VERIFY_STORE_SCRIPT
     return ["python3", "-u", windows_path_to_wsl(script), str(base_exponent), str(threads),
             str(window_m), str(max_windows)]
+
+
+def build_v73_verify_argv(base_exponent, threads, window_m, max_windows, pass_numbers,
+                          script_path=None):
+    """The LINUX-side argv of v73_verify_store.py (its module docstring has the CLI): proves
+    the floor's P windows by v7.2 sieve passes of up to pass_numbers numbers, the first
+    max_windows of them (0 = all)."""
+    script = script_path if script_path is not None else V73_VERIFY_STORE_SCRIPT
+    return ["python3", "-u", windows_path_to_wsl(script), str(base_exponent), str(threads),
+            str(window_m), str(max_windows), str(pass_numbers)]
 
 
 def build_pip_install_argv(package, upgrade=False):

@@ -805,6 +805,47 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   (kółka) albo prawej osi (kwadraty). Filtr, miara sita, oś X, wybór punktów i ukryte
   linie są zapamiętywane do następnego uruchomienia.
 
+### +51 — Verify P -> D by a v7.3 sieve, also after a pt1 run
+
+- English: Section D of the Generation tab gets a Method field: the pt1.1 proof as before,
+  or the new v7.3 sieve, which sieves the adjacent P windows completely with engine v7.2 in
+  passes of up to 10^Pass numbers (default 10^11, about 3.3 GB of RAM) and moves the equal
+  ones to the D store as D/P. A v7.2 pass takes a near fixed time per floor whatever its
+  width, so on wide ranges the sieve is much faster than the proof (floor 29: about 15x at
+  10^11 numbers). Next to the method, an estimate of both methods' time for the chosen
+  windows, from the benchmark log. Store verification rows (pt1_verify, v73_verify) no
+  longer show "write ?" next to their threads: they write no windows.
+  pt1's checkbox becomes "Verify P -> D after the run" and uses the method and pass chosen
+  in Section D: once the run has finished, its own P windows are proven by the pt1.1 proof
+  or by one wide v7.3 sieve pass, instead of a proof slab by slab inside the scan. The run
+  logs two rows, the verification and pt1's run with the verification's time; the hint next
+  to the checkbox names the method and a click on it scrolls to Section D. The run summary
+  and the Benchmark table show the run speed without and with the verification and the
+  speed it costs (the difference, in n/s); the chart draws both lines. The table's Proof
+  column goes: the Verify column shows a verification's time, whenever it was run.
+  A stopped run is not verified; a Benchmark run writes no windows, so the checkbox is
+  greyed out under Benchmark, with the reason in a tooltip.
+- Polski: Sekcja D zakładki Generowanie dostaje pole Metoda: dowód pt1.1 jak dotąd albo
+  nowe sito v7.3, które w całości przesiewa sąsiednie okna P silnikiem v7.2 w przejściach do
+  10^Przejście liczb (domyślnie 10^11, około 3,3 GB RAM) i przenosi zgodne okna do magazynu
+  D jako D/P. Przejście v7.2 trwa na danym piętrze prawie stały czas niezależnie od
+  szerokości, więc na szerokich zakresach sito jest dużo szybsze od dowodu (piętro 29: około
+  15x przy 10^11 liczb). Obok metody szacunek czasu obu metod dla wybranych okien, z logu
+  benchmarków. Wiersze weryfikacji magazynu (pt1_verify, v73_verify) nie pokazują już
+  "write ?" przy wątkach: nie zapisują okien.
+  Pole pt1 staje się „Weryfikuj P -> D po przebiegu” i używa metody oraz przejścia
+  wybranych w Sekcji D: po zakończeniu przebiegu jego własne okna P są dowodzone dowodem
+  pt1.1 albo jednym szerokim przejściem sita v7.3, zamiast dowodu slab po slabie w trakcie
+  skanu. Przebieg zapisuje dwa wiersze: weryfikację i przebieg pt1 z czasem weryfikacji;
+  podpowiedź obok pola pokazuje metodę, a kliknięcie w nią przewija do Sekcji D.
+  Podsumowanie przebiegu i tabela Benchmark pokazują prędkość przebiegu bez weryfikacji
+  i z nią oraz spadek prędkości przez weryfikację (różnica, w n/s); wykres rysuje obie
+  linie. Znika
+  kolumna Dowód: kolumna Weryfikacja pokazuje czas weryfikacji, niezależnie od tego, kiedy
+  ją uruchomiono. Przebieg zatrzymany nie jest weryfikowany; przebieg benchmarku nie
+  zapisuje okien, więc przy zaznaczonym Benchmarku pole jest wyszarzone, a dymek mówi
+  dlaczego.
+
 ## 1.2.0 — 2026-11-01
 
 ### English

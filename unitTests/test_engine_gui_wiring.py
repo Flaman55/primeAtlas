@@ -12,7 +12,13 @@ Width cap is 1000; picking v5 enables the knobs and raises every Quick-gen Width
 cap; Auto under v5 fills the floor-scaled window count and lowers the bucket field when RAM
 is short, under v4.1 it gives the old recommendation; a bad v5 knob blocks a v5 run but not
 a v4.1 run; pt1 enables only its B and chunk fields, its Auto fills the per-run cap
-whatever the RAM, and its launch carries the pt1 env and no v5 knobs; the pipeline launch carries the engine env and persists the choice; Restore
+whatever the RAM, and its launch carries the pt1 env and no v5 knobs; the pt1 verification
+checkbox names Section D's method (and the v7.3 pass), following each change there, a
+click on that hint scrolls the page to Section D, Benchmark greys the checkbox out (its
+value kept) with the reason in a tooltip on hover, also after an engine switch there and
+back, unticking Benchmark enables it again with no tooltip, and a
+ticked run carries that method and pass to the orchestrator (pipeline and Quick-gen), an
+unticked one none; the pipeline launch carries the engine env and persists the choice; Restore
 sizes an orchestrator floor with the persisted engine and passes the RAM-reduced bucket
 memory; the v5/v6 profile list (Auto, Old, New, Intermediate, Custom) shows only for
 those engines, fills their profile fields, switches to Custom on typing, keeps a profile per
@@ -26,6 +32,7 @@ import os
 import shutil
 import sys
 import tempfile
+from tkinter import ttk
 from types import SimpleNamespace
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -110,6 +117,108 @@ def _check_auto_follows_width(gen, fields, app):
                     "switching back to Auto fills the set for the current width")
     fields.engine_var.set("v5")
     app.update()
+    return passed
+
+
+def _check_pt1_verify_follows_section_d(gen, fields, app):
+    """The pt1 checkbox's hint and launch env follow Section D's method and pass."""
+    passed = True
+
+    def pick(method):
+        gen._verify_method_text.set(gen._verify_method_names[method])
+        gen._on_verify_method_chosen()
+        app.update()
+
+    def launch_loop():
+        _Runner.commands.clear()
+        gen._on_run_loop()
+        gen._loop_runner = None
+        return _Runner.commands[-1][-1] if _Runner.commands else ""
+
+    hint = fields.knob_hint_vars["pt1_verify"]
+    link = fields.knob_hint_labels["pt1_verify"]
+    page = gen._scroll_page
+    child, parent = page.frame, page.frame.master
+    while parent is not None:   # select every notebook tab on the way up
+        if isinstance(parent, ttk.Notebook):
+            parent.select(child)
+        child, parent = parent, parent.master
+    app.geometry("1050x680")
+    for _ in range(4):
+        app.update()
+    page.canvas.yview_moveto(0.0)
+    app.update()
+    link.event_generate("<Button-1>")
+    app.update()
+    top = gen._verify_frame.winfo_rooty() - page.canvas.winfo_rooty()
+    passed &= check(str(link.cget("cursor")) == "hand2" and page.canvas.yview()[0] > 0.0
+                    and 0 <= top < page.canvas.winfo_height(),
+                    f"a click on the hint scrolls to Section D (top {top}, view "
+                    f"{page.canvas.yview()})")
+    box = fields.knob_entries["pt1_verify"]
+    lock = gen.T("gen.pt1_verify_benchmark_lock")
+    tip = fields.knob_lock_tips["pt1_verify"]
+    fields.knob_vars["pt1_verify"].set("1")
+    gen._loop_write_files_var.set(False)
+    app.update()
+    passed &= check(str(box.cget("state")) == "disabled" and tip.text() == lock
+                    and fields.knob_vars["pt1_verify"].get() == "1",
+                    f"Benchmark greys the checkbox out, keeps its value, the tooltip says why "
+                    f"({box.cget('state')}, {tip.text()!r})")
+    box.event_generate("<Enter>")
+    app.update()
+    shown = tip.popup is not None and any(
+        w.cget("text") == lock for w in tip.popup.winfo_children())
+    box.event_generate("<Leave>")
+    app.update()
+    passed &= check(shown and tip.popup is None,
+                    "hovering the greyed checkbox shows the reason, leaving hides it")
+    fields.engine_var.set("v6")
+    app.update()
+    fields.engine_var.set("pt1")
+    app.update()
+    passed &= check(str(box.cget("state")) == "disabled",
+                    "an engine switch there and back keeps it greyed under Benchmark")
+    gen._loop_write_files_var.set(True)
+    app.update()
+    box.event_generate("<Enter>")
+    app.update()
+    passed &= check(str(box.cget("state")) == "normal" and tip.text() == ""
+                    and tip.popup is None,
+                    "Benchmark off: enabled again, no tooltip on hover")
+    box.event_generate("<Leave>")
+    pick("sieve")
+    gen._verify_vars["pass_exp"].set("12")
+    app.update()
+    passed &= check(hint.get() == gen.T("gen.pt1_verify_hint_sieve", pass_exp=12),
+                    f"the checkbox names Section D's sieve and pass ({hint.get()!r})")
+    gen._verify_vars["pass_exp"].set("10")
+    app.update()
+    passed &= check(hint.get() == gen.T("gen.pt1_verify_hint_sieve", pass_exp=10),
+                    f"a new pass reaches the hint at once ({hint.get()!r})")
+    fields.knob_vars["pt1_verify"].set("1")
+    bash = launch_loop()
+    passed &= check("PRIMEATLAS_PT1_VERIFY=1 " in bash
+                    and "PRIMEATLAS_VERIFY_METHOD=sieve " in bash
+                    and "PRIMEATLAS_VERIFY_PASS_NUMBERS=10000000000 " in bash,
+                    f"a ticked pipeline run carries the sieve and its pass ({bash[:300]}...)")
+    _Runner.commands.clear()
+    gen._on_run_orchestrator_direct(25, 0, 10)
+    gen._loop_runner = None
+    bash = _Runner.commands[-1][-1] if _Runner.commands else ""
+    passed &= check("PRIMEATLAS_VERIFY_METHOD=sieve " in bash,
+                    f"a ticked Quick-gen run carries the method too ({bash[:300]}...)")
+    pick("proof")
+    passed &= check(hint.get() == gen.T("gen.pt1_verify_hint_proof"),
+                    f"back to the proof, the hint follows ({hint.get()!r})")
+    bash = launch_loop()
+    passed &= check("PRIMEATLAS_VERIFY_METHOD=proof " in bash,
+                    f"a ticked run carries the proof ({bash[:300]}...)")
+    fields.knob_vars["pt1_verify"].set("0")
+    bash = launch_loop()
+    passed &= check("PRIMEATLAS_PT1_VERIFY=0 " in bash and "PRIMEATLAS_VERIFY_METHOD" not in bash,
+                    f"an unticked run carries no method ({bash[:300]}...)")
+    gen._verify_vars["pass_exp"].set("11")
     return passed
 
 
@@ -290,6 +399,7 @@ def main():
                         and "PRIMEATLAS_V5_" not in bash,
                         f"pipeline launch carries the pt1 env ({bash[:160]}...)")
         gen._loop_runner = None
+        passed &= _check_pt1_verify_follows_section_d(gen, fields, app)
         gen._loop_vars["window_count_per_run"].set(str(expected.windows))
 
         fields.engine_var.set("v6")

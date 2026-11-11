@@ -5,20 +5,23 @@ every logged column; a view never writes it).
 Left to right, the most used for analysis first: the engine (line_names.base_name(), the
 legend's name, with the build commit), the sieve speed (numbers / sieve_seconds, the sieve
 chart's phase measure), the whole-run speed (loop_numbers_per_second, the whole-run chart's
-value; numbers / total_seconds for a row without it), the run time (loop_session_seconds,
+value; numbers / total_seconds for a row without it), for a pt1 run with the verification
+P -> D after it (proof_seconds, part of its times) the run speed without that verification
+(proof_rows.split()'s P copy, the chart's P line) and the speed it costs (that speed less the
+run speed), the run time (loop_session_seconds,
 else total_seconds), seconds per window (loop_seconds_per_window, else seconds_per_window,
 else time / windows), the numbers covered (line_names.width_label()), the windows ("1000
 (0-999)": windows_written, or the range's count for a run that writes none); then what
 kind of run it was: purpose (row_purpose(): storage or benchmark), status (blank = completed),
 threads (line_names.threads_label(): instances, sieve and write threads); then the phases:
-sieve, sieve with startup, write, write MB/s, verify, proof, peak RAM; last the results:
-primes, pi(L), L.
+sieve, sieve with startup, write, write MB/s, verify (the verification after a pt1 run when
+the row has one, else verify_seconds), peak RAM; last the results: primes, pi(L), L.
 
 Columns the log has and the table leaves out: each is one of the shown columns under another
 name or a quotient of two of them (write_files, run_purpose, kind, engine_version,
 instance_of_n, write_threads, target_idx_start/end, total_seconds or loop_session_seconds,
 seconds_per_window or loop_seconds_per_window, avg_primes_per_window, primes_per_second,
-bytes_written, sieve_count_basis), or base_gen_seconds, the sieving-prime generation of
+bytes_written, sieve_count_basis, proof_seconds), or base_gen_seconds, the sieving-prime generation of
 hundredths of a second.
 
 raw(row, key): the value as the CSV export writes it ("" when the run has none); shown(row,
@@ -30,7 +33,7 @@ import math
 
 import benchmark_log_schema as schema
 
-from . import line_names, table_cells
+from . import line_names, proof_rows, table_cells
 from .benchmark import benchmark_sieve_count
 
 FLOOR, RUN, ENGINE = "floor", "run", "engine"
@@ -39,11 +42,12 @@ KEY_COLUMNS = (FLOOR, RUN, ENGINE)
 # (i18n title key, columns) of the report tables, in column order; their concatenation is the
 # tree's column order.
 GROUPS = (
-    ("bench.pdf_table_speed", (ENGINE, "sieve_nps", "run_nps", "seconds",
+    ("bench.pdf_table_speed", (ENGINE, "sieve_nps", "run_nps", "run_nps_unverified",
+                               "verify_drop", "seconds",
                                "seconds_per_window", "numbers", "windows")),
     ("bench.pdf_table_run", ("purpose", "status", "threads")),
     ("bench.pdf_table_phases", ("sieve_seconds", "sieve_wall_seconds", "write_seconds",
-                                "write_mbps", "verify_seconds", "proof_seconds", "ram_mb")),
+                                "write_mbps", "verify_seconds", "ram_mb")),
     ("bench.pdf_table_results", ("primes", "pi_l", "l_final")),
 )
 TREE_COLUMNS = tuple(c for _title, columns in GROUPS for c in columns)
@@ -55,8 +59,7 @@ DEFAULT_WIDTH = 100
 
 # Log columns shown as they are.
 _COPIED = {"sieve_seconds": "sieve_seconds", "sieve_wall_seconds": "sieve_wall_seconds",
-           "write_seconds": "write_seconds", "verify_seconds": "verify_seconds",
-           "proof_seconds": "proof_seconds", "ram_mb": "max_child_rss_mb",
+           "write_seconds": "write_seconds", "ram_mb": "max_child_rss_mb",
            "primes": "total_primes", "pi_l": "sieving_primes_count", "l_final": "l_final",
            RUN: "run_timestamp_utc", FLOOR: "base_exponent"}
 
@@ -109,6 +112,30 @@ def run_nps(row):
     return _per_second(numbers(row), _float(row, "total_seconds"))
 
 
+def run_nps_unverified(row):
+    """The run speed without the verification after a pt1 run (the chart's P line); None for
+    a row without one, or with one that leaves no shorter run time."""
+    if proof_rows.proof_seconds(row) is None:
+        return None
+    verified, unverified = run_nps(row), run_nps(proof_rows.split(row)[0])
+    if verified is None or unverified is None or unverified <= verified:
+        return None
+    return unverified
+
+
+def verify_drop(row):
+    """The run speed the verification after a pt1 run costs: the speed without it less the
+    speed with it, in numbers per second."""
+    unverified = run_nps_unverified(row)
+    return None if unverified is None else unverified - run_nps(row)
+
+
+def _verify_seconds(row):
+    if proof_rows.proof_seconds(row) is not None:
+        return _text(row, "proof_seconds")
+    return _text(row, "verify_seconds")
+
+
 def write_mbps(row):
     written = _float(row, "bytes_written")
     return None if written is None else _per_second(written / 1e6, _float(row, "write_seconds"))
@@ -156,6 +183,9 @@ _RAW = {
     ENGINE: lambda row: line_names.base_name(row, keep_commit=True),
     "sieve_nps": lambda row: _number_text(sieve_nps(row), 0),
     "run_nps": lambda row: _number_text(run_nps(row), 0),
+    "run_nps_unverified": lambda row: _number_text(run_nps_unverified(row), 0),
+    "verify_drop": lambda row: _number_text(verify_drop(row), 0),
+    "verify_seconds": _verify_seconds,
     "seconds": lambda row: _first(row, "loop_session_seconds", "total_seconds"),
     "seconds_per_window": _seconds_per_window,
     "numbers": lambda row: "" if numbers(row) is None else str(numbers(row)),
@@ -177,6 +207,8 @@ def raw(row, column):
 _SHOWN = {
     "sieve_nps": lambda row, t: f"{sieve_nps(row):,.0f}",
     "run_nps": lambda row, t: f"{run_nps(row):,.0f}",
+    "run_nps_unverified": lambda row, t: f"{run_nps_unverified(row):,.0f}",
+    "verify_drop": lambda row, t: f"{verify_drop(row):,.0f}",
     "numbers": lambda row, t: line_names.width_label(numbers(row)),
     "purpose": lambda row, t: t(f"bench.purpose_{schema.row_purpose(row)}"),
     "status": lambda row, t: t(f"bench.run_status_{_status(row)}"),

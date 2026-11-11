@@ -112,19 +112,41 @@ list is compared with the BPSW list window by window:
 
 Two ways to run it:
 
-- `PRIMEATLAS_PT1_VERIFY=1` (the pt1 checkbox "Verify P -> D after sieving"): each P slab is
-  proven right after its sieve, in memory, so count-only runs verify too. The proof's time is
-  measured on its own: `proof_seconds` in the handoff and in the benchmark row, not part of
-  `sieve_seconds`; the scanner prints the sieve speed alone, with the proof, and the drop.
-  Floor 29, 1e8 numbers, 24 threads: sieve 0.9 s, proof 8 s.
-- `pt1_verify_store.py` (Generation Section D): the floor's P windows already in the store,
-  grouped into slabs of adjacent windows. Each slab's outcomes are recorded before the next
-  slab starts (the tag first, then the file move: a tag without a D file counts for nothing),
-  so a stop between slabs or a kill keeps every finished slab. A window with a D file already
-  is left to "Verify P against D"; a window whose primes reach past the window width is
-  skipped. A slab smaller than four chunks per thread gets smaller chunks
+- `PRIMEATLAS_PT1_VERIFY=1` (the pt1 checkbox "Verify P -> D after the run"): once a pt1 run
+  that writes its windows has finished, `orchestrator_v3.verify_run()` starts the store
+  verifier of the method in `PRIMEATLAS_VERIFY_METHOD` (`proof` or `sieve`, with
+  `PRIMEATLAS_VERIFY_PASS_NUMBERS`; both are Section D's fields, `run_verify.py`) on the
+  run's own target_idx range (`--range`), with the run's workers. The scan itself never
+  proves: the verification follows the whole run, so the sieve takes the run's windows in
+  one wide pass. The verification comes before the run's row: the verifier logs its own row,
+then the pt1 row carries the verification's time in `proof_seconds` (part of its
+`total_seconds`), and the summary prints the run speed without and with it and the speed it
+costs. The loop stamps its session time on the pt1 row only, never on the verifier's row
+of the same range. A count-only run
+  stores no window and a stopped or failed run is not verified; a bad method or pass fails
+  before any sieving; a verifier that finds no P window (exit 2) or sees the stop request
+  (exit 3) is no failure.
+- `pt1_verify_store.py` (Generation Section D or after a pt1 run, method "pt1.1 proof"): the
+  floor's P windows already in the store (the target_idx range of `--range` only, when
+  given), grouped into slabs of adjacent windows. Each slab's outcomes are
+  recorded before the next slab starts (`store_verify.settle()`: the tag first, then the file
+  move: a tag without a D file counts for nothing), so a stop between slabs or a kill keeps
+  every finished slab. A window with a D file already is left to "Verify P against D"; a
+  window whose primes reach past the window width is skipped. A slab smaller than four chunks per thread gets smaller chunks
   (`pt1_verify.MIN_CHUNK_ODD`), since the proof costs far more per number than the sieve. One
   `pt1_verify` row per run, its proof time in `verify_seconds`.
+- `v73_verify_store.py` (Section D or after a pt1 run, method "v7.3 sieve"): the same windows, runs of adjacent
+  ones cut into passes of at most `pass_numbers` (default 10^11, whole windows, at least one),
+  each pass sieved completely by engine v7.2 (`prime_sieve_v7_2._run_sieve()` into a fresh
+  shared buffer) and settled by the same `store_verify.settle()`. A v7.2 sieve costs a near
+  fixed time per floor plus a small part per number (floor 29: 303 s for 1e9, 413 s for 1e11;
+  floor 31: 1626 s and 1833 s), so one wide pass beats several narrow ones and beats the proof
+  (about 15.6 M numbers/s on every floor) from about 5e9 numbers on floor 29 and 2.6e10 on
+  floor 31; the pass width is bounded by RAM (pass / 30 bytes plus v7.2's buckets). The work
+  of a pass is not reused by the next: the jump gear finds, per sieving prime range, the
+  multiples landing in that pass's range. One `v73_verify` row per run, its sieve time in
+  `verify_seconds`. Both verifier engines are `benchmark_log_schema.STORE_VERIFY_ENGINES`:
+  table only, no write threads.
 
 The row's prime count comes from the scanner's closing line (`TOTAL PRIMES FOUND this run: N
 across W windows`): `run_batch()` copies the scanner's stdout through and reads that line from
@@ -331,7 +353,7 @@ hit pages ([data.md](../data.md)).
 `test_work_plan_v7`, `test_engine_v7_1_identity`, `test_work_plan_v7_1`,
 `test_engine_v7_2_identity`, `test_work_plan_v7_2`, `test_engine_v5_2_identity`,
 `test_parallel_window_writer`, `test_wheel30_layout`, `test_wheel30_writer`, `test_work_plan_v6`,
-`test_engine_pt1`, `test_engine_pt1_verify`, `test_work_plan_v5`, `test_overlap_pipeline`, `test_orchestrator_stop`,
+`test_engine_pt1`, `test_engine_pt1_verify`, `test_engine_v73_verify`, `test_work_plan_v5`, `test_overlap_pipeline`, `test_orchestrator_stop`,
 `test_hybrid_*`, `test_cudasieve_integration`, `test_hit_paging`, `test_floor_meta_store`,
 `test_benchmark_log_schema`, `test_print_benchmark_summary`, `test_primesieve_benchmark_row`,
 `test_primesieve_native`, `test_pseudosquares_native`, `test_pseudosquares_install`,
@@ -356,6 +378,7 @@ hit pages ([data.md](../data.md)).
 - D proves P runs inside the generation run; a detached verifier draining a per-floor queue
   (one per floor, since both lists are read-modify-write) is not built.
 - The Benchmark tab's total speed includes `verify_seconds`; it has no view without it.
-- The time model calibrates pt1 without `proof_seconds`; it has no estimate of the proof.
+- The time model calibrates pt1 without `proof_seconds`; it has no estimate of the
+  verification that follows a pt1 run.
 - Above top / L_373 > B (floors 32-34) the verification sieves to s up to 2^32: up to 2e8
   sieving primes, about 0.8 GB, and a long setup per slab.

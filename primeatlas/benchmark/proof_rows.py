@@ -1,8 +1,9 @@
 """pt1 runs with a verification as two chart lines: the sieve alone (P) and the sieve with the
 proof (D proof).
 
-A pt1 run with PRIMEATLAS_PT1_VERIFY=1 logs its proof time in proof_seconds, part of
-total_seconds and of the loop time, not of sieve_seconds (benchmark_log_schema.py). The charts
+A pt1 row with proof_seconds (the verification that followed the run, or in older rows the
+proof inside the scan) has it as part of total_seconds and of the loop time, not of
+sieve_seconds (benchmark_log_schema.py). The charts
 draw such a row twice (chart_rows()): as a "P" run without the proof (total and loop times
 less proof_seconds, the speeds recomputed) and as a KIND_PROOF run with it (proof_seconds
 added to sieve_seconds as well), so the legend shows both lines and either can be hidden.

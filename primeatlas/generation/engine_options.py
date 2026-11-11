@@ -6,15 +6,16 @@ launched command (see generation.build_wsl_logged_command()): orchestrator_v3.py
 PRIMEATLAS_SCANNER_VERSION, prime_sieve_v5_2.py the PRIMEATLAS_V5_* knobs through
 work_plan_v5.py, prime_sieve_v6_1.py the PRIMEATLAS_V6_* knobs through work_plan_v6.py,
 prime_sieve_v7_2.py the PRIMEATLAS_V7_* knobs through work_plan_v7_2.py, prime_sieve_pt1.py
-the PRIMEATLAS_PT1_* knobs through pt1_plan.py and pt1_verify.py (PRIMEATLAS_PT1_VERIFY, a
-checkbox: CHECKBOX_KNOBS hold 0 or 1). v5, v6 and v7 have separate knob sets: their best values differ. The same variables are the command-line interface for
+the PRIMEATLAS_PT1_* knobs through pt1_plan.py, and orchestrator_v3.py the verification
+after a pt1 run through run_verify.py (PRIMEATLAS_PT1_VERIFY, a checkbox: CHECKBOX_KNOBS hold
+0 or 1; the method and pass come from Section D, PRIMEATLAS_VERIFY_*). v5, v6 and v7 have separate knob sets: their best values differ. The same variables are the command-line interface for
 runs started by hand. The RAM budget knob (percent of the RAM free in WSL that a run may
 use) only sizes the run on this side (recommend()); no engine reads it, so it has no
 environment variable. ENGINE_VERSIONS is the code version each engine name runs (shown next
 to the selector); the names stay what benchmark_log.csv and the storage folder record.
 
-Names and defaults mirror orchestrator_v3.py, work_plan_v5/_v6/_v7_2.py, pt1_plan.py
-and run_budget.py instead of importing the engine modules: this module runs in the native
+Names and defaults mirror orchestrator_v3.py, work_plan_v5/_v6/_v7_2.py, pt1_plan.py,
+run_verify.py and run_budget.py instead of importing the engine modules: this module runs in the native
 Windows GUI, which must not pull in the WSL-only engine imports.
 unitTests/test_engine_options.py keeps them equal.
 """
@@ -37,6 +38,8 @@ SCANNER_VERSION_ENV = "PRIMEATLAS_SCANNER_VERSION"
 PT1_B_ENV = "PRIMEATLAS_PT1_B"
 PT1_CHUNK_KB_ENV = "PRIMEATLAS_PT1_CHUNK_KB"
 PT1_VERIFY_ENV = "PRIMEATLAS_PT1_VERIFY"
+VERIFY_METHOD_ENV = "PRIMEATLAS_VERIFY_METHOD"
+VERIFY_PASS_NUMBERS_ENV = "PRIMEATLAS_VERIFY_PASS_NUMBERS"
 
 RAM_BUDGET_KNOB = "ram_budget_pct"
 
@@ -91,7 +94,7 @@ DEFAULT_KNOBS = {
                               _DEFAULT_WRITE_THREADS))},
     "pt1_b": 0,             # 0 = floor(N^(1/4)) of the run's top
     "pt1_chunk_kb": 4096,
-    "pt1_verify": 0,        # 1 = prove every P window right after its sieve (P -> D)
+    "pt1_verify": 0,        # 1 = prove the run's P windows after the run (P -> D)
     "v7_jump_model_pct": 100,        # p* = the cost model's; 0 = gear off
     "v7_jump_block_cost": 300,       # a: one block setup, in classic primes
     "v7_jump_landing_cost_pct": 10,  # b = 0.10: one landing, in classic primes
@@ -189,17 +192,21 @@ def bucket_knob(engine):
     return f"{engine}_bucket_mb" if engine in BUCKETED_ENGINES else None
 
 
-def launch_env(choice, bucket_mb=None):
+def launch_env(choice, bucket_mb=None, verify=None):
     """[(name, value)] to set in front of an orchestrator launch: always the engine, plus
     the engine's own segment, region, bucket, pieces-per-thread and write-thread knobs for
     v5, v6 and v7 (v7 also its jump gear's four), or B, the chunk size and the
-    verification switch for pt1. bucket_mb lowers the bucket knob (a RAM-reduced
-    recommendation); it never raises it above the knob's value."""
+    verification switch for pt1, with the verification's (method, pass_numbers) `verify`
+    (Section D's choice; None: the orchestrator's default) when the switch is on.
+    bucket_mb lowers the bucket knob (a RAM-reduced recommendation); it never raises it
+    above the knob's value."""
     env = [(SCANNER_VERSION_ENV, choice.engine)]
     if choice.engine == ENGINE_PT1:
         env += [(PT1_B_ENV, str(choice.knobs["pt1_b"])),
                 (PT1_CHUNK_KB_ENV, str(choice.knobs["pt1_chunk_kb"])),
                 (PT1_VERIFY_ENV, str(choice.knobs["pt1_verify"]))]
+        if choice.knobs["pt1_verify"] and verify is not None:
+            env += [(VERIFY_METHOD_ENV, verify[0]), (VERIFY_PASS_NUMBERS_ENV, str(verify[1]))]
     if choice.engine in BUCKETED_ENGINES:
         values = dict(choice.knobs)
         if bucket_mb is not None:

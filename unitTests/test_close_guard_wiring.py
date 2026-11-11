@@ -5,7 +5,8 @@ No) and No keeps everything; Yes on a pt1 run takes the save point, closes the a
 the run settled and saves the console log; a stopped row bumps the floor totals; every
 Generation launch path clears a leftover stop request and writes the active-run marker; Stop
 on an orchestrator run writes the stop request and kills only the scanner (no hard stop),
-a second Stop hard stops; Stop on an engine without the orchestrator hard stops at once;
+a second Stop hard stops (on a pt1 run it also kills the verification that may follow the
+run, run_verify.py); Stop on an engine without the orchestrator hard stops at once;
 the run's end deletes marker and stop request and shows the stopped status; the main
 window has a WM_DELETE_WINDOW handler; an unwritable stop request is a hard stop;
 stop_job_for_close cancels the follow-up search; recover_previous_run settles a marker and
@@ -169,6 +170,8 @@ def main():
               "status says the written windows are kept")
         gen._on_stop_loop()
         check(runner.hard_stopped, "second Stop hard stops")
+        check(sorted(kills[1:]) == ["pt1_verify_store.py", "v73_verify_store.py"],
+              f"the hard stop of a pt1 run kills its verification too ({kills})")
 
         # run end: marker + stop request deleted, stopped status
         runner.running = False
@@ -219,8 +222,10 @@ def main():
             gen._on_stop_loop()
         finally:
             run_guard.write_stop_request = real_write
-        check(gen._loop_runner.hard_stopped and kills == [],
-              "stop request not writable -> hard stop at once")
+        check(gen._loop_runner.hard_stopped
+              and sorted(kills) == ["pt1_verify_store.py", "v73_verify_store.py"],
+              f"stop request not writable -> hard stop at once, the scanner not singled out "
+              f"({kills})")
         finish(gen, app, 1)
 
         # criterion 8: every Generation launch path deletes a leftover stop request and

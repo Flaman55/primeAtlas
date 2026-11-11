@@ -2,7 +2,8 @@
 
 A small label with the "i" glyph; on <Enter> a borderless Toplevel next to the pointer shows
 the text, wrapped to WRAP_PX, until <Leave>. The text is a callable so a language change is
-picked up on the next hover.
+picked up on the next hover. With `anchor` the tip hangs on that widget instead of its own
+glyph (e.g. why a greyed-out field cannot be changed), and an empty text shows nothing.
 """
 import tkinter as tk
 from tkinter import ttk
@@ -13,9 +14,9 @@ OFFSET_PX = 14
 
 
 class InfoTip:
-    def __init__(self, parent, text):
+    def __init__(self, parent, text, anchor=None):
         self._text = text if callable(text) else (lambda: text)
-        self.label = ttk.Label(parent, text=GLYPH, cursor="question_arrow")
+        self.label = anchor or ttk.Label(parent, text=GLYPH, cursor="question_arrow")
         self.label.bind("<Enter>", lambda _e: self.show())
         self.label.bind("<Leave>", lambda _e: self.hide())
         self.popup = None
@@ -25,6 +26,8 @@ class InfoTip:
 
     def show(self):
         self.hide()
+        if not self.text():
+            return
         popup = tk.Toplevel(self.label)
         popup.wm_overrideredirect(True)
         x = self.label.winfo_rootx() + OFFSET_PX

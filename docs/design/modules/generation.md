@@ -3,7 +3,7 @@
 Launches and follows every engine run: the generation pipeline (Section A and the Quick-gen panel,
 with orchestrator, primesieve, cudasieve and Hybrid modes), the constellation search (Section B) and
 the targeted k-tuple sieve (Section C) and the verification P -> D of pt1's stored windows
-(Section D, `pt1_verify_store.py`, see [prime-sieve](prime-sieve.md)). Only one engine runs at
+(Section D, `pt1_verify_store.py` or `v73_verify_store.py`, chosen by its Method field with a rough time of both from `verify_estimate.py`, see [prime-sieve](prime-sieve.md)). Only one engine runs at
 a time.
 
 Section D takes a floor and a window width as power-of-ten spinboxes; its Windows field is
@@ -12,6 +12,15 @@ proves) whenever the floor or the width changes and after a run, so it starts at
 smaller value proves only the first windows. Threads: Auto = the pipeline form's workers (what
 pt1 sieves with), Max = WSL's CPU count (probed at Run), or a number.
 
+Section D's Method and Pass also serve the pipeline form's pt1 checkbox "Verify P -> D after the
+run": one choice, two places. The checkbox's hint (`EngineFields.knob_hint_vars`) names the
+method and, for the sieve, the pass, updated on every change in Section D; a ticked pt1 run
+(pipeline or Quick-gen) carries them in its env (`engine_options.launch_env(verify=...)`,
+`VerifySection._pt1_verify_choice()`), and the orchestrator verifies the run's windows after
+the run. A Benchmark run writes no windows to verify: while Benchmark is ticked the checkbox
+is greyed out, its value kept, and hovering it says why (`EngineFields.set_knob_lock()`, an
+InfoTip anchored on the checkbox).
+
 ## Files
 
 | Part | Files |
@@ -19,7 +28,7 @@ pt1 sieves with), Max = WSL's CPU count (probed at Run), or a number.
 | Tab | `primeatlas/generation/generation_tab.py` (`GenerationTab`, WSL runner factory) |
 | Sections (mixins) | `quick_gen_panel.py`, `quick_gen_runs.py`, `loop_section.py`, `constellation_section.py`, `ktuple_section.py`, `verify_section.py`, `run_progress.py`, `run_guard_controls.py`, `hybrid_controls.py`, `engine_fields.py`, `time_simulation_controls.py`, `pi_count_notice_controls.py` |
 | Launching | `engine_argv.py` (argv of every script), `wsl_command.py` (wsl.exe command, logs), `logged_runners.py` (`WslLoggedRunner`, `LocalLoggedRunner`), `wsl_blocking.py`, `wsl_resources.py` |
-| Planning | `window_planning.py`, `quick_gen_plan.py`, `run_budget.py`, `engine_options.py`, `engine_presets.py`, `quick_number.py`, `verify_plan.py`, `pi_count_notice.py` (whether a run counts pi(L) from zero) |
+| Planning | `window_planning.py`, `quick_gen_plan.py`, `run_budget.py`, `engine_options.py`, `engine_presets.py`, `quick_number.py`, `verify_plan.py`, `verify_estimate.py`, `pi_count_notice.py` (whether a run counts pi(L) from zero) |
 | Time simulation | `time_model.py` (run time model calibrated from benchmark_log.csv), `run_ram.py` (predicted RAM of a run, widest run in the RAM budget), `time_simulation_window.py` (`TimeSimulationWindow`) |
 | Following and settling | `run_output.py` (log parsing), `run_guard.py` (stop request, active-run marker, recovery), `close_guard.py` |
 | Settings | `generation_settings.py` (form defaults and persistence), `generation_console.py` (`GenerationConsole`) |
