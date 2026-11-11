@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import generation_stop
 from floor_meta_store import append_benchmark_row_to_floor_meta
+import run_verify
 import storage_kinds
 from benchmark_log_schema import (BENCHMARK_FIELDNAMES, RUN_STATUS_COMPLETED,
                                   RUN_STATUS_STOPPED, ensure_benchmark_log_schema,
@@ -328,8 +329,9 @@ def print_benchmark_summary(base_exponent, start_idx, end_idx, total_seconds, po
     engine_counted, (total primes, windows) reported by the scanners for the whole range,
     replaces the header pass of a written run (one file open per window).
     sieve_wall_seconds: the sieve timed from the scanner's launch (_run_teed()), logged
-    next to the engine's own sieve_seconds. proof_seconds: pt1's verification time (the
-    scanner handoff), part of total_seconds."""
+    next to the engine's own sieve_seconds. proof_seconds: the verification P -> D that
+    followed a pt1 run (verify_run()), part of total_seconds; the summary prints the run
+    speed without and with it and the speed it costs."""
     window_m = WINDOW_M if window_m is None else window_m
     workers = WORKERS if workers is None else workers
     if write_files and engine_counted is not None:
@@ -401,9 +403,21 @@ def print_benchmark_summary(base_exponent, start_idx, end_idx, total_seconds, po
                 parts.append(f"({bytes_written / write_seconds / 1e6:.1f} MB/s)")
         if verify_seconds:
             parts.append(f"D proves P {verify_seconds:.2f}s")
-        if proof_seconds is not None:
-            parts.append(f"proof P -> D {proof_seconds:.2f}s")
+        if proof_seconds:
+            parts.append(f"verification P -> D {proof_seconds:.2f}s")
         print(f"[BENCHMARK] phase breakdown: {' | '.join(parts)}")
+    if proof_seconds and total_seconds > proof_seconds:
+        drop = 100.0 * proof_seconds / total_seconds
+        if numbers_processed:
+            unverified = numbers_processed / (total_seconds - proof_seconds)
+            verified = numbers_processed / total_seconds
+            print(f"[BENCHMARK] run without the verification: {unverified:,.0f} n/s | with it: "
+                  f"{verified:,.0f} n/s | {unverified - verified:,.0f} n/s slower "
+                  f"({drop:.1f}%)")
+        else:
+            print(f"[BENCHMARK] run without the verification: "
+                  f"{format_duration(total_seconds - proof_seconds)} | with it: "
+                  f"{format_duration(total_seconds)} | {drop:.1f}% slower")
     print(f"{'='*60}")
 
     log_path = os.path.join(portal_folder, "benchmark_log.csv")
@@ -451,6 +465,25 @@ def print_benchmark_summary(base_exponent, start_idx, end_idx, total_seconds, po
         append_benchmark_row_to_floor_meta(portal_folder, base_exponent, row)
     except OSError as e:
         print(f"[BENCHMARK] WARNING: could not write benchmark log ({e})")
+
+
+def verify_run(portal_folder, base_exponent, start_idx, stop_idx, window_m, workers, method,
+               pass_numbers):
+    """Proves the P windows of target_idx start_idx..stop_idx with the store verifier of
+    `method` (run_verify.py), which logs its own benchmark_log.csv row. True unless the
+    verifier failed: no P window in the range (exit 2) or a stop request (exit 3) is no
+    failure."""
+    argv = run_verify.verifier_argv(method, base_exponent, workers, window_m, start_idx,
+                                    stop_idx, pass_numbers,
+                                    os.path.dirname(os.path.abspath(__file__)))
+    print(f"\n[*] Verification P -> D of target_idx {start_idx}..{stop_idx}: "
+          f"{run_verify.SCRIPTS[method]}", flush=True)
+    returncode = subprocess.run([sys.executable] + argv).returncode
+    if returncode not in (0, 2, 3):
+        print(f"[-] ERROR: the verification P -> D failed (exit {returncode}); the run's "
+              f"windows stay P.")
+        return False
+    return True
 
 
 def run_orchestrator(base_exponent=None, window_count=None, start_auto=None, start_window=None,
@@ -513,6 +546,13 @@ def run_orchestrator(base_exponent=None, window_count=None, start_auto=None, sta
     if not os.path.exists(scanner_path):
         print(f"[-] ERROR: scanner not found at:\n    {scanner_path}")
         return False
+    try:
+        verify = run_verify.from_env(os.environ) if SCANNER_VERSION == "pt1" else None
+    except ValueError as e:
+        print(f"[-] ERROR: {e}")
+        return False
+    if verify and not write_files:
+        print("[!] NOTE: a count-only run stores no window, so no verification P -> D follows.")
 
     if start_auto and not write_files:
         print(f"[!] NOTE: auto mode + WRITE_FILES=False -- disk-based auto-resume can't see "
@@ -637,8 +677,16 @@ def run_orchestrator(base_exponent=None, window_count=None, start_auto=None, sta
         sieve_wall_seconds = None
         if len(sieve_walls) == batches_launched:
             sieve_wall_seconds = sum(sieve_walls) - (base_gen_seconds or 0.0)
+        # The verification follows the whole run, never a stopped or failed one, and comes
+        # before the row so the row carries its time.
+        proof_seconds = None
+        if verify and write_files and not interrupted:
+            t_proof = time.perf_counter()
+            verified = verify_run(portal_folder, base_exponent, actual_start_window,
+                                  current - 1, window_m, workers, *verify)
+            proof_seconds = time.perf_counter() - t_proof
         print_benchmark_summary(base_exponent, actual_start_window, current,
-                                 total_seconds, portal_folder,
+                                 total_seconds + (proof_seconds or 0.0), portal_folder,
                                  l_final=l_final, sieving_primes_count=sieving_primes_count,
                                  max_child_rss_mb=max_rss_mb, write_files=write_files,
                                  total_primes_found=total_primes_found,
@@ -650,21 +698,20 @@ def run_orchestrator(base_exponent=None, window_count=None, start_auto=None, sta
                                  verify_seconds=verify_seconds if write_files else None,
                                  engine_counted=engine_counted,
                                  sieve_wall_seconds=sieve_wall_seconds,
-                                 proof_seconds=metrics.get("proof_seconds"))
+                                 proof_seconds=proof_seconds)
+        if proof_seconds is not None:
+            return verified
 
     return not interrupted
 
 
 def _window_paths(portal_folder, base_exponent, target_idx, window_m):
-    """Paths a window of this run can be stored at: its written_kind() store, and for a
-    pt1 P window also the D store, where pt1's verification writes a proven window."""
+    """Paths a window of this run is stored at: its written_kind() store."""
     base = 10 ** base_exponent
     offset = target_idx * window_m
     kind = storage_kinds.written_kind(SCANNER_VERSION, base + offset, base + offset + window_m)
-    kinds = [kind] + ([storage_kinds.KIND_D] if kind == storage_kinds.KIND_P else [])
     return [storage_kinds.window_path(portal_folder, base_exponent, offset, window_m,
-                                      prime_sieve_module.format_offset(offset), k)
-            for k in kinds]
+                                      prime_sieve_module.format_offset(offset), kind)]
 
 
 def _delete_cut_windows(portal_folder, base_exponent, target_idx_start, target_idx_stop,

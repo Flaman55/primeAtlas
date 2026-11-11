@@ -12,7 +12,11 @@ A. ScrollablePage alone:
    - re-checked on every change, both ways: content growing/shrinking (e.g. a larger font)
      and the window resizing;
    - the wheel over a self-scrolling widget (Text, Listbox, Treeview) or a registered
-     exclusion is left to that widget.
+     exclusion is left to that widget;
+   - scroll_to(widget) brings a widget in the middle to the top of the view (also one inside
+     a nested frame) and keeps it there after a re-check; a widget near the end scrolls to
+     the end with the widget in view; back to the first widget returns to the top; on a
+     page that fits it scrolls nothing.
 B. The app: every page uses it -- Primes (Storage, primesieve, Primality), Constellations
    (Storage, Calculator, Records), Research (five sub-tabs), Benchmark, About, the three
    Settings sub-tabs, Generation and the visualization tabs; the three old copies of the
@@ -164,6 +168,50 @@ def _test_page():
         root.destroy()
 
 
+def _test_scroll_to():
+    print("\n--- A. ScrollablePage.scroll_to ---")
+    root = tk.Tk()
+    root.geometry("500x400")
+    try:
+        page = widgets.ScrollablePage(root)
+        rows = []
+        for i in range(40):
+            row = tk.Frame(page.body, height=50, width=200)
+            row.pack(fill="x")
+            rows.append(row)
+        inner = tk.Frame(rows[25], height=10, width=10)
+        inner.place(x=0, y=20)
+        _settle(root)
+
+        def top_of(widget):
+            return widget.winfo_rooty() - page.canvas.winfo_rooty()
+
+        page.scroll_to(rows[20])
+        _settle(root)
+        check(abs(top_of(rows[20])) < 20, f"row 20 at the top of the view ({top_of(rows[20])})")
+        _settle(root, 8)
+        check(abs(top_of(rows[20])) < 20, "it stays there after a re-check")
+        page.scroll_to(inner)
+        _settle(root)
+        check(abs(top_of(inner)) < 20, f"a nested widget at the top ({top_of(inner)})")
+        page.scroll_to(rows[39])
+        _settle(root)
+        canvas_h = page.canvas.winfo_height()
+        check(page.canvas.yview()[1] == 1.0 and 0 <= top_of(rows[39]) < canvas_h,
+              f"the last row: the view at the end, the row in view ({top_of(rows[39])})")
+        page.scroll_to(rows[0])
+        _settle(root)
+        check(page.canvas.yview()[0] == 0.0, "back to the first row: the top")
+        for row in rows[2:]:
+            row.destroy()
+        _settle(root)
+        page.scroll_to(rows[1])
+        _settle(root)
+        check(page.canvas.yview()[0] == 0.0, "a page that fits scrolls nothing")
+    finally:
+        root.destroy()
+
+
 def _show_tab(widget):
     """Selects every notebook tab on the way from `widget` up to the root."""
     child, parent = widget, widget.master
@@ -265,6 +313,7 @@ def _test_app():
 
 def main():
     _test_page()
+    _test_scroll_to()
     _test_sources()
     _test_app()
 

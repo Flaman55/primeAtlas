@@ -313,7 +313,8 @@ def _test_chained_constellation_batch_keeps_lock_until_genuinely_done():
 
 def _test_verify_section():
     """Section D (verify_section.py): its launch locks every other engine and carries the
-    pt1 knobs and the store verification script; a bad field launches nothing; another
+    pt1 knobs and the store verification script (the v7.3 sieve's with its pass width when
+    that method is chosen); a bad field launches nothing; another
     running engine blocks it; Stop writes the generation stop request; finishing unlocks
     everything and clears the request."""
     tmp = tempfile.mkdtemp(prefix="primeatlas_cross_engine_test_")
@@ -371,11 +372,30 @@ def _test_verify_section():
             tab._verify_vars["max_windows"].set("2")
             values = tab._verify_values()
             check(values == {"base_exponent": 29, "window_m": 10 ** 7, "max_windows": 2,
-                             "threads": 7},
+                             "threads": 7, "method": "proof"},
                   f"verify: Auto threads = the form's workers, 2 of 3 windows ({values})")
             tab._verify_vars["max_windows"].set("3")
             check(tab._verify_values()["max_windows"] == 0,
                   "verify: the full count is passed as 0 (all)")
+            check(tab._verify_vars["method"].get() == "proof"
+                  and tab._verify_method_text.get() == tab.T("gen.verify_method_proof"),
+                  "verify: the pt1.1 proof is the default method")
+            tab._verify_method_text.set(tab.T("gen.verify_method_sieve"))
+            tab._on_verify_method_chosen()
+            tab._verify_vars["pass_exp"].set("13")
+            check(tab._verify_values() is None, "verify: a pass of 10^13 is refused")
+            tab._verify_vars["pass_exp"].set("6")
+            check(tab._verify_values() is None, "verify: a pass narrower than a window is refused")
+            tab._verify_vars["pass_exp"].set("11")
+            values = tab._verify_values()
+            check(values is not None and values["method"] == "sieve"
+                  and values["pass_numbers"] == 10 ** 11,
+                  f"verify: the v7.3 sieve with passes of 10^11 ({values})")
+            text = tab._refresh_verify_estimate()
+            check("?" in text and "pt1.1" in text and "v7.3" in text,
+                  f"verify: without benchmark rows both estimates say ? ({text})")
+            tab._verify_method_text.set(tab.T("gen.verify_method_proof"))
+            tab._on_verify_method_chosen()
             messagebox.showerror = original_error
             tab._ktuple_runner = _FakeRunner()
             tab._on_run_verify()
@@ -410,6 +430,18 @@ def _test_verify_section():
             tab._lock_other_run_buttons("loop")
             check(str(tab.verify_run_btn["state"]) == "disabled",
                   "verify Run is grayed out while a loop run is active")
+            tab._unlock_other_run_buttons()
+            tab._verify_method_text.set(tab.T("gen.verify_method_sieve"))
+            tab._on_verify_method_chosen()
+            tab._verify_vars["pass_exp"].set("8")
+            tab._on_run_verify()
+            cmd = " ".join(str(t) for t in launched[-1][0]) if launched else ""
+            check(tab._verify_runner is not None and "v73_verify_store.py" in cmd
+                  and "v73_verify_store.py' 29 7 10000000 0 100000000 " in cmd
+                  and launched[-1][1] == "v73_verify_store.py",
+                  f"verify: the sieve method launches v73_verify_store.py ({cmd[-160:]})")
+            tab._verify_runner.stop()
+            tab._on_verify_finished(0)
         finally:
             generation_tab_module.WslLoggedRunner = original_runner
         app.destroy()

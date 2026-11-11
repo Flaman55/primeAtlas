@@ -289,7 +289,8 @@ class LoopSection:
             cmd = build_wsl_logged_command(
                 argv, log_path, exit_path, self._get_portal_folder(),
                 use_known_pi_seed=parsed["use_known_pi_seed"],
-                extra_env=engine_options.launch_env(parsed["engine_choice"]))
+                extra_env=engine_options.launch_env(parsed["engine_choice"],
+                                                    verify=self._pt1_verify_choice()))
 
             self.loop_console.append(self._new_run_separator())
             self._loop_output_queue = queue.Queue()

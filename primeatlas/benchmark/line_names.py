@@ -3,7 +3,8 @@
 A line is what one engine build measured on one thread setup: its name is the engine (or
 its version when that names the engine, "v6.0"), the store kind of P runs, the sieve
 threads ("24 thr", "2x24 thr" for two instances side by side, "GPU") and the write threads
-("write 8", "write ?" for a writing row from before that column); rows from before the
+("write 8", "write ?" for a writing row from before that column; none for a run that writes
+no window: a native count or a store verification); rows from before the
 thread columns keep the bare engine name. width_label() names a point's range ("@ 10^11"):
 on the floor axis a chart can set points of different widths side by side. Names are ASCII:
 the PDF font has no other characters. A name fits one legend slot: a version that ends in
@@ -48,10 +49,14 @@ NO_WINDOW_ENGINES = NATIVE_COUNT_ENGINES
 # Engines whose sieve_seconds is one whole process timed from outside, startup included.
 WHOLE_PROCESS_SIEVE = NATIVE_COUNT_ENGINES
 
+# Runs that write no window, so their rows name no write threads.
+NO_WRITE_ENGINES = NATIVE_COUNT_ENGINES | schema.STORE_VERIFY_ENGINES
+
 # Metrics a row's engine is drawn on; engines not listed are on every chart. A store
-# verification (pt1_verify_store.py) sieves nothing: its rows stay in the table only.
+# verification (pt1_verify_store.py, v73_verify_store.py) proves windows already written:
+# its rows stay in the table only.
 CHART_METRICS = {
-    "pt1_verify": frozenset(),
+    **{engine: frozenset() for engine in schema.STORE_VERIFY_ENGINES},
     **{engine: frozenset({"sieve", "sieve_spw", "sieve_wall", "sieve_wall_spw", "ram"})
        for engine in NATIVE_COUNT_ENGINES},
     **{engine: frozenset({"growth", "ram"}) for engine in NATIVE_PRINT_ENGINES},
@@ -87,7 +92,7 @@ def write_threads_label(row):
     """"8", "?" for a writing row from before the column, "" for a run that writes nothing
     or a row without thread columns."""
     write = str(row.get("write_threads") or "").strip()
-    if not write and sieve_threads_label(row) and row_engine(row) not in NATIVE_COUNT_ENGINES:
+    if not write and sieve_threads_label(row) and row_engine(row) not in NO_WRITE_ENGINES:
         write = "?"
     return write
 

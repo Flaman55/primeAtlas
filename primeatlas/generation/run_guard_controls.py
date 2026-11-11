@@ -2,7 +2,8 @@
 run_guard_controls.py -- GenerationTab mixin wiring the close guard (CLOSE_GUARD_PLAN.md):
 one launch path for Generation runs (stop request cleared, active-run marker written),
 the save-point stop (stop request + kill of the scanner only, so the orchestrator logs
-what was written; a second Stop, or an engine without the orchestrator, hard stops), the
+what was written; a second Stop, or an engine without the orchestrator, hard stops, on a
+pt1 run with the verification that may follow it, run_verify.py), the
 interface close_guard.py drives (stop_job_for_close, job_settled, loop_run_info), the
 clean-up when a run ends, and the start-up recovery of a run the previous session never
 saw finish (run_guard.recover_unfinished_run, off the GUI thread).
@@ -12,6 +13,7 @@ import threading
 import time
 
 import generation_stop
+import run_verify
 
 from ..benchmark.benchmark import read_benchmark_log
 from . import run_guard
@@ -61,6 +63,10 @@ class RunGuardControls:
             self.loop_status_label.set(self.T("gen.loop_stopping_save_point"))
             return
         self._loop_runner.stop()
+        if (self.loop_run_info or {}).get("engine") == "pt1":
+            # The verification after a pt1 run is a child of the orchestrator.
+            for script in run_verify.SCRIPTS.values():
+                run_guard.kill_wsl_processes(script)
         self.loop_status_label.set(self.T("common.stopping"))
 
     def _settle_finished_loop_run(self):

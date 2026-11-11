@@ -13,6 +13,7 @@ sys.path.insert(0, _SCRIPT_DIR)
 # CLI logic or its ctypes sieve-engine dependency just to reach four small helper functions.
 import orchestrator_loop_helpers as orch  # noqa: E402  -- doesn't run anything on import.
 import generation_stop  # noqa: E402
+from benchmark_log_schema import STORE_VERIFY_ENGINES  # noqa: E402
 
 # ==========================================================================================
 # orchestrator_loop_v2.py -- parallel-instance loop runner for orchestrator_v3.py.
@@ -181,6 +182,9 @@ def _tag_benchmark_rows_by_range(portal_folder, rows_before, instance_ranges, lo
     target_idx_start/target_idx_end reconstructed here are guaranteed to match what that
     instance's own orchestrator logged.
 
+    A store verification row of the same range (the verification after a pt1 run,
+    run_verify.py) is no instance's row: it keeps its own times.
+
     Requires the instance_of_n column to already exist in the CSV header -- a no-op against
     an older schema, or if no new rows matched any of instance_ranges (fails safe: leaves
     those rows' instance_of_n blank rather than mislabeling).
@@ -222,6 +226,8 @@ def _tag_benchmark_rows_by_range(portal_folder, rows_before, instance_ranges, lo
     for row in rows[rows_before:]:
         key = (row.get("target_idx_start"), row.get("target_idx_end"))
         label = label_by_range.get(key)
+        if row.get("engine") in STORE_VERIFY_ENGINES:
+            continue
         if label is not None:
             row["instance_of_n"] = label
             row["loop_session_seconds"] = f"{loop_total_seconds:.3f}"

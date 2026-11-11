@@ -1339,7 +1339,10 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               totals_progress spinner toggle, clipboard-copy helper)
   info_tip.py                   InfoTip -- the app's one "i" marker next to a field:
                               hovering it shows how the field affects the run (the
-                              Generation tab's engine selector and every engine knob)
+                              Generation tab's engine selector and every engine knob);
+                              with anchor= it hangs on a greyed-out field and says
+                              why it cannot be changed (pt1's verify checkbox under
+                              Benchmark)
   widgets.py                    small generic tkinter helpers (e.g. FlowRow) with no
                               application-specific state; HeightGrip is the app's one
                               height control -- a drag handle under a terminal, list or
@@ -1353,6 +1356,8 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               appear only while the content is taller than the window,
                               re-checked on every resize, content or font change, and a
                               page that fits stretches its content to the window;
+                              scroll_to(widget) brings a widget to the top of the view
+                              (the pt1 checkbox's hint link to Section D);
                               ScrollPad is the strip next to that scrollbar where the
                               mouse wheel always scrolls the page itself -- as does the
                               wheel over the scrollbar; its width is a user setting
@@ -1576,13 +1581,19 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               constants live here)
   ktuple_section.py             KtupleSection mixin: Section C, the ktuple_sieve_v2_2.py
                               form (pattern, strategy, Advanced), Run/Auto/Stop/finish
-  verify_section.py             VerifySection mixin: Section D, pt1_verify_store.py (floor
-                              and width-exponent spinboxes, the window count recounted
-                              from the P store, threads Auto/Max/n; pt1's B and chunk
-                              from the pipeline form), Stop via the generation stop
-                              request
-  verify_plan.py                Section D's fields as the script's arguments: P window
-                              count, Windows -> max_windows, Threads Auto/Max/n
+  verify_section.py             VerifySection mixin: Section D, pt1_verify_store.py or
+                              v73_verify_store.py (method pt1.1 proof / v7.3 sieve,
+                              floor and width-exponent spinboxes, the window count
+                              recounted from the P store, threads Auto/Max/n, the v7.3
+                              pass exponent, the estimate of both methods; pt1's B and
+                              chunk from the pipeline form), Stop via the generation
+                              stop request
+  verify_plan.py                Section D's fields as the scripts' arguments: P window
+                              count, Windows -> max_windows, Threads Auto/Max/n, the
+                              v7.3 passes (unitTests/test_verify_plan.py)
+  verify_estimate.py            Section D's rough time of each method from
+                              benchmark_log.csv: the proof by the last pt1_verify row,
+                              each sieve pass by the floor's v7.2 row nearest in width
                               (unitTests/test_verify_plan.py)
   run_progress.py               GenerationRunProgress mixin: output-queue draining into
                               consoles, the shared progress bar and status text
@@ -2115,7 +2126,9 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
   table_cells.py                the dash a table shows for a value the run's engine
                               does not log -- pure, no tkinter
   table_columns.py              the run table's columns, most used first (engine,
-                              sieve n/s, run n/s, time, s/window, numbers, windows;
+                              sieve n/s, run n/s, run n/s without the verification
+                              after a pt1 run and the n/s it costs, time, s/window,
+                              numbers, windows;
                               purpose, status, threads; phases; results), each a
                               raw value for the CSV export and a shown one for the
                               tab's tree and the HTML and PDF tables; the four
@@ -2134,8 +2147,9 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               chart), each point's range width ("@ 10^11") and the
                               floors whose points differ in width
                               (unitTests/test_benchmark_line_names.py)
-  proof_rows.py                 a pt1 row with proof_seconds drawn twice: the sieve
-                              alone (P) and the sieve with the proof (D proof)
+  proof_rows.py                 a pt1 row with proof_seconds (the verification after
+                              the run) drawn twice: the run without it (P) and
+                              with it (D proof)
                               (unitTests/test_benchmark_proof_rows.py)
   reference_points.py           reference throughput of PARI/GP with sources, for the
                               "Reference points" toggle (primesieve is measured live
@@ -2323,19 +2337,31 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               (D window, byte-identical to v5), BPSW from it on
                               (P window, source_primes_P/); constant throughput
                               on every floor, no run-sized buffer; floors 7..37;
-                              PRIMEATLAS_PT1_VERIFY=1 proves each P slab right
-                              after its sieve (pt1_verify.py) and writes the equal
-                              windows as D/P (unitTests/test_engine_pt1.py,
-                              unitTests/test_engine_pt1_verify.py)
+                              the verification P -> D follows the run in
+                              orchestrator_v3.py (run_verify.py)
+                              (unitTests/test_engine_pt1.py)
   pt1_lib.py                 ctypes binding of prime_sieve_engine_pt1.so and the
                               slab call shared by the scan and the verification
-  pt1_verify.py              the verification P -> D: env switch, the sieve bound
-                              s of the pseudosquares proof (below about 1.8e34),
-                              one slab's proven bitmap, the first difference
-  pt1_verify_store.py        proves the P windows already in a floor's store
-                              (Generation Section D): equal -> D store + D/P,
-                              different -> stays P + DP_MISMATCH.txt; one
-                              pt1_verify row in benchmark_log.csv
+  pt1_verify.py              the pt1.1 proof: the sieve bound s of the
+                              pseudosquares proof (below about 1.8e34), one slab's
+                              proven bitmap, the first difference
+  run_verify.py              the verification after a pt1 run: env switch
+                              PRIMEATLAS_PT1_VERIFY, method and pass width
+                              (PRIMEATLAS_VERIFY_*, Section D's fields), the
+                              verifier command with --range = the run's windows
+                              (unitTests/test_engine_pt1_verify.py)
+  pt1_verify_store.py        proves the P windows already in a floor's store by the
+                              pt1.1 proof (Generation Section D, or after a pt1
+                              run); one pt1_verify row in benchmark_log.csv
+  v73_verify_store.py        proves them by engine v7.2's full sieve instead, in
+                              passes of up to 10^11 numbers (CLI position 5), also
+                              after a pt1 run; one v73_verify row
+                              (unitTests/test_engine_v73_verify.py)
+  store_verify.py            shared by both: the floor's P windows (a target_idx
+                              range with --range), runs and passes
+                              of adjacent ones, settle() (equal -> D store + D/P,
+                              different -> stays P + DP_MISMATCH.txt, a window with a
+                              D file or of another width skipped), the log row
   pt1_plan.py                B and chunk knobs (env PRIMEATLAS_PT1_B,
                               PRIMEATLAS_PT1_CHUNK_KB), slab grouping of
                               same-kind windows
@@ -2515,9 +2541,16 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               failing while the GUI's stop request
                               exists is a stop: windows cut by the scanner kill are
                               deleted and the row (run_status=stopped) covers the
-                              windows kept (unitTests/test_orchestrator_stop.py)
+                              windows kept (unitTests/test_orchestrator_stop.py);
+                              with pt1 and PRIMEATLAS_PT1_VERIFY=1, a finished
+                              writing run is then verified P -> D on its own
+                              windows (verify_run(), run_verify.py) before its row
+                              is logged, the time in proof_seconds
+                              (unitTests/test_orchestrator_verify_after_run.py)
   orchestrator_loop_v2.py    continuous-run driver; checks the stop request before
-                              every iteration and starts none while it exists
+                              every iteration and starts none while it exists; the
+                              session time goes on the instances' rows, never on a
+                              store verification row of the same range
   orchestrator_loop_helpers.py  benchmark log helpers of the loop; every benchmark
                               writer (orchestrator_v3, these helpers, primesieve,
                               cudasieve, hybrid) shares one header with run_status

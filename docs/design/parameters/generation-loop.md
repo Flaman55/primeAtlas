@@ -37,7 +37,7 @@ Generation tab, Section A: the generation pipeline run (orchestrator_loop_v2.py;
 | `v7_write_threads` | `8` | integer >= 1 | `engine_options.py` | v7 write threads: |
 | `pt1_b` | `0` | integer >= 0, <= 4,294,967,295 | `engine_options.py` | pt1 sieve limit B (0 = N^1/4): |
 | `pt1_chunk_kb` | `4096` | integer >= 1 | `engine_options.py` | pt1 chunk (KiB): |
-| `pt1_verify` | `0` | checkbox: 0 off, 1 on | `engine_options.py` | Verify P -> D after sieving: |
+| `pt1_verify` | `0` | checkbox: 0 off, 1 on | `engine_options.py` | Verify P -> D after the run: |
 | `v7_jump_model_pct` | `100` | integer >= 0 | `engine_options.py` | v7 jump threshold (% of model): |
 | `v7_jump_block_cost` | `300` | integer >= 1 | `engine_options.py` | v7 jump block cost (a): |
 | `v7_jump_landing_cost_pct` | `10` | integer >= 0 | `engine_options.py` | v7 jump landing cost (b, %): |

@@ -2,11 +2,12 @@
 test_benchmark_table_columns.py -- the Benchmark run table's columns (table_columns.py) in the
 tab's tree, the CSV export and the HTML/PDF report tables.
 
-A. The column set: the engine first, then the two speeds; no column twice; the tree's columns
+A. The column set: the engine first, then the two speeds, then the run speed without the
+   verification P -> D and the run speed the verification costs; no column twice; the tree's columns
    are the report tables' columns in order; the export adds the floor and the run in front;
    no duplicate log column (write_files, run_purpose, kind, engine_version, instance_of_n,
    write_threads, target_idx_*, avg_primes_per_window, primes_per_second, bytes_written,
-   base_gen_seconds, sieve_count_basis) is a column of its own; every column has a header in
+   base_gen_seconds, sieve_count_basis, proof_seconds) is a column of its own; every column has a header in
    English and Polish, and so does every run status.
 B. Values: a pipeline row (session time and speed win over the instance's), a native count
    (no loop columns: the run speed is numbers / total time; it writes no window, so the
@@ -18,6 +19,12 @@ B. Values: a pipeline row (session time and speed win over the instance's), a na
    old hybrid row with its exact count; raw for the CSV, shown for the tables (grouped
    thousands, 10^n numbers, translated purpose and status, a dash when missing); the sieve
    speed equals the sieve chart's value and the run speed the whole-run chart's.
+   A pt1 run with the verification after it (proof_seconds, part of its times): the run speed
+   with it, the speed without it (the chart's P line), the speed it costs (without less
+   with, in n/s), the verification
+   time in the verify column (also over a logged 0.000 D/P compare time), from the session
+   times when the loop stamped them; a run without one (blank, 0, unreadable, longer than
+   the run) has neither the speed without it nor a drop.
 C. The floor summary row: seconds per window of the column itself (the session value).
 D. Exports: the CSV has EXPORT_COLUMNS as its header and raw values, only the kept runs; the
    HTML page has one table per group, each led by floor/run/engine, headers translated; the
@@ -53,7 +60,7 @@ DROPPED = ("write_files", "run_purpose", "kind", "engine_version", "instance_of_
            "write_threads", "target_idx_start", "target_idx_end", "avg_primes_per_window",
            "primes_per_second", "bytes_written", "base_gen_seconds", "sieve_count_basis",
            "total_seconds", "loop_session_seconds", "loop_numbers_per_second",
-           "loop_seconds_per_window", "base_exponent", "run_timestamp_utc")
+           "loop_seconds_per_window", "base_exponent", "run_timestamp_utc", "proof_seconds")
 
 
 def check(condition, message):
@@ -89,6 +96,12 @@ VERIFY = {"run_timestamp_utc": "2026-11-10 19:21:44 UTC", "base_exponent": "31",
           "verify_seconds": "47.029", "engine_version": "pt1.1", "threads": "24",
           "run_purpose": "storage"}
 OLD = {"run_timestamp_utc": "2026-09-01 08:00:00 UTC", "base_exponent": "20"}
+PROVEN = {"run_timestamp_utc": "2026-11-11 10:00:00 UTC", "base_exponent": "29",
+          "target_idx_start": "0", "target_idx_end": "999", "windows_written": "1000",
+          "total_seconds": "100.000", "seconds_per_window": "0.100000", "write_files": "1",
+          "sieve_seconds": "50.000", "engine": "pt1", "numbers_processed": "10000000000",
+          "run_status": "completed", "verify_seconds": "0.000", "engine_version": "pt1.1",
+          "threads": "24", "run_purpose": "storage", "proof_seconds": "20.000"}
 HYBRID = {"run_timestamp_utc": "2026-09-02 08:00:00 UTC", "base_exponent": "5",
           "instance_of_n": "hybrid", "target_idx_start": "0", "target_idx_end": "0",
           "windows_written": "1", "total_seconds": "0.5", "sieve_seconds": "0.25"}
@@ -109,14 +122,16 @@ def _prepared(rows):
 
 
 def part_a():
-    check(tc.TREE_COLUMNS[:3] == ("engine", "sieve_nps", "run_nps"),
-          f"engine, then sieve and run speed lead the table ({tc.TREE_COLUMNS[:3]})")
+    check(tc.TREE_COLUMNS[:5] == ("engine", "sieve_nps", "run_nps", "run_nps_unverified",
+                                  "verify_drop"),
+          f"engine, sieve and run speed, the speed without the verification and its drop "
+          f"lead the table ({tc.TREE_COLUMNS[:5]})")
     check(len(set(tc.TREE_COLUMNS)) == len(tc.TREE_COLUMNS), "no column twice in the tree")
     check(tc.TREE_COLUMNS == tuple(c for _t, cols in tc.GROUPS for c in cols),
           "the tree's columns are the report groups' columns in order")
     check(tc.EXPORT_COLUMNS == ("floor", "run") + tc.TREE_COLUMNS,
           "the export puts floor and run in front of the tree's columns")
-    check(len(tc.EXPORT_COLUMNS) <= 22, f"at most 22 export columns ({len(tc.EXPORT_COLUMNS)})")
+    check(len(tc.EXPORT_COLUMNS) <= 23, f"at most 23 export columns ({len(tc.EXPORT_COLUMNS)})")
     for column in DROPPED:
         check(column not in tc.EXPORT_COLUMNS, f"{column} is not a column of its own")
     for title, columns in tc.report_tables():
@@ -207,7 +222,38 @@ def part_b():
           "a NaN loop speed falls back to numbers / total_seconds")
     row = dict(pipe, write_seconds="0")
     check(tc.raw(row, "write_mbps") == "", "zero write time: no MB/s")
+    proven_case(t)
     return pipe, native, verify
+
+
+def proven_case(t):
+    from primeatlas.benchmark import proof_rows
+    _f, (proven,) = _prepared([PROVEN])
+    check(tc.raw(proven, "run_nps") == "100000000", "proven: run speed with the verification")
+    check(tc.raw(proven, "run_nps_unverified") == "125000000",
+          f"proven: speed without it ({tc.raw(proven, 'run_nps_unverified')})")
+    check(tc.raw(proven, "verify_drop") == "25000000"
+          and tc.shown(proven, "verify_drop", t) == "25,000,000",
+          f"proven: the speed it costs, without less with ({tc.raw(proven, 'verify_drop')})")
+    check(tc.raw(proven, "verify_seconds") == "20.000",
+          f"proven: the verify column shows the verification ({tc.raw(proven, 'verify_seconds')})")
+    check(tc.raw(proven, "sieve_nps") == "200000000", "proven: the sieve speed is the sieve's")
+    loop = dict(proven, loop_session_seconds="110.000", loop_numbers_per_second="90909090.91")
+    check(float(tc.raw(loop, "run_nps_unverified"))
+          == round(benchmark.line_value("growth")(proof_rows.split(loop)[0])),
+          "proven: the speed without it is the whole-run chart's P line")
+    check(tc.raw(loop, "run_nps") == "90909091"
+          and tc.raw(loop, "run_nps_unverified") == "111111111"
+          and tc.raw(loop, "verify_drop") == "20202020",
+          f"proven in the loop: session times ({tc.raw(loop, 'run_nps_unverified')}, "
+          f"{tc.raw(loop, 'verify_drop')})")
+    for bad in ("", "0", "x", "150"):
+        row = dict(proven, proof_seconds=bad)
+        check(tc.raw(row, "run_nps_unverified") == "" and tc.raw(row, "verify_drop") == ""
+              and tc.shown(row, "verify_drop", t) == DASH,
+              f"proof_seconds {bad!r}: no speed without it, no drop")
+    check(tc.raw(dict(proven, proof_seconds=""), "verify_seconds") == "0.000",
+          "no proof: the verify column keeps the logged D/P compare time")
 
 
 def part_c(pipe, native, verify):

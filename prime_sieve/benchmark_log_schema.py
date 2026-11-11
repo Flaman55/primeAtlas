@@ -48,11 +48,11 @@ Column notes:
   not Atlas storage): its row lives in this log alone, never in a floor's
   floor_meta.json. Every writer sets it (run_purpose()); row_purpose() reads it, falling
   back to write_files for rows logged before the column.
-- proof_seconds: the time pt1's verification (PRIMEATLAS_PT1_VERIFY=1, pt1_verify.py) spent
-  proving its P windows, part of total_seconds and not of sieve_seconds: the run's sieve
-  alone and its sieve with the proof both follow from the row. Blank for runs without it.
-  A store verification run (pt1_verify_store.py, engine pt1_verify) logs its proof time in
-  verify_seconds instead: it sieves nothing.
+- proof_seconds: the time of a pt1 run's verification P -> D, part of total_seconds and not
+  of sieve_seconds: the store verifier that followed the run (orchestrator_v3.verify_run(),
+  run_verify.py), which also logs its own row (engine pt1_verify or v73_verify, its time in
+  verify_seconds), or in older rows the proof inside the scan. The Benchmark tab draws such
+  a row with and without it (proof_rows.py).
 Rows written before a column existed keep it blank: a migration never guesses old values,
 and a blank run_status means completed.
 
@@ -81,6 +81,11 @@ ENGINE_PSEUDOSQUARES_COUNT = "pseudosquares_count"
 # Native programs measured in their own format: every run is a benchmark (row_purpose()).
 NATIVE_ENGINES = frozenset({ENGINE_PRIMESIEVE_PRINT, ENGINE_PRIMESIEVE_COUNT,
                             ENGINE_PSEUDOSQUARES_PRINT, ENGINE_PSEUDOSQUARES_COUNT})
+# Store verifications: they prove P windows already written (P -> D), write no window and
+# sieve no new range, so their rows stay in the Benchmark table only.
+ENGINE_PT1_VERIFY = "pt1_verify"
+ENGINE_V73_VERIFY = "v73_verify"
+STORE_VERIFY_ENGINES = frozenset({ENGINE_PT1_VERIFY, ENGINE_V73_VERIFY})
 THREADS_GPU = "GPU"
 
 RUN_STATUS_COMPLETED = "completed"

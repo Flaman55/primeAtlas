@@ -23,7 +23,8 @@ app-wide widgets and the background coordinators for floor totals and search. GU
 | storage path, setting changes, search requests | settings persisted, translated strings, floor totals, search results on the GUI thread |
 
 Never launches WSL; never imports engine code (`ADR 0001`). One control per UI role: HeightGrip for
-heights, ScrollPad for scrolling pages, InfoTip for a field's explanation. A page's wheel handler
+heights, ScrollPad for scrolling pages, InfoTip for a field's explanation (also, anchored on a greyed-out field, for why it cannot be
+changed). A page's wheel handler
 leaves the wheel to widgets that use it themselves (`event_over_own_scroller()`: Text, Listbox,
 Treeview, and an enabled ttk.Spinbox or ttk.Combobox, whose Tk class binding steps its value), so the page and
 the widget never move together.

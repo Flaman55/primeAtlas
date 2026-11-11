@@ -8,9 +8,8 @@ its tag is listed in DP_PROVEN.txt, so it still counts as present in the P store
 it is a BPSW counterexample or an engine error: the P window stays and is listed in
 DP_MISMATCH.txt (dp_verify.record()), never resolved automatically.
 
-Two callers: prime_sieve_pt1.py with PRIMEATLAS_PT1_VERIFY=1 proves each P slab right after
-sieving it (in memory, also on count-only runs); pt1_verify_store.py proves the P windows
-already in a floor's store.
+The caller is pt1_verify_store.py: it proves the P windows already in a floor's store, from
+Section D or after a pt1 run (run_verify.py).
 
 The bound s: the proof needs every prime factor of n above s and n / s < L_373 (about
 4.2e24), so s = max(B, the smallest s with top / s < L_373), at most isqrt of the lowest
@@ -23,23 +22,12 @@ import numpy as np
 
 import pt1_lib
 import pt1_plan
+from benchmark_log_schema import ENGINE_PT1_VERIFY
 
-VERIFY_ENV = "PRIMEATLAS_PT1_VERIFY"
 LIMIT_TEXT = "about 1.8e34"  # L_373 * 2^32: the largest top bound() accepts
-ENGINE_VERIFY = "pt1_verify"  # benchmark_log.csv engine of a store verification run
+ENGINE_VERIFY = ENGINE_PT1_VERIFY  # benchmark_log.csv engine of a store verification run
 # Smallest proof chunk: each chunk recomputes one phase per sieving prime (arbitrary).
 MIN_CHUNK_ODD = 64 * 1024
-
-
-def verify_from_env(environ):
-    """True when `environ` (a mapping) sets VERIFY_ENV to 1; False when it is unset, blank or
-    0. Raises ValueError for any other value."""
-    raw = str(environ.get(VERIFY_ENV) or "").strip()
-    if raw in ("", "0"):
-        return False
-    if raw == "1":
-        return True
-    raise ValueError(f"{VERIFY_ENV} must be 0 or 1, got {raw!r}")
 
 
 def bound(b, lo, hi):
