@@ -12,7 +12,8 @@ On a real BenchmarkTab: a chart's right-click menu has "Hide/Show left-axis line
 and "Hide/Show right-axis lines (squares)": Hide hides every line drawn on that axis of that
 chart (the other charts keep theirs), and then reads Show; Show brings them all back; with some
 of them hidden, Hide hides the rest; there and back lands on the same lines; an axis without
-lines has the entry disabled. A second tab built on the same store opens with the filter, the
+lines has the entry disabled. A hidden axis stays hidden for a line that appears later (a
+new run, a wider filter); a marker click on it shows that line alone. A second tab built on the same store opens with the filter, the
 measure, the x axis, the point choices and the hidden lines of the first; a filter value the
 log no longer holds is dropped at reload.
 Windows, real display:
@@ -26,7 +27,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / "prime_sieve"), str(ROOT / "constellation"),
                 str(ROOT / "unitTests")]
 
-from primeatlas.benchmark import chart_points as cp, sieve_measure, view_store  # noqa: E402
+from primeatlas.benchmark import chart_points as cp, chart_series, sieve_measure, view_store  # noqa: E402
 from primeatlas.core.ui_state_store import UiStateStore  # noqa: E402
 import test_benchmark_chart_points as chart_points_tests  # noqa: E402
 
@@ -45,12 +46,14 @@ class StoreTests(unittest.TestCase):
         view_store.save(store, {"engine": {"v7.1", "v7.2"}, "floor": {"29"}},
                         sieve_measure.WALL, cp.X_WIDTH,
                         {"run": cp.MAX, "sieve": cp.ALL, "ram": cp.MIN}, {},
-                        {"run": {("secondary", "v7.1, 24 thr")}, "sieve": set(), "ram": set()})
+                        {"run": {("secondary", "v7.1, 24 thr")}, "sieve": {("primary", "*")},
+                         "ram": set()})
         self.assertEqual(view_store.load(store), {
             "selection": {"engine": {"v7.1", "v7.2"}, "floor": {"29"}},
             "measure": sieve_measure.WALL, "x_mode": cp.X_WIDTH,
             "choices": {"run": cp.MAX, "sieve": cp.ALL, "ram": cp.MIN},
-            "hidden": {"run": {("secondary", "v7.1, 24 thr")}, "sieve": set(), "ram": set()}})
+            "hidden": {"run": {("secondary", "v7.1, 24 thr")}, "sieve": {("primary", "*")},
+                       "ram": set()}})
 
     def test_selected_saved_as_before(self):
         store = UiStateStore(None)
@@ -123,8 +126,8 @@ class TabTests(unittest.TestCase):
             for _round in range(2):  # there and back, twice
                 self.entries(tab, "sieve")[hide2][0]()
                 root.update()
-                self.assertEqual(tab._hidden_lines["sieve"],
-                                 {("secondary", n) for n in names}, "every square hidden")
+                self.assertEqual(tab._hidden_lines["sieve"], {chart_series.axis_key("secondary")},
+                                 "the right axis hidden whole")
                 self.assertEqual(tab._hidden_lines["run"], set(), "other charts keep theirs")
                 self.assertIn(show2, self.entries(tab, "sieve"), "now reads Show")
                 self.entries(tab, "sieve")[show2][0]()
@@ -134,12 +137,44 @@ class TabTests(unittest.TestCase):
             tab._toggle_lines("sieve", [("secondary", one)])
             self.assertIn(hide2, self.entries(tab, "sieve"), "some hidden: still Hide")
             self.entries(tab, "sieve")[hide2][0]()
-            self.assertEqual(tab._hidden_lines["sieve"], {("secondary", n) for n in names})
+            self.assertTrue(all(chart_series.is_hidden(tab._hidden_lines["sieve"], "secondary", n)
+                                for n in names), "every square hidden")
             tab._set_filter({"floor": {"nothing"}})
             root.update()
             entries = self.entries(tab, "sieve")
             label = next(k for k in entries if k in (hide2, show2))
             self.assertFalse(entries[label][1], "no lines: disabled")
+        chart_points_tests.TabTests._tab(self, TWO_LINES, body)
+
+    def test_hidden_axis_covers_a_new_line(self):
+        def shown(tab, axis):
+            return {n for n in self.drawn(tab, axis)
+                    if not chart_series.is_hidden(tab._hidden_lines["sieve"], axis, n)}
+
+        def body(tab, root, points):
+            hide2 = self.axis_label(tab, "hide", "secondary")
+            show2 = self.axis_label(tab, "show", "secondary")
+            tab._set_filter({"engine": {"v7.1"}})
+            root.update()
+            self.assertEqual(len(self.drawn(tab, "secondary")), 1)
+            self.entries(tab, "sieve")[hide2][0]()
+            root.update()
+            tab._set_filter({})  # the v7.2 line comes back, as a new run would add one
+            root.update()
+            names = self.drawn(tab, "secondary")
+            self.assertEqual(len(names), 2, names)
+            self.assertEqual(shown(tab, "secondary"), set(), "the new line stays hidden")
+            self.assertEqual(len(shown(tab, "primary")), 2, "the left axis keeps its lines")
+            self.assertIn(show2, self.entries(tab, "sieve"), "still reads Show")
+            one = sorted(names)[0]
+            tab._toggle_lines("sieve", [("secondary", one)])
+            root.update()
+            self.assertEqual(shown(tab, "secondary"), {one}, "a marker click shows that line")
+            self.entries(tab, "sieve")[hide2][0]()
+            self.entries(tab, "sieve")[show2][0]()
+            root.update()
+            self.assertEqual(shown(tab, "secondary"), names, "Show brings all back")
+            self.assertEqual(tab._hidden_lines["sieve"], set())
         chart_points_tests.TabTests._tab(self, TWO_LINES, body)
 
     def test_kept_across_tabs(self):

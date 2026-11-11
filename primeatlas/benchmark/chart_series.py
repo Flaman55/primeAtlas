@@ -86,15 +86,54 @@ def line_key(axis, name):
     return (axis, name)
 
 
+# The name in a hidden-set key that stands for every line of its axis, drawn now or later.
+AXIS_ALL = "*"
+
+
+def axis_key(axis):
+    """The key that hides every line of `axis`, a line that appears later included."""
+    return line_key(axis, AXIS_ALL)
+
+
+def is_hidden(hidden, axis, name):
+    """Whether the line `name` on `axis` is hidden: by its own key or by its axis key."""
+    return bool(hidden) and (line_key(axis, name) in hidden or axis_key(axis) in hidden)
+
+
 def visible_series(series, hidden, axis):
     """series without the lines in `hidden` (a set of line_key(); None for none)."""
-    return [s for s in series if not hidden or line_key(axis, s.name) not in hidden]
+    return [s for s in series if not is_hidden(hidden, axis, s.name)]
 
 
-def toggle_lines(hidden, keys):
-    """A new hidden set: all `keys` shown when all of them are hidden, else all hidden."""
+def hidden_names(hidden, axis, names):
+    """The names of `names` hidden on `axis`, sorted."""
+    return sorted(name for name in set(names) if is_hidden(hidden, axis, name))
+
+
+def toggle_lines(hidden, keys, axis_lines=None):
+    """A new hidden set: all `keys` shown when all of them are hidden, else all hidden.
+    Showing a line of a hidden axis replaces the axis key by the keys of the axis's other
+    lines in axis_lines ({axis: set of line_key()} of the lines drawn), so only the
+    clicked lines come back."""
     keys = set(keys)
-    return set(hidden) - keys if keys <= set(hidden) else set(hidden) | keys
+    if not all(is_hidden(hidden, axis, name) for axis, name in keys):
+        return set(hidden) | keys
+    result = set(hidden) - keys
+    for axis in {axis for axis, _name in keys}:
+        if axis_key(axis) in result:
+            result.discard(axis_key(axis))
+            result |= set((axis_lines or {}).get(axis, ())) - keys
+    return result
+
+
+def toggle_axis(hidden, axis, keys):
+    """A new hidden set for a one-click axis toggle; keys: the line_key() of the lines drawn
+    on `axis`. All of them hidden: the axis key and theirs go, so all are shown; else the
+    axis key is added, hiding them and any line that appears on the axis later."""
+    keys = set(keys)
+    if keys and all(is_hidden(hidden, a, name) for a, name in keys):
+        return set(hidden) - keys - {axis_key(axis)}
+    return set(hidden) | {axis_key(axis)}
 
 
 def series_xs(*series_lists):

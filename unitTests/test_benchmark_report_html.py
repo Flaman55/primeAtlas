@@ -30,7 +30,7 @@ sys.path[:0] = [str(ROOT), str(ROOT / "prime_sieve"), str(ROOT / "constellation"
 
 from primeatlas.benchmark import chart_filter, chart_view, report_export, report_html  # noqa: E402
 from primeatlas.benchmark.benchmark import benchmark_series, report_chart_pages  # noqa: E402
-from primeatlas.benchmark import chart_points  # noqa: E402
+from primeatlas.benchmark import chart_points, chart_series  # noqa: E402
 from primeatlas.benchmark.chart_svg import chart_svg  # noqa: E402
 from primeatlas.core.i18n import Translator  # noqa: E402
 
@@ -142,6 +142,14 @@ class DataTests(unittest.TestCase):
         run = data["pages"][0]["charts"]
         self.assertEqual(run[0]["hidden"], ["v5, 24 thr, write 8"])
         self.assertEqual(run[1]["hidden"], [], "the hidden line is on the primary axis only")
+        _pages, axis_data = _data(references=True,
+                                  hidden_lines={"sieve": {chart_series.axis_key("primary")}})
+        sieve = axis_data["pages"][1]["charts"]
+        names = ([line["name"] for line in axis_data["lines"]]
+                 + [r["name"] for r in axis_data["refs"]])
+        self.assertEqual(sorted(sieve[0]["hidden"]), sorted(names),
+                         "a hidden axis hides every line the page can draw on it")
+        self.assertEqual(sieve[1]["hidden"], [])
         self.assertEqual(run[0]["pins"], [None, 5e8])
         self.assertEqual(data["view"], [19.0, 23.0])
         engine = [d for d in data["dims"] if d["key"] == "engine"][0]

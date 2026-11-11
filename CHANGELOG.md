@@ -846,6 +846,17 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   zapisuje okien, więc przy zaznaczonym Benchmarku pole jest wyszarzone, a dymek mówi
   dlaczego.
 
+### +52 — Benchmark: a hidden axis stays hidden for new lines
+
+- English: A chart axis hidden from the chart's right-click menu ("Hide left-axis lines" or
+  "... right-axis lines") stays hidden when a new line appears on it: a new run after
+  generation or a wider filter no longer brings back its circles or squares. A legend
+  click on one of its lines shows that line alone; Show brings all back.
+- Polski: Oś wykresu ukryta z menu kontekstowego („Ukryj linie lewej osi” albo „... prawej
+  osi”) pozostaje ukryta, gdy pojawia się na niej nowa linia: nowy przebieg po
+  generowaniu albo szerszy filtr nie przywraca już jej kółek ani kwadracików. Kliknięcie
+  w legendzie jednej z jej linii pokazuje tylko tę linię; Pokaż przywraca wszystkie.
+
 ## 1.2.0 — 2026-11-01
 
 ### English

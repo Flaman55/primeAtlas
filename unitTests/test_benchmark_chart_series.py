@@ -286,6 +286,52 @@ class LineToggleTests(unittest.TestCase):
         self.assertEqual(chart_series.toggle_lines(hidden, both), set())
         self.assertEqual(chart_series.toggle_lines(set(both), both[1:]), set(both[:1]))
 
+    def test_axis_hide_covers_lines_drawn_later(self):
+        key = chart_series.line_key
+        drawn = {key("secondary", s.name) for s in self.right}
+        later = self.right + chart_series.engine_series({"v7.2": [(20, 5.0)]})
+        hidden = chart_series.toggle_axis(set(), "secondary", drawn)
+        self.assertEqual(chart_series.visible_series(later, hidden, "secondary"), [],
+                         "a line of a new run stays hidden with its axis")
+        self.assertTrue(chart_series.is_hidden(hidden, "secondary", "v7.2"))
+        self.assertEqual(chart_series.visible_series(self.left, hidden, "primary"), self.left,
+                         "the other axis keeps its lines")
+        # There and back, twice, lands on nothing hidden.
+        for _round in range(2):
+            shown = chart_series.toggle_axis(hidden, "secondary", drawn)
+            self.assertEqual(shown, set())
+            hidden = chart_series.toggle_axis(shown, "secondary", drawn)
+        # With one line hidden by its marker, the axis toggle hides the rest, new ones too.
+        some = chart_series.toggle_axis({key("secondary", "v5")}, "secondary", drawn)
+        self.assertEqual(chart_series.visible_series(later, some, "secondary"), [])
+        self.assertEqual(chart_series.toggle_axis(some, "secondary", drawn), set())
+        # An axis without lines: hiding still covers what comes later.
+        empty = chart_series.toggle_axis(set(), "primary", set())
+        self.assertEqual(chart_series.visible_series(self.left, empty, "primary"), [])
+
+    def test_marker_click_on_a_hidden_axis_shows_that_line_only(self):
+        key = chart_series.line_key
+        drawn = {key("secondary", s.name) for s in self.right}
+        axis_lines = {"secondary": drawn, "primary": {key("primary", s.name) for s in self.left}}
+        hidden = chart_series.toggle_axis(set(), "secondary", drawn)
+        shown_one = chart_series.toggle_lines(hidden, [key("secondary", "v5")], axis_lines)
+        later = self.right + chart_series.engine_series({"v7.2": [(20, 5.0)]})
+        self.assertEqual([s.name for s in
+                          chart_series.visible_series(later, shown_one, "secondary")],
+                         ["v5", "v7.2"], "the clicked line back, the axis no longer hidden whole")
+        # A click on the other axis leaves the hidden axis as it is.
+        other = chart_series.toggle_lines(hidden, [key("primary", "v4.1")], axis_lines)
+        self.assertEqual(chart_series.visible_series(later, other, "secondary"), [])
+        # A name click: hides the shown line, then shows both, the rest of the axis hidden.
+        both = [key("primary", "v5"), key("secondary", "v5")]
+        hidden_both = chart_series.toggle_lines(hidden, both, axis_lines)
+        self.assertTrue(all(chart_series.is_hidden(hidden_both, a, n) for a, n in both))
+        back = chart_series.toggle_lines(hidden_both, both, axis_lines)
+        self.assertEqual([s.name for s in chart_series.visible_series(self.left, back, "primary")],
+                         ["v4.1", "v5"])
+        self.assertEqual([s.name for s in chart_series.visible_series(self.right, back,
+                                                                      "secondary")], ["v5"])
+
     def test_report_leaves_out_hidden_lines(self):
         rows = ROWS
         with tempfile.TemporaryDirectory() as folder:

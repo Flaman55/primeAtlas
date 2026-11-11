@@ -24,7 +24,7 @@ from . import chart_points
 from . import line_colors, line_names
 from .benchmark import (benchmark_line_engines, benchmark_line_records, report_references,
                         width_floors)
-from .chart_series import axis_pins, engine_series
+from .chart_series import axis_pins, engine_series, hidden_names
 from .reference_points import reference_series
 
 X_MODE_LABEL_KEYS = {chart_points.X_FLOOR: "bench.x_axis_floor",
@@ -91,6 +91,8 @@ def report_data(rows, pages, t, width, height, selection=None, references=False,
                      "of_run": [position[chart_filter.row_value(row, dim)] for row in rows]})
     refs_available = report_references(True, measure)
     width_lines = _width_lines(rows, ordered, index)
+    # Every line the page can draw, so a hidden axis hides the lines the page's filter adds.
+    line_names = list(index) + [s.name for s in reference_series(t)]
     out_pages = []
     for kind, charts in pages:
         out_charts = []
@@ -102,7 +104,7 @@ def report_data(rows, pages, t, width, height, selection=None, references=False,
             out_charts.append({
                 "title": t(label_key), "decimals": decimals(fmt),
                 "pins": list(axis_pins(y_pins.get(chart_key), axis)),
-                "hidden": sorted(name for a, name in hidden_lines.get(chart_key, ()) if a == axis),
+                "hidden": hidden_names(hidden_lines.get(chart_key), axis, line_names),
                 "refs": kind == "sieve" and i == 0 and refs_available,
                 "y_view": list((y_views or {}).get(chart_key) or ()) or None,
                 "y_level": y_levels.get(chart_key, 0), "key": chart_key,

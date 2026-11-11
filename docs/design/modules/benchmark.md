@@ -95,7 +95,10 @@ charts, and remembers each chart's choice from before; a right-click in the tabl
 selection and puts every chart still on `SELECTED` back on that choice. A chart's right-click menu
 starts with its five point choices (the current one ticked, `SELECTED` only with a selected run),
 then "Hide/Show left-axis lines (circles)" and "... right-axis lines (squares)" (every line
-the legend lists on that axis, at once), a point's pins and the resets; the Filter window sets the
+the legend lists on that axis, at once; a hidden axis is the key `(axis, "*")` in the chart's
+hidden set, `chart_series.axis_key()`, so a line that appears on it later, from a new run or
+a wider filter, stays hidden too, and a legend click on one of its lines shows that line
+alone), a point's pins and the resets; the Filter window sets the
 choices too. The filter, the sieve measure, the x axis, the point choices and the hidden lines are
 kept across restarts as one value in the remembered-fields store (`view_store.py`; a chart on
 `SELECTED` is kept as its choice from before, the selected run is not kept; a filter value the log
