@@ -23,7 +23,7 @@ import xml.etree.ElementTree as ET
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / "prime_sieve"), str(ROOT / "constellation")]
 
-from primeatlas.benchmark import chart_series, report_export  # noqa: E402
+from primeatlas.benchmark import chart_series, report_export, table_columns  # noqa: E402
 from primeatlas.benchmark.chart_svg import chart_svg  # noqa: E402
 from primeatlas.core.i18n import Translator  # noqa: E402
 
@@ -77,9 +77,14 @@ class ExportTests(unittest.TestCase):
             return Path(path).read_text(encoding="utf-8")
 
     def test_csv_round_trip(self):
+        # The CSV holds the run table's columns: their keys as the header, raw values.
         text = self._export("csv", ROWS)
         back = list(csv.DictReader(text.splitlines()))
-        self.assertEqual(back, ROWS)
+        self.assertEqual(tuple(back[0]), table_columns.EXPORT_COLUMNS)
+        self.assertEqual(back, [{c: table_columns.raw(r, c) for c in table_columns.EXPORT_COLUMNS}
+                                for r in ROWS])
+        self.assertEqual([r["engine"] for r in back], ["v4.1", "v5", "v5"])
+        self.assertEqual([r["status"] for r in back], ["completed", "completed", "<b>&"])
 
     def test_svg_report_has_one_chart_per_metric(self):
         self.assertEqual(len(_charts(self._export("svg", NO_RAM, sieve_points=[(20, 1.0)]))), 4)
@@ -119,8 +124,9 @@ class ExportTests(unittest.TestCase):
         self.assertIn('<meta charset="utf-8">', page)
         self.assertEqual(page.split("<script", 1)[0].count("<svg"), 4)   # whole run and RAM; no sieve data
         self.assertGreaterEqual(page.count("<table"), 1)
-        for column in ROWS[0]:
-            self.assertIn(f"<th>{column}</th>", page)
+        t = Translator("en").t
+        for column in table_columns.EXPORT_COLUMNS:
+            self.assertIn(f"<th>{escape(t(table_columns.header_key(column)))}</th>", page)
         self.assertIn("&lt;b&gt;&amp;", page)
         self.assertNotIn("<b>&", page)
 
@@ -130,7 +136,7 @@ class ExportTests(unittest.TestCase):
         self.assertNotIn("<td></td>", tables, "no empty cell in the tables")
         self.assertIn("<td>\u2014</td>", tables, "a value the run lacks is a dash")
         back = list(csv.DictReader(self._export("csv", NO_RAM).splitlines()))
-        self.assertEqual(back, NO_RAM, "the CSV keeps the empty values")
+        self.assertEqual([r["ram_mb"] for r in back], ["", ""], "the CSV keeps the empty values")
 
     def test_html_snippet(self):
         snippet = self._export("snippet", ROWS).strip()

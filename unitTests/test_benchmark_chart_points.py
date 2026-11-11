@@ -240,7 +240,7 @@ class TabTests(unittest.TestCase):
                     if tree.item(n, "text").startswith(f"10p{floor} "))
         tab._populate_benchmark_floor_node(node)
         return next(i for i in tree.get_children(node)
-                    if tree.item(i, "text").startswith(ts + " "))
+                    if tree.item(i, "text") == ts)
 
     def test_window_axis_and_choices(self):
         growth = {r["run_timestamp_utc"]: float(r["loop_numbers_per_second"]) for r in ROWS}

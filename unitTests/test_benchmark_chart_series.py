@@ -118,7 +118,6 @@ class StoreKindTests(unittest.TestCase):
             fieldnames, rows = benchmark.read_benchmark_log(folder)
         self.assertIn("kind", fieldnames)
         self.assertEqual([r["kind"] for r in rows], ["P", "D"])
-        self.assertEqual(benchmark._order_benchmark_tree_columns(fieldnames)[:2], ["engine", "kind"])
 
     def test_d_and_p_runs_draw_separate_lines(self):
         rows = [self._pt1(22, 0, 9, nps="2e8"), self._pt1(27, 0, 9, nps="1.7e8"),

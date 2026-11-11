@@ -9,7 +9,7 @@ a PDF report.
 |---|---|
 | Tab | `primeatlas/benchmark/benchmark_tab.py` and its mixins `benchmark_filter.py` (Filter window), `benchmark_points.py` (x axis, point choices, selected run), `benchmark_ram_chart.py` (RAM chart), `chart_zoom_controls.py` (zoom and pan), `chart_hover.py` (hover tooltip), `benchmark_chart_windows.py` (a chart in its own window), `benchmark_line_colors.py` (a legend entry's color menu) |
 | Exports | `benchmark_export.py` (tab mixin: Save PDF, Export menu), `report_export.py` (CSV, SVG, HTML page, HTML snippet), `report_html.py` + `report_chart.js` (the interactive HTML), `chart_svg.py` (SVG backend of `chart_pdf.chart_ops()`) |
-| Backend | `benchmark.py` (reading and normalizing rows, D/P kind, PDF report, `report_chart_pages()`, `benchmark_line_records()`), `line_names.py` (a row's line and charts), `chart_filter.py` (which runs the charts compare), `chart_points.py` (which runs become a chart's points and where they sit on x), `proof_rows.py` (a verified pt1 run as two lines), `sieve_measure.py` (which time the sieve chart measures), `table_cells.py` (a cell as the tables show it), `chart_view.py` (the zoomed part of a chart), `chart_series.py`, `line_colors.py` (each engine's line color), `chart_pdf.py`, `reference_points.py` |
+| Backend | `benchmark.py` (reading and normalizing rows, D/P kind, PDF report, `report_chart_pages()`, `benchmark_line_records()`), `line_names.py` (a row's line and charts), `chart_filter.py` (which runs the charts compare), `chart_points.py` (which runs become a chart's points and where they sit on x), `proof_rows.py` (a verified pt1 run as two lines), `sieve_measure.py` (which time the sieve chart measures), `table_cells.py` (the dash of a missing value), `table_columns.py` (the run table's columns), `chart_view.py` (the zoomed part of a chart), `chart_series.py`, `line_colors.py` (each engine's line color), `chart_pdf.py`, `reference_points.py` |
 
 ## Contract
 
@@ -54,7 +54,22 @@ sieves and outputs every prime with no split between the two, a whole run: it is
 chart. Both log the program's peak RAM and write no Atlas windows: they are on RAM per run, not per
 window. No static primesieve reference is kept (a figure from another range length misleads:
 primesieve's ~0.7 s setup at floor 19 dominates a short range); PARI/GP stays on the sieve chart.
-A cell the run leaves empty -- a value its engine does not log, e.g. the per-window time of primesieve's count mode -- shows a dash (`table_cells.MISSING`) in the tab's table and the HTML and PDF tables (folded to "-" in the PDF); the CSV export keeps it empty. The PDF run table lists `engine_version`, `threads` and `write_threads`. A writing row from before
+The run table (`table_columns.py`) is one column set for the tab's tree, the CSV export and the
+HTML and PDF tables, the most used for analysis on the left: engine (the legend's name with the
+build commit), sieve n/s (the sieve chart's phase value), run n/s (`loop_numbers_per_second`, the
+whole-run chart's value; numbers / `total_seconds` for a row without it), time (session, else the
+run's), s/window (session, else the run's), numbers (`10^10`), windows (`1000 (0-999)`); purpose,
+status (blank = completed), threads (`2x24 thr, write 4`); the phases (sieve, sieve with startup,
+write, write MB/s, verify, proof, peak RAM); the results (primes, pi(L), L). A log column that
+repeats a shown one under another name or is a quotient of two (`write_files`, `run_purpose`,
+`kind`, `engine_version`, `instance_of_n`, `write_threads`, `target_idx_*`,
+`avg_primes_per_window`, `primes_per_second`, `bytes_written`, `sieve_count_basis`) and
+`base_gen_seconds` (hundredths of a second) stay in the log only. The tree groups runs by floor and
+names each by its timestamp, with a summary row of the s/window column; the reports add floor and
+run in front and split the columns into four tables (engine and speed; run; phases; results), each
+led by floor, run and engine. Headers are translated in the tree and the reports; the CSV header
+is the column keys and its values are raw (no thousands separators). A value the run lacks shows a
+dash (`table_cells.MISSING`, "-" in the PDF) and is empty in the CSV. A writing row from before
 `write_threads` reads `write ?`. Each point names the range it was measured on (`@ 10^11`,
 `line_names.width_label()`); on the floor axis a chart can set points of different widths side by
 side, and `mixed_width_floors()` lists those floors: the tab shows them under the chart, the PDF
@@ -112,6 +127,8 @@ kept, further clicks add or remove values, removing the last one or clicking All
 its value is selected in every filtered dimension; the kept runs are then reduced to one point
 per line and x (see Points), so one width compares every engine on that width. The floor dimension
 lists the floors of the log ("28"), so floors 27-29 alone compare on the width axis.
+The choices scroll (a `ScrollablePage`) once they do not fit the window's height; Clear and
+Close stay under them at any height, and the window opens within the screen.
 Changes apply at once;
 the summary next to the Filter button and the PDF subtitle name the selection; the PDF tables
 and the tab's table list the kept runs (a floor with none is left out; nothing kept shows one
@@ -135,11 +152,11 @@ measured it), and every format draws them with the tab's view: the runs the Filt
 (charts and tables), the sieve measure, toggles, hidden lines, pins and the zoom. `chart_pdf.chart_ops()` lays a chart out once and
 draws through a backend, PDF content ops or SVG elements (`chart_svg.py`, y flipped, Unicode text),
 so the PDF and SVG/HTML charts match. The HTML page and the snippet hold the charts inline and the
-PDF's logical tables (`benchmark_pdf_tables()`), every cell escaped; the snippet is one
+run table's four tables (`table_columns.report_tables()`), every cell escaped; the snippet is one
 `<div class="primeatlas-benchmark">` whose style rules are all scoped to that class; like the PDF,
 the HTML names the filter under the title, the sieve measure over the sieve charts and the floors of
-mixed widths over a page's charts (`report_mixed_note()`). CSV writes the kept rows as the tab read
-them (with the D/P `kind` column).
+mixed widths over a page's charts (`report_mixed_note()`). CSV writes the kept runs in the run
+table's columns (`table_columns.EXPORT_COLUMNS`).
 
 The HTML page and snippet are interactive (`report_html.py`, `report_chart.js`, ADR 0007, 0008). They
 carry the runs the tab's filter keeps (All everywhere exports the whole log): per run its floor and
@@ -169,7 +186,7 @@ None of its own.
 
 ## Specs and tests
 
-`test_benchmark_tab`, `test_benchmark_chart_series`, `test_benchmark_report_export`,
+`test_benchmark_tab`, `test_benchmark_table_columns`, `test_benchmark_chart_series`, `test_benchmark_report_export`,
 `test_benchmark_report_html` (the script through node), `test_benchmark_chart_zoom`,
 `test_benchmark_chart_windows`,
 `test_benchmark_actual_range`,
@@ -180,7 +197,7 @@ None of its own.
 
 ## Known gaps
 
-- `benchmark_tab.py` has 799 lines; a fourth chart needs the three redraw methods folded into
+- `benchmark_tab.py` has 848 lines; a fourth chart needs the three redraw methods folded into
   one chart table first.
 - The chart layout exists twice, `chart_pdf.chart_ops()` and its port in `report_chart.js`; the
   parity test in `test_benchmark_report_html` holds them together (ADR 0007).

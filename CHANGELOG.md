@@ -757,6 +757,33 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   kolejne przebiegi na piętrze korzystają z wyniku. Przy wyłączonym liczeniu albo na
   piętrze, które ma już π, nic się nie zmienia.
 
+### +49 — Benchmark run table: fewer columns, speeds first
+
+- English: The Benchmark tab's run table, its CSV export and the HTML and PDF report tables
+  show one set of 20 columns (the reports add floor and run) instead of the log's 30-odd
+  raw ones, the most used first: engine, sieve n/s and run n/s (the values the charts draw,
+  missing from the table until now), time, s/window, numbers, windows; then purpose,
+  status, threads; the phases; the results. Columns that repeated another under a different
+  name or were a quotient of two (write_files and run_purpose, the instance and session
+  times, the window range, primes per window and per second, bytes written) are merged or
+  left out, and so is base_gen_seconds (hundredths of a second). A native count, which
+  writes no window, shows its range as its windows and time / windows as s/window instead
+  of 0 windows and none. Headers are translated. benchmark_log.csv itself keeps every
+  column. The Filter window scrolls once its choices do not fit, keeps Clear and Close in
+  view at any height and opens within the screen.
+- Polski: Tabela przebiegów w zakładce Benchmark, jej eksport CSV oraz tabele raportu HTML
+  i PDF pokazują jeden zestaw 20 kolumn (raporty dodają piętro i przebieg) zamiast ponad 30
+  surowych kolumn logu, od najważniejszych: silnik, n/s sita i n/s przebiegu (wartości z
+  wykresów, których dotąd w tabeli nie było), czas, s/okno, liczby, okna; potem cel,
+  status, wątki; fazy; wyniki. Kolumny powtarzające inną pod inną nazwą albo będące
+  ilorazem dwóch innych (write_files i run_purpose, czasy instancji i sesji, zakres okien,
+  liczby pierwsze na okno i na sekundę, zapisane bajty) są scalone albo pominięte, podobnie
+  base_gen_seconds (setne części sekundy). Natywny licznik, który nie zapisuje okien,
+  pokazuje jako okna swój zakres, a jako s/okno czas / okna, zamiast 0 okien i braku
+  wartości. Nagłówki są przetłumaczone. Sam benchmark_log.csv zachowuje wszystkie kolumny.
+  Okno Filtra przewija się, gdy wybory się nie mieszczą, przyciski Wyczyść i Zamknij są
+  widoczne przy każdej wysokości, a okno otwiera się w granicach ekranu.
+
 ## 1.2.0 — 2026-11-01
 
 ### English

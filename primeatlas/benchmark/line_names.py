@@ -117,11 +117,13 @@ def width_label(numbers):
     return f"{mantissa:.3g}x10^{exponent}"
 
 
-def base_name(row):
-    """The line name without threads: engine or its version (without a build commit),
-    primesieve path, P kind."""
+def base_name(row, keep_commit=False):
+    """The line name without threads: engine or its version (without a build commit, unless
+    keep_commit: the run table names the build), primesieve path, P kind."""
     engine = row_engine(row)
-    version = _BUILD_COMMIT.sub("", (row.get("engine_version") or "").strip())
+    version = (row.get("engine_version") or "").strip()
+    if not keep_commit:
+        version = _BUILD_COMMIT.sub("", version)
     label = ENGINE_LABELS.get(engine, engine)
     if version and version.startswith(engine) and engine not in ENGINE_LABELS:
         name = version

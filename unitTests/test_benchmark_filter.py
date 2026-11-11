@@ -212,6 +212,74 @@ class WindowTests(unittest.TestCase):
                 root.destroy()
 
 
+class WindowSizeTests(unittest.TestCase):
+    """The Filter window on a log with many values: it opens no larger than the screen, its
+    Clear and Close buttons stay inside the window at any height down to its minimum, the
+    dimensions scroll once they do not fit and the last choice can be scrolled into view; it
+    cannot be made narrower than its content."""
+
+    def test_fit_size(self):
+        from primeatlas.benchmark.benchmark_filter import fit_size
+        self.assertEqual(fit_size(600, 500, 1920, 1080), (600, 500), "fits: content size")
+        w, h = fit_size(600, 3000, 1920, 1080)
+        self.assertEqual(w, 600)
+        self.assertTrue(0 < h < 1080, f"taller than the screen: capped ({h})")
+        w, h = fit_size(4000, 500, 1920, 1080)
+        self.assertTrue(0 < w < 1920 and h == 500, f"wider than the screen: capped ({w})")
+        self.assertTrue(all(v > 0 for v in fit_size(600, 3000, 200, 150)), "tiny screen")
+
+    def test_buttons_stay_and_body_scrolls(self):
+        import tkinter as tk
+        from primeatlas.benchmark import benchmark_tab
+        from primeatlas.core.theme import palette_for
+
+        rows = [_row(f"v{e}", f"v{e}.{k}", str(t), str(k + 1), 10 ** (7 + k), 1.0,
+                     floor=f, ts=f"{e}{k}{t}{f}")
+                for e in range(4, 8) for k in range(4) for t in (8, 16, 24)
+                for f in range(5, 34, 3)]
+        with tempfile.TemporaryDirectory() as portal:
+            with open(os.path.join(portal, "benchmark_log.csv"), "w", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=list(rows[0]))
+                writer.writeheader()
+                writer.writerows(rows)
+            root = tk.Tk()
+            try:
+                tab = benchmark_tab.BenchmarkTab(
+                    root, lambda: portal, tk.StringVar(master=root), Translator("en"),
+                    lambda *a, **k: None, palette_for("light"))
+                tab.reload_benchmark_log()
+                window = tab._open_filter_window()
+                root.update()
+                self.assertLessEqual(window.winfo_height(), window.winfo_screenheight(),
+                                     "opens no taller than the screen")
+                self.assertGreaterEqual(window.winfo_rooty(), 0, "top edge on the screen")
+                min_w, min_h = window.minsize()
+                self.assertGreaterEqual(min_w, window.page.body.winfo_reqwidth(),
+                                        "cannot be narrowed past its content")
+
+                def inside(widget):
+                    top = widget.winfo_rooty() - window.winfo_rooty()
+                    return top >= 0 and top + widget.winfo_height() <= window.winfo_height()
+
+                for height in (window.page.body.winfo_reqheight() // 2, 400, min_h):
+                    window.geometry(f"{max(min_w, 700)}x{height}")
+                    root.update()
+                    for button in (window.clear_button, window.close_button):
+                        self.assertTrue(inside(button), f"height {height}: button inside")
+                    self.assertTrue(window.page.scrolls(), f"height {height}: body scrolls")
+                    last = window.last_choice
+                    window.page._on_scrollbar("moveto", 1.0)  # the scrollbar dragged to the end
+                    root.update()
+                    canvas = window.page.canvas
+                    top = last.winfo_rooty() - canvas.winfo_rooty()
+                    self.assertTrue(0 <= top and top + last.winfo_height()
+                                    <= canvas.winfo_height(),
+                                    f"height {height}: last choice scrolls into view")
+                window.destroy()
+            finally:
+                root.destroy()
+
+
 class PureTests(unittest.TestCase):
     def test_values(self):
         self.assertEqual(chart_filter.dimension_values(ROWS, "threads"),

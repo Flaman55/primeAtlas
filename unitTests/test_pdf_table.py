@@ -13,12 +13,16 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / "prime_sieve"), str(ROOT / "constellation")]
 
-from primeatlas.benchmark import benchmark, chart_pdf, chart_series
+from primeatlas.benchmark import benchmark, chart_pdf, chart_series, table_columns
+from primeatlas.core.i18n import Translator
+from primeatlas.core.pdf_writer import _pdf_ascii_fold
 from primeatlas.constellations import constellations
 from primeatlas.core import pdf_table
 
 PAGE_RIGHT = 841.89 - 30
 TEXT_RE = re.compile(r"/(\S+) ([\d.]+) Tf 1 0 0 1 ([\d.-]+) ([\d.-]+) Tm \(((?:[^\\)]|\\.)*)\) Tj")
+
+TR = Translator("en").t
 
 FIELDNAMES = [
     "run_timestamp_utc", "base_exponent", "target_idx_start", "target_idx_end",
@@ -107,13 +111,18 @@ class LayoutTests(unittest.TestCase):
 
 
 class BenchmarkReportTests(unittest.TestCase):
+    """The report tables are the tab's run table (table_columns.py) in its groups."""
+
+    def _shown(self, row, column):
+        return _pdf_ascii_fold(table_columns.shown(row, column, TR))
+
     def test_every_value_printed_in_full(self):
         rows = [_bench_row(i) for i in range(3)]
         texts = _texts(_bench_pdf(rows))
         printed = {t[5] for t in texts if t[1] == "Courier"}
         for row in rows:
-            for name in FIELDNAMES:
-                self.assertIn(row[name], printed, name)
+            for column in table_columns.EXPORT_COLUMNS:
+                self.assertIn(self._shown(row, column), printed, column)
         self.assertFalse([t for t in texts if t[1] == "Courier" and t[5].endswith("...")])
 
     def test_missing_value_prints_a_dash(self):
@@ -126,7 +135,8 @@ class BenchmarkReportTests(unittest.TestCase):
     def test_headers_printed_in_full(self):
         texts = _texts(_bench_pdf([_bench_row(0)]))
         header_lines = {t[5] for t in texts if t[1] == "Courier-Bold"}
-        for name in FIELDNAMES:
+        for column in table_columns.EXPORT_COLUMNS:
+            name = _pdf_ascii_fold(TR(table_columns.header_key(column)))
             for n in range(1, 30):
                 if set(pdf_table.wrap_header(name, n)) <= header_lines:
                     break
@@ -140,41 +150,31 @@ class BenchmarkReportTests(unittest.TestCase):
                 self.assertGreaterEqual(size, 6.5)
                 self.assertLessEqual(x + len(s) * 0.6 * size, PAGE_RIGHT + 0.01, s)
 
-    def test_key_columns_repeat_per_band_and_all_rows_paginate(self):
+    def test_key_columns_repeat_per_table_and_all_rows_paginate(self):
         rows = [_bench_row(i) for i in range(150)]
         texts = _texts(_bench_pdf(rows))
-        tables = benchmark.benchmark_pdf_tables(FIELDNAMES)
         stamps = [t for t in texts if t[1] == "Courier" and t[5].endswith(" UTC")]
         for row in rows:
             self.assertEqual(len([t for t in stamps if t[5] == row["run_timestamp_utc"]]),
-                             len(tables), row["run_timestamp_utc"])
+                             len(table_columns.report_tables()), row["run_timestamp_utc"])
 
-    def test_logical_tables_cover_every_column_once_and_fit_the_page(self):
-        tables = benchmark.benchmark_pdf_tables(FIELDNAMES + ["zz_new"])
-        keys = list(benchmark.BENCHMARK_PDF_KEY_COLUMNS)
-        self.assertEqual(len(tables), 5)                       # 4 tables + "other"
-        self.assertEqual(tables[-1][1], keys + ["zz_new"])
-        seen = []
-        for _title_key, columns in tables:
-            self.assertEqual(columns[:3], keys)
-            seen += columns[3:]
-            layout = pdf_table.TableLayout(columns, [_bench_row(0)], 781.89, 6.5, keys)
+    def test_each_table_fits_one_band(self):
+        rows = [{c: self._shown(_bench_row(0), c) for c in table_columns.EXPORT_COLUMNS}]
+        for _title_key, columns in table_columns.report_tables():
+            layout = pdf_table.TableLayout(columns, rows, 781.89, 6.5, table_columns.KEY_COLUMNS)
             self.assertEqual(len(layout.bands), 1, columns)
-        self.assertEqual(sorted(seen + keys), sorted(FIELDNAMES + ["zz_new"]))
-        self.assertEqual(len(benchmark.benchmark_pdf_tables(FIELDNAMES)), 4)
 
     def test_each_table_starts_a_page_under_its_title(self):
         texts = _texts(_bench_pdf([_bench_row(i) for i in range(3)]))
-        tr = benchmark.Translator("en").t
-        for title_key, columns in benchmark.benchmark_pdf_tables(FIELDNAMES):
-            title = [t for t in texts if t[5] == tr(title_key)]
+        for title_key, columns in table_columns.report_tables():
+            title = [t for t in texts if t[5] == TR(title_key)]
             self.assertEqual(len(title), 1, title_key)
             page = title[0][0]
             headers = {t[5] for t in texts if t[0] == page and t[1] == "Courier-Bold"}
-            for name in columns:
-                self.assertTrue(set(pdf_table.wrap_header(name, 99)) <= headers
-                                or any(h.startswith(name.split("_")[0]) for h in headers),
-                                name)
+            for column in columns:
+                name = _pdf_ascii_fold(TR(table_columns.header_key(column)))
+                self.assertTrue(any(set(pdf_table.wrap_header(name, n)) <= headers
+                                    for n in range(1, 30)), name)
 
 
 class ChartTests(unittest.TestCase):

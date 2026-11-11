@@ -235,12 +235,13 @@ def main():
               f"page 1 (the remainder) shows the stats row plus 50 data rows "
               f"(got {len(page1_children)})")
         data_values = widget.benchmark_tree.item(page1_children[1], "values")
-        columns = widget._benchmark_tree_fieldnames
+        from primeatlas.benchmark import table_columns
+        columns = table_columns.TREE_COLUMNS
         check(all(str(v) != "" for v in data_values),
               "a data row has no empty cell: a column the run lacks shows a dash")
-        check(str(data_values[columns.index("run_status")]) == "\u2014",
-              "the run_status column, absent from the run, shows the dash")
-        check(str(data_values[columns.index("windows_written")]) == "10",
+        check(str(data_values[columns.index("verify_seconds")]) == "\u2014",
+              "the verify column, absent from the run, shows the dash")
+        check(str(data_values[columns.index("windows")]).startswith("10 ("),
               "a column the run has shows its value")
 
         widget._prev_benchmark_page()
