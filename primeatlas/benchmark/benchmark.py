@@ -38,44 +38,13 @@ from ..core.pdf_writer import _pdf_ascii_fold, _pdf_text_op, _write_pdf
 from . import chart_view
 from .chart_pdf import chart_ops
 from .chart_series import axis_pins, engine_series, visible_series
-from . import chart_points, line_colors, line_names, proof_rows, sieve_measure, table_cells
+from . import chart_points, line_colors, line_names, proof_rows, sieve_measure
 from .reference_points import REFERENCES, reference_series
 
 QUICK_GEN_MAX_WINDOW_WIDTH = 10_000_000  # see this module's own docstring for why this
                                           # is a duplicate, not an import, of
                                           # PortalBrowserApp's own constant of the
                                           # same name.
-
-BENCHMARK_PDF_KEY_COLUMNS = ("run_timestamp_utc", "base_exponent", "engine")  # first in
-                                # every PDF table, to match a run's rows across tables
-# The PDF report's logical tables: (i18n title key, columns), one question each -- what
-# was run, how fast, where the time and memory went, what the sieve found. A log column
-# in none of them goes to a final "other" table (benchmark_pdf_tables()).
-BENCHMARK_PDF_TABLES = (
-    ("bench.pdf_table_run", ("engine_version", "threads", "kind", "run_status",
-                             "instance_of_n", "target_idx_start", "target_idx_end",
-                             "windows_written", "numbers_processed", "write_files")),
-    ("bench.pdf_table_speed", ("total_seconds", "seconds_per_window", "loop_session_seconds",
-                               "loop_seconds_per_window", "loop_numbers_per_second",
-                               "primes_per_second")),
-    ("bench.pdf_table_phases", ("base_gen_seconds", "sieve_seconds", "sieve_wall_seconds",
-                                "write_seconds", "bytes_written", "max_child_rss_mb")),
-    ("bench.pdf_table_results", ("total_primes", "avg_primes_per_window", "l_final",
-                                 "sieving_primes_count", "sieve_count_basis")),
-)
-BENCHMARK_TREE_HIDDEN_COLUMNS = {"base_exponent", "run_timestamp_utc"}  # columns dropped
-                                # from the Benchmark tab's tree (not from the CSV, PDF
-                                # export, or growth chart -- those still use every column).
-                                # base_exponent is redundant once rows are grouped under a
-                                # "10p{N}" floor node (every row repeats the same value).
-                                # run_timestamp_utc is dropped as a COLUMN but not lost --
-                                # it moves into the #0 "Floor / run" tree label for
-                                # individual rows instead (that column sits empty for data
-                                # -- see _order_benchmark_tree_columns() below for the one
-                                # column whose DISPLAY position also gets adjusted
-                                # rows otherwise, see BenchmarkTab._show_benchmark_page),
-                                # freeing a whole column's width for the other fields that
-                                # don't fit on screen at once.
 
 BENCHMARK_PAGE_SIZE = 200  # benchmark_log.csv rows shown per page when a floor node is
                             # expanded in the Benchmark tab's tree -- same reasoning as
@@ -88,29 +57,6 @@ BENCHMARK_PAGE_SIZE = 200  # benchmark_log.csv rows shown per page when a floor 
                             # un-paginated primes tree used to.
 
 
-def _order_benchmark_tree_columns(fieldnames):
-    """Reorders the Benchmark tab's visible tree columns so loop_seconds_per_window sits
-    immediately after seconds_per_window, instead of trailing at the end where it
-    physically lives in benchmark_log.csv. Only the DISPLAY order changes here -- the
-    CSV's own column order (and BENCHMARK_FIELDNAMES in orchestrator_v3.py etc.) is
-    untouched, still append-only per the established schema-migration pattern. A no-op if
-    either column is missing (older schema / already filtered out), so this is safe to
-    call unconditionally."""
-    fieldnames = list(fieldnames)
-    if "engine" in fieldnames:
-        fieldnames.remove("engine")
-        fieldnames.insert(0, "engine")
-        if "kind" in fieldnames:
-            fieldnames.remove("kind")
-            fieldnames.insert(1, "kind")
-    if "loop_seconds_per_window" not in fieldnames or "seconds_per_window" not in fieldnames:
-        return fieldnames
-    fieldnames.remove("loop_seconds_per_window")
-    insert_at = fieldnames.index("seconds_per_window") + 1
-    fieldnames.insert(insert_at, "loop_seconds_per_window")
-    return fieldnames
-
-
 _DECIMAL_COMMA_RE = re.compile(r'^-?\d+,\d+$')
 
 
@@ -120,7 +66,7 @@ def _normalize_decimal_commas(row):
     and re-saved in a spreadsheet app under a locale that uses comma-as-decimal (e.g.
     deleting rows in Excel under a Polish locale re-exports every numeric field this way,
     silently breaking the growth chart -- aggregate_benchmark_growth()/
-    aggregate_benchmark_fair_spw()/benchmark_row_stats() all call float() on these columns,
+    aggregate_benchmark_fair_spw() and table_columns.py call float() on these columns,
     which raises ValueError on a comma decimal and gets caught+skipped, so the chart just
     quietly lost almost every point). Only touches values matching digits-comma-digits
     exactly (e.g. "1/1" in instance_of_n, or a plain int like "1000", are left alone).
@@ -557,32 +503,6 @@ def group_benchmark_rows_by_floor(rows):
     return grouped
 
 
-def benchmark_row_stats(rows):
-    """Reduces a floor's benchmark rows to {count, avg, min, max} of seconds_per_window --
-    the "how fast is this floor, at a glance" summary shown at the top of an expanded
-    floor node in the Benchmark tab, so the user doesn't have to page through potentially
-    dozens of runs (including quick count-only benchmarking runs) to see the spread. Rows
-    with a missing/unparseable/NaN seconds_per_window are skipped. Returns None if no row
-    had a usable value (e.g. an empty or all-unparseable floor)."""
-    values = []
-    for row in rows:
-        try:
-            v = float(row.get("seconds_per_window", ""))
-        except (TypeError, ValueError):
-            continue
-        if math.isnan(v):
-            continue
-        values.append(v)
-    if not values:
-        return None
-    return {
-        "count": len(values),
-        "avg": sum(values) / len(values),
-        "min": min(values),
-        "max": max(values),
-    }
-
-
 # A report chart: (tab chart key, axis, metric of benchmark_engine_lines(), axis title key,
 # value format). The report draws one metric per chart, two charts per page.
 _RUN_CHARTS = (("run", "primary", "growth", "bench.axis_total_nps", "{:,.0f}"),
@@ -644,7 +564,7 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
                           measure=sieve_measure.DEFAULT, x_view=None, y_views=None,
                           point_views=None):
     """Writes a standalone PDF report -- the Benchmark tab's charts plus the FULL
-    benchmark_log.csv (every row, every column, every cell in full) -- to `path`, A4
+    run table (every kept run, every cell in full) -- to `path`, A4
     landscape. Pure function (no tkinter): the GUI layer (BenchmarkTab._export_benchmark_pdf)
     hands over the points/fieldnames/rows it already computed for the tab.
 
@@ -655,10 +575,9 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
     its RAM per window. The tab's two-axis charts are split in two here so that
     each chart has room for its value labels (chart_pdf.place_labels()).
 
-    Tables: BENCHMARK_PDF_TABLES, one logical table per question, each starting on its own
-    page with BENCHMARK_PDF_KEY_COLUMNS first, continuing over as many pages as the rows
-    need (core/pdf_table.py). Column headers are the raw benchmark_log.csv names, as in the
-    tab's tree.
+    Tables: table_columns.report_tables(), the tab's run table in four groups, each starting
+    on its own page led by the floor, the run and the engine, continuing over as many pages
+    as the rows need (core/pdf_table.py), with the tab's translated column headers.
 
     references: also draw reference_points.py's series on the sieve n/s chart -- PARI/GP
     iterates in memory and writes nothing, so it compares with the sieve phase -- with a
@@ -757,10 +676,16 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
         pages.append(ops)
 
     # --- the logical tables, each from a new page; a value a run lacks is a dash ---
-    rows = [{c: table_cells.cell(row, c) for c in fieldnames} for row in rows]
-    for title_key, columns in benchmark_pdf_tables(fieldnames):
+    # The columns are keyed by their translated headers, which TableLayout prints.
+    from . import table_columns   # table_columns reads benchmark_sieve_count() from here
+    headers = {c: _pdf_ascii_fold(t(table_columns.header_key(c)))
+               for c in table_columns.EXPORT_COLUMNS}
+    rows = [{headers[c]: table_columns.shown(row, c, t) for c in table_columns.EXPORT_COLUMNS}
+            for row in rows]
+    keys = [headers[c] for c in table_columns.KEY_COLUMNS]
+    for title_key, columns in table_columns.report_tables():
         title = t(title_key)
-        layout = TableLayout(columns, rows, content_width, 6.5, BENCHMARK_PDF_KEY_COLUMNS)
+        layout = TableLayout([headers[c] for c in columns], rows, content_width, 6.5, keys)
         first = [_pdf_text_op(content_left, content_top - 12, 12, "Helvetica-Bold",
                               _pdf_ascii_fold(title))]
         offset = len(pages)
@@ -770,22 +695,3 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
             t("bench.pdf_table_continued", title=title, page=offset + page)
             + (t("pdf.columns_part", part=part, parts=parts) if parts > 1 else ""))
     _write_pdf(path, pages, page_size=(page_w, page_h))
-
-
-def benchmark_pdf_tables(fieldnames):
-    """[(i18n title key, columns)] of the PDF report's tables for this log's fieldnames:
-    each BENCHMARK_PDF_TABLES entry with at least one of its columns present, the key
-    columns first, then a "bench.pdf_table_other" table of every remaining column (also
-    when no logical table applies, so a log of only key columns still gets a table)."""
-    keys = [k for k in BENCHMARK_PDF_KEY_COLUMNS if k in fieldnames]
-    grouped = set(keys)
-    tables = []
-    for title_key, columns in BENCHMARK_PDF_TABLES:
-        own = [c for c in columns if c in fieldnames]
-        grouped.update(own)
-        if own:
-            tables.append((title_key, keys + own))
-    rest = [c for c in fieldnames if c not in grouped]
-    if rest or not tables:
-        tables.append(("bench.pdf_table_other", keys + rest))
-    return tables

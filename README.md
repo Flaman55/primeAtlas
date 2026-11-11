@@ -2097,9 +2097,15 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               shaded), x labels
                               -- pure, no tkinter
                               (unitTests/test_benchmark_chart_points.py)
-  table_cells.py                a log cell as the tab's table, the HTML and the PDF
-                              tables show it: a dash for a value the run's engine
+  table_cells.py                the dash a table shows for a value the run's engine
                               does not log -- pure, no tkinter
+  table_columns.py              the run table's columns, most used first (engine,
+                              sieve n/s, run n/s, time, s/window, numbers, windows;
+                              purpose, status, threads; phases; results), each a
+                              raw value for the CSV export and a shown one for the
+                              tab's tree and the HTML and PDF tables; the four
+                              report groups; the floor summary -- pure, no tkinter
+                              (unitTests/test_benchmark_table_columns.py)
   sieve_measure.py              which time the sieve chart measures: engine sieve
                               phase, sieve with startup overhead
                               (sieve_wall_seconds) or the overhead alone; metrics,

@@ -34,10 +34,9 @@ from ..core.base_tab import BaseTab
 from ..core.ui_state import remember
 from ..core.widgets import StripedTreeview
 from .benchmark import (
-    BENCHMARK_PAGE_SIZE, BENCHMARK_TREE_HIDDEN_COLUMNS,
-    _order_benchmark_tree_columns, aggregate_benchmark_fair_spw,
+    BENCHMARK_PAGE_SIZE, aggregate_benchmark_fair_spw,
     aggregate_benchmark_growth, aggregate_benchmark_sieve_nps,
-    aggregate_benchmark_write_mbps, benchmark_row_stats, benchmark_series, mixed_width_floors,
+    aggregate_benchmark_write_mbps, benchmark_series, mixed_width_floors,
     group_benchmark_rows_by_floor, read_benchmark_log,
 )
 from ..core.i18n import Translator, DEFAULT_LANGUAGE
@@ -54,7 +53,7 @@ from .benchmark_points import BenchmarkPoints
 from .benchmark_ram_chart import BenchmarkRamChart
 from .chart_hover import _bind_chart_hover, _nearest_point
 from .chart_zoom_controls import BenchmarkChartZoom
-from . import sieve_measure, table_cells
+from . import sieve_measure, table_columns
 from .reference_points import reference_series
 
 
@@ -516,8 +515,6 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, Benchm
         self._benchmark_write_mbps_points = []  # write-phase MB/s, second chart's
                                                  # secondary line (same v4.1/v5-only caveat)
         self._benchmark_fieldnames = []  # kept in sync by reload_benchmark_log() --
-        self._benchmark_tree_fieldnames = []  # same, minus BENCHMARK_TREE_HIDDEN_COLUMNS
-                                          # -- what the tree itself actually displays
         self._benchmark_rows = []        # _export_benchmark_pdf reads these (the FULL,
                                           # ungrouped data) instead of re-parsing the CSV,
                                           # so the PDF always exports everything, even
@@ -672,8 +669,6 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, Benchm
                                                    # still use every column, unaffected
                                                    # by what the tree itself displays
         self._benchmark_rows = rows
-        self._benchmark_tree_fieldnames = _order_benchmark_tree_columns(
-            [c for c in fieldnames if c not in BENCHMARK_TREE_HIDDEN_COLUMNS])
 
         self._benchmark_growth_points = aggregate_benchmark_growth(rows)
         self._benchmark_fair_spw_points = aggregate_benchmark_fair_spw(rows)
@@ -684,12 +679,13 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, Benchm
         self._redraw_benchmark_chart2()
         self._redraw_benchmark_chart3()
 
-        tree_fieldnames = self._benchmark_tree_fieldnames
         self.benchmark_tree.delete(*self.benchmark_tree.get_children())
-        self.benchmark_tree["columns"] = tree_fieldnames
-        for col in tree_fieldnames:
-            self.benchmark_tree.heading(col, text=col)
-            self.benchmark_tree.column(col, width=120, anchor="center", stretch=False)
+        self.benchmark_tree["columns"] = table_columns.TREE_COLUMNS
+        for col in table_columns.TREE_COLUMNS:
+            self.benchmark_tree.heading(col, text=self.T(table_columns.header_key(col)))
+            self.benchmark_tree.column(
+                col, width=table_columns.WIDTHS.get(col, table_columns.DEFAULT_WIDTH),
+                anchor="center", stretch=False)
         self._rebuild_benchmark_tree()
 
     def _rebuild_benchmark_tree(self):
@@ -705,7 +701,7 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, Benchm
         self._active_benchmark_node = None
         self._refresh_benchmark_nav_controls()
 
-        tree_fieldnames = self._benchmark_tree_fieldnames
+        tree_fieldnames = table_columns.TREE_COLUMNS
         if not fieldnames or not self._benchmark_rows:
             self.benchmark_tree.insert("", "end", text=T("bench.no_data_row"))
             return
@@ -763,7 +759,7 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, Benchm
         text = self.benchmark_tree.item(node, "text")  # "10p{N} (M measurement(s))"
         base_exponent = int(text[3:].split(" ", 1)[0])
         rows = self._benchmark_rows_by_floor.get(base_exponent, [])
-        stats = benchmark_row_stats(rows)
+        stats = table_columns.stats(rows)
         total_pages = max(1, (len(rows) + BENCHMARK_PAGE_SIZE - 1) // BENCHMARK_PAGE_SIZE)
         self._benchmark_floor_state[node] = {
             "base_exponent": base_exponent,
@@ -778,7 +774,7 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, Benchm
         """Renders page `page` (0-indexed) of a floor's benchmark rows, PLUS a
         standalone stats row at the top (min/avg/max seconds_per_window across ALL of
         that floor's rows, not just the current page -- re-inserted on every page turn,
-        which costs nothing since it's a single row) -- see benchmark_row_stats()."""
+        which costs nothing since it's a single row) -- see table_columns.stats()."""
         T = self.T
         state = self._benchmark_floor_state.get(node)
         if not state:
@@ -790,8 +786,7 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, Benchm
         for item in self.benchmark_tree.get_children(node):
             self._tree_item_rows.pop(item, None)
         self.benchmark_tree.delete(*self.benchmark_tree.get_children(node))
-        fieldnames = self._benchmark_tree_fieldnames  # display columns only -- see
-                                                        # BENCHMARK_TREE_HIDDEN_COLUMNS
+        fieldnames = table_columns.TREE_COLUMNS
 
         stats = state["stats"]
         stat_values = ["" for _ in fieldnames]
@@ -809,13 +804,9 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, Benchm
         start = page * BENCHMARK_PAGE_SIZE
         end = min(start + BENCHMARK_PAGE_SIZE, len(rows))
         for row in rows[start:end]:
-            # #0 shows the run's timestamp for individual rows -- run_timestamp_utc is
-            # excluded from the columns list (BENCHMARK_TREE_HIDDEN_COLUMNS) precisely
-            # so it can live here instead, in the column that would otherwise sit empty
-            # for every data row (target_idx_start/target_idx_end are already their own
-            # columns, so #0 had nothing else useful to show).
-            label = row.get("run_timestamp_utc", "") + " [" + (row.get("engine") or "unknown") + "]"
-            values = [table_cells.cell(row, c) for c in fieldnames]
+            # #0 names the run by its timestamp; the engine has its own column.
+            label = row.get("run_timestamp_utc", "")
+            values = [table_columns.shown(row, c, T) for c in fieldnames]
             item = self.benchmark_tree.insert(node, "end", text=label, values=values,
                                               tags=("row",))
             self._remember_tree_row(item, row)

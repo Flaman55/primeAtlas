@@ -12,15 +12,33 @@ a change redraws it and clears its y-axis pins, whose units may differ; the summ
 PDF name a measure other than the default. Below it, "X axis" (floor or width) and a point
 choice per chart (benchmark_points.py); the summary names them when not the defaults. Kept for
 the session, like the chart toggles.
+
+The choices sit on a ScrollablePage (a scrollbar once they do not fit the window's height);
+Clear and Close sit under it, outside the scrolled part, so they stay in the window at any
+height. The window opens at its content's size within the screen (fit_size()) and cannot be
+made narrower than its content.
 """
 import tkinter as tk
 from tkinter import ttk
 
 from ..core.info_tip import InfoTip
+from ..core.widgets import ScrollablePage
 from . import chart_filter, chart_points, sieve_measure
 from .benchmark_points import CHARTS
 
 VALUES_PER_ROW = 6
+# Room left around the window for the title bar and the taskbar, in pixels.
+SCREEN_MARGIN_X = 40
+SCREEN_MARGIN_Y = 120
+# Lowest window height (pixels) the person can drag it to: buttons plus a few lines.
+MIN_HEIGHT = 220
+
+
+def fit_size(content_w, content_h, screen_w, screen_h):
+    """(width, height) of the window for content of that size: the content's size, capped
+    to the screen less its margins (never below 1)."""
+    return (max(1, min(content_w, screen_w - SCREEN_MARGIN_X)),
+            max(1, min(content_h, screen_h - SCREEN_MARGIN_Y)))
 
 
 class BenchmarkFilter:
@@ -73,7 +91,10 @@ class FilterWindow(tk.Toplevel):
         self.transient(tab.winfo_toplevel())
         self.all_vars, self.all_buttons = {}, {}
         self.value_vars, self.value_buttons = {}, {}
-        body = ttk.Frame(self, padding=8)
+        buttons = ttk.Frame(self, padding=(8, 0, 8, 8))
+        buttons.pack(side="bottom", fill="x")
+        self.page = ScrollablePage(self, pad_text=T("common.scroll_pad"))
+        body = ttk.Frame(self.page.body, padding=8)
         body.pack(fill="both", expand=True)
         ttk.Label(body, text=T("bench.filter_hint"), style="Hint.TLabel",
                   wraplength=560, justify="left").pack(anchor="w", pady=(0, 6))
@@ -110,12 +131,25 @@ class FilterWindow(tk.Toplevel):
                             variable=self.measure_var, command=self.apply).pack(
                 side="left", padx=(0, 10))
         self._build_points(body)
-        buttons = ttk.Frame(body)
-        buttons.pack(anchor="e", pady=(8, 0))
-        ttk.Button(buttons, text=T("bench.filter_clear"), command=self._clear).pack(side="left")
-        ttk.Button(buttons, text=T("bench.filter_close"), command=self.destroy).pack(
-            side="left", padx=(6, 0))
+        self.close_button = ttk.Button(buttons, text=T("bench.filter_close"),
+                                       command=self.destroy)
+        self.close_button.pack(side="right", padx=(6, 0), pady=(8, 0))
+        self.clear_button = ttk.Button(buttons, text=T("bench.filter_clear"),
+                                       command=self._clear)
+        self.clear_button.pack(side="right", pady=(8, 0))
         self._show(tab._filter_selection)
+        self._fit_to_screen(body, buttons)
+
+    def _fit_to_screen(self, body, buttons):
+        self.update_idletasks()
+        bar = self.page.scrollbar.winfo_reqwidth() + self.page.pad.frame.winfo_reqwidth()
+        content_w = body.winfo_reqwidth() + bar
+        content_h = body.winfo_reqheight() + buttons.winfo_reqheight()
+        width, height = fit_size(content_w, content_h, self.winfo_screenwidth(),
+                                 self.winfo_screenheight())
+        self.minsize(width, min(height, MIN_HEIGHT))
+        x = max(0, min(self.winfo_rootx(), self.winfo_screenwidth() - width - SCREEN_MARGIN_X))
+        self.geometry(f"{width}x{height}+{x}+{SCREEN_MARGIN_Y // 4}")
 
     def _show(self, selection):
         """Every checkbox shows `selection`: All for a dimension it leaves out, else the
@@ -164,10 +198,10 @@ class FilterWindow(tk.Toplevel):
                                                                     padx=(0, 10))
             self.choice_vars[chart] = tk.StringVar(value=tab._point_choice[chart])
             for c, choice in enumerate(chart_points.CHOICES, 1):
-                ttk.Radiobutton(grid, text=T(chart_points.CHOICE_LABEL_KEYS[choice]), value=choice,
-                                variable=self.choice_vars[chart],
-                                command=self.apply_points).grid(row=r, column=c, sticky="w",
-                                                                padx=(0, 10))
+                self.last_choice = ttk.Radiobutton(
+                    grid, text=T(chart_points.CHOICE_LABEL_KEYS[choice]), value=choice,
+                    variable=self.choice_vars[chart], command=self.apply_points)
+                self.last_choice.grid(row=r, column=c, sticky="w", padx=(0, 10))
 
     def apply_points(self):
         self.tab._set_points_from_window(

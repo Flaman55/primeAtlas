@@ -8,11 +8,13 @@ scale, pinned axes, reference series, the lines hidden in the legends and the zo
 range (chart_view.py). The HTML names the filter under its title, the sieve measure over the
 sieve charts and, over a page's charts, the floors where they set points of different range
 widths. The charts are chart_svg.chart_svg() drawings, the same layout as the PDF's; the
-tables are benchmark.benchmark_pdf_tables(), one per question, every cell in full and
+tables are the tab's run table (table_columns.report_tables()) in its four groups, each led
+by the floor, the run and the engine, with the tab's headers, every cell in full and
 HTML-escaped.
 
-  - csv: the kept rows and the log's columns as the tab read them
-    (benchmark.read_benchmark_log() adds the D/P "kind" column);
+  - csv: the kept runs in the run table's columns (table_columns.EXPORT_COLUMNS: the floor,
+    the run, then the tab's columns), column keys as the header and raw values (an empty
+    cell for a value the run lacks); benchmark_log.csv itself keeps every logged column;
   - svg: every report chart stacked in one SVG image;
   - html: a UTF-8 page with a title, the charts inline and the tables;
   - snippet: the page's content as one <div class="primeatlas-benchmark">, with a style
@@ -31,8 +33,8 @@ import datetime
 from html import escape
 
 from ..core.i18n import Translator, DEFAULT_LANGUAGE
-from . import chart_filter, chart_points, report_html, sieve_measure, table_cells
-from .benchmark import (benchmark_pdf_tables, report_chart_pages, report_chart_series,
+from . import chart_filter, chart_points, report_html, sieve_measure, table_columns
+from .benchmark import (report_chart_pages, report_chart_series,
                         report_mixed_note, report_references)
 from .chart_series import axis_pins
 from .chart_svg import chart_svg
@@ -111,13 +113,14 @@ def _tables_html(fieldnames, rows, t):
     """The tables of `rows` (data-run: a row's index in `rows`, so the page's script hides the
     runs its filter drops); a value a run lacks is table_cells.MISSING."""
     parts = []
-    for title_key, columns in benchmark_pdf_tables(fieldnames):
+    for title_key, columns in table_columns.report_tables():
         parts.append(f"<h2>{escape(t(title_key))}</h2><table><thead><tr>"
-                     + "".join(f"<th>{escape(c)}</th>" for c in columns)
+                     + "".join(f"<th>{escape(t(table_columns.header_key(c)))}</th>"
+                               for c in columns)
                      + "</tr></thead><tbody>")
         for i, row in enumerate(rows):
             parts.append(f'<tr data-run="{i}">'
-                         + "".join(f"<td>{escape(table_cells.cell(row, c))}</td>"
+                         + "".join(f"<td>{escape(table_columns.shown(row, c, t))}</td>"
                                    for c in columns) + "</tr>")
         parts.append("</tbody></table>")
     return "".join(parts)
@@ -169,10 +172,10 @@ def render(kind, fieldnames, rows, translator=None, sieve_points=None, reference
             def write(self, text):
                 lines.append(text)
 
-        writer = csv.DictWriter(_Sink(), fieldnames=fieldnames, extrasaction="ignore",
-                                lineterminator="\n")
-        writer.writeheader()
-        writer.writerows(kept)
+        writer = csv.writer(_Sink(), lineterminator="\n")
+        writer.writerow(table_columns.EXPORT_COLUMNS)
+        writer.writerows([table_columns.raw(row, c) for c in table_columns.EXPORT_COLUMNS]
+                         for row in kept)
         return "".join(lines)
     svg_options = dict(translator=translator, sieve_points=sieve_points, references=references,
                        log_y=log_y, hidden_lines=hidden_lines, y_pins=y_pins, measure=measure,

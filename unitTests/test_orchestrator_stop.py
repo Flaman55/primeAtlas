@@ -196,11 +196,13 @@ def main():
                   f"total_seconds={row['total_seconds']!r})")
             completed = dict(row, run_status="completed")
             for name in ("aggregate_benchmark_growth", "aggregate_benchmark_fair_spw",
-                         "aggregate_benchmark_sieve_nps", "aggregate_benchmark_write_mbps",
-                         "benchmark_row_stats"):
+                         "aggregate_benchmark_sieve_nps", "aggregate_benchmark_write_mbps"):
                 fn = getattr(benchmark, name)
                 check(fn([row]) == fn([completed]),
                       f"{name} reads a stopped row like a completed one")
+            from primeatlas.benchmark import table_columns
+            check(table_columns.stats([row]) == table_columns.stats([completed]),
+                  "the floor summary reads a stopped row like a completed one")
             grouped = {k: len(v) for k, v in benchmark.group_benchmark_rows_by_floor([row]).items()}
             check(grouped == {k: len(v) for k, v in
                               benchmark.group_benchmark_rows_by_floor([completed]).items()},
