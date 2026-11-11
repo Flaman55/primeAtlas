@@ -6,11 +6,13 @@ from the remembered-fields store when the tab is built and saved at every change
 (view_store.py); a filter value the log no longer holds is dropped at reload. A chart's menu
 offers "Hide/Show left-axis lines (circles)" and "... right-axis lines (squares)": every line
 drawn on that axis of that chart, as its legend lists them, hidden at once (some still shown)
-or shown at once (all hidden), the same as clicking each legend marker; disabled while the
-axis has no line.
+or shown at once (all hidden); hiding covers a line that appears on the axis later too (a new
+run, a wider filter), a legend click on one of its lines shows that line alone. Disabled while
+the axis has no line.
 """
 from primeatlas.core import ui_state_dynamic
 from . import view_store
+from .chart_series import is_hidden, toggle_axis
 
 AXES = ("primary", "secondary")
 
@@ -47,7 +49,18 @@ class BenchmarkViewState:
         entries = []
         for axis in AXES:
             keys = self._axis_line_keys(chart, axis)
-            action = "show" if keys and keys <= self._hidden_lines[chart] else "hide"
+            hidden = self._hidden_lines[chart]
+            action = ("show" if keys and all(is_hidden(hidden, a, n) for a, n in keys)
+                      else "hide")
             entries.append((self.T(f"bench.axis_lines_{action}_{axis}"),
-                            lambda k=keys: self._toggle_lines(chart, k), bool(keys)))
+                            lambda a=axis, k=keys: self._toggle_axis(chart, a, k), bool(keys)))
         return entries
+
+    def _toggle_axis(self, chart, axis, keys):
+        self._hidden_lines[chart] = toggle_axis(self._hidden_lines[chart], axis, keys)
+        self._save_view()
+        self._redraw_chart(chart)
+
+    def _axis_lines(self, chart):
+        """{axis: line keys drawn on it} of `chart`, for a legend click on a hidden axis."""
+        return {axis: self._axis_line_keys(chart, axis) for axis in AXES}

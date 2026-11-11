@@ -2108,7 +2108,8 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               measure, x axis, point choices and hidden lines loaded
                               at start and saved at every change; the "Hide/Show
                               left-axis / right-axis lines" entries of a chart's
-                              right-click menu
+                              right-click menu (a hidden axis also hides lines
+                              that appear on it later)
                               (unitTests/test_benchmark_view_state.py)
   benchmark_ram_chart.py        BenchmarkRamChart mixin of the tab: the RAM chart, the
                               lowest of the three (peak MB per run, MB per window,

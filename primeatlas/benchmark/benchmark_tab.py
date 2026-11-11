@@ -41,7 +41,7 @@ from .benchmark import (
 )
 from ..core.i18n import Translator, DEFAULT_LANGUAGE
 from .chart_series import (
-    axis_pins, clear_pins, clip_polyline, in_view, legend_entries, line_key,
+    axis_pins, clear_pins, clip_polyline, in_view, is_hidden, legend_entries, line_key,
     pin_bound, plain_series, point_label, series_xs, toggle_lines, visible_series, y_scale,
 )
 from . import chart_points, chart_view
@@ -82,7 +82,7 @@ def _draw_legend(canvas, entries, hidden, on_toggle, x, bg_color, dim_color):
     for s, axes in entries:
         keys = [line_key(axis, s.name) for axis in axes]
         for axis, key in zip(axes, keys):
-            off = key in hidden
+            off = is_hidden(hidden, axis, s.name)
             tag = _legend_tag(axis, s.name)
             canvas.legend_series[tag] = s
             # The background box widens the click target beyond the 8 px marker.
@@ -99,7 +99,7 @@ def _draw_legend(canvas, entries, hidden, on_toggle, x, bg_color, dim_color):
         tag = _legend_tag("name", s.name)
         canvas.legend_series[tag] = s
         text_id = canvas.create_text(x + 3, y, text=s.name, anchor="w", font=font,
-                                     fill=dim_color if all(k in hidden for k in keys)
+                                     fill=dim_color if all(is_hidden(hidden, *k) for k in keys)
                                      else s.color, tags=("legend", tag))
         if on_toggle:
             canvas.tag_bind(tag, "<Button-1>", lambda _e, k=keys: on_toggle(k))
@@ -582,7 +582,8 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, Benchm
 
     def _toggle_lines(self, chart, keys):
         """Legend click on the "run", "sieve" or "ram" chart: hides or shows those lines."""
-        self._hidden_lines[chart] = toggle_lines(self._hidden_lines[chart], keys)
+        self._hidden_lines[chart] = toggle_lines(self._hidden_lines[chart], keys,
+                                                 self._axis_lines(chart))
         self._save_view()
         self._redraw_chart(chart)
 
