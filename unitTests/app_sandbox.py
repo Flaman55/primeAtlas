@@ -13,8 +13,12 @@ AppSettings.save() is replaced by a no-op, so the redirected storage_path and an
 a test changes never reach primeatlas/locales/app_settings.json. A test that counts
 saves replaces save() again after this. The remembered-fields store
 (primeatlas/core/ui_state_dynamic.STORE) is replaced by an in-memory one, so the user's
-ui_state.json is neither read nor written; a test of persistence installs its own. Message boxes stay the caller's business: tests
-patch them their own way (some record what was shown).
+ui_state.json is neither read nor written; a test of persistence installs its own. Message
+boxes stay the caller's business: tests patch them their own way (some record what was shown).
+
+fresh_ui_store() gives a tab built without the app (straight from its class) an empty
+in-memory remembered-fields store, so what one test's tab remembered (the Benchmark view)
+does not reach the next test in the same process.
 """
 import atexit
 import os
@@ -23,6 +27,12 @@ import sys
 import tempfile
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def fresh_ui_store():
+    from primeatlas.core import ui_state_dynamic
+    from primeatlas.core.ui_state_store import UiStateStore
+    ui_state_dynamic.STORE = UiStateStore(None)
 
 
 def isolate_app(portal=None, prefix="primeatlas_test_portal_"):

@@ -17,6 +17,8 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / "prime_sieve"), str(ROOT / "constellation")]
 
+from app_sandbox import fresh_ui_store  # noqa: E402
+
 from primeatlas.core.i18n import Translator  # noqa: E402
 
 
@@ -48,6 +50,7 @@ class ChartWindowTests(unittest.TestCase):
                 writer.writerows(ROWS)
             root = tk.Tk()
             try:
+                fresh_ui_store()
                 tab = benchmark_tab.BenchmarkTab(
                     root, lambda: portal, tk.StringVar(master=root), Translator("en"),
                     lambda *a, **k: None, palette_for("light"))

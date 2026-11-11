@@ -276,7 +276,7 @@ class TabColorMenuTests(_StoreCase):
                     canvas.event_generate("<Button-3>", x=x, y=y)
                     root.update()
                     self.assertEqual(len(menus), 1, "one menu per right-click")
-                    return {label: (command, enabled) for label, command, enabled in menus[0]}
+                    return {label: (command, enabled) for label, command, enabled in filter(None, menus[0])}
 
                 def click_legend(canvas, name):
                     x0, y0, x1, y1 = canvas.bbox(legend_text(canvas, name))

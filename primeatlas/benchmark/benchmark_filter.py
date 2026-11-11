@@ -10,8 +10,8 @@ and the summary next to the Filter button (and the PDF subtitle) names the selec
 the dimensions, "Sieve measure" picks the time the sieve chart measures (sieve_measure.py):
 a change redraws it and clears its y-axis pins, whose units may differ; the summary and the
 PDF name a measure other than the default. Below it, "X axis" (floor or width) and a point
-choice per chart (benchmark_points.py); the summary names them when not the defaults. Kept for
-the session, like the chart toggles.
+choice per chart (benchmark_points.py); the summary names them when not the defaults. Kept
+across restarts (benchmark_view_state.py).
 
 The choices sit on a ScrollablePage (a scrollbar once they do not fit the window's height);
 Clear and Close sit under it, outside the scrolled part, so they stay in the window at any
@@ -71,6 +71,7 @@ class BenchmarkFilter:
         if measure is not None and measure != self._sieve_measure:
             self._sieve_measure = measure
             self._y_pins["sieve"] = {}
+        self._save_view()
         self.filter_summary_var.set(self._filter_summary())
         self._redraw_charts()
         self._rebuild_benchmark_tree()

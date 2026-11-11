@@ -1363,7 +1363,9 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               (event_over_own_scroller);
                               StripedTreeview is the app's one table class (every
                               second visible row striped, restriped after inserts and
-                              node open/close); RevealFrame keeps a preview list and
+                              node open/close; scroll_to_top() puts a row first in view,
+                              with blank unselectable pad rows after the last row when
+                              needed, which the Benchmark run table does on selection); RevealFrame keeps a preview list and
                               its page nav hidden until something is selected (Prime
                               numbers and Constellations Storage panes)
   theme.py                      light/dark palette DATA plus adjusted_palette(), which
@@ -2004,6 +2006,10 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               benchmark_export.py; zoom in chart_zoom_controls.py,
                               chart windows in benchmark_chart_windows.py;
                               benchmark.py below is the pure-logic backend)
+  view_store.py                 the Benchmark view kept across restarts as one value in
+                              the remembered-fields store: save, load (each part
+                              checked, junk back to its default), prune of filter
+                              values the log no longer holds -- pure, no tkinter
   chart_view.py                 the charts' zoom, as of a picture: the visible part of
                               the shared floor axis and of each chart's y axis, zoom
                               around the pointer, pan, zoomed floor ticks -- pure,
@@ -2082,8 +2088,17 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
   benchmark_points.py           BenchmarkPoints mixin of the tab: the x axis (floor or
                               width), each chart's point choice, the run selected in
                               the table (all three charts switched to it, its points
-                              ringed) and the left/right page keys
-                              (unitTests/test_benchmark_chart_points.py)
+                              ringed, cleared by a right-click in the table), the
+                              point choices in a chart's right-click menu and the
+                              left/right page keys
+                              (unitTests/test_benchmark_chart_points.py,
+                              unitTests/test_benchmark_point_menu.py)
+  benchmark_view_state.py       BenchmarkViewState mixin of the tab: the filter, sieve
+                              measure, x axis, point choices and hidden lines loaded
+                              at start and saved at every change; the "Hide/Show
+                              left-axis / right-axis lines" entries of a chart's
+                              right-click menu
+                              (unitTests/test_benchmark_view_state.py)
   benchmark_ram_chart.py        BenchmarkRamChart mixin of the tab: the RAM chart, the
                               lowest of the three (peak MB per run, MB per window,
                               mixed-width note; unitTests/test_benchmark_chart_series.py)

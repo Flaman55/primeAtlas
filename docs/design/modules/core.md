@@ -46,7 +46,7 @@ Theme, language, font scale and ScrollPad width live in `AppSettings`; texts in 
 
 ## Specs and tests
 
-`test_ui_settings`, `test_theme_readability`, `test_scroll_pad`, `test_scrollable_page`,
+`test_ui_settings`, `test_theme_readability`, `test_scroll_pad`, `test_scrollable_page`, `test_tree_scroll_to_top`,
 `test_settings_scroll`, `test_ui_state`, `test_ui_state_app`, `test_storage`, `test_search_worker`, `test_window_centering`, `test_pdf_table`.
 
 ## Known gaps

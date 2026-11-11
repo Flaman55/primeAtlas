@@ -16,6 +16,8 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / "prime_sieve"), str(ROOT / "constellation")]
 
+from app_sandbox import fresh_ui_store  # noqa: E402
+
 from primeatlas.benchmark import benchmark, chart_pdf, chart_series, reference_points
 from primeatlas.core.i18n import Translator
 
@@ -441,6 +443,7 @@ class TabPinTests(unittest.TestCase):
             filedialog.asksaveasfilename = lambda **kw: pdf_path
             root = tk.Tk()
             try:
+                fresh_ui_store()
                 tab = benchmark_tab.BenchmarkTab(
                     root, lambda: portal, tk.StringVar(master=root), Translator("en"),
                     lambda *a, **k: None, palette_for("light"))
@@ -462,7 +465,7 @@ class TabPinTests(unittest.TestCase):
                     canvas.event_generate("<Button-3>", x=int(hit[0][0]), y=int(hit[0][1]))
                     root.update()
                     self.assertEqual(len(menus), 1, "one menu per right-click")
-                    return {label: (command, enabled) for label, command, enabled in menus[0]}
+                    return {label: (command, enabled) for label, command, enabled in filter(None, menus[0])}
 
                 def texts(canvas):
                     return [canvas.itemcget(i, "text") for i in canvas.find_all()
@@ -488,11 +491,13 @@ class TabPinTests(unittest.TestCase):
                 self.assertEqual(points(chart, "secondary"), [1.0])
                 self.assertEqual(points(chart, "primary"), [4e7, 5e7])
 
-                # Right-click off every point: only the resets, enabled per pinned axis.
+                # Right-click off every point: after the point choices only the resets,
+                # enabled per pinned axis.
                 menus.clear()
                 chart.event_generate("<Button-3>", x=3, y=3)
                 root.update()
-                labels = {label: enabled for label, _c, enabled in menus[0]}
+                after = menus[0][len(menus[0]) - menus[0][::-1].index(None):]
+                labels = {label: enabled for label, _c, enabled in after}
                 self.assertEqual(set(labels), {t("bench.pin_reset_primary"),
                                                t("bench.pin_reset_secondary"),
                                                t("bench.pin_reset_chart")})
@@ -554,6 +559,7 @@ class TabTests(unittest.TestCase):
             filedialog.asksaveasfilename = lambda **kw: pdf_path
             root = tk.Tk()
             try:
+                fresh_ui_store()
                 tab = benchmark_tab.BenchmarkTab(
                     root, lambda: portal, tk.StringVar(master=root), Translator("en"),
                     lambda *a, **k: None, palette_for("light"))
@@ -727,6 +733,7 @@ class RamChartTests(unittest.TestCase):
                 writer.writerows(RAM_ROWS)
             root = tk.Tk()
             try:
+                fresh_ui_store()
                 tab = benchmark_tab.BenchmarkTab(
                     root, lambda: portal, tk.StringVar(master=root), Translator("en"),
                     lambda *a, **k: None, palette_for("light"))
@@ -772,6 +779,7 @@ class RamChartTests(unittest.TestCase):
                 writer.writerows(rows)
             root = tk.Tk()
             try:
+                fresh_ui_store()
                 tab = benchmark_tab.BenchmarkTab(
                     root, lambda: portal, tk.StringVar(master=root), Translator("en"),
                     lambda *a, **k: None, palette_for("light"))
