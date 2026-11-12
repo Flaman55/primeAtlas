@@ -24,6 +24,9 @@ MAX_B = 2 ** 32 - 1
 MIN_FLOOR = 7    # floors 0..6 take the scanners' low-floor single-window path
 MAX_FLOOR = 37   # Montgomery arithmetic with R = 2^128 needs n < 2^127; 10^38 < 2^127
 CHUNKS_PER_THREAD_PER_SLAB = 4
+# L_373, the last pseudosquare of engine_pt_pss.h's table: the pt1-pss proof needs n / B < L_373
+# (unitTests/test_engine_pt_pss.py keeps the two equal).
+PSS_L_373 = 4235025223080597503519329
 
 
 def b_from_env(environ):
@@ -66,6 +69,12 @@ def effective_b(requested, run_lo, run_hi):
     isqrt(run_lo) and MAX_B."""
     b = requested if requested else default_b(run_hi - 1)
     return min(b, math.isqrt(run_lo), MAX_B)
+
+
+def proof_b(b, top):
+    """The B of a pt1-pss run ending at `top`: b, raised to the smallest bound the proof
+    accepts (top / B < L_373). It can exceed MAX_B: the range is then past the proof."""
+    return max(b, top // PSS_L_373 + 1)
 
 
 def chunk_odd(chunk_kb):

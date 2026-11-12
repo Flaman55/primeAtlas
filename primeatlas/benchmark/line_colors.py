@@ -22,12 +22,14 @@ PALETTES = {
              "primesieve_count": "#a87838", "pseudosquares_print": "#50c050",
              "pseudosquares_count": "#80b8f8", "hybrid": "#009e73", "v4.1": "#e69f00",
              "v5": "#2f7fe0", "v6": "#a060ff", "v7": "#ff00ff", "pt1": "#e0a0e0",
-             "pt1 D+P": "#608000", "pt1 P": "#00e000", "pt1 D proof": "#60f0b0"},
+             "pt1-pss": "#ff50d8", "pt1 D+P": "#608000", "pt1 P": "#00e000",
+             "pt1 D proof": "#60f0b0"},
     "light": {"unknown": "#707070", "primesieve": "#789c00", "primesieve_print": "#5898bc",
               "primesieve_count": "#d07c60", "pseudosquares_print": "#38a440",
               "pseudosquares_count": "#1e90ff", "hybrid": "#006050", "v4.1": "#d47c00",
               "v5": "#1f3fb0", "v6": "#7a30d0", "v7": "#fc00fc", "pt1": "#c070c0",
-              "pt1 D+P": "#445010", "pt1 P": "#008c00", "pt1 D proof": "#08a498"},
+              "pt1-pss": "#a00070", "pt1 D+P": "#445010", "pt1 P": "#008c00",
+              "pt1 D proof": "#08a498"},
 }
 # The color of an engine without its own entry.
 OTHER_COLORS = {"dark": "#ff8080", "light": "#780000"}

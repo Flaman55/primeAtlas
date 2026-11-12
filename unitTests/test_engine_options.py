@@ -44,7 +44,7 @@ def check(value, message):
 
 def check_mirrors():
     passed = True
-    passed &= check(eo.ENGINES == ("v4.1", "v5", "v6", "v7", "pt1"), f"engines offered: {eo.ENGINES}")
+    passed &= check(eo.ENGINES == ("v4.1", "v5", "v6", "v7", "pt1", "pt1-pss"), f"engines offered: {eo.ENGINES}")
     passed &= check(eo.DEFAULT_ENGINE == "v6", f"default engine {eo.DEFAULT_ENGINE}")
     # orchestrator_v3.py imports WSL-only engine modules, so its default is read from source.
     with open(os.path.join(ROOT, "prime_sieve", "orchestrator_v3.py"), encoding="utf-8") as f:
@@ -95,12 +95,13 @@ def check_mirrors():
                     == (2048, 1024, 8192),
                     "v5.1 defaults: 2 MiB segments, 1 MiB regions, 8 GiB buckets (measured)")
     passed &= check(eo.ENGINE_VERSIONS == {"v4.1": "v4.1", "v5": "v5.2", "v6": "v6.1",
-                                           "v7": "v7.4", "pt1": "pt1.1"},
+                                           "v7": "v7.4", "pt1": "pt1.1", "pt1-pss": "pt1.1"},
                     f"engine versions shown in the GUI ({eo.ENGINE_VERSIONS})")
     passed &= check(set(d) == set(eo.KNOB_KEYS), "DEFAULT_KNOBS covers exactly KNOB_KEYS")
-    for engine in ("pt1", "v7"):
-        passed &= check(re.search(rf'^elif SCANNER_VERSION == "{engine}":$', src, re.MULTILINE)
-                        is not None, f"orchestrator_v3.py has a {engine} branch")
+    passed &= check(re.search(r'^elif SCANNER_VERSION == "v7":$', src, re.MULTILINE) is not None
+                    and re.search(r'^elif SCANNER_VERSION in \("pt1", "pt1-pss"\):$', src,
+                                  re.MULTILINE) is not None,
+                    "orchestrator_v3.py has a v7 branch and one pt1 branch for pt1 and pt1-pss")
     passed &= check(re.search(r'^    import prime_sieve_v7_4 as prime_sieve_module', src,
                               re.MULTILINE) is not None, "orchestrator_v3.py: v7 runs v7.4")
     import generation_stop
@@ -116,6 +117,10 @@ def check_mirrors():
                     and eo.VERIFY_PASS_NUMBERS_ENV == run_verify.PASS_NUMBERS_ENV
                     and d["pt1_verify"] == 0 and eo.CHECKBOX_KNOBS == {"pt1_verify"},
                     "pt1 verification: env names match run_verify.py, off by default, a checkbox")
+    passed &= check(generation_stop.scanner_script("pt1-pss") == "prime_sieve_pt1.py",
+                    "the save-point stop knows pt1-pss's scanner script")
+    passed &= check(eo.engine_knob_keys("pt1-pss") == ("pt1_b", "pt1_chunk_kb"),
+                    "pt1-pss shares pt1's B and chunk knobs and has no verification switch")
     passed &= check(eo.engine_knob_keys("pt1") == ("pt1_b", "pt1_chunk_kb", "pt1_verify")
                     and eo.engine_knob_keys("v5") == ("v5_segment_kb", "v5_region_kb",
                                                       "v5_bucket_mb", "v5_windows_at_25",
@@ -241,6 +246,10 @@ def check_caps_and_recommend():
     passed &= check(eo.recommend(64 * GB, pt1, 29, W).windows == cap
                     and eo.recommend(GB // 2, pt1, 29, W).windows == cap,
                     "pt1 recommendation is not RAM-capped")
+    pss = eo.resolve({"engine": "pt1-pss"})
+    passed &= check(eo.max_windows_per_run("pt1-pss") == cap
+                    and eo.recommend(GB // 2, pss, 33, W).windows == cap,
+                    "pt1-pss: pt1's cap, not RAM-capped")
     passed &= check(eo.recommend(64 * GB, v5, None, W).windows == run_budget.BASE_WINDOWS,
                     "unknown floor -> base target")
     for engine, floor in (("v5", 25), ("v5", 27), ("v6", 27), ("v4.1", 25)):
@@ -316,6 +325,11 @@ def check_env():
     passed &= check(env == [("PRIMEATLAS_SCANNER_VERSION", "pt1"), ("PRIMEATLAS_PT1_B", "7000"),
                             ("PRIMEATLAS_PT1_CHUNK_KB", "4096"), ("PRIMEATLAS_PT1_VERIFY", "0")],
                     f"pt1 env carries B, chunk and the verification switch ({env})")
+    pss_env = eo.launch_env(eo.resolve({"engine": "pt1-pss", "pt1_b": "7000", "pt1_verify": "1"}),
+                            verify=("pt1", 0))
+    passed &= check(pss_env == [("PRIMEATLAS_SCANNER_VERSION", "pt1-pss"),
+                                ("PRIMEATLAS_PT1_B", "7000"), ("PRIMEATLAS_PT1_CHUNK_KB", "4096")],
+                    f"pt1-pss env carries B and chunk, never a verification ({pss_env})")
     import run_verify
     for raw, want in (("1", True), ("0", False), ("", False)):
         on = eo.launch_env(eo.resolve({"engine": "pt1", "pt1_verify": raw}))

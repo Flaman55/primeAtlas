@@ -43,6 +43,7 @@ KIND_DP = "D/P"
 PROVEN_FILENAME = "DP_PROVEN.txt"
 
 ENGINE_PT1 = "pt1"
+ENGINE_PT1_PSS = "pt1-pss"  # pt1 with the proof in the same pass: writes D only
 
 _OFFSET_RE = re.compile(r"_off_(\d+)(M|k)?(?:_P)?\.bin$")
 

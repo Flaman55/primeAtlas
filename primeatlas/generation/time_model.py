@@ -4,7 +4,7 @@ per run) and the floor set the prep cost, the speed and the total time.
 A run of span S numbers ending at `top` at floor f costs
     prep  = k(f) * pi(L)      sieve = m(f) * S      write = w(f) * S (when files are written)
 where L is the largest sieving prime the engine needs (prep_limit(): isqrt(top) for v4.1
-and v5, the B bound for pt1). prep is the per-run fixed cost F (iterating every sieving
+and v5, the B bound for pt1, raised for pt1-pss's proof). prep is the per-run fixed cost F (iterating every sieving
 prime up to L and its phase), so a wider run amortizes it and a floor up multiplies it by
 about 3; m is the marking cost per number, which grows with the floor (bucketed hits of
 large primes); w is the write cost per number.
@@ -31,8 +31,10 @@ import itertools
 import math
 from collections import namedtuple
 
+import pt1_plan
+
 from ..research.pi_approx_window import riemann_r
-from .run_budget import ENGINE_PT1
+from .run_budget import ENGINE_PT1, ENGINE_PT1_PSS
 from .window_planning import QUICK_GEN_MAX_WINDOW_WIDTH
 
 WINDOW_WIDTH = QUICK_GEN_MAX_WINDOW_WIDTH
@@ -89,9 +91,11 @@ def prime_count(x):
 
 def prep_limit(engine, top, pt1_b=0):
     """Largest sieving prime bound of a run ending at `top`: isqrt(top) for v4.1, v5 and v6;
-    for pt1 the B knob, or floor(top^(1/4)) when the knob is 0."""
-    if engine == ENGINE_PT1:
-        return pt1_b if pt1_b > 0 else math.isqrt(math.isqrt(top))
+    for pt1 the B knob, or floor(top^(1/4)) when the knob is 0; for pt1-pss that B raised to
+    the smallest bound its proof accepts (pt1_plan.proof_b())."""
+    if engine in (ENGINE_PT1, ENGINE_PT1_PSS):
+        b = pt1_b if pt1_b > 0 else math.isqrt(math.isqrt(top))
+        return pt1_plan.proof_b(b, top) if engine == ENGINE_PT1_PSS else b
     return math.isqrt(top)
 
 

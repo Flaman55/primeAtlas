@@ -4,7 +4,8 @@ A. The table PSS[] (parsed from the header, runs anywhere): every entry's hex wo
    decimal comment; L_p = 1 (mod 8), not a square, a quadratic residue modulo every odd prime
    <= p; the primes are the primes 2..373 in order and the values never decrease; where the
    value changes from L_p to the next entry, L_p is a non-residue modulo the next prime (so it
-   could not stay); every entry below 10^7 is the smallest such number (brute force).
+   could not stay); every entry below 10^7 is the smallest such number (brute force);
+   pt1_plan.PSS_L_373 (the Python side's copy for pt1-pss) equals the last entry.
 B. is_square() and is_cube() (engine_pt_core.h, WSL: compiled into a small driver with gcc):
    k^2 and k^3 are found, k^2 +- 1 and k^3 +- 1 are not, for small k, random k and the largest
    k with k^2 resp. k^3 below 2^127.
@@ -91,6 +92,9 @@ def table_case():
              if smallest_pseudosquare([q for q in primes[1:] if q <= p], v) != v]
     passed &= check(len(small) > 10 and not wrong,
                     f"A: the {len(small)} entries below 10^7 are minimal {wrong}")
+    sys.path.insert(0, SIEVE_DIR)
+    import pt1_plan
+    passed &= check(pt1_plan.PSS_L_373 == rows[-1][1], "A: pt1_plan.PSS_L_373 equals L_373")
     return passed
 
 

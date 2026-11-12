@@ -114,7 +114,15 @@ proven list is compared with the BPSW list window by window:
 | equal | the window goes to the D store | its tag in `DP_PROVEN.txt` (D/P: also counts as present in P) |
 | different | stays in the P store | `DP_MISMATCH.txt` with the first differing number; never resolved automatically |
 
-Two ways to run it:
+Engine pt1-pss runs the same proof in the scan itself (`prime_sieve_pt1.py` with
+`PRIMEATLAS_SCANNER_VERSION=pt1-pss`): a window from `MR_DET_BOUND` on is decided by
+`pt1_verify_odd()` instead of BPSW, every window goes to the D store and nothing is listed or
+verified afterwards. B is raised to `pt1_verify.bound()` (`pt1_plan.proof_b()` on the GUI side,
+for the time model), which passes `MAX_B` past about 1.8e34: floors 35..37 are refused. The
+benchmark row's engine is `pt1-pss`, so the time model calibrates it apart from pt1
+(`test_engine_pt1_pss`).
+
+Two ways to verify pt1's P windows:
 
 - `PRIMEATLAS_PT1_VERIFY=1` (the pt1 checkbox "Verify P -> D after the run"): once a pt1 run
   that writes its windows has finished, `orchestrator_v3.verify_run()` starts the store
@@ -395,7 +403,7 @@ hit pages ([data.md](../data.md)).
 `test_engine_v7_2_identity`, `test_work_plan_v7_2`, `test_engine_v7_4_identity`,
 `test_jump_gaps_certificate`, `test_jump_gear_bounds`, `test_engine_v5_2_identity`,
 `test_parallel_window_writer`, `test_wheel30_layout`, `test_wheel30_writer`, `test_work_plan_v6`,
-`test_engine_pt1`, `test_engine_pt1_verify`, `test_engine_pt_pss`, `test_engine_v73_verify`, `test_work_plan_v5`, `test_overlap_pipeline`, `test_orchestrator_stop`,
+`test_engine_pt1`, `test_engine_pt1_pss`, `test_engine_pt1_verify`, `test_engine_pt_pss`, `test_engine_v73_verify`, `test_work_plan_v5`, `test_overlap_pipeline`, `test_orchestrator_stop`,
 `test_hybrid_*`, `test_cudasieve_integration`, `test_hit_paging`, `test_floor_meta_store`,
 `test_benchmark_log_schema`, `test_print_benchmark_summary`, `test_primesieve_benchmark_row`,
 `test_primesieve_native`, `test_pseudosquares_native`, `test_pseudosquares_install`,

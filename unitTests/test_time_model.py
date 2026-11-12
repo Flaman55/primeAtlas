@@ -30,6 +30,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "prime_sieve"))
 
+import pt1_plan  # noqa: E402
 from primeatlas.generation import time_model as tm  # noqa: E402
 from primeatlas.generation.window_planning import QUICK_GEN_MAX_WINDOW_WIDTH  # noqa: E402
 from benchmark_log_schema import BENCHMARK_FIELDNAMES  # noqa: E402
@@ -95,6 +96,16 @@ def check_prep_limit():
     root4 = tm.prep_limit("pt1", top)
     passed &= check(root4 ** 4 <= top < (root4 + 1) ** 4, "pt1 default limit = 4th root of top")
     passed &= check(tm.prep_limit("pt1", top, pt1_b=1000) == 1000, "pt1 B knob wins when set")
+    passed &= check(tm.prep_limit("pt1-pss", top) == root4, "pt1-pss default limit = 4th root")
+    l373 = pt1_plan.PSS_L_373
+    for floor in (33, 34):
+        top = 10 ** floor + 10 ** 9
+        want = top // l373 + 1
+        passed &= check(tm.prep_limit("pt1-pss", top) == want
+                        and tm.prep_limit("pt1-pss", top, pt1_b=1000) == want,
+                        f"pt1-pss floor {floor}: B raised to {want:,} for the proof")
+        passed &= check(tm.prep_limit("pt1-pss", top, pt1_b=pt1_plan.MAX_B) == pt1_plan.MAX_B,
+                        f"pt1-pss floor {floor}: a larger B knob wins")
     return passed
 
 

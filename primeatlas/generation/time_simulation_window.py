@@ -190,7 +190,7 @@ class TimeSimulationWindow(tk.Toplevel):
     def _calibration(self, engine):
         if engine not in self._calibrations:
             self._calibrations[engine] = time_model.calibrate(
-                self._samples, engine, self._pt1_b() if engine == engine_options.ENGINE_PT1 else 0)
+                self._samples, engine, self._pt1_b() if engine in engine_options.PT1_ENGINES else 0)
         return self._calibrations[engine]
 
     def floor(self):
@@ -264,7 +264,7 @@ class TimeSimulationWindow(tk.Toplevel):
         T = self.T
         engine, floor, windows = self._engine(), self.floor(), self.windows()
         write_files = self._write_files()
-        pt1_b = self._pt1_b() if engine == engine_options.ENGINE_PT1 else 0
+        pt1_b = self._pt1_b() if engine in engine_options.PT1_ENGINES else 0
         cal = self._calibration(engine)
         est = time_model.estimate(cal, engine, floor, windows, write_files, pt1_b)
         below = time_model.estimate(None, engine, floor - 1, windows, write_files, pt1_b)
