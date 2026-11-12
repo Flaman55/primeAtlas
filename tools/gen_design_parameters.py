@@ -49,6 +49,7 @@ FORM_LABELS = {
         "pt1_chunk_kb": "gen.field_pt1_chunk_kb",
         "pt1_verify": "gen.field_pt1_verify",
         "ram_budget_pct": "gen.field_ram_budget_pct",
+        "advisor_bpsw_offset": "gen.field_advisor_bpsw_offset",
         "v5_preset": "gen.field_preset",
         "v6_preset": "gen.field_preset",
         "v7_preset": "gen.field_preset",
@@ -139,6 +140,8 @@ def _form_type(key, default, engine_options, generation_settings, section=None):
         highest = engine_options._MAX_VALUES.get(key)
         bounds = f"integer >= {lowest}" + (f", <= {highest:,}" if highest else "")
         return bounds, "engine_options.py"
+    if key == "advisor_bpsw_offset":
+        return "number >= 1, decimals allowed; arbitrary default", "engine_advisor.py"
     if key == "strategy":
         return "one of " + ", ".join(generation_settings._KTUPLE_STRATEGY_KEYS), "generation_settings.py"
     if isinstance(default, bool):

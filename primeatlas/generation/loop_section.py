@@ -146,6 +146,8 @@ class LoopSection:
             width_var.trace_add(
                 "write", lambda *_, var=width_var: self._engine_fields.set_windows(var.get()))
         self._engine_fields.set_windows(self._loop_vars["window_count_per_run"].get())
+        # Below every engine's knob rows (EngineFields grids up to six of them from row 7).
+        self._build_advisor_offset_field(loop_form, row=20)
 
         loop_btn_row = ttk.Frame(loop_advanced_content)
         loop_btn_row.pack(fill="x", pady=(6, 0))
@@ -379,6 +381,7 @@ class LoopSection:
         release_progress_bar(self.totals_progress, self)
         self.reload_primes_tree()
         self._reload_time_simulation_log()
+        self._reload_engine_advice_log()
         self.reload_benchmark_log()
 
         # A search-triggered "generate the missing window" run (see

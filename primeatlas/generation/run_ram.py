@@ -25,6 +25,15 @@ def budget_bytes(choice, available_ram_bytes):
     return available_ram_bytes * choice.knobs[engine_options.RAM_BUDGET_KNOB] / 100
 
 
+def fits_budget(choice, windows, window_m, available_ram_bytes):
+    """Whether one run of `windows` windows with this EngineChoice fits the RAM budget; True
+    for pt1 / pt1-pss and without a RAM reading."""
+    if not available_ram_bytes or available_ram_bytes <= 0:
+        return True
+    ram = run_ram_bytes(choice, windows, window_m)
+    return ram is None or ram <= budget_bytes(choice, available_ram_bytes)
+
+
 def max_windows_in_budget(choice_for, available_ram_bytes, cap, window_m):
     """The widest run (at most `cap` windows) whose prediction fits the budget; 0 when not even
     one window fits, None for pt1 / pt1-pss or without a RAM reading. The footprint grows with the

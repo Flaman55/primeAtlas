@@ -131,6 +131,11 @@ class EngineFields:
         of the selected engine is invalid."""
         return self.choice(windows)[0]
 
+    def choice_for_engine(self, engine, windows):
+        """The EngineChoice a run of `windows` windows would launch with if `engine` were
+        selected (an invalid knob gets its default, engine_options.resolve())."""
+        return engine_options.resolve(dict(self.settings(), engine=engine), windows)
+
     def settings(self):
         """Values to persist in the Generation settings' "loop" section."""
         values = {key: var.get().strip() for key, var in self.knob_vars.items()}
