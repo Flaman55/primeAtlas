@@ -47,13 +47,13 @@ class StoreTests(unittest.TestCase):
                         sieve_measure.WALL, cp.X_WIDTH,
                         {"run": cp.MAX, "sieve": cp.ALL, "ram": cp.MIN}, {},
                         {"run": {("secondary", "v7.1, 24 thr")}, "sieve": {("primary", "*")},
-                         "ram": set()})
+                         "ram": {("run", "v7.2, 24 thr")}})
         self.assertEqual(view_store.load(store), {
             "selection": {"engine": {"v7.1", "v7.2"}, "floor": {"29"}},
             "measure": sieve_measure.WALL, "x_mode": cp.X_WIDTH,
             "choices": {"run": cp.MAX, "sieve": cp.ALL, "ram": cp.MIN},
             "hidden": {"run": {("secondary", "v7.1, 24 thr")}, "sieve": {("primary", "*")},
-                       "ram": set()}})
+                       "ram": {("run", "v7.2, 24 thr")}}})
 
     def test_selected_saved_as_before(self):
         store = UiStateStore(None)
@@ -135,10 +135,13 @@ class TabTests(unittest.TestCase):
                 self.assertEqual(tab._hidden_lines["sieve"], set(), "all back")
             one = sorted(names)[0]
             tab._toggle_lines("sieve", [("secondary", one)])
-            self.assertIn(hide2, self.entries(tab, "sieve"), "some hidden: still Hide")
+            self.assertIn(hide2, self.entries(tab, "sieve"), "a run's line off: still Hide")
             self.entries(tab, "sieve")[hide2][0]()
             self.assertTrue(all(chart_series.is_hidden(tab._hidden_lines["sieve"], "secondary", n)
                                 for n in names), "every square hidden")
+            self.assertEqual(tab._hidden_lines["sieve"], {chart_series.axis_key("secondary"),
+                                                          ("secondary", one)},
+                             "the axis key added, the run's own memory kept")
             tab._set_filter({"floor": {"nothing"}})
             root.update()
             entries = self.entries(tab, "sieve")
@@ -169,11 +172,16 @@ class TabTests(unittest.TestCase):
             one = sorted(names)[0]
             tab._toggle_lines("sieve", [("secondary", one)])
             root.update()
-            self.assertEqual(shown(tab, "secondary"), {one}, "a marker click shows that line")
-            self.entries(tab, "sieve")[hide2][0]()
+            self.assertEqual(shown(tab, "secondary"), set(),
+                             "a marker click is the run's memory, the axis stays hidden")
+            self.assertIn(show2, self.entries(tab, "sieve"), "still reads Show")
             self.entries(tab, "sieve")[show2][0]()
             root.update()
-            self.assertEqual(shown(tab, "secondary"), names, "Show brings all back")
+            self.assertEqual(shown(tab, "secondary"), names - {one},
+                             "Show brings back what each run keeps on the axis")
+            tab._toggle_lines("sieve", [("secondary", one)])
+            root.update()
+            self.assertEqual(shown(tab, "secondary"), names)
             self.assertEqual(tab._hidden_lines["sieve"], set())
         chart_points_tests.TabTests._tab(self, TWO_LINES, body)
 

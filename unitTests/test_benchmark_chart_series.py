@@ -252,7 +252,9 @@ class PdfTests(unittest.TestCase):
 
 
 class LineToggleTests(unittest.TestCase):
-    """Each line (series x axis) of a chart can be hidden from its legend on its own."""
+    """Three memories, one key flipped per click: the chart's hidden axes (axis menu), a run
+    hidden whole (legend name) and a run's line on one axis (legend marker); a line is drawn
+    when none of them hides it."""
 
     def setUp(self):
         self.left = chart_series.engine_series({"v5": [(20, 1.0)], "v4.1": [(20, 2.0)]})
@@ -276,61 +278,73 @@ class LineToggleTests(unittest.TestCase):
                          ["unknown", "v5"])
         self.assertEqual(chart_series.visible_series(self.left, None, "primary"), self.left)
 
-    def test_toggle_hides_all_or_shows_all(self):
-        both = [chart_series.line_key("primary", "v5"), chart_series.line_key("secondary", "v5")]
-        hidden = chart_series.toggle_lines(set(), both[:1])
-        self.assertEqual(hidden, set(both[:1]))
-        # A name click with one line hidden hides the other one too, then shows both.
-        hidden = chart_series.toggle_lines(hidden, both)
-        self.assertEqual(hidden, set(both))
-        self.assertEqual(chart_series.toggle_lines(hidden, both), set())
-        self.assertEqual(chart_series.toggle_lines(set(both), both[1:]), set(both[:1]))
+    def shown(self, hidden, axis, series=None):
+        series = series if series is not None else (self.left if axis == "primary"
+                                                    else self.right)
+        return [s.name for s in chart_series.visible_series(series, hidden, axis)]
 
-    def test_axis_hide_covers_lines_drawn_later(self):
-        key = chart_series.line_key
-        drawn = {key("secondary", s.name) for s in self.right}
-        later = self.right + chart_series.engine_series({"v7.2": [(20, 5.0)]})
-        hidden = chart_series.toggle_axis(set(), "secondary", drawn)
-        self.assertEqual(chart_series.visible_series(later, hidden, "secondary"), [],
-                         "a line of a new run stays hidden with its axis")
-        self.assertTrue(chart_series.is_hidden(hidden, "secondary", "v7.2"))
-        self.assertEqual(chart_series.visible_series(self.left, hidden, "primary"), self.left,
-                         "the other axis keeps its lines")
-        # There and back, twice, lands on nothing hidden.
+    def test_each_click_flips_one_key_of_one_memory(self):
+        key, run, axis = chart_series.line_key, chart_series.run_key, chart_series.axis_key
+        for k in (key("primary", "v5"), run("v5"), axis("secondary")):
+            once = chart_series.toggle_keys(set(), [k])
+            self.assertEqual(once, {k})
+            for _round in range(2):  # there and back, twice
+                self.assertEqual(chart_series.toggle_keys(once, [k]), set())
+        self.assertTrue(chart_series.is_hidden({run("v5")}, "secondary", "v5"))
+        self.assertTrue(chart_series.is_hidden({axis("secondary")}, "secondary", "v5"))
+        self.assertTrue(chart_series.is_hidden({key("secondary", "v5")}, "secondary", "v5"))
+        self.assertFalse(chart_series.is_hidden({key("secondary", "v5")}, "primary", "v5"))
+        self.assertFalse(chart_series.is_hidden({run("v4.1"), axis("primary")}, "secondary",
+                                                "v5"))
+
+    def test_run_comes_back_with_the_axes_it_had(self):
+        key, run = chart_series.line_key, chart_series.run_key
+        hidden = {key("secondary", "v5")}           # v5 shown on the left axis only
         for _round in range(2):
-            shown = chart_series.toggle_axis(hidden, "secondary", drawn)
-            self.assertEqual(shown, set())
-            hidden = chart_series.toggle_axis(shown, "secondary", drawn)
-        # With one line hidden by its marker, the axis toggle hides the rest, new ones too.
-        some = chart_series.toggle_axis({key("secondary", "v5")}, "secondary", drawn)
-        self.assertEqual(chart_series.visible_series(later, some, "secondary"), [])
-        self.assertEqual(chart_series.toggle_axis(some, "secondary", drawn), set())
-        # An axis without lines: hiding still covers what comes later.
-        empty = chart_series.toggle_axis(set(), "primary", set())
-        self.assertEqual(chart_series.visible_series(self.left, empty, "primary"), [])
+            off = chart_series.toggle_keys(hidden, [run("v5")])
+            self.assertEqual(self.shown(off, "primary"), ["v4.1"])
+            self.assertEqual(self.shown(off, "secondary"), ["unknown"])
+            hidden = chart_series.toggle_keys(off, [run("v5")])
+            self.assertEqual(self.shown(hidden, "primary"), ["v4.1", "v5"])
+            self.assertEqual(self.shown(hidden, "secondary"), ["unknown"],
+                             "the right line the run had off stays off")
+        # A marker clicked while the run is off changes the run's memory only.
+        off = chart_series.toggle_keys(chart_series.toggle_keys(hidden, [run("v5")]),
+                                       [key("secondary", "v5")])
+        self.assertEqual(self.shown(off, "secondary"), ["unknown"])
+        back = chart_series.toggle_keys(off, [run("v5")])
+        self.assertEqual(self.shown(back, "secondary"), ["unknown", "v5"])
 
-    def test_marker_click_on_a_hidden_axis_shows_that_line_only(self):
-        key = chart_series.line_key
-        drawn = {key("secondary", s.name) for s in self.right}
-        axis_lines = {"secondary": drawn, "primary": {key("primary", s.name) for s in self.left}}
-        hidden = chart_series.toggle_axis(set(), "secondary", drawn)
-        shown_one = chart_series.toggle_lines(hidden, [key("secondary", "v5")], axis_lines)
+    def test_hidden_axis_stays_hidden_through_run_and_marker_clicks(self):
+        key, run, axis = chart_series.line_key, chart_series.run_key, chart_series.axis_key
         later = self.right + chart_series.engine_series({"v7.2": [(20, 5.0)]})
-        self.assertEqual([s.name for s in
-                          chart_series.visible_series(later, shown_one, "secondary")],
-                         ["v5", "v7.2"], "the clicked line back, the axis no longer hidden whole")
-        # A click on the other axis leaves the hidden axis as it is.
-        other = chart_series.toggle_lines(hidden, [key("primary", "v4.1")], axis_lines)
-        self.assertEqual(chart_series.visible_series(later, other, "secondary"), [])
-        # A name click: hides the shown line, then shows both, the rest of the axis hidden.
-        both = [key("primary", "v5"), key("secondary", "v5")]
-        hidden_both = chart_series.toggle_lines(hidden, both, axis_lines)
-        self.assertTrue(all(chart_series.is_hidden(hidden_both, a, n) for a, n in both))
-        back = chart_series.toggle_lines(hidden_both, both, axis_lines)
-        self.assertEqual([s.name for s in chart_series.visible_series(self.left, back, "primary")],
-                         ["v4.1", "v5"])
-        self.assertEqual([s.name for s in chart_series.visible_series(self.right, back,
-                                                                      "secondary")], ["v5"])
+        hidden = {axis("secondary")}
+        for _round in range(2):
+            off = chart_series.toggle_keys(hidden, [run("v5")])
+            self.assertEqual(self.shown(off, "primary"), ["v4.1"])
+            hidden = chart_series.toggle_keys(off, [run("v5")])
+            self.assertEqual(self.shown(hidden, "primary"), ["v4.1", "v5"])
+            self.assertEqual(self.shown(hidden, "secondary", later), [],
+                             "the axis stays hidden, a line drawn later included")
+        # A marker click on the hidden axis is remembered by the run, shown with the axis.
+        marked = chart_series.toggle_keys(hidden, [key("secondary", "v5")])
+        self.assertEqual(self.shown(marked, "secondary", later), [])
+        shown = chart_series.toggle_keys(marked, [axis("secondary")])
+        self.assertEqual(self.shown(shown, "secondary", later), ["unknown", "v7.2"])
+        self.assertEqual(self.shown(chart_series.toggle_keys(hidden, [axis("secondary")]),
+                                    "secondary", later), ["unknown", "v5", "v7.2"])
+        # The axis toggle leaves the other axis and every run's memory as they are.
+        self.assertEqual(self.shown(hidden, "primary"), ["v4.1", "v5"])
+
+    def test_legend_marker_shows_the_run_memory_and_whether_the_line_is_drawn(self):
+        key, run, axis = chart_series.line_key, chart_series.run_key, chart_series.axis_key
+        state = chart_series.marker_state
+        self.assertEqual(state(set(), "secondary", "v5"), (True, True))
+        self.assertEqual(state({key("secondary", "v5")}, "secondary", "v5"), (False, False))
+        self.assertEqual(state({axis("secondary")}, "secondary", "v5"), (True, False))
+        self.assertEqual(state({run("v5")}, "primary", "v5"), (True, False))
+        self.assertEqual(state({run("v5"), key("primary", "v5")}, "primary", "v5"),
+                         (False, False))
 
     def test_report_leaves_out_hidden_lines(self):
         rows = ROWS
@@ -687,7 +701,12 @@ class TabTests(unittest.TestCase):
                 hint = [chart2.itemcget(i, "text") for i in chart2.find_all()
                         if chart2.type(i) == "text"]
                 self.assertIn(Translator("en").t("bench.all_lines_hidden"), hint)
+                # The name flips the run only: off and on again, its markers still off.
                 click(chart2, "legend:name:v5")
+                click(chart2, "legend:name:v5")
+                self.assertEqual(v5_hover(chart2), [])
+                click(chart2, "legend:primary:v5")
+                click(chart2, "legend:secondary:v5")
                 self.assertEqual(len(v5_hover(chart2)), 4)
                 self.assertEqual(len([p for p in captured[str(tab.benchmark_chart)]
                                       if p[4].endswith("[v5] @ 10^2")]), 3)

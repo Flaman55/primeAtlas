@@ -41,8 +41,9 @@ from .benchmark import (
 )
 from ..core.i18n import Translator, DEFAULT_LANGUAGE
 from .chart_series import (
-    axis_pins, clear_pins, clip_polyline, in_view, is_hidden, legend_entries, line_key,
-    pin_bound, plain_series, point_label, series_xs, toggle_lines, visible_series, y_scale,
+    axis_pins, clear_pins, clip_polyline, in_view, legend_entries, line_key, marker_state,
+    pin_bound, plain_series, point_label, run_key, series_xs, toggle_keys, visible_series,
+    y_scale,
 )
 from . import chart_points, chart_view
 from .benchmark_chart_windows import BenchmarkChartWindows
@@ -75,36 +76,38 @@ def _legend_tag(kind, name):
 
 def _draw_legend(canvas, entries, hidden, on_toggle, x, bg_color, dim_color):
     """One entry per series along the top edge: a marker per line (circle: left axis,
-    square: right axis) and the name. With on_toggle, a marker click toggles its line and a
-    name click all lines of the series: on_toggle([line_key, ...]). A hidden line's marker
-    is a hollow dim outline; a name whose lines are all hidden is dim. canvas.legend_series
-    maps each item's tag to its Series for the right-click (_bind_pin_menu)."""
+    square: right axis) and the name. With on_toggle, a marker click flips that run's line
+    on its axis and a name click the whole run: on_toggle([key]). A marker is filled while
+    the run keeps its line on that axis and hollow when it does not; it is dim while the
+    line is not drawn (its axis or its run hidden). A hidden run's name is dim.
+    canvas.legend_series maps each item's tag to its Series for the right-click
+    (_bind_pin_menu)."""
     font = ("Consolas", 8, "bold")
     r, y = 4, 10
     for s, axes in entries:
-        keys = [line_key(axis, s.name) for axis in axes]
-        for axis, key in zip(axes, keys):
-            off = is_hidden(hidden, axis, s.name)
+        for axis in axes:
+            on, drawn = marker_state(hidden, axis, s.name)
             tag = _legend_tag(axis, s.name)
             canvas.legend_series[tag] = s
             # The background box widens the click target beyond the 8 px marker.
             canvas.create_rectangle(x, y - 8, x + 14, y + 8, fill=bg_color, outline="",
                                     tags=("legend", tag))
-            color = dim_color if off else s.color
-            fill = bg_color if off or s.dashed else s.color
+            color = s.color if drawn else dim_color
+            fill = color if on and not s.dashed else bg_color
             shape = canvas.create_rectangle if axis == "secondary" else canvas.create_oval
             shape(x + 7 - r, y - r, x + 7 + r, y + r, outline=color, fill=fill,
-                  width=2 if off or s.dashed else 0, tags=("legend", tag))
+                  width=0 if on and not s.dashed else 2, tags=("legend", tag))
             if on_toggle:
-                canvas.tag_bind(tag, "<Button-1>", lambda _e, k=key: on_toggle([k]))
+                canvas.tag_bind(tag, "<Button-1>",
+                                lambda _e, k=line_key(axis, s.name): on_toggle([k]))
             x += 14
         tag = _legend_tag("name", s.name)
         canvas.legend_series[tag] = s
         text_id = canvas.create_text(x + 3, y, text=s.name, anchor="w", font=font,
-                                     fill=dim_color if all(is_hidden(hidden, *k) for k in keys)
+                                     fill=dim_color if run_key(s.name) in (hidden or ())
                                      else s.color, tags=("legend", tag))
         if on_toggle:
-            canvas.tag_bind(tag, "<Button-1>", lambda _e, k=keys: on_toggle(k))
+            canvas.tag_bind(tag, "<Button-1>", lambda _e, k=run_key(s.name): on_toggle([k]))
         bbox = canvas.bbox(text_id)
         x = (bbox[2] if bbox else x + 60) + 16
     if on_toggle:
@@ -588,9 +591,8 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, Benchm
         return series
 
     def _toggle_lines(self, chart, keys):
-        """Legend click on the "run", "sieve" or "ram" chart: hides or shows those lines."""
-        self._hidden_lines[chart] = toggle_lines(self._hidden_lines[chart], keys,
-                                                 self._axis_lines(chart))
+        """Legend click on the "run", "sieve" or "ram" chart: flips those keys (chart_series)."""
+        self._hidden_lines[chart] = toggle_keys(self._hidden_lines[chart], keys)
         self._save_view()
         self._redraw_chart(chart)
 

@@ -81,13 +81,22 @@ def legend_entries(series1, series2):
             for s in legend_series(series1, series2)]
 
 
+# A chart's hidden set holds three independent memories, one key per toggle:
+#   axis_key(axis)        the chart's axis is hidden (axis menu);
+#   run_key(name)         the run is hidden whole (legend name);
+#   line_key(axis, name)  the run has no line on that axis (legend marker).
+# A line is drawn when none of its three keys is in the set.
+
+
 def line_key(axis, name):
-    """The key of one line in a chart's set of hidden lines."""
+    """The key of one run's line on one axis."""
     return (axis, name)
 
 
-# The name in a hidden-set key that stands for every line of its axis, drawn now or later.
+# The name in an axis key: every line of the axis, drawn now or later.
 AXIS_ALL = "*"
+# The axis slot of a run key.
+RUN = "run"
 
 
 def axis_key(axis):
@@ -95,13 +104,26 @@ def axis_key(axis):
     return line_key(axis, AXIS_ALL)
 
 
+def run_key(name):
+    """The key that hides every line of the run `name`."""
+    return (RUN, name)
+
+
 def is_hidden(hidden, axis, name):
-    """Whether the line `name` on `axis` is hidden: by its own key or by its axis key."""
-    return bool(hidden) and (line_key(axis, name) in hidden or axis_key(axis) in hidden)
+    """Whether the line `name` on `axis` is not drawn: by its axis, its run or its own key."""
+    return bool(hidden) and bool(
+        {line_key(axis, name), axis_key(axis), run_key(name)} & set(hidden))
+
+
+def marker_state(hidden, axis, name):
+    """(on, drawn) of a legend marker: on, the run's own memory for that axis; drawn, the
+    line is drawn (its axis and its run shown too)."""
+    on = line_key(axis, name) not in (hidden or ())
+    return on, not is_hidden(hidden, axis, name)
 
 
 def visible_series(series, hidden, axis):
-    """series without the lines in `hidden` (a set of line_key(); None for none)."""
+    """series without the lines in `hidden` (a set of keys; None for none)."""
     return [s for s in series if not is_hidden(hidden, axis, s.name)]
 
 
@@ -110,30 +132,9 @@ def hidden_names(hidden, axis, names):
     return sorted(name for name in set(names) if is_hidden(hidden, axis, name))
 
 
-def toggle_lines(hidden, keys, axis_lines=None):
-    """A new hidden set: all `keys` shown when all of them are hidden, else all hidden.
-    Showing a line of a hidden axis replaces the axis key by the keys of the axis's other
-    lines in axis_lines ({axis: set of line_key()} of the lines drawn), so only the
-    clicked lines come back."""
-    keys = set(keys)
-    if not all(is_hidden(hidden, axis, name) for axis, name in keys):
-        return set(hidden) | keys
-    result = set(hidden) - keys
-    for axis in {axis for axis, _name in keys}:
-        if axis_key(axis) in result:
-            result.discard(axis_key(axis))
-            result |= set((axis_lines or {}).get(axis, ())) - keys
-    return result
-
-
-def toggle_axis(hidden, axis, keys):
-    """A new hidden set for a one-click axis toggle; keys: the line_key() of the lines drawn
-    on `axis`. All of them hidden: the axis key and theirs go, so all are shown; else the
-    axis key is added, hiding them and any line that appears on the axis later."""
-    keys = set(keys)
-    if keys and all(is_hidden(hidden, a, name) for a, name in keys):
-        return set(hidden) - keys - {axis_key(axis)}
-    return set(hidden) | {axis_key(axis)}
+def toggle_keys(hidden, keys):
+    """A new hidden set with each of `keys` flipped; nothing else changes."""
+    return set(hidden) ^ set(keys)
 
 
 def series_xs(*series_lists):

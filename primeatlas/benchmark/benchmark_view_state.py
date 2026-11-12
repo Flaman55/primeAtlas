@@ -4,15 +4,15 @@ axis toggles of a chart's right-click menu.
 The filter, the sieve measure, the x axis, the point choices and the hidden lines are loaded
 from the remembered-fields store when the tab is built and saved at every change of them
 (view_store.py); a filter value the log no longer holds is dropped at reload. A chart's menu
-offers "Hide/Show left-axis lines (circles)" and "... right-axis lines (squares)": every line
-drawn on that axis of that chart, as its legend lists them, hidden at once (some still shown)
-or shown at once (all hidden); hiding covers a line that appears on the axis later too (a new
-run, a wider filter), a legend click on one of its lines shows that line alone. Disabled while
-the axis has no line.
+offers "Hide/Show left-axis lines (circles)" and "... right-axis lines (squares)": the chart's
+own memory of that axis, one key (chart_series.axis_key); hiding covers a line that appears on
+the axis later too (a new run, a wider filter). The runs' own memories (legend name and
+markers) stay as they are, so showing the axis brings back what each run had on it. Disabled
+while the axis has no line.
 """
 from primeatlas.core import ui_state_dynamic
 from . import view_store
-from .chart_series import is_hidden, toggle_axis
+from .chart_series import axis_key, toggle_keys
 
 AXES = ("primary", "secondary")
 
@@ -45,22 +45,16 @@ class BenchmarkViewState:
                 if tag.startswith(prefix)}
 
     def _axis_menu_entries(self, chart):
-        """[(label, command, enabled)]: hide or show every line of each axis of `chart`."""
+        """[(label, command, enabled)]: hide or show each axis of `chart`."""
         entries = []
         for axis in AXES:
-            keys = self._axis_line_keys(chart, axis)
-            hidden = self._hidden_lines[chart]
-            action = ("show" if keys and all(is_hidden(hidden, a, n) for a, n in keys)
-                      else "hide")
+            action = "show" if axis_key(axis) in self._hidden_lines[chart] else "hide"
             entries.append((self.T(f"bench.axis_lines_{action}_{axis}"),
-                            lambda a=axis, k=keys: self._toggle_axis(chart, a, k), bool(keys)))
+                            lambda a=axis: self._toggle_axis(chart, a),
+                            bool(self._axis_line_keys(chart, axis))))
         return entries
 
-    def _toggle_axis(self, chart, axis, keys):
-        self._hidden_lines[chart] = toggle_axis(self._hidden_lines[chart], axis, keys)
+    def _toggle_axis(self, chart, axis):
+        self._hidden_lines[chart] = toggle_keys(self._hidden_lines[chart], [axis_key(axis)])
         self._save_view()
         self._redraw_chart(chart)
-
-    def _axis_lines(self, chart):
-        """{axis: line keys drawn on it} of `chart`, for a legend click on a hidden axis."""
-        return {axis: self._axis_line_keys(chart, axis) for axis in AXES}
