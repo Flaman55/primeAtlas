@@ -126,6 +126,13 @@ static inline int is_square(u128 n) {
     return r * r == n;
 }
 
+static inline int is_cube(u128 n) {
+    u128 r = (u128)cbrtl((long double)n);
+    while (r * r * r > n) r--;
+    while ((r + 1) * (r + 1) * (r + 1) <= n) r++;
+    return r * r * r == n;
+}
+
 static inline int strong_lucas(const mont *m) {
     u128 n = m->n;
     long D = 5;

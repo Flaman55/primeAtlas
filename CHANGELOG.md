@@ -926,6 +926,19 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   w legendzie. Znacznik jest wypełniony, póki przebieg ma tę linię, i przygaszony, gdy linia
   nie jest rysowana.
 
+### +57 — pt1 verification: corrected pseudosquares table, squares and cubes rejected
+
+- English: Three entries of the pseudosquares table the P -> D verification uses (L_229,
+  L_353, L_359) were not quadratic residues modulo 3 and 7 and are replaced by the correct
+  values; the old ones were smaller, so every earlier verdict stays valid and the prime
+  counts are unchanged. The verification now also rejects perfect squares and cubes
+  explicitly, and a test checks every table entry against its definition.
+- Polski: Trzy wpisy tablicy pseudokwadratów używanej przez weryfikację P -> D (L_229,
+  L_353, L_359) nie były resztami kwadratowymi modulo 3 i 7; zastąpiono je poprawnymi
+  wartościami. Stare były mniejsze, więc każdy wcześniejszy werdykt pozostaje ważny,
+  a liczby pierwszych się nie zmieniają. Weryfikacja odrzuca teraz też jawnie kwadraty
+  i sześciany, a test sprawdza każdy wpis tablicy z jego definicją.
+
 ## 1.2.0 — 2026-11-01
 
 ### English

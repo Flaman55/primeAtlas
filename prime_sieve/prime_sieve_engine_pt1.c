@@ -7,8 +7,9 @@
  *     Selfridge's method A (P = 1, Q = (1 - D) / 4, first D of 5, -7, 9, ... with
  *     Jacobi(D / n) = -1); a perfect square has no such D and is rejected.
  * The verification (pt1_verify_odd) sieves a slab the same way and decides every survivor
- * with the pseudosquares proof of engine_pt_pss.h: its bitmap is proven, and equal to the
- * BPSW bitmap of the slab exactly when BPSW made no error there.
+ * with the pseudosquares proof of engine_pt_pss.h (pss_decide, squares and cubes rejected
+ * explicitly): its bitmap is proven, and equal to the BPSW bitmap of the slab exactly when
+ * BPSW made no error there.
  *
  * PRECONDITION: every number of the slab is larger than B and than 41 (373 for the
  * verification), so no sieving
@@ -24,7 +25,7 @@
 
 static int test_det(u128 n, const void *arg) { (void)arg; return is_prime_det(n); }
 static int test_bpsw(u128 n, const void *arg) { (void)arg; return is_prime_bpsw(n); }
-static int test_pss(u128 n, const void *arg) { return pss_prove(n, *(const int *)arg); }
+static int test_pss(u128 n, const void *arg) { return pss_decide(n, *(const int *)arg); }
 
 /* sieving primes 3..b (b < 2^32); NULL on allocation failure */
 void *pt1_ctx_new(u64 b) { return pt_ctx_new(b); }

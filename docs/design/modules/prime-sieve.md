@@ -102,8 +102,12 @@ pt1 tests the survivors of its partial sieve with 13 Miller-Rabin bases below `M
 window into D: the window is sieved again by the primes 3..s and every survivor is decided by
 the pseudosquares test (`engine_pt_pss.h`, Lukes-Patterson-Williams with Sorenson's sieve
 bound; table L_p up to p = 373). The test needs no prime factor of n up to s and n / s < L_373
-(about 4.2e24), so s = max(B, top / L_373) and s < 2^32: numbers below about 1.8e34. The proven
-list is compared with the BPSW list window by window:
+(about 4.2e24), so s = max(B, top / L_373) and s < 2^32: numbers below about 1.8e34. Squares
+and cubes are rejected explicitly (`pss_decide`): with every prime factor above n^(1/4) they are
+the only prime powers a survivor can be, so then the proof does not rest on Sorenson's 6.4e37
+bound for prime powers. `test_engine_pt_pss` checks every table entry against the definition
+of L_p (1 mod 8, non-square, residue modulo every odd prime <= p; minimal below 10^7). The
+proven list is compared with the BPSW list window by window:
 
 | Outcome | Store | Lists |
 |---|---|---|
@@ -391,7 +395,7 @@ hit pages ([data.md](../data.md)).
 `test_engine_v7_2_identity`, `test_work_plan_v7_2`, `test_engine_v7_4_identity`,
 `test_jump_gaps_certificate`, `test_jump_gear_bounds`, `test_engine_v5_2_identity`,
 `test_parallel_window_writer`, `test_wheel30_layout`, `test_wheel30_writer`, `test_work_plan_v6`,
-`test_engine_pt1`, `test_engine_pt1_verify`, `test_engine_v73_verify`, `test_work_plan_v5`, `test_overlap_pipeline`, `test_orchestrator_stop`,
+`test_engine_pt1`, `test_engine_pt1_verify`, `test_engine_pt_pss`, `test_engine_v73_verify`, `test_work_plan_v5`, `test_overlap_pipeline`, `test_orchestrator_stop`,
 `test_hybrid_*`, `test_cudasieve_integration`, `test_hit_paging`, `test_floor_meta_store`,
 `test_benchmark_log_schema`, `test_print_benchmark_summary`, `test_primesieve_benchmark_row`,
 `test_primesieve_native`, `test_pseudosquares_native`, `test_pseudosquares_install`,
