@@ -880,6 +880,21 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   krawędź. Kolumny tabeli przebiegów dopasowują się do wartości: nagłówek dłuższy niż
   wartości zawija się w dwa wiersze, zamiast poszerzać kolumnę.
 
+### +54 — Engines v7: the jump gear stays inside its proven range
+
+- English: The jump gear of engines v7.0, v7.1 and v7.2 is now switched on only where it is
+  proven exact: below 2^128 / 30 (about 1.13e37) and for buffers up to 2^48 numbers. Between
+  that bound and the old limit 2^126 it could miss multiples; there the classic sieve now
+  does the work. Blocks are capped at Q / 60 values of q and a block outside the gear's
+  fixed-point range is checked number by number instead of being skipped. Output at every
+  floor the app reaches is unchanged.
+- Polski: Przekładnia skoków silników v7.0, v7.1 i v7.2 włącza się teraz tylko tam, gdzie jej
+  dokładność jest udowodniona: poniżej 2^128 / 30 (około 1,13e37) i dla buforów do 2^48
+  liczb. Między tą granicą a dawnym limitem 2^126 mogła gubić wielokrotności; tam pracuje
+  teraz klasyczne sito. Bloki mają najwyżej Q / 60 wartości q, a blok poza zakresem
+  stałoprzecinkowym przekładni jest sprawdzany liczba po liczbie zamiast pomijany. Wyniki na wszystkich
+  piętrach, do których sięga aplikacja, są bez zmian.
+
 ## 1.2.0 — 2026-11-01
 
 ### English
