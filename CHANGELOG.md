@@ -910,6 +910,22 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   piętrze 25, 7 % na 27, 8 % na 28 i 9 % na 29. Wyniki są identyczne z v6.1. Wiersze
   benchmarku pokazują silnik jako v7.4; v7.2 zostaje do porównań.
 
+### +56 — Benchmark charts: axes, runs and their lines hide independently
+
+- English: Hiding lines on a chart now works in three independent layers: the chart's axes
+  (chart menu), a whole run (its name in the legend) and a run's line on one axis (its
+  marker). A line is drawn only when no layer hides it, so each layer comes back exactly as
+  it was left: a run switched off and on again shows only the axes it had, and a hidden axis
+  stays hidden whatever is clicked in the legend. A marker is filled while its run keeps
+  that line and dims while the line is not drawn.
+- Polski: Ukrywanie linii na wykresie działa teraz w trzech niezależnych warstwach: osie
+  wykresu (menu wykresu), cały przebieg (jego nazwa w legendzie) i linia przebiegu na jednej
+  osi (jej znacznik). Linia jest rysowana tylko wtedy, gdy żadna warstwa jej nie ukrywa, więc
+  każda warstwa wraca dokładnie taka, jaką zostawiono: przebieg wyłączony i włączony znów
+  pokazuje tylko te osie, które miał, a ukryta oś zostaje ukryta bez względu na kliknięcia
+  w legendzie. Znacznik jest wypełniony, póki przebieg ma tę linię, i przygaszony, gdy linia
+  nie jest rysowana.
+
 ## 1.2.0 — 2026-11-01
 
 ### English

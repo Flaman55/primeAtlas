@@ -9,11 +9,12 @@ leaves the other parts as saved. prune() drops the filter values the log no long
 (a dimension left with none is at All), so a stale value cannot empty the charts.
 No tkinter here.
 """
-from . import chart_filter, chart_points, sieve_measure
+from . import chart_filter, chart_points, chart_series, sieve_measure
 
 KEY = "benchmark.view"
 CHARTS = ("run", "sieve", "ram")
-_AXES = ("primary", "secondary")
+# The first part of a hidden-set key: an axis, or the run slot (chart_series.run_key).
+_HIDDEN_SLOTS = ("primary", "secondary", chart_series.RUN)
 
 
 def save(store, selection, measure, x_mode, choices, choices_before_select, hidden):
@@ -55,7 +56,7 @@ def _hidden(value):
         keys = value.get(chart)
         keys = keys if isinstance(keys, list) else []
         result[chart] = {(k[0], k[1]) for k in keys
-                         if isinstance(k, list) and len(k) == 2 and k[0] in _AXES
+                         if isinstance(k, list) and len(k) == 2 and k[0] in _HIDDEN_SLOTS
                          and isinstance(k[1], str)}
     return result
 

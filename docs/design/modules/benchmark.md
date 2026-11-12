@@ -110,12 +110,14 @@ it) and rings the points from that run (`selected_marks()`), since the table sit
 charts, and remembers each chart's choice from before; a right-click in the table clears the
 selection and puts every chart still on `SELECTED` back on that choice. A chart's right-click menu
 starts with its five point choices (the current one ticked, `SELECTED` only with a selected run),
-then "Hide/Show left-axis lines (circles)" and "... right-axis lines (squares)" (every line
-the legend lists on that axis, at once; a hidden axis is the key `(axis, "*")` in the chart's
-hidden set, `chart_series.axis_key()`, so a line that appears on it later, from a new run or
-a wider filter, stays hidden too, and a legend click on one of its lines shows that line
-alone), a point's pins and the resets; the Filter window sets the
-choices too. The filter, the sieve measure, the x axis, the point choices and the hidden lines are
+then "Hide/Show left-axis lines (circles)" and "... right-axis lines (squares)", a point's
+pins and the resets; the Filter window sets the choices too. A chart's hidden set holds three
+independent layers, each click flipping one key (`chart_series.toggle_keys()`): the chart's
+axes (`(axis, "*")`, `axis_key()`, from the menu; it covers a line that appears later, from a
+new run or a wider filter), a run whole (`("run", name)`, `run_key()`, the legend name) and a
+run's line on one axis (`(axis, name)`, `line_key()`, the legend marker). A line is drawn when
+no layer hides it (`is_hidden()`), so each layer comes back as it was left. A marker is
+filled while its run keeps that line and dim while the line is not drawn. The filter, the sieve measure, the x axis, the point choices and the hidden lines are
 kept across restarts as one value in the remembered-fields store (`view_store.py`; a chart on
 `SELECTED` is kept as its choice from before, the selected run is not kept; a filter value the log
 no longer holds is dropped at reload); the pins and the zoom are kept for the session. The x axis is one for all
