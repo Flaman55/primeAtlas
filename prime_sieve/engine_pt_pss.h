@@ -17,7 +17,8 @@
 #define ENGINE_PT_PSS_H
 
 /* The pseudosquares L_p (OEIS A002189) for the primes p <= 373: L_p is the smallest non-square
- * n = 1 (mod 8) that is a quadratic residue modulo every odd prime <= p. */
+ * n = 1 (mod 8) that is a quadratic residue modulo every odd prime <= p (each entry is checked
+ * against this definition in unitTests/test_engine_pt_pss.py). */
 static const struct { u32 p; u64 hi, lo; } PSS[] = {
     {2, 0x0u, 0x0000000000000011u},   /* 17 */
     {3, 0x0u, 0x0000000000000049u},   /* 73 */
@@ -68,7 +69,7 @@ static const struct { u32 p; u64 hi, lo; } PSS[] = {
     {211, 0x0u, 0x00295bca7adcc891u},   /* 11641399247947921 */
     {223, 0x0u, 0x00295bca7adcc891u},   /* 11641399247947921 */
     {227, 0x0u, 0x02a5392dfc789491u},   /* 190621428905186449 */
-    {229, 0x0u, 0x02ba9b2c41634399u},   /* 196640148121928601 */
+    {229, 0x0u, 0x02ba9b4389da2b99u},   /* 196640248121928601 */
     {233, 0x0u, 0x09e3c00e9fa45911u},   /* 712624335095093521 */
     {239, 0x0u, 0x189e0071c5a604d1u},   /* 1773855791877850321 */
     {241, 0x0u, 0x204d9b0d5d694449u},   /* 2327687064124474441 */
@@ -89,8 +90,8 @@ static const struct { u32 p; u64 hi, lo; } PSS[] = {
     {337, 0x753u, 0x641c14b397c27bf1u},   /* 34594858801670127778801 */
     {347, 0x1511u, 0x85fdf38d1fc9ce21u},   /* 99492945930479213334049 */
     {349, 0x1511u, 0x85fdf38d1fc9ce21u},   /* 99492945930479213334049 */
-    {353, 0x3e8bu, 0xaba417e222ca5091u},   /* 295363187400900310880401 */
-    {359, 0x3e8bu, 0xaba417e222ca5091u},   /* 295363187400900310880401 */
+    {353, 0x3e8bu, 0xafcde84b3b685091u},   /* 295363487400900310880401 */
+    {359, 0x3e8bu, 0xafcde84b3b685091u},   /* 295363487400900310880401 */
     {367, 0x3060cu, 0x1394318d9bee0a99u},   /* 3655334429477057460046489 */
     {373, 0x380cdu, 0x2d681a84541eaa61u},   /* 4235025223080597503519329 */
 };
@@ -165,6 +166,16 @@ static inline int pss_prove(u128 n, int n_bases) {
         if (pss_l(k) > n) return 0;
     }
     return -1;
+}
+
+/* pss_prove() as a primality decision: 1 prime, 0 composite, -1 undecided (no bases, or past
+ * the table). Squares and cubes are rejected explicitly: with every prime factor above
+ * n^(1/4) they are the only prime powers a survivor can be, so then the decision does not rest
+ * on the 6.4e37 bound for prime powers (header). */
+static inline int pss_decide(u128 n, int n_bases) {
+    if (n_bases < 1) return -1;
+    int t = pss_prove(n, n_bases);
+    return t == 1 && (is_square(n) || is_cube(n)) ? 0 : t;
 }
 
 /* Number of table bases the proof needs for numbers up to top with sieve bound s: the k + 1 of

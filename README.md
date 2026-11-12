@@ -2410,7 +2410,9 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               / strong Lucas, the chunked odd-only sieve to B with
                               a per-engine test of each survivor (threads)
   engine_pt_pss.h            the pseudosquares primality proof (Lukes-Patterson-
-                              Williams with Sorenson's bound, table L_p to p = 373)
+                              Williams with Sorenson's bound, table L_p to p = 373;
+                              squares and cubes rejected explicitly)
+                              (unitTests/test_engine_pt_pss.py)
   storage_kinds.py           the D (proven) and P (probable prime) window stores
                               of a floor: folder and file names (_P suffix), the
                               label rule (a window reaching MR_DET_BOUND is P),
