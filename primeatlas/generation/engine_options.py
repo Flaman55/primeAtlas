@@ -5,7 +5,7 @@ settings' "loop" section. They reach the WSL side as environment variables in fr
 launched command (see generation.build_wsl_logged_command()): orchestrator_v3.py reads
 PRIMEATLAS_SCANNER_VERSION, prime_sieve_v5_2.py the PRIMEATLAS_V5_* knobs through
 work_plan_v5.py, prime_sieve_v6_1.py the PRIMEATLAS_V6_* knobs through work_plan_v6.py,
-prime_sieve_v7_2.py the PRIMEATLAS_V7_* knobs through work_plan_v7_2.py, prime_sieve_pt1.py
+prime_sieve_v7_4.py the PRIMEATLAS_V7_* knobs through work_plan_v7_2.py, prime_sieve_pt1.py
 the PRIMEATLAS_PT1_* knobs through pt1_plan.py, and orchestrator_v3.py the verification
 after a pt1 run through run_verify.py (PRIMEATLAS_PT1_VERIFY, a checkbox: CHECKBOX_KNOBS hold
 0 or 1; the method and pass come from Section D, PRIMEATLAS_VERIFY_*). v5, v6 and v7 have separate knob sets: their best values differ. The same variables are the command-line interface for
@@ -31,7 +31,7 @@ ENGINE_PT1 = run_budget.ENGINE_PT1
 ENGINES = (ENGINE_V41, ENGINE_V5, ENGINE_V6, ENGINE_V7, ENGINE_PT1)
 DEFAULT_ENGINE = ENGINE_V6
 BUCKETED_ENGINES = run_budget.BUCKETED_ENGINES
-ENGINE_VERSIONS = {ENGINE_V41: "v4.1", ENGINE_V5: "v5.2", ENGINE_V6: "v6.1", ENGINE_V7: "v7.2",
+ENGINE_VERSIONS = {ENGINE_V41: "v4.1", ENGINE_V5: "v5.2", ENGINE_V6: "v6.1", ENGINE_V7: "v7.4",
                    ENGINE_PT1: "pt1.1"}
 
 SCANNER_VERSION_ENV = "PRIMEATLAS_SCANNER_VERSION"

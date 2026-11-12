@@ -2262,7 +2262,12 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
   prime_sieve_v6_1.py        default engine (code v6.1): prime_sieve_v6.py on
                               prime_sieve_engine_v6_1.so; output identical to
                               v6.0 (unitTests/test_engine_v6_1_identity.py)
-  prime_sieve_v7_2.py        engine v7 (code v7.2): prime_sieve_v7_1.py with the
+  prime_sieve_v7_4.py        engine v7 (code v7.4): prime_sieve_v7_2.py (same work
+                              plan, knobs and console lines) on
+                              prime_sieve_engine_v7_4.so; output identical to
+                              v6.1 (unitTests/test_engine_v7_4_identity.py)
+  prime_sieve_v7_2.py        engine v7.2, kept for comparison and for
+                              v73_verify: prime_sieve_v7_1.py with the
                               jump gear's block factor from the cost model
                               (work_plan_v7_2.block_factor()), on
                               prime_sieve_engine_v7_2.so; output identical to
@@ -2309,6 +2314,8 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               sieve_wheel_bucketed() with the jump gear's
                               jump_from and block factor
   engine_v7_2_lib.py         loads prime_sieve_engine_v7_2.so through
+                              engine_v7_lib.py (same signatures)
+  engine_v7_4_lib.py         loads prime_sieve_engine_v7_4.so through
                               engine_v7_lib.py (same signatures)
   work_plan_v7.py            v7's knobs (env PRIMEATLAS_V7_*: v6's five, defaults
                               equal, plus _JUMP_PCT, threshold factor K in %,
@@ -2531,6 +2538,9 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               the jump gear instead of prime by prime
   prime_sieve_engine_v7_2.c  C sieve core for prime_sieve_v7_2.py (ctypes): v7.0's,
                               with the blocks set up by jump_block_quick()
+  prime_sieve_engine_v7_4.c  C sieve core for prime_sieve_v7_4.py (ctypes): v7.2's,
+                              with each thread keeping its last three-gap steps
+                              for jump_block_reuse()
   engine_jump_gear.h         the jump gear: blocks q = Q + 30 j, first / q as a
                               64.64 line with a bounded error, the j whose one
                               multiple lands in the buffer found by a Euclid-like
@@ -2539,6 +2549,12 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               jump_block_quick() (v7.2): the same landings with
                               the search in 64-bit arithmetic and both three-gap
                               steps from one subtractive Euclid walk;
+                              jump_block_reuse() (v7.4): the previous block's
+                              steps kept when the gaps certificate
+                              (jump_gaps_certified(): 1 <= da < T, dc < T,
+                              T <= da + dc, ga dc + gc da = 2^64) holds for the
+                              new block, the walk otherwise
+                              (unitTests/test_jump_gaps_certificate.py);
                               jump_gear_from() keeps the gear inside its proven
                               range (first <= JUMP_FIRST_MAX = (2^128 - 1) / 30,
                               span <= 2^48), off beyond it
@@ -2823,6 +2839,7 @@ gcc -O3 -shared -fPIC prime_sieve_engine_v6.c -o prime_sieve_engine_v6.so -lprim
 gcc -O3 -shared -fPIC prime_sieve_engine_v6_1.c -o prime_sieve_engine_v6_1.so -lprimesieve -lstdc++ -lm
 gcc -O3 -shared -fPIC prime_sieve_engine_v7_0.c -o prime_sieve_engine_v7_0.so -lprimesieve -lstdc++ -lm
 gcc -O3 -shared -fPIC prime_sieve_engine_v7_2.c -o prime_sieve_engine_v7_2.so -lprimesieve -lstdc++ -lm
+gcc -O3 -shared -fPIC prime_sieve_engine_v7_4.c -o prime_sieve_engine_v7_4.so -lprimesieve -lstdc++ -lm
 ```
 
 Prebuilt `.so` files are included; rebuild if the WSL environment's glibc/architecture

@@ -95,16 +95,16 @@ def check_mirrors():
                     == (2048, 1024, 8192),
                     "v5.1 defaults: 2 MiB segments, 1 MiB regions, 8 GiB buckets (measured)")
     passed &= check(eo.ENGINE_VERSIONS == {"v4.1": "v4.1", "v5": "v5.2", "v6": "v6.1",
-                                           "v7": "v7.2", "pt1": "pt1.1"},
+                                           "v7": "v7.4", "pt1": "pt1.1"},
                     f"engine versions shown in the GUI ({eo.ENGINE_VERSIONS})")
     passed &= check(set(d) == set(eo.KNOB_KEYS), "DEFAULT_KNOBS covers exactly KNOB_KEYS")
     for engine in ("pt1", "v7"):
         passed &= check(re.search(rf'^elif SCANNER_VERSION == "{engine}":$', src, re.MULTILINE)
                         is not None, f"orchestrator_v3.py has a {engine} branch")
-    passed &= check(re.search(r'^    import prime_sieve_v7_2 as prime_sieve_module', src,
-                              re.MULTILINE) is not None, "orchestrator_v3.py: v7 runs v7.2")
+    passed &= check(re.search(r'^    import prime_sieve_v7_4 as prime_sieve_module', src,
+                              re.MULTILINE) is not None, "orchestrator_v3.py: v7 runs v7.4")
     import generation_stop
-    passed &= check(generation_stop.scanner_script("v7") == "prime_sieve_v7_2.py",
+    passed &= check(generation_stop.scanner_script("v7") == "prime_sieve_v7_4.py",
                     "the save-point stop knows v7's scanner script")
     passed &= check((eo.PT1_B_ENV, eo.PT1_CHUNK_KB_ENV) == (pt1_plan.B_ENV, pt1_plan.CHUNK_KB_ENV),
                     "pt1 env names match pt1_plan.py")

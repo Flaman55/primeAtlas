@@ -35,10 +35,11 @@ import window_integrity
 # write_seconds/bytes_written, see benchmark_log_schema.py). v5 = prime_sieve_v5_2.py (code
 # version v5.2: v5.1's sieve, parallel window writer), output identical to v4.1. v6 = the
 # default engine (prime_sieve_v6_1.py, code version v6.1, wheel-30 buffer), output identical
-# to v5; v6.0's prime_sieve_v6.py stays for comparison. v7 = prime_sieve_v7_2.py (code version
-# v7.2): v6.1 plus the jump gear for the deep-floor sieving primes, its threshold from a cost
-# model and its span virtual (wider than a narrow run's buffer), output identical to v6;
-# v7.0's prime_sieve_v7_0.py and v7.1's prime_sieve_v7_1.py stay for comparison. pt1 = partial sieve + primality test
+# to v5; v6.0's prime_sieve_v6.py stays for comparison. v7 = prime_sieve_v7_4.py (code version
+# v7.4): v6.1 plus the jump gear for the deep-floor sieving primes, its threshold from a cost
+# model and its span virtual (wider than a narrow run's buffer), its three-gap steps kept from
+# block to block under the gaps certificate, output identical to v6; v7.0's prime_sieve_v7_0.py,
+# v7.1's prime_sieve_v7_1.py and v7.2's prime_sieve_v7_2.py stay for comparison. pt1 = partial sieve + primality test
 # (prime_sieve_pt1.py): D windows identical to v5, BPSW windows from MR_DET_BOUND on go to
 # the P store (see storage_kinds.py).
 # PRIMEATLAS_SCANNER_VERSION, when set, overrides the default (benchmarks compare engines
@@ -56,7 +57,7 @@ elif SCANNER_VERSION == "v5":
 elif SCANNER_VERSION == "v6":
     import prime_sieve_v6_1 as prime_sieve_module  # noqa: E402
 elif SCANNER_VERSION == "v7":
-    import prime_sieve_v7_2 as prime_sieve_module  # noqa: E402
+    import prime_sieve_v7_4 as prime_sieve_module  # noqa: E402
 elif SCANNER_VERSION == "pt1":
     import prime_sieve_pt1 as prime_sieve_module  # noqa: E402
 else:

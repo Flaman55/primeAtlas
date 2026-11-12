@@ -39,7 +39,7 @@ SIEVE_DIR = v6_cases.SIEVE_DIR
 check = v6_cases.check
 U64 = ctypes.c_uint64
 
-CANDIDATE = "prime_sieve_v7_2.py"
+CANDIDATE, CANDIDATE_NAME = "prime_sieve_v7_2.py", "v7.2"
 REFERENCE_SO, CANDIDATE_SO = "prime_sieve_engine_v6_1.so", "prime_sieve_engine_v7_2.so"
 FACTORS = (0.05, 0.5, 2.0, 6.0, 20.0)
 # Gear on nearly every bucketed prime (model 1 %), block factor from a model with a = 1 and
@@ -159,7 +159,7 @@ def broken_check(ref, new):
             continue
         (_, want), (_, got) = run_pair(ref, new, case, pieces=case[0][1:])
         return check(any(w & ~g for w, g in zip(want, got)),
-                     "a v7.2 call with one jump piece dropped is reported")
+                     f"a {CANDIDATE_NAME} call with one jump piece dropped is reported")
     return check(False, "a broken-check input exists")
 
 
@@ -191,7 +191,7 @@ def main():
         ref, new = load_engines()
         passed &= broken_check(ref, new)
         passed &= compare_engine_calls(ref, new)
-    tmp = tempfile.mkdtemp(prefix="engine_v7_2_identity_")
+    tmp = tempfile.mkdtemp(prefix=f"engine_{CANDIDATE_NAME.replace('.', '_')}_identity_")
     try:
         passed &= check_console(tmp)
         for case in v6_cases.CASES:
