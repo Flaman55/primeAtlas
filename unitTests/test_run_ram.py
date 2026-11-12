@@ -47,6 +47,8 @@ def check_prediction():
                     "v4.1 prediction is the bit buffer")
     passed &= check(run_ram.run_ram_bytes(_choice_for("pt1")(1000), 1000, W) is None,
                     "pt1 has no prediction")
+    passed &= check(run_ram.run_ram_bytes(_choice_for("pt1-pss")(1000), 1000, W) is None,
+                    "pt1-pss has no prediction")
     auto = _choice_for("v6", preset="auto")
     small, large = auto(100), auto(90_000)
     passed &= check(small.knobs["v6_bucket_mb"] < large.knobs["v6_bucket_mb"]
@@ -86,6 +88,8 @@ def check_max_windows():
                     "the engine's cap bounds the result")
     passed &= check(run_ram.max_windows_in_budget(_choice_for("pt1"), 32 * GB, 100_000, W) is None,
                     "pt1 -> None (no RAM limit)")
+    passed &= check(run_ram.max_windows_in_budget(_choice_for("pt1-pss"), 32 * GB, 100_000, W)
+                    is None, "pt1-pss -> None (no RAM limit)")
     passed &= check(run_ram.max_windows_in_budget(_choice_for("v5"), None, 100_000, W) is None,
                     "unknown RAM -> None")
     return passed

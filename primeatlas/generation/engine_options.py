@@ -28,11 +28,13 @@ ENGINE_V5 = run_budget.ENGINE_V5
 ENGINE_V6 = run_budget.ENGINE_V6
 ENGINE_V7 = run_budget.ENGINE_V7
 ENGINE_PT1 = run_budget.ENGINE_PT1
-ENGINES = (ENGINE_V41, ENGINE_V5, ENGINE_V6, ENGINE_V7, ENGINE_PT1)
+ENGINE_PT1_PSS = run_budget.ENGINE_PT1_PSS
+PT1_ENGINES = run_budget.PT1_ENGINES
+ENGINES = (ENGINE_V41, ENGINE_V5, ENGINE_V6, ENGINE_V7, ENGINE_PT1, ENGINE_PT1_PSS)
 DEFAULT_ENGINE = ENGINE_V6
 BUCKETED_ENGINES = run_budget.BUCKETED_ENGINES
 ENGINE_VERSIONS = {ENGINE_V41: "v4.1", ENGINE_V5: "v5.2", ENGINE_V6: "v6.1", ENGINE_V7: "v7.4",
-                   ENGINE_PT1: "pt1.1"}
+                   ENGINE_PT1: "pt1.1", ENGINE_PT1_PSS: "pt1.1"}
 
 SCANNER_VERSION_ENV = "PRIMEATLAS_SCANNER_VERSION"
 PT1_B_ENV = "PRIMEATLAS_PT1_B"
@@ -78,6 +80,7 @@ _ENGINE_KNOBS = {
     ENGINE_V6: _bucketed_knobs(ENGINE_V6) + (RAM_BUDGET_KNOB,),
     ENGINE_V7: _bucketed_knobs(ENGINE_V7) + _V7_JUMP_KNOBS + (RAM_BUDGET_KNOB,),
     ENGINE_PT1: _PT1_KNOBS,
+    ENGINE_PT1_PSS: ("pt1_b", "pt1_chunk_kb"),   # proven in the pass: no verification switch
 }
 KNOB_KEYS = (_bucketed_knobs(ENGINE_V5) + _bucketed_knobs(ENGINE_V6)
              + _bucketed_knobs(ENGINE_V7) + _V7_JUMP_KNOBS + _PT1_KNOBS
@@ -111,7 +114,7 @@ _MAX_VALUES = {"pt1_b": PT1_MAX_B, RAM_BUDGET_KNOB: 100, **{k: 1 for k in CHECKB
 # duration.
 MAX_WINDOWS_PER_RUN = {ENGINE_V41: 1000, ENGINE_V5: 100_000, ENGINE_V6: 100_000,
                        ENGINE_V7: 100_000,
-                       ENGINE_PT1: 100_000}
+                       ENGINE_PT1: 100_000, ENGINE_PT1_PSS: 100_000}
 
 EngineChoice = namedtuple("EngineChoice", "engine knobs")
 
@@ -195,16 +198,17 @@ def bucket_knob(engine):
 def launch_env(choice, bucket_mb=None, verify=None):
     """[(name, value)] to set in front of an orchestrator launch: always the engine, plus
     the engine's own segment, region, bucket, pieces-per-thread and write-thread knobs for
-    v5, v6 and v7 (v7 also its jump gear's four), or B, the chunk size and the
-    verification switch for pt1, with the verification's (method, pass_numbers) `verify`
+    v5, v6 and v7 (v7 also its jump gear's four), or B and the chunk size for pt1 and
+    pt1-pss and the verification switch for pt1, with the verification's (method, pass_numbers) `verify`
     (Section D's choice; None: the orchestrator's default) when the switch is on.
     bucket_mb lowers the bucket knob (a RAM-reduced recommendation); it never raises it
     above the knob's value."""
     env = [(SCANNER_VERSION_ENV, choice.engine)]
-    if choice.engine == ENGINE_PT1:
+    if choice.engine in PT1_ENGINES:
         env += [(PT1_B_ENV, str(choice.knobs["pt1_b"])),
-                (PT1_CHUNK_KB_ENV, str(choice.knobs["pt1_chunk_kb"])),
-                (PT1_VERIFY_ENV, str(choice.knobs["pt1_verify"]))]
+                (PT1_CHUNK_KB_ENV, str(choice.knobs["pt1_chunk_kb"]))]
+    if choice.engine == ENGINE_PT1:
+        env += [(PT1_VERIFY_ENV, str(choice.knobs["pt1_verify"]))]
         if choice.knobs["pt1_verify"] and verify is not None:
             env += [(VERIFY_METHOD_ENV, verify[0]), (VERIFY_PASS_NUMBERS_ENV, str(verify[1]))]
     if choice.engine in BUCKETED_ENGINES:

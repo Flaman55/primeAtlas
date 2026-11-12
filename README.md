@@ -2372,8 +2372,13 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               (P window, source_primes_P/); constant throughput
                               on every floor, no run-sized buffer; floors 7..37;
                               the verification P -> D follows the run in
-                              orchestrator_v3.py (run_verify.py)
-                              (unitTests/test_engine_pt1.py)
+                              orchestrator_v3.py (run_verify.py); engine pt1-pss
+                              (PRIMEATLAS_SCANNER_VERSION=pt1-pss) decides the
+                              survivors from MR_DET_BOUND on by the pseudosquares
+                              proof in the same pass and writes every window to D;
+                              floors 7..34, B raised where the proof needs it
+                              (unitTests/test_engine_pt1.py,
+                              unitTests/test_engine_pt1_pss.py)
   pt1_lib.py                 ctypes binding of prime_sieve_engine_pt1.so and the
                               slab call shared by the scan and the verification
   pt1_verify.py              the pt1.1 proof: the sieve bound s of the
@@ -2398,7 +2403,8 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               D file or of another width skipped), the log row
   pt1_plan.py                B and chunk knobs (env PRIMEATLAS_PT1_B,
                               PRIMEATLAS_PT1_CHUNK_KB), slab grouping of
-                              same-kind windows
+                              same-kind windows, pt1-pss's B (proof_b(): top /
+                              B < L_373)
   overlap_pipeline.py        run_overlapped(): produce in the caller, consume in one
                               helper thread, consume(k) overlapping produce(k+1),
                               at most two products alive; pt1 writes slab k while

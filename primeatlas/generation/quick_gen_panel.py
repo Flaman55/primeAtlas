@@ -823,7 +823,7 @@ class QuickGenPanel:
         numbers_total = recommended * QUICK_GEN_MAX_WINDOW_WIDTH
         if width_var is not None:
             width_var.set(str(recommended))
-        if choice.engine == engine_options.ENGINE_PT1:
+        if choice.engine in engine_options.PT1_ENGINES:
             messagebox.showinfo(self.T("quick.dialog_title"), self.T(
                 "quick.auto_result_pt1", recommended=f"{recommended:,}",
                 numbers_total=f"{numbers_total:,}"))

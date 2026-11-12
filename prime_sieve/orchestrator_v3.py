@@ -41,7 +41,8 @@ import window_integrity
 # block to block under the gaps certificate, output identical to v6; v7.0's prime_sieve_v7_0.py,
 # v7.1's prime_sieve_v7_1.py and v7.2's prime_sieve_v7_2.py stay for comparison. pt1 = partial sieve + primality test
 # (prime_sieve_pt1.py): D windows identical to v5, BPSW windows from MR_DET_BOUND on go to
-# the P store (see storage_kinds.py).
+# the P store (see storage_kinds.py); pt1-pss = the same scanner with every window proven in the
+# same pass (pseudosquares proof above MR_DET_BOUND), all of them D.
 # PRIMEATLAS_SCANNER_VERSION, when set, overrides the default (benchmarks compare engines
 # without editing this file).
 SCANNER_VERSION = os.environ.get("PRIMEATLAS_SCANNER_VERSION") or "v6"
@@ -58,11 +59,11 @@ elif SCANNER_VERSION == "v6":
     import prime_sieve_v6_1 as prime_sieve_module  # noqa: E402
 elif SCANNER_VERSION == "v7":
     import prime_sieve_v7_4 as prime_sieve_module  # noqa: E402
-elif SCANNER_VERSION == "pt1":
+elif SCANNER_VERSION in ("pt1", "pt1-pss"):
     import prime_sieve_pt1 as prime_sieve_module  # noqa: E402
 else:
-    raise ValueError(f"SCANNER_VERSION must be 'v3', 'v4', 'v4.1', 'v5', 'v6', 'v7' or 'pt1', "
-                     f"got {SCANNER_VERSION!r}")
+    raise ValueError(f"SCANNER_VERSION must be 'v3', 'v4', 'v4.1', 'v5', 'v6', 'v7', 'pt1' or "
+                     f"'pt1-pss', got {SCANNER_VERSION!r}")
 # The GUI's save-point stop kills processes by this name (generation_stop.py).
 SCRIPT_NAME = generation_stop.scanner_script(SCANNER_VERSION)
 # format_offset() and read_prime_window_header() (PGS2 fast header peek) are reused here

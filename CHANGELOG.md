@@ -939,6 +939,20 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   a liczby pierwszych się nie zmieniają. Weryfikacja odrzuca teraz też jawnie kwadraty
   i sześciany, a test sprawdza każdy wpis tablicy z jego definicją.
 
+### +58 — Engine pt1-pss: pt1 with the proof in the same pass
+
+- English: New engine pt1-pss in the engine selector: the pt1 partial sieve with every
+  survivor from 3.3e24 on decided by the pseudosquares proof in the same pass instead of
+  BPSW. Every window is proven and goes straight to the D store, so no verification P -> D
+  is needed. It runs on floors 7..34 (on floors 33 and 34 B is raised to what the proof
+  needs) and costs about 9 times BPSW per survivor. The time model calibrates it separately.
+- Polski: Nowy silnik pt1-pss w wyborze silnika: sito częściowe pt1, w którym każda ocalała
+  liczba od 3,3e24 jest rozstrzygana dowodem pseudokwadratów w tym samym przebiegu zamiast
+  BPSW. Każde okno jest dowiedzione i trafia od razu do magazynu D, więc weryfikacja P -> D
+  nie jest potrzebna. Działa na piętrach 7..34 (na piętrach 33 i 34 B rośnie do wartości,
+  jakiej wymaga dowód) i kosztuje ok. 9 razy tyle co BPSW na ocalałą liczbę. Model czasu
+  kalibruje go osobno.
+
 ## 1.2.0 — 2026-11-01
 
 ### English
