@@ -43,6 +43,8 @@ DEFAULT_GENERATION_SETTINGS = {
         **{key: str(value) for key, value in engine_options.DEFAULT_KNOBS.items()},
         **{engine_presets.preset_key(e): engine_presets.DEFAULT_PRESET
            for e in engine_presets.PRESET_ENGINES},
+        # How many times faster pt1 with BPSW must be to be proposed -- engine_advisor.py.
+        engine_options.ADVISOR_OFFSET_KEY: f"{engine_options.DEFAULT_BPSW_OFFSET:g}",
     },
     "constellation": {
         "base_exponent": "",  # blank = auto (every floor with source data -- see

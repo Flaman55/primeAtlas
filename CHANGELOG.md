@@ -953,6 +953,24 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   jakiej wymaga dowód) i kosztuje ok. 9 razy tyle co BPSW na ocalałą liczbę. Model czasu
   kalibruje go osobno.
 
+### +59 — Engine proposal: Atlas suggests the engine for the floor and width
+
+- English: Quick generation and the Time simulation window now propose an engine for the run's
+  floor and width from the time model. A deterministic engine comes first; pt1 with BPSW is
+  proposed only when it is faster by the BPSW offset (advanced field, default 3x) and always
+  with a warning that its result is probable, not proven. Use applies the proposal; nothing
+  switches by itself. Engines without logged runs are estimated from measured seed values.
+  The Pseudosquares program is shown only as a guest line with its measured speed-up, never
+  as the proposal. tools/engine_advice.py prints the same proposal.
+- Polski: Szybkie generowanie i okno Symulacji czasu proponują teraz silnik dla piętra i
+  szerokości przebiegu na podstawie modelu czasu. Najpierw silnik deterministyczny; pt1 z BPSW
+  jest proponowany tylko wtedy, gdy jest szybszy o offset BPSW (pole zaawansowane, domyślnie
+  3x), i zawsze z ostrzeżeniem, że jego wynik jest prawdopodobny, a nie dowiedziony. Przycisk
+  Użyj stosuje propozycję; nic nie przełącza się samo. Silniki bez przebiegów w logu są
+  szacowane ze zmierzonych wartości startowych. Program Pseudosquares pojawia się tylko jako
+  linia gościnna ze zmierzonym przyspieszeniem, nigdy jako propozycja. tools/engine_advice.py
+  wypisuje tę samą propozycję.
+
 ## 1.2.0 — 2026-11-01
 
 ### English

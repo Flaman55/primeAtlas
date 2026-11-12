@@ -7,7 +7,9 @@ engine selector, so what the sliders set is what Generate runs. Switching the Qu
 mode reopens an open window on the new mode's pair. benchmark_log.csv is read from the
 storage folder each time the window opens and, while it is open, when a run ends. The RAM
 free in WSL is read at the same moments on a background thread (a wsl.exe call can take up
-to its timeout) and handed to the window when the thread ends.
+to its timeout) and handed to the window, and to the engine proposal
+(engine_advice_controls.py), when the thread ends. The window shows the same proposal as
+Quick-gen: it asks the tab for it (engine_advice_display) at the sliders' floor and width.
 """
 import os
 import threading
@@ -57,7 +59,10 @@ class TimeSimulationControls:
             write_files=lambda: bool(self._loop_write_files_var.get()),
             pt1_b=self._time_simulation_pt1_b,
             engine_choice=self._engine_fields.choice_for_windows,
-            budget_vars=self._time_simulation_budget_vars())
+            budget_vars=self._time_simulation_budget_vars(),
+            advice=self.engine_advice_display, use_engine=self._use_advised_engine,
+            advice_vars=(self._advice_offset_var,))
+        self._reload_engine_advice_log()
         self._read_time_simulation_ram()
         return self._time_simulation_window
 
@@ -79,8 +84,10 @@ class TimeSimulationControls:
         def deliver():
             if thread.is_alive():
                 self.after(RAM_READ_CHECK_MS, deliver)
-            elif win is self._time_simulation_window and self._time_simulation_is_open():
-                win.set_available_ram(result.get("value"))
+            else:
+                self._set_engine_advice_ram(result.get("value"))
+                if win is self._time_simulation_window and self._time_simulation_is_open():
+                    win.set_available_ram(result.get("value"))
 
         self.after(RAM_READ_CHECK_MS, deliver)
 

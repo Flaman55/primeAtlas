@@ -46,3 +46,4 @@ Generation tab, Section A: the generation pipeline run (orchestrator_loop_v2.py;
 | `v5_preset` | `auto` | one of auto, old, new, mid, custom | `engine_presets.py` | Knob profile: |
 | `v6_preset` | `auto` | one of auto, old, new, mid, custom | `engine_presets.py` | Knob profile: |
 | `v7_preset` | `auto` | one of auto, old, new, mid, custom | `engine_presets.py` | Knob profile: |
+| `advisor_bpsw_offset` | `3` | number >= 1, decimals allowed; arbitrary default | `engine_advisor.py` | BPSW offset (x): |

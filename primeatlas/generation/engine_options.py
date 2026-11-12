@@ -45,6 +45,12 @@ VERIFY_PASS_NUMBERS_ENV = "PRIMEATLAS_VERIFY_PASS_NUMBERS"
 
 RAM_BUDGET_KNOB = "ram_budget_pct"
 
+# The engine proposal (engine_advisor.py) names pt1 with BPSW only when it is at least this
+# many times faster than the fastest deterministic engine; arbitrary, a float >= 1. A form
+# field of its own, not an engine knob: no engine reads it.
+ADVISOR_OFFSET_KEY = "advisor_bpsw_offset"
+DEFAULT_BPSW_OFFSET = 3.0
+
 
 # v5.2, v6 and v7 write their windows with a thread pool (parallel_window_writer.py).
 _DEFAULT_WRITE_THREADS = 8

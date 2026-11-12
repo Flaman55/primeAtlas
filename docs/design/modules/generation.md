@@ -26,10 +26,11 @@ InfoTip anchored on the checkbox).
 | Part | Files |
 |---|---|
 | Tab | `primeatlas/generation/generation_tab.py` (`GenerationTab`, WSL runner factory) |
-| Sections (mixins) | `quick_gen_panel.py`, `quick_gen_runs.py`, `loop_section.py`, `constellation_section.py`, `ktuple_section.py`, `verify_section.py`, `run_progress.py`, `run_guard_controls.py`, `hybrid_controls.py`, `engine_fields.py`, `time_simulation_controls.py`, `pi_count_notice_controls.py` |
+| Sections (mixins) | `quick_gen_panel.py`, `quick_gen_runs.py`, `loop_section.py`, `constellation_section.py`, `ktuple_section.py`, `verify_section.py`, `run_progress.py`, `run_guard_controls.py`, `hybrid_controls.py`, `engine_fields.py`, `time_simulation_controls.py`, `engine_advice_controls.py`, `pi_count_notice_controls.py` |
 | Launching | `engine_argv.py` (argv of every script), `wsl_command.py` (wsl.exe command, logs), `logged_runners.py` (`WslLoggedRunner`, `LocalLoggedRunner`), `wsl_blocking.py`, `wsl_resources.py` |
 | Planning | `window_planning.py`, `quick_gen_plan.py`, `run_budget.py`, `engine_options.py`, `engine_presets.py`, `quick_number.py`, `verify_plan.py`, `verify_estimate.py`, `pi_count_notice.py` (whether a run counts pi(L) from zero) |
 | Time simulation | `time_model.py` (run time model calibrated from benchmark_log.csv), `run_ram.py` (predicted RAM of a run, widest run in the RAM budget), `time_simulation_window.py` (`TimeSimulationWindow`) |
+| Engine proposal | `engine_advisor.py` (options, choice, guest line), `engine_advisor_seeds.py` (seed rows), `engine_advice_text.py` (its texts), `engine_advice_view.py` (`EngineAdviceView`); `tools/engine_advice.py` prints it |
 | Following and settling | `run_output.py` (log parsing), `run_guard.py` (stop request, active-run marker, recovery), `close_guard.py` |
 | Settings | `generation_settings.py` (form defaults and persistence), `generation_console.py` (`GenerationConsole`) |
 | Offers | `generation_offer_coordinator.py` ("generate the missing fragment" for other tabs) |
@@ -176,11 +177,39 @@ budget is kept (the form runs what it holds) and the RAM line flags it; its info
 field, the recommended value (the 50 % default) and what a higher budget risks (swapping, the run
 killed out of memory, an unresponsive system).
 
+## Engine proposal
+
+Atlas proposes the engine of the run the Quick-gen Floor and Width fields describe (Floor and Explore
+modes, a line under the panel) and of the Time simulation window's sliders (the same text). Every own
+engine (`engine_options.ENGINES`) is an option with its `time_model` run time when it fits the floor
+(pt1 7..37; pt1-pss while the proof's B stays below 2^32, so up to floor 34), the width (its per-run
+cap) and the RAM budget (`run_ram.fits_budget()` with the free WSL RAM the Time simulation window
+read last; unknown: no limit). An engine with fewer than two logged rows is timed from its seed rows
+(`engine_advisor_seeds.py`: v7.2's measured prep on floors 28 and 30, pt1 and pt1-pss speeds on
+floors 25-32) and the proposal says it is an estimate; an engine with neither is left out. pt1 is
+probabilistic when the run reaches past 3.3e24 (BPSW), every other option is deterministic.
+
+The proposal is the fastest deterministic option, unless pt1 with BPSW is faster by at least the
+BPSW offset (`advisor_bpsw_offset`, a float >= 1, default 3, arbitrary; the pipeline form's advanced
+field, persisted with the form; `--offset` in `tools/engine_advice.py`) or no deterministic option
+fits. With pt1 proposed, the BPSW warning shows: no known counterexample, verified below 2^64, fine for
+informal use, not proven, so formal research takes v7, pt1-pss or a later P -> D verification. Use
+selects the proposed engine; nothing switches it otherwise.
+
+Guest tools (`engine_advisor.GUEST_ENGINES`: the Pseudosquares program in count mode) are never an
+option. One that the log calibrates (two runs measured on this machine), fits its floor range and is
+faster than the fastest deterministic option shows a line with its speed-up (both timed without
+writing) and the note that it writes no windows into the storage, while its prime count stays in
+the Benchmark tab: equal to a pt1 run's count over exactly the same range, it proves that run's P
+windows (the sieve to B <= sqrt(lo) and BPSW never reject a prime, so the P windows hold every prime
+of the range and an equal count leaves no composite). Without guests every proposal is
+the same ([ADR 0009](../../adr/0009-own-engines-guests-optional.md)).
+
 ## Parameters and texts
 
 [generation-loop](../parameters/generation-loop.md), [generation-constellation](../parameters/generation-constellation.md),
 [generation-ktuple](../parameters/generation-ktuple.md),
-[generation-verify](../parameters/generation-verify.md); texts `gen.*`, `quick.*`, `close.*`, `timesim.*`.
+[generation-verify](../parameters/generation-verify.md); texts `gen.*`, `quick.*`, `close.*`, `timesim.*`, `advisor.*`.
 
 ## Kept data
 
@@ -195,7 +224,7 @@ is copied in once), `.generation_logs/` (logs, exit codes, `ACTIVE_RUN.json`),
 `test_cross_engine_run_lock`, `test_verify_plan`, `test_gen_progress_bar_engine_gating`, `test_progress_bar_owner`,
 `test_console_controls`, `test_constellation_auto_retry`, `test_storage_fill`, `test_pi_seed_checkbox_exclusivity`,
 `test_time_model`, `test_run_ram`, `test_time_simulation`, `test_ui_state_app`, `test_pi_count_notice`,
-`test_pi_count_notice_controls`.
+`test_pi_count_notice_controls`, `test_engine_advisor`, `test_engine_advice_gui`.
 
 ## Known gaps
 
@@ -203,6 +232,9 @@ is copied in once), `.generation_logs/` (logs, exit codes, `ACTIVE_RUN.json`),
   in storage") also for Native runs, which write nothing there; Pseudosquares mode does not.
 - The RAM budget caps only the Time simulation slider: Generate does not refuse a typed width
   above it.
+- The engine proposal times every run from the floor's start (10^floor): a Quick-gen run that
+  continues higher on the floor, or one with a starting point, is proposed for the floor's start.
+  The Quick-gen line uses the free RAM the Time simulation window read last (none before it opens).
 - The run-progress ETA does not use the time model yet; the model is shown only in the Time
   simulation window.
 - The time model is linear in the span per floor: a run much shorter than the floor's measured ones

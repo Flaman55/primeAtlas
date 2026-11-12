@@ -203,6 +203,8 @@ class QuickGenPanel:
 
         ttk.Label(parent, textvariable=self.quick_hint_var, style="Hint.TLabel",
                   wraplength=900, justify="left").pack(anchor="w", padx=8, pady=(0, 4))
+        self._build_engine_advice_view(parent)
+        self._refresh_engine_advice()
 
         btn_row = ttk.Frame(parent)
         btn_row.pack(fill="x", padx=8, pady=(0, 8))

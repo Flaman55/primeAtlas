@@ -15,6 +15,11 @@ The width slider ends at the widest run that fits the pipeline form's RAM budget
 engine's cap when that is smaller, for pt1, or while the free RAM is unknown); the window
 also traces the form's budget and bucket fields, so editing them moves the cap. A width typed
 into the form above the budget is kept and flagged: the form still runs what it holds.
+
+Under the results, the engine proposal for the sliders' floor and width (advice(floor,
+windows) -> (AdviceText, engine), the Generation tab's engine_advice_controls.py, so it is
+the same proposal Quick-gen shows); its Use button calls use_engine(engine). advice_vars
+are further form vars the proposal depends on (the BPSW offset).
 """
 import math
 import tkinter as tk
@@ -23,6 +28,7 @@ from tkinter import ttk
 from primeatlas.core.info_tip import InfoTip
 
 from . import engine_options, run_budget, run_ram, time_model
+from .engine_advice_view import EngineAdviceView
 from .run_output import format_duration_short
 from .window_planning import QUICK_FLOOR_MAX, QUICK_GEN_MAX_WINDOW_WIDTH
 
@@ -71,10 +77,12 @@ class TimeSimulationWindow(tk.Toplevel):
     engine_var; width_cap() gives the engine's per-run cap, write_files() whether runs write
     files, pt1_b() the pt1 B knob (0 = automatic), engine_choice(windows) the EngineChoice a
     run of that width launches with (None while a knob is invalid); budget_vars are the
-    form's vars that change it (RAM budget, bucket memory, knob profiles)."""
+    form's vars that change it (RAM budget, bucket memory, knob profiles); advice, use_engine
+    and advice_vars feed the engine proposal (None: no proposal shown)."""
 
     def __init__(self, master, T, log_path, floor_var, width_var, engine_var, width_cap,
-                 write_files, pt1_b, engine_choice, budget_vars=()):
+                 write_files, pt1_b, engine_choice, budget_vars=(), advice=None,
+                 use_engine=None, advice_vars=()):
         super().__init__(master)
         self.T = T
         self.title(T("timesim.title"))
@@ -85,6 +93,8 @@ class TimeSimulationWindow(tk.Toplevel):
         self._write_files = write_files
         self._pt1_b = pt1_b
         self._engine_choice = engine_choice
+        self._advice = advice
+        self._use_engine = use_engine
         self.available_ram = None
         self._ram_read = False
         self._log_path = log_path
@@ -96,7 +106,8 @@ class TimeSimulationWindow(tk.Toplevel):
             "speed_net", "ram", "measured", "floor_total", "model")}
         self._build()
         self._traces = [(var, var.trace_add("write", lambda *_: self._on_form_changed()))
-                        for var in (floor_var, width_var, engine_var, *budget_vars)]
+                        for var in (floor_var, width_var, engine_var, *budget_vars,
+                                    *advice_vars)]
         self.protocol("WM_DELETE_WINDOW", self.close)
         self._on_form_changed()
 
@@ -141,6 +152,10 @@ class TimeSimulationWindow(tk.Toplevel):
         ttk.Label(body, textvariable=self.result_vars["model"], style="Hint.TLabel",
                   wraplength=560, justify="left").grid(
             row=5, column=0, columnspan=3, sticky="w", pady=(8, 0))
+        self.advice_view = None
+        if self._advice is not None:
+            self.advice_view = EngineAdviceView(body, T, self._use_engine)
+            self.advice_view.grid(row=6, column=0, columnspan=3, sticky="we", pady=(8, 0))
         body.columnconfigure(1, weight=1)
 
     def _ram_info_text(self):
@@ -293,6 +308,9 @@ class TimeSimulationWindow(tk.Toplevel):
                                runs=f"{runs:,}", numbers=f"{9 * 10 ** floor:.0e}"))
         v["ram"].set(self._ram_text(windows))
         v["measured"].set(self._measured_text(engine, floor, pt1_b))
+        if self.advice_view is not None:
+            text, proposed = self._advice(floor, windows)
+            self.advice_view.show(text, proposed, engine)
         if cal is None:
             v["model"].set(T("timesim.model_none", engine=engine))
         else:

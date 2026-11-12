@@ -1739,6 +1739,24 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               background thread when the window opens and when a run
                               ends
                               (unitTests/test_time_simulation.py)
+  engine_advisor.py             engine proposal for one run: every own engine that fits
+                              the floor, width and RAM budget, timed by time_model
+                              (seed rows until the log has two); the fastest
+                              deterministic one unless pt1 with BPSW is faster by the
+                              BPSW offset; guest tools only as a line with their
+                              measured speed-up, never the proposal
+                              (unitTests/test_engine_advisor.py)
+  engine_advisor_seeds.py       measured seed rows (v7, pt1, pt1-pss) that time an engine
+                              until the log calibrates it
+  engine_advice_text.py         texts of a proposal: engine, time and reason, the BPSW
+                              warning, the guest line
+  engine_advice_view.py         EngineAdviceView -- the proposal line, its Use button, the
+                              warning and the guest line
+  engine_advice_controls.py     GenerationTab mixin: the proposal under each Quick-gen
+                              panel copy (Floor, Explore) and in the Time simulation
+                              window from one source, the advanced form's BPSW offset
+                              field, the log reread when a run ends
+                              (unitTests/test_engine_advice_gui.py)
 
   primeatlas/visualization/     "Visualization" tab -- a container notebook with one sub-tab
                               per visualization; each sub-tab launches the shared GPU
@@ -2766,6 +2784,9 @@ tools/
                               and the visualization renderer's argparse definitions;
                               --check exits 1 when a page is stale
                               (unitTests/test_design_parameters.py)
+  engine_advice.py            prints the engine proposal for a floor and width (--offset,
+                              --write-files, --pt1-b, --log) with every option's time
+                              (unitTests/test_engine_advisor.py)
 benchmarks/                  the measurements behind BENCHMARK.md, one folder per run
   2026-10-29/                 engine v4.1 against the primesieve CLI
     bench_atlas.py            times orchestrator_v3 against the primesieve CLI per floor,

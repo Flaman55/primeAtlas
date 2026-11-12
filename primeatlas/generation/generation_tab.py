@@ -52,6 +52,7 @@ from ..core.widgets import ScrollablePage
 from .hybrid_controls import HybridControls
 from .run_guard_controls import RunGuardControls
 from .time_simulation_controls import TimeSimulationControls
+from .engine_advice_controls import EngineAdviceControls
 from .pi_count_notice_controls import PiCountNoticeControls
 from .quick_gen_panel import QuickGenPanel
 from .quick_gen_runs import QuickGenRuns
@@ -70,7 +71,8 @@ from .logged_runners import WslLoggedRunner
 class GenerationTab(QuickGenPanel, QuickGenRuns, QuickGenPseudosquares, QuickGenPlan,
                     LoopSection, ConstellationSection, KtupleSection, VerifySection,
                     GenerationRunProgress,
-                    HybridControls, RunGuardControls, TimeSimulationControls, PiCountNoticeControls,
+                    HybridControls, RunGuardControls, TimeSimulationControls, EngineAdviceControls,
+                    PiCountNoticeControls,
                     BaseTab):
     def __init__(self, parent, get_portal_folder, status_var, translator,
                  totals_progress, reload_primes_tree, reload_constellations_tree,
@@ -184,6 +186,7 @@ class GenerationTab(QuickGenPanel, QuickGenRuns, QuickGenPseudosquares, QuickGen
         self._build_constellation_section(sections)
         self._build_ktuple_section(sections)
         self._build_verify_section(sections)
+        self._start_engine_advice()
 
         self.after(150, self._poll_loop_output)
         self.after(150, self._poll_constellation_output)
