@@ -2538,7 +2538,11 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               composite q land too and change no bit;
                               jump_block_quick() (v7.2): the same landings with
                               the search in 64-bit arithmetic and both three-gap
-                              steps from one subtractive Euclid walk
+                              steps from one subtractive Euclid walk;
+                              jump_gear_from() keeps the gear inside its proven
+                              range (first <= JUMP_FIRST_MAX = (2^128 - 1) / 30,
+                              span <= 2^48), off beyond it
+                              (unitTests/test_jump_gear_bounds.py)
   prime_sieve_engine_v5.c    C sieve core for prime_sieve_v5.py (ctypes); the
                               per-prime phase first_odd mod p comes from a
                               double-precision quotient with an exact one-p

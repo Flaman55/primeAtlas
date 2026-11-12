@@ -26,6 +26,14 @@
  * every value fits 64 bits), and the two three-gap steps ga, gc from one subtractive Euclid
  * walk on the one-sided distances of B j mod 2^64 instead of two searches. Where that walk
  * cannot decide (B j = 0 mod 2^64 for a small j) it hands the block to jump_block().
+ *
+ * Proven range: jump_block() and jump_block_quick() return every landing of their block, each
+ * with its exact offset, for any J and any T they compute, when
+ *   8 <= Q,  Q + 30 J < 2^64,  first < 2^62 Q,  60 J <= Q,  1 <= span <= 2^48,
+ *   first <= JUMP_FIRST_MAX (30 first < 2^128, so f30 below does not wrap).
+ * jump_gear_from() keeps the gear off outside that range (the classic path sieves those
+ * numbers), jump_block_len() keeps 60 J <= Q, and a block with first >= 2^62 Q is checked q by
+ * q. The gear is exact for first < 2^128 / 30; beyond it it is disabled.
  * ========================================================================================== */
 #ifndef ENGINE_JUMP_GEAR_H
 #define ENGINE_JUMP_GEAR_H
@@ -35,6 +43,20 @@
 
 #define JUMP_NONE ((u128)0 - 1)
 #define JUMP_MAX_BLOCK 65536u   /* landings buffered per block; longer blocks are cut */
+#define JUMP_FIRST_MAX (((u128)0 - 1) / 30)   /* largest first with 30 first < 2^128 */
+#define JUMP_SPAN_MAX ((uint64_t)1 << 48)
+
+/* Lowest q the jump gear takes for a buffer of span numbers starting at first: jump_from
+ * raised to 2 span (one multiple at most) and first / 2^62 + 1 (64.64 fixed point).
+ * UINT64_MAX (gear off, every piece classic) when jump_from is 0, outside the proven range
+ * (first > JUMP_FIRST_MAX or span > JUMP_SPAN_MAX) or when that q does not fit 64 bits. */
+static uint64_t jump_gear_from(u128 first, uint64_t span, uint64_t jump_from) {
+    if (!jump_from || first > JUMP_FIRST_MAX || span > JUMP_SPAN_MAX) return UINT64_MAX;
+    u128 lowest = (first >> 62) + 1;
+    if ((u128)2 * span > lowest) lowest = (u128)2 * span;
+    if ((u128)jump_from > lowest) lowest = jump_from;
+    return (lowest >> 64) ? UINT64_MAX : (uint64_t)lowest;
+}
 
 /* Smallest x >= 0 with l <= (a x) mod m <= r, 0 <= l <= r < m; JUMP_NONE if none. */
 static u128 jump_first_in(u128 a, u128 m, u128 l, u128 r) {
@@ -67,12 +89,27 @@ static inline uint64_t jump_landing(u128 first, uint64_t q, uint64_t k) {
 }
 
 /* Block length for the block starting at Q: factor * Q * sqrt(span / (2 first)) / 30, at
- * least 1, at most JUMP_MAX_BLOCK and at most the j left below q_hi. */
+ * least 1, at most JUMP_MAX_BLOCK, at most Q / 60 (the proven range) and at most the j left
+ * below q_hi. The Q / 60 cap does not bind above v7.2's floor or at v7.0's default factor:
+ * with q^2 <= first and q >= 2 span (1 + f^2 / 2) (jump_from_v7_2()), or q >= 2 span at
+ * f = 0.5, f sqrt(span / (2 first)) <= 1/2, so 60 J <= Q already. */
 static inline uint64_t jump_block_len(uint64_t Q, uint64_t q_hi, double c) {
     double jd = (double)Q * c / 30.0;
     uint64_t J = jd < 1.0 ? 1 : (jd > JUMP_MAX_BLOCK ? JUMP_MAX_BLOCK : (uint64_t)jd);
+    if (J > Q / 60) J = Q / 60 ? Q / 60 : 1;
     uint64_t left = (q_hi - Q + 29) / 30;
     return J < left ? J : left;
+}
+
+/* The landings of the block's q = Q + 30 j, j0 <= j < J, found by checking every q; appended
+ * to out at n, returns the new count. */
+static uint64_t jump_block_each(u128 first, uint64_t span, uint64_t Q, uint64_t j0,
+                                uint64_t J, uint64_t *out, uint64_t n) {
+    for (uint64_t j = j0; j < J; j++) {
+        uint64_t q = Q + 30 * j, r = (uint64_t)(first % q), g = r ? q - r : 0;
+        if (g < span) out[n++] = g;
+    }
+    return n;
 }
 
 /* Offsets g < span of the landings of the block q = Q + 30 j, j < J, written to out (room
@@ -80,7 +117,8 @@ static inline uint64_t jump_block_len(uint64_t Q, uint64_t q_hi, double c) {
 static uint64_t jump_block(u128 first, uint64_t span, uint64_t Q, uint64_t J, uint64_t *out) {
     uint64_t n = 0;
     u128 K0 = first / Q, R0 = first - K0 * Q;
-    if (K0 >> 64) return 0;   /* the caller keeps Q above first / 2^63 */
+    /* Outside the 64.64 range of the proof (first >= 2^62 Q): every q is checked. */
+    if (K0 >> 62) return jump_block_each(first, span, Q, 0, J, out, 0);
     u128 X0 = (K0 << 64) | (uint64_t)((R0 << 64) / Q);
     u128 f30 = (u128)30 * first, a = f30 / Q, r1 = f30 - a * Q;
     u128 S = ((a / Q) << 64) + ((a % Q) << 64) / Q + (r1 << 64) / ((u128)Q * Q);
@@ -90,29 +128,16 @@ static uint64_t jump_block(u128 first, uint64_t span, uint64_t Q, uint64_t J, ui
     uint64_t slack = 2 * J + 8;
     double t_d = (double)span / (double)Q * 18446744073709551616.0 + e_ulp * 1.001 +
                  2.0 * slack + 1;
-    if (t_d >= 1.8e19) {
-        /* Too wide for the candidate search: every j is checked. */
-        for (uint64_t j = 0; j < J; j++) {
-            uint64_t q = Q + 30 * j;
-            uint64_t g = jump_landing(first, q, (uint64_t)(first / q));
-            if (g < span) out[n++] = g;
-        }
-        return n;
-    }
+    /* Too wide for the candidate search: every j is checked. */
+    if (t_d >= 1.8e19) return jump_block_each(first, span, Q, 0, J, out, 0);
     uint64_t T = (uint64_t)t_d;
     uint64_t A = (uint64_t)0 - (uint64_t)X0 + slack, B = (uint64_t)S;
 
     u128 j0 = jump_first_range(B, A, 0, T - 1);
     if (j0 == JUMP_NONE || j0 >= J) return 0;
     u128 ga = jump_first_range(B, B, 0, T - 1), gc = jump_first_range(B, B, -T + 1, -1);
-    if (ga == JUMP_NONE || gc == JUMP_NONE) {
-        for (uint64_t j = (uint64_t)j0; j < J; j++) {
-            uint64_t q = Q + 30 * j;
-            uint64_t g = jump_landing(first, q, (uint64_t)(first / q));
-            if (g < span) out[n++] = g;
-        }
-        return n;
-    }
+    if (ga == JUMP_NONE || gc == JUMP_NONE)
+        return jump_block_each(first, span, Q, (uint64_t)j0, J, out, 0);
     ga += 1;
     gc += 1;
     uint64_t alpha = B * (uint64_t)ga, beta = (uint64_t)0 - B * (uint64_t)gc;
@@ -205,7 +230,8 @@ static uint64_t jump_block_quick(u128 first, uint64_t span, uint64_t Q, uint64_t
                                  uint64_t *out) {
     uint64_t n = 0;
     u128 K0 = first / Q, R0 = first - K0 * Q;
-    if (K0 >> 64) return 0;   /* the caller keeps Q above first / 2^63 */
+    /* Outside the 64.64 range of the proof (first >= 2^62 Q): every q is checked. */
+    if (K0 >> 62) return jump_block_each(first, span, Q, 0, J, out, 0);
     u128 X0 = (K0 << 64) | (uint64_t)((R0 << 64) / Q);
     u128 f30 = (u128)30 * first, a = f30 / Q, r1 = f30 - a * Q;
     u128 S = ((a / Q) << 64) + ((a % Q) << 64) / Q + (r1 << 64) / ((u128)Q * Q);

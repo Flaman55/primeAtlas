@@ -226,8 +226,14 @@ in the run instead of where each p lands:
 - the first such j comes from a Euclid-like search, the next ones from the three-gap theorem
   (consecutive solutions differ by one of three fixed steps); each candidate is checked exactly
   with one multiply and at most two corrections, no division;
-- the gear is used only where it is exact: q >= 2 * span (one multiple at most) and
-  first / q < 2^62.
+- the gear is used only where it is exact (`jump_gear_from()`): q >= 2 * span (one multiple
+  at most), first / q < 2^62, span <= 2^48 and first <= `JUMP_FIRST_MAX` = (2^128 - 1) / 30
+  (30 * first must fit u128). Inside that range every landing of a block is found with its
+  exact offset for any block length J with 60 * J <= Q (`jump_block_len()` caps J there; at
+  v7.2's floor 2 * span * (1 + f^2 / 2) and at v7.0's factor 0.5 the cap never binds) and
+  for any T the engine computes. The gear is exact for first < 2^128 / 30; beyond it it is
+  disabled and the classic path sieves those numbers. A block with first >= 2^62 * Q is
+  checked q by q (`test_jump_gear_bounds`).
 
 A classic prime costs one phase whether it hits or not; a jump costs per landing candidate,
 about span / q per q (block setup included). The two meet at a q proportional to span * ln q,

@@ -573,15 +573,9 @@ int sieve_wheel_bucketed(const uint64_t *piece_lo, const uint64_t *piece_hi, uin
     phase_init(&sh.phase, ((u128)base_hi << 64) | (u128)base_lo);
     sh.n_bits = n_bits;
     sh.span = 30 * ((n_bits + 7) >> 3);
-    /* The gear needs q >= 2 span (one multiple at most) and first / q < 2^62 (64.64 fixed
-     * point); below that, and with jump_from = 0, every piece is classic. */
-    sh.jump_from = UINT64_MAX;
-    if (jump_from && !(sh.phase.first >> 126)) {
-        u128 lowest = (sh.phase.first >> 62) + 1;
-        if ((u128)2 * sh.span > lowest) lowest = (u128)2 * sh.span;
-        if ((u128)jump_from > lowest) lowest = jump_from;
-        if (!(lowest >> 64)) sh.jump_from = (uint64_t)lowest;
-    }
+    /* Pieces below the gear's lowest q, and every piece outside its proven range or with
+     * jump_from = 0, are classic (jump_gear_from()). */
+    sh.jump_from = jump_gear_from(sh.phase.first, sh.span, jump_from);
     sh.jump_c = (block_factor > 0 ? block_factor : 0.5) *
                 sqrt((double)sh.span / (2.0 * (double)sh.phase.first));
     sh.shift = 6;
