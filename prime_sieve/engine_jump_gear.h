@@ -225,9 +225,47 @@ static int jump_gaps(uint64_t B, uint64_t T, uint64_t *ga, uint64_t *gc) {
     return 1;
 }
 
-/* jump_block() with the cheaper setup (header); the same landings in the same order. */
-static uint64_t jump_block_quick(u128 first, uint64_t span, uint64_t Q, uint64_t J,
-                                 uint64_t *out) {
+/* 1 when (ga, gc) are the least three-gap steps for (B, T), by the gaps certificate: with
+ * da = B ga mod 2^64 and dc = 2^64 - (B gc mod 2^64), 1 <= da < T, dc < T, T <= da + dc and
+ * ga dc + gc da = 2^64 (the invariants jump_gaps() ends with) make (ga, da), (gc, -dc) a
+ * basis of the lattice r = B g mod 2^64 that no smaller step below T fits into. dc = 0 here
+ * stands for 2^64 and fails T <= da + dc. Each product is checked against 2^64 on its own,
+ * so their sum cannot wrap u128. */
+static inline int jump_gaps_certified(uint64_t B, uint64_t T, uint64_t ga, uint64_t gc) {
+    const u128 M = (u128)1 << 64;
+    uint64_t da = B * ga, dc = 0 - B * gc;
+    if (da == 0 || da >= T || dc >= T || (u128)da + dc < T) return 0;
+    u128 pa = (u128)ga * dc, pc = (u128)gc * da;
+    return pa <= M && pc <= M && pa + pc == M;
+}
+
+/* The three-gap steps kept from block to block of one walk (engine v7.4): ga = 0 means none;
+ * kept and walked count the setups that kept the pair and that walked jump_gaps(). */
+typedef struct {
+    uint64_t ga, gc;
+    uint64_t kept, walked;
+} jump_gaps_cache;
+
+/* jump_gaps() that first tries the cached pair; 0 when neither gives the steps. */
+static inline int jump_gaps_reuse(uint64_t B, uint64_t T, jump_gaps_cache *cache,
+                                  uint64_t *ga, uint64_t *gc) {
+    if (cache->ga && jump_gaps_certified(B, T, cache->ga, cache->gc)) {
+        cache->kept++;
+        *ga = cache->ga;
+        *gc = cache->gc;
+        return 1;
+    }
+    cache->walked++;
+    if (!jump_gaps(B, T, ga, gc)) return 0;
+    cache->ga = *ga;
+    cache->gc = *gc;
+    return 1;
+}
+
+/* jump_block_quick() and jump_block_reuse(): one body, cache = NULL walks jump_gaps() on
+ * every block (inlined per caller, so the NULL test folds away). */
+static inline uint64_t jump_block_steps(u128 first, uint64_t span, uint64_t Q, uint64_t J,
+                                        uint64_t *out, jump_gaps_cache *cache) {
     uint64_t n = 0;
     u128 K0 = first / Q, R0 = first - K0 * Q;
     /* Outside the 64.64 range of the proof (first >= 2^62 Q): every q is checked. */
@@ -246,7 +284,8 @@ static uint64_t jump_block_quick(u128 first, uint64_t span, uint64_t Q, uint64_t
     uint64_t A = (uint64_t)0 - (uint64_t)X0 + slack, B = (uint64_t)S;
     uint64_t j = jump_first_range64(B, A, 0, T - 1), ga, gc;
     if (j == JUMP_NONE64 || j >= J) return 0;
-    if (!jump_gaps(B, T, &ga, &gc)) return jump_block(first, span, Q, J, out);
+    if (!(cache ? jump_gaps_reuse(B, T, cache, &ga, &gc) : jump_gaps(B, T, &ga, &gc)))
+        return jump_block(first, span, Q, J, out);
     uint64_t alpha = B * ga, beta = (uint64_t)0 - B * gc, v = A + B * j;
     for (;;) {
         uint64_t q = Q + 30 * j;
@@ -266,6 +305,20 @@ static uint64_t jump_block_quick(u128 first, uint64_t span, uint64_t Q, uint64_t
         if (j >= J) break;
     }
     return n;
+}
+
+/* jump_block() with the cheaper setup (header); the same landings in the same order. */
+static uint64_t jump_block_quick(u128 first, uint64_t span, uint64_t Q, uint64_t J,
+                                 uint64_t *out) {
+    return jump_block_steps(first, span, Q, J, out, NULL);
+}
+
+/* jump_block_quick() that keeps the previous block's three-gap steps while the gaps
+ * certificate (jump_gaps_certified()) proves them least, so most blocks skip the walk;
+ * the same landings in the same order. */
+static uint64_t jump_block_reuse(u128 first, uint64_t span, uint64_t Q, uint64_t J,
+                                 uint64_t *out, jump_gaps_cache *cache) {
+    return jump_block_steps(first, span, Q, J, out, cache);
 }
 
 #endif

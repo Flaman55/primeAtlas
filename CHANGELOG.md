@@ -895,6 +895,21 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   stałoprzecinkowym przekładni jest sprawdzany liczba po liczbie zamiast pomijany. Wyniki na wszystkich
   piętrach, do których sięga aplikacja, są bez zmian.
 
+### +55 — Engine v7.4: the jump gear reuses its three-gap steps
+
+- English: The Generation tab's v7 engine is now code v7.4. Each thread keeps the jump gear's
+  three-gap steps from its last block and reuses them when an exact certificate shows they
+  still hold, which is the case for about 57 % of the blocks; otherwise it computes them as
+  before. With 1e10 numbers and 24 threads, sieving is 4 % faster at floor 25, 7 % at
+  floor 27, 8 % at floor 28 and 9 % at floor 29. Output is identical to v6.1. Benchmark rows
+  show the engine as v7.4; v7.2 stays available for comparison.
+- Polski: Silnik v7 w karcie Generowanie to teraz kod v7.4. Każdy wątek zachowuje kroki
+  trzech odstępów przekładni skoków z poprzedniego bloku i używa ich ponownie, gdy dokładny
+  certyfikat pokazuje, że nadal obowiązują. Dzieje się tak w około 57 % bloków, w pozostałych
+  kroki liczone są jak dotąd. Przy 1e10 liczb i 24 wątkach sito jest szybsze o 4 % na
+  piętrze 25, 7 % na 27, 8 % na 28 i 9 % na 29. Wyniki są identyczne z v6.1. Wiersze
+  benchmarku pokazują silnik jako v7.4; v7.2 zostaje do porównań.
+
 ## 1.2.0 — 2026-11-01
 
 ### English
