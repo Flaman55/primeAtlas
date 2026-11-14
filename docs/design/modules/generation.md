@@ -10,7 +10,7 @@ Section D takes a floor and a window width as power-of-ten spinboxes; its Window
 recounted from the floor's P store (`storage_kinds.p_windows_on_grid()`, the list the script
 proves) whenever the floor or the width changes and after a run, so it starts at "all" and a
 smaller value proves only the first windows. Threads: Auto = the pipeline form's workers (what
-pt1 sieves with), Max = WSL's CPU count (probed at Run), or a number.
+pt1 sieves with; its Max probed as below), Max = WSL's CPU count (probed at Run), or a number.
 
 Section D's Method and Pass also serve the pipeline form's pt1 checkbox "Verify P -> D after the
 run": one choice, two places. The checkbox's hint (`EngineFields.knob_hint_vars`) names the
@@ -144,7 +144,11 @@ with its Auto button, batches per worker), Counting pi(L_final) (the two checkbo
 wrapped at the form's width) and Sieve engine (`EngineFields`: engine, profile, knobs, then the
 BPSW offset). Each group has its own grid of at most two label/field pairs per row, so the form
 fits a Full HD screen at 150 % scaling (a 1280 px wide window for the DPI-unaware Tk). A fresh
-install starts with one parallel instance, one batch per worker and engine v7.
+install starts with one parallel instance, one batch per worker and engine v7. Workers takes a
+number or Max (the default): every CPU WSL reports (`nproc`), probed at each launch
+(`wsl_resources.resolve_workers()`, capped at 256) and remembered as Max, so the form follows the
+machine it runs on. A pipeline run whose probe fails stops with a message; a Quick-gen run and a
+Restore fall back to one worker; the Auto button still writes the probed number into the field.
 
 ## Remembered fields
 

@@ -13,7 +13,7 @@ Generation tab, Section A: the generation pipeline run (orchestrator_loop_v2.py;
 | `compute_sieving_primes_count` | off | on / off | `generation_settings.py` | Count pi(L_final) from scratch -- compute_sieving_primes_count (slower) |
 | `use_known_pi_seed` | off | on / off | `generation_settings.py` | Count pi(L_final), seeded with a known value from Wikipedia on a floor's first count (source: en.wikipedia.org/wiki/Prime-counting_function) -- mutually exclusive with the checkbox above |
 | `window_count_per_run` | `1000` | integer | `generation_settings.py` | Windows / iteration (window_count_per_run): |
-| `workers` | `24` | integer | `generation_settings.py` | Workers / instance (workers): |
+| `workers` | `Max` | integer | `generation_settings.py` | Workers / instance (workers): |
 | `batches_per_worker` | `1` | integer | `generation_settings.py` | Batches / worker (batches_per_worker): |
 | `window_m` | `10000000` | integer | `generation_settings.py` | Window width (window_m): |
 | `engine` | `v7` | one of v4.1, v5, v6, v7, pt1, pt1-pss | `engine_options.py` | Sieve engine: |

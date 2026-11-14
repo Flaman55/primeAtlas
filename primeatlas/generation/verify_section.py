@@ -35,7 +35,7 @@ from .generation_console import GenerationConsole
 from .generation_settings import remember_generation_field, save_generation_settings
 from .quick_gen_panel import _floor_spinbox
 from .wsl_command import build_wsl_logged_command, generation_log_paths
-from .wsl_resources import estimate_wsl_available_cpu_count
+from . import wsl_resources
 
 VERIFY_SCRIPT_PATTERNS = run_verify.SCRIPTS
 # A slab of the default size takes about a minute of proofs on floor 29 (arbitrary margin).
@@ -250,11 +250,12 @@ class VerifySection:
         if max_windows is None:
             return self._verify_error("max_windows")
         threads_text = self._verify_vars["threads"].get()
-        cpu_count = (estimate_wsl_available_cpu_count()
+        workers_text = self._loop_vars["workers"].get()
+        auto = threads_text.strip().lower() == verify_plan.THREADS_AUTO.lower()
+        cpu_count = (wsl_resources.estimate_wsl_available_cpu_count()
                      if threads_text.strip().lower() == verify_plan.THREADS_MAX.lower()
-                     else None)
-        threads = verify_plan.resolve_threads(threads_text,
-                                              self._loop_vars["workers"].get(), cpu_count)
+                     or auto and wsl_resources.wants_cpu_count(workers_text) else None)
+        threads = verify_plan.resolve_threads(threads_text, workers_text, cpu_count)
         if threads is None:
             return self._verify_error("threads")
         values = {"base_exponent": floor, "window_m": 10 ** width_exp,

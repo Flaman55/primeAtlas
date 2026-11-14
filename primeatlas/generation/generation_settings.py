@@ -13,14 +13,15 @@ reset_checkpoint is never stored: a checkpoint reset applies to the run it is ti
 import json
 import os
 
-from . import engine_options, engine_presets
+from . import engine_options, engine_presets, wsl_resources
 
 
 GENERATION_SETTINGS_FILENAME = ".portal_generation_settings.json"
 
-# window_count_per_run and workers mirror orchestrator_loop_v2.py's own module-level defaults
-# (WINDOW_COUNT_PER_RUN=1000, WORKERS=24); n_instances and batches_per_worker start at 1, the
-# safe choice on any machine, below the scripts' 2. Duplicated here (not imported) rather than importing
+# window_count_per_run mirrors orchestrator_loop_v2.py's own module-level default
+# (WINDOW_COUNT_PER_RUN=1000); n_instances and batches_per_worker start at 1, the safe choice
+# on any machine, below the scripts' 2; workers starts at Max, every CPU WSL sees, resolved at
+# each launch (wsl_resources.resolve_workers), where the scripts default to 24. Duplicated here (not imported) rather than importing
 # orchestrator_loop_v2 directly, because that module requires WSL/ctypes to actually RUN
 # (prime_sieve_v3.py, three hops down its import chain, ctypes-loads a Linux .so) -- this
 # native-Windows tkinter app must never gain that dependency just to read a constant. If
@@ -34,7 +35,7 @@ DEFAULT_GENERATION_SETTINGS = {
         "compute_sieving_primes_count": False,
         "use_known_pi_seed": False,
         "window_count_per_run": "1000",
-        "workers": "24",
+        "workers": wsl_resources.WORKERS_MAX,
         "batches_per_worker": "1",
         "window_m": "10000000",  # mirrors orchestrator_loop_helpers.py's own
                                   # WINDOW_M -- see build_loop_argv()'s docstring for the

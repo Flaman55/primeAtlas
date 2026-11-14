@@ -17,7 +17,7 @@ from ..core.wrapped_check import wrapped_checkbutton
 from ..core.storage import bump_floor_total, load_totals_cache, save_totals_cache
 from ..benchmark.benchmark import read_benchmark_log
 from .generation_console import GenerationConsole
-from . import engine_options, time_model
+from . import engine_options, time_model, wsl_resources
 from .engine_fields import EngineFields
 from .engine_argv import build_loop_argv
 from primeatlas.core import ui_state_dynamic
@@ -233,8 +233,18 @@ class LoopSection:
         # mean anything).
         zero_allowed_fields = {"base_exponent"}
         int_fields = ("base_exponent", "run_count", "n_instances", "window_count_per_run",
-                      "workers", "batches_per_worker", "window_m")
+                      "batches_per_worker", "window_m")
         parsed = {}
+        workers_text = self._loop_vars["workers"].get().strip()
+        cpu_count = (wsl_resources.estimate_wsl_available_cpu_count()
+                     if wsl_resources.wants_cpu_count(workers_text) else None)
+        parsed["workers"] = wsl_resources.resolve_workers(workers_text, cpu_count)
+        if parsed["workers"] is None:
+            messagebox.showerror(self.T("gen.dialog_title"), self.T(
+                "gen.error_cpu_probe_failed" if wsl_resources.wants_cpu_count(workers_text)
+                else "gen.error_field_int", field="workers"))
+            return None
+        parsed["workers_text"] = workers_text
         for key in int_fields:
             raw = self._loop_vars[key].get().strip()
             minimum = 0 if key in zero_allowed_fields else 1
@@ -286,7 +296,7 @@ class LoopSection:
                 "compute_sieving_primes_count": parsed["compute_sieving_primes_count"],
                 "use_known_pi_seed": parsed["use_known_pi_seed"],
                 "window_count_per_run": str(parsed["window_count_per_run"]),
-                "workers": str(parsed["workers"]),
+                "workers": parsed["workers_text"],
                 "batches_per_worker": str(parsed["batches_per_worker"]),
                 "window_m": str(parsed["window_m"]),
                 **self._engine_fields.settings(),

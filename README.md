@@ -1677,8 +1677,10 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               blocking, run_primecount_install_wsl_blocking,
                               run_pseudosquares_status_wsl_blocking,
                               run_pseudosquares_tools_install_wsl_blocking)
-  wsl_resources.py              WSL RAM/CPU probes and the window/worker Auto
-                              recommendations
+  wsl_resources.py              WSL RAM/CPU probes, the window/worker Auto
+                              recommendations and the workers field as a count
+                              (a number, or Max = WSL's CPUs probed at launch)
+                              (unitTests/test_pipeline_form_layout.py)
   run_output.py                 regexes for the engines' progress lines and the short
                               ETA duration format
   close_guard.py                closing the main window while a Generation-tab job

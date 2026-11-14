@@ -17,8 +17,10 @@ import run_verify
 import storage_kinds
 import store_verify
 
+from . import wsl_resources
+
 THREADS_AUTO = "Auto"
-THREADS_MAX = "Max"
+THREADS_MAX = wsl_resources.WORKERS_MAX
 THREADS_CAP = 256
 THREAD_CHOICES = [THREADS_AUTO, THREADS_MAX] + [str(n) for n in range(1, THREADS_CAP + 1)]
 WIDTH_EXP_MIN = 1
@@ -65,11 +67,12 @@ def max_windows_arg(text, total):
 
 def resolve_threads(text, form_workers, wsl_cpu_count):
     """The thread count of the Threads field: Auto -> form_workers (the pipeline form's
-    workers field as typed), Max -> wsl_cpu_count (None when the probe failed), else a
+    workers field, its Max resolved by wsl_cpu_count), Max -> wsl_cpu_count (None when the probe failed), else a
     whole number in [1, THREADS_CAP]. None when it cannot be resolved."""
     text = (text or "").strip()
     if text.lower() == THREADS_AUTO.lower():
-        return parse_int(form_workers, 1)
+        workers = wsl_resources.resolve_workers(form_workers, wsl_cpu_count)
+        return min(workers, THREADS_CAP) if workers else None
     if text.lower() == THREADS_MAX.lower():
         return min(wsl_cpu_count, THREADS_CAP) if wsl_cpu_count else None
     count = parse_int(text, 1)
