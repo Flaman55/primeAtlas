@@ -33,6 +33,21 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   nie porównuje już zakresu z zapisanymi oknami (przebieg natywny nic tam nie zapisuje):
   puste Od zaczyna od początku piętra, jak w trybie Pseudosquares.
 
+### +2 — Generation: running time and ETA of a run from the time model
+
+- English: While a pipeline run or a Quick-gen run is generating, the status line ends with
+  its running time and the estimated time left, refreshed every second. The estimate starts
+  from the time model (the same calibration as the engine proposal) at launch, so it shows
+  before the first progress line, and covers every iteration of a pipeline loop; once a tenth
+  of the modelled work is reported, it follows the run's measured pace. Without a calibration
+  for the engine only the running time shows.
+- Polski: Podczas generowania przebiegiem potoku albo Szybkiego generowania linia statusu
+  kończy się czasem trwania i szacowanym czasem do końca, odświeżanymi co sekundę. Szacunek
+  startuje z modelu czasu (ta sama kalibracja co propozycja silnika) w chwili uruchomienia, więc
+  widać go przed pierwszą linią postępu, i obejmuje wszystkie iteracje pętli potoku; gdy
+  zgłoszona jest jedna dziesiąta modelowanej pracy, idzie za zmierzonym tempem przebiegu. Bez
+  kalibracji silnika widać tylko czas trwania.
+
 ## 1.4.0 — 2026-11-14
 
 ### +1 — Research → Irreducibility: radices, comparison, comb reading, ranges, arithmetic

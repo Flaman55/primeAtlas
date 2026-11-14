@@ -728,6 +728,7 @@
   "gen.confirm_ram_over_budget": "One run needs about {ram} GB of RAM, more than the RAM budget of {budget} GB ({pct} % of the {free} GB free in WSL). WSL may run out of memory and the run, or the system, may stop. A smaller Width fits; the budget is the {field} field of the advanced form.\n\nRun it anyway?",
   "gen.dialog_title": "Generation",
   "gen.status_progress_prep": "[*] Generating: base sieve prep (pi(L_final)) done, starting sieve...",
+  "gen.status_progress_started": "[*] Generating: starting...",
   "gen.status_progress_sieve": "[*] Generating: sieve {percent}% ({done}/{total} batches)",
   "gen.status_progress_const": "[*] Constellation search: file {done}/{total}",
   "gen.status_progress_const_batch": "[*] Constellation search: file {done}/{total} (batch {batch_num}/{batch_count})",

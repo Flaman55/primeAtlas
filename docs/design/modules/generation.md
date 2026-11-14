@@ -31,7 +31,7 @@ InfoTip anchored on the checkbox).
 | Planning | `window_planning.py`, `quick_gen_plan.py`, `run_budget.py`, `engine_options.py`, `engine_presets.py`, `quick_number.py`, `verify_plan.py`, `verify_estimate.py`, `pi_count_notice.py` (whether a run counts pi(L) from zero) |
 | Time simulation | `time_model.py` (run time model calibrated from benchmark_log.csv), `run_ram.py` (predicted RAM of a run, widest run in the RAM budget), `time_simulation_window.py` (`TimeSimulationWindow`) |
 | Engine proposal | `engine_advisor.py` (options, choice, guest line), `engine_advisor_seeds.py` (seed rows), `engine_advice_text.py` (its texts), `engine_advice_view.py` (`EngineAdviceView`); `tools/engine_advice.py` prints it |
-| Following and settling | `run_output.py` (log parsing), `run_guard.py` (stop request, active-run marker, recovery), `close_guard.py` |
+| Following and settling | `run_output.py` (log parsing), `run_eta.py` (a running run's remaining time from the time model), `run_guard.py` (stop request, active-run marker, recovery), `close_guard.py` |
 | Settings | `generation_settings.py` (form defaults and persistence), `generation_console.py` (`GenerationConsole`) |
 | Offers | `generation_offer_coordinator.py` ("generate the missing fragment" for other tabs) |
 
@@ -46,6 +46,22 @@ tests (`test_engine_options`). Log lines are parsed by their stable prefixes (`[
 `[KTUPLE SIEVE v2]`, `[+] Progress:`). The shared bar fills a run's sieve steps to the progress
 line's own percent, not to its job count: v7 weights the percent by estimated cost, the other
 engines print done / total.
+
+While a pipeline run or a Quick-gen run launched directly (`orchestrator_v3.py`) is running, the
+status text ends with its running time and ETA (`| running: 1m05s, ETA: 4m10s`). At launch the
+tab models the run with `time_model.estimate()` from the engine's calibration (the same as the
+engine proposal's, seed rows included): one run from the run's start for Quick-gen, one run of
+the form's windows per iteration for the pipeline, the first where the orchestrator continues the
+floor and each next one `n_instances` x windows further. `run_eta.RunEta` advances the model by
+the progress lines (a progress line counts its iteration's prep plus the line's percent of its
+sieve and write; an iteration's done line counts it whole). Until the reported work reaches 10 % of the model
+(`TRUST_SHARE`, arbitrary) the ETA is the model counting down by the clock (or by the progress
+when the run is ahead of it); from then on the modelled rest is scaled by the run's measured
+pace against the model. The clock refreshes the text about once a second from the output poll,
+but only while the status still shows what the run last wrote, so a search or totals message is
+not overwritten. Without a calibration (or on floors 0-6) only the running time shows; Hybrid,
+primesieve, CUDASieve and Pseudosquares runs show neither, and the constellation search keeps
+its own measured ETA.
 
 ## Knob profiles
 
@@ -240,7 +256,7 @@ is copied in once), `.generation_logs/` (logs, exit codes, `ACTIVE_RUN.json`),
 `test_console_controls`, `test_constellation_auto_retry`, `test_storage_fill`, `test_pi_seed_checkbox_exclusivity`,
 `test_time_model`, `test_run_ram`, `test_time_simulation`, `test_ui_state_app`, `test_pi_count_notice`,
 `test_pi_count_notice_controls`, `test_engine_advisor`, `test_engine_advice_gui`, `test_native_plan`,
-`test_primesieve_native_controls`, `test_generation_ram_guard`.
+`test_primesieve_native_controls`, `test_generation_ram_guard`, `test_run_eta`.
 
 ## Known gaps
 
@@ -248,8 +264,9 @@ is copied in once), `.generation_logs/` (logs, exit codes, `ACTIVE_RUN.json`),
   Quick-gen proposal line follows the run's real start.
 - Exploration mode's proposal is for the floor in its Floor field; a run that moves on to the
   next floor is proposed for the first one.
-- The run-progress ETA does not use the time model yet; the model is shown only in the Time
-  simulation window.
+- The run ETA models a pipeline iteration's parallel instances as one run; the measured pace
+  corrects it once 10 % of the model is reported. The pipeline's start is the selected engine's
+  store continuation, which the orchestrator also uses.
 - The time model is linear in the span per floor: a run much shorter than the floor's measured ones
   (process start-up dominates) or one whose buffer outgrows the caches deviates; the worst error
   is shown in the window. Several parallel instances (`n_instances`) are not modelled.
