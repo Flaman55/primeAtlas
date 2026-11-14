@@ -9,6 +9,30 @@ correction is a new entry. The app shows release, merge count and commit, e.g.
 `1.2.0+24 (f59ce41)`, because Settings → Updates moves every copy along `main` between
 releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA.B.C`.
 
+## Since 1.4.0
+
+### +1 — Generation: RAM check on Generate, proposal from the run's start, native primesieve without storage
+
+- English: Generate now checks a run's predicted RAM against the RAM budget: a pipeline run, or
+  a Quick-gen run launched directly, over the budget (parallel instances counted) asks whether
+  to run anyway and names the predicted GB, the budget and the free RAM; No launches nothing.
+  The free RAM in WSL is read when the Generation tab opens and after every run, so the check
+  and the engine proposal no longer wait for the Time simulation window. The Quick-gen engine
+  proposal times the run from where Generate starts it (the typed starting point, or where the
+  floor's stored windows end) instead of the floor's start. primesieve mode with Native on no
+  longer compares the range with the stored windows (a native run writes nothing there): a
+  blank From starts at the floor's start, as in Pseudosquares mode.
+- Polski: Generuj sprawdza teraz przewidywany RAM przebiegu względem budżetu RAM-u: przebieg
+  potoku albo przebieg Szybkiego generowania uruchamiany bezpośrednio, który przekracza budżet
+  (z liczbą równoległych instancji), pyta, czy uruchomić mimo to, i podaje przewidywane GB,
+  budżet i wolny RAM; Nie niczego nie uruchamia. Wolny RAM w WSL jest odczytywany przy
+  otwarciu zakładki Generowanie i po każdym przebiegu, więc sprawdzenie i propozycja silnika
+  nie czekają już na okno Symulacji czasu. Propozycja silnika w Szybkim generowaniu liczy
+  przebieg od miejsca, w którym Generuj go zaczyna (wpisany punkt startowy albo koniec
+  zapisanych okien piętra), a nie od początku piętra. Tryb primesieve z zaznaczonym Natywnie
+  nie porównuje już zakresu z zapisanymi oknami (przebieg natywny nic tam nie zapisuje):
+  puste Od zaczyna od początku piętra, jak w trybie Pseudosquares.
+
 ## 1.4.0 — 2026-11-14
 
 ### +1 — Research → Irreducibility: radices, comparison, comb reading, ranges, arithmetic

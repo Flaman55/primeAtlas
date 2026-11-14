@@ -265,6 +265,9 @@ class LoopSection:
         parsed = self._collect_loop_settings_from_form()
         if parsed is None:
             return
+        if not self.confirm_ram_budget(parsed["engine_choice"], parsed["window_count_per_run"],
+                                       parsed["window_m"], parsed["n_instances"]):
+            return
 
         try:
             self._generation_settings["loop"] = {

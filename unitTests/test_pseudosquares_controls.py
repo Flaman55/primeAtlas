@@ -34,8 +34,8 @@ KEYS = ("quick.mode_pseudosquares", "quick.hint_pseudosquares", "quick.field_thr
         "quick.info_pseudosquares", "quick.pseudosquares_mode_print",
         "quick.pseudosquares_mode_count", "quick.attribution_pseudosquares",
         "quick.summary_pseudosquares", "quick.note_pseudosquares_clamped",
-        "quick.error_pseudosquares_from_required", "quick.error_pseudosquares_range_negative",
-        "quick.error_pseudosquares_beyond_ceiling", "quick.error_pseudosquares_width_invalid",
+        "quick.error_native_from_required", "quick.error_native_range_negative",
+        "quick.error_pseudosquares_beyond_ceiling", "quick.error_native_width_invalid",
         "quick.error_pseudosquares_threads")
 
 

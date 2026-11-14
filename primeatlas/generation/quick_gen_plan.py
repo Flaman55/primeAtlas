@@ -10,6 +10,7 @@ and its other mixins set up, so it is never instantiated on its own.
 from tkinter import messagebox
 
 from ..core.storage import digit_count_floor, LOW_FLOOR_CUTOFF
+from . import native_plan
 from .quick_number import _eval_quick_number
 from .window_planning import (QUICK_GEN_MAX_WINDOW_WIDTH, count_existing_windows,
                               find_continuation_target_idx, find_highest_populated_floor,
@@ -18,6 +19,34 @@ from .window_planning import (QUICK_GEN_MAX_WINDOW_WIDTH, count_existing_windows
 
 
 class QuickGenPlan:
+    def _on_quick_generate_primesieve_native(self):
+        """primesieve mode with Native on: the program writes nothing into the storage, so the
+        run is planned like Pseudosquares' (native_plan.plan, primesieve's stop) and never
+        compared with the windows already stored; a blank From starts at the Floor's start
+        and stays blank."""
+        raw_from = self.quick_primesieve_from_var.get().strip()
+        start = _eval_quick_number(raw_from) if raw_from else None
+        if raw_from and start is None:
+            start = 0  # not a number: refused as below 1
+        raw_floor = self.quick_primesieve_floor_var.get().strip()
+        floor = _eval_quick_number(raw_floor) if raw_floor else None
+        width = _eval_quick_number(self.quick_primesieve_width_var.get())
+        result = native_plan.plan(start, floor, width, QUICK_GEN_MAX_WINDOW_WIDTH,
+                                  PRIMESIEVE_MAX_STOP)
+        if "error" in result:
+            key = ("quick.error_primesieve_beyond_ceiling" if result["error"] == "beyond_ceiling"
+                   else f"quick.error_native_{result['error']}")
+            messagebox.showerror(self.T("quick.dialog_title"),
+                                 self.T(key, max_stop=f"{PRIMESIEVE_MAX_STOP:,}"))
+            return
+        self.quick_status_var.set(self.T(
+            "quick.summary_primesieve_native", mode=self.quick_primesieve_native_mode_var.get(),
+            floor=result["floor"], lo=f"{result['lo']:,}", hi=f"{result['hi']:,}",
+            count=result["count"])
+            + (self.T("quick.note_primesieve_native_clamped") if result["clamped"] else ""))
+        self._apply_primesieve_params_and_run(
+            result["floor"], result["target_idx_start"], result["count"])
+
     def _quick_gen_plan_literal_range(self, start, end, max_window_count=None):
         """Shared by Range mode and Floor mode WITH a starting point set (see
         _on_quick_generate_clicked): given a literal [start, end) target, rounds it
@@ -430,6 +459,8 @@ class QuickGenPlan:
             self._prepare_hybrid(start, end, main_cap, filter_prime_count)
         elif mode == "pseudosquares":
             self._on_quick_generate_pseudosquares()  # quick_gen_pseudosquares.py
+        elif mode == "primesieve" and self.quick_primesieve_native_var.get():
+            self._on_quick_generate_primesieve_native()
         elif mode == "primesieve":
             # mode == "primesieve": From + Width (NOT From/To -- see
             # _build_quick_mode_primesieve's docstring for why) determine the literal

@@ -73,11 +73,14 @@ wrapper `prime_sieve_primesieve.py` (Atlas windows into storage; the info tip na
 overhead in its time). On, a print/count list becomes usable and Generate runs
 `primesieve_native.py` with that mode; while native primesieve mode is selected the Benchmark
 checkbox is disabled and shows checked: a native run measures the program in its own format,
-so count and print are both benchmark runs (`benchmark_log_schema.NATIVE_ENGINES`).
+so count and print are both benchmark runs (`benchmark_log_schema.NATIVE_ENGINES`). A native run
+writes nothing into the storage, so it is planned like Pseudosquares' (`native_plan.py` with
+primesieve's stop, 2^64 - 1) and never compared with the stored windows: a blank From starts at
+the Floor's start and stays blank.
 
 Pseudosquares mode (`quick_gen_pseudosquares.py`) is always native: Floor / From / Width,
 count or print, and Threads (Auto or a number, usable for count only; print runs on one
-thread). `pseudosquares_plan.py` turns the fields into one run without reading the storage:
+thread). `native_plan.py` turns the fields into one run without reading the storage:
 From (blank = the Floor's start) picks its floor and the window holding it, the range is cut
 at the floor's end and at the program's stop (`MAX_STOP` = int(1.73 * 1e33), in floor 33), and a
 bad Threads value, a From past that stop or no From and no
@@ -177,14 +180,26 @@ budget is kept (the form runs what it holds) and the RAM line flags it; its info
 field, the recommended value (the 50 % default) and what a higher budget risks (swapping, the run
 killed out of memory, an unresponsive system).
 
+Generate checks the same prediction before a pipeline run and a Quick-gen run launched directly
+(`orchestrator_v3.py`): when the run's RAM times its parallel instances (`n_instances`) is over the
+budget (`run_ram.over_budget()`), it asks whether to run anyway, naming the predicted GB, the
+budget, the free RAM and the budget field; No launches nothing. pt1 and pt1-pss (no run-sized
+buffer) and a run without a RAM reading are not asked. The free RAM is read on a background
+thread when the Generation tab is built, when the Time simulation window opens and when a run
+ends; the engine proposal and this check use the last reading.
+
 ## Engine proposal
 
 Atlas proposes the engine of the run the Quick-gen Floor and Width fields describe (Floor and Explore
-modes, a line under the panel) and of the Time simulation window's sliders (the same text). Every own
+modes, a line under the panel) and of the Time simulation window's sliders (the same text). The
+Quick-gen line times the run from where Generate starts it: Floor mode's typed starting point, else
+one past the floor's last window in the selected engine's store (the first gap with "fill gaps
+first"); the run's end sets its sieving-prime bound, the Miller-Rabin bound and pt1-pss's proof
+bound. The Time simulation window times runs from the floor's start. Every own
 engine (`engine_options.ENGINES`) is an option with its `time_model` run time when it fits the floor
 (pt1 7..37; pt1-pss while the proof's B stays below 2^32, so up to floor 34), the width (its per-run
-cap) and the RAM budget (`run_ram.fits_budget()` with the free WSL RAM the Time simulation window
-read last; unknown: no limit). An engine with fewer than two logged rows is timed from its seed rows
+cap) and the RAM budget (`run_ram.fits_budget()` with the free WSL RAM read last; unknown: no
+limit). An engine with fewer than two logged rows is timed from its seed rows
 (`engine_advisor_seeds.py`: v7.2's measured prep on floors 28 and 30, pt1 and pt1-pss speeds on
 floors 25-32) and the proposal says it is an estimate; an engine with neither is left out. pt1 is
 probabilistic when the run reaches past 3.3e24 (BPSW), every other option is deterministic.
@@ -224,17 +239,15 @@ is copied in once), `.generation_logs/` (logs, exit codes, `ACTIVE_RUN.json`),
 `test_cross_engine_run_lock`, `test_verify_plan`, `test_gen_progress_bar_engine_gating`, `test_progress_bar_owner`,
 `test_console_controls`, `test_constellation_auto_retry`, `test_storage_fill`, `test_pi_seed_checkbox_exclusivity`,
 `test_time_model`, `test_run_ram`, `test_time_simulation`, `test_ui_state_app`, `test_pi_count_notice`,
-`test_pi_count_notice_controls`, `test_engine_advisor`, `test_engine_advice_gui`.
+`test_pi_count_notice_controls`, `test_engine_advisor`, `test_engine_advice_gui`, `test_native_plan`,
+`test_primesieve_native_controls`, `test_generation_ram_guard`.
 
 ## Known gaps
 
-- primesieve mode's planning still checks the requested range against the storage ("already
-  in storage") also for Native runs, which write nothing there; Pseudosquares mode does not.
-- The RAM budget caps only the Time simulation slider: Generate does not refuse a typed width
-  above it.
-- The engine proposal times every run from the floor's start (10^floor): a Quick-gen run that
-  continues higher on the floor, or one with a starting point, is proposed for the floor's start.
-  The Quick-gen line uses the free RAM the Time simulation window read last (none before it opens).
+- The Time simulation window times every run from the floor's start (10^floor); only the
+  Quick-gen proposal line follows the run's real start.
+- Exploration mode's proposal is for the floor in its Floor field; a run that moves on to the
+  next floor is proposed for the first one.
 - The run-progress ETA does not use the time model yet; the model is shown only in the Time
   simulation window.
 - The time model is linear in the span per floor: a run much shorter than the floor's measured ones

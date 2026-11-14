@@ -10,6 +10,12 @@ prime_sieve_primesieve.py otherwise; both info texts exist in English and Polish
 one names the storage and thread facts, the wrapper one names the overhead, and neither
 claims a speed primesieve does not have.
 
+Planning with Native on never reads the storage (a native run writes nothing there): on a
+floor whose first windows exist, a blank From starts at the floor's start and leaves From
+blank, a From inside existing windows launches those windows, and the status says nothing is
+written; a range past 2^64 is clamped and noted, a From past it refused. With Native off the
+same request still reports the windows as already in storage.
+
 Usage (Windows, real display):
     python unitTests/test_primesieve_native_controls.py
 """
@@ -56,13 +62,54 @@ def locale_checks():
               f"{lang}: wrapper info names the overhead")
 
 
+def planning_checks(gen, portal):
+    from test_generation_launch_planning import _touch_window
+    W = 10_000_000
+    for idx in range(3):
+        _touch_window(portal, 12, idx)
+    calls, errors = [], []
+    gen._apply_primesieve_params_and_run = lambda *a: calls.append(a)
+    tkinter.messagebox.showerror = lambda *a, **k: errors.append(a)
+    gen.quick_mode_var.set("primesieve")
+
+    def generate(native, frm, floor="12", width="3"):
+        calls.clear()
+        errors.clear()
+        gen.quick_status_var.set("")
+        gen.quick_primesieve_native_var.set(native)
+        gen.quick_primesieve_from_var.set(frm)
+        gen.quick_primesieve_floor_var.set(floor)
+        gen.quick_primesieve_width_var.set(width)
+        gen._on_quick_generate_clicked()
+        return gen.quick_status_var.get()
+
+    status = generate(True, "")
+    check(calls == [(12, 0, 3)], f"Native, blank From: floor start, 3 windows (got {calls})")
+    check(gen.quick_primesieve_from_var.get() == "", "Native, blank From stays blank")
+    nothing = gen.T("quick.summary_primesieve_native", mode="x", lo="x", hi="x", floor="x",
+                    count="x").splitlines()[-1]
+    check(nothing in status, f"Native: the status says nothing is written (got {status!r})")
+    generate(True, str(10 ** 12 + W + 5), width="1")
+    check(calls == [(12, 1, 1)], f"Native, From in an existing window: launched (got {calls})")
+    status = generate(True, str(2 ** 64 - 3), floor="", width="4")
+    check(len(calls) == 1 and calls[0][2] == 1 and "2^64" in status.replace("2⁶⁴", "2^64"),
+          f"Native: past 2^64 clamped to one window and noted (got {calls}, {status!r})")
+    generate(True, str(2 ** 64), floor="")
+    check(not calls and errors, "Native: From past 2^64 - 1 refused")
+    status = generate(False, str(10 ** 12), width="3")
+    check(not calls and "10,000,000,000,000" not in status and status,
+          f"Native off: windows already in storage reported, not launched (got {calls})")
+    gen.quick_primesieve_native_var.set(False)
+    gen.quick_primesieve_from_var.set("")
+
+
 def main():
     tkinter.messagebox.showinfo = lambda *a, **k: None
     tkinter.messagebox.showerror = lambda *a, **k: None
     locale_checks()
 
     from app_sandbox import isolate_app
-    prime_atlas_v2, _portal = isolate_app()
+    prime_atlas_v2, portal = isolate_app()
     app = prime_atlas_v2._build_gui()()
     app.update()
     gen = app.generation_tab_widget
@@ -126,6 +173,7 @@ def main():
                   f"(got {launched[0]})")
             check(launched[1][2].endswith("prime_sieve_primesieve.py"),
                   "Native off: the Atlas-format wrapper")
+        planning_checks(gen, portal)
     finally:
         app.destroy()
 
