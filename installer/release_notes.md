@@ -1,14 +1,17 @@
 ## English
 
-**PrimeAtlas 1.2.0** — sieve engine v5 becomes the default: byte-identical output, half the RAM for the sieve buffer, and 1.7–13× faster than v4.1 on 10^10 numbers with 24 workers.
+**PrimeAtlas 1.3.0** — new sieve engines for deep floors (v6 wheel-30 default, v7 jump gear, pt1 partial sieve with BPSW or a pseudosquares proof), a time model that proposes the engine for a run, and a Benchmark tab rebuilt around filtering, exporting and comparing runs.
 
 PrimeAtlas is an application for generating, browsing and researching prime numbers: a prime and prime-constellation archive, research tabs (Goldbach, squares, polynomials, gaps, π(x) approximations) and GPU-rendered visualizations.
 
 ### What's new
-- **Sieve engine v5 (default):** the shared buffer holds odd numbers only, small primes sieve cache-sized segments, larger primes go through one multi-threaded bucketed pass. Floor 25, 10^10 numbers, 24 workers: 121 s → 70 s. Measurements, the cost model and comparisons with primesieve and PARI/GP are in `BENCHMARK.md`.
-- **Generation tab:** a *Sieve engine* selector (v4.1 / v5) and four v5 fields (segment size, bucket region, bucket memory, windows per run at floor 25). **Auto** sizes a run from the floor and the RAM free in WSL; v5 allows up to 100,000 windows per run.
-- **Benchmark charts:** one line per engine, the whole run and the sieve phase on separate charts, reference points (PARI/GP, primesieve), a log scale, and a legend that shows or hides each line; the PDF export follows all of them.
-- An installation that already saved its Generation settings keeps the engine it stores: choose **v5** once in the *Sieve engine* field. v4.1 stays available.
+- **Engine v6 (default, code v6.1):** 30 numbers per byte instead of 16, so one run in the same RAM covers 1.875 times as many numbers; about 2× v5 on floors 25–27, with native multi-threaded window writing. Windows are byte-identical to v5's.
+- **Engine v7 (code v7.4):** a jump gear finds only the large sieving primes whose multiples land in the run, so on deep floors that stage costs in proportion to the run's width. 10^10 numbers, 24 threads: floor 28 about 717 → 140 s, floor 29 about 2260 → 312 s. Same output as v6.1; the gear is used only where it is proven exact.
+- **Engines pt1 / pt1.1 / pt1-pss:** each window is sieved only up to N^1/4; the survivors are decided by BPSW (P windows, probable) or by the pseudosquares proof (pt1-pss, proven, straight to the D store). P windows can be proven to D later, by the pt1.1 proof or by a v7.3 sieve (Generation → Verify P → D).
+- **Engine proposal and Time simulation:** Quick generation and the Time simulation window estimate a run's time from your own benchmark log and propose an engine for the floor and width; a probable (BPSW) engine is proposed only with a clear margin and always with a warning. Nothing switches by itself.
+- **Native comparisons:** primesieve and Kim Walisch's Pseudosquares Prime Sieve (up to 10^33) run as native programs and are timed side by side with the engines.
+- **Benchmark tab:** runs without storage writes, a Filter window for the table and every chart, zoom, charts in their own windows, chosen line colors, independent hiding of axes, runs and lines, and export as PDF, CSV, SVG and an interactive HTML page.
+- **Everyday use:** the app shows its version as the release plus the merges since it (e.g. 1.3.0+2) and lists the changes in About; forms keep their values across restarts; closing during a run stops it at the next save point.
 
 The full list is in `CHANGELOG.md`. An existing installation gets this version from **Settings → Updates**; there is no need to reinstall.
 
@@ -31,15 +34,18 @@ License: PolyForm Noncommercial 1.0.0 (noncommercial use). See `LICENSE.md` and 
 
 ## Polski
 
-**PrimeAtlas 1.2.0** — silnik sita v5 staje się domyślny: wynik identyczny co do bajta, połowa RAM-u na bufor sita i 1,7–13× szybciej niż v4.1 na 10^10 liczbach przy 24 procesach.
+**PrimeAtlas 1.3.0** — nowe silniki sita dla głębokich pięter (domyślny v6 z kołem 30, v7 z przekładnią skokową, pt1 z częściowym sitem i testem BPSW albo dowodem pseudokwadratów), model czasu, który proponuje silnik dla przebiegu, oraz zakładka Benchmark przebudowana wokół filtrowania, eksportu i porównywania przebiegów.
 
 PrimeAtlas to aplikacja do generowania, przeglądania i badania liczb pierwszych: magazyn liczb pierwszych i konstelacji, zakładki badawcze (Goldbach, kwadraty, wielomiany, luki, przybliżenia π(x)) oraz wizualizacje renderowane na GPU.
 
 ### Co nowego
-- **Silnik sita v5 (domyślny):** wspólny bufor przechowuje tylko liczby nieparzyste, małe liczby pierwsze przesiewają segmenty o rozmiarze pamięci cache, większe przechodzą przez jeden wielowątkowy przebieg kubełkowy. Piętro 25, 10^10 liczb, 24 procesy: 121 s → 70 s. Pomiary, model kosztów i porównania z primesieve i PARI/GP są w `BENCHMARK.md`.
-- **Zakładka Generowanie:** wybór *Silnik sita* (v4.1 / v5) i cztery pola v5 (rozmiar segmentu, region kubełków, pamięć kubełków, liczba okien na uruchomienie na piętrze 25). **Auto** dobiera wielkość przebiegu do piętra i wolnej pamięci RAM w WSL; v5 pozwala na 100 000 okien na uruchomienie.
-- **Wykresy benchmarku:** osobna linia dla każdego silnika, cały przebieg i samo sito na osobnych wykresach, punkty odniesienia (PARI/GP, primesieve), skala logarytmiczna oraz legenda, która pokazuje i ukrywa każdą linię; eksport PDF uwzględnia je wszystkie.
-- Instalacja, która ma już zapisane ustawienia Generowania, zachowuje zapisany silnik: wybierz raz **v5** w polu *Silnik sita*. v4.1 pozostaje dostępny.
+- **Silnik v6 (domyślny, kod v6.1):** 30 liczb na bajt zamiast 16, więc jeden przebieg w tej samej pamięci RAM obejmuje 1,875 razy więcej liczb; około 2× szybciej niż v5 na piętrach 25–27, z natywnym wielowątkowym zapisem okien. Okna są identyczne co do bajta z oknami v5.
+- **Silnik v7 (kod v7.4):** przekładnia skokowa znajduje tylko te duże liczby pierwsze sita, których wielokrotności trafiają w przebieg, więc na głębokich piętrach ten etap kosztuje proporcjonalnie do szerokości przebiegu. 10^10 liczb, 24 wątki: piętro 28 około 717 → 140 s, piętro 29 około 2260 → 312 s. Wynik taki sam jak v6.1; przekładnia działa tylko tam, gdzie jej dokładność jest udowodniona.
+- **Silniki pt1 / pt1.1 / pt1-pss:** każde okno jest przesiewane tylko do N^1/4; pozostałe liczby rozstrzyga test BPSW (okna P, prawdopodobne) albo dowód pseudokwadratów (pt1-pss, dowiedzione, prosto do magazynu D). Okna P można później dowieść do D dowodem pt1.1 albo sitem v7.3 (Generowanie → Weryfikacja P → D).
+- **Propozycja silnika i Symulacja czasu:** Szybkie generowanie i okno Symulacji czasu szacują czas przebiegu z Twojego logu benchmarków i proponują silnik dla piętra i szerokości; silnik prawdopodobny (BPSW) jest proponowany tylko przy wyraźnej przewadze i zawsze z ostrzeżeniem. Nic nie przełącza się samo.
+- **Porównania natywne:** primesieve i Pseudosquares Prime Sieve Kima Walischa (do 10^33) działają jako natywne programy i są mierzone obok silników.
+- **Zakładka Benchmark:** przebiegi bez zapisu do magazynu, okno Filtr dla tabeli i wszystkich wykresów, powiększanie, wykresy w osobnych oknach, wybrane kolory linii, niezależne ukrywanie osi, przebiegów i linii oraz eksport do PDF, CSV, SVG i interaktywnej strony HTML.
+- **Na co dzień:** aplikacja pokazuje wersję jako release plus liczbę mergów od niego (np. 1.3.0+2) i wypisuje zmiany w zakładce O programie; formularze zachowują wartości po ponownym uruchomieniu; zamknięcie w trakcie przebiegu zatrzymuje go w najbliższym punkcie zapisu.
 
 Pełna lista jest w pliku `CHANGELOG.md`. Istniejąca instalacja dostaje tę wersję przez **Ustawienia → Aktualizacje**; nie trzeba instalować ponownie.
 
