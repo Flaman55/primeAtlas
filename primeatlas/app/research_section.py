@@ -1,6 +1,7 @@
 """
 research_section.py -- ResearchSectionMixin of PortalBrowserApp: the 'Research' tab
-(Square intervals / Polynomials / Goldbach / Gaps / pi(x) approximations sub-tabs).
+(Square intervals / Polynomials / Goldbach / Gaps / pi(x) approximations /
+Irreducibility sub-tabs).
 """
 from tkinter import ttk
 
@@ -53,6 +54,10 @@ class ResearchSectionMixin:
             computed via this project's own pure-Python Ei/Gram-series implementations
             (no scipy/mpmath dependency) -- see pi_approx_window.py's own module
             docstring.
+          - Irreducibility: radices, comparison, comb reading, ranges and arithmetic
+            on residues, as defined in the Irreducibility repository (Lean 4) --
+            pure computation on the user's input, no prime data source --
+            primeatlas/research/research_irreducibility_tab.py's ResearchIrreducibilityTab.
         Hardy-Littlewood / twin-prime / Polignac density questions are NOT a sub-tab
         here -- they're the same computation the EXISTING Constellations tab already
         does (pattern hit-counting), so that family becomes a future density-comparison
@@ -76,11 +81,13 @@ class ResearchSectionMixin:
         self.research_goldbach_tab = ttk.Frame(sub)
         self.research_gaps_tab = ttk.Frame(sub)
         self.research_pi_approx_tab = ttk.Frame(sub)
+        self.research_irreducibility_tab = ttk.Frame(sub)
         sub.add(self.research_squares_tab, text=_dyn.T("tabs.research_squares"))
         sub.add(self.research_polynomials_tab, text=_dyn.T("tabs.research_polynomials"))
         sub.add(self.research_goldbach_tab, text=_dyn.T("tabs.research_goldbach"))
         sub.add(self.research_gaps_tab, text=_dyn.T("tabs.research_gaps"))
         sub.add(self.research_pi_approx_tab, text=_dyn.T("tabs.research_pi_approx"))
+        sub.add(self.research_irreducibility_tab, text=_dyn.T("tabs.research_irreducibility"))
         self._build_research_squares_tab()
         self._build_research_polynomials_tab()
 
@@ -95,6 +102,7 @@ class ResearchSectionMixin:
 
         self._build_research_gaps_tab()
         self._build_research_pi_approx_tab()
+        self._build_research_irreducibility_tab()
 
     def _build_research_squares_tab(self):
         """Square-interval explorer (Legendre/Oppermann/Brocard presets + custom
@@ -174,3 +182,14 @@ class ResearchSectionMixin:
             eval_quick_number=_eval_quick_number,
             get_portal_folder=lambda: _dyn.PORTAL_FOLDER, status_var=self.status)
         self.research_pi_approx_tab_widget.pack(fill="both", expand=True)
+
+    def _build_research_irreducibility_tab(self):
+        """The five sub-tabs of the Irreducibility repository (radices, comparison, comb
+        reading, ranges, arithmetic), via
+        primeatlas/research/research_irreducibility_tab.py's ResearchIrreducibilityTab --
+        it needs only the translator (no data source, no shared progress bar)."""
+        from primeatlas.research.research_irreducibility_tab import ResearchIrreducibilityTab
+
+        self.research_irreducibility_tab_widget = ResearchIrreducibilityTab(
+            self._scroll_body("research_irreducibility_tab"), translator=_dyn.TRANSLATOR)
+        self.research_irreducibility_tab_widget.pack(fill="both", expand=True)

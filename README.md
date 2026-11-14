@@ -1354,7 +1354,9 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               Benchmark); the popup stays inside the app window
                               (unitTests/test_info_tip.py)
   widgets.py                    small generic tkinter helpers (e.g. FlowRow) with no
-                              application-specific state; HeightGrip is the app's one
+                              application-specific state; disable_notebook_wheel()
+                              keeps the mouse wheel from switching notebook tabs
+                              app-wide; HeightGrip is the app's one
                               height control -- a drag handle under a terminal, list or
                               table that sets its height in lines (no vertical paned
                               windows anywhere; the Generation tab's sections stack at
@@ -1536,6 +1538,35 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               logic isn't Goldbach-specific, so these four reuse it
                               rather than duplicating it, unlike each sub-tab's own
                               deliberately-duplicated sieve_is_prime)
+  research_irreducibility_tab.py
+                              ResearchIrreducibilityTab -- Research -> Nieredukowalnosc:
+                              links to the Irreducibility repository and paper, five
+                              sub-tabs built from the files below
+  irreducibility_radices_view.py, irreducibility_compare_view.py,
+  irreducibility_comb_view.py, irreducibility_ranges_view.py,
+  irreducibility_arith_view.py
+                              the five sub-tabs: radices of lo..hi and interval atoms /
+                              A vs B in block layouts / a mod b read from two sech combs /
+                              W of a layout, parameter sweep, fit to a number /
+                              operations on the residues of A and B
+  irreducibility_numbers.py   IrreducibilityNumbers: A, B and their layouts (shared,
+                              remembered fields), layout text
+  irreducibility_widgets.py, irreducibility_draw.py
+                              wrapped label, remembered entry, read-only output text /
+                              Canvas chips, dials and the two combs
+  irreducibility_cases_window.py
+                              CasesWindow: every case of a self-test (result read from
+                              residues next to the integer result, 'only errors'
+                              filter, the residues of the selected case)
+  irreducibility_core.py, irreducibility_residues.py, irreducibility_comb.py
+                              mirrors of Defs.lean / SechComb.lean: residues, Euclid,
+                              radices; mixed radix, comparison, blocks, interval atoms,
+                              arithmetic on residues; the sech comb. Nothing here forms
+                              the product of the moduli or refers to primes
+  irreducibility_layout.py, irreducibility_ops.py, irreducibility_selftest.py
+                              value side: block layouts, W, fit_for, sweep / the
+                              Arithmetic operations with periods and appended powers /
+                              random self-tests checked against integers
 
   primeatlas/generation/        "Generation" tab
   generation_tab.py             GenerationTab -- the Generation tab: builds the Quick-gen

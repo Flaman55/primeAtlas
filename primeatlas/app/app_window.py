@@ -27,6 +27,7 @@ from primeatlas.core import ui_state_dynamic
 from primeatlas.core.app_icon import apply_tk_icon
 from primeatlas.core.totals_search_coordinator import TotalsSearchCoordinator
 from primeatlas.core.version import version_label
+from primeatlas.core.widgets import disable_notebook_wheel
 from primeatlas.generation import close_guard
 from primeatlas.generation.generation_offer_coordinator import GenerationOfferCoordinator
 from primeatlas.generation.window_planning import QUICK_GEN_MAX_WINDOW_WIDTH, PRIMESIEVE_MAX_STOP
@@ -41,6 +42,7 @@ class PortalBrowserApp(ThemeMixin, PrimesSectionMixin, ConstellationsSectionMixi
         super().__init__()
         ui_state_dynamic.STORE.attach(self)
         apply_tk_icon(self)
+        disable_notebook_wheel(self)
         self._apply_font_scale(_dyn.APP_SETTINGS.font_scale)
         self._apply_theme(_dyn.APP_SETTINGS.theme)
         # Release, merges since it and the checked-out commit, see version.py.
