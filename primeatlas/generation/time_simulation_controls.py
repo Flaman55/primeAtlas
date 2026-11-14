@@ -6,10 +6,11 @@ has its own pair; every other mode uses the Floor-only pair) and to the pipeline
 engine selector, so what the sliders set is what Generate runs. Switching the Quick-gen
 mode reopens an open window on the new mode's pair. benchmark_log.csv is read from the
 storage folder each time the window opens and, while it is open, when a run ends. The RAM
-free in WSL is read at the same moments on a background thread (a wsl.exe call can take up
-to its timeout) and handed to the window, and to the engine proposal
-(engine_advice_controls.py), when the thread ends. The window shows the same proposal as
-Quick-gen: it asks the tab for it (engine_advice_display) at the sliders' floor and width.
+free in WSL is read when the tab is built, when the window opens and when a run ends, on a
+background thread (a wsl.exe call can take up to its timeout), and handed to the engine
+proposal and Generate's RAM check (engine_advice_controls.py), and to an open window, when the
+thread ends. The window shows the same proposal as Quick-gen: it asks the tab for it
+(engine_advice_display) at the sliders' floor and width.
 """
 import os
 import threading
@@ -63,7 +64,7 @@ class TimeSimulationControls:
             advice=self.engine_advice_display, use_engine=self._use_advised_engine,
             advice_vars=(self._advice_offset_var,))
         self._reload_engine_advice_log()
-        self._read_time_simulation_ram()
+        self._read_free_ram()
         return self._time_simulation_window
 
     def _time_simulation_budget_vars(self):
@@ -73,8 +74,9 @@ class TimeSimulationControls:
             engine_options.bucket_knob(engine) for engine in engine_options.BUCKETED_ENGINES]
         return [fields.knob_vars[key] for key in keys] + list(fields.preset_vars.values())
 
-    def _read_time_simulation_ram(self):
-        """Reads the free WSL RAM on a thread; the open window gets it when the thread ends."""
+    def _read_free_ram(self):
+        """Reads the free WSL RAM on a thread; the engine proposal, and the window open when
+        the read began, get it when the thread ends."""
         win = self._time_simulation_window
         result = {}
         thread = threading.Thread(
@@ -92,10 +94,11 @@ class TimeSimulationControls:
         self.after(RAM_READ_CHECK_MS, deliver)
 
     def _reload_time_simulation_log(self):
-        """Called when a run ends: an open window rereads the log with the run's new row."""
+        """Called when a run ends: an open window rereads the log with the run's new row, and
+        the free RAM is read again."""
         if self._time_simulation_is_open():
             self._time_simulation_window.reload_log()
-            self._read_time_simulation_ram()
+        self._read_free_ram()
 
     def _time_simulation_pt1_b(self):
         knobs, bad = engine_options.parse_knobs(

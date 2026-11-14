@@ -17,6 +17,11 @@ Checks:
   proposal, even when it is the fastest of all; a log without its rows and an advisor
   without guests give the very same proposal.
 - Floor or width changed there and back gives the same proposal.
+- The run's start: no start is the floor's start (the same advice as start = 10^floor); a
+  run starting higher on the floor takes longer (more sieving primes); on floor 24 pt1 from
+  the floor's start stays below the Miller-Rabin bound (deterministic) and from 9 * 10^24
+  reaches past it (probabilistic); pt1-pss fits by the run's real end; start there and back
+  gives the same advice.
 - advice_text(): the proposal names the engine, its time and reason, plus the estimated note
   for a seed estimate; the BPSW warning only for a probabilistic proposal; the guest line
   only with a guest, with its speed-up and what its count proves; no advice -> the no-proposal line.
@@ -237,10 +242,38 @@ def cli_case():
     return passed
 
 
+def start_case():
+    passed = True
+    base = seeded(27, 100)
+    passed &= check(ea.advise([], 27, 100, write_files=False, start=10 ** 27) == base,
+                    "start = 10^floor gives the same advice as no start")
+    high = ea.advise([], 27, 100, write_files=False, start=9 * 10 ** 27)
+    low_s = {o.engine: o.seconds for o in base.options}
+    high_s = {o.engine: o.seconds for o in high.options}
+    passed &= check(high_s[V7] > low_s[V7],
+                    f"v7 from 9 * 10^27 takes longer than from 10^27 ({high_s[V7]:.1f} > "
+                    f"{low_s[V7]:.1f} s)")
+
+    def pt1(start):
+        advice = ea.advise([], 24, 100, write_files=False, offset=1e12, start=start)
+        return {o.engine: o for o in advice.options}[PT1]
+
+    passed &= check(pt1(None).deterministic, "floor 24 from its start: pt1 deterministic")
+    passed &= check(not pt1(9 * 10 ** 24).deterministic,
+                    "floor 24 from 9 * 10^24: pt1 past the Miller-Rabin bound, probabilistic")
+    passed &= check(pt1(None).deterministic, "start back at the floor's start: deterministic again")
+    for floor in (34,):
+        top = ea.advise([], floor, 100, write_files=False, offset=1e12,
+                        start=10 ** (floor + 1) - 100 * W)
+        passed &= check(top is not None and PT1 in {o.engine for o in top.options},
+                        f"floor {floor}, run at the floor's end: still planned")
+    return passed
+
+
 def main():
     passed = True
     for case in (choose_case, seed_case, calibration_case, guest_case, there_and_back_case,
-                 text_case, offset_case, cli_case):
+                 start_case, text_case, offset_case, cli_case):
         passed &= case()
     print("ALL CHECKS PASSED" if passed else "SOME CHECKS FAILED")
     return 0 if passed else 1

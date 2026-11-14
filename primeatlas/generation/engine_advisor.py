@@ -1,5 +1,7 @@
-"""Engine advisor: the engine a run of a given floor and width should use, from the time model
-(time_model.py: prep + span * per-number cost + writing, calibrated from benchmark_log.csv).
+"""Engine advisor: the engine a run of a given floor, width and start should use, from the time
+model (time_model.py: prep + span * per-number cost + writing, calibrated from
+benchmark_log.csv). The start (default: the floor's start, 10^floor) sets the run's end, which
+decides the sieving-prime bound, the Miller-Rabin bound and pt1-pss's proof bound.
 
 Every own engine (engine_options.ENGINES) that fits the floor, the width and the RAM budget is
 an option with its estimated run time; an engine with fewer than two logged rows is estimated
@@ -76,12 +78,12 @@ def calibrations(samples, pt1_b=0, guests=GUEST_ENGINES):
     return result
 
 
-def _top(floor, windows):
-    return 10 ** floor + windows * time_model.WINDOW_WIDTH
+def _top(floor, windows, start=None):
+    return (10 ** floor if start is None else start) + windows * time_model.WINDOW_WIDTH
 
 
-def _fits_floor(engine, floor, windows, pt1_b):
-    top = _top(floor, windows)
+def _fits_floor(engine, floor, windows, pt1_b, start=None):
+    top = _top(floor, windows, start)
     if engine in _GUEST_MAX_FLOOR:
         return floor <= _GUEST_MAX_FLOOR[engine]
     if windows > engine_options.max_windows_per_run(engine):
@@ -95,28 +97,30 @@ def _fits_floor(engine, floor, windows, pt1_b):
     return True
 
 
-def _deterministic(engine, floor, windows):
-    return engine != engine_options.ENGINE_PT1 or _top(floor, windows) <= MR_DET_BOUND
+def _deterministic(engine, floor, windows, start=None):
+    return engine != engine_options.ENGINE_PT1 or _top(floor, windows, start) <= MR_DET_BOUND
 
 
-def _seconds(cals, engine, floor, windows, write_files, pt1_b):
+def _seconds(cals, engine, floor, windows, write_files, pt1_b, start=None):
     cal = cals[engine][0]
     b = pt1_b if engine in engine_options.PT1_ENGINES else 0
-    return time_model.estimate(cal, engine, floor, windows, write_files, b).run_seconds
+    return time_model.estimate(cal, engine, floor, windows, write_files, b,
+                               start=start).run_seconds
 
 
-def options(cals, floor, windows, write_files, pt1_b=0, ram_fits=None):
+def options(cals, floor, windows, write_files, pt1_b=0, ram_fits=None, start=None):
     """[Option] of every own engine in `cals` that fits the floor, the width (its per-run
-    cap) and `ram_fits(engine)` (None: no RAM limit), fastest first."""
+    cap) and `ram_fits(engine)` (None: no RAM limit), fastest first, for a run from `start`
+    (None: 10^floor)."""
     found = []
     for engine in engine_options.ENGINES:
-        if engine not in cals or not _fits_floor(engine, floor, windows, pt1_b):
+        if engine not in cals or not _fits_floor(engine, floor, windows, pt1_b, start):
             continue
         if ram_fits is not None and not ram_fits(engine):
             continue
-        seconds = _seconds(cals, engine, floor, windows, write_files, pt1_b)
+        seconds = _seconds(cals, engine, floor, windows, write_files, pt1_b, start)
         if seconds is not None:
-            found.append(Option(engine, seconds, _deterministic(engine, floor, windows),
+            found.append(Option(engine, seconds, _deterministic(engine, floor, windows, start),
                                 cals[engine][1]))
     return sorted(found, key=lambda o: o.seconds)
 
@@ -137,28 +141,28 @@ def choose(found, offset):
                   det.engine, det.seconds, tuple(found))
 
 
-def _guest(cals, advice, floor, windows, pt1_b, guests):
+def _guest(cals, advice, floor, windows, pt1_b, guests, start=None):
     """The fastest guest faster than the deterministic reference, timed without writing."""
     if advice.deterministic_engine is None:
         return None
-    rival = _seconds(cals, advice.deterministic_engine, floor, windows, False, pt1_b)
+    rival = _seconds(cals, advice.deterministic_engine, floor, windows, False, pt1_b, start)
     best = None
     for engine in guests:
-        if engine not in cals or not _fits_floor(engine, floor, windows, pt1_b):
+        if engine not in cals or not _fits_floor(engine, floor, windows, pt1_b, start):
             continue
-        seconds = _seconds(cals, engine, floor, windows, False, pt1_b)
+        seconds = _seconds(cals, engine, floor, windows, False, pt1_b, start)
         if seconds and rival and seconds < rival and (best is None or seconds < best.seconds):
             best = Guest(engine, seconds, advice.deterministic_engine, rival, rival / seconds)
     return best
 
 
 def advise(samples, floor, windows, write_files, pt1_b=0, offset=DEFAULT_BPSW_OFFSET,
-           ram_fits=None, guests=GUEST_ENGINES, cals=None):
-    """Advice for one run of `windows` windows from 10^floor, None without options. `cals`
-    reuses calibrations() of the same samples, pt1_b and guests."""
+           ram_fits=None, guests=GUEST_ENGINES, cals=None, start=None):
+    """Advice for one run of `windows` windows from `start` (None: 10^floor), None without
+    options. `cals` reuses calibrations() of the same samples, pt1_b and guests."""
     if cals is None:
         cals = calibrations(samples, pt1_b, guests)
-    advice = choose(options(cals, floor, windows, write_files, pt1_b, ram_fits), offset)
+    advice = choose(options(cals, floor, windows, write_files, pt1_b, ram_fits, start), offset)
     if advice is None:
         return None
-    return advice._replace(guest=_guest(cals, advice, floor, windows, pt1_b, guests))
+    return advice._replace(guest=_guest(cals, advice, floor, windows, pt1_b, guests, start))

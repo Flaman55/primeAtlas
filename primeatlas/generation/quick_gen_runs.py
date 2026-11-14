@@ -322,6 +322,8 @@ class QuickGenRuns:
             messagebox.showerror(
                 self.T("gen.dialog_title"), self.T("gen.error_field_int", field=bad_key))
             return
+        if not self.confirm_ram_budget(choice, window_count_per_run, QUICK_GEN_MAX_WINDOW_WIDTH):
+            return
         try:
             argv = build_orchestrator_direct_argv(
                 base_exponent, target_idx_start, window_count_per_run,

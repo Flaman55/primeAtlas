@@ -9,7 +9,10 @@ disabled; the advanced form's BPSW offset field (default 3, persisted with the f
 the proposal (20: pt1-pss, no warning) and an invalid value counts as the default; the line
 hides in modes without a floor and width (Range) and comes back unchanged; a RAM budget too
 small for the bucketed engines removes them from the options; rows a finished run adds
-replace the seed estimate. Windows, real display:
+replace the seed estimate. The proposal is for the run's real start: an empty floor from its
+start, a floor with windows from one past the last one (the first gap with "fill gaps
+first"), a typed starting point from that number, and clearing it goes back. Windows, real
+display:
     python unitTests/test_engine_advice_gui.py
 """
 import csv
@@ -45,6 +48,50 @@ def _append_rows(log_path, rows):
         writer = csv.DictWriter(f, fieldnames=BENCHMARK_FIELDNAMES)
         for row in rows:
             writer.writerow({k: row.get(k, "") for k in BENCHMARK_FIELDNAMES})
+
+
+def start_checks(gen, app):
+    from primeatlas.generation import engine_advice_controls as controls
+    from test_generation_launch_planning import _touch_window
+    passed = True
+    starts = []
+    real = controls.engine_advisor.advise
+
+    def spy(*a, **k):
+        starts.append(k.get("start"))
+        return real(*a, **k)
+
+    controls.engine_advisor.advise = spy
+    try:
+        def start_for(floor="30", typed="", gaps=False):
+            gen.quick_floor_start_var.set(typed)
+            if not typed:
+                gen.quick_floor_var.set(floor)
+            gen.quick_floor_fill_gaps_var.set(gaps)
+            starts.clear()
+            gen._refresh_engine_advice()
+            app.update()
+            return starts[-1] if starts else "none"
+
+        gen._engine_fields.engine_var.set("v7")  # a sieve engine continues its D store
+        gen.quick_mode_var.set("floor")
+        gen._on_quick_mode_changed()
+        gen.quick_floor_width_var.set("100")
+        passed &= check(start_for() == 10 ** 30, "empty floor 30: from 10^30")
+        for idx in (0, 1, 2, 4):
+            _touch_window(gen._get_portal_folder(), 30, idx)
+        passed &= check(start_for() == 10 ** 30 + 5 * W,
+                        f"windows 0-2 and 4 stored: from one past the last ({start_for()})")
+        passed &= check(start_for(gaps=True) == 10 ** 30 + 3 * W,
+                        "fill gaps first: from the first gap (window 3)")
+        typed = 10 ** 30 + 123 * W + 7
+        passed &= check(start_for(typed=str(typed)) == typed, "typed starting point: from it")
+        gen.quick_floor_start_var.set("")
+        passed &= check(start_for() == 10 ** 30 + 5 * W, "starting point cleared: back")
+    finally:
+        controls.engine_advisor.advise = real
+        gen.quick_floor_fill_gaps_var.set(False)
+    return passed
 
 
 def run_checks(gen, app, log_path):
@@ -155,6 +202,7 @@ def main():
         app = prime_atlas_v2._build_gui()()
         app.update()
         passed = run_checks(app.generation_tab_widget, app, log_path)
+        passed &= start_checks(app.generation_tab_widget, app)
     finally:
         if app is not None:
             try:

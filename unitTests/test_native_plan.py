@@ -1,6 +1,7 @@
 """
-test_pseudosquares_plan.py -- Quick-gen Pseudosquares mode turns From / Floor / Width /
-Threads into one native run, never touching the storage.
+test_native_plan.py -- Quick-gen's native modes (Pseudosquares, primesieve with Native on)
+turn From / Floor / Width (and Pseudosquares' Threads) into one native run, never touching
+the storage.
 
 A. From given: its floor, the window holding it (From rounded down to the 10^7 grid), Width
    windows; a range crossing the floor's end stops there (clamped flag); floor 32's end is
@@ -11,9 +12,12 @@ B. From blank: the Floor's start (no storage lookup -- a native run writes nothi
 C. Low floors: floor 3 is one run of [1000, 10000), whatever the Width.
 D. Width below 1 or not a number refused; Threads: blank / Auto / 0 = the program's own
    choice, a positive integer as given, anything else refused.
+E. primesieve's stop (2^64 - 1): the same plan with that stop; a range reaching past 2^64
+   ends at 2^64 (clamped), a From past the stop refused, floor 19 runs normally, a floor
+   past 19 refused; the floor's end still clamps first.
 
 Usage:
-    python unitTests/test_pseudosquares_plan.py
+    python unitTests/test_native_plan.py
 """
 import os
 import sys
@@ -24,7 +28,7 @@ sys.path.insert(0, _REPO_ROOT)
 sys.path.insert(0, os.path.join(_REPO_ROOT, "prime_sieve"))
 
 import pseudosquares_const as const  # noqa: E402
-from primeatlas.generation import pseudosquares_plan as plan_mod  # noqa: E402
+from primeatlas.generation import native_plan as plan_mod  # noqa: E402
 
 failures = []
 W = 10_000_000
@@ -97,11 +101,33 @@ def part_d():
         check(plan_mod.parse_threads(text) is None, f"threads {text!r} refused")
 
 
+def part_e():
+    stop = 2 ** 64 - 1
+
+    def ps(start, floor=None, width=1):
+        return plan_mod.plan(start, floor, width, W, stop)
+
+    p = ps(10 ** 19 + 4 * W, width=3)
+    check((p["floor"], p["target_idx_start"], p["count"], p["clamped"]) == (19, 4, 3, False),
+          "primesieve: floor 19, From's window, Width windows")
+    p = ps(stop - 5, width=4)
+    check(p["hi"] == stop + 1 and p["clamped"] and p["count"] == 1,
+          f"primesieve: a range past 2^64 ends at 2^64, clamped (got {p})")
+    check(ps(stop + 1)["error"] == "beyond_ceiling", "primesieve: From past 2^64 - 1 refused")
+    check(ps(None, floor=20)["error"] == "beyond_ceiling", "primesieve: Floor 20 refused")
+    p = ps(None, floor=19, width=2)
+    check((p["lo"], p["count"]) == (10 ** 19, 2), "primesieve: blank From, Floor 19: its start")
+    p = ps(10 ** 18 - W, width=5)
+    check(p["hi"] == 10 ** 18 and p["clamped"], "primesieve: the floor's end clamps first")
+    check(plan(10 ** 30)["floor"] == 30, "default stop stays the Pseudosquares program's")
+
+
 def main():
     part_a()
     part_b()
     part_c()
     part_d()
+    part_e()
     if failures:
         print(f"\n{len(failures)} FAILED")
         sys.exit(1)

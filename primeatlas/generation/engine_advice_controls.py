@@ -3,26 +3,37 @@ run the Quick-gen Floor and Width fields describe, shown under each Quick-gen pa
 and Explore modes) and in the Time simulation window, and the pipeline form's BPSW offset
 field it reads.
 
+The Quick-gen line times the run from where Generate would start it: the typed starting point
+(Floor mode), else one past the floor's last stored window of the selected engine's store (the
+first gap with "fill gaps first"). The Time simulation window times runs from the floor's
+start.
+
 One source for both places: engine_advice() computes the Advice from benchmark_log.csv (read
 when the tab is built, when the Time simulation window opens and when a run ends), the
 selected engine's settings (pt1 B, write files, every engine's knobs for the RAM check) and
-the RAM free in WSL as last read by the Time simulation window (unknown: no RAM limit). The
-Use button selects the proposed engine in the pipeline form; nothing switches it otherwise.
+the RAM free in WSL as last read (time_simulation_controls._read_free_ram(): when the tab is
+built, when the window opens, when a run ends; unknown: no RAM limit). The Use button selects
+the proposed engine in the pipeline form; nothing switches it otherwise.
+
+confirm_ram_budget() is Generate's RAM check on the same reading: a run whose predicted RAM
+(run_ram.py, times its parallel instances) is over the budget asks before it launches.
 
 A GenerationTab mixin: it uses the widgets and Variables GenerationTab and its other mixins
 set up, so it is never instantiated on its own.
 """
 import os
 import tkinter as tk
-from tkinter import ttk
+from tkinter import messagebox, ttk
 
 from ..core.info_tip import InfoTip
 from . import engine_advisor, engine_options, run_ram, time_model
 from .engine_advice_text import advice_text
 from .engine_advice_view import EngineAdviceView
 from .generation_settings import remember_generation_field
+from .quick_number import _eval_quick_number
 from .time_simulation_window import format_long_duration
-from .window_planning import QUICK_GEN_MAX_WINDOW_WIDTH
+from .window_planning import (QUICK_GEN_MAX_WINDOW_WIDTH, find_continuation_target_idx,
+                              find_first_gap_target_idx)
 
 BENCHMARK_LOG_NAME = "benchmark_log.csv"
 _ADVICE_MODES = ("floor", "explore")
@@ -66,11 +77,13 @@ class EngineAdviceControls:
         return view
 
     def _start_engine_advice(self):
-        """Called once the pipeline form exists: reads the log and follows every field the
-        proposal depends on."""
+        """Called once the pipeline form exists: reads the log and the free RAM and follows
+        every field the proposal depends on."""
         self._reload_engine_advice_log()
+        self._read_free_ram()
         fields = self._engine_fields
         watched = [self.quick_mode_var, self.quick_floor_var, self.quick_floor_width_var,
+                   self.quick_floor_start_var, self.quick_floor_fill_gaps_var,
                    self.quick_explore_floor_var, self.quick_explore_width_var,
                    fields.engine_var, self._advice_offset_var, fields.knob_vars["pt1_b"],
                    self._loop_write_files_var]
@@ -88,6 +101,22 @@ class EngineAdviceControls:
         self._advice_free_ram = available_ram_bytes
         self._refresh_engine_advice()
 
+    def confirm_ram_budget(self, choice, windows, window_m, instances=1):
+        """True when the run may launch: it fits the RAM budget, there is no RAM reading, or
+        the person answers Yes to running it over the budget."""
+        over = run_ram.over_budget(choice, windows, window_m, self._advice_free_ram, instances)
+        if over is None:
+            return True
+        ram, budget = over
+        return messagebox.askyesno(
+            self.T("gen.dialog_title"),
+            self.T("gen.confirm_ram_over_budget", ram=f"{ram / 1e9:.1f}",
+                   budget=f"{budget / 1e9:.1f}",
+                   pct=choice.knobs[engine_options.RAM_BUDGET_KNOB],
+                   free=f"{self._advice_free_ram / 1e9:.1f}",
+                   field=self.T("gen.field_ram_budget_pct").rstrip(":")),
+            icon="warning", default="no")
+
     def _advice_offset(self):
         raw = self._advice_offset_var.get() if self._advice_offset_var is not None else ""
         offset = engine_advisor.parse_offset(raw)
@@ -98,8 +127,9 @@ class EngineAdviceControls:
             {"pt1_b": self._engine_fields.knob_vars["pt1_b"].get()})
         return knobs["pt1_b"] if bad is None else 0
 
-    def engine_advice(self, floor, windows):
-        """engine_advisor.Advice of one run of `windows` windows from 10^floor."""
+    def engine_advice(self, floor, windows, start=None):
+        """engine_advisor.Advice of one run of `windows` windows from `start` (None:
+        10^floor)."""
         pt1_b = self._advice_pt1_b()
         if self._advice_cals is None or self._advice_cals[0] != pt1_b:
             self._advice_cals = (pt1_b, engine_advisor.calibrations(self._advice_samples, pt1_b))
@@ -111,11 +141,11 @@ class EngineAdviceControls:
 
         return engine_advisor.advise(
             self._advice_samples, floor, windows, bool(self._loop_write_files_var.get()),
-            pt1_b, self._advice_offset(), ram_fits, cals=self._advice_cals[1])
+            pt1_b, self._advice_offset(), ram_fits, cals=self._advice_cals[1], start=start)
 
-    def engine_advice_display(self, floor, windows):
+    def engine_advice_display(self, floor, windows, start=None):
         """(AdviceText, proposed engine or None) for the views."""
-        advice = self.engine_advice(floor, windows)
+        advice = self.engine_advice(floor, windows, start)
         text = advice_text(advice, self.T, lambda s: format_long_duration(s, self.T),
                            self._advice_offset())
         return text, advice.engine if advice is not None else None
@@ -137,10 +167,24 @@ class EngineAdviceControls:
             for view in views:
                 view.pack_forget()
             return
-        text, engine = self.engine_advice_display(floor, width)
+        text, engine = self.engine_advice_display(floor, width, self._advice_start(mode, floor))
         for view in views:
             view.show(text, engine, self._engine_fields.engine())
             view.pack(fill="x", anchor="w")
+
+    def _advice_start(self, mode, floor):
+        """Where Generate would start the Quick-gen run: Floor mode's typed starting point, else
+        one past the floor's last window of the selected engine's store (Floor mode with
+        "fill gaps first": its first gap)."""
+        if mode == "floor":
+            typed = _eval_quick_number(self.quick_floor_start_var.get())
+            if typed is not None:
+                return typed
+        find = (find_first_gap_target_idx if mode == "floor" and self.quick_floor_fill_gaps_var.get()
+                else find_continuation_target_idx)
+        idx = find(self._get_portal_folder(), floor, QUICK_GEN_MAX_WINDOW_WIDTH,
+                   engine=self._engine_fields.engine())
+        return 10 ** floor + idx * QUICK_GEN_MAX_WINDOW_WIDTH
 
     def _use_advised_engine(self, engine):
         self._engine_fields.engine_var.set(engine)

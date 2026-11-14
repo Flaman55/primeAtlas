@@ -1604,11 +1604,11 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               number), launches pseudosquares_native.py on the shared
                               runner; Benchmark shown checked and locked (unitTests/
                               test_pseudosquares_controls.py)
-  pseudosquares_plan.py         a Pseudosquares run's range from its fields: From's
-                              floor and window, kept in the floor and under the
-                              program's stop (~1.73·10^33);
-                              never reads the storage -- pure, no tkinter
-                              (unitTests/test_pseudosquares_plan.py)
+  native_plan.py                a native run's range from its fields (Pseudosquares,
+                              primesieve with Native on): From's floor and window,
+                              kept in the floor and under the program's stop
+                              (~1.73·10^33 / 2^64 - 1); never reads the storage --
+                              pure, no tkinter (unitTests/test_native_plan.py)
   quick_gen_plan.py             QuickGenPlan mixin: Quick-gen fields -> one launch
                               (_quick_gen_plan_literal_range,
                               _on_quick_generate_clicked)
@@ -1751,10 +1751,12 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               measured runs and of a whole floor
                               (unitTests/test_time_model.py)
   run_ram.py                    predicted peak RAM of one run (run_budget footprint with
-                              the knobs the run launches with; pt1: none) and the
-                              widest run that fits the RAM budget, which caps the
+                              the knobs the run launches with; pt1: none), whether a
+                              run (times its parallel instances) is over the RAM
+                              budget, and the widest run that fits it, which caps the
                               Time simulation's width slider
-                              (unitTests/test_run_ram.py)
+                              (unitTests/test_run_ram.py,
+                              unitTests/test_generation_ram_guard.py)
   time_simulation_window.py     TimeSimulationWindow -- Toplevel with the floor and run
                               width sliders (log scale up to the engine's cap, lowered
                               to the widest run in the RAM budget) bound both ways to
@@ -1767,8 +1769,8 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
   time_simulation_controls.py   GenerationTab mixin: the Quick-gen "Time simulation"
                               button, one window at a time, rebinding to the Explore
                               mode's own Floor/Width pair; reads the free WSL RAM on a
-                              background thread when the window opens and when a run
-                              ends
+                              background thread when the tab is built, when the window
+                              opens and when a run ends
                               (unitTests/test_time_simulation.py)
   engine_advisor.py             engine proposal for one run: every own engine that fits
                               the floor, width and RAM budget, timed by time_model
@@ -1785,8 +1787,11 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               warning and the guest line
   engine_advice_controls.py     GenerationTab mixin: the proposal under each Quick-gen
                               panel copy (Floor, Explore) and in the Time simulation
-                              window from one source, the advanced form's BPSW offset
-                              field, the log reread when a run ends
+                              window from one source, timed from the run's real start
+                              (typed starting point or the store's continuation), the
+                              advanced form's BPSW offset field, the log reread when a
+                              run ends; confirm_ram_budget(): Generate asks before a
+                              run over the RAM budget
                               (unitTests/test_engine_advice_gui.py)
 
   primeatlas/visualization/     "Visualization" tab -- a container notebook with one sub-tab

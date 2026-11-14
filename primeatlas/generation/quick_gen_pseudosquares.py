@@ -1,7 +1,7 @@
 """
 quick_gen_pseudosquares.py -- QuickGenPseudosquares, Quick-gen's Pseudosquares mode: the
 Pseudosquares Prime Sieve program (Kim Walisch, BSD 2-Clause License) run natively, count
-or print, from Floor / From / Width / Threads (pseudosquares_plan.py), launched as
+or print, from Floor / From / Width / Threads (native_plan.py), launched as
 pseudosquares_native.py on the shared Generation runner and console.
 
 The mode is always native: there is no Atlas-format wrapper and a run writes nothing into the
@@ -20,7 +20,7 @@ import pseudosquares_const
 
 from ..core.info_tip import InfoTip
 from .engine_argv import build_pseudosquares_native_argv
-from .pseudosquares_plan import parse_threads, plan
+from .native_plan import parse_threads, plan
 from .quick_gen_panel import _floor_spinbox
 from .quick_number import _eval_quick_number
 from .window_planning import QUICK_GEN_MAX_WINDOW_WIDTH
@@ -101,7 +101,7 @@ class QuickGenPseudosquares:
         self._sync_benchmark_lock()
 
     def _on_quick_generate_pseudosquares(self):
-        """Plans the run from the fields (pseudosquares_plan.plan) and launches it, or shows
+        """Plans the run from the fields (native_plan.plan) and launches it, or shows
         why it cannot run."""
         raw_from = self.quick_pseudosquares_from_var.get().strip()
         start = _eval_quick_number(raw_from) if raw_from else None
@@ -120,8 +120,9 @@ class QuickGenPseudosquares:
             start = 0  # not a number: refused as below 1
         result = plan(start, floor, width, QUICK_GEN_MAX_WINDOW_WIDTH)
         if "error" in result:
+            owner = "pseudosquares" if result["error"] == "beyond_ceiling" else "native"
             messagebox.showerror(self.T("quick.dialog_title"), self.T(
-                f"quick.error_pseudosquares_{result['error']}",
+                f"quick.error_{owner}_{result['error']}",
                 max_stop=f"{pseudosquares_const.MAX_STOP:,}",
                 max_floor=pseudosquares_const.MAX_FLOOR))
             return
