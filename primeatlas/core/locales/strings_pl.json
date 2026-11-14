@@ -728,6 +728,7 @@
   "gen.confirm_ram_over_budget": "Jeden przebieg potrzebuje około {ram} GB RAM-u, więcej niż budżet RAM-u {budget} GB ({pct} % z {free} GB wolnych w WSL). WSL może wyczerpać pamięć i przebieg, albo system, może się zatrzymać. Mniejsza Szerokość się zmieści; budżet to pole {field} w formularzu zaawansowanym.\n\nUruchomić mimo to?",
   "gen.dialog_title": "Generowanie",
   "gen.status_progress_prep": "[*] Generowanie: przygotowanie sita bazowego (pi(L_final)) gotowe, start sitowania...",
+  "gen.status_progress_started": "[*] Generowanie: start...",
   "gen.status_progress_sieve": "[*] Generowanie: sito {percent}% ({done}/{total} paczek)",
   "gen.status_progress_const": "[*] Szukanie konstelacji: plik {done}/{total}",
   "gen.status_progress_const_batch": "[*] Szukanie konstelacji: plik {done}/{total} (porcja {batch_num}/{batch_count})",

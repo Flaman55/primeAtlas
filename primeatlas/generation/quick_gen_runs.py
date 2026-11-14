@@ -346,6 +346,8 @@ class QuickGenRuns:
             messagebox.showerror(self.T("gen.dialog_title"), self.T(
                 "gen.error_launch_failed", error=str(e)))
             return
+        self._start_run_eta(self.run_time_iterations(
+            choice.engine, base_exponent, window_count_per_run, write_files, [lo]))
         self.loop_run_btn.configure(state="disabled")
         self.loop_stop_btn.configure(state="normal")
         self._lock_other_run_buttons("loop")

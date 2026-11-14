@@ -1639,7 +1639,13 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
   run_progress.py               GenerationRunProgress mixin: output-queue draining into
                               consoles, the shared progress bar and status text
                               (_update_shared_progress_from_generation_chunk), the
-                              cross-engine Run lock, constellation elapsed/ETA
+                              cross-engine Run lock, constellation elapsed/ETA, a
+                              sieve run's running time and ETA in the status text
+                              (unitTests/test_run_eta.py)
+  run_eta.py                    remaining time of a running run from the time model:
+                              modelled iterations advanced by the progress lines,
+                              scaled by the measured pace from 10 % of the model on
+                              -- pure, no tkinter (unitTests/test_run_eta.py)
   window_planning.py            window/floor arithmetic: continuation point, first gap
                               and edge trimming per engine store, range -> whole
                               windows and per-floor launches (plan_storage_fill),

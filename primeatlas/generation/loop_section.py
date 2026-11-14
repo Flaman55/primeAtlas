@@ -16,12 +16,12 @@ from ..core.progress_bar_owner import release_progress_bar
 from ..core.storage import bump_floor_total, load_totals_cache, save_totals_cache
 from ..benchmark.benchmark import read_benchmark_log
 from .generation_console import GenerationConsole
-from . import engine_options
+from . import engine_options, time_model
 from .engine_fields import EngineFields
 from .engine_argv import build_loop_argv
 from primeatlas.core import ui_state_dynamic
 from .generation_settings import remember_generation_field, save_generation_settings
-from .window_planning import compute_totals_bumps_from_new_rows
+from .window_planning import compute_totals_bumps_from_new_rows, find_continuation_target_idx
 from .wsl_command import generation_log_paths, build_wsl_logged_command
 
 
@@ -309,6 +309,7 @@ class LoopSection:
             messagebox.showerror(self.T("gen.dialog_title"), self.T(
                 "gen.error_launch_failed", error=str(e)))
             return
+        self._start_run_eta(self._loop_run_time_iterations(parsed))
         self.loop_run_btn.configure(state="disabled")
         self.loop_stop_btn.configure(state="normal")
         self._lock_other_run_buttons("loop")
@@ -321,6 +322,22 @@ class LoopSection:
         for panel in self._quick_panels:
             panel["generate_btn"].configure(text=self.T("common.stop"))
         self._show_loop_terminal()
+
+    def _loop_run_time_iterations(self, parsed):
+        """The loop's modelled iterations for its ETA: one run of window_count_per_run
+        windows of window_m numbers per iteration (its instances run in parallel), the
+        first where the orchestrator continues the floor, each next one instances x windows
+        further."""
+        floor, window_m = parsed["base_exponent"], parsed["window_m"]
+        engine = parsed["engine_choice"].engine
+        windows = parsed["window_count_per_run"]
+        idx = find_continuation_target_idx(self._get_portal_folder(), floor, window_m,
+                                           engine=engine)
+        step = parsed["n_instances"] * windows * window_m
+        starts = [10 ** floor + idx * window_m + k * step for k in range(parsed["run_count"])]
+        model_windows = max(1, windows * window_m // time_model.WINDOW_WIDTH)
+        return self.run_time_iterations(engine, floor, model_windows, parsed["write_files"],
+                                        starts)
 
     def _bump_totals_from_finished_run(self):
         """Reads benchmark_log.csv fresh and folds every NEW row written since
@@ -367,6 +384,7 @@ class LoopSection:
         change."""
         for panel in self._quick_panels:
             panel["generate_btn"].configure(text=self.T("quick.generate_button"))
+        self._end_run_eta()
         self._settle_finished_loop_run()
         # Loop/hybrid/orchestrator's own subprocess encompasses its whole
         # multi-iteration run internally -- unlike constellation's batch chaining,
@@ -424,4 +442,5 @@ class LoopSection:
         self._drain_output_queue(self._loop_output_queue, self.loop_console,
                                   self.loop_run_btn, self.loop_stop_btn, self.loop_status_label,
                                   on_exit=self._on_loop_finished)
+        self._tick_run_status()
         self.after(150, self._poll_loop_output)

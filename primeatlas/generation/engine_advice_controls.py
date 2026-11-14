@@ -143,6 +143,26 @@ class EngineAdviceControls:
             self._advice_samples, floor, windows, bool(self._loop_write_files_var.get()),
             pt1_b, self._advice_offset(), ram_fits, cals=self._advice_cals[1], start=start)
 
+    def run_time_iterations(self, engine, floor, windows, write_files, starts):
+        """[(prep, rest)] modelled seconds of one run of `windows` model windows
+        (time_model.WINDOW_WIDTH numbers) of `engine` from each of `starts`, for the run's
+        ETA (run_eta.py); None when the engine has no calibration or the floor runs as one
+        combined range."""
+        pt1_b = self._advice_pt1_b()
+        if self._advice_cals is None or self._advice_cals[0] != pt1_b:
+            self._advice_cals = (pt1_b, engine_advisor.calibrations(self._advice_samples, pt1_b))
+        cal = self._advice_cals[1].get(engine)
+        if cal is None or floor < time_model.LOW_FLOOR_CUTOFF:
+            return None
+        b = pt1_b if engine in engine_options.PT1_ENGINES else 0
+        result = []
+        for start in starts:
+            est = time_model.estimate(cal[0], engine, floor, windows, write_files, b, start=start)
+            if est.run_seconds is None:
+                return None
+            result.append((est.prep_seconds, est.run_seconds - est.prep_seconds))
+        return result
+
     def engine_advice_display(self, floor, windows, start=None):
         """(AdviceText, proposed engine or None) for the views."""
         advice = self.engine_advice(floor, windows, start)

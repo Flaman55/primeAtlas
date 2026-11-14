@@ -1,8 +1,9 @@
 """
 run_progress.py -- GenerationRunProgress, what every Generation section shares while a run
 is live: draining a runner's output queue into its console, the shared bottom progress bar
-and status text parsed from the engines' output, the cross-engine Run button lock, and the
-constellation elapsed/ETA suffix.
+and status text parsed from the engines' output, the cross-engine Run button lock, the
+constellation elapsed/ETA suffix and a sieve run's running time and ETA from the time model
+(run_eta.py).
 
 A GenerationTab mixin: it uses the widgets, Variables and runner state that GenerationTab
 and its other mixins set up, so it is never instantiated on its own.
@@ -13,6 +14,7 @@ import time
 from tkinter import messagebox
 
 from ..core.progress_bar_owner import claim_progress_bar
+from . import run_eta
 from .constellation_section import CONSTELLATION_BATCH_SIZE, CONSTELLATION_ETA_MIN_WINDOWS
 from .run_output import (format_duration_short, _LOOP_SESSION_DONE_RE, _LOOP_SESSION_START_RE,
                          _LOOP_ITERATION_START_RE, _GEN_SIEVE_DONE_RE, _GEN_SIEVE_PROGRESS_RE,
@@ -21,6 +23,12 @@ from .run_output import (format_duration_short, _LOOP_SESSION_DONE_RE, _LOOP_SES
 
 
 class GenerationRunProgress:
+    _run_eta = None            # RunEta of the running sieve run, None between runs
+    _run_eta_started = None    # run_eta.now() at its launch
+    _run_status_base = None    # the run's last progress text, before the time suffix
+    _run_status_shown = None   # the status text the run last wrote
+    _run_status_at = 0.0       # run_eta.now() of that write
+
     def _drain_output_queue(self, q, console, run_btn, stop_btn, status_var, on_exit=None,
                              chunk_hook=None):
         """Shared by both Generation sections: drains whatever output
@@ -195,6 +203,42 @@ class GenerationRunProgress:
         self._gen_progress_bar_active = True
         self._set_gen_progress_bar(mode="determinate", maximum=1, value=0)
 
+    def _start_run_eta(self, iterations):
+        """Starts the running time of a launched sieve run; `iterations` ([(prep, rest)]
+        modelled seconds, see run_eta.RunEta) adds its ETA, None shows the time only."""
+        self._run_eta = run_eta.RunEta(iterations or [])
+        self._run_eta_started = run_eta.now()
+        self._set_run_status(self.T("gen.status_progress_started"))
+
+    def _end_run_eta(self):
+        self._run_eta = None
+        self._run_status_base = None
+
+    def _set_run_status(self, text):
+        """The run's progress text, with its running time and ETA while one is started."""
+        self._run_status_base = text
+        if self._run_eta is not None:
+            elapsed = run_eta.now() - self._run_eta_started
+            left = self._run_eta.remaining(elapsed)
+            elapsed_str = format_duration_short(elapsed)
+            if left is not None and left >= 1:
+                text += " " + self.T("gen.status_elapsed_eta", elapsed=elapsed_str,
+                                     eta=format_duration_short(left))
+            else:
+                text += " " + self.T("gen.status_elapsed_only", elapsed=elapsed_str)
+        self.status.set(text)
+        self._run_status_shown = text
+        self._run_status_at = run_eta.now()
+
+    def _tick_run_status(self):
+        """Called on every output poll: refreshes the running time about once a second,
+        unless another part of the app has written the shared status since the run did."""
+        if (self._run_eta is None or self._run_status_base is None
+                or run_eta.now() - self._run_status_at < 1
+                or self.status.get() != self._run_status_shown):
+            return
+        self._set_run_status(self._run_status_base)
+
     def _const_elapsed_eta_suffix(self, floor_total, floor_done):
         """Builds the " | running: Xh..., ETA: Y..." (or ETA-less) tail appended to the
         constellation search's own status text -- see CONSTELLATION_ETA_MIN_WINDOWS's
@@ -313,6 +357,7 @@ class GenerationRunProgress:
         if _LOOP_SESSION_DONE_RE.search(chunk):
             total = self._gen_step_total or 1
             self._set_gen_progress_bar(mode="determinate", maximum=total, value=total)
+            self._end_run_eta()
             self.status.set(self.T("gen.status_progress_done"))
             self._gen_step_total = None
             self._gen_loop_run_count = None
@@ -355,11 +400,14 @@ class GenerationRunProgress:
                 self._set_gen_progress_bar(
                     mode="determinate", maximum=run_count * step_total,
                     value=min(iteration, run_count) * step_total)
-                self.status.set(self.T("gen.status_progress_loop_iteration_done",
-                                   iteration=iteration, run_count=run_count))
+                if self._run_eta is not None:
+                    self._run_eta.mark_iteration_done(iteration)
+                self._set_run_status(self.T("gen.status_progress_loop_iteration_done",
+                                            iteration=iteration, run_count=run_count))
                 return
             total = self._gen_step_total or 1
             self._set_gen_progress_bar(mode="determinate", maximum=total, value=total)
+            self._end_run_eta()
             self.status.set(self.T("gen.status_progress_done"))
             self._gen_step_total = None
             return
@@ -370,20 +418,22 @@ class GenerationRunProgress:
             done, n_batches = int(done_str), int(total_str)
             self._gen_step_total = n_batches + 1  # +1 for the prep step already done
             filled = 1 + min(float(percent_str), 100.0) / 100 * n_batches
+            if self._run_eta is not None:
+                self._run_eta.mark_sieve(self._gen_loop_iteration or 1, percent_str)
             if self._gen_loop_run_count is not None:
                 run_count = self._gen_loop_run_count
                 iteration = self._gen_loop_iteration or 1
                 self._set_gen_progress_bar(
                     mode="determinate", maximum=run_count * self._gen_step_total,
                     value=(iteration - 1) * self._gen_step_total + filled)
-                self.status.set(self.T("gen.status_progress_loop_sieve", iteration=iteration,
-                                   run_count=run_count, percent=percent_str,
-                                   done=done, total=n_batches))
+                self._set_run_status(self.T("gen.status_progress_loop_sieve",
+                                            iteration=iteration, run_count=run_count,
+                                            percent=percent_str, done=done, total=n_batches))
             else:
                 self._set_gen_progress_bar(mode="determinate",
                                             maximum=self._gen_step_total, value=filled)
-                self.status.set(self.T("gen.status_progress_sieve", percent=percent_str,
-                                   done=done, total=n_batches))
+                self._set_run_status(self.T("gen.status_progress_sieve", percent=percent_str,
+                                            done=done, total=n_batches))
             return
 
         floor_progress_match = _GEN_CONST_FLOOR_PROGRESS_RE.search(chunk)
@@ -467,8 +517,8 @@ class GenerationRunProgress:
                 iteration = self._gen_loop_iteration or 1
                 self._set_gen_progress_bar(
                     mode="determinate", maximum=run_count * 2, value=(iteration - 1) * 2 + 1)
-                self.status.set(self.T("gen.status_progress_loop_prep", iteration=iteration,
-                                   run_count=run_count))
+                self._set_run_status(self.T("gen.status_progress_loop_prep",
+                                            iteration=iteration, run_count=run_count))
             else:
                 self._set_gen_progress_bar(mode="determinate", maximum=2, value=1)
-                self.status.set(self.T("gen.status_progress_prep"))
+                self._set_run_status(self.T("gen.status_progress_prep"))
