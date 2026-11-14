@@ -413,6 +413,21 @@ def event_over_own_scroller(event):
     return False
 
 
+_NOTEBOOK_WHEEL_EVENTS = ("<MouseWheel>", "<Shift-MouseWheel>", "<Alt-MouseWheel>",
+                          "<Shift-Alt-MouseWheel>", "<TouchpadScroll>", "<Button-4>",
+                          "<Button-5>")
+
+
+def disable_notebook_wheel(root):
+    """Removes the TNotebook class bindings with which Tk 9 cycles a notebook's tabs on the
+    mouse wheel, for the whole Tk application of `root`. The wheel over a tab strip then
+    reaches the page handlers (bind_all) and scrolls the page; tabs change only by click or
+    keyboard."""
+    for sequence in _NOTEBOOK_WHEEL_EVENTS:
+        if sequence in root.bind_class("TNotebook"):
+            root.unbind_class("TNotebook", sequence)
+
+
 class ScrollablePage:
     """A vertically scrollable page: content goes into `.body`, an inner frame placed on a
     canvas. `.frame` (packed into `parent` with fill/expand) holds, left to right, the

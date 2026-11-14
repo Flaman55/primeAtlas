@@ -27,7 +27,9 @@ heights, ScrollPad for scrolling pages, InfoTip for a field's explanation (also,
 changed). A page's wheel handler
 leaves the wheel to widgets that use it themselves (`event_over_own_scroller()`: Text, Listbox,
 Treeview, and an enabled ttk.Spinbox or ttk.Combobox, whose Tk class binding steps its value), so the page and
-the widget never move together.
+the widget never move together. The wheel never switches notebook tabs: Tk 9 binds it on the
+TNotebook class to cycle the tabs, and `disable_notebook_wheel()` (called when the app window is
+built) removes those bindings, so the wheel over a tab strip scrolls the page under it.
 
 Remembered fields: a tab binds each input to a key with `remember(key, var_or_widget)`; the value is
 restored when the tab is built and saved on every change (debounced, `SAVE_DELAY_MS`), with no Save or

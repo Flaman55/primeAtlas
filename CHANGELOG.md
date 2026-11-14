@@ -9,6 +9,45 @@ correction is a new entry. The app shows release, merge count and commit, e.g.
 `1.2.0+24 (f59ce41)`, because Settings → Updates moves every copy along `main` between
 releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA.B.C`.
 
+## Since 1.3.0
+
+### +1 — Research → Irreducibility: radices, comparison, comb reading, ranges, arithmetic
+
+- English: A new Research sub-tab computes the definitions of the Irreducibility repository
+  (Lean 4, Mathlib) on your own input, with buttons that open the repository and its paper.
+  Five sub-tabs. Radices and atoms: for the moduli lo..hi each modulus receives the radix
+  m / gcd(P, m), P being the product of the radices before it, without forming P (radix > 1
+  marked; for 2..N exactly the prime powers), and the atoms of the interval, primes below lo
+  included, read from pairs a, a + k with k | a. Comparison: two numbers, each in its own
+  layout of blocks D and quotient blocks K, compared from their residues only, digit by digit
+  from the most significant, with one dial per block modulus, random neighbours and a test of
+  1000 pairs. Comb reading: where modulus a stands on modulus b, read from the sech combs C_a
+  and C_b (scale at least 3). Ranges: W of a layout, how W jumps when a parameter moves, and
+  layouts fitted to any number, usable for A or B. Arithmetic: ⊕, ⊖ (with overflow and
+  underflow), ⊗, ⊘ (exact or modulo W), the address with respect to T, powers and appended
+  prime powers on residues, each checked against the integer result, and a test of 450
+  random operations. Both tests open a window listing every case: the result read from
+  residues next to the integer result, an 'only errors' filter, and the moduli and residues
+  of the selected case. The fields are remembered. The mouse wheel no longer switches tabs
+  anywhere in the app; over a tab strip it scrolls the page.
+- Polski: Nowa podzakładka Badań liczy definicje repozytorium Irreducibility (Lean 4,
+  Mathlib) na Twoich danych, z przyciskami otwierającymi repozytorium i jego artykuł. Pięć
+  podzakładek. Podstawy i atomy: dla modułów lo..hi każdy moduł dostaje podstawę
+  m / nwd(P, m), gdzie P to iloczyn podstaw przed nim, bez tworzenia P (podstawa > 1
+  wyróżniona; dla 2..N dokładnie potęgi liczb pierwszych), oraz atomy przedziału, także
+  liczby pierwsze poniżej lo, odczytane z par a, a + k z k | a. Porównanie: dwie liczby,
+  każda we własnym układzie bloków D i bloków ilorazu K, porównywane wyłącznie z reszt, cyfra
+  po cyfrze od najstarszej, z tarczą dla każdego modułu bloku, losowymi sąsiadami i testem
+  1000 par. Odczyt z grzebieni: gdzie moduł a stoi na module b, odczytane z grzebieni sech C_a
+  i C_b (skala co najmniej 3). Zakresy: W układu, skoki W przy zmianie parametru i układy
+  dobrane do dowolnej liczby, do użycia dla A albo B. Arytmetyka: ⊕, ⊖ (z przepełnieniem i
+  cofnięciem poniżej zera), ⊗, ⊘ (dokładne albo modulo W), adres względem T, potęgi i
+  dołączane potęgi liczb pierwszych na resztach, każde sprawdzone wynikiem na liczbach
+  całkowitych, oraz test 450 losowych działań. Oba testy otwierają okno z każdym przypadkiem:
+  wynik odczytany z reszt obok wyniku na liczbach całkowitych, filtr „tylko błędy” oraz
+  moduły i reszty zaznaczonego przypadku. Pola są zapamiętywane. Kółko myszy nie przełącza
+  już kart w całej aplikacji; nad paskiem kart przewija stronę.
+
 ## 1.3.0 — 2026-11-14
 
 ### +1 — Engine pt1: partial sieve + BPSW, separate D/P window stores (#6)

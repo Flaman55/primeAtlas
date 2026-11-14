@@ -24,6 +24,10 @@ B. The app: every page uses it -- Primes (Storage, primesieve, Primality), Const
    when its content is taller than the viewport, and the Benchmark page (three charts one
    under another) scrolls; in a short
    window the About page scrolls and keeps the NOTICE box at its natural height.
+C. The wheel never switches notebook tabs (Tk 9 binds it to cycle them): after
+   widgets.disable_notebook_wheel no TNotebook wheel binding is left, the wheel over the tab
+   strip in every direction (down, up, Shift, Alt, touchpad) keeps the selected tab, and the
+   wheel over a notebook inside a page still scrolls the page; the app does this at start.
 
 Usage:
     python unitTests/test_scrollable_page.py
@@ -245,6 +249,52 @@ def _test_sources():
               f"{rel[-1]} uses ScrollablePage instead of its own canvas copy")
 
 
+_NOTEBOOK_WHEEL_EVENTS = ("<MouseWheel>", "<Shift-MouseWheel>", "<Alt-MouseWheel>",
+                          "<Shift-Alt-MouseWheel>", "<TouchpadScroll>", "<Button-4>",
+                          "<Button-5>")
+
+
+def _notebook_wheel_bindings(root):
+    return [s for s in root.bind_class("TNotebook") if s in _NOTEBOOK_WHEEL_EVENTS]
+
+
+def _test_notebook_wheel():
+    print("\n--- C. the wheel never switches notebook tabs ---")
+    root = tk.Tk()
+    root.geometry("400x300")
+    try:
+        disable = getattr(widgets, "disable_notebook_wheel", None)
+        check(disable is not None, "widgets.disable_notebook_wheel exists")
+        if disable is None:
+            return
+        disable(root)
+        check(_notebook_wheel_bindings(root) == [],
+              f"no TNotebook wheel binding left ({_notebook_wheel_bindings(root)})")
+        page = widgets.ScrollablePage(root)
+        nb = ttk.Notebook(page.body)
+        nb.pack(fill="x")
+        for i in range(4):
+            nb.add(ttk.Frame(nb, height=40), text=f"tab {i}")
+        ttk.Frame(page.body, height=1200).pack()
+        nb.select(1)
+        _settle(root)
+        x, y = 20, 8
+        for seq, delta in (("<MouseWheel>", -120), ("<MouseWheel>", 120),
+                           ("<Shift-MouseWheel>", -120), ("<Alt-MouseWheel>", 120),
+                           ("<MouseWheel>", -1200)):
+            nb.event_generate(seq, x=x, y=y, delta=delta)
+            _settle(root, 2)
+            check(nb.index("current") == 1, f"{seq} delta {delta} over the tabs keeps tab 1")
+        page._bind_wheel(None)
+        before = page.canvas.yview()[0]
+        page.on_mousewheel(FakeEvent(widget=nb, delta=-120))
+        _settle(root)
+        check(page.canvas.yview()[0] > before, "the wheel over a notebook still scrolls the page")
+        check(nb.index("current") == 1, "and the tab stays")
+    finally:
+        root.destroy()
+
+
 def _test_app():
     print("\n--- B2. the app ---")
     import tkinter.messagebox as messagebox
@@ -258,6 +308,8 @@ def _test_app():
         while not app.main_notebook.winfo_ismapped() and time.time() < deadline:
             app.update()
             time.sleep(0.05)
+        check(_notebook_wheel_bindings(app) == [],
+              f"the app leaves no TNotebook wheel binding ({_notebook_wheel_bindings(app)})")
         cls = getattr(widgets, "ScrollablePage", None)
         pages = dict(getattr(app, "scroll_pages", {}))
         for name in APP_PAGES:
@@ -315,6 +367,7 @@ def main():
     _test_page()
     _test_scroll_to()
     _test_sources()
+    _test_notebook_wheel()
     _test_app()
 
 
