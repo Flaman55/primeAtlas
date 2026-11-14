@@ -1,17 +1,18 @@
 ## English
 
-**PrimeAtlas 1.3.0** — new sieve engines for deep floors (v6 wheel-30 default, v7 jump gear, pt1 partial sieve with BPSW or a pseudosquares proof), a time model that proposes the engine for a run, and a Benchmark tab rebuilt around filtering, exporting and comparing runs.
+**PrimeAtlas 1.4.0** — a new Research sub-tab, Irreducibility, computes the definitions of the Irreducibility repository (Lean 4, Mathlib) on your own input: radices and atoms, comparison of numbers from residues only, comb reading, ranges and arithmetic on residues, each result checked against ordinary integers.
 
-PrimeAtlas is an application for generating, browsing and researching prime numbers: a prime and prime-constellation archive, research tabs (Goldbach, squares, polynomials, gaps, π(x) approximations) and GPU-rendered visualizations.
+PrimeAtlas is an application for generating, browsing and researching prime numbers: a prime and prime-constellation archive, research tabs (Goldbach, squares, polynomials, gaps, π(x) approximations, irreducibility) and GPU-rendered visualizations.
 
 ### What's new
-- **Engine v6 (default, code v6.1):** 30 numbers per byte instead of 16, so one run in the same RAM covers 1.875 times as many numbers; about 2× v5 on floors 25–27, with native multi-threaded window writing. Windows are byte-identical to v5's.
-- **Engine v7 (code v7.4):** a jump gear finds only the large sieving primes whose multiples land in the run, so on deep floors that stage costs in proportion to the run's width. 10^10 numbers, 24 threads: floor 28 about 717 → 140 s, floor 29 about 2260 → 312 s. Same output as v6.1; the gear is used only where it is proven exact.
-- **Engines pt1 / pt1.1 / pt1-pss:** each window is sieved only up to N^1/4; the survivors are decided by BPSW (P windows, probable) or by the pseudosquares proof (pt1-pss, proven, straight to the D store). P windows can be proven to D later, by the pt1.1 proof or by a v7.3 sieve (Generation → Verify P → D).
-- **Engine proposal and Time simulation:** Quick generation and the Time simulation window estimate a run's time from your own benchmark log and propose an engine for the floor and width; a probable (BPSW) engine is proposed only with a clear margin and always with a warning. Nothing switches by itself.
-- **Native comparisons:** primesieve and Kim Walisch's Pseudosquares Prime Sieve (up to 10^33) run as native programs and are timed side by side with the engines.
-- **Benchmark tab:** runs without storage writes, a Filter window for the table and every chart, zoom, charts in their own windows, chosen line colors, independent hiding of axes, runs and lines, and export as PDF, CSV, SVG and an interactive HTML page.
-- **Everyday use:** the app shows its version as the release plus the merges since it (e.g. 1.3.0+2) and lists the changes in About; forms keep their values across restarts; closing during a run stops it at the next save point.
+- **Research → Irreducibility**, five sub-tabs, with buttons that open the repository and its paper:
+  - **Radices and atoms:** for the moduli lo..hi each modulus receives the radix m / gcd(P, m) without forming P (for 2..N exactly the prime powers), and the atoms of the interval.
+  - **Comparison:** two numbers, each in its own block layout, compared from their residues only, digit by digit from the most significant, with one dial per block modulus.
+  - **Comb reading:** where modulus a stands on modulus b, read from the sech combs.
+  - **Ranges:** W of a layout, how W jumps when a parameter moves, and layouts fitted to any number.
+  - **Arithmetic:** ⊕, ⊖, ⊗, ⊘ (exact or modulo W), the address with respect to T, powers and appended prime powers, all on residues.
+- **Self-tests you can watch:** 1000 random comparisons and 450 random operations, each listed in its own window with the result read from residues next to the integer result, an *only errors* filter and the residues of the selected case.
+- **Mouse wheel:** it no longer switches tabs anywhere in the app; over a tab strip it scrolls the page.
 
 The full list is in `CHANGELOG.md`. An existing installation gets this version from **Settings → Updates**; there is no need to reinstall.
 
@@ -34,18 +35,19 @@ License: PolyForm Noncommercial 1.0.0 (noncommercial use). See `LICENSE.md` and 
 
 ## Polski
 
-**PrimeAtlas 1.3.0** — nowe silniki sita dla głębokich pięter (domyślny v6 z kołem 30, v7 z przekładnią skokową, pt1 z częściowym sitem i testem BPSW albo dowodem pseudokwadratów), model czasu, który proponuje silnik dla przebiegu, oraz zakładka Benchmark przebudowana wokół filtrowania, eksportu i porównywania przebiegów.
+**PrimeAtlas 1.4.0** — nowa podzakładka Badań, Nieredukowalność, liczy definicje repozytorium Irreducibility (Lean 4, Mathlib) na Twoich danych: podstawy i atomy, porównanie liczb wyłącznie z reszt, odczyt z grzebieni, zakresy i arytmetykę na resztach, każdy wynik sprawdzony na zwykłych liczbach całkowitych.
 
-PrimeAtlas to aplikacja do generowania, przeglądania i badania liczb pierwszych: magazyn liczb pierwszych i konstelacji, zakładki badawcze (Goldbach, kwadraty, wielomiany, luki, przybliżenia π(x)) oraz wizualizacje renderowane na GPU.
+PrimeAtlas to aplikacja do generowania, przeglądania i badania liczb pierwszych: magazyn liczb pierwszych i konstelacji, zakładki badawcze (Goldbach, kwadraty, wielomiany, luki, przybliżenia π(x), nieredukowalność) oraz wizualizacje renderowane na GPU.
 
 ### Co nowego
-- **Silnik v6 (domyślny, kod v6.1):** 30 liczb na bajt zamiast 16, więc jeden przebieg w tej samej pamięci RAM obejmuje 1,875 razy więcej liczb; około 2× szybciej niż v5 na piętrach 25–27, z natywnym wielowątkowym zapisem okien. Okna są identyczne co do bajta z oknami v5.
-- **Silnik v7 (kod v7.4):** przekładnia skokowa znajduje tylko te duże liczby pierwsze sita, których wielokrotności trafiają w przebieg, więc na głębokich piętrach ten etap kosztuje proporcjonalnie do szerokości przebiegu. 10^10 liczb, 24 wątki: piętro 28 około 717 → 140 s, piętro 29 około 2260 → 312 s. Wynik taki sam jak v6.1; przekładnia działa tylko tam, gdzie jej dokładność jest udowodniona.
-- **Silniki pt1 / pt1.1 / pt1-pss:** każde okno jest przesiewane tylko do N^1/4; pozostałe liczby rozstrzyga test BPSW (okna P, prawdopodobne) albo dowód pseudokwadratów (pt1-pss, dowiedzione, prosto do magazynu D). Okna P można później dowieść do D dowodem pt1.1 albo sitem v7.3 (Generowanie → Weryfikacja P → D).
-- **Propozycja silnika i Symulacja czasu:** Szybkie generowanie i okno Symulacji czasu szacują czas przebiegu z Twojego logu benchmarków i proponują silnik dla piętra i szerokości; silnik prawdopodobny (BPSW) jest proponowany tylko przy wyraźnej przewadze i zawsze z ostrzeżeniem. Nic nie przełącza się samo.
-- **Porównania natywne:** primesieve i Pseudosquares Prime Sieve Kima Walischa (do 10^33) działają jako natywne programy i są mierzone obok silników.
-- **Zakładka Benchmark:** przebiegi bez zapisu do magazynu, okno Filtr dla tabeli i wszystkich wykresów, powiększanie, wykresy w osobnych oknach, wybrane kolory linii, niezależne ukrywanie osi, przebiegów i linii oraz eksport do PDF, CSV, SVG i interaktywnej strony HTML.
-- **Na co dzień:** aplikacja pokazuje wersję jako release plus liczbę mergów od niego (np. 1.3.0+2) i wypisuje zmiany w zakładce O programie; formularze zachowują wartości po ponownym uruchomieniu; zamknięcie w trakcie przebiegu zatrzymuje go w najbliższym punkcie zapisu.
+- **Badania → Nieredukowalność**, pięć podzakładek, z przyciskami otwierającymi repozytorium i jego artykuł:
+  - **Podstawy i atomy:** dla modułów lo..hi każdy moduł dostaje podstawę m / nwd(P, m) bez tworzenia P (dla 2..N dokładnie potęgi liczb pierwszych) oraz atomy przedziału.
+  - **Porównanie:** dwie liczby, każda we własnym układzie bloków, porównywane wyłącznie z reszt, cyfra po cyfrze od najstarszej, z tarczą dla każdego modułu bloku.
+  - **Odczyt z grzebieni:** gdzie moduł a stoi na module b, odczytane z grzebieni sech.
+  - **Zakresy:** W układu, jak W skacze przy zmianie parametru, oraz układy dopasowane do dowolnej liczby.
+  - **Arytmetyka:** ⊕, ⊖, ⊗, ⊘ (dokładne albo modulo W), adres względem T, potęgi i dołączane potęgi liczb pierwszych, wszystko na resztach.
+- **Testy, które widać w działaniu:** 1000 losowych porównań i 450 losowych działań, każde wypisane we własnym oknie z wynikiem odczytanym z reszt obok wyniku na liczbach całkowitych, filtrem *tylko błędy* i resztami zaznaczonego przypadku.
+- **Kółko myszy:** nie przełącza już kart w całej aplikacji; nad paskiem kart przewija stronę.
 
 Pełna lista jest w pliku `CHANGELOG.md`. Istniejąca instalacja dostaje tę wersję przez **Ustawienia → Aktualizacje**; nie trzeba instalować ponownie.
 
