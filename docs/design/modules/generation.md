@@ -136,6 +136,16 @@ largest known pi(10^n) with the seed) at `SECONDS_PER_PRIME`, and [Enable] / [Le
 [Leave disabled] and closing the window untick both boxes. With counting off, or on a floor that
 has its cache, nothing shows.
 
+## Pipeline form
+
+Section A's Advanced settings are four framed groups stacked top to bottom: Range (floor, window
+width, windows per iteration, iterations), Parallelism (parallel instances, workers per instance
+with its Auto button, batches per worker), Counting pi(L_final) (the two checkboxes, their text
+wrapped at the form's width) and Sieve engine (`EngineFields`: engine, profile, knobs, then the
+BPSW offset). Each group has its own grid of at most two label/field pairs per row, so the form
+fits a Full HD screen at 150 % scaling (a 1280 px wide window for the DPI-unaware Tk). A fresh
+install starts with one parallel instance, one batch per worker and engine v7.
+
 ## Remembered fields
 
 Every Quick-gen input and every field of the pipeline, constellation and k-tuple forms is remembered
@@ -256,7 +266,7 @@ is copied in once), `.generation_logs/` (logs, exit codes, `ACTIVE_RUN.json`),
 `test_console_controls`, `test_constellation_auto_retry`, `test_storage_fill`, `test_pi_seed_checkbox_exclusivity`,
 `test_time_model`, `test_run_ram`, `test_time_simulation`, `test_ui_state_app`, `test_pi_count_notice`,
 `test_pi_count_notice_controls`, `test_engine_advisor`, `test_engine_advice_gui`, `test_native_plan`,
-`test_primesieve_native_controls`, `test_generation_ram_guard`, `test_run_eta`.
+`test_primesieve_native_controls`, `test_generation_ram_guard`, `test_run_eta`, `test_pipeline_form_layout`.
 
 ## Known gaps
 

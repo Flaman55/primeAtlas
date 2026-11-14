@@ -4,8 +4,8 @@ A desktop application for generating, browsing, and searching large-scale prime 
 and prime-constellation (k-tuple) data -- plus standalone primality/factorization tools
 and a constellation-pattern calculator that work independently of anything already
 generated. The GUI runs natively on Windows (tkinter); the generation pipeline it drives
-runs under WSL, backed by `libprimesieve` and a set of custom C sieve engines (four
-interchangeable engine generations, v3/v4/v4.1/v5, v5 by default -- see "Architecture"
+runs under WSL, backed by `libprimesieve` and a set of custom C sieve engines
+(interchangeable engine generations v3 to v7 and pt1, v7 by default -- see "Architecture"
 below).
 
 Measured throughput, RAM and disk use of engines v4.1 and v5, the cost model and
@@ -1346,6 +1346,9 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               show one); mirrors the tree's heading texts, commands
                               and widths, scrolls with it, click runs the command,
                               edge drag resizes (unitTests/test_wrapped_heading.py)
+  wrapped_check.py              wrapped_checkbutton -- a ttk Checkbutton whose text wraps
+                              at its parent's width (its own style carries the
+                              wraplength) (unitTests/test_pipeline_form_layout.py)
   info_tip.py                   InfoTip -- the app's one "i" marker next to a field:
                               hovering it shows how the field affects the run (the
                               Generation tab's engine selector and every engine knob);
@@ -1613,8 +1616,11 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               (_quick_gen_plan_literal_range,
                               _on_quick_generate_clicked)
   loop_section.py               LoopSection mixin: Section A, the orchestrator_loop_v2.py
-                              form (Advanced, engine fields), its console, Run/finish/
-                              poll handlers and the floor-totals bump after a run
+                              form (Advanced: four framed groups -- range, parallelism,
+                              pi(L_final) counting, sieve engine -- sized for a Full HD
+                              screen at 150 % scaling), its console, Run/finish/poll
+                              handlers and the floor-totals bump after a run
+                              (unitTests/test_pipeline_form_layout.py)
   constellation_section.py      ConstellationSection mixin: Section B, the
                               constellation_finder_v2_3.py form and console, batched
                               launches, graceful Stop via STOP_REQUEST.txt,
@@ -1719,7 +1725,7 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               engine_options.recommend() and by
                               recommended_max_windows (v4.1)
                               (unitTests/test_run_budget.py)
-  engine_options.py             sieve engine choice (v4.1 / v5 / v6 / pt1, default v6) and
+  engine_options.py             sieve engine choice (v4.1 / v5 / v6 / v7 / pt1, default v7) and
                               perf knobs (v5 and v6 each: segment KiB, bucket region KiB,
                               bucket memory MiB, windows per run at floor 25, pieces per
                               thread; pt1: sieve limit B, chunk KiB, the verification
@@ -2319,7 +2325,7 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
   prime_sieve_v4_1.py        same as v4, plus base-gen/sieve/write phase timing and
                               bytes-written tracking, feeding the Benchmark tab's
                               second (sieve-speed/write-speed) chart
-  prime_sieve_v6_1.py        default engine (code v6.1): prime_sieve_v6.py on
+  prime_sieve_v6_1.py        engine v6 (code v6.1): prime_sieve_v6.py on
                               prime_sieve_engine_v6_1.so; output identical to
                               v6.0 (unitTests/test_engine_v6_1_identity.py)
   prime_sieve_v7_4.py        engine v7 (code v7.4): prime_sieve_v7_2.py (same work
@@ -2632,9 +2638,10 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               double-precision quotient with an exact one-p
                               correction (unitTests/test_engine_v5_phase.py
                               checks it against exact integer arithmetic)
-  orchestrator_v3.py         single-run driver; a single SCANNER_VERSION flag near
-                              the top selects the active engine ("v3", "v4", "v4.1",
-                              "v5", "v6" or "pt1" -- default v6) instead of separate settings
+  orchestrator_v3.py         single-run driver (code version 3.1); a single
+                              SCANNER_VERSION flag near the top selects the active
+                              engine ("v3", "v4", "v4.1", "v5", "v6", "v7" or "pt1" --
+                              default v7) instead of separate settings
                               that could drift out of sync with each other; the env
                               var PRIMEATLAS_SCANNER_VERSION overrides the default
                               (the Generation tab always sets it from its engine

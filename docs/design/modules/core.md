@@ -12,7 +12,7 @@ app-wide widgets and the background coordinators for floor totals and search. GU
 | Theme in use | `theme_dynamic.py` (`THEME`, set by `app_dynamic` at startup, read by `benchmark/line_colors.py`) |
 | Look | `theme.py` (palettes), `app_icon.py`, `assets/` |
 | Storage reads | `storage.py` (floor listing, totals cache, `LOW_FLOOR_CUTOFF`) |
-| Widgets | `widgets.py` (HeightGrip, ScrollPad, ScrollablePage, FlowRow), `wrapped_heading.py` (WrappedHeading, a Treeview heading row whose headings wrap to two lines; `heading_wrap.py` the pure wrapping and width fit), `info_tip.py` (InfoTip, the "i" marker with a hover text kept inside the app window), `base_tab.py` (`BaseTab`) |
+| Widgets | `widgets.py` (HeightGrip, ScrollPad, ScrollablePage, FlowRow), `wrapped_heading.py` (WrappedHeading, a Treeview heading row whose headings wrap to two lines; `heading_wrap.py` the pure wrapping and width fit), `info_tip.py` (InfoTip, the "i" marker with a hover text kept inside the app window), `wrapped_check.py` (a Checkbutton whose text wraps at its parent's width), `base_tab.py` (`BaseTab`) |
 | Background work | `totals_search_coordinator.py` (floor totals and prime/constellation search workers), `background.py` |
 | Other | `version.py` (version from CHANGELOG.md: release + merge count, commit label), `pdf_writer.py` (dependency-free PDF) |
 

@@ -7,7 +7,7 @@ Visualization tabs (`generation_offer_coordinator.py`); a restore job (Settings 
 
 ```
  _on_run_loop ─> engine_argv.build_loop_argv ─> wsl_command.build_wsl_logged_command
-   └─> WslLoggedRunner (wsl.exe) ─> orchestrator_loop_v2.py ─> orchestrator_v3.py ─> engine (prime_sieve_v6_1.py by default)
+   └─> WslLoggedRunner (wsl.exe) ─> orchestrator_loop_v2.py ─> orchestrator_v3.py ─> engine (prime_sieve_v7_4.py by default)
  GUI: _poll_loop_output tails .generation_logs/{run_id}.log ─> progress bar, console
  exit ─> _on_loop_finished ─> totals bump, reload_primes_tree
 ```

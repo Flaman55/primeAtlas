@@ -13,6 +13,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 
 from ..core.progress_bar_owner import release_progress_bar
+from ..core.wrapped_check import wrapped_checkbutton
 from ..core.storage import bump_floor_total, load_totals_cache, save_totals_cache
 from ..benchmark.benchmark import read_benchmark_log
 from .generation_console import GenerationConsole
@@ -58,40 +59,47 @@ class LoopSection:
         # (when shown) with before=self.loop_console.toggle_row so it always lands
         # right below the toggle button, above the console's own toggle row.
 
+        # The form is four framed groups stacked top to bottom, each with its own grid of at
+        # most two label/field pairs per row, so a long label in one group never widens the
+        # columns of another and the form fits a Full HD screen at 150 % scaling.
         loop_form = ttk.Frame(loop_advanced_content)
         loop_form.pack(fill="x")
+        self._loop_groups = {}
+        for name in ("range", "parallel", "pi_count", "engine"):
+            group = ttk.Labelframe(loop_form, text=self.T(f"gen.group_{name}"),
+                                  padding=(6, 2))
+            group.pack(fill="x", pady=(0, 4))
+            self._loop_groups[name] = group
 
         self._loop_vars = {}
         loop_settings = self._generation_settings["loop"]
 
-        def add_loop_field(row, col, key, label, width=10):
-            ttk.Label(loop_form, text=label).grid(
+        def add_loop_field(group, row, col, key, label, width=10):
+            """Label and entry in field slot `col` (0 or 1) of `row`; returns the entry's
+            cell, where a button may follow the entry."""
+            form = self._loop_groups[group]
+            ttk.Label(form, text=label).grid(
                 row=row, column=col * 2, sticky="w", padx=(0, 4), pady=2)
+            cell = ttk.Frame(form)
+            cell.grid(row=row, column=col * 2 + 1, sticky="w", padx=(0, 20), pady=2)
             var = tk.StringVar(value=str(loop_settings.get(key, "")))
-            ttk.Entry(loop_form, textvariable=var, width=width).grid(
-                row=row, column=col * 2 + 1, sticky="w", padx=(0, 20), pady=2)
+            ttk.Entry(cell, textvariable=var, width=width).pack(side="left")
             self._loop_vars[key] = var
             remember_generation_field("loop", key, var)
+            return cell
 
-        add_loop_field(0, 0, "base_exponent", self.T("gen.field_base_exponent"))
-        add_loop_field(0, 1, "run_count", self.T("gen.field_run_count"))
-        add_loop_field(1, 0, "n_instances", self.T("gen.field_n_instances"))
-        add_loop_field(1, 1, "window_count_per_run", self.T("gen.field_window_count"))
-        add_loop_field(2, 0, "workers", self.T("gen.field_workers"))
-        # Auto button for "workers", same idea as Quick generation's own RAM-based
-        # Auto button for window count (_on_quick_auto_width_clicked) -- probes
-        # WSL's available CPU count and fills the field with it (see
-        # _on_workers_auto_clicked's own docstring). Occupies raw column 2;
-        # batches_per_worker sits one field-slot to the right (col=2 -> raw columns 4/5).
-        ttk.Button(loop_form, text=self.T("quick.auto_button"), width=6,
-                   command=self._on_workers_auto_clicked).grid(
-            row=2, column=2, sticky="w", padx=(0, 8), pady=2)
-        add_loop_field(2, 2, "batches_per_worker", self.T("gen.field_batches"))
-        # window_m: was hardcoded to 10,000,000 in three separate scanner/orchestrator
-        # files -- now a real CLI-overridable parameter, threaded all the way down to
-        # prime_sieve_v3.py (see build_loop_argv()'s docstring for the full chain and
-        # the "only safe to change for a floor with no existing data" caveat).
-        add_loop_field(3, 0, "window_m", self.T("gen.field_window_m"), width=14)
+        # window_m is threaded down to the scanner (build_loop_argv()); changing it is safe
+        # only for a floor with no existing data.
+        add_loop_field("range", 0, 0, "base_exponent", self.T("gen.field_base_exponent"))
+        add_loop_field("range", 0, 1, "window_m", self.T("gen.field_window_m"), width=14)
+        add_loop_field("range", 1, 0, "window_count_per_run", self.T("gen.field_window_count"))
+        add_loop_field("range", 1, 1, "run_count", self.T("gen.field_run_count"))
+        add_loop_field("parallel", 0, 0, "n_instances", self.T("gen.field_n_instances"))
+        workers_cell = add_loop_field("parallel", 0, 1, "workers", self.T("gen.field_workers"))
+        # Fills workers with WSL's CPU count (_on_workers_auto_clicked).
+        ttk.Button(workers_cell, text=self.T("quick.auto_button"), width=6,
+                   command=self._on_workers_auto_clicked).pack(side="left", padx=(6, 0))
+        add_loop_field("parallel", 1, 0, "batches_per_worker", self.T("gen.field_batches"))
 
         # These two checkboxes are mutually exclusive ALTERNATIVES for computing
         # pi(L_final), not an independent base+modifier pair (picking
@@ -106,15 +114,14 @@ class LoopSection:
         self._loop_count_sieving_var = tk.BooleanVar(
             value=bool(loop_settings.get("compute_sieving_primes_count", False))
             and not use_pi_seed_initial)
-        ttk.Checkbutton(
-            loop_form, text=self.T("gen.check_count_sieving"),
-            variable=self._loop_count_sieving_var).grid(
-            row=4, column=0, columnspan=4, sticky="w", pady=(6, 0))
+        pi_group = self._loop_groups["pi_count"]
+        wrapped_checkbutton(
+            pi_group, "PiCountScratch", text=self.T("gen.check_count_sieving"),
+            variable=self._loop_count_sieving_var).pack(anchor="w")
         self._loop_use_pi_seed_var = tk.BooleanVar(value=use_pi_seed_initial)
-        ttk.Checkbutton(
-            loop_form, text=self.T("gen.check_use_pi_seed"),
-            variable=self._loop_use_pi_seed_var).grid(
-            row=5, column=0, columnspan=4, sticky="w", pady=(0, 0))
+        wrapped_checkbutton(
+            pi_group, "PiCountSeed", text=self.T("gen.check_use_pi_seed"),
+            variable=self._loop_use_pi_seed_var).pack(anchor="w")
 
         def _on_count_sieving_toggle(*_args):
             if self._loop_count_sieving_var.get() and self._loop_use_pi_seed_var.get():
@@ -135,8 +142,9 @@ class LoopSection:
             "loop", "compute_sieving_primes_count", self._loop_count_sieving_var)
         remember_generation_field("loop", "use_known_pi_seed", self._loop_use_pi_seed_var)
 
-        # Sieve engine and its knobs (rows 6-10); the Quick-gen Width cap follows the engine.
-        self._engine_fields = EngineFields(loop_form, self.T, loop_settings, row=6)
+        # Sieve engine and its knobs; the Quick-gen Width cap follows the engine.
+        self._engine_fields = EngineFields(self._loop_groups["engine"], self.T, loop_settings,
+                                           row=0)
         self._engine_fields.on_engine_change(self._sync_quick_width_caps)
         self._sync_quick_width_caps()
         # Auto profile fields show the set of the run width edited last: Windows / iteration,
@@ -146,8 +154,8 @@ class LoopSection:
             width_var.trace_add(
                 "write", lambda *_, var=width_var: self._engine_fields.set_windows(var.get()))
         self._engine_fields.set_windows(self._loop_vars["window_count_per_run"].get())
-        # Below every engine's knob rows (EngineFields grids up to six of them from row 7).
-        self._build_advisor_offset_field(loop_form, row=20)
+        # Below every engine's knob rows (EngineFields grids up to six of them from row 1).
+        self._build_advisor_offset_field(self._loop_groups["engine"], row=20)
 
         loop_btn_row = ttk.Frame(loop_advanced_content)
         loop_btn_row.pack(fill="x", pady=(6, 0))
