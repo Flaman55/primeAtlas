@@ -48,6 +48,26 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   zgłoszona jest jedna dziesiąta modelowanej pracy, idzie za zmierzonym tempem przebiegu. Bez
   kalibracji silnika widać tylko czas trwania.
 
+### +3 — Generation: pipeline form fits a small screen; defaults one instance, one batch, v7, workers Max
+
+- English: The pipeline's Advanced settings are grouped into four frames (Range, Parallelism,
+  Counting pi(L_final), Sieve engine), each laid out on its own, and the long pi(L_final)
+  options wrap, so the whole form fits a 13" Full HD screen at 150 % scaling; before, the
+  Batches / worker field fell outside the window. A fresh install now starts with one
+  parallel instance, one batch per worker and engine v7 (also the default of
+  orchestrator_v3.py, now code version 3.1). Workers accepts Max, now the default: every
+  CPU WSL reports, read at each launch, so the form fits the machine it runs on. Values
+  already remembered stay as they are.
+- Polski: Ustawienia zaawansowane potoku są pogrupowane w cztery ramki (Zakres,
+  Równoległość, Liczenie pi(L_final), Silnik sita), każda rozkładana osobno, a długie opcje
+  pi(L_final) się zawijają, więc cały formularz mieści się na ekranie 13" Full HD przy
+  skalowaniu 150%; wcześniej pole Batche / workera wypadało poza okno. Świeża instalacja
+  zaczyna teraz od jednej instancji równoległej, jednego batcha na workera i silnika v7
+  (też domyślnego w orchestrator_v3.py, teraz w wersji kodu 3.1). Pole workers przyjmuje Max,
+  teraz domyślne: wszystkie procesory widoczne w WSL, odczytywane przy każdym uruchomieniu,
+  więc formularz pasuje do komputera, na którym działa. Już zapamiętane wartości zostają bez
+  zmian.
+
 ## 1.4.0 — 2026-11-14
 
 ### +1 — Research → Irreducibility: radices, comparison, comb reading, ranges, arithmetic

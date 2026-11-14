@@ -1,3 +1,10 @@
+"""
+orchestrator_v3.py -- the single-run driver: runs one sieve engine over a range of windows of
+a floor, logs the benchmark row and verifies the new windows.
+
+Code version 3.1. Changes from 3.0: the default engine (SCANNER_VERSION when
+PRIMEATLAS_SCANNER_VERSION is unset) is v7 instead of v6.
+"""
 import subprocess
 import sys
 import os
@@ -33,10 +40,10 @@ import window_integrity
 # prime_sieve_v4.py's header). v4.1 = v4 plus base-gen/sieve/write timing and a
 # bytes-written counter in four benchmark_log.csv columns (base_gen_seconds/sieve_seconds/
 # write_seconds/bytes_written, see benchmark_log_schema.py). v5 = prime_sieve_v5_2.py (code
-# version v5.2: v5.1's sieve, parallel window writer), output identical to v4.1. v6 = the
-# default engine (prime_sieve_v6_1.py, code version v6.1, wheel-30 buffer), output identical
+# version v5.2: v5.1's sieve, parallel window writer), output identical to v4.1. v6 =
+# prime_sieve_v6_1.py (code version v6.1, wheel-30 buffer), output identical
 # to v5; v6.0's prime_sieve_v6.py stays for comparison. v7 = prime_sieve_v7_4.py (code version
-# v7.4): v6.1 plus the jump gear for the deep-floor sieving primes, its threshold from a cost
+# v7.4), the default engine: v6.1 plus the jump gear for the deep-floor sieving primes, its threshold from a cost
 # model and its span virtual (wider than a narrow run's buffer), its three-gap steps kept from
 # block to block under the gaps certificate, output identical to v6; v7.0's prime_sieve_v7_0.py,
 # v7.1's prime_sieve_v7_1.py and v7.2's prime_sieve_v7_2.py stay for comparison. pt1 = partial sieve + primality test
@@ -45,7 +52,7 @@ import window_integrity
 # same pass (pseudosquares proof above MR_DET_BOUND), all of them D.
 # PRIMEATLAS_SCANNER_VERSION, when set, overrides the default (benchmarks compare engines
 # without editing this file).
-SCANNER_VERSION = os.environ.get("PRIMEATLAS_SCANNER_VERSION") or "v6"
+SCANNER_VERSION = os.environ.get("PRIMEATLAS_SCANNER_VERSION") or "v7"
 
 if SCANNER_VERSION == "v3":
     import prime_sieve_v3 as prime_sieve_module  # noqa: E402

@@ -45,7 +45,7 @@ def check(value, message):
 def check_mirrors():
     passed = True
     passed &= check(eo.ENGINES == ("v4.1", "v5", "v6", "v7", "pt1", "pt1-pss"), f"engines offered: {eo.ENGINES}")
-    passed &= check(eo.DEFAULT_ENGINE == "v6", f"default engine {eo.DEFAULT_ENGINE}")
+    passed &= check(eo.DEFAULT_ENGINE == "v7", f"default engine {eo.DEFAULT_ENGINE}")
     # orchestrator_v3.py imports WSL-only engine modules, so its default is read from source.
     with open(os.path.join(ROOT, "prime_sieve", "orchestrator_v3.py"), encoding="utf-8") as f:
         src = f.read()

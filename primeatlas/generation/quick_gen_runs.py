@@ -12,7 +12,7 @@ import queue
 from tkinter import messagebox
 
 from ..core.storage import digit_count_floor, LOW_FLOOR_CUTOFF
-from . import engine_options
+from . import engine_options, wsl_resources
 from .engine_argv import (build_primesieve_argv, build_primesieve_native_argv, build_hybrid_argv, build_hybrid_narrow_argv,
                           build_cudasieve_argv, build_orchestrator_direct_argv)
 from .quick_number import _eval_quick_number
@@ -315,7 +315,10 @@ class QuickGenRuns:
             raw = self._loop_vars[key].get().strip()
             return int(raw) if raw.isdigit() and int(raw) > 0 else default
 
-        workers = _positive_int_or("workers", 1)
+        workers_text = self._loop_vars["workers"].get()
+        workers = wsl_resources.resolve_workers(
+            workers_text, wsl_resources.estimate_wsl_available_cpu_count()
+            if wsl_resources.wants_cpu_count(workers_text) else None) or 1
         batches_per_worker = _positive_int_or("batches_per_worker", 1)
         choice, bad_key = self._engine_fields.choice(window_count_per_run)
         if choice is None:

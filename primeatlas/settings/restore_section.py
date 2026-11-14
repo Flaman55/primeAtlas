@@ -21,7 +21,7 @@ import queue
 
 from tkinter import messagebox
 
-from ..generation import engine_options
+from ..generation import engine_options, wsl_resources
 from .manifest import FloorSnapshot, ConstellationSnapshot
 from .backup_store import BackupStore
 from .restore_job import (
@@ -481,7 +481,10 @@ class RestoreSection:
             kill_pattern = "prime_sieve_primesieve.py"
         else:
             n_instances = int(defaults.get("n_instances") or 1)
-            workers = int(defaults.get("workers") or 1)
+            workers_text = defaults.get("workers")
+            workers = wsl_resources.resolve_workers(
+                workers_text, wsl_resources.estimate_wsl_available_cpu_count()
+                if wsl_resources.wants_cpu_count(workers_text) else None) or 1
             batches_per_worker = int(defaults.get("batches_per_worker") or 1)
             compute_sieving = bool(defaults.get("compute_sieving_primes_count", False))
             argv = self.wsl["build_loop_argv"](

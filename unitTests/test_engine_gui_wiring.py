@@ -250,8 +250,8 @@ def main():
         from primeatlas.generation.generation_settings import DEFAULT_GENERATION_SETTINGS
         default_loop = DEFAULT_GENERATION_SETTINGS["loop"]
         passed &= check(engine_options.resolve(default_loop).engine
-                        == engine_options.DEFAULT_ENGINE == "v6",
-                        "default engine is v6")
+                        == engine_options.DEFAULT_ENGINE == "v7",
+                        "default engine is v7")
         from primeatlas.core.info_tip import InfoTip
         passed &= check(isinstance(fields.engine_info, InfoTip)
                         and fields.engine_info.text() == gen.T("gen.info_engine"),

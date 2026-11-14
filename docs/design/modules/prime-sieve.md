@@ -1,6 +1,6 @@
 # Module: prime-sieve (sieve engines and orchestrators, WSL)
 
-`prime_sieve/` produces the prime windows: the sieve engines (v6 by default, v7, v5, pt1, primesieve,
+`prime_sieve/` produces the prime windows: the sieve engines (v7 by default, v6, v5, pt1, primesieve,
 cudasieve, Hybrid; older numbered versions kept), the orchestrators that run them in batches, and the
 storage helpers both the engines and the GUI import. Runs under WSL; the GUI imports only the
 standard-library helpers.
