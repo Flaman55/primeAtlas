@@ -26,6 +26,7 @@ from primeatlas.research import irreducibility_layout as layout
 from primeatlas.research import irreducibility_ops as ops
 from primeatlas.research import irreducibility_primality as primality
 from primeatlas.research import irreducibility_residues as res
+from primeatlas.research import irreducibility_multiplicative as mult
 from primeatlas.research import irreducibility_selftest as selftest
 
 # fmt_big output holds a thin space and a middle dot, which a cp1250 console cannot print.
@@ -457,6 +458,33 @@ def test_selftest():
     finally:
         res.is_prime_res_steps = real
     check(bad["wrong"] == 40, f"a flipped answer is caught on every number ({bad['wrong']})")
+
+    out = selftest.multiplicative_test(300, random.Random(6))
+    cases = out.get("cases", [])
+    check(out["count"] == 300 and out["wrong"] == 0 and len(cases) == 300,
+          f"multiplicative_test: 300 cases, 0 wrong ({out['wrong']})")
+    check(all(set(c) >= {"q", "n", "task", "residues", "integers", "ok", "detail"} and c["ok"]
+              and c["residues"].split(": ")[-1] == c["integers"].split(": ")[-1]
+              and "t:" in c["detail"] for c in cases),
+          "every case: the reading from the step equals Euler's criterion, the cycle listed")
+    kinds = {c["integers"].split(": ")[-1] for c in cases}
+    check(kinds == {"square", "not a square", "q | N", "q = 2"},
+          f"the cases include squares, non-squares, q | N and q = 2 ({sorted(kinds)})")
+    check(all(c["q"] <= selftest.MUL_TEST_MAX_Q for c in cases)
+          and len({c["q"] for c in cases}) > 50, "q runs over many primes up to MUL_TEST_MAX_Q")
+    real = mult.analyze
+
+    def flipped(q, g, n):
+        a = real(q, g, n)
+        return dict(a, square=None if a["square"] is None else not a["square"])
+    mult.analyze = flipped
+    try:
+        bad = selftest.multiplicative_test(60, random.Random(6))
+    finally:
+        mult.analyze = real
+    claims = sum(c["integers"].split(": ")[-1] in ("square", "not a square") for c in bad["cases"])
+    check(bad["wrong"] == claims > 0,
+          f"a flipped parity is caught on every square question ({bad['wrong']} of {claims})")
 
 
 _CASE_KEYS = {"kind", "task", "residues", "integers", "ok"}

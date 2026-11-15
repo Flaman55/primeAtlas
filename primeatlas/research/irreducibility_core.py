@@ -1,7 +1,8 @@
 """
 irreducibility_core.py -- residues, Euclid's algorithm and the radices of a mixed-radix
 system over arbitrary moduli, mirroring the definitions of the Irreducibility repository
-(lean/Irreducibility/Defs.lean: countMod, resid, euclid, prodMod, gcdProd, radices).
+(lean/Irreducibility/Defs.lean: countMod, resid, mulCount, euclid, prodMod, gcdProd,
+radices).
 
 Each modulus m receives the radix m / gcd(m, product of the radices before it). The gcd is
 computed by Euclid's algorithm on the residue of that product modulo m, built factor by
@@ -22,6 +23,15 @@ def resid(a, b):
     """The residue of a modulo b. Equal to count_mod(b, a) (Lean: countMod_eq); the
     built-in % keeps long lists fast."""
     return a % b
+
+
+def mul_count(g, q, t):
+    """The residue of g^t modulo q by multiplicative counting: start at resid(1, q), multiply
+    by g per step and take the residue modulo q."""
+    v = resid(1, q)
+    for _ in range(t):
+        v = resid(v * g, q)
+    return v
 
 
 def euclid(a, b):

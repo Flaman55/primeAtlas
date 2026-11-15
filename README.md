@@ -1543,36 +1543,45 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               deliberately-duplicated sieve_is_prime)
   research_irreducibility_tab.py
                               ResearchIrreducibilityTab -- Research -> Nieredukowalnosc:
-                              links to the Irreducibility repository and paper, six
+                              links to the Irreducibility repository and paper, seven
                               sub-tabs built from the files below
   irreducibility_radices_view.py, irreducibility_compare_view.py,
   irreducibility_comb_view.py, irreducibility_ranges_view.py,
-  irreducibility_arith_view.py, irreducibility_primality_view.py
-                              the six sub-tabs: radices of lo..hi and interval atoms /
+  irreducibility_arith_view.py, irreducibility_primality_view.py,
+  irreducibility_multiplicative_view.py
+                              the seven sub-tabs: radices of lo..hi and interval atoms /
                               A vs B in block layouts / a mod b read from two sech combs /
                               W of a layout, parameter sweep, fit to a number /
                               operations on the residues of A and B / whether A is
-                              prime, read from its residues (run in slices, Stop)
+                              prime, read from its residues (run in slices, Stop) /
+                              one cycle of g mod q, the step reaching N mod q and
+                              whether N is a square mod q
   irreducibility_numbers.py   IrreducibilityNumbers: A, B and their layouts (shared,
                               remembered fields), layout text
   irreducibility_widgets.py, irreducibility_draw.py
                               wrapped label, remembered entry, read-only output text /
-                              Canvas chips, dials and the two combs
+                              Canvas chips, dials, the two combs and the comb of
+                              modulus q - 1 with the returns to 1
   irreducibility_cases_window.py
                               CasesWindow: every case of a self-test (result read from
                               residues next to the integer result, 'only errors'
                               filter, the residues of the selected case)
-  irreducibility_core.py, irreducibility_residues.py, irreducibility_comb.py
-                              mirrors of Defs.lean / SechComb.lean: residues, Euclid,
-                              radices; mixed radix, comparison, blocks, interval atoms,
-                              arithmetic and primality (isPrimeRes) on residues; the
-                              sech comb. Nothing here forms the product of the
-                              moduli or uses a list of primes or a primality test
+  irreducibility_core.py, irreducibility_residues.py, irreducibility_comb.py,
+  irreducibility_multiplicative.py
+                              mirrors of Defs.lean / SechComb.lean / Multiplicative.lean:
+                              residues, Euclid, radices, multiplicative counting; mixed
+                              radix, comparison, blocks, interval atoms, arithmetic and
+                              primality (isPrimeRes) on residues; the sech comb; one
+                              cycle of g mod q, its order, Auto g, the discrete-log step
+                              and its parity. Nothing here forms the product of the
+                              moduli, takes a power or uses a list of primes or a
+                              primality test
   irreducibility_layout.py, irreducibility_ops.py, irreducibility_primality.py,
   irreducibility_selftest.py
                               value side: block layouts, W, fit_for, sweep / the
                               Arithmetic operations with periods and appended powers /
                               an isPrimeRes run advanced in slices / random self-tests
+                              (comparisons, operations, primality, square readings)
                               checked against integers
 
   primeatlas/generation/        "Generation" tab

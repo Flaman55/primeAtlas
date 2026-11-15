@@ -4,9 +4,9 @@ Five analyses grouped by the shape of the question: square intervals (Legendre, 
 prime-generating polynomials (Landau, Euler, Bunyakovsky), Goldbach (strong and weak), prime gaps
 (Andrica, Firoozbakht, Cramer overlays) and pi(x) approximations (li(x), R(x)). Each is a UI tab plus a
 pure-logic window module. A sixth sub-tab, Irreducibility, computes the definitions of the
-Irreducibility repository (Lean 4) on the user's input in six sub-tabs: radices and interval atoms,
+Irreducibility repository (Lean 4) on the user's input in seven sub-tabs: radices and interval atoms,
 comparison of numbers in block layouts, residues read from sech combs, ranges of a layout,
-arithmetic on residues, and primality read from residues.
+arithmetic on residues, primality read from residues, and multiplicative counting modulo q.
 
 ## Files
 
@@ -17,7 +17,7 @@ arithmetic on residues, and primality read from residues.
 | Goldbach | `research_goldbach_tab.py` and its mixins, `research_goldbach.py`, `goldbach_window.py`, `goldbach_paging.py` |
 | Gaps | `research_gaps_tab.py`, `gaps_window.py` |
 | pi(x) | `research_pi_approx_tab.py`, `pi_approx_window.py` |
-| Irreducibility | `research_irreducibility_tab.py`; views `irreducibility_radices_view.py`, `irreducibility_compare_view.py`, `irreducibility_comb_view.py`, `irreducibility_ranges_view.py`, `irreducibility_arith_view.py`, `irreducibility_primality_view.py`; shared `irreducibility_numbers.py`, `irreducibility_widgets.py`, `irreducibility_draw.py`, `irreducibility_cases_window.py`; residue side `irreducibility_core.py`, `irreducibility_residues.py`, `irreducibility_comb.py`; value side `irreducibility_layout.py`, `irreducibility_ops.py`, `irreducibility_primality.py`, `irreducibility_selftest.py` |
+| Irreducibility | `research_irreducibility_tab.py`; views `irreducibility_radices_view.py`, `irreducibility_compare_view.py`, `irreducibility_comb_view.py`, `irreducibility_ranges_view.py`, `irreducibility_arith_view.py`, `irreducibility_primality_view.py`, `irreducibility_multiplicative_view.py`; shared `irreducibility_numbers.py`, `irreducibility_widgets.py`, `irreducibility_draw.py`, `irreducibility_cases_window.py`; residue side `irreducibility_core.py`, `irreducibility_residues.py`, `irreducibility_comb.py`, `irreducibility_multiplicative.py`; value side `irreducibility_layout.py`, `irreducibility_ops.py`, `irreducibility_primality.py`, `irreducibility_selftest.py` |
 
 ## Contract
 
@@ -29,11 +29,13 @@ The archive data source reads stored windows; a missing range is offered to the 
 (Goldbach through `offer_generate_missing_range`). pi(x) can query primecount through WSL.
 
 Irreducibility has no data source. Its files split along one line: the residue side
-(`irreducibility_core.py`, `irreducibility_residues.py`, `irreducibility_comb.py`) mirrors `Defs.lean`
-and `SechComb.lean` function by function (countMod, resid, euclid, prodMod, gcdProd, radices,
+(`irreducibility_core.py`, `irreducibility_residues.py`, `irreducibility_comb.py`,
+`irreducibility_multiplicative.py`) mirrors `Defs.lean`, `SechComb.lean` and `Multiplicative.lean`
+function by function (countMod, resid, mulCount, euclid, prodMod, gcdProd, radices,
 evalMod, invMod, digitStep, toMixedRadix, compareRes, blockModulus, baseExtend, flatten,
 compareBlocks, intervalAtoms, addRes ... addressRes, isPrimeRes) and never forms the product of
-the moduli or uses a list of primes or a primality test; the value side (`irreducibility_layout.py`, `irreducibility_ops.py`,
+the moduli or uses a list of primes or a primality test; multiplicative counting multiplies by g
+once per step and never takes a power; the value side (`irreducibility_layout.py`, `irreducibility_ops.py`,
 `irreducibility_primality.py`, `irreducibility_selftest.py`) turns numbers into block
 representations, forms W and other lcm values, runs isPrimeRes in slices, and checks every result
 against ordinary integers.
@@ -46,6 +48,7 @@ against ordinary integers.
 | Ranges | a layout of its own (or taken from A / B); a number n | W(D), W(K), W and the jump of W for each parameter moved by -3..+3; layouts fitted to n for block sizes 1..5, usable for A or B |
 | Arithmetic | A, B (the Comparison fields), b, T, e, p, n | residues of A ⊕ B, A ⊖ B (overflow / underflow flag, period), A ⊗ B (preperiod, period), A ⊘ b (exact, modulo W or none), the address (i, k) when T divides W, A^e (rhythm), appended powers of p; each with the integer check; a test of 450 random operations, every operation listed in a window |
 | Primality | A with its layout (the Comparison fields), fuel (1 to 10^9 divisors, default 10^6) | the verdict of isPrimeRes (prime: m reached A or m² > A; composite: the divisor m, or A < 2; no answer: fuel used up or stopped), the step count, the first and last 10 steps (m, m vs A, m² vs A, A mod m), the integer check (Miller-Rabin); a note when (isqrt(A) + 1)² ≥ W, where the run may go on up to A, and Fit for primality, which sets W above (isqrt(A) + 1)²; a test of 1000 numbers, every number listed in a window |
+| Multiplicative counting | q (2 to 10^5), g (auto or 1..q - 1), N (any size) | the order of g (Auto: the smallest g of the largest order among 1..100, the least primitive root for a prime q, a note when none has order q - 1); whether g^t mod q and t mod (q - 1) are equal at the same pairs of steps, or the first differing pair; N mod q and the step t reaching it (discrete logarithm); N a square mod q by the parity of t, given only when g has order q - 1, q > 2 and q ∤ N; the integer check (q prime by Miller-Rabin, Euler's criterion); the cycle table (every step up to 200, else the first 20, the step with 2 around it, the last 3); for q ≤ 101 the sech comb of modulus q - 1 over two cycles with the returns to 1 marked; a test of 1000 random primes q and N, every case listed in a window |
 
 A test opens a window (`CasesWindow`) with one row per case: the task, the result read from
 residues (turned back into a number only for display), the integer result in the same notation and
@@ -79,6 +82,5 @@ None.
 
 ## Known gaps
 
-- Irreducibility: the multiplicative counting of T9 is not shown yet.
 - Hardy-Littlewood density comparison is planned as a view of the Constellations tab, not a Research
   sub-tab.

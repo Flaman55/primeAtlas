@@ -91,6 +91,28 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   pojawia się uwaga; Dopasuj do pierwszości ustawia układ z wystarczającym zapasem. Test 1000
   liczb sprawdza losowe liczby dzieleniem próbnym i wypisuje każdy przypadek.
 
+### +5 — Research: Irreducibility -> Multiplicative counting, discrete logarithm and squares mod q
+
+- English: Research -> Irreducibility has a seventh sub-tab, Multiplicative counting, after the
+  repository's theorem T9. For a modulus q, a base g (or Auto) and a number N it counts one
+  cycle multiplicatively (start at 1, multiply by g per step) next to the ordinary counter
+  modulo q − 1 and shows the order of g, whether both counters are equal at the same pairs of
+  steps, the step at which the cycle reaches N mod q (the discrete logarithm) and, from the
+  parity of that step, whether N is a square modulo q. The square reading is given only when g
+  is a primitive root; otherwise the tab says why. A check compares it with Euler's criterion
+  on integers. For small q the sech comb of modulus q − 1 is drawn with the returns to 1
+  marked. Test 1000 cases checks random primes and numbers and lists every case.
+- Polski: Badania -> Nieredukowalność ma siódmą podzakładkę, Liczenie multiplikatywne, według
+  twierdzenia T9 repozytorium. Dla modułu q, podstawy g (albo Auto) i liczby N liczy jeden
+  cykl multiplikatywnie (start od 1, w każdym kroku mnożenie przez g) obok zwykłego licznika
+  modulo q − 1 i pokazuje rząd g, czy oba liczniki są równe w tych samych parach kroków, krok,
+  w którym cykl osiąga N mod q (logarytm dyskretny), oraz z parzystości tego kroku, czy N jest
+  kwadratem modulo q. Odczyt kwadratu jest podawany tylko, gdy g jest pierwiastkiem
+  pierwotnym; w przeciwnym razie zakładka mówi dlaczego. Sprawdzenie porównuje go z
+  kryterium Eulera na liczbach całkowitych. Dla małych q rysowany jest grzebień sech o module
+  q − 1 z zaznaczonymi powrotami do 1. Test 1000 przypadków sprawdza losowe liczby pierwsze i
+  liczby oraz wypisuje każdy przypadek.
+
 ## 1.4.0 — 2026-11-14
 
 ### +1 — Research → Irreducibility: radices, comparison, comb reading, ranges, arithmetic

@@ -1,11 +1,11 @@
 """
 test_research_irreducibility_tab.py -- tests for Research -> Irreducibility
-(primeatlas/research/research_irreducibility_tab.py and its six sub-tab views: Radices and
-atoms, Comparison, Comb reading, Ranges, Arithmetic, Primality). The pure logic is tested in
-test_irreducibility_core.py and test_irreducibility_blocks.py; this file exercises the tkinter
-wiring: what each sub-tab computes on opening, its buttons, input errors, the numbers A and B
-shared by Comparison, Ranges, Arithmetic and Primality, the repository links, remembered fields and both
-locales.
+(primeatlas/research/research_irreducibility_tab.py and its seven sub-tab views: Radices and
+atoms, Comparison, Comb reading, Ranges, Arithmetic, Primality, Multiplicative counting). The
+pure logic is tested in test_irreducibility_core.py and test_irreducibility_blocks.py; this
+file exercises the tkinter wiring: what each sub-tab computes on opening, its buttons, input
+errors, the numbers A and B shared by Comparison, Ranges, Arithmetic and Primality, the
+repository links, remembered fields and both locales.
 
 Builds the real app (same approach as test_research_pi_approx_tab.py), with the storage
 folder and remembered fields isolated by app_sandbox.isolate_app().
@@ -60,7 +60,7 @@ def _locale_keys(language):
         {"tabs.research_irreducibility"} & set(data))
 
 
-def _check_cases(app, v, T, count, name, kind_texts=None):
+def _check_cases(app, v, T, count, name, kind_texts=None, detail_mark="m:"):
     """The test opened v.cases_window: one row per case, all marked ok, 'only errors' leaves
     none, a selected row shows its residues; a second run refreshes the same window; after
     closing it a run opens a new one."""
@@ -79,7 +79,7 @@ def _check_cases(app, v, T, count, name, kind_texts=None):
         check(kinds == set(kind_texts), f"{name}: every kind listed by its name ({kinds})")
     w.tree.selection_set(rows[1])
     app.update()
-    check("m:" in w.detail.text(), f"{name}: a selected row shows its moduli and residues")
+    check(detail_mark in w.detail.text(), f"{name}: a selected row shows its details")
     w.only_errors_var.set(True)
     w.refill()
     check(w.tree.get_children() == (), f"{name}: 'only errors' leaves no row")
@@ -329,8 +329,8 @@ def test_primality(app, tab, T):
     from primeatlas.research.irreducibility_primality import HEAD_ROWS, TAIL_ROWS
     v = tab.primality_view
     nums = tab.numbers
-    check(tab.sub_notebook.tab(tab.sub_notebook.tabs()[-1], "text")
-          == T("research_irreducibility.tab_primality"), "Primality is the last sub-tab")
+    check(tab.sub_notebook.tab(tab.sub_notebook.tabs()[-2], "text")
+          == T("research_irreducibility.tab_primality"), "Primality is the sixth sub-tab")
     check(v.verdict_var.get() == "" and not v.is_running(),
           "nothing runs on opening: the run waits for its button")
     nums.number_var("A").set("12345678")
@@ -460,6 +460,105 @@ def test_primality(app, tab, T):
     _set_layout(nums, (2, 3, 3, 11, 3, 3))
 
 
+def _mul(app, v, q, g, n):
+    _set(v.q_entry, str(q))
+    _set(v.g_entry, str(g))
+    _set(v.n_entry, str(n))
+    v.run_button.invoke()
+    app.update()
+
+
+def test_multiplicative(app, tab, T):
+    from primeatlas.research import irreducibility_multiplicative as mult
+    v = tab.mul_view
+    check(tab.sub_notebook.tab(tab.sub_notebook.tabs()[-1], "text")
+          == T("research_irreducibility.tab_multiplicative"),
+          "Multiplicative counting is the last sub-tab")
+    check(v.result is not None and v.verdict_var.get() != "",
+          "the sub-tab computes its fields on opening")
+
+    _mul(app, v, 23, "auto", 10)
+    rows = [v.table.item(r, "values") for r in v.table.get_children()]
+    check(v.g_used == 5 and v.auto_used and v.result["primitive"],
+          "Auto on q = 23: g = 5, order 22 = q - 1")
+    check("5" in v.generator_var.get() and "22" in v.generator_var.get(),
+          "the generator line names g and its order")
+    check(len(rows) == 23 and rows[0][:3] == ("0", "1", "0") and rows[1][:3] == ("1", "5", "1")
+          and rows[22][:3] == ("22", "1", "0"),
+          "table: t, g^t mod q, t mod (q - 1) for t = 0..22, back to 1 and 0 at t = 22")
+    t = v.result["step"]
+    check(rows[t][3] != "" and rows[0][3] != "" and rows[2][3] == "",
+          "the mark column marks the returns to 1 and the step reaching N mod q")
+    check(v.result["square"] is False and str(t) in v.verdict_var.get()
+          and v.last_check is True,
+          f"10 mod 23 is not a square: odd step {t}, Euler agrees")
+    check(v.pairs_var.get() == T("research_irreducibility.mul_pairs_equal"),
+          "a primitive root: equal at the same pairs of steps")
+    check(v.canvas.find_withtag("comb") and len(v.canvas.find_withtag("returns")) == 3
+          and v.canvas.find_withtag("step_mark"),
+          "the comb of modulus 22 is drawn with the 3 returns to 1 over 0..44 and the step")
+    check(T("research_irreducibility.mul_comb_same") in v.comb_var.get(),
+          "comb peaks and returns to 1 at the same steps")
+
+    _mul(app, v, 23, "auto", 13)
+    check(v.result["square"] is True and v.last_check is True, "13 = 6^2 mod 23: a square")
+
+    _mul(app, v, 23, 2, 13)
+    check(v.result["order"] == 11 and v.result["square"] is None and v.last_check is None
+          and str(v.result["pairs_break"][1]) in v.pairs_var.get(),
+          "g = 2 (order 11): pairs break at step 11, no square claim, no agreement claimed")
+    check(T("research_irreducibility.mul_comb_differ") in v.comb_var.get(),
+          "g = 2: the returns to 1 are not the comb peaks")
+
+    _mul(app, v, 21, "auto", 4)
+    check(v.result["primitive"] is False and v.result["square"] is None
+          and v.message_var.get() != "" and v.last_check is None,
+          "q = 21 (not prime): Auto finds no g of order 20, a note, no square claim")
+    _mul(app, v, 23, "auto", 46)
+    check(v.result["r"] == 0 and v.result["square"] is None
+          and v.verdict_var.get() == T("research_irreducibility.mul_verdict_divides", q=23, n=46),
+          "q | N: N mod q = 0, no step")
+    _mul(app, v, 2, "auto", 7)
+    check(v.g_used == 1 and v.verdict_var.get() == T("research_irreducibility.mul_verdict_q2"),
+          "q = 2: g = 1, no square question")
+    _mul(app, v, 10, 2, 3)
+    check(v.result["order"] is None and v.result["square"] is None,
+          "g sharing a factor with q: no order, no claim")
+
+    q = 1009
+    _mul(app, v, q, "auto", 123456789)
+    rows = [v.table.item(r, "values") for r in v.table.get_children()]
+    gaps = sum(r[0] == "…" for r in rows)
+    check(len(rows) < 40 and gaps >= 1 and rows[-1][:2] == (str(q - 1), "1"),
+          f"q = {q}: head, the step and the tail rows with gap rows ({len(rows)} rows)")
+    check(not v.canvas.find_withtag("comb") and not v.canvas.winfo_ismapped()
+          and str(mult.COMB_MAX_Q) in v.comb_var.get(),
+          f"q above {mult.COMB_MAX_Q}: no comb, its area hidden, a note says up to which q")
+    _mul(app, v, mult.MAX_Q, "auto", 7)
+    check(v.result is not None and v.message_var.get() != "",
+          "q = MAX_Q (composite): computed, with the note")
+
+    for q, g, n, name in (("1", "auto", "5", "q = 1"), ("abc", "auto", "5", "q not a number"),
+                          (str(mult.MAX_Q + 1), "auto", "5", "q above MAX_Q"),
+                          ("23", "0", "5", "g = 0"), ("23", "23", "5", "g = q"),
+                          ("23", "x", "5", "g not a number"), ("23", "auto", "-1", "N < 0"),
+                          ("23", "auto", "", "N empty")):
+        _mul(app, v, q, g, n)
+        check(v.message_var.get() != "" and v.result is None and v.verdict_var.get() == ""
+              and not v.table.get_children() and not v.canvas.find_withtag("comb"),
+              f"{name}: message, nothing computed")
+    _mul(app, v, 23, "AUTO", 10)
+    check(v.auto_used and v.g_used == 5, "auto in any case")
+
+    from primeatlas.research.irreducibility_multiplicative_view import MUL_TEST_COUNT
+    v.test_button.invoke()
+    app.update()
+    check(v.last_check is True and str(MUL_TEST_COUNT) in v.verdict_var.get(),
+          f"Test {MUL_TEST_COUNT} cases: 0 errors")
+    _check_cases(app, v, T, MUL_TEST_COUNT, "Multiplicative test", detail_mark="t:")
+    _mul(app, v, 23, "auto", 10)
+
+
 def app_translator():
     from primeatlas.app import app_dynamic as _dyn
     return _dyn.TRANSLATOR
@@ -485,19 +584,27 @@ def test_remembered(app, tab, translator):
     _set(tab.radices_view.to_entry, "90")
     _set(tab.comb_view.a_entry, "23")
     _set(tab.primality_view.fuel_entry, "4321")
+    _set(tab.mul_view.q_entry, "31")
+    _set(tab.mul_view.g_entry, "3")
+    _set(tab.mul_view.n_entry, "77")
     tab.numbers.number_var("B").set("777")
     store = ui_state_dynamic.STORE
     check(store.get("research.irreducibility.range_to") == "90"
           and store.get("research.irreducibility.comb_a") == "23"
           and store.get("research.irreducibility.number_b") == "777"
-          and store.get("research.irreducibility.primality_fuel") == "4321",
+          and store.get("research.irreducibility.primality_fuel") == "4321"
+          and store.get("research.irreducibility.mul_q") == "31"
+          and store.get("research.irreducibility.mul_g") == "3"
+          and store.get("research.irreducibility.mul_n") == "77",
           "fields are remembered")
     second = ResearchIrreducibilityTab(app, translator=translator)
     app.update()
     check(second.radices_view.to_entry.get() == "90" and len(second.radices_view.chips) == 89
           and second.comb_view.a_entry.get() == "23"
           and second.numbers.number_var("B").get() == "777"
-          and second.primality_view.fuel_entry.get() == "4321",
+          and second.primality_view.fuel_entry.get() == "4321"
+          and second.mul_view.q_entry.get() == "31" and second.mul_view.g_used == 3
+          and second.mul_view.result["r"] == 77 % 31,
           "a new tab restores the fields and computes them")
     store.set("research.irreducibility.number_a", "abc")
     third = ResearchIrreducibilityTab(app, translator=translator)
@@ -516,7 +623,7 @@ def test_wiring_and_locales(app):
           f"Irreducibility is the last Research sub-tab (got {texts!r})")
     tab = app.research_irreducibility_tab_widget
     inner = [tab.sub_notebook.tab(t, "text") for t in tab.sub_notebook.tabs()]
-    check(len(inner) == 6, f"six sub-tabs ({inner!r})")
+    check(len(inner) == 7, f"seven sub-tabs ({inner!r})")
     en, pl = _locale_keys("en"), _locale_keys("pl")
     check(en == pl and "tabs.research_irreducibility" in en and len(en) > 40,
           f"en and pl hold the same Irreducibility keys (only en: {sorted(en - pl)}, "
@@ -546,6 +653,7 @@ def main():
         test_ranges(app, tab, T)
         test_arith(app, tab, T)
         test_primality(app, tab, T)
+        test_multiplicative(app, tab, T)
         test_links(app, tab)
         test_remembered(app, tab, _dyn.TRANSLATOR)
         test_wiring_and_locales(app)
