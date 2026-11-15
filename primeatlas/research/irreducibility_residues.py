@@ -3,13 +3,14 @@ irreducibility_residues.py -- numbers given by their residues on a list of modul
 lean/Irreducibility/Defs.lean of the Irreducibility repository: mixed-radix representation
 (evalMod, invMod, digitStep, toMixedRadix, eval), comparison (compareDigits, compareRes),
 blocks (blockModulus, blockModuli, baseExtend, flatten, union, compareBlocks), interval atoms
-(firstMultipleFrom, intervalAtoms) and arithmetic (addRes, subRes, addOverflow, subUnderflow,
-mulRes, powRes, divModuli, exactDivRes, divModRes, addressRes).
+(firstMultipleFrom, intervalAtoms), arithmetic (addRes, subRes, addOverflow, subUnderflow,
+mulRes, powRes, divModuli, exactDivRes, divModRes, addressRes) and primality on residues
+(isPrimeResAux, isPrimeRes).
 
 A mixed-radix representation is a list of (digit, radix) pairs, least significant first.
 Functions that Lean returns as Option return None here. A block representation is a dict with
 the fields of Lean's BlockRep: blocks, residues, quot_blocks, quot_residues. Nothing here
-refers to primes.
+uses a list of primes or a primality test: isPrimeRes decides primality from residues alone.
 """
 from .irreducibility_core import euclid, gcd_prod, prod_mod, resid
 
@@ -236,3 +237,50 @@ def address_res(moduli, residues, t):
         return t, qs
     qm = div_moduli(moduli, t)
     return r, add_res(qm, qs, [resid(1, m) for m in qm])
+
+
+def is_prime_res_steps(moduli, residues):
+    """The steps of isPrimeResAux from m = 2 on, one per tried divisor m, as tuples
+    (m, m vs n, m^2 vs n, n mod m, answer): the comparisons are -1, 0 or 1 from residues
+    (compareRes), n mod m comes from the mixed-radix digits (evalMod), answer is True or
+    False on the last step and None before it; a field the step does not reach is None.
+    Yields nothing for incompatible residues. The digits of the number are formed once:
+    compareRes forms the same digits on every call."""
+    ds = to_mixed_radix(moduli, residues)
+    if ds is None:
+        return
+    m = 2
+    while True:
+        dm = to_mixed_radix(moduli, [resid(m, c) for c in moduli])
+        if dm is None:
+            return
+        vs_m = compare_digits(dm, ds)
+        if vs_m != -1:
+            yield m, vs_m, None, None, vs_m == 0
+            return
+        dq = to_mixed_radix(moduli, [resid(m, c) * resid(m, c) % c for c in moduli])
+        if dq is None:
+            return
+        vs_sq = compare_digits(dq, ds)
+        if vs_sq == 1:
+            yield m, vs_m, vs_sq, None, True
+            return
+        r = eval_mod(ds, m)
+        yield m, vs_m, vs_sq, r, (False if r == 0 else None)
+        if r == 0:
+            return
+        m += 1
+
+
+def is_prime_res(fuel, moduli, residues):
+    """isPrimeRes: whether the number given by residues on moduli is prime, trying at most
+    fuel divisors from 2 on; None when the fuel runs out or the residues are incompatible.
+    The answer is right for n < lcm(moduli) when that lcm exceeds 2 (isPrimeRes_sound)."""
+    if fuel <= 0:
+        return None
+    for i, step in enumerate(is_prime_res_steps(moduli, residues), 1):
+        if step[4] is not None:
+            return step[4]
+        if i >= fuel:
+            return None
+    return None

@@ -1,17 +1,19 @@
 """
 research_irreducibility_tab.py -- ResearchIrreducibilityTab, the Research -> Irreducibility
 sub-tab: the definitions of the Irreducibility repository (Lean 4, linked from the tab)
-computed on the user's own input, in five sub-tabs:
+computed on the user's own input, in six sub-tabs:
 
   Radices      irreducibility_radices_view.RadicesView   radices of lo..hi, interval atoms
   Comparison   irreducibility_compare_view.CompareView   A and B in block layouts, compared
   Comb reading irreducibility_comb_view.CombView         a mod b read from two sech combs
   Ranges       irreducibility_ranges_view.RangesView     W of a layout, parameter sweep, fit
   Arithmetic   irreducibility_arith_view.ArithView       operations on the residues of A, B
+  Primality    irreducibility_primality_view.PrimalityView  isPrimeRes on the residues of A
 
 The numbers A and B and their layouts (irreducibility_numbers.IrreducibilityNumbers) are
-shared by Comparison, Ranges and Arithmetic. Every sub-tab computes synchronously, on opening
-and on its buttons; errors are shown in the sub-tab, never as a dialog.
+shared by Comparison, Ranges, Arithmetic and Primality. Every sub-tab computes synchronously,
+on opening and on its buttons, except Primality, which runs in time slices on its button;
+errors are shown in the sub-tab, never as a dialog.
 """
 import webbrowser
 
@@ -24,6 +26,7 @@ from .irreducibility_arith_view import ArithView
 from .irreducibility_comb_view import CombView
 from .irreducibility_compare_view import CompareView
 from .irreducibility_numbers import IrreducibilityNumbers
+from .irreducibility_primality_view import PrimalityView
 from .irreducibility_radices_view import RadicesView
 from .irreducibility_ranges_view import RangesView
 from .irreducibility_widgets import wrapped_label
@@ -58,9 +61,10 @@ class ResearchIrreducibilityTab(BaseTab):
         self.comb_view = CombView(sub, translator, palette)
         self.ranges_view = RangesView(sub, translator, palette, self.numbers, self._show_compare)
         self.arith_view = ArithView(sub, translator, palette, self.numbers)
+        self.primality_view = PrimalityView(sub, translator, palette, self.numbers)
         for view, key in ((self.radices_view, "radices"), (self.compare_view, "compare"),
                           (self.comb_view, "comb"), (self.ranges_view, "ranges"),
-                          (self.arith_view, "arith")):
+                          (self.arith_view, "arith"), (self.primality_view, "primality")):
             sub.add(view, text=T(f"research_irreducibility.tab_{key}"))
 
     def _show_compare(self):

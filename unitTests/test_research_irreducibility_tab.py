@@ -1,10 +1,10 @@
 """
 test_research_irreducibility_tab.py -- tests for Research -> Irreducibility
-(primeatlas/research/research_irreducibility_tab.py and its five sub-tab views: Radices and
-atoms, Comparison, Comb reading, Ranges, Arithmetic). The pure logic is tested in
+(primeatlas/research/research_irreducibility_tab.py and its six sub-tab views: Radices and
+atoms, Comparison, Comb reading, Ranges, Arithmetic, Primality). The pure logic is tested in
 test_irreducibility_core.py and test_irreducibility_blocks.py; this file exercises the tkinter
 wiring: what each sub-tab computes on opening, its buttons, input errors, the numbers A and B
-shared by Comparison, Ranges and Arithmetic, the repository links, remembered fields and both
+shared by Comparison, Ranges, Arithmetic and Primality, the repository links, remembered fields and both
 locales.
 
 Builds the real app (same approach as test_research_pi_approx_tab.py), with the storage
@@ -310,6 +310,161 @@ def test_arith(app, tab, T):
     nums.number_var("A").set("12345678")
 
 
+def _set_layout(nums, values):
+    for key, value in zip(("ds", "dz", "dc", "ks", "kz", "kc"), values):
+        nums.layout_var("A", key).set(str(value))
+
+
+def _run_to_end(app, v, seconds=20):
+    v.run_button.invoke()
+    deadline = time.time() + seconds
+    while v.is_running() and time.time() < deadline:
+        app.update()
+        time.sleep(0.005)
+
+
+def test_primality(app, tab, T):
+    import math
+    from primeatlas.research import irreducibility_layout as layout
+    from primeatlas.research.irreducibility_primality import HEAD_ROWS, TAIL_ROWS
+    v = tab.primality_view
+    nums = tab.numbers
+    check(tab.sub_notebook.tab(tab.sub_notebook.tabs()[-1], "text")
+          == T("research_irreducibility.tab_primality"), "Primality is the last sub-tab")
+    check(v.verdict_var.get() == "" and not v.is_running(),
+          "nothing runs on opening: the run waits for its button")
+    nums.number_var("A").set("12345678")
+    _set_layout(nums, (2, 3, 3, 11, 3, 3))
+    app.update()
+    check(v.number_entry.get() == "12345678"
+          and tab.compare_view.sides["A"].number_entry.get() == "12345678",
+          "A in Primality and in Comparison is one field")
+    _set(v.fuel_entry, "1000000")
+    _run_to_end(app, v)
+    rows = v.steps_tree.get_children()
+    check(v.answer is False and v.reason == "divisor" and v.steps == 1 and len(rows) == 1
+          and v.steps_tree.item(rows[0], "values")[1] == "2",
+          f"12345678: composite, 2 divides it, one step ({v.verdict_var.get()!r})")
+    check("2" in v.verdict_var.get() and v.last_check is True,
+          "the verdict names the divisor; the integer check agrees")
+
+    p = 1000003
+    nums.number_var("A").set(str(p))
+    v.fit_button.invoke()
+    app.update()
+    w = layout.capacity(*nums.layout("A"))
+    check(w > (math.isqrt(p) + 1) ** 2, f"Fit for primality: W > (isqrt(n) + 1)^2 (W = {w})")
+    check(v.square_note_var.get() == "", "W large enough: no square-test note")
+    _run_to_end(app, v)
+    rows = v.steps_tree.get_children()
+    vals = [v.steps_tree.item(r, "values") for r in rows]
+    check(v.answer is True and v.reason == "square" and v.steps == math.isqrt(p)
+          and v.last_check is True,
+          f"1000003: prime, the square test stops at m = isqrt(n) + 1 ({v.steps} steps)")
+    check(len(rows) == HEAD_ROWS + 1 + TAIL_ROWS and vals[0][1] == "2"
+          and vals[HEAD_ROWS][0] == "…" and vals[-1][1] == str(math.isqrt(p) + 1)
+          and vals[-1][3] == ">",
+          f"table: first {HEAD_ROWS} steps, a gap row, last {TAIL_ROWS} steps ending m^2 > n")
+    check(str(v.steps) in v.result_var.get(), "the step count is shown")
+
+    for n, answer, reason in (("0", False, "below"), ("1", False, "below"), ("2", True, "equal"),
+                              ("3", True, "square")):
+        nums.number_var("A").set(n)
+        _run_to_end(app, v)
+        check(v.answer is answer and v.reason == reason and v.steps == 1
+              and v.last_check is True, f"n = {n}: {reason}, one step, check agrees")
+
+    nums.number_var("A").set("97")
+    _set_layout(nums, (2, 1, 1, 49, 1, 1))
+    app.update()
+    check(layout.capacity(*nums.layout("A")) == 98 and v.square_note_var.get() != "",
+          "W = 98 for 97: the square-test note is shown")
+    _run_to_end(app, v)
+    check(v.answer is True and v.last_check is True, "97 on W = 98: still prime, check agrees")
+
+    nums.number_var("A").set(str(p))
+    v.fit_button.invoke()
+    _set(v.fuel_entry, "3")
+    _run_to_end(app, v)
+    check(v.answer is None and v.reason == "fuel" and v.steps == 3 and v.last_check is None
+          and v.verdict_var.get() != "", "fuel 3: no answer after 3 steps, no agreement claimed")
+    check(T("research_irreducibility.primality_check_prime").split("{")[0]
+          in v.oracle_var.get(), "with no answer the integer result is still shown")
+
+    big = 10 ** 12 + 39
+    nums.number_var("A").set(str(big))
+    v.fit_button.invoke()
+    _set(v.fuel_entry, "1000000")
+    v.run_button.invoke()
+    _pump(app, 0.3)
+    check(v.is_running() and v.progress_var.get() != "" and v.button_state() == "running",
+          "a long run goes on in slices, with progress, Stop enabled")
+    v.stop_button.invoke()
+    app.update()
+    done = v.steps
+    _pump(app, 0.2)
+    check(not v.is_running() and v.reason == "stopped" and 0 < done < 10 ** 6
+          and v.steps == done and v.answer is None and v.button_state() == "idle",
+          f"Stop ends the run: no answer, steps kept ({done}), nothing advances afterwards")
+
+    v.run_button.invoke()
+    _pump(app, 0.1)
+    nums.number_var("A").set("12345678")
+    v.run_button.invoke()
+    _pump(app, 0.3)
+    check(v.answer is False and v.steps == 1 and not v.is_running(),
+          "Run during a run starts over on the new number; the old run does not continue")
+
+    for number, lay, fuel, name in (
+            ("abc", None, "100", "A not a number"),
+            ("12", (2, 1, 1, 0, 1, 1), "100", "invalid layout"),
+            ("12", None, "0", "fuel 0"),
+            ("12", None, "abc", "fuel not a number"),
+            ("12", None, str(10 ** 10), "fuel above the maximum"),
+            (str(10 ** 30), None, "100", "A >= W"),
+            ("1", (2, 1, 1, 2, 1, 1), "100", "W = 2")):
+        nums.number_var("A").set(number)
+        _set_layout(nums, lay or (2, 3, 3, 11, 3, 3))
+        _set(v.fuel_entry, fuel)
+        v.run_button.invoke()
+        app.update()
+        check(v.message_var.get() != "" and v.verdict_var.get() == "" and not v.is_running()
+              and not v.steps_tree.get_children(), f"{name}: message, no run")
+    _set_layout(nums, (2, 3, 3, 11, 3, 3))
+    nums.number_var("A").set("12345678")
+    _set(v.fuel_entry, "1000000")
+
+    from primeatlas.research.irreducibility_primality_view import PRIMALITY_TEST_COUNT
+    v.test_button.invoke()
+    app.update()
+    check(v.last_check is True and str(PRIMALITY_TEST_COUNT) in v.verdict_var.get(),
+          f"Test {PRIMALITY_TEST_COUNT} numbers: 0 errors")
+    _check_cases(app, v, T, PRIMALITY_TEST_COUNT, "Primality test")
+
+    errors = []
+    real_report = app.report_callback_exception
+    app.report_callback_exception = lambda *a: errors.append(a)
+    try:
+        from primeatlas.research.irreducibility_primality_view import PrimalityView
+        other = PrimalityView(tab.sub_notebook, app_translator(), v.palette, nums)
+        nums.number_var("A").set(str(big))
+        other.fit()
+        other.run_button.invoke()
+        _pump(app, 0.1)
+        other.destroy()
+        _pump(app, 0.3)
+    finally:
+        app.report_callback_exception = real_report
+    check(errors == [], f"closing the view during a run raises nothing ({errors[:1]})")
+    nums.number_var("A").set("12345678")
+    _set_layout(nums, (2, 3, 3, 11, 3, 3))
+
+
+def app_translator():
+    from primeatlas.app import app_dynamic as _dyn
+    return _dyn.TRANSLATOR
+
+
 def test_links(app, tab):
     import webbrowser
     opened = []
@@ -329,17 +484,20 @@ def test_remembered(app, tab, translator):
     from primeatlas.research.research_irreducibility_tab import ResearchIrreducibilityTab
     _set(tab.radices_view.to_entry, "90")
     _set(tab.comb_view.a_entry, "23")
+    _set(tab.primality_view.fuel_entry, "4321")
     tab.numbers.number_var("B").set("777")
     store = ui_state_dynamic.STORE
     check(store.get("research.irreducibility.range_to") == "90"
           and store.get("research.irreducibility.comb_a") == "23"
-          and store.get("research.irreducibility.number_b") == "777",
+          and store.get("research.irreducibility.number_b") == "777"
+          and store.get("research.irreducibility.primality_fuel") == "4321",
           "fields are remembered")
     second = ResearchIrreducibilityTab(app, translator=translator)
     app.update()
     check(second.radices_view.to_entry.get() == "90" and len(second.radices_view.chips) == 89
           and second.comb_view.a_entry.get() == "23"
-          and second.numbers.number_var("B").get() == "777",
+          and second.numbers.number_var("B").get() == "777"
+          and second.primality_view.fuel_entry.get() == "4321",
           "a new tab restores the fields and computes them")
     store.set("research.irreducibility.number_a", "abc")
     third = ResearchIrreducibilityTab(app, translator=translator)
@@ -358,7 +516,7 @@ def test_wiring_and_locales(app):
           f"Irreducibility is the last Research sub-tab (got {texts!r})")
     tab = app.research_irreducibility_tab_widget
     inner = [tab.sub_notebook.tab(t, "text") for t in tab.sub_notebook.tabs()]
-    check(len(inner) == 5, f"five sub-tabs ({inner!r})")
+    check(len(inner) == 6, f"six sub-tabs ({inner!r})")
     en, pl = _locale_keys("en"), _locale_keys("pl")
     check(en == pl and "tabs.research_irreducibility" in en and len(en) > 40,
           f"en and pl hold the same Irreducibility keys (only en: {sorted(en - pl)}, "
@@ -387,6 +545,7 @@ def main():
         test_comb(app, tab.comb_view, T)
         test_ranges(app, tab, T)
         test_arith(app, tab, T)
+        test_primality(app, tab, T)
         test_links(app, tab)
         test_remembered(app, tab, _dyn.TRANSLATOR)
         test_wiring_and_locales(app)

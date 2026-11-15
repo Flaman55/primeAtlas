@@ -1543,15 +1543,16 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               deliberately-duplicated sieve_is_prime)
   research_irreducibility_tab.py
                               ResearchIrreducibilityTab -- Research -> Nieredukowalnosc:
-                              links to the Irreducibility repository and paper, five
+                              links to the Irreducibility repository and paper, six
                               sub-tabs built from the files below
   irreducibility_radices_view.py, irreducibility_compare_view.py,
   irreducibility_comb_view.py, irreducibility_ranges_view.py,
-  irreducibility_arith_view.py
-                              the five sub-tabs: radices of lo..hi and interval atoms /
+  irreducibility_arith_view.py, irreducibility_primality_view.py
+                              the six sub-tabs: radices of lo..hi and interval atoms /
                               A vs B in block layouts / a mod b read from two sech combs /
                               W of a layout, parameter sweep, fit to a number /
-                              operations on the residues of A and B
+                              operations on the residues of A and B / whether A is
+                              prime, read from its residues (run in slices, Stop)
   irreducibility_numbers.py   IrreducibilityNumbers: A, B and their layouts (shared,
                               remembered fields), layout text
   irreducibility_widgets.py, irreducibility_draw.py
@@ -1564,12 +1565,15 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
   irreducibility_core.py, irreducibility_residues.py, irreducibility_comb.py
                               mirrors of Defs.lean / SechComb.lean: residues, Euclid,
                               radices; mixed radix, comparison, blocks, interval atoms,
-                              arithmetic on residues; the sech comb. Nothing here forms
-                              the product of the moduli or refers to primes
-  irreducibility_layout.py, irreducibility_ops.py, irreducibility_selftest.py
+                              arithmetic and primality (isPrimeRes) on residues; the
+                              sech comb. Nothing here forms the product of the
+                              moduli or uses a list of primes or a primality test
+  irreducibility_layout.py, irreducibility_ops.py, irreducibility_primality.py,
+  irreducibility_selftest.py
                               value side: block layouts, W, fit_for, sweep / the
                               Arithmetic operations with periods and appended powers /
-                              random self-tests checked against integers
+                              an isPrimeRes run advanced in slices / random self-tests
+                              checked against integers
 
   primeatlas/generation/        "Generation" tab
   generation_tab.py             GenerationTab -- the Generation tab: builds the Quick-gen

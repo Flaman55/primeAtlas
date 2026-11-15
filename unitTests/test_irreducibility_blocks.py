@@ -3,7 +3,8 @@ test_irreducibility_blocks.py -- tests for the residue-level modules of Research
 Irreducibility beyond the radices: irreducibility_residues.py (mixed radix, comparison, blocks,
 interval atoms, arithmetic; mirrors Defs.lean), irreducibility_layout.py (block layouts, W,
 fitting a layout to a number, the parameter sweep), irreducibility_ops.py (the operations
-shown in the Arithmetic sub-tab) and irreducibility_selftest.py (the random self-tests).
+shown in the Arithmetic sub-tab), irreducibility_primality.py (a run of isPrimeRes in slices,
+for the Primality sub-tab) and irreducibility_selftest.py (the random self-tests).
 Every result is compared with plain integer arithmetic.
 
 Usage:
@@ -23,6 +24,7 @@ sys.path.insert(0, os.path.join(_REPO_ROOT, "prime_sieve"))
 from primeatlas.research import irreducibility_core as core
 from primeatlas.research import irreducibility_layout as layout
 from primeatlas.research import irreducibility_ops as ops
+from primeatlas.research import irreducibility_primality as primality
 from primeatlas.research import irreducibility_residues as res
 from primeatlas.research import irreducibility_selftest as selftest
 
@@ -294,6 +296,136 @@ def test_ops():
     check(ok_ch, "chapters: highest power p^v in W, appending p^(v+j) multiplies W by p^j")
 
 
+def _lean_is_prime_res(fuel, moduli, residues):
+    """A literal transcription of isPrimeRes / isPrimeResAux (Defs.lean): compareRes on the
+    residues of m and of m * m, evalMod of the mixed-radix digits."""
+    ds = res.to_mixed_radix(moduli, residues)
+    if ds is None:
+        return None
+
+    def aux(fuel, m):
+        if fuel == 0:
+            return None
+        c = res.compare_res(moduli, [core.resid(m, x) for x in moduli], residues)
+        if c is None:
+            return None
+        if c == 0:
+            return True
+        if c == 1:
+            return False
+        c2 = res.compare_res(moduli, [core.resid(m, x) * core.resid(m, x) % x for x in moduli],
+                             residues)
+        if c2 is None:
+            return None
+        if c2 == 1:
+            return True
+        return False if res.eval_mod(ds, m) == 0 else aux(fuel - 1, m + 1)
+    return aux(fuel, 2)
+
+
+_PRIME_MODULI = ([4, 9, 5], [6, 10, 15], [2, 3, 5, 7], [8, 3], [12], [7, 7, 2], [3, 4],
+                 [2, 49])
+
+
+def test_is_prime_res():
+    rng = random.Random(11)
+    same = True
+    for moduli in _PRIME_MODULI:
+        w = _lcm(moduli)
+        for n in range(w):
+            rs = [n % m for m in moduli]
+            for fuel in (0, 1, 2, 3, n + 1, rng.randint(0, n + 2)):
+                same &= res.is_prime_res(fuel, moduli, rs) == _lean_is_prime_res(fuel, moduli, rs)
+    for _ in range(300):
+        moduli = _random_moduli(rng, rng.randint(1, 4), 12)
+        rs = [rng.randrange(m) for m in moduli]
+        fuel = rng.randint(0, 40)
+        same &= res.is_prime_res(fuel, moduli, rs) == _lean_is_prime_res(fuel, moduli, rs)
+    check(same, "is_prime_res equals the literal transcription of isPrimeRes, every fuel, "
+                "random residues (incompatible ones included)")
+    sound = all(res.is_prime_res(n + 1, moduli, [n % m for m in moduli]) == _is_prime(n)
+                for moduli in _PRIME_MODULI if _lcm(moduli) > 2
+                for n in range(_lcm(moduli)))
+    check(sound, "n < W, W > 2, fuel n + 1: the answer is whether n is prime (every n < W)")
+    short = all(res.is_prime_res(max(math.isqrt(n), 1), moduli, [n % m for m in moduli])
+                == _is_prime(n)
+                for moduli in _PRIME_MODULI for n in range(_lcm(moduli))
+                if (math.isqrt(n) + 1) ** 2 < _lcm(moduli))
+    check(short, "(isqrt(n) + 1)^2 < W: fuel isqrt(n) already answers")
+    check(res.is_prime_res(5, [4, 6], [1, 2]) is None, "incompatible residues: no answer")
+    check(res.is_prime_res(0, [2, 3, 5, 7], [1, 1, 1, 1]) is None, "fuel 0: no answer")
+    steps = list(res.is_prime_res_steps([4, 9, 5], [1, 0, 4]))   # n = 9
+    check(steps == [(2, -1, -1, 1, None), (3, -1, 0, 0, False)],
+          f"steps of n = 9: m = 2 (m < n, m^2 < n, 9 mod 2 = 1), m = 3 (m^2 = n, divides) "
+          f"({steps})")
+    check(list(res.is_prime_res_steps([4, 9, 5], [2, 2, 2])) == [(2, 0, None, None, True)],
+          "n = 2: one step, m = n")
+    check(list(res.is_prime_res_steps([4, 9, 5], [1, 1, 1])) == [(2, 1, None, None, False)],
+          "n = 1: one step, m > n")
+    check(list(res.is_prime_res_steps([4, 9, 5], [3, 3, 3])) == [(2, -1, 1, None, True)],
+          "n = 3: one step, m^2 > n")
+    check(list(res.is_prime_res_steps([4, 6], [1, 2])) == [], "incompatible residues: no step")
+
+
+def _run(n, moduli, fuel, slice_steps=None, **kw):
+    run = primality.PrimalityRun(moduli, [n % m for m in moduli], fuel, **kw)
+    if slice_steps is None:
+        run.advance(10 ** 9)
+    else:
+        while not run.advance(slice_steps):
+            pass
+    return run
+
+
+def test_primality_run():
+    big = [7 * 11 * 13, 17 * 19, 23 * 29, 31 * 37, 41 * 43, 47 * 53]   # W > 10^14
+    p = 1000003
+    run = _run(p, big, 10 ** 6)
+    check(run.done and run.answer is True and run.reason == "square"
+          and run.steps == math.isqrt(p),
+          f"prime 1000003: prime by the square test at m = isqrt(n) + 1 "
+          f"({run.answer}, {run.reason}, {run.steps})")
+    check([s[0] for s in run.first] == list(range(1, primality.HEAD_ROWS + 1))
+          and [s[1] for s in run.first] == list(range(2, primality.HEAD_ROWS + 2)),
+          "the first HEAD_ROWS steps are kept with their index and m")
+    check(len(run.last) == primality.TAIL_ROWS and run.last[-1][0] == run.steps
+          and run.last[-1][1] == math.isqrt(p) + 1,
+          "the last TAIL_ROWS steps are kept, the last one at m = isqrt(n) + 1")
+    sliced = _run(p, big, 10 ** 6, slice_steps=7)
+    check((sliced.answer, sliced.reason, sliced.steps, sliced.first, list(sliced.last))
+          == (run.answer, run.reason, run.steps, run.first, list(run.last)),
+          "advancing in slices of 7 steps gives the same run")
+    run = _run(1000003 * 3, big, 10 ** 6)
+    check(run.answer is False and run.reason == "divisor" and run.steps == 2
+          and run.first[-1] == (2, 3, -1, -1, 0), "3 * 1000003: divisor m = 3 at step 2")
+    for n, answer, reason in ((0, False, "below"), (1, False, "below"), (2, True, "equal"),
+                              (3, True, "square"), (4, False, "divisor")):
+        run = _run(n, big, 5)
+        check(run.answer is answer and run.reason == reason and run.steps == 1,
+              f"n = {n}: {reason} at the first step")
+    run = _run(97, [2, 49], 200)
+    check(run.answer is True and run.steps <= 96,
+          f"97 on W = 98 (square test unreliable): still prime ({run.reason}, "
+          f"{run.steps} steps)")
+    check(not primality.square_test_holds(97, 98) and primality.square_test_holds(97, 101)
+          and not primality.square_test_holds(97, 100), "square_test_holds: (isqrt(n)+1)^2 < W")
+    run = _run(p, big, 3)
+    check(run.done and run.answer is None and run.reason == "fuel" and run.steps == 3,
+          "fuel 3: no answer after 3 steps")
+    run = primality.PrimalityRun([4, 6], [1, 2], 10)
+    run.advance(5)
+    check(run.done and run.answer is None and run.reason == "incompatible" and run.steps == 0,
+          "incompatible residues: no answer, no step")
+    run = primality.PrimalityRun(big, [p % m for m in big], 10 ** 6)
+    run.advance(50)
+    run.stop()
+    check(run.done and run.answer is None and run.reason == "stopped" and run.steps == 50,
+          "stopped after 50 steps: no answer, steps kept")
+    check(run.advance(10) and run.steps == 50, "a stopped run does not advance")
+    check(primality.fit_target(p) == (math.isqrt(p) + 1) ** 2 and primality.fit_target(0) == 1,
+          "fit_target: (isqrt(n) + 1)^2")
+
+
 def test_selftest():
     out = selftest.compare_test(300, random.Random(1))
     check(out["count"] == 300 and out["wrong"] == 0, f"compare_test: 300 pairs, 0 wrong ({out})")
@@ -301,6 +433,30 @@ def test_selftest():
     check(sum(s["tries"] for s in out["kinds"]) == 180 and out["wrong"] == 0
           and len(out["kinds"]) == 9 and all(s["tries"] == 20 for s in out["kinds"]),
           f"ops_test: 180 operations over 9 kinds, 0 wrong ({out['wrong']})")
+    out = selftest.primality_test(120, random.Random(5))
+    cases = out.get("cases", [])
+    check(out["count"] == 120 and out["wrong"] == 0 and len(cases) == 120,
+          f"primality_test: 120 numbers, 0 wrong ({out['wrong']})")
+    check(all(set(c) >= {"task", "residues", "integers", "ok", "detail"} and c["ok"]
+              and c["residues"] == c["integers"] and "m:" in c["detail"] for c in cases),
+          "every number: the answer from residues equals the integer answer, residues listed")
+    check(any("∈ ℙ" == c["integers"] for c in cases)
+          and any(c["integers"].startswith("∉ ℙ") for c in cases),
+          "the numbers include primes and composites")
+    check(sum(c["near_w"] for c in cases) >= 20,
+          "a quarter of the numbers lie just below W, where the square test may not stop")
+    check({0, 1, 2, 3} <= {c["n"] for c in cases}, "n = 0, 1, 2, 3 are among the numbers")
+    real = res.is_prime_res_steps
+
+    def flipped(moduli, residues):
+        for m, a, b, r, ans in real(moduli, residues):
+            yield m, a, b, r, (None if ans is None else not ans)
+    res.is_prime_res_steps = flipped
+    try:
+        bad = selftest.primality_test(40, random.Random(5))
+    finally:
+        res.is_prime_res_steps = real
+    check(bad["wrong"] == 40, f"a flipped answer is caught on every number ({bad['wrong']})")
 
 
 _CASE_KEYS = {"kind", "task", "residues", "integers", "ok"}
@@ -372,6 +528,8 @@ def main():
     test_arithmetic()
     test_layout()
     test_ops()
+    test_is_prime_res()
+    test_primality_run()
     test_selftest()
     test_selftest_cases()
     test_imports()
