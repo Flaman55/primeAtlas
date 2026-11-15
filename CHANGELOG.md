@@ -133,6 +133,28 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   ±1/sqrt(przewidywanie) dla wiersza zaznaczonego w tabeli. Skan działa w tle i można go
   zatrzymać.
 
+### +7 — Generation: width proposal under the engine proposal
+
+- English: Quick-gen shows a width proposal with its own Use button under the engine
+  proposal. With Benchmark ticked (Floor or Explore) it proposes 10,000 windows (10^11
+  numbers, lowered to what the RAM budget allows) and gives the modelled sieving speed now
+  and then: a wider window measures a higher speed, while one run's prep time stays the
+  same. In Explore writing into the storage with more than one iteration it proposes the
+  same total range in fewer, wider runs, with the modelled total time now and then. A Floor
+  run writing into the storage gets no proposal. In Explore the engine proposal marks its
+  time as one iteration's, and the Floor and Explore hints give the real width maximum
+  (100,000 windows; v4.1: 1000).
+- Polski: Szybkie generowanie pokazuje pod propozycją silnika propozycję szerokości z
+  własnym przyciskiem Użyj. Przy zaznaczonym Benchmarku (Piętro albo Eksploracja) proponuje
+  10 000 okien (10^11 liczb, mniej, jeśli budżet RAM nie pozwala) i podaje modelową prędkość
+  sitowania teraz i po zmianie: szersze okno mierzy wyższą prędkość, a czas przygotowania
+  jednego przebiegu się nie zmienia. W Eksploracji z zapisem do magazynu i więcej niż jedną
+  iteracją proponuje ten sam łączny zakres w mniejszej liczbie szerszych przebiegów, z
+  modelowym łącznym czasem teraz i po zmianie. Przebieg w trybie Piętro z zapisem do
+  magazynu nie dostaje propozycji. W Eksploracji propozycja silnika zaznacza, że jej czas
+  dotyczy jednej iteracji, a podpowiedzi trybów Piętro i Eksploracja podają prawdziwe
+  maksimum szerokości (100 000 okien; v4.1: 1000).
+
 ## 1.4.0 — 2026-11-14
 
 ### +1 — Research → Irreducibility: radices, comparison, comb reading, ranges, arithmetic

@@ -1833,8 +1833,18 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               (typed starting point or the store's continuation), the
                               advanced form's BPSW offset field, the log reread when a
                               run ends; confirm_ram_budget(): Generate asks before a
-                              run over the RAM budget
-                              (unitTests/test_engine_advice_gui.py)
+                              run over the RAM budget; the width proposal line
+                              (width_advisor.py) under the engine line, its cap from
+                              the engine ceiling and the RAM budget, its Use button
+                              (unitTests/test_engine_advice_gui.py,
+                              unitTests/test_width_advice_gui.py)
+  width_advisor.py              width proposal for the Quick-gen fields: a benchmark
+                              run at 10^11 numbers (capped), Explore's total range in
+                              fewer, wider runs; nothing for a Floor run writing into
+                              the storage -- pure, no tkinter
+                              (unitTests/test_width_advisor.py)
+  width_advice_text.py          text of a width proposal: speeds or total times
+  width_advice_view.py          WidthAdviceView -- the width line and its Use button
 
   primeatlas/visualization/     "Visualization" tab -- a container notebook with one sub-tab
                               per visualization; each sub-tab launches the shared GPU

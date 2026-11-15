@@ -13,7 +13,14 @@ when the tab is built, when the Time simulation window opens and when a run ends
 selected engine's settings (pt1 B, write files, every engine's knobs for the RAM check) and
 the RAM free in WSL as last read (time_simulation_controls._read_free_ram(): when the tab is
 built, when the window opens, when a run ends; unknown: no RAM limit). The Use button selects
-the proposed engine in the pipeline form; nothing switches it otherwise.
+the proposed engine in the pipeline form; nothing switches it otherwise. In Explore with more
+than one iteration the engine line notes that its time is one iteration's.
+
+Under the engine line, the width line (width_advisor.py) proposes a wider run for a benchmark
+(Floor or Explore) or, in Explore writing into the storage, the same total range in fewer,
+wider runs; its cap is the selected engine's run ceiling lowered to the widest run in the RAM
+budget, its times the selected engine's time model. Its Use button writes the width (and the
+iteration count) into the fields.
 
 confirm_ram_budget() is Generate's RAM check on the same reading: a run whose predicted RAM
 (run_ram.py, times its parallel instances) is over the budget asks before it launches.
@@ -26,12 +33,14 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from ..core.info_tip import InfoTip
-from . import engine_advisor, engine_options, run_ram, time_model
+from . import engine_advisor, engine_options, run_ram, time_model, width_advisor
 from .engine_advice_text import advice_text
 from .engine_advice_view import EngineAdviceView
 from .generation_settings import remember_generation_field
 from .quick_number import _eval_quick_number
-from .time_simulation_window import format_long_duration
+from .time_simulation_window import format_long_duration, format_rate
+from .width_advice_text import width_text
+from .width_advice_view import WidthAdviceView
 from .window_planning import (QUICK_GEN_MAX_WINDOW_WIDTH, find_continuation_target_idx,
                               find_first_gap_target_idx)
 
@@ -66,14 +75,21 @@ class EngineAdviceControls:
         remember_generation_field("loop", key, self._advice_offset_var)
 
     def _build_engine_advice_view(self, parent):
-        """A holder packed in `parent` with the proposal view of one Quick-gen panel copy; the
-        view itself shows only in the Floor and Explore modes."""
+        """A holder packed in `parent` with the engine and width proposal views of one Quick-gen
+        panel copy, each in its own slot so repacking one keeps the order; the views show only
+        in the Floor and Explore modes, the width view only with a proposal."""
         if not hasattr(self, "_quick_advice_views"):
             self._quick_advice_views = []
+            self._quick_width_views = []
         holder = ttk.Frame(parent)
         holder.pack(fill="x", padx=8, pady=(0, 4))
-        view = EngineAdviceView(holder, self.T, self._use_advised_engine, wraplength=900)
+        engine_slot, width_slot = ttk.Frame(holder), ttk.Frame(holder)
+        engine_slot.pack(fill="x")
+        width_slot.pack(fill="x")
+        view = EngineAdviceView(engine_slot, self.T, self._use_advised_engine, wraplength=900)
         self._quick_advice_views.append(view)
+        self._quick_width_views.append(
+            WidthAdviceView(width_slot, self.T, self._use_width_advice, wraplength=900))
         return view
 
     def _start_engine_advice(self):
@@ -85,6 +101,7 @@ class EngineAdviceControls:
         watched = [self.quick_mode_var, self.quick_floor_var, self.quick_floor_width_var,
                    self.quick_floor_start_var, self.quick_floor_fill_gaps_var,
                    self.quick_explore_floor_var, self.quick_explore_width_var,
+                   self.quick_iterations_var, fields.knob_vars[engine_options.RAM_BUDGET_KNOB],
                    fields.engine_var, self._advice_offset_var, fields.knob_vars["pt1_b"],
                    self._loop_write_files_var]
         for var in watched:
@@ -163,17 +180,19 @@ class EngineAdviceControls:
             result.append((est.prep_seconds, est.run_seconds - est.prep_seconds))
         return result
 
-    def engine_advice_display(self, floor, windows, start=None):
+    def engine_advice_display(self, floor, windows, start=None, per_iteration=False):
         """(AdviceText, proposed engine or None) for the views."""
         advice = self.engine_advice(floor, windows, start)
         text = advice_text(advice, self.T, lambda s: format_long_duration(s, self.T),
-                           self._advice_offset())
+                           self._advice_offset(), per_iteration)
         return text, advice.engine if advice is not None else None
 
     def _refresh_engine_advice(self):
-        # A closed detached panel's view is gone: drop it.
+        # A closed detached panel's views are gone: drop them.
         views = [v for v in getattr(self, "_quick_advice_views", []) if v.winfo_exists()]
         self._quick_advice_views = views
+        self._quick_width_views = [v for v in getattr(self, "_quick_width_views", [])
+                                   if v.winfo_exists()]
         if not views or not hasattr(self, "_engine_fields"):
             return
         mode = self.quick_mode_var.get()
@@ -184,13 +203,54 @@ class EngineAdviceControls:
                                     else (self.quick_floor_var, self.quick_floor_width_var))
             floor, width = _positive_int(floor_var.get()), _positive_int(width_var.get())
         if floor is None or width is None or floor < time_model.LOW_FLOOR_CUTOFF:
-            for view in views:
+            for view in views + self._quick_width_views:
                 view.pack_forget()
             return
-        text, engine = self.engine_advice_display(floor, width, self._advice_start(mode, floor))
+        iterations = (_positive_int(self.quick_iterations_var.get()) or 1
+                      if mode == "explore" else 1)
+        start = self._advice_start(mode, floor)
+        text, engine = self.engine_advice_display(floor, width, start, iterations > 1)
         for view in views:
             view.show(text, engine, self._engine_fields.engine())
             view.pack(fill="x", anchor="w")
+        self._refresh_width_advice(mode, floor, width, iterations, start)
+
+    def width_advice(self, mode, floor, windows, iterations, start=None):
+        """width_advisor.WidthAdvice for the selected engine, or None."""
+        fields = self._engine_fields
+        engine = fields.engine()
+        engine_cap = engine_options.max_windows_per_run(engine)
+        cap = run_ram.max_windows_in_budget(
+            lambda w: fields.choice_for_engine(engine, w), self._advice_free_ram, engine_cap,
+            QUICK_GEN_MAX_WINDOW_WIDTH)
+        write_files = bool(self._loop_write_files_var.get())
+        cal = self._advice_cals[1].get(engine) if self._advice_cals is not None else None
+        b = self._advice_pt1_b() if engine in engine_options.PT1_ENGINES else 0
+
+        def estimate(w):
+            if cal is None:
+                return None
+            return time_model.estimate(cal[0], engine, floor, w, write_files, b, start=start)
+
+        return width_advisor.advise_width(mode, write_files, windows, iterations,
+                                          engine_cap if cap is None else cap, estimate)
+
+    def _refresh_width_advice(self, mode, floor, windows, iterations, start):
+        advice = self.width_advice(mode, floor, windows, iterations, start)
+        for view in self._quick_width_views:
+            if advice is None:
+                view.pack_forget()
+                continue
+            view.show(width_text(advice, self.T, lambda s: format_long_duration(s, self.T),
+                                 format_rate), advice)
+            view.pack(fill="x", anchor="w")
+
+    def _use_width_advice(self, advice):
+        if self.quick_mode_var.get() == "explore":
+            self.quick_iterations_var.set(str(advice.new_iterations))
+            self.quick_explore_width_var.set(str(advice.new_windows))
+        else:
+            self.quick_floor_width_var.set(str(advice.new_windows))
 
     def _advice_start(self, mode, floor):
         """Where Generate would start the Quick-gen run: Floor mode's typed starting point, else

@@ -19,8 +19,9 @@ def _offset(value):
     return f"{value:g}"
 
 
-def advice_text(advice, T, duration, offset):
-    """AdviceText of `advice` (None: the no-proposal line, no warning, no guest)."""
+def advice_text(advice, T, duration, offset, per_iteration=False):
+    """AdviceText of `advice` (None: the no-proposal line, no warning, no guest); per_iteration
+    marks the proposal's time as one iteration's (Explore with more than one)."""
     if advice is None:
         return AdviceText(T("advisor.none"), "", "")
     if advice.reason == engine_advisor.REASON_BPSW_FASTER:
@@ -31,8 +32,10 @@ def advice_text(advice, T, duration, offset):
         reason = T("advisor.reason_no_deterministic")
     else:
         reason = T("advisor.reason_deterministic")
-    proposal = T("advisor.proposal", engine=advice.engine, time=duration(advice.seconds),
-                 reason=reason)
+    time = duration(advice.seconds)
+    if per_iteration:
+        time += " " + T("advisor.per_iteration")
+    proposal = T("advisor.proposal", engine=advice.engine, time=time, reason=reason)
     if advice.estimated:
         proposal += " " + T("advisor.estimated")
     warning = "" if advice.deterministic else T("advisor.warning_bpsw")
