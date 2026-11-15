@@ -1,8 +1,8 @@
 """
 irreducibility_numbers.py -- the numbers A and B of Research -> Irreducibility and their block
-layouts, shared by the Comparison, Ranges and Arithmetic sub-tabs: one StringVar per field
-(remembered), parsing and validation, Fit to number, and the text describing a layout's
-ranges.
+layouts, shared by the Comparison, Ranges, Arithmetic and Primality sub-tabs (Primality uses
+A): one StringVar per field (remembered), parsing and validation, Fit to number (or to a
+larger target), and the text describing a layout's ranges.
 """
 import tkinter as tk
 
@@ -89,10 +89,10 @@ class IrreducibilityNumbers:
         for key in layout.PARAMS:
             self._layouts[side][key].set(str(params[key]))
 
-    def fit(self, side):
-        """Sets the side's layout to fit_for(its number), keeping its block sizes when they
-        are valid (else 3). Raises ValueError for an invalid number."""
-        n = self.number(side)
+    def fit(self, side, target=None):
+        """Sets the side's layout to fit_for(target, by default its number), keeping its block
+        sizes when they are valid (else 3). Raises ValueError for an invalid number."""
+        n = self.number(side) if target is None else target
 
         def size(key):
             try:

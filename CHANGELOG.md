@@ -68,6 +68,29 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   więc formularz pasuje do komputera, na którym działa. Już zapamiętane wartości zostają bez
   zmian.
 
+### +4 — Research: Irreducibility -> Primality, whether a number is prime from its residues
+
+- English: Research -> Irreducibility has a sixth sub-tab, Primality. It decides whether A (the
+  same number and layout as in Comparison) is prime from its residues alone, as the
+  repository's theorem T6 (isPrimeRes) does: divisors m = 2, 3, ... are compared with A and m²
+  with A on residues, and A mod m is read from the mixed-radix digits. It shows the verdict
+  (prime, composite with the divisor found, or no answer when the fuel runs out or the run is
+  stopped), the number of steps, the first and last steps, and a check against integer
+  primality. A long run goes on in the background of the window with its progress shown and
+  can be stopped. When the layout leaves too little room above A for the square test, a note
+  says so; Fit for primality sets a layout with enough room. Test 1000 numbers checks random
+  numbers against trial division and lists every case.
+- Polski: Badania -> Nieredukowalność ma szóstą podzakładkę, Pierwszość. Rozstrzyga, czy A (ta
+  sama liczba i układ co w Porównaniu) jest liczbą pierwszą, wyłącznie z jej reszt, tak jak
+  twierdzenie T6 repozytorium (isPrimeRes): dzielniki m = 2, 3, ... są porównywane z A, a m²
+  z A na resztach, a A mod m jest odczytywane z cyfr w systemie mieszanym. Pokazuje werdykt
+  (pierwsza, złożona ze znalezionym dzielnikiem albo brak odpowiedzi, gdy skończy się paliwo
+  lub przebieg zostanie zatrzymany), liczbę kroków, pierwsze i ostatnie kroki oraz sprawdzenie
+  pierwszości na liczbach całkowitych. Długi przebieg toczy się w tle okna z widocznym
+  postępem i można go zatrzymać. Gdy układ zostawia nad A za mało miejsca na test kwadratu,
+  pojawia się uwaga; Dopasuj do pierwszości ustawia układ z wystarczającym zapasem. Test 1000
+  liczb sprawdza losowe liczby dzieleniem próbnym i wypisuje każdy przypadek.
+
 ## 1.4.0 — 2026-11-14
 
 ### +1 — Research → Irreducibility: radices, comparison, comb reading, ranges, arithmetic

@@ -1,13 +1,17 @@
 """
 irreducibility_selftest.py -- the random self-tests of Research -> Irreducibility: comparisons
-of numbers in random block layouts, and random operations of every kind, each result checked
-against ordinary integer arithmetic.
+of numbers in random block layouts, random operations of every kind, and primality read from
+residues, each result checked against ordinary integer arithmetic.
 """
 import math
 
 from . import irreducibility_layout as layout
 from . import irreducibility_ops as ops
+from . import irreducibility_primality as primality
 from . import irreducibility_residues as res
+
+PRIMALITY_MAX_N = 20000
+"""Largest number of the primality self-test away from W; bounds its trial division."""
 
 OP_KINDS = ("add", "sub", "mul", "div_exact", "div_modular", "address", "pow", "periods",
             "chapters")
@@ -202,3 +206,52 @@ def ops_test(n, rng):
         cases.append({"kind": s["name"], "task": task, "residues": got, "integers": want,
                       "ok": got == want, "detail": detail})
     return {"kinds": stats, "wrong": sum(s["wrong"] for s in stats), "cases": cases}
+
+
+def _prime_text(n, divisor):
+    """'∈ ℙ', '∉ ℙ (n < 2)' or '∉ ℙ (d | n)' for the least divisor d."""
+    if divisor is None:
+        return "∈ ℙ"
+    return "∉ ℙ (n < 2)" if n < 2 else f"∉ ℙ ({divisor} | n)"
+
+
+def _least_divisor(n):
+    """The least divisor d >= 2 of n, 0 for n < 2, None for a prime."""
+    if n < 2:
+        return 0
+    return next((d for d in range(2, math.isqrt(n) + 1) if n % d == 0), None)
+
+
+def primality_test(n, rng):
+    """n numbers checked by isPrimeRes with fuel n + 1, which always answers: every fourth
+    just below W of a small layout (where the square test may not stop the run early), n =
+    0, 1, 2, 3 among the first, the rest below PRIMALITY_MAX_N on random layouts. The answer
+    and, for a composite, the divisor that ended the run (the least one) are compared with
+    trial division. Returns {count, wrong, cases}; a case holds n, near_w, task, residues,
+    integers, ok and detail (the moduli, the residues of n and the step count)."""
+    cases = []
+    for t in range(n):
+        near_w = t % 4 == 0
+        if near_w:
+            D, K = layout.blocks(2, 2, 2), layout.blocks(6 + rng.randint(0, 2), 1, 1)
+        else:
+            D, K = _random_layout(rng)
+        w = layout.capacity(D, K)
+        if near_w:
+            x = w - 1 - rng.randint(0, 9)
+        elif t % 4 == 1 and t < 16:
+            x = t // 4
+        else:
+            x = rng.randrange(min(w, PRIMALITY_MAX_N))
+        moduli, residues = res.flatten(layout.block_rep_of(x, D, K))
+        run = primality.PrimalityRun(moduli, residues, x + 1)
+        run.advance(x + 1)
+        if run.answer is None:
+            got = "?"
+        else:
+            got = _prime_text(x, None if run.answer else run.current_m())
+        want = _prime_text(x, _least_divisor(x))
+        detail = _detail(moduli, [("n", residues)]) + f"\nsteps: {run.steps}"
+        cases.append({"n": x, "near_w": near_w, "task": f"n = {x}   W = {w}", "residues": got,
+                      "integers": want, "ok": got == want, "detail": detail})
+    return {"count": n, "wrong": sum(not c["ok"] for c in cases), "cases": cases}
