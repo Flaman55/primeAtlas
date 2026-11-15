@@ -31,6 +31,7 @@ InfoTip anchored on the checkbox).
 | Planning | `window_planning.py`, `quick_gen_plan.py`, `run_budget.py`, `engine_options.py`, `engine_presets.py`, `quick_number.py`, `verify_plan.py`, `verify_estimate.py`, `pi_count_notice.py` (whether a run counts pi(L) from zero) |
 | Time simulation | `time_model.py` (run time model calibrated from benchmark_log.csv), `run_ram.py` (predicted RAM of a run, widest run in the RAM budget), `time_simulation_window.py` (`TimeSimulationWindow`) |
 | Engine proposal | `engine_advisor.py` (options, choice, guest line), `engine_advisor_seeds.py` (seed rows), `engine_advice_text.py` (its texts), `engine_advice_view.py` (`EngineAdviceView`); `tools/engine_advice.py` prints it |
+| Width proposal | `width_advisor.py` (rules), `width_advice_text.py` (its texts), `width_advice_view.py` (`WidthAdviceView`) |
 | Following and settling | `run_output.py` (log parsing), `run_eta.py` (a running run's remaining time from the time model), `run_guard.py` (stop request, active-run marker, recovery), `close_guard.py` |
 | Settings | `generation_settings.py` (form defaults and persistence), `generation_console.py` (`GenerationConsole`) |
 | Offers | `generation_offer_coordinator.py` ("generate the missing fragment" for other tabs) |
@@ -250,11 +251,31 @@ windows (the sieve to B <= sqrt(lo) and BPSW never reject a prime, so the P wind
 of the range and an equal count leaves no composite). Without guests every proposal is
 the same ([ADR 0009](../../adr/0009-own-engines-guests-optional.md)).
 
+In Explore with more than one iteration the engine line marks its time as one iteration's.
+
+## Width proposal
+
+A run's prep cost (every sieving prime up to the square root of its end) does not depend on its
+width, so a wider run spreads it over more numbers. A second line under the engine proposal,
+with its own Use button, proposes a width for the selected engine (`width_advisor.py`):
+
+| Quick-gen state | Proposal |
+|---|---|
+| Benchmark ticked, Floor or Explore | `BENCHMARK_WINDOWS` = 10,000 windows (10^11 numbers, arbitrary), lowered to the cap; the modelled speed now and then, and the note that one run's prep time stays the same; iterations unchanged |
+| Explore writing into the storage, iterations > 1 | the same total range in ceil(total / cap) iterations, the width rounded up (the total never shrinks); the modelled total time now and then; none when the iteration count stays or the model times it no faster |
+| Floor writing into the storage, one Explore iteration, other modes | none |
+
+The cap is the engine's per-run ceiling (`engine_options.max_windows_per_run()`) lowered to the
+widest run in the RAM budget (`run_ram.max_windows_in_budget()`; pt1 or no RAM reading: the
+ceiling). A typed width at or above the target gives no proposal (never narrower). Without a
+calibration of the engine the line leaves out the speeds and times. Use writes the width, in
+Explore also the iteration count; nothing changes the fields otherwise.
+
 ## Parameters and texts
 
 [generation-loop](../parameters/generation-loop.md), [generation-constellation](../parameters/generation-constellation.md),
 [generation-ktuple](../parameters/generation-ktuple.md),
-[generation-verify](../parameters/generation-verify.md); texts `gen.*`, `quick.*`, `close.*`, `timesim.*`, `advisor.*`.
+[generation-verify](../parameters/generation-verify.md); texts `gen.*`, `quick.*`, `close.*`, `timesim.*`, `advisor.*`, `width_advice.*`.
 
 ## Kept data
 
@@ -270,10 +291,14 @@ is copied in once), `.generation_logs/` (logs, exit codes, `ACTIVE_RUN.json`),
 `test_console_controls`, `test_constellation_auto_retry`, `test_storage_fill`, `test_pi_seed_checkbox_exclusivity`,
 `test_time_model`, `test_run_ram`, `test_time_simulation`, `test_ui_state_app`, `test_pi_count_notice`,
 `test_pi_count_notice_controls`, `test_engine_advisor`, `test_engine_advice_gui`, `test_native_plan`,
-`test_primesieve_native_controls`, `test_generation_ram_guard`, `test_run_eta`, `test_pipeline_form_layout`.
+`test_primesieve_native_controls`, `test_generation_ram_guard`, `test_run_eta`, `test_pipeline_form_layout`,
+`test_width_advisor`, `test_width_advice_gui`.
 
 ## Known gaps
 
+- The width proposal rests on the linear time model, which always times the widest run that fits
+  as the fastest; a measured optimum width per floor (where the per-number cost turns up) is not
+  modelled. The benchmark target is a fixed 10^11 numbers.
 - The Time simulation window times every run from the floor's start (10^floor); only the
   Quick-gen proposal line follows the run's real start.
 - Exploration mode's proposal is for the floor in its Floor field; a run that moves on to the
