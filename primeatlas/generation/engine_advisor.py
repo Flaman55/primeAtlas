@@ -82,7 +82,9 @@ def _top(floor, windows, start=None):
     return (10 ** floor if start is None else start) + windows * time_model.WINDOW_WIDTH
 
 
-def _fits_floor(engine, floor, windows, pt1_b, start=None):
+def fits_floor(engine, floor, windows, pt1_b, start=None):
+    """Whether `engine` runs `windows` windows from `start` (None: 10^floor) on this floor: its
+    per-run cap, pt1's floors and pt1-pss's proof bound, a guest's highest floor."""
     top = _top(floor, windows, start)
     if engine in _GUEST_MAX_FLOOR:
         return floor <= _GUEST_MAX_FLOOR[engine]
@@ -114,7 +116,7 @@ def options(cals, floor, windows, write_files, pt1_b=0, ram_fits=None, start=Non
     (None: 10^floor)."""
     found = []
     for engine in engine_options.ENGINES:
-        if engine not in cals or not _fits_floor(engine, floor, windows, pt1_b, start):
+        if engine not in cals or not fits_floor(engine, floor, windows, pt1_b, start):
             continue
         if ram_fits is not None and not ram_fits(engine):
             continue
@@ -148,7 +150,7 @@ def _guest(cals, advice, floor, windows, pt1_b, guests, start=None):
     rival = _seconds(cals, advice.deterministic_engine, floor, windows, False, pt1_b, start)
     best = None
     for engine in guests:
-        if engine not in cals or not _fits_floor(engine, floor, windows, pt1_b, start):
+        if engine not in cals or not fits_floor(engine, floor, windows, pt1_b, start):
             continue
         seconds = _seconds(cals, engine, floor, windows, False, pt1_b, start)
         if seconds and rival and seconds < rival and (best is None or seconds < best.seconds):
