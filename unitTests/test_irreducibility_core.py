@@ -1,6 +1,8 @@
 """
 test_irreducibility_core.py -- tests for the pure modules of Research -> Irreducibility:
-irreducibility_core.py (residues, Euclid, radices) and irreducibility_comb.py (sech comb).
+irreducibility_core.py (residues, Euclid, radices, multiplicative counting),
+irreducibility_comb.py (sech comb) and irreducibility_multiplicative.py (the cycle of g modulo q,
+its order, the discrete-log step and the square reading of T9).
 
 Usage:
     python unitTests/test_irreducibility_core.py
@@ -18,6 +20,7 @@ sys.path.insert(0, os.path.join(_REPO_ROOT, "prime_sieve"))
 
 from primeatlas.research import irreducibility_core as core
 from primeatlas.research import irreducibility_comb as comb
+from primeatlas.research import irreducibility_multiplicative as mult
 
 failures = []
 
@@ -102,7 +105,8 @@ def test_no_product_formed():
 
 
 def test_core_imports():
-    for name in ("irreducibility_core.py", "irreducibility_comb.py"):
+    for name in ("irreducibility_core.py", "irreducibility_comb.py",
+                 "irreducibility_multiplicative.py"):
         path = os.path.join(_REPO_ROOT, "primeatlas", "research", name)
         tree = ast.parse(open(path, encoding="utf-8").read())
         mods = set()
@@ -129,6 +133,132 @@ def test_comb():
           and comb.sech_comb(3.0, 5, 7.5) < 0.5, "the comb at real steps: peak at 5, low between")
 
 
+def test_mul_count():
+    check(all(core.mul_count(g, q, t) == pow(g, t, q) for g in range(40) for q in range(1, 40)
+              for t in range(50)), "mul_count(g, q, t) == g^t mod q for g < 40, q < 40, t < 50")
+    check(core.mul_count(7, 1, 0) == 0 and core.mul_count(0, 5, 0) == 1,
+          "step 0 is resid(1, q): 0 for q = 1, 1 otherwise")
+    src = open(os.path.join(_REPO_ROOT, "primeatlas", "research", "irreducibility_core.py"),
+               encoding="utf-8").read()
+    body = src.split("def mul_count", 1)[1].split("\ndef ", 1)[0]
+    check("pow(" not in body and "**" not in body, "mul_count counts: no power is taken")
+
+
+def _order(g, q):
+    if math.gcd(g, q) != 1:
+        return None
+    return next(t for t in range(1, q + 1) if pow(g, t, q) == 1 % q)
+
+
+def _least_root(q):
+    """The least primitive root of the prime q, by the prime factors of q - 1."""
+    if q == 2:
+        return 1
+    n, ps, p = q - 1, [], 2
+    while p * p <= n:
+        if n % p == 0:
+            ps.append(p)
+            while n % p == 0:
+                n //= p
+        p += 1
+    if n > 1:
+        ps.append(n)
+    return next(g for g in range(2, q) if all(pow(g, (q - 1) // p, q) != 1 for p in ps))
+
+
+def test_order_and_auto():
+    check(all(mult.mul_order(g, q) == _order(g, q) for q in range(2, 80) for g in range(1, q)),
+          "mul_order(g, q) == the least t > 0 with g^t = 1 mod q, None when gcd(g, q) > 1")
+    primes = [q for q in range(2, mult.MAX_Q + 1) if _is_prime(q)]
+    worst = max(_least_root(q) for q in primes)
+    check(worst <= mult.AUTO_MAX_G,
+          f"AUTO_MAX_G covers the least primitive root of every prime up to MAX_Q ({worst})")
+    sample = [q for q in primes if q < 3000] + primes[-20:] + [71761]
+    check(all(mult.auto_generator(q) == (_least_root(q), q - 1) for q in sample),
+          "Auto on a prime q: the least primitive root, order q - 1")
+    check(mult.auto_generator(2) == (1, 1) and mult.auto_generator(3) == (2, 2),
+          "Auto: q = 2 gives g = 1 (order 1), q = 3 gives g = 2")
+    for q in (4, 9, 15, 91, 1001):
+        orders = {g: _order(g, q) for g in range(1, min(q, mult.AUTO_MAX_G + 1))}
+        best = max(o for o in orders.values() if o)
+        want = min(g for g, o in orders.items() if o == best)
+        check(mult.auto_generator(q) == (want, best),
+              f"Auto on composite q = {q}: the smallest g of the largest order ({want}, {best})")
+
+
+def test_cycle():
+    a = mult.analyze(23, 5, 10)
+    check(a["values"] == [pow(5, t, 23) for t in range(23)]
+          and a["counts"] == [t % 22 for t in range(23)],
+          "q = 23, g = 5: values g^t mod q and counts t mod (q - 1) over t = 0..q - 1")
+    check(a["order"] == 22 and a["primitive"] and a["pairs_break"] is None,
+          "a primitive root: order q - 1, equal values at the same pairs of steps")
+    t = a["step"]
+    check(a["r"] == 10 and pow(5, t, 23) == 10 and 0 <= t < 22
+          and a["square"] is (t % 2 == 0) and a["square"] is (pow(10, 11, 23) == 1),
+          f"N = 10: the step reaching N mod q, its parity is Euler's criterion (t = {t})")
+    ok = True
+    for q in [q for q in range(3, 200) if _is_prime(q)]:
+        g = _least_root(q)
+        for n in range(0, 3 * q):
+            a = mult.analyze(q, g, n)
+            want = None if n % q == 0 else pow(n, (q - 1) // 2, q) == 1
+            ok &= a["square"] is want and (a["step"] is None) == (n % q == 0)
+    check(ok, "every odd prime q < 200, every N < 3q: parity of the step == Euler, q | N: no step")
+    a = mult.analyze(23, 2, 5)
+    check(a["order"] == 11 and not a["primitive"] and a["pairs_break"] == (0, 11)
+          and a["square"] is None,
+          "g = 2 mod 23 (order 11): pairs break at steps 0 and 11, no square claim")
+    check(a["step"] is None, "5 is not reached by 2 mod 23 (5 is not a square)")
+    a = mult.analyze(9, 2, 4)
+    check(a["order"] == 6 and not a["primitive"] and a["pairs_break"] == (0, 6)
+          and a["square"] is None, "q = 9 (not prime): order 6 < 8, pairs break, no claim")
+    a = mult.analyze(10, 2, 3)
+    check(a["order"] is None and not a["primitive"] and a["pairs_break"] is not None
+          and a["square"] is None, "gcd(g, q) > 1: no order, pairs break, no claim")
+    a = mult.analyze(2, 1, 7)
+    check(a["values"] == [1, 1] and a["counts"] == [0, 0] and a["order"] == 1 and a["primitive"]
+          and a["pairs_break"] is None and a["step"] == 0 and a["square"] is None,
+          "q = 2: g = 1, order 1, pairs equal; no square question")
+    a = mult.analyze(23, 5, 46)
+    check(a["r"] == 0 and a["step"] is None and a["square"] is None, "q | N: N mod q = 0, no step")
+    big = 10 ** 40 + 7
+    a = mult.analyze(23, 5, big)
+    check(a["r"] == big % 23, "N far above q: N mod q from its residue")
+
+
+def test_table_steps():
+    check(mult.table_steps(23, 7) == list(range(23)), "q = 23: every step is a row")
+    q = 1009
+    head = list(range(mult.HEAD_ROWS))
+    tail = list(range(q - mult.TAIL_ROWS, q))
+    check(mult.table_steps(q, 500) == head + [None] + list(range(498, 503)) + [None] + tail,
+          "q = 1009, step 500: head rows, the step with 2 around it, tail rows")
+    check(mult.table_steps(q, 3) == head + [None] + tail, "a step inside the head adds no rows")
+    check(mult.table_steps(q, None) == head + [None] + tail, "no step: head and tail")
+    check(mult.table_steps(q, q - mult.TAIL_ROWS - 3)
+          == head + [None] + list(range(q - mult.TAIL_ROWS - 5, q)),
+          "a step next to the tail joins it without a gap")
+    check(mult.table_steps(mult.TABLE_ALL, 0) == list(range(mult.TABLE_ALL))
+          and None in mult.table_steps(mult.TABLE_ALL + 1, 0),
+          "up to TABLE_ALL steps every row is shown")
+
+
+def test_comb_returns():
+    for q in [q for q in range(2, mult.COMB_MAX_Q + 1) if _is_prime(q)]:
+        g = _least_root(q)
+        for s in (comb.PROVED_SCALE, 8.0):
+            peaks, ones = mult.comb_returns(s, q, g)
+            if peaks != ones or ones[0] != 0 or ones[-1] != 2 * (q - 1):
+                check(False, f"q = {q}, scale {s}: peaks {peaks[:5]} vs returns {ones[:5]}")
+                return
+    check(True, "every prime q up to COMB_MAX_Q: comb peaks of modulus q - 1 over 0..2(q - 1) "
+                "== the steps where g^t mod q returns to 1")
+    peaks, ones = mult.comb_returns(8.0, 23, 2)
+    check(set(peaks) < set(ones) and 11 in ones,
+          "g = 2 mod 23 (order 11) returns to 1 also between the peaks")
+
+
 def main():
     test_count_mod_and_euclid()
     test_radices_consecutive()
@@ -136,6 +266,11 @@ def main():
     test_no_product_formed()
     test_core_imports()
     test_comb()
+    test_mul_count()
+    test_order_and_auto()
+    test_cycle()
+    test_table_steps()
+    test_comb_returns()
     if failures:
         print(f"\n{len(failures)} FAILED")
         sys.exit(1)

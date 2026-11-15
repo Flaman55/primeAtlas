@@ -1,17 +1,25 @@
 """
 irreducibility_selftest.py -- the random self-tests of Research -> Irreducibility: comparisons
-of numbers in random block layouts, random operations of every kind, and primality read from
-residues, each result checked against ordinary integer arithmetic.
+of numbers in random block layouts, random operations of every kind, primality read from
+residues and the square reading of multiplicative counting, each result checked against
+ordinary integer arithmetic.
 """
 import math
 
 from . import irreducibility_layout as layout
+from . import irreducibility_multiplicative as mult
 from . import irreducibility_ops as ops
 from . import irreducibility_primality as primality
 from . import irreducibility_residues as res
 
 PRIMALITY_MAX_N = 20000
 """Largest number of the primality self-test away from W; bounds its trial division."""
+
+MUL_TEST_MAX_Q = 1000
+"""Largest prime q of the multiplicative self-test; bounds one cycle; arbitrary."""
+
+MUL_DETAIL_STEPS = 24
+"""Steps of the cycle listed in a case's detail; arbitrary."""
 
 OP_KINDS = ("add", "sub", "mul", "div_exact", "div_modular", "address", "pow", "periods",
             "chapters")
@@ -82,12 +90,14 @@ def _value(moduli, residues):
     return "?" if ds is None else res.eval_digits(ds)
 
 
-def _detail(moduli, rows):
+def _detail(moduli, rows, head="m"):
     """The moduli and one line per (label, residues) row, each column right-aligned under
-    its modulus."""
-    table = [("m", moduli)] + [(label, r) for label, r in rows if r is not None]
+    its modulus, the labels padded to one width; head labels the first line."""
+    table = [(head, moduli)] + [(label, r) for label, r in rows if r is not None]
     widths = [max(len(str(r[i])) for _, r in table) for i in range(len(moduli))]
-    return "\n".join(f"{label}: " + " ".join(str(v).rjust(w) for v, w in zip(r, widths))
+    lw = max(len(label) for label, _ in table)
+    return "\n".join(f"{label}: ".ljust(lw + 2) + " ".join(str(v).rjust(w)
+                                                          for v, w in zip(r, widths))
                      for label, r in table)
 
 
@@ -254,4 +264,46 @@ def primality_test(n, rng):
         detail = _detail(moduli, [("n", residues)]) + f"\nsteps: {run.steps}"
         cases.append({"n": x, "near_w": near_w, "task": f"n = {x}   W = {w}", "residues": got,
                       "integers": want, "ok": got == want, "detail": detail})
+    return {"count": n, "wrong": sum(not c["ok"] for c in cases), "cases": cases}
+
+
+def _square_text(square):
+    return "square" if square else "not a square"
+
+
+def multiplicative_test(n, rng):
+    """n readings of T9: q a random prime up to MUL_TEST_MAX_Q (q = 2 every 25th case), g by
+    Auto, N random (a multiple of q every fifth case). The square reading from the parity of
+    the step reaching N mod q is compared with Euler's criterion N^((q - 1)/2) mod q; g must
+    have order q - 1 and the counters equal values at the same pairs of steps. Returns
+    {count, wrong, cases}; a case holds q, n, task, residues, integers, ok and detail (the
+    first steps of the cycle)."""
+    primes = [q for q in range(2, MUL_TEST_MAX_Q + 1)
+              if all(q % d for d in range(2, math.isqrt(q) + 1))]
+    cases = []
+    for t in range(n):
+        q = 2 if t % 25 == 0 else rng.choice(primes[1:])
+        x = q * rng.randrange(10 ** 6) if t % 5 == 1 else rng.randrange(10 ** 12)
+        g, _order = mult.auto_generator(q)
+        a = mult.analyze(q, g, x)
+        if q == 2:
+            got = want = "q = 2"
+            ok = a["primitive"]
+        elif a["r"] == 0:
+            got = want = "N mod q = 0: q | N"
+            ok = a["step"] is None and a["square"] is None
+        else:
+            e = pow(x, (q - 1) // 2, q)
+            parity = "?" if a["step"] is None else ("even" if a["step"] % 2 == 0 else "odd")
+            got = (f"t = {a['step']} ({parity}): "
+                   + ("?" if a["square"] is None else _square_text(a["square"])))
+            want = f"N^{(q - 1) // 2} mod q = {e}: " + _square_text(e == 1)
+            ok = got.split(": ")[-1] == want.split(": ")[-1]
+        ok = ok and a["primitive"] and a["pairs_break"] is None
+        k = min(q, MUL_DETAIL_STEPS)
+        detail = _detail(list(range(k)), [("g^t", a["values"][:k]),
+                                          ("t mod (q-1)", a["counts"][:k])], head="t")
+        detail += f"\norder of g: {a['order']}   N mod q: {a['r']}"
+        cases.append({"q": q, "n": x, "task": f"q = {q}, g = {g}, N = {x}", "residues": got,
+                      "integers": want, "ok": ok, "detail": detail})
     return {"count": n, "wrong": sum(not c["ok"] for c in cases), "cases": cases}

@@ -1,7 +1,8 @@
 """
 irreducibility_draw.py -- Canvas drawing for Research -> Irreducibility: a wrapped grid of
-chips (modulus over radix, interval atoms), dials (one residue on its block modulus) and the
-two sech combs C_a and C_b of the comb reading.
+chips (modulus over radix, interval atoms), dials (one residue on its block modulus), the
+two sech combs C_a and C_b of the comb reading, and the comb of modulus q - 1 with the returns
+to 1 of multiplicative counting.
 
 Every function clears the canvas (or the tag it draws) and reads the canvas width from the
 widget, or from its configured width while it is not yet mapped. Chip and dial grids set the
@@ -123,3 +124,38 @@ def draw_combs(canvas, a, b, s, palette):
             canvas.create_text(x_of(t), bottom + 10, text=str(t), anchor="n", fill=fg,
                                font=("TkDefaultFont", 8))
     return last
+
+
+def draw_returns(canvas, d, top, s, returns, step, palette):
+    """The sech comb of modulus d over the steps 0..top (tag 'comb'), a gold dot on the axis
+    at every step of returns (tag 'returns'), a dashed line at step when it is not None (tag
+    'step_mark'), tick marks with a label every 5 steps."""
+    canvas.delete("all")
+    w = canvas_width(canvas)
+    h = int(canvas.cget("height"))
+    fg, line = palette["console_fg"], palette["border"]
+    x0, span = 12, w - 24
+    base = h - 24
+
+    def x_of(t):
+        return x0 + span * t / top
+
+    steps = max(400, top * 20)
+    vals = [sech_comb(s, d, top * i / steps) for i in range(steps + 1)]
+    mx = max(vals) or 1.0
+    pts = []
+    for i, v in enumerate(vals):
+        pts += [x_of(top * i / steps), base - (base - 10) * v / mx]
+    canvas.create_line(*pts, fill=COLOR_A, width=1.5, tags="comb")
+    canvas.create_line(x0, base, x0 + span, base, fill=line)
+    if step is not None and step <= top:
+        canvas.create_line(x_of(step), 4, x_of(step), base, fill=COLOR_B, dash=(4, 3),
+                           tags="step_mark")
+    for t in returns:
+        canvas.create_oval(x_of(t) - 4, base - 4, x_of(t) + 4, base + 4, fill=GOLD,
+                           outline=GOLD, tags="returns")
+    for t in range(top + 1):
+        canvas.create_line(x_of(t), base + 4, x_of(t), base + 7, fill=line)
+        if t % 5 == 0:
+            canvas.create_text(x_of(t), base + 9, text=str(t), anchor="n", fill=fg,
+                               font=("TkDefaultFont", 8))
