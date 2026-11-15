@@ -32,7 +32,7 @@ comparisons with primesieve and PARI/GP are in `BENCHMARK.md`.
     Pollard's rho by default, or `sympy.factorint()` instead when installed -- see
     Settings below) for any entered number, with the factor list shown in a copyable
     field.
-- **Constellations** -- an inner notebook of three sub-tabs:
+- **Constellations** -- an inner notebook of four sub-tabs:
   - **Storage** -- browse detected k-tuple patterns floor by floor, with hit counts,
     offset/record metadata, a paginated preview that reconstructs each hit's full
     tuple, and a search that reports whether a given number participates in any
@@ -62,6 +62,15 @@ comparisons with primesieve and PARI/GP are in `BENCHMARK.md`.
     smallest), and double-clicking one of those jumps straight to it in the Storage
     sub-tab. PDF/CSV export covers every individual hit for the currently displayed
     floor range, not just the compact per-cell summary.
+  - **Density** -- for a chosen k (and an optional floor range), the hits of each
+    variant next to the Hardy-Littlewood prediction `C * integral dt / (ln t)^k`, both
+    over exactly the spans the constellation finder has scanned (its done windows;
+    hits the targeted k-tuple sieve wrote outside them are left out). A row per floor
+    and variant gives the scanned width, hits, prediction, their ratio and the
+    deviation in Poisson standard deviations, plus a sum row per floor when k has
+    several variants; a chart shows the ratio per floor, with +-1/sqrt(prediction)
+    bars, for the row selected in the table. The scan runs in the background with a
+    Stop button.
 - **Generation** -- two ways to launch the sieve/orchestrator pipeline and the
   constellation finder over WSL, both with live streamed output (stackable across
   runs, detachable into its own window) and a stop control:
@@ -1488,6 +1497,12 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               calculator
   constellations_records_tab.py ConstellationsRecordsTab -- Constellations -> Records
                               table
+  constellations_density_tab.py ConstellationsDensityTab -- Constellations -> Density
+  density_scan.py               covered spans of a floor's done windows and the hits
+                              inside them, per floor and variant (no tkinter)
+  hl_density.py                 Hardy-Littlewood constant and integral of
+                              1/(ln t)^k (no tkinter, no I/O)
+  density_chart.py              Canvas chart of hits / prediction per floor
   constellations.py             constellation (k-tuple) hit storage: listing, search,
                               PDF/CSV export
   constellations_tree_coordinator.py ConstellationsTreeCoordinator -- background
@@ -2779,7 +2794,8 @@ constellation/
                               (scan_locations, run_ktuple_job), the command line and the
                               sys.path setup
   ktuple_wheel_v2_2.py        its arithmetic: Miller-Rabin, CRT residue wheel,
-                              candidate scan, Hardy-Littlewood fragment sizing
+                              candidate scan, Hardy-Littlewood fragment sizing (its
+                              singular series constant is also the Density sub-tab's C)
   ktuple_locations_v2_2.py    its location strategies: striding (even/concentrated/
                               manual_step), manual_list, the nested digit sweep
   ktuple_hit_store_v2_2.py    its on-disk state: KTUPLE_CHECKPOINT_*, the exhaustive
@@ -2787,7 +2803,8 @@ constellation/
                               routing of confirmed hits (shared HITS_* vs PROVISIONAL)
   pattern_catalog_v1.py       catalog of supported k-tuple patterns, shared by the
                               constellation finder, the ktuple sieves, and the
-                              Constellation calculator / Records table sub-tabs
+                              Constellation calculator / Records table / Density
+                              sub-tabs
 startup_dependency_check.py  pre-import check of requirements.txt's native-Windows
                               packages, run by prime_atlas_v2.py BEFORE its first `from
                               primeatlas` import (primeatlas/__init__.py itself needs numpy); offers

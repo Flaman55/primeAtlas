@@ -1,7 +1,7 @@
 """
 constellations_section.py -- ConstellationsSectionMixin of PortalBrowserApp: the
-'Constellations' tab (Storage / Constellation calculator / Records table sub-tabs), the
-jumps between those sub-tabs, the constellations-tree reload delegate and the app-level
+'Constellations' tab (Storage / Constellation calculator / Records table / Density
+sub-tabs), the jumps between those sub-tabs, the constellations-tree reload delegate and the app-level
 completion handler of a "const" search.
 """
 from tkinter import ttk
@@ -17,12 +17,13 @@ class ConstellationsSectionMixin:
     # --- Tab 2: Constellations (constellation hits) ---------------------------------
 
     def _build_constellations_section(self):
-        """Thin wrapper -- all three of the Constellations tab's actual widgets/logic
+        """Thin wrapper -- all four of the Constellations tab's actual widgets/logic
         live in primeatlas/constellations/constellations_hits_tab.py (ConstellationsHitsTab, the
         "Storage" sub-tab), primeatlas/constellations/constellations_calc_tab.py
         (ConstellationsCalcTab, "Constellation calculator"), and
         primeatlas/constellations/constellations_records_tab.py (ConstellationsRecordsTab, "Records
-        table") -- see each module's own docstring. Local imports, not
+        table") and primeatlas/constellations/constellations_density_tab.py
+        (ConstellationsDensityTab, "Density") -- see each module's own docstring. Local imports, not
         module-level, for the same lazy-tkinter-import reason
         SettingsTab/BenchmarkTab/PrimesTab are imported inside their own
         _build_*_tab() methods rather than at this file's top.
@@ -37,6 +38,7 @@ class ConstellationsSectionMixin:
         from primeatlas.constellations.constellations_hits_tab import ConstellationsHitsTab
         from primeatlas.constellations.constellations_calc_tab import ConstellationsCalcTab
         from primeatlas.constellations.constellations_records_tab import ConstellationsRecordsTab
+        from primeatlas.constellations.constellations_density_tab import ConstellationsDensityTab
 
         sub = ttk.Notebook(self.constellations_tab)
         sub.pack(fill="both", expand=True)
@@ -47,9 +49,11 @@ class ConstellationsSectionMixin:
         self.constellations_storage_tab = ttk.Frame(sub)
         self.constellations_calculator_tab = ttk.Frame(sub)
         self.constellations_records_tab = ttk.Frame(sub)
+        self.constellations_density_tab = ttk.Frame(sub)
         sub.add(self.constellations_storage_tab, text=_dyn.T("tabs.constellations_storage"))
         sub.add(self.constellations_calculator_tab, text=_dyn.T("tabs.constellations_calculator"))
         sub.add(self.constellations_records_tab, text=_dyn.T("tabs.constellations_records"))
+        sub.add(self.constellations_density_tab, text=_dyn.T("tabs.constellations_density"))
 
         self.constellations_hits_tab_widget = ConstellationsHitsTab(
             self._scroll_body("constellations_storage_tab"),
@@ -83,6 +87,13 @@ class ConstellationsSectionMixin:
         self.constellations_records_tab_widget.bind_jump_to_hits(
             self._jump_records_detail_to_hits)
         self.constellations_records_tab_widget.pack(fill="both", expand=True)
+
+        self.constellations_density_tab_widget = ConstellationsDensityTab(
+            self._scroll_body("constellations_density_tab"),
+            get_portal_folder=lambda: _dyn.PORTAL_FOLDER, status_var=self.status,
+            translator=_dyn.TRANSLATOR, eval_quick_number=_eval_quick_number,
+            totals_progress=self.totals_progress)
+        self.constellations_density_tab_widget.pack(fill="both", expand=True)
 
         self.constellations_hits_tab_widget.bind_export_to_records(
             self._jump_hits_to_records_export)
