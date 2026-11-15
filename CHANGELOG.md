@@ -178,6 +178,17 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   (tryb Piętro ze Startem i włączonym zapisem albo Pseudosquares print); nic nie startuje samo.
   Przycisk "Jak to działa?" pokazuje krótkie wyjaśnienie.
 
+### +9 — Number fields: "^" is a power
+
+- English: Every numeric field reads "^" as a power, as the app's own texts write it:
+  "10^25+3" is 10^25 + 3. Before, any expression with "^" and another term ("10^25+3",
+  "3*10^24+5") was read as Python's XOR and silently gave a small wrong number (22); only the
+  bare forms "10^25" and "3*10^24" worked.
+- Polski: Każde pole liczbowe czyta "^" jako potęgę, tak jak zapisują ją teksty samej
+  aplikacji: "10^25+3" to 10^25 + 3. Wcześniej każde wyrażenie z "^" i kolejnym składnikiem
+  ("10^25+3", "3*10^24+5") było czytane jako XOR Pythona i po cichu dawało małą, błędną liczbę
+  (22); działały tylko same formy "10^25" i "3*10^24".
+
 ## 1.4.0 — 2026-11-14
 
 ### +1 — Research → Irreducibility: radices, comparison, comb reading, ranges, arithmetic

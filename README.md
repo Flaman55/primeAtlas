@@ -1686,6 +1686,7 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               one-window Hybrid targets, totals bumps from new
                               benchmark rows, primesieve/CUDASieve range limits
   quick_number.py               _eval_quick_number, the parser of every numeric field
+                              ("^" = power; unitTests/test_quick_number.py)
   generation_settings.py        the Generation forms' values in the remembered-fields
                               store (generation.<section>.<field>) over
                               DEFAULT_GENERATION_SETTINGS; one-time copy of a storage

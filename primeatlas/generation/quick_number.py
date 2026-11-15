@@ -46,7 +46,9 @@ def _eval_quick_number(raw):
         return parse_big_int(cleaned)
     except ValueError:
         pass
+    # "^" is a power, as in the app's own texts ("10^N"): Python reads it as XOR, which no
+    # number field means, so "10^25+3" would silently give 22.
     try:
-        return int(eval(cleaned, {"__builtins__": {}}, {}))
+        return int(eval(cleaned.replace("^", "**"), {"__builtins__": {}}, {}))
     except Exception:
         return None
