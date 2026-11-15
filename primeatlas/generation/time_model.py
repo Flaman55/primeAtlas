@@ -27,6 +27,7 @@ pi(x) is exact at powers of ten (KNOWN_PI_10N, the engine's table) and Riemann's
 elsewhere, which is off by less than 1e-7 relative at the sizes a floor needs.
 """
 import csv
+import functools
 import itertools
 import math
 from collections import namedtuple
@@ -79,8 +80,10 @@ Estimate = namedtuple(
     "window_seconds numbers_per_second extrapolated write_known")
 
 
+@functools.lru_cache(maxsize=65536)
 def prime_count(x):
-    """(pi(x), exact): exact from KNOWN_PI_10N at a power of ten, else round(R(x))."""
+    """(pi(x), exact): exact from KNOWN_PI_10N at a power of ten, else round(R(x)). Cached:
+    the planners ask for the same run ends many times."""
     x = int(x)
     if x < 2:
         return 0, True

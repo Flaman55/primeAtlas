@@ -26,12 +26,13 @@ InfoTip anchored on the checkbox).
 | Part | Files |
 |---|---|
 | Tab | `primeatlas/generation/generation_tab.py` (`GenerationTab`, WSL runner factory) |
-| Sections (mixins) | `quick_gen_panel.py`, `quick_gen_runs.py`, `loop_section.py`, `constellation_section.py`, `ktuple_section.py`, `verify_section.py`, `run_progress.py`, `run_guard_controls.py`, `hybrid_controls.py`, `engine_fields.py`, `time_simulation_controls.py`, `engine_advice_controls.py`, `pi_count_notice_controls.py` |
+| Sections (mixins) | `quick_gen_panel.py`, `quick_gen_runs.py`, `loop_section.py`, `constellation_section.py`, `ktuple_section.py`, `verify_section.py`, `run_progress.py`, `run_guard_controls.py`, `hybrid_controls.py`, `engine_fields.py`, `time_simulation_controls.py`, `engine_advice_controls.py`, `pi_count_notice_controls.py`, `target_planner_section.py` |
 | Launching | `engine_argv.py` (argv of every script), `wsl_command.py` (wsl.exe command, logs), `logged_runners.py` (`WslLoggedRunner`, `LocalLoggedRunner`), `wsl_blocking.py`, `wsl_resources.py` |
 | Planning | `window_planning.py`, `quick_gen_plan.py`, `run_budget.py`, `engine_options.py`, `engine_presets.py`, `quick_number.py`, `verify_plan.py`, `verify_estimate.py`, `pi_count_notice.py` (whether a run counts pi(L) from zero) |
 | Time simulation | `time_model.py` (run time model calibrated from benchmark_log.csv), `run_ram.py` (predicted RAM of a run, widest run in the RAM budget), `time_simulation_window.py` (`TimeSimulationWindow`) |
 | Engine proposal | `engine_advisor.py` (options, choice, guest line), `engine_advisor_seeds.py` (seed rows), `engine_advice_text.py` (its texts), `engine_advice_view.py` (`EngineAdviceView`); `tools/engine_advice.py` prints it |
 | Width proposal | `width_advisor.py` (rules), `width_advice_text.py` (its texts), `width_advice_view.py` (`WidthAdviceView`) |
+| Target planner | `target_planner.py` (parsing, windows, choice), `target_plan_costs.py` (costs from the time model), `target_plan_text.py` (its texts), `target_planner_view.py` (`TargetPlannerView`) |
 | Following and settling | `run_output.py` (log parsing), `run_eta.py` (a running run's remaining time from the time model), `run_guard.py` (stop request, active-run marker, recovery), `close_guard.py` |
 | Settings | `generation_settings.py` (form defaults and persistence), `generation_console.py` (`GenerationConsole`) |
 | Offers | `generation_offer_coordinator.py` ("generate the missing fragment" for other tabs) |
@@ -271,11 +272,46 @@ ceiling). A typed width at or above the target gives no proposal (never narrower
 calibration of the engine the line leaves out the speeds and times. Use writes the width, in
 Explore also the iteration count; nothing changes the fields otherwise.
 
+## Target planner
+
+A collapsible section above the pipeline section. The person lists targets, one per line:
+`center` or `center radius` (whitespace, `;` or `,` between them, Quick-gen expressions);
+blank lines and `#` comments are skipped. Any bad line blocks the plan and is listed with its
+number (not a number, more than two fields, center below 1, negative radius, below 10^7, above
+10^36 - 1, more than `MAX_TARGETS` = 10,000 targets, arbitrary).
+
+Each target [center - radius, center + radius] becomes the windows it touches on the 10^7 grid
+of its floor, split at a floor boundary. Repeated and overlapping targets share windows; the
+windows the selected engine's store already holds (`storage_kinds.engine_target_idxs()`) are
+dropped, and a target with none left counts as already stored. The remaining windows of a floor
+form blocks (maximal runs of consecutive windows, cut at the cap).
+
+| Choice | Cost |
+|---|---|
+| One Atlas run over a group of consecutive blocks (gaps included) | `time_model.estimate()` of the selected engine, writing, from the group's first window; only while the span is at most the cap |
+| One Pseudosquares print run per block | its print calibration, else its count calibration (noted) |
+
+Dynamic programming over each floor's blocks picks the partition with the fewest total
+seconds; a tie goes to Atlas (its primes stay in the storage). The cap is the engine's per-run
+ceiling lowered to the RAM budget (as the width proposal); when not one window fits, Atlas is
+left out and the blocks stay uncut. The prep of a run depends only on its end, so the costs
+take one estimate per end and scale the rest linearly with the span (`time_model.prime_count`
+is cached). A block neither method can time is unplanned; when nothing is plannable the
+section says to run a benchmark first.
+
+The table lists each run (floor, from, to, windows, targets, method, time); the summary gives
+the plan's total, the totals of separate Atlas runs per block and of Pseudosquares alone, the
+targets left out as stored, and notes (seed-estimated engine, Pseudosquares timed from count,
+Pseudosquares writes nothing into the storage). Use writes the selected run into Quick-gen:
+Atlas into Floor mode (Start = the run's first number, which sets the Floor; Width; storage
+writing on), Pseudosquares into its mode with print (Floor, From, Width). Nothing starts a
+run. "How does it work?" reveals a plain-language explanation.
+
 ## Parameters and texts
 
 [generation-loop](../parameters/generation-loop.md), [generation-constellation](../parameters/generation-constellation.md),
 [generation-ktuple](../parameters/generation-ktuple.md),
-[generation-verify](../parameters/generation-verify.md); texts `gen.*`, `quick.*`, `close.*`, `timesim.*`, `advisor.*`, `width_advice.*`.
+[generation-verify](../parameters/generation-verify.md); texts `gen.*`, `quick.*`, `close.*`, `timesim.*`, `advisor.*`, `width_advice.*`, `target_planner.*`.
 
 ## Kept data
 
@@ -292,10 +328,15 @@ is copied in once), `.generation_logs/` (logs, exit codes, `ACTIVE_RUN.json`),
 `test_time_model`, `test_run_ram`, `test_time_simulation`, `test_ui_state_app`, `test_pi_count_notice`,
 `test_pi_count_notice_controls`, `test_engine_advisor`, `test_engine_advice_gui`, `test_native_plan`,
 `test_primesieve_native_controls`, `test_generation_ram_guard`, `test_run_eta`, `test_pipeline_form_layout`,
-`test_width_advisor`, `test_width_advice_gui`.
+`test_width_advisor`, `test_width_advice_gui`, `test_target_planner`, `test_target_plan_costs`,
+`test_target_plan_text`, `test_target_planner_gui`.
 
 ## Known gaps
 
+- The target planner checks targets on the window grid: a target narrower than a window still
+  costs a whole window with either method. Pseudosquares results are not stored, so their
+  targets come back in the next plan. Use fills one run at a time; running the whole plan is
+  not built.
 - The width proposal rests on the linear time model, which always times the widest run that fits
   as the fastest; a measured optimum width per floor (where the per-number cost turns up) is not
   modelled. The benchmark target is a fixed 10^11 numbers.

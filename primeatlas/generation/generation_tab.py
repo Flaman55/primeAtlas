@@ -62,6 +62,7 @@ from .loop_section import LoopSection
 from .constellation_section import ConstellationSection
 from .ktuple_section import KtupleSection
 from .verify_section import VerifySection
+from .target_planner_section import TargetPlannerSection
 from .run_progress import GenerationRunProgress
 from primeatlas.core import ui_state_dynamic
 from .generation_settings import load_generation_settings
@@ -70,6 +71,7 @@ from .logged_runners import WslLoggedRunner
 
 class GenerationTab(QuickGenPanel, QuickGenRuns, QuickGenPseudosquares, QuickGenPlan,
                     LoopSection, ConstellationSection, KtupleSection, VerifySection,
+                    TargetPlannerSection,
                     GenerationRunProgress,
                     HybridControls, RunGuardControls, TimeSimulationControls, EngineAdviceControls,
                     PiCountNoticeControls,
@@ -182,6 +184,7 @@ class GenerationTab(QuickGenPanel, QuickGenRuns, QuickGenPseudosquares, QuickGen
         # how tall its output is.
         sections = ttk.Frame(generation_body)
         sections.pack(fill="both", expand=True, padx=6, pady=6)
+        self._build_target_planner_section(sections)
         self._build_loop_section(sections)
         self._build_constellation_section(sections)
         self._build_ktuple_section(sections)

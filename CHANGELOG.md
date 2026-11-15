@@ -155,6 +155,29 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   dotyczy jednej iteracji, a podpowiedzi trybów Piętro i Eksploracja podają prawdziwe
   maksimum szerokości (100 000 okien; v4.1: 1000).
 
+### +8 — Generation: target planner
+
+- English: A new collapsible Target planner section in the Generation tab takes a list of
+  numbers, one per line, each optionally with a radius ("10**25+3 1000"), typed or loaded from
+  a file. Plan splits them into runs with the fewest estimated seconds: targets close to each
+  other share one Atlas run of the selected engine (at most the widest run the RAM budget
+  allows), isolated ones go to Pseudosquares print, timed with the speeds in the benchmark log.
+  Windows already in the storage are left out. The table lists each run with its range,
+  windows, targets, method and time, and the summary compares the plan with separate Atlas
+  runs and with Pseudosquares alone. Use fills Quick-gen with the selected run (Floor mode with
+  Start and storage writing on, or Pseudosquares print); nothing starts by itself. A "How does
+  it work?" button shows a short explanation.
+- Polski: Nowa zwijana sekcja Planer celów w zakładce Generowanie przyjmuje listę liczb, po
+  jednej w wierszu, każda z opcjonalnym promieniem ("10**25+3 1000"), wpisaną albo wczytaną z
+  pliku. Planuj dzieli je na przebiegi o najmniejszym szacowanym czasie: cele leżące blisko
+  siebie dzielą jeden przebieg Atlasa wybranym silnikiem (najwyżej tak szeroki, jak pozwala
+  budżet RAM), pojedyncze trafiają do Pseudosquares print, z czasami z prędkości w logu
+  benchmarku. Okna, które są już w magazynie, są pomijane. Tabela pokazuje każdy przebieg z
+  zakresem, oknami, celami, metodą i czasem, a podsumowanie porównuje plan z osobnymi
+  przebiegami Atlasa i z samym Pseudosquares. Użyj wypełnia Quick-gen wybranym przebiegiem
+  (tryb Piętro ze Startem i włączonym zapisem albo Pseudosquares print); nic nie startuje samo.
+  Przycisk "Jak to działa?" pokazuje krótkie wyjaśnienie.
+
 ## 1.4.0 — 2026-11-14
 
 ### +1 — Research → Irreducibility: radices, comparison, comb reading, ranges, arithmetic
