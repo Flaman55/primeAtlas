@@ -113,6 +113,26 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   q − 1 z zaznaczonymi powrotami do 1. Test 1000 przypadków sprawdza losowe liczby pierwsze i
   liczby oraz wypisuje każdy przypadek.
 
+### +6 — Constellations: Density, hits against the Hardy-Littlewood prediction
+
+- English: Constellations has a fourth sub-tab, Density. For a chosen k (and an optional
+  floor range) it compares the hits of each variant with the Hardy-Littlewood prediction
+  C * integral dt / (ln t)^k, both over exactly the spans the constellation finder has
+  scanned; hits the targeted k-tuple sieve wrote outside those spans are left out. Each row
+  gives the floor, the pattern, the scanned width, hits, prediction, their ratio and the
+  deviation in Poisson standard deviations, with a sum row per floor when k has several
+  variants. A chart shows the ratio per floor with +-1/sqrt(prediction) bars for the row
+  selected in the table. The scan runs in the background and can be stopped.
+- Polski: Konstelacje mają czwartą podzakładkę, Gęstość. Dla wybranego k (i opcjonalnego
+  zakresu pięter) porównuje trafienia każdego wariantu z przewidywaniem Hardy'ego-Littlewooda
+  C * całka dt / (ln t)^k, w obu przypadkach dokładnie po przedziałach przeszukanych przez
+  finder konstelacji; trafienia zapisane poza nimi przez celowane sito k-krotek są pomijane.
+  Każdy wiersz podaje piętro, wzorzec, przeszukaną szerokość, trafienia, przewidywanie, ich
+  iloraz i odchylenie w odchyleniach standardowych rozkładu Poissona, z wierszem sumy na
+  piętro, gdy k ma kilka wariantów. Wykres pokazuje iloraz na piętro ze słupkami
+  ±1/sqrt(przewidywanie) dla wiersza zaznaczonego w tabeli. Skan działa w tle i można go
+  zatrzymać.
+
 ## 1.4.0 — 2026-11-14
 
 ### +1 — Research → Irreducibility: radices, comparison, comb reading, ranges, arithmetic

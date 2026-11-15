@@ -58,11 +58,9 @@ class ResearchSectionMixin:
             on residues, as defined in the Irreducibility repository (Lean 4) --
             pure computation on the user's input, no prime data source --
             primeatlas/research/research_irreducibility_tab.py's ResearchIrreducibilityTab.
-        Hardy-Littlewood / twin-prime / Polignac density questions are NOT a sub-tab
-        here -- they're the same computation the EXISTING Constellations tab already
-        does (pattern hit-counting), so that family becomes a future density-comparison
-        VIEW added to Constellations (actual hits vs Hardy-Littlewood asymptotic
-        prediction) instead of a duplicate engine here.
+        Hardy-Littlewood density questions are NOT a sub-tab here -- they rest on the
+        pattern hit counts the Constellations tab already holds, so they live in its
+        Density sub-tab (primeatlas/constellations/constellations_density_tab.py).
 
         ResearchGoldbachTab is constructed via dependency injection (same pattern as
         every other extracted tab -- see primeatlas/primes/primes_tab.py's own docstring),
