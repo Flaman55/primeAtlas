@@ -3,7 +3,7 @@
 Settings: language, theme and storage path (General), metadata and full-data backups, restore, storage
 integration and deletes (Backup), optional-library installers and self-update (Updates), and the
 first-run WSL setup. About: version (release + merges since it), links, This computer (Windows and
-WSL hardware and the WSL RAM limit), the CHANGELOG.md entries since the last release in the UI
+WSL hardware, the WSL RAM limit and a row that changes it), the CHANGELOG.md entries since the last release in the UI
 language, and NOTICE.md.
 
 ## Files
@@ -15,7 +15,7 @@ language, and NOTICE.md.
 | Updates and restart | `app_update.py`, `app_restart.py` |
 | First-run setup | `env_setup.py`, `env_setup_wizard.py` |
 | Component versions | `prime_sieve/env_versions.py` (WSL-side probe), `env_versions_view.py` (report text and warnings) |
-| About | `primeatlas/about/about_tab.py`, `system_info.py` (hardware probe), `system_info_text.py` (its lines) |
+| About | `primeatlas/about/about_tab.py`, `system_info.py` (hardware probe), `system_info_text.py` (its lines), `wslconfig_edit.py` (changes `.wslconfig` memory=), `wsl_limit_row.py` (its row) |
 
 ## Contract
 
@@ -46,6 +46,20 @@ first time the About page is selected (reading starts WSL, so the app launch nev
 on the Refresh glyph; the copy glyph copies the shown lines. The WSL RAM limit is WSL's MemTotal as a
 share of Windows RAM, with its source: `memory=` when set, else the WSL default (half the Windows RAM).
 A value that cannot be read shows as "unknown"; WSL that does not answer shows as not reachable.
+
+Changing the WSL RAM limit (About → This computer, `wsl_limit_row.WslLimitRow` over
+`wslconfig_edit.py`): a whole-GB field (from WSL's own default, half the Windows RAM, up to the whole RAM) shows `memory=` when set, else the
+proposal, Windows RAM minus max(3 GiB, 25 %) rounded to whole GiB (an arbitrary default: it only
+fills the field). A limit above the proposal first gets a warning (Yes/No, No by default): Windows
+short of RAM can freeze or switch itself off and lose unsaved work; No keeps everything as it was,
+and the warning also comes before a restart with such a limit already in the file. Save asks first with the file's path and the changed lines, then writes: the old
+file is copied next to it as `.wslconfig.bak_<date>_<time>`, the new text replaces it in one rename,
+only `[wsl2]` `memory=` changes (other keys, sections, comments, line ends and a BOM stay; a missing
+line or section is added), and a file edited while the question was open is not overwritten. The
+limit applies when WSL starts again: while a Generation job runs (`close_guard.running_jobs`) WSL is
+not restarted and a note says so; otherwise Atlas asks to run `wsl --shutdown`, which stops every
+WSL program, then reads the hardware again. A value already in the file skips the write and only
+offers the restart. No admin rights: the file belongs to the user.
 
 Deletes (Backup sub-tab, `delete_section.py` over `delete_manager.py`): one floor (or only its
 constellations), the benchmarks (`count_benchmark_rows` / `clear_benchmark_log`: benchmark_log.csv
@@ -79,9 +93,10 @@ present.
 `test_delete_benchmarks`,
 `test_full_backup_hit_paging`, `test_storage_integrate`, `test_benchmark_rows_safety`, `test_dp_settings`,
 `test_primecount_settings_integration`, `test_env_versions`, `test_pseudosquares_settings`,
-`test_about_tab`, `test_system_info`.
+`test_about_tab`, `test_system_info`, `test_wslconfig_edit`.
 
 ## Known gaps
 
 - Installer code signing is not set up.
-- This computer only shows the WSL RAM limit; changing `.wslconfig` from Atlas is not built.
+- The WSL restart check sees only the Generation tab's jobs; WSL programs started elsewhere (other
+  tabs, a terminal) are named in the restart question, not detected.

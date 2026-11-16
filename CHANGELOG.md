@@ -317,6 +317,24 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   szacunków tego komputera. Wiersze bez identyfikatora komputera (zapisane przed +14 albo z
   przebiegów uruchomionych poza Atlasem) nadal się liczą.
 
+### +16 — About: change the WSL RAM limit from Atlas
+
+- English: About → This computer has a row that sets how much RAM WSL may use (memory= in
+  .wslconfig). It proposes Windows RAM minus a quarter (at least 3 GB left for Windows), shows
+  accepts from WSL's default (half the RAM) up to the whole RAM, warns before a limit above the
+  proposal (the computer can slow down, freeze or even switch off), shows the exact lines it will change and
+  asks before saving; the old file is kept as a backup next
+  to it and nothing else in the file changes. The new limit applies when WSL starts again:
+  Atlas offers to restart WSL now, except while a Generation job runs. No admin rights needed.
+- Polski: About → Ten komputer ma wiersz, który ustawia, ile RAM może używać WSL (memory= w
+  .wslconfig). Proponuje RAM Windows minus jedną czwartą (co najmniej 3 GB zostaje dla Windows),
+  przyjmuje od domyślnej wartości WSL (połowa RAM) do całego RAM, ostrzega przed limitem powyżej
+  proponowanego (komputer może zwolnić, zawiesić się lub nawet wyłączyć), pokazuje dokładnie zmieniane linie
+  i pyta przed zapisem; stary plik zostaje obok jako kopia
+  zapasowa, a reszta pliku się nie zmienia. Nowy limit działa po ponownym starcie WSL: Atlas
+  proponuje restart WSL od razu, chyba że trwa zadanie generowania. Nie wymaga uprawnień
+  administratora.
+
 ## 1.4.0 — 2026-11-14
 
 ### +1 — Research → Irreducibility: radices, comparison, comb reading, ranges, arithmetic

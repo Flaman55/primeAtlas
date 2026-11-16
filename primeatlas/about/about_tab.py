@@ -6,9 +6,10 @@ commit) with a copy glyph that puts that version line on the clipboard, a short
 description, what the visualizations show, the author with e-mail and
 GitHub links, the license, the related projects, a "This computer" frame (Windows and WSL
 hardware with the WSL RAM limit, read in the background the first time the tab is shown and
-again on its Refresh glyph, with a copy glyph), then two read-only boxes: the CHANGELOG.md
-entries since the last release (newest first, in the UI language) with a link to the full
-file, and NOTICE.md (third-party components).
+again on its Refresh glyph, with a copy glyph, and a row that changes the limit:
+wsl_limit_row.WslLimitRow, told which Generation jobs run by `running_jobs`), then two
+read-only boxes: the CHANGELOG.md entries since the last release (newest first, in the UI
+language) with a link to the full file, and NOTICE.md (third-party components).
 
 Links are Link.TLabel labels (styled in PortalBrowserApp._apply_theme) that open their URL
 with webbrowser on click; `links` maps "email"/"repo"/"license"/"changelog" to them.
@@ -23,6 +24,7 @@ from tkinter.scrolledtext import ScrolledText
 
 from primeatlas.about import system_info
 from primeatlas.about.system_info_text import system_info_lines
+from primeatlas.about.wsl_limit_row import WslLimitRow
 from primeatlas.core.background import run_in_background
 from primeatlas.core.base_tab import BaseTab
 from primeatlas.core.info_tip import InfoTip
@@ -38,9 +40,10 @@ REFRESH_GLYPH = "⟳"  # clockwise open circle arrow
 
 
 class AboutTab(BaseTab):
-    def __init__(self, parent, repo_root, translator):
+    def __init__(self, parent, repo_root, translator, running_jobs=lambda: []):
         super().__init__(parent, translator)
         self._repo_root = repo_root
+        self._running_jobs = running_jobs
         self.links = {}
         self._system_read = False
         self._build_widgets()
@@ -127,10 +130,11 @@ class AboutTab(BaseTab):
         T = self.T
         frame = ttk.LabelFrame(self, text=T("about.system_frame"))
         frame.pack(fill="x", padx=16, pady=(8, 0))
+        frame.columnconfigure(0, weight=1)
         self.system_text = ttk.Label(frame, text=T("about.system_reading"), justify="left")
-        self.system_text.pack(side="left", anchor="nw", padx=4, pady=4)
+        self.system_text.grid(row=0, column=0, sticky="nw", padx=4, pady=4)
         glyphs = ttk.Frame(frame)
-        glyphs.pack(side="right", anchor="ne", padx=4, pady=4)
+        glyphs.grid(row=0, column=1, sticky="ne", padx=4, pady=4)
         for attr, glyph, tip, action in (
                 ("system_copy", COPY_GLYPH, "common.copy",
                  lambda: self._copy_to_clipboard(str(self.system_text.cget("text")))),
@@ -140,6 +144,9 @@ class AboutTab(BaseTab):
             label.bind("<Button-1>", lambda _e, a=action: a())
             label.pack(side="left", padx=(6, 0))
             setattr(self, attr, label)
+        self.wsl_limit = WslLimitRow(frame, T, running_jobs=lambda: self._running_jobs(),
+                                     on_saved=self._read_system)
+        self.wsl_limit.grid(row=1, column=0, columnspan=2, sticky="w", padx=4, pady=(0, 4))
 
     def _read_system_once(self, notebook):
         page = notebook.select()
@@ -158,6 +165,8 @@ class AboutTab(BaseTab):
             text = (T("about.system_unknown") if error is not None
                     else "\n".join(system_info_lines(info, T)))
             self.system_text.configure(text=text)
+            if error is None:
+                self.wsl_limit.show(info)
         # Looked up at call time, so the read can be replaced without touching the tab.
         run_in_background(self, lambda _report: system_info.read_system_info(), on_done=done)
 
