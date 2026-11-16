@@ -1422,6 +1422,9 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               _apply_theme()/_apply_font_scale(), which need a live Tk
                               root this module deliberately never touches
   i18n.py                       Translator: loads one of two static locale files
+  windows_hardware.py           Windows OS, CPU model, physical cores (ctypes
+                              GetLogicalProcessorInformationEx), threads and RAM
+                              total/free (GlobalMemoryStatusEx); no admin, no WSL
   background.py                run_in_background()/PersistentWorker -- shared
                               background-job helpers used by any tab that launches a
                               one-shot call or a queue of same-kind jobs off the Tk
@@ -2157,7 +2160,16 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
   primeatlas/about/             "About" tab (last main tab)
   about_tab.py                AboutTab -- version and commit (with a copy icon),
                               description, author with e-mail/GitHub/license links,
-                              related projects, and NOTICE.md read-only
+                              related projects, "This computer" (read in the
+                              background when the tab is first shown, Refresh and copy
+                              glyphs), and NOTICE.md read-only
+  system_info.py              the hardware probe: Windows (core/windows_hardware.py),
+                              one wsl.exe call for distro, kernel, nproc, MemTotal and
+                              MemAvailable, and [wsl2] memory=/processors= of
+                              %UserProfile%\.wslconfig; unreadable values are None
+  system_info_text.py         "This computer" lines: Windows, WSL and the WSL RAM
+                              limit as a share of Windows RAM with its source
+                              (.wslconfig memory= or the WSL default)
 
   primeatlas/benchmark/         "Benchmark" tab
   benchmark_tab.py             BenchmarkTab -- the Benchmark tab (three charts: whole run

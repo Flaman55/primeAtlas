@@ -4,7 +4,9 @@ about_tab.py -- AboutTab(BaseTab), the last main notebook tab.
 Shows the app name with version_label() (release, merges since it and the checked-out
 commit) with a copy glyph that puts that version line on the clipboard, a short
 description, what the visualizations show, the author with e-mail and
-GitHub links, the license, the related projects, then two read-only boxes: the CHANGELOG.md
+GitHub links, the license, the related projects, a "This computer" frame (Windows and WSL
+hardware with the WSL RAM limit, read in the background the first time the tab is shown and
+again on its Refresh glyph, with a copy glyph), then two read-only boxes: the CHANGELOG.md
 entries since the last release (newest first, in the UI language) with a link to the full
 file, and NOTICE.md (third-party components).
 
@@ -19,6 +21,9 @@ import webbrowser
 from tkinter import ttk
 from tkinter.scrolledtext import ScrolledText
 
+from primeatlas.about import system_info
+from primeatlas.about.system_info_text import system_info_lines
+from primeatlas.core.background import run_in_background
 from primeatlas.core.base_tab import BaseTab
 from primeatlas.core.info_tip import InfoTip
 from primeatlas.core.version import read_changelog, version_label
@@ -29,6 +34,7 @@ REPO_URL = "https://github.com/Flaman55/primeAtlas"
 LICENSE_URL = "https://polyformproject.org/licenses/noncommercial/1.0.0"
 CHANGELOG_URL = f"{REPO_URL}/blob/main/CHANGELOG.md"
 COPY_GLYPH = "⧉"  # two joined squares
+REFRESH_GLYPH = "⟳"  # clockwise open circle arrow
 
 
 class AboutTab(BaseTab):
@@ -36,7 +42,17 @@ class AboutTab(BaseTab):
         super().__init__(parent, translator)
         self._repo_root = repo_root
         self.links = {}
+        self._system_read = False
         self._build_widgets()
+        # Reading the hardware starts WSL, so it waits until the tab is first shown. The tab
+        # sits in a scrolled container, so <Map> fires at build; the notebook selecting the
+        # page that holds this tab is the moment it is shown.
+        notebook = self.master
+        while notebook is not None and not isinstance(notebook, ttk.Notebook):
+            notebook = notebook.master
+        if notebook is not None:
+            notebook.bind("<<NotebookTabChanged>>",
+                          lambda _e: self._read_system_once(notebook), add="+")
 
     def _build_widgets(self):
         T = self.T
@@ -85,6 +101,8 @@ class AboutTab(BaseTab):
         header.bind("<Configure>", lambda e: [w.configure(wraplength=max(e.width, 200))
                                               for w in wrapped])
 
+        self._build_system_frame()
+
         changelog = read_changelog(self._repo_root)
         changes = ttk.LabelFrame(self, text=T("about.changes_frame", release=changelog.release))
         changes.pack(fill="both", expand=True, padx=16, pady=(8, 0))
@@ -104,6 +122,44 @@ class AboutTab(BaseTab):
         self.notice_text.pack(fill="both", expand=True, padx=4, pady=4)
         self.notice_text.insert("1.0", self._read_notice())
         self.notice_text.configure(state="disabled")
+
+    def _build_system_frame(self):
+        T = self.T
+        frame = ttk.LabelFrame(self, text=T("about.system_frame"))
+        frame.pack(fill="x", padx=16, pady=(8, 0))
+        self.system_text = ttk.Label(frame, text=T("about.system_reading"), justify="left")
+        self.system_text.pack(side="left", anchor="nw", padx=4, pady=4)
+        glyphs = ttk.Frame(frame)
+        glyphs.pack(side="right", anchor="ne", padx=4, pady=4)
+        for attr, glyph, tip, action in (
+                ("system_copy", COPY_GLYPH, "common.copy",
+                 lambda: self._copy_to_clipboard(str(self.system_text.cget("text")))),
+                ("system_refresh", REFRESH_GLYPH, "about.system_refresh", self._read_system)):
+            label = InfoTip(glyphs, lambda k=tip: T(k)).label
+            label.configure(text=glyph, cursor="hand2")
+            label.bind("<Button-1>", lambda _e, a=action: a())
+            label.pack(side="left", padx=(6, 0))
+            setattr(self, attr, label)
+
+    def _read_system_once(self, notebook):
+        page = notebook.select()
+        shown = page and (str(self) + ".").startswith(str(page) + ".")
+        if shown and not self._system_read:
+            self._system_read = True
+            self._read_system()
+
+    def _read_system(self):
+        T = self.T
+        self.system_text.configure(text=T("about.system_reading"))
+
+        def done(info, error):
+            if not self.system_text.winfo_exists():
+                return
+            text = (T("about.system_unknown") if error is not None
+                    else "\n".join(system_info_lines(info, T)))
+            self.system_text.configure(text=text)
+        # Looked up at call time, so the read can be replaced without touching the tab.
+        run_in_background(self, lambda _report: system_info.read_system_info(), on_done=done)
 
     def _changes_text(self, changelog):
         polish = getattr(self.T, "language", None) == "pl"

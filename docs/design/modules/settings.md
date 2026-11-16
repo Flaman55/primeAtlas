@@ -2,8 +2,9 @@
 
 Settings: language, theme and storage path (General), metadata and full-data backups, restore, storage
 integration and deletes (Backup), optional-library installers and self-update (Updates), and the
-first-run WSL setup. About: version (release + merges since it), links, the CHANGELOG.md
-entries since the last release in the UI language, and NOTICE.md.
+first-run WSL setup. About: version (release + merges since it), links, This computer (Windows and
+WSL hardware and the WSL RAM limit), the CHANGELOG.md entries since the last release in the UI
+language, and NOTICE.md.
 
 ## Files
 
@@ -14,7 +15,7 @@ entries since the last release in the UI language, and NOTICE.md.
 | Updates and restart | `app_update.py`, `app_restart.py` |
 | First-run setup | `env_setup.py`, `env_setup_wizard.py` |
 | Component versions | `prime_sieve/env_versions.py` (WSL-side probe), `env_versions_view.py` (report text and warnings) |
-| About | `primeatlas/about/about_tab.py` |
+| About | `primeatlas/about/about_tab.py`, `system_info.py` (hardware probe), `system_info_text.py` (its lines) |
 
 ## Contract
 
@@ -35,6 +36,15 @@ a build under `/usr/local`: the cache order picks one, so installing or removing
 the engines run on), and an engine that resolves another copy than Python. It also names the
 Pseudosquares Prime Sieve program (path, version, build commit) and warns when that build is not
 the pinned commit.
+
+This computer (About): `system_info.read_system_info()` reads Windows in this process
+(`core/windows_hardware.py`: OS, CPU model, physical cores, threads, RAM total and free), WSL with one
+`wsl.exe` call (distro, kernel, `nproc`, MemTotal, MemAvailable of the default distro) and the
+`[wsl2]` `memory=` and `processors=` of `%UserProfile%\.wslconfig`. It runs on a background thread the
+first time the About page is selected (reading starts WSL, so the app launch never does) and again
+on the Refresh glyph; the copy glyph copies the shown lines. The WSL RAM limit is WSL's MemTotal as a
+share of Windows RAM, with its source: `memory=` when set, else the WSL default (half the Windows RAM).
+A value that cannot be read shows as "unknown"; WSL that does not answer shows as not reachable.
 
 Deletes (Backup sub-tab, `delete_section.py` over `delete_manager.py`): one floor (or only its
 constellations), the benchmarks (`count_benchmark_rows` / `clear_benchmark_log`: benchmark_log.csv
@@ -68,8 +78,9 @@ present.
 `test_delete_benchmarks`,
 `test_full_backup_hit_paging`, `test_storage_integrate`, `test_benchmark_rows_safety`, `test_dp_settings`,
 `test_primecount_settings_integration`, `test_env_versions`, `test_pseudosquares_settings`,
-`test_about_tab`.
+`test_about_tab`, `test_system_info`.
 
 ## Known gaps
 
 - Installer code signing is not set up.
+- This computer only shows the WSL RAM limit; changing `.wslconfig` from Atlas is not built.

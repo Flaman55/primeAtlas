@@ -20,6 +20,11 @@ C. The app: the title bar shows version_label; About is the last main tab; it sh
    listed newest first in the UI language with a link to the full CHANGELOG.md; NOTICE.md
    is shown read-only; a copy glyph next to the version puts the shown version line on the
    clipboard; every about.* key exists in both locales.
+D. About -> This computer: building the app reads nothing about the hardware (no WSL start
+   at launch); showing the About tab reads it once in the background and shows
+   system_info_lines() of the result; showing the tab again does not read again; the
+   Refresh glyph reads again and shows the new result; the copy glyph puts the shown lines
+   on the clipboard.
 
 Usage:
     python unitTests/test_about_tab.py
@@ -249,6 +254,13 @@ def _test_app():
     opened = []
     webbrowser.open = lambda url, *a, **k: opened.append(url)
     from app_sandbox import isolate_app
+    from primeatlas.about import system_info
+    reads = []
+
+    def fake_read():
+        reads.append(1)
+        return _fake_info(len(reads))
+    system_info.read_system_info = fake_read
     prime_atlas_v2, _portal = isolate_app()
     app = prime_atlas_v2._build_gui()()
     try:
@@ -319,6 +331,7 @@ def _test_app():
             want = about.T("about.version", version=label)
             check(app.clipboard_get() == want,
                   f"Copy puts the version line on the clipboard ({app.clipboard_get()!r})")
+        _test_system_frame(app, about, reads)
     finally:
         app.destroy()
     locales = os.path.join(_REPO_ROOT, "primeatlas", "core", "locales")
@@ -328,6 +341,65 @@ def _test_app():
             keys[lang] = {k for k in json.load(f) if k.startswith("about.") or k == "tabs.about"}
     check(keys["en"] and keys["en"] == keys["pl"],
           f"about.* keys match in both locales ({sorted(keys['en'] ^ keys['pl'])})")
+
+
+def _wait(app, condition, seconds=5.0):
+    import time
+    end = time.time() + seconds
+    while not condition() and time.time() < end:
+        app.update()
+        time.sleep(0.02)
+    app.update()
+
+
+def _fake_info(n):
+    from primeatlas.about import system_info
+    gib = 1024 ** 3
+    return system_info.SystemInfo(
+        system_info.WindowsInfo(os_name="Windows Test", cpu_model=f"CPU read {n}",
+                                cores=4, threads=8, ram_total=16 * gib, ram_free=8 * gib),
+        system_info.WslInfo(distro="Ubuntu", kernel="k", cpus=8, mem_total=8 * gib,
+                            mem_available=7 * gib),
+        system_info.WslConfig(None, None, None))
+
+
+def _test_system_frame(app, about, reads):
+    print("\n--- D. About -> This computer ---")
+    from primeatlas.about.system_info_text import system_info_lines
+    check(not reads, f"building the app reads no hardware info ({len(reads)} reads)")
+    shown = getattr(about, "system_text", None)
+    check(shown is not None, "About has a This computer text")
+    if shown is None:
+        return
+    app.main_notebook.select(app.main_notebook.tabs()[-1])
+    _wait(app, lambda: reads and "CPU read 1" in str(shown.cget("text")))
+    text = str(shown.cget("text"))
+    want = "\n".join(system_info_lines(_fake_info(1), about.T))
+    check(len(reads) == 1 and text == want,
+          f"showing About reads once and shows system_info_lines() ({len(reads)} reads, {text!r})")
+    app.main_notebook.select(app.main_notebook.tabs()[0])
+    app.update()
+    app.main_notebook.select(app.main_notebook.tabs()[-1])
+    _wait(app, lambda: len(reads) > 1, seconds=0.5)
+    check(len(reads) == 1, f"showing About again does not read again ({len(reads)} reads)")
+    refresh = getattr(about, "system_refresh", None)
+    check(refresh is not None and refresh.winfo_class() == "TLabel",
+          "a Refresh glyph sits next to the hardware info")
+    if refresh is not None:
+        refresh.event_generate("<Button-1>")
+        _wait(app, lambda: "CPU read 2" in str(shown.cget("text")))
+        check(len(reads) == 2 and "CPU read 2" in str(shown.cget("text")),
+              f"Refresh reads again and shows the new result ({len(reads)} reads)")
+    copy = getattr(about, "system_copy", None)
+    check(copy is not None and str(copy.cget("text")) == "⧉",
+          "a copy glyph sits next to the hardware info")
+    if copy is not None:
+        app.clipboard_clear()
+        app.clipboard_append("old")
+        copy.event_generate("<Button-1>")
+        app.update()
+        check(app.clipboard_get() == str(shown.cget("text")),
+              f"Copy puts the shown hardware lines on the clipboard ({app.clipboard_get()!r})")
 
 
 def main():
