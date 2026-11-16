@@ -12,7 +12,7 @@ app-wide widgets and the background coordinators for floor totals and search. GU
 | Theme in use | `theme_dynamic.py` (`THEME`, set by `app_dynamic` at startup, read by `benchmark/line_colors.py`) |
 | Look | `theme.py` (palettes), `app_icon.py`, `assets/` |
 | Storage reads | `storage.py` (floor listing, totals cache, `LOW_FLOOR_CUTOFF`) |
-| Widgets | `widgets.py` (HeightGrip, ScrollPad, ScrollablePage, FlowRow), `wrapped_heading.py` (WrappedHeading, a Treeview heading row whose headings wrap to two lines; `heading_wrap.py` the pure wrapping and width fit), `info_tip.py` (InfoTip, the "i" marker with a hover text kept inside the app window), `wrapped_check.py` (a Checkbutton whose text wraps at its parent's width), `base_tab.py` (`BaseTab`) |
+| Widgets | `widgets.py` (HeightGrip, ScrollPad, ScrollablePage, FlowRow), `wrapped_heading.py` (WrappedHeading, a Treeview heading row whose headings wrap to two lines; `heading_wrap.py` the pure wrapping and width fit), `info_tip.py` (InfoTip, the "i" marker with a hover text kept inside the app window), `number_text.py` (`read_number`, the reader of a whole number in any notation, no tkinter), `number_field.py` (`attach`, the number field: red, "Could be" popup, hover tip of the accepted forms), `wrapped_check.py` (a Checkbutton whose text wraps at its parent's width), `base_tab.py` (`BaseTab`) |
 | Background work | `totals_search_coordinator.py` (floor totals and prime/constellation search workers), `background.py` |
 | Other | `version.py` (version from CHANGELOG.md: release + merge count, commit label), `pdf_writer.py` (dependency-free PDF) |
 
@@ -24,7 +24,7 @@ app-wide widgets and the background coordinators for floor totals and search. GU
 
 Never launches WSL; never imports engine code (`ADR 0001`). One control per UI role: HeightGrip for
 heights, ScrollPad for scrolling pages, InfoTip for a field's explanation (also, anchored on a greyed-out field, for why it cannot be
-changed). A page's wheel handler
+changed), `number_field.attach` for a field that takes a whole number. A page's wheel handler
 leaves the wheel to widgets that use it themselves (`event_over_own_scroller()`: Text, Listbox,
 Treeview, and an enabled ttk.Spinbox or ttk.Combobox, whose Tk class binding steps its value), so the page and
 the widget never move together. The wheel never switches notebook tabs: Tk 9 binds it on the
@@ -50,8 +50,33 @@ Theme, language, font scale and ScrollPad width live in `AppSettings`; texts in 
 ## Specs and tests
 
 `test_ui_settings`, `test_theme_readability`, `test_scroll_pad`, `test_scrollable_page`, `test_tree_scroll_to_top`,
-`test_settings_scroll`, `test_ui_state`, `test_ui_state_app`, `test_storage`, `test_search_worker`, `test_window_centering`, `test_pdf_table`.
+`test_settings_scroll`, `test_ui_state`, `test_ui_state_app`, `test_storage`, `test_search_worker`, `test_window_centering`, `test_pdf_table`,
+`test_number_text`, `test_number_field`, `test_number_field_coverage`, `test_info_tip`.
+
+## Number fields
+
+`number_text.read_number(text)` reads a whole number written in any common notation, typed or
+pasted: grouping by spaces of any kind, apostrophes, underscores, commas or dots (groups of three or
+Indian lakh groups), a decimal comma or dot, powers (`^`, `**`, superscripts, LaTeX braces),
+scientific `1.5E+25`, times signs `* × · 	imes` and `x` before a power of ten, minus signs `- − –`,
+`+ - * / ( )`. Arithmetic is exact (fractions) in a small parser, never `eval`; one power is capped at
+10^100000. A comma or dot that appears once before exactly three digits is tried as grouping and as a
+decimal mark, and only whole results count: one -> ok, several -> ambiguous with the readings
+("3,000": 3000 or 3), none -> invalid with a reason (not whole, syntax, too large).
+`generation.quick_number._eval_quick_number` returns the value only when it is ok.
+
+`number_field.attach(entry, T)` follows the entry's text (typed, pasted, or set through its
+textvariable, also one added later by `remember()`). A whole number or an empty field clears
+everything at once; red (`Invalid.TEntry`, palette `invalid_bg`) and the ambiguous popup wait
+`SETTLE_MS` after the last change, so typing through "1,000" or "10^" flashes nothing, and show at
+once when the field is left. The popup ("Could be:" and a button per reading) shows while the
+field has focus; a click writes the plain digits. Left ambiguous, the field is red and its hover
+tip lists the readings. The hover tip (`InfoTip`, below the field, after `TIP_DELAY_MS`) shows the
+accepted forms and, when invalid, the reason.
+
+`unitTests/test_number_field_coverage.py` requires every `ttk.Entry` in `primeatlas/` to be a
+number field or marked `# not a number field: <why>`.
 
 ## Known gaps
 
-None.
+- Integer fields with their own parsing (engine knobs, generation loop and k-tuple fields, Irreducibility numbers, page go-to fields, renderer font sizes) are not number fields yet: they are marked `# not a number field` and read plain integers only (`int()`).

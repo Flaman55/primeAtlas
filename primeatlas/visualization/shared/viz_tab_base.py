@@ -19,6 +19,7 @@ import queue
 import tkinter as tk
 from tkinter import ttk
 
+from ...core import number_field
 from ...core.base_tab import BaseTab
 from ...core.widgets import ScrollablePage
 from ...generation.quick_number import _eval_quick_number
@@ -111,10 +112,12 @@ class VizTabBase(BaseTab):
                   justify="left").grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 10))
         ttk.Label(body, text=self._tk("empty_storage_from")).grid(row=1, column=0, sticky="w")
         from_entry = ttk.Entry(body, width=30)
+        number_field.attach(from_entry, self.T)
         from_entry.insert(0, default_from)
         from_entry.grid(row=1, column=1, sticky="w", padx=(6, 0), pady=2)
         ttk.Label(body, text=self._tk("empty_storage_to")).grid(row=2, column=0, sticky="w")
         to_entry = ttk.Entry(body, width=30)
+        number_field.attach(to_entry, self.T)
         to_entry.insert(0, default_to)
         to_entry.grid(row=2, column=1, sticky="w", padx=(6, 0), pady=2)
         ttk.Label(body, text=self._tk("empty_storage_hint"), style="Hint.TLabel", wraplength=460,

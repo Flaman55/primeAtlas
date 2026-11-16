@@ -478,6 +478,7 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, Benchm
             state="disabled")
         self.benchmark_next_btn.pack(side="left")
         ttk.Label(benchmark_nav, text=T("common.page_prefix")).pack(side="left", padx=(10, 0))
+        # not a number field: a page number, parsed by its own go-to handler
         self.benchmark_goto_entry = ttk.Entry(benchmark_nav, width=6)
         self.benchmark_goto_entry.pack(side="left", padx=(4, 0))
         self.benchmark_goto_entry.bind("<Return>", lambda _e: self._goto_benchmark_page())

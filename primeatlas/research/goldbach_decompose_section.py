@@ -138,6 +138,7 @@ class GoldbachDecomposeSection:
             decompose_nav, text=T("common.next_page"),
             command=self._on_goldbach_decompose_next, state="disabled")
         self.goldbach_decompose_next_btn.pack(side="left")
+        # not a number field: a page number, parsed by its own go-to handler
         self.goldbach_decompose_goto_entry = ttk.Entry(decompose_nav, width=6)
         self.goldbach_decompose_goto_entry.pack(side="left", padx=(12, 0))
         self.goldbach_decompose_goto_entry.bind(

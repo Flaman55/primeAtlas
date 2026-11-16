@@ -42,6 +42,7 @@ import datetime
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
+from ..core import number_field
 from ..core import background
 from ..core.base_tab import BaseTab
 from ..core.ui_state import remember
@@ -125,6 +126,7 @@ class ResearchSquaresTab(BaseTab):
 
         ttk.Label(top, text=T("research_squares.required_count_label")).pack(side="left")
         self.squares_required_count_entry = ttk.Entry(top, width=6)
+        number_field.attach(self.squares_required_count_entry, self.T)
         self.squares_required_count_entry.insert(0, "1")
         self.squares_required_count_entry.pack(side="left", padx=(6, 0))
 
@@ -132,10 +134,12 @@ class ResearchSquaresTab(BaseTab):
         range_row.pack(fill="x", padx=6, pady=(0, 4))
         ttk.Label(range_row, text=T("research_squares.n_from_label")).pack(side="left")
         self.squares_n_from_entry = ttk.Entry(range_row, width=12)
+        number_field.attach(self.squares_n_from_entry, self.T)
         self.squares_n_from_entry.insert(0, "1")
         self.squares_n_from_entry.pack(side="left", padx=(6, 16))
         ttk.Label(range_row, text=T("research_squares.n_to_label")).pack(side="left")
         self.squares_n_to_entry = ttk.Entry(range_row, width=12)
+        number_field.attach(self.squares_n_to_entry, self.T)
         self.squares_n_to_entry.insert(0, "100")
         self.squares_n_to_entry.pack(side="left", padx=(6, 0))
         self._squares_range_row = range_row
@@ -148,10 +152,12 @@ class ResearchSquaresTab(BaseTab):
         # packed (button_row, the tree, ...), which is NOT where it belongs.
         self.squares_custom_frame = ttk.Frame(self)
         ttk.Label(self.squares_custom_frame, text=T("research_squares.custom_a_label")).pack(side="left")
+        # not a number field: a formula in n
         self.squares_custom_a_entry = ttk.Entry(self.squares_custom_frame, width=16)
         self.squares_custom_a_entry.insert(0, "n**2")
         self.squares_custom_a_entry.pack(side="left", padx=(6, 16))
         ttk.Label(self.squares_custom_frame, text=T("research_squares.custom_b_label")).pack(side="left")
+        # not a number field: a formula in n
         self.squares_custom_b_entry = ttk.Entry(self.squares_custom_frame, width=16)
         self.squares_custom_b_entry.insert(0, "(n+1)**2")
         self.squares_custom_b_entry.pack(side="left", padx=(6, 0))

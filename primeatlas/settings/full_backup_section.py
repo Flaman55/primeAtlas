@@ -332,6 +332,7 @@ class FullBackupSection:
         ttk.Label(dest_row, text=self.T("settings.full_backup_dest_label")).pack(side="left")
         self.full_backup_dest_var = tk.StringVar(
             value=self.app_settings.full_backup_destination or "")
+        # not a number field: a folder path
         ttk.Entry(dest_row, textvariable=self.full_backup_dest_var, width=48).pack(
             side="left", padx=(6, 6), fill="x", expand=True)
         ttk.Button(dest_row, text=self.T("settings.full_backup_browse_button"),

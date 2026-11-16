@@ -121,6 +121,7 @@ def _build_goto_group(parent, T, on_goto):
     flush against a plain row's right edge)."""
     goto_frame = ttk.Frame(parent)
     ttk.Label(goto_frame, text=T("common.page_prefix")).pack(side="left")
+    # not a number field: a page number, parsed by its own go-to handler
     goto_entry = ttk.Entry(goto_frame, width=6)
     goto_entry.bind("<Return>", lambda _e: on_goto())
     goto_btn = ttk.Button(goto_frame, text=T("common.goto"), command=on_goto)

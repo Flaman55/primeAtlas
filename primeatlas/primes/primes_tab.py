@@ -192,6 +192,7 @@ class PrimesTab(BaseTab):
         self.verify_dp_button.pack(side="left", padx=(6, 0))
 
         ttk.Label(top, text=T("common.search_label")).pack(side="left")
+        # not a number field: free search text
         self.search_entry = ttk.Entry(top, width=26)
         self.search_entry.pack(side="left", padx=(4, 4))
         self.search_entry.bind("<Return>", lambda _e: self._search_prime())
@@ -230,6 +231,7 @@ class PrimesTab(BaseTab):
             floor_nav, text=T("common.next_page"), command=self._next_floor_page, state="disabled")
         self.floor_next_btn.pack(side="left")
         ttk.Label(floor_nav, text=T("common.page_prefix")).pack(side="left", padx=(10, 0))
+        # not a number field: a page number, parsed by its own go-to handler
         self.floor_goto_entry = ttk.Entry(floor_nav, width=6)
         self.floor_goto_entry.pack(side="left", padx=(4, 0))
         self.floor_goto_entry.bind("<Return>", lambda _e: self._goto_floor_page())

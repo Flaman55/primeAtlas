@@ -23,6 +23,7 @@ def entry(row, label, default, key=None, width=8, textvariable=None, on_return=N
     """A label and an entry packed left in row; remembered under key when given."""
     if label:
         ttk.Label(row, text=label).pack(side="left", padx=(0, 4))
+    # not a number field: parsed by irreducibility_numbers
     e = ttk.Entry(row, width=width, textvariable=textvariable)
     if textvariable is None:
         e.insert(0, default)

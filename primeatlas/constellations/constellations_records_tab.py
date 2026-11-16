@@ -41,6 +41,7 @@ from tkinter import ttk, messagebox, filedialog
 
 import pattern_catalog_v1
 
+from ..core import number_field
 from ..core import background
 from ..core.base_tab import BaseTab
 from ..core.progress_bar_owner import claim_progress_bar
@@ -142,9 +143,11 @@ class ConstellationsRecordsTab(BaseTab):
         self.k_combo.pack(side="left", padx=(6, 16))
         ttk.Label(top_row, text=T("const_records.field_floor_from")).pack(side="left")
         self.floor_from_entry = ttk.Entry(top_row, width=8)
+        number_field.attach(self.floor_from_entry, self.T)
         self.floor_from_entry.pack(side="left", padx=(6, 12))
         ttk.Label(top_row, text=T("const_records.field_floor_to")).pack(side="left")
         self.floor_to_entry = ttk.Entry(top_row, width=8)
+        number_field.attach(self.floor_to_entry, self.T)
         self.floor_to_entry.pack(side="left", padx=(6, 16))
         self.scan_button = ttk.Button(
             top_row, text=T("const_records.scan_button"), command=self._on_scan_clicked)
@@ -172,10 +175,12 @@ class ConstellationsRecordsTab(BaseTab):
         # same range-scoping option CSV does.
         ttk.Label(top_row, text=T("const_records.export_range_label")).pack(
             side="left", padx=(16, 0))
+        # not a number field: a row number, parsed by the export handler
         self.detail_export_from_entry = ttk.Entry(top_row, width=6)
         self.detail_export_from_entry.pack(side="left", padx=(4, 0))
         ttk.Label(top_row, text=T("const_records.export_range_to")).pack(
             side="left", padx=(4, 0))
+        # not a number field: a row number, parsed by the export handler
         self.detail_export_to_entry = ttk.Entry(top_row, width=6)
         self.detail_export_to_entry.pack(side="left", padx=(4, 0))
 

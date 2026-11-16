@@ -10,6 +10,7 @@ and its other mixins set up, so it is never instantiated on its own.
 import tkinter as tk
 from tkinter import ttk, messagebox
 
+from ..core import number_field
 from ..core.info_tip import InfoTip
 from ..core.storage import digit_count_floor, LOW_FLOOR_CUTOFF
 from ..core.ui_state import remember
@@ -290,7 +291,7 @@ class QuickGenPanel:
                        self.quick_floor_width_var,
                        self._quick_floor_of(self.quick_floor_var))).pack(side="left", padx=(0, 20))
         ttk.Label(frame, text=self.T("quick.field_start")).pack(side="left")
-        ttk.Entry(frame, textvariable=self.quick_floor_start_var, width=20).pack(
+        number_field.attach(ttk.Entry(frame, textvariable=self.quick_floor_start_var, width=20), self.T).entry.pack(
             side="left", padx=(6, 0))
         gap_row = ttk.Frame(outer)
         gap_row.grid(row=1, column=0, sticky="w", pady=(4, 0))
@@ -378,10 +379,10 @@ class QuickGenPanel:
         frame = ttk.Frame(container)
         frame.grid(row=0, column=0, sticky="w")
         ttk.Label(frame, text=self.T("quick.field_from")).pack(side="left")
-        ttk.Entry(frame, textvariable=self.quick_from_var, width=20).pack(
+        number_field.attach(ttk.Entry(frame, textvariable=self.quick_from_var, width=20), self.T).entry.pack(
             side="left", padx=(6, 20))
         ttk.Label(frame, text=self.T("quick.field_to")).pack(side="left")
-        ttk.Entry(frame, textvariable=self.quick_to_var, width=20).pack(
+        number_field.attach(ttk.Entry(frame, textvariable=self.quick_to_var, width=20), self.T).entry.pack(
             side="left", padx=(6, 20))
         # Range mode has no window-COUNT field to fill in (From/To are literal
         # numbers, not a window multiplier) -- Auto here reports the recommendation
@@ -486,12 +487,12 @@ class QuickGenPanel:
                              self.T("quick.hybrid_target_exact_window"))).pack(side="left", padx=(6, 12))
         value_group = ttk.Frame(frame)
         ttk.Label(value_group, text=self.T("quick.hybrid_field_n_or_index")).pack(side="left")
-        ttk.Entry(value_group, textvariable=self.quick_hybrid_value_var, width=20).pack(side="left", padx=(6, 12))
+        number_field.attach(ttk.Entry(value_group, textvariable=self.quick_hybrid_value_var, width=20), self.T).entry.pack(side="left", padx=(6, 12))
         floor_group = ttk.Frame(frame)
         ttk.Label(floor_group, text=self.T("quick.field_floor")).pack(side="left")
         _floor_spinbox(floor_group, self.quick_hybrid_target_floor_var, 7).pack(side="left", padx=(6, 12))
         ttk.Label(frame, text="MAIN <=").pack(side="left")
-        ttk.Entry(frame, textvariable=self.quick_hybrid_main_cap_var, width=8).pack(side="left", padx=(6, 12))
+        number_field.attach(ttk.Entry(frame, textvariable=self.quick_hybrid_main_cap_var, width=8), self.T).entry.pack(side="left", padx=(6, 12))
         ttk.Label(frame, text=self.T("quick.field_filter_prime_count")).pack(side="left")
         filter_vcmd = (self.register(self._validate_hybrid_filter_prime_count_spinbox), "%P")
         ttk.Spinbox(frame, from_=1, to=1_000_000,
@@ -557,7 +558,7 @@ class QuickGenPanel:
         _floor_spinbox(row1, self.quick_primesieve_floor_var, 10, to=UINT64_FLOOR_MAX).pack(
             side="left", padx=(6, 20))
         ttk.Label(row1, text=self.T("quick.field_from")).pack(side="left")
-        ttk.Entry(row1, textvariable=self.quick_primesieve_from_var, width=24).pack(
+        number_field.attach(ttk.Entry(row1, textvariable=self.quick_primesieve_from_var, width=24), self.T).entry.pack(
             side="left", padx=(6, 4))
         ttk.Button(row1, text=self.T("quick.auto_button"),
                    command=self._on_primesieve_auto_from_clicked).pack(
@@ -692,7 +693,7 @@ class QuickGenPanel:
         _floor_spinbox(row1, self.quick_cudasieve_floor_var, 10, to=UINT64_FLOOR_MAX).pack(
             side="left", padx=(6, 20))
         ttk.Label(row1, text=self.T("quick.field_from")).pack(side="left")
-        ttk.Entry(row1, textvariable=self.quick_cudasieve_from_var, width=24).pack(
+        number_field.attach(ttk.Entry(row1, textvariable=self.quick_cudasieve_from_var, width=24), self.T).entry.pack(
             side="left", padx=(6, 4))
         ttk.Button(row1, text=self.T("quick.auto_button"),
                    command=self._on_cudasieve_auto_from_clicked).pack(

@@ -178,16 +178,25 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   (tryb Piętro ze Startem i włączonym zapisem albo Pseudosquares print); nic nie startuje samo.
   Przycisk "Jak to działa?" pokazuje krótkie wyjaśnienie.
 
-### +9 — Number fields: "^" is a power
+### +9 — Number fields: any notation, a hint and a check
 
-- English: Every numeric field reads "^" as a power, as the app's own texts write it:
-  "10^25+3" is 10^25 + 3. Before, any expression with "^" and another term ("10^25+3",
-  "3*10^24+5") was read as Python's XOR and silently gave a small wrong number (22); only the
-  bare forms "10^25" and "3*10^24" worked.
-- Polski: Każde pole liczbowe czyta "^" jako potęgę, tak jak zapisują ją teksty samej
-  aplikacji: "10^25+3" to 10^25 + 3. Wcześniej każde wyrażenie z "^" i kolejnym składnikiem
-  ("10^25+3", "3*10^24+5") było czytane jako XOR Pythona i po cichu dawało małą, błędną liczbę
-  (22); działały tylko same formy "10^25" i "3*10^24".
+- English: Every field that takes a large whole number (Quick-gen, primesieve calculator,
+  Primality, Constellations, Research, Rings, Tree, Sphere) reads it in any common notation,
+  typed or pasted: "1 000 000", "1,000,000", "1.000.000", "1'000'000", "1,00,00,000",
+  "10^25", "10²⁵", "3×10^24", "1,5E+25", "10^25+3". Before, "^" with another term was read
+  as XOR ("10^25+3" gave 22) and "1,5" silently became 15. Hovering a field shows the
+  accepted forms. Text that is not a whole number turns the field red; text that can be read
+  two ways ("3,000": 3000 or 3) offers both under the field, and a click writes the one
+  meant. A valid number shows nothing. Red and the offer wait for a short pause in typing.
+- Polski: Każde pole na dużą liczbę całkowitą (Quick-gen, kalkulator primesieve, Primality,
+  Konstelacje, Badania, Rings, Tree, Sphere) czyta ją w dowolnym popularnym zapisie, wpisaną
+  albo wklejoną: "1 000 000", "1,000,000", "1.000.000", "1'000'000", "1,00,00,000", "10^25",
+  "10²⁵", "3×10^24", "1,5E+25", "10^25+3". Wcześniej "^" z kolejnym składnikiem było
+  czytane jako XOR ("10^25+3" dawało 22), a "1,5" po cichu stawało się 15. Najechanie na pole
+  pokazuje przyjmowane zapisy. Tekst, który nie jest liczbą całkowitą, podświetla pole na
+  czerwono; tekst do odczytania na dwa sposoby ("3,000": 3000 albo 3) proponuje oba pod
+  polem, a kliknięcie wpisuje właściwy. Poprawna liczba nie pokazuje niczego. Czerwień i
+  propozycja czekają na krótką przerwę w pisaniu.
 
 ## 1.4.0 — 2026-11-14
 

@@ -83,6 +83,7 @@ class LoopSection:
             cell = ttk.Frame(form)
             cell.grid(row=row, column=col * 2 + 1, sticky="w", padx=(0, 20), pady=2)
             var = tk.StringVar(value=str(loop_settings.get(key, "")))
+            # not a number field: parsed by the loop section's own checks
             ttk.Entry(cell, textvariable=var, width=width).pack(side="left")
             self._loop_vars[key] = var
             remember_generation_field("loop", key, var)

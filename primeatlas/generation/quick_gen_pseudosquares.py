@@ -18,6 +18,7 @@ from tkinter import messagebox, ttk
 
 import pseudosquares_const
 
+from ..core import number_field
 from ..core.info_tip import InfoTip
 from .engine_argv import build_pseudosquares_native_argv
 from .native_plan import parse_threads, plan
@@ -52,10 +53,10 @@ class QuickGenPseudosquares:
         _floor_spinbox(row1, self.quick_pseudosquares_floor_var, 10,
                        to=pseudosquares_const.MAX_FLOOR).pack(side="left", padx=(6, 20))
         ttk.Label(row1, text=self.T("quick.field_from")).pack(side="left")
-        ttk.Entry(row1, textvariable=self.quick_pseudosquares_from_var, width=36).pack(
+        number_field.attach(ttk.Entry(row1, textvariable=self.quick_pseudosquares_from_var, width=36), self.T).entry.pack(
             side="left", padx=(6, 20))
         ttk.Label(row1, text=self.T("quick.field_width")).pack(side="left")
-        ttk.Entry(row1, textvariable=self.quick_pseudosquares_width_var, width=14).pack(
+        number_field.attach(ttk.Entry(row1, textvariable=self.quick_pseudosquares_width_var, width=14), self.T).entry.pack(
             side="left", padx=(6, 0))
 
         row2 = ttk.Frame(frame)

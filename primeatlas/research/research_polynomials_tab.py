@@ -33,6 +33,7 @@ import datetime
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
+from ..core import number_field
 from ..core import background
 from ..core.base_tab import BaseTab
 from ..core.ui_state import remember
@@ -108,10 +109,12 @@ class ResearchPolynomialsTab(BaseTab):
         range_row.pack(fill="x", padx=6, pady=(0, 4))
         ttk.Label(range_row, text=T("research_polynomials.n_from_label")).pack(side="left")
         self.poly_n_from_entry = ttk.Entry(range_row, width=12)
+        number_field.attach(self.poly_n_from_entry, self.T)
         self.poly_n_from_entry.insert(0, "0")
         self.poly_n_from_entry.pack(side="left", padx=(6, 16))
         ttk.Label(range_row, text=T("research_polynomials.n_to_label")).pack(side="left")
         self.poly_n_to_entry = ttk.Entry(range_row, width=12)
+        number_field.attach(self.poly_n_to_entry, self.T)
         self.poly_n_to_entry.insert(0, "100")
         self.poly_n_to_entry.pack(side="left", padx=(6, 0))
         self._poly_range_row = range_row
@@ -123,6 +126,7 @@ class ResearchPolynomialsTab(BaseTab):
         # else is currently packed instead of back into its own slot).
         self.poly_custom_frame = ttk.Frame(self)
         ttk.Label(self.poly_custom_frame, text=T("research_polynomials.custom_formula_label")).pack(side="left")
+        # not a number field: a formula in n
         self.poly_custom_formula_entry = ttk.Entry(self.poly_custom_frame, width=24)
         self.poly_custom_formula_entry.insert(0, "n**2 - n + 41")
         self.poly_custom_formula_entry.pack(side="left", padx=(6, 0))

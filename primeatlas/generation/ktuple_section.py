@@ -68,6 +68,7 @@ class KtupleSection:
             ttk.Label(ktuple_form, text=label).grid(
                 row=row, column=col * 2, sticky="w", padx=(0, 4), pady=2)
             var = tk.StringVar(value=str(ktuple_settings.get(key, "")))
+            # not a number field: passed as text to the k-tuple search
             ttk.Entry(ktuple_form, textvariable=var, width=width).grid(
                 row=row, column=col * 2 + 1, sticky="w", padx=(0, 20), pady=2)
             self._ktuple_vars[key] = var
@@ -130,6 +131,7 @@ class KtupleSection:
             ttk.Label(ktuple_advanced_form, text=label).grid(
                 row=row, column=col * 2, sticky="w", padx=(0, 4), pady=2)
             var = tk.StringVar(value=str(ktuple_settings.get(key, "")))
+            # not a number field: passed as text to the k-tuple search
             ttk.Entry(ktuple_advanced_form, textvariable=var, width=width).grid(
                 row=row, column=col * 2 + 1, sticky="w", padx=(0, 20), pady=2)
             self._ktuple_vars[key] = var
@@ -154,6 +156,7 @@ class KtupleSection:
         ttk.Label(ktuple_advanced_form, text=self.T("gen.ktuple_field_manual_offsets")).grid(
             row=3, column=0, sticky="w", padx=(0, 4), pady=2)
         _manual_offsets_var = tk.StringVar(value=str(ktuple_settings.get("manual_offsets", "")))
+        # not a number field: a list of offsets
         ttk.Entry(ktuple_advanced_form, textvariable=_manual_offsets_var, width=50).grid(
             row=3, column=1, columnspan=3, sticky="w", padx=(0, 20), pady=2)
         self._ktuple_vars["manual_offsets"] = _manual_offsets_var

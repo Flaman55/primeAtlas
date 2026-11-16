@@ -24,6 +24,7 @@ from ...generation.quick_number import _eval_quick_number
 from ...generation.window_planning import find_highest_populated_floor
 from ...generation.generation_console import GenerationConsole
 from ..shared.viz_tab_base import VizTabBase
+from ...core import number_field
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 RENDERER_SCRIPT = os.path.join(os.path.dirname(_THIS_DIR), "shared", "renderer.py")
@@ -123,11 +124,13 @@ class SphereTab(VizTabBase):
         self._build_ui()
 
     def _add_entries(self, parent, fields, saved):
-        for attr, label_key, saved_key, default, _kind in fields:
+        for attr, label_key, saved_key, default, kind in fields:
             row = ttk.Frame(parent)
             row.pack(fill="x", padx=8, pady=(0, 4))
             ttk.Label(row, text=self._tk(label_key)).pack(side="left")
             entry = ttk.Entry(row, width=12)
+            if kind == "int":
+                number_field.attach(entry, self.T)
             entry.insert(0, saved.get(saved_key, default))
             entry.pack(side="left", padx=(6, 0))
             setattr(self, attr, entry)
@@ -164,6 +167,7 @@ class SphereTab(VizTabBase):
         n_row.pack(fill="x", padx=8, pady=(6, 4))
         ttk.Label(n_row, text=self._tk("field_n")).pack(side="left")
         self.n_entry = ttk.Entry(n_row, width=28)
+        number_field.attach(self.n_entry, self.T)
         self.n_entry.insert(0, saved.get("n", "1"))
         self.n_entry.pack(side="left", padx=(6, 0))
         step_row = ttk.Frame(common_frame)

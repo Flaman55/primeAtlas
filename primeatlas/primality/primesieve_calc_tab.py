@@ -31,6 +31,7 @@ import subprocess
 import tkinter as tk
 from tkinter import ttk, messagebox
 
+from ..core import number_field
 from ..core.background import PersistentWorker
 from ..core.base_tab import BaseTab
 from ..core.ui_state import remember
@@ -145,26 +146,31 @@ class PrimesieveCalcTab(BaseTab):
         ttk.Label(self._primesieve_calc_count_frame,
                   text=self.T("primesieve_calc.field_lo")).grid(row=0, column=0, sticky="e")
         self.primesieve_calc_lo_entry = ttk.Entry(self._primesieve_calc_count_frame, width=22)
+        number_field.attach(self.primesieve_calc_lo_entry, self.T)
         self.primesieve_calc_lo_entry.grid(row=0, column=1, padx=(6, 16))
         ttk.Label(self._primesieve_calc_count_frame,
                   text=self.T("primesieve_calc.field_hi")).grid(row=0, column=2, sticky="e")
         self.primesieve_calc_hi_entry = ttk.Entry(self._primesieve_calc_count_frame, width=22)
+        number_field.attach(self.primesieve_calc_hi_entry, self.T)
         self.primesieve_calc_hi_entry.grid(row=0, column=3, padx=(6, 0))
 
         self._primesieve_calc_nth_frame = ttk.Frame(fields_area)
         ttk.Label(self._primesieve_calc_nth_frame,
                   text=self.T("primesieve_calc.field_n")).grid(row=0, column=0, sticky="e")
         self.primesieve_calc_n_entry = ttk.Entry(self._primesieve_calc_nth_frame, width=22)
+        number_field.attach(self.primesieve_calc_n_entry, self.T)
         self.primesieve_calc_n_entry.grid(row=0, column=1, padx=(6, 16))
         ttk.Label(self._primesieve_calc_nth_frame,
                   text=self.T("primesieve_calc.field_start")).grid(row=0, column=2, sticky="e")
         self.primesieve_calc_start_entry = ttk.Entry(self._primesieve_calc_nth_frame, width=22)
+        number_field.attach(self.primesieve_calc_start_entry, self.T)
         self.primesieve_calc_start_entry.grid(row=0, column=3, padx=(6, 0))
 
         self._primesieve_calc_x_frame = ttk.Frame(fields_area)
         ttk.Label(self._primesieve_calc_x_frame,
                   text=self.T("primesieve_calc.field_x")).grid(row=0, column=0, sticky="e")
         self.primesieve_calc_x_entry = ttk.Entry(self._primesieve_calc_x_frame, width=22)
+        number_field.attach(self.primesieve_calc_x_entry, self.T)
         self.primesieve_calc_x_entry.grid(row=0, column=1, padx=(6, 0))
 
         # All three placed in the SAME grid cell -- grid_remove() on the two not

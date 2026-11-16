@@ -69,6 +69,7 @@ class EngineAdviceControls:
             row=row, column=0, sticky="w", padx=(0, 4), pady=2)
         cell = ttk.Frame(form)
         cell.grid(row=row, column=1, sticky="w", padx=(0, 20), pady=2)
+        # not a number field: a fraction (BPSW offset)
         ttk.Entry(cell, textvariable=self._advice_offset_var, width=10).pack(side="left")
         InfoTip(cell, lambda: self.T("gen.info_advisor_bpsw_offset")).label.pack(
             side="left", padx=(4, 0))

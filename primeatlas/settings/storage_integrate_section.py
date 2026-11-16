@@ -236,6 +236,7 @@ class StorageIntegrateSection:
         ttk.Label(source_row, text=self.T("settings.storage_integrate_source_label")).pack(
             side="left")
         self.storage_integrate_source_var = tk.StringVar(value="")
+        # not a number field: a folder path
         ttk.Entry(source_row, textvariable=self.storage_integrate_source_var, width=48).pack(
             side="left", padx=(6, 6), fill="x", expand=True)
         ttk.Button(source_row, text=self.T("settings.full_backup_browse_button"),

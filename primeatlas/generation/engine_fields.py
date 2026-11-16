@@ -81,6 +81,7 @@ class EngineFields:
             if key in engine_options.CHECKBOX_KNOBS:
                 entry = ttk.Checkbutton(cell, variable=var, onvalue="1", offvalue="0")
             else:
+                # not a number field: an engine knob passed as text to the engine
                 entry = ttk.Entry(cell, textvariable=var, width=10)
             entry.pack(side="left")
             info = InfoTip(cell, lambda key=key: T(f"gen.info_{key}"))

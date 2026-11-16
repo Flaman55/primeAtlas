@@ -88,6 +88,7 @@ class ConstellationSection:
             side="left")
         self._const_base_exponent_var = tk.StringVar(
             value=str(const_settings.get("base_exponent", "")))
+        # not a number field: digits only, passed as text to the constellation finder
         ttk.Entry(const_form, textvariable=self._const_base_exponent_var, width=10).pack(
             side="left", padx=(6, 0))
         remember_generation_field("constellation", "base_exponent", self._const_base_exponent_var)

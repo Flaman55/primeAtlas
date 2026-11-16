@@ -30,6 +30,7 @@ from ..shared.viz_tab_base import VizTabBase
 from .highlight_layers import LAYERS
 from .tree_layout import AXIS_AUTO, AXIS_KINDS, copy_budget
 from .tree_mode import TREE_MAX_DEPTH
+from ...core import number_field
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 RENDERER_SCRIPT = os.path.join(os.path.dirname(_THIS_DIR), "shared", "renderer.py")
@@ -150,6 +151,8 @@ class TreeTab(VizTabBase):
                 entry = ttk.Spinbox(row, from_=1, to=TREE_MAX_DEPTH, increment=1, width=10)
             else:
                 entry = ttk.Entry(row, width=12)
+                if kind == "int":
+                    number_field.attach(entry, self.T)
             entry.insert(0, saved.get(saved_key, default))
             entry.pack(side="left", padx=(6, 0))
             setattr(self, attr, entry)
@@ -189,12 +192,14 @@ class TreeTab(VizTabBase):
         self.n_label = ttk.Label(n_row)
         self.n_label.pack(side="left")
         self.n_entry = ttk.Entry(n_row, width=28)
+        number_field.attach(self.n_entry, self.T)
         self.n_entry.insert(0, saved.get("n", "2"))
         self.n_entry.pack(side="left", padx=(6, 0))
         self._add_entries(common_frame, _COMMON_FIELDS, saved, self._tk)
         colors_row = ttk.Frame(common_frame)
         colors_row.pack(fill="x", padx=8, pady=(0, 6))
         ttk.Label(colors_row, text=self._tk("colors_label")).pack(side="left")
+        # not a number field: a list of colours
         self.colors_entry = ttk.Entry(colors_row, width=40)
         self.colors_entry.insert(0, saved.get("colors", ""))
         self.colors_entry.pack(side="left", padx=(6, 0))

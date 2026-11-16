@@ -104,6 +104,7 @@ class ConstellationsHitsTab(BaseTab):
                    command=self._reload_constellations_tree).pack(side="left")
 
         ttk.Label(top, text=T("common.search_label")).pack(side="left")
+        # not a number field: free search text
         self.hits_search_entry = ttk.Entry(top, width=26)
         self.hits_search_entry.pack(side="left", padx=(4, 4))
         self.hits_search_entry.bind("<Return>", lambda _e: self.search_constellation())

@@ -266,6 +266,7 @@ class GeneralSection:
         path_frame = ttk.Labelframe(outer, text=self.T("settings.path_frame"))
         path_frame.pack(fill="x", pady=(0, 8))
         self.path_var = tk.StringVar(value=self.wsl["get_portal_folder"]())
+        # not a number field: a folder path
         ttk.Entry(path_frame, textvariable=self.path_var, width=70).grid(
             row=0, column=0, sticky="we", padx=6, pady=6)
         path_frame.columnconfigure(0, weight=1)
