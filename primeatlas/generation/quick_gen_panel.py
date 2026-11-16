@@ -20,7 +20,7 @@ from .window_planning import (QUICK_GEN_MAX_WINDOW_WIDTH, count_existing_windows
                               find_continuation_target_idx, find_highest_populated_floor,
                               PRIMESIEVE_MAX_WIDTH_MULT, CUDASIEVE_MIN_PRINTABLE_TOP,
                               CUDASIEVE_MAX_WIDTH_MULT, QUICK_FLOOR_MAX, UINT64_FLOOR_MAX)
-from .wsl_resources import (estimate_wsl_available_ram_bytes, estimate_wsl_available_cpu_count,
+from .wsl_resources import (estimate_free_ram_bytes, estimate_wsl_available_cpu_count,
                             recommended_worker_count)
 
 QUICK_ITERATIONS_MAX = 100     # Explore iterations: 100 x 10 bln = 1 trillion numbers per click
@@ -764,9 +764,8 @@ class QuickGenPanel:
     def _on_quick_auto_width_clicked(self, width_var, base_exponent=None):
         """Auto button handler, shared by every mode's button (see
         _build_quick_mode_floor/_build_quick_mode_explore/_build_quick_mode_range).
-        Queries available RAM INSIDE WSL (estimate_wsl_available_ram_bytes -- the
-        sieve itself runs there, not in this native Windows process) and turns it
-        into a recommended window count (engine_options.recommend -- see that
+        Queries the free RAM (estimate_free_ram_bytes: the lower of what WSL, where the sieve
+        runs, has available and what Windows has free) and turns it into a recommended window count (engine_options.recommend -- see that
         function's docstring for exactly what it is and isn't accounting for).
 
         width_var is the Width spinbox's StringVar to fill in directly (Floor/
@@ -783,7 +782,7 @@ class QuickGenPanel:
             messagebox.showerror(self.T("quick.dialog_title"),
                                  self.T("gen.error_field_int", field=bad_key))
             return
-        available = estimate_wsl_available_ram_bytes()
+        available = estimate_free_ram_bytes()
         if available is None:
             messagebox.showerror(self.T("quick.dialog_title"), self.T("quick.error_ram_probe_failed"))
             return

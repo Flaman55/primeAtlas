@@ -11,7 +11,7 @@ start.
 One source for both places: engine_advice() computes the Advice from benchmark_log.csv (read
 when the tab is built, when the Time simulation window opens and when a run ends), the
 selected engine's settings (pt1 B, write files, every engine's knobs for the RAM check) and
-the RAM free in WSL as last read (time_simulation_controls._read_free_ram(): when the tab is
+the free RAM (the lower of WSL's and Windows') as last read (time_simulation_controls._read_free_ram(): when the tab is
 built, when the window opens, when a run ends; unknown: no RAM limit). The Use button selects
 the proposed engine in the pipeline form; nothing switches it otherwise. In Explore with more
 than one iteration the engine line notes that its time is one iteration's.

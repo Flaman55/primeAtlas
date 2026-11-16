@@ -425,7 +425,7 @@ class RestoreSection:
           RAM-buffer cost the way the orchestrator's shared bit-packed buffer does (see
           README's "Window count, throughput, and RAM"), so there is no reason to chunk it.
         - orchestrator: the RAM-based recommendation (the same formula the Quick-gen
-          panel's own Auto button uses -- estimate_wsl_available_ram_bytes() /
+          panel's own Auto button uses -- estimate_free_ram_bytes() /
           engine_options.recommend() with the pipeline form's engine and v5 knobs, re-read
           fresh for EVERY floor, since available RAM can
           change between floors within one restore run) rather than whatever was last
@@ -464,7 +464,7 @@ class RestoreSection:
             else:
                 # The pipeline form's engine and v5 knobs size the run; a RAM-reduced
                 # bucket memory goes to the launch env below.
-                available = self.wsl["estimate_wsl_available_ram_bytes"]()
+                available = self.wsl["estimate_free_ram_bytes"]()
                 budget = engine_options.recommend(
                     available, engine_choice, step.base_exponent, window_m)
                 if budget is not None:

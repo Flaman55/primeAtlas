@@ -245,6 +245,22 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   nie wymaga uprawnień administratora; wartość, której nie da się odczytać, jest pokazana
   jako nieznana.
 
+### +12 — Generation: RAM budget respects the RAM free in Windows
+
+- English: The RAM budget is now a share of the lower of two readings: the RAM available in
+  WSL and the RAM free in Windows. Before, only WSL's reading counted, so with a WSL limit
+  close to the Windows RAM a run could be sized for memory Windows did not have left. This
+  covers the RAM check on Generate, the engine and width proposals, the Time simulation
+  window, the Quick-gen Auto buttons and Settings → Restore. Memory WSL already holds in its
+  file cache counts only on the WSL side, so the reading errs low, never high.
+- Polski: Budżet RAM-u jest teraz częścią mniejszej z dwóch wartości: RAM-u dostępnego w
+  WSL i RAM-u wolnego w Windows. Wcześniej liczył się tylko odczyt z WSL, więc przy limicie
+  WSL bliskim RAM-owi Windows przebieg mógł zostać dobrany do pamięci, której Windows już
+  nie miał. Dotyczy to sprawdzenia RAM-u przy Generuj, propozycji silnika i szerokości, okna
+  Symulacji czasu, przycisków Auto w Szybkim generowaniu i Ustawień → Przywracanie. Pamięć,
+  którą WSL trzyma już w pamięci podręcznej plików, liczy się tylko po stronie WSL, więc
+  odczyt może być zaniżony, nigdy zawyżony.
+
 ## 1.4.0 — 2026-11-14
 
 ### +1 — Research → Irreducibility: radices, comparison, comb reading, ranges, arithmetic
