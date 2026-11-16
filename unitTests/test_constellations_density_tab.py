@@ -11,8 +11,9 @@ scanned by the real constellation_finder_v2_3.py (built as in test_constellation
     click;
   - a floor range limits the rows; a range without finder progress says so and leaves the
     chart empty; a reversed range is an error and starts nothing;
-  - Stop during a scan: the button is live, the progress bar shows floors done, the
-    finished floors are shown with the stopped status, the buttons come back;
+  - Stop during a scan: the button is live, the progress bar shows floors done and no
+    busy-animation tick moves it, the finished floors are shown with the stopped status,
+    the buttons come back and the bar is empty again;
   - a failing scan shows an error and leaves the tab usable;
   - k and the floor range are remembered and restored by a new tab.
 
@@ -164,14 +165,25 @@ def test_errors_and_stop(app, tab, T, shown):
 
     mod.scan_density = slow_scan
     try:
+        bar = tab.totals_progress
         tab.scan_button.invoke()
-        _pump(app, 0.5)
+        _pump_until(app, lambda: str(bar.cget("mode")) == "determinate"
+                    and float(bar.cget("maximum")) == 3, 10)
         check(tab._busy and str(tab.stop_button.cget("state")) == "normal"
               and str(tab.scan_button.cget("state")) == "disabled", "during a scan only Stop is live")
-        check(float(tab.totals_progress.cget("value")) == 1
-              and float(tab.totals_progress.cget("maximum")) == 3, "the bar shows 1 of 3 floors")
+        seen = set()
+        deadline = time.time() + 0.6
+        while time.time() < deadline:
+            app.update()
+            time.sleep(0.02)
+            seen.add((str(bar.cget("mode")), float(bar.cget("maximum")), float(bar.cget("value"))))
+        check(seen == {("determinate", 3.0, 1.0)},
+              f"the bar shows 1 of 3 floors and no busy tick moves it (saw {sorted(seen)})")
         tab.stop_button.invoke()
         _pump_until(app, lambda: not tab._busy, 10)
+        check(float(bar.cget("maximum")) == 1 and float(bar.cget("value")) == 0
+              and getattr(bar, "_pa_progress_pump_job", None) is None,
+              "after Stop the bar is empty and no busy pump is left")
         check(not tab._busy and tab.status.get() == T("const_density.status_stopped", floors=1)
               and len(tab.tree.get_children()) == 1, "Stop shows the finished floor")
         check(str(tab.scan_button.cget("state")) == "normal"

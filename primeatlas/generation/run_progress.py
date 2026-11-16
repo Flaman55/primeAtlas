@@ -13,7 +13,7 @@ import time
 
 from tkinter import messagebox
 
-from ..core.progress_bar_owner import claim_progress_bar
+from ..core.progress_bar_owner import show_fraction
 from . import run_eta
 from .constellation_section import CONSTELLATION_BATCH_SIZE, CONSTELLATION_ETA_MIN_WINDOWS
 from .run_output import (format_duration_short, _LOOP_SESSION_DONE_RE, _LOOP_SESSION_START_RE,
@@ -85,8 +85,8 @@ class GenerationRunProgress:
         except queue.Empty:
             pass
 
-    def _set_gen_progress_bar(self, **configure_kwargs):
-        """Applies a totals_progress.configure(**configure_kwargs) update, but ONLY
+    def _set_gen_progress_bar(self, maximum, value):
+        """Shows value of maximum on totals_progress (show_fraction), but ONLY
         when self._gen_progress_bar_active is True -- see that attribute's own
         __init__ comment. primesieve/cudasieve mode's own stdout never produces
         anything for _update_shared_progress_from_generation_chunk() to parse mid-run
@@ -109,10 +109,7 @@ class GenerationRunProgress:
         # watching. The run's own state (self._gen_step_total etc.) keeps tracking
         # normally regardless -- this run's OWN next poll tick will reclaim the bar
         # the moment the other owner releases it.
-        if not claim_progress_bar(self.totals_progress, self):
-            return
-        self.totals_progress.stop()
-        self.totals_progress.configure(**configure_kwargs)
+        show_fraction(self.totals_progress, self, maximum=maximum, value=value)
 
     def _other_engine_is_running(self, engine):
         """True if some engine OTHER than `engine` ('loop'/'const'/'ktuple'/'verify') is
@@ -201,7 +198,7 @@ class GenerationRunProgress:
         line arrives, which can be a visible delay for engines whose first progress
         report doesn't come immediately (e.g. constellation search's per-file lines)."""
         self._gen_progress_bar_active = True
-        self._set_gen_progress_bar(mode="determinate", maximum=1, value=0)
+        self._set_gen_progress_bar(maximum=1, value=0)
 
     def _start_run_eta(self, iterations):
         """Starts the running time of a launched sieve run; `iterations` ([(prep, rest)]
@@ -341,13 +338,13 @@ class GenerationRunProgress:
             self._gen_loop_run_count = total
             self._gen_loop_iteration = stage
             self._gen_step_total = 1
-            self._set_gen_progress_bar(mode="determinate", maximum=max(1, total), value=stage - 1)
+            self._set_gen_progress_bar(maximum=max(1, total), value=stage - 1)
             self.status.set(self.T("quick.status_hybrid_stage", stage=stage, total=total))
             return
 
         if _GEN_HYBRID_DONE_RE.search(chunk):
             total = self._gen_loop_run_count or 1
-            self._set_gen_progress_bar(mode="determinate", maximum=total, value=total)
+            self._set_gen_progress_bar(maximum=total, value=total)
             self.status.set(self.T("gen.status_progress_done"))
             self._gen_step_total = None
             self._gen_loop_run_count = None
@@ -356,7 +353,7 @@ class GenerationRunProgress:
 
         if _LOOP_SESSION_DONE_RE.search(chunk):
             total = self._gen_step_total or 1
-            self._set_gen_progress_bar(mode="determinate", maximum=total, value=total)
+            self._set_gen_progress_bar(maximum=total, value=total)
             self._end_run_eta()
             self.status.set(self.T("gen.status_progress_done"))
             self._gen_step_total = None
@@ -397,8 +394,7 @@ class GenerationRunProgress:
                 run_count = self._gen_loop_run_count
                 iteration = self._gen_loop_iteration or 1
                 step_total = self._gen_step_total or 1
-                self._set_gen_progress_bar(
-                    mode="determinate", maximum=run_count * step_total,
+                self._set_gen_progress_bar(maximum=run_count * step_total,
                     value=min(iteration, run_count) * step_total)
                 if self._run_eta is not None:
                     self._run_eta.mark_iteration_done(iteration)
@@ -406,7 +402,7 @@ class GenerationRunProgress:
                                             iteration=iteration, run_count=run_count))
                 return
             total = self._gen_step_total or 1
-            self._set_gen_progress_bar(mode="determinate", maximum=total, value=total)
+            self._set_gen_progress_bar(maximum=total, value=total)
             self._end_run_eta()
             self.status.set(self.T("gen.status_progress_done"))
             self._gen_step_total = None
@@ -423,15 +419,13 @@ class GenerationRunProgress:
             if self._gen_loop_run_count is not None:
                 run_count = self._gen_loop_run_count
                 iteration = self._gen_loop_iteration or 1
-                self._set_gen_progress_bar(
-                    mode="determinate", maximum=run_count * self._gen_step_total,
+                self._set_gen_progress_bar(maximum=run_count * self._gen_step_total,
                     value=(iteration - 1) * self._gen_step_total + filled)
                 self._set_run_status(self.T("gen.status_progress_loop_sieve",
                                             iteration=iteration, run_count=run_count,
                                             percent=percent_str, done=done, total=n_batches))
             else:
-                self._set_gen_progress_bar(mode="determinate",
-                                            maximum=self._gen_step_total, value=filled)
+                self._set_gen_progress_bar(maximum=self._gen_step_total, value=filled)
                 self._set_run_status(self.T("gen.status_progress_sieve", percent=percent_str,
                                             done=done, total=n_batches))
             return
@@ -487,7 +481,7 @@ class GenerationRunProgress:
                 run_done = max(0, min(run_total, floor_done - run_start_already_done))
                 batch_count = -(-run_total // CONSTELLATION_BATCH_SIZE)  # ceil div
                 batch_num = min(batch_count, run_done // CONSTELLATION_BATCH_SIZE + 1)
-                self._set_gen_progress_bar(mode="determinate", maximum=run_total,
+                self._set_gen_progress_bar(maximum=run_total,
                                             value=run_done)
                 if batch_count > 1:
                     status_text = self.T("gen.status_progress_const_batch",
@@ -505,7 +499,7 @@ class GenerationRunProgress:
                 status_text += self._const_elapsed_eta_suffix(floor_total, floor_done)
                 self.status.set(status_text)
             else:
-                self._set_gen_progress_bar(mode="determinate", maximum=max(1, total), value=done)
+                self._set_gen_progress_bar(maximum=max(1, total), value=done)
                 self.status.set(self.T("gen.status_progress_const", done=done, total=total))
             return
 
@@ -515,10 +509,9 @@ class GenerationRunProgress:
             if self._gen_loop_run_count is not None:
                 run_count = self._gen_loop_run_count
                 iteration = self._gen_loop_iteration or 1
-                self._set_gen_progress_bar(
-                    mode="determinate", maximum=run_count * 2, value=(iteration - 1) * 2 + 1)
+                self._set_gen_progress_bar(maximum=run_count * 2, value=(iteration - 1) * 2 + 1)
                 self._set_run_status(self.T("gen.status_progress_loop_prep",
                                             iteration=iteration, run_count=run_count))
             else:
-                self._set_gen_progress_bar(mode="determinate", maximum=2, value=1)
+                self._set_gen_progress_bar(maximum=2, value=1)
                 self._set_run_status(self.T("gen.status_progress_prep"))

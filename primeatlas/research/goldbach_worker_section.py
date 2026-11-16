@@ -11,7 +11,7 @@ and its other mixins set up, so it is never instantiated on its own.
 import tkinter as tk
 from tkinter import messagebox
 
-from ..core.progress_bar_owner import claim_progress_bar
+from ..core.progress_bar_owner import show_fraction
 from .goldbach_window import (
     check_window as goldbach_check_window,
     all_decompositions as goldbach_all_decompositions,
@@ -140,16 +140,12 @@ class GoldbachWorkerSection:
         both_base_window_rows() call (see _goldbach_job's own docstring). Switches
         the SHARED bottom bar (self.totals_progress -- same one the floor-totals
         scan/Generation tab use) out of the indeterminate spin
-        _goldbach_set_busy(True) started it in and into a real fraction; stop()
-        first since an indeterminate animation still running underneath a
-        determinate value looks broken (bar visibly jumps once the animation's
-        next tick fires). Busy state/nav buttons are untouched -- the job is still
-        running. Claims the shared bar first (see progress_bar_owner.py) -- a no-op
-        if _goldbach_set_busy(True)'s own _start_busy_progress() call never actually
-        got it (some other owner had it throughout)."""
-        if claim_progress_bar(self.totals_progress, self):
-            self.totals_progress.stop()
-            self.totals_progress.configure(mode="determinate", maximum=1, value=payload)
+        _goldbach_set_busy(True) started it in and into a real fraction via
+        show_fraction(), which cancels the busy pump first: a pump tick left running
+        would move the value just set. Busy state/nav buttons are untouched -- the
+        job is still running. A no-op while another owner holds the bar (see
+        progress_bar_owner.py)."""
+        show_fraction(self.totals_progress, self, maximum=1, value=payload)
         self._goldbach_viz_progress_set(value=payload)
 
     def _on_goldbach_worker_result(self, payload, error):

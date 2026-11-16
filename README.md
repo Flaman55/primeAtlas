@@ -1446,7 +1446,9 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               shared totals_progress bar across every tab/coordinator
                               that drives it, so independent writers (a floor-totals
                               scan, a search box, a Generation run, ...) never silently
-                              overwrite each other's display
+                              overwrite each other's display; pump_indeterminate() runs
+                              the busy animation and show_fraction() stops it before
+                              showing a real fraction
   storage.py                    the core prime-window storage layer (listing floors/
                               files, totals caches, format_duration/format_bytes)
                               shared by several tabs, not specific to any one;

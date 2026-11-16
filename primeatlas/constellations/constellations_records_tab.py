@@ -45,7 +45,7 @@ from ..core.number_text import plain_number
 from ..core import number_field
 from ..core import background
 from ..core.base_tab import BaseTab
-from ..core.progress_bar_owner import claim_progress_bar
+from ..core.progress_bar_owner import show_fraction
 from ..core.ui_state import remember
 import hit_paging
 
@@ -381,9 +381,7 @@ class ConstellationsRecordsTab(BaseTab):
             # progress() (used by every other job shape via the else branch below)
             # already handles this on its own; this determinate branch bypasses that
             # inherited helper, so it claims for itself here instead.
-            if claim_progress_bar(self.totals_progress, self):
-                self.totals_progress.stop()
-                self.totals_progress.configure(mode="determinate", maximum=max(1, total_rows), value=0)
+            show_fraction(self.totals_progress, self, maximum=max(1, total_rows), value=0)
         else:
             self._start_busy_progress()
         self.status.set(status_text)
@@ -401,11 +399,9 @@ class ConstellationsRecordsTab(BaseTab):
         bar's VALUE: if _start_job()'s initial claim lost to another owner, the bar has
         to switch to determinate mode once that owner releases it (see
         self._progress_total_rows in __init__)."""
-        if (self._busy and self._progress_total_rows is not None
-                and claim_progress_bar(self.totals_progress, self)):
-            self.totals_progress.stop()
-            self.totals_progress.configure(
-                mode="determinate", maximum=max(1, self._progress_total_rows), value=payload)
+        if self._busy and self._progress_total_rows is not None:
+            show_fraction(self.totals_progress, self,
+                          maximum=max(1, self._progress_total_rows), value=payload)
 
     def _job(self, job, report_progress):
         """Runs on PersistentWorker's own daemon thread. Five job shapes distinguished
