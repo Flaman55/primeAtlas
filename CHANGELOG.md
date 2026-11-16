@@ -320,20 +320,28 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
 ### +16 — About: change the WSL RAM limit from Atlas
 
 - English: About → This computer has a row that sets how much RAM WSL may use (memory= in
-  .wslconfig). It proposes Windows RAM minus a quarter (at least 3 GB left for Windows), shows
+  .wslconfig). It proposes Windows RAM minus a quarter (at least 3 GB left for Windows),
   accepts from WSL's default (half the RAM) up to the whole RAM, warns before a limit above the
-  proposal (the computer can slow down, freeze or even switch off), shows the exact lines it will change and
-  asks before saving; the old file is kept as a backup next
-  to it and nothing else in the file changes. The new limit applies when WSL starts again:
-  Atlas offers to restart WSL now, except while a Generation job runs. No admin rights needed.
+  proposal (the computer can slow down, freeze or even switch off), shows the exact lines it
+  will change and asks before saving; the old file is kept as a backup next to it and nothing
+  else in the file changes. The new limit applies when WSL starts again: Atlas offers to
+  restart WSL now, except while a Generation job runs. No admin rights needed.
 - Polski: About → Ten komputer ma wiersz, który ustawia, ile RAM może używać WSL (memory= w
   .wslconfig). Proponuje RAM Windows minus jedną czwartą (co najmniej 3 GB zostaje dla Windows),
   przyjmuje od domyślnej wartości WSL (połowa RAM) do całego RAM, ostrzega przed limitem powyżej
-  proponowanego (komputer może zwolnić, zawiesić się lub nawet wyłączyć), pokazuje dokładnie zmieniane linie
-  i pyta przed zapisem; stary plik zostaje obok jako kopia
-  zapasowa, a reszta pliku się nie zmienia. Nowy limit działa po ponownym starcie WSL: Atlas
-  proponuje restart WSL od razu, chyba że trwa zadanie generowania. Nie wymaga uprawnień
-  administratora.
+  proponowanego (komputer może zwolnić, zawiesić się lub nawet wyłączyć), pokazuje dokładnie
+  zmieniane linie i pyta przed zapisem; stary plik zostaje obok jako kopia zapasowa, a reszta
+  pliku się nie zmienia. Nowy limit działa po ponownym starcie WSL: Atlas proponuje restart WSL
+  od razu, chyba że trwa zadanie generowania. Nie wymaga uprawnień administratora.
+
+### +17 — About: WSL limit Save does nothing when nothing would change
+
+- English: Save in the WSL RAM limit row does nothing when the field holds the limit already in
+  .wslconfig (in any unit, e.g. 10240MB = 10 GB): no question, no warning, no WSL restart. Save
+  is disabled until the computer's RAM is read and while WSL restarts.
+- Polski: Zapisz w wierszu limitu RAM WSL nic nie robi, gdy pole ma limit, który już jest w
+  .wslconfig (w dowolnej jednostce, np. 10240MB = 10 GB): bez pytania, ostrzeżenia i restartu WSL.
+  Zapisz jest nieaktywny, dopóki RAM komputera nie jest odczytany, i w trakcie restartu WSL.
 
 ## 1.4.0 — 2026-11-14
 

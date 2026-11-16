@@ -1,21 +1,23 @@
 """
 wsl_limit_row.py -- WslLimitRow, the About tab's row that changes the WSL RAM limit: a whole-GB
-number field (WSL's default, half the Windows RAM, up to the whole RAM), the proposed limit (wslconfig_edit.proposed_limit_gib) and
-a Save button.
+number field (WSL's default, half the Windows RAM, up to the whole RAM), the proposed limit
+(wslconfig_edit.proposed_limit_gib) and a Save button.
 
 show(info) fills it from a system_info.SystemInfo: the field gets the .wslconfig memory= in
 whole GB when set, else the proposal. save():
-  1. refuses a field with no usable value;
-     a limit above the proposal (wslconfig_edit.is_risky) first gets a warning, No by default:
+  1. refuses a field with no usable value; the file's own limit (in any unit) does nothing at
+     all, since nothing would change;
+  2. a limit above the proposal (wslconfig_edit.is_risky) first gets a warning, No by default:
      Windows short of RAM can freeze or switch off;
-  2. when the value differs from the file, asks with the file's path, the changed lines and
-     the backup it leaves, then writes (wslconfig_edit.apply_change);
-  3. the new limit applies when WSL starts again: while a Generation job runs (running_jobs())
+  3. asks with the file's path, the changed lines and the backup it leaves, then writes
+     (wslconfig_edit.apply_change);
+  4. the new limit applies when WSL starts again: while a Generation job runs (running_jobs())
      WSL is not restarted and a note says so; otherwise it asks to restart WSL now (it stops
      every WSL program, Atlas's or not) and runs wslconfig_edit.shutdown_wsl() in the
      background.
-A value equal to the file skips step 2, so Save also restarts WSL after a change made before.
-on_saved() (the tab reading the hardware again) follows a write or a restart.
+on_saved() (the tab reading the hardware again) follows the write.
+Save is disabled (and save() does nothing) until the Windows RAM is known and while the WSL
+restart runs.
 
 The dialogs and the shutdown are attributes (ask, warn, info, error, shutdown) a test replaces.
 """
@@ -39,6 +41,7 @@ class WslLimitRow(ttk.Frame):
         self._ram = None
         self._min_gib = None
         self._max_gib = None
+        self._restarting = False
         self.ask = messagebox.askyesno
         self.warn = _warn
         self.info = messagebox.showinfo
@@ -53,8 +56,15 @@ class WslLimitRow(ttk.Frame):
         ttk.Label(self, text=T("about.wsl_limit_unit")).pack(side="left")
         self.save_button = ttk.Button(self, text=T("about.wsl_limit_save"), command=self.save)
         self.save_button.pack(side="left", padx=(8, 8))
+        self._update_button()
         self.proposal_label = ttk.Label(self, text="", style="Hint.TLabel")
         self.proposal_label.pack(side="left")
+
+    def _can_save(self):
+        return bool(self._ram) and not self._restarting
+
+    def _update_button(self):
+        self.save_button.state(["!disabled"] if self._can_save() else ["disabled"])
 
     def path(self):
         return self._path or system_info.wslconfig_path()
@@ -70,8 +80,11 @@ class WslLimitRow(ttk.Frame):
         shown = round(current / GIB) if current else proposal
         self.value_var.set("" if shown is None else str(shown))
         self.field.refresh(at_once=True)
+        self._update_button()
 
     def save(self):
+        if not self._can_save():
+            return
         T = self.T
         title = T("about.wsl_limit_title")
         if number_field.refuse_problem([self.value_var], T, title):
@@ -80,6 +93,13 @@ class WslLimitRow(ttk.Frame):
         if not isinstance(gib, int):
             self.error(title, T("about.wsl_limit_empty"))
             return
+        try:
+            change = wslconfig_edit.plan_change(self.path(), gib)
+        except (OSError, UnicodeDecodeError) as exc:
+            self.error(title, T("about.wsl_limit_read_failed", path=self.path(), error=exc))
+            return
+        if system_info.parse_wslconfig(change.old_text).memory_bytes == gib * GIB:
+            return
         if wslconfig_edit.is_risky(gib, self._ram):
             ram_gib = round(self._ram / GIB)
             reserve = ram_gib - wslconfig_edit.proposed_limit_gib(self._ram)
@@ -87,29 +107,23 @@ class WslLimitRow(ttk.Frame):
                                       left=max(0, ram_gib - gib), reserve=reserve)):
                 self.entry.focus_set()
                 return
-        try:
-            change = wslconfig_edit.plan_change(self.path(), gib)
-        except (OSError, UnicodeDecodeError) as exc:
-            self.error(title, T("about.wsl_limit_read_failed", path=self.path(), error=exc))
+        backup = (T("about.wsl_limit_backup_note") if change.existed
+                  else T("about.wsl_limit_new_file_note"))
+        question = T("about.wsl_limit_confirm", path=change.path,
+                     diff="\n".join(change.diff_lines()), backup=backup)
+        if not self.ask(title, question):
             return
-        if change.changed:
-            backup = (T("about.wsl_limit_backup_note") if change.existed
-                      else T("about.wsl_limit_new_file_note"))
-            question = T("about.wsl_limit_confirm", path=change.path,
-                         diff="\n".join(change.diff_lines()), backup=backup)
-            if not self.ask(title, question):
-                return
-            try:
-                wslconfig_edit.apply_change(change)
-            except wslconfig_edit.FileChangedError:
-                self.error(title, T("about.wsl_limit_file_changed", path=change.path))
-                return
-            except OSError as exc:
-                self.error(title, T("about.wsl_limit_write_failed", path=change.path, error=exc))
-                return
-        self._offer_restart(title, written=change.changed)
+        try:
+            wslconfig_edit.apply_change(change)
+        except wslconfig_edit.FileChangedError:
+            self.error(title, T("about.wsl_limit_file_changed", path=change.path))
+            return
+        except OSError as exc:
+            self.error(title, T("about.wsl_limit_write_failed", path=change.path, error=exc))
+            return
+        self._offer_restart(title)
 
-    def _offer_restart(self, title, written):
+    def _offer_restart(self, title):
         T = self.T
         jobs = self._running_jobs()
         if jobs:
@@ -117,16 +131,19 @@ class WslLimitRow(ttk.Frame):
             self.info(title, T("about.wsl_limit_run_active", jobs=names))
         elif self.ask(title, T("about.wsl_limit_restart_question")):
             def done(ok, error):
+                self._restarting = False
+                self._update_button()
                 if error is not None or not ok:
                     self.error(title, T("about.wsl_limit_restart_failed"))
                 self._on_saved()
             shutdown = self.shutdown
+            self._restarting = True
+            self._update_button()
             run_in_background(self, lambda _report: shutdown(), on_done=done)
             return
         else:
             self.info(title, T("about.wsl_limit_next_start"))
-        if written:
-            self._on_saved()
+        self._on_saved()
 
 
 def _warn(title, text):

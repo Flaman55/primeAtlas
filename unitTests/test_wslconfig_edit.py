@@ -2,10 +2,10 @@
 test_wslconfig_edit.py -- primeatlas/about/wslconfig_edit.py, how Atlas changes the WSL RAM
 limit (memory= of the [wsl2] section of %UserProfile%\\.wslconfig).
 
-A. proposed_limit_gib(windows_ram_bytes): Windows RAM minus max(RESERVE_MIN_GIB, RESERVE_SHARE
-   of it), rounded to whole GiB, at least MIN_LIMIT_GIB; None for unknown RAM.
-   max_limit_gib(windows_ram_bytes): the whole GiB of Windows RAM (at least MIN_LIMIT_GIB);
-   None for unknown RAM.
+A. min_limit_gib(windows_ram_bytes): WSL's own default, half the RAM in whole GiB, at least
+   MIN_LIMIT_GIB. proposed_limit_gib: Windows RAM minus max(RESERVE_MIN_GIB, RESERVE_SHARE of
+   it), rounded to whole GiB, never below min_limit_gib. max_limit_gib: the whole GiB of
+   Windows RAM. All three None for unknown RAM. is_risky(gib, ram): above the proposal.
 B. set_wsl2_memory(text, gib): only memory= of [wsl2] changes, everything else stays byte for
    byte (other keys, other sections, comments, an inline comment after the value, blank lines,
    CRLF or LF line ends). Section and key names in any case. Every memory= line of [wsl2] gets
@@ -22,16 +22,30 @@ C. plan_change(path, gib) / apply_change(change): the plan holds the file's text
 D. shutdown_wsl(run): runs `wsl.exe --shutdown` once; True only for exit code 0; a missing
    wsl.exe or a timeout is False.
 E. WslLimitRow (primeatlas/about/wsl_limit_row.py) with recorded dialogs and shutdown:
-   show(info) puts the file's memory= in GB in the field, else the proposal, and names the
-   proposal; unknown Windows RAM leaves both empty. Save refuses a value outside 1..Windows
-   RAM, a non-number and an empty field before reading or asking anything. A new value asks
-   first (file path, changed lines, backup or new-file note); No leaves the file. Yes writes
-   it, then asks to restart WSL: No -> a next-start note; Yes -> one shutdown, then the
-   hardware is read again; a failed shutdown -> an error. The value already in the file skips
-   the write question. A running Generation job: the file is written, WSL is not restarted
-   and a note names the jobs. A file edited while the question was open is kept and an error
-   says so; a file that cannot be written gives an error. A missing file is created with no
-   backup.
+   E1. show(info) puts the file's memory= in GB in the field, else the proposal, and names
+       the proposal; unknown Windows RAM leaves both empty.
+   E2. Save refuses a value outside WSL's default (half the RAM)..Windows RAM, a non-number
+       and an empty field before reading or asking anything.
+   E3. Until Windows RAM is known (before show(), or show() with unknown RAM) Save is
+       disabled and save() does nothing.
+   E4. A file limit that is not whole GB (10.4GB shows 10): Save with 10 is a change and asks.
+   E5. Two memory= lines in [wsl2]: the last one is the current limit (WSL reads it so);
+       a write sets both.
+   E6. A value equal to the file's limit (in any unit) does nothing at all: no dialog, no
+       write, no restart.
+   E7. A limit above the proposal is warned about first (No by default);
+   E8. No to the warning changes nothing and puts the cursor back in the field.
+   E9. A new value asks first (file path, changed lines, backup or new-file note); No leaves
+       the file; Yes writes it with a backup. A file edited while the question was open is
+       kept and an error says so; a file that cannot be written gives an error; a missing
+       file is created with no backup.
+   E10. A file that cannot be read (a folder in its place, not UTF-8) gives an error and
+        nothing more.
+   E11. After a write: while a Generation job runs WSL is not restarted and a note names the
+        jobs; otherwise it asks to restart WSL: No -> a next-start note; Yes -> one shutdown,
+        then the hardware is read again; a failed shutdown -> an error.
+   E12. While the restart runs Save is disabled and save() does nothing; it is enabled
+        again when the restart ends.
 
 Usage:
     python unitTests/test_wslconfig_edit.py
@@ -362,20 +376,28 @@ def _test_row():
             check(r.dialogs[1][1] == "about.wsl_limit_restart_question"
                   and r.dialogs[2][1] == "about.wsl_limit_next_start", "the restart texts")
 
-            r = _Row(root, path, answers=[True])
-            r.row.show(_info(16, "10GB"))
-            r.save("10")
-            check(r.kinds() == ["ask"] and r.dialogs[0][1] == "about.wsl_limit_restart_question",
-                  "the value already in the file -> no write question, only the restart one")
-            check(r.shutdowns == 1 and r.saved == 1,
-                  f"Yes -> WSL shut down once, then read again ({r.shutdowns}, {r.saved})")
+            for text in ("10GB", "10240MB", " 10 GB  # mine"):
+                _write(path, f"[wsl2]\nmemory={text}\n")
+                r = _Row(root, path, answers=[True, True])
+                r.row.show(_info(16, text))
+                r.save("10")
+                check(r.dialogs == [] and r.shutdowns == 0 and r.saved == 0
+                      and _read(path) == f"[wsl2]\nmemory={text}\n",
+                      f"the file's own limit ({text!r}) -> Save does nothing at all ({r.kinds()})")
             check(len([n for n in os.listdir(folder) if n.startswith(".wslconfig.bak_")]) == 1,
                   "no write -> no new backup")
+            _write(path, "[wsl2]\nmemory=10GB\n")
 
-            r = _Row(root, path, answers=[True], shutdown_ok=False)
+            r = _Row(root, path, answers=[True, True])
             r.row.show(_info(16, "10GB"))
+            r.save("9")
+            check(r.kinds() == ["ask", "ask"] and r.shutdowns == 1 and r.saved == 1,
+                  f"Yes to the restart -> WSL shut down once, then read again ({r.kinds()})")
+
+            r = _Row(root, path, answers=[True, True], shutdown_ok=False)
+            r.row.show(_info(16, "9GB"))
             r.save("10")
-            check(r.kinds() == ["ask", "error"] and r.saved == 1,
+            check(r.kinds() == ["ask", "ask", "error"] and r.saved == 1,
                   f"a failed shutdown -> an error, still read again ({r.kinds()})")
 
             jobs = [("generation", object()), ("verify", object())]
@@ -427,16 +449,11 @@ def _test_row():
             check(r.kinds() == ["warn", "ask", "ask", "info"]
                   and _read(path) == "[wsl2]\nmemory=14GB\n",
                   f"Yes to the warning -> the usual change question, then written ({r.kinds()})")
-            r = _Row(root, path, answers=[False])
-            r.row.show(_info(16, "14GB"))
-            r.save("14")
-            check(r.kinds() == ["warn"] and r.shutdowns == 0,
-                  f"a risky limit already in the file still warns before a restart ({r.kinds()})")
             r = _Row(root, path, answers=[True, True])
             r.row.show(_info(16, "14GB"))
             r.save("14")
-            check(r.kinds() == ["warn", "ask"] and r.shutdowns == 1,
-                  f"Yes to it -> the restart question, WSL shut down ({r.kinds()})")
+            check(r.dialogs == [] and r.shutdowns == 0,
+                  f"a risky limit already in the file -> Save does nothing, no warning ({r.kinds()})")
 
             from primeatlas.about import wsl_limit_row
             calls = []
@@ -467,8 +484,113 @@ def _test_row():
             check(r.kinds() == ["ask", "error"]
                   and r.dialogs[1][1].startswith("about.wsl_limit_write_failed") and r.saved == 0,
                   f"a file that cannot be written -> an error, nothing more ({r.kinds()})")
+
+        with tempfile.TemporaryDirectory() as folder:
+            _test_row_edges(root, folder)
     finally:
         root.destroy()
+
+
+def _test_row_edges(root, folder):
+    import threading
+    path = os.path.join(folder, ".wslconfig")
+    _write(path, "[wsl2]\nmemory=8GB\n")
+
+    # E3: no RAM known yet
+    r = _Row(root, path, answers=[True, True])
+    check(r.row.save_button.instate(["disabled"]), "E3: Save is disabled before the RAM is read")
+    r.save("999")
+    check(r.dialogs == [] and _read(path) == "[wsl2]\nmemory=8GB\n",
+          f"E3: save() before the RAM is read does nothing ({r.kinds()})")
+    r.row.show(_info(None, "8GB"))
+    r.save("999")
+    check(r.row.save_button.instate(["disabled"]) and r.dialogs == []
+          and _read(path) == "[wsl2]\nmemory=8GB\n",
+          f"E3: unknown RAM -> Save disabled, save() does nothing ({r.kinds()})")
+    r.row.show(_info(16, "8GB"))
+    check(not r.row.save_button.instate(["disabled"]), "E3: known RAM -> Save enabled")
+
+    # E4: a limit that is not whole GB
+    _write(path, "[wsl2]\nmemory=10.4GB\n")
+    r = _Row(root, path, answers=[False])
+    r.row.show(_info(16, "10.4GB"))
+    check(r.row.value_var.get() == "10", "E4: 10.4GB shows as 10")
+    r.save()
+    check(r.kinds() == ["ask"] and "+ memory=10GB" in r.dialogs[0][1],
+          f"E4: Save with 10 against 10.4GB is a change and asks ({r.kinds()})")
+
+    # E5: two memory= lines, the last one counts
+    two = "[wsl2]\nmemory=8GB\nmemory=10GB\n"
+    _write(path, two)
+    r = _Row(root, path, answers=[True, True])
+    r.row.show(_info(16, "10GB"))
+    r.save("10")
+    check(r.dialogs == [] and _read(path) == two,
+          f"E5: the last memory= equals the field -> nothing happens ({r.kinds()})")
+    r = _Row(root, path, answers=[True, False])
+    r.row.show(_info(16, "10GB"))
+    r.save("8")
+    check(r.kinds()[:1] == ["ask"] and _read(path) == "[wsl2]\nmemory=8GB\nmemory=8GB\n",
+          f"E5: the first line's value is still a change; the write sets both ({r.kinds()})")
+
+    # E8: No to the warning puts the cursor back in the field
+    _write(path, "[wsl2]\nmemory=8GB\n")
+    r = _Row(root, path, answers=[False])
+    r.row.show(_info(16, "8GB"))
+    focused = []
+    r.row.entry.focus_set = lambda: focused.append(True)
+    r.save("15")
+    check(r.kinds() == ["warn"] and focused == [True],
+          f"E8: No to the warning -> the cursor goes back to the field ({r.kinds()}, {focused})")
+
+    # E10: a file that cannot be read
+    with open(path, "wb") as f:
+        f.write(b"[wsl2]\nmemory=8GB # \xff\xfe\n")
+    r = _Row(root, path, answers=[True, True])
+    r.row.show(_info(16, "8GB"))
+    r.save("10")
+    check(r.kinds() == ["error"] and r.dialogs[0][1].startswith("about.wsl_limit_read_failed")
+          and r.saved == 0 and r.shutdowns == 0,
+          f"E10: a file that is not UTF-8 -> a read error, nothing more ({r.kinds()})")
+    folder_path = os.path.join(folder, "a_folder")
+    os.mkdir(folder_path)
+    r = _Row(root, folder_path, answers=[True, True])
+    r.row.show(_info(16, "8GB"))
+    r.save("10")
+    check(r.kinds() == ["error"] and r.dialogs[0][1].startswith("about.wsl_limit_read_failed"),
+          f"E10: a folder in place of the file -> a read error, nothing more ({r.kinds()})")
+
+    # E12: Save is disabled while the restart runs
+    _write(path, "[wsl2]\nmemory=8GB\n")
+    r = _Row(root, path, answers=[True, True, True, True])
+    r.row.show(_info(16, "8GB"))
+    release = threading.Event()
+    started = threading.Event()
+    runs = []
+
+    def slow_shutdown():
+        runs.append(1)
+        started.set()
+        release.wait(5)
+        return True
+    r.row.shutdown = slow_shutdown
+    r.row.value_var.set("10")
+    r.row.field.refresh(at_once=True)
+    r.row.save()
+    started.wait(5)
+    root.update()
+    asked = len(r.dialogs)
+    check(r.row.save_button.instate(["disabled"]), "E12: Save is disabled while WSL restarts")
+    r.row.value_var.set("11")
+    r.row.field.refresh(at_once=True)
+    r.row.save()
+    root.update()
+    check(len(r.dialogs) == asked and len(runs) == 1 and _read(path) == "[wsl2]\nmemory=10GB\n",
+          f"E12: save() during the restart does nothing ({r.kinds()}, runs {len(runs)})")
+    release.set()
+    r._settle()
+    check(not r.row.save_button.instate(["disabled"]) and r.saved == 1,
+          "E12: the restart ends -> Save enabled again, the hardware read again")
 
 
 def main():

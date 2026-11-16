@@ -48,18 +48,20 @@ share of Windows RAM, with its source: `memory=` when set, else the WSL default 
 A value that cannot be read shows as "unknown"; WSL that does not answer shows as not reachable.
 
 Changing the WSL RAM limit (About → This computer, `wsl_limit_row.WslLimitRow` over
-`wslconfig_edit.py`): a whole-GB field (from WSL's own default, half the Windows RAM, up to the whole RAM) shows `memory=` when set, else the
-proposal, Windows RAM minus max(3 GiB, 25 %) rounded to whole GiB (an arbitrary default: it only
-fills the field). A limit above the proposal first gets a warning (Yes/No, No by default): Windows
-short of RAM can freeze or switch itself off and lose unsaved work; No keeps everything as it was,
-and the warning also comes before a restart with such a limit already in the file. Save asks first with the file's path and the changed lines, then writes: the old
-file is copied next to it as `.wslconfig.bak_<date>_<time>`, the new text replaces it in one rename,
-only `[wsl2]` `memory=` changes (other keys, sections, comments, line ends and a BOM stay; a missing
-line or section is added), and a file edited while the question was open is not overwritten. The
-limit applies when WSL starts again: while a Generation job runs (`close_guard.running_jobs`) WSL is
-not restarted and a note says so; otherwise Atlas asks to run `wsl --shutdown`, which stops every
-WSL program, then reads the hardware again. A value already in the file skips the write and only
-offers the restart. No admin rights: the file belongs to the user.
+`wslconfig_edit.py`): a whole-GB field (from WSL's own default, half the Windows RAM, up to the
+whole RAM) shows `memory=` when set, else the proposal, Windows RAM minus max(3 GiB, 25 %) rounded
+to whole GiB (an arbitrary default: it only fills the field). Save is disabled until the Windows
+RAM is known and while a WSL restart runs; with the file's own limit (in any unit, the last
+`memory=` of `[wsl2]` when there are several) it does nothing at all. A limit above the proposal first gets a warning (Yes/No, No by
+default): Windows short of RAM can freeze or switch itself off and lose unsaved work; No keeps
+everything as it was. Save then asks with the file's path and the changed lines, then writes: the
+old file is copied next to it as `.wslconfig.bak_<date>_<time>`, the new text replaces it in one
+rename, only `[wsl2]` `memory=` changes (other keys, sections, comments, line ends and a BOM stay;
+a missing line or section is added), and a file edited while the question was open is not
+overwritten. The limit applies when WSL starts again: while a Generation job runs
+(`close_guard.running_jobs`) WSL is not restarted and a note says so; otherwise Atlas asks to run
+`wsl --shutdown`, which stops every WSL program, then reads the hardware again. No admin rights:
+the file belongs to the user.
 
 Deletes (Backup sub-tab, `delete_section.py` over `delete_manager.py`): one floor (or only its
 constellations), the benchmarks (`count_benchmark_rows` / `clear_benchmark_log`: benchmark_log.csv
