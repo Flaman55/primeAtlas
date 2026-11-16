@@ -357,7 +357,9 @@ to 20, full pieces bit-identical, partial pieces at floors 16-30 with every v6.1
 every extra bit composite and nothing past the buffer; whole runs with the gear on nearly every
 bucketed prime at the model's factor and at 4 times it, at the defaults and with small segments).
 
-v7.4 (`prime_sieve_v7_4.py`, `prime_sieve_engine_v7_4.c`) is what the GUI's `v7` runs: v7.2's
+v7.4 (`prime_sieve_v7_4.py`, `prime_sieve_engine_v7_4.c`) is what the GUI's `v7` runs (v7.2 stays
+selectable outside the GUI as `PRIMEATLAS_SCANNER_VERSION=v7.2`, with v7's write threads, for
+A/B series against v7.4; the 2026-11-16 series is in BENCHMARK.md): v7.2's
 work plan, knobs and console lines, with the blocks set up by `jump_block_reuse()`. Each thread
 keeps the three-gap steps (ga, gc) of its last block. For the next block, with da = B * ga mod 2^64
 and dc = 2^64 - (B * gc mod 2^64), the pair is still the least pair of three-gap steps when

@@ -1,0 +1,11 @@
+Measured tree: main at 0d40f6b plus the changes committed together with this folder
+(PRIMEATLAS_SCANNER_VERSION=v7.2 in prime_sieve/orchestrator_v3.py and
+prime_sieve/generation_stop.py, and this folder's bench script). The bench ran from a git
+worktree whose .git file holds a Windows path, so the git calls in results_meta.txt came back
+empty from WSL. The engine library hashes recorded in results_meta.txt are the ones in 0d40f6b:
+  prime_sieve_engine_v7_2.so c83607eeced6164842c85599a247ce43b925e6bb57e4d3d976a6110bfaf1a0af
+  prime_sieve_engine_v7_4.so 799359af5482f2fadfb5a2f1dbdcb4c7219b85da974a2dd100c700911427ec9c
+  prime_sieve_engine_pt1.so  892282e5449db9fcbf74d6ea135dec4e4b7105ef3d1e7b237fa4edf7780772fb
+The bench script's default scratch folder moved to ~/primeatlas_bench_engines (WSL file
+system) after the series; the series itself used a scratch folder on /mnt/h. Paths of the
+worktree the series ran from are written <worktree> in results_meta.txt.

@@ -2923,6 +2923,13 @@ benchmarks/                  the measurements behind BENCHMARK.md, one folder pe
                               (ATLAS_ORCH)
     run_v5b.sh, run_low24.sh  the series as run; commit.txt and log.txt record the
                               measured tree and the run log
+  2026-11-16_engines/         engines v7.2 and v7.4 (ABBA) against the Pseudosquares Prime
+                              Sieve, pt1 and pt1-pss on the deep floors
+    bench_engines.py          the series: plan, order, scratch storage, one CSV row per run
+                              (runs in WSL; resumes an interrupted series)
+    tables.py                 the README tables computed from results.csv
+    results.csv, results_meta.txt  raw rows; tool versions, lscpu, engine library hashes
+    commit.txt                the measured tree
     results/                  raw JSON of every series (A-E, ab_*, low24_*, C reruns)
 LICENSE.md                   PolyForm Noncommercial 1.0.0 + the Required Notice line
 NOTICE.md                    third-party attributions, incl. the runtimes the installer

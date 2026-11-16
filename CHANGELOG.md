@@ -210,6 +210,23 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   Quick-gen odmawia startu przy czerwonym polu wybranego trybu (podając powód) zamiast
   przyjąć domyślną szerokość.
 
+### +10 — Engine series 2026-11-16: v7.2, v7.4 and pt1 against the Pseudosquares Prime Sieve
+
+- English: BENCHMARK.md opens with a new series on the same desktop (204 runs, equal prime
+  counts): v7.4 against v7.2 at 10^9, 10^10 and 10^11 numbers per run on floors 18-30, both
+  against the Pseudosquares Prime Sieve, and pt1 and pt1-pss on floors 30-35, with peak RAM.
+  Speeds leave out the window write phase, which depends on the disk. The script, raw rows and
+  the table generator are in `benchmarks/2026-11-16_engines/`. The engine v7.2 can again be
+  selected outside the GUI (`PRIMEATLAS_SCANNER_VERSION=v7.2`) for A/B runs against v7.4;
+  the GUI's v7 is still v7.4.
+- Polski: BENCHMARK.md zaczyna się od nowej serii pomiarów na tym samym komputerze (204
+  przebiegi, zgodne liczby liczb pierwszych): v7.4 wobec v7.2 przy 10^9, 10^10 i 10^11 liczb
+  na przebieg na piętrach 18-30, oba wobec Pseudosquares Prime Sieve, oraz pt1 i pt1-pss na
+  piętrach 30-35, ze szczytowym zużyciem RAM-u. Prędkości nie obejmują fazy zapisu okien,
+  która zależy od dysku. Skrypt, surowe wiersze i generator tabel są w
+  `benchmarks/2026-11-16_engines/`. Silnik v7.2 znów można wybrać poza GUI
+  (`PRIMEATLAS_SCANNER_VERSION=v7.2`) do przebiegów A/B wobec v7.4; v7 w GUI to nadal v7.4.
+
 ## 1.4.0 — 2026-11-14
 
 ### +1 — Research → Irreducibility: radices, comparison, comb reading, ranges, arithmetic

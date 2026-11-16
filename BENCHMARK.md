@@ -14,6 +14,57 @@ on the same machine with the same harness and run shapes:
 Both engines produce byte-identical PGS2 files and the same prime counts on every floor
 (`unitTests/test_engine_v5_identity.py`; every count in both result sets agrees).
 
+## Engines v7.2, v7.4 and pt1 (2026-11-16)
+
+One series on the same desktop (Ryzen 9 5900X, 64 GB RAM, 24 threads), 204 runs with prime
+counts equal between repeats and between engines. Method, raw rows and the script that makes
+these tables: [`benchmarks/2026-11-16_engines/`](benchmarks/2026-11-16_engines/). Speeds
+leave out the phase that writes the windows (it depends on the disk; the Pseudosquares Prime
+Sieve in count mode writes nothing). Each program runs in its own configuration: the
+Pseudosquares Prime Sieve (Walisch, 1.2) at 10^9 numbers per run, as in its own benchmarks,
+and v7 at up to 10^11.
+
+#### v7.4, v7.2 and the Pseudosquares Prime Sieve (M numbers/s)
+
+| floor | PSS 10^9 | v7.4 10^9 | v7.4 10^10 | v7.4 10^11 | v7.2 10^11 | v7.4 / v7.2 at 10^11 |
+|---|---|---|---|---|---|---|
+| 18 | 203 | 2,054 | 7,310 | 7,920 | 7,989 | 0.99 |
+| 19 | 145 | 1,753 | 6,224 | 8,282 | 7,707 | 1.07 |
+| 20 | 43.9 | 1,324 | 4,858 | 7,838 | 7,558 | 1.04 |
+| 21 | 41.4 | 959 | 3,263 | 6,831 | 7,032 | 0.97 |
+| 22 | 36.8 | 632 | 1,783 | 5,043 | 5,391 | 0.94 |
+| 23 | 34.2 | 383 | 1,172 | 3,744 | 3,639 | 1.03 |
+| 24 | 29.7 | 200 | 855 | 2,377 | 2,349 | 1.01 |
+| 25 | 33.0 | 95.1 | 534 | 1,594 | 1,600 | 1.00 |
+| 26 | 28.5 | 42.7 | 308 | 1,120 | 1,083 | 1.03 |
+| 27 | 25.2 | 19.0 | 156 | 746 | 707 | 1.05 |
+| 28 | 25.4 | 8.2 | 73.8 | 458 | 407 | 1.13 |
+| 29 | 22.9 | 3.5 | 33.3 | 248 | 219 | 1.13 |
+| 30 | 21.7 | 1.5 | 14.7 | 124 | 115 | 1.08 |
+
+#### pt1 and pt1-pss, 10^9 numbers (M numbers/s)
+
+| floor | pt1 (P, BPSW) | pt1-pss (proved) |
+|---|---|---|
+| 30 | 210 | 17.4 |
+| 31 | 215 | 17.4 |
+| 32 | 205 | 16.4 |
+| 33 | 205 | 16.9 |
+| 34 | 194 | 15.1 |
+| 35 | 178 | refuses floors 35-37 |
+
+- At 10^11 numbers per run, v7.4 is faster than the Pseudosquares Prime Sieve at 10^9 on
+  every floor from 18 to 30 (5.7 times at floor 30). At 10^9 numbers per run the
+  Pseudosquares Prime Sieve is faster from floor 27.
+- v7.4 against v7.2 at 10^11: equal within the spread up to floor 26, 5–13 % faster from
+  floor 27 to 30.
+- pt1 writes probable primes (BPSW) at 178–215 M numbers/s on floors 30–35; pt1-pss proves
+  them at 15–17 M numbers/s on floors 30–34.
+- Peak RAM: v7 up to 1.9 GB at 10^9, 8.2 GB at 10^10 and 11.2 GB at 10^11 numbers per run;
+  the Pseudosquares Prime Sieve 0.8 GB; pt1 0.3 GB.
+
+The sections below describe the earlier v4.1 and v5 engines (October 2026).
+
 ## Summary
 
 On one home desktop (Ryzen 9 5900X, 64 GB RAM), sieving 10^10 consecutive numbers with

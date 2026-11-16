@@ -1,0 +1,63 @@
+utc: 2026-11-15T23:00:01.220111+00:00
+args: {'out': '<worktree>/benchmarks/2026-11-16_engines/results.csv', 'workers': 24, 'batches_per_worker': 1, 'only': None, 'dry_run': False, 'summary': False}
+$ git -C <worktree> log --oneline -1
+
+$ git -C <worktree> status --short
+
+$ /usr/bin/python3 <worktree>/prime_sieve/env_versions.py
+{"ok": true, "distro": "Ubuntu 26.04 LTS", "python": "3.14.4", "numpy": "2.5.1", "gcc": "15.2.0", "libs": {"primesieve": {"version": "12.16", "loaded": "/usr/local/lib/libprimesieve.so.12.16", "copies": [{"path": "/usr/lib/x86_64-linux-gnu/libprimesieve.so.12.12", "version": "12.12"}, {"path": "/usr/local/lib/libprimesieve.so.12.16", "version": "12.16"}], "engines": {"prime_sieve_engine_pt1.so": "/usr/local/lib/libprimesieve.so.12.16", "prime_sieve_engine_v1.so": "/usr/local/lib/libprimesieve.so.12.16", "prime_sieve_engine_v3.so": "/usr/local/lib/libprimesieve.so.12.16", "prime_sieve_engine_v4.so": "/usr/local/lib/libprimesieve.so.12.16", "prime_sieve_engine_v5.so": "/usr/local/lib/libprimesieve.so.12.16", "prime_sieve_engine_v6.so": "/usr/local/lib/libprimesieve.so.12.16", "prime_sieve_engine_v6_1.so": "/usr/local/lib/libprimesieve.so.12.16", "prime_sieve_engine_v7_0.so": "/usr/local/lib/libprimesieve.so.12.16", "prime_sieve_engine_v7_2.so": "/usr/local/lib/libprimesieve.so.12.16", "prime_sieve_engine_v7_4.so": "/usr/local/lib/libprimesieve.so.12.16"}}, "primecount": {"version": "8.1", "loaded": "/usr/lib/x86_64-linux-gnu/libprimecount.so.8.1", "copies": [{"path": "/usr/lib/x86_64-linux-gnu/libprimecount.so.8.1", "version": "8.1"}], "engines": {}}}, "duplicates": ["primesieve"], "pseudosquares": {"path": "/home/artur/.primeatlas/pseudosquares/build/pseudosquares_prime_sieve", "version": "1.2", "commit": "fccb96e", "at_pin": true}}
+$ lscpu
+Architecture:                            x86_64
+CPU op-mode(s):                          32-bit, 64-bit
+Address sizes:                           48 bits physical, 48 bits virtual
+Byte Order:                              Little Endian
+CPU(s):                                  24
+On-line CPU(s) list:                     0-23
+Vendor ID:                               AuthenticAMD
+Model name:                              AMD Ryzen 9 5900X 12-Core Processor
+CPU family:                              25
+Model:                                   33
+Thread(s) per core:                      2
+Core(s) per socket:                      12
+Socket(s):                               1
+Stepping:                                2
+BogoMIPS:                                7400.07
+Flags:                                   fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good nopl xtopology tsc_reliable nonstop_tsc cpuid extd_apicid tsc_known_freq pni pclmulqdq ssse3 fma cx16 sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand hypervisor lahf_lm cmp_legacy svm cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw topoext perfctr_core ssbd ibrs ibpb stibp vmmcall fsgsbase bmi1 avx2 smep bmi2 erms invpcid rdseed adx smap clflushopt clwb sha_ni xsaveopt xsavec xgetbv1 xsaves clzero xsaveerptr arat npt nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold v_vmsave_vmload umip vaes vpclmulqdq rdpid fsrm
+Virtualization:                          AMD-V
+Hypervisor vendor:                       Microsoft
+Virtualization type:                     full
+L1d cache:                               384 KiB (12 instances)
+L1i cache:                               384 KiB (12 instances)
+L2 cache:                                6 MiB (12 instances)
+L3 cache:                                32 MiB (1 instance)
+NUMA node(s):                            1
+NUMA node0 CPU(s):                       0-23
+Vulnerability Gather data sampling:      Not affected
+Vulnerability Ghostwrite:                Not affected
+Vulnerability Indirect target selection: Not affected
+Vulnerability Itlb multihit:             Not affected
+Vulnerability L1tf:                      Not affected
+Vulnerability Mds:                       Not affected
+Vulnerability Meltdown:                  Not affected
+Vulnerability Mmio stale data:           Not affected
+Vulnerability Old microcode:             Not affected
+Vulnerability Reg file data sampling:    Not affected
+Vulnerability Retbleed:                  Not affected
+Vulnerability Spec rstack overflow:      Vulnerable: Safe RET, no microcode
+Vulnerability Spec store bypass:         Mitigation; Speculative Store Bypass disabled via prctl
+Vulnerability Spectre v1:                Mitigation; usercopy/swapgs barriers and __user pointer sanitization
+Vulnerability Spectre v2:                Mitigation; Retpolines; IBPB conditional; IBRS_FW; STIBP always-on; RSB filling; PBRSB-eIBRS Not affected; BHI Not affected
+Vulnerability Srbds:                     Not affected
+Vulnerability Tsa:                       Vulnerable: No microcode
+Vulnerability Tsx async abort:           Not affected
+Vulnerability Vmscape:                   Not affected
+$ free -m
+total        used        free      shared  buff/cache   available
+Mem:           48171         963       47279           3         353       47207
+Swap:          12288           0       12288
+$ uname -a
+Linux DESKTOP-3NV38MM 6.18.33.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026 x86_64 GNU/Linux
+sha256 prime_sieve_engine_v7_2.so c83607eeced6164842c85599a247ce43b925e6bb57e4d3d976a6110bfaf1a0af
+sha256 prime_sieve_engine_v7_4.so 799359af5482f2fadfb5a2f1dbdcb4c7219b85da974a2dd100c700911427ec9c
+sha256 prime_sieve_engine_pt1.so 892282e5449db9fcbf74d6ea135dec4e4b7105ef3d1e7b237fa4edf7780772fb
+
