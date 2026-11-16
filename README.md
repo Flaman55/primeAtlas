@@ -1823,7 +1823,8 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               pi exact at powers of ten, else Riemann R(x)), sieving and
                               added write time per number; per measured floor from its
                               runs (two widths split F and the per-number cost), other
-                              floors interpolated; estimate of one run (prep, sieve,
+                              floors interpolated; only this computer's rows (other
+                              machine_id left out, blank kept); estimate of one run (prep, sieve,
                               write, run, per window, gross and net n/s), of a floor's
                               measured runs and of a whole floor
                               (unitTests/test_time_model.py)

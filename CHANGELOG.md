@@ -305,6 +305,18 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   identyfikator, który niosą wiersze tego komputera. Starsze wiersze i przebiegi uruchomione
   poza Atlasem mają te kolumny puste.
 
+### +15 — Time model: only this computer's runs calibrate it
+
+- English: The time model behind the Time simulation window, the engine and width proposals,
+  the run ETA and the target planner now leaves out benchmark rows another computer wrote,
+  so a log copied from a faster or slower machine no longer skews this computer's estimates.
+  Rows without a computer id (logged before +14, or runs started outside Atlas) still count.
+- Polski: Model czasu, z którego korzystają okno Symulacji czasu, propozycje silnika i
+  szerokości, ETA przebiegu i planer celów, pomija teraz wiersze benchmarku zapisane przez inny
+  komputer, więc log skopiowany z szybszej albo wolniejszej maszyny nie zniekształca już
+  szacunków tego komputera. Wiersze bez identyfikatora komputera (zapisane przed +14 albo z
+  przebiegów uruchomionych poza Atlasem) nadal się liczą.
+
 ## 1.4.0 — 2026-11-14
 
 ### +1 — Research → Irreducibility: radices, comparison, comb reading, ranges, arithmetic

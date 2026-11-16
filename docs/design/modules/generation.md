@@ -187,6 +187,11 @@ next opening. The log is never written. Its completed rows give, per measured fl
   sieving, so the engines' write busy time is not added).
 
 A run's measured time is `total_seconds` without `base_gen_seconds` (the optional pi(L) count).
+Only this computer's rows calibrate: `time_model.read_samples()` leaves out a row whose
+`machine_id` names another computer and keeps rows without one (logged before the column or
+started outside the GUI); without an id of its own (`windows_hardware.this_machine_id()` None)
+every row counts. Every reader of the log (time simulation, engine and width proposals, target
+planner, `tools/engine_advice.py`) goes through it.
 Rows calibrate per engine version (`time_model.calibration_rows()`): the version of the engine's
 last row in the log (`engine_version`, the writing script's `VERSION`, e.g. v5.1) calibrates from
 its own rows once it has two, so a faster release is not averaged with the old one; until then, and
@@ -350,8 +355,6 @@ is copied in once), `.generation_logs/` (logs, exit codes, `ACTIVE_RUN.json`),
 
 ## Known gaps
 
-- The time model calibrates from every row of `benchmark_log.csv`, whichever computer wrote it:
-  rows carry `machine_id`, but rows of other computers are not left out yet.
 - The target planner checks targets on the window grid: a target narrower than a window still
   costs a whole window with either method. Pseudosquares results are not stored, so their
   targets come back in the next plan. Use fills one run at a time; running the whole plan is

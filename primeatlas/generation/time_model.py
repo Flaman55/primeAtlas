@@ -23,6 +23,9 @@ calibrate() derives k, m and w for every floor the engine has rows of:
     floor's w.
 Every measured run is so reproduced; k, m and w of other floors are interpolated
 log-linearly in the floor between measured ones and held at the nearest one outside them.
+Only this computer's rows calibrate: read_samples() leaves out rows whose machine_id names
+another computer and keeps rows without one (runs logged before the column existed or
+started outside the GUI). Without an id of its own every row is kept.
 pi(x) is exact at powers of ten (KNOWN_PI_10N, the engine's table) and Riemann's R(x)
 elsewhere, which is off by less than 1e-7 relative at the sizes a floor needs.
 """
@@ -34,6 +37,7 @@ from collections import namedtuple
 
 import pt1_plan
 
+from ..core.windows_hardware import this_machine_id
 from ..research.pi_approx_window import riemann_r
 from .run_budget import ENGINE_PT1, ENGINE_PT1_PSS
 from .window_planning import QUICK_GEN_MAX_WINDOW_WIDTH
@@ -65,6 +69,7 @@ KNOWN_PI_10N = {
 _POWER_OF_TEN = {10 ** n: value for n, value in KNOWN_PI_10N.items()}
 
 TERMS = ("run", "prime", "number", "number_lnln")
+THIS_MACHINE = object()       # read_samples() default: this computer's machine id
 
 Sample = namedtuple(
     "Sample", "engine floor span top sieve_seconds write_seconds write_files total_seconds "
@@ -113,13 +118,20 @@ def _features(engine, span, top, pt1_b=0):
             "number_lnln": span * _lnln(limit)}
 
 
-def read_samples(csv_path):
+def read_samples(csv_path, machine_id=THIS_MACHINE):
     """Usable rows of a benchmark_log.csv: completed runs with an engine, a span and a sieve
-    time, at floors from LOW_FLOOR_CUTOFF up. [] for a missing or unreadable file."""
+    time, at floors from LOW_FLOOR_CUTOFF up, not written by a computer other than
+    `machine_id` (this computer by default; None keeps every row). [] for a missing or
+    unreadable file."""
+    own = this_machine_id() if machine_id is THIS_MACHINE else machine_id
+    own = (own or "").strip().lower()
     samples = []
     try:
         with open(csv_path, newline="", encoding="utf-8", errors="replace") as f:
             for row in csv.DictReader(f):
+                writer = (row.get("machine_id") or "").strip().lower()
+                if own and writer and writer != own:
+                    continue
                 sample = _sample(row)
                 if sample is not None:
                     samples.append(sample)
