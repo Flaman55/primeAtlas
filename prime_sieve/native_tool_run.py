@@ -22,6 +22,7 @@ import signal
 import subprocess
 import time
 
+import run_load
 from benchmark_log_schema import (BENCHMARK_FIELDNAMES, RUN_PURPOSE_BENCHMARK,
                                   ensure_benchmark_log_schema)
 
@@ -76,6 +77,7 @@ def append_row(portal_folder, row):
         writer = csv.DictWriter(f, fieldnames=BENCHMARK_FIELDNAMES)
         if is_new:
             writer.writeheader()
+        row.update(run_load.row_fields(os.environ))
         writer.writerow(row)
     print(f"[BENCHMARK] logged to {log_path}")
 

@@ -14,6 +14,10 @@ import shlex
 import subprocess
 import time
 
+import run_load
+
+from ..core import cpu_load, windows_hardware
+
 
 _WINDOWS_DRIVE_PATH_RE = re.compile(r'^([A-Za-z]):[\\/](.*)$')
 
@@ -50,11 +54,32 @@ def generation_log_paths(portal_folder, prefix):
             run_id)
 
 
+def run_load_path(windows_log_path):
+    """The run's load file (run_load.py): its log path with the extension .load. The runner
+    (logged_runners.WslLoggedRunner) keeps it, the engine reads it."""
+    return os.path.splitext(windows_log_path)[0] + ".load"
+
+
+def launch_context():
+    """(machine id, busy share before the launch) of a launch now; None for what is unknown."""
+    return windows_hardware.this_machine_id(), cpu_load.busy_before_launch()
+
+
+def _run_load_env(windows_log_path, run_context):
+    machine_id, before = launch_context() if run_context is None else run_context
+    env = [(run_load.LOAD_FILE_ENV, windows_path_to_wsl(run_load_path(windows_log_path)))]
+    if machine_id:
+        env.append((run_load.MACHINE_ID_ENV, machine_id))
+    if before is not None:
+        env.append((run_load.CPU_BUSY_BEFORE_ENV, run_load.format_pct(before)))
+    return env
+
+
 _ENV_NAME_RE = re.compile(r"[A-Z_][A-Z0-9_]*")
 
 
 def build_wsl_logged_command(argv, windows_log_path, windows_exit_path, portal_folder,
-                              use_known_pi_seed=False, extra_env=()):
+                              use_known_pi_seed=False, extra_env=(), run_context=None):
     """Wraps a Linux-side argv (e.g. ["python3", "/mnt/d/.../script.py", "20", ...]) in a
     `wsl.exe -e bash -c "..."` invocation that redirects combined stdout+stderr into
     windows_log_path (translated to its WSL mount path) and writes the process's exit
@@ -78,7 +103,11 @@ def build_wsl_logged_command(argv, windows_log_path, windows_exit_path, portal_f
 
     extra_env: (name, value) pairs set the same way, after the two above -- the sieve
     engine choice and v5 knobs (engine_options.launch_env()). Values are shell-quoted;
-    a name that is not an upper-case identifier raises ValueError."""
+    a name that is not an upper-case identifier raises ValueError.
+
+    run_context: (machine id, busy share before the launch), launch_context() when None. The
+    command names both when known and always the run's load file (run_load.py), which the
+    engines copy into their benchmark_log.csv row."""
     log_wsl = windows_path_to_wsl(windows_log_path)
     exit_wsl = windows_path_to_wsl(windows_exit_path)
     inner = " ".join(shlex.quote(str(t)) for t in argv)
@@ -93,7 +122,7 @@ def build_wsl_logged_command(argv, windows_log_path, windows_exit_path, portal_f
     env_prefix = f"CONSTELLATION_PORTAL_DIR={shlex.quote(portal_wsl)} "
     if use_known_pi_seed:
         env_prefix += "PRIMEATLAS_USE_KNOWN_PI_SEED=1 "
-    for name, value in extra_env:
+    for name, value in (*extra_env, *_run_load_env(windows_log_path, run_context)):
         if not _ENV_NAME_RE.fullmatch(name):
             raise ValueError(f"invalid environment variable name: {name!r}")
         env_prefix += f"{name}={shlex.quote(str(value))} "

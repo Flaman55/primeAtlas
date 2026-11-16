@@ -117,11 +117,12 @@ def part_b():
     import native_tool_run
     import primesieve_native as nat
 
-    check(schema.BENCHMARK_FIELDNAMES[-5:] == ["threads", "write_threads",
+    import run_load
+    check(schema.BENCHMARK_FIELDNAMES[-8:] == ["threads", "write_threads",
                                                "sieve_wall_seconds", "run_purpose",
-                                               "proof_seconds"],
+                                               "proof_seconds", *run_load.COLUMNS],
           "log header ends with threads, write_threads, sieve_wall_seconds, run_purpose, "
-          "proof_seconds")
+          "proof_seconds, then the machine and CPU load columns")
     check(schema.THREADS_GPU == "GPU", "GPU engines log threads as GPU")
     tmp = tempfile.mkdtemp()
     try:

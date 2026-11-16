@@ -20,7 +20,8 @@ C. primeatlas/about/system_info_text.py: system_info_lines(info, T) names the OS
    sees (CPUs, RAM, available) and the WSL RAM limit as a share of Windows RAM with its
    source: .wslconfig memory= when set, else the WSL default of half the Windows RAM; an
    unreachable WSL gives one line saying so and no limit line; unknown values read
-   "unknown", never 0 or a made-up number.
+   "unknown", never 0 or a made-up number. The computer's id (the machine_id of its
+   benchmark rows) is shown too; the live probe reads windows_hardware.this_machine_id().
 
 Usage:
     python unitTests/test_system_info.py
@@ -101,6 +102,9 @@ def _test_live_windows():
     check(w.threads == os.cpu_count(), f"threads == os.cpu_count() ({w.threads})")
     check(w.cores is not None and 1 <= w.cores <= w.threads,
           f"physical cores between 1 and the threads ({w.cores})")
+    from primeatlas.core import windows_hardware
+    check(w.machine_id == windows_hardware.this_machine_id() and w.machine_id,
+          f"the computer's id is the benchmark rows' id ({w.machine_id})")
     check(w.ram_total and w.ram_total > 0 and w.ram_free is not None
           and 0 <= w.ram_free < w.ram_total, f"RAM total > free >= 0 ({w.ram_total}, {w.ram_free})")
     check(bool(w.os_name) and bool(w.cpu_model), f"OS and CPU model are named ({w.os_name!r}, "
@@ -119,7 +123,8 @@ def _test_text():
         T = Translator(lang)
         windows = si.WindowsInfo(os_name="Windows 11 Professional (10.0.26200)",
                                  cpu_model="Test CPU 9000", cores=12, threads=24,
-                                 ram_total=64 * GIB, ram_free=40 * GIB)
+                                 ram_total=64 * GIB, ram_free=40 * GIB,
+                                 machine_id="3f9a0c1d2e4b")
         wsl = si.WslInfo(distro="Ubuntu 24.04.1 LTS", kernel="6.6.87.2-microsoft-standard-WSL2",
                          cpus=24, mem_total=48 * GIB, mem_available=46 * GIB)
         set_cfg = si.WslConfig(memory_text="48GB", memory_bytes=48 * GIB, processors=None)
@@ -128,7 +133,7 @@ def _test_text():
         for needle in ("Windows 11 Professional (10.0.26200)", "Test CPU 9000", "12", "24",
                        "64.0 GiB", "40.0 GiB", "Ubuntu 24.04.1 LTS",
                        "6.6.87.2-microsoft-standard-WSL2", "48.0 GiB", "46.0 GiB", "75 %",
-                       "memory=48GB"):
+                       "memory=48GB", "3f9a0c1d2e4b"):
             check(needle in text, f"[{lang}] lines show {needle!r}")
         check(not any(k in text for k in ("about.", "{", "}")), f"[{lang}] no raw keys ({text!r})")
 

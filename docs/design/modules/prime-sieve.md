@@ -391,6 +391,17 @@ engine). `test_jump_gaps_certificate` checks the certificate against the walk: n
 pairs and constructed pairs whose 128-bit sum wraps are never accepted, the true pair always is,
 and whole block sequences with reuse land exactly where `jump_block_quick()` and brute force do.
 
+## Machine and CPU load of a row
+
+Every row writer (`orchestrator_v3.py`, `prime_sieve_primesieve.py`, `prime_sieve_cudasieve.py`,
+`hybrid_sieve.py`, `native_tool_run.py`, which `store_verify.py` also writes through) adds
+`run_load.row_fields(os.environ)`: `machine_id` and `cpu_busy_before_pct` as the GUI named them in
+the launch environment, and `cpu_busy_during_pct` from the CPU counters in the run's `.load` file
+when the process imported `run_load` to the counters there when it writes the row. Each
+orchestrator of a Loop is its own process, so each row covers its own run. The shares are of the
+whole Windows CPU, Atlas included. A run started outside the GUI has no such environment and
+leaves the three columns blank.
+
 ## Kept data
 
 Prime windows, `benchmark_log.csv`, `floor_meta.json`, `last_scan_metrics.json`, sieving-prime cache,
@@ -407,7 +418,7 @@ hit pages ([data.md](../data.md)).
 `test_parallel_window_writer`, `test_wheel30_layout`, `test_wheel30_writer`, `test_work_plan_v6`,
 `test_engine_pt1`, `test_engine_pt1_pss`, `test_engine_pt1_verify`, `test_engine_pt_pss`, `test_engine_v73_verify`, `test_work_plan_v5`, `test_overlap_pipeline`, `test_orchestrator_stop`,
 `test_hybrid_*`, `test_cudasieve_integration`, `test_hit_paging`, `test_floor_meta_store`,
-`test_benchmark_log_schema`, `test_print_benchmark_summary`, `test_primesieve_benchmark_row`,
+`test_benchmark_log_schema`, `test_run_load`, `test_print_benchmark_summary`, `test_primesieve_benchmark_row`,
 `test_primesieve_native`, `test_pseudosquares_native`, `test_pseudosquares_install`,
 `test_pi_seed`. See also BENCHMARK.md.
 

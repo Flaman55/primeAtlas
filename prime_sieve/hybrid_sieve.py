@@ -29,6 +29,7 @@ from hybrid_reference import HybridReferenceError, sieve_reference_segment, writ
 from prime_sieve_primesieve import generate_primes_in_range, write_scan_metrics_handoff
 from prime_sieve_v1 import format_offset, read_prime_window
 import window_sharding
+import run_load
 from benchmark_log_schema import BENCHMARK_FIELDNAMES, run_purpose, ensure_benchmark_log_schema
 from floor_meta_store import append_benchmark_row_to_floor_meta
 
@@ -75,6 +76,7 @@ def write_hybrid_benchmark_row(portal_folder, base_exponent, target_idx_start, w
             "sieve_seconds": f"{sieve_seconds:.9f}", "write_seconds": f"{write_seconds:.3f}",
             "bytes_written": bytes_written,
         }
+        row.update(run_load.row_fields(os.environ))
         writer.writerow(row)
     print(f"[BENCHMARK] logged to {path} (schema-aligned hybrid row)")
     append_benchmark_row_to_floor_meta(portal_folder, base_exponent, row)

@@ -23,7 +23,7 @@ from primeatlas.app.settings_wiring import SettingsWiringMixin
 from primeatlas.app.single_tabs_section import SingleTabsSectionMixin
 from primeatlas.app.visualization_section import VisualizationSectionMixin
 from primeatlas.constellations.constellations_tree_coordinator import ConstellationsTreeCoordinator
-from primeatlas.core import ui_state_dynamic
+from primeatlas.core import cpu_load, ui_state_dynamic
 from primeatlas.core.app_icon import apply_tk_icon
 from primeatlas.core.totals_search_coordinator import TotalsSearchCoordinator
 from primeatlas.core.version import version_label
@@ -40,6 +40,8 @@ class PortalBrowserApp(ThemeMixin, PrimesSectionMixin, ConstellationsSectionMixi
                        SingleTabsSectionMixin, SettingsWiringMixin, tk.Tk):
     def __init__(self):
         super().__init__()
+        # The CPU load before a launch, named in every run's benchmark row (run_load.py).
+        cpu_load.start_sampling()
         ui_state_dynamic.STORE.attach(self)
         apply_tk_icon(self)
         disable_notebook_wheel(self)

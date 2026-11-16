@@ -27,7 +27,7 @@ InfoTip anchored on the checkbox).
 |---|---|
 | Tab | `primeatlas/generation/generation_tab.py` (`GenerationTab`, WSL runner factory) |
 | Sections (mixins) | `quick_gen_panel.py`, `quick_gen_runs.py`, `loop_section.py`, `constellation_section.py`, `ktuple_section.py`, `verify_section.py`, `run_progress.py`, `run_guard_controls.py`, `hybrid_controls.py`, `engine_fields.py`, `time_simulation_controls.py`, `engine_advice_controls.py`, `pi_count_notice_controls.py`, `target_planner_section.py` |
-| Launching | `engine_argv.py` (argv of every script), `wsl_command.py` (wsl.exe command, logs), `logged_runners.py` (`WslLoggedRunner`, `LocalLoggedRunner`), `wsl_blocking.py`, `wsl_resources.py` |
+| Launching | `engine_argv.py` (argv of every script), `wsl_command.py` (wsl.exe command, logs; every launch names the machine id, the CPU load over the 5 s before it and the run's `.load` file for `prime_sieve/run_load.py`), `logged_runners.py` (`WslLoggedRunner`, `LocalLoggedRunner`; the WSL runner keeps the run's `.load` file of Windows CPU counters, written before the process starts and once a second), `wsl_blocking.py`, `wsl_resources.py` |
 | Planning | `window_planning.py`, `quick_gen_plan.py`, `run_budget.py`, `engine_options.py`, `engine_presets.py`, `quick_number.py`, `verify_plan.py`, `verify_estimate.py`, `pi_count_notice.py` (whether a run counts pi(L) from zero) |
 | Time simulation | `time_model.py` (run time model calibrated from benchmark_log.csv), `run_ram.py` (predicted RAM of a run, widest run in the RAM budget), `time_simulation_window.py` (`TimeSimulationWindow`) |
 | Engine proposal | `engine_advisor.py` (options, choice, guest line), `engine_advisor_seeds.py` (seed rows), `engine_advice_text.py` (its texts), `engine_advice_view.py` (`EngineAdviceView`); `tools/engine_advice.py` prints it |
@@ -346,10 +346,12 @@ is copied in once), `.generation_logs/` (logs, exit codes, `ACTIVE_RUN.json`),
 `test_pi_count_notice_controls`, `test_engine_advisor`, `test_engine_advice_gui`, `test_native_plan`,
 `test_primesieve_native_controls`, `test_generation_ram_guard`, `test_run_eta`, `test_pipeline_form_layout`,
 `test_width_advisor`, `test_width_advice_gui`, `test_quick_auto_split`, `test_target_planner`, `test_target_plan_costs`,
-`test_target_plan_text`, `test_target_planner_gui`, `test_quick_number`.
+`test_target_plan_text`, `test_target_planner_gui`, `test_quick_number`, `test_cpu_load` (D, E).
 
 ## Known gaps
 
+- The time model calibrates from every row of `benchmark_log.csv`, whichever computer wrote it:
+  rows carry `machine_id`, but rows of other computers are not left out yet.
 - The target planner checks targets on the window grid: a target narrower than a window still
   costs a whole window with either method. Pseudosquares results are not stored, so their
   targets come back in the next plan. Use fills one run at a time; running the whole plan is

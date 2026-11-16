@@ -1424,7 +1424,12 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
   i18n.py                       Translator: loads one of two static locale files
   windows_hardware.py           Windows OS, CPU model, physical cores (ctypes
                               GetLogicalProcessorInformationEx), threads and RAM
-                              total/free (GlobalMemoryStatusEx); no admin, no WSL
+                              total/free (GlobalMemoryStatusEx); no admin, no WSL;
+                              this_machine_id(): 12 hex digits of the SHA-256 of
+                              the MachineGuid, the machine_id of benchmark rows
+  cpu_load.py                   whole-Windows CPU counters (GetSystemTimes) and the
+                              app-wide sampler started with the app: the busy share
+                              over the seconds before a launch
   background.py                run_in_background()/PersistentWorker -- shared
                               background-job helpers used by any tab that launches a
                               one-shot call or a queue of same-kind jobs off the Tk
@@ -1715,9 +1720,12 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               folder's legacy .portal_generation_settings.json
   wsl_command.py                Windows -> WSL paths, .generation_logs/ log/exit files,
                               the logged `wsl.exe -e bash -c` wrapper with its env
-                              prefix (build_wsl_logged_command)
-  logged_runners.py             WslLoggedRunner (log-file tailing) and
-                              LocalLoggedRunner (piped local subprocess)
+                              prefix (build_wsl_logged_command), which names the
+                              machine id, the CPU load before the launch and the
+                              run's .load file (prime_sieve/run_load.py)
+  logged_runners.py             WslLoggedRunner (log-file tailing; keeps the run's
+                              .load file of CPU counters) and LocalLoggedRunner
+                              (piped local subprocess)
   engine_argv.py                script paths and argv builders for every engine and
                               tool launched in WSL, constellation checkpoint read,
                               pip-install argv
@@ -2782,6 +2790,11 @@ prime_sieve/                 sieve and orchestration pipeline (invoked via WSL)
                               run_purpose()/row_purpose(): a benchmark run or a
                               storage run
                               (unitTests/test_benchmark_log_schema.py)
+  run_load.py                the machine_id, cpu_busy_before_pct and
+                              cpu_busy_during_pct of a row: read from the
+                              environment and the run's .load file the GUI keeps;
+                              blank for runs started outside the GUI
+                              (unitTests/test_run_load.py)
   floor_meta_store.py        reads and appends a floor's 10p{N}/floor_meta.json (the
                               copy of its benchmark_log.csv rows); every engine's
                               benchmark writer appends the row it logs, idempotent by
