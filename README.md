@@ -2181,7 +2181,7 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               description, author with e-mail/GitHub/license links,
                               related projects, "This computer" (read in the
                               background when the tab is first shown, Refresh and copy
-                              glyphs), and NOTICE.md read-only
+                              glyphs, the WSL RAM limit row), and NOTICE.md read-only
   system_info.py              the hardware probe: Windows (core/windows_hardware.py),
                               one wsl.exe call for distro, kernel, nproc, MemTotal and
                               MemAvailable, and [wsl2] memory=/processors= of
@@ -2189,6 +2189,15 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
   system_info_text.py         "This computer" lines: Windows, WSL and the WSL RAM
                               limit as a share of Windows RAM with its source
                               (.wslconfig memory= or the WSL default)
+  wslconfig_edit.py           changes the WSL RAM limit: proposed limit (Windows RAM
+                              minus max(3 GiB, 25 %)), range from WSL's default (half
+                              the RAM) to the RAM, [wsl2] memory= set with the rest
+                              of .wslconfig kept, backup + one-rename write, refusal
+                              when the file changed meanwhile, wsl --shutdown
+  wsl_limit_row.py            WslLimitRow -- "This computer" row: GB field, proposal,
+                              Save (warns above the proposal, asks with the changed
+                              lines, writes, then offers a
+                              WSL restart unless a Generation job runs)
 
   primeatlas/benchmark/         "Benchmark" tab
   benchmark_tab.py             BenchmarkTab -- the Benchmark tab (three charts: whole run

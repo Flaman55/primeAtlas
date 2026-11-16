@@ -24,7 +24,9 @@ D. About -> This computer: building the app reads nothing about the hardware (no
    at launch); showing the About tab reads it once in the background and shows
    system_info_lines() of the result; showing the tab again does not read again; the
    Refresh glyph reads again and shows the new result; the copy glyph puts the shown lines
-   on the clipboard.
+   on the clipboard. The frame holds the WSL RAM limit row (wsl_limit_row.WslLimitRow,
+   tested in test_wslconfig_edit.py): after a read it offers the proposal, it sees the
+   Generation tab's running jobs, and a saved limit reads the hardware again.
 
 Usage:
     python unitTests/test_about_tab.py
@@ -390,6 +392,17 @@ def _test_system_frame(app, about, reads):
         _wait(app, lambda: "CPU read 2" in str(shown.cget("text")))
         check(len(reads) == 2 and "CPU read 2" in str(shown.cget("text")),
               f"Refresh reads again and shows the new result ({len(reads)} reads)")
+    row = getattr(about, "wsl_limit", None)
+    check(row is not None and str(row.master) == str(shown.master),
+          "a WSL RAM limit row sits in the This computer frame")
+    if row is not None:
+        check(row.value_var.get() == "12",
+              f"after a read it offers the proposal for 16 GiB, 12 GB ({row.value_var.get()!r})")
+        check(row._running_jobs() == [], "it sees no running Generation job")
+        count = len(reads)
+        row._on_saved()
+        _wait(app, lambda: len(reads) > count)
+        check(len(reads) == count + 1, "a saved limit reads the hardware again")
     copy = getattr(about, "system_copy", None)
     check(copy is not None and str(copy.cget("text")) == "⧉",
           "a copy glyph sits next to the hardware info")

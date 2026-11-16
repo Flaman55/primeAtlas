@@ -58,6 +58,11 @@ class SingleTabsSectionMixin:
     def _build_about_tab(self):
         """The last main tab, see primeatlas/about/about_tab.py."""
         from primeatlas.about.about_tab import AboutTab
+        from primeatlas.generation.close_guard import running_jobs
+        def gen_jobs():
+            # Looked up per call: the Generation tab may be built after this one.
+            gen_tab = getattr(self, "generation_tab_widget", None)
+            return running_jobs(gen_tab) if gen_tab is not None else []
         self.about_tab_widget = AboutTab(self._scroll_body("about_tab"), repo_root=_dyn.REPO_DIR,
-                                         translator=_dyn.TRANSLATOR)
+                                         translator=_dyn.TRANSLATOR, running_jobs=gen_jobs)
         self.about_tab_widget.pack(fill="both", expand=True)
