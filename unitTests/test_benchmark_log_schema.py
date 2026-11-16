@@ -203,6 +203,11 @@ def _test_engine_version_writers():
           and orchestrator_v3.scanner_write_threads(
               "v6", {"PRIMEATLAS_V6_WRITE_THREADS": "3"}) == 3,
           "v6 writes on its write-thread knob (default 8)")
+    check(orchestrator_v3.scanner_write_threads("v7.2", {}) == orchestrator_v3.scanner_write_threads(
+              "v7", {}) and orchestrator_v3.scanner_write_threads(
+              "v7.2", {"PRIMEATLAS_V6_WRITE_THREADS": "3"}) == orchestrator_v3.scanner_write_threads(
+              "v7", {"PRIMEATLAS_V6_WRITE_THREADS": "3"}),
+          "v7.2 writes on v7's write-thread knob")
     check(orchestrator_v3.scanner_write_threads("v5", {}) == 8
           and orchestrator_v3.scanner_write_threads(
               "v5", {"PRIMEATLAS_V5_WRITE_THREADS": "3"}) == 3

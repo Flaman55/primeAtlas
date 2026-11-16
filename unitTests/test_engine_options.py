@@ -107,6 +107,12 @@ def check_mirrors():
     import generation_stop
     passed &= check(generation_stop.scanner_script("v7") == "prime_sieve_v7_4.py",
                     "the save-point stop knows v7's scanner script")
+    passed &= check(re.search(r'^elif SCANNER_VERSION == "v7\.2":\n    import prime_sieve_v7_2 as '
+                              r'prime_sieve_module', src, re.MULTILINE) is not None
+                    and generation_stop.scanner_script("v7.2") == "prime_sieve_v7_2.py"
+                    and "v7.2" not in eo.ENGINES,
+                    "v7.2 runs from the orchestrator and stops at a save point (A/B against v7.4), "
+                    "not offered in the GUI")
     passed &= check((eo.PT1_B_ENV, eo.PT1_CHUNK_KB_ENV) == (pt1_plan.B_ENV, pt1_plan.CHUNK_KB_ENV),
                     "pt1 env names match pt1_plan.py")
     passed &= check(d["pt1_b"] == 0 and d["pt1_chunk_kb"] == pt1_plan.DEFAULT_CHUNK_KB,
