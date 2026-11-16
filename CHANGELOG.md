@@ -287,6 +287,24 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   Linia propozycji szerokości używa tego samego limitu i tego samego priorytetu, a dodatkowe
   okna podaje, gdy są.
 
+### +14 — Benchmark: every run records its computer and the CPU load around it
+
+- English: Every run started from Atlas now logs three more columns in benchmark_log.csv: the
+  computer it ran on (a short id derived from Windows, not the computer's name), how busy the
+  whole CPU was in the 5 seconds before the launch, and how busy it was while the run ran
+  (Atlas's own work included). Atlas reads them from Windows without admin rights. The
+  Benchmark table shows them as Computer, CPU before and CPU during, in the run group, and so
+  do the CSV, HTML and PDF exports. About → This computer shows the id this computer's rows
+  carry. Older rows and runs started outside Atlas keep these columns blank.
+- Polski: Każdy przebieg uruchomiony z Atlasa zapisuje teraz w benchmark_log.csv trzy kolejne
+  kolumny: komputer, na którym działał (krótki identyfikator wyliczony z Windows, nie nazwa
+  komputera), jak bardzo był zajęty cały procesor przez 5 sekund przed startem i jak bardzo w
+  trakcie przebiegu (razem z pracą samego Atlasa). Atlas odczytuje je z Windows bez uprawnień
+  administratora. Tabela Benchmark pokazuje je w grupie przebiegu jako Komputer, CPU przed i
+  CPU w trakcie, podobnie eksport CSV, HTML i PDF. O programie → Ten komputer pokazuje
+  identyfikator, który niosą wiersze tego komputera. Starsze wiersze i przebiegi uruchomione
+  poza Atlasem mają te kolumny puste.
+
 ## 1.4.0 — 2026-11-14
 
 ### +1 — Research → Irreducibility: radices, comparison, comb reading, ranges, arithmetic

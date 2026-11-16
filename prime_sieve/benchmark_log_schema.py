@@ -53,6 +53,9 @@ Column notes:
   run_verify.py), which also logs its own row (engine pt1_verify or v73_verify, its time in
   verify_seconds), or in older rows the proof inside the scan. The Benchmark tab draws such
   a row with and without it (proof_rows.py).
+- machine_id, cpu_busy_before_pct, cpu_busy_during_pct: which computer ran the run and how
+  busy the whole Windows CPU was before it and while it ran, as the GUI measured them
+  (run_load.py); blank for runs started outside the GUI.
 Rows written before a column existed keep it blank: a migration never guesses old values,
 and a blank run_status means completed.
 
@@ -70,7 +73,7 @@ BENCHMARK_FIELDNAMES = [
     "loop_seconds_per_window", "write_files", "base_gen_seconds", "sieve_seconds",
     "write_seconds", "bytes_written", "engine", "numbers_processed", "run_status",
     "verify_seconds", "engine_version", "threads", "write_threads", "sieve_wall_seconds",
-    "run_purpose", "proof_seconds",
+    "run_purpose", "proof_seconds", "machine_id", "cpu_busy_before_pct", "cpu_busy_during_pct",
 ]
 
 ENGINE_PRIMESIEVE_ATLAS = "primesieve"

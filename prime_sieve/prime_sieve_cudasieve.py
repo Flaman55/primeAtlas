@@ -10,6 +10,7 @@ import sys
 import time
 
 import window_sharding
+import run_load
 from benchmark_log_schema import BENCHMARK_FIELDNAMES, run_purpose, THREADS_GPU, ensure_benchmark_log_schema
 from floor_meta_store import append_benchmark_row_to_floor_meta
 
@@ -240,6 +241,7 @@ def write_benchmark_row(base_exponent, target_idx_start, target_idx_count, total
                 "write_files": "1" if write_files else "0",
                 "run_purpose": run_purpose(write_files),
             }
+            row.update(run_load.row_fields(os.environ))
             writer.writerow(row)
         print(f"[BENCHMARK] logged to {log_path} (for cross-floor growth analysis)")
         append_benchmark_row_to_floor_meta(portal_folder, base_exponent, row)

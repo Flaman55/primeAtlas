@@ -18,7 +18,9 @@ B. Values: a pipeline row (session time and speed win over the instance's), a na
    (no speed), a build commit kept in the engine name, two instances in the threads, an
    old hybrid row with its exact count; raw for the CSV, shown for the tables (grouped
    thousands, 10^n numbers, translated purpose and status, a dash when missing); the sieve
-   speed equals the sieve chart's value and the run speed the whole-run chart's.
+   speed equals the sieve chart's value and the run speed the whole-run chart's. The run
+   group ends with the machine id and the CPU load before and during the run (shown with %;
+   a dash in rows from before those columns).
    A pt1 run with the verification after it (proof_seconds, part of its times): the run speed
    with it, the speed without it (the chart's P line), the speed it costs (without less
    with, in n/s), the verification
@@ -81,7 +83,9 @@ PIPELINE = {"run_timestamp_utc": "2026-11-10 10:00:00 UTC", "base_exponent": "28
             "base_gen_seconds": "0.010", "sieve_seconds": "80.0", "write_seconds": "20.0",
             "bytes_written": "500000000", "engine": "v7", "numbers_processed": "10000000000",
             "run_status": "completed", "engine_version": "v7.2", "threads": "24",
-            "write_threads": "4", "sieve_wall_seconds": "81.0", "run_purpose": "storage"}
+            "write_threads": "4", "sieve_wall_seconds": "81.0", "run_purpose": "storage",
+            "machine_id": "3f9a0c1d2e4b", "cpu_busy_before_pct": "4.2",
+            "cpu_busy_during_pct": "97.5"}
 NATIVE = {"run_timestamp_utc": "2026-11-10 19:51:07 UTC", "base_exponent": "33",
           "target_idx_start": "0", "target_idx_end": "99", "windows_written": "0",
           "total_seconds": "46.867", "total_primes": "13155690", "max_child_rss_mb": "3604.8",
@@ -131,7 +135,7 @@ def part_a():
           "the tree's columns are the report groups' columns in order")
     check(tc.EXPORT_COLUMNS == ("floor", "run") + tc.TREE_COLUMNS,
           "the export puts floor and run in front of the tree's columns")
-    check(len(tc.EXPORT_COLUMNS) <= 23, f"at most 23 export columns ({len(tc.EXPORT_COLUMNS)})")
+    check(len(tc.EXPORT_COLUMNS) <= 26, f"at most 26 export columns ({len(tc.EXPORT_COLUMNS)})")
     for column in DROPPED:
         check(column not in tc.EXPORT_COLUMNS, f"{column} is not a column of its own")
     for title, columns in tc.report_tables():
@@ -171,6 +175,12 @@ def part_b():
     check(tc.shown(pipe, "numbers", t) == "10^10", "shown numbers as 10^n")
     check(tc.shown(pipe, "purpose", t) == t("bench.purpose_storage"), "purpose translated")
     check(tc.shown(pipe, "status", t) == t("bench.run_status_completed"), "status translated")
+    check(tc.raw(pipe, "machine") == "3f9a0c1d2e4b" and tc.raw(pipe, "cpu_before") == "4.2"
+          and tc.raw(pipe, "cpu_during") == "97.5", "machine and CPU load raw")
+    check(tc.shown(pipe, "cpu_before", t) == "4.2%" and tc.shown(pipe, "cpu_during", t) == "97.5%"
+          and tc.shown(pipe, "machine", t) == "3f9a0c1d2e4b", "CPU load shown as a percentage")
+    check(tc.GROUPS[1][1][-3:] == ("machine", "cpu_before", "cpu_during"),
+          "the machine and CPU load close the run group")
     check(float(tc.raw(pipe, "sieve_nps")) == round(benchmark.line_value("sieve")(pipe)),
           "sieve speed is the sieve chart's value")
     check(float(tc.raw(pipe, "run_nps")) == round(benchmark.line_value("growth")(pipe)),

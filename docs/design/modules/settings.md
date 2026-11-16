@@ -38,7 +38,8 @@ Pseudosquares Prime Sieve program (path, version, build commit) and warns when t
 the pinned commit.
 
 This computer (About): `system_info.read_system_info()` reads Windows in this process
-(`core/windows_hardware.py`: OS, CPU model, physical cores, threads, RAM total and free), WSL with one
+(`core/windows_hardware.py`: OS, CPU model, physical cores, threads, RAM total and free, and the
+computer's id that its benchmark rows carry as `machine_id`), WSL with one
 `wsl.exe` call (distro, kernel, `nproc`, MemTotal, MemAvailable of the default distro) and the
 `[wsl2]` `memory=` and `processors=` of `%UserProfile%\.wslconfig`. It runs on a background thread the
 first time the About page is selected (reading starts WSL, so the app launch never does) and again

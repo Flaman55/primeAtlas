@@ -17,6 +17,8 @@ A also: run_purpose()/row_purpose() -- an explicit run_purpose wins, a row from 
    column is a benchmark when write_files is 0 and a storage run otherwise.
 E. Every row writer fills engine_version; orchestrator_v3 takes it from the scanner
    module's own VERSION (v5.1, v6.0, ...), so the engine files stay untouched.
+F. Every row writer adds run_load.row_fields(os.environ) (machine id, CPU busy before and
+   during the run); a native row written with them in the environment carries them.
 
 Usage:
     python unitTests/test_benchmark_log_schema.py
@@ -45,7 +47,7 @@ LIVE_HEADER = [
     "loop_seconds_per_window", "write_files", "base_gen_seconds", "sieve_seconds",
     "write_seconds", "bytes_written", "engine", "numbers_processed", "run_status",
     "verify_seconds", "engine_version", "threads", "write_threads", "sieve_wall_seconds",
-    "run_purpose", "proof_seconds",
+    "run_purpose", "proof_seconds", "machine_id", "cpu_busy_before_pct", "cpu_busy_during_pct",
 ]
 OLD_ROW = {"run_timestamp_utc": "2026-01-01 00:00:00 UTC", "base_exponent": "12",
            "windows_written": "7", "total_primes": "70", "total_seconds": "3.5"}
@@ -225,6 +227,39 @@ def _test_engine_version_writers():
               f"{name} writes threads and write_threads in its row")
 
 
+def _test_run_load_writers():
+    print("\n--- F. every row writer fills the machine and CPU load columns ---")
+    for name in ("orchestrator_v3.py", "prime_sieve_primesieve.py", "prime_sieve_cudasieve.py",
+                 "hybrid_sieve.py", "native_tool_run.py"):
+        with open(os.path.join(_REPO_ROOT, "prime_sieve", name), encoding="utf-8") as f:
+            text = f.read()
+        check("run_load.row_fields(os.environ)" in text,
+              f"{name} adds run_load.row_fields(os.environ) to its row")
+    import native_tool_run
+    import run_load
+    names = (run_load.MACHINE_ID_ENV, run_load.CPU_BUSY_BEFORE_ENV)
+    saved = {name: os.environ.get(name) for name in names}
+    folder = tempfile.mkdtemp()
+    try:
+        os.environ[run_load.MACHINE_ID_ENV] = "0123456789ab"
+        os.environ[run_load.CPU_BUSY_BEFORE_ENV] = "4.25"
+        row = native_tool_run.benchmark_row("count", "primesieve_count", 12, 0, 1, 0, 10, 1.0,
+                                            4, 1, "x", None, None)
+        native_tool_run.append_row(folder, row)
+        _fields, rows = _read_log(os.path.join(folder, "benchmark_log.csv"))
+        check(rows and rows[-1]["machine_id"] == "0123456789ab"
+              and rows[-1]["cpu_busy_before_pct"] == "4.2",
+              f"a native row carries the machine id and the before value "
+              f"({rows[-1] if rows else None})")
+    finally:
+        for name, value in saved.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+        shutil.rmtree(folder, ignore_errors=True)
+
+
 def main():
     try:
         import benchmark_log_schema as schema
@@ -236,6 +271,7 @@ def main():
         _test_migration(schema)
         _test_floor_meta_new_log(schema)
         _test_engine_version_writers()
+        _test_run_load_writers()
     print()
     if failures:
         print(f"{len(failures)} FAILURE(S)")

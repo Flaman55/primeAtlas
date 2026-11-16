@@ -1,6 +1,6 @@
 """
 system_info_text.py -- the About tab's "This computer" lines from a system_info.SystemInfo:
-Windows (OS, CPU, RAM), WSL (distro, kernel, what it sees) and the WSL RAM limit as a share
+Windows (OS, CPU, RAM, the computer's id in benchmark rows), WSL (distro, kernel, what it sees) and the WSL RAM limit as a share
 of the Windows RAM with where it comes from (.wslconfig memory= or the WSL default).
 A value that could not be read shows as "unknown".
 """
@@ -22,6 +22,7 @@ def system_info_lines(info, T):
         T("about.system_cpu", model=_known(w.cpu_model, T), cores=_known(w.cores, T),
           threads=_known(w.threads, T)),
         T("about.system_ram", total=_gib(w.ram_total, T), free=_gib(w.ram_free, T)),
+        T("about.system_machine_id", machine_id=_known(w.machine_id, T)),
     ]
     if wsl is None:
         lines.append(T("about.system_wsl_unreachable"))

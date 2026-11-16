@@ -63,7 +63,8 @@ whole-run chart's value; numbers / `total_seconds` for a row without it), run n/
 verification after a pt1 run (the P line's value) and the speed it costs (that speed less run
 n/s; blank for other rows), time (session, else the
 run's), s/window (session, else the run's), numbers (`10^10`), windows (`1000 (0-999)`); purpose,
-status (blank = completed), threads (`2x24 thr, write 4`); the phases (sieve, sieve with startup,
+status (blank = completed), threads (`2x24 thr, write 4`), computer (`machine_id`), CPU before and
+CPU during (`cpu_busy_before_pct`, `cpu_busy_during_pct`, shown with `%`); the phases (sieve, sieve with startup,
 write, write MB/s, verify: `proof_seconds` when the row has one, else `verify_seconds`, peak
 RAM); the results (primes, pi(L), L). A log column that
 repeats a shown one under another name or is a quotient of two (`write_files`, `run_purpose`,

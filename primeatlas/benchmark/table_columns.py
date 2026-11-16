@@ -13,7 +13,9 @@ else total_seconds), seconds per window (loop_seconds_per_window, else seconds_p
 else time / windows), the numbers covered (line_names.width_label()), the windows ("1000
 (0-999)": windows_written, or the range's count for a run that writes none); then what
 kind of run it was: purpose (row_purpose(): storage or benchmark), status (blank = completed),
-threads (line_names.threads_label(): instances, sieve and write threads); then the phases:
+threads (line_names.threads_label(): instances, sieve and write threads), the computer
+(machine_id) and how busy its whole CPU was before and during the run (run_load.py, in %);
+then the phases:
 sieve, sieve with startup, write, write MB/s, verify (the verification after a pt1 run when
 the row has one, else verify_seconds), peak RAM; last the results: primes, pi(L), L.
 
@@ -45,7 +47,8 @@ GROUPS = (
     ("bench.pdf_table_speed", (ENGINE, "sieve_nps", "run_nps", "run_nps_unverified",
                                "verify_drop", "seconds",
                                "seconds_per_window", "numbers", "windows")),
-    ("bench.pdf_table_run", ("purpose", "status", "threads")),
+    ("bench.pdf_table_run", ("purpose", "status", "threads", "machine", "cpu_before",
+                             "cpu_during")),
     ("bench.pdf_table_phases", ("sieve_seconds", "sieve_wall_seconds", "write_seconds",
                                 "write_mbps", "verify_seconds", "ram_mb")),
     ("bench.pdf_table_results", ("primes", "pi_l", "l_final")),
@@ -57,7 +60,8 @@ EXPORT_COLUMNS = KEY_COLUMNS + TREE_COLUMNS[1:]
 _COPIED = {"sieve_seconds": "sieve_seconds", "sieve_wall_seconds": "sieve_wall_seconds",
            "write_seconds": "write_seconds", "ram_mb": "max_child_rss_mb",
            "primes": "total_primes", "pi_l": "sieving_primes_count", "l_final": "l_final",
-           RUN: "run_timestamp_utc", FLOOR: "base_exponent"}
+           RUN: "run_timestamp_utc", FLOOR: "base_exponent", "machine": "machine_id",
+           "cpu_before": "cpu_busy_before_pct", "cpu_during": "cpu_busy_during_pct"}
 
 
 def header_key(column):
@@ -208,6 +212,8 @@ _SHOWN = {
     "numbers": lambda row, t: line_names.width_label(numbers(row)),
     "purpose": lambda row, t: t(f"bench.purpose_{schema.row_purpose(row)}"),
     "status": lambda row, t: t(f"bench.run_status_{_status(row)}"),
+    "cpu_before": lambda row, t: f"{raw(row, 'cpu_before')}%",
+    "cpu_during": lambda row, t: f"{raw(row, 'cpu_during')}%",
 }
 
 

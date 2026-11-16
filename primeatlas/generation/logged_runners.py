@@ -12,7 +12,10 @@ import subprocess
 import threading
 import time
 
-from .wsl_command import _popen_kwargs_no_window
+import run_load
+
+from ..core import cpu_load
+from .wsl_command import _popen_kwargs_no_window, run_load_path
 
 
 class WslLoggedRunner:
@@ -49,11 +52,18 @@ class WslLoggedRunner:
 
     No tkinter dependency -- exercised directly (substituting a plain `bash -c` command
     for the `wsl.exe -e bash -c` form, since this class only cares about the log/exit
-    FILES, not what actually wrote them) without a display or a real WSL install."""
+    FILES, not what actually wrote them) without a display or a real WSL install.
+
+    The runner also keeps the run's load file (wsl_command.run_load_path(), run_load.py):
+    the Windows CPU counters, written before the process starts and every
+    LOAD_WRITE_SECONDS while it runs, removed with the log at the end; with no counters
+    (off Windows) there is no file."""
 
     POLL_INTERVAL = 0.2
     EXIT_MARKER_GRACE_SECONDS = 2.0
     TAIL_LINES = 50
+    LOAD_WRITE_SECONDS = 1.0
+    read_counters = staticmethod(cpu_load.read_system_counters)
 
     def __init__(self, cmd, log_path, exit_path, output_queue, kill_pattern=None):
         self.cmd = cmd
@@ -61,6 +71,8 @@ class WslLoggedRunner:
         self.exit_path = exit_path
         self.output_queue = output_queue
         self.kill_pattern = kill_pattern
+        self.load_path = run_load_path(log_path)
+        self._load_written_at = None
         self.proc = None
         self._thread = None
         # The last TAIL_LINES output lines, for the close guard's stage label
@@ -80,12 +92,26 @@ class WslLoggedRunner:
             *complete, self._tail_partial = (self._tail_partial + chunk).split("\n")
             self._tail.extend(complete)
 
+    def _write_load(self):
+        """Writes the current CPU counters to the load file; a failed read or write skips
+        this one update (the engine then keeps the last pair, or leaves its column blank)."""
+        self._load_written_at = time.monotonic()
+        counters = self.read_counters()
+        if counters is None:
+            return
+        try:
+            run_load.write_counters(self.load_path, counters)
+        except OSError:
+            pass
+
     def start(self):
         self.output_queue.put(f"$ {' '.join(self.cmd)}\n")
+        self._write_load()
         try:
             self.proc = subprocess.Popen(self.cmd, **_popen_kwargs_no_window())
         except OSError as e:
             self.output_queue.put(f"[!] Could not start the process: {e}\n")
+            self._cleanup_files()
             self.output_queue.put(("__exit__", None))
             return
         self._thread = threading.Thread(target=self._tail_loop, daemon=True)
@@ -97,6 +123,8 @@ class WslLoggedRunner:
         try:
             while True:
                 offset = self._drain_new_log_bytes(offset)
+                if time.monotonic() - self._load_written_at >= self.LOAD_WRITE_SECONDS:
+                    self._write_load()
                 if os.path.exists(self.exit_path):
                     time.sleep(0.1)  # let a just-flushed final write land before the
                                       # last drain, so the tail-end of the script's
@@ -153,7 +181,7 @@ class WslLoggedRunner:
         """Best-effort delete of the log/exit files once fully drained and reported --
         keeps .generation_logs/ from growing unbounded across months of runs. The GUI
         already shows the full output live in its own pane, so nothing is lost."""
-        for path in (self.log_path, self.exit_path):
+        for path in (self.log_path, self.exit_path, self.load_path):
             try:
                 os.remove(path)
             except OSError:

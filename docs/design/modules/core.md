@@ -14,7 +14,7 @@ app-wide widgets and the background coordinators for floor totals and search. GU
 | Storage reads | `storage.py` (floor listing, totals cache, `LOW_FLOOR_CUTOFF`) |
 | Widgets | `widgets.py` (HeightGrip, ScrollPad, ScrollablePage, FlowRow), `wrapped_heading.py` (WrappedHeading, a Treeview heading row whose headings wrap to two lines; `heading_wrap.py` the pure wrapping and width fit), `info_tip.py` (InfoTip, the "i" marker with a hover text kept inside the app window), `number_text.py` (`read_number`, the reader of a whole number in any notation, no tkinter), `number_field.py` (`attach`, the number field: red, "Could be" popup, hover tip of the accepted forms), `wrapped_check.py` (a Checkbutton whose text wraps at its parent's width), `base_tab.py` (`BaseTab`) |
 | Background work | `totals_search_coordinator.py` (floor totals and prime/constellation search workers), `background.py` |
-| Other | `version.py` (version from CHANGELOG.md: release + merge count, commit label), `pdf_writer.py` (dependency-free PDF), `windows_hardware.py` (`read_windows_info`, `windows_ram`: Windows OS, CPU, cores, threads, RAM total and free, no admin) |
+| Other | `version.py` (version from CHANGELOG.md: release + merge count, commit label), `pdf_writer.py` (dependency-free PDF), `windows_hardware.py` (`read_windows_info`, `windows_ram`: Windows OS, CPU, cores, threads, RAM total and free, no admin; `this_machine_id()`: the first 12 hex digits of the SHA-256 of the MachineGuid, so benchmark rows tell computers apart without naming one), `cpu_load.py` (`read_system_counters()`: whole-Windows idle and total CPU ticks from `GetSystemTimes`; `CpuSampler`, started once by the app on a daemon thread, one sample a second, 30 s kept; `busy_before_launch()`: the busy share over the last 5 s) |
 
 ## Contract
 
@@ -52,7 +52,7 @@ Theme, language, font scale and ScrollPad width live in `AppSettings`; texts in 
 `test_ui_settings`, `test_theme_readability`, `test_scroll_pad`, `test_scrollable_page`, `test_tree_scroll_to_top`,
 `test_settings_scroll`, `test_ui_state`, `test_ui_state_app`, `test_storage`, `test_search_worker`, `test_window_centering`, `test_pdf_table`,
 `test_number_text`, `test_number_field`, `test_number_field_coverage`, `test_number_fields_app`,
-`test_info_tip`, `test_system_info` (B).
+`test_info_tip`, `test_system_info` (B), `test_cpu_load` (A-C, F).
 
 ## Number fields
 

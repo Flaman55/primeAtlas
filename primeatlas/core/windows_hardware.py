@@ -1,9 +1,12 @@
 """
 windows_hardware.py -- the Windows side of the computer Atlas runs on: OS, CPU model,
-physical cores, threads, RAM total and free. Read in this process with no admin rights and
-without WSL; a value that cannot be read is None, never a guess.
+physical cores, threads, RAM total and free, and this computer's id for benchmark rows. Read
+in this process with no admin rights and without WSL; a value that cannot be read is None,
+never a guess.
 """
 import ctypes
+import functools
+import hashlib
 import os
 import platform
 from dataclasses import dataclass
@@ -17,6 +20,7 @@ class WindowsInfo:
     threads: int = None
     ram_total: int = None
     ram_free: int = None
+    machine_id: str = None
 
 
 def _os_name():
@@ -86,4 +90,36 @@ def windows_ram():
 def read_windows_info():
     total, free = windows_ram()
     return WindowsInfo(os_name=_os_name(), cpu_model=_cpu_model(), cores=_physical_cores(),
-                       threads=os.cpu_count(), ram_total=total, ram_free=free)
+                       threads=os.cpu_count(), ram_total=total, ram_free=free,
+                       machine_id=this_machine_id())
+
+
+MACHINE_ID_DIGITS = 12
+
+
+def machine_id(guid):
+    """The id of the computer whose Windows MachineGuid is `guid`: the first MACHINE_ID_DIGITS
+    hex digits of its SHA-256, so benchmark rows tell computers apart without naming the
+    computer or carrying the GUID itself. None for no GUID."""
+    text = str(guid or "").strip().lower()
+    if not text:
+        return None
+    return hashlib.sha256(text.encode("ascii", "replace")).hexdigest()[:MACHINE_ID_DIGITS]
+
+
+def _machine_guid():
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Cryptography", 0,
+                            winreg.KEY_READ | winreg.KEY_WOW64_64KEY) as key:
+            return str(winreg.QueryValueEx(key, "MachineGuid")[0])
+    except OSError:
+        return None
+
+
+@functools.lru_cache(maxsize=1)
+def this_machine_id():
+    """machine_id() of this computer, read once; None off Windows or when unreadable."""
+    if os.name != "nt":
+        return None
+    return machine_id(_machine_guid())
