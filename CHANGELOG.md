@@ -261,6 +261,32 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   którą WSL trzyma już w pamięci podręcznej plików, liczy się tylko po stronie WSL, więc
   odczyt może być zaniżony, nigdy zawyżony.
 
+### +13 — Quick-gen: Auto stops v7 at 10^11 numbers, Explore's Auto keeps the total
+
+- English: The Quick-gen Auto buttons propose at most 10,000 windows (10^11 numbers) per v7
+  run, even when RAM allows more: in benchmark runs a wider v7 run gains little speed beyond
+  it, while it takes more RAM. The limit is a new field in the advanced form, "v7 Auto: widest
+  run", and a wider width typed by hand still runs. In Explore with more than one iteration,
+  Auto now re-splits iterations × width into wider windows and fewer iterations, by priority:
+  exactly the same total (13 × 40,000 becomes 52 × 10,000, 13 × 1 becomes 1 × 13); when no
+  exact split saves iterations, the fewest iterations at the widest window with a few windows
+  more (2 × 997 under 500 becomes 4 × 499, 2 windows more); when neither fits in 100
+  iterations, the fields stay as typed. The dialog says which one it took. With one iteration
+  Auto fills the width as in Floor only. The width proposal line uses the same limit and the
+  same priority, and names the extra windows when there are any.
+- Polski: Przyciski Auto w Szybkim generowaniu proponują najwyżej 10 000 okien (10^11 liczb)
+  na przebieg v7, nawet gdy RAM pozwala na więcej: w pomiarach szerszy przebieg v7 prawie już
+  nie przyspiesza, a zajmuje więcej RAM-u. Limit to nowe pole w formularzu zaawansowanym,
+  „v7 Auto: najszerszy przebieg”, a szerokość wpisana ręcznie dalej działa. W Eksploracji z
+  więcej niż jedną iteracją Auto dzieli teraz iteracje × szerokość na szersze okna i mniej
+  iteracji, według priorytetu: dokładnie ta sama suma (13 × 40 000 daje 52 × 10 000, 13 × 1
+  daje 1 × 13); gdy dokładny podział nie oszczędza iteracji, najmniej iteracji przy
+  najszerszym oknie, o kilka okien więcej (2 × 997 przy 500 daje 4 × 499, o 2 okna więcej);
+  gdy żaden nie mieści się w 100 iteracjach, pola zostają jak wpisane. Okno mówi, który
+  wariant wybrało. Przy jednej iteracji Auto wypełnia szerokość jak w trybie Tylko piętro.
+  Linia propozycji szerokości używa tego samego limitu i tego samego priorytetu, a dodatkowe
+  okna podaje, gdy są.
+
 ## 1.4.0 — 2026-11-14
 
 ### +1 — Research → Irreducibility: radices, comparison, comb reading, ranges, arithmetic

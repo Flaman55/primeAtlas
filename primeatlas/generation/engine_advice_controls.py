@@ -223,7 +223,7 @@ class EngineAdviceControls:
         """width_advisor.WidthAdvice for the selected engine, or None."""
         fields = self._engine_fields
         engine = fields.engine()
-        engine_cap = engine_options.max_windows_per_run(engine)
+        engine_cap = engine_options.widest_run(fields.choice_for_engine(engine, None))
         cap = run_ram.max_windows_in_budget(
             lambda w: fields.choice_for_engine(engine, w), self._advice_free_ram, engine_cap,
             QUICK_GEN_MAX_WINDOW_WIDTH)

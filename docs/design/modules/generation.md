@@ -269,14 +269,25 @@ with its own Use button, proposes a width for the selected engine (`width_adviso
 | Quick-gen state | Proposal |
 |---|---|
 | Benchmark ticked, Floor or Explore | `BENCHMARK_WINDOWS` = 10,000 windows (10^11 numbers, arbitrary), lowered to the cap; the modelled speed now and then, and the note that one run's prep time stays the same; iterations unchanged |
-| Explore writing into the storage, iterations > 1 | the same total range in ceil(total / cap) iterations, the width rounded up (the total never shrinks); the modelled total time now and then; none when the iteration count stays or the model times it no faster |
+| Explore writing into the storage, iterations > 1 | `plan_split()` under the cap, by priority: exactly the same total range (`split_total()`: the smallest divisor of the total at least ceil(total / cap)), else the fewest runs ceil(total / cap) with the width rounded up and the extra windows named, else none; the modelled total time now and then; none when the iteration count stays or the model times it no faster |
 | Floor writing into the storage, one Explore iteration, other modes | none |
 
-The cap is the engine's per-run ceiling (`engine_options.max_windows_per_run()`) lowered to the
-widest run in the RAM budget (`run_ram.max_windows_in_budget()`; pt1 or no RAM reading: the
+The cap is the engine's widest run (`engine_options.widest_run()`: the per-run ceiling, for v7
+lowered to its `v7_auto_max_windows` knob, default 10,000 windows = 10^11 numbers, picked from
+benchmark runs where wider v7 runs stop gaining noticeable speed) lowered to the widest run in
+the RAM budget (`run_ram.max_windows_in_budget()`; pt1 or no RAM reading: the
 ceiling). A typed width at or above the target gives no proposal (never narrower). Without a
 calibration of the engine the line leaves out the speeds and times. Use writes the width, in
 Explore also the iteration count; nothing changes the fields otherwise.
+
+The Quick-gen Auto buttons size a run with `engine_options.recommend()`, capped at the same
+widest run. Floor only and Explore with one iteration fill the width with it. Explore with more
+iterations re-splits iterations x width with `plan_split()` under that width and the iteration
+field's ceiling (100), by priority: the exact total when it lowers the iterations (or brings a
+too-wide width under the widest run); else the fewest runs at the widest window, a few windows
+more (fewer than the new iteration count); else the fields as typed. The dialog says which.
+Range only reports the width. A width typed by hand may still
+go up to the per-run ceiling.
 
 ## Target planner
 
@@ -334,7 +345,7 @@ is copied in once), `.generation_logs/` (logs, exit codes, `ACTIVE_RUN.json`),
 `test_time_model`, `test_run_ram`, `test_free_ram`, `test_time_simulation`, `test_ui_state_app`, `test_pi_count_notice`,
 `test_pi_count_notice_controls`, `test_engine_advisor`, `test_engine_advice_gui`, `test_native_plan`,
 `test_primesieve_native_controls`, `test_generation_ram_guard`, `test_run_eta`, `test_pipeline_form_layout`,
-`test_width_advisor`, `test_width_advice_gui`, `test_target_planner`, `test_target_plan_costs`,
+`test_width_advisor`, `test_width_advice_gui`, `test_quick_auto_split`, `test_target_planner`, `test_target_plan_costs`,
 `test_target_plan_text`, `test_target_planner_gui`, `test_quick_number`.
 
 ## Known gaps

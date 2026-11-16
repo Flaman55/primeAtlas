@@ -9,9 +9,10 @@ prime_sieve_v7_4.py the PRIMEATLAS_V7_* knobs through work_plan_v7_2.py, prime_s
 the PRIMEATLAS_PT1_* knobs through pt1_plan.py, and orchestrator_v3.py the verification
 after a pt1 run through run_verify.py (PRIMEATLAS_PT1_VERIFY, a checkbox: CHECKBOX_KNOBS hold
 0 or 1; the method and pass come from Section D, PRIMEATLAS_VERIFY_*). v5, v6 and v7 have separate knob sets: their best values differ. The same variables are the command-line interface for
-runs started by hand. The RAM budget knob (percent of the RAM free in WSL that a run may
-use) only sizes the run on this side (recommend()); no engine reads it, so it has no
-environment variable. ENGINE_VERSIONS is the code version each engine name runs (shown next
+runs started by hand. The RAM budget knob (percent of the free RAM, the lower of WSL's and
+Windows', that a run may use) and v7's widest-run knob (the widest run Auto and the width
+proposal suggest, widest_run()) only size the run on this side; no engine reads them, so
+they have no environment variable. ENGINE_VERSIONS is the code version each engine name runs (shown next
 to the selector); the names stay what benchmark_log.csv and the storage folder record.
 
 Names and defaults mirror orchestrator_v3.py, work_plan_v5/_v6/_v7_2.py, pt1_plan.py,
@@ -63,6 +64,20 @@ def _bucketed_knobs(engine):
             f"{engine}_write_threads")
 
 
+# The widest v7 run the Auto buttons and the width proposal suggest, in windows. Default 10,000
+# (10^11 numbers): picked from benchmark runs, where wider v7 runs stop gaining noticeable speed
+# while their RAM keeps growing. A wider width typed by hand still runs. Sizes the run on this
+# side only, so it has no environment variable.
+V7_WIDEST_RUN_KNOB = "v7_auto_max_windows"
+DEFAULT_V7_WIDEST_RUN = 10_000
+
+
+def _v7_knobs():
+    knobs = _bucketed_knobs(ENGINE_V7)
+    at_25 = knobs.index(f"{ENGINE_V7}_windows_at_25") + 1
+    return knobs[:at_25] + (V7_WIDEST_RUN_KNOB,) + knobs[at_25:]
+
+
 # v7's jump gear (work_plan_v7_2.py): threshold in percent of the cost model (0 = off), the
 # model's block and landing costs, block length in percent of the model's optimum.
 _V7_JUMP_KNOBS = ("v7_jump_model_pct", "v7_jump_block_cost", "v7_jump_landing_cost_pct",
@@ -85,12 +100,12 @@ _ENGINE_KNOBS = {
     ENGINE_V41: (RAM_BUDGET_KNOB,),
     ENGINE_V5: _bucketed_knobs(ENGINE_V5) + (RAM_BUDGET_KNOB,),
     ENGINE_V6: _bucketed_knobs(ENGINE_V6) + (RAM_BUDGET_KNOB,),
-    ENGINE_V7: _bucketed_knobs(ENGINE_V7) + _V7_JUMP_KNOBS + (RAM_BUDGET_KNOB,),
+    ENGINE_V7: _v7_knobs() + _V7_JUMP_KNOBS + (RAM_BUDGET_KNOB,),
     ENGINE_PT1: _PT1_KNOBS,
     ENGINE_PT1_PSS: ("pt1_b", "pt1_chunk_kb"),   # proven in the pass: no verification switch
 }
 KNOB_KEYS = (_bucketed_knobs(ENGINE_V5) + _bucketed_knobs(ENGINE_V6)
-             + _bucketed_knobs(ENGINE_V7) + _V7_JUMP_KNOBS + _PT1_KNOBS
+             + _v7_knobs() + _V7_JUMP_KNOBS + _PT1_KNOBS
              + (RAM_BUDGET_KNOB,))
 # Settings keys the form persists next to the engine: the knobs and each bucketed engine's
 # knob profile (engine_presets.py).
@@ -109,6 +124,7 @@ DEFAULT_KNOBS = {
     "v7_jump_block_cost": 300,       # a: one block setup, in classic primes
     "v7_jump_landing_cost_pct": 10,  # b = 0.10: one landing, in classic primes
     "v7_block_model_pct": 100,       # block factor = the model's optimum f*
+    V7_WIDEST_RUN_KNOB: DEFAULT_V7_WIDEST_RUN,
     RAM_BUDGET_KNOB: round(run_budget.DEFAULT_SAFETY_FRACTION * 100),
 }
 _ZERO_ALLOWED = {"pt1_b", "v7_jump_model_pct", "v7_jump_landing_cost_pct"} | CHECKBOX_KNOBS
@@ -187,9 +203,19 @@ def max_windows_per_run(engine):
     return MAX_WINDOWS_PER_RUN[normalize_engine(engine)]
 
 
+def widest_run(choice):
+    """The widest run (windows) the Auto buttons and the width proposal suggest for this engine
+    and knobs: v7's widest-run knob, never above max_windows_per_run(); the per-run cap for
+    the other engines."""
+    cap = max_windows_per_run(choice.engine)
+    if choice.engine == ENGINE_V7:
+        return min(cap, choice.knobs[V7_WIDEST_RUN_KNOB])
+    return cap
+
+
 def recommend(available_ram_bytes, choice, base_exponent, window_m):
     """run_budget.RunBudget for one run with this engine and knobs, capped at
-    max_windows_per_run() and fitted into ram_budget_pct percent of available_ram_bytes;
+    widest_run() and fitted into ram_budget_pct percent of available_ram_bytes;
     None without a RAM reading. An unknown floor (None) sizes the run like a shallow
     floor."""
     floor = base_exponent if base_exponent is not None else 0
@@ -199,7 +225,7 @@ def recommend(available_ram_bytes, choice, base_exponent, window_m):
         bucket_mb=choice.knobs[f"{own}_bucket_mb"],
         target_at_25=choice.knobs[f"{own}_windows_at_25"],
         safety_fraction=choice.knobs[RAM_BUDGET_KNOB] / 100,
-        max_windows=max_windows_per_run(choice.engine))
+        max_windows=widest_run(choice))
 
 
 def bucket_knob(engine):

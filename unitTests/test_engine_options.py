@@ -8,7 +8,9 @@ back to the default; knob parsing accepts blanks (default) and positive integers
 field; the RAM budget knob is a percentage 1..100 (default from run_budget.py) read by
 v4.1 and v5, never by pt1, and reaches run_budget as safety_fraction; resolve() never fails (Restore has no form to report errors in); the per-run window
 cap is 1000 for v4.1 and higher for v5; recommend() passes the engine, floor and knobs on to
-run_budget and respects the cap; a ticked pt1 verification carries Section D's method and
+run_budget and respects the cap; v7's Auto stops at its widest-run knob (default 10,000 windows
+= 10^11 numbers, no environment variable), lower than RAM and the floor target allow, raised by
+the knob up to the per-run cap, while the other engines keep the per-run cap; a ticked pt1 verification carries Section D's method and
 pass (run_verify.py reads them back, an unticked one or another engine carries none);
 launch_env() always names the engine and adds the
 engine's own four knobs (segment, region, buckets, pieces per thread) for v5 and v6, plus v6's
@@ -138,6 +140,7 @@ def check_mirrors():
                                                       "ram_budget_pct")
                     and eo.engine_knob_keys("v7") == ("v7_segment_kb", "v7_region_kb",
                                                       "v7_bucket_mb", "v7_windows_at_25",
+                                                      "v7_auto_max_windows",
                                                       "v7_pieces_per_thread", "v7_write_threads",
                                                       "v7_jump_model_pct",
                                                       "v7_jump_block_cost",
@@ -274,6 +277,49 @@ def check_caps_and_recommend():
                     f"{large.windows})")
     rec = eo.recommend(GB // 2, eo.resolve({"engine": "pt1", "ram_budget_pct": "1"}), 29, W)
     passed &= check(rec.windows == cap, "pt1 ignores the RAM budget")
+    passed &= check_v7_widest_run()
+    return passed
+
+
+def check_v7_widest_run():
+    passed = True
+    key = "v7_auto_max_windows"
+    passed &= check(eo.DEFAULT_KNOBS[key] == 10_000 and eo.knob_range(key) == (1, None)
+                    and key not in eo.KNOB_ENVS["v7"]
+                    and all(key not in envs for envs in eo.KNOB_ENVS.values()),
+                    "v7 widest-run knob: default 10,000 windows, 1 or more, no environment "
+                    "variable")
+    v7 = eo.resolve({"engine": "v7"})
+    passed &= check(eo.widest_run(v7) == 10_000, f"v7 widest run {eo.widest_run(v7)}")
+    for engine in ("v4.1", "v5", "v6", "pt1", "pt1-pss"):
+        choice = eo.resolve({"engine": engine, key: "20"})
+        passed &= check(eo.widest_run(choice) == eo.max_windows_per_run(engine),
+                        f"{engine}: widest run is the per-run cap, the v7 knob is not read")
+    rec = eo.recommend(64 * GB, v7, 25, W)
+    passed &= check(rec.windows == 10_000,
+                    f"v7 @25, 64 GB (RAM and target allow 40,000): Auto stops at 10,000 ({rec})")
+    rec = eo.recommend(10 ** 13, v7, 30, W)
+    passed &= check(rec.windows == 10_000, f"v7 @30, 10 TB: still 10,000 ({rec})")
+    for knob, want in (("20000", 20_000), ("30", 30), ("500000", 40_000)):
+        choice = eo.resolve({"engine": "v7", key: knob})
+        rec = eo.recommend(10 ** 13, choice, 25, W)
+        passed &= check(eo.widest_run(choice) == min(int(knob), 100_000)
+                        and rec.windows == want,
+                        f"v7 knob {knob}: Auto gives {want} (the floor target), the knob never above the per-run cap "
+                        f"({rec})")
+    plain = run_budget.recommend_run(8 * GB, "v7", 25, W,
+                                     max_windows=eo.max_windows_per_run("v7"))
+    rec = eo.recommend(8 * GB, v7, 25, W)
+    passed &= check(plain.windows < 10_000 and rec == plain,
+                    f"v7 @25, 8 GB: RAM is lower than the knob and decides ({rec})")
+    plain = run_budget.recommend_run(64 * GB, "v7", 20, W,
+                                     max_windows=eo.max_windows_per_run("v7"))
+    rec = eo.recommend(64 * GB, v7, 20, W)
+    passed &= check(plain.windows < 10_000 and rec == plain,
+                    f"v7 @20: the floor target is lower than the knob and decides ({rec})")
+    v6 = eo.resolve({"engine": "v6"})
+    passed &= check(eo.recommend(64 * GB, v6, 25, W).windows == 40_000,
+                    "v6 @25, 64 GB: unchanged at 40,000")
     return passed
 
 

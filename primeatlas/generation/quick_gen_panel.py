@@ -12,9 +12,10 @@ from tkinter import ttk, messagebox
 
 from ..core import number_field
 from ..core.info_tip import InfoTip
+from ..core.number_text import number_value
 from ..core.storage import digit_count_floor, LOW_FLOOR_CUTOFF
 from ..core.ui_state import remember
-from . import engine_options
+from . import engine_options, width_advisor
 from .quick_number import _eval_quick_number
 from .window_planning import (QUICK_GEN_MAX_WINDOW_WIDTH, count_existing_windows,
                               find_continuation_target_idx, find_highest_populated_floor,
@@ -440,7 +441,8 @@ class QuickGenPanel:
         ttk.Button(frame, text=self.T("quick.auto_button"),
                    command=lambda: self._on_quick_auto_width_clicked(
                        self.quick_explore_width_var,
-                       self._quick_floor_of(self.quick_explore_floor_var))).pack(side="left")
+                       self._quick_floor_of(self.quick_explore_floor_var),
+                       self.quick_iterations_var)).pack(side="left")
         gap_row = ttk.Frame(outer)
         gap_row.grid(row=1, column=0, sticky="w", pady=(4, 0))
         ttk.Checkbutton(gap_row, text=self.T("quick.field_fill_gaps_first"),
@@ -761,27 +763,39 @@ class QuickGenPanel:
 
 
 
-    def _on_quick_auto_width_clicked(self, width_var, base_exponent=None):
+    def _on_quick_auto_width_clicked(self, width_var, base_exponent=None, iterations_var=None):
         """Auto button handler, shared by every mode's button (see
         _build_quick_mode_floor/_build_quick_mode_explore/_build_quick_mode_range).
         Queries the free RAM (estimate_free_ram_bytes: the lower of what WSL, where the sieve
-        runs, has available and what Windows has free) and turns it into a recommended window count (engine_options.recommend -- see that
-        function's docstring for exactly what it is and isn't accounting for).
+        runs, has available and what Windows has free) and turns it into the widest run that
+        fits (engine_options.recommend -- see that function's docstring for exactly what it is
+        and isn't accounting for; v7 stops at its widest-run knob).
 
         width_var is the Width spinbox's StringVar to fill in directly (Floor/
         Exploration modes); pass None for Range mode, which has no window-count
         field to fill -- there the recommendation is only reported via the dialog,
         for the person to factor into their own From/To choice.
 
+        iterations_var is Exploration's iteration field. One iteration: the width is filled
+        like Floor only. More: iterations x width is re-split under the widest run by
+        width_advisor.plan_split, at most QUICK_ITERATIONS_MAX iterations: the exact total
+        first, else the fewest runs with a few windows more, else the fields as typed; the
+        dialog says which.
+
         The recommendation follows the engine selected in the pipeline form
-        (engine_options.recommend()): v5 and v6 scale the window count with base_exponent
-        (None = unknown floor, sized like a shallow one) and, when RAM is short, lowers
+        (engine_options.recommend()): v5, v6 and v7 scale the window count with base_exponent
+        (None = unknown floor, sized like a shallow one) and, when RAM is short, lower
         the bucket-memory field to what fits."""
         choice, bad_key = self._engine_fields.choice()
         if choice is None:
             messagebox.showerror(self.T("quick.dialog_title"),
                                  self.T("gen.error_field_int", field=bad_key))
             return
+        typed = None
+        if iterations_var is not None:
+            typed = self._explore_auto_typed(width_var, iterations_var)
+            if typed is None:
+                return
         available = estimate_free_ram_bytes()
         if available is None:
             messagebox.showerror(self.T("quick.dialog_title"), self.T("quick.error_ram_probe_failed"))
@@ -790,29 +804,73 @@ class QuickGenPanel:
                                           QUICK_GEN_MAX_WINDOW_WIDTH)
         recommended = budget.windows
         numbers_total = recommended * QUICK_GEN_MAX_WINDOW_WIDTH
-        if width_var is not None:
+        split_text = None
+        if typed is not None and typed[1] > 1:
+            split_text = self._explore_auto_split(typed, recommended, width_var, iterations_var)
+        elif width_var is not None:
             width_var.set(str(recommended))
         if choice.engine in engine_options.PT1_ENGINES:
-            messagebox.showinfo(self.T("quick.dialog_title"), self.T(
-                "quick.auto_result_pt1", recommended=f"{recommended:,}",
-                numbers_total=f"{numbers_total:,}"))
-            return
-        bucket_key = engine_options.bucket_knob(choice.engine)
-        if bucket_key is None:
-            messagebox.showinfo(self.T("quick.dialog_title"), self.T(
+            text = self.T("quick.auto_result_pt1", recommended=f"{recommended:,}",
+                          numbers_total=f"{numbers_total:,}")
+        elif engine_options.bucket_knob(choice.engine) is None:
+            text = self.T(
                 "quick.auto_ram_result", available_gb=f"{available / 1e9:.1f}",
                 budget_pct=choice.knobs[engine_options.RAM_BUDGET_KNOB],
-                recommended=f"{recommended:,}", numbers_total=f"{numbers_total:,}"))
-            return
-        if budget.bucket_mb != choice.knobs[bucket_key]:
-            self._engine_fields.set_bucket_mb(budget.bucket_mb, choice.engine)
-        messagebox.showinfo(self.T("quick.dialog_title"), self.T(
-            "quick.auto_ram_result_v5", available_gb=f"{available / 1e9:.1f}",
-            budget_pct=choice.knobs[engine_options.RAM_BUDGET_KNOB],
-            engine=engine_options.ENGINE_VERSIONS[choice.engine],
-            floor="?" if base_exponent is None else base_exponent,
-            recommended=f"{recommended:,}", numbers_total=f"{numbers_total:,}",
-            bucket_mb=f"{budget.bucket_mb:,}"))
+                recommended=f"{recommended:,}", numbers_total=f"{numbers_total:,}")
+        else:
+            if budget.bucket_mb != choice.knobs[engine_options.bucket_knob(choice.engine)]:
+                self._engine_fields.set_bucket_mb(budget.bucket_mb, choice.engine)
+            text = self.T(
+                "quick.auto_ram_result_v5", available_gb=f"{available / 1e9:.1f}",
+                budget_pct=choice.knobs[engine_options.RAM_BUDGET_KNOB],
+                engine=engine_options.ENGINE_VERSIONS[choice.engine],
+                floor="?" if base_exponent is None else base_exponent,
+                recommended=f"{recommended:,}", numbers_total=f"{numbers_total:,}",
+                bucket_mb=f"{budget.bucket_mb:,}")
+        if split_text is not None:
+            text = f"{split_text}\n\n{text}"
+        messagebox.showinfo(self.T("quick.dialog_title"), text)
+
+    def _explore_auto_typed(self, width_var, iterations_var):
+        """(width or None, iterations) typed in Exploration for its Auto button; the width is
+        read only with more than one iteration (one iteration overwrites it). None after an
+        error dialog naming the bad field."""
+        iterations = self._typed_positive(iterations_var, "quick.field_iterations")
+        if iterations is None:
+            return None
+        if iterations == 1:
+            return None, 1
+        width = self._typed_positive(width_var, "quick.field_width")
+        return None if width is None else (width, iterations)
+
+    def _typed_positive(self, var, label_key):
+        """The positive whole number in `var`, or None after an error dialog naming the field."""
+        value = number_value(var.get())
+        if isinstance(value, int) and value >= 1:
+            return value
+        messagebox.showerror(self.T("quick.dialog_title"), self.T(
+            "gen.error_field_int", field=self.T(label_key).rstrip(": ")))
+        return None
+
+    def _explore_auto_split(self, typed, widest, width_var, iterations_var):
+        """Re-split Exploration's typed (width, iterations) under `widest` by
+        width_advisor.plan_split's priority (exact total, else the fewest runs with a few
+        windows more, else as typed), fill both fields; the dialog line saying what was done."""
+        total = typed[0] * typed[1]
+        plan = width_advisor.plan_split(typed[0], typed[1], widest, QUICK_ITERATIONS_MAX)
+        if plan.kind == width_advisor.SPLIT_TYPED:
+            return self.T("quick.auto_split_typed", total=f"{total:,}", widest=f"{widest:,}",
+                          max_iterations=QUICK_ITERATIONS_MAX)
+        width_var.set(str(plan.windows))
+        iterations_var.set(str(plan.iterations))
+        if plan.kind == width_advisor.SPLIT_EXACT:
+            return self.T("quick.auto_split_result", total=f"{total:,}",
+                          numbers_total=f"{total * QUICK_GEN_MAX_WINDOW_WIDTH:,}",
+                          iterations=plan.iterations, windows=f"{plan.windows:,}")
+        new_total = plan.windows * plan.iterations
+        return self.T("quick.auto_split_wider", total=f"{total:,}", widest=f"{widest:,}",
+                      iterations=plan.iterations, windows=f"{plan.windows:,}",
+                      new_total=f"{new_total:,}", extra=f"{new_total - total:,}")
 
     def _on_workers_auto_clicked(self):
         """Auto button handler for the "workers" field in the loop pipeline's
