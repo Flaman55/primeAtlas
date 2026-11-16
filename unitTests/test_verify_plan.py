@@ -45,8 +45,11 @@ def _touch(portal, floor, offset, window_m, label, kind):
 def _test_parse_int():
     check(verify_plan.parse_int(" 29 ", 0) == 29, "parse_int trims spaces")
     check(verify_plan.parse_int("0", 0) == 0, "parse_int: 0 allowed with minimum 0")
-    for text in ("", None, "x", "-1", "2.5", "1e3"):
+    for text in ("", None, "x", "-1", "2.5", "1,5", "3,000"):
         check(verify_plan.parse_int(text, 0) is None, f"parse_int refuses {text!r}")
+    for text, want in (("1e3", 1000), ("1 000", 1000), ("10^3", 1000)):
+        check(verify_plan.parse_int(text, 0) == want,
+              f"parse_int reads {text!r} in any notation as {want}")
     check(verify_plan.parse_int("0", 1) is None, "parse_int: 0 refused with minimum 1")
 
 

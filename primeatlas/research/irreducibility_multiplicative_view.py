@@ -15,6 +15,7 @@ import random
 import tkinter as tk
 from tkinter import ttk
 
+from ..core.number_text import plain_number
 from ..core.base_tab import BaseTab
 from ..core.widgets import StripedTreeview
 from ..primality.primality import miller_rabin_test
@@ -56,11 +57,11 @@ class MultiplicativeView(BaseTab):
                       padx=6, pady=(8, 4))
         row = ttk.Frame(self)
         row.pack(fill="x", padx=6, pady=(0, 4))
-        self.q_entry = entry(row, "q", "23", "research.irreducibility.mul_q", width=8,
+        self.q_entry = entry(T, row, "q", "23", "research.irreducibility.mul_q", width=8,
                              on_return=self.run)
-        self.g_entry = entry(row, "g", AUTO, "research.irreducibility.mul_g", width=6,
-                             on_return=self.run)
-        self.n_entry = entry(row, "N", "10", "research.irreducibility.mul_n", width=24,
+        self.g_entry = entry(T, row, "g", AUTO, "research.irreducibility.mul_g", width=6,
+                             on_return=self.run, words=(AUTO,))
+        self.n_entry = entry(T, row, "N", "10", "research.irreducibility.mul_n", width=24,
                              on_return=self.run)
         self.run_button = ttk.Button(row, text=T("research_irreducibility.mul_run"),
                                      command=self.run)
@@ -112,12 +113,12 @@ class MultiplicativeView(BaseTab):
         """(q, g or None for Auto, N) or a translated error message."""
         T = self.T
         try:
-            q = int(self.q_entry.get().strip())
+            q = int(plain_number(self.q_entry.get()))
         except ValueError:
             q = 0
         if not 2 <= q <= mult.MAX_Q:
             return T("research_irreducibility.mul_q_invalid", max=mult.MAX_Q)
-        text = self.g_entry.get().strip()
+        text = plain_number(self.g_entry.get(), words=(AUTO,))
         g = None
         if text.lower() != AUTO:
             try:

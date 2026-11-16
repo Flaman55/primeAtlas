@@ -51,7 +51,8 @@ Theme, language, font scale and ScrollPad width live in `AppSettings`; texts in 
 
 `test_ui_settings`, `test_theme_readability`, `test_scroll_pad`, `test_scrollable_page`, `test_tree_scroll_to_top`,
 `test_settings_scroll`, `test_ui_state`, `test_ui_state_app`, `test_storage`, `test_search_worker`, `test_window_centering`, `test_pdf_table`,
-`test_number_text`, `test_number_field`, `test_number_field_coverage`, `test_info_tip`.
+`test_number_text`, `test_number_field`, `test_number_field_coverage`, `test_number_fields_app`,
+`test_info_tip`.
 
 ## Number fields
 
@@ -65,18 +66,30 @@ decimal mark, and only whole results count: one -> ok, several -> ambiguous with
 ("3,000": 3000 or 3), none -> invalid with a reason (not whole, syntax, too large).
 `generation.quick_number._eval_quick_number` returns the value only when it is ok.
 
-`number_field.attach(entry, T)` follows the entry's text (typed, pasted, or set through its
+`number_field.attach(entry, T, fraction=, words=, minimum=, maximum=)` makes an Entry or a
+Spinbox a number field: a whole number by default, a fraction with `fraction=True`, also one
+of `words` ("Auto", "Max"), within an optional range (a callable maximum follows a changing
+cap, e.g. the engine's per-run windows). It follows the entry's text (typed, pasted, or set through its
 textvariable, also one added later by `remember()`). A whole number or an empty field clears
-everything at once; red (`Invalid.TEntry`, palette `invalid_bg`) and the ambiguous popup wait
+everything at once; red (`Invalid.TEntry` / `Invalid.TSpinbox`, palette `invalid_bg`, also
+out of range) and the ambiguous popup wait
 `SETTLE_MS` after the last change, so typing through "1,000" or "10^" flashes nothing, and show at
 once when the field is left. The popup ("Could be:" and a button per reading) shows while the
 field has focus; a click writes the plain digits. Left ambiguous, the field is red and its hover
 tip lists the readings. The hover tip (`InfoTip`, below the field, after `TIP_DELAY_MS`) shows the
 accepted forms and, when invalid, the reason.
 
-`unitTests/test_number_field_coverage.py` requires every `ttk.Entry` in `primeatlas/` to be a
-number field or marked `# not a number field: <why>`.
+Code that reads plain integers keeps its own checks and messages: it reads the text through
+`number_text.plain_number()` (the plain digits of an ok reading, else the stripped text);
+`number_value()` / `fraction_value()` return the value or None. `number_field.refuse_problem
+(variables, T, title)` shows the reason and puts the cursor in the first red field bound to
+those variables; Quick-gen Generate calls it for the selected mode's fields
+(`_QUICK_MODE_NUMBER_VARS`), so a red field never becomes a default width.
+
+`unitTests/test_number_field_coverage.py` requires every `ttk.Entry` and `ttk.Spinbox` in
+`primeatlas/` to be a number field or marked `# not a number field: <why>` (folder paths,
+formulas in n, lists of offsets, factors, primes or colours).
 
 ## Known gaps
 
-- Integer fields with their own parsing (engine knobs, generation loop and k-tuple fields, Irreducibility numbers, page go-to fields, renderer font sizes) are not number fields yet: they are marked `# not a number field` and read plain integers only (`int()`).
+None.

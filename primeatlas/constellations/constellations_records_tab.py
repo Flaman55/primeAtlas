@@ -41,6 +41,7 @@ from tkinter import ttk, messagebox, filedialog
 
 import pattern_catalog_v1
 
+from ..core.number_text import plain_number
 from ..core import number_field
 from ..core import background
 from ..core.base_tab import BaseTab
@@ -175,13 +176,13 @@ class ConstellationsRecordsTab(BaseTab):
         # same range-scoping option CSV does.
         ttk.Label(top_row, text=T("const_records.export_range_label")).pack(
             side="left", padx=(16, 0))
-        # not a number field: a row number, parsed by the export handler
         self.detail_export_from_entry = ttk.Entry(top_row, width=6)
+        number_field.attach(self.detail_export_from_entry, self.T, minimum=1)
         self.detail_export_from_entry.pack(side="left", padx=(4, 0))
         ttk.Label(top_row, text=T("const_records.export_range_to")).pack(
             side="left", padx=(4, 0))
-        # not a number field: a row number, parsed by the export handler
         self.detail_export_to_entry = ttk.Entry(top_row, width=6)
+        number_field.attach(self.detail_export_to_entry, self.T, minimum=1)
         self.detail_export_to_entry.pack(side="left", padx=(4, 0))
 
         ttk.Label(container, text=T("const_records.hint"), wraplength=760,
@@ -701,7 +702,7 @@ class ConstellationsRecordsTab(BaseTab):
             self._detail_file_page_index + 1)
 
     def _goto_detail_file_page(self):
-        raw = self.detail_file_goto_entry.get().strip()
+        raw = plain_number(self.detail_file_goto_entry.get())
         if self._detail_context is None or not raw.isdigit():
             return
         ctx = self._detail_context
@@ -756,8 +757,8 @@ class ConstellationsRecordsTab(BaseTab):
         (ui_from, ui_to) as 0-based ints. Raises ValueError (callers show
         const_records.export_range_invalid) for anything else: only one filled,
         non-numeric, or from > to."""
-        from_text = self.detail_export_from_entry.get().strip()
-        to_text = self.detail_export_to_entry.get().strip()
+        from_text = plain_number(self.detail_export_from_entry.get())
+        to_text = plain_number(self.detail_export_to_entry.get())
         if not from_text and not to_text:
             return None
         ui_from = int(from_text) - 1
@@ -825,7 +826,7 @@ class ConstellationsRecordsTab(BaseTab):
         self._show_detail_page(self._detail_page + 1)
 
     def _goto_detail_page(self):
-        raw = self.detail_goto_entry.get().strip()
+        raw = plain_number(self.detail_goto_entry.get())
         if not raw.isdigit():
             return
         self._show_detail_page(int(raw) - 1)

@@ -18,6 +18,7 @@ import storage_kinds
 import store_verify
 
 from . import wsl_resources
+from ..core.number_text import plain_number
 
 THREADS_AUTO = "Auto"
 THREADS_MAX = wsl_resources.WORKERS_MAX
@@ -33,8 +34,8 @@ DEFAULT_PASS_EXP = 11
 
 
 def parse_int(text, minimum):
-    """A whole number >= minimum typed in a field, None for anything else."""
-    text = (text or "").strip()
+    """A whole number >= minimum typed in a field (any notation), None for anything else."""
+    text = plain_number(text)
     if not text.isdigit() or int(text) < minimum:
         return None
     return int(text)
@@ -69,7 +70,7 @@ def resolve_threads(text, form_workers, wsl_cpu_count):
     """The thread count of the Threads field: Auto -> form_workers (the pipeline form's
     workers field, its Max resolved by wsl_cpu_count), Max -> wsl_cpu_count (None when the probe failed), else a
     whole number in [1, THREADS_CAP]. None when it cannot be resolved."""
-    text = (text or "").strip()
+    text = plain_number(text, words=(THREADS_AUTO, THREADS_MAX))
     if text.lower() == THREADS_AUTO.lower():
         workers = wsl_resources.resolve_workers(form_workers, wsl_cpu_count)
         return min(workers, THREADS_CAP) if workers else None

@@ -12,6 +12,8 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import pattern_catalog_v1
 
+from ..core.number_text import plain_number
+from ..core import number_field
 from .generation_console import GenerationConsole
 from .engine_argv import build_ktuple_sieve_argv
 from primeatlas.core import ui_state_dynamic
@@ -68,9 +70,9 @@ class KtupleSection:
             ttk.Label(ktuple_form, text=label).grid(
                 row=row, column=col * 2, sticky="w", padx=(0, 4), pady=2)
             var = tk.StringVar(value=str(ktuple_settings.get(key, "")))
-            # not a number field: passed as text to the k-tuple search
-            ttk.Entry(ktuple_form, textvariable=var, width=width).grid(
-                row=row, column=col * 2 + 1, sticky="w", padx=(0, 20), pady=2)
+            entry = ttk.Entry(ktuple_form, textvariable=var, width=width)
+            number_field.attach(entry, self.T, minimum=0)
+            entry.grid(row=row, column=col * 2 + 1, sticky="w", padx=(0, 20), pady=2)
             self._ktuple_vars[key] = var
             remember_generation_field("ktuple", key, var)
 
@@ -131,9 +133,9 @@ class KtupleSection:
             ttk.Label(ktuple_advanced_form, text=label).grid(
                 row=row, column=col * 2, sticky="w", padx=(0, 4), pady=2)
             var = tk.StringVar(value=str(ktuple_settings.get(key, "")))
-            # not a number field: passed as text to the k-tuple search
-            ttk.Entry(ktuple_advanced_form, textvariable=var, width=width).grid(
-                row=row, column=col * 2 + 1, sticky="w", padx=(0, 20), pady=2)
+            entry = ttk.Entry(ktuple_advanced_form, textvariable=var, width=width)
+            number_field.attach(entry, self.T, minimum=0)
+            entry.grid(row=row, column=col * 2 + 1, sticky="w", padx=(0, 20), pady=2)
             self._ktuple_vars[key] = var
             remember_generation_field("ktuple", key, var)
 
@@ -272,8 +274,8 @@ class KtupleSection:
         fills n_locations with the recommendation. Like every other Auto button in
         this app, only ever SUGGESTS a value -- the field stays freely editable
         afterward."""
-        base_exponent_str = self._ktuple_vars["base_exponent"].get().strip()
-        window_m_str = self._ktuple_vars["window_m"].get().strip()
+        base_exponent_str = plain_number(self._ktuple_vars["base_exponent"].get())
+        window_m_str = plain_number(self._ktuple_vars["window_m"].get())
         if not base_exponent_str.isdigit() or not window_m_str.isdigit():
             messagebox.showerror(self.T("gen.dialog_title"), self.T("gen.error_base_exponent_int"))
             return
@@ -315,7 +317,7 @@ class KtupleSection:
         # non-button call path, same reasoning as _on_run_constellation()'s own.
         if self._other_engine_is_running("ktuple"):
             return
-        base_exponent = self._ktuple_vars["base_exponent"].get().strip()
+        base_exponent = plain_number(self._ktuple_vars["base_exponent"].get())
         if not base_exponent.isdigit():
             messagebox.showerror(self.T("gen.dialog_title"), self.T("gen.error_base_exponent_int"))
             return
@@ -327,15 +329,18 @@ class KtupleSection:
             return
         pattern = self._ktuple_variants[variant_idx]
 
-        n_locations = self._ktuple_vars["n_locations"].get().strip()
-        window_m = self._ktuple_vars["window_m"].get().strip()
-        step = self._ktuple_vars["step"].get().strip()
-        fragment_width = self._ktuple_vars["fragment_width"].get().strip()
-        fragment_start = self._ktuple_vars["fragment_start"].get().strip() or "0"
-        deep_prime_limit = self._ktuple_vars["deep_prime_limit"].get().strip() or "2000"
-        mr_rounds = self._ktuple_vars["mr_rounds"].get().strip() or "40"
+        def number(key):
+            return plain_number(self._ktuple_vars[key].get())
+
+        n_locations = number("n_locations")
+        window_m = number("window_m")
+        step = number("step")
+        fragment_width = number("fragment_width")
+        fragment_start = number("fragment_start") or "0"
+        deep_prime_limit = number("deep_prime_limit") or "2000"
+        mr_rounds = number("mr_rounds") or "40"
         manual_offsets_str = self._ktuple_vars["manual_offsets"].get().strip()
-        pass_counter = self._ktuple_vars["pass_counter"].get().strip() or "0"
+        pass_counter = number("pass_counter") or "0"
 
         numeric_ok = (
             n_locations.isdigit() and window_m.isdigit() and fragment_start.isdigit()

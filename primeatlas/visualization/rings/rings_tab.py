@@ -35,6 +35,7 @@ from ...generation.quick_number import _eval_quick_number
 from ...generation.window_planning import find_highest_populated_floor
 from ...generation.generation_console import GenerationConsole
 from ...core import number_field
+from ...core.number_text import plain_number
 from ...core import storage
 from ..shared.audio import INSTRUMENTS
 from ..shared.viz_tab_base import VizTabBase
@@ -462,8 +463,8 @@ class RingsTab(VizTabBase):
         general_law_row = ttk.Frame(windows_frame)
         general_law_row.pack(fill="x", padx=8, pady=(0, 6))
         ttk.Label(general_law_row, text=self.T("rings.general_law_theta_label")).pack(side="left")
-        # not a number field: a fraction (angle)
         self.general_law_theta_entry = ttk.Entry(general_law_row, width=6)
+        number_field.attach(self.general_law_theta_entry, self.T, fraction=True)
         self.general_law_theta_entry.insert(0, saved_params.get("general_law_theta", "0.5"))
         self.general_law_theta_entry.pack(side="left", padx=(6, 16))
         ttk.Label(general_law_row, text=self.T("rings.general_law_mode_label")).pack(side="left")
@@ -510,8 +511,8 @@ class RingsTab(VizTabBase):
         point_size_row = ttk.Frame(appearance_frame)
         point_size_row.pack(fill="x", padx=8, pady=(6, 6))
         ttk.Label(point_size_row, text=self.T("rings.point_size_label")).pack(side="left")
-        # not a number field: a fraction (point size)
         self.point_size_entry = ttk.Entry(point_size_row, width=8)
+        number_field.attach(self.point_size_entry, self.T, fraction=True)
         self.point_size_entry.insert(0, saved_params.get("point_size", "15"))
         self.point_size_entry.pack(side="left", padx=(6, 0))
 
@@ -525,16 +526,16 @@ class RingsTab(VizTabBase):
         hit_point_size_row = ttk.Frame(appearance_frame)
         hit_point_size_row.pack(fill="x", padx=8, pady=(0, 6))
         ttk.Label(hit_point_size_row, text=self.T("rings.hit_point_size_label")).pack(side="left")
-        # not a number field: a fraction (point size)
         self.hit_point_size_entry = ttk.Entry(hit_point_size_row, width=8)
+        number_field.attach(self.hit_point_size_entry, self.T, fraction=True)
         self.hit_point_size_entry.insert(0, saved_params.get("hit_point_size", "20"))
         self.hit_point_size_entry.pack(side="left", padx=(6, 0))
 
         hud_font_size_row = ttk.Frame(appearance_frame)
         hud_font_size_row.pack(fill="x", padx=8, pady=(0, 8))
         ttk.Label(hud_font_size_row, text=self.T("rings.hud_font_size_label")).pack(side="left")
-        # not a number field: a font size, parsed with int() by the launch handler
         self.hud_font_size_entry = ttk.Entry(hud_font_size_row, width=8)
+        number_field.attach(self.hud_font_size_entry, self.T, minimum=1)
         self.hud_font_size_entry.insert(0, saved_params.get("hud_font_size", "35"))
         self.hud_font_size_entry.pack(side="left", padx=(6, 0))
 
@@ -766,7 +767,7 @@ class RingsTab(VizTabBase):
         # default renderer.py's own --general-law-theta argparse default
         # uses is simpler and correct for this one field.
         try:
-            theta = float(self.general_law_theta_entry.get().strip())
+            theta = float(plain_number(self.general_law_theta_entry.get(), fraction=True))
         except ValueError:
             theta = 0.5
         mode = self.general_law_mode_combo.get() or "sliding"
@@ -775,7 +776,7 @@ class RingsTab(VizTabBase):
         # empty/invalid field should just omit --point-size entirely so
         # renderer.py's own argparse default (3.0) applies, rather than
         # silently forcing some fallback value here too.
-        point_size_raw = self.point_size_entry.get().strip()
+        point_size_raw = plain_number(self.point_size_entry.get(), fraction=True)
         try:
             point_size = float(point_size_raw) if point_size_raw else None
         except ValueError:
@@ -783,13 +784,13 @@ class RingsTab(VizTabBase):
 
         # Same empty-or-invalid-omits-the-flag convention
         # as point_size above.
-        hit_point_size_raw = self.hit_point_size_entry.get().strip()
+        hit_point_size_raw = plain_number(self.hit_point_size_entry.get(), fraction=True)
         try:
             hit_point_size = float(hit_point_size_raw) if hit_point_size_raw else None
         except ValueError:
             hit_point_size = None
 
-        hud_font_size_raw = self.hud_font_size_entry.get().strip()
+        hud_font_size_raw = plain_number(self.hud_font_size_entry.get())
         try:
             hud_font_size = int(hud_font_size_raw) if hud_font_size_raw else None
         except ValueError:

@@ -25,6 +25,7 @@ from ...generation.window_planning import find_highest_populated_floor
 from ...generation.generation_console import GenerationConsole
 from ..shared.viz_tab_base import VizTabBase
 from ...core import number_field
+from ...core.number_text import fraction_value
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 RENDERER_SCRIPT = os.path.join(os.path.dirname(_THIS_DIR), "shared", "renderer.py")
@@ -107,10 +108,7 @@ def _parse(text, kind):
     if kind == "int":
         parsed = _eval_quick_number(text)
         return parsed if isinstance(parsed, int) else None
-    try:
-        return float(text)
-    except ValueError:
-        return None
+    return fraction_value(text)
 
 
 class SphereTab(VizTabBase):
@@ -129,8 +127,7 @@ class SphereTab(VizTabBase):
             row.pack(fill="x", padx=8, pady=(0, 4))
             ttk.Label(row, text=self._tk(label_key)).pack(side="left")
             entry = ttk.Entry(row, width=12)
-            if kind == "int":
-                number_field.attach(entry, self.T)
+            number_field.attach(entry, self.T, fraction=kind == "float")
             entry.insert(0, saved.get(saved_key, default))
             entry.pack(side="left", padx=(6, 0))
             setattr(self, attr, entry)

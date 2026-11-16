@@ -38,6 +38,8 @@ import dp_verify
 import prime_sieve_v1
 import storage_kinds
 
+from ..core import number_field
+from ..core.number_text import plain_number
 from ..core import background
 from ..core.base_tab import BaseTab
 from ..core.storage import (
@@ -192,8 +194,8 @@ class PrimesTab(BaseTab):
         self.verify_dp_button.pack(side="left", padx=(6, 0))
 
         ttk.Label(top, text=T("common.search_label")).pack(side="left")
-        # not a number field: free search text
         self.search_entry = ttk.Entry(top, width=26)
+        number_field.attach(self.search_entry, self.T, minimum=0)
         self.search_entry.pack(side="left", padx=(4, 4))
         self.search_entry.bind("<Return>", lambda _e: self._search_prime())
         self.search_button = ttk.Button(
@@ -231,8 +233,8 @@ class PrimesTab(BaseTab):
             floor_nav, text=T("common.next_page"), command=self._next_floor_page, state="disabled")
         self.floor_next_btn.pack(side="left")
         ttk.Label(floor_nav, text=T("common.page_prefix")).pack(side="left", padx=(10, 0))
-        # not a number field: a page number, parsed by its own go-to handler
         self.floor_goto_entry = ttk.Entry(floor_nav, width=6)
+        number_field.attach(self.floor_goto_entry, self.T, minimum=1)
         self.floor_goto_entry.pack(side="left", padx=(4, 0))
         self.floor_goto_entry.bind("<Return>", lambda _e: self._goto_floor_page())
         ttk.Button(floor_nav, text=T("common.goto"), command=self._goto_floor_page).pack(side="left", padx=(4, 0))
@@ -736,7 +738,7 @@ class PrimesTab(BaseTab):
             self._show_floor_page(node, self._floor_state[node]["page"] + 1)
 
     def _goto_floor_page(self):
-        raw = self.floor_goto_entry.get().strip()
+        raw = plain_number(self.floor_goto_entry.get())
         if not raw.isdigit():
             return
         node = self._active_floor_node
@@ -818,7 +820,7 @@ class PrimesTab(BaseTab):
         self._show_preview_page(self._preview_page + 1)
 
     def _goto_preview_page(self):
-        raw = self.preview_goto_entry.get().strip()
+        raw = plain_number(self.preview_goto_entry.get())
         if not raw.isdigit():
             return
         self._show_preview_page(int(raw) - 1)
@@ -827,7 +829,7 @@ class PrimesTab(BaseTab):
 
     def _search_prime(self):
         T = self.T
-        raw = self.search_entry.get().strip()
+        raw = plain_number(self.search_entry.get())
         if not raw.isdigit():
             messagebox.showerror(T("common.dialog_search_title"), T("common.error_invalid_number"))
             return

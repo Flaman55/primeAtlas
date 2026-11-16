@@ -6,6 +6,7 @@ larger target), and the text describing a layout's ranges.
 """
 import tkinter as tk
 
+from ..core.number_text import plain_number
 from ..core.ui_state import remember
 from . import irreducibility_layout as layout
 
@@ -31,7 +32,7 @@ def parse_params(values):
     1..MAX_SIZE, counts 1..MAX_COUNT. Raises ValueError."""
     out = {}
     for key in layout.PARAMS:
-        v = int(str(values[key]).strip())
+        v = int(plain_number(str(values[key])))
         lo, hi = ((2, MAX_START) if key in ("ds", "ks") else
                   (1, MAX_SIZE) if key in ("dz", "kz") else (1, MAX_COUNT))
         if not lo <= v <= hi:
@@ -42,7 +43,7 @@ def parse_params(values):
 
 def parse_number(text):
     """A whole number >= 0 from text. Raises ValueError."""
-    t = (text or "").strip()
+    t = plain_number(text)
     if not t.isdigit():
         raise ValueError("number")
     return int(t)
@@ -96,7 +97,7 @@ class IrreducibilityNumbers:
 
         def size(key):
             try:
-                v = int(self._layouts[side][key].get())
+                v = int(plain_number(self._layouts[side][key].get()))
             except ValueError:
                 return 3
             return v if 1 <= v <= MAX_SIZE else 3

@@ -10,6 +10,7 @@ import random
 import tkinter as tk
 from tkinter import ttk
 
+from ..core.number_text import plain_number
 from ..core.base_tab import BaseTab
 from . import irreducibility_layout as layout
 from . import irreducibility_ops as ops
@@ -56,7 +57,7 @@ class ArithView(BaseTab):
             box.grid(row=0, column=col, sticky="nsew", padx=(0, 6) if col == 0 else (6, 0))
             row = ttk.Frame(box)
             row.pack(fill="x", padx=6, pady=(4, 2))
-            self.number_entries[side] = entry(row, "", "", width=34,
+            self.number_entries[side] = entry(T, row, "", "", width=34,
                                               textvariable=numbers.number_var(side))
             ttk.Button(row, text=T("research_irreducibility.fit"),
                        command=lambda s=side: self._fit(s)).pack(side="left")
@@ -74,20 +75,20 @@ class ArithView(BaseTab):
         self.mul_button.pack(side="left", padx=(8, 0))
         row = ttk.Frame(self)
         row.pack(fill="x", padx=6, pady=2)
-        self.b_entry = entry(row, "b", "7", "research.irreducibility.arith_b", width=8)
+        self.b_entry = entry(T, row, "b", "7", "research.irreducibility.arith_b", width=8)
         self.div_button = ttk.Button(row, text="A ⊘ b", command=self.div)
         self.div_button.pack(side="left", padx=(0, 18))
-        self.t_entry = entry(row, "T", "30", "research.irreducibility.arith_t", width=8)
+        self.t_entry = entry(T, row, "T", "30", "research.irreducibility.arith_t", width=8)
         self.address_button = ttk.Button(row, text=T("research_irreducibility.address_button"),
                                          command=self.address)
         self.address_button.pack(side="left")
         row = ttk.Frame(self)
         row.pack(fill="x", padx=6, pady=2)
-        self.e_entry = entry(row, "e", "3", "research.irreducibility.arith_e", width=8)
+        self.e_entry = entry(T, row, "e", "3", "research.irreducibility.arith_e", width=8)
         self.pow_button = ttk.Button(row, text="A^(e)", command=self.power)
         self.pow_button.pack(side="left", padx=(0, 18))
-        self.p_entry = entry(row, "p", "5", "research.irreducibility.arith_p", width=6)
-        self.n_entry = entry(row, "n", "3", "research.irreducibility.arith_n", width=6)
+        self.p_entry = entry(T, row, "p", "5", "research.irreducibility.arith_p", width=6)
+        self.n_entry = entry(T, row, "n", "3", "research.irreducibility.arith_n", width=6)
         self.chapters_button = ttk.Button(row, text=T("research_irreducibility.chapters_button"),
                                           command=self.chapters)
         self.chapters_button.pack(side="left")
@@ -140,7 +141,7 @@ class ArithView(BaseTab):
 
     def _int(self, e, lo, hi, key):
         try:
-            v = int(e.get().strip())
+            v = int(plain_number(e.get()))
         except ValueError:
             v = None
         if v is None or not lo <= v <= hi:

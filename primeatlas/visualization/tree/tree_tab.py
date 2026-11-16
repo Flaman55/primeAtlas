@@ -31,6 +31,7 @@ from .highlight_layers import LAYERS
 from .tree_layout import AXIS_AUTO, AXIS_KINDS, copy_budget
 from .tree_mode import TREE_MAX_DEPTH
 from ...core import number_field
+from ...core.number_text import fraction_value
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 RENDERER_SCRIPT = os.path.join(os.path.dirname(_THIS_DIR), "shared", "renderer.py")
@@ -115,10 +116,7 @@ def _parse(text, kind):
         parsed = _eval_quick_number(text)
         return parsed if isinstance(parsed, int) else None
     if kind == "float":
-        try:
-            return float(text)
-        except ValueError:
-            return None
+        return fraction_value(text)
     return text
 
 
@@ -149,10 +147,11 @@ class TreeTab(VizTabBase):
             ttk.Label(row, text=label(label_key)).pack(side="left")
             if kind == "spin":
                 entry = ttk.Spinbox(row, from_=1, to=TREE_MAX_DEPTH, increment=1, width=10)
+                number_field.attach(entry, self.T, minimum=1, maximum=TREE_MAX_DEPTH)
             else:
                 entry = ttk.Entry(row, width=12)
-                if kind == "int":
-                    number_field.attach(entry, self.T)
+                if kind in ("int", "float"):
+                    number_field.attach(entry, self.T, fraction=kind == "float")
             entry.insert(0, saved.get(saved_key, default))
             entry.pack(side="left", padx=(6, 0))
             setattr(self, attr, entry)

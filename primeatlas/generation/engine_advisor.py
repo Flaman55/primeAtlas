@@ -28,6 +28,7 @@ import pseudosquares_const
 from benchmark_log_schema import ENGINE_PSEUDOSQUARES_COUNT
 from storage_kinds import MR_DET_BOUND
 
+from ..core.number_text import plain_number
 from . import engine_advisor_seeds, engine_options, time_model
 
 DEFAULT_BPSW_OFFSET = engine_options.DEFAULT_BPSW_OFFSET
@@ -47,7 +48,7 @@ Advice = namedtuple(
 
 def parse_offset(raw):
     """The offset as a float >= 1; DEFAULT_BPSW_OFFSET when blank; None when invalid."""
-    text = "" if raw is None else str(raw).strip()
+    text = "" if raw is None else plain_number(str(raw), fraction=True)
     if not text:
         return DEFAULT_BPSW_OFFSET
     try:

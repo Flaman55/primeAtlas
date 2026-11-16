@@ -11,6 +11,7 @@ and its other mixins set up, so it is never instantiated on its own.
 import tkinter as tk
 from tkinter import ttk, messagebox
 
+from ..core.number_text import plain_number
 from ..core import number_field
 from ..core.ui_state import remember
 from .goldbach_paging import (
@@ -121,7 +122,7 @@ class GoldbachVizSection:
         / 12" label that would otherwise result."""
         if self._goldbach_busy or self._goldbach_viz_current_n is None:
             return
-        raw = self.goldbach_viz_row_goto_entry.get().strip()
+        raw = plain_number(self.goldbach_viz_row_goto_entry.get())
         if not raw.isdigit():
             return
         target = int(raw) - 1
@@ -157,7 +158,7 @@ class GoldbachVizSection:
         sets the page and redraws; _goldbach_show_window_visualization clamps it
         against the true page count itself (same as it already does for chip
         prev/next going past either end)."""
-        raw = self.goldbach_viz_chip_goto_entry.get().strip()
+        raw = plain_number(self.goldbach_viz_chip_goto_entry.get())
         if not raw.isdigit():
             return
         self._goldbach_viz_chip_page = max(0, int(raw) - 1)
@@ -278,8 +279,8 @@ class GoldbachVizSection:
             chip_nav, text=T("common.next_page"),
             command=self._on_goldbach_viz_chip_next, state="disabled")
         self.goldbach_viz_chip_next_btn.pack(side="left", padx=(4, 0))
-        # not a number field: a page number, parsed by its own go-to handler
         self.goldbach_viz_chip_goto_entry = ttk.Entry(chip_nav, width=6)
+        number_field.attach(self.goldbach_viz_chip_goto_entry, self.T, minimum=1)
         self.goldbach_viz_chip_goto_entry.pack(side="left", padx=(12, 0))
         self.goldbach_viz_chip_goto_entry.bind(
             "<Return>", lambda _e: self._on_goldbach_viz_chip_goto())
@@ -301,8 +302,8 @@ class GoldbachVizSection:
             row_nav, text=T("common.next_page"),
             command=self._on_goldbach_viz_row_next, state="disabled")
         self.goldbach_viz_row_next_btn.pack(side="left", padx=(4, 0))
-        # not a number field: a page number, parsed by its own go-to handler
         self.goldbach_viz_row_goto_entry = ttk.Entry(row_nav, width=6)
+        number_field.attach(self.goldbach_viz_row_goto_entry, self.T, minimum=1)
         self.goldbach_viz_row_goto_entry.pack(side="left", padx=(12, 0))
         self.goldbach_viz_row_goto_entry.bind(
             "<Return>", lambda _e: self._on_goldbach_viz_row_goto())

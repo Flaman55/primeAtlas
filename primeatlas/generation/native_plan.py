@@ -11,6 +11,7 @@ way). No tkinter here.
 """
 import pseudosquares_const as const
 
+from ..core.number_text import plain_number
 from ..core.storage import digit_count_floor
 
 AUTO_THREADS = 0  # the program picks its thread count
@@ -19,8 +20,8 @@ AUTO_THREADS = 0  # the program picks its thread count
 def parse_threads(text):
     """Threads field: blank / "Auto" / 0 -> AUTO_THREADS, a positive integer as given,
     None for anything else."""
-    text = (text or "").strip()
-    if not text or text.lower() == "auto":
+    text = plain_number(text, words=("Auto",))
+    if not text or text == "Auto":
         return AUTO_THREADS
     if not text.isdigit():
         return None

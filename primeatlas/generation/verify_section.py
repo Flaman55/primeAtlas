@@ -27,6 +27,7 @@ from tkinter import ttk, messagebox
 
 import run_verify
 from primeatlas.core import ui_state_dynamic
+from ..core import number_field
 from ..core.info_tip import InfoTip
 from ..benchmark.benchmark import read_benchmark_log
 from . import engine_options, run_guard, verify_estimate, verify_plan
@@ -78,24 +79,30 @@ class VerifySection:
             ttk.Label(form, text=self.T(f"gen.verify_field_{key}")).pack(side="left")
 
         label("base_exponent")
-        _floor_spinbox(form, self._verify_vars["base_exponent"], 6).pack(
+        _floor_spinbox(form, self._verify_vars["base_exponent"], 6, self.T).pack(
             side="left", padx=(6, 20))
         label("width_exp")
-        ttk.Spinbox(form, from_=verify_plan.WIDTH_EXP_MIN, to=verify_plan.WIDTH_EXP_MAX,
-                    increment=1, textvariable=self._verify_vars["width_exp"], width=4).pack(
-            side="left", padx=(6, 20))
+        width_exp = ttk.Spinbox(form, from_=verify_plan.WIDTH_EXP_MIN,
+                                to=verify_plan.WIDTH_EXP_MAX, increment=1,
+                                textvariable=self._verify_vars["width_exp"], width=4)
+        number_field.attach(width_exp, self.T, minimum=verify_plan.WIDTH_EXP_MIN,
+                            maximum=verify_plan.WIDTH_EXP_MAX)
+        width_exp.pack(side="left", padx=(6, 20))
         label("max_windows")
         self._verify_windows_box = ttk.Spinbox(
             form, from_=1, to=1, increment=1, textvariable=self._verify_vars["max_windows"],
             width=8)
+        number_field.attach(self._verify_windows_box, self.T, minimum=1)
         self._verify_windows_box.pack(side="left", padx=(6, 4))
         self._verify_total_text = tk.StringVar()
         ttk.Label(form, textvariable=self._verify_total_text, style="Hint.TLabel").pack(
             side="left", padx=(0, 20))
         label("threads")
-        ttk.Spinbox(form, values=verify_plan.THREAD_CHOICES,
-                    textvariable=self._verify_vars["threads"], width=6).pack(
-            side="left", padx=(6, 0))
+        threads = ttk.Spinbox(form, values=verify_plan.THREAD_CHOICES,
+                              textvariable=self._verify_vars["threads"], width=6)
+        number_field.attach(threads, self.T, minimum=1, maximum=verify_plan.THREADS_CAP,
+                            words=(verify_plan.THREADS_AUTO, verify_plan.THREADS_MAX))
+        threads.pack(side="left", padx=(6, 0))
         method_row = ttk.Frame(outer)
         method_row.pack(fill="x", padx=8, pady=(0, 4))
         ttk.Label(method_row, text=self.T("gen.verify_field_method")).pack(side="left")
@@ -112,6 +119,8 @@ class VerifySection:
         self._verify_pass_box = ttk.Spinbox(
             method_row, from_=verify_plan.WIDTH_EXP_MIN, to=verify_plan.WIDTH_EXP_MAX,
             increment=1, textvariable=self._verify_vars["pass_exp"], width=4)
+        number_field.attach(self._verify_pass_box, self.T, minimum=verify_plan.WIDTH_EXP_MIN,
+                            maximum=verify_plan.WIDTH_EXP_MAX)
         self._verify_pass_box.pack(side="left", padx=(6, 20))
         self._verify_estimate_text = tk.StringVar()
         ttk.Label(method_row, textvariable=self._verify_estimate_text,

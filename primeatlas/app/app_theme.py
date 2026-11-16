@@ -106,6 +106,8 @@ class ThemeMixin:
         # Invalid.TEntry: a number field whose text is not a number (core.number_field).
         style.configure("Invalid.TEntry", fieldbackground=p["invalid_bg"])
         style.map("Invalid.TEntry", fieldbackground=[("disabled", p["bg"])])
+        style.configure("Invalid.TSpinbox", fieldbackground=p["invalid_bg"])
+        style.map("Invalid.TSpinbox", fieldbackground=[("disabled", p["bg"])])
         style.configure("TSpinbox", fieldbackground=p["field_bg"], foreground=p["field_fg"],
                          background=p["field_bg"], arrowcolor=p["fg"])
 

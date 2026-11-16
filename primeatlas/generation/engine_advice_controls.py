@@ -33,6 +33,8 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from ..core.info_tip import InfoTip
+from ..core import number_field
+from ..core.number_text import plain_number
 from . import engine_advisor, engine_options, run_ram, time_model, width_advisor
 from .engine_advice_text import advice_text
 from .engine_advice_view import EngineAdviceView
@@ -49,7 +51,7 @@ _ADVICE_MODES = ("floor", "explore")
 
 
 def _positive_int(text):
-    text = str(text).strip()
+    text = plain_number(str(text))
     return int(text) if text.isdigit() and int(text) > 0 else None
 
 
@@ -69,8 +71,9 @@ class EngineAdviceControls:
             row=row, column=0, sticky="w", padx=(0, 4), pady=2)
         cell = ttk.Frame(form)
         cell.grid(row=row, column=1, sticky="w", padx=(0, 20), pady=2)
-        # not a number field: a fraction (BPSW offset)
-        ttk.Entry(cell, textvariable=self._advice_offset_var, width=10).pack(side="left")
+        offset = ttk.Entry(cell, textvariable=self._advice_offset_var, width=10)
+        number_field.attach(offset, self.T, fraction=True, minimum=1)
+        offset.pack(side="left")
         InfoTip(cell, lambda: self.T("gen.info_advisor_bpsw_offset")).label.pack(
             side="left", padx=(4, 0))
         remember_generation_field("loop", key, self._advice_offset_var)

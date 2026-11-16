@@ -17,6 +17,12 @@ Rules checked, for a field with a StringVar and for a bare entry:
     shows nothing;
   - a bare entry that gets a textvariable after attach (core.ui_state.remember restoring a
     saved value) follows that variable: a restored invalid value is red;
+  - a Spinbox number field turns red with its own style (INVALID_SPINBOX_STYLE);
+  - a range (minimum, maximum; a callable maximum follows a changing cap): outside it the
+    field is red and the tip names the range; a fraction field takes "1,5"; words ("Auto")
+    are fine;
+  - problem_field(vars) names the first field bound to one of those variables whose text is
+    not a usable value (invalid, ambiguous or out of range), so a run can refuse it;
   - a field destroyed right after it was left (a closed dialog) leaves no error behind; every text exists in English and Polish.
 Windows, real display:
     python unitTests/test_number_field.py
@@ -31,7 +37,9 @@ sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "prime_sieve"))
 
 SETTLE = 0
-KEYS = ("help", "could_be", "reason_not_whole", "reason_syntax", "reason_too_large")
+KEYS = ("help", "could_be", "reason_not_whole", "reason_syntax", "reason_too_large",
+        "reason_min", "reason_max", "reason_range", "reason_ambiguous", "fix_field",
+        "help_fraction")
 
 
 def check(value, message):
@@ -155,6 +163,70 @@ def field_checks(root, T, nf, with_var):
     return passed
 
 
+def options_checks(root, T, nf):
+    passed = True
+    var = tk.StringVar(root, value="5")
+    spin = ttk.Spinbox(root, from_=1, to=10, textvariable=var)
+    spin.pack()
+    cap = [10]
+    field = nf.attach(spin, T, minimum=1, maximum=lambda: cap[0])
+    root.update()
+    normal = str(spin.cget("style"))
+    var.set("abc")
+    wait(root, SETTLE + 80)
+    passed &= check(str(spin.cget("style")) == nf.INVALID_SPINBOX_STYLE,
+                    "a Spinbox turns red with its own style")
+    var.set("1 0")
+    wait(root, SETTLE + 80)
+    passed &= check(str(spin.cget("style")) == normal and field.problem is None,
+                    "in range (any notation): normal")
+    var.set("11")
+    wait(root, SETTLE + 80)
+    passed &= check(str(spin.cget("style")) == nf.INVALID_SPINBOX_STYLE
+                    and field.problem == "range"
+                    and T("number_field.reason_range", low=1, high=10) in field.tip.text(),
+                    f"above the maximum: red, the tip names the range ({field.problem})")
+    cap[0] = 20
+    field.refresh()
+    wait(root, SETTLE + 80)
+    passed &= check(field.problem is None, "a callable maximum follows a changed cap")
+    var.set("0")
+    wait(root, SETTLE + 80)
+    passed &= check(field.problem == "range", "below the minimum: out of range")
+    other = tk.StringVar(root, value="")
+    passed &= check(nf.problem_field([other]) is None and nf.problem_field([var]) is field,
+                    "problem_field names the field of the variable with a problem")
+    var.set("3,000")
+    root.update()
+    passed &= check(nf.problem_field([var]) is field and field.problem == "ambiguous",
+                    "problem_field: an ambiguous text is a problem at once (no pause)")
+    var.set("")
+    root.update()
+    passed &= check(nf.problem_field([var]) is None, "an empty field is no problem")
+    spin.destroy()
+
+    fvar = tk.StringVar(root, value="1,5")
+    fentry = ttk.Entry(root, textvariable=fvar)
+    fentry.pack()
+    ffield = nf.attach(fentry, T, fraction=True)
+    root.update()
+    passed &= check(ffield.problem is None and ffield.reading.value == 1.5
+                    and T("number_field.help_fraction") in ffield.tip.text(),
+                    "a fraction field takes 1,5 and its tip says fractions are fine")
+    fentry.destroy()
+    wvar = tk.StringVar(root, value="Auto")
+    wspin = ttk.Spinbox(root, values=("Auto", "1", "2"), textvariable=wvar)
+    wspin.pack()
+    wfield = nf.attach(wspin, T, words=("Auto",), minimum=1)
+    root.update()
+    passed &= check(wfield.problem is None, "a word is fine")
+    wvar.set("0")
+    root.update()
+    passed &= check(wfield.problem == "range", "a number next to the word still has its range")
+    wspin.destroy()
+    return passed
+
+
 def main():
     global SETTLE
     from primeatlas.core import number_field as nf
@@ -189,6 +261,7 @@ def main():
         passed &= check(str(late.cget("style")) != nf.INVALID_STYLE
                         and late_field.reading.value == 12, "and its later values too")
         late.destroy()
+        passed &= options_checks(root, T, nf)
         passed &= check(not errors, f"no callback errors ({errors[:1]})")
     finally:
         root.destroy()

@@ -12,6 +12,7 @@ import queue
 from tkinter import messagebox
 
 from ..core.storage import digit_count_floor, LOW_FLOOR_CUTOFF
+from ..core.number_text import plain_number
 from . import engine_options, wsl_resources
 from .engine_argv import (build_primesieve_argv, build_primesieve_native_argv, build_hybrid_argv, build_hybrid_narrow_argv,
                           build_cudasieve_argv, build_orchestrator_direct_argv)
@@ -312,7 +313,7 @@ class QuickGenRuns:
         compute_sieving = self._loop_count_sieving_var.get() or use_pi_seed
 
         def _positive_int_or(key, default):
-            raw = self._loop_vars[key].get().strip()
+            raw = plain_number(self._loop_vars[key].get())
             return int(raw) if raw.isdigit() and int(raw) > 0 else default
 
         workers_text = self._loop_vars["workers"].get()

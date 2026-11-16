@@ -16,6 +16,8 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 
 from ..core.progress_bar_owner import release_progress_bar
+from ..core.number_text import plain_number
+from ..core import number_field
 from .generation_console import GenerationConsole
 from .engine_argv import build_constellation_finder_argv, read_constellation_checkpoint
 from primeatlas.core import ui_state_dynamic
@@ -88,9 +90,10 @@ class ConstellationSection:
             side="left")
         self._const_base_exponent_var = tk.StringVar(
             value=str(const_settings.get("base_exponent", "")))
-        # not a number field: digits only, passed as text to the constellation finder
-        ttk.Entry(const_form, textvariable=self._const_base_exponent_var, width=10).pack(
-            side="left", padx=(6, 0))
+        base_exponent = ttk.Entry(const_form, textvariable=self._const_base_exponent_var,
+                                  width=10)
+        number_field.attach(base_exponent, self.T, minimum=0)
+        base_exponent.pack(side="left", padx=(6, 0))
         remember_generation_field("constellation", "base_exponent", self._const_base_exponent_var)
 
         const_btn_row = ttk.Frame(const_outer)
@@ -181,7 +184,7 @@ class ConstellationSection:
         # (see _lock_other_run_buttons()) -- this is the non-button-click backstop.
         if self._other_engine_is_running("const"):
             return
-        base_exponent = self._const_base_exponent_var.get().strip()
+        base_exponent = plain_number(self._const_base_exponent_var.get())
         if base_exponent and not base_exponent.isdigit():
             messagebox.showerror(
                 self.T("gen.dialog_title"), self.T("gen.error_base_exponent_int"))

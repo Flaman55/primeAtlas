@@ -10,6 +10,9 @@ parentheses. Arithmetic is exact (fractions) and evaluated by a small parser, ne
 A comma or dot that appears once before exactly three digits is either grouping or a decimal
 mark, so both readings are tried: only whole results count. One whole result -> OK; several
 -> AMBIGUOUS with the candidates; none -> INVALID with a reason (NOT_WHOLE, SYNTAX, TOO_LARGE).
+A fraction field (fraction=True) takes non-whole values too; `words` (e.g. "Auto") are read
+case-insensitively as themselves. plain_number() turns a field's text into what code that
+reads plain numbers expects.
 """
 import itertools
 import math
@@ -204,9 +207,14 @@ class _Parser:
         raise _Error(SYNTAX)
 
 
-def read_number(text):
-    """Reading(state, value, candidates, reason) of a field's text; see the module doc."""
-    text = _normalise((text or "").strip())
+def read_number(text, fraction=False, words=()):
+    """Reading(state, value, candidates, reason) of a field's text; see the module doc. The
+    value is an int when whole, else (fraction=True only) a Fraction, or one of `words`."""
+    stripped = (text or "").strip()
+    for word in words:
+        if stripped.lower() == word.lower():
+            return Reading(OK, word, (word,), None)
+    text = _normalise(stripped)
     if not text:
         return Reading(EMPTY, None, (), None)
     try:
@@ -223,10 +231,13 @@ def read_number(text):
                     raise
                 failure = error.reason
                 continue
-            if value.denominator == 1 and int(value) not in results:
-                results.append(int(value))
-            elif value.denominator != 1:
+            if value.denominator == 1:
+                value = int(value)
+            elif not fraction:
                 failure = NOT_WHOLE
+                continue
+            if value not in results:
+                results.append(value)
     except _Error as error:
         return Reading(INVALID, None, (), error.reason)
     if len(results) == 1:
@@ -234,3 +245,44 @@ def read_number(text):
     if results:
         return Reading(AMBIGUOUS, None, tuple(results), None)
     return Reading(INVALID, None, (), failure or SYNTAX)
+
+
+def _decimal_text(value):
+    """Plain decimal digits of a Fraction: exact when the denominator divides a power of ten."""
+    if isinstance(value, int):
+        return str(value)
+    d = value.denominator
+    twos = fives = 0
+    while d % 2 == 0:
+        d //= 2
+        twos += 1
+    while d % 5 == 0:
+        d //= 5
+        fives += 1
+    if d != 1:
+        return str(float(value))
+    places = max(twos, fives)
+    digits = str(abs(value.numerator) * 10 ** places // value.denominator).rjust(places + 1, "0")
+    sign = "-" if value < 0 else ""
+    return f"{sign}{digits[:-places]}.{digits[-places:]}".rstrip("0").rstrip(".")
+
+
+def plain_number(text, fraction=False, words=()):
+    """The plain digits (or word) a field's text stands for when it reads ok, else the stripped
+    text, so code that reads plain numbers keeps its own error for anything else."""
+    reading = read_number(text, fraction=fraction, words=words)
+    if reading.state != OK:
+        return (text or "").strip()
+    return reading.value if isinstance(reading.value, str) else _decimal_text(reading.value)
+
+
+def number_value(text):
+    """The whole number the text stands for, or None (blank, invalid or ambiguous)."""
+    reading = read_number(text)
+    return reading.value if reading.state == OK else None
+
+
+def fraction_value(text):
+    """The number the text stands for as a float (fraction fields), or None."""
+    reading = read_number(text, fraction=True)
+    return float(reading.value) if reading.state == OK else None

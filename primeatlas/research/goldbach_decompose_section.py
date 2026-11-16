@@ -11,6 +11,8 @@ and its other mixins set up, so it is never instantiated on its own.
 import tkinter as tk
 from tkinter import ttk, messagebox
 
+from ..core import number_field
+from ..core.number_text import plain_number
 from ..core.widgets import StripedTreeview
 from .goldbach_paging import GOLDBACH_DECOMPOSE_ROW_CAP
 
@@ -80,7 +82,7 @@ class GoldbachDecomposeSection:
     def _on_goldbach_decompose_goto(self):
         if self._goldbach_busy or self._goldbach_decompose_current_n is None:
             return
-        raw = self.goldbach_decompose_goto_entry.get().strip()
+        raw = plain_number(self.goldbach_decompose_goto_entry.get())
         if not raw.isdigit():
             return
         target = int(raw) - 1
@@ -138,8 +140,8 @@ class GoldbachDecomposeSection:
             decompose_nav, text=T("common.next_page"),
             command=self._on_goldbach_decompose_next, state="disabled")
         self.goldbach_decompose_next_btn.pack(side="left")
-        # not a number field: a page number, parsed by its own go-to handler
         self.goldbach_decompose_goto_entry = ttk.Entry(decompose_nav, width=6)
+        number_field.attach(self.goldbach_decompose_goto_entry, self.T, minimum=1)
         self.goldbach_decompose_goto_entry.pack(side="left", padx=(12, 0))
         self.goldbach_decompose_goto_entry.bind(
             "<Return>", lambda _e: self._on_goldbach_decompose_goto())

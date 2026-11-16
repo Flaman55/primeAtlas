@@ -5,6 +5,8 @@ from tkinter import messagebox
 
 from prime_sieve.hybrid_policy import MAX_TARGET, parameters
 
+from ..core.number_text import plain_number
+
 
 class HybridControls:
     def _hybrid_async(self, work, complete):
@@ -39,8 +41,8 @@ class HybridControls:
         self._hybrid_preview_after = None
         version = self._hybrid_preview_version
         try:
-            main = int(self.quick_hybrid_main_cap_var.get())
-            count = int(self.quick_hybrid_filter_prime_count_var.get())
+            main = int(plain_number(self.quick_hybrid_main_cap_var.get()))
+            count = int(plain_number(self.quick_hybrid_filter_prime_count_var.get()))
         except ValueError:
             self.quick_hybrid_range_var.set(self.T("quick.hybrid_error_enter_valid_numbers"))
             return

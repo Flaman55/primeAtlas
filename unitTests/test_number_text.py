@@ -13,12 +13,18 @@ Rules checked:
   - no evaluation of code and no hang: names, calls and attributes are rejected, a power
     too large is rejected at once;
   - 5000 random strings of digits, marks and operators: never an exception, never slow;
+  - fraction fields (fraction=True) take non-whole values in the same notations ("1,5",
+    "2.5e-1", "3/4"), still ambiguous for "1,500" (1500 or 1.5); words (words=("Auto",))
+    are read case-insensitively as themselves;
+  - plain_number gives the plain digits a reading stands for, or the stripped text when it
+    is not ok, so code that reads plain integers keeps its own error messages;
   - _eval_quick_number returns the value only when the reading is unambiguous.
     python unitTests/test_number_text.py
 """
 import os
 import sys
 import time
+from fractions import Fraction
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -95,6 +101,10 @@ INVALID = (
     ("7/2", "not_whole"),
     ("10^-3", "not_whole"),
     ("abc", "syntax"),
+    ("4,.,.", "syntax"),
+    ("4,.", "syntax"),
+    (",5", "syntax"),
+    ("1..2", "syntax"),
     ("10^", "syntax"),
     ("^5", "syntax"),
     ("10^^2", "syntax"),
@@ -157,6 +167,32 @@ def main():
     passed &= check(not crashed and worst < 0.5,
                     f"5000 random strings: no exception, slowest {worst:.3f} s "
                     f"({ascii(crashed[:3])})")
+    for text, want in (("1,5", Fraction(3, 2)), ("2.5e-1", Fraction(1, 4)), ("3/4", Fraction(3, 4)),
+                       ("1 234,5", Fraction(2469, 2)), ("-0,5", Fraction(-1, 2)), ("7", 7),
+                       ("10^-3", Fraction(1, 1000))):
+        r = nt.read_number(text, fraction=True)
+        passed &= check(r.state == nt.OK and r.value == want and type(r.value) is type(want),
+                        f"fraction {text!a} -> {want} ({r.state}, {r.value!r})")
+    r = nt.read_number("1,500", fraction=True)
+    passed &= check(r.state == nt.AMBIGUOUS and set(r.candidates) == {1500, Fraction(3, 2)},
+                    f"fraction '1,500' -> 1500 or 1.5 ({r.candidates})")
+    r = nt.read_number("abc", fraction=True)
+    passed &= check(r.state == nt.INVALID and r.reason == nt.SYNTAX, "fraction 'abc' invalid")
+    for text in ("Auto", "auto", " AUTO "):
+        r = nt.read_number(text, words=("Auto", "Max"))
+        passed &= check(r.state == nt.OK and r.value == "Auto", f"word {text!a} -> Auto")
+    r = nt.read_number("Autos", words=("Auto",))
+    passed &= check(r.state == nt.INVALID, "a word must match whole")
+    for text, kw, want in (("1 000 000", {}, "1000000"), ("10^25+3", {}, str(F25 + 3)),
+                           ("1,5", {}, "1,5"), ("3,000", {}, "3,000"), ("  abc ", {}, "abc"),
+                           ("", {}, ""), ("1,5", {"fraction": True}, "1.5"),
+                           ("1/3", {"fraction": True}, str(1 / 3)),
+                           ("2,0", {"fraction": True}, "2"), ("auto", {"words": ("Auto",)}, "Auto")):
+        got = nt.plain_number(text, **kw)
+        passed &= check(got == want, f"plain_number({text!a}, {kw}) -> {want!a} (got {got!a})")
+    passed &= check(nt.number_value("1 000") == 1000 and nt.number_value("1,5") is None
+                    and nt.fraction_value("1,5") == 1.5 and nt.fraction_value("x") is None,
+                    "number_value / fraction_value")
     passed &= check(_eval_quick_number("1 500 000") == 1_500_000
                     and _eval_quick_number("10^25+3") == F25 + 3
                     and _eval_quick_number("1,5") is None and _eval_quick_number("") is None,
