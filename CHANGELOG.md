@@ -343,6 +343,15 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   .wslconfig (w dowolnej jednostce, np. 10240MB = 10 GB): bez pytania, ostrzeżenia i restartu WSL.
   Zapisz jest nieaktywny, dopóki RAM komputera nie jest odczytany, i w trakcie restartu WSL.
 
+### +18 — Progress bar holds the reported progress
+
+- English: Once a job reports its progress (Constellations → Density floors, Goldbach,
+  Records export, Generation), the bottom progress bar shows exactly that fraction; the busy
+  animation no longer keeps moving it.
+- Polski: Gdy zadanie poda swój postęp (Konstelacje → Gęstość, Goldbach, eksport Rekordów,
+  Generowanie), dolny pasek postępu pokazuje dokładnie ten ułamek; animacja zajętości już go
+  nie przesuwa.
+
 ## 1.4.0 — 2026-11-14
 
 ### +1 — Research → Irreducibility: radices, comparison, comb reading, ranges, arithmetic

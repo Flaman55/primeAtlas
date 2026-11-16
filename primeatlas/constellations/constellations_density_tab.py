@@ -20,7 +20,7 @@ import pattern_catalog_v1
 from ..core import number_field
 from ..core import background, theme_dynamic
 from ..core.base_tab import BaseTab
-from ..core.progress_bar_owner import claim_progress_bar
+from ..core.progress_bar_owner import show_fraction
 from ..core.theme import palette_for
 from ..core.ui_state import remember
 from ..core.widgets import HeightGrip, StripedTreeview
@@ -172,9 +172,8 @@ class ConstellationsDensityTab(BaseTab):
 
     def _on_progress(self, payload):
         done, total = payload
-        if self._busy and claim_progress_bar(self.totals_progress, self):
-            self.totals_progress.stop()
-            self.totals_progress.configure(mode="determinate", maximum=max(1, total), value=done)
+        if self._busy:
+            show_fraction(self.totals_progress, self, maximum=max(1, total), value=done)
 
     def _on_result(self, payload, error):
         T = self.T

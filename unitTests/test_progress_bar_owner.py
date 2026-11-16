@@ -8,6 +8,14 @@ Pure logic, no tkinter -- claim_progress_bar()/owns_progress_bar()/release_progr
 bar() only ever read/write a plain attribute on whatever object they're given, so a
 bare `object()` stands in for the real ttk.Progressbar widget.
 
+show_fraction() runs on a real ttk.Progressbar, since what it guards against is the
+real pump's .after() ticks:
+  1. after a busy pump, show_fraction(maximum, value) shows exactly value of maximum and
+     no pump tick changes it (held for well over several 120 ms ticks);
+  2. a second call moves the value and the new value holds too;
+  3. while another owner holds the bar, it paints nothing, returns False and leaves that
+     owner's pump running.
+
 Usage:
     python unitTests\\test_progress_bar_owner.py
 """
@@ -26,8 +34,11 @@ sys.path.insert(0, os.path.join(_REPO_ROOT, "prime_sieve"))
 
 from primeatlas.core.progress_bar_owner import (  # noqa: E402
     claim_progress_bar, owns_progress_bar, release_progress_bar,
-    pump_indeterminate, stop_indeterminate_pump,
+    pump_indeterminate, stop_indeterminate_pump, show_fraction,
 )
+import time  # noqa: E402
+import tkinter as tk  # noqa: E402
+from tkinter import ttk  # noqa: E402
 
 failures = []
 
@@ -227,6 +238,46 @@ def _test_stop_indeterminate_pump_cancels_and_is_idempotent():
     check(True, "calling stop_indeterminate_pump() again when nothing is running does not raise")
 
 
+def _values_over(root, bar, seconds):
+    seen = set()
+    deadline = time.time() + seconds
+    while time.time() < deadline:
+        root.update()
+        time.sleep(0.02)
+        seen.add((str(bar.cget("mode")), float(bar.cget("maximum")), float(bar.cget("value"))))
+    return seen
+
+
+def _test_show_fraction_on_a_real_bar():
+    root = tk.Tk()
+    try:
+        bar = ttk.Progressbar(root)
+        bar.pack()
+        owner, other = object(), object()
+        claim_progress_bar(bar, owner)
+        pump_indeterminate(bar, 120)
+        root.update()
+        check(show_fraction(bar, owner, maximum=3, value=1) is True, "show_fraction() paints for the owner")
+        seen = _values_over(root, bar, 0.6)
+        check(seen == {("determinate", 3.0, 1.0)}, f"1 of 3 holds after a busy pump (saw {sorted(seen)})")
+        show_fraction(bar, owner, maximum=3, value=2)
+        seen = _values_over(root, bar, 0.6)
+        check(seen == {("determinate", 3.0, 2.0)}, f"the next report moves to 2 of 3 and holds (saw {sorted(seen)})")
+
+        release_progress_bar(bar, owner)
+        claim_progress_bar(bar, other)
+        pump_indeterminate(bar, 120)
+        root.update()
+        check(show_fraction(bar, owner, maximum=3, value=1) is False,
+              "show_fraction() refuses while another owner holds the bar")
+        seen = _values_over(root, bar, 0.6)
+        check(all(mode == "indeterminate" for mode, _m, _v in seen) and len(seen) > 1,
+              f"the other owner's pump keeps running, nothing painted (saw {sorted(seen)})")
+        stop_indeterminate_pump(bar)
+    finally:
+        root.destroy()
+
+
 def main():
     _test_first_claim_wins()
     _test_second_claimant_blocked_while_first_holds_it()
@@ -239,6 +290,7 @@ def main():
     _test_pump_indeterminate_ticks_keep_a_single_job_alive()
     _test_pump_indeterminate_called_again_cancels_the_prior_loop()
     _test_stop_indeterminate_pump_cancels_and_is_idempotent()
+    _test_show_fraction_on_a_real_bar()
 
     print()
     if failures:

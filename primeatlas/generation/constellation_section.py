@@ -463,7 +463,7 @@ class ConstellationSection:
         # does that for loop/hybrid/etc. runs; the constellations tree reload has no
         # equivalent), so this run resets it back to its own empty resting state
         # itself before releasing its claim -- see progress_bar_owner.py.
-        self._set_gen_progress_bar(mode="determinate", maximum=1, value=0)
+        self._set_gen_progress_bar(maximum=1, value=0)
         release_progress_bar(self.totals_progress, self)
         # See _lock_other_run_buttons()'s own docstring -- this point (past both
         # early-return chaining checks above) is the only place this run is

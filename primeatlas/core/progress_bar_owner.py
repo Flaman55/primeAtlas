@@ -102,3 +102,16 @@ def stop_indeterminate_pump(widget):
     if job_id is not None:
         widget.after_cancel(job_id)
         setattr(widget, _PUMP_JOB_ATTR, None)
+
+
+def show_fraction(widget, owner, maximum, value):
+    """Shows `value` of `maximum` on `widget` in determinate mode, if `owner` may write to
+    it (claim_progress_bar); returns whether it did. Cancels a running
+    pump_indeterminate() loop first: Progressbar.stop() does not reach that loop, whose
+    next .step() would move the value just set. While another owner holds the bar it
+    paints nothing and leaves that owner's pump running."""
+    if not claim_progress_bar(widget, owner):
+        return False
+    stop_indeterminate_pump(widget)
+    widget.configure(mode="determinate", maximum=maximum, value=value)
+    return True
