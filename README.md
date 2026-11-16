@@ -1634,10 +1634,14 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
   quick_gen_panel.py            QuickGenPanel mixin: the Quick-gen panel's shared
                               Variables, per-mode frames (Floor only/Range/
                               Exploration/Hybrid/primesieve/cudasieve/Pseudosquares),
-                              width caps and validators, RAM/CPU/storage Auto buttons; every
+                              width caps and validators, RAM/CPU/storage Auto buttons
+                              (Exploration's re-splits iterations x width under the
+                              widest run: exact total, else fewest runs, else as
+                              typed); every
                               Floor field is a spinbox (_floor_spinbox); the
                               Benchmark checkbox next to Generate
-                              (unitTests/test_benchmark_mode_controls.py)
+                              (unitTests/test_benchmark_mode_controls.py,
+                              unitTests/test_quick_auto_split.py)
   quick_gen_runs.py             QuickGenRuns mixin: Generate/Stop and one apply-and-run
                               launcher per engine (loop, primesieve, Hybrid,
                               cudasieve, orchestrator-direct window range), gap
@@ -1783,8 +1787,10 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               P -> D checkbox; v4.1, v5, v6: RAM
                               budget %) as persisted in the Generation settings: parsing,
                               the knob profile applied for the run's width, per-run
-                              window cap (v4.1 1000, others 100,000), run sizing for the
-                              Auto button and Restore, and the launch env
+                              window cap (v4.1 1000, others 100,000), v7's widest run
+                              for Auto and the width proposal (default 10,000 windows),
+                              run sizing for the Auto button and Restore, and the
+                              launch env
                               (PRIMEATLAS_SCANNER_VERSION, PRIMEATLAS_V5_*,
                               PRIMEATLAS_V6_*, PRIMEATLAS_PT1_*) that build_wsl_logged_command puts in
                               front of every orchestrator launch -- the same variables
@@ -1861,7 +1867,9 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               unitTests/test_width_advice_gui.py)
   width_advisor.py              width proposal for the Quick-gen fields: a benchmark
                               run at 10^11 numbers (capped), Explore's total range in
-                              fewer, wider runs; nothing for a Floor run writing into
+                              fewer, wider runs (plan_split: exact total, else fewest
+                              runs; shared with Explore's Auto); nothing for a Floor
+                              run writing into
                               the storage -- pure, no tkinter
                               (unitTests/test_width_advisor.py)
   width_advice_text.py          text of a width proposal: speeds or total times

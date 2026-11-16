@@ -9,7 +9,10 @@ Drives the real app (tkinter, temp storage folder seeded with a synthetic v5 log
   - Explore, writing, 10 iterations x 1000 windows: the line proposes 1 x 10,000 with the
     total times, Use writes both fields and the line hides; one iteration: no line; the
     iteration field alone refreshes the line;
-  - a small RAM budget lowers the proposal to run_ram.max_windows_in_budget();
+  - a small RAM budget lowers the proposal to run_ram.max_windows_in_budget(), split exactly;
+  - v7 with plenty of RAM: Explore 10 x 5000 proposes 5 x 10,000 (its widest-run knob), and
+    a raised knob gives 2 x 25,000; 7 x 997 under 5000 (no exact split into fewer runs)
+    proposes the wider 2 x 3,490 with the extra window named;
   - Range mode hides the line; every Quick-gen panel copy has its own width line;
   - the engine line in Explore with more than one iteration says its time is one
     iteration's; in Floor mode and with one iteration it does not;
@@ -106,7 +109,7 @@ def explore_checks(gen, app):
                     f"Use writes 1 iteration x 10000 and the line hides "
                     f"({gen.quick_iterations_var.get()} x {gen.quick_explore_width_var.get()})")
 
-    from primeatlas.generation import engine_options, run_ram
+    from primeatlas.generation import engine_options, run_ram, width_advisor
     from primeatlas.generation.window_planning import QUICK_GEN_MAX_WINDOW_WIDTH
     knob = gen._engine_fields.knob_vars[engine_options.RAM_BUDGET_KNOB]
     old = knob.get()
@@ -117,14 +120,38 @@ def explore_checks(gen, app):
     fields = gen._engine_fields
     cap = run_ram.max_windows_in_budget(
         lambda w: fields.choice_for_engine(fields.engine(), w), gen._advice_free_ram,
-        engine_options.max_windows_per_run(fields.engine()), QUICK_GEN_MAX_WINDOW_WIDTH)
-    iterations = -(-5000 // cap)
-    width = -(-5000 // iterations)
+        engine_options.widest_run(fields.choice_for_engine(fields.engine(), None)),
+        QUICK_GEN_MAX_WINDOW_WIDTH)
+    width, iterations = width_advisor.split_total(5000, cap)
     text = view.text_var.get()
     passed &= check(cap is not None and 100 < cap < 5000
                     and f"{iterations} x {width:,}" in text,
                     f"a 2 % RAM budget caps the run at {cap}: {iterations} x {width:,} ({text!r})")
     knob.set(old)
+    engine = fields.engine()
+    fields.engine_var.set("v7")
+    for widest, want in (("10000", "5 x 10,000"), ("25000", "2 x 25,000")):
+        fields.knob_vars["v7_auto_max_windows"].set(widest)
+        gen.quick_explore_width_var.set("5000")
+        gen.quick_iterations_var.set("10")
+        app.update()
+        text = view.text_var.get()
+        passed &= check(_mapped(view) and want in text,
+                        f"v7, widest run {widest}, Explore 10 x 5000: proposes {want} "
+                        f"({text!r})")
+    fields.knob_vars["v7_auto_max_windows"].set("5000")
+    gen.quick_explore_width_var.set("997")
+    gen.quick_iterations_var.set("7")
+    app.update()
+    text = view.text_var.get()
+    passed &= check(_mapped(view) and "2 x 3,490" in text
+                    and text.startswith(gen.T("width_advice.explore_wider", new_iterations=2,
+                                              new_windows="3,490", iterations=7,
+                                              windows="997", extra="1", times="")[:40]),
+                    f"v7, widest run 5000, Explore 7 x 997 (no exact split into fewer runs): "
+                    f"proposes the wider 2 x 3,490 and names the extra window ({text!r})")
+    fields.knob_vars["v7_auto_max_windows"].set("10000")
+    fields.engine_var.set(engine)
     _set_mode(gen, app, "range")
     passed &= check(not _mapped(view), "Range mode: the line hides")
     passed &= check(len(gen._quick_width_views) == len(gen._quick_advice_views) >= 1,
