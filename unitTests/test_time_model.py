@@ -7,7 +7,8 @@ pt1 B knob or the integer fourth root of top for pt1; the sieving-prime count gr
 3x per floor; benchmark rows are read without raising (missing file, stopped runs, rows
 without an engine, numbers or sieve time, and combined low floors are skipped) and each
 row's top is the floor base plus the window offset plus the span, and its time is
-total_seconds without the optional sieving-prime count (base_gen_seconds); calibration recovers
+total_seconds without the optional sieving-prime count (base_gen_seconds); rows of another
+computer (a different machine_id) are left out, rows without one kept; calibration recovers
 synthetic coefficients, reproduces measured runs (two widths on one floor split prep and
 per-number cost, floors between measured ones interpolate), reports a floor's measured runs
 and the model's time for them, needs at least two rows of the engine and reports rows, floors and
@@ -160,6 +161,32 @@ def check_read_samples():
     with open(path, "w") as f:
         f.write("garbage\n\x00\x01")
     passed &= check(tm.read_samples(path) == [], "malformed log -> no samples")
+    return passed
+
+
+def check_machine_filter():
+    passed = True
+    folder = tempfile.mkdtemp(prefix="primeatlas_time_model_")
+    path = os.path.join(folder, "benchmark_log.csv")
+    _write_log(path, [
+        {**_row("v5", 20, 1000, 0, 1.0), "machine_id": "aaaaaaaaaaaa"},
+        {**_row("v5", 20, 1000, 0, 2.0), "machine_id": "bbbbbbbbbbbb"},
+        _row("v5", 20, 1000, 0, 3.0),
+        {**_row("v5", 20, 1000, 0, 4.0), "machine_id": " AAAAAAAAAAAA "},
+    ])
+    times = [s.sieve_seconds for s in tm.read_samples(path, machine_id="aaaaaaaaaaaa")]
+    passed &= check(times == [1.0, 3.0, 4.0],
+                    f"own and blank rows kept, another computer's row left out ({times})")
+    times = [s.sieve_seconds for s in tm.read_samples(path, machine_id="cccccccccccc")]
+    passed &= check(times == [3.0], f"a computer with no rows of its own keeps blank rows ({times})")
+    times = [s.sieve_seconds for s in tm.read_samples(path, machine_id=None)]
+    passed &= check(times == [1.0, 2.0, 3.0, 4.0], f"no own id -> every row ({times})")
+    own = tm.this_machine_id()
+    _write_log(path, [{**_row("v5", 20, 1000, 0, 1.0), "machine_id": "f" * 12},
+                      {**_row("v5", 20, 1000, 0, 2.0), "machine_id": own or ""}])
+    times = [s.sieve_seconds for s in tm.read_samples(path)]
+    want = [2.0] if own and own != "f" * 12 else [1.0, 2.0]
+    passed &= check(times == want, f"by default the computer's own id filters ({times})")
     return passed
 
 
@@ -326,6 +353,7 @@ def main():
     passed = check_prime_count()
     passed &= check_prep_limit()
     passed &= check_read_samples()
+    passed &= check_machine_filter()
     passed &= check_calibration()
     passed &= check_estimate()
     passed &= check_local_calibration()
