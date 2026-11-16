@@ -1724,7 +1724,9 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               blocking, run_primecount_install_wsl_blocking,
                               run_pseudosquares_status_wsl_blocking,
                               run_pseudosquares_tools_install_wsl_blocking)
-  wsl_resources.py              WSL RAM/CPU probes, the window/worker Auto
+  wsl_resources.py              WSL RAM/CPU probes, the free RAM every RAM budget
+                              is a share of (the lower of WSL's MemAvailable and
+                              Windows' free RAM), the window/worker Auto
                               recommendations and the workers field as a count
                               (a number, or Max = WSL's CPUs probed at launch)
                               (unitTests/test_pipeline_form_layout.py)
@@ -1769,7 +1771,7 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               the smaller of a floor-scaled target (v4.1: 1000; v5:
                               grows with the run's fixed cost, knob = windows at floor
                               25, default 5000) and what fits in the RAM budget
-                              (percent of the RAM free in WSL, default 50) (v5 footprint = odd-only buffer + buckets + overhead;
+                              (percent of the free RAM, the lower of WSL's and Windows', default 50) (v5 footprint = odd-only buffer + buckets + overhead;
                               buckets shrink first when RAM is short); used through
                               engine_options.recommend() and by
                               recommended_max_windows (v4.1)
@@ -1823,13 +1825,13 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               to the widest run in the RAM budget) bound both ways to
                               the Quick-gen Floor/Width fields, the shared engine
                               selector, the time_model results and the predicted RAM
-                              (GB, % of the free WSL RAM, an over-budget flag and an
+                              (GB, % of the free RAM, an over-budget flag and an
                               InfoTip on the budget); reads the log on open and again
                               when a run ends (reload_log(), called from
                               _on_loop_finished), never writes it
   time_simulation_controls.py   GenerationTab mixin: the Quick-gen "Time simulation"
                               button, one window at a time, rebinding to the Explore
-                              mode's own Floor/Width pair; reads the free WSL RAM on a
+                              mode's own Floor/Width pair; reads the free RAM on a
                               background thread when the tab is built, when the window
                               opens and when a run ends
                               (unitTests/test_time_simulation.py)

@@ -94,7 +94,7 @@ def part_b(fit):
     prime_atlas_v2, _portal = isolate_app()
     from primeatlas.generation import generation_tab, time_simulation_controls
     reads = []
-    time_simulation_controls.estimate_wsl_available_ram_bytes = (
+    time_simulation_controls.estimate_free_ram_bytes = (
         lambda **_k: reads.append(1) or RAM)
     generation_tab.WslLoggedRunner = _Runner
     asked = []

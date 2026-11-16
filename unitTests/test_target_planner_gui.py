@@ -246,7 +246,7 @@ def main():
         from app_sandbox import isolate_app
         isolate_app(portal)
         from primeatlas.generation import time_simulation_controls
-        time_simulation_controls.estimate_wsl_available_ram_bytes = lambda **_k: FAKE_FREE_RAM
+        time_simulation_controls.estimate_free_ram_bytes = lambda **_k: FAKE_FREE_RAM
         app = prime_atlas_v2._build_gui()()
         app.update()
         gen = app.generation_tab_widget

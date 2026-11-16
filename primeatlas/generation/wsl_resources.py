@@ -8,6 +8,7 @@ import os
 import subprocess
 
 from . import run_budget
+from ..core import windows_hardware
 from ..core.number_text import plain_number
 from .window_planning import QUICK_GEN_MAX_WINDOW_WIDTH
 
@@ -38,6 +39,27 @@ def estimate_wsl_available_ram_bytes(timeout=10):
             if len(parts) >= 2 and parts[1].isdigit():
                 return int(parts[1]) * 1024  # /proc/meminfo reports kB
     return None
+
+
+def free_ram_for_run(wsl_available, windows_free):
+    """The RAM a run launched into WSL can take: the lower of WSL's MemAvailable and the RAM
+    free in Windows. WSL2's VM takes host RAM only as it touches it, so a WSL limit above what
+    Windows has left would size a run Windows cannot back. Pages WSL already holds in its file
+    cache count in MemAvailable but not in Windows' free RAM, so the result errs low, never
+    high. An unreadable Windows value leaves the WSL value; an unreadable WSL value gives None
+    (the sieve runs there)."""
+    if not wsl_available or wsl_available <= 0:
+        return None
+    if windows_free is None:
+        return wsl_available
+    return min(wsl_available, windows_free)
+
+
+def estimate_free_ram_bytes(timeout=10):
+    """free_ram_for_run() of a fresh WSL and Windows reading; every RAM budget of Atlas is a
+    share of it. None when WSL cannot be read."""
+    wsl_available = estimate_wsl_available_ram_bytes(timeout=timeout)
+    return free_ram_for_run(wsl_available, windows_hardware.windows_ram()[1])
 
 
 def recommended_max_windows(available_ram_bytes, window_m=QUICK_GEN_MAX_WINDOW_WIDTH,

@@ -202,8 +202,14 @@ extrapolated, and with fewer than two rows of the engine it shows only pi(L).
 RAM: `run_ram.py` predicts the run's peak memory as `run_budget.run_footprint_bytes()` with the
 knobs the run launches with (`EngineFields.choice_for_windows()`: an Auto profile picks the bucket
 memory by width), unlike the Auto button's `engine_options.recommend()`, which may lower the bucket
-memory to fit. The window shows it in GB and as a share of the RAM free in WSL (`MemAvailable`, read
-on a background thread when the window opens and when a run ends). The width slider ends at the
+memory to fit. The window shows it in GB and as a share of the free RAM
+(`wsl_resources.estimate_free_ram_bytes()`: the lower of WSL's `MemAvailable` and the RAM free
+in Windows, read on a background thread when the window opens and when a run ends). WSL2 takes
+host RAM only as it touches it, so a WSL limit above what Windows has left must not size a run;
+pages WSL already holds in its file cache count in `MemAvailable` but not in Windows' free RAM,
+so the reading errs low. An unreadable Windows value leaves the WSL value; an unreadable WSL
+value gives no reading. The Quick-gen Auto buttons and Settings → Restore size runs from the
+same reading. The width slider ends at the
 widest run that fits the pipeline form's RAM budget (`ram_budget_pct` of the free RAM; binary search,
 since the footprint grows with the width), or at the engine's cap when that is smaller, for pt1 (no
 run-sized buffer) and while the free RAM is unknown. The window traces the budget, bucket-memory and
@@ -230,7 +236,7 @@ first"); the run's end sets its sieving-prime bound, the Miller-Rabin bound and 
 bound. The Time simulation window times runs from the floor's start. Every own
 engine (`engine_options.ENGINES`) is an option with its `time_model` run time when it fits the floor
 (pt1 7..37; pt1-pss while the proof's B stays below 2^32, so up to floor 34), the width (its per-run
-cap) and the RAM budget (`run_ram.fits_budget()` with the free WSL RAM read last; unknown: no
+cap) and the RAM budget (`run_ram.fits_budget()` with the free RAM read last; unknown: no
 limit). An engine with fewer than two logged rows is timed from its seed rows
 (`engine_advisor_seeds.py`: v7.2's measured prep on floors 28 and 30, pt1 and pt1-pss speeds on
 floors 25-32) and the proposal says it is an estimate; an engine with neither is left out. pt1 is
@@ -325,7 +331,7 @@ is copied in once), `.generation_logs/` (logs, exit codes, `ACTIVE_RUN.json`),
 `test_engine_presets`, `test_engine_gui_wiring`, `test_run_budget`, `test_run_guard`, `test_close_guard`, `test_close_guard_wiring`,
 `test_cross_engine_run_lock`, `test_verify_plan`, `test_gen_progress_bar_engine_gating`, `test_progress_bar_owner`,
 `test_console_controls`, `test_constellation_auto_retry`, `test_storage_fill`, `test_pi_seed_checkbox_exclusivity`,
-`test_time_model`, `test_run_ram`, `test_time_simulation`, `test_ui_state_app`, `test_pi_count_notice`,
+`test_time_model`, `test_run_ram`, `test_free_ram`, `test_time_simulation`, `test_ui_state_app`, `test_pi_count_notice`,
 `test_pi_count_notice_controls`, `test_engine_advisor`, `test_engine_advice_gui`, `test_native_plan`,
 `test_primesieve_native_controls`, `test_generation_ram_guard`, `test_run_eta`, `test_pipeline_form_layout`,
 `test_width_advisor`, `test_width_advice_gui`, `test_target_planner`, `test_target_plan_costs`,

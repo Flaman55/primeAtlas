@@ -24,7 +24,7 @@ from primeatlas.generation.wsl_blocking import (
     run_pseudosquares_tools_install_wsl_blocking,
 )
 from primeatlas.generation.wsl_command import build_wsl_logged_command, generation_log_paths
-from primeatlas.generation.wsl_resources import estimate_wsl_available_ram_bytes
+from primeatlas.generation.wsl_resources import estimate_free_ram_bytes
 
 
 class SettingsWiringMixin:
@@ -88,7 +88,7 @@ class SettingsWiringMixin:
             # directly in restore_section.py, same reasoning as every other entry here
             # (see this method's own docstring).
             "low_floor_cutoff": LOW_FLOOR_CUTOFF,
-            "estimate_wsl_available_ram_bytes": estimate_wsl_available_ram_bytes,
+            "estimate_free_ram_bytes": estimate_free_ram_bytes,
             # Lets the restore driver prefer primesieve mode (much faster,
             # no RAM-buffer cost) for any floor whose numeric range fits under
             # libprimesieve's own uint64 ceiling, falling back to the orchestrator

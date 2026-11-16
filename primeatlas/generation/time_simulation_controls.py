@@ -18,7 +18,7 @@ from tkinter import ttk
 
 from . import engine_options
 from .time_simulation_window import TimeSimulationWindow
-from .wsl_resources import estimate_wsl_available_ram_bytes
+from .wsl_resources import estimate_free_ram_bytes
 
 RAM_READ_CHECK_MS = 100
 
@@ -75,12 +75,12 @@ class TimeSimulationControls:
         return [fields.knob_vars[key] for key in keys] + list(fields.preset_vars.values())
 
     def _read_free_ram(self):
-        """Reads the free WSL RAM on a thread; the engine proposal, and the window open when
-        the read began, get it when the thread ends."""
+        """Reads the free RAM (the lower of WSL's and Windows') on a thread; the engine
+        proposal, and the window open when the read began, get it when the thread ends."""
         win = self._time_simulation_window
         result = {}
         thread = threading.Thread(
-            target=lambda: result.update(value=estimate_wsl_available_ram_bytes()), daemon=True)
+            target=lambda: result.update(value=estimate_free_ram_bytes()), daemon=True)
         thread.start()
 
         def deliver():

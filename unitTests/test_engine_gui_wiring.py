@@ -230,7 +230,7 @@ def main():
     shown = []
     messagebox.showinfo = lambda *a, **k: shown.append(("info", a))
     messagebox.showerror = lambda *a, **k: shown.append(("error", a))
-    quick_gen_panel.estimate_wsl_available_ram_bytes = lambda *a, **k: RAM
+    quick_gen_panel.estimate_free_ram_bytes = lambda *a, **k: RAM
     generation_tab.WslLoggedRunner = _Runner
 
     portal = tempfile.mkdtemp(prefix="primeatlas_engine_gui_test_")
@@ -454,7 +454,7 @@ def main():
         loop["v5_bucket_mb"] = "1024"
         launched = []
         wsl = settings_tab.wsl
-        wsl["estimate_wsl_available_ram_bytes"] = lambda *a, **k: RAM
+        wsl["estimate_free_ram_bytes"] = lambda *a, **k: RAM
         wsl["find_continuation_target_idx"] = lambda *a, **k: 0
         wsl["build_wsl_logged_command"] = (
             lambda argv, log, exit_, extra_env=(): launched.append((argv, dict(extra_env))) or ["x"])

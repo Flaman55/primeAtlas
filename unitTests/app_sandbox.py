@@ -54,7 +54,7 @@ def isolate_app(portal=None, prefix="primeatlas_test_portal_"):
     from primeatlas.core.ui_state import UiStateStore
     ui_state_dynamic.STORE = UiStateStore(None)
     from primeatlas.generation import time_simulation_controls
-    time_simulation_controls.estimate_wsl_available_ram_bytes = lambda **_k: None
+    time_simulation_controls.estimate_free_ram_bytes = lambda **_k: None
     app_dynamic.APP_SETTINGS.save = lambda: None
     app_dynamic.APP_SETTINGS.set_storage_path(portal)
     app_dynamic.PORTAL_FOLDER = portal
