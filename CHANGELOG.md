@@ -227,6 +227,24 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   `benchmarks/2026-11-16_engines/`. Silnik v7.2 znów można wybrać poza GUI
   (`PRIMEATLAS_SCANNER_VERSION=v7.2`) do przebiegów A/B wobec v7.4; v7 w GUI to nadal v7.4.
 
+### +11 — About: This computer (Windows and WSL hardware, WSL RAM limit)
+
+- English: The About tab shows the computer Atlas runs on: Windows version, processor with
+  its cores and threads, Windows RAM total and free, the WSL distro and kernel, the CPUs and
+  RAM WSL sees, and the WSL RAM limit as a share of the Windows RAM with where it comes from
+  (`memory=` in `.wslconfig`, or the WSL default of half the Windows RAM). It is read in the
+  background the first time the tab is opened, so starting Atlas does not start WSL; a
+  refresh icon reads it again and a copy icon copies it. Nothing needs admin rights; a
+  value that cannot be read shows as unknown.
+- Polski: Zakładka O programie pokazuje komputer, na którym działa Atlas: wersję Windows,
+  procesor z liczbą rdzeni i wątków, RAM Windows (całkowity i wolny), dystrybucję i jądro
+  WSL, procesory i RAM widziane przez WSL oraz limit RAM-u WSL jako część RAM-u Windows ze
+  źródłem (`memory=` w `.wslconfig` albo domyślne ustawienie WSL: połowa RAM-u Windows).
+  Dane są odczytywane w tle przy pierwszym otwarciu zakładki, więc start Atlasa nie
+  uruchamia WSL; ikona odświeżania odczytuje je ponownie, a ikona kopiowania kopiuje. Nic
+  nie wymaga uprawnień administratora; wartość, której nie da się odczytać, jest pokazana
+  jako nieznana.
+
 ## 1.4.0 — 2026-11-14
 
 ### +1 — Research → Irreducibility: radices, comparison, comb reading, ranges, arithmetic
