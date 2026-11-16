@@ -37,6 +37,8 @@ from tkinter import ttk, messagebox
 
 import hit_paging
 
+from ..core import number_field
+from ..core.number_text import plain_number
 from ..core.base_tab import BaseTab
 from ..core.storage import digit_count_floor, list_floors
 from .constellations import (
@@ -105,6 +107,7 @@ class ConstellationsHitsTab(BaseTab):
 
         ttk.Label(top, text=T("common.search_label")).pack(side="left")
         self.hits_search_entry = ttk.Entry(top, width=26)
+        number_field.attach(self.hits_search_entry, self.T, minimum=0)
         self.hits_search_entry.pack(side="left", padx=(4, 4))
         self.hits_search_entry.bind("<Return>", lambda _e: self.search_constellation())
         self.hits_search_button = ttk.Button(
@@ -286,7 +289,7 @@ class ConstellationsHitsTab(BaseTab):
         reads the query from the entry rather than taking a parameter, matching exactly
         what a real button click does regardless of which caller triggered it."""
         T = self.T
-        raw = self.hits_search_entry.get().strip()
+        raw = plain_number(self.hits_search_entry.get())
         if not raw.isdigit():
             messagebox.showerror(T("common.dialog_search_title"), T("common.error_invalid_number"))
             return
@@ -565,7 +568,7 @@ class ConstellationsHitsTab(BaseTab):
         self._load_hit_file_page(self._hit_file_page_index - 1)
 
     def _goto_hit_file_page(self):
-        raw = self.hits_file_goto_entry.get().strip()
+        raw = plain_number(self.hits_file_goto_entry.get())
         if not raw.isdigit():
             return
         page_index = max(0, min(int(raw) - 1, self._hit_file_page_count - 1))
@@ -614,7 +617,7 @@ class ConstellationsHitsTab(BaseTab):
         self._show_hits_page(self._hit_page + 1)
 
     def _goto_hits_page(self):
-        raw = self.hits_goto_entry.get().strip()
+        raw = plain_number(self.hits_goto_entry.get())
         if not raw.isdigit():
             return
         self._show_hits_page(int(raw) - 1)

@@ -20,6 +20,7 @@ Windows GUI, which must not pull in the WSL-only engine imports.
 unitTests/test_engine_options.py keeps them equal.
 """
 from collections import namedtuple
+from ..core.number_text import plain_number
 
 from . import engine_presets, run_budget
 
@@ -125,6 +126,11 @@ MAX_WINDOWS_PER_RUN = {ENGINE_V41: 1000, ENGINE_V5: 100_000, ENGINE_V6: 100_000,
 EngineChoice = namedtuple("EngineChoice", "engine knobs")
 
 
+def knob_range(key):
+    """(lowest, highest or None) a knob field accepts."""
+    return (0 if key in _ZERO_ALLOWED else 1), _MAX_VALUES.get(key)
+
+
 def normalize_engine(value):
     """The engine name, or DEFAULT_ENGINE for anything not in ENGINES."""
     value = str(value).strip() if value is not None else ""
@@ -140,7 +146,7 @@ def _parse_positive(raw, zero_allowed=False):
     lowest = 0 if zero_allowed else 1
     if isinstance(raw, int) and not isinstance(raw, bool):
         return raw if raw >= lowest else None
-    text = str(raw).strip()
+    text = plain_number(str(raw))
     return int(text) if text.isdigit() and int(text) >= lowest else None
 
 

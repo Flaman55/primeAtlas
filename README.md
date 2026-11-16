@@ -1363,8 +1363,23 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               Generation tab's engine selector and every engine knob);
                               with anchor= it hangs on a greyed-out field and says
                               why it cannot be changed (pt1's verify checkbox under
-                              Benchmark); the popup stays inside the app window
+                              Benchmark); the popup stays inside the app window;
+                              below= and delay_ms= for a tip hung on an entry
                               (unitTests/test_info_tip.py)
+  number_text.py                read_number -- the reader of every number field: a
+                              whole number in any common notation (grouping of any
+                              country, powers, superscripts, scientific, pasted
+                              forms), exact, no eval; ok / ambiguous (its readings)
+                              / invalid (its reason) (unitTests/test_number_text.py)
+  number_field.py               attach(entry, T) -- the app's one number field (Entry
+                              or Spinbox, whole or fraction, words like Auto): red
+                              when invalid, a "Could be" popup with the readings
+                              when ambiguous, red outside its range, the accepted
+                              forms in a hover tip; refuse_problem stops a run on a
+                              red field (unitTests/test_number_field.py; every Entry
+                              and Spinbox is a number field or marked why not:
+                              unitTests/test_number_field_coverage.py; the app's
+                              195 fields: unitTests/test_number_fields_app.py)
   widgets.py                    small generic tkinter helpers (e.g. FlowRow) with no
                               application-specific state; disable_notebook_wheel()
                               keeps the mouse wheel from switching notebook tabs
@@ -1685,7 +1700,8 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               windows and per-floor launches (plan_storage_fill),
                               one-window Hybrid targets, totals bumps from new
                               benchmark rows, primesieve/CUDASieve range limits
-  quick_number.py               _eval_quick_number, the parser of every numeric field
+  quick_number.py               _eval_quick_number, the value of a number field
+                              (core.number_text; unitTests/test_quick_number.py)
   generation_settings.py        the Generation forms' values in the remembered-fields
                               store (generation.<section>.<field>) over
                               DEFAULT_GENERATION_SETTINGS; one-time copy of a storage

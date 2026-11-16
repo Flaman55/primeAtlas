@@ -46,7 +46,7 @@ FONT_SCALE_MIN = 80
 FONT_SCALE_MAX = 200
 
 BACKGROUND_KEYS = ("bg", "field_bg", "border", "console_bg", "tree_bg", "tree_alt_bg",
-                   "tree_group_bg", "tree_stat_bg", "tab_bg", "tab_selected_bg")
+                   "tree_group_bg", "tree_stat_bg", "tab_bg", "tab_selected_bg", "invalid_bg")
 TEXT_KEYS = ("fg", "field_fg", "disabled_fg", "hint_fg", "link_fg", "console_fg")
 
 THEMES = {
@@ -69,6 +69,7 @@ THEMES = {
         "tree_stat_bg": "#fff6d8",
         "tab_bg": "#e1e1e1",
         "tab_selected_bg": "#ffffff",
+        "invalid_bg": "#ffd2d2",
     },
     "dark": {
         "bg": "#2b2b2b",
@@ -89,6 +90,7 @@ THEMES = {
         "tree_stat_bg": "#4a4020",
         "tab_bg": "#3c3f41",
         "tab_selected_bg": "#2b2b2b",
+        "invalid_bg": "#7a2e2e",
     },
 }
 

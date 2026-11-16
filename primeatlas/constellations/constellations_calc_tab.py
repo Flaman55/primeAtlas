@@ -45,6 +45,7 @@ from tkinter import ttk, messagebox
 
 import pattern_catalog_v1
 
+from ..core import number_field
 from ..core import ui_state_dynamic
 from ..core.base_tab import BaseTab
 from ..core.widgets import StripedTreeview
@@ -143,9 +144,11 @@ class ConstellationsCalcTab(BaseTab):
         input_row.pack(fill="x", pady=(0, 8))
         ttk.Label(input_row, text=T("const_calc.field_exp")).pack(side="left")
         self.exp_entry = ttk.Entry(input_row, width=10)
+        number_field.attach(self.exp_entry, self.T)
         self.exp_entry.pack(side="left", padx=(6, 16))
         ttk.Label(input_row, text=T("const_calc.field_offset")).pack(side="left")
         self.offset_entry = ttk.Entry(input_row, width=24)
+        number_field.attach(self.offset_entry, self.T)
         self.offset_entry.pack(side="left", padx=(6, 16))
         remember("constellations.calc.exp", self.exp_entry)
         remember("constellations.calc.offset", self.offset_entry)

@@ -54,6 +54,7 @@ import datetime
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
+from ..core import number_field
 from ..core import background
 from ..core.base_tab import BaseTab
 from ..core.ui_state import remember
@@ -116,14 +117,17 @@ class ResearchPiApproxTab(BaseTab):
         range_row.pack(fill="x", padx=6, pady=(10, 4))
         ttk.Label(range_row, text=T("research_pi_approx.x_from_label")).pack(side="left")
         self.pi_x_from_entry = ttk.Entry(range_row, width=14)
+        number_field.attach(self.pi_x_from_entry, self.T)
         self.pi_x_from_entry.insert(0, "100")
         self.pi_x_from_entry.pack(side="left", padx=(6, 16))
         ttk.Label(range_row, text=T("research_pi_approx.x_to_label")).pack(side="left")
         self.pi_x_to_entry = ttk.Entry(range_row, width=14)
+        number_field.attach(self.pi_x_to_entry, self.T)
         self.pi_x_to_entry.insert(0, "100000")
         self.pi_x_to_entry.pack(side="left", padx=(6, 16))
         ttk.Label(range_row, text=T("research_pi_approx.step_label")).pack(side="left")
         self.pi_step_entry = ttk.Entry(range_row, width=14)
+        number_field.attach(self.pi_step_entry, self.T)
         self.pi_step_entry.insert(0, "10000")
         self.pi_step_entry.pack(side="left", padx=(6, 0))
 

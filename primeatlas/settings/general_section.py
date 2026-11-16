@@ -10,7 +10,9 @@ other mixins set up, so it is never instantiated on its own.
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
+from ..core import number_field
 from ..core.app_settings import SCROLL_PAD_WIDTH_MAX, SCROLL_PAD_WIDTH_MIN
+from ..core.number_text import plain_number
 from ..core.theme import (BRIGHTNESS_DEFAULT, BRIGHTNESS_MAX, BRIGHTNESS_MIN, FONT_SCALE_DEFAULT,
                           FONT_SCALE_MAX, FONT_SCALE_MIN)
 from ..core.widgets import set_scroll_pad_width
@@ -90,7 +92,7 @@ class GeneralSection:
         """Applies the field live: saves the clamped width and resizes every ScrollPad.
         A non-integer entry is reverted to the saved width."""
         try:
-            width = int(self.scroll_pad_width_var.get())
+            width = int(plain_number(self.scroll_pad_width_var.get()))
         except ValueError:
             self.scroll_pad_width_var.set(str(self.app_settings.scroll_pad_width))
             return
@@ -114,9 +116,9 @@ class GeneralSection:
         restart."""
         settings = self.app_settings
         try:
-            background = int(self.background_brightness_var.get())
-            text = int(self.text_brightness_var.get())
-            font_scale = int(self.font_scale_var.get())
+            background = int(plain_number(self.background_brightness_var.get()))
+            text = int(plain_number(self.text_brightness_var.get()))
+            font_scale = int(plain_number(self.font_scale_var.get()))
         except ValueError:
             self._load_readability_fields()
             return
@@ -225,6 +227,8 @@ class GeneralSection:
             ui_frame, textvariable=self.scroll_pad_width_var, from_=SCROLL_PAD_WIDTH_MIN,
             to=SCROLL_PAD_WIDTH_MAX, increment=4, width=6,
             command=self._on_scroll_pad_width_changed)
+        number_field.attach(width_spin, self.T, minimum=SCROLL_PAD_WIDTH_MIN,
+                            maximum=SCROLL_PAD_WIDTH_MAX)
         width_spin.grid(row=0, column=1, sticky="w", padx=(0, 12), pady=6)
         width_spin.bind("<Return>", self._on_scroll_pad_width_changed)
         width_spin.bind("<FocusOut>", self._on_scroll_pad_width_changed)
@@ -248,8 +252,10 @@ class GeneralSection:
         for row, (label_key, var, low, high, step) in enumerate(readability_rows, start=1):
             ttk.Label(ui_frame, text=self.T(label_key)).grid(
                 row=row, column=0, sticky="w", padx=6, pady=(0, 6))
-            ttk.Spinbox(ui_frame, textvariable=var, from_=low, to=high, increment=step,
-                        width=6).grid(row=row, column=1, sticky="w", padx=(0, 12), pady=(0, 6))
+            spin = ttk.Spinbox(ui_frame, textvariable=var, from_=low, to=high, increment=step,
+                               width=6)
+            number_field.attach(spin, self.T, minimum=low, maximum=high)
+            spin.grid(row=row, column=1, sticky="w", padx=(0, 12), pady=(0, 6))
             ttk.Label(ui_frame, text=self.T("settings.readability_range", min=low, max=high),
                       style="Hint.TLabel").grid(row=row, column=2, sticky="w", padx=(0, 6), pady=(0, 6))
         self._load_readability_fields()
@@ -266,6 +272,7 @@ class GeneralSection:
         path_frame = ttk.Labelframe(outer, text=self.T("settings.path_frame"))
         path_frame.pack(fill="x", pady=(0, 8))
         self.path_var = tk.StringVar(value=self.wsl["get_portal_folder"]())
+        # not a number field: a folder path
         ttk.Entry(path_frame, textvariable=self.path_var, width=70).grid(
             row=0, column=0, sticky="we", padx=6, pady=6)
         path_frame.columnconfigure(0, weight=1)

@@ -8,6 +8,7 @@ import os
 import subprocess
 
 from . import run_budget
+from ..core.number_text import plain_number
 from .window_planning import QUICK_GEN_MAX_WINDOW_WIDTH
 
 
@@ -112,5 +113,5 @@ def resolve_workers(text, available_cpu_count):
     anything else None."""
     if wants_cpu_count(text):
         return recommended_worker_count(available_cpu_count)
-    raw = str(text or "").strip()
+    raw = plain_number(str(text or ""))
     return int(raw) if raw.isdigit() and int(raw) > 0 else None

@@ -13,6 +13,8 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 
 from ..core.progress_bar_owner import release_progress_bar
+from ..core import number_field
+from ..core.number_text import plain_number
 from ..core.wrapped_check import wrapped_checkbutton
 from ..core.storage import bump_floor_total, load_totals_cache, save_totals_cache
 from ..benchmark.benchmark import read_benchmark_log
@@ -83,7 +85,10 @@ class LoopSection:
             cell = ttk.Frame(form)
             cell.grid(row=row, column=col * 2 + 1, sticky="w", padx=(0, 20), pady=2)
             var = tk.StringVar(value=str(loop_settings.get(key, "")))
-            ttk.Entry(cell, textvariable=var, width=width).pack(side="left")
+            entry = ttk.Entry(cell, textvariable=var, width=width)
+            number_field.attach(entry, self.T, words=(
+                (wsl_resources.WORKERS_MAX,) if key == "workers" else ()))
+            entry.pack(side="left")
             self._loop_vars[key] = var
             remember_generation_field("loop", key, var)
             return cell
@@ -246,7 +251,7 @@ class LoopSection:
             return None
         parsed["workers_text"] = workers_text
         for key in int_fields:
-            raw = self._loop_vars[key].get().strip()
+            raw = plain_number(self._loop_vars[key].get())
             minimum = 0 if key in zero_allowed_fields else 1
             if not raw.isdigit() or int(raw) < minimum:
                 messagebox.showerror(

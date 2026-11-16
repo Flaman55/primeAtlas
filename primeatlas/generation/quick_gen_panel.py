@@ -10,6 +10,7 @@ and its other mixins set up, so it is never instantiated on its own.
 import tkinter as tk
 from tkinter import ttk, messagebox
 
+from ..core import number_field
 from ..core.info_tip import InfoTip
 from ..core.storage import digit_count_floor, LOW_FLOOR_CUTOFF
 from ..core.ui_state import remember
@@ -22,11 +23,18 @@ from .window_planning import (QUICK_GEN_MAX_WINDOW_WIDTH, count_existing_windows
 from .wsl_resources import (estimate_wsl_available_ram_bytes, estimate_wsl_available_cpu_count,
                             recommended_worker_count)
 
+QUICK_ITERATIONS_MAX = 100     # Explore iterations: 100 x 10 bln = 1 trillion numbers per click
+# Hybrid filter prime count: a UI safety bound, not an engine limit -- an accidental
+# multi-billion value must not freeze the planner before it can show a message.
+HYBRID_FILTER_PRIME_COUNT_MAX = 1_000_000
 
-def _floor_spinbox(parent, var, width, to=QUICK_FLOOR_MAX):
+
+def _floor_spinbox(parent, var, width, T, to=QUICK_FLOOR_MAX):
     """A Floor field: the arrows and the mouse wheel step the floor through [0, to]; any
-    text can still be typed (Quick-gen evaluates expressions such as 10**3)."""
-    return ttk.Spinbox(parent, from_=0, to=to, increment=1, textvariable=var, width=width)
+    notation can be typed (a number field, red outside [0, to])."""
+    spinbox = ttk.Spinbox(parent, from_=0, to=to, increment=1, textvariable=var, width=width)
+    number_field.attach(spinbox, T, minimum=0, maximum=to)
+    return spinbox
 
 
 # Every Quick-gen input variable ui_state remembers (see _remember_quick_fields).
@@ -242,8 +250,8 @@ class QuickGenPanel:
         file management predictable. So Width here is a MULTIPLIER of that window
         size, not a raw integer -- entering 1 means one 10-million window, 1000 means
         1000 of them (10 billion, the max, an explicit input cap). A ttk.Spinbox (not a
-        plain Entry) makes that bounded-multiplier nature visible at a glance and a
-        validatecommand blocks keystrokes that would push it out of [1, 1000].
+        plain Entry) makes that bounded-multiplier nature visible at a glance; as a number
+        field it turns red outside [1, the engine's per-run cap].
 
         Starting point is optional and drives which of its TWO roles the Floor field
         plays: blank start -> Floor is a normal, manually-typed field, and generation
@@ -276,13 +284,13 @@ class QuickGenPanel:
         frame = ttk.Frame(outer)
         frame.grid(row=0, column=0, sticky="w")
         ttk.Label(frame, text=self.T("quick.field_floor")).pack(side="left")
-        floor_entry = _floor_spinbox(frame, self.quick_floor_var, 10)
+        floor_entry = _floor_spinbox(frame, self.quick_floor_var, 10, self.T)
         floor_entry.pack(side="left", padx=(6, 20))
         ttk.Label(frame, text=self.T("quick.field_width")).pack(side="left")
-        width_vcmd = (self.register(self._validate_quick_width_spinbox), "%P")
         width_spinbox = ttk.Spinbox(
             frame, from_=1, to=self._quick_width_cap(), textvariable=self.quick_floor_width_var,
-            width=6, validate="key", validatecommand=width_vcmd)
+            width=6)
+        number_field.attach(width_spinbox, self.T, minimum=1, maximum=self._quick_width_cap)
         width_spinbox.pack(side="left", padx=(6, 4))
         self._quick_width_spinboxes.append(width_spinbox)
         ttk.Button(frame, text=self.T("quick.auto_button"),
@@ -290,7 +298,7 @@ class QuickGenPanel:
                        self.quick_floor_width_var,
                        self._quick_floor_of(self.quick_floor_var))).pack(side="left", padx=(0, 20))
         ttk.Label(frame, text=self.T("quick.field_start")).pack(side="left")
-        ttk.Entry(frame, textvariable=self.quick_floor_start_var, width=20).pack(
+        number_field.attach(ttk.Entry(frame, textvariable=self.quick_floor_start_var, width=20), self.T).entry.pack(
             side="left", padx=(6, 0))
         gap_row = ttk.Frame(outer)
         gap_row.grid(row=1, column=0, sticky="w", pady=(4, 0))
@@ -299,14 +307,6 @@ class QuickGenPanel:
         mode_frames["floor"] = outer
         return floor_entry
 
-    def _validate_quick_width_spinbox(self, proposed):
-        """validatecommand for the Width spinbox -- allows an empty field WHILE
-        editing (so the user can select-all-and-retype), otherwise only digit strings
-        in [1, _quick_width_cap()] -- UI-level input restriction only; this is not where
-        the actual 1 unit = 10,000,000 translation happens."""
-        if proposed == "":
-            return True
-        return proposed.isdigit() and 1 <= int(proposed) <= self._quick_width_cap()
 
     def _selected_engine(self):
         """Engine selected in the pipeline form (the default engine's while the form is
@@ -328,6 +328,7 @@ class QuickGenPanel:
         for spinbox in self._quick_width_spinboxes:
             try:
                 spinbox.configure(to=cap)
+                spinbox.number_field.refresh()
             except tk.TclError:  # a closed detached panel's copy
                 continue
             alive.append(spinbox)
@@ -342,23 +343,7 @@ class QuickGenPanel:
             return None
         return len(str(value)) - 1 if is_number else value
 
-    def _validate_primesieve_width_spinbox(self, proposed):
-        """validatecommand for primesieve mode's OWN Width spinbox -- same shape as
-        _validate_quick_width_spinbox, but bounded to PRIMESIEVE_MAX_WIDTH_MULT instead
-        of 1000 (see that constant's own docstring for why this mode's Width field has
-        no RAM-driven reason to stay small)."""
-        if proposed == "":
-            return True
-        return proposed.isdigit() and 1 <= int(proposed) <= PRIMESIEVE_MAX_WIDTH_MULT
 
-    def _validate_cudasieve_width_spinbox(self, proposed):
-        """validatecommand for cudasieve mode's OWN Width spinbox -- same shape as
-        _validate_primesieve_width_spinbox, bounded to CUDASIEVE_MAX_WIDTH_MULT (same
-        uint64_t domain as libprimesieve's own PRIMESIEVE_MAX_STOP -- see that constant's
-        own docstring in window_planning.py)."""
-        if proposed == "":
-            return True
-        return proposed.isdigit() and 1 <= int(proposed) <= CUDASIEVE_MAX_WIDTH_MULT
 
     def _on_quick_floor_start_changed(self, *_args):
         """Gives the Floor field its two roles (see _build_quick_mode_floor's
@@ -378,10 +363,10 @@ class QuickGenPanel:
         frame = ttk.Frame(container)
         frame.grid(row=0, column=0, sticky="w")
         ttk.Label(frame, text=self.T("quick.field_from")).pack(side="left")
-        ttk.Entry(frame, textvariable=self.quick_from_var, width=20).pack(
+        number_field.attach(ttk.Entry(frame, textvariable=self.quick_from_var, width=20), self.T).entry.pack(
             side="left", padx=(6, 20))
         ttk.Label(frame, text=self.T("quick.field_to")).pack(side="left")
-        ttk.Entry(frame, textvariable=self.quick_to_var, width=20).pack(
+        number_field.attach(ttk.Entry(frame, textvariable=self.quick_to_var, width=20), self.T).entry.pack(
             side="left", padx=(6, 20))
         # Range mode has no window-COUNT field to fill in (From/To are literal
         # numbers, not a window multiplier) -- Auto here reports the recommendation
@@ -418,8 +403,8 @@ class QuickGenPanel:
         for their own fields.
 
         One iteration covers Width x QUICK_GEN_MAX_WINDOW_WIDTH numbers -- same Width
-        spinbox/meaning as "Floor only"'s (reuses _validate_quick_width_spinbox,
-        [1, 1000]), so the per-iteration memory footprint is exactly as
+        spinbox/meaning as "Floor only"'s (the same [1, per-run cap] range), so the
+        per-iteration memory footprint is exactly as
         user-controllable here as it is there.
 
         Second row: the SAME "fill gaps first" checkbox/variable Floor mode's own
@@ -435,21 +420,21 @@ class QuickGenPanel:
         frame = ttk.Frame(outer)
         frame.grid(row=0, column=0, sticky="w")
         ttk.Label(frame, text=self.T("quick.field_floor")).pack(side="left")
-        _floor_spinbox(frame, self.quick_explore_floor_var, 10).pack(
+        _floor_spinbox(frame, self.quick_explore_floor_var, 10, self.T).pack(
             side="left", padx=(6, 4))
         ttk.Button(frame, text=self.T("quick.explore_auto_floor_button"),
                    command=self._on_explore_auto_floor_clicked).pack(
             side="left", padx=(0, 20))
         ttk.Label(frame, text=self.T("quick.field_iterations")).pack(side="left")
-        iterations_vcmd = (self.register(self._validate_quick_iterations_spinbox), "%P")
-        ttk.Spinbox(frame, from_=1, to=100, textvariable=self.quick_iterations_var,
-                    width=6, validate="key", validatecommand=iterations_vcmd).pack(
-            side="left", padx=(6, 20))
+        iterations = ttk.Spinbox(frame, from_=1, to=QUICK_ITERATIONS_MAX,
+                                 textvariable=self.quick_iterations_var, width=6)
+        number_field.attach(iterations, self.T, minimum=1, maximum=QUICK_ITERATIONS_MAX)
+        iterations.pack(side="left", padx=(6, 20))
         ttk.Label(frame, text=self.T("quick.field_width")).pack(side="left")
-        width_vcmd = (self.register(self._validate_quick_width_spinbox), "%P")
         width_spinbox = ttk.Spinbox(
             frame, from_=1, to=self._quick_width_cap(), textvariable=self.quick_explore_width_var,
-            width=6, validate="key", validatecommand=width_vcmd)
+            width=6)
+        number_field.attach(width_spinbox, self.T, minimum=1, maximum=self._quick_width_cap)
         width_spinbox.pack(side="left", padx=(6, 4))
         self._quick_width_spinboxes.append(width_spinbox)
         ttk.Button(frame, text=self.T("quick.auto_button"),
@@ -486,18 +471,19 @@ class QuickGenPanel:
                              self.T("quick.hybrid_target_exact_window"))).pack(side="left", padx=(6, 12))
         value_group = ttk.Frame(frame)
         ttk.Label(value_group, text=self.T("quick.hybrid_field_n_or_index")).pack(side="left")
-        ttk.Entry(value_group, textvariable=self.quick_hybrid_value_var, width=20).pack(side="left", padx=(6, 12))
+        number_field.attach(ttk.Entry(value_group, textvariable=self.quick_hybrid_value_var, width=20), self.T).entry.pack(side="left", padx=(6, 12))
         floor_group = ttk.Frame(frame)
         ttk.Label(floor_group, text=self.T("quick.field_floor")).pack(side="left")
-        _floor_spinbox(floor_group, self.quick_hybrid_target_floor_var, 7).pack(side="left", padx=(6, 12))
+        _floor_spinbox(floor_group, self.quick_hybrid_target_floor_var, 7, self.T).pack(side="left", padx=(6, 12))
         ttk.Label(frame, text="MAIN <=").pack(side="left")
-        ttk.Entry(frame, textvariable=self.quick_hybrid_main_cap_var, width=8).pack(side="left", padx=(6, 12))
+        number_field.attach(ttk.Entry(frame, textvariable=self.quick_hybrid_main_cap_var, width=8), self.T).entry.pack(side="left", padx=(6, 12))
         ttk.Label(frame, text=self.T("quick.field_filter_prime_count")).pack(side="left")
-        filter_vcmd = (self.register(self._validate_hybrid_filter_prime_count_spinbox), "%P")
-        ttk.Spinbox(frame, from_=1, to=1_000_000,
-                    textvariable=self.quick_hybrid_filter_prime_count_var,
-                    width=9, validate="key", validatecommand=filter_vcmd).pack(
-            side="left", padx=(6, 0))
+        filter_count = ttk.Spinbox(frame, from_=1, to=HYBRID_FILTER_PRIME_COUNT_MAX,
+                                   textvariable=self.quick_hybrid_filter_prime_count_var,
+                                   width=9)
+        number_field.attach(filter_count, self.T, minimum=1,
+                            maximum=HYBRID_FILTER_PRIME_COUNT_MAX)
+        filter_count.pack(side="left", padx=(6, 0))
         ttk.Label(wrapper, textvariable=self.quick_hybrid_range_var, wraplength=950).pack(fill="x")
         self._schedule_hybrid_preview()
         self._hybrid_target_groups.append((value_group, floor_group))
@@ -554,20 +540,19 @@ class QuickGenPanel:
         row1 = ttk.Frame(frame)
         row1.pack(anchor="w")
         ttk.Label(row1, text=self.T("quick.field_floor")).pack(side="left")
-        _floor_spinbox(row1, self.quick_primesieve_floor_var, 10, to=UINT64_FLOOR_MAX).pack(
+        _floor_spinbox(row1, self.quick_primesieve_floor_var, 10, self.T, to=UINT64_FLOOR_MAX).pack(
             side="left", padx=(6, 20))
         ttk.Label(row1, text=self.T("quick.field_from")).pack(side="left")
-        ttk.Entry(row1, textvariable=self.quick_primesieve_from_var, width=24).pack(
+        number_field.attach(ttk.Entry(row1, textvariable=self.quick_primesieve_from_var, width=24), self.T).entry.pack(
             side="left", padx=(6, 4))
         ttk.Button(row1, text=self.T("quick.auto_button"),
                    command=self._on_primesieve_auto_from_clicked).pack(
             side="left", padx=(0, 20))
         ttk.Label(row1, text=self.T("quick.field_width")).pack(side="left")
-        width_vcmd = (self.register(self._validate_primesieve_width_spinbox), "%P")
-        ttk.Spinbox(row1, from_=1, to=PRIMESIEVE_MAX_WIDTH_MULT,
-                    textvariable=self.quick_primesieve_width_var,
-                    width=14, validate="key", validatecommand=width_vcmd).pack(
-            side="left", padx=(6, 0))
+        width = ttk.Spinbox(row1, from_=1, to=PRIMESIEVE_MAX_WIDTH_MULT,
+                            textvariable=self.quick_primesieve_width_var, width=14)
+        number_field.attach(width, self.T, minimum=1, maximum=PRIMESIEVE_MAX_WIDTH_MULT)
+        width.pack(side="left", padx=(6, 0))
         row2 = ttk.Frame(frame)
         row2.pack(anchor="w", pady=(4, 0))
         ttk.Checkbutton(row2, text=self.T("quick.field_primesieve_native"),
@@ -689,20 +674,19 @@ class QuickGenPanel:
         row1 = ttk.Frame(frame)
         row1.pack(anchor="w")
         ttk.Label(row1, text=self.T("quick.field_floor")).pack(side="left")
-        _floor_spinbox(row1, self.quick_cudasieve_floor_var, 10, to=UINT64_FLOOR_MAX).pack(
+        _floor_spinbox(row1, self.quick_cudasieve_floor_var, 10, self.T, to=UINT64_FLOOR_MAX).pack(
             side="left", padx=(6, 20))
         ttk.Label(row1, text=self.T("quick.field_from")).pack(side="left")
-        ttk.Entry(row1, textvariable=self.quick_cudasieve_from_var, width=24).pack(
+        number_field.attach(ttk.Entry(row1, textvariable=self.quick_cudasieve_from_var, width=24), self.T).entry.pack(
             side="left", padx=(6, 4))
         ttk.Button(row1, text=self.T("quick.auto_button"),
                    command=self._on_cudasieve_auto_from_clicked).pack(
             side="left", padx=(0, 20))
         ttk.Label(row1, text=self.T("quick.field_width")).pack(side="left")
-        width_vcmd = (self.register(self._validate_cudasieve_width_spinbox), "%P")
-        ttk.Spinbox(row1, from_=1, to=CUDASIEVE_MAX_WIDTH_MULT,
-                    textvariable=self.quick_cudasieve_width_var,
-                    width=14, validate="key", validatecommand=width_vcmd).pack(
-            side="left", padx=(6, 0))
+        width = ttk.Spinbox(row1, from_=1, to=CUDASIEVE_MAX_WIDTH_MULT,
+                            textvariable=self.quick_cudasieve_width_var, width=14)
+        number_field.attach(width, self.T, minimum=1, maximum=CUDASIEVE_MAX_WIDTH_MULT)
+        width.pack(side="left", padx=(6, 0))
         ttk.Label(frame, text=self.T("quick.attribution_cudasieve"), style="Hint.TLabel",
                   font=("TkDefaultFont", 8), wraplength=860, justify="left").pack(
             anchor="w", pady=(4, 0))
@@ -775,23 +759,7 @@ class QuickGenPanel:
             return
         self.quick_hybrid_floor_var.set(str(highest))
 
-    def _validate_quick_iterations_spinbox(self, proposed):
-        """validatecommand for the Number of iterations spinbox -- same shape as
-        _validate_quick_width_spinbox, bounded to [1, 100] (100 x 10 bln = 1 trillion
-        upper bound)."""
-        if proposed == "":
-            return True
-        return proposed.isdigit() and 1 <= int(proposed) <= 100
 
-    def _validate_hybrid_filter_prime_count_spinbox(self, proposed):
-        """Accept a visible positive ``k_adv`` value without letting an accidental
-        multi-billion entry freeze a future planner before it can present a clear
-        validation message.  One million is a UI safety bound, not a mathematical
-        limitation of the engine; later phases may make it configurable if benchmarks
-        justify that."""
-        if proposed == "":
-            return True
-        return proposed.isdigit() and 1 <= int(proposed) <= 1_000_000
 
     def _on_quick_auto_width_clicked(self, width_var, base_exponent=None):
         """Auto button handler, shared by every mode's button (see

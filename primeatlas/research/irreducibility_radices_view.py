@@ -11,6 +11,7 @@ MAX_RANGE moduli; the clamped values are written back into the fields.
 import tkinter as tk
 from tkinter import ttk
 
+from ..core.number_text import plain_number
 from ..core.base_tab import BaseTab
 from . import irreducibility_core as core
 from . import irreducibility_residues as res
@@ -36,9 +37,9 @@ class RadicesView(BaseTab):
                       padx=6, pady=(8, 4))
         row = ttk.Frame(self)
         row.pack(fill="x", padx=6, pady=(0, 4))
-        self.from_entry = entry(row, T("research_irreducibility.from_label"), "2",
+        self.from_entry = entry(T, row, T("research_irreducibility.from_label"), "2",
                                 "research.irreducibility.range_from", on_return=self.run)
-        self.to_entry = entry(row, T("research_irreducibility.to_label"), "60",
+        self.to_entry = entry(T, row, T("research_irreducibility.to_label"), "60",
                               "research.irreducibility.range_to", on_return=self.run)
         ttk.Button(row, text=T("research_irreducibility.build"), command=self.run).pack(
             side="left")
@@ -70,8 +71,8 @@ class RadicesView(BaseTab):
         self.run()
 
     def _read_range(self):
-        lo = int(self.from_entry.get().strip())
-        hi = int(self.to_entry.get().strip())
+        lo = int(plain_number(self.from_entry.get()))
+        hi = int(plain_number(self.to_entry.get()))
         if lo < 1:
             raise ValueError("from")
         lo = min(lo, MAX_MODULUS)

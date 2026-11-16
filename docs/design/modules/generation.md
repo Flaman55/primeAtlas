@@ -329,7 +329,7 @@ is copied in once), `.generation_logs/` (logs, exit codes, `ACTIVE_RUN.json`),
 `test_pi_count_notice_controls`, `test_engine_advisor`, `test_engine_advice_gui`, `test_native_plan`,
 `test_primesieve_native_controls`, `test_generation_ram_guard`, `test_run_eta`, `test_pipeline_form_layout`,
 `test_width_advisor`, `test_width_advice_gui`, `test_target_planner`, `test_target_plan_costs`,
-`test_target_plan_text`, `test_target_planner_gui`.
+`test_target_plan_text`, `test_target_planner_gui`, `test_quick_number`.
 
 ## Known gaps
 

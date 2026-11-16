@@ -20,6 +20,7 @@ Translator instance).
 import tkinter as tk
 from tkinter import ttk, messagebox
 
+from ..core import number_field
 from ..core.background import PersistentWorker
 from ..core.base_tab import BaseTab
 from ..core.ui_state import remember
@@ -43,6 +44,7 @@ class PrimalityTab(BaseTab):
         top.pack(fill="x", padx=6, pady=(10, 4))
         ttk.Label(top, text=self.T("primality.field_number")).pack(side="left")
         self.primality_number_entry = ttk.Entry(top, width=32)
+        number_field.attach(self.primality_number_entry, self.T)
         self.primality_number_entry.pack(side="left", padx=(6, 16))
 
         self.primality_use_sympy_var = tk.BooleanVar(value=True)
@@ -101,6 +103,7 @@ class PrimalityTab(BaseTab):
         factors_row.pack(fill="x", padx=6, pady=(0, 8))
         ttk.Label(factors_row, text=self.T("primality.factors_field_label")).pack(side="left")
         self.primality_factors_only_var = tk.StringVar(value="")
+        # not a number field: a list of factors
         self.primality_factors_entry = ttk.Entry(
             factors_row, textvariable=self.primality_factors_only_var, state="readonly")
         self.primality_factors_entry.pack(side="left", fill="x", expand=True, padx=(6, 6))

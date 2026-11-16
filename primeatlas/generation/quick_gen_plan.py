@@ -9,6 +9,7 @@ and its other mixins set up, so it is never instantiated on its own.
 """
 from tkinter import messagebox
 
+from ..core import number_field
 from ..core.storage import digit_count_floor, LOW_FLOOR_CUTOFF
 from . import native_plan
 from .quick_number import _eval_quick_number
@@ -169,6 +170,27 @@ class QuickGenPlan:
                  "rounded_start": rounded_start, "rounded_end": rounded_end,
                  "truncated": truncated, "width_capped": width_capped}
 
+    _QUICK_MODE_NUMBER_VARS = {
+        "floor": ("quick_floor_var", "quick_floor_width_var", "quick_floor_start_var"),
+        "range": ("quick_from_var", "quick_to_var"),
+        "explore": ("quick_explore_floor_var", "quick_iterations_var",
+                    "quick_explore_width_var"),
+        "hybrid": ("quick_hybrid_value_var", "quick_hybrid_target_floor_var",
+                   "quick_hybrid_main_cap_var", "quick_hybrid_filter_prime_count_var"),
+        "pseudosquares": ("quick_pseudosquares_floor_var", "quick_pseudosquares_from_var",
+                          "quick_pseudosquares_width_var", "quick_pseudosquares_threads_var"),
+        "primesieve": ("quick_primesieve_floor_var", "quick_primesieve_from_var",
+                       "quick_primesieve_width_var"),
+        "cudasieve": ("quick_cudasieve_floor_var", "quick_cudasieve_from_var",
+                      "quick_cudasieve_width_var"),
+    }
+
+    def _quick_mode_number_vars(self, mode):
+        """The number fields' variables a Quick-gen run of `mode` reads: a red one blocks
+        the run (instead of a blank or default value), a red field of another mode does not."""
+        return [getattr(self, name) for name in self._QUICK_MODE_NUMBER_VARS.get(mode, ())
+                if getattr(self, name, None) is not None]
+
     def _on_quick_generate_clicked(self):
         """Real launch path: computes base_exponent/run_count/
         window_count_per_run for whichever mode is selected and hands them to
@@ -189,6 +211,9 @@ class QuickGenPlan:
             messagebox.showerror(self.T("quick.dialog_title"), self.T("quick.error_already_running"))
             return
         mode = self.quick_mode_var.get()
+        if number_field.refuse_problem(self._quick_mode_number_vars(mode), self.T,
+                                       self.T("quick.dialog_title")):
+            return
         if mode == "floor":
             raw_floor = self.quick_floor_var.get().strip()
             floor_value = _eval_quick_number(raw_floor)

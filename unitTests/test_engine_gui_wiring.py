@@ -328,17 +328,25 @@ def main():
         passed &= check(states.pop("ram_budget_pct", None) == "normal"
                         and all(s == "disabled" for s in states.values()),
                         f"under v4.1 only the RAM budget field is enabled ({states})")
-        passed &= check(gen._quick_width_cap() == 1000
-                        and gen._validate_quick_width_spinbox("1000")
-                        and not gen._validate_quick_width_spinbox("1001"),
-                        "v4.1 Width cap is 1000")
+        width_field = gen._quick_width_spinboxes[0].number_field
+        gen.quick_floor_width_var.set("1000")
+        app.update()
+        ok_1000 = width_field.problem is None
+        gen.quick_floor_width_var.set("1001")
+        app.update()
+        passed &= check(gen._quick_width_cap() == 1000 and ok_1000
+                        and width_field.problem == "range",
+                        "v4.1 Width cap is 1000: 1001 is out of the Width field's range")
+        gen.quick_floor_width_var.set("5000")
+        app.update()
 
         fields.engine_var.set("v5")
         app.update()
         caps = [int(float(s.cget("to"))) for s in gen._quick_width_spinboxes]
         passed &= check(caps and all(c == engine_options.max_windows_per_run("v5") for c in caps),
                         f"v5 raises every Width spinbox cap ({caps})")
-        passed &= check(gen._validate_quick_width_spinbox("5000"), "v5 Width accepts 5000")
+        passed &= check(width_field.problem is None,
+                        "v5 Width accepts 5000 (the field follows the raised cap)")
         passed &= check(all(str(fields.knob_entries[k].cget("state")) == "normal"
                             for k in engine_options.engine_knob_keys("v5")),
                         "v5 knob fields are enabled under v5")

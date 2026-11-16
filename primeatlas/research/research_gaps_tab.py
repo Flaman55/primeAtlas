@@ -21,6 +21,7 @@ import datetime
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
+from ..core import number_field
 from ..core import background
 from ..core.base_tab import BaseTab
 from ..core.ui_state import remember
@@ -73,10 +74,12 @@ class ResearchGapsTab(BaseTab):
         range_row.pack(fill="x", padx=6, pady=(0, 4))
         ttk.Label(range_row, text=T("research_gaps.n_from_label")).pack(side="left")
         self.gaps_n_from_entry = ttk.Entry(range_row, width=12)
+        number_field.attach(self.gaps_n_from_entry, self.T)
         self.gaps_n_from_entry.insert(0, "1")
         self.gaps_n_from_entry.pack(side="left", padx=(6, 16))
         ttk.Label(range_row, text=T("research_gaps.n_to_label")).pack(side="left")
         self.gaps_n_to_entry = ttk.Entry(range_row, width=12)
+        number_field.attach(self.gaps_n_to_entry, self.T)
         self.gaps_n_to_entry.insert(0, "100")
         self.gaps_n_to_entry.pack(side="left", padx=(6, 0))
 

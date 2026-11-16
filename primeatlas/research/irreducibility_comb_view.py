@@ -11,6 +11,7 @@ import math
 import tkinter as tk
 from tkinter import ttk
 
+from ..core.number_text import plain_number
 from ..core.base_tab import BaseTab
 from .irreducibility_comb import PROVED_SCALE
 from .irreducibility_draw import draw_combs
@@ -30,13 +31,13 @@ class CombView(BaseTab):
                       padx=6, pady=(8, 4))
         row = ttk.Frame(self)
         row.pack(fill="x", padx=6, pady=(0, 4))
-        self.a_entry = entry(row, "a", "17", "research.irreducibility.comb_a", width=6,
+        self.a_entry = entry(T, row, "a", "17", "research.irreducibility.comb_a", width=6,
                              on_return=self.draw)
-        self.b_entry = entry(row, "b", "5", "research.irreducibility.comb_b", width=6,
+        self.b_entry = entry(T, row, "b", "5", "research.irreducibility.comb_b", width=6,
                              on_return=self.draw)
-        self.scale_entry = entry(row, T("research_irreducibility.scale_label"), "8",
+        self.scale_entry = entry(T, row, T("research_irreducibility.scale_label"), "8",
                                  "research.irreducibility.comb_scale", width=6,
-                                 on_return=self.draw)
+                                 on_return=self.draw, fraction=True)
         ttk.Button(row, text=T("research_irreducibility.draw"), command=self.draw).pack(
             side="left")
         self.message_var = tk.StringVar()
@@ -52,9 +53,9 @@ class CombView(BaseTab):
         self.draw()
 
     def _read(self):
-        a = int(self.a_entry.get().strip())
-        b = int(self.b_entry.get().strip())
-        s = float(self.scale_entry.get().strip())
+        a = int(plain_number(self.a_entry.get()))
+        b = int(plain_number(self.b_entry.get()))
+        s = float(plain_number(self.scale_entry.get(), fraction=True))
         if not (2 <= a <= MAX_STEP and 2 <= b <= MAX_STEP and math.isfinite(s)):
             raise ValueError("range")
         return a, b, s

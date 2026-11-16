@@ -178,6 +178,38 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   (tryb Piętro ze Startem i włączonym zapisem albo Pseudosquares print); nic nie startuje samo.
   Przycisk "Jak to działa?" pokazuje krótkie wyjaśnienie.
 
+### +9 — Number fields: any notation, a hint and a check
+
+- English: Every number field in the app (195 fields: Quick-gen and its arrow fields, the
+  pipeline form and engine knobs, Verify, k-tuples, primesieve calculator, Primality,
+  Constellations, Research with Irreducibility, the visualizations, page go-to fields,
+  Settings) reads a number in any common notation, typed or pasted: "1 000 000",
+  "1,000,000", "1.000.000", "1'000'000", "1,00,00,000", "10^25", "10²⁵", "3×10^24",
+  "1,5E+25", "10^25+3"; fraction fields (point sizes, angle, BPSW offset, comb scale) also
+  "1,5". Before, "^" with another term was read as XOR ("10^25+3" gave 22) and "1,5"
+  silently became 15. Hovering a field shows the accepted forms. Text that is not a usable
+  number, or lies outside the field's range, turns the field red; text that can be read two
+  ways ("3,000": 3000 or 3) offers both under the field, and a click writes the one meant. A
+  valid number shows nothing. Red and the offer wait for a short pause in typing. The arrow
+  fields no longer block keys outside digits; their range turns them red instead, and
+  Quick-gen Generate refuses a red field of the selected mode (naming the reason) instead of
+  falling back to a default width.
+- Polski: Każde pole liczbowe w aplikacji (195 pól: Quick-gen z polami ze strzałkami,
+  formularz potoku i ustawienia silników, Weryfikacja, k-krotki, kalkulator primesieve,
+  Primality, Konstelacje, Badania z Nieredukowalnością, wizualizacje, pola skoku do strony,
+  Ustawienia) czyta liczbę w dowolnym popularnym zapisie, wpisaną albo wklejoną:
+  "1 000 000", "1,000,000", "1.000.000", "1'000'000", "1,00,00,000", "10^25", "10²⁵",
+  "3×10^24", "1,5E+25", "10^25+3"; pola ułamkowe (rozmiary punktów, kąt, offset BPSW,
+  skala grzebienia) także "1,5". Wcześniej "^" z kolejnym składnikiem było czytane jako XOR
+  ("10^25+3" dawało 22), a "1,5" po cichu stawało się 15. Najechanie na pole pokazuje
+  przyjmowane zapisy. Tekst, który nie jest użyteczną liczbą albo wychodzi poza zakres pola,
+  podświetla pole na czerwono; tekst do odczytania na dwa sposoby ("3,000": 3000 albo 3)
+  proponuje oba pod polem, a kliknięcie wpisuje właściwy. Poprawna liczba nie pokazuje
+  niczego. Czerwień i propozycja czekają na krótką przerwę w pisaniu. Pola ze strzałkami nie
+  blokują już klawiszy innych niż cyfry; ich zakres podświetla je na czerwono, a Generuj w
+  Quick-gen odmawia startu przy czerwonym polu wybranego trybu (podając powód) zamiast
+  przyjąć domyślną szerokość.
+
 ## 1.4.0 — 2026-11-14
 
 ### +1 — Research → Irreducibility: radices, comparison, comb reading, ranges, arithmetic

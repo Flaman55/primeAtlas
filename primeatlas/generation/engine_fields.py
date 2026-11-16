@@ -18,6 +18,8 @@ import tkinter as tk
 from tkinter import ttk
 
 from ..core.info_tip import InfoTip
+from ..core import number_field
+from ..core.number_text import plain_number
 from . import engine_options, engine_presets
 from .generation_settings import remember_generation_field
 
@@ -82,6 +84,8 @@ class EngineFields:
                 entry = ttk.Checkbutton(cell, variable=var, onvalue="1", offvalue="0")
             else:
                 entry = ttk.Entry(cell, textvariable=var, width=10)
+                low, high = engine_options.knob_range(key)
+                number_field.attach(entry, T, minimum=low, maximum=high)
             entry.pack(side="left")
             info = InfoTip(cell, lambda key=key: T(f"gen.info_{key}"))
             info.label.pack(side="left", padx=(4, 0))
@@ -166,7 +170,7 @@ class EngineFields:
     def set_windows(self, windows):
         """Sets the run width (windows per run) Auto sizes the profile fields for and refills
         every engine on Auto; a blank or non-positive value changes nothing."""
-        text = str(windows).strip()
+        text = plain_number(str(windows))
         if not text.isdigit() or int(text) <= 0:
             return
         self._windows = int(text)

@@ -34,6 +34,8 @@ from ...generation.logged_runners import LocalLoggedRunner
 from ...generation.quick_number import _eval_quick_number
 from ...generation.window_planning import find_highest_populated_floor
 from ...generation.generation_console import GenerationConsole
+from ...core import number_field
+from ...core.number_text import plain_number
 from ...core import storage
 from ..shared.audio import INSTRUMENTS
 from ..shared.viz_tab_base import VizTabBase
@@ -287,6 +289,7 @@ class RingsTab(VizTabBase):
         field_row.pack(fill="x", padx=8, pady=(0, 6))
         ttk.Label(field_row, text=self.T("rings.field_n")).pack(side="left")
         self.n_entry = ttk.Entry(field_row, width=28)
+        number_field.attach(self.n_entry, self.T)
         # N is pre-filled at startup instead
         # of left empty, so the field/hint are non-empty on first render.
         self.n_entry.insert(0, saved_params.get("n", "2"))
@@ -307,10 +310,12 @@ class RingsTab(VizTabBase):
         range_row.pack(fill="x", padx=8, pady=(0, 6))
         ttk.Label(range_row, text=self.T("rings.load_range_label")).pack(side="left")
         self.load_range_from_entry = ttk.Entry(range_row, width=16)
+        number_field.attach(self.load_range_from_entry, self.T)
         self.load_range_from_entry.insert(0, saved_params.get("load_range_from", ""))
         self.load_range_from_entry.pack(side="left", padx=(6, 6))
         ttk.Label(range_row, text=self.T("rings.load_range_to_label")).pack(side="left")
         self.load_range_to_entry = ttk.Entry(range_row, width=16)
+        number_field.attach(self.load_range_to_entry, self.T)
         self.load_range_to_entry.insert(0, saved_params.get("load_range_to", ""))
         self.load_range_to_entry.pack(side="left", padx=(6, 0))
 
@@ -327,6 +332,7 @@ class RingsTab(VizTabBase):
         max_load_row.pack(fill="x", padx=8, pady=(0, 6))
         ttk.Label(max_load_row, text=self.T("rings.max_load_count_label")).pack(side="left")
         self.max_load_count_entry = ttk.Entry(max_load_row, width=16)
+        number_field.attach(self.max_load_count_entry, self.T)
         self.max_load_count_entry.insert(0, saved_params.get("max_load_count", ""))
         self.max_load_count_entry.pack(side="left", padx=(6, 0))
 
@@ -358,6 +364,7 @@ class RingsTab(VizTabBase):
         tempo_row.pack(fill="x", padx=8, pady=(0, 8))
         ttk.Label(tempo_row, text=self.T("rings.tempo_label")).pack(side="left")
         self.tempo_ms_entry = ttk.Entry(tempo_row, width=8)
+        number_field.attach(self.tempo_ms_entry, self.T)
         self.tempo_ms_entry.insert(0, saved_params.get("tempo_ms", "120"))
         self.tempo_ms_entry.pack(side="left", padx=(6, 0))
 
@@ -378,10 +385,12 @@ class RingsTab(VizTabBase):
         self._line_mode_check.pack(side="left")
         ttk.Label(line_mode_row, text=self.T("rings.pattern_k_label")).pack(side="left", padx=(16, 0))
         self.pattern_k_entry = ttk.Entry(line_mode_row, width=6)
+        number_field.attach(self.pattern_k_entry, self.T)
         self.pattern_k_entry.insert(0, saved_params.get("pattern_k", ""))
         self.pattern_k_entry.pack(side="left", padx=(6, 16))
         ttk.Label(line_mode_row, text=self.T("rings.pattern_p0_label")).pack(side="left")
         self.pattern_p0_entry = ttk.Entry(line_mode_row, width=16)
+        number_field.attach(self.pattern_p0_entry, self.T)
         self.pattern_p0_entry.insert(0, saved_params.get("pattern_p0", ""))
         self.pattern_p0_entry.pack(side="left", padx=(6, 0))
 
@@ -455,6 +464,7 @@ class RingsTab(VizTabBase):
         general_law_row.pack(fill="x", padx=8, pady=(0, 6))
         ttk.Label(general_law_row, text=self.T("rings.general_law_theta_label")).pack(side="left")
         self.general_law_theta_entry = ttk.Entry(general_law_row, width=6)
+        number_field.attach(self.general_law_theta_entry, self.T, fraction=True)
         self.general_law_theta_entry.insert(0, saved_params.get("general_law_theta", "0.5"))
         self.general_law_theta_entry.pack(side="left", padx=(6, 16))
         ttk.Label(general_law_row, text=self.T("rings.general_law_mode_label")).pack(side="left")
@@ -481,6 +491,7 @@ class RingsTab(VizTabBase):
         track_row = ttk.Frame(windows_frame)
         track_row.pack(fill="x", padx=8, pady=(0, 8))
         ttk.Label(track_row, text=self.T("rings.track_primes_label")).pack(side="left")
+        # not a number field: a list of primes
         self.track_primes_entry = ttk.Entry(track_row, width=20)
         self.track_primes_entry.insert(0, saved_params.get("track_primes", ""))
         self.track_primes_entry.pack(side="left", padx=(6, 16))
@@ -501,6 +512,7 @@ class RingsTab(VizTabBase):
         point_size_row.pack(fill="x", padx=8, pady=(6, 6))
         ttk.Label(point_size_row, text=self.T("rings.point_size_label")).pack(side="left")
         self.point_size_entry = ttk.Entry(point_size_row, width=8)
+        number_field.attach(self.point_size_entry, self.T, fraction=True)
         self.point_size_entry.insert(0, saved_params.get("point_size", "15"))
         self.point_size_entry.pack(side="left", padx=(6, 0))
 
@@ -515,6 +527,7 @@ class RingsTab(VizTabBase):
         hit_point_size_row.pack(fill="x", padx=8, pady=(0, 6))
         ttk.Label(hit_point_size_row, text=self.T("rings.hit_point_size_label")).pack(side="left")
         self.hit_point_size_entry = ttk.Entry(hit_point_size_row, width=8)
+        number_field.attach(self.hit_point_size_entry, self.T, fraction=True)
         self.hit_point_size_entry.insert(0, saved_params.get("hit_point_size", "20"))
         self.hit_point_size_entry.pack(side="left", padx=(6, 0))
 
@@ -522,6 +535,7 @@ class RingsTab(VizTabBase):
         hud_font_size_row.pack(fill="x", padx=8, pady=(0, 8))
         ttk.Label(hud_font_size_row, text=self.T("rings.hud_font_size_label")).pack(side="left")
         self.hud_font_size_entry = ttk.Entry(hud_font_size_row, width=8)
+        number_field.attach(self.hud_font_size_entry, self.T, minimum=1)
         self.hud_font_size_entry.insert(0, saved_params.get("hud_font_size", "35"))
         self.hud_font_size_entry.pack(side="left", padx=(6, 0))
 
@@ -753,7 +767,7 @@ class RingsTab(VizTabBase):
         # default renderer.py's own --general-law-theta argparse default
         # uses is simpler and correct for this one field.
         try:
-            theta = float(self.general_law_theta_entry.get().strip())
+            theta = float(plain_number(self.general_law_theta_entry.get(), fraction=True))
         except ValueError:
             theta = 0.5
         mode = self.general_law_mode_combo.get() or "sliding"
@@ -762,7 +776,7 @@ class RingsTab(VizTabBase):
         # empty/invalid field should just omit --point-size entirely so
         # renderer.py's own argparse default (3.0) applies, rather than
         # silently forcing some fallback value here too.
-        point_size_raw = self.point_size_entry.get().strip()
+        point_size_raw = plain_number(self.point_size_entry.get(), fraction=True)
         try:
             point_size = float(point_size_raw) if point_size_raw else None
         except ValueError:
@@ -770,13 +784,13 @@ class RingsTab(VizTabBase):
 
         # Same empty-or-invalid-omits-the-flag convention
         # as point_size above.
-        hit_point_size_raw = self.hit_point_size_entry.get().strip()
+        hit_point_size_raw = plain_number(self.hit_point_size_entry.get(), fraction=True)
         try:
             hit_point_size = float(hit_point_size_raw) if hit_point_size_raw else None
         except ValueError:
             hit_point_size = None
 
-        hud_font_size_raw = self.hud_font_size_entry.get().strip()
+        hud_font_size_raw = plain_number(self.hud_font_size_entry.get())
         try:
             hud_font_size = int(hud_font_size_raw) if hud_font_size_raw else None
         except ValueError:

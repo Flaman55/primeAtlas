@@ -3,7 +3,9 @@
 The popup sits OFFSET_PX right of and below its marker when it fits; past the window's right
 edge it moves left until its right edge meets the window's; past the bottom it goes above the
 marker; wider than the window, it starts at the window's left edge. Every corner of the window
-is tried, short and long texts.
+is tried, short and long texts. With below=True the popup starts GAP_PX under its anchor
+(an entry field keeps its text visible). With delay_ms the popup appears only after the
+pointer rests that long; leaving earlier shows nothing.
 Windows, real display:
     python unitTests/test_info_tip.py
 """
@@ -88,6 +90,35 @@ class InfoTipTests(unittest.TestCase):
         self.root.update()
         box, _label = self.tip_at(LONG, relx=1.0, rely=0.0, anchor="ne")
         self.assertEqual(box[0], self.window()[0], "starts at the window's left edge")
+
+    def test_below_the_anchor(self):
+        entry = ttk.Entry(self.root, width=20)
+        entry.place(x=20, y=20)
+        self.root.update()
+        tip = info_tip.InfoTip(self.root, "short", anchor=entry, below=True)
+        tip.show()
+        self.root.update()
+        self.assertEqual(tip.popup.winfo_rooty(),
+                         entry.winfo_rooty() + entry.winfo_height() + info_tip.GAP_PX)
+        tip.hide()
+
+    def test_delay(self):
+        entry = ttk.Entry(self.root, width=20)
+        entry.place(x=20, y=20)
+        self.root.update()
+        tip = info_tip.InfoTip(self.root, "short", anchor=entry, delay_ms=150)
+        entry.event_generate("<Enter>")
+        self.root.update()
+        self.assertIsNone(tip.popup, "nothing at once")
+        entry.event_generate("<Leave>")
+        self.root.after(250)
+        self.root.update()
+        self.assertIsNone(tip.popup, "leaving before the delay shows nothing")
+        entry.event_generate("<Enter>")
+        self.root.after(250)
+        self.root.update()
+        self.assertIsNotNone(tip.popup, "resting past the delay shows it")
+        tip.hide()
 
 
 if __name__ == "__main__":

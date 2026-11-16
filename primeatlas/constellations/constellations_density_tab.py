@@ -17,6 +17,7 @@ from tkinter import ttk, messagebox
 
 import pattern_catalog_v1
 
+from ..core import number_field
 from ..core import background, theme_dynamic
 from ..core.base_tab import BaseTab
 from ..core.progress_bar_owner import claim_progress_bar
@@ -77,9 +78,11 @@ class ConstellationsDensityTab(BaseTab):
         self.k_combo.pack(side="left", padx=(6, 16))
         ttk.Label(top_row, text=T("const_records.field_floor_from")).pack(side="left")
         self.floor_from_entry = ttk.Entry(top_row, width=8)
+        number_field.attach(self.floor_from_entry, self.T)
         self.floor_from_entry.pack(side="left", padx=(6, 12))
         ttk.Label(top_row, text=T("const_records.field_floor_to")).pack(side="left")
         self.floor_to_entry = ttk.Entry(top_row, width=8)
+        number_field.attach(self.floor_to_entry, self.T)
         self.floor_to_entry.pack(side="left", padx=(6, 16))
         self.scan_button = ttk.Button(top_row, text=T("const_records.scan_button"),
                                       command=self._on_scan_clicked)

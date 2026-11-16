@@ -1,11 +1,12 @@
 """
 irreducibility_widgets.py -- small widget helpers shared by the Research -> Irreducibility
-sub-tabs: a label that wraps at its parent's width, a labelled remembered entry, and a
-read-only text area for results.
+sub-tabs: a label that wraps at its parent's width, a labelled remembered number field, and
+a read-only text area for results.
 """
 import tkinter as tk
 from tkinter import ttk
 
+from ..core import number_field
 from ..core.ui_state import remember
 
 
@@ -19,11 +20,13 @@ def wrapped_label(parent, padx=0, pady=0, **kw):
     return label
 
 
-def entry(row, label, default, key=None, width=8, textvariable=None, on_return=None):
-    """A label and an entry packed left in row; remembered under key when given."""
+def entry(T, row, label, default, key=None, width=8, textvariable=None, on_return=None,
+          fraction=False, words=()):
+    """A label and a number field packed left in row; remembered under key when given."""
     if label:
         ttk.Label(row, text=label).pack(side="left", padx=(0, 4))
     e = ttk.Entry(row, width=width, textvariable=textvariable)
+    number_field.attach(e, T, fraction=fraction, words=words)
     if textvariable is None:
         e.insert(0, default)
     e.pack(side="left", padx=(0, 12))

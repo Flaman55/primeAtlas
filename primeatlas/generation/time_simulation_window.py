@@ -26,6 +26,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from primeatlas.core.info_tip import InfoTip
+from primeatlas.core.number_text import plain_number
 
 from . import engine_options, run_budget, run_ram, time_model
 from .engine_advice_view import EngineAdviceView
@@ -68,7 +69,7 @@ def format_rate(numbers_per_second):
 
 
 def _int_or_none(text):
-    text = str(text).strip()
+    text = plain_number(str(text))
     return int(text) if text.isdigit() else None
 
 

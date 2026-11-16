@@ -14,6 +14,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from . import pi_count_notice
+from ..core.number_text import plain_number
 from .window_planning import find_continuation_target_idx
 
 
@@ -28,7 +29,7 @@ class PiCountNoticeControls:
         values = {}
         for key in ("base_exponent", "run_count", "n_instances", "window_count_per_run",
                     "window_m"):
-            raw = self._loop_vars[key].get().strip()
+            raw = plain_number(self._loop_vars[key].get())
             if not raw.isdigit():
                 return None
             values[key] = int(raw)

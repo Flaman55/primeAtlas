@@ -30,6 +30,8 @@ import tkinter as tk
 from tkinter import ttk
 from tkinter import font as tkfont
 
+from ..core import number_field
+from ..core.number_text import plain_number
 from ..core.base_tab import BaseTab
 from ..core.ui_state import remember
 from ..core.widgets import StripedTreeview
@@ -479,6 +481,7 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, Benchm
         self.benchmark_next_btn.pack(side="left")
         ttk.Label(benchmark_nav, text=T("common.page_prefix")).pack(side="left", padx=(10, 0))
         self.benchmark_goto_entry = ttk.Entry(benchmark_nav, width=6)
+        number_field.attach(self.benchmark_goto_entry, self.T, minimum=1)
         self.benchmark_goto_entry.pack(side="left", padx=(4, 0))
         self.benchmark_goto_entry.bind("<Return>", lambda _e: self._goto_benchmark_page())
         ttk.Button(benchmark_nav, text=T("common.goto"), command=self._goto_benchmark_page).pack(
@@ -866,7 +869,7 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, Benchm
             self._show_benchmark_page(node, self._benchmark_floor_state[node]["page"] + 1)
 
     def _goto_benchmark_page(self):
-        raw = self.benchmark_goto_entry.get().strip()
+        raw = plain_number(self.benchmark_goto_entry.get())
         if not raw.isdigit():
             return
         node = self._active_benchmark_node

@@ -37,7 +37,7 @@ class _Side:
         self.frame = box
         row = ttk.Frame(box)
         row.pack(fill="x", padx=6, pady=(4, 2))
-        self.number_entry = entry(row, "", "", width=34, textvariable=nums.number_var(side),
+        self.number_entry = entry(T, row, "", "", width=34, textvariable=nums.number_var(side),
                                   on_return=view.run_compare)
         self.layout_entries = {}
         for prefix, title in (("d", "blocks_row"), ("k", "quot_row")):
@@ -47,7 +47,7 @@ class _Side:
                                                                          padx=(0, 6))
             for suffix, lab in (("s", "start_label"), ("z", "size_label"), ("c", "count_label")):
                 key = prefix + suffix
-                self.layout_entries[key] = entry(
+                self.layout_entries[key] = entry(T, 
                     r, T(f"research_irreducibility.{lab}"), "", width=5,
                     textvariable=nums.layout_var(side, key), on_return=view.run_compare)
         r = ttk.Frame(box)
