@@ -1,6 +1,7 @@
 """number_field -- attach(entry, T, ...): the app-wide behaviour of a field that takes a number
 (an Entry or a Spinbox): a whole number by default, a fraction with fraction=True, also one of
-`words` (e.g. "Auto"), within an optional minimum/maximum (a callable follows a changing cap).
+`words` (e.g. "Auto"), within an optional minimum/maximum (a callable follows a changing cap);
+`text_of` turns the shown text into the text read (a label "Max (8)" read as "Max").
 
 The field's text is read by core.number_text on every change, typed, pasted or set by code
 through its textvariable:
@@ -38,9 +39,9 @@ SETTLE_MS = 600             # pause in typing before red or the popup shows
 _FIELDS = weakref.WeakSet()
 
 
-def attach(entry, T, fraction=False, words=(), minimum=None, maximum=None):
+def attach(entry, T, fraction=False, words=(), minimum=None, maximum=None, text_of=None):
     """Makes `entry` (ttk.Entry or ttk.Spinbox) a number field; returns its NumberField."""
-    return NumberField(entry, T, fraction, words, minimum, maximum)
+    return NumberField(entry, T, fraction, words, minimum, maximum, text_of)
 
 
 def problem_field(variables):
@@ -48,7 +49,9 @@ def problem_field(variables):
     (invalid, ambiguous or out of range), or None. An empty field is no problem."""
     names = {str(v) for v in variables}
     for field in list(_FIELDS):
-        if field.variable_name in names and field.problem is not None:
+        # A ThreadsField shows a form variable it does not own (`variable`).
+        shown = {field.variable_name, str(getattr(field.entry, "variable", ""))}
+        if shown & names and field.problem is not None:
             return field
     return None
 
@@ -74,8 +77,10 @@ def _bound(limit):
 
 
 class NumberField:
-    def __init__(self, entry, T, fraction=False, words=(), minimum=None, maximum=None):
+    def __init__(self, entry, T, fraction=False, words=(), minimum=None, maximum=None,
+                 text_of=None):
         self.entry = entry
+        self._text_of = text_of
         entry.number_field = self
         self._T = T
         self._fraction = fraction
@@ -145,6 +150,8 @@ class NumberField:
             text = self.entry.get() if text is None else str(text)
         except tk.TclError:
             return
+        if self._text_of is not None:
+            text = self._text_of(text)
         self.reading = read_number(text, fraction=self._fraction, words=self._words)
         self.problem = self._problem()
         self._cancel_settle()

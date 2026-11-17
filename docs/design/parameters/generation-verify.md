@@ -8,6 +8,6 @@ Generation tab, Section D: the verification P -> D of a floor's stored pt1 windo
 |---|---|---|---|---|
 | `base_exponent` | blank | integer >= 0, required | `verify_plan.py` | Floor: |
 | `width_exp` | `7` | integer 1..12: windows of 10^n numbers | `verify_plan.py` | Window width 10^ |
-| `threads` | `Auto` | Auto (the pipeline form's workers), Max (every WSL CPU) or integer 1..256 | `verify_plan.py` | Threads: |
+| `threads` | `Auto` | Auto (the pipeline form's workers), Max (every WSL CPU) or integer 1..WSL's CPU count (a larger one becomes Max) | `verify_plan.py` | Threads: |
 | `method` | `proof` | proof (pt1.1 proof) or sieve (v7.3 sieve) | `verify_plan.py` | Method: |
 | `pass_exp` | `11` | integer from the window width's exponent to 12: v7.3 sieve passes of 10^n numbers (10^n / 30 bytes of RAM), arbitrary default | `verify_plan.py` | Pass 10^ |

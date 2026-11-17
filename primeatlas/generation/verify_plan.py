@@ -23,7 +23,6 @@ from ..core.number_text import plain_number
 THREADS_AUTO = "Auto"
 THREADS_MAX = wsl_resources.WORKERS_MAX
 THREADS_CAP = 256
-THREAD_CHOICES = [THREADS_AUTO, THREADS_MAX] + [str(n) for n in range(1, THREADS_CAP + 1)]
 WIDTH_EXP_MIN = 1
 WIDTH_EXP_MAX = 12
 METHOD_PROOF = run_verify.METHOD_PROOF

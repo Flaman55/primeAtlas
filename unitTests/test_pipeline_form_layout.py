@@ -15,7 +15,7 @@ B. Layout (isolated app, default text size, window 1280 x 720: a Full HD screen 
      the window, and none is squeezed below its requested width;
    - the pi(L_final) checkboxes wrap their text: each is narrower than the window;
    - the same holds after switching to every engine (the knob rows change);
-   - the workers Auto button sits next to the workers field.
+   - the workers field is a ThreadsField with no Auto button next to it.
 C. Workers "Max" = the CPU count read inside WSL (nproc), resolved at launch:
    - wsl_resources.resolve_workers: Max in any case and spacing -> the CPU count (capped
      at 256), unknown CPU count -> None; a positive whole number as typed; 0, blank,
@@ -130,7 +130,8 @@ def part_b():
             def entry_of(var_name):
                 var = gen._loop_vars[var_name]
                 for w in _descendants(gen._loop_advanced_content):
-                    if w.winfo_class() == "TEntry" and str(w.cget("textvariable")) == str(var):
+                    if w.winfo_class() in ("TEntry", "TSpinbox") and str(
+                            getattr(w, "variable", w.cget("textvariable"))) == str(var):
                         return w
                 return None
             for group, keys in (("range", ("base_exponent", "window_m",
@@ -154,9 +155,9 @@ def part_b():
             check(len(offset) == 1, "BPSW offset field in group engine")
             workers = entry_of("workers")
             auto = [w for w in _descendants(groups["parallel"]) if w.winfo_class() == "TButton"]
-            check(workers is not None and len(auto) == 1
-                  and workers.master is auto[0].master,
-                  "the workers Auto button sits next to the workers field")
+            from primeatlas.core.threads_field import ThreadsField
+            check(isinstance(workers, ThreadsField) and not auto,
+                  "the workers field is a ThreadsField, no Auto button next to it")
 
         _fits(app, gen, "default engine")
         for engine in engine_options.ENGINES:

@@ -20,8 +20,10 @@ import pseudosquares_const
 
 from ..core import number_field
 from ..core.info_tip import InfoTip
+from ..core.threads_field import ThreadsField
+from . import wsl_resources
 from .engine_argv import build_pseudosquares_native_argv
-from .native_plan import parse_threads, plan
+from .native_plan import AUTO_WORD, MAX_WORD, parse_threads, plan
 from .quick_gen_panel import _floor_spinbox
 from .quick_number import _eval_quick_number
 from .window_planning import QUICK_GEN_MAX_WINDOW_WIDTH
@@ -82,9 +84,9 @@ class QuickGenPseudosquares:
         InfoTip(row2, lambda: self.T("quick.info_pseudosquares")).label.pack(
             side="left", padx=(4, 16))
         ttk.Label(row2, text=self.T("quick.field_threads")).pack(side="left")
-        threads = ttk.Spinbox(row2, values=["Auto"] + [str(n) for n in range(1, 257)],
-                              textvariable=self.quick_pseudosquares_threads_var, width=8)
-        number_field.attach(threads, self.T, words=("Auto",), minimum=0)
+        # Auto: the program picks its own count, so it shows no number.
+        threads = ThreadsField(row2, self.T, self.quick_pseudosquares_threads_var,
+                               words=(AUTO_WORD, MAX_WORD), over=MAX_WORD, width=9)
         threads.pack(side="left", padx=(6, 0))
         self._pseudosquares_threads_spinboxes.append(threads)
 
@@ -111,7 +113,9 @@ class QuickGenPseudosquares:
         floor = _eval_quick_number(raw_floor) if raw_floor else None
         width = _eval_quick_number(self.quick_pseudosquares_width_var.get())
         mode = self.quick_pseudosquares_mode_var.get()
-        threads = parse_threads(self.quick_pseudosquares_threads_var.get())
+        threads_text = self.quick_pseudosquares_threads_var.get()
+        threads = parse_threads(threads_text, wsl_resources.read_wsl_cpus()
+                                if wsl_resources.wants_cpu_count(threads_text) else None)
         if mode == "print":
             threads = 0
         if threads is None:

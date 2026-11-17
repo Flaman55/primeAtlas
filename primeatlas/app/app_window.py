@@ -23,12 +23,13 @@ from primeatlas.app.settings_wiring import SettingsWiringMixin
 from primeatlas.app.single_tabs_section import SingleTabsSectionMixin
 from primeatlas.app.visualization_section import VisualizationSectionMixin
 from primeatlas.constellations.constellations_tree_coordinator import ConstellationsTreeCoordinator
-from primeatlas.core import cpu_load, ui_state_dynamic
+from primeatlas.core import cpu_dynamic, cpu_load, ui_state_dynamic
+from primeatlas.core.background import run_in_background
 from primeatlas.core.app_icon import apply_tk_icon
 from primeatlas.core.totals_search_coordinator import TotalsSearchCoordinator
 from primeatlas.core.version import version_label
 from primeatlas.core.widgets import disable_notebook_wheel
-from primeatlas.generation import close_guard
+from primeatlas.generation import close_guard, wsl_resources
 from primeatlas.generation.generation_offer_coordinator import GenerationOfferCoordinator
 from primeatlas.generation.window_planning import QUICK_GEN_MAX_WINDOW_WIDTH, PRIMESIEVE_MAX_STOP
 from primeatlas.primes.primes_tree_coordinator import PrimesTreeCoordinator
@@ -268,6 +269,12 @@ class PortalBrowserApp(ThemeMixin, PrimesSectionMixin, ConstellationsSectionMixi
         self.protocol("WM_DELETE_WINDOW", lambda: close_guard.request_close(
             self, self.generation_tab_widget, _dyn.T))
         self.generation_tab_widget.recover_previous_run(on_done=self.reload_primes_tree)
+
+        # WSL's CPU count, once, for every thread-count field (core.cpu_dynamic); a launch
+        # reads it again. Looked up at call time, so a test can replace the probe.
+        run_in_background(
+            self, lambda _report: wsl_resources.estimate_wsl_available_cpu_count(),
+            on_done=lambda count, _error: cpu_dynamic.set_wsl_cpus(count))
 
         # App self-update auto-check -- deferred several seconds past
         # startup (not run inline here) so a `git fetch` against GitHub -- a real

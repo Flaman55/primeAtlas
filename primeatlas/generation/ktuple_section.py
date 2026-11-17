@@ -269,8 +269,8 @@ class KtupleSection:
         strategies, so a single static default couldn't fit digit_sweep's
         per-branch-depth needs without either being far too small for it or far
         too large for the other four). Reads base_exponent/window_m straight from
-        their own fields (both already on screen, no WSL round-trip needed --
-        unlike _on_workers_auto_clicked's CPU probe, this is pure arithmetic), and
+        their own fields (both already on screen, no WSL round-trip needed: this is
+        pure arithmetic), and
         fills n_locations with the recommendation. Like every other Auto button in
         this app, only ever SUGGESTS a value -- the field stays freely editable
         afterward."""

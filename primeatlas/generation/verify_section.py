@@ -27,7 +27,8 @@ from tkinter import ttk, messagebox
 
 import run_verify
 from primeatlas.core import ui_state_dynamic
-from ..core import number_field
+from ..core import cpu_dynamic, number_field
+from ..core.threads_field import ThreadsField
 from ..core.info_tip import InfoTip
 from ..benchmark.benchmark import read_benchmark_log
 from . import engine_options, run_guard, verify_estimate, verify_plan
@@ -98,10 +99,14 @@ class VerifySection:
         ttk.Label(form, textvariable=self._verify_total_text, style="Hint.TLabel").pack(
             side="left", padx=(0, 20))
         label("threads")
-        threads = ttk.Spinbox(form, values=verify_plan.THREAD_CHOICES,
-                              textvariable=self._verify_vars["threads"], width=6)
-        number_field.attach(threads, self.T, minimum=1, maximum=verify_plan.THREADS_CAP,
-                            words=(verify_plan.THREADS_AUTO, verify_plan.THREADS_MAX))
+        # Auto shows the workers it stands for and follows the pipeline form's field.
+        threads = ThreadsField(
+            form, self.T, self._verify_vars["threads"],
+            words=(verify_plan.THREADS_AUTO, verify_plan.THREADS_MAX),
+            over=verify_plan.THREADS_MAX, width=9,
+            resolve=lambda word: verify_plan.resolve_threads(
+                word, self._loop_vars["workers"].get(), cpu_dynamic.WSL_CPUS))
+        self._loop_vars["workers"].trace_add("write", lambda *_: threads.refresh())
         threads.pack(side="left", padx=(6, 0))
         method_row = ttk.Frame(outer)
         method_row.pack(fill="x", padx=8, pady=(0, 4))
@@ -261,7 +266,7 @@ class VerifySection:
         threads_text = self._verify_vars["threads"].get()
         workers_text = self._loop_vars["workers"].get()
         auto = threads_text.strip().lower() == verify_plan.THREADS_AUTO.lower()
-        cpu_count = (wsl_resources.estimate_wsl_available_cpu_count()
+        cpu_count = (wsl_resources.read_wsl_cpus()
                      if threads_text.strip().lower() == verify_plan.THREADS_MAX.lower()
                      or auto and wsl_resources.wants_cpu_count(workers_text) else None)
         threads = verify_plan.resolve_threads(threads_text, workers_text, cpu_count)

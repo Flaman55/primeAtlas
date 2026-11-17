@@ -102,9 +102,6 @@ def _test_resolve_threads():
           "THREADS_CAP itself allowed")
     for text in ("0", "257", "", "x", "-4"):
         check(resolve(text, "24", 32) is None, f"Threads refuses {text!r}")
-    choices = verify_plan.THREAD_CHOICES
-    check(choices[:3] == ["Auto", "Max", "1"] and choices[-1] == "256",
-          f"the spinbox steps Auto, Max, 1..256 ({choices[:3]}..{choices[-1]})")
 
 
 def _test_passes():
