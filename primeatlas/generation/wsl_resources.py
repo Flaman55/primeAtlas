@@ -2,13 +2,15 @@
 wsl_resources.py -- best-effort RAM and CPU probes INSIDE WSL (where the sieve runs, with
 its own .wslconfig limits), the window-count/worker-count recommendations the Quick-gen
 panel's Auto buttons derive from them, and the pipeline form's workers field (a number or
-WORKERS_MAX) as a worker count.
+WORKERS_MAX) as a worker count. A CPU probe through read_wsl_cpus() also refreshes the count
+the thread-count fields show (core.cpu_dynamic).
 """
 import os
 import subprocess
+import threading
 
 from . import run_budget
-from ..core import windows_hardware
+from ..core import cpu_dynamic, windows_hardware
 from ..core.number_text import plain_number
 from .window_planning import QUICK_GEN_MAX_WINDOW_WIDTH
 
@@ -118,6 +120,15 @@ def recommended_worker_count(available_cpu_count):
     if not available_cpu_count or available_cpu_count <= 0:
         return None
     return max(1, min(256, int(available_cpu_count)))
+
+
+def read_wsl_cpus():
+    """estimate_wsl_available_cpu_count(), also stored in core.cpu_dynamic when called on the
+    main thread (a launch), so every thread-count field shows the count the run gets."""
+    count = estimate_wsl_available_cpu_count()
+    if threading.current_thread() is threading.main_thread():
+        cpu_dynamic.set_wsl_cpus(count)
+    return count
 
 
 WORKERS_MAX = "Max"

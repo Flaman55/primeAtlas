@@ -19,6 +19,7 @@ from tkinter import ttk
 
 from ..core.info_tip import InfoTip
 from ..core import number_field
+from ..core.threads_field import ThreadsField
 from ..core.number_text import plain_number
 from . import engine_options, engine_presets
 from .generation_settings import remember_generation_field
@@ -82,6 +83,8 @@ class EngineFields:
             var = tk.StringVar(value=str(loop_settings.get(key, default)))
             if key in engine_options.CHECKBOX_KNOBS:
                 entry = ttk.Checkbutton(cell, variable=var, onvalue="1", offvalue="0")
+            elif key in engine_options.THREAD_KNOBS:
+                entry = ThreadsField(cell, T, var, width=10)
             else:
                 entry = ttk.Entry(cell, textvariable=var, width=10)
                 low, high = engine_options.knob_range(key)

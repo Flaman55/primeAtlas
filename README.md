@@ -111,14 +111,13 @@ comparisons with primesieve and PARI/GP are in `BENCHMARK.md`.
     sieving-prime count diagnostic, off by default: before a run that counts it from
     zero on its floor -- the floor's first count, or a run below its cached L -- a
     notice gives the estimated time and offers to leave it off) for full manual control; the Benchmark checkbox
-    next to Generate (measure without writing into the storage) applies to it too. The
-    "workers" field has its own Auto button, the CPU-count counterpart to Quick
-    generation's RAM-based Auto button above: it probes the CPU count INSIDE WSL
-    (`nproc`, not the native Windows host's own count, since WSL2 can be configured
-    with fewer visible CPUs than the host) and fills the field with that count --
-    requesting more workers than available CPUs adds scheduling overhead without any
-    real parallelism gain. The field stays freely editable afterward, same as every
-    other field in this form.
+    next to Generate (measure without writing into the storage) applies to it too.
+    "workers", like every thread count of the app (Verify Threads, Pseudosquares
+    Threads, the engines' write threads), is a threads field: Max or 1..the CPU count
+    INSIDE WSL (`nproc`, not the native Windows host's own count, since WSL2 can be
+    configured with fewer visible CPUs than the host), Max shown with that count,
+    "Max (8)"; a larger number becomes Max, since more workers than CPUs add
+    scheduling overhead without any real parallelism gain.
   - **Targeted k-tuple sieve** -- a third launcher, complementary to the
     constellation finder above rather than a replacement for it: instead of pattern-
     matching against windows `prime_sieve` has already fully sieved (every prime in
@@ -1380,6 +1379,17 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               and Spinbox is a number field or marked why not:
                               unitTests/test_number_field_coverage.py; the app's
                               195 fields: unitTests/test_number_fields_app.py)
+  threads_field.py              ThreadsField -- the app's one thread-count control (a
+                              Spinbox over a form variable it does not own): words
+                              (Auto, Max) shown with their count, "Max (8)", the list
+                              1..WSL's CPU count, a larger number turned into Max or
+                              the count (unitTests/test_threads_field.py; the four
+                              fields of the app: unitTests/test_threads_fields_app.py)
+  threads_choice.py             the text rules of ThreadsField (labels, fit to the CPU
+                              count, the list), no tkinter
+  cpu_dynamic.py                WSL_CPUS -- the CPU count WSL reports, read once at
+                              startup in the background and refreshed by each launch
+                              and the About tab's read; tells every ThreadsField
   widgets.py                    small generic tkinter helpers (e.g. FlowRow) with no
                               application-specific state; disable_notebook_wheel()
                               keeps the mouse wheel from switching notebook tabs

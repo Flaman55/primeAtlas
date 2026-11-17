@@ -14,6 +14,7 @@ from tkinter import ttk, messagebox
 
 from ..core.progress_bar_owner import release_progress_bar
 from ..core import number_field
+from ..core.threads_field import ThreadsField
 from ..core.number_text import plain_number
 from ..core.wrapped_check import wrapped_checkbutton
 from ..core.storage import bump_floor_total, load_totals_cache, save_totals_cache
@@ -85,9 +86,12 @@ class LoopSection:
             cell = ttk.Frame(form)
             cell.grid(row=row, column=col * 2 + 1, sticky="w", padx=(0, 20), pady=2)
             var = tk.StringVar(value=str(loop_settings.get(key, "")))
-            entry = ttk.Entry(cell, textvariable=var, width=width)
-            number_field.attach(entry, self.T, words=(
-                (wsl_resources.WORKERS_MAX,) if key == "workers" else ()))
+            if key == "workers":
+                entry = ThreadsField(cell, self.T, var, words=(wsl_resources.WORKERS_MAX,),
+                                     over=wsl_resources.WORKERS_MAX, width=width)
+            else:
+                entry = ttk.Entry(cell, textvariable=var, width=width)
+                number_field.attach(entry, self.T)
             entry.pack(side="left")
             self._loop_vars[key] = var
             remember_generation_field("loop", key, var)
@@ -100,10 +104,7 @@ class LoopSection:
         add_loop_field("range", 1, 0, "window_count_per_run", self.T("gen.field_window_count"))
         add_loop_field("range", 1, 1, "run_count", self.T("gen.field_run_count"))
         add_loop_field("parallel", 0, 0, "n_instances", self.T("gen.field_n_instances"))
-        workers_cell = add_loop_field("parallel", 0, 1, "workers", self.T("gen.field_workers"))
-        # Fills workers with WSL's CPU count (_on_workers_auto_clicked).
-        ttk.Button(workers_cell, text=self.T("quick.auto_button"), width=6,
-                   command=self._on_workers_auto_clicked).pack(side="left", padx=(6, 0))
+        add_loop_field("parallel", 0, 1, "workers", self.T("gen.field_workers"))
         add_loop_field("parallel", 1, 0, "batches_per_worker", self.T("gen.field_batches"))
 
         # These two checkboxes are mutually exclusive ALTERNATIVES for computing
@@ -241,7 +242,7 @@ class LoopSection:
                       "batches_per_worker", "window_m")
         parsed = {}
         workers_text = self._loop_vars["workers"].get().strip()
-        cpu_count = (wsl_resources.estimate_wsl_available_cpu_count()
+        cpu_count = (wsl_resources.read_wsl_cpus()
                      if wsl_resources.wants_cpu_count(workers_text) else None)
         parsed["workers"] = wsl_resources.resolve_workers(workers_text, cpu_count)
         if parsed["workers"] is None:

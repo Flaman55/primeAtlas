@@ -9,8 +9,10 @@ unfinished Generation run (run_guard.recover_unfinished_run(), which can delete 
 and rewrite floor totals). Pointed at a fresh empty folder, all of that is fast and
 harmless, and the test's timing no longer depends on the size of the real storage.
 
-The free-RAM probe of the Generation tab (time_simulation_controls) returns None, so no test
-starts wsl.exe; a test that needs a reading replaces it after this. AppSettings.save() is
+The free-RAM probe of the Generation tab (time_simulation_controls) returns None and the CPU
+probe (wsl_resources.estimate_wsl_available_cpu_count, read at startup and at a launch with
+workers Max) FAKE_WSL_CPUS, so no test starts wsl.exe; a test that needs another reading
+replaces them after this. AppSettings.save() is
 replaced by a no-op, so the redirected storage_path and any setting
 a test changes never reach primeatlas/locales/app_settings.json. A test that counts
 saves replaces save() again after this. The remembered-fields store
@@ -29,6 +31,8 @@ import sys
 import tempfile
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# More CPUs than any test's thread count, so no field is capped under a test.
+FAKE_WSL_CPUS = 64
 
 
 def fresh_ui_store():
@@ -55,6 +59,8 @@ def isolate_app(portal=None, prefix="primeatlas_test_portal_"):
     ui_state_dynamic.STORE = UiStateStore(None)
     from primeatlas.generation import time_simulation_controls
     time_simulation_controls.estimate_free_ram_bytes = lambda **_k: None
+    from primeatlas.generation import wsl_resources
+    wsl_resources.estimate_wsl_available_cpu_count = lambda *_a, **_k: FAKE_WSL_CPUS
     app_dynamic.APP_SETTINGS.save = lambda: None
     app_dynamic.APP_SETTINGS.set_storage_path(portal)
     app_dynamic.PORTAL_FOLDER = portal

@@ -9,6 +9,27 @@ correction is a new entry. The app shows release, merge count and commit, e.g.
 `1.2.0+24 (f59ce41)`, because Settings → Updates moves every copy along `main` between
 releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA.B.C`.
 
+## Since 1.5.0
+
+### +1 — One thread-count control, capped at WSL's CPUs
+
+- English: Every thread count of the app (the pipeline form's workers, Section D's Threads,
+  Pseudosquares' Threads and the v5/v6/v7 write threads) is now one control. Its list goes from
+  1 to the CPU count WSL reports, and Max shows that count, e.g. "Max (8)"; Section D's Auto
+  shows the workers it stands for. A larger number, typed or remembered from another computer,
+  becomes Max (write threads: the count itself), so a run never asks for more threads than WSL
+  has. Pseudosquares gains Max. The workers field's Auto button is gone: Max shows the same
+  number. The app reads the CPU count once at startup in the background; every launch and the
+  About tab's read refresh it.
+- Polski: Każda liczba wątków w aplikacji (workers w formularzu potoku, Wątki w sekcji D, Wątki
+  Pseudosquares i wątki zapisu v5/v6/v7) to teraz jedna kontrolka. Jej lista idzie od 1 do
+  liczby procesorów, którą podaje WSL, a Max pokazuje tę liczbę, np. „Max (8)”; Auto w sekcji D
+  pokazuje, ilu workerom odpowiada. Większa liczba, wpisana albo zapamiętana z innego komputera,
+  zmienia się na Max (wątki zapisu: na samą liczbę procesorów), więc przebieg nigdy nie prosi o
+  więcej wątków, niż ma WSL. Pseudosquares dostaje Max. Przycisk Auto przy workers znika: Max
+  pokazuje tę samą liczbę. Aplikacja odczytuje liczbę procesorów raz przy starcie, w tle;
+  każde uruchomienie i odczyt w zakładce O programie ją odświeżają.
+
 ## 1.5.0 — 2026-11-17
 
 ### +1 — Generation: RAM check on Generate, proposal from the run's start, native primesieve without storage

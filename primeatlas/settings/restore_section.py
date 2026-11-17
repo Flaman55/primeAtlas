@@ -483,7 +483,7 @@ class RestoreSection:
             n_instances = int(defaults.get("n_instances") or 1)
             workers_text = defaults.get("workers")
             workers = wsl_resources.resolve_workers(
-                workers_text, wsl_resources.estimate_wsl_available_cpu_count()
+                workers_text, wsl_resources.read_wsl_cpus()
                 if wsl_resources.wants_cpu_count(workers_text) else None) or 1
             batches_per_worker = int(defaults.get("batches_per_worker") or 1)
             compute_sieving = bool(defaults.get("compute_sieving_primes_count", False))

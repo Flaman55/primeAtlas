@@ -25,6 +25,7 @@ from tkinter.scrolledtext import ScrolledText
 from primeatlas.about import system_info
 from primeatlas.about.system_info_text import system_info_lines
 from primeatlas.about.wsl_limit_row import WslLimitRow
+from primeatlas.core import cpu_dynamic
 from primeatlas.core.background import run_in_background
 from primeatlas.core.base_tab import BaseTab
 from primeatlas.core.info_tip import InfoTip
@@ -167,6 +168,8 @@ class AboutTab(BaseTab):
             self.system_text.configure(text=text)
             if error is None:
                 self.wsl_limit.show(info)
+                if info.wsl is not None:
+                    cpu_dynamic.set_wsl_cpus(info.wsl.cpus)
         # Looked up at call time, so the read can be replaced without touching the tab.
         run_in_background(self, lambda _report: system_info.read_system_info(), on_done=done)
 

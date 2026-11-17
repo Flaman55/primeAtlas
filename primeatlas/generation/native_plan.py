@@ -15,14 +15,19 @@ from ..core.number_text import plain_number
 from ..core.storage import digit_count_floor
 
 AUTO_THREADS = 0  # the program picks its thread count
+AUTO_WORD = "Auto"
+MAX_WORD = "Max"  # the CPU count WSL reports
 
 
-def parse_threads(text):
-    """Threads field: blank / "Auto" / 0 -> AUTO_THREADS, a positive integer as given,
-    None for anything else."""
-    text = plain_number(text, words=("Auto",))
-    if not text or text == "Auto":
+def parse_threads(text, wsl_cpus=None):
+    """Threads field: blank / "Auto" / 0 -> AUTO_THREADS, "Max" -> wsl_cpus (the CPU count
+    WSL reports; None when it is unknown), a positive integer as given, None for anything
+    else."""
+    text = plain_number(text, words=(AUTO_WORD, MAX_WORD))
+    if not text or text == AUTO_WORD:
         return AUTO_THREADS
+    if text == MAX_WORD:
+        return wsl_cpus or None
     if not text.isdigit():
         return None
     return int(text)

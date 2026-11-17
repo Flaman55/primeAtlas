@@ -95,6 +95,8 @@ KNOB_ENVS = {
 _PT1_KNOBS = ("pt1_b", "pt1_chunk_kb", "pt1_verify")
 # Knobs shown as a checkbox: 0 (off) or 1 (on).
 CHECKBOX_KNOBS = frozenset({"pt1_verify"})
+# Thread counts: shown as a core.threads_field.ThreadsField, capped at WSL's CPU count.
+THREAD_KNOBS = frozenset(f"{engine}_write_threads" for engine in BUCKETED_ENGINES)
 # pt1's footprint does not grow with the window count, so the RAM budget never limits it.
 _ENGINE_KNOBS = {
     ENGINE_V41: (RAM_BUDGET_KNOB,),

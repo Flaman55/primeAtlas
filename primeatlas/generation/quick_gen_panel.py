@@ -21,8 +21,7 @@ from .window_planning import (QUICK_GEN_MAX_WINDOW_WIDTH, count_existing_windows
                               find_continuation_target_idx, find_highest_populated_floor,
                               PRIMESIEVE_MAX_WIDTH_MULT, CUDASIEVE_MIN_PRINTABLE_TOP,
                               CUDASIEVE_MAX_WIDTH_MULT, QUICK_FLOOR_MAX, UINT64_FLOOR_MAX)
-from .wsl_resources import (estimate_free_ram_bytes, estimate_wsl_available_cpu_count,
-                            recommended_worker_count)
+from .wsl_resources import estimate_free_ram_bytes
 
 QUICK_ITERATIONS_MAX = 100     # Explore iterations: 100 x 10 bln = 1 trillion numbers per click
 # Hybrid filter prime count: a UI safety bound, not an engine limit -- an accidental
@@ -871,31 +870,6 @@ class QuickGenPanel:
         return self.T("quick.auto_split_wider", total=f"{total:,}", widest=f"{widest:,}",
                       iterations=plan.iterations, windows=f"{plan.windows:,}",
                       new_total=f"{new_total:,}", extra=f"{new_total - total:,}")
-
-    def _on_workers_auto_clicked(self):
-        """Auto button handler for the "workers" field in the loop pipeline's
-        advanced form (see _build_loop_section's own comment above the button)
-        -- the CPU-count counterpart to _on_quick_auto_width_clicked's RAM-based
-        window-count suggestion above. Queries the CPU count INSIDE WSL
-        (estimate_wsl_available_cpu_count -- the sieve's worker processes run
-        there, not in this native Windows process) and fills the "workers" field
-        with the recommendation (recommended_worker_count -- simply the detected
-        count itself, since requesting more workers than available CPUs adds
-        scheduling overhead without adding real parallelism).
-
-        This only ever SUGGESTS a value into the field -- like every other field
-        in this advanced form, "workers" stays a plain, freely-editable Entry
-        afterward (the person can still type anything from 1 up to, or beyond,
-        the detected count; nothing here enforces a hard ceiling on typing, same
-        as window_count_per_run's own field right above it)."""
-        available = estimate_wsl_available_cpu_count()
-        if available is None:
-            messagebox.showerror(self.T("quick.dialog_title"), self.T("gen.error_cpu_probe_failed"))
-            return
-        recommended = recommended_worker_count(available)
-        self._loop_vars["workers"].set(str(recommended))
-        messagebox.showinfo(self.T("quick.dialog_title"), self.T(
-            "gen.auto_cpu_result", available=available, recommended=recommended))
 
     def _sync_quick_panel(self, panel):
         """tkraise() only reorders stacking within the shared grid cell -- it does

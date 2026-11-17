@@ -97,7 +97,7 @@ primesieve's stop, 2^64 - 1) and never compared with the stored windows: a blank
 the Floor's start and stays blank.
 
 Pseudosquares mode (`quick_gen_pseudosquares.py`) is always native: Floor / From / Width,
-count or print, and Threads (Auto or a number, usable for count only; print runs on one
+count or print, and Threads (Auto, Max or a number, usable for count only; print runs on one
 thread). `native_plan.py` turns the fields into one run without reading the storage:
 From (blank = the Floor's start) picks its floor and the window holding it, the range is cut
 at the floor's end and at the program's stop (`MAX_STOP` = int(1.73 * 1e33), in floor 33), and a
@@ -141,8 +141,8 @@ has its cache, nothing shows.
 ## Pipeline form
 
 Section A's Advanced settings are four framed groups stacked top to bottom: Range (floor, window
-width, windows per iteration, iterations), Parallelism (parallel instances, workers per instance
-with its Auto button, batches per worker), Counting pi(L_final) (the two checkboxes, their text
+width, windows per iteration, iterations), Parallelism (parallel instances, workers per instance,
+batches per worker), Counting pi(L_final) (the two checkboxes, their text
 wrapped at the form's width) and Sieve engine (`EngineFields`: engine, profile, knobs, then the
 BPSW offset). Each group has its own grid of at most two label/field pairs per row, so the form
 fits a Full HD screen at 150 % scaling (a 1280 px wide window for the DPI-unaware Tk). A fresh
@@ -150,7 +150,15 @@ install starts with one parallel instance, one batch per worker and engine v7. W
 number or Max (the default): every CPU WSL reports (`nproc`), probed at each launch
 (`wsl_resources.resolve_workers()`, capped at 256) and remembered as Max, so the form follows the
 machine it runs on. A pipeline run whose probe fails stops with a message; a Quick-gen run and a
-Restore fall back to one worker; the Auto button still writes the probed number into the field.
+Restore fall back to one worker.
+
+Every thread count is a `core.threads_field.ThreadsField`: workers (Max or a number), Section D's
+Threads (Auto, Max or a number), Pseudosquares' Threads (Auto, the program's own pick, shown bare;
+Max; or a number) and the v5/v6/v7 write threads (a number). The list holds the words and 1..the
+CPU count WSL reports (`core.cpu_dynamic.WSL_CPUS`), Max is shown with that count, "Max (8)", and
+Auto of Section D with the workers it stands for. A larger number, typed or stored, becomes Max
+(write threads: the count itself). The app reads the count once at startup in the background;
+each launch's probe (`wsl_resources.read_wsl_cpus()`) and the About tab's read refresh it.
 
 ## Remembered fields
 

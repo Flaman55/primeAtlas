@@ -318,7 +318,7 @@ class QuickGenRuns:
 
         workers_text = self._loop_vars["workers"].get()
         workers = wsl_resources.resolve_workers(
-            workers_text, wsl_resources.estimate_wsl_available_cpu_count()
+            workers_text, wsl_resources.read_wsl_cpus()
             if wsl_resources.wants_cpu_count(workers_text) else None) or 1
         batches_per_worker = _positive_int_or("batches_per_worker", 1)
         choice, bad_key = self._engine_fields.choice(window_count_per_run)

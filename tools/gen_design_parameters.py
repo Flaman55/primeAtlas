@@ -122,7 +122,8 @@ def _form_type(key, default, engine_options, generation_settings, section=None):
                           "windows of 10^n numbers", "verify_plan.py"),
             "threads": (f"{verify_plan.THREADS_AUTO} (the pipeline form's workers), "
                         f"{verify_plan.THREADS_MAX} (every WSL CPU) or integer "
-                        f"1..{verify_plan.THREADS_CAP}", "verify_plan.py"),
+                        f"1..WSL's CPU count (a larger one becomes {verify_plan.THREADS_MAX})",
+                        "verify_plan.py"),
             "method": (f"{verify_plan.METHOD_PROOF} (pt1.1 proof) or {verify_plan.METHOD_SIEVE} "
                        "(v7.3 sieve)", "verify_plan.py"),
             "pass_exp": ("integer from the window width's exponent to "
@@ -131,6 +132,12 @@ def _form_type(key, default, engine_options, generation_settings, section=None):
         }[key]
     if key == "engine":
         return "one of " + ", ".join(engine_options.ENGINES), "engine_options.py"
+    if key == "workers":
+        return ("Max (every WSL CPU) or integer 1..WSL's CPU count (a larger one becomes Max)",
+                "generation_settings.py")
+    if key in engine_options.THREAD_KNOBS:
+        return ("integer 1..WSL's CPU count (a larger one becomes the count)",
+                "engine_options.py")
     if key.endswith("_preset"):
         from primeatlas.generation import engine_presets
         return "one of " + ", ".join(engine_presets.PRESETS), "engine_presets.py"
