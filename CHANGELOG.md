@@ -9,7 +9,7 @@ correction is a new entry. The app shows release, merge count and commit, e.g.
 `1.2.0+24 (f59ce41)`, because Settings → Updates moves every copy along `main` between
 releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA.B.C`.
 
-## Since 1.4.0
+## 1.5.0 — 2026-11-17
 
 ### +1 — Generation: RAM check on Generate, proposal from the run's start, native primesieve without storage
 
