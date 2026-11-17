@@ -352,6 +352,21 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   Generowanie), dolny pasek postępu pokazuje dokładnie ten ułamek; animacja zajętości już go
   nie przesuwa.
 
+### +19 — Small screens: Quick-gen modes and the floor page nav wrap
+
+- English: On a small screen (1280 x 720, e.g. a 13" Full HD laptop at 150 %) the Quick-gen
+  mode row wraps onto a second line instead of cutting off Pseudosquares and cudasieve; a mode
+  name wider than the whole row is shortened with "…" and an ⓘ marker, and hovering it shows
+  the full name. The floor page navigation above the Prime numbers tree wraps the same way, so
+  Go is no longer cut; its buttons now read Previous, Next, then the page count, as in the
+  other page navigations.
+- Polski: Na małym ekranie (1280 x 720, np. laptop 13" Full HD przy 150 %) rząd trybów
+  Quick-gen przechodzi do drugiej linii zamiast ucinać Pseudosquares i cudasieve; nazwa trybu
+  szersza niż cały rząd jest skracana „…” ze znacznikiem ⓘ, a po najechaniu pokazuje pełną
+  nazwę. Nawigacja stron piętra nad drzewem Liczb pierwszych zawija się tak samo, więc Idź nie
+  jest już ucięte; przyciski czytają się teraz Poprzednia, Następna, potem licznik stron, jak
+  w pozostałych nawigacjach stron.
+
 ## 1.4.0 — 2026-11-14
 
 ### +1 — Research → Irreducibility: radices, comparison, comb reading, ranges, arithmetic

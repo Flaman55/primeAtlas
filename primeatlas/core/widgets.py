@@ -32,13 +32,28 @@ class FlowRow:
     same 'safe to call again on resize' pattern used by the Benchmark tab's own growth-
     chart canvas binding (see primeatlas/benchmark/benchmark_tab.py's _draw_growth_chart). .frame
     is what the caller packs/grids into its own parent, exactly like a plain ttk.Frame
-    would be."""
+    would be. padx_left separates an item from the one before it on the same line; an item
+    that starts a line sits at the row's left edge. An item with a fit_width(width) method
+    (e.g. elided_choice.ElidedRadiobutton) is handed the row's width before it is measured,
+    so it can shorten itself to fit.
+
+    `width`, when given, is a callable returning the width to lay out for instead of the
+    frame's own: for a row whose container is sized from its content, so the row's height
+    change, resizing the container for a moment, cannot change the layout again (the Prime
+    numbers tree pane, pinned to the tree's content width). relayout() then lays out after
+    that width changes."""
 
     ROW_GAP = 4
 
-    def __init__(self, parent):
+    def __init__(self, parent, width=None):
         self.frame = ttk.Frame(parent)
         self._items = []  # [(widget, padx_left)], in add() order
+        self._width = 0
+        self._width_source = width
+        self._job = None
+        self._laid_out = None  # (width, item sizes) of the last layout
+        self._in_layout = False
+        self._again = False
         self.frame.bind("<Configure>", self._reflow)
 
     def add(self, widget, padx_left=0):
@@ -46,13 +61,49 @@ class FlowRow:
         return widget
 
     def _reflow(self, event):
-        width = event.width
-        if width <= 1 or not self._items:
+        self._width = event.width
+        self._schedule()
+
+    def relayout(self):
+        """Lays out again, e.g. after an item's text changed (its new size is measured)."""
+        self._schedule()
+
+    def _schedule(self):
+        """Lays out once the event loop is idle. On Windows update_idletasks() delivers
+        <Configure> at once and runs idle jobs, so a layout (which measures its items) can
+        be asked for again while it runs: that request waits for the running layout to
+        end. A row whose own height change (or a page scrollbar it brings) resizes it
+        again lays out again only when its width or an item's size changed."""
+        if self._in_layout:
+            self._again = True
+        elif self._job is None:
+            self._job = self.frame.after_idle(self._layout)
+
+    def _layout(self):
+        self._job = None
+        self._in_layout = True
+        try:
+            self._place_items()
+        finally:
+            self._in_layout = False
+        if self._again:
+            self._again = False
+            self._schedule()
+
+    def _place_items(self):
+        width = self._width_source() if self._width_source else self._width
+        if width <= 1 or not self._items or not self.frame.winfo_exists():
+            return
+        sizes = tuple((w.winfo_reqwidth(), w.winfo_reqheight()) for w, _gap in self._items)
+        if self._laid_out == (width, sizes):
             return
         x = 0
         y = 0
         row_height = 0
         for widget, padx_left in self._items:
+            fit_width = getattr(widget, "fit_width", None)
+            if fit_width is not None:
+                fit_width(width)
             widget.update_idletasks()
             w = widget.winfo_reqwidth()
             h = widget.winfo_reqheight()
@@ -60,10 +111,13 @@ class FlowRow:
                 x = 0
                 y += row_height + self.ROW_GAP
                 row_height = 0
-            widget.place(x=x + padx_left, y=y, width=w, height=h)
-            x += padx_left + w
+            gap = padx_left if x > 0 else 0
+            widget.place(x=x + gap, y=y, width=w, height=h)
+            x += gap + w
             row_height = max(row_height, h)
         self.frame.configure(height=y + row_height)
+        self._laid_out = (width, tuple((w.winfo_reqwidth(), w.winfo_reqheight())
+                                       for w, _gap in self._items))
 
 
 def add_page_nav_group(flow_row, T, page_label_var, on_prev, on_next, on_goto=None,

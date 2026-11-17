@@ -46,7 +46,8 @@ from ..core.storage import (
     digit_count_floor, disk_footprint, format_big_int, format_bytes, format_duration,
     list_floors, list_source_filenames, read_source_file_headers,
 )
-from ..core.widgets import RevealFrame, StripedTreeview, add_page_nav_row, clamp_pane_min_width
+from ..core.widgets import (FlowRow, RevealFrame, StripedTreeview, add_page_nav_group,
+                            add_page_nav_row, clamp_pane_min_width)
 
 _BASE_DISPLAY_COLUMNS = ("count", "cumulative", "files", "size", "timer")
 _CELL_PAD = 16  # px around a cell's text (ttk Treeview cell padding + a margin)
@@ -215,29 +216,21 @@ class PrimesTab(BaseTab):
         tree_frame = ttk.Frame(paned)
         paned.add(tree_frame, weight=0)
 
-        # Floor pagination -- ABOVE the tree, same Prev/label/Next/goto layout
-        # as the file-preview pane on the right (see btn_row below). A floor can hold
+        # Floor pagination -- ABOVE the tree. A floor can hold
         # thousands of source windows -- listing+rendering them all on one expand would
         # freeze the GUI, so expanding a floor only lists filenames
         # (cheap) and loads ONE page's worth of headers; these controls act on whichever
         # floor was most recently opened/clicked (self._active_floor_node) -- multiple
         # floors can stay expanded at once, each remembering its own page independently.
-        floor_nav = ttk.Frame(tree_frame)
-        floor_nav.pack(fill="x", pady=(0, 4))
-        self.floor_prev_btn = ttk.Button(
-            floor_nav, text=T("common.prev_page"), command=self._prev_floor_page, state="disabled")
-        self.floor_prev_btn.pack(side="left")
+        # A FlowRow of the app-wide page-nav groups: the tree pane is narrow, so the
+        # Page:/entry/Go group wraps under Prev/Next/count instead of being cut. It wraps
+        # to the tree's content width, the width the pane is pinned to (_fit_tree_pane()).
+        self.floor_nav = FlowRow(tree_frame, width=lambda: self._tree_content_width())
+        self.floor_nav.frame.pack(fill="x", pady=(0, 4))
         self.floor_page_label = tk.StringVar(value="")
-        ttk.Label(floor_nav, textvariable=self.floor_page_label, width=16, anchor="center").pack(side="left")
-        self.floor_next_btn = ttk.Button(
-            floor_nav, text=T("common.next_page"), command=self._next_floor_page, state="disabled")
-        self.floor_next_btn.pack(side="left")
-        ttk.Label(floor_nav, text=T("common.page_prefix")).pack(side="left", padx=(10, 0))
-        self.floor_goto_entry = ttk.Entry(floor_nav, width=6)
-        number_field.attach(self.floor_goto_entry, self.T, minimum=1)
-        self.floor_goto_entry.pack(side="left", padx=(4, 0))
-        self.floor_goto_entry.bind("<Return>", lambda _e: self._goto_floor_page())
-        ttk.Button(floor_nav, text=T("common.goto"), command=self._goto_floor_page).pack(side="left", padx=(4, 0))
+        self.floor_prev_btn, self.floor_next_btn, self.floor_goto_entry = add_page_nav_group(
+            self.floor_nav, T, self.floor_page_label, self._prev_floor_page,
+            self._next_floor_page, on_goto=self._goto_floor_page)
 
         # Page subtotal (instant -- sums the headers this page already had to read to
         # display the file list, no extra I/O) alongside the floor's OVERALL total,
@@ -245,8 +238,9 @@ class PrimesTab(BaseTab):
         # asynchronously once the background totals worker finishes (see
         # update_floor_row()) -- shows "computing..." until then.
         self.floor_subtotal_label = tk.StringVar(value="")
-        ttk.Label(floor_nav, textvariable=self.floor_subtotal_label, anchor="w").pack(
-            side="left", padx=(14, 0))
+        self.floor_nav.add(ttk.Label(self.floor_nav.frame, textvariable=self.floor_subtotal_label,
+                                     anchor="w"), padx_left=14)
+        self.floor_subtotal_label.trace_add("write", lambda *_a: self.floor_nav.relayout())
 
         # 4 value columns: count/files/generated/timer. "files" is always a file count,
         # "generated" always a per-file UTC timestamp (blank on floor rows -- no single
@@ -588,6 +582,7 @@ class PrimesTab(BaseTab):
         try:
             if self._tree_paned.winfo_ismapped():
                 self._tree_paned.sashpos(0, self._tree_content_width())
+            self.floor_nav.relayout()
         except tk.TclError:
             pass
 

@@ -1366,6 +1366,12 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               Benchmark); the popup stays inside the app window;
                               below= and delay_ms= for a tip hung on an entry
                               (unitTests/test_info_tip.py)
+  elided_choice.py              ElidedRadiobutton -- a FlowRow radio whose name, when
+                              wider than the whole row, is shortened with "…" and gets
+                              an "i" marker; hovering shows the full name (the
+                              Generation tab's Quick-gen mode row)
+                              (unitTests/test_elided_choice.py,
+                              unitTests/test_quick_mode_row.py)
   number_text.py                read_number -- the reader of every number field: a
                               whole number in any common notation (grouping of any
                               country, powers, superscripts, scientific, pasted
@@ -1380,8 +1386,13 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               and Spinbox is a number field or marked why not:
                               unitTests/test_number_field_coverage.py; the app's
                               195 fields: unitTests/test_number_fields_app.py)
-  widgets.py                    small generic tkinter helpers (e.g. FlowRow) with no
-                              application-specific state; disable_notebook_wheel()
+  widgets.py                    small generic tkinter helpers with no
+                              application-specific state; FlowRow is the app's one
+                              wrapping row: items wrap whole onto the next line where
+                              the row runs out of width (page navs, the Quick-gen mode
+                              row; every tab fits 1280x720 in Polish and English at
+                              font 100 % and 125 %: unitTests/test_small_screen_layout.py);
+                              disable_notebook_wheel()
                               keeps the mouse wheel from switching notebook tabs
                               app-wide; HeightGrip is the app's one
                               height control -- a drag handle under a terminal, list or

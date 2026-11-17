@@ -251,6 +251,27 @@ def main():
         widget._goto_floor_page()
         check(state["page"] == 0, f"_goto_floor_page('1') landed back on page index 0 (got {state['page']})")
 
+        # The floor nav is the app-wide page nav: a FlowRow of two whole groups,
+        # Prev/Next/page count, then Page:/entry/Go, then the page subtotal; Enter in
+        # the entry goes to the page too.
+        _check_floor_nav_layout(app, widget)
+        widget.floor_goto_entry.delete(0, "end")
+        widget.floor_goto_entry.insert(0, "3")
+        widget.floor_goto_entry.focus_force()
+        app.update()
+        widget.floor_goto_entry.event_generate("<Return>")
+        _pump(app, 0.2)
+        check(state["page"] == 2, f"Enter in the page entry went to page 3 (got index {state['page']})")
+        widget.floor_goto_entry.delete(0, "end")
+        widget.floor_goto_entry.insert(0, "abc")
+        widget._goto_floor_page()
+        check(state["page"] == 2, f"a non-number in the page entry changes nothing (got {state['page']})")
+        widget.floor_goto_entry.delete(0, "end")
+        widget.floor_goto_entry.insert(0, "99")
+        widget._goto_floor_page()
+        check(0 <= state["page"] <= 2, f"a page past the end stays within the pages (got {state['page']})")
+        widget._show_floor_page(node3, 0)
+
         # Collapsing drops the cached page state.
         widget.tree.focus(node3)
         widget._on_tree_close(None)
@@ -304,11 +325,51 @@ def main():
         check(any(kind == "error" for kind, _a, _k in shown),
               f"an invalid search query shows an error dialog instead (got: {shown})")
 
-        _test_tree_columns(app, widget, node0, node3)
+        result = _test_tree_columns(app, widget, node0, node3)
 
         app.destroy()
+        return result
     finally:
         shutil.rmtree(tmp_portal, ignore_errors=True)
+
+
+def _check_floor_nav_layout(app, widget):
+    from tkinter import ttk
+    from primeatlas.core.widgets import FlowRow
+    nav = getattr(widget, "floor_nav", None)
+    check(isinstance(nav, FlowRow), "the floor nav is a FlowRow")
+    if not isinstance(nav, FlowRow):
+        return
+    groups = [item for item, _gap in nav._items]
+    check(len(groups) == 3, f"two whole nav groups, then the page subtotal (got {len(groups)})")
+    if len(groups) != 3:
+        return
+    check(str(groups[2].cget("textvariable")) == str(widget.floor_subtotal_label),
+          "the third item is the page subtotal")
+    groups = groups[:2]
+    first = groups[0].pack_slaves()
+    check(first[:2] == [widget.floor_prev_btn, widget.floor_next_btn]
+          and isinstance(first[2], ttk.Label),
+          "group one: Prev, Next, then the page count")
+    check(widget.floor_goto_entry in groups[1].pack_slaves(), "group two holds the page entry")
+    # The row wraps to the tree's content width (the width the pane is pinned to).
+    content_width = widget._tree_content_width
+    try:
+        for width in (120, 600):
+            widget._tree_content_width = lambda width=width: width
+            nav.relayout()
+            for _ in range(4):
+                app.update()
+            ends = [g.winfo_x() + g.winfo_width() for g in groups]
+            check(groups[1].winfo_y() > groups[0].winfo_y() if width == 120
+                  else groups[1].winfo_y() == groups[0].winfo_y(),
+                  f"{width} px: {'the entry group wraps to the next line' if width == 120 else 'one line'}")
+            check(all(g.winfo_width() == g.winfo_reqwidth() for g in groups),
+                  f"{width} px: neither group is cut (ends {ends})")
+    finally:
+        widget._tree_content_width = content_width
+        nav.relayout()
+        app.update()
 
 
 def _displayed(widget):
