@@ -11,6 +11,36 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
 
 ## Since 1.5.0
 
+### +3 — Section D: verify the first island in windows of a chosen width
+
+- English: Section D now verifies the floor's first island: the run of adjacent P files from
+  the smallest n (the next island comes once this one is D). One Window width field, in
+  numbers (any notation, e.g. 1e8, shown short as 1e8, 9e7, 2.5e8), replaces the power-of-ten width and the v7.3 Pass fields:
+  one file up to the island, for the v7.3 sieve up to what the free RAM allows; a value
+  outside takes the nearest end, one between rounds down to whole files, and the last window
+  holds the rest. A Split into windows field, with the island's size beside it, sets the same
+  from the other side: a new width recounts the split, a new split recounts the width (evenly,
+  in whole files). Verify now picks how many of those windows one run verifies, all by
+  default. Auto picks the width: for the pt1.1 proof one file (the most windows, small
+  portions at a time), for the v7.3 sieve the fewest windows the RAM allows, split evenly. A
+  file wider than its neighbours (a 10^8 file among 10^7 ones) is recognised by its last prime
+  and verified on its own at its width. Before, a width wider than the stored files counted
+  only the files on its grid, and files of another width could be taken as wider ones.
+- Polski: Sekcja D weryfikuje teraz pierwszą wyspę piętra: ciąg sąsiednich plików P od
+  najmniejszego n (następna wyspa przychodzi, gdy ta stanie się D). Jedno pole Szerokość okna,
+  w liczbach (dowolny zapis, np. 1e8, pokazywany krótko: 1e8, 9e7, 2.5e8), zastępuje szerokość jako potęgę dziesięciu i pole
+  Przejście v7.3: od jednego pliku do całej wyspy, dla sita v7.3 do tego, na co pozwala wolny
+  RAM; wartość spoza zakresu przyjmuje bliższy koniec, pośrednia jest zaokrąglana w dół do
+  całych plików, a ostatnie okno mieści resztę. Pole Podział na okna, z rozmiarem wyspy obok,
+  ustawia to samo z drugiej strony: nowa szerokość przelicza podział, nowy podział przelicza
+  szerokość (po równo, w całych plikach). Weryfikuj teraz wybiera, ile z tych okien weryfikuje
+  jedno uruchomienie, domyślnie wszystkie. Auto dobiera szerokość: dla dowodu pt1.1 jeden plik
+  (najwięcej okien, małe porcje), dla sita v7.3 najmniej okien, na ile pozwala RAM, po równo.
+  Plik szerszy od sąsiadów (plik 10^8 wśród plików 10^7) jest rozpoznawany po ostatniej liczbie
+  pierwszej i weryfikowany osobno ze swoją szerokością. Wcześniej szerokość większa od
+  zapisanych plików liczyła tylko pliki na swojej siatce, a pliki innej szerokości mogły być
+  brane za szersze.
+
 ### +2 — Section D: no Windows number without P windows
 
 - English: When the chosen floor and width hold no P window, Section D's Windows field is now

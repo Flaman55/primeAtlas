@@ -342,7 +342,6 @@ def _test_verify_section():
             tab._on_run_verify()
             check(tab._verify_runner is None and not launched,
                   "verify: a bad floor launches nothing")
-            tab._verify_vars["width_exp"].set("7")
             tab._verify_vars["base_exponent"].set("29")
             tab._refresh_verify_count()
             tab._on_run_verify()
@@ -354,15 +353,17 @@ def _test_verify_section():
                                                  storage_kinds.KIND_P)
                 os.makedirs(os.path.dirname(path), exist_ok=True)
                 open(path, "wb").close()
+            tab._verify_vars["width"].set("1e7")
             tab._refresh_verify_count()
             check(tab._verify_vars["max_windows"].get() == "3"
                   and "3" in tab._verify_total_text.get(),
-                  "verify: the Windows field counts the floor's P windows")
-            tab._verify_vars["width_exp"].set("8")
+                  "verify: the Windows field counts the island's windows")
+            tab._verify_vars["width"].set("1e8")
             tab._refresh_verify_count()
-            check(tab._verify_vars["max_windows"].get() == "1",
-                  "verify: a wider window recounts (only offset 0 is on the 10^8 grid)")
-            tab._verify_vars["width_exp"].set("7")
+            check(tab._verify_vars["max_windows"].get() == "1"
+                  and tab._verify_vars["width"].get() == "3e7",
+                  "verify: a width above the island becomes the island, one window")
+            tab._verify_vars["width"].set("1e7")
             tab._refresh_verify_count()
             tab._verify_vars["threads"].set("0")
             tab._on_run_verify()
@@ -374,23 +375,41 @@ def _test_verify_section():
             check(values == {"base_exponent": 29, "window_m": 10 ** 7, "max_windows": 2,
                              "threads": 7, "method": "proof"},
                   f"verify: Auto threads = the form's workers, 2 of 3 windows ({values})")
-            tab._verify_vars["max_windows"].set("3")
-            check(tab._verify_values()["max_windows"] == 0,
-                  "verify: the full count is passed as 0 (all)")
+            tab._verify_vars["width"].set("2e7")
+            tab._refresh_verify_count()
+            tab._verify_vars["max_windows"].set("1")
+            check(tab._verify_values()["max_windows"] == 2,
+                  "verify: one window of 2 files passes the script 2 files")
+            tab._verify_vars["max_windows"].set("2")
+            check(tab._verify_values()["max_windows"] == 3,
+                  "verify: every window passes the island's 3 files, never 0 (the whole floor)")
+            tab._verify_vars["width"].set("abc")
+            errors.clear()
+            check(tab._verify_values() is None
+                  and errors == [tab.T("gen.verify_error_width")],
+                  "verify: a width that is no number is refused")
+            tab._verify_vars["width"].set("1e7")
+            tab._refresh_verify_count()
             check(tab._verify_vars["method"].get() == "proof"
                   and tab._verify_method_text.get() == tab.T("gen.verify_method_proof"),
                   "verify: the pt1.1 proof is the default method")
             tab._verify_method_text.set(tab.T("gen.verify_method_sieve"))
             tab._on_verify_method_chosen()
-            tab._verify_vars["pass_exp"].set("13")
-            check(tab._verify_values() is None, "verify: a pass of 10^13 is refused")
-            tab._verify_vars["pass_exp"].set("6")
-            check(tab._verify_values() is None, "verify: a pass narrower than a window is refused")
-            tab._verify_vars["pass_exp"].set("11")
+            from primeatlas.generation import wsl_resources
+            ram_reads = []
+            original_ram = wsl_resources.estimate_free_ram_bytes
+            # A v7.3 cap of two files: half of it x 30 = 2 * 10^7.
+            wsl_resources.estimate_free_ram_bytes = (
+                lambda timeout=10: ram_reads.append(1) or 1_333_334)
+            tab._verify_vars["width"].set("3e7")
+            tab._refresh_verify_count()
             values = tab._verify_values()
-            check(values is not None and values["method"] == "sieve"
-                  and values["pass_numbers"] == 10 ** 11,
-                  f"verify: the v7.3 sieve with passes of 10^11 ({values})")
+            wsl_resources.estimate_free_ram_bytes = original_ram
+            check(ram_reads and values is not None and values["method"] == "sieve"
+                  and values["pass_numbers"] == 2 * 10 ** 7 and values["window_m"] == 10 ** 7
+                  and tab._verify_vars["width"].get() == "2e7",
+                  f"verify: Run reads the free RAM, the v7.3 width clips to its cap and is the "
+                  f"pass ({len(ram_reads)}, {values})")
             text = tab._refresh_verify_estimate()
             check("?" in text and "pt1.1" in text and "v7.3" in text,
                   f"verify: without benchmark rows both estimates say ? ({text})")
@@ -433,13 +452,17 @@ def _test_verify_section():
             tab._unlock_other_run_buttons()
             tab._verify_method_text.set(tab.T("gen.verify_method_sieve"))
             tab._on_verify_method_chosen()
-            tab._verify_vars["pass_exp"].set("8")
+            tab._verify_vars["width"].set("2e7")
+            tab._refresh_verify_count()
+            wsl_resources.estimate_free_ram_bytes = lambda timeout=10: 8 * 1024 ** 3
             tab._on_run_verify()
+            wsl_resources.estimate_free_ram_bytes = original_ram
             cmd = " ".join(str(t) for t in launched[-1][0]) if launched else ""
             check(tab._verify_runner is not None and "v73_verify_store.py" in cmd
-                  and "v73_verify_store.py' 29 7 10000000 0 100000000 " in cmd
+                  and "v73_verify_store.py' 29 7 10000000 3 20000000 " in cmd
                   and launched[-1][1] == "v73_verify_store.py",
-                  f"verify: the sieve method launches v73_verify_store.py ({cmd[-160:]})")
+                  f"verify: the sieve method launches v73_verify_store.py with the file width, "
+                  f"the island's 3 files and the width as the pass ({cmd[-160:]})")
             tab._verify_runner.stop()
             tab._on_verify_finished(0)
         finally:

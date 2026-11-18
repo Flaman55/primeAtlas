@@ -11,5 +11,5 @@ One page per area, `<area>.md`, with the columns Parameter, Default, Type and bo
 | [generation-loop](generation-loop.md) | 42 |
 | [generation-constellation](generation-constellation.md) | 1 |
 | [generation-ktuple](generation-ktuple.md) | 14 |
-| [generation-verify](generation-verify.md) | 5 |
+| [generation-verify](generation-verify.md) | 4 |
 | [visualization-renderer](visualization-renderer.md) | 72 |

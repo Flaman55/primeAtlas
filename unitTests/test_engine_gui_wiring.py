@@ -121,7 +121,7 @@ def _check_auto_follows_width(gen, fields, app):
 
 
 def _check_pt1_verify_follows_section_d(gen, fields, app):
-    """The pt1 checkbox's hint and launch env follow Section D's method and pass."""
+    """The pt1 checkbox's hint and launch env follow Section D's method and v7.3 RAM cap."""
     passed = True
 
     def pick(method):
@@ -188,19 +188,25 @@ def _check_pt1_verify_follows_section_d(gen, fields, app):
                     "Benchmark off: enabled again, no tooltip on hover")
     box.event_generate("<Leave>")
     pick("sieve")
-    gen._verify_vars["pass_exp"].set("12")
+    from primeatlas.generation import verify_width
+    sieve_hint = lambda numbers: gen.T("gen.pt1_verify_hint_sieve",  # noqa: E731
+                                       pass_numbers=verify_width.width_text(numbers))
+    passed &= check(hint.get() == sieve_hint(10 ** 11),
+                    f"the checkbox names the sieve and its RAM cap, 10^11 before any reading "
+                    f"({hint.get()!r})")
+    from primeatlas.generation import wsl_resources
+    original_ram = wsl_resources.estimate_free_ram_bytes
+    wsl_resources.estimate_free_ram_bytes = lambda timeout=10: 2 * 10 ** 9
+    gen._probe_verify_ram()
+    wsl_resources.estimate_free_ram_bytes = original_ram
     app.update()
-    passed &= check(hint.get() == gen.T("gen.pt1_verify_hint_sieve", pass_exp=12),
-                    f"the checkbox names Section D's sieve and pass ({hint.get()!r})")
-    gen._verify_vars["pass_exp"].set("10")
-    app.update()
-    passed &= check(hint.get() == gen.T("gen.pt1_verify_hint_sieve", pass_exp=10),
-                    f"a new pass reaches the hint at once ({hint.get()!r})")
+    passed &= check(hint.get() == sieve_hint(3 * 10 ** 10),
+                    f"a RAM reading reaches the hint at once ({hint.get()!r})")
     fields.knob_vars["pt1_verify"].set("1")
     bash = launch_loop()
     passed &= check("PRIMEATLAS_PT1_VERIFY=1 " in bash
                     and "PRIMEATLAS_VERIFY_METHOD=sieve " in bash
-                    and "PRIMEATLAS_VERIFY_PASS_NUMBERS=10000000000 " in bash,
+                    and "PRIMEATLAS_VERIFY_PASS_NUMBERS=30000000000 " in bash,
                     f"a ticked pipeline run carries the sieve and its pass ({bash[:300]}...)")
     _Runner.commands.clear()
     gen._on_run_orchestrator_direct(25, 0, 10)
@@ -218,7 +224,6 @@ def _check_pt1_verify_follows_section_d(gen, fields, app):
     bash = launch_loop()
     passed &= check("PRIMEATLAS_PT1_VERIFY=0 " in bash and "PRIMEATLAS_VERIFY_METHOD" not in bash,
                     f"an unticked run carries no method ({bash[:300]}...)")
-    gen._verify_vars["pass_exp"].set("11")
     return passed
 
 
