@@ -3,7 +3,7 @@ test_settings_scroll.py -- the Settings tab's page-level mouse-wheel handler mus
 wheel to widgets that scroll themselves.
 
 With the pointer over the sympy installer's log (a ScrolledText on Settings > Updates),
-the page's handler -- bound with bind_all while the pointer is over the page canvas --
+the page's handler -- the app-wide router bound with bind_all --
 would also fire for wheel events over the log, whose own Text class binding scrolls it
 at the same time, so both would move. Every page is a widgets.ScrollablePage, whose
 wheel handler asks widgets.event_over_own_scroller() before scrolling the page.

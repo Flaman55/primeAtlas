@@ -7,7 +7,7 @@ the floors of the chart zoomed first) and one y view and level per chart (self._
 self._y_levels); the drawing reads the views, and every export follows them.
 
 The bindings sit on each chart canvas and return "break", so a wheel turn over a chart never
-reaches the page's own wheel scrolling (bound app-wide while the pointer is over the page). A
+reaches the page's own wheel scrolling (the app-wide router in widgets.route_wheel). A
 press that moves less than DRAG_SLOP_PX is a click, left to the legend and the pin menu.
 
 A BenchmarkTab mixin: it uses the tab's canvases (and the chart windows'), rows and redraw

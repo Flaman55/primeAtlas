@@ -26,7 +26,12 @@ app-wide widgets and the background coordinators for floor totals and search. GU
 
 Never launches WSL; never imports engine code (`ADR 0001`). One control per UI role: HeightGrip for
 heights, ScrollPad for scrolling pages, InfoTip for a field's explanation (also, anchored on a greyed-out field, for why it cannot be
-changed), `number_field.attach` for a field that takes a whole number. A page's wheel handler
+changed), `number_field.attach` for a field that takes a whole number. The mouse wheel goes
+through one app-wide binding made once (`install_wheel_router()`): for each event `route_wheel()`
+walks from the widget under the pointer up to its toplevel and scrolls the ScrollPad's page, or the
+innermost ScrollablePage whose content does not fit (a nested page that fits passes the wheel out),
+so no <Enter>/<Leave> sequence (a dialog, a rebuild after Run) can leave a page without the wheel;
+a Toplevel built with a master inside a page is not part of that page. The router
 leaves the wheel to widgets that use it themselves (`event_over_own_scroller()`: Text, Listbox,
 Treeview, and an enabled ttk.Spinbox or ttk.Combobox, whose Tk class binding steps its value), so the page and
 the widget never move together. The wheel never switches notebook tabs: Tk 9 binds it on the

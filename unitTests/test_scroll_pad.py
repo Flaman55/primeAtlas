@@ -3,10 +3,12 @@ test_scroll_pad.py -- a strip along the right edge of every scrollable page (nex
 scrollbar) where the mouse wheel always scrolls the page, whatever self-scrolling
 terminals or lists sit under the rest of the page.
 
-A. ScrollPad: entering binds the wheel app-wide, leaving unbinds it; a wheel notch calls
-   scroll(units) with -3 up / +3 down (Windows delta and X11 Button-4/5).
+A. ScrollPad: the app-wide wheel binding exists once a pad is built and <Enter>/<Leave>
+   do not change it; a wheel notch calls scroll(units) with -3 up / +3 down (Windows
+   delta and X11 Button-4/5).
    It is 40px wide by default and shows its label vertically, read top to bottom (rotated 270 degrees).
-   attach(widget) makes another widget (the page scrollbar) behave the same way.
+   attach(widget) makes another widget (the page scrollbar) behave the same way: its own
+   wheel binding scrolls through the pad and stops the event there.
 B. Every page container has one, between the page and its scrollbar: each Settings
    sub-tab, the Generation tab, the visualization tabs. Pad and scrollbar are packed
    together, only while the page does not fit (see test_scrollable_page.py). A wheel notch
@@ -59,22 +61,26 @@ def _test_pad(root):
     check(len(items) == 1 and pad.frame.itemcget(items[0], "text") == "Scroll area",
           "pad shows its label")
     check(items and float(pad.frame.itemcget(items[0], "angle")) == 270.0, "label is vertical, read top to bottom")
-    pad._on_enter(None)
-    check(root.bind_all("<MouseWheel>") != "", "entering the pad binds the wheel")
+    bound = root.bind_all("<MouseWheel>")
+    check(bound != "", "building the pad installs the app-wide wheel binding")
+    pad.frame.event_generate("<Enter>")
+    pad.frame.event_generate("<Leave>")
+    root.update()
+    check(root.bind_all("<MouseWheel>") == bound, "<Enter>/<Leave> leave the binding alone")
     pad.wheel(FakeEvent(delta=120))
     pad.wheel(FakeEvent(delta=-240))
     pad.wheel(FakeEvent(num=4))
     pad.wheel(FakeEvent(num=5))
     check(calls == [-3, 6, -3, 3], f"wheel notches -> scroll units (got {calls})")
-    pad._on_leave(None)
-    check(root.bind_all("<MouseWheel>") == "" and root.bind_all("<Button-4>") == "",
-          "leaving the pad unbinds the wheel")
     bar = ttk.Scrollbar(root)
     pad.attach(bar)
     check(bar in pad.attached, "attach() registers the widget")
-    pad._on_enter(None)
-    check(root.bind_all("<MouseWheel>") != "", "entering an attached widget binds the wheel")
-    pad._on_leave(None)
+    del calls[:]
+    bar.pack(side="right", fill="y")
+    root.update()
+    bar.event_generate("<MouseWheel>", x=2, y=2, delta=-120)
+    root.update()
+    check(calls == [3], f"the wheel over an attached widget scrolls once (got {calls})")
     narrow = ScrollPad(root, calls.append, width=12)
     check(int(narrow.frame.cget("width")) == 12, "width is configurable")
 

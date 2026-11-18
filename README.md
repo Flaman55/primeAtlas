@@ -1413,7 +1413,9 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               (Settings > General > User interface) that
                               set_scroll_pad_width() applies live to every pad; the
                               wheel over an enabled spinbox or drop-down list steps
-                              its value and leaves the page still
+                              its value and leaves the page still; route_wheel() is the
+                              one app-wide wheel binding, routing each turn to the page
+                              under the pointer
                               (event_over_own_scroller);
                               StripedTreeview is the app's one table class (every
                               second visible row striped, restriped after inserts and
