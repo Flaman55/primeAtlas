@@ -1726,8 +1726,9 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               modelled iterations advanced by the progress lines,
                               scaled by the measured pace from 10 % of the model on
                               -- pure, no tkinter (unitTests/test_run_eta.py)
-  window_planning.py            window/floor arithmetic: continuation point, first gap
-                              and edge trimming per engine store, range -> whole
+  window_planning.py            window/floor arithmetic: continuation point, first gap,
+                              stored windows of a range, window count and edge
+                              trimming per engine store, range -> whole
                               windows and per-floor launches (plan_storage_fill),
                               one-window Hybrid targets, totals bumps from new
                               benchmark rows, primesieve/CUDASieve range limits

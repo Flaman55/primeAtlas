@@ -315,6 +315,12 @@ class QuickGenPanel:
         fields = getattr(self, "_engine_fields", None)
         return fields.engine() if fields is not None else engine_options.DEFAULT_ENGINE
 
+    def _engine_window_count(self, floor):
+        """How many windows of `floor` the selected engine's store holds: the count every
+        Quick-gen message shows (window_planning.count_existing_windows())."""
+        return count_existing_windows(self._get_portal_folder(), floor,
+                                      engine=self._selected_engine())
+
     def _quick_width_cap(self):
         """Per-run window ceiling of the engine selected in the pipeline form (the
         default engine's while the form is not built yet)."""
@@ -646,11 +652,9 @@ class QuickGenPanel:
             return
         continuation_point = 10 ** floor_value + existing_count * QUICK_GEN_MAX_WINDOW_WIDTH
         self.quick_primesieve_from_var.set(str(continuation_point))
-        # existing_count above is a CONTINUATION POSITION (see
-        # find_continuation_target_idx()'s own docstring), not necessarily the real
-        # file count once a floor has interior gaps -- the message shows the real
-        # count instead (see count_existing_windows()'s own docstring for why).
-        real_window_count = count_existing_windows(self._get_portal_folder(), floor_value)
+        # existing_count above is a continuation position, not the window count of a
+        # floor with gaps: the message shows the count.
+        real_window_count = self._engine_window_count(floor_value)
         messagebox.showinfo(self.T("quick.dialog_title"), self.T(
             "quick.primesieve_auto_from_result", floor=floor_value,
             existing_count=real_window_count, continuation_point=f"{continuation_point:,}"))
@@ -721,7 +725,7 @@ class QuickGenPanel:
                 min_printable=f"{CUDASIEVE_MIN_PRINTABLE_TOP:,}"))
             return
         self.quick_cudasieve_from_var.set(str(continuation_point))
-        real_window_count = count_existing_windows(self._get_portal_folder(), floor_value)
+        real_window_count = self._engine_window_count(floor_value)
         messagebox.showinfo(self.T("quick.dialog_title"), self.T(
             "quick.primesieve_auto_from_result", floor=floor_value,
             existing_count=real_window_count, continuation_point=f"{continuation_point:,}"))
