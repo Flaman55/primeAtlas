@@ -72,7 +72,7 @@ class VerifySection:
             self._verify_vars["method"].set(verify_plan.METHOD_PROOF)
         if not self._verify_vars["pass_exp"].get():
             self._verify_vars["pass_exp"].set(str(verify_plan.DEFAULT_PASS_EXP))
-        self._verify_vars["max_windows"] = tk.StringVar(value="0")
+        self._verify_vars["max_windows"] = tk.StringVar(value="")
         for key in _STORED_FIELDS:
             remember_generation_field("verify", key, self._verify_vars[key])
 
@@ -226,17 +226,21 @@ class VerifySection:
 
     def _refresh_verify_count(self):
         """Sets the Windows field to every P window of the floor at the chosen width (a
-        smaller value proves only the first ones) and returns that total."""
+        smaller value proves only the first ones) and returns that total. Without a P window
+        there is nothing to pick: the field is empty and greyed out, "none" beside it."""
         self._verify_count_after_id = None
         floor = verify_plan.parse_int(self._verify_vars["base_exponent"].get(), 0)
         width_exp = verify_plan.parse_int(self._verify_vars["width_exp"].get(),
                                           verify_plan.WIDTH_EXP_MIN)
         self._verify_total = verify_plan.window_count(self._get_portal_folder(), floor,
                                                       width_exp)
-        self._verify_windows_box.configure(to=max(self._verify_total, 1))
-        self._verify_vars["max_windows"].set(str(self._verify_total))
-        self._verify_total_text.set(self.T("gen.verify_windows_total",
-                                           total=f"{self._verify_total:,}"))
+        total = self._verify_total
+        self._verify_windows_box.configure(to=max(total, 1),
+                                           state="normal" if total else "disabled")
+        self._verify_vars["max_windows"].set(str(total) if total else "")
+        self._verify_total_text.set(
+            self.T("gen.verify_windows_total", total=f"{total:,}") if total
+            else self.T("gen.verify_windows_none"))
         self._refresh_verify_estimate()
         return self._verify_total
 

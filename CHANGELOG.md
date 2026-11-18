@@ -11,6 +11,19 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
 
 ## Since 1.5.0
 
+### +2 — Section D: no Windows number without P windows
+
+- English: When the chosen floor and width hold no P window, Section D's Windows field is now
+  empty and greyed out, with "no P windows of this width" beside it; before, it showed a red 0,
+  as if a wrong number had been typed. With P windows it holds their count as before, and a
+  smaller number still proves only the first ones. The switch from Hybrid to primesieve gives a
+  range narrower than 10^7 the width 1 instead of a red 0.
+- Polski: Gdy wybrane piętro i szerokość nie mają żadnego okna P, pole Okna w sekcji D jest
+  teraz puste i wyszarzone, a obok widać „brak okien P tej szerokości”; wcześniej pokazywało
+  czerwone 0, jakby wpisano złą liczbę. Gdy okna P są, pole jak dotąd podaje ich liczbę, a
+  mniejsza liczba nadal dowodzi tylko pierwszych okien. Przejście z Hybrid na primesieve daje
+  zakresowi węższemu niż 10^7 szerokość 1 zamiast czerwonego 0.
+
 ### +1 — One thread-count control, capped at WSL's CPUs
 
 - English: Every thread count of the app (the pipeline form's workers, Section D's Threads,

@@ -113,7 +113,7 @@ class HybridControls:
             return
         self.quick_primesieve_from_var.set(str(start))
         self.quick_primesieve_floor_var.set(str(len(str(start)) - 1))
-        self.quick_primesieve_width_var.set(str((end - start) // 10_000_000))
+        self.quick_primesieve_width_var.set(str(max(1, (end - start) // 10_000_000)))
         self.quick_mode_var.set('primesieve')
         self._on_quick_mode_changed()
         self._on_quick_generate_clicked()

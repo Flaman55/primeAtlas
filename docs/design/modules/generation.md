@@ -9,7 +9,9 @@ a time.
 Section D takes a floor and a window width as power-of-ten spinboxes; its Windows field is
 recounted from the floor's P store (`storage_kinds.p_windows_on_grid()`, the list the script
 proves) whenever the floor or the width changes and after a run, so it starts at "all" and a
-smaller value proves only the first windows. Threads: Auto = the pipeline form's workers (what
+smaller value proves only the first windows. Without a P window at that floor and width there
+is nothing to pick: the field is empty and greyed out, "no P windows of this width" beside it,
+and Run names the reason. Threads: Auto = the pipeline form's workers (what
 pt1 sieves with; its Max probed as below), Max = WSL's CPU count (probed at Run), or a number.
 
 Section D's Method and Pass also serve the pipeline form's pt1 checkbox "Verify P -> D after the

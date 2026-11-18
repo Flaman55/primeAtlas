@@ -1698,10 +1698,11 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
   verify_section.py             VerifySection mixin: Section D, pt1_verify_store.py or
                               v73_verify_store.py (method pt1.1 proof / v7.3 sieve,
                               floor and width-exponent spinboxes, the window count
-                              recounted from the P store, threads Auto/Max/n, the v7.3
+                              recounted from the P store (empty and greyed out
+                              without a P window), threads Auto/Max/n, the v7.3
                               pass exponent, the estimate of both methods; pt1's B and
                               chunk from the pipeline form), Stop via the generation
-                              stop request
+                              stop request (unitTests/test_verify_windows_field.py)
   verify_plan.py                Section D's fields as the scripts' arguments: P window
                               count, Windows -> max_windows, Threads Auto/Max/n, the
                               v7.3 passes (unitTests/test_verify_plan.py)

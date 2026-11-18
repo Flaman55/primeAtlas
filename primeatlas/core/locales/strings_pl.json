@@ -815,6 +815,7 @@
   "gen.verify_field_threads": "Wątki:",
   "gen.verify_field_width_exp": "Szerokość okna 10^",
   "gen.verify_windows_total": "z {total}",
+  "gen.verify_windows_none": "brak okien P tej szerokości",
   "gen.verify_error_base_exponent": "Piętro musi być liczbą całkowitą (wykładnik, np. 29).",
   "gen.verify_error_width_exp": "Szerokość okna musi być wykładnikiem od 1 do 12 (7 = okna po 10^7 liczb).",
   "gen.verify_error_no_windows": "To piętro nie ma okien P tej szerokości do udowodnienia.",
