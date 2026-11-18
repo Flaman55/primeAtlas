@@ -821,7 +821,6 @@
   "gen.verify_windows_total": "of {total}",
   "gen.verify_windows_none": "no P windows on this floor",
   "gen.verify_error_base_exponent": "Floor must be a whole number (the exponent, e.g. 29).",
-  "gen.verify_error_no_windows": "This floor has no P windows to prove.",
   "gen.verify_error_max_windows": "Verify now must be a whole number of at least 1 (the first windows of the island are proven).",
   "gen.verify_error_threads": "Threads must be Auto (the pipeline form's workers), Max (every CPU of WSL) or a whole number from 1 to 256.",
   "gen.verify_field_method": "Method:",

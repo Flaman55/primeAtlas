@@ -102,6 +102,21 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   dialogowym, aż wskaźnik wyjdzie poza stronę i wróci. Każdy obrót przewija stronę pod
   wskaźnikiem; w stronie zagnieżdżonej przewija się wewnętrzna, a gdy ta się mieści — zewnętrzna.
 
+### +7 — Generation Section D: Run greyed out while the floor has no P windows
+
+- English: Section D's Run is greyed out while the chosen floor has no P windows to prove, and
+  active as soon as it has some, instead of opening an error dialog. The section recounts the
+  floor's P windows after every engine's run and whenever the Generation tab is shown, so P
+  windows removed in the primes tree count without changing the floor. After a pt1 run that
+  writes files, Section D moves to that run's floor and runs Auto, so width and window count
+  show the P windows the run left.
+- Polski: Przycisk Uruchom w sekcji D jest wyszarzony, dopóki wybrane piętro nie ma okien P do
+  udowodnienia, i aktywny, gdy tylko je ma, zamiast otwierać okno błędu. Sekcja przelicza okna
+  P piętra po przebiegu każdego silnika i przy każdym pokazaniu zakładki Generowanie, więc okna
+  P usunięte w drzewie liczb pierwszych liczą się bez zmiany piętra. Po przebiegu pt1, który
+  zapisuje pliki, sekcja D przechodzi na piętro tego przebiegu i wykonuje Auto, więc szerokość
+  i liczba okien pokazują okna P, które przebieg zostawił.
+
 ## 1.5.0 — 2026-11-17
 
 ### +1 — Generation: RAM check on Generate, proposal from the run's start, native primesieve without storage

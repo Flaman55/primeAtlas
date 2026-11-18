@@ -821,7 +821,6 @@
   "gen.verify_windows_total": "z {total}",
   "gen.verify_windows_none": "brak okien P na tym piętrze",
   "gen.verify_error_base_exponent": "Piętro musi być liczbą całkowitą (wykładnik, np. 29).",
-  "gen.verify_error_no_windows": "To piętro nie ma okien P do udowodnienia.",
   "gen.verify_error_max_windows": "Weryfikuj teraz musi być liczbą całkowitą co najmniej 1 (dowodzone są pierwsze okna wyspy).",
   "gen.verify_error_threads": "Wątki muszą mieć wartość Auto (workers z formularza potoku), Max (wszystkie CPU w WSL) albo liczbę od 1 do 256.",
   "gen.verify_field_method": "Metoda:",

@@ -25,12 +25,17 @@ file. The island text gives the window range (one file up to the island or the v
 under the cap split evenly for the v7.3 sieve; a blank stored width takes Auto's. The Split
 field holds ceil(island / width), the island's numbers and files beside it; a typed split sets
 the width to ceil(files / split) files (evenly), its arrows step to the next split that
-changes the width. "Verify now" holds every window, recounted on every change and after a
-run; a smaller value proves only the first windows. The script gets
+changes the width. "Verify now" holds every window, recounted on every change, after any
+engine's run (it may have written or proved P files) and whenever the main tab holding
+Generation is shown (P files removed in the primes tree, another store folder); a smaller
+value proves only the first windows. The script gets
 the file width as window_m, the files of the chosen windows as max_windows and, for the
 sieve, the width as its pass. Without a P file there is nothing to pick: Windows empty and
-greyed out, "no P windows on this floor" beside it, Width and Auto greyed out, and Run names
-the reason. Threads: Auto = the pipeline form's workers (what
+greyed out, "no P windows on this floor" beside it, Width, Auto and Run greyed out. Run is
+also greyed out while any engine runs (`_lock_other_run_buttons()` holds the Run buttons);
+P files gone between the recount and a click launch nothing and grey Run out. A pt1 run that
+wrote files (`loop_run_info` engine "pt1", write_files on; stopped too) moves the section to
+its floor and runs Auto, whatever floor and width it showed. Threads: Auto = the pipeline form's workers (what
 pt1 sieves with; its Max probed as below), Max = WSL's CPU count (probed at Run), or a number.
 
 Section D's Method and v7.3 RAM cap also serve the pipeline form's pt1 checkbox "Verify P -> D

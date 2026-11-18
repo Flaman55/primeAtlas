@@ -23,8 +23,16 @@ the free-RAM reading faked):
      cap; twice the same; the width is remembered;
   7. a method switch only clips the width to the new range; a floor switch the same;
   8. the app started on a floor without P files: empty at once, never a problem (red);
-  9. Run without P files: the "no P windows" error;
+  9. Run without P files launches nothing and shows no dialog;
  10. a run that proved the whole island: the recount shows none; part of it: the rest.
+The Run button (R1-R11): greyed out on a floor without P files or while any engine runs,
+active otherwise; it follows a floor change both ways, an engine's end (which recounts the
+island, so P files written meanwhile count) and the Generation tab being shown (P files
+added or removed outside the section); method and width do not change it.
+After a pt1 run that writes files (F1-F5) the section takes the run's floor and runs Auto
+(pt1.1 one file, v7.3 the free RAM), whatever floor and width it showed, a stopped run too;
+a floor left without P files shows none. Other engines and a Benchmark pt1 run change
+neither floor nor width.
 Hybrid -> primesieve: a range narrower than 10^7 gives the width 1, never 0.
 Windows, real display:
     python unitTests/test_verify_windows_field.py
@@ -45,6 +53,8 @@ from test_time_simulation import check  # noqa: E402
 FLOOR = 29
 SMALL_FLOOR = 30
 EMPTY_FLOOR = 31
+PT1_FLOOR = 32
+NO_P_FLOOR = 33
 M7 = 10 ** 7
 # Free RAM whose v7.3 cap (half of it x 30, whole files) is two files.
 TWO_FILES_RAM = 1_333_334
@@ -179,6 +189,7 @@ def startup_checks(app, gen):
     passed = check(_problem(gen) is None and gen._verify_vars["max_windows"].get() == "",
                    "8: started on a floor without P files, Windows empty and no problem at "
                    f"once ({gen._verify_vars['max_windows'].get()!r})")
+    passed &= _check_run(gen, "disabled", "R9: started on a floor without P files")
     return passed & _check_none(app, gen, "1/8: after startup")
 
 
@@ -332,14 +343,229 @@ def auto_checks(app, gen, ram, store):
     return passed
 
 
+class _Runner:
+    """A runner whose process is alive until stop()."""
+    def __init__(self):
+        self.alive = True
+
+    def is_running(self):
+        return self.alive
+
+    def stop(self):
+        self.alive = False
+
+
+def _run_state(gen):
+    return str(gen.verify_run_btn.cget("state"))
+
+
+def _check_run(gen, want, what):
+    state = _run_state(gen)
+    return check(state == want, f"{what}: Run {want} ({state})")
+
+
+def _show_tab(app, gen, shown):
+    """Selects another main tab, then the one holding the Generation tab when `shown`."""
+    notebook = gen.master
+    from tkinter import ttk
+    while not isinstance(notebook, ttk.Notebook):
+        notebook = notebook.master
+    page = next(p for p in notebook.tabs() if (str(gen) + ".").startswith(p + "."))
+    other = next(p for p in notebook.tabs() if p != page)
+    notebook.select(other)
+    app.update()
+    if shown:
+        notebook.select(page)
+        app.update()
+    _idle(app, gen)
+
+
+def run_button_checks(app, gen, errors):
+    import json
+    import queue
+    passed = True
+    _move(app, gen, "base_exponent", EMPTY_FLOOR)
+    passed &= _check_run(gen, "disabled", "R1: a floor without P files")
+    _move(app, gen, "base_exponent", FLOOR)
+    passed &= _check_run(gen, "normal", "R2: a floor with P files, nothing running")
+    _move(app, gen, "base_exponent", EMPTY_FLOOR)
+    passed &= _check_run(gen, "disabled", "R3: back to a floor without P files")
+    _move(app, gen, "base_exponent", "x")
+    passed &= _check_run(gen, "disabled", "R3: a floor that is no number")
+    _move(app, gen, "base_exponent", FLOOR)
+    passed &= _check_run(gen, "normal", "R3: P files again")
+
+    for engine in ("loop", "const", "ktuple", "verify"):
+        runner = _Runner()
+        setattr(gen, f"_{engine}_runner", runner)
+        gen._lock_other_run_buttons(engine)
+        if engine == "verify":
+            gen.verify_run_btn.configure(state="disabled")
+        _move(app, gen, "base_exponent", EMPTY_FLOOR)
+        _move(app, gen, "base_exponent", FLOOR)
+        passed &= _check_run(gen, "disabled",
+                             f"R4: {engine} running, a recount on a P floor")
+        runner.stop()
+        _move(app, gen, "base_exponent", EMPTY_FLOOR)
+        gen._unlock_other_run_buttons()
+        app.update()
+        passed &= _check_run(gen, "disabled", f"R5: {engine} ended on a floor without P files")
+        _move(app, gen, "base_exponent", FLOOR)
+        runner.alive = True
+        gen._lock_other_run_buttons(engine)
+        runner.stop()
+        gen._unlock_other_run_buttons()
+        app.update()
+        passed &= _check_run(gen, "normal", f"R5: {engine} ended on a floor with P files")
+        setattr(gen, f"_{engine}_runner", None)
+
+    _move(app, gen, "base_exponent", EMPTY_FLOOR)
+    runner = _Runner()
+    gen._loop_runner = runner
+    gen._lock_other_run_buttons("loop")
+    written = _touch_p(portal_of(gen), EMPTY_FLOOR, 0)
+    runner.stop()
+    gen._unlock_other_run_buttons()
+    _idle(app, gen)
+    passed &= _check_run(gen, "normal", "R6: a loop run wrote P files on the shown floor")
+    passed &= check(gen._verify_vars["max_windows"].get() == "1"
+                    and str(gen._verify_width_box.cget("state")) != "disabled",
+                    "R6: the section counts them without a floor change "
+                    f"({gen._verify_vars['max_windows'].get()!r})")
+    gen._loop_runner = None
+
+    os.remove(written)
+    q = queue.Queue()
+    q.put(("__exit__", 0))
+    gen._verify_runner = _Runner()
+    gen._lock_other_run_buttons("verify")
+    gen.verify_run_btn.configure(state="disabled")
+    gen._verify_runner.stop()
+    gen._drain_output_queue(q, gen.verify_console, gen.verify_run_btn, gen.verify_stop_btn,
+                            gen.verify_status_label, on_exit=gen._on_verify_finished)
+    _idle(app, gen)
+    passed &= _check_run(gen, "disabled", "R7: a verification left no P file on the floor")
+    gen._verify_runner = None
+
+    _move(app, gen, "base_exponent", SMALL_FLOOR)
+    passed &= _check_run(gen, "normal", "R8: a floor with one P file")
+    small = _touch_p(portal_of(gen), SMALL_FLOOR, 0)
+    os.remove(small)
+    errors.clear()
+    gen._on_run_verify()
+    app.update()
+    passed &= check(errors == [] and gen._verify_runner is None,
+                    f"R8: Run after its P file vanished: no dialog, nothing launched ({errors})")
+    passed &= _check_run(gen, "disabled", "R8: and the section greys Run out")
+    _touch_p(portal_of(gen), SMALL_FLOOR, 0)
+    for language in ("en", "pl"):
+        path = os.path.join(ROOT, "primeatlas", "core", "locales", f"strings_{language}.json")
+        with open(path, encoding="utf-8") as f:
+            keys = json.load(f)
+        passed &= check("gen.verify_error_no_windows" not in keys,
+                        f"R8: gen.verify_error_no_windows is gone from strings_{language}.json")
+
+    _pick_method(app, gen, "sieve")
+    passed &= _check_run(gen, "normal", "R10: a method change on a P floor")
+    _pick_method(app, gen, "proof")
+    _type_width(app, gen, "abc")
+    passed &= _check_run(gen, "normal", "R10: a width typed wrong on a P floor")
+    _type_width(app, gen, "1e7")
+    _move(app, gen, "base_exponent", EMPTY_FLOOR)
+    _pick_method(app, gen, "sieve")
+    _pick_method(app, gen, "proof")
+    passed &= _check_run(gen, "disabled", "R10: a method change on a floor without P files")
+
+    written = _touch_p(portal_of(gen), EMPTY_FLOOR, 0)
+    _show_tab(app, gen, shown=False)
+    passed &= _check_run(gen, "disabled", "A: P files added while another tab is shown")
+    _show_tab(app, gen, shown=True)
+    passed &= _check_run(gen, "normal", "A: showing the Generation tab counts them")
+    os.remove(written)
+    _show_tab(app, gen, shown=True)
+    passed &= _check_run(gen, "disabled", "A: P files removed outside, the tab shown again")
+    _move(app, gen, "base_exponent", FLOOR)
+    passed &= _check_some(app, gen, M7, 3, 3, "R: the floor's island is unchanged after")
+    return passed
+
+
+def portal_of(gen):
+    return gen._get_portal_folder()
+
+
+def _finish_loop(app, gen, floor, engine="pt1", write_files=True, returncode=0):
+    """A loop-family run on `floor` ends: its info as _start_loop_runner() keeps it."""
+    gen.loop_run_info = {"base_exponent": floor, "engine": engine, "write_files": write_files}
+    gen._loop_runner = _Runner()
+    gen._lock_other_run_buttons("loop")
+    gen._loop_runner.stop()
+    gen._on_loop_finished(returncode)
+    _idle(app, gen)
+    gen._loop_runner = None
+
+
+def _floor_width(gen):
+    return gen._verify_vars["base_exponent"].get(), gen._verify_vars["width"].get()
+
+
+def after_pt1_checks(app, gen, ram):
+    passed = True
+    _move(app, gen, "base_exponent", FLOOR)
+    _type_width(app, gen, "3e7")
+    pt1_files = [_touch_p(portal_of(gen), PT1_FLOOR, offset) for offset in (0, M7)]
+    _finish_loop(app, gen, PT1_FLOOR)
+    passed &= check(_floor_width(gen)[0] == str(PT1_FLOOR),
+                    f"F1: a pt1 run moves Section D to its floor ({_floor_width(gen)})")
+    passed &= _check_some(app, gen, M7, 2, 2, "F1: and Auto sets width and windows (pt1.1)")
+    passed &= _check_run(gen, "normal", "F1: Run active")
+
+    _type_width(app, gen, "2e7")
+    _finish_loop(app, gen, PT1_FLOOR)
+    passed &= _check_some(app, gen, M7, 2, 2, "F2: on the same floor, Auto replaces a typed width")
+
+    _pick_method(app, gen, "sieve")
+    _move(app, gen, "base_exponent", FLOOR)
+    reads = len(ram)
+    _finish_loop(app, gen, PT1_FLOOR, returncode=1)
+    passed &= check(len(ram) == reads + 1, f"F1: v7.3's Auto reads the free RAM ({len(ram) - reads})")
+    passed &= _check_some(app, gen, 2 * M7, 1, 2,
+                          "F3: a stopped pt1 run with P files: its floor, Auto (v7.3, cap 2)",
+                          high=2 * M7)
+    _pick_method(app, gen, "proof")
+
+    for path in pt1_files:
+        os.remove(path)
+    _move(app, gen, "base_exponent", FLOOR)
+    _finish_loop(app, gen, PT1_FLOOR)
+    passed &= check(_floor_width(gen)[0] == str(PT1_FLOOR),
+                    f"F4: a pt1 run whose P files were all proved: its floor ({_floor_width(gen)})")
+    passed &= _check_none(app, gen, "F4: and none to verify")
+    passed &= _check_run(gen, "disabled", "F4: Run greyed out")
+
+    _move(app, gen, "base_exponent", FLOOR)
+    _type_width(app, gen, "2e7")
+    before = _floor_width(gen)
+    for engine, write_files, what in (("v7", True, "another engine"),
+                                      ("pt1", False, "a Benchmark pt1 run")):
+        _finish_loop(app, gen, SMALL_FLOOR, engine=engine, write_files=write_files)
+        passed &= check(_floor_width(gen) == before,
+                        f"F5: {what} changes neither floor nor width ({_floor_width(gen)})")
+    _finish_loop(app, gen, NO_P_FLOOR, engine="v7")
+    passed &= check(_floor_width(gen) == before,
+                    f"F5: another engine on a floor without P files ({_floor_width(gen)})")
+    _type_width(app, gen, "1e7")
+    passed &= _check_some(app, gen, M7, 3, 3, "F: the floor's island is unchanged after")
+    return passed
+
+
 def run_checks(app, gen, paths, errors):
     passed = True
     _move(app, gen, "base_exponent", EMPTY_FLOOR)
     errors.clear()
     gen._on_run_verify()
     app.update()
-    passed &= check(errors == [gen.T("gen.verify_error_no_windows")],
-                    f"9: Run without P files shows the no-windows error ({errors})")
+    passed &= check(errors == [] and gen._verify_runner is None,
+                    f"9: Run without P files launches nothing, no dialog ({errors})")
     passed &= _check_none(app, gen, "9: after the refused Run")
 
     _move(app, gen, "base_exponent", FLOOR)
@@ -402,6 +628,8 @@ def main():
         passed &= width_checks(app, gen)
         passed &= split_checks(app, gen)
         passed &= auto_checks(app, gen, ram, store)
+        passed &= run_button_checks(app, gen, errors)
+        passed &= after_pt1_checks(app, gen, ram)
         passed &= run_checks(app, gen, paths, errors)
         errors.clear()
         passed &= hybrid_checks(gen)
