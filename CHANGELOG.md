@@ -93,6 +93,15 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   magazyn, do którego pisze wybrany silnik (pt1: P od piętra 24), a piętro zapisane do ostatniego
   okna, ale z lukami, wskazuje „Najpierw wypełnij luki”.
 
+### +6 — Pages: the mouse wheel scrolls the page under the pointer after Run or Generate
+
+- English: The mouse wheel no longer stops scrolling a page after Run, Generate or a dialog
+  until the pointer left the page and came back. Every turn scrolls the page under the pointer;
+  in a page inside another page the inner one scrolls, or the outer one while the inner fits.
+- Polski: Kółko myszy nie przestaje już przewijać strony po Uruchom, Generuj czy oknie
+  dialogowym, aż wskaźnik wyjdzie poza stronę i wróci. Każdy obrót przewija stronę pod
+  wskaźnikiem; w stronie zagnieżdżonej przewija się wewnętrzna, a gdy ta się mieści — zewnętrzna.
+
 ## 1.5.0 — 2026-11-17
 
 ### +1 — Generation: RAM check on Generate, proposal from the run's start, native primesieve without storage

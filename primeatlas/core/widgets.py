@@ -322,11 +322,9 @@ class ScrollPad:
     strip. The caller packs `.frame` (a Canvas, so the label can be rotated and the
     pointer never enters a child widget, which would fire <Leave> on the strip).
 
-    Bound app-wide (bind_all) only between <Enter> and <Leave>, the same scoping the page
-    canvases use for their own wheel handling. attach(widget) gives another widget (the
-    page scrollbar next to the strip) the same behavior."""
-
-    _WHEEL_EVENTS = ("<MouseWheel>", "<Button-4>", "<Button-5>")
+    The wheel reaches it through the app-wide router (route_wheel), which finds the pad
+    from the widget under the pointer. attach(widget) gives another widget (the page
+    scrollbar next to the strip) the same behavior."""
 
     def __init__(self, parent, scroll, *, text="", width=None):
         if width is None:
@@ -340,11 +338,11 @@ class ScrollPad:
                                relief="groove", cursor="sb_v_double_arrow")
         if background:
             self.frame.configure(background=background)
-        self.frame.bind("<Enter>", self._on_enter)
-        self.frame.bind("<Leave>", self._on_leave)
         self.frame.bind("<Configure>", lambda _e: self._draw_label())
+        self.frame.wheel_target = self
         self.attached = []
         _scroll_pads.add(self)
+        install_wheel_router(self.frame)
 
     def set_width(self, width):
         """No-op (and drops the pad from the live registry) once its widget or its whole
@@ -359,9 +357,15 @@ class ScrollPad:
         _scroll_pads.discard(self)
 
     def attach(self, widget):
-        widget.bind("<Enter>", self._on_enter, add="+")
-        widget.bind("<Leave>", self._on_leave, add="+")
+        """The widget's own wheel binding ends the event ("break"): Tk 9 scrollbars also
+        scroll on the wheel through their class binding, which would move the page twice."""
+        for sequence in _WHEEL_EVENTS:
+            widget.bind(sequence, self._wheel_and_stop)
         self.attached.append(widget)
+
+    def _wheel_and_stop(self, event):
+        self.wheel(event)
+        return "break"
 
     def _draw_label(self):
         self.frame.delete("label")
@@ -373,23 +377,69 @@ class ScrollPad:
                                fill=self._foreground, tags="label")
 
     def wheel(self, event):
-        num = getattr(event, "num", 0)
-        if num == 4:
-            units = -3
-        elif num == 5:
-            units = 3
-        else:
-            units = int(-3 * (event.delta / 120))
+        units = wheel_units(event)
         if units:
             self._scroll(units)
 
-    def _on_enter(self, _event):
-        for sequence in self._WHEEL_EVENTS:
-            self.frame.bind_all(sequence, self.wheel)
 
-    def _on_leave(self, _event):
-        for sequence in self._WHEEL_EVENTS:
-            self.frame.unbind_all(sequence)
+_WHEEL_EVENTS = ("<MouseWheel>", "<Button-4>", "<Button-5>")
+
+
+def wheel_units(event):
+    """Canvas units one wheel event scrolls by: 3 per notch, negative = up (Windows/macOS
+    delta, X11 Button-4/5)."""
+    num = getattr(event, "num", 0)
+    if num == 4:
+        return -3
+    if num == 5:
+        return 3
+    return int(-3 * (getattr(event, "delta", 0) / 120))
+
+
+def install_wheel_router(widget):
+    """Binds route_wheel app-wide (bind_all) once per Tk application of `widget`. The
+    binding stays for the life of the application: which page scrolls is decided per event
+    from the widget under the pointer, so no <Enter>/<Leave> sequence can leave the wheel
+    unbound or bound to the wrong page."""
+    root = widget._root()
+    if getattr(root, "_wheel_router_installed", False):
+        return
+    root._wheel_router_installed = True
+    for sequence in _WHEEL_EVENTS:
+        widget.bind_all(sequence, route_wheel, add="+")
+
+
+def _wheel_targets(widget):
+    """The ScrollPads and ScrollablePages (wheel_target attributes) on the way from
+    `widget` up to its toplevel, innermost first. A Toplevel ends the walk: a dialog built
+    with a master inside a page is not part of that page."""
+    while widget is not None and not isinstance(widget, str):
+        target = getattr(widget, "wheel_target", None)
+        if target is not None:
+            yield target
+        if isinstance(widget, (tk.Toplevel, tk.Tk)):
+            return
+        widget = getattr(widget, "master", None)
+
+
+def route_wheel(event):
+    """App-wide wheel handler: over a ScrollPad its page scrolls; over a self-scrolling widget or a page's registered exclusion nothing scrolls;
+    otherwise the innermost page whose content does not fit scrolls (a nested page that
+    fits passes the wheel to the page around it)."""
+    try:
+        if event_over_own_scroller(event):
+            return
+        for target in _wheel_targets(getattr(event, "widget", None)):
+            if isinstance(target, ScrollPad):
+                target.wheel(event)
+                return
+            if target._over_excluded(event):
+                return
+            if not target._content_fits():
+                target.on_mousewheel(event)
+                return
+    except tk.TclError:
+        pass
 
 
 # Widgets that scroll themselves on the mouse wheel through their own class bindings.
@@ -453,11 +503,9 @@ class ScrollablePage:
     pins the view to the top: Tk does not keep it there across a scrollregion change.
     yscrollincrement is a fixed 20px; Tk's default 0 scrolls by a tenth of the viewport.
 
-    The wheel is bound app-wide (bind_all) only while the pointer is over the canvas and
-    is left to self-scrolling widgets (event_over_own_scroller) and to subtrees passed to
-    register_exclude()."""
-
-    _WHEEL_EVENTS = ("<MouseWheel>", "<Button-4>", "<Button-5>")
+    The wheel reaches the page through the app-wide router (route_wheel), which finds the
+    page from the widget under the pointer; it is left to self-scrolling widgets
+    (event_over_own_scroller) and to subtrees passed to register_exclude()."""
 
     def __init__(self, parent, *, pad_text=""):
         self.frame = ttk.Frame(parent)
@@ -480,8 +528,8 @@ class ScrollablePage:
         self._shown = False
         self._holder.bind("<Configure>", lambda _e: self._sync())
         self.canvas.bind("<Configure>", self._on_canvas_configure)
-        self.canvas.bind("<Enter>", self._bind_wheel)
-        self.canvas.bind("<Leave>", self._unbind_wheel)
+        self.canvas.wheel_target = self
+        install_wheel_router(self.canvas)
 
     def register_exclude(self, widget):
         """The wheel over `widget` or any descendant does not scroll the page."""
@@ -560,23 +608,9 @@ class ScrollablePage:
     def on_mousewheel(self, event):
         if event_over_own_scroller(event) or self._over_excluded(event):
             return
-        num = getattr(event, "num", 0)
-        if num == 4:
-            units = -3
-        elif num == 5:
-            units = 3
-        else:
-            units = int(-3 * (event.delta / 120))
+        units = wheel_units(event)
         if units:
             self._scroll_units(units)
-
-    def _bind_wheel(self, _event):
-        for sequence in self._WHEEL_EVENTS:
-            self.canvas.bind_all(sequence, self.on_mousewheel)
-
-    def _unbind_wheel(self, _event):
-        for sequence in self._WHEEL_EVENTS:
-            self.canvas.unbind_all(sequence)
 
 
 STRIPE_TAG = "stripe"

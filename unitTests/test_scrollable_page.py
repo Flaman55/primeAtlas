@@ -28,6 +28,24 @@ C. The wheel never switches notebook tabs (Tk 9 binds it to cycle them): after
    widgets.disable_notebook_wheel no TNotebook wheel binding is left, the wheel over the tab
    strip in every direction (down, up, Shift, Alt, touchpad) keeps the selected tab, and the
    wheel over a notebook inside a page still scrolls the page; the app does this at start.
+D. The wheel is routed by the widget under the pointer, through one app-wide binding made
+   once, never by <Enter>/<Leave> history:
+   - D1 a page scrolls with no <Enter> ever seen, after an <Enter>/<Leave> pair on its
+     canvas (a dialog or a rebuild under the pointer), after another page's <Leave>, and
+     over a widget rebuilt in place (Run, Generate);
+   - D2 over the pad and the page scrollbar the wheel scrolls that page, also after a
+     <Leave> on them;
+   - D3 over a Text, an enabled spinbox or a registered exclusion the page stays; over a
+     disabled spinbox it scrolls;
+   - D4 nested pages: the inner one scrolls, the outer stays; an inner page that fits
+     passes the wheel to the outer one;
+   - D5 a Toplevel created with a master inside a page never scrolls that page; one with
+     its own page scrolls only its own;
+   - D6 a page that fits does not move; of two pages in a notebook only the shown one
+     scrolls;
+   - D7 a destroyed page or pad raises nothing;
+   - D8 a notch is 3 units (60px) per 120 delta, up and down, and Button-4/5; the binding
+     exists right after the first page is built and <Enter>/<Leave> do not change it.
 
 Usage:
     python unitTests/test_scrollable_page.py
@@ -285,9 +303,8 @@ def _test_notebook_wheel():
             nb.event_generate(seq, x=x, y=y, delta=delta)
             _settle(root, 2)
             check(nb.index("current") == 1, f"{seq} delta {delta} over the tabs keeps tab 1")
-        page._bind_wheel(None)
         before = page.canvas.yview()[0]
-        page.on_mousewheel(FakeEvent(widget=nb, delta=-120))
+        widgets.route_wheel(FakeEvent(widget=nb, delta=-120))
         _settle(root)
         check(page.canvas.yview()[0] > before, "the wheel over a notebook still scrolls the page")
         check(nb.index("current") == 1, "and the tab stays")
@@ -363,11 +380,161 @@ def _test_app():
         app.destroy()
 
 
+def _wheel(root, widget, delta=-120):
+    widget.event_generate("<MouseWheel>", x=2, y=2, delta=delta)
+    _settle(root, 2)
+
+
+def _top_px(page):
+    return int(page.canvas.canvasy(0))
+
+
+def _tall_page(parent, height=1200):
+    page = widgets.ScrollablePage(parent)
+    block = tk.Frame(page.body, height=height, width=200)
+    block.pack(fill="both", expand=True)
+    label = ttk.Label(block, text="row")
+    label.place(x=10, y=10)
+    return page, block, label
+
+
+def _test_wheel_routing():
+    print("\n--- D. the wheel is routed by the widget under the pointer ---")
+    root = tk.Tk()
+    root.geometry("500x400")
+    errors = []
+    root.report_callback_exception = lambda *a: errors.append(a[1])
+    try:
+        nb = ttk.Notebook(root)
+        nb.pack(fill="both", expand=True)
+        tab_a, tab_b = ttk.Frame(nb), ttk.Frame(nb)
+        nb.add(tab_a, text="a")
+        nb.add(tab_b, text="b")
+        page, block, label = _tall_page(tab_a)
+        other, _other_block, other_label = _tall_page(tab_b)
+        _settle(root)
+        bound = root.bind_all("<MouseWheel>")
+        check(bound != "", "D8 the binding exists after the first page")
+
+        _wheel(root, label)
+        check(_top_px(page) == 60, f"D1/D8 no <Enter> seen: one notch scrolls 60px ({_top_px(page)})")
+        _wheel(root, label, delta=120)
+        check(_top_px(page) == 0, f"D8 one notch up scrolls back ({_top_px(page)})")
+        page.canvas.event_generate("<Enter>")
+        page.canvas.event_generate("<Leave>")
+        _settle(root, 2)
+        _wheel(root, label)
+        check(_top_px(page) == 60, f"D1 after an <Enter>/<Leave> pair the page scrolls ({_top_px(page)})")
+        check(root.bind_all("<MouseWheel>") == bound, "D8 <Enter>/<Leave> leave the binding alone")
+        other.canvas.event_generate("<Enter>")
+        other.canvas.event_generate("<Leave>")
+        _settle(root, 2)
+        _wheel(root, label)
+        check(_top_px(page) == 120, f"D1 another page's <Leave> does not stop it ({_top_px(page)})")
+        label.destroy()
+        label = ttk.Label(block, text="rebuilt")
+        label.place(x=10, y=10)
+        _settle(root)
+        _wheel(root, label)
+        check(_top_px(page) == 180, f"D1 a widget rebuilt in place scrolls the page ({_top_px(page)})")
+        # Tk 9 reports X11 buttons 4/5 as <MouseWheel> and renumbers them elsewhere, so
+        # the X11 event is fed to the router directly.
+        widgets.route_wheel(FakeEvent(widget=label, num=4))
+        _settle(root, 2)
+        check(_top_px(page) == 120, f"D8 Button-4 scrolls 3 units up ({_top_px(page)})")
+        widgets.route_wheel(FakeEvent(widget=label, num=5))
+        _settle(root, 2)
+        check(_top_px(page) == 180, f"D8 Button-5 scrolls 3 units down ({_top_px(page)})")
+        page.canvas.yview_moveto(0.0)
+
+        page.pad.frame.event_generate("<Leave>")
+        _wheel(root, page.pad.frame)
+        check(_top_px(page) == 60, f"D2 the pad scrolls its page after a <Leave> ({_top_px(page)})")
+        page.scrollbar.event_generate("<Leave>")
+        _wheel(root, page.scrollbar)
+        check(_top_px(page) == 120, f"D2 the page scrollbar scrolls its page ({_top_px(page)})")
+        page.canvas.yview_moveto(0.0)
+
+        text = ScrolledText(block, height=4)
+        text.place(x=10, y=40)
+        spin = ttk.Spinbox(block, from_=0, to=10)
+        spin.place(x=10, y=200)
+        own = ttk.Frame(block, width=50, height=50)
+        own.place(x=10, y=260)
+        inside = ttk.Label(own, text="own")
+        inside.place(x=0, y=0)
+        page.register_exclude(own)
+        _settle(root)
+        for name, widget in (("a Text", text), ("an enabled spinbox", spin),
+                             ("a registered exclusion", inside)):
+            _wheel(root, widget)
+            check(_top_px(page) == 0, f"D3 over {name} the page stays ({_top_px(page)})")
+        spin.state(["disabled"])
+        _wheel(root, spin)
+        check(_top_px(page) == 60, f"D3 over a disabled spinbox the page scrolls ({_top_px(page)})")
+        page.canvas.yview_moveto(0.0)
+
+        holder = tk.Frame(block)
+        holder.place(x=0, y=320, width=300, height=150)
+        inner, inner_block, inner_label = _tall_page(holder, height=900)
+        _settle(root, 6)
+        _wheel(root, inner_label)
+        check(_top_px(inner) == 60 and _top_px(page) == 0,
+              f"D4 nested: the inner page scrolls, the outer stays ({_top_px(inner)}, {_top_px(page)})")
+        inner_block.configure(height=50)
+        _settle(root, 6)
+        _wheel(root, inner_label)
+        check(_top_px(inner) == 0 and _top_px(page) == 60,
+              f"D4 an inner page that fits passes the wheel out ({_top_px(inner)}, {_top_px(page)})")
+        page.canvas.yview_moveto(0.0)
+
+        popup = tk.Toplevel(block)
+        popup.geometry("200x150+40+40")
+        popup_label = ttk.Label(popup, text="dialog")
+        popup_label.pack()
+        _settle(root)
+        _wheel(root, popup_label)
+        check(_top_px(page) == 0, f"D5 a Toplevel under a page does not scroll it ({_top_px(page)})")
+        popup_page, _pb, popup_page_label = _tall_page(popup)
+        _settle(root, 6)
+        _wheel(root, popup_page_label)
+        check(_top_px(popup_page) == 60 and _top_px(page) == 0,
+              f"D5 a Toplevel's own page scrolls alone ({_top_px(popup_page)}, {_top_px(page)})")
+        popup.destroy()
+
+        _wheel(root, label)
+        check(_top_px(other) == 0, "D6 the page of a hidden tab never scrolls")
+        page.canvas.yview_moveto(0.0)
+        nb.select(tab_b)
+        _settle(root)
+        _wheel(root, other_label)
+        check(_top_px(other) == 60, f"D6 the shown page scrolls ({_top_px(other)})")
+        nb.select(tab_a)
+        small_holder = tk.Frame(block)
+        small_holder.place(x=0, y=500, width=100, height=100)
+        small = widgets.ScrollablePage(small_holder)
+        small_label = ttk.Label(small.body, text="s")
+        small_label.pack()
+        _settle(root, 6)
+        _wheel(root, small.pad.frame)
+        check(_top_px(small) == 0, "D6 a page that fits does not move")
+
+        gone, _gb, _gl = _tall_page(tab_a)
+        gone.frame.destroy()
+        _settle(root)
+        _wheel(root, label)
+        _wheel(root, page.pad.frame)
+        check(not errors, f"D7 a destroyed page raises nothing ({errors[:1]})")
+    finally:
+        root.destroy()
+
+
 def main():
     _test_page()
     _test_scroll_to()
     _test_sources()
     _test_notebook_wheel()
+    _test_wheel_routing()
     _test_app()
 
 
