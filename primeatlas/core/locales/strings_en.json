@@ -815,6 +815,7 @@
   "gen.verify_field_threads": "Threads:",
   "gen.verify_field_width_exp": "Window width 10^",
   "gen.verify_windows_total": "of {total}",
+  "gen.verify_windows_none": "no P windows of this width",
   "gen.verify_error_base_exponent": "Floor must be a whole number (the exponent, e.g. 29).",
   "gen.verify_error_width_exp": "Window width must be an exponent from 1 to 12 (7 = windows of 10^7 numbers).",
   "gen.verify_error_no_windows": "This floor has no P windows of this width to prove.",
