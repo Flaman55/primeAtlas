@@ -345,9 +345,9 @@ def _test_verify_section():
             tab._verify_vars["base_exponent"].set("29")
             tab._refresh_verify_count()
             tab._on_run_verify()
-            check(tab._verify_runner is None and errors
-                  and errors[-1] == tab.T("gen.verify_error_no_windows"),
-                  "verify: a floor without P windows launches nothing")
+            check(tab._verify_runner is None and not launched
+                  and str(tab.verify_run_btn["state"]) == "disabled",
+                  "verify: a floor without P windows launches nothing, Run greyed out")
             for off, label in ((0, "0"), (10 ** 7, "10M"), (2 * 10 ** 7, "20M")):
                 path = storage_kinds.window_path(tmp, 29, off, 10 ** 7, label,
                                                  storage_kinds.KIND_P)

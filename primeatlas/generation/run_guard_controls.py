@@ -40,6 +40,7 @@ class RunGuardControls:
         self.loop_run_info = {
             "base_exponent": base_exponent, "engine": engine,
             "kill_pattern": kill_pattern,
+            "write_files": bool(self._loop_write_files_var.get()),
             "scanner_pattern": generation_stop.scanner_script(engine) if engine else None,
             "rows_before": self._benchmark_rows_before_run,
             "first_target_idx": first_target_idx or 0, "window_m": window_m,

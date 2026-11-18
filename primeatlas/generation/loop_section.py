@@ -416,6 +416,7 @@ class LoopSection:
         # always safe to re-enable the other two engines here -- see
         # _lock_other_run_buttons()'s own docstring.
         self._unlock_other_run_buttons()
+        self._verify_after_pt1_run(self.loop_run_info)
         self._bump_totals_from_finished_run()
         # Releases this run's claim on the shared totals_progress bar (see
         # progress_bar_owner.py) BEFORE reload_primes_tree() below -- that call

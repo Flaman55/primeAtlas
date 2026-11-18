@@ -181,8 +181,6 @@ class VerifySection:
         self._verify_vars["max_windows"].trace_add(
             "write", lambda *_: self._schedule_verify_count(estimate_only=True))
         self._loop_write_files_var.trace_add("write", lambda *_: self._sync_pt1_verify_lock())
-        self._sync_pt1_verify_lock()
-        self._on_verify_method_chosen()
 
         buttons = ttk.Frame(outer)
         buttons.pack(fill="x", padx=8, pady=(4, 4))
@@ -200,6 +198,27 @@ class VerifySection:
         self._verify_runner = None
         self._verify_output_queue = queue.Queue()
         self._verify_stop_after_id = None
+        self._sync_pt1_verify_lock()
+        self._on_verify_method_chosen()
+        # P files can come or go outside this section (the primes tree, another store
+        # folder): showing the main tab that holds it recounts the island.
+        notebook = self.master
+        while notebook is not None and not isinstance(notebook, ttk.Notebook):
+            notebook = notebook.master
+        if notebook is not None:
+            notebook.bind("<<NotebookTabChanged>>",
+                          lambda _e: self._recount_verify_if_shown(notebook), add="+")
+
+    def _recount_verify_if_shown(self, notebook):
+        page = notebook.select()
+        if page and (str(self) + ".").startswith(str(page) + "."):
+            self._refresh_verify_count()
+
+    def _sync_verify_run_state(self):
+        """Run is greyed out on a floor without P files and while a run holds the Run
+        buttons (_lock_other_run_buttons())."""
+        ready = self._verify_island is not None and self._run_lock_engine is None
+        self.verify_run_btn.configure(state="normal" if ready else "disabled")
 
     def _schedule_verify_count(self, fit=True, estimate_only=False):
         """Recounts the island once typing or wheeling pauses: fitting the width into its
@@ -281,6 +300,17 @@ class VerifySection:
             self._verify_island, self._verify_method(), self._verify_sieve_cap)))
         self._refresh_verify_count()
 
+    def _verify_after_pt1_run(self, run_info):
+        """A pt1 run that wrote files (stopped ones too): this section takes its floor and runs
+        Auto, so the P windows it left show at once, or none when all were proved. Other
+        engines and a Benchmark run leave floor and width as they are."""
+        info = run_info or {}
+        if info.get("engine") != "pt1" or not info.get("write_files"):
+            return
+        self._verify_vars["base_exponent"].set(str(info["base_exponent"]))
+        self._refresh_verify_count()
+        self._on_verify_auto_width()
+
     def _pt1_verify_choice(self):
         """(method, pass_numbers) of this section for the verification after a pt1 run: the
         v7.3 passes take the RAM cap."""
@@ -338,7 +368,7 @@ class VerifySection:
         """Reads the floor's first island and sets the Windows field to every window of the
         chosen width (a smaller value proves only the first ones); returns that total. fit:
         the width is fitted into its range (blank: Auto's width). Without a P file there is
-        nothing to pick: Windows empty and greyed out, "none" beside it, Width and Auto
+        nothing to pick: Windows empty and greyed out, "none" beside it, Width, Auto and Run
         greyed out."""
         if self._verify_count_after_id is not None:
             self.after_cancel(self._verify_count_after_id)
@@ -383,7 +413,11 @@ class VerifySection:
             self._verify_width_text.set(self.T(
                 "gen.verify_width_files", files=f"{width // island.file_width:,}",
                 file_width=verify_width.width_text(island.file_width)))
+        # The field writes above schedule recounts of their own; this one already counts them.
+        if self._verify_count_after_id is not None:
+            self.after_cancel(self._verify_count_after_id)
         self._refresh_verify_estimate()
+        self._sync_verify_run_state()
         return self._verify_total
 
     def _verify_error(self, key):
@@ -394,15 +428,16 @@ class VerifySection:
     def _verify_values(self):
         """{base_exponent, window_m (the file width), max_windows (the files of the chosen
         windows), threads, method[, pass_numbers (the width)]} for the script, or None after
-        an error dialog. A v7.3 run reads the free RAM first; the width is fitted (and shown
-        so) before it is used."""
+        an error dialog. P files gone since the last recount: None without a dialog, the
+        recount greys Run out. A v7.3 run reads the free RAM first; the width is fitted (and
+        shown so) before it is used."""
         floor = verify_plan.parse_int(self._verify_vars["base_exponent"].get(), 0)
         if floor is None:
             return self._verify_error("base_exponent")
         island = verify_width.store_island(self._get_portal_folder(), floor)
         if island is None:
             self._refresh_verify_count()
-            return self._verify_error("no_windows")
+            return None
         method = self._verify_method()
         if method == verify_plan.METHOD_SIEVE:
             self._probe_verify_ram()
@@ -491,7 +526,6 @@ class VerifySection:
             self.after_cancel(self._verify_stop_after_id)
             self._verify_stop_after_id = None
         run_guard.clear_stop_request(self._get_portal_folder())
-        self._refresh_verify_count()
         self.reload_primes_tree()
         self.reload_benchmark_log()
         self._unlock_other_run_buttons()

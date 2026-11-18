@@ -28,6 +28,7 @@ class GenerationRunProgress:
     _run_status_base = None    # the run's last progress text, before the time suffix
     _run_status_shown = None   # the status text the run last wrote
     _run_status_at = 0.0       # run_eta.now() of that write
+    _run_lock_engine = None    # the engine whose run holds the other Run buttons, None between
 
     def _drain_output_queue(self, q, console, run_btn, stop_btn, status_var, on_exit=None,
                              chunk_hook=None):
@@ -160,6 +161,7 @@ class GenerationRunProgress:
         (Generate doubles as Stop while it runs) and leaves it enabled -- this
         method must NOT touch it in that case, which is exactly what `!= 'loop'`
         already guards against below."""
+        self._run_lock_engine = active_engine
         if active_engine != "loop":
             self.loop_run_btn.configure(state="disabled")
             for panel in self._quick_panels:
@@ -186,7 +188,9 @@ class GenerationRunProgress:
         self.const_run_btn.configure(state="normal")
         self.ktuple_run_btn.configure(state="normal")
         self.ktuple_auto_btn.configure(state="normal")
-        self.verify_run_btn.configure(state="normal")
+        self._run_lock_engine = None
+        # A run may have written or proved P files: the recount sets Section D's Run.
+        self._refresh_verify_count()
 
     def _reset_gen_progress_bar_for_new_run(self):
         """Called at the start of every Generation run-launch path that drives the
