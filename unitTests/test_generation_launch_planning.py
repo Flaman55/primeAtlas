@@ -72,6 +72,249 @@ def _touch_window(portal, floor, target_idx, window_m=10_000_000):
     open(os.path.join(shard_dir, name), "wb").close()
 
 
+def _touch_kind(portal, floor, target_idx, kind, window_m=10_000_000):
+    """A window of the D or P store (storage_kinds.window_path(), sharded like _touch_window)."""
+    import storage_kinds
+    offset = target_idx * window_m
+    label = "0" if offset == 0 else f"{offset // 1_000_000}M"
+    path = storage_kinds.window_path(portal, floor, offset, window_m, label, kind)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    open(path, "wb").close()
+
+
+def _plan_idx(plan):
+    return plan.get("target_idx_start"), plan.get("window_count_per_run")
+
+
+def _check_literal_range_gaps(app_dynamic, gen, portal, recorder, W):
+    """A literal range (Range mode, Floor mode with a starting point, the search offer) asks
+    about its own windows only: windows above it on the floor say nothing about its gaps."""
+    T = app_dynamic.T
+    base = 10 ** 13
+    for idx in (0, 1, 3, 9):  # gaps 2 and 4..8, highest window 9
+        _touch_window(portal, 13, idx)
+
+    plan = gen._quick_gen_plan_literal_range(base, base + 5 * W)
+    check(not plan.get("already") and _plan_idx(plan) == (2, 3),
+          f"[0,5) under the highest window with gaps 2 and 4 launches 2..4, not 'already' "
+          f"(got {plan!r})")
+    plan = gen._quick_gen_plan_literal_range(base, base + 2 * W)
+    check(plan.get("already") is True and plan.get("stored_count") == 2,
+          f"[0,2) fully stored reports 'already' with the range's own count 2, not the "
+          f"floor's 4 (got {plan!r})")
+    plan = gen._quick_gen_plan_literal_range(base + 4 * W, base + 9 * W)
+    check(_plan_idx(plan) == (4, 5) and plan.get("stored_count") == 0,
+          f"[4,9) empty under window 9 launches 4..8 with 0 stored (got {plan!r})")
+    plan = gen._quick_gen_plan_literal_range(base + 2 * W, base + 3 * W)
+    check(_plan_idx(plan) == (2, 1),
+          f"one missing window [2,3) under the highest launches exactly it (got {plan!r})")
+    plan = gen._quick_gen_plan_literal_range(base + 3 * W, base + 4 * W)
+    check(plan.get("already") is True and plan.get("stored_count") == 1,
+          f"one stored window [3,4) reports 'already', 1 window (got {plan!r})")
+
+    for idx in (1, 2, 7):  # gap at the front of the range, a window above it
+        _touch_window(portal, 14, idx)
+    plan = gen._quick_gen_plan_literal_range(10 ** 14, 10 ** 14 + 3 * W)
+    check(_plan_idx(plan) == (0, 1) and plan.get("stored_count") == 2,
+          f"front gap: [0,3) with 1,2 stored launches window 0 only (got {plan!r})")
+    for idx in (0, 1, 5):  # gap at the back of the range
+        _touch_window(portal, 15, idx)
+    plan = gen._quick_gen_plan_literal_range(10 ** 15, 10 ** 15 + 3 * W)
+    check(_plan_idx(plan) == (2, 1),
+          f"back gap: [0,3) with 0,1 stored launches window 2 only (got {plan!r})")
+    for idx in (0, 2, 4, 8):  # stored windows inside the missing run are rewritten
+        _touch_window(portal, 16, idx)
+    plan = gen._quick_gen_plan_literal_range(10 ** 16, 10 ** 16 + 5 * W)
+    check(_plan_idx(plan) == (1, 3) and plan.get("stored_count") == 3,
+          f"[0,5) with 0,2,4 stored launches first..last missing = 1..3 (got {plan!r})")
+
+    # Floor mode with a starting point: status texts and a second click after the run.
+    gen.quick_mode_var.set("floor")
+    gen.quick_floor_var.set("13")
+    gen.quick_floor_width_var.set("5")
+    gen.quick_floor_start_var.set(str(base))
+    recorder.calls.clear()
+    gen._on_quick_generate_clicked()
+    check([c[2:] for c in recorder.calls] == [(2, 3)],
+          f"Floor mode start {base:,} width 5 launches windows 2..4 (got {recorder.calls!r})")
+    expected = T("quick.summary_range", start=f"{base:,}", end=f"{base + 5 * W:,}",
+                 rounded_start=f"{base:,}", rounded_end=f"{base + 5 * W:,}", floor=13,
+                 existing_count=3, range_count=5, added_count=3)
+    check(gen.quick_status_var.get() == expected,
+          f"summary counts the range: 3 of 5 windows stored, 3 launched "
+          f"(got {gen.quick_status_var.get()!r})")
+    for idx in (2, 4):  # the launched run wrote its windows
+        _touch_window(portal, 13, idx)
+    recorder.calls.clear()
+    gen._on_quick_generate_clicked()
+    expected = T("quick.status_already_in_storage", rounded_start=f"{base:,}",
+                 rounded_end=f"{base + 5 * W:,}", existing_count=5)
+    check(recorder.calls == [] and gen.quick_status_var.get() == expected,
+          f"the second click after the run reports 'already', 5 windows "
+          f"(got {recorder.calls!r}, {gen.quick_status_var.get()!r})")
+
+    gen.quick_mode_var.set("range")
+    gen.quick_from_var.set(str(10 ** 14))
+    gen.quick_to_var.set(str(10 ** 14 + 3 * W))
+    recorder.calls.clear()
+    gen._on_quick_generate_clicked()
+    check([c[2:] for c in recorder.calls] == [(0, 1)],
+          f"Range mode [0,3) on floor 14 under window 7 fills window 0 (got {recorder.calls!r})")
+    gen.quick_floor_start_var.set("")
+    gen.quick_mode_var.set("floor")
+
+
+def _check_engine_store_counts(app_dynamic, gen, portal, W):
+    """Counts and the 'already' decision read the store the selected engine writes into."""
+    import storage_kinds
+    for idx in range(5):
+        _touch_kind(portal, 25, idx, storage_kinds.KIND_D)
+    for idx in (0, 1):
+        _touch_kind(portal, 25, idx, storage_kinds.KIND_P)
+    base = 10 ** 25
+    engines = gen._engine_fields
+    previous = engines.engine_var.get()
+    engines.engine_var.set(storage_kinds.ENGINE_PT1)
+    plan = gen._quick_gen_plan_literal_range(base, base + 2 * W)
+    check(plan.get("already") is True and plan.get("stored_count") == 2,
+          f"pt1 on floor 25: P windows 0,1 cover [0,2), 2 stored (got {plan!r})")
+    plan = gen._quick_gen_plan_literal_range(base, base + 4 * W)
+    check(_plan_idx(plan) == (2, 2) and plan.get("stored_count") == 2,
+          f"pt1 on floor 25: [0,4) launches P windows 2,3; the D windows do not count "
+          f"(got {plan!r})")
+    check(gen._engine_window_count(25) == 2,
+          f"pt1 floor-25 count is its P store's 2 windows, not D's 5 "
+          f"(got {gen._engine_window_count(25)!r})")
+    engines.engine_var.set(previous)
+    plan = gen._quick_gen_plan_literal_range(base, base + 4 * W)
+    check(plan.get("already") is True and plan.get("stored_count") == 4,
+          f"a sieve engine on floor 25 sees the D store: [0,4) stored (got {plan!r})")
+    check(gen._engine_window_count(25) == 5,
+          f"sieve floor-25 count is the D store's 5 windows, not P's (got "
+          f"{gen._engine_window_count(25)!r})")
+
+    # floor 24 holds both: pt1 counts D below MR_DET_BOUND plus P from it on.
+    below = (storage_kinds.MR_DET_BOUND - 10 ** 24) // W - 2
+    for idx in (below, below + 1):
+        _touch_kind(portal, 24, idx, storage_kinds.KIND_D)
+    _touch_kind(portal, 24, below + 3, storage_kinds.KIND_P)
+    engines.engine_var.set(storage_kinds.ENGINE_PT1)
+    lo = 10 ** 24 + below * W
+    plan = gen._quick_gen_plan_literal_range(lo, lo + 4 * W)
+    check(_plan_idx(plan) == (below + 2, 1) and plan.get("stored_count") == 3,
+          f"pt1 on floor 24: D below the bound and P above count, the window on the bound "
+          f"is launched (got {plan!r})")
+    engines.engine_var.set(previous)
+
+    # The blank-start Floor summary counts the engine's store too.
+    gen.quick_mode_var.set("floor")
+    gen.quick_floor_start_var.set("")  # clearing the starting point clears Floor too
+    gen.quick_floor_var.set("25")
+    gen.quick_floor_width_var.set("1")
+    gen.quick_floor_fill_gaps_var.set(False)
+    engines.engine_var.set(storage_kinds.ENGINE_PT1)
+    loop_calls = []
+    gen._apply_loop_params_and_run = lambda *a: loop_calls.append(a)
+    gen._on_quick_generate_clicked()
+    expected = app_dynamic.T(
+        "quick.summary_floor", floor=25, width_mult=1, width_total=f"{W:,}",
+        start=app_dynamic.T("quick.start_continue_last"), existing_count=2, added_count=1)
+    check(gen.quick_status_var.get() == expected,
+          f"pt1 Floor summary shows the P store's 2 windows (got {gen.quick_status_var.get()!r})")
+    engines.engine_var.set(previous)
+
+
+def _check_fill_gaps_reaches_every_gap(app_dynamic, gen, portal, recorder, W):
+    """'Fill gaps first' on: repeated clicks fill every gap of the floor in ascending order,
+    then continue past the highest window; no gap is ever skipped."""
+    import storage_kinds
+    loop_calls = []
+    gen._apply_loop_params_and_run = lambda *a: loop_calls.append(a)
+    gen.quick_mode_var.set("floor")
+    gen.quick_floor_start_var.set("")
+    gen.quick_floor_fill_gaps_var.set(True)
+
+    for idx in (2, 5, 6):  # gaps 0,1 at the front and 3,4 in the middle
+        _touch_window(portal, 17, idx)
+    gen.quick_floor_var.set("17")
+    gen.quick_floor_width_var.set("1")
+    launched = []
+    for _click in range(6):
+        recorder.calls.clear()
+        loop_calls.clear()
+        gen._on_quick_generate_clicked()
+        if recorder.calls:
+            idx = recorder.calls[0][2]
+            launched.append(idx)
+            _touch_window(portal, 17, idx)
+        elif loop_calls:
+            launched.append("continue")
+            break
+    check(launched == [0, 1, 3, 4, "continue"],
+          f"width 1: clicks fill gaps 0,1,3,4 in order, then continue past window 6 "
+          f"(got {launched!r})")
+
+    for idx in (0, 2, 7):  # width wider than the gap reaches the next gap
+        _touch_window(portal, 18, idx)
+    gen.quick_floor_var.set("18")
+    gen.quick_floor_width_var.set("4")
+    recorder.calls.clear()
+    gen._on_quick_generate_clicked()
+    check([c[2:] for c in recorder.calls] == [(1, 4)],
+          f"width 4 from gap 1 covers 1..4 (window 2 rewritten) (got {recorder.calls!r})")
+
+    # floor 7 holds windows 0..8: its top window is stored, window 4 is not.
+    for idx in (0, 1, 2, 3, 5, 6, 7, 8):
+        _touch_window(portal, 7, idx)
+    gen.quick_floor_var.set("7")
+    gen.quick_floor_width_var.set("1")
+    recorder.calls.clear()
+    gen._on_quick_generate_clicked()
+    check([c[1:] for c in recorder.calls] == [(7, 4, 1)],
+          f"a floor whose top window is stored fills its gap 4, never 'floor full' "
+          f"(got {recorder.calls!r}, {gen.quick_status_var.get()!r})")
+    gen.quick_floor_fill_gaps_var.set(False)
+    recorder.calls.clear()
+    gen._on_quick_generate_clicked()
+    expected = app_dynamic.T("quick.status_floor_full_gaps", floor=7, existing_count=8,
+                             floor_window_count=9)
+    check(recorder.calls == [] and gen.quick_status_var.get() == expected,
+          f"fill gaps off: a full-to-the-top floor with a gap says so and points to the "
+          f"option (got {gen.quick_status_var.get()!r})")
+
+    # pt1 fills the gaps of its own store: P windows 0,2 on floor 26, D windows 0..3.
+    for idx in range(4):
+        _touch_kind(portal, 26, idx, storage_kinds.KIND_D)
+    for idx in (0, 2):
+        _touch_kind(portal, 26, idx, storage_kinds.KIND_P)
+    engines = gen._engine_fields
+    previous = engines.engine_var.get()
+    engines.engine_var.set(storage_kinds.ENGINE_PT1)
+    gen.quick_floor_fill_gaps_var.set(True)
+    gen.quick_floor_var.set("26")
+    recorder.calls.clear()
+    gen._on_quick_generate_clicked()
+    check([c[1:] for c in recorder.calls] == [(26, 1, 1)],
+          f"pt1 fills P gap 1 although D window 1 exists (got {recorder.calls!r})")
+    engines.engine_var.set(previous)
+
+    # Exploration fills a gap on the floor it starts from and on every floor it rolls through.
+    gen.quick_mode_var.set("explore")
+    gen.quick_explore_floor_var.set("7")
+    gen.quick_iterations_var.set("1")
+    gen.quick_explore_width_var.set("1")
+    _touch_window(portal, 7, 4)
+    for idx in [i for i in range(90) if i != 30]:  # floor 8 full to the top, gap 30
+        _touch_window(portal, 8, idx)
+    recorder.calls.clear()
+    gen._on_quick_generate_clicked()
+    check([c[1:] for c in recorder.calls] == [(8, 30, 1)],
+          f"Exploration rolls past full floor 7 and fills floor 8's gap 30 "
+          f"(got {recorder.calls!r})")
+    gen.quick_mode_var.set("floor")
+    gen.quick_floor_fill_gaps_var.set(False)
+
+
 class _LaunchRecorder:
     """Stands in for _apply_primesieve_params_and_run/_apply_orchestrator_direct_params_
     and_run -- records exactly what _launch_direct_window_range decided to launch instead
@@ -313,6 +556,16 @@ def main():
               f"actually binds here, floor 12's own structural cap is nowhere close) -- "
               f"one iteration's worth only, never more, per _try_fill_quick_gen_gap's own "
               f"docstring (got {recorder.calls[0] if recorder.calls else None!r})")
+
+        # A dialog would block the clicks below: record it instead, none is expected.
+        from tkinter import messagebox
+        dialogs = []
+        for name in ("showerror", "showinfo", "showwarning", "askyesno", "askokcancel"):
+            setattr(messagebox, name, lambda *a, _name=name, **k: dialogs.append((_name, a)))
+        _check_literal_range_gaps(app_dynamic, gen, portal, recorder, W)
+        _check_engine_store_counts(app_dynamic, gen, portal, W)
+        _check_fill_gaps_reaches_every_gap(app_dynamic, gen, portal, recorder, W)
+        check(dialogs == [], f"no Quick-gen click above opens a dialog (got {dialogs!r})")
 
         app.destroy()
 

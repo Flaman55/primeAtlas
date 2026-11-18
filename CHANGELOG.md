@@ -80,6 +80,19 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
 - Polski: Wpisy od 1.5.0 stoją teraz w kolejności scaleń, od +1, jak w każdej wcześniejszej
   sekcji; O programie → Zmiany od wydania znów pokazuje najnowszą zmianę na górze.
 
+### +5 — Quick-gen: a range's gaps are filled, counts read the engine's store
+
+- English: A range given by a starting point or From/To is checked window by window: gaps below
+  windows stored further up the floor are generated instead of reported as "already in
+  storage", and a search for a number in such a gap offers to generate it. Every window count
+  shows the store the selected engine writes into (pt1: P from floor 24 on), and a floor stored
+  up to its last window but with gaps points to "Fill gaps first".
+- Polski: Zakres podany punktem startowym lub Od/Do jest sprawdzany okno po oknie: luki pod
+  oknami zapisanymi wyżej na piętrze są generowane, zamiast zgłaszać „już w magazynie”, a
+  wyszukanie liczby w takiej luce proponuje jej wygenerowanie. Każda liczba okien pokazuje
+  magazyn, do którego pisze wybrany silnik (pt1: P od piętra 24), a piętro zapisane do ostatniego
+  okna, ale z lukami, wskazuje „Najpierw wypełnij luki”.
+
 ## 1.5.0 — 2026-11-17
 
 ### +1 — Generation: RAM check on Generate, proposal from the run's start, native primesieve without storage

@@ -147,6 +147,18 @@ Every Quick-gen Floor field (Floor only, Explore, Hybrid, primesieve, CUDASieve)
 arrows and the mouse wheel step the floor through 0 to `QUICK_FLOOR_MAX` (35; primesieve and
 CUDASieve stop at `UINT64_FLOOR_MAX`, 19), and a typed value or expression is not capped.
 
+A literal range (Range mode, Floor mode with a starting point, primesieve and CUDASieve From, the
+search and Goldbach "generate the missing range" offers) is planned by
+`_quick_gen_plan_literal_range()` from its own windows only, in the store the selected engine
+writes into (`window_planning.stored_target_idxs()`): windows elsewhere on the floor say nothing
+about its gaps. A range with every window stored reports "already in storage" with the range's
+count; otherwise one run goes from its first missing window to its last, rewriting stored windows
+between two gaps. Without a starting point, Floor and Explore continue past the floor's last
+window, or with "Fill gaps first" start at its first gap, so repeated clicks fill every gap in
+order before continuing. A floor stored up to its last window but with gaps says so and points to
+that option. Every window count a Quick-gen message shows is the selected engine's store
+(`count_existing_windows(engine=...)`): pt1's P store from floor 24 on, D for the sieves.
+
 ## pi(L) notice
 
 Counting pi(L) (the two pi checkboxes of the pipeline form, off by default and remembered) adds

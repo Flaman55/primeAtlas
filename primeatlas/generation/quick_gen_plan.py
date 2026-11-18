@@ -13,8 +13,8 @@ from ..core import number_field
 from ..core.storage import digit_count_floor, LOW_FLOOR_CUTOFF
 from . import native_plan
 from .quick_number import _eval_quick_number
-from .window_planning import (QUICK_GEN_MAX_WINDOW_WIDTH, count_existing_windows,
-                              find_continuation_target_idx, find_highest_populated_floor,
+from .window_planning import (QUICK_GEN_MAX_WINDOW_WIDTH, find_continuation_target_idx,
+                              find_highest_populated_floor, missing_span, stored_target_idxs,
                               _round_range_to_window, _floor_window_count, PRIMESIEVE_MAX_STOP,
                               CUDASIEVE_MIN_PRINTABLE_TOP, CUDASIEVE_MAX_STOP)
 
@@ -88,26 +88,27 @@ class QuickGenPlan:
           {"error": (title, message)}                          -- invalid request,
                                                                     show it and stop
           {"already": True, "rounded_start", "rounded_end",
-           "existing_count", "truncated"}                       -- fully covered
+           "stored_count", "range_count", "truncated"}          -- fully covered
                                                                     already
-          {"floor", "existing_count", "window_count_per_run",
-           "rounded_start", "rounded_end", "truncated"}          -- what to launch
+          {"floor", "target_idx_start", "window_count_per_run",
+           "stored_count", "range_count", "rounded_start",
+           "rounded_end", "truncated"}                          -- what to launch
         "truncated" is True whenever the requested end got clamped back to the
         floor's own boundary -- callers should mention that in their status message
         so a shortened run isn't mistaken for the full request having been honored.
 
-        LAUNCH START: "target_idx_start" in the launch-case dict is max(the request's
-        OWN literal target_idx, existing_count). Never less than the literal request:
-        a starting point deep into an otherwise-empty floor must not turn into
-        backfilling everything from index 0 (which misrepresents the request and, for
-        a big enough gap, makes prime_sieve_v4_1.py build a target_idx list too large
-        for memory). Never less than existing_count either: filling from at/near the
-        front of a partially generated floor starts at existing_count.
-        window_count_per_run is sized to this SAME start, so it only covers what is
-        still missing from [target_idx_start, target_idx_end). Callers should launch
-        via a target_idx_start-CAPABLE engine (see _launch_direct_window_range()), not
-        orchestrator_loop_v2.py's continuation-only wrapper, which cannot start past
-        wherever storage currently ends.
+        STORED WINDOWS: only the requested windows [literal target_idx, target_idx_end)
+        of the store the selected engine writes into (storage_kinds.engine_target_idxs())
+        decide: windows elsewhere on the floor, above or below the range, say nothing
+        about its gaps. "stored_count" of the "range_count" requested windows are on
+        disk. The launch runs from the first missing window to one past the last missing
+        one, never before the literal start (a starting point deep into an otherwise-
+        empty floor must not turn into backfilling from index 0, which for a big enough
+        gap makes prime_sieve_v4_1.py build a target_idx list too large for memory);
+        stored windows between two gaps are rewritten with identical content (one launch
+        per request). Callers launch via a target_idx_start-CAPABLE engine (see
+        _launch_direct_window_range()), not orchestrator_loop_v2.py's continuation-only
+        wrapper, which cannot start past wherever storage currently ends.
 
         max_window_count: _round_range_to_window() rounds the START down AND the END
         up to the nearest window boundary -- right for Range mode's from/to contract
@@ -150,25 +151,28 @@ class QuickGenPlan:
                 target_idx_end = budget_target_idx_end
                 rounded_end = base + target_idx_end * QUICK_GEN_MAX_WINDOW_WIDTH
                 width_capped = True
-        existing_count = find_continuation_target_idx(
-            self._get_portal_folder(), floor_lo, QUICK_GEN_MAX_WINDOW_WIDTH, engine=self._selected_engine())
-        # existing_count above is a CONTINUATION POSITION, not necessarily the real
-        # file count on a floor with interior gaps -- real_existing_count is for
-        # DISPLAY only (see count_existing_windows()'s own docstring); every caller's
-        # own arithmetic must keep using existing_count/target_idx_start.
-        real_existing_count = count_existing_windows(self._get_portal_folder(), floor_lo)
-        if target_idx_end <= existing_count:
+        stored = stored_target_idxs(self._get_portal_folder(), floor_lo,
+                                    literal_target_idx_start, target_idx_end,
+                                    QUICK_GEN_MAX_WINDOW_WIDTH, engine=self._selected_engine())
+        span = missing_span(stored, literal_target_idx_start, target_idx_end)
+        counts = {"stored_count": len(stored),
+                  "range_count": target_idx_end - literal_target_idx_start}
+        if span is None:
             return {"already": True, "rounded_start": rounded_start,
-                    "rounded_end": rounded_end, "existing_count": existing_count,
-                    "real_existing_count": real_existing_count,
-                    "truncated": truncated, "width_capped": width_capped}
-        launch_target_idx_start = max(literal_target_idx_start, existing_count)
-        return {"floor": floor_lo, "existing_count": existing_count,
-                 "real_existing_count": real_existing_count,
-                 "target_idx_start": launch_target_idx_start,
-                 "window_count_per_run": target_idx_end - launch_target_idx_start,
-                 "rounded_start": rounded_start, "rounded_end": rounded_end,
-                 "truncated": truncated, "width_capped": width_capped}
+                    "rounded_end": rounded_end, "truncated": truncated,
+                    "width_capped": width_capped, **counts}
+        return {"floor": floor_lo, "target_idx_start": span[0],
+                "window_count_per_run": span[1] - span[0],
+                "rounded_start": rounded_start, "rounded_end": rounded_end,
+                "truncated": truncated, "width_capped": width_capped, **counts}
+
+    def _report_floor_full(self, floor, floor_window_count):
+        """Status for a floor whose last window is stored: complete, or with gaps below it
+        that only "fill gaps first" reaches (the continuation starts past the last window)."""
+        stored = self._engine_window_count(floor)
+        key = "quick.status_floor_full" if stored >= floor_window_count else "quick.status_floor_full_gaps"
+        self.quick_status_var.set(self.T(key, floor=floor, existing_count=stored,
+                                         floor_window_count=floor_window_count))
 
     _QUICK_MODE_NUMBER_VARS = {
         "floor": ("quick_floor_var", "quick_floor_width_var", "quick_floor_start_var"),
@@ -243,14 +247,14 @@ class QuickGenPlan:
                         "quick.status_already_in_storage",
                         rounded_start=f"{plan['rounded_start']:,}",
                         rounded_end=f"{plan['rounded_end']:,}",
-                        existing_count=plan["real_existing_count"]))
+                        existing_count=plan["stored_count"]))
                     return
                 self.quick_status_var.set(self.T(
                     "quick.summary_range", start=f"{start_value:,}",
                     end=f"{start_value + width_total:,}",
                     rounded_start=f"{plan['rounded_start']:,}",
                     rounded_end=f"{plan['rounded_end']:,}", floor=plan["floor"],
-                    existing_count=plan["real_existing_count"],
+                    existing_count=plan["stored_count"], range_count=plan["range_count"],
                     added_count=plan["window_count_per_run"])
                     + (self.T("quick.note_truncated_floor_boundary",
                           boundary=f"{plan['rounded_end']:,}")
@@ -294,17 +298,14 @@ class QuickGenPlan:
                 return
             remaining = floor_window_count - existing_count
             if remaining <= 0:
-                self.quick_status_var.set(self.T(
-                    "quick.status_floor_full", floor=floor_value,
-                    existing_count=count_existing_windows(self._get_portal_folder(), floor_value),
-                    floor_window_count=floor_window_count))
+                self._report_floor_full(floor_value, floor_window_count)
                 return
             capped_width = min(width_mult, remaining)
             self.quick_status_var.set(self.T(
                 "quick.summary_floor", floor=floor_value, width_mult=capped_width,
                 width_total=f"{capped_width * QUICK_GEN_MAX_WINDOW_WIDTH:,}",
                 start=self.T("quick.start_continue_last"),
-                existing_count=count_existing_windows(self._get_portal_folder(), floor_value),
+                existing_count=self._engine_window_count(floor_value),
                 added_count=capped_width)
                 + (self.T("quick.note_truncated_floor_boundary",
                       boundary=f"{10 ** (floor_value + 1):,}")
@@ -333,13 +334,13 @@ class QuickGenPlan:
                     "quick.status_already_in_storage",
                     rounded_start=f"{plan['rounded_start']:,}",
                     rounded_end=f"{plan['rounded_end']:,}",
-                    existing_count=plan["real_existing_count"]))
+                    existing_count=plan["stored_count"]))
                 return
             self.quick_status_var.set(self.T(
                 "quick.summary_range", start=f"{start:,}", end=f"{end:,}",
                 rounded_start=f"{plan['rounded_start']:,}",
                 rounded_end=f"{plan['rounded_end']:,}", floor=plan["floor"],
-                existing_count=plan["real_existing_count"],
+                existing_count=plan["stored_count"], range_count=plan["range_count"],
                 added_count=plan["window_count_per_run"])
                 + (self.T("quick.note_truncated_floor_boundary",
                       boundary=f"{plan['rounded_end']:,}")
@@ -443,10 +444,7 @@ class QuickGenPlan:
                 remaining = floor_window_count - existing_count
                 advances += 1
             if remaining <= 0:
-                self.quick_status_var.set(self.T(
-                    "quick.status_floor_full", floor=floor_value,
-                    existing_count=count_existing_windows(self._get_portal_folder(), floor_value),
-                    floor_window_count=floor_window_count))
+                self._report_floor_full(floor_value, floor_window_count)
                 return
             # Same reasoning as Floor mode's capped_width just above: base_exponent is
             # FIXED for an entire orchestrator run (see _apply_loop_params_and_run's own
@@ -466,7 +464,7 @@ class QuickGenPlan:
             self.quick_status_var.set(self.T(
                 "quick.summary_explore", floor=floor_value, iterations=iterations,
                 width_mult=window_count_per_run, iterations_total=f"{iterations_total:,}",
-                existing_count=count_existing_windows(self._get_portal_folder(), floor_value),
+                existing_count=self._engine_window_count(floor_value),
                 added_count=iterations * window_count_per_run)
                 + (self.T("quick.note_truncated_floor_boundary",
                       boundary=f"{10 ** (floor_value + 1):,}")
@@ -568,14 +566,14 @@ class QuickGenPlan:
                     "quick.status_already_in_storage",
                     rounded_start=f"{plan['rounded_start']:,}",
                     rounded_end=f"{plan['rounded_end']:,}",
-                    existing_count=plan["real_existing_count"]))
+                    existing_count=plan["stored_count"]))
                 return
             ceiling_truncated = (plan["rounded_end"] - 1) > PRIMESIEVE_MAX_STOP
             self.quick_status_var.set(self.T(
                 "quick.summary_range", start=f"{start:,}", end=f"{end:,}",
                 rounded_start=f"{plan['rounded_start']:,}",
                 rounded_end=f"{plan['rounded_end']:,}", floor=plan["floor"],
-                existing_count=plan["real_existing_count"],
+                existing_count=plan["stored_count"], range_count=plan["range_count"],
                 added_count=plan["window_count_per_run"])
                 + (self.T("quick.note_truncated_floor_boundary",
                       boundary=f"{plan['rounded_end']:,}")
@@ -641,14 +639,14 @@ class QuickGenPlan:
                     "quick.status_already_in_storage",
                     rounded_start=f"{plan['rounded_start']:,}",
                     rounded_end=f"{plan['rounded_end']:,}",
-                    existing_count=plan["real_existing_count"]))
+                    existing_count=plan["stored_count"]))
                 return
             ceiling_truncated = (plan["rounded_end"] - 1) > CUDASIEVE_MAX_STOP
             self.quick_status_var.set(self.T(
                 "quick.summary_range", start=f"{start:,}", end=f"{end:,}",
                 rounded_start=f"{plan['rounded_start']:,}",
                 rounded_end=f"{plan['rounded_end']:,}", floor=plan["floor"],
-                existing_count=plan["real_existing_count"],
+                existing_count=plan["stored_count"], range_count=plan["range_count"],
                 added_count=plan["window_count_per_run"])
                 + (self.T("quick.note_truncated_floor_boundary",
                       boundary=f"{plan['rounded_end']:,}")

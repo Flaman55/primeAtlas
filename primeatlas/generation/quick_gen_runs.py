@@ -17,7 +17,7 @@ from . import engine_options, wsl_resources
 from .engine_argv import (build_primesieve_argv, build_primesieve_native_argv, build_hybrid_argv, build_hybrid_narrow_argv,
                           build_cudasieve_argv, build_orchestrator_direct_argv)
 from .quick_number import _eval_quick_number
-from .window_planning import (QUICK_GEN_MAX_WINDOW_WIDTH, count_existing_windows,
+from .window_planning import (QUICK_GEN_MAX_WINDOW_WIDTH,
                               find_continuation_target_idx, find_first_gap_target_idx,
                               _trim_existing_from_target_idx_range, hybrid_window_for_number,
                               hybrid_window_for_floor_index, _floor_window_count,
@@ -406,7 +406,7 @@ class QuickGenRuns:
             width_mult=capped_width,
             width_total=f"{capped_width * QUICK_GEN_MAX_WINDOW_WIDTH:,}",
             gap_start=f"{gap_start:,}",
-            existing_count=count_existing_windows(self._get_portal_folder(), floor_value),
+            existing_count=self._engine_window_count(floor_value),
             added_count=capped_width)
             + (self.T("quick.note_gap_partial") if not reaches_existing else ""))
         # _launch_direct_window_range() (not _apply_loop_params_and_run()) since this

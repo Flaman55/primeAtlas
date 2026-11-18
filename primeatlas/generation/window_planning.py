@@ -83,21 +83,37 @@ def compute_totals_bumps_from_new_rows(rows, before_count):
     return bumps
 
 
-def count_existing_windows(portal_folder, base_exponent):
-    """Real count of window FILES actually on disk for this floor -- len(list_source_
-    filenames(...)), nothing more. Distinct from find_continuation_target_idx()'s
-    CONTINUATION POINT (highest existing target_idx + 1), which only equals the real
-    file count on a floor with zero gaps -- once direct-start writes made genuine
-    interior gaps possible (see find_first_gap_target_idx()'s own docstring), the two
-    numbers can diverge arbitrarily, and the continuation point alone is meaningless as
-    a "how much do I actually have" figure for a person to read.
-    This function is for DISPLAY ONLY -- every launch/continuation decision must keep
-    using find_continuation_target_idx() (or find_first_gap_target_idx() for the gap-
-    fill strategy), since those need the highest-existing-POSITION semantics, not a
-    plain count, to know where generation can safely resume. Proportional to the real
-    file count via list_source_filenames()'s own os.listdir() (cheap even at thousands
-    of files per floor), never to the numeric magnitude of the floor itself."""
-    return len(list_source_filenames(portal_folder, base_exponent))
+def count_existing_windows(portal_folder, base_exponent, engine=None):
+    """How many windows of this floor `engine` (default: the default engine) counts as done:
+    the windows of the store it writes into (storage_kinds.engine_target_idxs()), the number
+    a person reads. Distinct from find_continuation_target_idx()'s continuation point
+    (highest existing target_idx + 1), which equals it only on a floor without gaps. For
+    display only: launch decisions use the target_idx functions below."""
+    return len(_engine_idxs(portal_folder, base_exponent, QUICK_GEN_MAX_WINDOW_WIDTH, engine))
+
+
+def stored_target_idxs(portal_folder, base_exponent, target_idx_start, target_idx_end,
+                       window_m, engine=None):
+    """The target_idx of [target_idx_start, target_idx_end) that `engine`'s store already
+    holds, ascending. Walks the existing windows, never the numeric range."""
+    idxs = _engine_idxs(portal_folder, base_exponent, window_m, engine)
+    return sorted(idx for idx in idxs if target_idx_start <= idx < target_idx_end)
+
+
+def missing_span(stored, target_idx_start, target_idx_end):
+    """(first, end) of the missing windows of [target_idx_start, target_idx_end) given its
+    sorted `stored` target_idx: from the first missing to one past the last missing, stored
+    windows between them included (one launch rewrites them). None when nothing is missing."""
+    present = set(stored)
+    first = target_idx_start
+    while first < target_idx_end and first in present:
+        first += 1
+    if first == target_idx_end:
+        return None
+    end = target_idx_end
+    while end - 1 in present:
+        end -= 1
+    return first, end
 
 
 def _engine_idxs(portal_folder, base_exponent, window_m, engine):
