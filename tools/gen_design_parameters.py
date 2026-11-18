@@ -76,10 +76,9 @@ FORM_LABELS = {
     },
     "verify": {
         "base_exponent": "gen.verify_field_base_exponent",
-        "width_exp": "gen.verify_field_width_exp",
+        "width": "gen.verify_field_width",
         "threads": "gen.verify_field_threads",
         "method": "gen.verify_field_method",
-        "pass_exp": "gen.verify_field_pass_exp",
     },
 }
 
@@ -118,17 +117,15 @@ def _form_type(key, default, engine_options, generation_settings, section=None):
         from primeatlas.generation import verify_plan
         return {
             "base_exponent": ("integer >= 0, required", "verify_plan.py"),
-            "width_exp": (f"integer {verify_plan.WIDTH_EXP_MIN}..{verify_plan.WIDTH_EXP_MAX}: "
-                          "windows of 10^n numbers", "verify_plan.py"),
+            "width": ("numbers per verification window, any notation: whole P files from one "
+                      "file up to the floor's first island (v7.3 sieve: up to half the free RAM "
+                      "x 30 too); blank = Auto", "verify_width.py"),
             "threads": (f"{verify_plan.THREADS_AUTO} (the pipeline form's workers), "
                         f"{verify_plan.THREADS_MAX} (every WSL CPU) or integer "
                         f"1..WSL's CPU count (a larger one becomes {verify_plan.THREADS_MAX})",
                         "verify_plan.py"),
             "method": (f"{verify_plan.METHOD_PROOF} (pt1.1 proof) or {verify_plan.METHOD_SIEVE} "
                        "(v7.3 sieve)", "verify_plan.py"),
-            "pass_exp": ("integer from the window width's exponent to "
-                         f"{verify_plan.WIDTH_EXP_MAX}: v7.3 sieve passes of 10^n numbers "
-                         "(10^n / 30 bytes of RAM), arbitrary default", "verify_plan.py"),
         }[key]
     if key == "engine":
         return "one of " + ", ".join(engine_options.ENGINES), "engine_options.py"

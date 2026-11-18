@@ -6,17 +6,37 @@ the targeted k-tuple sieve (Section C) and the verification P -> D of pt1's stor
 (Section D, `pt1_verify_store.py` or `v73_verify_store.py`, chosen by its Method field with a rough time of both from `verify_estimate.py`, see [prime-sieve](prime-sieve.md)). Only one engine runs at
 a time.
 
-Section D takes a floor and a window width as power-of-ten spinboxes; its Windows field is
-recounted from the floor's P store (`storage_kinds.p_windows_on_grid()`, the list the script
-proves) whenever the floor or the width changes and after a run, so it starts at "all" and a
-smaller value proves only the first windows. Without a P window at that floor and width there
-is nothing to pick: the field is empty and greyed out, "no P windows of this width" beside it,
-and Run names the reason. Threads: Auto = the pipeline form's workers (what
+Section D verifies the floor's first island of P files (`verify_width.py`): the run of P files
+from the smallest n, each one file width after the previous; a gap, a D file or a file of
+another width ends it, and the next island comes once this one is D. A P file's name holds no
+width, so the file width is the smallest gap between the floor's P offsets (10^7 for a single
+file). That gap can belong to narrower files further on, so the island's first file is read
+(once per path and mtime): a last prime past the guessed width makes it a wider file, of the
+smallest multiple of the guess past that prime that divides its offset, verified as an island
+of its own; the island's files are the first ones the script takes from the grid
+(`storage_kinds.p_windows_on_grid()`). The Width field sets the numbers of one verification
+window in whole files, from one file up to the island, for the v7.3 sieve also up to half the
+free RAM x 30 (`run_budget.DEFAULT_SAFETY_FRACTION`; the RAM is read by Auto and a v7.3 Run,
+10^11 before the first reading); a width outside its range takes the nearest end, one between
+rounds down to whole files, on leaving the field, a floor or method change and Run, and it is
+shown short and exact (`verify_width.width_text()`: 1e8, 9e7, 2.5e8; never three digits after
+the point, which also read as a thousands group: 83.34e9); the arrows and the wheel step by one
+file. The island text gives the window range (one file up to the island or the v7.3 cap). Auto: one file for the pt1.1 proof (the most windows), the fewest windows
+under the cap split evenly for the v7.3 sieve; a blank stored width takes Auto's. The Split
+field holds ceil(island / width), the island's numbers and files beside it; a typed split sets
+the width to ceil(files / split) files (evenly), its arrows step to the next split that
+changes the width. "Verify now" holds every window, recounted on every change and after a
+run; a smaller value proves only the first windows. The script gets
+the file width as window_m, the files of the chosen windows as max_windows and, for the
+sieve, the width as its pass. Without a P file there is nothing to pick: Windows empty and
+greyed out, "no P windows on this floor" beside it, Width and Auto greyed out, and Run names
+the reason. Threads: Auto = the pipeline form's workers (what
 pt1 sieves with; its Max probed as below), Max = WSL's CPU count (probed at Run), or a number.
 
-Section D's Method and Pass also serve the pipeline form's pt1 checkbox "Verify P -> D after the
-run": one choice, two places. The checkbox's hint (`EngineFields.knob_hint_vars`) names the
-method and, for the sieve, the pass, updated on every change in Section D; a ticked pt1 run
+Section D's Method and v7.3 RAM cap also serve the pipeline form's pt1 checkbox "Verify P -> D
+after the run": one choice, two places. The checkbox's hint (`EngineFields.knob_hint_vars`)
+names the method and, for the sieve, the passes up to the cap, updated on every change in
+Section D; a ticked pt1 run
 (pipeline or Quick-gen) carries them in its env (`engine_options.launch_env(verify=...)`,
 `VerifySection._pt1_verify_choice()`), and the orchestrator verifies the run's windows after
 the run. A Benchmark run writes no windows to verify: while Benchmark is ticked the checkbox
@@ -30,7 +50,7 @@ InfoTip anchored on the checkbox).
 | Tab | `primeatlas/generation/generation_tab.py` (`GenerationTab`, WSL runner factory) |
 | Sections (mixins) | `quick_gen_panel.py`, `quick_gen_runs.py`, `loop_section.py`, `constellation_section.py`, `ktuple_section.py`, `verify_section.py`, `run_progress.py`, `run_guard_controls.py`, `hybrid_controls.py`, `engine_fields.py`, `time_simulation_controls.py`, `engine_advice_controls.py`, `pi_count_notice_controls.py`, `target_planner_section.py` |
 | Launching | `engine_argv.py` (argv of every script), `wsl_command.py` (wsl.exe command, logs; every launch names the machine id, the CPU load over the 5 s before it and the run's `.load` file for `prime_sieve/run_load.py`), `logged_runners.py` (`WslLoggedRunner`, `LocalLoggedRunner`; the WSL runner keeps the run's `.load` file of Windows CPU counters, written before the process starts and once a second), `wsl_blocking.py`, `wsl_resources.py` |
-| Planning | `window_planning.py`, `quick_gen_plan.py`, `run_budget.py`, `engine_options.py`, `engine_presets.py`, `quick_number.py`, `verify_plan.py`, `verify_estimate.py`, `pi_count_notice.py` (whether a run counts pi(L) from zero) |
+| Planning | `window_planning.py`, `quick_gen_plan.py`, `run_budget.py`, `engine_options.py`, `engine_presets.py`, `quick_number.py`, `verify_plan.py`, `verify_width.py`, `verify_estimate.py`, `pi_count_notice.py` (whether a run counts pi(L) from zero) |
 | Time simulation | `time_model.py` (run time model calibrated from benchmark_log.csv), `run_ram.py` (predicted RAM of a run, widest run in the RAM budget), `time_simulation_window.py` (`TimeSimulationWindow`) |
 | Engine proposal | `engine_advisor.py` (options, choice, guest line), `engine_advisor_seeds.py` (seed rows), `engine_advice_text.py` (its texts), `engine_advice_view.py` (`EngineAdviceView`); `tools/engine_advice.py` prints it |
 | Width proposal | `width_advisor.py` (rules), `width_advice_text.py` (its texts), `width_advice_view.py` (`WidthAdviceView`) |
@@ -355,7 +375,7 @@ is copied in once), `.generation_logs/` (logs, exit codes, `ACTIVE_RUN.json`),
 
 `test_generation_launch_planning`, `test_generation_window_arithmetic`, `test_engine_options`,
 `test_engine_presets`, `test_engine_gui_wiring`, `test_run_budget`, `test_run_guard`, `test_close_guard`, `test_close_guard_wiring`,
-`test_cross_engine_run_lock`, `test_verify_plan`, `test_gen_progress_bar_engine_gating`, `test_progress_bar_owner`,
+`test_cross_engine_run_lock`, `test_verify_plan`, `test_verify_width`, `test_verify_windows_field`, `test_gen_progress_bar_engine_gating`, `test_progress_bar_owner`,
 `test_console_controls`, `test_constellation_auto_retry`, `test_storage_fill`, `test_pi_seed_checkbox_exclusivity`,
 `test_time_model`, `test_run_ram`, `test_free_ram`, `test_time_simulation`, `test_ui_state_app`, `test_pi_count_notice`,
 `test_pi_count_notice_controls`, `test_engine_advisor`, `test_engine_advice_gui`, `test_native_plan`,

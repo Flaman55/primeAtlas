@@ -54,10 +54,9 @@ DEFAULT_GENERATION_SETTINGS = {
     },
     "verify": {
         "base_exponent": "",
-        "width_exp": "7",     # windows of 10^7 numbers
+        "width": "",          # numbers per verification window; blank = Auto (verify_width.py)
         "threads": "Auto",    # the pipeline form's workers (verify_plan.resolve_threads)
         "method": "proof",    # verify_plan.METHOD_PROOF (pt1.1) or METHOD_SIEVE (v7.3)
-        "pass_exp": "11",     # v7.3 passes of 10^11 numbers (verify_plan.DEFAULT_PASS_EXP)
     },
     "ktuple": {
         "base_exponent": "",

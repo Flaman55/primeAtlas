@@ -1697,15 +1697,21 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               form (pattern, strategy, Advanced), Run/Auto/Stop/finish
   verify_section.py             VerifySection mixin: Section D, pt1_verify_store.py or
                               v73_verify_store.py (method pt1.1 proof / v7.3 sieve,
-                              floor and width-exponent spinboxes, the window count
-                              recounted from the P store (empty and greyed out
-                              without a P window), threads Auto/Max/n, the v7.3
-                              pass exponent, the estimate of both methods; pt1's B and
-                              chunk from the pipeline form), Stop via the generation
-                              stop request (unitTests/test_verify_windows_field.py)
-  verify_plan.py                Section D's fields as the scripts' arguments: P window
-                              count, Windows -> max_windows, Threads Auto/Max/n, the
-                              v7.3 passes (unitTests/test_verify_plan.py)
+                              floor, the window width with Auto and the split into
+                              windows of the floor's first island (each recounts the
+                              other), how many windows to verify now (empty and greyed
+                              out without a P file), threads Auto/Max/n, the estimate of both
+                              methods; pt1's B and chunk from the pipeline form), Stop
+                              via the generation stop request
+                              (unitTests/test_verify_windows_field.py)
+  verify_plan.py                Section D's method, floor and Threads Auto/Max/n as the
+                              scripts' arguments (unitTests/test_verify_plan.py)
+  verify_width.py               Section D's island (the first run of adjacent P files,
+                              file width = smallest gap, the first file read for a
+                              wider one) and its verification
+                              windows: the width range, fitting, Auto by method, the
+                              v7.3 RAM cap, windows and files
+                              (unitTests/test_verify_width.py)
   verify_estimate.py            Section D's rough time of each method from
                               benchmark_log.csv: the proof by the last pt1_verify row,
                               each sieve pass by the floor's v7.2 row nearest in width
