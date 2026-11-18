@@ -11,6 +11,38 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
 
 ## Since 1.5.0
 
+### +1 — One thread-count control, capped at WSL's CPUs
+
+- English: Every thread count of the app (the pipeline form's workers, Section D's Threads,
+  Pseudosquares' Threads and the v5/v6/v7 write threads) is now one control. Its list goes from
+  1 to the CPU count WSL reports, and Max shows that count, e.g. "Max (8)"; Section D's Auto
+  shows the workers it stands for. A larger number, typed or remembered from another computer,
+  becomes Max (write threads: the count itself), so a run never asks for more threads than WSL
+  has. Pseudosquares gains Max. The workers field's Auto button is gone: Max shows the same
+  number. The app reads the CPU count once at startup in the background; every launch and the
+  About tab's read refresh it.
+- Polski: Każda liczba wątków w aplikacji (workers w formularzu potoku, Wątki w sekcji D, Wątki
+  Pseudosquares i wątki zapisu v5/v6/v7) to teraz jedna kontrolka. Jej lista idzie od 1 do
+  liczby procesorów, którą podaje WSL, a Max pokazuje tę liczbę, np. „Max (8)”; Auto w sekcji D
+  pokazuje, ilu workerom odpowiada. Większa liczba, wpisana albo zapamiętana z innego komputera,
+  zmienia się na Max (wątki zapisu: na samą liczbę procesorów), więc przebieg nigdy nie prosi o
+  więcej wątków, niż ma WSL. Pseudosquares dostaje Max. Przycisk Auto przy workers znika: Max
+  pokazuje tę samą liczbę. Aplikacja odczytuje liczbę procesorów raz przy starcie, w tle;
+  każde uruchomienie i odczyt w zakładce O programie ją odświeżają.
+
+### +2 — Section D: no Windows number without P windows
+
+- English: When the chosen floor and width hold no P window, Section D's Windows field is now
+  empty and greyed out, with "no P windows of this width" beside it; before, it showed a red 0,
+  as if a wrong number had been typed. With P windows it holds their count as before, and a
+  smaller number still proves only the first ones. The switch from Hybrid to primesieve gives a
+  range narrower than 10^7 the width 1 instead of a red 0.
+- Polski: Gdy wybrane piętro i szerokość nie mają żadnego okna P, pole Okna w sekcji D jest
+  teraz puste i wyszarzone, a obok widać „brak okien P tej szerokości”; wcześniej pokazywało
+  czerwone 0, jakby wpisano złą liczbę. Gdy okna P są, pole jak dotąd podaje ich liczbę, a
+  mniejsza liczba nadal dowodzi tylko pierwszych okien. Przejście z Hybrid na primesieve daje
+  zakresowi węższemu niż 10^7 szerokość 1 zamiast czerwonego 0.
+
 ### +3 — Section D: verify the first island in windows of a chosen width
 
 - English: Section D now verifies the floor's first island: the run of adjacent P files from
@@ -41,37 +73,12 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   zapisanych plików liczyła tylko pliki na swojej siatce, a pliki innej szerokości mogły być
   brane za szersze.
 
-### +2 — Section D: no Windows number without P windows
+### +4 — Changelog: entries since 1.5.0 in merge order
 
-- English: When the chosen floor and width hold no P window, Section D's Windows field is now
-  empty and greyed out, with "no P windows of this width" beside it; before, it showed a red 0,
-  as if a wrong number had been typed. With P windows it holds their count as before, and a
-  smaller number still proves only the first ones. The switch from Hybrid to primesieve gives a
-  range narrower than 10^7 the width 1 instead of a red 0.
-- Polski: Gdy wybrane piętro i szerokość nie mają żadnego okna P, pole Okna w sekcji D jest
-  teraz puste i wyszarzone, a obok widać „brak okien P tej szerokości”; wcześniej pokazywało
-  czerwone 0, jakby wpisano złą liczbę. Gdy okna P są, pole jak dotąd podaje ich liczbę, a
-  mniejsza liczba nadal dowodzi tylko pierwszych okien. Przejście z Hybrid na primesieve daje
-  zakresowi węższemu niż 10^7 szerokość 1 zamiast czerwonego 0.
-
-### +1 — One thread-count control, capped at WSL's CPUs
-
-- English: Every thread count of the app (the pipeline form's workers, Section D's Threads,
-  Pseudosquares' Threads and the v5/v6/v7 write threads) is now one control. Its list goes from
-  1 to the CPU count WSL reports, and Max shows that count, e.g. "Max (8)"; Section D's Auto
-  shows the workers it stands for. A larger number, typed or remembered from another computer,
-  becomes Max (write threads: the count itself), so a run never asks for more threads than WSL
-  has. Pseudosquares gains Max. The workers field's Auto button is gone: Max shows the same
-  number. The app reads the CPU count once at startup in the background; every launch and the
-  About tab's read refresh it.
-- Polski: Każda liczba wątków w aplikacji (workers w formularzu potoku, Wątki w sekcji D, Wątki
-  Pseudosquares i wątki zapisu v5/v6/v7) to teraz jedna kontrolka. Jej lista idzie od 1 do
-  liczby procesorów, którą podaje WSL, a Max pokazuje tę liczbę, np. „Max (8)”; Auto w sekcji D
-  pokazuje, ilu workerom odpowiada. Większa liczba, wpisana albo zapamiętana z innego komputera,
-  zmienia się na Max (wątki zapisu: na samą liczbę procesorów), więc przebieg nigdy nie prosi o
-  więcej wątków, niż ma WSL. Pseudosquares dostaje Max. Przycisk Auto przy workers znika: Max
-  pokazuje tę samą liczbę. Aplikacja odczytuje liczbę procesorów raz przy starcie, w tle;
-  każde uruchomienie i odczyt w zakładce O programie ją odświeżają.
+- English: The entries since 1.5.0 now stand in merge order, +1 first, like every earlier
+  section; About → Changes since release again lists the newest change at the top.
+- Polski: Wpisy od 1.5.0 stoją teraz w kolejności scaleń, od +1, jak w każdej wcześniejszej
+  sekcji; O programie → Zmiany od wydania znów pokazuje najnowszą zmianę na górze.
 
 ## 1.5.0 — 2026-11-17
 
