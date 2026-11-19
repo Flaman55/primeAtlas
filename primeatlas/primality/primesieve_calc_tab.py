@@ -31,6 +31,7 @@ import subprocess
 import tkinter as tk
 from tkinter import ttk, messagebox
 
+from ..core import number_format
 from ..core import number_field
 from ..core.background import PersistentWorker
 from ..core.base_tab import BaseTab
@@ -305,18 +306,21 @@ class PrimesieveCalcTab(BaseTab):
         self.primesieve_calc_copy_button.configure(state="normal")
         if code == "count":
             lo, hi = args
-            text = self.T("primesieve_calc.result_count", lo=f"{lo:,}", hi=f"{hi:,}",
-                           count=f"{result_payload:,}")
+            text = self.T("primesieve_calc.result_count", lo=number_format.whole(lo),
+                           hi=number_format.whole(hi), count=number_format.whole(result_payload))
         elif code == "nth":
             n, start = args
-            text = self.T("primesieve_calc.result_nth", n=f"{n:,}", start=f"{start:,}",
-                           value=f"{result_payload:,}")
+            text = self.T("primesieve_calc.result_nth", n=number_format.whole(n),
+                           start=number_format.whole(start),
+                           value=number_format.whole(result_payload))
         elif code == "next":
             (x,) = args
-            text = self.T("primesieve_calc.result_next", x=f"{x:,}", value=f"{result_payload:,}")
+            text = self.T("primesieve_calc.result_next", x=number_format.whole(x),
+                           value=number_format.whole(result_payload))
         else:
             (x,) = args
-            text = self.T("primesieve_calc.result_prev", x=f"{x:,}", value=f"{result_payload:,}")
+            text = self.T("primesieve_calc.result_prev", x=number_format.whole(x),
+                           value=number_format.whole(result_payload))
         self.primesieve_calc_result_var.set(text)
 
     def _on_primesieve_calc_copy_result(self):

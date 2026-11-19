@@ -31,6 +31,7 @@ from .highlight_layers import LAYERS
 from .tree_layout import AXIS_AUTO, AXIS_KINDS, copy_budget
 from .tree_mode import TREE_MAX_DEPTH
 from ...core import number_field
+from ...core import number_format
 from ...core.number_text import fraction_value
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -282,11 +283,11 @@ class TreeTab(VizTabBase):
             return
         needed, drawn = copy_budget(n, depth, branches, cap)
         if drawn < depth:
-            self.depth_info_var.set(self._tk("depth_info_cut", needed=f"{needed:,}", cap=f"{cap:,}",
+            self.depth_info_var.set(self._tk("depth_info_cut", needed=number_format.whole(needed), cap=number_format.whole(cap),
                                              drawn=drawn, depth=depth))
             self.depth_info_label.configure(foreground=_CUT_NOTE_COLOR)
         else:
-            self.depth_info_var.set(self._tk("depth_info_full", needed=f"{needed:,}", depth=depth))
+            self.depth_info_var.set(self._tk("depth_info_full", needed=number_format.whole(needed), depth=depth))
             self.depth_info_label.configure(foreground="")
 
     # -- mode -------------------------------------------------------------------

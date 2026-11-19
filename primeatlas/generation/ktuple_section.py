@@ -13,7 +13,7 @@ from tkinter import ttk, messagebox
 import pattern_catalog_v1
 
 from ..core.number_text import plain_number
-from ..core import number_field
+from ..core import number_field, number_format
 from .generation_console import GenerationConsole
 from .engine_argv import build_ktuple_sieve_argv
 from primeatlas.core import ui_state_dynamic
@@ -286,7 +286,8 @@ class KtupleSection:
         numbers_total = recommended * window_m
         messagebox.showinfo(self.T("quick.dialog_title"), self.T(
             "gen.ktuple_auto_n_locations_result",
-            recommended=f"{recommended:,}", numbers_total=f"{numbers_total:,}"))
+            recommended=number_format.whole(recommended),
+            numbers_total=number_format.whole(numbers_total)))
 
     def _on_toggle_ktuple_advanced(self):
         """Same show/hide-together idiom as _on_toggle_loop_advanced() -- see that

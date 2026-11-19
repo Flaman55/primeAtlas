@@ -10,6 +10,8 @@ W the lcm of all of them: every number below W has exactly one block representat
 """
 import math
 
+from ..core import number_format
+
 LIMIT_BLOCK = 10 ** 6
 """A block modulus above this is flagged: the residue arithmetic runs on plain integers and
 slows down; arbitrary."""
@@ -87,11 +89,12 @@ def digit_count(w):
 
 
 def fmt_big(n):
-    """n with thin-space groups up to 15 digits, else as m,mmm·10^e."""
+    """n with grouped digits up to 15 digits, else as m.mmm·10^e with a truncated mantissa,
+    both in the app's number notation."""
     t = str(n)
     if len(t) <= 15:
-        return f"{n:,}".replace(",", " ")
-    return f"{t[0]},{t[1:4]}·10^{len(t) - 1}"
+        return number_format.whole(n)
+    return f"{number_format.decimal(int(t[:4]) / 1000, 3)}·10^{len(t) - 1}"
 
 
 def sweep(params):

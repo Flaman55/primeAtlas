@@ -34,6 +34,8 @@ copy instead of sharing code across conjecture boundaries.
 """
 import math
 
+from ..core import number_format
+
 MAX_SIEVE_BOUND = 200_000_000
 """Refuses (ValueError) any check whose largest interval boundary would need a
 fresh in-memory sieve bigger than this (~200MB bytearray) -- a safety ceiling
@@ -254,8 +256,8 @@ def check_interval_range_from_source(preset, n_from, n_to, is_prime_source,
     is_prime = is_prime_source(max_bound)
     if len(is_prime) <= max_bound:
         raise ValueError(
-            f"is_prime array too short: need index up to {max_bound:,}, got "
-            f"length {len(is_prime):,}")
+            f"is_prime array too short: need index up to {number_format.whole(max_bound)}, got "
+            f"length {number_format.whole(len(is_prime))}")
     return _build_result(is_prime, preset, required_count, n_from, n_to,
                           max_bound, per_n_bounds, row_cap, row_offset)
 
@@ -293,8 +295,9 @@ def check_interval_range(preset, n_from, n_to, required_count=None,
     def _source(max_bound):
         if max_bound > MAX_SIEVE_BOUND:
             raise ValueError(
-                f"the requested range needs a sieve up to {max_bound:,}, above this "
-                f"tool's {MAX_SIEVE_BOUND:,} ceiling for a fresh in-memory sieve -- "
+                f"the requested range needs a sieve up to {number_format.whole(max_bound)}, "
+                f"above this tool's {number_format.whole(MAX_SIEVE_BOUND)} ceiling "
+                f"for a fresh in-memory sieve -- "
                 f"reduce n_to")
         return sieve_is_prime(max_bound)
 

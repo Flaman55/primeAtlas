@@ -29,7 +29,7 @@ from primeatlas.research import irreducibility_residues as res
 from primeatlas.research import irreducibility_multiplicative as mult
 from primeatlas.research import irreducibility_selftest as selftest
 
-# fmt_big output holds a thin space and a middle dot, which a cp1250 console cannot print.
+# fmt_big output holds a middle dot, which a cp1250 console cannot print.
 sys.stdout.reconfigure(errors="backslashreplace")
 
 failures = []
@@ -221,8 +221,8 @@ def test_layout():
           "sweep: the middle column is the current W")
     check(rows[0]["cells"][0] is None and rows[1]["cells"][0] is None,
           "sweep: values below the minimum (start 2, size 1) are empty")
-    check(layout.fmt_big(1234567) == "1 234 567"
-          and layout.fmt_big(10 ** 24) == "1,000·10^24", "fmt_big: grouped, or mantissa·10^e")
+    check(layout.fmt_big(1234567) == "1,234,567"
+          and layout.fmt_big(10 ** 24) == "1.000·10^24", "fmt_big: grouped, or mantissa·10^e")
 
 
 def test_ops():

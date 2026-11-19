@@ -54,6 +54,7 @@ import datetime
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
+from ..core import number_format
 from ..core import number_field
 from ..core import background
 from ..core.base_tab import BaseTab
@@ -282,8 +283,9 @@ class ResearchPiApproxTab(BaseTab):
                 def source(limit, _folder=portal_folder):
                     if limit > MAX_SIEVE_BOUND:
                         raise ValueError(
-                            f"the requested range needs data up to {limit:,}, above "
-                            f"this tool's {MAX_SIEVE_BOUND:,} ceiling -- reduce x_to")
+                            f"the requested range needs data up to {number_format.whole(limit)}, "
+                            f"above this tool's {number_format.whole(MAX_SIEVE_BOUND)} ceiling -- "
+                            f"reduce x_to")
                     return read_is_prime_from_storage(_folder, limit)
 
                 result = check_pi_approx_range_from_source(
@@ -320,7 +322,7 @@ class ResearchPiApproxTab(BaseTab):
         except MissingStorageRangeError as e:
             T = self.T
             return "run", False, T("research_pi_approx.error_storage_missing",
-                                    floor=e.floor, upto=f"{e.needed_upto:,}")
+                                    floor=e.floor, upto=number_format.whole(e.needed_upto))
         except ValueError as e:
             return "run", False, str(e)
 
@@ -450,15 +452,16 @@ class ResearchPiApproxTab(BaseTab):
             self.pi_results_tree.delete(item)
         for row in result["rows"]:
             self.pi_results_tree.insert("", "end", values=(
-                f"{row['x']:,}", f"{row['pi_x']:,}",
-                f"{row['li_x']:.2f}", f"{row['r_x']:.2f}",
-                f"{row['li_error']:+.2f}", f"{row['r_error']:+.2f}"))
+                number_format.whole(row['x']), number_format.whole(row['pi_x']),
+                number_format.decimal(row['li_x'], 2), number_format.decimal(row['r_x'], 2),
+                number_format.signed(row['li_error'], 2), number_format.signed(row['r_error'], 2)))
 
         self.pi_summary_var.set(T(
             "research_pi_approx.summary",
-            x_from=f"{result['x_from']:,}", x_to=f"{result['x_to']:,}",
-            segment_size=f"{result['segment_size']:,}",
-            max_li_error=f"{result['max_li_error']:+.2f}",
-            max_r_error=f"{result['max_r_error']:+.2f}"))
+            x_from=number_format.whole(result['x_from']),
+            x_to=number_format.whole(result['x_to']),
+            segment_size=number_format.whole(result['segment_size']),
+            max_li_error=number_format.signed(result['max_li_error'], 2),
+            max_r_error=number_format.signed(result['max_r_error'], 2)))
 
         self._pi_refresh_nav_buttons()

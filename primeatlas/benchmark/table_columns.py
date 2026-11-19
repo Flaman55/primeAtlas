@@ -35,6 +35,7 @@ import math
 
 import benchmark_log_schema as schema
 
+from ..core import number_format
 from . import line_names, proof_rows, table_cells
 from .benchmark import benchmark_sieve_count
 
@@ -168,23 +169,27 @@ def _seconds_per_window(row):
     seconds, windows = _float(row, "total_seconds"), window_count(row)
     if not seconds or seconds < 0 or not windows:
         return ""
-    return _number_text(seconds / windows, 6)
+    return _plain_number(seconds / windows, 6)
 
 
 def _status(row):
     return _text(row, "run_status") or schema.RUN_STATUS_COMPLETED
 
 
-def _number_text(value, digits):
+def _plain_number(value, digits):
     return "" if value is None else f"{value:.{digits}f}"
+
+
+def _number_text(value, digits):
+    return "" if value is None else number_format.decimal(value, digits)
 
 
 _RAW = {
     ENGINE: lambda row: line_names.base_name(row, keep_commit=True),
-    "sieve_nps": lambda row: _number_text(sieve_nps(row), 0),
-    "run_nps": lambda row: _number_text(run_nps(row), 0),
-    "run_nps_unverified": lambda row: _number_text(run_nps_unverified(row), 0),
-    "verify_drop": lambda row: _number_text(verify_drop(row), 0),
+    "sieve_nps": lambda row: _plain_number(sieve_nps(row), 0),
+    "run_nps": lambda row: _plain_number(run_nps(row), 0),
+    "run_nps_unverified": lambda row: _plain_number(run_nps_unverified(row), 0),
+    "verify_drop": lambda row: _plain_number(verify_drop(row), 0),
     "verify_seconds": _verify_seconds,
     "seconds": lambda row: _first(row, "loop_session_seconds", "total_seconds"),
     "seconds_per_window": _seconds_per_window,
@@ -193,7 +198,7 @@ _RAW = {
     "purpose": schema.row_purpose,
     "status": _status,
     "threads": line_names.threads_label,
-    "write_mbps": lambda row: _number_text(write_mbps(row), 1),
+    "write_mbps": lambda row: _plain_number(write_mbps(row), 1),
 }
 
 
@@ -205,10 +210,11 @@ def raw(row, column):
 
 
 _SHOWN = {
-    "sieve_nps": lambda row, t: f"{sieve_nps(row):,.0f}",
-    "run_nps": lambda row, t: f"{run_nps(row):,.0f}",
-    "run_nps_unverified": lambda row, t: f"{run_nps_unverified(row):,.0f}",
-    "verify_drop": lambda row, t: f"{verify_drop(row):,.0f}",
+    "sieve_nps": lambda row, t: _number_text(sieve_nps(row), 0),
+    "run_nps": lambda row, t: _number_text(run_nps(row), 0),
+    "run_nps_unverified": lambda row, t: _number_text(run_nps_unverified(row), 0),
+    "verify_drop": lambda row, t: _number_text(verify_drop(row), 0),
+    "write_mbps": lambda row, t: _number_text(write_mbps(row), 1),
     "numbers": lambda row, t: line_names.width_label(numbers(row)),
     "purpose": lambda row, t: t(f"bench.purpose_{schema.row_purpose(row)}"),
     "status": lambda row, t: t(f"bench.run_status_{_status(row)}"),
@@ -248,5 +254,6 @@ def summary_text(stats, t):
     """The floor summary's s/window cell for stats() `stats`; "" for None."""
     if not stats:
         return ""
-    return t("bench.stat_summary", avg=f"{stats['avg']:.4f}", min=f"{stats['min']:.4f}",
-             max=f"{stats['max']:.4f}")
+    return t("bench.stat_summary", avg=number_format.decimal(stats['avg'], 4),
+             min=number_format.decimal(stats['min'], 4),
+             max=number_format.decimal(stats['max'], 4))

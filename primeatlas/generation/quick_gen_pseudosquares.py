@@ -18,7 +18,7 @@ from tkinter import messagebox, ttk
 
 import pseudosquares_const
 
-from ..core import number_field
+from ..core import number_field, number_format
 from ..core.info_tip import InfoTip
 from ..core.threads_field import ThreadsField
 from . import wsl_resources
@@ -129,12 +129,13 @@ class QuickGenPseudosquares:
             owner = "pseudosquares" if result["error"] == "beyond_ceiling" else "native"
             messagebox.showerror(self.T("quick.dialog_title"), self.T(
                 f"quick.error_{owner}_{result['error']}",
-                max_stop=f"{pseudosquares_const.MAX_STOP:,}",
+                max_stop=number_format.whole(pseudosquares_const.MAX_STOP),
                 max_floor=pseudosquares_const.MAX_FLOOR))
             return
         self.quick_status_var.set(self.T(
             "quick.summary_pseudosquares", mode=mode, floor=result["floor"],
-            lo=f"{result['lo']:,}", hi=f"{result['hi']:,}", count=result["count"],
+            lo=number_format.whole(result['lo']), hi=number_format.whole(result['hi']),
+            count=result["count"],
             threads=threads or "Auto")
             + (self.T("quick.note_pseudosquares_clamped") if result["clamped"] else ""))
         self._on_run_pseudosquares(result["floor"], result["target_idx_start"],

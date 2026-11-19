@@ -18,6 +18,7 @@ from tkinter import ttk, messagebox
 import pattern_catalog_v1
 
 from ..core import number_field
+from ..core import number_format
 from ..core import background, theme_dynamic
 from ..core.base_tab import BaseTab
 from ..core.progress_bar_owner import show_fraction
@@ -34,15 +35,16 @@ DASH = "—"
 
 
 def format_width(width):
-    return f"{width:,}" if width < 10 ** 15 else f"{width:.4e}"
+    return number_format.whole(width) if width < 10 ** 15 else f"{width:.4e}"
 
 
 def format_row(row):
     """Table cells of one scan row, without the pattern label."""
     ratio, sigma = row["ratio"], row["sigma"]
-    return (f"10p{row['base_exponent']}", format_width(row["width"]), f"{row['hits']:,}",
-            f"{row['expected']:.4g}", DASH if ratio is None else f"{ratio:.4f}",
-            DASH if sigma is None else f"{sigma:+.2f}")
+    return (f"10p{row['base_exponent']}", format_width(row["width"]),
+            number_format.whole(row["hits"]), f"{row['expected']:.4g}",
+            DASH if ratio is None else number_format.decimal(ratio, 4),
+            DASH if sigma is None else number_format.signed(sigma, 2))
 
 
 class ConstellationsDensityTab(BaseTab):

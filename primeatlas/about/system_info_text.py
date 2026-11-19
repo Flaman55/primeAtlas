@@ -4,11 +4,13 @@ Windows (OS, CPU, RAM, the computer's id in benchmark rows), WSL (distro, kernel
 of the Windows RAM with where it comes from (.wslconfig memory= or the WSL default).
 A value that could not be read shows as "unknown".
 """
+from ..core import number_format
+
 GIB = 1024 ** 3
 
 
 def _gib(value, T):
-    return f"{value / GIB:.1f} GiB" if value else T("about.system_unknown")
+    return f"{number_format.decimal(value / GIB, 1)} GiB" if value else T("about.system_unknown")
 
 
 def _known(value, T):

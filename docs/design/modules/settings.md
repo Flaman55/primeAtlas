@@ -1,6 +1,7 @@
 # Module: settings (Settings and About tabs)
 
-Settings: language, theme and storage path (General), metadata and full-data backups, restore, storage
+Settings: language, number format, theme and storage path (General; the number format follows the
+language unless another notation is picked, applied at the next start like the language), metadata and full-data backups, restore, storage
 integration and deletes (Backup), optional-library installers and self-update (Updates), and the
 first-run WSL setup. About: version (release + merges since it), links, This computer (Windows and
 WSL hardware, the WSL RAM limit and a row that changes it), the CHANGELOG.md entries since the last release in the UI

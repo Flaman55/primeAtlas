@@ -23,15 +23,15 @@ TIP_KEY = "bench.measure_tip"
 NOTE_KEY = "bench.measure_note"
 HEADING_KEY = "bench.measure_heading"
 
-ChartSpec = namedtuple("ChartSpec", "metric1 metric2 label_key1 label_key2 fmt1 fmt2 references")
+ChartSpec = namedtuple("ChartSpec", "metric1 metric2 label_key1 label_key2 places1 places2 references")
 
 _CHARTS = {
     PHASE: ChartSpec("sieve", "sieve_spw", "bench.axis_sieve_nps", "bench.axis_sieve_spw",
-                     "{:,.0f}", "{:,.4f}", True),
+                     0, 4, True),
     WALL: ChartSpec("sieve_wall", "sieve_wall_spw", "bench.axis_sieve_wall_nps",
-                    "bench.axis_sieve_wall_spw", "{:,.0f}", "{:,.4f}", True),
+                    "bench.axis_sieve_wall_spw", 0, 4, True),
     OVERHEAD: ChartSpec("sieve_overhead", "sieve_overhead_pct", "bench.axis_overhead_nps",
-                        "bench.axis_overhead_pct", "{:,.0f}", "{:,.1f}", False),
+                        "bench.axis_overhead_pct", 0, 1, False),
 }
 
 

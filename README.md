@@ -1370,6 +1370,14 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               country, powers, superscripts, scientific, pasted
                               forms), exact, no eval; ok / ambiguous (its readings)
                               / invalid (its reason) (unitTests/test_number_text.py)
+  number_format.py              whole(n), decimal(x, places) -- the one formatter of
+                              numbers shown to a person, in the notation of the UI
+                              language (pl 1 234,5; en 1,234.5) or the one picked in
+                              Settings > General; logs, files and command lines keep
+                              Python's own (unitTests/test_number_format.py, which
+                              also guards every f-string of primeatlas/)
+  number_format_dynamic.py      STYLE -- the notation the app runs in (English until
+                              app_dynamic or the renderer applies the saved choice)
   number_field.py               attach(entry, T) -- the app's one number field (Entry
                               or Spinbox, whole or fraction, words like Auto): red
                               when invalid, a "Could be" popup with the readings

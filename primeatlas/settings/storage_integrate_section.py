@@ -17,7 +17,7 @@ from tkinter import ttk, messagebox, filedialog
 from ..core.widgets import HeightGrip
 from ..generation.generation_console import GenerationConsole
 from . import storage_integrate as si
-from ..core import background
+from ..core import background, number_format
 
 
 class StorageIntegrateSection:
@@ -101,10 +101,10 @@ class StorageIntegrateSection:
                    else "settings.storage_integrate_row_extend")
             self.storage_integrate_results_listbox.insert("end", self.T(
                 key, base_exponent=entry["base_exponent"], windows=windows, hits=hits,
-                mb=entry["missing_bytes"] / (1024 * 1024)))
+                mb=number_format.decimal(entry["missing_bytes"] / (1024 * 1024), 1)))
         self.storage_integrate_totals_var.set(self.T(
             "settings.storage_integrate_totals", floors=len(self._storage_integrate_plan),
-            windows=total_windows, hits=total_hits, mb=total_bytes / (1024 * 1024)))
+            windows=total_windows, hits=total_hits, mb=number_format.decimal(total_bytes / (1024 * 1024), 1)))
         self._update_storage_integrate_buttons()
 
     def _update_storage_integrate_buttons(self):

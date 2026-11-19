@@ -133,6 +133,22 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   wyspa. Mała wyspa nadal idzie plik po pliku. Wpisywanie szerokości, pole Podział i Auto się
   nie zmieniają.
 
+### +9 — Numbers in the notation of the language, with a choice in Settings
+
+- English: Every number the app shows (labels, tables, hints, visualization HUDs, the benchmark
+  report) is now written in the notation of the interface language: 1 234 567,89 in Polish,
+  1,234,567.89 in English. Settings > General gains Number format: Follow the language, or one
+  of 1 234 567,89 · 1,234,567.89 · 1.234.567,89 · 1'234'567.89 · 1234567.89; like the language,
+  the change restarts the app. Logs, CSV and other files, command lines and the values the app
+  writes into number fields keep the plain form; short widths like 2.5e8 keep the dot.
+- Polski: Każda liczba, którą pokazuje aplikacja (etykiety, tabele, podpowiedzi, HUD-y
+  wizualizacji, raport benchmarku), jest teraz zapisana w notacji języka interfejsu:
+  1 234 567,89 po polsku, 1,234,567.89 po angielsku. Ustawienia > Ogólne dostają Format liczb:
+  Według języka albo jeden z 1 234 567,89 · 1,234,567.89 · 1.234.567,89 · 1'234'567.89 ·
+  1234567.89; tak jak język, zmiana restartuje aplikację. Logi, CSV i inne pliki, wiersze
+  poleceń i wartości wpisywane przez aplikację do pól liczbowych zostają w prostej postaci;
+  krótkie szerokości jak 2.5e8 zachowują kropkę.
+
 ## 1.5.0 — 2026-11-17
 
 ### +1 — Generation: RAM check on Generate, proposal from the run's start, native primesieve without storage

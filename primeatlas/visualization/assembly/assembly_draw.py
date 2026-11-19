@@ -27,6 +27,7 @@ import math
 import numpy as np
 
 from primeatlas.visualization.assembly.assembly_layout import PHASE_COLLAPSE, PHASE_COPY, PHASE_PRIME, PHASE_STRIKE
+from primeatlas.core import number_format
 from primeatlas.visualization.shared.world_labels import ANCHOR_ABOVE, ANCHOR_RIGHT_OF, WorldLabel
 from primeatlas.visualization.tree.tree_colors import EDGE_RGB, NEUTRAL_NODE_RGB, prime_color
 from primeatlas.visualization.tree.tree_draw import MARKER_FLOATS, _segment_pairs, _solid_rows, value_text
@@ -132,7 +133,7 @@ def floor_text(steps, floor):
         return "period 1  1 lane"
     st = steps[floor - 1]
     lanes = st.lanes_after
-    return f"p={st.q:,}  period {count_text(st.period_after)}  {count_text(lanes)} lane{'s' if lanes != 1 else ''}"
+    return f"p={number_format.whole(st.q)}  period {count_text(st.period_after)}  {count_text(lanes)} lane{'s' if lanes != 1 else ''}"
 
 
 def _marker_px(spacing_world, max_px):
@@ -312,7 +313,7 @@ def _add_grid(data, steps, st, phase, frac, style, base_n, marker_blocks, segmen
                                                 cell_px * (_HIGHLIGHT_RING + _NEXT_PRIME_PULSE * pulse),
                                                 _HIGHLIGHT_RGB, hollow=1.0))
 
-    data.labels.append(WorldLabel(x0, y0 - _GRID_HEADER_SHARE * R, f"{q} copies x {cols:,}", tuple(q_rgb),
+    data.labels.append(WorldLabel(x0, y0 - _GRID_HEADER_SHARE * R, f"{q} copies x {number_format.whole(cols)}", tuple(q_rgb),
                                   anchor=ANCHOR_RIGHT_OF))
     if int(visible.sum()) <= style.max_labels:
         for index in np.nonzero(visible)[0]:

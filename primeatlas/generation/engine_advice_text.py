@@ -6,13 +6,14 @@ T is a translator (primeatlas.core.i18n.Translator), duration(seconds) formats a
 """
 from collections import namedtuple
 
+from ..core import number_format
 from . import engine_advisor
 
 AdviceText = namedtuple("AdviceText", "proposal warning guest")
 
 
 def _ratio(value):
-    return f"{value:.1f}" if value < 100 else f"{value:,.0f}"
+    return number_format.decimal(value, 1 if value < 100 else 0)
 
 
 def _offset(value):

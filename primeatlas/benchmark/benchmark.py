@@ -504,17 +504,17 @@ def group_benchmark_rows_by_floor(rows):
 
 
 # A report chart: (tab chart key, axis, metric of benchmark_engine_lines(), axis title key,
-# value format). The report draws one metric per chart, two charts per page.
-_RUN_CHARTS = (("run", "primary", "growth", "bench.axis_total_nps", "{:,.0f}"),
-               ("run", "secondary", "write", "bench.axis_write_mbps", "{:,.1f}"))
-_RAM_CHARTS = (("ram", "primary", "ram", "bench.axis_ram_mb", "{:,.0f}"),
-               ("ram", "secondary", "ram_per_window", "bench.axis_ram_mb_window", "{:,.2f}"))
+# value decimal places). The report draws one metric per chart, two charts per page.
+_RUN_CHARTS = (("run", "primary", "growth", "bench.axis_total_nps", 0),
+               ("run", "secondary", "write", "bench.axis_write_mbps", 1))
+_RAM_CHARTS = (("ram", "primary", "ram", "bench.axis_ram_mb", 0),
+               ("ram", "secondary", "ram_per_window", "bench.axis_ram_mb_window", 2))
 
 
 def _sieve_charts(measure):
     spec = sieve_measure.chart(measure)
-    return (("sieve", "primary", spec.metric1, spec.label_key1, spec.fmt1),
-            ("sieve", "secondary", spec.metric2, spec.label_key2, spec.fmt2))
+    return (("sieve", "primary", spec.metric1, spec.label_key1, spec.places1),
+            ("sieve", "secondary", spec.metric2, spec.label_key2, spec.places2))
 
 
 def report_chart_pages(rows, sieve_points=None, references=False,
@@ -617,11 +617,11 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
     point_views = point_views or {}
 
     def chart(spec, y0, h, extra=()):
-        chart_key, axis, _metric, label_key, fmt = spec
+        chart_key, axis, _metric, label_key, places = spec
         view = point_views.get(chart_key) or chart_points.DEFAULT
         return chart_ops(content_left, y0, content_width, h,
                          report_chart_series(rows, spec, hidden_lines, extra, point_views),
-                         translator=translator, label_key1=label_key, fmt1=fmt,
+                         translator=translator, label_key1=label_key, places1=places,
                          log_y=log_y, pins1=axis_pins(y_pins.get(chart_key), axis),
                          x_view=x_view, y_view=(y_views or {}).get(chart_key),
                          x_mode=view.x_mode)

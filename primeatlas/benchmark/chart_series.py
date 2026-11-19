@@ -18,6 +18,7 @@ import copy
 import math
 from collections import namedtuple
 
+from ..core import number_format
 from .line_colors import ENGINE_COLORS, OTHER_ENGINE_COLOR, engine_color  # noqa: F401
 
 # name: legend text; tag: short text after a point's value ("v5"), "" for none;
@@ -142,11 +143,12 @@ def series_xs(*series_lists):
     return sorted({x for series in series_lists for s in series for x, _ in s.points})
 
 
-def point_label(fmt, value, series, show_unknown=False, x=None):
-    """Value text with the series tag and the point's note: "1,234 [v5] @ 10^11"."""
+def point_label(places, value, series, show_unknown=False, x=None):
+    """Value text with `places` decimals, the series tag and the point's note:
+    "1,234 [v5] @ 10^11"."""
     tag = series.tag or ("unknown" if show_unknown and not series.dashed else "")
     note = (series.notes or {}).get(x, "")
-    return fmt.format(value) + (" [" + tag + "]" if tag else "") + (" @ " + note if note else "")
+    return number_format.decimal(value, places) + (" [" + tag + "]" if tag else "") + (" @ " + note if note else "")
 
 
 class YScale:
@@ -238,11 +240,11 @@ class YScale:
             return ticks
         return [self.lo + (self.hi - self.lo) * i / 5 for i in range(6)]
 
-    def tick_label(self, value, fmt):
+    def tick_label(self, value, places):
         if self.log:
             exponent = math.floor(math.log10(value) + 1e-9)
             return "%de%d" % (round(value / 10.0 ** exponent), exponent)
-        return fmt.format(value)
+        return number_format.decimal(value, places)
 
 
 def y_scale(series, log=False, pins=None):

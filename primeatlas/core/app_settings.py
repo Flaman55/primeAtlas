@@ -21,6 +21,7 @@ import os
 import json
 
 from .i18n import DEFAULT_LANGUAGE, LOCALES_DIR, load_saved_language, save_language
+from .number_format import CHOICES as NUMBER_FORMAT_CHOICES, FOLLOW_LANGUAGE
 from .theme import DEFAULT_THEME, clamp_brightness, clamp_font_scale
 
 SETTINGS_FILENAME = "app_settings.json"
@@ -205,6 +206,19 @@ class AppSettings:
 
     def set_font_scale(self, percent):
         self._data["font_scale"] = clamp_font_scale(percent)
+        self.save()
+
+    @property
+    def number_format(self):
+        """The number notation picked in Settings > General (a number_format.CHOICES
+        code); FOLLOW_LANGUAGE when unset or unknown. Applied once at startup
+        (number_format.apply_saved()), same restart-required pattern as `theme`."""
+        choice = self._data.get("number_format")
+        return choice if choice in NUMBER_FORMAT_CHOICES else FOLLOW_LANGUAGE
+
+    def set_number_format(self, choice):
+        self._data["number_format"] = (choice if choice in NUMBER_FORMAT_CHOICES
+                                       else FOLLOW_LANGUAGE)
         self.save()
 
     @property

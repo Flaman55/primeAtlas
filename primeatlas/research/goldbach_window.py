@@ -65,6 +65,8 @@ type a prime by hand.
 """
 import time
 
+from ..core import number_format
+
 
 def sieve_is_prime(limit):
     """Classic sieve of Eratosthenes. Returns a bytearray `is_prime` of length
@@ -409,7 +411,8 @@ def both_base_window_rows(is_prime, Pmax, Pmin=BOTH_BASE_PMIN, row_cap=None,
     if Pmax > BOTH_BASE_PMAX_CEILING:
         raise ValueError(
             f"both_base_window_rows is only verified up to Pmax="
-            f"{BOTH_BASE_PMAX_CEILING:,}; Pmax={Pmax:,} exceeds that and is "
+            f"{number_format.whole(BOTH_BASE_PMAX_CEILING)}; "
+            f"Pmax={number_format.whole(Pmax)} exceeds that and is "
             f"refused rather than silently extrapolated")
     import numpy as np
     window_max = Pmax + Pmin

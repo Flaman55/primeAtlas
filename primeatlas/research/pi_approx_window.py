@@ -44,6 +44,8 @@ directly without ever sieving, reaching x far past MAX_SIEVE_BOUND.
 """
 import math
 
+from ..core import number_format
+
 MAX_SIEVE_BOUND = 200_000_000
 """Refuses (ValueError) any check whose largest checkpoint would need a
 fresh in-memory sieve bigger than this (~200MB bytearray) -- same safety
@@ -235,8 +237,8 @@ def check_pi_approx_range_from_source(x_from, x_to, step, is_prime_source,
     is_prime = is_prime_source(x_to)
     if len(is_prime) <= x_to:
         raise ValueError(
-            f"is_prime array too short: need index up to {x_to:,}, got "
-            f"length {len(is_prime):,}")
+            f"is_prime array too short: need index up to {number_format.whole(x_to)}, got "
+            f"length {number_format.whole(len(is_prime))}")
     pi_values = _pi_at_checkpoints(is_prime, checkpoints)
     return _build_result(checkpoints, pi_values, x_from, x_to, step, row_cap, row_offset)
 
@@ -258,8 +260,9 @@ def check_pi_approx_range(x_from, x_to, step, row_cap=None, row_offset=0):
     def _source(limit):
         if limit > MAX_SIEVE_BOUND:
             raise ValueError(
-                f"the requested range needs a sieve up to {limit:,}, above this "
-                f"tool's {MAX_SIEVE_BOUND:,} ceiling for a fresh in-memory sieve -- "
+                f"the requested range needs a sieve up to {number_format.whole(limit)}, "
+                f"above this tool's {number_format.whole(MAX_SIEVE_BOUND)} ceiling "
+                f"for a fresh in-memory sieve -- "
                 f"reduce x_to")
         return sieve_is_prime(limit)
 

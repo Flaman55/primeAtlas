@@ -24,6 +24,7 @@ if _PRIME_SIEVE_DIR not in sys.path:
     sys.path.insert(0, _PRIME_SIEVE_DIR)
 
 from primeatlas.visualization.shared.bigint import format_big
+from primeatlas.core import number_format
 from primeatlas.visualization.rings.ring.ring_windows import (
     WINDOW_FAMILY_COLORS, general_law_window_bounds, legendre_level_at, nested_shell_colors)
 
@@ -79,12 +80,12 @@ def hud_lines_for_n(primes_active, n, pos, enabled_ids, theta, mode, tracked_sta
 
     if "bertrand" in enabled_ids:
         lo = n // 2
-        lines.append(f"Bertrand window: ({lo:,}, {n:,}]")
+        lines.append(f"Bertrand window: ({number_format.whole(lo)}, {number_format.whole(n)}]")
 
     if "legendre" in enabled_ids:
         k = legendre_level_at(n)
         lo = k * k
-        lines.append(f"Legendre window: k={k}  ({lo:,}, {n:,}]")
+        lines.append(f"Legendre window: k={k}  ({number_format.whole(lo)}, {number_format.whole(n)}]")
 
     if "generalLaw" in enabled_ids:
         lo, hi, k, _factor = general_law_window_bounds(n, theta, mode)
@@ -96,13 +97,13 @@ def hud_lines_for_n(primes_active, n, pos, enabled_ids, theta, mode, tracked_sta
         # real, meaningful level here, unlike 'bertrand'); neither has a tent
         # factor to report (that's 'stepped'-only).
         if mode == "stepped":
-            lines.append(f"General Law window (theta={theta}, k={k}): ({lo_floor:,}, {hi:,}]")
+            lines.append(f"General Law window (theta={theta}, k={k}): ({number_format.whole(lo_floor)}, {number_format.whole(hi)}]")
         elif mode == "bertrand":
-            lines.append(f"General Law window (Bertrand): ({lo_floor:,}, {hi:,}]")
+            lines.append(f"General Law window (Bertrand): ({number_format.whole(lo_floor)}, {number_format.whole(hi)}]")
         elif mode == "legendre":
-            lines.append(f"General Law window (Legendre, k={k}): ({lo_floor:,}, {hi:,}]")
+            lines.append(f"General Law window (Legendre, k={k}): ({number_format.whole(lo_floor)}, {number_format.whole(hi)}]")
         else:
-            lines.append(f"General Law window (theta={theta}): ({lo_floor:,}, {hi:,}]")
+            lines.append(f"General Law window (theta={theta}): ({number_format.whole(lo_floor)}, {number_format.whole(hi)}]")
 
     # A small color LEGEND (see ring_windows.nested_shell_colors) -- one line
     # per distinct NESTING SHELL among currently-enabled families (not every

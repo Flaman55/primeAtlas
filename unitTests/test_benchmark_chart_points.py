@@ -375,7 +375,7 @@ class HoverTests(unittest.TestCase):
             root.update()
             for mode, x, want in ((cp.X_WIDTH, math.log10(2e11), "2x10^11"),
                                   (cp.X_FLOOR, 28, "28")):
-                point = (100, 100, x, 5.0, "{:,.0f}", "#ff00ff", "bench.axis_nps", "primary")
+                point = (100, 100, x, 5.0, "5", "#ff00ff", "bench.axis_nps", "primary")
                 _bind_chart_hover(canvas, [point], t, "#000000", "#ffffff", 400, 200, mode)
                 canvas.event_generate("<Motion>", x=100, y=100)
                 root.update()

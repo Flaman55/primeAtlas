@@ -140,14 +140,14 @@ class ScaleTests(unittest.TestCase):
         self.assertTrue(0 < scale.frac(2.6e6) < 0.1, scale.frac(2.6e6))
         self.assertTrue(0.9 < scale.frac(2.8e9) < 1, scale.frac(2.8e9))
         self.assertEqual(scale.ticks(), [1e7, 1e8, 1e9])
-        self.assertEqual(scale.tick_label(1e9, "{:,.0f}"), "1e9")
+        self.assertEqual(scale.tick_label(1e9, 0), "1e9")
         self.assertFalse(scale.usable(0))
 
     def test_narrow_log_range_gets_1_2_5_ticks(self):
         scale = chart_series.YScale([4e7, 3.5e8], log=True)
         self.assertTrue(0 < scale.frac(4e7) < 0.1 and 0.9 < scale.frac(3.5e8) < 1)
         self.assertEqual(scale.ticks(), [5e7, 1e8, 2e8])
-        self.assertEqual([scale.tick_label(v, "") for v in scale.ticks()], ["5e7", "1e8", "2e8"])
+        self.assertEqual([scale.tick_label(v, 0) for v in scale.ticks()], ["5e7", "1e8", "2e8"])
         flat = chart_series.YScale([7.0, 7.0], log=True)
         self.assertGreaterEqual(len(flat.ticks()), 2)
         self.assertAlmostEqual(flat.frac(7.0), 0.5)
@@ -194,7 +194,7 @@ class PdfTests(unittest.TestCase):
     def test_chart_ops_tag_both_engines_at_one_floor(self):
         series1 = chart_series.engine_series(benchmark.benchmark_engine_lines(ROWS, "growth"))
         series2 = chart_series.engine_series(benchmark.benchmark_engine_lines(ROWS, "write"))
-        ops = "\n".join(chart_pdf.chart_ops(0, 0, 800, 140, series1, series2, fmt2="{:,.1f}"))
+        ops = "\n".join(chart_pdf.chart_ops(0, 0, 800, 140, series1, series2, places2=1))
         self.assertIn("350,000,000 [v5]", ops)
         self.assertIn("50,000,000 [v4.1]", ops)
         self.assertIn("1.0 [v5]", ops)
@@ -442,7 +442,7 @@ class PinTests(unittest.TestCase):
     def test_chart_ops_follow_the_pins(self):
         series1 = chart_series.engine_series(benchmark.benchmark_engine_lines(ROWS, "growth"))
         series2 = chart_series.engine_series(benchmark.benchmark_engine_lines(ROWS, "write"))
-        ops = "\n".join(chart_pdf.chart_ops(0, 0, 800, 140, series1, series2, fmt2="{:,.1f}",
+        ops = "\n".join(chart_pdf.chart_ops(0, 0, 800, 140, series1, series2, places2=1,
                                             pins1=(None, 5e7)))
         self.assertNotIn("350,000,000 [v5]", ops)
         self.assertIn("(50,000,000 [v4.1]) Tj", ops)

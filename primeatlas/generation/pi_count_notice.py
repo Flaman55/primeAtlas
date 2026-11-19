@@ -17,6 +17,8 @@ import os
 
 from sieving_prime_count_v5 import SIEVING_PRIMES_COUNT_CACHE_FILENAME, _seed_from_known_pi
 
+from ..core import number_format
+
 CACHE_FILENAME = SIEVING_PRIMES_COUNT_CACHE_FILENAME
 
 # Seconds per counted prime for the time the notice names. Arbitrary, inside the range
@@ -91,4 +93,4 @@ def format_duration(seconds):
         return f"~{max(1, round(seconds))} s"
     if seconds < 3600:
         return f"~{round(seconds / 60)} min"
-    return f"~{seconds / 3600:.1f} h"
+    return f"~{number_format.decimal(seconds / 3600, 1)} h"

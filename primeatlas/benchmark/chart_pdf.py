@@ -82,7 +82,7 @@ def _rgb(hex_color):
 
 def chart_ops(x0, y0, w, h, series1=(), series2=(), translator=None,
               label_key1="bench.axis_nps", label_key2="bench.axis_spw",
-              fmt1="{:,.0f}", fmt2="{:,.3f}", log_y=False, pins1=None, pins2=None,
+              places1=0, places2=3, log_y=False, pins1=None, pins2=None,
               backend=PDF_BACKEND, x_view=None, y_view=None, x_mode=chart_points.X_FLOOR):
     """Ops drawing the chart inside the box [x0, x0+w] x [y0, y0+h].
 
@@ -92,7 +92,7 @@ def chart_ops(x0, y0, w, h, series1=(), series2=(), translator=None,
     magnitude. The x ticks are the union of all floors. A legend of named series runs
     along the top edge.
 
-    label_key1/label_key2: i18n keys of the axis titles; fmt1/fmt2: str.format() templates
+    label_key1/label_key2: i18n keys of the axis titles; places1/places2: the decimal places
     of the value labels and linear ticks. pins1/pins2: the axes' pinned (min, max), see
     chart_series.axis_pins(). backend: PDF_BACKEND or a chart_svg.SvgBackend. x_view/y_view:
     the zoomed part of the chart (chart_view.py), as on the tab's canvas: the axes show it,
@@ -113,7 +113,7 @@ def chart_ops(x0, y0, w, h, series1=(), series2=(), translator=None,
     scale1 = y_scale(series1, log_y, pins1).zoomed(y_view) if series1 else None
     scale2 = y_scale(series2, log_y, pins2).zoomed(y_view) if has_secondary else None
     # The left margin fits the longest tick label (7 pt Courier) left of the axis.
-    tick_chars = max((len(scale1.tick_label(v, fmt1)) for v in scale1.ticks()),
+    tick_chars = max((len(scale1.tick_label(v, places1)) for v in scale1.ticks()),
                      default=0) if scale1 else 0
     pad_left = max(55, tick_chars * 0.6 * 7 + 10)
     pad_right = 55 if has_secondary else 15
@@ -164,7 +164,7 @@ def chart_ops(x0, y0, w, h, series1=(), series2=(), translator=None,
         for y_val in scale1.ticks():
             y_px = sy(scale1, y_val)
             ops.append(b.line(plot_x0 - 3, y_px, plot_x0, y_px, rgb=_AXIS_GRAY))
-            text = scale1.tick_label(y_val, fmt1)
+            text = scale1.tick_label(y_val, places1)
             ops.append(b.text(plot_x0 - 5 - len(text) * 0.6 * 7, y_px - 3, 7, "Courier",
                                      text))
     if scale2:
@@ -173,7 +173,7 @@ def chart_ops(x0, y0, w, h, series1=(), series2=(), translator=None,
             ops.append(b.line(plot_x0 + plot_w, y_px, plot_x0 + plot_w + 3, y_px,
                                      rgb=_AXIS_GRAY))
             ops.append(b.text(plot_x0 + plot_w + 5, y_px - 3, 7, "Courier",
-                                     scale2.tick_label(y_val, fmt2)))
+                                     scale2.tick_label(y_val, places2)))
 
     for x_val in x_ticks:
         x_px = sx(x_val)
@@ -211,7 +211,7 @@ def chart_ops(x0, y0, w, h, series1=(), series2=(), translator=None,
     # Labels stay between the x axis and the legend row, off the floor tick labels.
     label_y_min, label_y_max = plot_y0 + 2, y0 + h - 22
 
-    def draw(series, scale, fmt, label_dy, secondary=False):
+    def draw(series, scale, places, label_dy, secondary=False):
         for s in series:
             pts = [(x, y) for x, y in s.points if scale.usable(y)]
             rgb = _rgb(s.color)
@@ -233,7 +233,7 @@ def chart_ops(x0, y0, w, h, series1=(), series2=(), translator=None,
                 last = i == len(pts) - 1
                 above, below = cy + label_dy, cy - 22 - label_dy
                 steps = range(_LAST_LABEL_STEPS if last else 1)
-                text = b.fold(point_label(fmt, y_val, s, x=x_val))
+                text = b.fold(point_label(places, y_val, s, x=x_val))
                 lx = max(x0 + 2, min(cx - 10, x0 + w - 2 - len(text) * _LABEL_CHAR_W))
                 positions = [(lx, y) for k in steps
                              for y in (above + k * (_LABEL_SIZE + 2),
@@ -242,9 +242,9 @@ def chart_ops(x0, y0, w, h, series1=(), series2=(), translator=None,
                 candidates.append(((0 if last else 1, cx), positions, text, rgb))
 
     if scale1:
-        draw(series1, scale1, fmt1, 8)
+        draw(series1, scale1, places1, 8)
     if scale2:
-        draw(series2, scale2, fmt2, -14, secondary=True)
+        draw(series2, scale2, places2, -14, secondary=True)
     for x, y, text, rgb in place_labels(candidates):
         ops.append(b.text(x, y, _LABEL_SIZE, "Courier", text, rgb=rgb))
     return ops

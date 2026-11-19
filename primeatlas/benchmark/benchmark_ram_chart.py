@@ -30,7 +30,7 @@ class BenchmarkRamChart:
         self._show_mixed_widths("ram", ("ram", "ram_per_window"))
         self._draw_chart("ram", self.benchmark_chart3, [], DEFAULT_SIZE,
                          label_key1="bench.axis_ram_mb", label_key2="bench.axis_ram_mb_window",
-                         fmt1="{:,.0f}", fmt2="{:,.2f}",
+                         places1=0, places2=2,
                          series1=self._chart_series("ram"),
                          series2=self._chart_series("ram_per_window"),
                          marks=self._chart_marks("ram", "ram_per_window"))

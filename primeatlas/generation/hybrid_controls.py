@@ -5,6 +5,7 @@ from tkinter import messagebox
 
 from prime_sieve.hybrid_policy import MAX_TARGET, parameters
 
+from ..core import number_format
 from ..core.number_text import plain_number
 
 
@@ -54,8 +55,10 @@ class HybridControls:
             if error:
                 self.quick_hybrid_range_var.set(error)
                 return
-            text = self.T("quick.hybrid_range_summary", limit=result['limit'],
-                           main_max=result['main_max'], max_target=MAX_TARGET)
+            text = self.T("quick.hybrid_range_summary",
+                           limit=number_format.whole(result['limit']),
+                           main_max=number_format.whole(result['main_max']),
+                           max_target=number_format.whole(MAX_TARGET))
             try:
                 _, end = self._hybrid_selected_range()
                 text += self.T("quick.hybrid_range_start_hint")
@@ -90,8 +93,11 @@ class HybridControls:
             self.quick_hybrid_main_cap_var.set(str(result['main']))
             self.quick_hybrid_filter_prime_count_var.set(str(result['count']))
             if (main, count) != (result['main'], result['count']):
-                message = self.T("quick.hybrid_status_adjusted", main=main, new_main=result['main'],
-                                  count=count, new_count=result['count'], limit=result['limit'])
+                message = self.T("quick.hybrid_status_adjusted", main=number_format.whole(main),
+                                  new_main=number_format.whole(result['main']),
+                                  count=number_format.whole(count),
+                                  new_count=number_format.whole(result['count']),
+                                  limit=number_format.whole(result['limit']))
                 self.quick_status_var.set(message)
                 self.loop_console.append(message + '\n')
             else:
@@ -108,7 +114,8 @@ class HybridControls:
 
     def _offer_hybrid_primesieve(self, start, end):
         if not messagebox.askyesno(self.T("quick.hybrid_limit_title"),
-                self.T("quick.hybrid_limit_confirm_switch", start=start, end=end, max_target=MAX_TARGET)):
+                self.T("quick.hybrid_limit_confirm_switch", start=number_format.whole(start),
+                       end=number_format.whole(end), max_target=number_format.whole(MAX_TARGET))):
             self.quick_status_var.set(self.T("quick.hybrid_status_not_started"))
             return
         self.quick_primesieve_from_var.set(str(start))

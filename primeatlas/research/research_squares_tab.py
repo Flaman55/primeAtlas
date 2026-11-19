@@ -42,6 +42,7 @@ import datetime
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
+from ..core import number_format
 from ..core import number_field
 from ..core import background
 from ..core.base_tab import BaseTab
@@ -351,8 +352,9 @@ class ResearchSquaresTab(BaseTab):
                 def source(max_bound, _folder=portal_folder):
                     if max_bound > MAX_SIEVE_BOUND:
                         raise ValueError(
-                            f"the requested range needs data up to {max_bound:,}, above "
-                            f"this tool's {MAX_SIEVE_BOUND:,} ceiling -- reduce n_to")
+                            f"the requested range needs data up to {number_format.whole(max_bound)}, "
+                            f"above this tool's {number_format.whole(MAX_SIEVE_BOUND)} ceiling -- "
+                            f"reduce n_to")
                     return read_is_prime_from_storage(_folder, max_bound)
 
                 result = check_interval_range_from_source(
@@ -372,7 +374,7 @@ class ResearchSquaresTab(BaseTab):
         except MissingStorageRangeError as e:
             T = self.T
             return False, T("research_squares.error_storage_missing",
-                             floor=e.floor, upto=f"{e.needed_upto:,}")
+                             floor=e.floor, upto=number_format.whole(e.needed_upto))
         except ValueError as e:
             return False, str(e)
 
@@ -448,7 +450,8 @@ class ResearchSquaresTab(BaseTab):
         if result["covered"]:
             self.squares_summary_var.set(T(
                 "research_squares.summary_covered",
-                n_from=f"{result['n_from']:,}", n_to=f"{result['n_to']:,}"))
+                n_from=number_format.whole(result['n_from']),
+                n_to=number_format.whole(result['n_to'])))
         else:
             shown = result["counterexamples"][:20]
             more = len(result["counterexamples"]) - len(shown)

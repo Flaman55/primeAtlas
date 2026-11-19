@@ -31,6 +31,8 @@ offering logic itself.
 """
 from tkinter import messagebox
 
+from ..core import number_format
+
 
 class GenerationOfferCoordinator:
     def __init__(self, get_generation_tab_widget, status_var, translator,
@@ -124,14 +126,15 @@ class GenerationOfferCoordinator:
             return "skipped"
         if not messagebox.askyesno(
                 self.T("common.dialog_search_title"),
-                self.T("search.offer_generate_prime_window", number=f"{number:,}",
+                self.T("search.offer_generate_prime_window", number=number_format.whole(number),
                         base_exponent=base_exponent,
-                        rounded_start=f"{plan['rounded_start']:,}",
-                        rounded_end=f"{plan['rounded_end']:,}")):
+                        rounded_start=number_format.whole(plan['rounded_start']),
+                        rounded_end=number_format.whole(plan['rounded_end']))):
             return "skipped"
         gen._pending_search_after_prime_gen = {
             "kind": kind, "base_exponent": base_exponent, "number": number}
-        self.status.set(self.T("search.status_generating_prime_window", number=f"{number:,}"))
+        self.status.set(self.T("search.status_generating_prime_window",
+                               number=number_format.whole(number)))
         target_idx = (plan["rounded_start"] - 10 ** plan["floor"]) // self._quick_gen_max_window_width
         if plan["rounded_start"] > self._primesieve_max_stop:
             gen._apply_orchestrator_direct_params_and_run(plan["floor"], target_idx, 1)
@@ -180,7 +183,7 @@ class GenerationOfferCoordinator:
             return False
         if not messagebox.askyesno(
                 self.T("common.dialog_search_title"),
-                self.T("search.offer_generate_constellation", number=f"{number:,}",
+                self.T("search.offer_generate_constellation", number=number_format.whole(number),
                         base_exponent=base_exponent)):
             return False
         gen._pending_search_after_const_gen = {
@@ -259,8 +262,8 @@ class GenerationOfferCoordinator:
         if not messagebox.askyesno(
                 self.T("common.dialog_search_title"),
                 self.T("research_goldbach.offer_generate_missing_range",
-                        floor=floor, rounded_start=f"{plan['rounded_start']:,}",
-                        rounded_end=f"{plan['rounded_end']:,}")):
+                        floor=floor, rounded_start=number_format.whole(plan['rounded_start']),
+                        rounded_end=number_format.whole(plan['rounded_end']))):
             return
         gen._pending_goldbach_retry_op = op
         self.status.set(self.T("research_goldbach.status_generating_range", floor=floor))

@@ -17,8 +17,8 @@ The sieve measure, the pinned axes and the set of report pages stay as exported.
 import json
 import math
 import os
-import re
 
+from ..core import number_format, number_format_dynamic
 from . import chart_filter, sieve_measure
 from . import chart_points
 from . import line_colors, line_names
@@ -32,15 +32,14 @@ X_MODE_LABEL_KEYS = {chart_points.X_FLOOR: "bench.x_axis_floor",
 CHART_NAME_KEYS = {"run": "bench.chart_name_run", "sieve": "bench.chart_name_sieve",
                    "ram": "bench.chart_name_ram"}
 SCRIPT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "report_chart.js")
-_FORMAT = re.compile(r"\{:,\.(\d+)f\}")
 
 
-def decimals(fmt):
-    """The decimals of a chart value format "{:,.Nf}", the only form the charts use."""
-    m = _FORMAT.fullmatch(fmt)
-    if not m:
-        raise ValueError(f"unsupported chart value format {fmt!r}")
-    return int(m.group(1))
+def number_marks():
+    """{group, mark}: the digit group separator and decimal mark of the app's notation,
+    with which the script writes the charts' numbers."""
+    group, mark = number_format.STYLES.get(number_format_dynamic.STYLE,
+                                           number_format.STYLES[number_format.DEFAULT_STYLE])
+    return {"group": group, "mark": mark}
 
 
 def _js_key(x):
@@ -96,13 +95,13 @@ def report_data(rows, pages, t, width, height, selection=None, references=False,
     out_pages = []
     for kind, charts in pages:
         out_charts = []
-        for i, (chart_key, axis, metric, label_key, fmt) in enumerate(charts):
+        for i, (chart_key, axis, metric, label_key, places) in enumerate(charts):
             records = [[run, index[line], floor, value, width_label,
                         math.log10(numbers) if numbers else None]
                        for run, line, floor, value, width_label, numbers
                        in benchmark_line_records(rows, metric) if math.isfinite(value)]
             out_charts.append({
-                "title": t(label_key), "decimals": decimals(fmt),
+                "title": t(label_key), "decimals": places,
                 "pins": list(axis_pins(y_pins.get(chart_key), axis)),
                 "hidden": hidden_names(hidden_lines.get(chart_key), axis, line_names),
                 "refs": kind == "sieve" and i == 0 and refs_available,
@@ -136,6 +135,7 @@ def report_data(rows, pages, t, width, height, selection=None, references=False,
             "view": list(x_view) if x_view is not None else None,
             "x_level": x_level, "x_base": list(x_base) if x_base else None,
             "width": width, "height": height, "pages": out_pages, "text": text,
+            "number_marks": number_marks(),
             "x_mode": x_mode, "width_lines": width_lines,
             "choices": {key: view.choice for key, view in zip(("run", "sieve", "ram"), views)},
             "selected_run": next((i for i, row in enumerate(rows) if row is selected), None)}

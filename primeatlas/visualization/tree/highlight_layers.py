@@ -7,6 +7,7 @@ Tree tab's checkboxes all read LAYERS.
 """
 
 from primeatlas.primality.primality import miller_rabin_test
+from primeatlas.core import number_format
 from primeatlas.visualization.tree.tree_colors import HIGHLIGHT_PRIME_RGB
 
 POINT_NODE = "node"
@@ -29,7 +30,7 @@ class HighlightLayer:
         return [t for t in range(count) if self.picks(first + t * step, POINT_COLUMN, p)]
 
     def hud_line(self, count):
-        return f"Highlight {self.name}: {count:,} points"
+        return f"Highlight {self.name}: {number_format.whole(count)} points"
 
 
 class PrimesLayer(HighlightLayer):
@@ -50,7 +51,7 @@ class PrimesLayer(HighlightLayer):
         return []
 
     def hud_line(self, count):
-        return f"Primes highlighted: {count:,}"
+        return f"Primes highlighted: {number_format.whole(count)}"
 
 
 LAYERS = {

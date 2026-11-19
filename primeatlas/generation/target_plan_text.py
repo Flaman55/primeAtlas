@@ -5,6 +5,7 @@ T is a translator (primeatlas.core.i18n.Translator), duration(seconds) formats a
 """
 from benchmark_log_schema import ENGINE_PSEUDOSQUARES_COUNT
 
+from ..core import number_format
 from . import target_planner
 
 ERRORS_SHOWN = 5
@@ -28,8 +29,9 @@ def method_text(group, T):
 
 def row_values(number, group, T, duration):
     """(#, floor, from, to, windows, targets, method, time) of one table row."""
-    return (str(number), str(group.floor), str(group.lo), str(group.hi), f"{group.windows:,}",
-            f"{group.targets:,}", method_text(group, T), duration(group.seconds))
+    return (str(number), str(group.floor), str(group.lo), str(group.hi),
+            number_format.whole(group.windows),
+            number_format.whole(group.targets), method_text(group, T), duration(group.seconds))
 
 
 def summary_text(plan, costs, T, duration):

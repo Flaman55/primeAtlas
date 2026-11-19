@@ -33,6 +33,7 @@ import datetime
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
+from ..core import number_format
 from ..core import number_field
 from ..core import background
 from ..core.base_tab import BaseTab
@@ -292,8 +293,9 @@ class ResearchPolynomialsTab(BaseTab):
                 def source(max_value, _folder=portal_folder):
                     if max_value > MAX_SIEVE_BOUND:
                         raise ValueError(
-                            f"the requested range needs data up to {max_value:,}, above "
-                            f"this tool's {MAX_SIEVE_BOUND:,} ceiling -- reduce n_to")
+                            f"the requested range needs data up to {number_format.whole(max_value)}, "
+                            f"above this tool's {number_format.whole(MAX_SIEVE_BOUND)} ceiling -- "
+                            f"reduce n_to")
                     return read_is_prime_from_storage(_folder, max_value)
 
                 result = check_polynomial_range_from_source(
@@ -310,7 +312,7 @@ class ResearchPolynomialsTab(BaseTab):
         except MissingStorageRangeError as e:
             T = self.T
             return False, T("research_polynomials.error_storage_missing",
-                             floor=e.floor, upto=f"{e.needed_upto:,}")
+                             floor=e.floor, upto=number_format.whole(e.needed_upto))
         except ValueError as e:
             return False, str(e)
 
@@ -383,8 +385,8 @@ class ResearchPolynomialsTab(BaseTab):
         percent = (100.0 * prime_count / segment_size) if segment_size else 0.0
         self.poly_summary_var.set(T(
             "research_polynomials.summary",
-            n_from=f"{result['n_from']:,}", n_to=f"{result['n_to']:,}",
-            segment_size=f"{segment_size:,}", prime_count=f"{prime_count:,}",
-            percent=f"{percent:.1f}"))
+            n_from=number_format.whole(result['n_from']), n_to=number_format.whole(result['n_to']),
+            segment_size=number_format.whole(segment_size), prime_count=number_format.whole(prime_count),
+            percent=number_format.decimal(percent, 1)))
 
         self._poly_refresh_nav_buttons()

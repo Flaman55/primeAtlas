@@ -2,8 +2,8 @@
 app_dynamic.py -- values computed once at startup and read by several primeatlas/app/
 modules: the repository root, the persisted AppSettings, the current storage folder
 (PORTAL_FOLDER) and the translator. It also opens the per-install remembered-fields file
-into primeatlas/core/ui_state_dynamic.STORE and sets primeatlas/core/theme_dynamic.THEME,
-both read by modules outside primeatlas/app/. Read
+into primeatlas/core/ui_state_dynamic.STORE and sets primeatlas/core/theme_dynamic.THEME and
+primeatlas/core/number_format_dynamic.STYLE, all read by modules outside primeatlas/app/. Read
 as module attributes (_dyn.NAME) at call time:
 PortalBrowserApp._set_portal_folder() rebinds _dyn.PORTAL_FOLDER, and every tab reads
 it through a `lambda: _dyn.PORTAL_FOLDER` getter, so a storage-path change reaches all
@@ -12,7 +12,7 @@ of them without separate wiring.
 import os
 
 from primeatlas.core.app_settings import AppSettings
-from primeatlas.core import theme_dynamic, ui_state_dynamic
+from primeatlas.core import number_format, theme_dynamic, ui_state_dynamic
 from primeatlas.core.i18n import LOCALES_DIR, Translator
 from primeatlas.core.ui_state_store import UI_STATE_FILENAME, UiStateStore
 
@@ -25,6 +25,7 @@ REPO_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 APP_SETTINGS = AppSettings(REPO_DIR)
 PORTAL_FOLDER = APP_SETTINGS.storage_path
 theme_dynamic.THEME = APP_SETTINGS.theme
+number_format.apply_saved(APP_SETTINGS)
 
 # Every user-visible string in the GUI goes through T("some.key", **kwargs)
 # instead of a hardcoded literal -- see primeatlas/core/i18n.py's docstring for the full

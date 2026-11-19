@@ -20,6 +20,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from ...core import number_field
+from ...core import number_format
 from ...core.base_tab import BaseTab
 from ...core.widgets import ScrollablePage
 from ...generation.quick_number import _eval_quick_number
@@ -168,7 +169,7 @@ class VizTabBase(BaseTab):
                 self.status.set(self._tk("status_storage_fill_failed"))
 
         if self._offer_generate_storage(start, end, on_finished):
-            self.status.set(self._tk("status_generating_storage", start=f"{start:,}", end=f"{end:,}"))
+            self.status.set(self._tk("status_generating_storage", start=number_format.whole(start), end=number_format.whole(end)))
 
     def _tk(self, key, **kwargs):
         """This sub-tab's own translation (`LOCALE_PREFIX`.`key`)."""
@@ -384,7 +385,7 @@ class VizTabBase(BaseTab):
         lines = data.get("lines", [])
         status = (self._tk("hud_status_running", tempo=tempo_ms) if running
                   else self._tk("hud_status_stopped"))
-        header = self._tk("hud_header", n=f"{n:,}", count=f"{count:,}",
-                         rebuild_ms=f"{rebuild_ms:.1f}", status=status)
+        header = self._tk("hud_header", n=number_format.whole(n), count=number_format.whole(count),
+                         rebuild_ms=number_format.decimal(rebuild_ms, 1), status=status)
         body = "\n".join(str(line) for line in lines)
         self.hud_var.set(header + ("\n" + body if body else ""))
