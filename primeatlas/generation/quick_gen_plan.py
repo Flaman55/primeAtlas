@@ -9,7 +9,7 @@ and its other mixins set up, so it is never instantiated on its own.
 """
 from tkinter import messagebox
 
-from ..core import number_field
+from ..core import number_field, number_format
 from ..core.storage import digit_count_floor, LOW_FLOOR_CUTOFF
 from . import native_plan
 from .quick_number import _eval_quick_number
@@ -38,11 +38,12 @@ class QuickGenPlan:
             key = ("quick.error_primesieve_beyond_ceiling" if result["error"] == "beyond_ceiling"
                    else f"quick.error_native_{result['error']}")
             messagebox.showerror(self.T("quick.dialog_title"),
-                                 self.T(key, max_stop=f"{PRIMESIEVE_MAX_STOP:,}"))
+                                 self.T(key, max_stop=number_format.whole(PRIMESIEVE_MAX_STOP)))
             return
         self.quick_status_var.set(self.T(
             "quick.summary_primesieve_native", mode=self.quick_primesieve_native_mode_var.get(),
-            floor=result["floor"], lo=f"{result['lo']:,}", hi=f"{result['hi']:,}",
+            floor=result["floor"], lo=number_format.whole(result['lo']),
+            hi=number_format.whole(result['hi']),
             count=result["count"])
             + (self.T("quick.note_primesieve_native_clamped") if result["clamped"] else ""))
         self._apply_primesieve_params_and_run(
@@ -245,19 +246,19 @@ class QuickGenPlan:
                 if plan.get("already"):
                     self.quick_status_var.set(self.T(
                         "quick.status_already_in_storage",
-                        rounded_start=f"{plan['rounded_start']:,}",
-                        rounded_end=f"{plan['rounded_end']:,}",
+                        rounded_start=number_format.whole(plan['rounded_start']),
+                        rounded_end=number_format.whole(plan['rounded_end']),
                         existing_count=plan["stored_count"]))
                     return
                 self.quick_status_var.set(self.T(
-                    "quick.summary_range", start=f"{start_value:,}",
-                    end=f"{start_value + width_total:,}",
-                    rounded_start=f"{plan['rounded_start']:,}",
-                    rounded_end=f"{plan['rounded_end']:,}", floor=plan["floor"],
+                    "quick.summary_range", start=number_format.whole(start_value),
+                    end=number_format.whole(start_value + width_total),
+                    rounded_start=number_format.whole(plan['rounded_start']),
+                    rounded_end=number_format.whole(plan['rounded_end']), floor=plan["floor"],
                     existing_count=plan["stored_count"], range_count=plan["range_count"],
                     added_count=plan["window_count_per_run"])
                     + (self.T("quick.note_truncated_floor_boundary",
-                          boundary=f"{plan['rounded_end']:,}")
+                          boundary=number_format.whole(plan['rounded_end']))
                        if plan.get("truncated") else "")
                     + (self.T("quick.note_width_capped_alignment")
                        if plan.get("width_capped") else ""))
@@ -281,12 +282,13 @@ class QuickGenPlan:
                     rounded_end = rounded_start + QUICK_GEN_MAX_WINDOW_WIDTH
                     self.quick_status_var.set(self.T(
                         "quick.status_already_in_storage",
-                        rounded_start=f"{rounded_start:,}", rounded_end=f"{rounded_end:,}",
+                        rounded_start=number_format.whole(rounded_start),
+                        rounded_end=number_format.whole(rounded_end),
                         existing_count=existing_count))
                     return
                 self.quick_status_var.set(self.T(
                     "quick.summary_floor", floor=floor_value, width_mult=1,
-                    width_total=f"{QUICK_GEN_MAX_WINDOW_WIDTH:,}",
+                    width_total=number_format.whole(QUICK_GEN_MAX_WINDOW_WIDTH),
                     start=self.T("quick.start_continue_last"),
                     existing_count=0, added_count=1))
                 self._apply_loop_params_and_run(floor_value, 1, 1)
@@ -303,12 +305,12 @@ class QuickGenPlan:
             capped_width = min(width_mult, remaining)
             self.quick_status_var.set(self.T(
                 "quick.summary_floor", floor=floor_value, width_mult=capped_width,
-                width_total=f"{capped_width * QUICK_GEN_MAX_WINDOW_WIDTH:,}",
+                width_total=number_format.whole(capped_width * QUICK_GEN_MAX_WINDOW_WIDTH),
                 start=self.T("quick.start_continue_last"),
                 existing_count=self._engine_window_count(floor_value),
                 added_count=capped_width)
                 + (self.T("quick.note_truncated_floor_boundary",
-                      boundary=f"{10 ** (floor_value + 1):,}")
+                      boundary=number_format.whole(10 ** (floor_value + 1)))
                    if capped_width < width_mult else ""))
             self._apply_loop_params_and_run(floor_value, 1, capped_width)
         elif mode == "range":
@@ -332,18 +334,19 @@ class QuickGenPlan:
             if plan.get("already"):
                 self.quick_status_var.set(self.T(
                     "quick.status_already_in_storage",
-                    rounded_start=f"{plan['rounded_start']:,}",
-                    rounded_end=f"{plan['rounded_end']:,}",
+                    rounded_start=number_format.whole(plan['rounded_start']),
+                    rounded_end=number_format.whole(plan['rounded_end']),
                     existing_count=plan["stored_count"]))
                 return
             self.quick_status_var.set(self.T(
-                "quick.summary_range", start=f"{start:,}", end=f"{end:,}",
-                rounded_start=f"{plan['rounded_start']:,}",
-                rounded_end=f"{plan['rounded_end']:,}", floor=plan["floor"],
+                "quick.summary_range", start=number_format.whole(start),
+                end=number_format.whole(end),
+                rounded_start=number_format.whole(plan['rounded_start']),
+                rounded_end=number_format.whole(plan['rounded_end']), floor=plan["floor"],
                 existing_count=plan["stored_count"], range_count=plan["range_count"],
                 added_count=plan["window_count_per_run"])
                 + (self.T("quick.note_truncated_floor_boundary",
-                      boundary=f"{plan['rounded_end']:,}")
+                      boundary=number_format.whole(plan['rounded_end']))
                    if plan.get("truncated") else ""))
             self._launch_direct_window_range(
                 plan["floor"], plan["target_idx_start"], plan["window_count_per_run"])
@@ -404,7 +407,8 @@ class QuickGenPlan:
                 else:
                     self.quick_status_var.set(self.T(
                         "quick.summary_explore", floor=floor_value, iterations=1,
-                        width_mult=1, iterations_total=f"{QUICK_GEN_MAX_WINDOW_WIDTH:,}",
+                        width_mult=1,
+                        iterations_total=number_format.whole(QUICK_GEN_MAX_WINDOW_WIDTH),
                         existing_count=0, added_count=1))
                     self._apply_loop_params_and_run(floor_value, 1, 1)
                     return
@@ -463,11 +467,12 @@ class QuickGenPlan:
             iterations_total = iterations * iteration_width
             self.quick_status_var.set(self.T(
                 "quick.summary_explore", floor=floor_value, iterations=iterations,
-                width_mult=window_count_per_run, iterations_total=f"{iterations_total:,}",
+                width_mult=window_count_per_run,
+                iterations_total=number_format.whole(iterations_total),
                 existing_count=self._engine_window_count(floor_value),
                 added_count=iterations * window_count_per_run)
                 + (self.T("quick.note_truncated_floor_boundary",
-                      boundary=f"{10 ** (floor_value + 1):,}")
+                      boundary=number_format.whole(10 ** (floor_value + 1)))
                    if truncated else ""))
             self._apply_loop_params_and_run(floor_value, iterations, window_count_per_run)
         elif mode == "hybrid":
@@ -540,12 +545,13 @@ class QuickGenPlan:
                     rounded_end = rounded_start + QUICK_GEN_MAX_WINDOW_WIDTH
                     self.quick_status_var.set(self.T(
                         "quick.status_already_in_storage",
-                        rounded_start=f"{rounded_start:,}", rounded_end=f"{rounded_end:,}",
+                        rounded_start=number_format.whole(rounded_start),
+                        rounded_end=number_format.whole(rounded_end),
                         existing_count=existing_count))
                     return
                 self.quick_status_var.set(self.T(
                     "quick.summary_floor", floor=floor_lo, width_mult=1,
-                    width_total=f"{QUICK_GEN_MAX_WINDOW_WIDTH:,}",
+                    width_total=number_format.whole(QUICK_GEN_MAX_WINDOW_WIDTH),
                     start=self.T("quick.start_continue_last"),
                     existing_count=0, added_count=1))
                 self._apply_primesieve_params_and_run(floor_lo, 0, 1)
@@ -555,7 +561,7 @@ class QuickGenPlan:
             if start > PRIMESIEVE_MAX_STOP:
                 messagebox.showerror(self.T("quick.dialog_title"), self.T(
                     "quick.error_primesieve_beyond_ceiling",
-                    max_stop=f"{PRIMESIEVE_MAX_STOP:,}"))
+                    max_stop=number_format.whole(PRIMESIEVE_MAX_STOP)))
                 return
             plan = self._quick_gen_plan_literal_range(start, end)
             if plan.get("error"):
@@ -564,22 +570,23 @@ class QuickGenPlan:
             if plan.get("already"):
                 self.quick_status_var.set(self.T(
                     "quick.status_already_in_storage",
-                    rounded_start=f"{plan['rounded_start']:,}",
-                    rounded_end=f"{plan['rounded_end']:,}",
+                    rounded_start=number_format.whole(plan['rounded_start']),
+                    rounded_end=number_format.whole(plan['rounded_end']),
                     existing_count=plan["stored_count"]))
                 return
             ceiling_truncated = (plan["rounded_end"] - 1) > PRIMESIEVE_MAX_STOP
             self.quick_status_var.set(self.T(
-                "quick.summary_range", start=f"{start:,}", end=f"{end:,}",
-                rounded_start=f"{plan['rounded_start']:,}",
-                rounded_end=f"{plan['rounded_end']:,}", floor=plan["floor"],
+                "quick.summary_range", start=number_format.whole(start),
+                end=number_format.whole(end),
+                rounded_start=number_format.whole(plan['rounded_start']),
+                rounded_end=number_format.whole(plan['rounded_end']), floor=plan["floor"],
                 existing_count=plan["stored_count"], range_count=plan["range_count"],
                 added_count=plan["window_count_per_run"])
                 + (self.T("quick.note_truncated_floor_boundary",
-                      boundary=f"{plan['rounded_end']:,}")
+                      boundary=number_format.whole(plan['rounded_end']))
                    if plan.get("truncated") else "")
                 + (self.T("quick.note_primesieve_ceiling",
-                      max_stop=f"{PRIMESIEVE_MAX_STOP:,}")
+                      max_stop=number_format.whole(PRIMESIEVE_MAX_STOP))
                    if ceiling_truncated else ""))
             self._apply_primesieve_params_and_run(
                 plan["floor"], plan["target_idx_start"], plan["window_count_per_run"])
@@ -623,12 +630,12 @@ class QuickGenPlan:
             if (end - 1) < CUDASIEVE_MIN_PRINTABLE_TOP:
                 messagebox.showerror(self.T("quick.dialog_title"), self.T(
                     "quick.error_cudasieve_below_min",
-                    min_printable=f"{CUDASIEVE_MIN_PRINTABLE_TOP:,}"))
+                    min_printable=number_format.whole(CUDASIEVE_MIN_PRINTABLE_TOP)))
                 return
             if start > CUDASIEVE_MAX_STOP:
                 messagebox.showerror(self.T("quick.dialog_title"), self.T(
                     "quick.error_cudasieve_beyond_ceiling",
-                    max_stop=f"{CUDASIEVE_MAX_STOP:,}"))
+                    max_stop=number_format.whole(CUDASIEVE_MAX_STOP)))
                 return
             plan = self._quick_gen_plan_literal_range(start, end)
             if plan.get("error"):
@@ -637,22 +644,23 @@ class QuickGenPlan:
             if plan.get("already"):
                 self.quick_status_var.set(self.T(
                     "quick.status_already_in_storage",
-                    rounded_start=f"{plan['rounded_start']:,}",
-                    rounded_end=f"{plan['rounded_end']:,}",
+                    rounded_start=number_format.whole(plan['rounded_start']),
+                    rounded_end=number_format.whole(plan['rounded_end']),
                     existing_count=plan["stored_count"]))
                 return
             ceiling_truncated = (plan["rounded_end"] - 1) > CUDASIEVE_MAX_STOP
             self.quick_status_var.set(self.T(
-                "quick.summary_range", start=f"{start:,}", end=f"{end:,}",
-                rounded_start=f"{plan['rounded_start']:,}",
-                rounded_end=f"{plan['rounded_end']:,}", floor=plan["floor"],
+                "quick.summary_range", start=number_format.whole(start),
+                end=number_format.whole(end),
+                rounded_start=number_format.whole(plan['rounded_start']),
+                rounded_end=number_format.whole(plan['rounded_end']), floor=plan["floor"],
                 existing_count=plan["stored_count"], range_count=plan["range_count"],
                 added_count=plan["window_count_per_run"])
                 + (self.T("quick.note_truncated_floor_boundary",
-                      boundary=f"{plan['rounded_end']:,}")
+                      boundary=number_format.whole(plan['rounded_end']))
                    if plan.get("truncated") else "")
                 + (self.T("quick.note_cudasieve_ceiling",
-                      max_stop=f"{CUDASIEVE_MAX_STOP:,}")
+                      max_stop=number_format.whole(CUDASIEVE_MAX_STOP))
                    if ceiling_truncated else ""))
             self._apply_cudasieve_params_and_run(
                 plan["floor"], plan["target_idx_start"], plan["window_count_per_run"])

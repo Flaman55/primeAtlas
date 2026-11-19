@@ -41,6 +41,8 @@ early rather than after already sieving something huge.
 """
 import math
 
+from ..core import number_format
+
 MAX_SIEVE_BOUND = 200_000_000
 """Refuses (ValueError) any check whose largest prime searched for would
 need a fresh in-memory sieve bigger than this (~200MB bytearray) -- same
@@ -204,8 +206,9 @@ def check_gap_range(n_from, n_to, overlay="none", row_cap=None, row_offset=0):
     def _source(bound):
         if bound > MAX_SIEVE_BOUND:
             raise ValueError(
-                f"the requested range needs a sieve up to {bound:,}, above this "
-                f"tool's {MAX_SIEVE_BOUND:,} ceiling for a fresh in-memory sieve -- "
+                f"the requested range needs a sieve up to {number_format.whole(bound)}, "
+                f"above this tool's {number_format.whole(MAX_SIEVE_BOUND)} ceiling "
+                f"for a fresh in-memory sieve -- "
                 f"reduce n_to")
         return sieve_is_prime(bound)
 

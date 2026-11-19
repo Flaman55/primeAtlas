@@ -57,9 +57,13 @@ part runs only in a browser, on the .primeatlas-benchmark element holding this s
     });
   }
 
+  // The app's number notation (report_html: number_marks), set by a Report from its data.
+  var numberMarks = {group: ",", mark: "."};
+
   function formatNumber(decimals, value) {
     return value.toLocaleString("en-US", {minimumFractionDigits: decimals,
-                                          maximumFractionDigits: decimals});
+                                          maximumFractionDigits: decimals})
+      .replace(/[,.]/g, function (c) { return c === "," ? numberMarks.group : numberMarks.mark; });
   }
 
   // --- chart_series.YScale ---------------------------------------------------------------
@@ -581,6 +585,7 @@ part runs only in a browser, on the .primeatlas-benchmark element holding this s
     var self = this;
     this.root = root;
     this.data = data;
+    if (data.number_marks) numberMarks = data.number_marks;
     var selection = {};
     Object.keys(data.selection).forEach(function (k) { selection[k] = new Set(data.selection[k]); });
     this.selection = selection;

@@ -30,7 +30,7 @@ def _nearest_hover_point(hover_points, x, y, max_distance=14.0):
     deterministic and needs no live display at all.)
 
     hover_points: see _bind_chart_hover's own docstring for the tuple shape.
-    Returns (px, py, x_val, y_val, fmt, color) for the closest point within
+    Returns (px, py, x_val, y_val, label, color) for the closest point within
     max_distance pixels, or None if every point is farther than that (or the list
     is empty)."""
     best = _nearest_point(hover_points, x, y, max_distance)
@@ -107,7 +107,7 @@ def _bind_chart_hover(canvas, hover_points, t, fg_color, bg_color, width, height
     circle, _hover_points_at()) share the tooltip, one line each in its color, ● for the
     left axis and ■ for the right one.
 
-    hover_points: a flat list of (px, py, x_val, y_val, fmt, color, label_key, axis)
+    hover_points: a flat list of (px, py, x_val, y_val, label, color, label_key, axis)
     tuples in CANVAS pixel space, built by the caller from whichever series (primary
     and/or secondary) it already computed pixel coordinates for -- this function itself
     has no notion of axes/scales, just "here are some labeled dots".
@@ -146,7 +146,7 @@ def _bind_chart_hover(canvas, hover_points, t, fg_color, bg_color, width, height
         px, py = group[0][0], group[0][1]
         lines = [(("\u25a0 " if p[7] == "secondary" else "\u25cf ")
                   + f"{t(chart_points.AXIS_TITLE_KEYS[x_mode])} "
-                  + f"{chart_points.x_label(p[2], x_mode)}: {p[4].format(p[3])}", p[5])
+                  + f"{chart_points.x_label(p[2], x_mode)}: {p[4]}", p[5])
                  for p in group]
         for p in group:
             canvas.create_oval(p[0] - 6, p[1] - 6, p[0] + 6, p[1] + 6, outline=p[5], width=2,

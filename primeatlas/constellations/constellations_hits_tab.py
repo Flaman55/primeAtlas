@@ -37,6 +37,7 @@ from tkinter import ttk, messagebox
 
 import hit_paging
 
+from ..core import number_format
 from ..core import number_field
 from ..core.number_text import plain_number
 from ..core.base_tab import BaseTab
@@ -419,20 +420,20 @@ class ConstellationsHitsTab(BaseTab):
         for k, k_total, variants in group_constellation_hits_by_k(entries):
             grand_total += k_total
             k_node = self.hits_tree.insert(
-                node, "end", text=T("const.k_total", k=k, total=f"{k_total:,}"),
+                node, "end", text=T("const.k_total", k=k, total=number_format.whole(k_total)),
                 values=("", ""), tags=("k_group",), open=True)
             for pattern, path, header in variants:
                 label_text = f"v={pattern['id']}"
                 if header is None:
                     count_str, gen_str = "?", T("primes.unreadable_header")
                 else:
-                    count_str = f"{header['count']:,}"
+                    count_str = number_format.whole(header['count'])
                     gen_str = header["generated_at_iso"]
                 child = self.hits_tree.insert(
                     k_node, "end", text=label_text,
                     values=(count_str, gen_str), tags=("pattern",))
                 self._hit_path_by_item[child] = (pattern, path, header, base_exponent)
-        self.hits_tree.item(node, values=(f"{grand_total:,}", ""))
+        self.hits_tree.item(node, values=(number_format.whole(grand_total), ""))
 
     def _on_tree_select(self, _event):
         """Selecting a leaf pattern node loads its preview immediately -- no separate
@@ -464,7 +465,7 @@ class ConstellationsHitsTab(BaseTab):
         self.hits_detail_text.set(
             f"{path}\n\n" +
             T("const.header_detail", k=pattern['k'], variant=pattern['id'],
-              offsets=offsets_str, count=f"{header['count']:,}",
+              offsets=offsets_str, count=number_format.whole(header['count']),
               generated=header['generated_at_iso']) +
             f"\n{record_line}"
         )
@@ -521,7 +522,8 @@ class ConstellationsHitsTab(BaseTab):
                     and not hit_pattern_is_paged(portal_folder, self._selected_hit_base_exponent, k, vid)):
                 messagebox.showerror(
                     T("const.preview_too_large_title"),
-                    T("const.preview_too_large", count=f"{self._selected_hit_total_count:,}"))
+                    T("const.preview_too_large",
+                      count=number_format.whole(self._selected_hit_total_count)))
                 return
             self._hit_file_page_count = hit_pattern_page_count(
                 portal_folder, self._selected_hit_base_exponent, k, vid)
@@ -552,8 +554,8 @@ class ConstellationsHitsTab(BaseTab):
                            for position, offset in enumerate(offsets)]
         if len(values) < self._selected_hit_total_count:
             self.status.set(T(
-                "const.preview_partial", shown=f"{len(values):,}",
-                total=f"{self._selected_hit_total_count:,}"))
+                "const.preview_partial", shown=number_format.whole(len(values)),
+                total=number_format.whole(self._selected_hit_total_count)))
         self.hits_file_page_label.set(T(
             "const_records.file_page_label", page=page_index + 1, total=self._hit_file_page_count))
         self.hits_file_prev_btn.configure(state="normal" if page_index > 0 else "disabled")

@@ -33,6 +33,8 @@ import prime_sieve_v1
 import storage_kinds
 import window_sharding
 
+from . import number_format
+
 LOW_FLOOR_CUTOFF = 7  # duplicated from prime_sieve_v3.py/v4.py's own LOW_FLOOR_CUTOFF (see
                       # that constant's docstring for the full rationale: floors 0..6 are
                       # each narrower than window_m's minimum, 10,000,000, so they always
@@ -474,12 +476,12 @@ def format_bytes(n):
         return "?"
     n = float(n)
     if n < 1024:
-        return f"{n:.0f} B"
+        return f"{number_format.decimal(n, 0)} B"
     for unit in ("KiB", "MiB", "GiB"):
         n /= 1024
         if n < 1024:
-            return f"{n:.1f} {unit}"
-    return f"{n / 1024:.1f} TiB"
+            return f"{number_format.decimal(n, 1)} {unit}"
+    return f"{number_format.decimal(n / 1024, 1)} TiB"
 
 
 def aggregate_write_seconds_by_floor(rows):

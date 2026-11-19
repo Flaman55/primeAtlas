@@ -13,6 +13,8 @@ import math
 
 from benchmark_log_schema import ENGINE_PT1_VERIFY
 
+from ..core import number_format
+
 V72_ENGINE = "v7"
 V72_VERSION = "v7.2"
 
@@ -59,7 +61,7 @@ def duration_text(seconds):
     if seconds is None:
         return "?"
     if seconds < 100:
-        return f"{seconds:.0f} s"
+        return f"{number_format.decimal(seconds, 0)} s"
     if seconds < 3600:
-        return f"{seconds / 60:.0f} min"
-    return f"{seconds / 3600:.1f} h"
+        return f"{number_format.decimal(seconds / 60, 0)} min"
+    return f"{number_format.decimal(seconds / 3600, 1)} h"

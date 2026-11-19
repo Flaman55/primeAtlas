@@ -184,6 +184,8 @@ from primeatlas.visualization.shared.gl_setup import setup_gl_resources
 from primeatlas.visualization.shared.renderer_cli import parse_args
 from primeatlas.visualization.shared.renderer_launch import build_session
 from primeatlas.visualization.mode_registry import MODES
+from primeatlas.core import number_format
+from primeatlas.core.app_settings import AppSettings
 
 # Shaders (shaders.py), GL resources (gl_setup.py), pure geometry
 # (draw_primitives.py, the modes' own *_draw.py), HUD text (hud_text.py and the
@@ -594,8 +596,8 @@ def _run_visualization(args, audio=None):
         if now - fps_t0 >= 0.5:
             fps = frame_count / (now - fps_t0)
             glfw.set_window_title(
-                gl.window, f"{session.mode.window_title}  N={last_n:,}  "
-                           f"{session.mode.count_label}={session.hud_count:,}  fps={fps:.1f}"
+                gl.window, f"{session.mode.window_title}  N={number_format.whole(last_n)}  "
+                           f"{session.mode.count_label}={number_format.whole(session.hud_count)}  fps={number_format.decimal(fps, 1)}"
             )
             frame_count = 0
             fps_t0 = now
@@ -604,6 +606,7 @@ def _run_visualization(args, audio=None):
 
 
 def main():
+    number_format.apply_saved(AppSettings(_REPO_ROOT))
     run(parse_args(__doc__))
 
 

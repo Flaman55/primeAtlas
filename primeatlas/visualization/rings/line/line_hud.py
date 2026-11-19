@@ -3,6 +3,8 @@ line_hud.py -- line-mode HUD text: the pattern/wheel/axis status line
 (pattern_hud_line).
 """
 
+from primeatlas.core import number_format
+
 def pattern_hud_line(n, offsets, all_match, wheel_modulus=None, wheel_residue_count=None,
                       step_mode="manual", stop_on_match=False, view_mode=None, line_axis_curved=False):
     """The single HUD text line for "line" viz-mode's k-tuple pattern
@@ -48,4 +50,4 @@ def pattern_hud_line(n, offsets, all_match, wheel_modulus=None, wheel_residue_co
         axis_text = "  [axis: spiral]" if (wheel_modulus is not None and wheel_modulus > 1) else "  [axis: ring]"
     else:
         axis_text = ""
-    return f"Pattern: n={n:,} offsets={list(offsets)}{suffix}{wheel_text}{mode_text}{view_text}{axis_text}"
+    return f"Pattern: n={number_format.whole(n)} offsets={list(offsets)}{suffix}{wheel_text}{mode_text}{view_text}{axis_text}"

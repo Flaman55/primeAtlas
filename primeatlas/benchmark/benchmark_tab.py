@@ -119,7 +119,7 @@ def _draw_legend(canvas, entries, hidden, on_toggle, x, bg_color, dim_color):
 
 def _draw_growth_chart(canvas, points, width, height, points2=None, translator=None,
                         label_key1="bench.axis_nps", label_key2="bench.axis_spw",
-                        fmt1="{:,.0f}", fmt2="{:,.3f}",
+                        places1=0, places2=3,
                         bg_color="#ffffff", fg_color="#000000", grid_color="#666666",
                         series1=None, series2=None, log_y=False, hidden=None,
                         on_toggle=None, pins1=None, pins2=None, on_pin_menu=None,
@@ -147,7 +147,7 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
     target = (axis, value, value text) of the point under the pointer or None.
     on_color_menu(series, x_root, y_root): right-click on an engine's legend entry instead.
 
-    label_key1/label_key2/fmt1/fmt2: same meaning as chart_pdf.chart_ops()'s parameters, so
+    label_key1/label_key2/places1/places2: same meaning as chart_pdf.chart_ops()'s parameters, so
     the PDF and this chart stay consistent. translator: a primeatlas.core.i18n.Translator,
     DEFAULT_LANGUAGE when omitted. bg_color/fg_color/grid_color: the theme's colors.
 
@@ -208,12 +208,12 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
     # font: throughput reaches 10-13 digit n/s figures, which a fixed pad would clip.
     tick_font = tkfont.Font(family="Consolas", size=8)
 
-    def _max_tick_label_width(scale, fmt):
-        return max((tick_font.measure(scale.tick_label(v, fmt)) for v in scale.ticks()),
+    def _max_tick_label_width(scale, places):
+        return max((tick_font.measure(scale.tick_label(v, places)) for v in scale.ticks()),
                    default=0)
 
-    pad_left = max(50, _max_tick_label_width(scale1, fmt1) + 24) if scale1 else 24
-    pad_right = max(50, _max_tick_label_width(scale2, fmt2) + 28) if scale2 else 24
+    pad_left = max(50, _max_tick_label_width(scale1, places1) + 24) if scale1 else 24
+    pad_right = max(50, _max_tick_label_width(scale2, places2) + 28) if scale2 else 24
 
     plot_w = max(1, width - pad_left - pad_right)
     plot_h = max(1, height - pad_top - pad_bottom)
@@ -255,14 +255,14 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
         for y_val in scale1.ticks():
             y_px = sy(scale1, y_val)
             canvas.create_line(pad_left - 4, y_px, pad_left, y_px, fill=grid_color)
-            canvas.create_text(pad_left - 8, y_px, text=scale1.tick_label(y_val, fmt1),
+            canvas.create_text(pad_left - 8, y_px, text=scale1.tick_label(y_val, places1),
                                 anchor="e", font=("Consolas", 8), fill=fg_color)
     if scale2:
         for y_val in scale2.ticks():
             y_px = sy(scale2, y_val)
             canvas.create_line(pad_left + plot_w, y_px, pad_left + plot_w + 4, y_px,
                                 fill=grid_color)
-            canvas.create_text(pad_left + plot_w + 8, y_px, text=scale2.tick_label(y_val, fmt2),
+            canvas.create_text(pad_left + plot_w + 8, y_px, text=scale2.tick_label(y_val, places2),
                                 anchor="w", font=("Consolas", 8), fill=fg_color)
 
     for x_val in x_ticks:
@@ -294,7 +294,7 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
 
     marks = marks or set()
 
-    def draw(series, scale, fmt, label_key, secondary=False):
+    def draw(series, scale, places, label_key, secondary=False):
         r = 4
         axis = "secondary" if secondary else "primary"
         for s in series:
@@ -320,15 +320,14 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
                     canvas.create_oval(cx - r - 4, cy - r - 4, cx + r + 4, cy + r + 4,
                                        outline=fg_color, width=2, tags="selected_mark")
                 hover_points.append((cx, cy, x_val, y_val,
-                                     point_label(fmt, y_val, s, show_unknown=True, x=x_val)
-                                     .replace("{", "{{").replace("}", "}}"),
+                                     point_label(places, y_val, s, show_unknown=True, x=x_val),
                                      s.color, label_key,
                                      "secondary" if secondary else "primary"))
 
     if scale1:
-        draw(series1, scale1, fmt1, label_key1)
+        draw(series1, scale1, places1, label_key1)
     if scale2:
-        draw(series2, scale2, fmt2, label_key2, secondary=True)
+        draw(series2, scale2, places2, label_key2, secondary=True)
 
     _bind_chart_hover(canvas, hover_points, t, fg_color, bg_color, width, height, x_mode)
     _bind_pin_menu(canvas, hover_points, on_pin_menu, on_color_menu)
@@ -357,7 +356,7 @@ def _bind_pin_menu(canvas, hover_points, on_pin_menu, on_color_menu=None):
             on_color_menu(series, event.x_root, event.y_root)
             return
         point = _nearest_point(hover_points, event.x, event.y)
-        target = (point[7], point[3], point[4].format(point[3])) if point else None
+        target = (point[7], point[3], point[4]) if point else None
         on_pin_menu(target, event.x_root, event.y_root)
 
     canvas.bind("<Button-3>", _on_right_click)
@@ -558,7 +557,7 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, Benchm
         self._draw_chart("run", self.benchmark_chart, self._benchmark_growth_points, (900, 180),
                          points2=self._benchmark_write_mbps_points,
                          label_key1="bench.axis_total_nps",
-                         label_key2="bench.axis_write_mbps", fmt2="{:,.1f}",
+                         label_key2="bench.axis_write_mbps", places2=1,
                          series1=self._chart_series("growth"),
                          series2=self._chart_series("write"),
                          marks=self._chart_marks("growth", "write"))
@@ -682,7 +681,7 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, Benchm
         self._show_mixed_widths("sieve", (spec.metric1, spec.metric2))
         self._draw_chart("sieve", self.benchmark_chart2, self._benchmark_sieve_nps_points,
                          (900, 220), label_key1=spec.label_key1, label_key2=spec.label_key2,
-                         fmt1=spec.fmt1, fmt2=spec.fmt2,
+                         places1=spec.places1, places2=spec.places2,
                          series1=self._chart_series(spec.metric1, spec.references),
                          series2=self._chart_series(spec.metric2),
                          marks=self._chart_marks(spec.metric1, spec.metric2))

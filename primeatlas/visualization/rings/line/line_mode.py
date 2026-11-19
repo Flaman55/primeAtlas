@@ -25,6 +25,7 @@ if _PRIME_SIEVE_DIR not in sys.path:
     sys.path.insert(0, _PRIME_SIEVE_DIR)
 
 from primeatlas.visualization.shared.mode import VizMode, LaunchAborted
+from primeatlas.core import number_format
 from primeatlas.visualization.shared.bigint import parse_big_int
 from primeatlas.visualization.shared.draw_primitives import (
     split_hit_normal_vertex_data, decay_flash, flash_overlay_rgba,
@@ -585,9 +586,9 @@ class LineMode(VizMode):
             # window's own confirmation "yes, it's working."
             edge_lines.append("Searching for the next pattern match...")
         if s._forward_edge_reported:
-            edge_lines.append(f"At range TO edge ({s.range_load_to:,}) -- cannot go further forward")
+            edge_lines.append(f"At range TO edge ({number_format.whole(s.range_load_to)}) -- cannot go further forward")
         if s._back_edge_reported:
-            edge_lines.append(f"At range FROM edge ({s.range_load_from:,}) -- cannot go further backward")
+            edge_lines.append(f"At range FROM edge ({number_format.whole(s.range_load_from)}) -- cannot go further backward")
         s.hud_lines = (
             [pattern_hud_line(
                 n_value, self.pattern_offsets, all_match,

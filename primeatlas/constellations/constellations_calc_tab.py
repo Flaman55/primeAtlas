@@ -46,6 +46,7 @@ from tkinter import ttk, messagebox
 import pattern_catalog_v1
 
 from ..core import number_field
+from ..core import number_format
 from ..core import ui_state_dynamic
 from ..core.base_tab import BaseTab
 from ..core.widgets import StripedTreeview
@@ -249,7 +250,7 @@ class ConstellationsCalcTab(BaseTab):
         self._numbers = [(d, n0 + d) for d in offsets]
         self.results_tree.delete(*self.results_tree.get_children())
         for d, n in self._numbers:
-            self.results_tree.insert("", "end", values=(f"+{d}", f"{n:,}"))
+            self.results_tree.insert("", "end", values=(f"+{d}", number_format.whole(n)))
         self.search_button.configure(state="normal" if self._numbers else "disabled")
 
     def search_selected(self):

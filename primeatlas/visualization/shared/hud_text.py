@@ -13,6 +13,8 @@ touches them.
 
 import numpy as np
 
+from primeatlas.core import number_format
+
 
 # On-canvas GL HUD text -- Pillow is used only
 # to RASTERIZE plain text into an RGBA bitmap (PIL.ImageFont.load_default(),
@@ -59,7 +61,7 @@ def compose_hud_canvas_lines(n, count, lines, running, tempo_ms, count_label="ri
     active mode counts (VizMode.count_label); `n_label` names what `n` is
     (VizMode.n_label)."""
     status = f"Running ({tempo_ms}ms/tick)" if running else "Stopped"
-    header = f"{n_label} = {n:,}    {count_label} = {count:,}    [{status}]"
+    header = f"{n_label} = {number_format.whole(n)}    {count_label} = {number_format.whole(count)}    [{status}]"
     return [header] + list(lines)
 
 

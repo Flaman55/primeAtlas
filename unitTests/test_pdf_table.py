@@ -215,7 +215,7 @@ class ChartTests(unittest.TestCase):
                                  (a, b))
         texts = {t[5] for t in labels}
         for s in series:
-            self.assertIn(chart_series.point_label("{:,.0f}", s.points[-1][1], s), texts)
+            self.assertIn(chart_series.point_label(0, s.points[-1][1], s), texts)
         self.assertLess(len(labels), sum(len(s.points) for s in series))
 
 

@@ -20,6 +20,7 @@ Translator instance).
 import tkinter as tk
 from tkinter import ttk, messagebox
 
+from ..core import number_format
 from ..core import number_field
 from ..core.background import PersistentWorker
 from ..core.base_tab import BaseTab
@@ -207,7 +208,7 @@ class PrimalityTab(BaseTab):
                        else self.T("primality.verdict_composite"))
             self.primality_results_tree.insert(
                 "", "end",
-                values=(row["method"], verdict, row["certainty"], f"{row['seconds']:.4f}"))
+                values=(row["method"], verdict, row["certainty"], number_format.decimal(row['seconds'], 4)))
 
     def _primality_show_factorize_result(self, n, result):
         pairs = result["pairs"]
@@ -215,8 +216,8 @@ class PrimalityTab(BaseTab):
             f"{p}^{e}" if e > 1 else str(p) for p, e in pairs) or str(n)
         method = (self.T("primality.method_sympy") if result["method"] == "sympy"
                   else self.T("primality.method_pure_python"))
-        text = self.T("primality.factor_result", n=f"{n:,}", factors=factor_str,
-                       method=method, seconds=f"{result['seconds']:.4f}")
+        text = self.T("primality.factor_result", n=number_format.whole(n), factors=factor_str,
+                       method=method, seconds=number_format.decimal(result['seconds'], 4))
         if not result["complete"]:
             text += " " + self.T("primality.factor_result_incomplete_note")
         self.primality_factor_result_var.set(text)

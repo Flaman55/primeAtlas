@@ -61,6 +61,8 @@ def isolate_app(portal=None, prefix="primeatlas_test_portal_"):
     time_simulation_controls.estimate_free_ram_bytes = lambda **_k: None
     from primeatlas.generation import wsl_resources
     wsl_resources.estimate_wsl_available_cpu_count = lambda *_a, **_k: FAKE_WSL_CPUS
+    from primeatlas.core import number_format, number_format_dynamic
+    number_format_dynamic.STYLE = number_format.DEFAULT_STYLE
     app_dynamic.APP_SETTINGS.save = lambda: None
     app_dynamic.APP_SETTINGS.set_storage_path(portal)
     app_dynamic.PORTAL_FOLDER = portal

@@ -232,7 +232,7 @@ def test_comb(app, v, T):
 def test_ranges(app, tab, T):
     v = tab.ranges_view
     check(len(v.sweep_cells) == 6 * 7, "sweep grid: 6 parameters x 7 steps on opening")
-    check("2 520" in v.ranges_var.get(), f"W(D) of blocks 2..10 is 2 520 ({v.ranges_var.get()!r})")
+    check("2,520" in v.ranges_var.get(), f"W(D) of blocks 2..10 is 2,520 ({v.ranges_var.get()!r})")
     _set(tab.compare_view.sides["B"].layout_entries["dc"], "2")
     _set(tab.compare_view.sides["B"].layout_entries["dz"], "4")
     v.from_b_button.invoke()

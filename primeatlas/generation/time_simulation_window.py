@@ -25,6 +25,7 @@ import math
 import tkinter as tk
 from tkinter import ttk
 
+from primeatlas.core import number_format
 from primeatlas.core.info_tip import InfoTip
 from primeatlas.core.number_text import plain_number
 
@@ -44,13 +45,13 @@ def format_long_duration(seconds, T):
     if seconds is None:
         return "?"
     if seconds < 1e-3:
-        return f"{seconds * 1e6:.1f} µs"
+        return f"{number_format.decimal(seconds * 1e6, 1)} µs"
     if seconds < 1:
-        return f"{seconds * 1e3:.1f} ms"
+        return f"{number_format.decimal(seconds * 1e3, 1)} ms"
     if seconds < _DAY:
         return format_duration_short(seconds)
     if seconds < _YEAR:
-        return T("timesim.unit_days", value=f"{seconds / _DAY:.1f}")
+        return T("timesim.unit_days", value=number_format.decimal(seconds / _DAY, 1))
     years = seconds / _YEAR
     return T("timesim.unit_years", value=f"{years:.3g}" if years < 1e6 else f"{years:.2e}")
 
@@ -64,8 +65,8 @@ def format_rate(numbers_per_second):
         return "?"
     for scale, unit in _RATE_UNITS:
         if numbers_per_second >= scale:
-            return f"{numbers_per_second / scale:,.1f} {unit}"
-    return f"{numbers_per_second:.1f} n/s"
+            return f"{number_format.decimal(numbers_per_second / scale, 1)} {unit}"
+    return f"{number_format.decimal(numbers_per_second, 1)} n/s"
 
 
 def _int_or_none(text):
@@ -251,7 +252,8 @@ class TimeSimulationWindow(tk.Toplevel):
         if not runs.count:
             return T("timesim.measured_none")
         speed = runs.windows * time_model.WINDOW_WIDTH / runs.seconds if runs.seconds else None
-        return T("timesim.measured_value", count=runs.count, windows=f"{runs.windows:,}",
+        return T("timesim.measured_value", count=runs.count,
+                 windows=number_format.whole(runs.windows),
                  time=format_long_duration(runs.seconds, T), speed=format_rate(speed),
                  model=format_long_duration(runs.model_seconds, T))
 
@@ -263,15 +265,16 @@ class TimeSimulationWindow(tk.Toplevel):
         ram = run_ram.run_ram_bytes(choice, windows, QUICK_GEN_MAX_WINDOW_WIDTH)
         if ram is None:
             return T("timesim.ram_pt1")
-        gb = f"{ram / 1e9:.1f}"
+        gb = number_format.decimal(ram / 1e9, 1)
         if not self._ram_read:
             return T("timesim.ram_without_free", ram=gb, reason=T("timesim.ram_free_reading"))
         if not self.available_ram:
             return T("timesim.ram_without_free", ram=gb, reason=T("timesim.ram_free_unknown"))
         fit = self._ram_fit()
-        text = T("timesim.ram_value", ram=gb, pct=f"{ram / self.available_ram * 100:.0f}",
-                 free=f"{self.available_ram / 1e9:.1f}",
-                 budget=choice.knobs[engine_options.RAM_BUDGET_KNOB], max=f"{fit:,}")
+        text = T("timesim.ram_value", ram=gb,
+                 pct=number_format.decimal(ram / self.available_ram * 100, 0),
+                 free=number_format.decimal(self.available_ram / 1e9, 1),
+                 budget=choice.knobs[engine_options.RAM_BUDGET_KNOB], max=number_format.whole(fit))
         if ram > run_ram.budget_bytes(choice, self.available_ram):
             text += " -- " + T("timesim.ram_over_budget")
         return text
@@ -286,11 +289,12 @@ class TimeSimulationWindow(tk.Toplevel):
         below = time_model.estimate(None, engine, floor - 1, windows, write_files, pt1_b)
         v = self.result_vars
         v["floor"].set(T("timesim.floor_value", floor=floor))
-        v["width"].set(T("timesim.width_value", windows=f"{windows:,}", span=f"{est.span:.3g}"))
+        v["width"].set(T("timesim.width_value", windows=number_format.whole(windows),
+                         span=f"{est.span:.3g}"))
         kind = T("timesim.exact") if est.primes_exact else T("timesim.approx")
         ratio = est.primes / below.primes if below.primes else 0.0
-        v["primes"].set(T("timesim.primes_value", primes=f"{est.primes:,}", kind=kind,
-                          limit=f"{est.limit:.3g}", ratio=f"{ratio:.2f}"))
+        v["primes"].set(T("timesim.primes_value", primes=number_format.whole(est.primes), kind=kind,
+                          limit=f"{est.limit:.3g}", ratio=number_format.decimal(ratio, 2)))
         v["prep"].set(format_long_duration(est.prep_seconds, T))
         v["sieve"].set(format_long_duration(est.sieve_seconds, T))
         if not write_files:
@@ -306,7 +310,7 @@ class TimeSimulationWindow(tk.Toplevel):
         total = time_model.floor_seconds(cal, engine, floor, windows, write_files, pt1_b)
         runs = -(-time_model.floor_windows(floor) // windows)
         v["floor_total"].set(T("timesim.floor_total_value", time=format_long_duration(total, T),
-                               runs=f"{runs:,}", numbers=f"{9 * 10 ** floor:.0e}"))
+                               runs=number_format.whole(runs), numbers=f"{9 * 10 ** floor:.0e}"))
         v["ram"].set(self._ram_text(windows))
         v["measured"].set(self._measured_text(engine, floor, pt1_b))
         if self.advice_view is not None:
@@ -318,7 +322,7 @@ class TimeSimulationWindow(tk.Toplevel):
             # The newest version's own rows calibrate once it has two (time_model.calibration_rows).
             text = T("timesim.model_info", engine=cal.version or engine, rows=cal.rows,
                      floor_lo=cal.floors[0],
-                     floor_hi=cal.floors[1], error=f"{cal.max_error * 100:.0f}")
+                     floor_hi=cal.floors[1], error=number_format.decimal(cal.max_error * 100, 0))
             if est.extrapolated:
                 text += "\n" + T("timesim.model_extrapolated")
             v["model"].set(text)

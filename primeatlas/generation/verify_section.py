@@ -40,7 +40,7 @@ from tkinter import ttk, messagebox
 
 import run_verify
 from primeatlas.core import ui_state_dynamic
-from ..core import cpu_dynamic, number_field
+from ..core import cpu_dynamic, number_field, number_format
 from ..core.threads_field import ThreadsField
 from ..core.info_tip import InfoTip
 from ..benchmark.benchmark import read_benchmark_log
@@ -401,15 +401,15 @@ class VerifySection:
             self._verify_vars["max_windows"].set(str(self._verify_total))
             self._verify_split_var.set(str(self._verify_total))
             self._verify_total_text.set(self.T("gen.verify_windows_total",
-                                               total=f"{self._verify_total:,}"))
+                                               total=number_format.whole(self._verify_total)))
             low, high = verify_width.width_range(island, self._verify_method(),
                                                  self._verify_sieve_cap)
             self._verify_island_text.set(self.T(
                 "gen.verify_island", numbers=verify_width.width_text(island.numbers),
-                files=f"{island.files:,}", low=verify_width.width_text(low),
+                files=number_format.whole(island.files), low=verify_width.width_text(low),
                 high=verify_width.width_text(high)))
             self._verify_width_text.set(self.T(
-                "gen.verify_width_files", files=f"{width // island.file_width:,}",
+                "gen.verify_width_files", files=number_format.whole(width // island.file_width),
                 file_width=verify_width.width_text(island.file_width)))
         # The field writes above schedule recounts of their own; this one already counts them.
         if self._verify_count_after_id is not None:

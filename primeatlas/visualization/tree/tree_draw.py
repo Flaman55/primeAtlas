@@ -24,6 +24,8 @@ array, so they are drawn under the points they mark.
 
 import numpy as np
 
+from primeatlas.core import number_format
+
 from primeatlas.visualization.shared.world_labels import WorldLabel, ANCHOR_LEFT_OF, ANCHOR_RIGHT_OF
 from primeatlas.visualization.tree.tree_colors import prime_color, EDGE_RGB, AXIS_RGB, OVERFLOW_STRIPE_RGB
 from primeatlas.visualization.tree.tree_layout import (
@@ -63,8 +65,8 @@ _OFFSET_LABEL_DIGITS = 13
 def value_text(value, start):
     """Label text for `value` in a tree starting at `start`."""
     if len(str(start)) < _OFFSET_LABEL_DIGITS:
-        return f"{value:,}"
-    return f"s+{value - start:,}"
+        return number_format.whole(value)
+    return f"s+{number_format.whole(value - start)}"
 
 
 class TreeStyle:
@@ -232,7 +234,7 @@ def build_tree_draw_data(tree, max_radius, style, layers=()):
             data.hidden_stubs.append((node.p, (x, y), end))
             data.hidden_stub_nodes.append((node, (x, y), end))
             stubs.extend(_dashed((x, y), end, _STUB_DASHES))
-            data.labels.append(WorldLabel(end[0], end[1], f"+{node.hidden:,}", EDGE_RGB,
+            data.labels.append(WorldLabel(end[0], end[1], f"+{number_format.whole(node.hidden)}", EDGE_RGB,
                                           room=node.leaf_span * slot_world, anchor=ANCHOR_RIGHT_OF))
         for layer in layers:
             if layer.picks(node.p, POINT_NODE, None):
@@ -311,7 +313,7 @@ def build_tree_draw_data(tree, max_radius, style, layers=()):
     if axis.kind != AXIS_REAL:
         for lo, hi in zip(axis.values, axis.values[1:]):
             y = (data.y_of(lo) + data.y_of(hi)) / 2.0
-            data.labels.append(WorldLabel(axis_x, y, f"+{hi - lo:,}", EDGE_RGB, anchor=ANCHOR_RIGHT_OF))
+            data.labels.append(WorldLabel(axis_x, y, f"+{number_format.whole(hi - lo)}", EDGE_RGB, anchor=ANCHOR_RIGHT_OF))
     segment_blocks.append(_segment_pairs(axis_pairs, AXIS_RGB, 0.8))
 
     highlight_rows = []

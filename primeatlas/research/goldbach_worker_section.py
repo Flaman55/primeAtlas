@@ -11,6 +11,7 @@ and its other mixins set up, so it is never instantiated on its own.
 import tkinter as tk
 from tkinter import messagebox
 
+from ..core import number_format
 from ..core.progress_bar_owner import show_fraction
 from .goldbach_window import (
     check_window as goldbach_check_window,
@@ -88,7 +89,7 @@ class GoldbachWorkerSection:
                         "kind": "storage_missing", "floor": e.floor,
                         "needed_upto": e.needed_upto,
                         "message": T("research_goldbach.error_storage_missing",
-                                     floor=e.floor, upto=f"{e.needed_upto:,}")}
+                                     floor=e.floor, upto=number_format.whole(e.needed_upto))}
                 page = job.get("page", 0)
                 result = goldbach_all_decompositions(
                     is_prime, n, job["pmax"], cap=GOLDBACH_DECOMPOSE_ROW_CAP,
@@ -112,15 +113,15 @@ class GoldbachWorkerSection:
                         "kind": "storage_missing", "floor": e.floor,
                         "needed_upto": e.needed_upto,
                         "message": T("research_goldbach.error_storage_missing",
-                                     floor=e.floor, upto=f"{e.needed_upto:,}")}
+                                     floor=e.floor, upto=number_format.whole(e.needed_upto))}
                 pmax = goldbach_largest_prime_le(is_prime, n)
                 if pmax is None:
                     return op, False, T("research_goldbach.error_no_prime_le_n", n=n)
                 if pmax > GOLDBACH_BOTH_BASE_PMAX_CEILING:
                     return op, False, T(
                         "research_goldbach.error_both_base_pmax_too_large",
-                        pmax=f"{pmax:,}",
-                        ceiling=f"{GOLDBACH_BOTH_BASE_PMAX_CEILING:,}")
+                        pmax=number_format.whole(pmax),
+                        ceiling=number_format.whole(GOLDBACH_BOTH_BASE_PMAX_CEILING))
                 row_page = job.get("row_page", 0)
                 result = goldbach_both_base_window_rows(
                     is_prime, pmax, row_cap=GOLDBACH_CASCADE_ROW_CAP,

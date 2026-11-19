@@ -11,6 +11,7 @@ import queue
 
 from tkinter import messagebox
 
+from ..core import number_format
 from ..core.storage import digit_count_floor, LOW_FLOOR_CUTOFF
 from ..core.number_text import plain_number
 from . import engine_options, wsl_resources
@@ -404,8 +405,8 @@ class QuickGenRuns:
         self.quick_status_var.set(self.T(
             "quick.summary_floor_fill_gap", floor=floor_value,
             width_mult=capped_width,
-            width_total=f"{capped_width * QUICK_GEN_MAX_WINDOW_WIDTH:,}",
-            gap_start=f"{gap_start:,}",
+            width_total=number_format.whole(capped_width * QUICK_GEN_MAX_WINDOW_WIDTH),
+            gap_start=number_format.whole(gap_start),
             existing_count=self._engine_window_count(floor_value),
             added_count=capped_width)
             + (self.T("quick.note_gap_partial") if not reaches_existing else ""))

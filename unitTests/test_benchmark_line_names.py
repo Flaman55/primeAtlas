@@ -135,11 +135,11 @@ class WidthTests(unittest.TestCase):
     def test_points_name_their_width(self):
         series = {s.name: s for s in benchmark.benchmark_series(self.ROWS, "sieve")}
         v6 = series["v6.0, 15 thr, write 8"]
-        self.assertEqual(chart_series.point_label("{:,.0f}", 5.0, v6, x=19),
+        self.assertEqual(chart_series.point_label(0, 5.0, v6, x=19),
                          "5 [v6.0, 15 thr, write 8] @ 10^11")
-        self.assertEqual(chart_series.point_label("{:,.0f}", 5.0, v6, x=20),
+        self.assertEqual(chart_series.point_label(0, 5.0, v6, x=20),
                          "5 [v6.0, 15 thr, write 8] @ 2x10^11")
-        self.assertEqual(chart_series.point_label("{:,.0f}", 5.0, v6), "5 [v6.0, 15 thr, write 8]")
+        self.assertEqual(chart_series.point_label(0, 5.0, v6), "5 [v6.0, 15 thr, write 8]")
 
     def test_mixed_widths_are_listed(self):
         self.assertEqual(benchmark.mixed_width_floors(self.ROWS, "sieve"), [19],

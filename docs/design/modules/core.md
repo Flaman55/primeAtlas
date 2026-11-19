@@ -10,6 +10,7 @@ app-wide widgets and the background coordinators for floor totals and search. GU
 | Settings and texts | `app_settings.py` (`AppSettings`), `i18n.py` (`Translator`), `locales/strings_en.json`, `locales/strings_pl.json` |
 | CPU count | `cpu_dynamic.py` (`WSL_CPUS`: the CPU count WSL reports, read once at startup in the background and refreshed by each launch's probe and the About tab's read; a failed probe keeps a known count; `set_wsl_cpus()` tells every ThreadsField) |
 | Remembered fields | `ui_state.py` (`remember()`), `ui_state_store.py` (`UiStateStore`, no tkinter), `ui_state_dynamic.py` (the app's store, `STORE`) |
+| Number format | `number_format.py` (`whole`, `decimal`: numbers shown to a person in the notation of the UI language or the one picked in Settings > General; `resolve`, `apply_saved`), `number_format_dynamic.py` (`STYLE`, set by `app_dynamic` and the renderer at startup) |
 | Theme in use | `theme_dynamic.py` (`THEME`, set by `app_dynamic` at startup, read by `benchmark/line_colors.py`) |
 | Look | `theme.py` (palettes), `app_icon.py`, `assets/` |
 | Storage reads | `storage.py` (floor listing, totals cache, `LOW_FLOOR_CUTOFF`) |

@@ -264,25 +264,25 @@ class ScriptTests(unittest.TestCase):
         cases, expected = [], []
         # (log, pins, format, extra series, x view, y view): unzoomed and zoomed, a zoomed
         # part between two floors (19.2..21.4) and one cutting the lines on every edge.
-        for log_y, pins, fmt, extra, x_view, y_view in (
-                (False, (None, None), "{:,.0f}", [], None, None),
-                (True, (None, None), "{:,.0f}", refs, None, None),
-                (False, (1e8, 5e9), "{:,.3f}", [], None, None),
-                (True, (2e8, None), "{:,.1f}", [], None, None),
-                (False, (None, None), "{:,.0f}", [], (19.2, 21.4), None),
-                (False, (None, None), "{:,.0f}", [], (19.2, 21.4), (0.3, 0.55)),
-                (True, (None, None), "{:,.0f}", refs, (17.5, 23.1), (0.2, 0.9)),
-                (False, (1e8, 5e9), "{:,.3f}", [], (21.0, 24.0), (0.0, 0.4))):
+        for log_y, pins, places, extra, x_view, y_view in (
+                (False, (None, None), 0, [], None, None),
+                (True, (None, None), 0, refs, None, None),
+                (False, (1e8, 5e9), 3, [], None, None),
+                (True, (2e8, None), 1, [], None, None),
+                (False, (None, None), 0, [], (19.2, 21.4), None),
+                (False, (None, None), 0, [], (19.2, 21.4), (0.3, 0.55)),
+                (True, (None, None), 0, refs, (17.5, 23.1), (0.2, 0.9)),
+                (False, (1e8, 5e9), 3, [], (21.0, 24.0), (0.0, 0.4))):
             drawn = series + list(extra)
             opts = {"series": [report_html.series_json(s) for s in drawn],
                     "legend": [{"name": s.name, "color": s.color, "dashed": s.dashed,
                                 "hidden": False} for s in sorted(drawn, key=lambda s: s.dashed)],
-                    "title": t.t("bench.axis_total_nps"), "decimals": report_html.decimals(fmt),
+                    "title": t.t("bench.axis_total_nps"), "decimals": places,
                     "log": log_y, "pins": list(pins), "view": x_view, "yView": y_view,
                     "text": text}
             cases.append({"kind": "svg", "w": 900, "h": 260, "opts": opts})
             expected.append(chart_svg(900, 260, series1=drawn, translator=t,
-                                      label_key1="bench.axis_total_nps", fmt1=fmt,
+                                      label_key1="bench.axis_total_nps", places1=places,
                                       log_y=log_y, pins1=pins, x_view=x_view, y_view=y_view))
         self.assertGreater(expected[4].count("stroke-width=\"1.80\""), 3,
                            "lines pass through the zoomed part between floors 19 and 21")
@@ -303,12 +303,12 @@ class ScriptTests(unittest.TestCase):
             opts = {"series": [report_html.series_json(s) for s in series],
                     "legend": [{"name": s.name, "color": s.color, "dashed": s.dashed,
                                 "hidden": False} for s in series],
-                    "title": t.t(key), "decimals": report_html.decimals("{:,.0f}"),
+                    "title": t.t(key), "decimals": 0,
                     "log": False, "pins": list(pins), "view": None, "yView": None,
                     "text": text}
             cases.append({"kind": "svg", "w": 900, "h": 260, "opts": opts})
             expected.append(chart_svg(900, 260, series1=series, translator=t, label_key1=key,
-                                      fmt1="{:,.0f}", pins1=pins))
+                                      places1=0, pins1=pins))
             titles.append(t.t(key) + (" [" + t.t("bench.axis_pinned") + "]"
                                       if pins[0] is not None else ""))
         name = re.escape(series[0].name)
@@ -421,7 +421,7 @@ class PointTests(unittest.TestCase):
                     "xMode": "width"}
             cases.append({"kind": "svg", "w": 900, "h": 260, "opts": opts})
             expected.append(chart_svg(900, 260, series1=series, translator=t,
-                                      label_key1="bench.axis_total_nps", fmt1="{:,.0f}",
+                                      label_key1="bench.axis_total_nps", places1=0,
                                       log_y=True, x_view=x_view, x_mode=chart_points.X_WIDTH))
         self.assertIn(">10^11</text>", expected[0], "data ticks name the widths")
         self.assertIn(">" + t.t("bench.axis_width") + "</text>", expected[0])

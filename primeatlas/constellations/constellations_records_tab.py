@@ -41,6 +41,7 @@ from tkinter import ttk, messagebox, filedialog
 
 import pattern_catalog_v1
 
+from ..core import number_format
 from ..core.number_text import plain_number
 from ..core import number_field
 from ..core import background
@@ -482,7 +483,7 @@ class ConstellationsRecordsTab(BaseTab):
         pdf_rows = [{
             "exp": f"10p{r['base_exponent']}",
             "id": r["variant_id"],
-            "offset": f"+{r['offset']:,}" + (" *" if r["is_record_floor"] else ""),
+            "offset": "+" + number_format.whole(r["offset"]) + (" *" if r["is_record_floor"] else ""),
             "number": r["number"],
         } for r in detail_rows]
         render_constellation_records_pdf(path, k, fieldnames, pdf_rows, translator=self.T)
@@ -525,7 +526,8 @@ class ConstellationsRecordsTab(BaseTab):
                     messagebox.showerror(
                         T("const_records.error_dialog_title"),
                         T("const_records.export_pdf_too_large",
-                          count=f"{total_rows:,}", limit=f"{PDF_EXPORT_ROW_LIMIT:,}"))
+                          count=number_format.whole(total_rows),
+                          limit=number_format.whole(PDF_EXPORT_ROW_LIMIT)))
                 else:
                     messagebox.showerror(T("const_records.error_dialog_title"), result_payload)
                 return
@@ -545,7 +547,7 @@ class ConstellationsRecordsTab(BaseTab):
                 if cell is None:
                     values.append("-")
                 else:
-                    text = f"+{cell['offset']:,} ({cell['count']}x)"
+                    text = f"+{number_format.whole(cell['offset'])} ({cell['count']}x)"
                     if cell["is_record_floor"]:
                         text += " *"
                     values.append(text)
@@ -629,7 +631,7 @@ class ConstellationsRecordsTab(BaseTab):
             self._set_detail_file_nav_disabled()
             self.detail_label_var.set(T(
                 "const_records.detail_too_large", exp=base_exponent, id=vid,
-                count=f"{header['count']:,}"))
+                count=number_format.whole(header['count'])))
             self._show_detail_page(0)
             return
         self._detail_context = {"base_exponent": base_exponent, "pattern": pattern}
@@ -672,7 +674,7 @@ class ConstellationsRecordsTab(BaseTab):
         self.detail_label_var.set(T(
             "const_records.detail_title_file_page", exp=base_exponent, id=pattern.get("id", vid),
             page=page_index + 1, page_total=self._detail_file_page_count,
-            count=f"{len(values):,}"))
+            count=number_format.whole(len(values))))
         self.detail_file_page_label.set(T(
             "const_records.file_page_label", page=page_index + 1, total=self._detail_file_page_count))
         self.detail_file_prev_btn.configure(state="normal" if page_index > 0 else "disabled")
@@ -800,7 +802,8 @@ class ConstellationsRecordsTab(BaseTab):
 
     def _detail_row_formatter(self, row):
         number, offset = row
-        return self.T("const_records.detail_row", number=f"{number:,}", offset=f"{offset:,}")
+        return self.T("const_records.detail_row", number=number_format.whole(number),
+                      offset=number_format.whole(offset))
 
     def _show_detail_page(self, page):
         if not self._detail_rows:

@@ -38,6 +38,7 @@ import dp_verify
 import prime_sieve_v1
 import storage_kinds
 
+from ..core import number_format
 from ..core import number_field
 from ..core.number_text import plain_number
 from ..core import background
@@ -412,13 +413,13 @@ class PrimesTab(BaseTab):
             gen_seconds = self._floor_gen_seconds.get(base_exponent)
             timer_str = format_duration(gen_seconds) if gen_seconds is not None else ""
             cum = cumulative.get(base_exponent)
-            cum_str = f"{cum:,}" if cum is not None else ""
+            cum_str = number_format.whole(cum) if cum is not None else ""
             p_known = self._floor_p_known.get(base_exponent)
             files, size = disk_footprint(known, p_known)
-            values = ((f"{known[0]:,}" if known else "", cum_str,
-                       f"{files:,}" if known or p_known else "",
+            values = ((number_format.whole(known[0]) if known else "", cum_str,
+                       number_format.whole(files) if known or p_known else "",
                        format_bytes(size) if known or p_known else "", "", timer_str))
-            values += (("", f"{p_known[0]:,}") if p_known and p_known[0] else ("", ""))
+            values += (("", number_format.whole(p_known[0])) if p_known and p_known[0] else ("", ""))
             node = self.tree.insert("", "end", text=f"10p{base_exponent}",
                                      values=values, open=False, tags=("floor",))
             self.tree.insert(node, "end", text=T("common.loading"))
@@ -460,15 +461,15 @@ class PrimesTab(BaseTab):
             p_known = self._floor_p_known.get(base_exponent)
             files, size = disk_footprint((total, file_count, total_bytes), p_known)
             self.tree.item(node, values=(
-                f"{total:,}", "", f"{files:,}", format_bytes(size), "", timer_str,
-                "", f"{p_known[0]:,}" if p_known and p_known[0] else ""))
+                number_format.whole(total), "", number_format.whole(files), format_bytes(size), "", timer_str,
+                "", number_format.whole(p_known[0]) if p_known and p_known[0] else ""))
         cumulative = _cumulative_floor_totals(
             self._floor_node_by_exp.keys(), self._floor_total_known)
         for exp, other_node in self._floor_node_by_exp.items():
             if not self.tree.exists(other_node):
                 continue
             cum = cumulative.get(exp)
-            self.tree.set(other_node, "cumulative", f"{cum:,}" if cum is not None else "")
+            self.tree.set(other_node, "cumulative", number_format.whole(cum) if cum is not None else "")
         self._fit_tree_columns()
         if self._active_floor_node == node:
             self._refresh_floor_nav_controls()
@@ -497,7 +498,8 @@ class PrimesTab(BaseTab):
         total = len(result["primes"])
         self.status.set(
             T("common.found_in_file", number=number, name=result['name'],
-              base_exponent=base_exponent, position=f"{result['index'] + 1:,}", total=f"{total:,}"))
+              base_exponent=base_exponent, position=number_format.whole(result['index'] + 1),
+              total=number_format.whole(total)))
 
     # --- Floor tree ------------------------------------------------------------------------
 
@@ -656,7 +658,7 @@ class PrimesTab(BaseTab):
             if header is None:
                 count_str, gen_str = "?", self.T("primes.unreadable_header")
             else:
-                count_str = f"{header['count']:,}"
+                count_str = number_format.whole(header['count'])
                 gen_str = header["generated_at_iso"]
                 page_total += header["count"]
             # ("count", "cumulative", "files", "size", "generated", "timer") -- a single
@@ -723,9 +725,9 @@ class PrimesTab(BaseTab):
                                    self.floor_prev_btn, self.floor_next_btn)
         page_total = state.get("page_total", 0)
         known = self._floor_total_known.get(state["base_exponent"])
-        overall = f"{known[0]:,}" if known else self.T("common.computing")
+        overall = number_format.whole(known[0]) if known else self.T("common.computing")
         self.floor_subtotal_label.set(
-            self.T("primes.page_total", page_total=f"{page_total:,}", overall=overall))
+            self.T("primes.page_total", page_total=number_format.whole(page_total), overall=overall))
 
     def _prev_floor_page(self):
         node = self._active_floor_node
@@ -773,7 +775,7 @@ class PrimesTab(BaseTab):
             f"{path}\n\n" +
             T("primes.header_detail",
               base_prime=format_big_int(header['base_prime']),
-              count=f"{header['count']:,}",
+              count=number_format.whole(header['count']),
               generated=header['generated_at_iso'])
         )
         if header["count"] > 0:

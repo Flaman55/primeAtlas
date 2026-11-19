@@ -33,7 +33,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from ..core.info_tip import InfoTip
-from ..core import number_field
+from ..core import number_field, number_format
 from ..core.number_text import plain_number
 from . import engine_advisor, engine_options, run_ram, time_model, width_advisor
 from .engine_advice_text import advice_text
@@ -131,10 +131,10 @@ class EngineAdviceControls:
         ram, budget = over
         return messagebox.askyesno(
             self.T("gen.dialog_title"),
-            self.T("gen.confirm_ram_over_budget", ram=f"{ram / 1e9:.1f}",
-                   budget=f"{budget / 1e9:.1f}",
+            self.T("gen.confirm_ram_over_budget", ram=number_format.decimal(ram / 1e9, 1),
+                   budget=number_format.decimal(budget / 1e9, 1),
                    pct=choice.knobs[engine_options.RAM_BUDGET_KNOB],
-                   free=f"{self._advice_free_ram / 1e9:.1f}",
+                   free=number_format.decimal(self._advice_free_ram / 1e9, 1),
                    field=self.T("gen.field_ram_budget_pct").rstrip(":")),
             icon="warning", default="no")
 

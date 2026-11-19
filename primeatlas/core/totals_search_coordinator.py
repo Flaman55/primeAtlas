@@ -29,6 +29,7 @@ from tkinter import messagebox
 import storage_kinds
 
 from ..settings import floor_meta
+from . import number_format
 from .background import PersistentWorker
 from .progress_bar_owner import (
     claim_progress_bar, owns_progress_bar, release_progress_bar,
@@ -236,7 +237,7 @@ class TotalsSearchCoordinator:
             self.status.set(
                 self.T("primes.status_computing_progress", base_exponent=base_exponent,
                        done=done, total=self._totals_batch_size,
-                       sum=f"{self._grand_total_sum:,}"))
+                       sum=number_format.whole(self._grand_total_sum)))
         else:
             if not self._totals_status_write_allowed(base_exponent):
                 return
@@ -325,13 +326,13 @@ class TotalsSearchCoordinator:
                 if allow_status_write:
                     self.status.set(
                         self.T("primes.status_grand_total", count=expected,
-                               sum=f"{self._grand_total_sum:,}",
+                               sum=number_format.whole(self._grand_total_sum),
                                duration=format_duration(self._grand_total_seconds),
                                size=format_bytes(self._grand_total_bytes)))
             elif allow_status_write:
                 self.status.set(
                     self.T("primes.status_partial_totals", done=done, total=expected,
-                           sum=f"{self._grand_total_sum:,}",
+                           sum=number_format.whole(self._grand_total_sum),
                            size=format_bytes(self._grand_total_bytes)))
         else:
             allow_status_write = self._totals_status_write_allowed(base_exponent)
@@ -342,7 +343,7 @@ class TotalsSearchCoordinator:
                                              self._p_totals.get(base_exponent))
                 self.status.set(
                     self.T("primes.status_floor_total", base_exponent=base_exponent,
-                           total=f"{total:,}", files=f"{files:,}",
+                           total=number_format.whole(total), files=number_format.whole(files),
                            size=format_bytes(size), extra=extra))
 
     def show_cached_grand_total(self, totals_cache, floor_gen_seconds, floor_count):
@@ -396,9 +397,9 @@ class TotalsSearchCoordinator:
         p_sum = p_known[0]
         self.status.set(
             self.T("primes.status_grand_total", count=floor_count,
-                   sum=f"{total_sum:,}", duration=format_duration(total_seconds),
+                   sum=number_format.whole(total_sum), duration=format_duration(total_seconds),
                    size=format_bytes(disk_footprint(known, p_known)[1]))
-            + (self.T("primes.status_grand_total_p", sum=f"{p_sum:,}") if p_sum else ""))
+            + (self.T("primes.status_grand_total_p", sum=number_format.whole(p_sum)) if p_sum else ""))
         if claim_progress_bar(self.totals_progress, self._totals_progress_owner):
             self.totals_progress.configure(maximum=1, value=0)
             release_progress_bar(self.totals_progress, self._totals_progress_owner)

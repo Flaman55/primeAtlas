@@ -35,6 +35,7 @@ reasoning, duplicated sieve_is_prime rather than importing across
 conjecture-module boundaries (see research_squares_tab.py's own docstring
 for why each conjecture module in this project stays self-contained).
 """
+from ..core import number_format
 
 MAX_SIEVE_BOUND = 200_000_000
 """Refuses (ValueError) any check whose largest f(n) value would need a
@@ -156,8 +157,8 @@ def check_polynomial_range_from_source(preset, n_from, n_to, is_prime_source,
     is_prime = is_prime_source(max_value)
     if len(is_prime) <= max_value:
         raise ValueError(
-            f"is_prime array too short: need index up to {max_value:,}, got "
-            f"length {len(is_prime):,}")
+            f"is_prime array too short: need index up to {number_format.whole(max_value)}, got "
+            f"length {number_format.whole(len(is_prime))}")
     return _build_result(is_prime, preset, n_from, n_to, max_value, values,
                           row_cap, row_offset)
 
@@ -186,8 +187,9 @@ def check_polynomial_range(preset, n_from, n_to, poly_fn=None, row_cap=None, row
     def _source(max_value):
         if max_value > MAX_SIEVE_BOUND:
             raise ValueError(
-                f"the requested range needs a sieve up to {max_value:,}, above this "
-                f"tool's {MAX_SIEVE_BOUND:,} ceiling for a fresh in-memory sieve -- "
+                f"the requested range needs a sieve up to {number_format.whole(max_value)}, "
+                f"above this tool's {number_format.whole(MAX_SIEVE_BOUND)} ceiling "
+                f"for a fresh in-memory sieve -- "
                 f"reduce n_to")
         return sieve_is_prime(max_value)
 

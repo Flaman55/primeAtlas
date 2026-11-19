@@ -28,6 +28,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
 from ..core import number_field
+from ..core import number_format
 from ..core import background
 from ..core.base_tab import BaseTab
 from ..core.ui_state import remember
@@ -387,12 +388,12 @@ class ResearchGoldbachTab(GoldbachVizSection, GoldbachDecomposeSection,
             summary = T(
                 "research_goldbach.summary_covered", n=result["n"], pmax=result["pmax"],
                 n_checked=result["n_checked"],
-                window_max=result["window_max"], elapsed=f"{result['elapsed']:.3f}")
+                window_max=result["window_max"], elapsed=number_format.decimal(result['elapsed'], 3))
         else:
             summary = T(
                 "research_goldbach.summary_void", n=result["n"], pmax=result["pmax"],
                 counterexamples=", ".join(str(x) for x in result["counterexamples"]),
-                window_max=result["window_max"], elapsed=f"{result['elapsed']:.3f}")
+                window_max=result["window_max"], elapsed=number_format.decimal(result['elapsed'], 3))
         if truncated:
             summary += " " + T(
                 "research_goldbach.summary_truncated", shown=self._page_size, total=len(rows))

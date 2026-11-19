@@ -26,6 +26,8 @@ import math
 
 import numpy as np
 
+from primeatlas.core import number_format
+
 from primeatlas.visualization.sphere.fiber_draw import (
     lineage_style, phase_overlay, resonance_style, strand_rows,
 )
@@ -226,20 +228,22 @@ class FibersMode(SphereMode):
     def _extra_hud_lines(self, n, frac, active):
         lines = []
         if self.kind == FIBERS_RESONANCE:
-            text = f"Fibers: resonance, the {len(self.fiber_pairs):,} strongest of {self.evaluated_pairs:,} pairs"
+            text = (f"Fibers: resonance, the {number_format.whole(len(self.fiber_pairs))} strongest of "
+                    f"{number_format.whole(self.evaluated_pairs)} pairs")
             if active > self.table.orbits:
-                text += f" (those of the first {self.table.orbits:,} orbits + the focused orbit's)"
+                text += f" (those of the first {number_format.whole(self.table.orbits)} orbits + the focused orbit's)"
             lines.append(text)
             if self.fiber_pairs:
                 p, q = self.fiber_pairs[0]
-                lines.append(f"Strongest: {p:,} · {q:,} = {p * q:,}, strength {self.fiber_strengths[0]:.2f}")
+                lines.append(f"Strongest: {number_format.whole(p)} · {number_format.whole(q)} = {number_format.whole(p * q)}, "
+                             f"strength {number_format.decimal(self.fiber_strengths[0], 2)}")
         else:
             total = max(0, active - 1)
             if total:
-                chain = " -> ".join(f"{p:,}" for p in self.rings[:min(active, 3)])
-                chain += f" -> ... -> {self.rings[active - 1]:,}" if active > 3 else ""
-                text = f"Fibers: lineage {chain} ({total:,} fibers"
-                text += f", drawn {len(self.fiber_pairs):,})" if len(self.fiber_pairs) != total else ")"
+                chain = " -> ".join(number_format.whole(p) for p in self.rings[:min(active, 3)])
+                chain += f" -> ... -> {number_format.whole(self.rings[active - 1])}" if active > 3 else ""
+                text = f"Fibers: lineage {chain} ({number_format.whole(total)} fibers"
+                text += f", drawn {number_format.whole(len(self.fiber_pairs))})" if len(self.fiber_pairs) != total else ")"
             else:
                 text = "Fibers: lineage (none yet: the chain starts at 2 -> 3)"
             lines.append(text)
@@ -250,14 +254,17 @@ class FibersMode(SphereMode):
         p = self.rings[focus]
         r = int(residues(n, [p])[0])
         degrees = 360.0 * (((r + frac) / p) % 1.0)
-        lines.append(f"Phase of {p:,}: N mod p = {r:,} / {p:,}, {degrees:.1f}°")
+        lines.append(f"Phase of {number_format.whole(p)}: N mod p = {number_format.whole(r)} / {number_format.whole(p)}, "
+                     f"{number_format.decimal(degrees, 1)}°")
         if self.kind == FIBERS_LINEAGE:
             a, b, c = (float(share[focus]) for share in self.shares)
             if focus == 0:
-                lines.append(f"{p:,} starts the chain: taken by {p:,} {b:.4f} | free {c:.4f}")
+                lines.append(f"{number_format.whole(p)} starts the chain: taken by {number_format.whole(p)} {number_format.decimal(b, 4)} | "
+                             f"free {number_format.decimal(c, 4)}")
             else:
-                lines.append(f"Fiber {self.rings[focus - 1]:,} -> {p:,}: ancestors {a:.4f} | "
-                             f"taken by {p:,} {b:.4f} | free {c:.4f}")
+                lines.append(f"Fiber {number_format.whole(self.rings[focus - 1])} -> {number_format.whole(p)}: "
+                             f"ancestors {number_format.decimal(a, 4)} | taken by {number_format.whole(p)} {number_format.decimal(b, 4)} | "
+                             f"free {number_format.decimal(c, 4)}")
         return lines
 
     # -- navigation -------------------------------------------------------------

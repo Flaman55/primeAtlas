@@ -11,6 +11,7 @@ and its other mixins set up, so it is never instantiated on its own.
 import tkinter as tk
 from tkinter import ttk, messagebox
 
+from ..core import number_format
 from ..core.number_text import plain_number
 from ..core import number_field
 from ..core.ui_state import remember
@@ -78,7 +79,7 @@ class GoldbachVizSection:
         if n_min > n - 2:
             messagebox.showerror(
                 T("research_goldbach.error_dialog_title"),
-                T("research_goldbach.error_viz_range_from_too_high", do=f"{n:,}"))
+                T("research_goldbach.error_viz_range_from_too_high", do=number_format.whole(n)))
             return
         if reset_page:
             self._goldbach_viz_row_page = 0

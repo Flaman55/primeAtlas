@@ -84,12 +84,12 @@ def report_pages_svg(rows, translator=None, sieve_points=None, references=False,
     for kind, charts in pages:
         svgs = []
         for i, spec in enumerate(charts):
-            chart_key, axis, _metric, label_key, fmt = spec
+            chart_key, axis, _metric, label_key, places = spec
             extra = reference_series(t) if kind == "sieve" and with_refs and i == 0 else ()
             svgs.append(chart_svg(
                 CHART_WIDTH, CHART_HEIGHT,
                 series1=report_chart_series(rows, spec, hidden_lines, extra, point_views),
-                translator=translator, label_key1=label_key, fmt1=fmt, log_y=log_y,
+                translator=translator, label_key1=label_key, places1=places, log_y=log_y,
                 pins1=axis_pins(y_pins.get(chart_key), axis),
                 x_view=x_view, y_view=(y_views or {}).get(chart_key),
                 x_mode=(point_views.get(chart_key) or chart_points.DEFAULT).x_mode))

@@ -1,6 +1,7 @@
 """
-general_section.py -- GeneralSection, the General sub-tab of Settings: the language and
-theme pickers with their restart-to-apply guard, the ScrollPad width field, the
+general_section.py -- GeneralSection, the General sub-tab of Settings: the language,
+number format and theme pickers with their restart-to-apply guard, the ScrollPad width
+field, the
 brightness/font-size (readability) fields, and the storage-path field.
 
 A SettingsTab mixin: it uses the widgets, Variables and state that SettingsTab and its
@@ -10,7 +11,7 @@ other mixins set up, so it is never instantiated on its own.
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
-from ..core import number_field
+from ..core import number_field, number_format
 from ..core.app_settings import SCROLL_PAD_WIDTH_MAX, SCROLL_PAD_WIDTH_MIN
 from ..core.number_text import plain_number
 from ..core.theme import (BRIGHTNESS_DEFAULT, BRIGHTNESS_MAX, BRIGHTNESS_MIN, FONT_SCALE_DEFAULT,
@@ -35,6 +36,15 @@ class GeneralSection:
         # language the app was launched with). A throwaway Translator for just this one
         # popup is cheap and doesn't touch self.T or rebuild any other widget.
         self._restart_now_or_warn(notice_translator=Translator(code).t)
+
+    # ---- number format ----------------------------------------------------------------
+
+    def _on_number_format_selected(self, _event=None):
+        code = self._number_format_codes_by_label.get(self.number_format_var.get())
+        if code is None or code == self.app_settings.number_format:
+            return
+        self.app_settings.set_number_format(code)
+        self._restart_now_or_warn(notice_translator=self.T)
 
     # ---- theme ----------------------------------------------------------------------
 
@@ -192,6 +202,25 @@ class GeneralSection:
         language_combo.bind("<<ComboboxSelected>>", self._on_language_selected)
         ttk.Label(lang_frame, text=self.T("settings.language_restart_note"),
                   style="Hint.TLabel").grid(row=0, column=2, sticky="w", padx=(0, 6), pady=6)
+
+        ttk.Label(lang_frame, text=self.T("settings.number_format_label")).grid(
+            row=1, column=0, sticky="w", padx=6, pady=(0, 6))
+        follow = number_format.resolve(number_format.FOLLOW_LANGUAGE, self.app_settings.language)
+        self._number_format_labels_by_code = {
+            code: (self.T("settings.number_format_follow", sample=number_format.sample(follow))
+                   if code == number_format.FOLLOW_LANGUAGE else number_format.sample(code))
+            for code in number_format.CHOICES}
+        self._number_format_codes_by_label = {
+            label: code for code, label in self._number_format_labels_by_code.items()}
+        self.number_format_var = tk.StringVar(
+            value=self._number_format_labels_by_code[self.app_settings.number_format])
+        number_format_combo = ttk.Combobox(
+            lang_frame, textvariable=self.number_format_var, state="readonly",
+            values=list(self._number_format_labels_by_code.values()), width=28)
+        number_format_combo.grid(row=1, column=1, sticky="w", padx=(0, 12), pady=(0, 6))
+        number_format_combo.bind("<<ComboboxSelected>>", self._on_number_format_selected)
+        ttk.Label(lang_frame, text=self.T("settings.number_format_restart_note"),
+                  style="Hint.TLabel").grid(row=1, column=2, sticky="w", padx=(0, 6), pady=(0, 6))
 
         # Theme picker -- same restart-required pattern as language above (see
         # PortalBrowserApp._apply_theme() docstring for why a

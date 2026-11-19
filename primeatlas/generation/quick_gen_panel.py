@@ -10,7 +10,7 @@ and its other mixins set up, so it is never instantiated on its own.
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-from ..core import number_field
+from ..core import number_field, number_format
 from ..core.info_tip import InfoTip
 from ..core.number_text import number_value
 from ..core.storage import digit_count_floor, LOW_FLOOR_CUTOFF
@@ -657,7 +657,8 @@ class QuickGenPanel:
         real_window_count = self._engine_window_count(floor_value)
         messagebox.showinfo(self.T("quick.dialog_title"), self.T(
             "quick.primesieve_auto_from_result", floor=floor_value,
-            existing_count=real_window_count, continuation_point=f"{continuation_point:,}"))
+            existing_count=real_window_count,
+            continuation_point=number_format.whole(continuation_point)))
 
     def _build_quick_mode_cudasieve(self, container, mode_frames):
         """GPU counterpart to _build_quick_mode_primesieve -- IDENTICAL Floor + From +
@@ -722,13 +723,14 @@ class QuickGenPanel:
             self.quick_cudasieve_from_var.set(str(CUDASIEVE_MIN_PRINTABLE_TOP))
             messagebox.showinfo(self.T("quick.dialog_title"), self.T(
                 "quick.cudasieve_auto_from_clamped", floor=floor_value,
-                min_printable=f"{CUDASIEVE_MIN_PRINTABLE_TOP:,}"))
+                min_printable=number_format.whole(CUDASIEVE_MIN_PRINTABLE_TOP)))
             return
         self.quick_cudasieve_from_var.set(str(continuation_point))
         real_window_count = self._engine_window_count(floor_value)
         messagebox.showinfo(self.T("quick.dialog_title"), self.T(
             "quick.primesieve_auto_from_result", floor=floor_value,
-            existing_count=real_window_count, continuation_point=f"{continuation_point:,}"))
+            existing_count=real_window_count,
+            continuation_point=number_format.whole(continuation_point)))
 
     def _on_explore_auto_floor_clicked(self):
         """Exploration mode's OWN Floor-Auto button -- fills quick_explore_floor_var
@@ -813,23 +815,25 @@ class QuickGenPanel:
         elif width_var is not None:
             width_var.set(str(recommended))
         if choice.engine in engine_options.PT1_ENGINES:
-            text = self.T("quick.auto_result_pt1", recommended=f"{recommended:,}",
-                          numbers_total=f"{numbers_total:,}")
+            text = self.T("quick.auto_result_pt1", recommended=number_format.whole(recommended),
+                          numbers_total=number_format.whole(numbers_total))
         elif engine_options.bucket_knob(choice.engine) is None:
             text = self.T(
-                "quick.auto_ram_result", available_gb=f"{available / 1e9:.1f}",
+                "quick.auto_ram_result", available_gb=number_format.decimal(available / 1e9, 1),
                 budget_pct=choice.knobs[engine_options.RAM_BUDGET_KNOB],
-                recommended=f"{recommended:,}", numbers_total=f"{numbers_total:,}")
+                recommended=number_format.whole(recommended),
+                numbers_total=number_format.whole(numbers_total))
         else:
             if budget.bucket_mb != choice.knobs[engine_options.bucket_knob(choice.engine)]:
                 self._engine_fields.set_bucket_mb(budget.bucket_mb, choice.engine)
             text = self.T(
-                "quick.auto_ram_result_v5", available_gb=f"{available / 1e9:.1f}",
+                "quick.auto_ram_result_v5", available_gb=number_format.decimal(available / 1e9, 1),
                 budget_pct=choice.knobs[engine_options.RAM_BUDGET_KNOB],
                 engine=engine_options.ENGINE_VERSIONS[choice.engine],
                 floor="?" if base_exponent is None else base_exponent,
-                recommended=f"{recommended:,}", numbers_total=f"{numbers_total:,}",
-                bucket_mb=f"{budget.bucket_mb:,}")
+                recommended=number_format.whole(recommended),
+                numbers_total=number_format.whole(numbers_total),
+                bucket_mb=number_format.whole(budget.bucket_mb))
         if split_text is not None:
             text = f"{split_text}\n\n{text}"
         messagebox.showinfo(self.T("quick.dialog_title"), text)
@@ -862,18 +866,21 @@ class QuickGenPanel:
         total = typed[0] * typed[1]
         plan = width_advisor.plan_split(typed[0], typed[1], widest, QUICK_ITERATIONS_MAX)
         if plan.kind == width_advisor.SPLIT_TYPED:
-            return self.T("quick.auto_split_typed", total=f"{total:,}", widest=f"{widest:,}",
+            return self.T("quick.auto_split_typed", total=number_format.whole(total),
+                          widest=number_format.whole(widest),
                           max_iterations=QUICK_ITERATIONS_MAX)
         width_var.set(str(plan.windows))
         iterations_var.set(str(plan.iterations))
         if plan.kind == width_advisor.SPLIT_EXACT:
-            return self.T("quick.auto_split_result", total=f"{total:,}",
-                          numbers_total=f"{total * QUICK_GEN_MAX_WINDOW_WIDTH:,}",
-                          iterations=plan.iterations, windows=f"{plan.windows:,}")
+            return self.T("quick.auto_split_result", total=number_format.whole(total),
+                          numbers_total=number_format.whole(total * QUICK_GEN_MAX_WINDOW_WIDTH),
+                          iterations=plan.iterations, windows=number_format.whole(plan.windows))
         new_total = plan.windows * plan.iterations
-        return self.T("quick.auto_split_wider", total=f"{total:,}", widest=f"{widest:,}",
-                      iterations=plan.iterations, windows=f"{plan.windows:,}",
-                      new_total=f"{new_total:,}", extra=f"{new_total - total:,}")
+        return self.T("quick.auto_split_wider", total=number_format.whole(total),
+                      widest=number_format.whole(widest),
+                      iterations=plan.iterations, windows=number_format.whole(plan.windows),
+                      new_total=number_format.whole(new_total),
+                      extra=number_format.whole(new_total - total))
 
     def _sync_quick_panel(self, panel):
         """tkraise() only reorders stacking within the shared grid cell -- it does

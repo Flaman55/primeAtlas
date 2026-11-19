@@ -16,6 +16,8 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from primeatlas.core import number_format
+
 from primeatlas.visualization.shared.world_labels import WorldLabel
 from primeatlas.visualization.sphere.sphere_geometry import NODE, project, ring_curves, ring_points
 from primeatlas.visualization.tree.tree_draw import MARKER_FLOATS, _solid_rows
@@ -130,10 +132,10 @@ def _subset(frames, indices):
 def node_label_text(n, factors, birth):
     """The node label: the ring factors of N, or N itself when it is a new prime."""
     if birth:
-        return f"{n:,} prime"
+        return f"{number_format.whole(n)} prime"
     if not factors:
         return ""
-    shown = " · ".join(f"{p:,}" for p in factors[:_LABEL_FACTORS])
+    shown = " · ".join(number_format.whole(p) for p in factors[:_LABEL_FACTORS])
     extra = len(factors) - _LABEL_FACTORS
     return shown + (f" +{extra}" if extra > 0 else "")
 

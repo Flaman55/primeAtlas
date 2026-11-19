@@ -21,6 +21,7 @@ import datetime
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
+from ..core import number_format
 from ..core import number_field
 from ..core import background
 from ..core.base_tab import BaseTab
@@ -220,8 +221,9 @@ class ResearchGapsTab(BaseTab):
                 def source(bound, _folder=portal_folder):
                     if bound > MAX_SIEVE_BOUND:
                         raise ValueError(
-                            f"the requested range needs data up to {bound:,}, above "
-                            f"this tool's {MAX_SIEVE_BOUND:,} ceiling -- reduce n_to")
+                            f"the requested range needs data up to {number_format.whole(bound)}, "
+                            f"above this tool's {number_format.whole(MAX_SIEVE_BOUND)} ceiling -- "
+                            f"reduce n_to")
                     return read_is_prime_from_storage(_folder, bound)
 
                 result = check_gap_range_from_source(
@@ -237,7 +239,7 @@ class ResearchGapsTab(BaseTab):
         except MissingStorageRangeError as e:
             T = self.T
             return False, T("research_gaps.error_storage_missing",
-                             floor=e.floor, upto=f"{e.needed_upto:,}")
+                             floor=e.floor, upto=number_format.whole(e.needed_upto))
         except ValueError as e:
             return False, str(e)
 
@@ -305,7 +307,7 @@ class ResearchGapsTab(BaseTab):
             if row["overlay_value"] is None:
                 overlay_value_text = "-"
             else:
-                overlay_value_text = f"{row['overlay_value']:.6f}"
+                overlay_value_text = number_format.decimal(row['overlay_value'], 6)
             if row["holds"] is None:
                 holds_text = "-"
             else:
@@ -317,14 +319,15 @@ class ResearchGapsTab(BaseTab):
 
         parts = [T(
             "research_gaps.summary_gap_stats",
-            n_from=f"{result['n_from']:,}", n_to=f"{result['n_to']:,}",
-            segment_size=f"{result['segment_size']:,}", max_gap=result["max_gap"])]
+            n_from=number_format.whole(result['n_from']), n_to=number_format.whole(result['n_to']),
+            segment_size=number_format.whole(result['segment_size']), max_gap=result["max_gap"])]
         if overlay in ("andrica", "firoozbakht"):
             overlay_name = T(f"research_gaps.overlay_{overlay}")
             if not result["counterexamples"]:
                 parts.append(T(
                     "research_gaps.summary_covered", overlay_name=overlay_name,
-                    n_from=f"{result['n_from']:,}", n_to=f"{result['n_to']:,}"))
+                    n_from=number_format.whole(result['n_from']),
+                    n_to=number_format.whole(result['n_to'])))
             else:
                 shown = result["counterexamples"][:20]
                 more = len(result["counterexamples"]) - len(shown)
@@ -336,7 +339,7 @@ class ResearchGapsTab(BaseTab):
                     count=len(result["counterexamples"]), counterexamples=counterexamples_text))
         elif overlay == "cramer":
             parts.append(T("research_gaps.summary_cramer",
-                            max_ratio=f"{result['max_cramer_ratio']:.4f}"))
+                            max_ratio=number_format.decimal(result['max_cramer_ratio'], 4)))
         self.gaps_summary_var.set(" ".join(parts))
 
         self._gaps_refresh_nav_buttons()
