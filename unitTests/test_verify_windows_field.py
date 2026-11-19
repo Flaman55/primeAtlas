@@ -18,7 +18,9 @@ the free-RAM reading faked):
  3b. a typed split gives the width (ceil(files / split) files each), outside its range the
      nearest end; its arrows step the split and stop at both ends; Verify now follows;
   4. text that is no number turns Width and Split red; Verify now "0", "abc" red too;
-  5. the arrows step by one file and stop at both ends;
+  5. the arrows step by one file and stop at both ends (a small island);
+ 5b. on a big island (347 files) the arrows and the wheel step to the next round width (2.5e8
+     -> 3e8 -> 2e8 -> 1e8 -> 9e7) and stop at the island (3e9 -> 3.47e9);
   6. Auto: pt1.1 one file; v7.3 reads the free RAM and splits the island evenly under the
      cap; twice the same; the width is remembered;
   7. a method switch only clips the width to the new range; a floor switch the same;
@@ -55,6 +57,8 @@ SMALL_FLOOR = 30
 EMPTY_FLOOR = 31
 PT1_FLOOR = 32
 NO_P_FLOOR = 33
+BIG_FLOOR = 34
+BIG_FILES = 347
 M7 = 10 ** 7
 # Free RAM whose v7.3 cap (half of it x 30, whole files) is two files.
 TWO_FILES_RAM = 1_333_334
@@ -265,6 +269,34 @@ def width_checks(app, gen):
                     f"3: deleting a zero gives more windows ({gen._verify_split_var.get()!r})")
     box.event_generate("<FocusOut>")
     _idle(app, gen)
+    return passed
+
+
+def round_step_checks(app, gen):
+    _move(app, gen, "base_exponent", BIG_FLOOR)
+    _type_width(app, gen, "2.5e8")
+    passed = True
+    big = BIG_FILES * M7
+    for box, event, delta, width in ((None, "<<Increment>>", 0, 3 * 10 ** 8),
+                                     (None, "<<Decrement>>", 0, 2 * 10 ** 8),
+                                     (None, "<MouseWheel>", -120, 10 ** 8),
+                                     (None, "<<Decrement>>", 0, 9 * M7),
+                                     (None, "<MouseWheel>", 120, 10 ** 8)):
+        if delta:
+            gen._verify_width_box.event_generate(event, delta=delta)
+            _idle(app, gen)
+        else:
+            _arrow(app, gen, event)
+        shown = gen._verify_vars["width"].get()
+        passed &= check(shown == _short(width), f"5b: {event} {delta or ''} -> {width} ({shown!r})")
+    _type_width(app, gen, "3e9")
+    for event, width in (("<<Increment>>", big), ("<<Increment>>", big),
+                         ("<<Decrement>>", 3 * 10 ** 9)):
+        _arrow(app, gen, event)
+        shown = gen._verify_vars["width"].get()
+        passed &= check(shown == _short(width), f"5b: at the island {event} -> {width} ({shown!r})")
+    passed &= _check_some(app, gen, 3 * 10 ** 9, 2, BIG_FILES, "5b: the recount follows")
+    _move(app, gen, "base_exponent", FLOOR)
     return passed
 
 
@@ -609,6 +641,8 @@ def main():
     portal = tempfile.mkdtemp(prefix="primeatlas_verify_windows_test_")
     paths = [_touch_p(portal, FLOOR, offset) for offset in (M7, 2 * M7, 3 * M7)]
     _touch_p(portal, SMALL_FLOOR, 0)
+    for index in range(BIG_FILES):
+        _touch_p(portal, BIG_FLOOR, index * M7)
     app = None
     passed = False
     try:
@@ -626,6 +660,7 @@ def main():
         gen = app.generation_tab_widget
         passed = startup_checks(app, gen)
         passed &= width_checks(app, gen)
+        passed &= round_step_checks(app, gen)
         passed &= split_checks(app, gen)
         passed &= auto_checks(app, gen, ram, store)
         passed &= run_button_checks(app, gen, errors)

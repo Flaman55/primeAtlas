@@ -25,7 +25,12 @@ Checks:
   - the short width text (1e7, 9e7, 2.5e8): exact, read back as the same width; never three
     digits after the point (read as a thousands group too): 83.34e9, not 8.334e10;
   - Auto: pt1.1 one file (the most windows); v7.3 the fewest windows the cap allows, split
-    evenly (whole files, never above the cap); the same answer twice.
+    evenly (whole files, never above the cap); the same answer twice;
+  - the Width arrows step to the next round width (one significant digit: 1e8 -> 2e8, down
+    1e9 -> 9e8), from a width between two round ones to the round one on that side (2.5e8 ->
+    3e8 / 2e8, 83.34e9 -> 9e10 / 8e10), always at least one file, in whole files, never
+    outside the range (above it the maximum, then nothing); a small island steps file by file;
+    there and back lands on a round width.
 
 Usage:
     python unitTests/test_verify_width.py
@@ -295,6 +300,52 @@ def _test_auto_width():
     check(auto(None, SIEVE, 10 ** 11) is None, "no island: no width")
 
 
+def _walk(island, width, direction, steps, method=PROOF, cap=10 ** 11):
+    widths = []
+    for _ in range(steps):
+        width = verify_width.step_width(island, width, direction, method, cap)
+        widths.append(width)
+    return widths
+
+
+def _test_step_width():
+    step = verify_width.step_width
+    big = _island(0, M7, 347)            # 3.47 * 10^9
+    up = [d * M7 for d in range(2, 10)] + [d * 10 ** 8 for d in range(1, 10)]         + [10 ** 9, 2 * 10 ** 9, 3 * 10 ** 9, 347 * M7, 347 * M7]
+    got = _walk(big, M7, 1, len(up))
+    check(got == up, f"up from 1e7: every round width, then the maximum, then nothing ({got})")
+    down = [3 * 10 ** 9, 2 * 10 ** 9, 10 ** 9] + [d * 10 ** 8 for d in range(9, 0, -1)]         + [d * M7 for d in range(9, 0, -1)] + [M7]
+    got = _walk(big, 347 * M7, -1, len(down))
+    check(got == down, f"down from the maximum: every round width, stops at one file ({got})")
+    check(step(big, 25 * M7, 1, PROOF, 10 ** 11) == 3 * 10 ** 8, "2.5e8 up: 3e8")
+    check(step(big, 25 * M7, -1, PROOF, 10 ** 11) == 2 * 10 ** 8, "2.5e8 down: 2e8")
+    check(_walk(big, 25 * M7, 1, 1) + _walk(big, 3 * 10 ** 8, -1, 1) == [3 * 10 ** 8, 2 * 10 ** 8],
+          "2.5e8 up and down: the round 2e8, not 2.5e8")
+    check(step(big, 10 ** 9, -1, PROOF, 10 ** 11) == 9 * 10 ** 8, "1e9 down: 9e8")
+    huge = _island(0, M7, 25_000)         # 2.5 * 10^11
+    check(step(huge, 8334 * M7, 1, PROOF, 10 ** 11) == 9 * 10 ** 10, "83.34e9 up: 9e10")
+    check(step(huge, 8334 * M7, -1, PROOF, 10 ** 11) == 8 * 10 ** 10, "83.34e9 down: 8e10")
+    small = _island(0, M7, 5)
+    got = _walk(small, M7, 1, 5)
+    check(got == [2 * M7, 3 * M7, 4 * M7, 5 * M7, 5 * M7], f"5 files: file by file up ({got})")
+    got = _walk(small, 5 * M7, -1, 5)
+    check(got == [4 * M7, 3 * M7, 2 * M7, M7, M7], f"5 files: file by file down ({got})")
+    got = _walk(big, 9 * M7, 1, 2, SIEVE, 10 ** 8)
+    check(got == [10 ** 8, 10 ** 8], f"v7.3, a cap of 1e8: up to the cap, then nothing ({got})")
+    got = _walk(big, 2 * 10 ** 8, 1, 2, SIEVE, 25 * M7) + _walk(big, 25 * M7, -1, 1, SIEVE, 25 * M7)
+    check(got == [25 * M7, 25 * M7, 2 * 10 ** 8],
+          f"v7.3, a cap of 2.5e8: up to it, down to the round 2e8 ({got})")
+    wide = _island(0, 2 * M7, 20)         # files of 2e7, 4 * 10^8
+    got = _walk(wide, 2 * M7, 1, 8)
+    want = [4 * M7, 6 * M7, 8 * M7, 10 ** 8, 2 * 10 ** 8, 3 * 10 ** 8, 4 * 10 ** 8, 4 * 10 ** 8]
+    check(got == want, f"files of 2e7: at least one file, whole files ({got})")
+    got = _walk(wide, 4 * 10 ** 8, -1, 8)
+    want = [3 * 10 ** 8, 2 * 10 ** 8, 10 ** 8, 8 * M7, 6 * M7, 4 * M7, 2 * M7, 2 * M7]
+    check(got == want, f"files of 2e7 down: whole files, stops at one file ({got})")
+    check(step(big, 5 * 10 ** 10, -1, PROOF, 10 ** 11) == 3 * 10 ** 9,
+          "a width above the range: down from the maximum")
+
+
 def main():
     _test_file_width()
     _test_first_island()
@@ -308,6 +359,7 @@ def main():
     _test_width_text()
     _test_split()
     _test_auto_width()
+    _test_step_width()
     print()
     if failures:
         print(f"{len(failures)} FAILURE(S)")

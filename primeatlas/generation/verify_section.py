@@ -258,14 +258,12 @@ class VerifySection:
                                       self._verify_sieve_cap)
 
     def _step_verify_width(self, direction):
-        """An arrow: one file wider or narrower, within the range."""
+        """An arrow: the next round width (verify_width.step_width()), within the range."""
         island = self._verify_island
         if island is not None:
             current = self._fitted_verify_width() or island.file_width
-            width = verify_width.fit_width(str(max(1, current + direction * island.file_width)),
-                                           island, self._verify_method(),
-                                           self._verify_sieve_cap)
-            self._verify_vars["width"].set(verify_width.width_text(width))
+            self._verify_vars["width"].set(verify_width.width_text(verify_width.step_width(
+                island, current, direction, self._verify_method(), self._verify_sieve_cap)))
         return "break"
 
     def _commit_verify_split(self):
