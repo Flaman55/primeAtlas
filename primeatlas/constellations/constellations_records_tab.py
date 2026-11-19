@@ -145,11 +145,11 @@ class ConstellationsRecordsTab(BaseTab):
         self.k_combo.pack(side="left", padx=(6, 16))
         ttk.Label(top_row, text=T("const_records.field_floor_from")).pack(side="left")
         self.floor_from_entry = ttk.Entry(top_row, width=8)
-        number_field.attach(self.floor_from_entry, self.T)
+        number_field.attach(self.floor_from_entry, self.T, "field_tip.constellation_floor_from")
         self.floor_from_entry.pack(side="left", padx=(6, 12))
         ttk.Label(top_row, text=T("const_records.field_floor_to")).pack(side="left")
         self.floor_to_entry = ttk.Entry(top_row, width=8)
-        number_field.attach(self.floor_to_entry, self.T)
+        number_field.attach(self.floor_to_entry, self.T, "field_tip.constellation_floor_to")
         self.floor_to_entry.pack(side="left", padx=(6, 16))
         self.scan_button = ttk.Button(
             top_row, text=T("const_records.scan_button"), command=self._on_scan_clicked)
@@ -178,12 +178,14 @@ class ConstellationsRecordsTab(BaseTab):
         ttk.Label(top_row, text=T("const_records.export_range_label")).pack(
             side="left", padx=(16, 0))
         self.detail_export_from_entry = ttk.Entry(top_row, width=6)
-        number_field.attach(self.detail_export_from_entry, self.T, minimum=1)
+        number_field.attach(self.detail_export_from_entry, self.T,
+                            "field_tip.const_records_export_from", minimum=1)
         self.detail_export_from_entry.pack(side="left", padx=(4, 0))
         ttk.Label(top_row, text=T("const_records.export_range_to")).pack(
             side="left", padx=(4, 0))
         self.detail_export_to_entry = ttk.Entry(top_row, width=6)
-        number_field.attach(self.detail_export_to_entry, self.T, minimum=1)
+        number_field.attach(self.detail_export_to_entry, self.T,
+                            "field_tip.const_records_export_to", minimum=1)
         self.detail_export_to_entry.pack(side="left", padx=(4, 0))
 
         ttk.Label(container, text=T("const_records.hint"), wraplength=760,

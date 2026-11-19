@@ -100,7 +100,7 @@ def field_checks(root, T):
     print("--- ThreadsField ---")
     cpu_dynamic.WSL_CPUS = None
     var = tk.StringVar(root, value="Max")
-    field = ThreadsField(root, T, var, words=("Max",), over="Max")
+    field = ThreadsField(root, T, var, "field_tip.verify_threads", words=("Max",), over="Max")
     field.pack()
     root.update()
     passed &= check(field.get() == "Max" and values(field)[:2] == ["Max", "1"]
@@ -147,7 +147,7 @@ def field_checks(root, T):
     passed &= check(str(field.cget("style")) != number_field.INVALID_SPINBOX_STYLE,
                     "a valid number clears the red")
 
-    twin = ThreadsField(root, T, var, words=("Max",), over="Max")
+    twin = ThreadsField(root, T, var, "field_tip.verify_threads", words=("Max",), over="Max")
     twin.pack()
     root.update()
     type_text(root, twin, "Max")
@@ -156,14 +156,14 @@ def field_checks(root, T):
 
     stored_high = tk.StringVar(root, value="24")
     stored_low = tk.StringVar(root, value="3")
-    high = ThreadsField(root, T, stored_high, words=("Max",), over="Max")
-    low = ThreadsField(root, T, stored_low, words=("Max",), over="Max")
+    high = ThreadsField(root, T, stored_high, "field_tip.verify_threads", words=("Max",), over="Max")
+    low = ThreadsField(root, T, stored_low, "field_tip.verify_threads", words=("Max",), over="Max")
     root.update()
     passed &= check(stored_high.get() == "Max" and stored_low.get() == "3",
                     "a stored value above the count loads as Max, a lower one stays")
 
     plain_var = tk.StringVar(root, value="8")
-    plain = ThreadsField(root, T, plain_var)
+    plain = ThreadsField(root, T, plain_var, "field_tip.verify_threads")
     root.update()
     passed &= check(plain_var.get() == "8" and values(plain) == [str(n) for n in range(1, 9)],
                     "no words: the list is 1..count")
@@ -177,7 +177,7 @@ def field_checks(root, T):
 
     workers = {"value": 6}
     auto_var = tk.StringVar(root, value="Auto")
-    auto = ThreadsField(root, T, auto_var, words=("Auto", "Max"), over="Max",
+    auto = ThreadsField(root, T, auto_var, "field_tip.verify_threads", words=("Auto", "Max"), over="Max",
                         resolve=lambda word: workers["value"] if word == "Auto" else None)
     root.update()
     passed &= check(auto.get() == "Auto (6)" and values(auto)[:2] == ["Auto (6)", "Max (8)"],
@@ -188,7 +188,7 @@ def field_checks(root, T):
     passed &= check(auto.get() == "Auto (3)" and auto_var.get() == "Auto",
                     "refresh() follows a changed Auto")
     bare_var = tk.StringVar(root, value="Auto")
-    bare = ThreadsField(root, T, bare_var, words=("Auto", "Max"), over="Max",
+    bare = ThreadsField(root, T, bare_var, "field_tip.verify_threads", words=("Auto", "Max"), over="Max",
                         resolve=lambda word: None if word == "Auto" else cpu_dynamic.WSL_CPUS)
     root.update()
     passed &= check(bare.get() == "Auto" and values(bare)[:2] == ["Auto", "Max (8)"],

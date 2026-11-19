@@ -57,11 +57,14 @@ class MultiplicativeView(BaseTab):
                       padx=6, pady=(8, 4))
         row = ttk.Frame(self)
         row.pack(fill="x", padx=6, pady=(0, 4))
-        self.q_entry = entry(T, row, "q", "23", "research.irreducibility.mul_q", width=8,
+        self.q_entry = entry(T, "field_tip.irreducibility_mul_q",
+                             row, "q", "23", "research.irreducibility.mul_q", width=8,
                              on_return=self.run)
-        self.g_entry = entry(T, row, "g", AUTO, "research.irreducibility.mul_g", width=6,
+        self.g_entry = entry(T, "field_tip.irreducibility_mul_g",
+                             row, "g", AUTO, "research.irreducibility.mul_g", width=6,
                              on_return=self.run, words=(AUTO,))
-        self.n_entry = entry(T, row, "N", "10", "research.irreducibility.mul_n", width=24,
+        self.n_entry = entry(T, "field_tip.irreducibility_mul_n",
+                             row, "N", "10", "research.irreducibility.mul_n", width=24,
                              on_return=self.run)
         self.run_button = ttk.Button(row, text=T("research_irreducibility.mul_run"),
                                      command=self.run)

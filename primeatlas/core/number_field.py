@@ -1,5 +1,6 @@
-"""number_field -- attach(entry, T, ...): the app-wide behaviour of a field that takes a number
-(an Entry or a Spinbox): a whole number by default, a fraction with fraction=True, also one of
+"""number_field -- attach(entry, T, purpose, ...): the app-wide behaviour of a field that takes a
+number (an Entry or a Spinbox), `purpose` naming the locale key that says what the field is for:
+a whole number by default, a fraction with fraction=True, also one of
 `words` (e.g. "Auto"), within an optional minimum/maximum (a callable follows a changing cap);
 `text_of` turns the shown text into the text read (a label "Max (8)" read as "Max").
 
@@ -15,8 +16,11 @@ through its textvariable:
 A whole number or an empty field clears the red and the popup at once; red and the popup wait
 SETTLE_MS after the last change (typing "1,000,000" passes through the ambiguous "1,000") and
 show at once when the field is left.
-Hovering the field for TIP_DELAY_MS shows the accepted forms (and why the text is invalid)
-in an InfoTip below the field; nothing while the popup is open. problem_field(variables)
+Hovering the field for TIP_DELAY_MS shows an InfoTip below the field: what the field is for, its
+range (digits grouped in the app's notation), the accepted forms where large numbers belong (no
+maximum, or one of at least HELP_FROM; elsewhere one line of the power and scientific forms)
+and why the text is invalid; nothing while the popup is
+open. problem_field(variables)
 names a field whose text is not a usable value, so a run can refuse it instead of falling
 back to a default.
 """
@@ -24,6 +28,7 @@ import tkinter as tk
 import weakref
 from tkinter import ttk
 
+from . import number_format
 from .info_tip import GAP_PX, InfoTip
 from .number_text import AMBIGUOUS, INVALID, read_number
 
@@ -34,14 +39,17 @@ RANGE_PROBLEM = "range"
 TIP_DELAY_MS = 600          # rest on a field before its hint shows: passing over shows nothing
 FOCUS_OUT_GRACE_MS = 150    # a click on the popup's button lands before it closes
 SETTLE_MS = 600             # pause in typing before red or the popup shows
+HELP_FROM = 10 ** 6         # a maximum from here on takes the notations the help lists
 
 
 _FIELDS = weakref.WeakSet()
 
 
-def attach(entry, T, fraction=False, words=(), minimum=None, maximum=None, text_of=None):
-    """Makes `entry` (ttk.Entry or ttk.Spinbox) a number field; returns its NumberField."""
-    return NumberField(entry, T, fraction, words, minimum, maximum, text_of)
+def attach(entry, T, purpose, fraction=False, words=(), minimum=None, maximum=None,
+           text_of=None):
+    """Makes `entry` (ttk.Entry or ttk.Spinbox) a number field whose tip starts with
+    T(purpose); returns its NumberField."""
+    return NumberField(entry, T, purpose, fraction, words, minimum, maximum, text_of)
 
 
 def problem_field(variables):
@@ -76,10 +84,19 @@ def _bound(limit):
     return limit() if callable(limit) else limit
 
 
+def _shown(limit):
+    """A bound as a person reads it: grouped digits, a fraction with its own places."""
+    if isinstance(limit, float) and not limit.is_integer():
+        places = len(format(limit, "f").rstrip("0").partition(".")[2])
+        return number_format.decimal(limit, places)
+    return number_format.whole(int(limit))
+
+
 class NumberField:
-    def __init__(self, entry, T, fraction=False, words=(), minimum=None, maximum=None,
+    def __init__(self, entry, T, purpose, fraction=False, words=(), minimum=None, maximum=None,
                  text_of=None):
         self.entry = entry
+        self.purpose = purpose
         self._text_of = text_of
         entry.number_field = self
         self._T = T
@@ -188,13 +205,19 @@ class NumberField:
             return self._T("number_field.could_be") + " " + " / ".join(
                 str(v) for v in self.reading.candidates)
         if problem == RANGE_PROBLEM:
-            low, high = _bound(self._minimum), _bound(self._maximum)
-            if low is None:
-                return self._T("number_field.reason_max", high=high)
-            if high is None:
-                return self._T("number_field.reason_min", low=low)
-            return self._T("number_field.reason_range", low=low, high=high)
+            return self._range_text("reason_range", "reason_min", "reason_max")
         return self._T(f"number_field.reason_{problem}")
+
+    def _range_text(self, both, at_least, at_most):
+        """The range in the wording of the three keys; "" when the field has no bound."""
+        low, high = _bound(self._minimum), _bound(self._maximum)
+        if low is None and high is None:
+            return ""
+        if low is None:
+            return self._T(f"number_field.{at_most}", high=_shown(high))
+        if high is None:
+            return self._T(f"number_field.{at_least}", low=_shown(low))
+        return self._T(f"number_field.{both}", low=_shown(low), high=_shown(high))
 
     def _apply(self):
         self._settle = None
@@ -225,12 +248,20 @@ class NumberField:
     def _tip_text(self):
         if self.popup is not None:
             return ""
-        text = self._T("number_field.help")
+        lines = [self._T(self.purpose)]
+        range_line = self._range_text("range_both", "range_min", "range_max")
+        if range_line:
+            lines.append(range_line)
+        high = _bound(self._maximum)
+        if high is None or high >= HELP_FROM:
+            lines.append("\n" + self._T("number_field.help"))
+        else:
+            lines.append(self._T("number_field.help_short"))
         if self._fraction:
-            text += "\n" + self._T("number_field.help_fraction")
+            lines.append(self._T("number_field.help_fraction"))
         if self.problem is not None:
-            text += "\n\n" + self.problem_text()
-        return text
+            lines.append("\n" + self.problem_text())
+        return "\n".join(lines)
 
     def _show_popup(self, candidates):
         self._hide_popup()

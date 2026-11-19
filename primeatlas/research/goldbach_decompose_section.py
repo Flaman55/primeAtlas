@@ -141,7 +141,8 @@ class GoldbachDecomposeSection:
             command=self._on_goldbach_decompose_next, state="disabled")
         self.goldbach_decompose_next_btn.pack(side="left")
         self.goldbach_decompose_goto_entry = ttk.Entry(decompose_nav, width=6)
-        number_field.attach(self.goldbach_decompose_goto_entry, self.T, minimum=1)
+        number_field.attach(self.goldbach_decompose_goto_entry, self.T,
+                            "field_tip.goto_page", minimum=1)
         self.goldbach_decompose_goto_entry.pack(side="left", padx=(12, 0))
         self.goldbach_decompose_goto_entry.bind(
             "<Return>", lambda _e: self._on_goldbach_decompose_goto())

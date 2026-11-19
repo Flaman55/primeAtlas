@@ -71,7 +71,7 @@ class KtupleSection:
                 row=row, column=col * 2, sticky="w", padx=(0, 4), pady=2)
             var = tk.StringVar(value=str(ktuple_settings.get(key, "")))
             entry = ttk.Entry(ktuple_form, textvariable=var, width=width)
-            number_field.attach(entry, self.T, minimum=0)
+            number_field.attach(entry, self.T, f"field_tip.ktuple_{key}", minimum=0)
             entry.grid(row=row, column=col * 2 + 1, sticky="w", padx=(0, 20), pady=2)
             self._ktuple_vars[key] = var
             remember_generation_field("ktuple", key, var)
@@ -134,7 +134,7 @@ class KtupleSection:
                 row=row, column=col * 2, sticky="w", padx=(0, 4), pady=2)
             var = tk.StringVar(value=str(ktuple_settings.get(key, "")))
             entry = ttk.Entry(ktuple_advanced_form, textvariable=var, width=width)
-            number_field.attach(entry, self.T, minimum=0)
+            number_field.attach(entry, self.T, f"field_tip.ktuple_{key}", minimum=0)
             entry.grid(row=row, column=col * 2 + 1, sticky="w", padx=(0, 20), pady=2)
             self._ktuple_vars[key] = var
             remember_generation_field("ktuple", key, var)

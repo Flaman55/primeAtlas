@@ -14,7 +14,7 @@ app-wide widgets and the background coordinators for floor totals and search. GU
 | Theme in use | `theme_dynamic.py` (`THEME`, set by `app_dynamic` at startup, read by `benchmark/line_colors.py`) |
 | Look | `theme.py` (palettes), `app_icon.py`, `assets/` |
 | Storage reads | `storage.py` (floor listing, totals cache, `LOW_FLOOR_CUTOFF`) |
-| Widgets | `widgets.py` (HeightGrip, ScrollPad, ScrollablePage, FlowRow), `wrapped_heading.py` (WrappedHeading, a Treeview heading row whose headings wrap to two lines; `heading_wrap.py` the pure wrapping and width fit), `info_tip.py` (InfoTip, the "i" marker with a hover text kept inside the app window), `number_text.py` (`read_number`, the reader of a whole number in any notation, no tkinter), `number_field.py` (`attach`, the number field: red, "Could be" popup, hover tip of the accepted forms), `wrapped_check.py` (a Checkbutton whose text wraps at its parent's width), `threads_field.py` (ThreadsField, the one thread-count control: a Spinbox over a form variable it does not own, its words shown with their count, "Max (8)", the list 1..WSL's CPU count, a larger number turned into Max or the count; `threads_choice.py` its text rules, no tkinter), `base_tab.py` (`BaseTab`) |
+| Widgets | `widgets.py` (HeightGrip, ScrollPad, ScrollablePage, FlowRow), `wrapped_heading.py` (WrappedHeading, a Treeview heading row whose headings wrap to two lines; `heading_wrap.py` the pure wrapping and width fit), `info_tip.py` (InfoTip, the "i" marker with a hover text kept inside the app window), `number_text.py` (`read_number`, the reader of a whole number in any notation, no tkinter), `number_field.py` (`attach`, the number field: red, "Could be" popup, hover tip of its purpose, range and accepted forms), `wrapped_check.py` (a Checkbutton whose text wraps at its parent's width), `threads_field.py` (ThreadsField, the one thread-count control: a Spinbox over a form variable it does not own, its words shown with their count, "Max (8)", the list 1..WSL's CPU count, a larger number turned into Max or the count; `threads_choice.py` its text rules, no tkinter), `base_tab.py` (`BaseTab`) |
 | Background work | `totals_search_coordinator.py` (floor totals and prime/constellation search workers), `background.py` |
 | Shared progress bar | `progress_bar_owner.py`: one owner at a time writes the bottom bar (`claim_progress_bar`); the busy animation is its own `.after()` loop (`pump_indeterminate`), and every switch to a real fraction goes through `show_fraction`, which stops that loop first so no animation tick moves the value |
 | Other | `version.py` (version from CHANGELOG.md: release + merge count, commit label), `pdf_writer.py` (dependency-free PDF), `windows_hardware.py` (`read_windows_info`, `windows_ram`: Windows OS, CPU, cores, threads, RAM total and free, no admin; `this_machine_id()`: the first 12 hex digits of the SHA-256 of the MachineGuid, so benchmark rows tell computers apart without naming one), `cpu_load.py` (`read_system_counters()`: whole-Windows idle and total CPU ticks from `GetSystemTimes`; `CpuSampler`, started once by the app on a daemon thread, one sample a second, 30 s kept; `busy_before_launch()`: the busy share over the last 5 s) |
@@ -74,8 +74,8 @@ decimal mark, and only whole results count: one -> ok, several -> ambiguous with
 ("3,000": 3000 or 3), none -> invalid with a reason (not whole, syntax, too large).
 `generation.quick_number._eval_quick_number` returns the value only when it is ok.
 
-`number_field.attach(entry, T, fraction=, words=, minimum=, maximum=)` makes an Entry or a
-Spinbox a number field: a whole number by default, a fraction with `fraction=True`, also one
+`number_field.attach(entry, T, purpose, fraction=, words=, minimum=, maximum=)` makes an Entry or a
+Spinbox a number field (`purpose` is the locale key, `field_tip.*`, that says what the field is for): a whole number by default, a fraction with `fraction=True`, also one
 of `words` ("Auto", "Max"), within an optional range (a callable maximum follows a changing
 cap, e.g. the engine's per-run windows). It follows the entry's text (typed, pasted, or set through its
 textvariable, also one added later by `remember()`). A whole number or an empty field clears
@@ -85,7 +85,11 @@ out of range) and the ambiguous popup wait
 once when the field is left. The popup ("Could be:" and a button per reading) shows while the
 field has focus; a click writes the plain digits. Left ambiguous, the field is red and its hover
 tip lists the readings. The hover tip (`InfoTip`, below the field, after `TIP_DELAY_MS`) shows the
-accepted forms and, when invalid, the reason.
+purpose, the range (bounds in grouped digits in the app's notation, `number_format`; a callable
+maximum is read when the tip shows), the accepted forms only where large numbers belong (no
+maximum, or one of at least `HELP_FROM` = 10^6; elsewhere one line of the power and scientific
+forms), the fraction line on a fraction field and, when
+invalid, the reason (a range reason groups its digits too).
 
 Code that reads plain integers keeps its own checks and messages: it reads the text through
 `number_text.plain_number()` (the plain digits of an ok reading, else the stripped text);
@@ -96,7 +100,10 @@ those variables; Quick-gen Generate calls it for the selected mode's fields
 
 `unitTests/test_number_field_coverage.py` requires every `ttk.Entry` and `ttk.Spinbox` in
 `primeatlas/` to be a number field or marked `# not a number field: <why>` (folder paths,
-formulas in n, lists of offsets, factors, primes or colours).
+formulas in n, lists of offsets, factors, primes or colours), and every `number_field.attach`
+call to pass a purpose whose literal key has English and Polish text; `test_number_fields_app`
+checks the keys built at run time (one per engine knob, per visualization parameter) on the
+live fields.
 
 ## Known gaps
 

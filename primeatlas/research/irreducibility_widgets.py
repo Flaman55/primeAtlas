@@ -20,13 +20,14 @@ def wrapped_label(parent, padx=0, pady=0, **kw):
     return label
 
 
-def entry(T, row, label, default, key=None, width=8, textvariable=None, on_return=None,
-          fraction=False, words=()):
-    """A label and a number field packed left in row; remembered under key when given."""
+def entry(T, purpose, row, label, default, key=None, width=8, textvariable=None,
+          on_return=None, fraction=False, words=()):
+    """A label and a number field packed left in row, its tip opening with T(purpose);
+    remembered under key when given."""
     if label:
         ttk.Label(row, text=label).pack(side="left", padx=(0, 4))
     e = ttk.Entry(row, width=width, textvariable=textvariable)
-    number_field.attach(e, T, fraction=fraction, words=words)
+    number_field.attach(e, T, purpose, fraction=fraction, words=words)
     if textvariable is None:
         e.insert(0, default)
     e.pack(side="left", padx=(0, 12))

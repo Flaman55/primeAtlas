@@ -127,7 +127,8 @@ class ResearchSquaresTab(BaseTab):
 
         ttk.Label(top, text=T("research_squares.required_count_label")).pack(side="left")
         self.squares_required_count_entry = ttk.Entry(top, width=6)
-        number_field.attach(self.squares_required_count_entry, self.T)
+        number_field.attach(self.squares_required_count_entry, self.T,
+                            "field_tip.squares_required_count")
         self.squares_required_count_entry.insert(0, "1")
         self.squares_required_count_entry.pack(side="left", padx=(6, 0))
 
@@ -135,12 +136,12 @@ class ResearchSquaresTab(BaseTab):
         range_row.pack(fill="x", padx=6, pady=(0, 4))
         ttk.Label(range_row, text=T("research_squares.n_from_label")).pack(side="left")
         self.squares_n_from_entry = ttk.Entry(range_row, width=12)
-        number_field.attach(self.squares_n_from_entry, self.T)
+        number_field.attach(self.squares_n_from_entry, self.T, "field_tip.squares_n_from")
         self.squares_n_from_entry.insert(0, "1")
         self.squares_n_from_entry.pack(side="left", padx=(6, 16))
         ttk.Label(range_row, text=T("research_squares.n_to_label")).pack(side="left")
         self.squares_n_to_entry = ttk.Entry(range_row, width=12)
-        number_field.attach(self.squares_n_to_entry, self.T)
+        number_field.attach(self.squares_n_to_entry, self.T, "field_tip.squares_n_to")
         self.squares_n_to_entry.insert(0, "100")
         self.squares_n_to_entry.pack(side="left", padx=(6, 0))
         self._squares_range_row = range_row

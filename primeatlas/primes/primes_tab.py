@@ -196,7 +196,7 @@ class PrimesTab(BaseTab):
 
         ttk.Label(top, text=T("common.search_label")).pack(side="left")
         self.search_entry = ttk.Entry(top, width=26)
-        number_field.attach(self.search_entry, self.T, minimum=0)
+        number_field.attach(self.search_entry, self.T, "field_tip.primes_search", minimum=0)
         self.search_entry.pack(side="left", padx=(4, 4))
         self.search_entry.bind("<Return>", lambda _e: self._search_prime())
         self.search_button = ttk.Button(
@@ -235,7 +235,7 @@ class PrimesTab(BaseTab):
         self.floor_next_btn.pack(side="left")
         ttk.Label(floor_nav, text=T("common.page_prefix")).pack(side="left", padx=(10, 0))
         self.floor_goto_entry = ttk.Entry(floor_nav, width=6)
-        number_field.attach(self.floor_goto_entry, self.T, minimum=1)
+        number_field.attach(self.floor_goto_entry, self.T, "field_tip.goto_page", minimum=1)
         self.floor_goto_entry.pack(side="left", padx=(4, 0))
         self.floor_goto_entry.bind("<Return>", lambda _e: self._goto_floor_page())
         ttk.Button(floor_nav, text=T("common.goto"), command=self._goto_floor_page).pack(side="left", padx=(4, 0))

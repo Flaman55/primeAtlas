@@ -480,7 +480,7 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, Benchm
         self.benchmark_next_btn.pack(side="left")
         ttk.Label(benchmark_nav, text=T("common.page_prefix")).pack(side="left", padx=(10, 0))
         self.benchmark_goto_entry = ttk.Entry(benchmark_nav, width=6)
-        number_field.attach(self.benchmark_goto_entry, self.T, minimum=1)
+        number_field.attach(self.benchmark_goto_entry, self.T, "field_tip.goto_page", minimum=1)
         self.benchmark_goto_entry.pack(side="left", padx=(4, 0))
         self.benchmark_goto_entry.bind("<Return>", lambda _e: self._goto_benchmark_page())
         ttk.Button(benchmark_nav, text=T("common.goto"), command=self._goto_benchmark_page).pack(

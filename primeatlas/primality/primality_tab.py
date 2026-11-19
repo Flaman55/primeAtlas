@@ -45,7 +45,7 @@ class PrimalityTab(BaseTab):
         top.pack(fill="x", padx=6, pady=(10, 4))
         ttk.Label(top, text=self.T("primality.field_number")).pack(side="left")
         self.primality_number_entry = ttk.Entry(top, width=32)
-        number_field.attach(self.primality_number_entry, self.T)
+        number_field.attach(self.primality_number_entry, self.T, "field_tip.primality_number")
         self.primality_number_entry.pack(side="left", padx=(6, 16))
 
         self.primality_use_sympy_var = tk.BooleanVar(value=True)

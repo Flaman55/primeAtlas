@@ -37,9 +37,11 @@ class RadicesView(BaseTab):
                       padx=6, pady=(8, 4))
         row = ttk.Frame(self)
         row.pack(fill="x", padx=6, pady=(0, 4))
-        self.from_entry = entry(T, row, T("research_irreducibility.from_label"), "2",
+        self.from_entry = entry(T, "field_tip.irreducibility_moduli_from",
+                                row, T("research_irreducibility.from_label"), "2",
                                 "research.irreducibility.range_from", on_return=self.run)
-        self.to_entry = entry(T, row, T("research_irreducibility.to_label"), "60",
+        self.to_entry = entry(T, "field_tip.irreducibility_moduli_to",
+                              row, T("research_irreducibility.to_label"), "60",
                               "research.irreducibility.range_to", on_return=self.run)
         ttk.Button(row, text=T("research_irreducibility.build"), command=self.run).pack(
             side="left")

@@ -84,11 +84,11 @@ class EngineFields:
             if key in engine_options.CHECKBOX_KNOBS:
                 entry = ttk.Checkbutton(cell, variable=var, onvalue="1", offvalue="0")
             elif key in engine_options.THREAD_KNOBS:
-                entry = ThreadsField(cell, T, var, width=10)
+                entry = ThreadsField(cell, T, var, width=10, purpose=f"field_tip.knob_{key}")
             else:
                 entry = ttk.Entry(cell, textvariable=var, width=10)
                 low, high = engine_options.knob_range(key)
-                number_field.attach(entry, T, minimum=low, maximum=high)
+                number_field.attach(entry, T, f"field_tip.knob_{key}", minimum=low, maximum=high)
             entry.pack(side="left")
             info = InfoTip(cell, lambda key=key: T(f"gen.info_{key}"))
             info.label.pack(side="left", padx=(4, 0))

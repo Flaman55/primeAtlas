@@ -5,8 +5,13 @@ A line creating a ttk.Entry / tk.Entry / ttk.Spinbox passes when the field is ma
 line above it is a comment starting with MARKER, naming why the field is not read by
 core.number_text (a path, a formula, a list, a fraction, its own parsing). A new field
 without either fails here, so no number field misses the shared reader and its hint.
+Every number_field.attach call passes the field's purpose (the locale key its hover tip
+starts with); a literal key exists, not empty, in English and Polish. A key built at run
+time is checked on the live fields by test_number_fields_app.
     python unitTests/test_number_field_coverage.py
 """
+import ast
+import json
 import os
 import re
 import sys
@@ -23,8 +28,53 @@ def check(value, message):
     return bool(value)
 
 
-def main():
+def _locale(lang):
+    path = os.path.join(PACKAGE, "core", "locales", f"strings_{lang}.json")
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _purpose(call):
+    """The purpose argument of an attach() call (third positional or purpose=), or None."""
+    if len(call.args) >= 3:
+        return call.args[2]
+    return next((k.value for k in call.keywords if k.arg == "purpose"), None)
+
+
+def purpose_checks():
     passed = True
+    locales = {lang: _locale(lang) for lang in ("en", "pl")}
+    calls = literal = 0
+    for folder, _dirs, files in os.walk(PACKAGE):
+        for name in sorted(files):
+            if not name.endswith(".py"):
+                continue
+            path = os.path.join(folder, name)
+            with open(path, encoding="utf-8") as f:
+                tree = ast.parse(f.read())
+            for node in ast.walk(tree):
+                if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                        and node.func.attr == "attach"
+                        and isinstance(node.func.value, ast.Name)
+                        and node.func.value.id == "number_field"):
+                    continue
+                calls += 1
+                where = f"{os.path.relpath(path, ROOT)}:{node.lineno}"
+                purpose = _purpose(node)
+                if purpose is None:
+                    passed &= check(False, f"{where}: attach without the field's purpose")
+                    continue
+                if isinstance(purpose, ast.Constant) and isinstance(purpose.value, str):
+                    literal += 1
+                    for lang, strings in locales.items():
+                        passed &= check(str(strings.get(purpose.value, "")).strip(),
+                                        f"{where}: {lang} text for {purpose.value}")
+    passed &= check(calls >= 80, f"{calls} attach calls checked ({literal} with a literal purpose key)")
+    return passed
+
+
+def main():
+    passed = purpose_checks()
     attached = marked = 0
     for folder, _dirs, files in os.walk(PACKAGE):
         for name in sorted(files):

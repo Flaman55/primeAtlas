@@ -23,6 +23,10 @@ Rules checked, for a field with a StringVar and for a bare entry:
     are fine;
   - problem_field(vars) names the first field bound to one of those variables whose text is
     not a usable value (invalid, ambiguous or out of range), so a run can refuse it;
+  - the tip starts with what the field is for (attach requires a purpose key), then its
+    range in grouped digits in the app's notation (also in the range reason); the notation
+    help shows only with no maximum or a maximum of at least 10^6, otherwise one short line of
+    the power and scientific forms (a callable maximum is read when the tip shows), the fraction line only on a fraction field;
   - a field destroyed right after it was left (a closed dialog) leaves no error behind; every text exists in English and Polish.
 Windows, real display:
     python unitTests/test_number_field.py
@@ -39,7 +43,8 @@ sys.path.insert(0, os.path.join(ROOT, "prime_sieve"))
 SETTLE = 0
 KEYS = ("help", "could_be", "reason_not_whole", "reason_syntax", "reason_too_large",
         "reason_min", "reason_max", "reason_range", "reason_ambiguous", "fix_field",
-        "help_fraction")
+        "help_fraction", "range_both", "range_min", "range_max", "help_short")
+PURPOSE = "field_tip.primality_number"
 
 
 def check(value, message):
@@ -67,7 +72,7 @@ def field_checks(root, T, nf, with_var):
     var = tk.StringVar(root) if with_var else None
     entry = ttk.Entry(root, textvariable=var) if with_var else ttk.Entry(root)
     entry.pack()
-    field = nf.attach(entry, T)
+    field = nf.attach(entry, T, PURPOSE)
     entry.focus_force()
     root.update()
     normal = str(entry.cget("style"))
@@ -169,7 +174,7 @@ def options_checks(root, T, nf):
     spin = ttk.Spinbox(root, from_=1, to=10, textvariable=var)
     spin.pack()
     cap = [10]
-    field = nf.attach(spin, T, minimum=1, maximum=lambda: cap[0])
+    field = nf.attach(spin, T, PURPOSE, minimum=1, maximum=lambda: cap[0])
     root.update()
     normal = str(spin.cget("style"))
     var.set("abc")
@@ -184,7 +189,7 @@ def options_checks(root, T, nf):
     wait(root, SETTLE + 80)
     passed &= check(str(spin.cget("style")) == nf.INVALID_SPINBOX_STYLE
                     and field.problem == "range"
-                    and T("number_field.reason_range", low=1, high=10) in field.tip.text(),
+                    and T("number_field.reason_range", low="1", high="10") in field.tip.text(),
                     f"above the maximum: red, the tip names the range ({field.problem})")
     cap[0] = 20
     field.refresh()
@@ -208,7 +213,7 @@ def options_checks(root, T, nf):
     fvar = tk.StringVar(root, value="1,5")
     fentry = ttk.Entry(root, textvariable=fvar)
     fentry.pack()
-    ffield = nf.attach(fentry, T, fraction=True)
+    ffield = nf.attach(fentry, T, PURPOSE, fraction=True)
     root.update()
     passed &= check(ffield.problem is None and ffield.reading.value == 1.5
                     and T("number_field.help_fraction") in ffield.tip.text(),
@@ -217,13 +222,92 @@ def options_checks(root, T, nf):
     wvar = tk.StringVar(root, value="Auto")
     wspin = ttk.Spinbox(root, values=("Auto", "1", "2"), textvariable=wvar)
     wspin.pack()
-    wfield = nf.attach(wspin, T, words=("Auto",), minimum=1)
+    wfield = nf.attach(wspin, T, PURPOSE, words=("Auto",), minimum=1)
     root.update()
     passed &= check(wfield.problem is None, "a word is fine")
     wvar.set("0")
     root.update()
     passed &= check(wfield.problem == "range", "a number next to the word still has its range")
     wspin.destroy()
+    return passed
+
+
+def _tip_of(root, nf, T, **options):
+    entry = ttk.Entry(root)
+    entry.pack()
+    field = nf.attach(entry, T, PURPOSE, **options)
+    root.update()
+    text = field.tip.text()
+    return entry, field, text
+
+
+def purpose_checks(root, nf, translators):
+    """The tip names what the field is for, its range (grouped digits, in the app's
+    notation) and the notation help only where large numbers belong."""
+    from primeatlas.core import number_format, number_format_dynamic
+    passed = True
+    try:
+        nf.attach(ttk.Entry(root), translators["en"])
+        passed &= check(False, "attach without a purpose is refused")
+    except TypeError:
+        passed &= check(True, "attach without a purpose is refused")
+    saved_style = number_format_dynamic.STYLE
+    try:
+        for lang, style, big in (("en", number_format.COMMA_DOT, "100,000"),
+                                 ("pl", number_format.SPACE_COMMA, "100\u00a0000")):
+            T = translators[lang]
+            number_format_dynamic.STYLE = style
+            entry, field, tip = _tip_of(root, nf, T, minimum=1, maximum=100000)
+            lines = tip.split("\n")
+            passed &= check(lines[0] == T(PURPOSE), f"{lang}: the tip starts with the purpose")
+            passed &= check(T("number_field.range_both", low="1", high=big) in tip,
+                            f"{lang}: the range line groups digits ({lines[1:2]})")
+            passed &= check(T("number_field.help") not in tip
+                            and T("number_field.help_short") in tip,
+                            f"{lang}: a maximum below 10^6: the short notation line only")
+            entry.insert(0, "200000")
+            field.refresh(at_once=True)
+            passed &= check(T("number_field.reason_range", low="1", high=big)
+                            in field.tip.text(), f"{lang}: the range reason groups digits")
+            entry.destroy()
+        T = translators["en"]
+        number_format_dynamic.STYLE = number_format.COMMA_DOT
+        cases = (
+            ({}, None, True, "no range"),
+            ({"minimum": 1}, T("number_field.range_min", low="1"), True, "a minimum only"),
+            ({"maximum": 999999}, T("number_field.range_max", high="999,999"), False,
+             "a maximum just below 10^6"),
+            ({"minimum": 0, "maximum": 10 ** 6}, T("number_field.range_both", low="0",
+                                                   high="1,000,000"), True, "a maximum of 10^6"),
+            ({"minimum": 0.5, "maximum": 2.5, "fraction": True},
+             T("number_field.range_both", low="0.5", high="2.5"), False, "fraction bounds"),
+        )
+        starts = tuple(T(f"number_field.{key}", low="\0", high="\0").split("\0")[0]
+                       for key in ("range_both", "range_min", "range_max"))
+        for options, line, help_shown, what in cases:
+            entry, field, tip = _tip_of(root, nf, T, **options)
+            ranges = [l for l in tip.split("\n") if l.startswith(starts)]
+            passed &= check(ranges == ([line] if line else []),
+                            f"{what}: range line {line!r} ({ranges})")
+            passed &= check((T("number_field.help") in tip) == help_shown,
+                            f"{what}: notation help {'shown' if help_shown else 'left out'}")
+            passed &= check((T("number_field.help_short") in tip) != help_shown,
+                            f"{what}: the short notation line only without the full help")
+            passed &= check((T("number_field.help_fraction") in tip) == bool(
+                options.get("fraction")), f"{what}: fraction line only on a fraction field")
+            entry.destroy()
+        cap = [500]
+        entry, field, tip = _tip_of(root, nf, T, minimum=1, maximum=lambda: cap[0])
+        cap[0] = 2 * 10 ** 6
+        tip2 = field.tip.text()
+        passed &= check(T("number_field.range_both", low="1", high="500") in tip
+                        and T("number_field.help") not in tip
+                        and T("number_field.range_both", low="1", high="2,000,000") in tip2
+                        and T("number_field.help") in tip2,
+                        "a callable maximum: the tip follows the changed cap")
+        entry.destroy()
+    finally:
+        number_format_dynamic.STYLE = saved_style
     return passed
 
 
@@ -250,7 +334,7 @@ def main():
         passed &= field_checks(root, T, nf, with_var=False)
         late = ttk.Entry(root)
         late.pack()
-        late_field = nf.attach(late, T)
+        late_field = nf.attach(late, T, PURPOSE)
         late_var = tk.StringVar(root, value="1,5")
         late.configure(textvariable=late_var)
         root.update()
@@ -262,6 +346,7 @@ def main():
                         and late_field.reading.value == 12, "and its later values too")
         late.destroy()
         passed &= options_checks(root, T, nf)
+        passed &= purpose_checks(root, nf, {"en": T, "pl": Translator("pl")})
         passed &= check(not errors, f"no callback errors ({errors[:1]})")
     finally:
         root.destroy()

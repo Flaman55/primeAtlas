@@ -3,6 +3,7 @@
 Drives the app (temp storage, launches stubbed). Checks:
   - every ttk.Entry and ttk.Spinbox in the built app is a number field, except the ones the
     source marks "# not a number field" (counted: the marked ones are the only exceptions);
+  - every number field names its purpose, a locale key with English and Polish text;
   - Quick-gen Generate refuses a red field of the selected mode, with the reason, puts the
     cursor in it and starts nothing: Floor mode with Width "1,5" (not whole), Floor "3,000"
     (ambiguous), Explore with Iterations "1 000" (above 100), Pseudosquares with Threads "1,5";
@@ -48,9 +49,29 @@ def coverage_checks(app):
     entries = _entries(app, [])
     loose = [str(e) for e in entries if getattr(e, "number_field", None) is None]
     attached = len(entries) - len(loose)
-    return check(attached >= 190 and len(loose) <= 12,
-                 f"{attached} number fields in the app; {len(loose)} text fields left "
-                 f"({loose[:3]})")
+    passed = check(attached >= 190 and len(loose) <= 12,
+                   f"{attached} number fields in the app; {len(loose)} text fields left "
+                   f"({loose[:3]})")
+    return passed & purpose_checks(entries)
+
+
+def purpose_checks(entries):
+    """Every live number field names its purpose, a locale key with text in both languages
+    (keys built at run time, e.g. one per engine knob, included)."""
+    import json
+    folder = os.path.join(ROOT, "primeatlas", "core", "locales")
+    locales = {}
+    for lang in ("en", "pl"):
+        with open(os.path.join(folder, f"strings_{lang}.json"), encoding="utf-8") as f:
+            locales[lang] = json.load(f)
+    fields = [e.number_field for e in entries if getattr(e, "number_field", None) is not None]
+    missing = sorted({f"{lang}:{getattr(field, 'purpose', None)}" for field in fields
+                      for lang, strings in locales.items()
+                      if not str(strings.get(getattr(field, "purpose", None), "")).strip()})
+    purposes = {getattr(field, "purpose", None) for field in fields}
+    return check(not missing and len(purposes) >= 60,
+                 f"{len(fields)} live fields, {len(purposes)} purposes, each with English and "
+                 f"Polish text (missing: {missing[:5]}, {len(missing)} in all)")
 
 
 def generate_checks(app, gen, errors, launches):

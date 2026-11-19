@@ -148,11 +148,13 @@ class TreeTab(VizTabBase):
             ttk.Label(row, text=label(label_key)).pack(side="left")
             if kind == "spin":
                 entry = ttk.Spinbox(row, from_=1, to=TREE_MAX_DEPTH, increment=1, width=10)
-                number_field.attach(entry, self.T, minimum=1, maximum=TREE_MAX_DEPTH)
+                number_field.attach(entry, self.T, f"field_tip.tree_{saved_key}", minimum=1,
+                                    maximum=TREE_MAX_DEPTH)
             else:
                 entry = ttk.Entry(row, width=12)
                 if kind in ("int", "float"):
-                    number_field.attach(entry, self.T, fraction=kind == "float")
+                    number_field.attach(entry, self.T, f"field_tip.tree_{saved_key}",
+                                        fraction=kind == "float")
             entry.insert(0, saved.get(saved_key, default))
             entry.pack(side="left", padx=(6, 0))
             setattr(self, attr, entry)
@@ -192,7 +194,7 @@ class TreeTab(VizTabBase):
         self.n_label = ttk.Label(n_row)
         self.n_label.pack(side="left")
         self.n_entry = ttk.Entry(n_row, width=28)
-        number_field.attach(self.n_entry, self.T)
+        number_field.attach(self.n_entry, self.T, "field_tip.tree_n")
         self.n_entry.insert(0, saved.get("n", "2"))
         self.n_entry.pack(side="left", padx=(6, 0))
         self._add_entries(common_frame, _COMMON_FIELDS, saved, self._tk)

@@ -63,7 +63,8 @@ class PrimalityView(BaseTab):
         box.pack(fill="x", padx=6)
         row = ttk.Frame(box)
         row.pack(fill="x", padx=6, pady=(4, 2))
-        self.number_entry = entry(T, row, "", "", width=34, textvariable=numbers.number_var("A"),
+        self.number_entry = entry(T, "field_tip.irreducibility_number",
+                                  row, "", "", width=34, textvariable=numbers.number_var("A"),
                                   on_return=self.start)
         self.fit_button = ttk.Button(row, text=T("research_irreducibility.primality_fit"),
                                      command=self.fit)
@@ -76,7 +77,8 @@ class PrimalityView(BaseTab):
 
         row = ttk.Frame(self)
         row.pack(fill="x", padx=6, pady=(8, 4))
-        self.fuel_entry = entry(T, row, T("research_irreducibility.primality_fuel"),
+        self.fuel_entry = entry(T, "field_tip.irreducibility_primality_fuel",
+                                row, T("research_irreducibility.primality_fuel"),
                                 str(DEFAULT_FUEL), "research.irreducibility.primality_fuel",
                                 width=12, on_return=self.start)
         self.run_button = ttk.Button(row, text=T("research_irreducibility.primality_run"),

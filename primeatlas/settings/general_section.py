@@ -256,8 +256,8 @@ class GeneralSection:
             ui_frame, textvariable=self.scroll_pad_width_var, from_=SCROLL_PAD_WIDTH_MIN,
             to=SCROLL_PAD_WIDTH_MAX, increment=4, width=6,
             command=self._on_scroll_pad_width_changed)
-        number_field.attach(width_spin, self.T, minimum=SCROLL_PAD_WIDTH_MIN,
-                            maximum=SCROLL_PAD_WIDTH_MAX)
+        number_field.attach(width_spin, self.T, "field_tip.settings_scroll_pad_width",
+                            minimum=SCROLL_PAD_WIDTH_MIN, maximum=SCROLL_PAD_WIDTH_MAX)
         width_spin.grid(row=0, column=1, sticky="w", padx=(0, 12), pady=6)
         width_spin.bind("<Return>", self._on_scroll_pad_width_changed)
         width_spin.bind("<FocusOut>", self._on_scroll_pad_width_changed)
@@ -272,18 +272,18 @@ class GeneralSection:
         self.font_scale_var = tk.StringVar()
         readability_rows = (
             ("settings.background_brightness_label", self.background_brightness_var,
-             BRIGHTNESS_MIN, BRIGHTNESS_MAX, 5),
+             BRIGHTNESS_MIN, BRIGHTNESS_MAX, 5, "field_tip.settings_background_brightness"),
             ("settings.text_brightness_label", self.text_brightness_var,
-             BRIGHTNESS_MIN, BRIGHTNESS_MAX, 5),
+             BRIGHTNESS_MIN, BRIGHTNESS_MAX, 5, "field_tip.settings_text_brightness"),
             ("settings.font_scale_label", self.font_scale_var,
-             FONT_SCALE_MIN, FONT_SCALE_MAX, 10),
+             FONT_SCALE_MIN, FONT_SCALE_MAX, 10, "field_tip.settings_font_scale"),
         )
-        for row, (label_key, var, low, high, step) in enumerate(readability_rows, start=1):
+        for row, (label_key, var, low, high, step, purpose) in enumerate(readability_rows, start=1):
             ttk.Label(ui_frame, text=self.T(label_key)).grid(
                 row=row, column=0, sticky="w", padx=6, pady=(0, 6))
             spin = ttk.Spinbox(ui_frame, textvariable=var, from_=low, to=high, increment=step,
                                width=6)
-            number_field.attach(spin, self.T, minimum=low, maximum=high)
+            number_field.attach(spin, self.T, purpose, minimum=low, maximum=high)
             spin.grid(row=row, column=1, sticky="w", padx=(0, 12), pady=(0, 6))
             ttk.Label(ui_frame, text=self.T("settings.readability_range", min=low, max=high),
                       style="Hint.TLabel").grid(row=row, column=2, sticky="w", padx=(0, 6), pady=(0, 6))
