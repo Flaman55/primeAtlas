@@ -20,7 +20,9 @@ the next island's first file. One file is read per recount, remembered by path a
 A verification window is a whole number of files, from one file up to the island; for the v7.3
 sieve also up to its RAM cap (its wheel buffer takes 1 byte per 30 numbers, given a
 run_budget.DEFAULT_SAFETY_FRACTION share of the free RAM, the rest left to v7.2's buckets).
-The island splits into ceil(island / width) windows, the last one holding the rest. Auto picks
+The island splits into ceil(island / width) windows, the last one holding the rest. The Width
+arrows step between round widths (one significant digit: 9e7, 1e8, 2e8), so a big island is
+crossed in a few clicks and a small one file by file. Auto picks
 the width: pt1.1 one file (the most windows: its time hardly depends on the width, and small
 portions can be verified one at a time); v7.3 the fewest windows under the cap, split evenly.
 """
@@ -159,6 +161,34 @@ def fit_width(text, island, method, cap):
         return None
     minimum, maximum = width_range(island, method, cap)
     return max(minimum, min(maximum, int(text) // island.file_width * island.file_width))
+
+
+def _round_above(width):
+    """The smallest width with one significant digit above `width`."""
+    unit = 10 ** (len(str(width)) - 1)
+    return (width // unit + 1) * unit
+
+
+def _round_below(width):
+    """The largest width with one significant digit below `width` (0 below 1)."""
+    unit = 10 ** (len(str(width)) - 1)
+    lead = width // unit
+    if width % unit:
+        return lead * unit
+    return (lead - 1) * unit if lead > 1 else unit // 10 * 9
+
+
+def step_width(island, width, direction, method, cap):
+    """A Width arrow (+1 up, -1 down): the next round width on that side, at least one file
+    away, in whole files and within the range; `width` is fitted into the range first."""
+    minimum, maximum = width_range(island, method, cap)
+    current = max(minimum, min(maximum, width // island.file_width * island.file_width))
+    file = island.file_width
+    if direction > 0:
+        stepped = max(current + file, _round_above(current) // file * file)
+    else:
+        stepped = min(current - file, _round_below(current) // file * file)
+    return max(minimum, min(maximum, stepped))
 
 
 def split_range(island, method, cap):

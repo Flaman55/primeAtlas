@@ -20,7 +20,9 @@ free RAM x 30 (`run_budget.DEFAULT_SAFETY_FRACTION`; the RAM is read by Auto and
 10^11 before the first reading); a width outside its range takes the nearest end, one between
 rounds down to whole files, on leaving the field, a floor or method change and Run, and it is
 shown short and exact (`verify_width.width_text()`: 1e8, 9e7, 2.5e8; never three digits after
-the point, which also read as a thousands group: 83.34e9); the arrows and the wheel step by one
+the point, which also read as a thousands group: 83.34e9); the arrows and the wheel step to the next
+round width (`verify_width.step_width()`: one significant digit, 1e8 -> 2e8, 1e9 -> 9e8 down;
+2.5e8 -> 3e8 or 2e8), at least one file and within the range, so a small island steps file by
 file. The island text gives the window range (one file up to the island or the v7.3 cap). Auto: one file for the pt1.1 proof (the most windows), the fewest windows
 under the cap split evenly for the v7.3 sieve; a blank stored width takes Auto's. The Split
 field holds ceil(island / width), the island's numbers and files beside it; a typed split sets

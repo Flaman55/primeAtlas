@@ -117,6 +117,22 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   zapisuje pliki, sekcja D przechodzi na piętro tego przebiegu i wykonuje Auto, więc szerokość
   i liczba okien pokazują okna P, które przebieg zostawił.
 
+### +8 — Generation Section D: Width arrows step by round widths
+
+- English: Section D's Width arrows and wheel step to the next round width (one significant
+  digit: 1e8, 2e8, ... 9e8, 1e9; down 1e9 -> 9e8) instead of one file, so a big island is
+  crossed in a few clicks. A width between two round ones steps to the round one on that side
+  (2.5e8 -> 3e8 or 2e8). Every step is at least one file and stays within the range: above
+  the island's last round width comes the island itself. A small island still steps file by
+  file. Typing a width, the Split field and Auto are unchanged.
+- Polski: Strzałki i kółko pola Szerokość w sekcji D przechodzą do następnej okrągłej
+  szerokości (jedna cyfra znacząca: 1e8, 2e8, ... 9e8, 1e9; w dół 1e9 -> 9e8) zamiast o jeden
+  plik, więc dużą wyspę przechodzi się w kilku kliknięciach. Szerokość między dwiema okrągłymi
+  przechodzi do okrągłej po tej stronie (2.5e8 -> 3e8 albo 2e8). Każdy krok to co najmniej
+  jeden plik i nie wychodzi poza zakres: nad ostatnią okrągłą szerokością wyspy jest sama
+  wyspa. Mała wyspa nadal idzie plik po pliku. Wpisywanie szerokości, pole Podział i Auto się
+  nie zmieniają.
+
 ## 1.5.0 — 2026-11-17
 
 ### +1 — Generation: RAM check on Generate, proposal from the run's start, native primesieve without storage
