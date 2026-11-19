@@ -8,7 +8,12 @@ Rules checked:
   - the summary: the plan's total, both comparison totals (n/a when a method has no
     calibration), the targets already in the storage, the unplanned windows, the
     estimated-engine and Pseudosquares-from-count notes and the note that Pseudosquares
-    writes nothing, each only when it applies.
+    writes nothing, each only when it applies;
+  - the how-to gives the file format: comments, .txt/.csv, UTF-8, both power notations and
+    the engine names;
+  - a group with no time (a forced engine without measurements): its time cell says so and
+    the summary counts those runs; with no target free of an engine there is no
+    comparison line.
     python unitTests/test_target_plan_text.py
 """
 import os
@@ -19,7 +24,8 @@ sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "prime_sieve"))
 
 ERROR_KEYS = ("not_number", "too_many_fields", "center_below_one", "radius_negative",
-              "below_min", "above_max", "too_many")
+              "below_min", "above_max", "too_many", "unknown_engine", "too_many_engines",
+              "engine_not_last")
 
 
 def check(value, message):
@@ -85,8 +91,24 @@ def main():
         text = tpt.summary_text(empty, Costs(None, None, False, None), T, duration)
         passed &= check(T("target_planner.all_stored") in text,
                         f"{lang}: everything stored ({text!r})")
-        passed &= check(len(T("target_planner.howto")) > 200,
-                        f"{lang}: the how-to text is there")
+        unknown = atlas._replace(seconds=None, engine="v5", forced=True)
+        row = tpt.row_values(5, unknown, T, duration)
+        passed &= check(row[7] == T("target_planner.time_unknown")
+                        and row[6] == T("target_planner.method_atlas", engine="v5"),
+                        f"{lang}: a row without a time ({row})")
+        plan = tp.Plan([atlas, unknown, unknown], 120.0, None, None, 0, [], False)
+        text = tpt.summary_text(plan, Costs(None, None, False, None), T, duration)
+        passed &= check(T("target_planner.summary", groups=3, time="120 s") in text
+                        and T("target_planner.unknown_time", count=2) in text
+                        and T("target_planner.compare", atlas=na, pss=na) not in text
+                        and "target_planner." not in text,
+                        f"{lang}: runs without a time counted, no comparison ({text!r})")
+        howto = T("target_planner.howto")
+        passed &= check(len(howto) > 200, f"{lang}: the how-to text is there")
+        missing = [w for w in ("#", ".txt", ".csv", "UTF-8", "10**12", "10^12", "pss", "pt1.1",
+                               "v4.1", "v7", "pt1-pss") if w not in howto]
+        passed &= check(not missing, f"{lang}: the how-to gives the file format and the "
+                                     f"engine names (missing {missing})")
     print("ALL CHECKS PASSED" if passed else "SOME CHECKS FAILED")
     return 0 if passed else 1
 

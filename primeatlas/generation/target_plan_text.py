@@ -1,7 +1,9 @@
 """Texts of the target planner's view: the bad lines of the target list, one table row per
 group and the summary under the table (target_planner.Plan, target_plan_costs.Costs).
 
-T is a translator (primeatlas.core.i18n.Translator), duration(seconds) formats a time.
+T is a translator (primeatlas.core.i18n.Translator), duration(seconds) formats a time. A group
+with no seconds (an engine named by its targets that cannot time it) shows that in its time
+cell and is counted under the summary.
 """
 from benchmark_log_schema import ENGINE_PSEUDOSQUARES_COUNT
 
@@ -31,7 +33,9 @@ def row_values(number, group, T, duration):
     """(#, floor, from, to, windows, targets, method, time) of one table row."""
     return (str(number), str(group.floor), str(group.lo), str(group.hi),
             number_format.whole(group.windows),
-            number_format.whole(group.targets), method_text(group, T), duration(group.seconds))
+            number_format.whole(group.targets), method_text(group, T),
+            T("target_planner.time_unknown") if group.seconds is None
+            else duration(group.seconds))
 
 
 def summary_text(plan, costs, T, duration):
@@ -42,7 +46,7 @@ def summary_text(plan, costs, T, duration):
     elif plan.seconds is not None:
         lines.append(T("target_planner.summary", groups=len(plan.groups),
                        time=duration(plan.seconds)))
-    if plan.groups or plan.unplanned:
+    if (plan.groups or plan.unplanned) and plan.compared:
         na = T("target_planner.not_available")
         lines.append(T("target_planner.compare",
                        atlas=na if plan.atlas_seconds is None else duration(plan.atlas_seconds),
@@ -51,6 +55,9 @@ def summary_text(plan, costs, T, duration):
         lines.append(T("target_planner.stored", count=plan.stored_targets))
     if plan.unplanned:
         lines.append(T("target_planner.unplanned", count=len(plan.unplanned)))
+    unknown = sum(1 for g in plan.groups if g.seconds is None)
+    if unknown:
+        lines.append(T("target_planner.unknown_time", count=unknown))
     if costs.atlas_estimated:
         lines.append(T("target_planner.atlas_estimated"))
     if costs.pss_engine == ENGINE_PSEUDOSQUARES_COUNT:

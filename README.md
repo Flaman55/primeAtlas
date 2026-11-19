@@ -1914,23 +1914,30 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               (unitTests/test_width_advisor.py)
   width_advice_text.py          text of a width proposal: speeds or total times
   width_advice_view.py          WidthAdviceView -- the width line and its Use button
-  target_planner.py             target-set planner: parses the target list (center and
-                              radius per line), maps targets to windows (split at floor
+  target_planner.py             target-set planner: parses the target list (center, radius
+                              and engine per line), maps targets to windows (split at floor
                               boundaries, stored windows dropped), groups the blocks into
                               Atlas runs or Pseudosquares runs with the fewest seconds
-                              (dynamic programming, Atlas span within the cap) -- pure,
-                              no tkinter (unitTests/test_target_planner.py)
+                              (dynamic programming, Atlas span within the cap), targets
+                              naming an engine in a lane of their own -- pure, no tkinter
+                              (unitTests/test_target_planner.py)
   target_plan_costs.py          the planner's costs from time_model: one Atlas run of the
                               selected engine (writing) and one Pseudosquares print run
                               (count calibration as fallback)
                               (unitTests/test_target_plan_costs.py)
   target_plan_text.py           texts of the planner: bad lines, table rows, summary
                               (unitTests/test_target_plan_text.py)
+  target_planner_example.py     the example target list: its text, and its copy written
+                              into the storage folder when missing, never overwritten
+                              (unitTests/test_target_planner_example.py)
+  target_planner_example.txt    the example target list itself
   target_planner_view.py        TargetPlannerView -- the collapsible section: how-to,
-                              targets field, Load file, Plan, table, summary, Use
-  target_planner_section.py     GenerationTab mixin: Plan with the selected engine, its
-                              RAM-budget cap and its store; Use fills Quick-gen (Floor
-                              mode or Pseudosquares print)
+                              targets field, Insert example, Load file, Plan, table,
+                              summary, Use
+  target_planner_section.py     GenerationTab mixin: Plan with the selected engine (and the
+                              engines targets name), its RAM-budget cap and its store; Use
+                              fills Quick-gen (Floor mode or Pseudosquares print) and
+                              selects a named engine; Load file opens in the storage folder
                               (unitTests/test_target_planner_gui.py)
 
   primeatlas/visualization/     "Visualization" tab -- a container notebook with one sub-tab

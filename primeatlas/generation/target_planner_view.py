@@ -1,9 +1,10 @@
 """TargetPlannerView: the Generation tab's target planner section. A Show/Hide button over a
 collapsed body: the hint with a "How does it work?" button revealing the plain-language
-how-to, the targets text field with Load file and Plan, the message line (no targets, bad
+how-to, the targets text field with Insert example, Load file and Plan, the message line (no targets, bad
 lines), the plan table and its summary, and Use, enabled while a row is selected.
 
-The view holds no planning: on_plan(text), on_load() and on_use(group) are the section's
+The view holds no planning: on_plan(text), on_load(), on_example() and on_use(group) are the
+section's
 (target_planner_section.py); it shows what the section hands back.
 """
 import tkinter as tk
@@ -17,7 +18,7 @@ _WIDTHS = {"number": 40, "floor": 50, "from": 220, "to": 220, "windows": 80, "ta
 
 
 class TargetPlannerView(ttk.Labelframe):
-    def __init__(self, parent, T, on_plan, on_load, on_use, wraplength=760):
+    def __init__(self, parent, T, on_plan, on_load, on_use, on_example, wraplength=760):
         super().__init__(parent, text=T("target_planner.section_title"))
         self._T = T
         self._on_use = on_use
@@ -47,6 +48,9 @@ class TargetPlannerView(ttk.Labelframe):
         self.text.pack(fill="x")
         buttons = ttk.Frame(self._after_howto)
         buttons.pack(anchor="w", pady=(4, 0))
+        self.example_button = ttk.Button(buttons, text=T("target_planner.example_button"),
+                                         command=on_example)
+        self.example_button.pack(side="left", padx=(0, 8))
         self.load_button = ttk.Button(buttons, text=T("target_planner.load_button"),
                                       command=on_load)
         self.load_button.pack(side="left")
@@ -88,8 +92,11 @@ class TargetPlannerView(ttk.Labelframe):
         return self.text.get("1.0", "end-1c")
 
     def set_text(self, text):
+        """Replaces the targets with `text`, the cursor and the view at its start."""
         self.text.delete("1.0", "end")
         self.text.insert("1.0", text)
+        self.text.mark_set("insert", "1.0")
+        self.text.see("1.0")
 
     def show_message(self, message):
         """A message instead of a plan: the table and the summary are cleared."""

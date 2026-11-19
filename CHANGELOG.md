@@ -164,6 +164,25 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   pola dostają jedną krótką linię o zapisie potęgi i naukowym (10^4 · 1e4). Linia o ułamkach
   pokazuje się tylko w polach, które przyjmują ułamki.
 
+### +11 — Target planner: an example, the file form and an engine per target
+
+- English: The target planner has an Insert example button that fills the targets field with
+  a ready list (asking before it replaces other text); the same list is written into the
+  storage folder as target_planner_example.txt, where Load file now opens, and an edited copy
+  is never overwritten. "How does it work?" describes the file form: one target per line,
+  # comments, .txt or .csv in UTF-8. A target line can end with an engine (v4.1, v5, v6, v7,
+  pt1.1, pt1-pss, or pss for Pseudosquares): those targets are planned with that engine only,
+  in runs of their own, and Use selects that engine in the Generation form. A run the named
+  engine cannot time stays in the table without a time.
+- Polski: Planer celów ma przycisk Wstaw przykład, który wpisuje do pola celów gotową listę
+  (pytając, zanim zastąpi inny tekst); ta sama lista trafia do folderu zapisu jako
+  target_planner_example.txt, w którym teraz otwiera się Wczytaj plik, a zmieniona kopia nigdy
+  nie jest nadpisywana. „Jak to działa?” opisuje postać pliku: jeden cel w wierszu, komentarze
+  #, .txt albo .csv w UTF-8. Wiersz celu może kończyć się silnikiem (v4.1, v5, v6, v7, pt1.1,
+  pt1-pss albo pss dla Pseudosquares): takie cele są planowane tylko tym silnikiem, we własnych
+  przebiegach, a Użyj wybiera ten silnik w formularzu Generacji. Przebieg, którego wskazany
+  silnik nie umie oszacować, zostaje w tabeli bez czasu.
+
 ## 1.5.0 — 2026-11-17
 
 ### +1 — Generation: RAM check on Generate, proposal from the run's start, native primesieve without storage

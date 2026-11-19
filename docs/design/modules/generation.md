@@ -61,7 +61,7 @@ InfoTip anchored on the checkbox).
 | Time simulation | `time_model.py` (run time model calibrated from benchmark_log.csv), `run_ram.py` (predicted RAM of a run, widest run in the RAM budget), `time_simulation_window.py` (`TimeSimulationWindow`) |
 | Engine proposal | `engine_advisor.py` (options, choice, guest line), `engine_advisor_seeds.py` (seed rows), `engine_advice_text.py` (its texts), `engine_advice_view.py` (`EngineAdviceView`); `tools/engine_advice.py` prints it |
 | Width proposal | `width_advisor.py` (rules), `width_advice_text.py` (its texts), `width_advice_view.py` (`WidthAdviceView`) |
-| Target planner | `target_planner.py` (parsing, windows, choice), `target_plan_costs.py` (costs from the time model), `target_plan_text.py` (its texts), `target_planner_view.py` (`TargetPlannerView`) |
+| Target planner | `target_planner.py` (parsing, windows, lanes, choice), `target_plan_costs.py` (costs from the time model), `target_plan_text.py` (its texts), `target_planner_view.py` (`TargetPlannerView`), `target_planner_example.py` + `target_planner_example.txt` (the example list) |
 | Following and settling | `run_output.py` (log parsing), `run_eta.py` (a running run's remaining time from the time model), `run_guard.py` (stop request, active-run marker, recovery), `close_guard.py` |
 | Settings | `generation_settings.py` (form defaults and persistence), `generation_console.py` (`GenerationConsole`) |
 | Offers | `generation_offer_coordinator.py` ("generate the missing fragment" for other tabs) |
@@ -346,10 +346,13 @@ go up to the per-run ceiling.
 ## Target planner
 
 A collapsible section above the pipeline section. The person lists targets, one per line:
-`center` or `center radius` (whitespace, `;` or `,` between them, Quick-gen expressions);
-blank lines and `#` comments are skipped. Any bad line blocks the plan and is listed with its
-number (not a number, more than two fields, center below 1, negative radius, below 10^7, above
-10^36 - 1, more than `MAX_TARGETS` = 10,000 targets, arbitrary).
+`center [radius] [engine]` (whitespace, `;` or `,` between them, Quick-gen expressions);
+blank lines and `#` comments are skipped. The engine, when given, is the last field: an Atlas
+engine as the form names it (`v4.1`, `v5`, `v6`, `v7`, `pt1` or `pt1.1`, `pt1-pss`) or `pss` /
+`pseudosquares`, any case. Any bad line blocks the plan and is listed with its number (not a
+number, more than two numbers, an unknown engine, two engines, an engine before a number,
+center below 1, negative radius, below 10^7, above 10^36 - 1, more than `MAX_TARGETS` = 10,000
+targets, arbitrary).
 
 Each target [center - radius, center + radius] becomes the windows it touches on the 10^7 grid
 of its floor, split at a floor boundary. Repeated and overlapping targets share windows; the
@@ -370,13 +373,27 @@ take one estimate per end and scale the rest linearly with the span (`time_model
 is cached). A block neither method can time is unplanned; when nothing is plannable the
 section says to run a benchmark first.
 
+Targets naming an engine are a lane of their own, planned the same way with that engine's
+store, RAM-budget cap and costs (Pseudosquares: the selected engine's store) and only that
+method, even where the other would be faster; lanes never share a run, so a window named in
+two lanes is planned in both. A block the named method cannot time (no measurements, or
+beyond the engine) stays in the table with no time, and the summary counts those runs. The
+comparison totals cover the targets that name no engine and are left out when there are none.
+
 The table lists each run (floor, from, to, windows, targets, method, time); the summary gives
 the plan's total, the totals of separate Atlas runs per block and of Pseudosquares alone, the
 targets left out as stored, and notes (seed-estimated engine, Pseudosquares timed from count,
 Pseudosquares writes nothing into the storage). Use writes the selected run into Quick-gen:
 Atlas into Floor mode (Start = the run's first number, which sets the Floor; Width; storage
-writing on), Pseudosquares into its mode with print (Floor, From, Width). Nothing starts a
-run. "How does it work?" reveals a plain-language explanation.
+writing on; a run of a named Atlas engine first selects that engine in the form),
+Pseudosquares into its mode with print (Floor, From, Width). Nothing starts a run. "How does it
+work?" reveals a plain-language explanation and the file form.
+
+Insert example puts the text of `target_planner_example.txt` (next to the module, read by
+`target_planner_example.py`) into the field: at once into an empty field, nothing when the
+field already holds it, after a Yes/No question (No by default) over other text; it plans
+nothing. Load file opens in the storage folder, where `ensure_copy()` first writes the example
+as `target_planner_example.txt` when it is missing; an existing copy is never overwritten.
 
 ## Parameters and texts
 
@@ -400,7 +417,7 @@ is copied in once), `.generation_logs/` (logs, exit codes, `ACTIVE_RUN.json`),
 `test_pi_count_notice_controls`, `test_engine_advisor`, `test_engine_advice_gui`, `test_native_plan`,
 `test_primesieve_native_controls`, `test_generation_ram_guard`, `test_run_eta`, `test_pipeline_form_layout`,
 `test_width_advisor`, `test_width_advice_gui`, `test_quick_auto_split`, `test_target_planner`, `test_target_plan_costs`,
-`test_target_plan_text`, `test_target_planner_gui`, `test_quick_number`, `test_cpu_load` (D, E).
+`test_target_plan_text`, `test_target_planner_gui`, `test_target_planner_example`, `test_quick_number`, `test_cpu_load` (D, E).
 
 ## Known gaps
 
